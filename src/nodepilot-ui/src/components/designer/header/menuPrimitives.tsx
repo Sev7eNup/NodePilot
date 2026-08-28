@@ -3,8 +3,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 /**
  * Shared popover mechanics for the editor-header menus (View / Tools / skin / more).
  * Returns an `open` flag, its setter, and a `ref` to attach to the popover's container
- * `<div>`. Closes on outside-click and Escape — the same pattern every header popover
- * used to reimplement inline. Generic over the container element type.
+ * `<div>`. Closes on outside-click and Escape. Generic over the container element type.
  */
 export function usePopover<T extends HTMLElement = HTMLDivElement>() {
   const [open, setOpen] = useState(false);
@@ -25,7 +24,7 @@ export function usePopover<T extends HTMLElement = HTMLDivElement>() {
   return { open, setOpen, ref };
 }
 
-/** Small uppercase section header inside a popover menu (e.g. "Darstellung" / "Overlays"). */
+/** Small uppercase section header inside a popover menu (e.g. "Display" / "Overlays"). */
 export function MenuSectionLabel({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <div className="px-2 pt-1.5 pb-1 text-[10px] font-label font-bold uppercase tracking-widest text-on-surface-variant">
@@ -231,9 +230,9 @@ export function SegmentedControl<T extends string>({ options, value, onChange, l
 }
 
 /**
- * `− [value] +` stepper. The `children` render the current value (a preview line, "XL", "A A +n").
- * `decLabel`/`incLabel` are the accessible names for the two buttons; the value is a live region
- * so screen readers announce changes.
+ * `− [value] +` stepper. `children` renders the current value (a preview line, "XL", "A A +n").
+ * `decLabel`/`incLabel` name the two buttons; the value is a live region so screen readers
+ * announce changes.
  */
 export function Stepper({ onDec, onInc, decDisabled = false, incDisabled = false, decLabel, incLabel, description, testId, children }: Readonly<{
   onDec: () => void;

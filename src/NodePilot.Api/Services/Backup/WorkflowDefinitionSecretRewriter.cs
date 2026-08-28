@@ -11,7 +11,8 @@ namespace NodePilot.Api.Services.Backup;
 /// </summary>
 public enum SecretHandling
 {
-    /// <summary>Replace secret values with <c>"***"</c> — the share/export-for-collaboration path.</summary>
+    /// <summary>Replace secret values with <c>"***"</c> — the share/export-for-collaboration
+    /// path.</summary>
     Redact,
 
     /// <summary>Seal the complete definition as an authenticated <c>$encDefinition</c> envelope
@@ -21,8 +22,7 @@ public enum SecretHandling
 
 /// <summary>
 /// Redacts a structure-preserving sharing copy or seals the complete definition for DR backup.
-/// Generalises the former <c>WorkflowsControllerBase.RedactSecretsInDefinition</c> while keeping
-/// collaboration and backup confidentiality policies explicit and independently fail-closed.
+/// Keeps collaboration and backup confidentiality policies explicit and independently fail-closed.
 /// </summary>
 public static class WorkflowDefinitionSecretRewriter
 {
@@ -35,7 +35,8 @@ public static class WorkflowDefinitionSecretRewriter
     public static readonly IReadOnlySet<string> SecretConfigKeys =
         NodePilot.Core.WorkflowDefinitions.WorkflowSecretKeys.SecretConfigKeys;
 
-    /// <summary>The marker object key used for passphrase-encrypted values across the whole backup.</summary>
+    /// <summary>The marker object key used for passphrase-encrypted values across the whole
+    /// backup.</summary>
     public const string EncKey = "$enc";
 
     /// <summary>
@@ -47,12 +48,15 @@ public static class WorkflowDefinitionSecretRewriter
 
     /// <summary>
     /// Rewrites <paramref name="root"/> according to <paramref name="handling"/>. For
-    /// <see cref="SecretHandling.EncryptForBackup"/>, <paramref name="protector"/> must be supplied.
+    /// <see cref="SecretHandling.EncryptForBackup"/>, <paramref name="protector"/> must be
+    /// supplied.
     /// </summary>
     public static JsonNode Rewrite(JsonElement root, SecretHandling handling, PassphraseSecretProtector? protector)
     {
-        // Redact is the pure, Data-free path — delegate to the shared Core helper so the API export,
-        // the MCP definition-redaction and the AI chat assistant can never disagree about redaction.
+        // Redact is the pure, Data-free path — delegate to the shared Core helper so the API
+        // export,
+        // the MCP definition-redaction and the AI chat assistant can never disagree about
+        // redaction.
         if (handling == SecretHandling.Redact)
             return NodePilot.Core.WorkflowDefinitions.WorkflowSecretRedactor.Redact(root);
 
@@ -71,11 +75,12 @@ public static class WorkflowDefinitionSecretRewriter
 
     /// <summary>
     /// Reverses an <see cref="SecretHandling.EncryptForBackup"/> definition for restore: decrypts
-    /// every <c>{"$enc":…}</c> back to its plaintext string, and remaps the <c>targetMachineId</c> /
-    /// <c>credentialId</c> GUID references through the supplied resolvers (ADR 0001 K13). A resolver
-    /// returning <c>null</c> records the original value in <paramref name="unresolved"/> and leaves it
-    /// in place — the caller (restore validation, K12) is expected to have already aborted on those.
-    /// Other strings (templates like <c>{{globals.X}}</c>, scripts, node ids) are preserved verbatim.
+    /// every <c>{"$enc":…}</c> back to its plaintext string, and remaps the <c>targetMachineId</c>
+    /// /
+    /// <c>credentialId</c> GUID references through the supplied resolvers (ADR 0001 K13). A
+    /// resolver
+    /// returning <c>null</c> records the original value in <paramref name="unresolved"/> instead of
+    /// remapping it. Other strings (templates, scripts, node ids) are preserved verbatim.
     /// </summary>
     public static JsonNode RestoreDefinition(
         JsonNode definition,
@@ -95,7 +100,8 @@ public static class WorkflowDefinitionSecretRewriter
 
     /// <summary>
     /// Decrypts the whole-definition envelope used by current backups. A deep clone is returned for
-    /// older per-field-encrypted backups so the existing recursive restore remains backward compatible.
+    /// older per-field-encrypted backups so the existing recursive restore remains backward
+    /// compatible.
     /// </summary>
     public static JsonNode UnsealBackupDefinition(JsonNode definition, PassphraseSecretProtector protector)
     {

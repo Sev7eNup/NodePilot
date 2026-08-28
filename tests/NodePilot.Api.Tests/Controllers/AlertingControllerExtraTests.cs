@@ -126,7 +126,8 @@ public class AlertingControllerExtraTests
     {
         await using var db = TestDbFactory.Create();
         var store = new NotificationRuleStore(db, new AesGcmSecretProtector(Key()));
-        // Create with sinks present (passes validation), then test-fire with a sink-less controller.
+        // Create with sinks present (passes validation), then test-fire with a sink-less
+        // controller.
         var created = await Create(NewController(db, store, withSinks: true), Req("rule"));
         var sinkless = NewController(db, store, withSinks: false);
 
@@ -196,7 +197,7 @@ public class AlertingControllerExtraTests
         using var db = TestDbFactory.Create();
         var store = new NotificationRuleStore(db, new AesGcmSecretProtector(Key()));
         var ctrl = NewController(db, store, withSinks: true);
-        // Route condition requires severity == Critical; sample fields leave it unset → route won't match.
+        // Route condition requires severity == Critical, which the sample fields leave unset.
         const string routeCondition = """
         {"type":"comparison","op":"==","left":{"kind":"variable","source":"event","name":"severity"},"right":{"kind":"literal","value":"Critical"}}
         """;

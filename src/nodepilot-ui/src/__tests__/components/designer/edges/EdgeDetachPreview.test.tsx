@@ -3,23 +3,23 @@ import { render, fireEvent, act } from '@testing-library/react';
 import { createRef } from 'react';
 
 /**
- * EdgeDetachPreview zeichnet die gestrichelte Linie vom Quell-Port zum Cursor, solange ein
- * Edge-Ziel per Kontextmenü gelöst ist.
+ * EdgeDetachPreview draws the dashed line from the source port to the cursor while an edge
+ * target is detached through the context menu.
  *
  * Mocks:
- *   - useReactFlow().screenToFlowPosition: Identität (der Test übergibt direkt Flow-Koordinaten)
- *   - useInternalNode: liefert wahlweise einen vermessenen Node oder undefined
- *   - ViewportPortal: schlichter Wrapper, damit der Inhalt im normalen DOM-Baum landet
+ *   - useReactFlow().screenToFlowPosition: identity, so the test passes flow coordinates
+ *   - useInternalNode: returns either a measured node or undefined
+ *   - ViewportPortal: a plain wrapper, so its content lands in the normal DOM tree
  *
- * Gepinntes Verhalten:
- *   - vor der ersten Mausbewegung wird NICHTS gerendert (es gibt kein loses Ende zu zeigen)
- *   - nach einem pointermove auf der Canvas erscheint die Vorschau
- *   - der unvermessene Quell-Node unterdrückt die Vorschau (kein Anker auf (0,0))
- *   - über einem dockbaren Node endet die Linie auf dem HANDLE-Mittelpunkt, nicht am Cursor
- *   - ein nicht dockbarer Node lässt sie am Cursor
- *   - `onDockTargetChange` feuert nur beim WECHSEL des Nodes, nicht pro Mausbewegung
- *     (sonst würde die ganze Editor-Seite bei jedem Pixel neu rendern)
- *   - der pointermove-Listener wird beim Unmount wieder abgehängt
+ * Pinned behavior:
+ *   - nothing renders before the first mouse move, since there is no loose end to show
+ *   - the preview appears after a pointermove on the canvas
+ *   - an unmeasured source node suppresses the preview instead of anchoring it at (0,0)
+ *   - over a dockable node the line ends on the handle centre, not at the cursor
+ *   - over a node that cannot be docked to, the line stays at the cursor
+ *   - `onDockTargetChange` fires only when the node under the cursor changes, because it
+ *     drives editor-page state
+ *   - the pointermove listener is removed on unmount
  */
 
 const internalNode = vi.hoisted(() => ({
@@ -38,7 +38,7 @@ vi.mock('@xyflow/react', async () => {
 
 import { EdgeDetachPreview } from '../../../../components/designer/edges/EdgeDetachPreview';
 
-/** requestAnimationFrame synchron ausführen — die Komponente drosselt den Move darüber. */
+/** Run requestAnimationFrame synchronously; the component throttles pointer moves with it. */
 beforeEach(() => {
   internalNode.current = { measured: { width: 200, height: 80 }, internals: { positionAbsolute: { x: 100, y: 50 } } };
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { cb(0); return 1; });
@@ -46,13 +46,12 @@ beforeEach(() => {
 });
 
 /**
- * Ein `.react-flow__node` mit gestubbten Handle-Rects, das als Dock-Ziel unter dem Cursor
- * liegt. jsdom kennt kein Layout — `getBoundingClientRect` muss pro Handle gesetzt werden.
+ * A `.react-flow__node` with stubbed handle rects that sits under the cursor as a dock target.
+ * jsdom has no layout, so `getBoundingClientRect` must be stubbed per handle.
  *
- * Der Node hängt IN der Canvas: die Komponente lauscht auf der Canvas, und `event.target`
- * ist das Element, auf dem gefeuert wurde. Nur über echtes Bubbling aus dem Node heraus
- * entsteht dieselbe Ereignisform wie im Browser (`fireEvent`s `target`-Option überschreibt
- * `event.target` nicht).
+ * The node is appended inside the canvas because the component listens on the canvas and reads
+ * `event.target`. Only real bubbling out of the node produces the same event shape as in the
+ * browser; the `target` option of `fireEvent` does not override `event.target`.
  */
 function buildDockNode(parent: HTMLElement, nodeId: string, handles: Array<{ port: string; cx: number; cy: number }>) {
   const node = document.createElement('div');
@@ -112,7 +111,7 @@ describe('EdgeDetachPreview', () => {
     act(() => { fireEvent.pointerMove(canvas, { clientX: 400, clientY: 300 }); });
 
     expect(queryByTestId('edge-detach-preview')).toBeInTheDocument();
-    // Docking-Punkt sitzt am Cursor; der Pfad startet am rechten Port (x=300, y=90).
+    // The dock point sits at the cursor; the path starts at the right port (x=300, y=90).
     const dot = container.querySelector('circle') as SVGCircleElement;
     expect(dot.getAttribute('cx')).toBe('400');
     expect(dot.getAttribute('cy')).toBe('300');
@@ -120,8 +119,8 @@ describe('EdgeDetachPreview', () => {
   });
 
   it('overDockableNode_endsOnTheHandleCentreNotTheCursor', () => {
-    // Cursor knapp unter dem Bottom-Handle (600, 380). Die Linie muss auf dem HANDLE landen —
-    // genau das erzeugt der Klick anschließend auch, weil beide `resolveDockTarget` fragen.
+    // The cursor sits just below the bottom handle (600, 380). The line must end on the handle,
+    // which is where a click docks too, because both paths ask `resolveDockTarget`.
     const { canvas, container, onDockTargetChange } = renderPreview();
     const node = buildDockNode(canvas, 'target-1', DOCK_HANDLES);
 
@@ -146,8 +145,8 @@ describe('EdgeDetachPreview', () => {
   });
 
   it('movingWithinTheSameNode_doesNotRepublishTheDockTarget', () => {
-    // Der Callback hängt an State der Editor-Seite. Pro Mausbewegung zu feuern würde den
-    // ganzen Designer neu rendern — er darf nur beim Node-WECHSEL feuern.
+    // The callback drives editor-page state. Firing on every mouse move would re-render the
+    // whole designer, so it may only fire when the node under the cursor changes.
     const { canvas, onDockTargetChange } = renderPreview();
     const node = buildDockNode(canvas, 'target-1', DOCK_HANDLES);
 
@@ -171,7 +170,7 @@ describe('EdgeDetachPreview', () => {
   });
 
   it('unmount_clearsTheDockTarget', () => {
-    // Sonst bliebe der Hervorhebungs-Ring nach dem Ende des Detach stehen.
+    // Otherwise the highlight ring would stay visible after the detach ends.
     const { canvas, unmount, onDockTargetChange } = renderPreview();
     const node = buildDockNode(canvas, 'target-1', DOCK_HANDLES);
 

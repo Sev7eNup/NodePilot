@@ -2,7 +2,8 @@ using NodePilot.Core.Interfaces;
 
 namespace NodePilot.Ai.Tests.Knowledge;
 
-/// <summary>In-memory <see cref="IOperationalKnowledgeReader"/> test double — canned results + recorded args.</summary>
+/// <summary>In-memory <see cref="IOperationalKnowledgeReader"/> test double — canned results +
+/// recorded args.</summary>
 public sealed class FakeOperationalKnowledgeReader : IOperationalKnowledgeReader
 {
     public WorkflowKnowledgeDetail? Definition { get; set; }

@@ -5,10 +5,13 @@ namespace NodePilot.Data.Availability;
 /// <summary>
 /// Applies a shorter command timeout to a scoped block and restores the previous one afterwards.
 ///
-/// <para><b>Why this needs a type instead of two lines at the call site.</b> The DbContext is pooled
-/// and request-scoped: the same instance the middleware stamps is the one the controller then uses. A
+/// <para><b>Why this needs a type instead of two lines at the call site.</b> The DbContext is
+/// pooled
+/// and request-scoped: the same instance the middleware stamps is the one the controller then uses.
+/// A
 /// budget that is not restored — on every path, including the ones that throw — silently applies to
-/// everything downstream, and because the pool recycles instances it can outlive the request entirely
+/// everything downstream, and because the pool recycles instances it can outlive the request
+/// entirely
 /// and poison an unrelated one later. The existing hand-rolled <c>try/finally</c> in
 /// <c>WorkflowsController</c> is replaced by this so the pattern exists once.</para>
 ///
@@ -28,7 +31,8 @@ public readonly struct DatabaseCommandBudget : IDisposable
     }
 
     /// <summary>
-    /// Stamps <paramref name="seconds"/> onto <paramref name="context"/> until the returned value is
+    /// Stamps <paramref name="seconds"/> onto <paramref name="context"/> until the returned value
+    /// is
     /// disposed. A non-positive budget is a no-op, so a misconfigured key cannot accidentally set a
     /// zero (= infinite, on some providers) timeout.
     /// </summary>

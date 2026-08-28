@@ -9,7 +9,7 @@
     never copied to a backup and remains only in memory. Any failure after mutation starts rolls
     binaries and configuration back before the old service is restarted.
 
-    A successful update leaves the service RUNNING, regardless of whether it was running when the
+    A successful update leaves the service running, regardless of whether it was running when the
     script was invoked. A failed update restores the pre-update state instead.
 .PARAMETER ArtifactPath
     Path to the new NodePilot-*.zip.
@@ -160,10 +160,10 @@ try {
     Set-RestrictedSettingsAcl -Path $settingsPath -ServiceAccount $svcAccount
     $settingsBytes = [IO.File]::ReadAllBytes($settingsPath)
 
-    # Health-probe port: the installed configuration is authoritative. Silently probing the
-    # 443 parameter default against an installation that listens on 8443 (any host where IIS
-    # owns 443 — SCCM, WSUS) fails the post-restart probe and rolls back a perfectly healthy
-    # upgrade (lab 2026-08-01). Explicit -HttpsPort still wins.
+    # Health-probe port: the installed configuration is authoritative. Probing the 443 parameter
+    # default against an installation that listens elsewhere (any host where IIS owns 443, such
+    # as SCCM or WSUS) fails the post-restart probe and rolls back a healthy upgrade. An explicit
+    # -HttpsPort still wins.
     if (-not $PSBoundParameters.ContainsKey('HttpsPort')) {
         try {
             $installedSettings = [Text.Encoding]::UTF8.GetString($settingsBytes) | ConvertFrom-Json
@@ -190,12 +190,10 @@ try {
 
     # Reject a malformed signed ZIP before stopping the service or touching the installation.
     #
-    # Announced, because this is the longest stretch of the whole update and used to run without a
-    # single progress line: the first phase below is the backup, so the wizard sat on its start
-    # caption while ~2900 files were expanded to staging and then hashed one by one against the
-    # signed manifest. Measured 2.7 s of hashing on a warm NVMe, minutes on a machine whose
-    # real-time scanner inspects every file created under %TEMP% - see docs/av-exclusions.md.
-    # An operator watching a motionless dialog reasonably concludes it has hung.
+    # The step is announced because it is the longest stretch of the whole update: every file is
+    # expanded to staging and then hashed against the signed manifest, which takes minutes on a
+    # machine whose real-time scanner inspects every file created under %TEMP% - see
+    # docs/av-exclusions.md. Without a progress line an operator reads that as a hang.
     Write-Step 'Extracting artifact'
     $artifactStage = Expand-NodePilotArtifactToStaging -ArtifactPath $ArtifactPath
     Write-Info "Verified restricted staging: $artifactStage"
@@ -215,17 +213,14 @@ try {
         Write-Step "Stopping service '$ServiceName'"
         Stop-ServiceAndVerify -Name $ServiceName
 
-        # A stopped service does not guarantee an empty install dir: an orphaned worker (or a
-        # manually started NodePilot.Api.exe) keeps its DLLs mapped as image sections, and
-        # deleting a mapped DLL fails with plain "Access denied" (lab 2026-08-01, mid-wipe -
-        # which also destroys appsettings.Production.json before the abort).
+        # A stopped service does not guarantee an empty install directory: an orphaned worker (or
+        # a manually started NodePilot.Api.exe) keeps its DLLs mapped as image sections, and
+        # deleting a mapped DLL fails with "Access denied" halfway through the wipe.
         #
-        # It does not follow that the operator should be the one to clean up. The SCM reports
-        # SERVICE_STOPPED while the host is still unwinding, so the process this script just
-        # stopped was routinely still listed a second later - and the run aborted telling the
-        # operator to kill it by hand (lab 2026-08-03). Wait for it, then end whatever is left:
-        # everything under InstallPath is a NodePilot binary whose files are about to be
-        # replaced anyway. Fail CLOSED, with names, only if something survives that too.
+        # The SCM reports SERVICE_STOPPED while the host is still unwinding, so the process this
+        # script just stopped can still be listed a second later. Wait for it, then end whatever
+        # is left: everything under InstallPath is a NodePilot binary whose files are about to be
+        # replaced anyway. Fail closed, naming the processes, only if something survives that too.
         $lockers = @(Wait-NodePilotProcessesUnderPath -Path $InstallPath -TimeoutSeconds 30 -Force)
         if ($lockers.Count -gt 0) {
             $names = ($lockers | ForEach-Object { "$($_.ProcessName) (PID $($_.Id))" }) -join ', '
@@ -236,28 +231,25 @@ try {
 
         Write-Step 'Installing verified artifact'
         $installTouched = $true
-        # appsettings.Production.json last: if the wipe aborts midway (locked file, AV), the
-        # config must still be on disk — the backup deliberately excludes it and the in-memory
-        # copy dies with this process.
+        # appsettings.Production.json last: if the wipe aborts midway (locked file, antivirus)
+        # the config must still be on disk - the backup excludes it and the in-memory copy dies
+        # with this process.
         Get-ChildItem -LiteralPath $InstallPath -Force |
             Sort-Object { $_.Name -eq 'appsettings.Production.json' } |
             Remove-Item -Recurse -Force -ErrorAction Stop
         Copy-DirectoryContents -Source $artifactStage -Destination $InstallPath
         Assert-NodePilotExtractedFiles -RootPath $InstallPath
-        # H-18: an installation made before the installer hardened this directory keeps its
-        # inherited ACL forever - replacing the binaries on every upgrade would never notice that
-        # a non-administrator can replace them right back, with the service account executing the
-        # result. No -RequireProtectedRules here: inheriting a safe ACL from Program Files is fine,
-        # only effective write access by an untrusted principal is not.
+        # An installation whose directory was never hardened keeps its inherited ACL, which lets a
+        # non-administrator replace the binaries the service account then executes. No
+        # -RequireProtectedRules here: inheriting a safe ACL from Program Files is fine, only
+        # effective write access by an untrusted principal is not.
         Assert-NodePilotInstallRootHardened -Path $InstallPath
         Write-RestrictedSettings -Path $settingsPath -Content $settingsBytes -ServiceAccount $svcAccount
 
-        # Normalise the start type. Installations made before the API waited for the database
-        # carry start= delayed-auto, which idles roughly two minutes past every boot for a wait
-        # the binaries we just laid down now do themselves. Without this the fix would only ever
-        # reach fresh installations, and an upgraded host would keep looking dead after a reboot.
-        # This is the one piece of service configuration an update touches, and it changes no
-        # identity, no dependency and no recovery action.
+        # Normalise the start type. Older installations carry start= delayed-auto, which idles
+        # roughly two minutes past every boot waiting for the database - something the binaries
+        # just laid down now do themselves. This is the one piece of service configuration an
+        # update touches, and it changes no identity, no dependency and no recovery action.
         & sc.exe config $ServiceName start= auto | Out-Null
         if ($LASTEXITCODE -ne 0) { Write-Warn "  sc.exe config (start= auto) returned $LASTEXITCODE" }
 
@@ -300,14 +292,9 @@ public class TrustAllCertsUpdate : ICertificatePolicy {
         if (-not $healthy) { throw 'Service did not become ready after upgrade.' }
         Write-Ok '/healthz/ready returned 200 OK'
 
-        # A successful update leaves the service RUNNING, whatever its state was before.
-        #
-        # This used to restore the pre-update state, and that combination bit in the lab: the
-        # 30-second timeout in Stop-ServiceAndVerify pushes operators to stop the service by hand
-        # first (an in-flight execution otherwise aborts the run), so "stopped" becomes the
-        # recorded prior state — and the update then started the service, proved it healthy on
-        # /healthz/ready, and stopped it again. The operator was left with a dead service after a
-        # run that printed "Update complete."
+        # A successful update leaves the service running, whatever its state was before.
+        # Operators commonly stop the service by hand first so an in-flight execution does not
+        # abort, and restoring that state would hand back a dead service after a healthy upgrade.
         #
         # Failure is different and still restores the prior state (see the catch block): an update
         # that rolled back must not start something the operator had deliberately taken down.
@@ -329,11 +316,8 @@ public class TrustAllCertsUpdate : ICertificatePolicy {
             Write-Host "[update] Update succeeded, but old backup pruning failed: $($_.Exception.Message)" -ForegroundColor Yellow
         }
 
-        # Only Install-NodePilot.ps1 used to write this, so the marker kept the version of the last
-        # INSTALL and every script-driven update was invisible in it. That value is what the setup
-        # wizard puts on its mode page ("NodePilot <version> is already installed in <path>") and
-        # the obvious thing for an inventory to read - measured in the lab: binaries updated from
-        # 1.2.6-rc1 to the 1.2.5 artifact, marker still claiming 1.2.6-rc1.
+        # Keep the installation marker in step with the binaries. Its version is what the setup
+        # wizard shows on its mode page and what an inventory reads.
         #
         # Version only: path, service name, provider and port are not changed by an update and are
         # already correct. Guarded on InstallPath because the marker is a single machine-wide key -
@@ -357,9 +341,8 @@ public class TrustAllCertsUpdate : ICertificatePolicy {
             Write-Warn "Could not update the installation marker: $($_.Exception.Message)"
         }
 
-        # Updating FROM a pre-1.2.8 installation is the case that needs this: the old artifact
-        # carried no tools directory, so Install-NodePilot.ps1 never had a path to add. Same
-        # idempotent append as the installer, so an update that already has the entry is a no-op.
+        # Older artifacts carried no tools directory, so Install-NodePilot.ps1 had no path to add.
+        # Same idempotent append as the installer: an update that already has the entry is a no-op.
         try {
             . (Join-Path $PSScriptRoot 'MachinePath.ps1')
             $toolsPath = Join-Path $InstallPath 'tools\np'

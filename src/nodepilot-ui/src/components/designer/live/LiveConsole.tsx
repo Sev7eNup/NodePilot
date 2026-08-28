@@ -6,23 +6,17 @@ import { formatNumber } from '../../../lib/format';
 
 interface Props {
   execution: LiveExecution;
-  /** Click a line → caller selects the originating step (typically opens the inspector). */
+  /** Clicking a line lets the caller select the originating step, usually opening the inspector. */
   onSelectStep?: (stepId: string) => void;
 }
 
 /**
- * Live "build-log" tail of every step's stdout/stderr/transcript output, aggregated
- * in execution-time order. Complements the Gantt (when?) and the Step-Inspector
- * (deep dive) by answering the broad "what's the run printing right now?" question
- * without forcing the user to click each step.
+ * Live "build-log" tail of every step's stdout/stderr/transcript output, aggregated in
+ * execution-time order. Complements the Gantt (timing) and the Step Inspector (deep dive)
+ * by showing what the run is printing without opening each step.
  *
- * Lines are derived from `execution.steps[].output | errorOutput | traceOutput` —
- * SignalR keeps these in sync, so the component just renders whatever's currently
- * on the steps and re-sorts when new step events arrive.
- *
- * Volume guard: only the last MAX_LINES are shown; older lines collapse into a
- * "(N earlier lines hidden)" header. RunScripts can dump megabytes; we don't want
- * the bottom panel to OOM the browser.
+ * Lines come from `execution.steps[].output | errorOutput | traceOutput`, kept in sync by
+ * SignalR. Only the last MAX_LINES are shown, since a script can dump megabytes of output.
  */
 const MAX_LINES = 1000;
 
@@ -66,9 +60,8 @@ export function LiveConsole({ execution, onSelectStep }: Readonly<Props>) {
   const truncated = filtered.length > MAX_LINES;
   const visible = truncated ? filtered.slice(filtered.length - MAX_LINES) : filtered;
 
-  // Auto-scroll to bottom whenever lines change AND the user hasn't paused. We don't
-  // try to detect "user scrolled up" because that's flaky in jsdom-tested code; the
-  // explicit pause toggle keeps the contract obvious.
+  // Auto-scrolls to bottom when lines change, unless the user has paused. Detecting
+  // "user scrolled up" is unreliable in tests, so an explicit pause toggle is used instead.
   useEffect(() => {
     if (!autoScroll || !scrollRef.current) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;

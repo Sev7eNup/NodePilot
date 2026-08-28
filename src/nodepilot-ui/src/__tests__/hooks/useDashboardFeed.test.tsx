@@ -80,7 +80,7 @@ describe('useDashboardFeed', () => {
       });
     });
 
-    // Debounced (500ms) — wait for the invalidation to fire.
+    // The invalidation is debounced, so wait for it to fire.
     await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['dashboard-stats'] }));
   });
 
@@ -99,7 +99,7 @@ describe('useDashboardFeed', () => {
         events: [{ type: 'StepStarted', evt: { executionId: 'e1', workflowId: 'w1' } }],
       });
     });
-    // Give the debounce window a chance to prove a no-op.
+    // Wait past the debounce window to confirm nothing is invalidated.
     await new Promise((r) => setTimeout(r, 60));
     expect(invalidateSpy).not.toHaveBeenCalled();
   });

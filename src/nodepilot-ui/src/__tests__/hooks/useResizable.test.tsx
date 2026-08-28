@@ -4,8 +4,8 @@ import { useResizable } from '../../hooks/useResizable';
 
 describe('useResizable', () => {
   afterEach(() => {
-    // Clean up cursor style any test left behind — useResizable writes to document.body
-    // during a drag, and a leak would propagate "col-resize" globally to later tests.
+    // useResizable writes to document.body during a drag, so clear the styles here to keep
+    // a leaked "col-resize" cursor from affecting later tests.
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
   });
@@ -27,18 +27,19 @@ describe('useResizable', () => {
     });
     act(() => {
       window.dispatchEvent(new MouseEvent('mousemove', { clientX: 150, clientY: 0 }));
-      // useResizable subscribes via document.addEventListener; jsdom routes window mousemove to document.
+      // useResizable subscribes via document.addEventListener; jsdom routes window mousemove to
+      // document.
       document.dispatchEvent(new MouseEvent('mousemove', { clientX: 150, clientY: 0 }));
     });
 
-    // delta = 150 - 100 = 50 → new size = 200 + 50 = 250
+    // delta = 150 - 100 = 50, so the new size is 200 + 50 = 250
     expect(result.current.size).toBe(250);
   });
 
   it('reverseDrag_shrinksWhenPointerMovesRight', () => {
-    // Right-side panel (PropertiesPanel): dragging the splitter LEFT must increase the
-    // panel width because the splitter sits on the panel's left edge. The reverse flag
-    // inverts the delta sign — pin the contract.
+    // Right-side panel (PropertiesPanel): dragging the splitter left must increase the panel
+    // width because the splitter sits on the panel's left edge. The reverse flag inverts the
+    // delta sign.
     const { result } = renderHook(() =>
       useResizable({ initialSize: 300, minSize: 100, maxSize: 600, direction: 'horizontal', reverse: true }),
     );
@@ -50,7 +51,7 @@ describe('useResizable', () => {
       document.dispatchEvent(new MouseEvent('mousemove', { clientX: 600, clientY: 0 }));
     });
 
-    // delta = 600 - 500 = 100 → reversed → new size = 300 - 100 = 200
+    // delta = 600 - 500 = 100, reversed, so the new size is 300 - 100 = 200
     expect(result.current.size).toBe(200);
   });
 
@@ -101,14 +102,14 @@ describe('useResizable', () => {
 
   it('startSizeOverride_seedsDragFromMeasuredSizeNotState', () => {
     // A panel that defaults to auto/content height seeds the drag from its measured DOM
-    // height (not the hook's tracked initialSize), so the first pull continues from what
-    // the user sees instead of jumping. delta is applied on top of the override.
+    // height rather than the hook's tracked initialSize, so the first drag continues from
+    // the rendered height instead of jumping. The delta applies on top of that override.
     const { result } = renderHook(() =>
       useResizable({ initialSize: 360, minSize: 100, maxSize: 800, direction: 'vertical' }),
     );
 
     act(() => {
-      // initialSize is 360, but the box currently renders at 220px (auto/content) — seed 220.
+      // initialSize is 360, but the box currently renders at 220px (auto/content), so seed 220.
       result.current.handleProps.onMouseDown(
         { preventDefault: () => {}, clientX: 0, clientY: 100 } as React.MouseEvent,
         220,
@@ -118,15 +119,14 @@ describe('useResizable', () => {
       document.dispatchEvent(new MouseEvent('mousemove', { clientX: 0, clientY: 150 }));
     });
 
-    // delta = 150 - 100 = 50 → size = 220 (override) + 50 = 270, NOT 360 + 50.
+    // delta = 150 - 100 = 50, so size is 220 (override) + 50 = 270, not 360 + 50.
     expect(result.current.size).toBe(270);
   });
 
   it('startSizeOverride_updatesSizeStateOnMouseDown_beforeAnyMove', () => {
-    // Regression: a click on the corner handle (mousedown → mouseup, no drag) must NOT
-    // jump the panel to initialSize. When seeded from the measured height, the state is
-    // synced on mousedown so a consumer switching to `size`-driven height renders at the
-    // measured height immediately instead of flashing to initialSize.
+    // A click on the corner handle (mousedown then mouseup, no drag) must not jump the panel
+    // to initialSize. When seeded from the measured height, the state is synced on mousedown
+    // so a consumer switching to `size`-driven height renders at the measured height at once.
     const { result } = renderHook(() =>
       useResizable({ initialSize: 360, minSize: 100, maxSize: 800, direction: 'vertical' }),
     );
@@ -138,7 +138,7 @@ describe('useResizable', () => {
       );
     });
 
-    // No mousemove yet — size must already reflect the override, not the 360 initialSize.
+    // No mousemove yet: size must already reflect the override, not the 360 initialSize.
     expect(result.current.size).toBe(120);
 
     act(() => {
@@ -199,8 +199,8 @@ describe('useResizable', () => {
       result.current.handleProps.onMouseDown({ preventDefault: () => {}, clientX: 0, clientY: 0 } as React.MouseEvent);
     });
 
-    // While dragging, the body cursor must show col-resize and text selection is suppressed
-    // so the user doesn't accidentally select labels under the moving pointer.
+    // While dragging, the body cursor shows col-resize and text selection is suppressed so
+    // the user does not accidentally select labels under the moving pointer.
     expect(document.body.style.cursor).toBe('col-resize');
     expect(document.body.style.userSelect).toBe('none');
 

@@ -111,8 +111,8 @@ const STATUS_KEY: Record<string, string> = {
   Succeeded: 'succeeded', Failed: 'failed', Running: 'running',
   Pending: 'pending', Cancelled: 'cancelled', Skipped: 'skipped',
 };
-// Donut segment key -> execution status string (for the Recent-table filter).
-// 'statusOther' folds Pending/Paused/Skipped together, so it cannot filter cleanly.
+// Donut segment key mapped to an execution status string for the Recent-table filter.
+// 'statusOther' folds Pending, Paused and Skipped together, so it cannot filter cleanly.
 const RUN_STATUS_FILTER_FOR_KEY: Record<string, string | null> = {
   succeeded: 'Succeeded',
   failed: 'Failed',
@@ -135,23 +135,23 @@ export function DashboardPage() {
   const { t } = useTranslation(['dashboard', 'executions', 'common']);
   const navigate = useNavigate();
   const { probeRef, tokens } = useChartTokens();
-  // Caller-selected time window for the hero/area/donut/success-trend charts. Top/failing
-  // stay on a fixed 7 d window by backend design (recent-failure hotspots), so they don't
-  // empty out at windowHours=1.
+  // User-selected time window for the hero, area, donut and success-trend charts. The top and
+  // failing lists stay on a fixed 7-day window from the backend, so they do not empty out when
+  // windowHours is 1.
   const [windowHours, setWindowHours] = useState(24);
   const windowLabel = t(`dashboard:window.${WINDOW_KEY[windowHours] ?? '24h'}`);
-  // Live status transitions via the SignalR ops feed (JoinOperationsFeed). It debounced-
-  // invalidates ['dashboard-stats'] as soon as an execution starts/finishes — Running,
-  // Queue and Recent KPIs update in near-real-time instead of waiting up to 30s. The
-  // 120s polling below is now just a safety net for reconnects/missed events.
+  // Live status transitions from the SignalR ops feed (JoinOperationsFeed). It invalidates
+  // ['dashboard-stats'] with a debounce as soon as an execution starts or finishes, so the
+  // Running, Queue and Recent KPIs stay near-live. The polling below covers reconnects and
+  // missed events.
   useDashboardFeed();
   const { data: stats, isLoading } = useQuery({
     queryKey: ['dashboard-stats', windowHours],
     queryFn: () => api.get<DashboardStats>(`/stats/dashboard?windowHours=${windowHours}`),
     refetchInterval: 120_000,
   });
-  // Donut-segment click filters the Recent Executions table client-side (the backend only
-  // returns the latest 10, so this is a "of the last 10" filter — full filtering stays /executions).
+  // Clicking a donut segment filters the Recent Executions table client-side. The backend only
+  // returns the latest 10 rows, so this filters within those; full filtering lives on /executions.
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
   if (isLoading || !stats) {
@@ -193,7 +193,7 @@ export function DashboardPage() {
           ))}
         </div>
       </div>
-      {/* HERO — radial gauge (left) + KPI cluster (centre) + live runs (right). */}
+      {/* Hero row: radial gauge on the left, KPI cluster in the centre, live runs on the right. */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-5 mb-5">
         <div className="np-fade-up" style={{ animationDelay: '0ms' }}>
           <HeroGauge
@@ -223,7 +223,7 @@ export function DashboardPage() {
           </div>
         </div>
       </div>
-      {/* Window trend — gradient area chart frames the rest of the dashboard. */}
+      {/* Trend over the selected window, drawn as a gradient area chart. */}
       <div className="np-card p-5 mb-5 np-fade-up" style={{ animationDelay: '120ms' }}>
         <div className="flex items-center justify-between mb-2">
           <h3 className="font-semibold text-on-surface flex items-center gap-2">
@@ -238,7 +238,7 @@ export function DashboardPage() {
         </div>
         <HourlyAreaChart buckets={stats.last24hBuckets} windowHours={windowHours} tokens={tokens} />
       </div>
-      {/* Three compact insight charts — status, quality trend, performance. */}
+      {/* Three compact charts: run status, success trend and performance. */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-5">
         <div className="np-fade-up" style={{ animationDelay: '160ms' }}>
           <Panel title={t('dashboard:runStatusWindow', { window: windowLabel })} icon={ChartPie} iconClass="text-emerald-500" className="h-full">
@@ -639,7 +639,7 @@ function FailingWorkflowsList({ items, onOpen }: Readonly<{ items: FailingWorkfl
 
 function ArmedTriggersList({ items, onOpen }: Readonly<{ items: ArmedTriggerInfo[]; onOpen: (id: string) => void }>) {
   const { t } = useTranslation(['dashboard']);
-  // Single ticker for all rows — minute granularity is enough for "in 5m" labels.
+  // One shared ticker for all rows; minute granularity is enough for labels like "in 5m".
   const now = useMinuteTick();
   if (items.length === 0) {
     return <EmptyState text={t('dashboard:noArmedTriggers')} />;
@@ -789,8 +789,8 @@ function HourlyAreaChart({ buckets, windowHours, tokens }: Readonly<{ buckets: H
   const tipText = tokens.onSurface;
 
   const option = useMemo<EChartsOption>(() => {
-    // Hourly windows label "HH:00"; multi-day windows label the date "MM-DD". The backend
-    // always emits ≤24 buckets, so every 3rd label keeps the axis legible in both modes.
+    // Hourly windows label "HH:00", multi-day windows label the date "MM-DD". The backend
+    // emits at most 24 buckets, so labelling every third one keeps the axis legible.
     const multiDay = windowHours > 24;
     const formatLabel = (iso: string) => {
       const d = new Date(iso);
@@ -854,9 +854,9 @@ function HourlyAreaChart({ buckets, windowHours, tokens }: Readonly<{ buckets: H
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Run-status donut — composition of the last 24h. `total` also counts
-// Pending/Paused/Skipped (not broken out by the DTO), so the leftover is folded
-// into an "Other" slice → the slices always sum to the centre total.
+// Run-status donut showing the composition of the selected window. `total` also counts
+// Pending, Paused and Skipped, which the DTO does not break out, so the remainder is folded
+// into an "Other" slice and the slices always sum to the centre total.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function RunStatusDonut({ counts, tokens, onSelect }: Readonly<{ counts: ExecutionCounts; tokens: ChartTokens; onSelect: (status: string | null) => void }>) {
@@ -933,9 +933,9 @@ function RunStatusDonut({ counts, tokens, onSelect }: Readonly<{ counts: Executi
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Success-rate trend — succeeded / (succeeded+failed) per hour. Gaps are honest
-// (connectNulls:false); the tooltip carries the n so a 0/100% single-run hour
-// reads sensibly rather than alarmingly.
+// Success-rate trend: succeeded / (succeeded+failed) per hour. Gaps stay gaps
+// (connectNulls:false), and the tooltip carries the run count so a 0% or 100%
+// single-run hour can be read in context.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: HourBucket[]; windowHours: number; tokens: ChartTokens }>) {
@@ -1015,9 +1015,9 @@ function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// p95 duration of the top (busiest) workflows — ranked horizontal bars. Sorting
-// the busiest-5 set by p95 is presentation order only; it is not a global
-// "slowest" ranking (the backend selects by run count).
+// p95 duration of the busiest workflows as ranked horizontal bars. Sorting that set by
+// p95 is presentation order only, not a global "slowest" ranking, because the backend
+// selects the workflows by run count.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function P95WorkflowBars({ items, tokens }: Readonly<{ items: TopWorkflow[]; tokens: ChartTokens }>) {
@@ -1025,8 +1025,8 @@ function P95WorkflowBars({ items, tokens }: Readonly<{ items: TopWorkflow[]; tok
   const axisColor = tokens.axis;
   const tipBg = tokens.surfaceHigh;
   const tipText = tokens.onSurface;
-  // Accent gradient stops follow the active skin (orange / lilac / blue); fall back to
-  // the dark-orange literals so the bars still render under jsdom where tokens are empty.
+  // Gradient stops follow the active skin's accent tokens, which fall back to literal
+  // colours where the CSS variables resolve to empty.
   const barFrom = tokens.primaryContainer;
   const barTo = tokens.primary;
 

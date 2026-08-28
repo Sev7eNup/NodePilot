@@ -24,9 +24,8 @@ public sealed class WebhookReplayStore
 
     /// <summary>
     /// Atomically claims an opaque, key-derived delivery token for a workflow. Returns false
-    /// when another request or cluster node has already claimed it. A successful claim is
-    /// deliberately not rolled back when dispatch later fails: an authenticated delivery is
-    /// single-use and the sender must create a new timestamp/delivery ID for a retry.
+    /// when another request or cluster node already claimed it. A successful claim is never
+    /// rolled back on later dispatch failure: the sender must issue a new delivery ID to retry.
     /// </summary>
     public async Task<bool> TryClaimAsync(
         Guid workflowId,

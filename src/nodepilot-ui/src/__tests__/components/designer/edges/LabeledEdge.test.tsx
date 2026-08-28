@@ -3,13 +3,13 @@ import { render, screen } from '@testing-library/react';
 import { Position } from '@xyflow/react';
 
 /**
- * LabeledEdge — disabled-edge visual indicator tests.
+ * LabeledEdge tests for the visual indicator on a disabled edge.
  *
- * Pinned behaviors:
- *   - disabled=true  → ⊘ badge + "disabled" text rendered
- *   - disabled=false → no badge
- *   - disabled absent → no badge
- *   - disabled edge label gets muted style, not condition-color style
+ * Pinned behavior:
+ *   - disabled=true renders the ban badge and the "disabled" text
+ *   - disabled=false renders no badge
+ *   - a missing disabled field renders no badge
+ *   - the label of a disabled edge uses the muted style, not the condition color
  */
 
 const mocks = vi.hoisted(() => ({
@@ -139,13 +139,13 @@ describe('LabeledEdge — disabled indicator', () => {
       </svg>,
     );
     const labelEl = screen.getByText('On Success');
-    // classList.contains works for both HTML and SVG elements
+    // classList.contains works for both HTML and SVG elements.
     expect(labelEl.classList.contains('text-outline')).toBe(true);
     expect(labelEl.classList.contains('text-green-700')).toBe(false);
   });
 
   it('scales edge label font with the designer label offset', () => {
-    mocks.designState.labelFontOffsetIndex = 4; // +4px node-label offset -> +3px edge-label bump
+    mocks.designState.labelFontOffsetIndex = 4; // node-label offset +4px gives a +3px edge label
     render(
       <svg>
         <LabeledEdge {...baseProps} data={{ label: 'Archive=TRUE' }} />
@@ -184,8 +184,8 @@ describe('LabeledEdge — label pill', () => {
 
   const pill = () => document.querySelector('.np-edge-label-pill');
 
-  // Older workflows carry label="Always" because the properties panel used to write it.
-  // An edge without a condition runs always, so the label is not drawn.
+  // Some workflows store label="Always". An edge without a condition always runs, so that
+  // label is not drawn.
   it('draws no pill for a stored "Always" on an edge with no condition', () => {
     render(
       <svg>
@@ -207,7 +207,7 @@ describe('LabeledEdge — label pill', () => {
     expect(pill()).toBeNull();
   });
 
-  // Only the exact string "Always" is skipped; a user's own label still renders.
+  // Only the exact string "Always" is skipped; any other label still renders.
   it('keeps a hand-written label on an edge with no condition', () => {
     render(
       <svg>

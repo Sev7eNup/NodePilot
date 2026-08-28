@@ -100,7 +100,7 @@ public class DbAdminReadOnlySqlGuardTests
         act.Should().Throw<InvalidOperationException>();
     }
 
-    // --- Tokenizer support for the row-projection guard (security audit 2026-07-26) ---
+    // --- Tokenizer support for the row-projection guard ---
 
     [Fact]
     public void Tokenize_EmitsCastOperator_SoRowCastsAreDetectable()

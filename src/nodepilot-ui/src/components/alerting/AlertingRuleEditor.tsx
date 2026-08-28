@@ -51,7 +51,7 @@ function parseFilter(json: string | null): ExprNode | null {
 function fromRule(rule: NotificationRule | null): FormState {
   if (!rule) {
     return {
-      // New rules start DISABLED — an operator opts in explicitly after reviewing routes/scope.
+      // New rules start disabled — an operator opts in explicitly after reviewing routes/scope.
       name: '', description: '', isEnabled: false,
       eventTypes: ['ExecutionFailed'],
       scope: 'Global', folderIds: [], workflowIds: [],

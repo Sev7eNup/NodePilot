@@ -1,11 +1,9 @@
 import type { Edge, Node } from '@xyflow/react';
 
 /**
- * Generic, id-stable diff between two workflow definitions. Unlike the older
- * version-history diff (which compared edges by `source→target` and therefore missed
- * handle/id/layout changes), this diff keys nodes and edges by their stable `id` and
- * compares `data`/`config`, edge `source`/`target`/`sourceHandle`/`targetHandle`, and
- * node `position`/`type`/`parentId`.
+ * Id-stable diff between two workflow definitions. Nodes and edges are keyed by their stable
+ * `id`, so handle and layout changes are caught too. The comparison covers `data`/`config`,
+ * edge `source`/`target`/`sourceHandle`/`targetHandle`, and node `position`/`type`/`parentId`.
  */
 export interface DefinitionDiff {
   addedNodes: string[];
@@ -26,8 +24,8 @@ function stableStringify(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
   const obj = value as Record<string, unknown>;
-  // Explicit code-unit ordering — deliberately not localeCompare, which is locale-dependent
-  // and would make the same workflow serialize differently across environments.
+  // Explicit code-unit ordering, deliberately not localeCompare: a locale-dependent sort would
+  // serialize the same workflow differently across environments.
   const keys = Object.keys(obj).sort((a, b) => Number(a > b) - Number(a < b));
   return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',')}}`;
 }
@@ -41,7 +39,7 @@ function nodeSignature(node: Node): string {
   });
 }
 
-/** Signature without position — lets us tell a pure layout move apart from an actual content change. */
+/** Signature without position, which separates a pure layout move from a content change. */
 function nodeSignatureNoPosition(node: Node): string {
   return stableStringify({
     type: node.type ?? 'activity',
@@ -50,7 +48,7 @@ function nodeSignatureNoPosition(node: Node): string {
   });
 }
 
-/** True when a changed node differs ONLY in position (no actual content change). */
+/** True when a changed node differs only in position, with no content change. */
 export function isLayoutOnlyNodeChange(prev: Node, node: Node): boolean {
   return nodeSignatureNoPosition(prev) === nodeSignatureNoPosition(node);
 }
@@ -106,7 +104,7 @@ export interface ChangelogEntry {
   id: string;
   kind: ChangeKind;
   target: 'node' | 'edge';
-  /** Node label, or "src → tgt" for edges. */
+  /** Node label, or "src -> tgt" for edges. */
   label: string;
   /** activityType (nodes only). */
   activityType?: string;
@@ -146,11 +144,10 @@ export function buildChangelog(base: WorkflowDefinition, proposed: WorkflowDefin
 }
 
 /**
- * Builds the definition to apply from the current canvas plus the SELECTED (by id) changelog
- * entries. Conflict rules: deleting a node also removes its incident edges; edges left with
- * a missing endpoint (a deleted/not-selected node) are dropped (tracked via `droppedEdges`).
- * The caller gates this on staleness (current === base), so diffing against `current` here
- * matches the changelog exactly.
+ * Builds the definition to apply from the current canvas plus the changelog entries selected by
+ * id. Deleting a node also removes its incident edges; an edge left with a missing endpoint (a
+ * deleted or unselected node) is dropped and counted in `droppedEdges`. The caller gates this on
+ * staleness (current === base), so diffing against `current` here matches the changelog exactly.
  */
 export function assembleSelectiveDefinition(
   current: WorkflowDefinition,
@@ -191,10 +188,10 @@ export function diffIsEmpty(diff: DefinitionDiff): boolean {
 }
 
 /**
- * Stable hash of a definition, used to guard against stale proposals: if the canvas changes
- * between "ask the question" and "apply the proposal", the freshly computed hash won't match
- * the hash that shipped with the proposal, and the apply is blocked. Uses FNV-1a over the
- * id-sorted, stably serialized projection (exactly the fields the diff compares).
+ * Stable hash of a definition for guarding against stale proposals: if the canvas changes
+ * between asking for a proposal and applying it, the recomputed hash no longer matches the one
+ * that shipped with the proposal and the apply is blocked. FNV-1a over the id-sorted, stably
+ * serialized projection of exactly the fields the diff compares.
  */
 export function hashDefinition(def: WorkflowDefinition): string {
   const nodes = [...def.nodes]

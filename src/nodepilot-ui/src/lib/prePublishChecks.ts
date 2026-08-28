@@ -3,8 +3,8 @@ import type { LintIssue, LintResult } from './workflowLint';
 import { TRIGGER_ACTIVITY_TYPES } from './activityCatalog.generated';
 
 /**
- * Workflow shape — only the fields we need for the pre-publish modal. Kept loose so
- * the caller can pass `Workflow | undefined` from React Query without an extra cast.
+ * Workflow fields the pre-publish modal needs. Kept loose so callers can pass
+ * `Workflow | undefined` straight from React Query without an extra cast.
  */
 export interface PrePublishWorkflowShape {
   name?: string | null;
@@ -12,19 +12,14 @@ export interface PrePublishWorkflowShape {
 }
 
 /**
- * Extra checks that only run right before a publish. Reasoning behind keeping them out
- * of `lintWorkflow`:
+ * Checks that run only right before a publish, kept out of `lintWorkflow`:
  *
- *   - "no description" is a UX hint that would be noisy in the always-on lint pill but
- *     deserves a one-time nag at the publish moment.
- *   - "trigger without outgoing edge" overlaps with the engine's own behaviour (the
- *     trigger fires but does nothing) — at design time this is often a half-finished
- *     workflow that the user just hasn't wired up yet, so we don't want it to flicker
- *     into the lint count on every keystroke. At publish time it almost certainly is
- *     a bug worth flagging.
+ *   - "no description" is a UX hint, worth a single nag at publish time but noisy in
+ *     the always-on lint pill.
+ *   - "trigger without outgoing edge" is usually just a half-wired workflow at design
+ *     time, while at publish time it is almost certainly a bug.
  *
- * Returns an array of `LintIssue` so the modal can render the pre-publish-only items
- * with the same UI as the regular lint.
+ * Returns `LintIssue` values so the modal renders these items like regular lint.
  */
 export function getPrePublishIssues(
   nodes: Node[],
@@ -44,10 +39,9 @@ export function getPrePublishIssues(
     return TRIGGER_ACTIVITY_TYPES.has(at ?? '');
   });
 
-  // The "no trigger at all" case is already covered by the always-on `no-trigger` lint error
-  // (folded in via baseLint in getPrePublishLint), which also blocks publish through
-  // errors.length — no need to duplicate it here. Only when triggers DO exist: flag any of
-  // them that has no outgoing connection as a soft warning.
+  // The "no trigger at all" case is covered by the always-on `no-trigger` lint error, folded
+  // in through baseLint in getPrePublishLint, which also blocks publish. Only triggers that
+  // exist but have no outgoing connection are flagged here, as a warning.
   if (triggerNodes.length > 0) {
     const sourceIds = new Set<string>();
     for (const e of edges) {
@@ -82,9 +76,9 @@ export function getPrePublishIssues(
 }
 
 /**
- * Folds the standard lint result and the pre-publish-only checks into a single
- * `LintResult`. Keeps `error`-vs-`warning` separation so the modal can grey-out the
- * confirm button while errors exist.
+ * Folds the standard lint result and the pre-publish-only checks into one `LintResult`.
+ * Keeps errors and warnings apart so the modal can disable the confirm button while
+ * errors exist.
  */
 export function getPrePublishLint(
   baseLint: LintResult,

@@ -10,10 +10,9 @@ const localeFiles: Record<Lang, typeof en> = { en, de }
 /**
  * Parity guards for the bilingual corpus.
  *
- * A second language adds exactly one failure mode that nothing else catches: the two trees
- * drift. A page added in English only 404s for German readers; a nav entry without a title
- * in one locale renders its raw translation key. Both look fine to whoever is working in
- * their own language, which is why these are machine-checked.
+ * The two language trees can drift apart. A page added in English only 404s for German
+ * readers, and a nav entry without a title in one locale renders its raw translation key.
+ * Neither is visible to someone working in a single language, so both are checked here.
  */
 describe('content / nav parity', () => {
   it('ships every nav page in every language', () => {
@@ -78,8 +77,8 @@ describe('content / nav parity', () => {
   })
 
   it('uses page paths free of dots, which the i18next key separator would split', () => {
-    // `navTitleKey` builds `nav.pages.<path>`; i18next splits keys on `.`, so a dotted page
-    // path would silently resolve to nothing.
+    // `navTitleKey` builds `nav.pages.<path>`, and i18next splits keys on `.`, so a dotted
+    // page path resolves to nothing.
     expect(allPages.filter((p) => p.path.includes('.'))).toEqual([])
   })
 })
@@ -93,8 +92,8 @@ describe('getContent', () => {
   })
 
   it('falls back to the default language for an untranslated page', () => {
-    // Simulated rather than fixtured: the corpus is complete today (asserted above), and
-    // this pins the behaviour that keeps a future half-translated page readable.
+    // Simulated instead of fixtured because the corpus is complete, as asserted above.
+    // This pins the fallback that keeps a half-translated page readable.
     const path = allPages[0].path
     const original = contentByLang.de[path]
     try {

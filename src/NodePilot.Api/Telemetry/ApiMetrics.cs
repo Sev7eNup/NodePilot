@@ -19,11 +19,13 @@ public static class ApiMetrics
 
     // Webhook ingress — counts every hit, tagged by accept/reject and reason. Lets ops
     // distinguish "nobody is calling us" from "everyone hits the wrong path/secret".
-    /// <summary>Requests answered 503 by the availability middleware without touching the database.</summary>
+    /// <summary>Requests answered 503 by the availability middleware without touching the
+    /// database.</summary>
     public static readonly Counter<long> DatabaseRequestsRejected = Meter.CreateCounter<long>(
         "nodepilot.database.requests_rejected");
 
-    /// <summary>Breaker transitions into Unavailable. Outage duration is on the recovery log line.</summary>
+    /// <summary>Breaker transitions into Unavailable. Outage duration is on the recovery log
+    /// line.</summary>
     public static readonly Counter<long> DatabaseOutages = Meter.CreateCounter<long>(
         "nodepilot.database.outages");
 
@@ -79,7 +81,8 @@ public static class ApiMetrics
         "nodepilot.rate_limit.rejections", unit: "1",
         description: "Requests rejected by rate-limiting policies, tagged by policy name.");
 
-    // Workflow lifecycle — create/update/delete/enable/disable/duplicate/lock/unlock/publish/force-unlock/rollback.
+    // Workflow lifecycle —
+    // create/update/delete/enable/disable/duplicate/lock/unlock/publish/force-unlock/rollback.
     public static readonly Counter<long> WorkflowOperations = Meter.CreateCounter<long>(
         "nodepilot.workflow.operations", unit: "1",
         description: "Workflow lifecycle operations, tagged by operation and result.");

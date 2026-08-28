@@ -7,11 +7,10 @@ import { SharedFolderTree } from '../../components/workflows/SharedFolderTree';
 import { sharedFoldersApi, ROOT_FOLDER_ID, type SharedFolder } from '../../api/sharedFolders';
 
 /**
- * Tree now reads from a shared react-query cache (queryKey: ['shared-folders']) so
- * mutations elsewhere (workflow create, move-folder, etc.) flow through invalidation
- * and the tree's workflowCount badges update reactively. Each test gets a fresh
- * QueryClient with retries off so a 1st-call mock failure doesn't trigger an
- * exponential-backoff retry loop in the test runtime.
+ * The tree reads from a shared react-query cache (queryKey: ['shared-folders']), so mutations
+ * elsewhere (workflow create, move-folder) reach it through invalidation and the workflowCount
+ * badges update reactively. Each test gets a fresh QueryClient with retries off so a mocked
+ * failure does not start a backoff retry loop in the test runtime.
  */
 function renderWithClient(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -38,7 +37,7 @@ vi.mock('../../api/sharedFolders', async () => {
   };
 });
 
-// Store-driven confirm replaces the native confirm(); default-resolve true (user confirms).
+// The store-driven confirm replaces the native confirm(); the mock resolves true by default.
 vi.mock('../../stores/confirmStore', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../../stores/confirmStore')>();
   return { ...mod, confirmDialog: vi.fn().mockResolvedValue(true) };
@@ -202,8 +201,8 @@ describe('SharedFolderTree', () => {
     });
 
     it('rename: clicking Umbenennen swaps row for input; Enter calls API and refreshes', async () => {
-      // First load returns the original name; after rename, the list returns the renamed
-      // value so the cache invalidation actually shows new state.
+      // The first load returns the original name; later loads return the renamed value, so
+      // cache invalidation is visible in the rendered tree.
       mockApi.list.mockResolvedValueOnce([rootFolder, editableFolder]);
       mockApi.list.mockResolvedValue([
         rootFolder,
@@ -244,8 +243,7 @@ describe('SharedFolderTree', () => {
     });
 
     it('delete: confirm=true calls API; confirm=false does not', async () => {
-      // The context menu deletes recursively now — "only when empty" was the limitation this
-      // replaced, and it applied to the single-folder case just as much as to a selection.
+      // The context menu deletes recursively, for a single folder as well as for a selection.
       mockApi.list.mockResolvedValue([rootFolder, editableFolder]);
       mockApi.deleteRecursive.mockResolvedValue({ deletedFolders: 1, deletedWorkflows: 0 });
 
@@ -267,8 +265,8 @@ describe('SharedFolderTree', () => {
     });
 
     it('delete: the confirmation names what goes with the folder', async () => {
-      // The impact is the whole point of dropping the "must be empty" rule — if the dialog does
-      // not say how much rides along, the user is agreeing to something they cannot see.
+      // The confirmation has to name the folder and how much is deleted with it, so the user
+      // can see what they are agreeing to.
       mockApi.list.mockResolvedValue([rootFolder, editableFolder]);
       mockApi.deleteRecursive.mockResolvedValue({ deletedFolders: 1, deletedWorkflows: 4 });
 
@@ -304,9 +302,8 @@ describe('SharedFolderTree', () => {
     });
 
     it('opens a permissions-only menu on Root — rename/delete stay hidden there', async () => {
-      // Root grants are the ones that matter most, but Root can be neither renamed nor
-      // deleted. Before, the whole menu was suppressed on Root and permissions were only
-      // reachable through the sidebar button.
+      // Root can be neither renamed nor deleted, but its grants still need to be reachable
+      // from the tree, so the menu offers permissions only.
       mockApi.list.mockResolvedValue([rootFolder]);
       const onManagePermissions = vi.fn();
 
@@ -367,8 +364,8 @@ describe('SharedFolderTree', () => {
     });
 
     it('delete: a backend refusal surfaces in an error toast with the backend message', async () => {
-      // The 409 "not empty" is gone from this path — what still has to reach the user is a
-      // refusal the server does raise, e.g. 423 when somebody holds an edit lock in the subtree.
+      // A refusal the server raises, such as 423 when an edit lock is held somewhere in the
+      // subtree, has to reach the user.
       mockApi.list.mockResolvedValue([rootFolder, editableFolder]);
       mockApi.deleteRecursive.mockRejectedValue(
         new Error('Folder subtree contains a workflow checked out by another user and cannot be deleted.'));
@@ -454,12 +451,12 @@ describe('SharedFolderTree', () => {
 
       await waitFor(() => expect(mockApi.deleteRecursive).toHaveBeenCalledTimes(1));
       expect(mockApi.deleteRecursive).toHaveBeenCalledWith('finance');
-      // And exactly one confirmation for the whole run.
+      // Exactly one confirmation covers the whole run.
       expect(confirmDialog).toHaveBeenCalledTimes(1);
     });
 
     it('resets the folder filter when the filtered folder is a descendant of a deleted one', async () => {
-      // /Finance/Reports is never requested — it disappears with its parent.
+      // /Finance/Reports is never requested; it disappears with its parent.
       mockApi.list.mockResolvedValue([rootFolder, editableFolder, child]);
       mockApi.deleteRecursive.mockResolvedValue({ deletedFolders: 2, deletedWorkflows: 5 });
       const onFolderSelected = vi.fn();
@@ -475,7 +472,7 @@ describe('SharedFolderTree', () => {
     });
 
     it('keeps the folder filter when the delete failed', async () => {
-      // Sending the user back to "all folders" while their folder is still there would be a lie.
+      // The folder still exists after a failed delete, so the filter must stay on it.
       mockApi.list.mockResolvedValue([rootFolder, editableFolder, child]);
       mockApi.deleteRecursive.mockRejectedValue(new Error('nope'));
       const onFolderSelected = vi.fn();

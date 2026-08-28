@@ -10,9 +10,10 @@ using Xunit;
 namespace NodePilot.Data.Tests;
 
 /// <summary>
-/// Each logical operation runs on its OWN <see cref="NodePilotDbContext"/> over a shared in-memory
-/// connection — mirroring production, where the store is resolved per request (scoped). This is
-/// what surfaces the route-diff correctness (a single reused context would mask create-time tracking).
+/// Each logical operation runs on its own <see cref="NodePilotDbContext"/> over a shared
+/// in-memory connection, mirroring production where the store is resolved per request
+/// (scoped). This is what surfaces route-diff correctness: a single reused context would
+/// mask create-time tracking.
 /// </summary>
 public sealed class NotificationRuleStoreTests : IDisposable
 {
@@ -22,7 +23,7 @@ public sealed class NotificationRuleStoreTests : IDisposable
     {
         var (conn, seed) = TestDbFactory.CreateWithConnection();
         _conn = conn;
-        seed.Dispose(); // only needed it to EnsureCreated the schema on the shared connection
+        seed.Dispose(); // only needed to EnsureCreated the schema on the shared connection
     }
 
     public void Dispose() => _conn.Dispose();
@@ -83,7 +84,7 @@ public sealed class NotificationRuleStoreTests : IDisposable
         await using (var c = Ctx())
             await Store(c).UpdateAsync(id, Draft("rule-renamed",
                 Route(NotificationChannel.GenericWebhook, "https://hook2", secret: NotificationRuleStore.UnchangedSecret, id: routeId)),
-                "bob", CancellationToken.None); // must NOT throw a tracking collision
+                "bob", CancellationToken.None); // must not throw a tracking collision
 
         await using var read = Ctx();
         var store = Store(read);

@@ -20,8 +20,8 @@ public enum LdapAuthOutcome
     /// logins on this outcome — it does NOT fall back to the local-password path, because
     /// doing so would let an attacker pivot a DC outage into a username-squat against a
     /// local hash. Local / break-glass admins stay usable during an outage for a different
-    /// reason: rows that carry a PasswordHash skip the LDAP path entirely before this
-    /// outcome is ever produced.</summary>
+    /// reason: rows that carry a PasswordHash skip the LDAP path earlier in the login flow.
+    /// </summary>
     Unavailable,
     /// <summary>Bind succeeded, but no directory object carries a matching
     /// <c>userPrincipalName</c> under the configured <c>BaseDn</c> — a per-account data
@@ -40,8 +40,8 @@ public sealed record LdapAuthOutcomeResult(
     string? UnavailableReason);
 
 /// <summary>
-/// Coordinates the LDAP-bind path: enabled-check → username normalization → circuit
-/// breaker → adapter call → translate exceptions into the narrow
+/// Coordinates the LDAP-bind path: enabled-check -> username normalization -> circuit
+/// breaker -> adapter call -> translate exceptions into the narrow
 /// <see cref="LdapAuthOutcome"/> vocabulary the caller needs.
 /// </summary>
 public sealed class LdapAuthenticator
@@ -76,7 +76,8 @@ public sealed class LdapAuthenticator
         if (!opts.Enabled)
             return new LdapAuthOutcomeResult(LdapAuthOutcome.Unavailable, null, "ldap_disabled");
 
-        // Security-audit finding H-17: reject an empty (or whitespace-only) password before any bind is attempted.
+        // Security-audit finding H-17: reject an empty (or whitespace-only) password before any
+        // bind is attempted.
         // Per RFC 4513 §5.1.2 a simple-bind that carries a populated name but a zero-length
         // password is an *unauthenticated bind* — Active Directory (and most directories)
         // answer it with LDAP_SUCCESS instead of error 49. Forwarding it to the adapter would

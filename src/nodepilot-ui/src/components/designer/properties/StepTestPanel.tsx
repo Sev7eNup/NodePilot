@@ -25,25 +25,24 @@ import type {
  * - lastRun: pull `{{step.output}}` / `{{step.param.x}}` values from the most recent
  *   terminal execution of this workflow. Read-only preview, then Run.
  * - pickRun: same as lastRun but the user chooses which execution to source from.
- * - manualMocks: free-form key=value editor. Used for "I want to test what happens
- *   when freeGb=2 specifically" branches that no past run produced.
+ * - manualMocks: free-form key=value editor, for testing branches that no past run
+ *   produced.
  */
 type Mode = 'empty' | 'lastRun' | 'pickRun' | 'manualMocks';
 
 interface Props {
   workflowId: string;
   stepId: string;
-  /** Live (possibly unsaved) config from the editor — sent as ConfigOverride. */
+  /** Live, possibly unsaved config from the editor. Sent as ConfigOverride. */
   liveConfig: Record<string, unknown>;
-  /** When false, the Run button is hidden — Viewers can still inspect the panel. */
+  /** When false, the Run button is hidden. Viewers can still inspect the panel. */
   canRun: boolean;
   expertMode?: boolean;
 }
 
 /**
- * Step-test panel with context-aware modes. Replaces the bare "Test Step" button.
- * Always sends the live editor config as `ConfigOverride` so the user tests what they
- * see, not the last-saved DB state.
+ * Step-test panel with context-aware modes. Always sends the live editor config as
+ * `ConfigOverride` so the user tests what they see, not the last saved state.
  */
 export function StepTestPanel({ workflowId, stepId, liveConfig, canRun, expertMode = true }: Readonly<Props>) {
   const { t } = useTranslation(['properties', 'common']);
@@ -78,8 +77,8 @@ export function StepTestPanel({ workflowId, stepId, liveConfig, canRun, expertMo
     },
   });
 
-  // First time pickRun mode opens, default to the most recent run that actually exercised
-  // the step. Saves the user a click — they can still pick a different run from the dropdown.
+  // The first time pickRun mode opens, default to the most recent run that exercised the
+  // step. The user can still pick a different run from the dropdown.
   useEffect(() => {
     if (mode !== 'pickRun' || pickedRunId || !runs?.length) return;
     const mostRecentRan = runs.find((r) => r.stepRan);
@@ -106,9 +105,9 @@ export function StepTestPanel({ workflowId, stepId, liveConfig, canRun, expertMo
       }
       return Object.keys(out).length ? out : undefined;
     }
-    // lastRun / pickRun: collect every variable that has a non-null value. Globals
-    // must NOT be passed — the engine pulls them from the IGlobalVariableStore directly,
-    // and forwarding their values from a stale run would override the current store.
+    // lastRun and pickRun: collect every variable that has a non-null value. Globals are
+    // left out because the engine reads them from IGlobalVariableStore directly, and values
+    // from a stale run would override the current store.
     if (!context) return undefined;
     const out: Record<string, string> = {};
     for (const v of context.variables) {

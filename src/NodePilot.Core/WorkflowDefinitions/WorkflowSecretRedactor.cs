@@ -9,18 +9,18 @@ namespace NodePilot.Core.WorkflowDefinitions;
 /// definition leaves the system or is surfaced to an LLM/agent: the API's
 /// <c>WorkflowDefinitionSecretRewriter</c> (its <c>Redact</c> mode), the MCP server's
 /// definition-redaction layer, and the AI chat assistant (which redacts the canvas before every
-/// LLM call). A value is masked when <see cref="WorkflowSecretKeys.IsSecretValue"/> is true — its
-/// config key is in <see cref="WorkflowSecretKeys.SecretConfigKeys"/> <b>or</b> its content looks
+/// LLM call). A value is masked when <see cref="WorkflowSecretKeys.IsSecretValue"/> is true: its
+/// config key is in <see cref="WorkflowSecretKeys.SecretConfigKeys"/> or its content looks
 /// like an inline secret (<see cref="WorkflowSecretContent"/>: a restApi headers string, body, or
-/// script). A masked value is replaced <b>whole</b> with <c>"***"</c>, so the redact→edit
-/// round-trip stays intact via the merge layers' universal <c>"***"</c>-restore.
+/// script). A masked value is replaced whole with <c>"***"</c>, so the redact-edit round-trip
+/// stays intact via the merge layers' universal <c>"***"</c>-restore.
 /// <para>
 /// Free-form payloads are masked as complete values. A small global set covers unambiguously
 /// opaque fields such as scripts and HTTP bodies; an activity-aware policy covers executable
 /// arguments, queries, URLs, prompts, trigger defaults and similar fields without hiding unrelated
 /// metadata that happens to use the same property name. Literal operands in edge conditions are
-/// opaque as well. Their grammars are open-ended, so an unmatched literal cannot be classified as
-/// safe by a heuristic detector.
+/// opaque as well, because their grammars are open-ended and an unmatched literal cannot be
+/// classified as safe by a heuristic detector.
 /// </para>
 /// </summary>
 public static class WorkflowSecretRedactor
@@ -59,7 +59,8 @@ public static class WorkflowSecretRedactor
             ["eventLogTrigger"] = Keys("messagePattern"),
         };
 
-    /// <summary>Returns a redacted copy of <paramref name="root"/> with secret config values masked to <c>"***"</c>.</summary>
+    /// <summary>Returns a redacted copy of <paramref name="root"/> with secret config values masked
+    /// to <c>"***"</c>.</summary>
     public static JsonNode Redact(JsonElement root)
     {
         var node = JsonNode.Parse(root.GetRawText())

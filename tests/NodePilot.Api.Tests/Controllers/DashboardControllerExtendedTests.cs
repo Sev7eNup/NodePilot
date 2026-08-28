@@ -192,7 +192,8 @@ public class DashboardControllerExtendedTests
     public async Task Get_WithMultipleScheduleNodes_ReturnsEarliestNextFire()
     {
         var db = TestDbFactory.Create();
-        // Two cron nodes: one every minute (next ≤ 60s), one every hour at :00 (next up to 60min away).
+        // Two cron nodes: one every minute (next ≤ 60s), one every hour at :00 (next up to 60min
+        // away).
         db.Workflows.Add(new Workflow
         {
             Id = Guid.NewGuid(),
@@ -232,7 +233,7 @@ public class DashboardControllerExtendedTests
 
         var trig = stats.ArmedTriggers.Single();
         trig.NextFireUtc.Should().BeNull();
-        // No usable cron and no other trigger type → falls through to event-driven.
+        // No usable cron and no other trigger type -> falls through to event-driven.
         trig.NextFireKind.Should().Be("event-driven");
     }
 
@@ -324,9 +325,9 @@ public class DashboardControllerExtendedTests
         db.WorkflowExecutions.AddRange(
             // Recent Running — not long-running yet
             new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = wfId, Status = ExecutionStatus.Running, StartedAt = DateTime.UtcNow.AddMinutes(-5) },
-            // 35min old Running → long-running
+            // 35min old Running -> long-running
             new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = wfId, Status = ExecutionStatus.Running, StartedAt = DateTime.UtcNow.AddMinutes(-35) },
-            // 35min old but Succeeded → not long-running (must be Running)
+            // 35min old but Succeeded -> not long-running (must be Running)
             new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = wfId, Status = ExecutionStatus.Succeeded, StartedAt = DateTime.UtcNow.AddMinutes(-35) });
         await db.SaveChangesAsync();
 
@@ -434,7 +435,7 @@ public class DashboardControllerExtendedTests
             new SystemHealthHeartbeat
             {
                 ServiceName = "Stale",
-                // Last beat 200s ago vs expected 30s × 3 = 90s threshold → stale.
+                // Last beat 200s ago vs expected 30s × 3 = 90s threshold -> stale.
                 LastHeartbeatAt = DateTime.UtcNow.AddSeconds(-200),
                 ExpectedIntervalSeconds = 30
             });

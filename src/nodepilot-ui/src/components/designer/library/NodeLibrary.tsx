@@ -8,11 +8,11 @@ import { ChevronDown } from '@carbon/icons-react';
 /**
  * Palette/picker glyph for an activity type.
  *
- * Icon *and* accent come from {@link getActivityVisual} — the same resolver the canvas nodes
- * use, so palette and canvas can never drift apart. Built-ins resolve to the generated
- * `--act-<type>-*` design tokens (which carry their own dark-mode values); custom activities
- * (`custom:<key>`) resolve to the runtime catalog's icon + accent. The colour is a CSS
- * variable, so it rides on `style` — there is no Tailwind class for it.
+ * Icon and accent come from {@link getActivityVisual}, the same resolver the canvas nodes
+ * use, so palette and canvas never drift apart. Built-ins resolve to the generated
+ * `--act-<type>-*` design tokens; custom activities (`custom:<key>`) resolve to the runtime
+ * catalog's icon and accent. The colour is a CSS variable applied via `style`, since there
+ * is no Tailwind class for it.
  */
 export function ActivityIcon({ type, size = 20 }: Readonly<{ type: string; size?: number }>) {
   const { icon, color } = getActivityVisual(type);
@@ -83,16 +83,13 @@ export function SnippetsSection({ collapsed, onToggle, onInsert, canWrite = true
 /**
  * Splitter between a panel and its neighbour (canvas, list, …).
  *
- * The handle used to be fully transparent at rest and only lit up on hover — you had to know
- * it was there and fish for a 4 px band to find it. It now shows a permanent grip pill at the
- * centre of the seam: enough to read as "grab me here", quiet enough not to compete with the
- * panel border a few pixels over (hence a *centred grip* and no full-length line at rest —
- * that would double the panel's own `border-l`).
+ * A permanent grip pill marks the centre of the seam so the handle is visible without
+ * hovering, while staying quiet enough not to compete with the panel's own border.
  *
- * The pointer target is deliberately wider than the drawn band: an absolutely-positioned,
- * transparent extender overhangs the 4 px lane by 4 px on each side (12 px total). It sits
- * *inside* the wrapper, so its events bubble to the wrapper's drag handlers while the layout
- * width stays 4 px — widening the wrapper itself would shift the canvas.
+ * The pointer target is wider than the drawn band: a transparent extender overhangs the
+ * 4 px lane by 4 px on each side. It sits inside the wrapper so its events bubble to the
+ * wrapper's drag handlers while the layout width stays 4 px, since widening the wrapper
+ * itself would shift the canvas.
  */
 export function ResizeHandle({ direction, ...props }: { direction: 'horizontal' | 'vertical' } & React.HTMLAttributes<HTMLDivElement>) {
   const isH = direction === 'horizontal';

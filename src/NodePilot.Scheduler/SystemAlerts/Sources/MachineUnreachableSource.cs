@@ -6,10 +6,14 @@ using NodePilot.Data;
 namespace NodePilot.Scheduler.SystemAlerts.Sources;
 
 /// <summary>
-/// Per-machine health source: one observation per managed machine that has a recorded connectivity check,
-/// keyed by machine id. Exposes <c>reachable</c> (bool) and <c>staleMinutes</c> (age of the last check).
-/// Machines that have never been checked are excluded rather than reported as unreachable — this keeps a
-/// rule from the previous, now-removed gauge-based alerting system: "never checked" counts as unknown,
+/// Per-machine health source: one observation per managed machine that has a recorded connectivity
+/// check,
+/// keyed by machine id. Exposes <c>reachable</c> (bool) and <c>staleMinutes</c> (age of the last
+/// check).
+/// Machines that have never been checked are excluded rather than reported as unreachable — this
+/// keeps a
+/// rule from the previous, now-removed gauge-based alerting system: "never checked" counts as
+/// unknown,
 /// not unhealthy.
 /// </summary>
 public sealed class MachineUnreachableSource : ISystemAlertSource

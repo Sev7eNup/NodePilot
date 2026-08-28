@@ -5,37 +5,23 @@ import { dirname, join } from 'node:path';
 import { ACTIVITY_CATALOG } from '../../lib/activityCatalog.generated';
 
 /**
- * Every activity in ACTIVITY_CATALOG renders with three CSS custom properties in
- * src/components/designer/nodes/activityConfig.ts:
- *
- *   color       → var(--act-<type>-color)
- *   bgColor     → var(--act-<type>-bg)
- *   borderColor → var(--act-<type>-border)
- *
- * If any of them is missing, the CSS engine silently returns an empty string and the
- * node renders as a transparent ghost on the canvas — visible icon and label, no fill,
- * no border. The Backend/Frontend catalog drift-test catches a missing TYPE entry; this
- * one catches a missing PALETTE entry, which is a third registry (index.css) the drift
- * test doesn't look at.
- *
- * We also require each variable to be declared TWICE: once in the light-mode `:root`
- * block and once under `html.dark` for dark-mode override. A single declaration would
- * leave one theme broken.
+ * Every activity in ACTIVITY_CATALOG is rendered with three CSS custom properties by
+ * src/components/designer/nodes/activityConfig.ts: --act-<type>-color, --act-<type>-bg and
+ * --act-<type>-border. A missing property resolves to an empty string, so the node draws
+ * without fill or border. Each variable must be declared twice, once under :root for light
+ * mode and once under html.dark, otherwise one of the two themes is broken.
  */
 
 const REQUIRED_SUFFIXES = ['color', 'bg', 'border'] as const;
 
-// Resolve index.css relative to this test file. `import.meta.url` is the test file
-// itself; up four levels (../../../../) lands at src/nodepilot-ui, then into src/index.css.
+// Resolve index.css relative to this test file.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const cssText = readFileSync(join(__dirname, '..', '..', 'index.css'), 'utf8');
 
 function countDeclarations(css: string, varName: string): number {
-  // Match `--act-foo-color:` as the declaration form. Comments and the var() call sites
-  // use `var(--act-foo-color)` (no trailing colon) and won't match — exactly the
-  // disambiguation we want, otherwise a stray reference in an inline comment would
-  // pretend the var is defined.
+  // Match the declaration form `--act-foo-color:`. Call sites write `var(--act-foo-color)`
+  // without a trailing colon, so a reference alone does not count as a declaration.
   const escaped = varName.replace(/[-\\]/g, '\\$&');
   const re = new RegExp(`${escaped}\\s*:`, 'g');
   return (css.match(re) ?? []).length;

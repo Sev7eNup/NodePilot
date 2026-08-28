@@ -1,7 +1,6 @@
 namespace NodePilot.Cli.Api.Dtos;
 
-// Mirror of the API's system-alert-policy DTOs (NodePilot.Api.Dtos; see ADR 0008, which replaced
-// the old built-in gauge alerts with these configurable system alert policies). Duplicated by
+// Mirror of the API's system-alert-policy DTOs (NodePilot.Api.Dtos; see ADR 0008). Duplicated by
 // convention — the CLI takes no ProjectReference on the API. camelCase over the wire via
 // JsonSerializerDefaults.Web. Routes/targets reuse NotificationRouteDto/NotificationRuleTargetDto
 // from AlertingDtos.cs (identical shapes).

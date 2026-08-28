@@ -38,7 +38,8 @@ public sealed class BackupAlertingTests : IDisposable
         return p;
     }
 
-    // Alerting DependsOn Folders + Workflows, whose closure pulls Users/Credentials/Machines/globals — the
+    // Alerting DependsOn Folders + Workflows, whose closure pulls
+    // Users/Credentials/Machines/globals — the
     // export needs a part registered for every section in that closure.
     private IBackupPart[] Parts(NodePilotDbContext db) =>
     [
@@ -103,7 +104,8 @@ public sealed class BackupAlertingTests : IDisposable
         }
 
         await using var dst = TestDbFactory.Create();
-        // Fresh DB must contain the referenced workflow so the target remaps (the export's DependsOn pulled it in).
+        // Fresh DB must contain the referenced workflow so the target remaps (the export's
+        // DependsOn pulled it in).
         var result = await Restore(dst).RestoreAsync(bytes, Passphrase, AllSkip(), CancellationToken.None);
 
         result.Sections.Should().Contain(r => r.Section == BackupSections.Alerting && r.Created == 1);

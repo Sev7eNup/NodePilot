@@ -29,7 +29,9 @@ public sealed record BackupExportResult(
 /// </summary>
 public sealed class BackupService(IEnumerable<IBackupPart> parts)
 {
-    /// <summary>Minimum backup passphrase length. A backup is a portable secret-bearing artifact.</summary>
+    /// <summary>
+    /// Minimum backup passphrase length. A backup is a portable secret-bearing artifact.
+    /// </summary>
     public const int MinPassphraseLength = 12;
 
     // Stable export/manifest order (mirrors the restore order in ADR 0001 K4 for readability).
@@ -117,9 +119,10 @@ public sealed class BackupService(IEnumerable<IBackupPart> parts)
         var json = envelope.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
         var content = Encoding.UTF8.GetBytes(json);
 
-        // Accurate audit signal: a backup "contains secrets" only if at least one field was actually
-        // sealed (the $enc marker). A globals-only export with no secret variables, for example,
-        // legitimately carries none — reporting true unconditionally would muddy the audit trail.
+        // Accurate audit signal: a backup "contains secrets" only if at least one field was
+        // actually sealed (the $enc marker). A globals-only export with no secret variables, for
+        // example, legitimately carries none — reporting true unconditionally would muddy the audit
+        // trail.
         var sectionsJson = sections.ToJsonString();
         var containsSecrets = sectionsJson.Contains(
                                   "\"" + WorkflowDefinitionSecretRewriter.EncKey + "\"",

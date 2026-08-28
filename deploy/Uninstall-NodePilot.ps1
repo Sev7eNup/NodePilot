@@ -9,10 +9,10 @@
     credentials on disk, DB artefacts, etc.) is preserved unless -PurgeData is specified. The
     SQL Server database is never touched.
 
-    Two things are deliberately NOT undone, because both can be shared with something else on
-    the host and revoking them blind would break it: the 'Log on as a service' right granted to
-    a gMSA, and the read ACE on the TLS certificate's private key. The script names both, with
-    the command to remove them, at the end of its run.
+    Two things are not undone, because both can be shared with something else on the host and
+    revoking them blind would break it: the 'Log on as a service' right granted to a gMSA, and
+    the read ACE on the TLS certificate's private key. The script names both, with the command
+    to remove them, at the end of its run.
 .PARAMETER ServiceName
     Windows Service name. Default: NodePilot.
 .PARAMETER InstallPath
@@ -47,7 +47,7 @@ function Write-Info { param([string]$Text) Write-Host "[uninstall] $Text" -Foreg
 function Write-Ok   { param([string]$Text) Write-Host "[uninstall] $Text" -ForegroundColor Green }
 function Write-Warn { param([string]$Text) Write-Host "[uninstall] $Text" -ForegroundColor Yellow }
 
-# Read the runtime identity and the certificate thumbprint BEFORE anything is deleted, so the
+# Read the runtime identity and the certificate thumbprint before anything is deleted, so the
 # closing report can name what it is leaving behind.
 $serviceStartName = $null
 try {
@@ -56,14 +56,11 @@ try {
     if ($cimService) { $serviceStartName = $cimService.StartName }
 } catch { $serviceStartName = $null }
 
-# The installed configuration is read ONCE, here, before anything is removed - it lives inside the
-# install directory this script is about to delete. The closing report works from this snapshot
-# rather than re-reading a file that no longer exists.
+# The installed configuration is read once here, before anything is removed - it lives inside the
+# install directory this script is about to delete. The closing report works from this snapshot.
 #
-# It is read to REPORT, never to act on. The database this configuration points at is not removed
-# and cannot be: this installer did not create it. It was provisioned separately, it may be
-# replicated, backed up or shared with something else, and an installer that deletes what it never
-# installed is an installer nobody can trust with a production system.
+# It is read for reporting only. The database it points at is not removed: this installer did not
+# create it, and it may be shared, replicated or backed up elsewhere.
 $installedThumbprint = $null
 $installedSettings = $null
 $settingsReadError = $null
@@ -86,12 +83,10 @@ function Get-SelfAndAncestorProcessIds {
     <#
       This script's own process and everything that launched it.
 
-      Needed because the GUI setup registers its uninstaller as <InstallPath>\unins000.exe and
-      calls this script from there. That uninstaller is therefore a process running out of the very
-      directory the guard below is watching - and it is this script's grandparent. Without this
-      exclusion the guard waits out its full timeout and then refuses to uninstall anything,
-      blaming a process that is only there because it is doing the uninstalling. Observed on the
-      lab host as an uninstall that removed nothing and took exactly the timeout to do it.
+      The GUI setup registers its uninstaller as <InstallPath>\unins000.exe and calls this script
+      from there, so that uninstaller runs out of the directory the guard below watches and is an
+      ancestor of this script. Excluding the own process tree keeps the guard from waiting out its
+      timeout and then refusing to uninstall anything.
     #>
     $ids = @()
     $current = $PID
@@ -107,9 +102,8 @@ function Get-SelfAndAncestorProcessIds {
 
 function Get-ProcessesUnderPath {
     <#
-      Processes whose image lives under $Path, excluding this script's own process tree. Same
-      question Update-NodePilot.ps1 asks before it wipes an install directory; the uninstaller has
-      to ask it too, and earlier.
+      Processes whose image lives under $Path, excluding this script's own process tree.
+      Update-NodePilot.ps1 asks the same question before it wipes an install directory.
     #>
     param([Parameter(Mandatory)][string]$Path)
     $prefix = $Path.TrimEnd('\') + '\'
@@ -136,14 +130,11 @@ if ($svc) {
     }
 
     # The SCM reports 'Stopped' as soon as the service acknowledges the control code, but the
-    # process keeps running while ASP.NET Core drains. Measured on a real installation: 31
-    # seconds after Stop-Service returned.
+    # process keeps running while ASP.NET Core drains.
     #
-    # This wait has to happen BEFORE sc.exe delete, not after. Deleting the service first
-    # ORPHANS a still-running process: nothing can stop it through the SCM any more, and the
-    # file deletion below then rips DLLs out from under a live process. That is exactly what
-    # happened on the lab host - a half-deleted install directory and a process nobody could
-    # address.
+    # This wait has to happen before sc.exe delete. Deleting the service first orphans a
+    # still-running process: it can no longer be stopped through the SCM, and the file deletion
+    # below then pulls DLLs out from under a live process.
     $processDeadline = (Get-Date).AddSeconds($ProcessExitTimeoutSeconds)
     $blocking = @(Get-ProcessesUnderPath -Path $InstallPath)
     if ($blocking.Count -gt 0) {
@@ -168,11 +159,11 @@ if ($svc) {
     & sc.exe delete $ServiceName | Out-Null
     Write-Info "  sc.exe delete returned exit $LASTEXITCODE"
 
-    # sc.exe delete normally takes the whole service key with it, INCLUDING the Environment
-    # MULTI_SZ that holds ConnectionStrings__Postgres - i.e. the database password. But when
-    # anything still holds an SCM handle, the service goes DELETE_PENDING and the key survives
-    # until reboot, leaving that secret readable on disk. Clear the value explicitly rather
-    # than hope the handle was closed.
+    # sc.exe delete normally removes the whole service key, including the Environment MULTI_SZ
+    # that holds ConnectionStrings__Postgres - the database password. While anything still holds
+    # an SCM handle the service goes DELETE_PENDING and the key survives until reboot, leaving
+    # that secret readable on disk. Clear the value explicitly instead of assuming the handle
+    # was closed.
     $serviceKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName"
     if (Test-Path -LiteralPath $serviceKey) {
         Write-Info "  Service key still present (deletion pending); clearing its Environment value."
@@ -202,9 +193,8 @@ if ((Test-Path -LiteralPath $markerParent) -and
 
 Write-Step "Removing the CLI from the machine PATH"
 # Install-NodePilot.ps1 appends <install>\tools\np so operators can just type `np`. Leaving it
-# behind would point PATH at a directory this uninstall is about to delete, and every new shell
-# would carry a dead entry - PATH has a real length limit, so repeated install/uninstall cycles
-# accumulate.
+# behind would point PATH at a directory this uninstall is about to delete, and repeated
+# install/uninstall cycles would accumulate dead entries against the PATH length limit.
 try {
     . (Join-Path $PSScriptRoot 'MachinePath.ps1')
     $toolsPath = Join-Path $InstallPath 'tools\np'
@@ -234,11 +224,10 @@ $installPathRemaining = $false
 if (Test-Path $InstallPath) {
     # Contents first, then the directory - and never the GUI setup's own uninstaller.
     #
-    # When this runs from Inno Setup's [UninstallRun], unins000.exe is executing out of this very
-    # directory and cannot delete itself. A blanket Remove-Item -Recurse hits it, throws partway,
-    # and leaves an arbitrary remainder behind: on the lab host, VERSION.txt and web.config plus
-    # the directory. Skipping Inno's files lets it finish the job itself; run standalone there are
-    # no such files and everything goes.
+    # When this runs from Inno Setup's [UninstallRun], unins000.exe executes out of this directory
+    # and cannot delete itself. A blanket Remove-Item -Recurse would throw partway and leave an
+    # arbitrary remainder behind. Skipping Inno's files lets it finish the job itself; run
+    # standalone there are no such files and everything goes.
     $uninstallerPattern = 'unins*'
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         $failed = $false
@@ -252,8 +241,8 @@ if (Test-Path $InstallPath) {
         }
         if (-not $failed) { break }
         # Retry briefly: an antivirus scanner or the search indexer can hold a freshly closed file
-        # for a moment. This is NOT the guard against a running service - that one is above, before
-        # the service was deleted, because by this point there is no supported way to stop anything.
+        # for a moment. The guard against a running service is above, before the service was
+        # deleted, because by this point there is no supported way to stop anything.
         if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
     }
 
@@ -267,13 +256,13 @@ if (Test-Path $InstallPath) {
         Write-Info '  Leaving the setup uninstaller to remove itself and the directory.'
     }
 
-    # Anything still here that is NOT the setup's own uninstaller is a genuine leftover.
+    # Anything still here that is not the setup's own uninstaller is a genuine leftover.
     $leftovers = @(Get-ChildItem -LiteralPath $InstallPath -Recurse -Force -File -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -notlike $uninstallerPattern })
     if ($leftovers.Count -gt 0) {
-        # Do NOT abort here. The service is already gone and the marker with it; stopping now
-        # would skip the data notice and the residue report and leave the operator with less
-        # information, not more. Report precisely, then carry on and exit non-zero at the end.
+        # Do not abort here. The service and the marker are already gone; stopping now would skip
+        # the data notice and the residue report. Report the leftovers, carry on, and exit
+        # non-zero at the end.
         $installPathRemaining = $true
         Write-Warn "  $($leftovers.Count) file(s) could not be deleted under $InstallPath."
         $holders = @(Get-ProcessesUnderPath -Path $InstallPath)
@@ -296,22 +285,17 @@ $dataPathRemaining = $false
 if ($PurgeData) {
     Write-Step "Purging data directory"
     if (Test-Path $DataPath) {
-        # The installer deliberately writes some of these owner-only to the SERVICE account -
-        # jwt-secret.key and admin-setup.token are not meant to be readable by an administrator
-        # while the service runs. That protection also stops an administrator DELETING them, so a
-        # plain Remove-Item gets partway through the directory and then throws: measured on the
-        # lab host as 12 of 17 entries gone, an aborted script and a half-purged data directory.
+        # The installer writes jwt-secret.key and admin-setup.token owner-only to the service
+        # account, so an administrator can neither read nor delete them and a plain Remove-Item
+        # gets partway through the directory and then throws.
         #
         # Ownership is taken first, using the well-known Administrators SID rather than the group
-        # name - "BUILTIN\Administrators" does not resolve on a non-English Windows, which is the
-        # same reason the ACL helpers in ArtifactSecurity.ps1 use SIDs.
+        # name: "BUILTIN\Administrators" does not resolve on a non-English Windows, the same
+        # reason the ACL helpers in ArtifactSecurity.ps1 use SIDs.
         #
-        # The grant carries NO inheritance flags, and that is not a detail. (OI)(CI) are container
-        # flags: applied to a leaf file icacls silently drops them, reports "Successfully processed
-        # 1 files", and adds no ACE at all. Measured on the lab host - with (OI)(CI) the file kept
-        # exactly one ACE for the service account and stayed undeletable; without them the
-        # Administrators ACE appeared and the delete succeeded. /T visits every item, so a flat
-        # grant is both correct and sufficient for a tree that is about to be deleted anyway.
+        # The grant carries no inheritance flags. (OI)(CI) are container flags; applied to a leaf
+        # file icacls drops them silently and adds no ACE at all. /T visits every item, so a flat
+        # grant is sufficient for a tree that is about to be deleted anyway.
         $previousPreference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {

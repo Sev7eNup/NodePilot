@@ -12,7 +12,7 @@ using NodePilot.Engine.Security;
 namespace NodePilot.Api.Hubs;
 
 /// <summary>
-/// The notifier's workflow → folder projection, exposed for invalidation. Split out so the
+/// The notifier's workflow -> folder projection, exposed for invalidation. Split out so the
 /// folder-move endpoints depend on the invalidation contract rather than on the hosted service
 /// that happens to own the cache.
 /// </summary>
@@ -42,7 +42,7 @@ public class SignalRExecutionNotifier : BackgroundService, IExecutionNotifier, I
     private readonly Func<Guid, CancellationToken, Task<Guid?>> _resolveFolder;
     private readonly OutputRedactor _redactor;
 
-    // workflowId → folderId, so the live-ops feed's per-event RBAC filter doesn't hit the DB on
+    // workflowId -> folderId, so the live-ops feed's per-event RBAC filter doesn't hit the DB on
     // every status transition. Entries are invalidated by <see cref="InvalidateWorkflowFolder"/>
     // on the move paths (M-33): unlike the per-connection scope snapshot, this is a server-side
     // mapping, so a stale entry would keep routing a moved workflow's status events to the OLD
@@ -198,12 +198,8 @@ public class SignalRExecutionNotifier : BackgroundService, IExecutionNotifier, I
 
                 DrainAvailable(batch);
 
-                // The catch is the fix, not decoration. SendBatchAsync reaches the database through
-                // the ops-feed folder lookup, and BackgroundServiceExceptionBehavior is left at its
-                // default StopHost repo-wide — before this guard, one NpgsqlException raised while a
-                // status event flowed during a database outage took the WHOLE HOST down. The send
-                // loop is also what carries the recovery moment to the SPA, so it must outlive any
-                // single failed batch.
+                // SendBatchAsync may reach the database through the ops-feed folder lookup.
+                // Isolate batch failures so the notifier survives outages and reports recovery.
                 try
                 {
                     await SendBatchAsync(batch, stoppingToken);

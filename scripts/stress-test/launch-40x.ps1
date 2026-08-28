@@ -105,7 +105,8 @@ while ((Get-Date) -lt $deadline) {
   $pending = $status.GetEnumerator() | Where-Object { $_.Value -notin $terminal } | ForEach-Object { $_.Key }
   if (-not $pending -or $pending.Count -eq 0) { break }
 
-  # Sample process CPU/WS (point-in-time CPU total; rate calc done post-hoc)
+  # Sample process CPU and working set. The CPU value is a running total, so the rate is
+  # derived from consecutive samples later.
   if ($proc) {
     $proc.Refresh()
     $cpuSamples.Add([pscustomobject]@{
@@ -116,7 +117,7 @@ while ((Get-Date) -lt $deadline) {
     })
   }
 
-  # Batch-poll all executions list, then map
+  # Fetch the execution list in one call, then map the statuses back by id.
   try {
     $all = Invoke-RestMethod -Method GET -Uri "$BaseUrl/api/executions?pageSize=200" -Headers $headers -TimeoutSec 10
     $items = if ($all.items) { $all.items } else { $all }

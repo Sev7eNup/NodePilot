@@ -2,35 +2,29 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * Custom Activities ("Custom Nodes") — plugin CRUD on /custom-activities.
+ * Custom Activities ("Custom Nodes") CRUD on /custom-activities.
  *
- * Backed by `CustomActivitiesPage.tsx`: a definition is created disabled (Draft);
- * Admin+Operator may edit/delete while disabled, but once an Admin enables it only an
- * Admin can mutate it (the server enforces this — the UI mirrors it via
- * `canEdit = canWrite && (canAdmin || !isEnabled)`). Power (enable/disable) is
- * `canAdmin`-only; New/Import/Export/History are `canWrite`-only; Trash is always
- * rendered but disabled when `!canEdit`. There is no secret input type — secrets come
- * via `{{globals.X}}` (governance per CLAUDE.md "Custom Activities").
+ * Governance mirrored from `CustomActivitiesPage.tsx`: a definition is created disabled
+ * (Draft), Admin and Operator may edit or delete it while disabled, and once an Admin
+ * enables it only an Admin can mutate it (`canEdit = canWrite && (canAdmin || !isEnabled)`).
+ * Enable/disable is `canAdmin`-only, New/Import/Export/History are `canWrite`-only, and
+ * Trash is always rendered but disabled when `!canEdit`.
  *
- * No real backend — every /api call is a per-test `page.route` mock layered over the
- * hermetic catch-all in `fixtures/mockApi.ts`. The preview build renders EN, but every
- * visible-text selector is bilingual (`/en|de/i`) and anchored on the verified EN
- * string from `src/i18n/locales/en/customActivities.json`.
- *
- * CodeMirror typing: this suite uses the proven click → Ctrl+A → keyboard.type pattern
- * (see `step-test.spec.ts` 28.x); `.fill()` on the contenteditable `.cm-content` is not
- * reliable across preview builds, so we go straight to the fallback.
+ * Every /api call is a per-test `page.route` mock layered over the catch-all in
+ * `fixtures/mockApi.ts`. Visible-text selectors accept EN and DE (`/en|de/i`).
+ * CodeMirror fields are filled by click, Ctrl+A, `keyboard.type`, because `.fill()` on the
+ * contenteditable `.cm-content` is unreliable in preview builds.
  *
  * API surface (all prefixed `/api` by `api/client.ts`):
- *  GET    /custom-activities?includeDisabled=true   → CatalogEntry[]
- *  GET    /custom-activities/{id}                   → FullDef
- *  POST   /custom-activities                        → { definition, warnings[] }   (body carries `key`)
- *  PUT    /custom-activities/{id}                   → { definition, warnings[] }   (body has NO `key`)
+ *  GET    /custom-activities?includeDisabled=true  CatalogEntry[]
+ *  GET    /custom-activities/{id}                  FullDef
+ *  POST   /custom-activities                       { definition, warnings[] }, body carries `key`
+ *  PUT    /custom-activities/{id}                  { definition, warnings[] }, body omits `key`
  *  POST   /custom-activities/{id}/enable|disable
- *  GET    /custom-activities/{id}/versions          → VersionEntry[]  (previous snapshots only)
+ *  GET    /custom-activities/{id}/versions         VersionEntry[], previous snapshots only
  *  POST   /custom-activities/{id}/rollback/{v}
- *  GET    /custom-activities/export                 → export envelope (array)
- *  POST   /custom-activities/import                 → imported[] (nodes land disabled)
+ *  GET    /custom-activities/export                export envelope (array)
+ *  POST   /custom-activities/import                imported[], the new nodes land disabled
  */
 
 // --- mock factories -------------------------------------------------------------
@@ -98,7 +92,7 @@ function versionEntryJson(version: number, overrides: Record<string, unknown> = 
   };
 }
 
-/** POST/PUT response envelope — `{ definition, warnings }`. Empty warnings → modal closes. */
+/** POST/PUT response envelope. Empty warnings make the modal close. */
 function saveResponseJson(overrides: Record<string, unknown> = {}) {
   return {
     definition: fullDefJson(),
@@ -108,8 +102,8 @@ function saveResponseJson(overrides: Record<string, unknown> = {}) {
 }
 
 // The create/edit ModalShell renders its heading as a direct child of the panel, so the
-// heading's parent (`..`) IS the panel. (VersionsModal nests its heading in a flex div →
-// grandparent `../..`; that modal is addressed per-locator in its tests.)
+// heading's parent (`..`) is the panel. VersionsModal nests its heading one level deeper
+// and is addressed per locator in its own tests.
 function createEditPanel(page: Page, heading: RegExp) {
   return page.getByRole('heading', { name: heading }).locator('..');
 }
@@ -137,14 +131,14 @@ test.describe('Custom Activities', () => {
 
     await page.goto('/custom-activities');
 
-    // Page subtitle (customActivities:subtitle) — confirms mount.
+    // Page subtitle (customActivities:subtitle) confirms the page mounted.
     await expect(page.getByText(/reusable, powershell-backed activities|wiederverwendbare, powershell-basierte activities/i)).toBeVisible({
       timeout: 15_000,
     });
 
-    // Status badges: customActivities:status.enabled = "Live" / status.draft = "Draft" (DE: "Entwurf").
-    // Scope to #np-main-scroll: the sidebar "Live-Ops" nav item also renders a "Live" badge, so an
-    // unscoped /^live$/i matches 2 elements (strict-mode violation).
+    // Status badges: status.enabled = "Live", status.draft = "Draft" (DE "Entwurf").
+    // Scoped to #np-main-scroll because the sidebar "Live-Ops" nav item also renders a "Live"
+    // badge, which would make an unscoped /^live$/i match two elements.
     const main = page.locator('#np-main-scroll');
     await expect(main.getByText(/^live$/i)).toBeVisible();
     await expect(main.getByText(/draft|entwurf/i)).toBeVisible();
@@ -190,22 +184,22 @@ test.describe('Custom Activities', () => {
     const panel = createEditPanel(page, /create custom node|custom node erstellen/i);
     await expect(panel).toBeVisible();
 
-    // Name field — labeled "Name" (fields.name). Key field placeholder is "disk-check" (unique).
+    // Name field is labeled "Name" (fields.name). The key field placeholder "disk-check" is unique.
     await panel.getByText(/^name$/i).locator('..').getByRole('textbox').fill('Probe A');
     await panel.getByPlaceholder('disk-check').fill('probe-a');
 
-    // Icon picker — click the Icon field button (fields.icon = "Icon"), pick "bolt" by title.
+    // Icon picker: click the Icon field button (fields.icon = "Icon"), then pick "bolt" by title.
     await panel.getByText(/^icon$/i).locator('..').getByRole('button').click();
     await expect(page.getByRole('heading', { name: /choose an icon|icon wählen/i })).toBeVisible();
     await page.getByTitle('bolt').click();
 
-    // PowerShell template — CodeMirror. Click → select-all → type (fallback pattern, see header).
+    // PowerShell template lives in CodeMirror: click, select all, type (see the file header).
     const cm = panel.locator('.cm-content');
     await cm.click();
     await page.keyboard.press('ControlOrMeta+A');
     await page.keyboard.type('Write-Output "hi"');
 
-    // Add one input param (param.addInput = "Add input"), fill its name (param.name placeholder = "Name").
+    // Add one input param (param.addInput) and fill its name field (placeholder "Name").
     await panel.getByRole('button', { name: /add input|input hinzufügen/i }).click();
     await panel.getByPlaceholder(/^name$/i).fill('computerName');
 
@@ -221,7 +215,7 @@ test.describe('Custom Activities', () => {
       inputs: [{ name: 'computerName' }],
     });
 
-    // Modal closes (empty warnings → onSuccess closes) and the new row appears.
+    // Empty warnings let onSuccess close the modal, and the new row appears.
     await expect(panel).toHaveCount(0);
     await expect(page.getByText('Probe A')).toBeVisible();
   });
@@ -257,7 +251,7 @@ test.describe('Custom Activities', () => {
     await page.goto('/custom-activities');
     await expect(page.getByText('Old Name')).toBeVisible({ timeout: 15_000 });
 
-    // Edit button — icon-only, title = actions.edit ("Edit") on an editable (Draft) row.
+    // The Edit button is icon-only; its title is actions.edit ("Edit") on an editable Draft row.
     await page.getByTitle(/^edit$|^bearbeiten$/i).click();
 
     const panel = createEditPanel(page, /edit custom node|custom node bearbeiten/i);
@@ -274,7 +268,7 @@ test.describe('Custom Activities', () => {
 
     await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
     expect(putBody).toMatchObject({ name: 'Renamed Node' });
-    // PUT body must NOT carry `key` (immutable on update).
+    // The PUT body must not carry `key`, which is immutable on update.
     expect(putBody).not.toHaveProperty('key');
 
     await expect(panel).toHaveCount(0);
@@ -298,11 +292,11 @@ test.describe('Custom Activities', () => {
     });
 
     await page.goto('/custom-activities');
-    // exact:true — the row also renders the key as <code>go-live</code>, and getByText is
-    // case-insensitive by default so 'Go-Live' would match BOTH the name span and the code.
+    // exact:true is needed because the row also renders the key as <code>go-live</code>, and
+    // getByText is case-insensitive by default, so 'Go-Live' matches the name span and the code.
     await expect(page.getByText('Go-Live', { exact: true })).toBeVisible({ timeout: 15_000 });
 
-    // Draft row → Power title = actions.enable ("Enable" / DE "Aktivieren").
+    // On a Draft row the Power title is actions.enable ("Enable", DE "Aktivieren").
     await page.getByTitle(/^enable$|^aktivieren$/i).click();
 
     await expect.poll(() => enableHit, { timeout: 10_000 }).toBe(true);
@@ -328,16 +322,16 @@ test.describe('Custom Activities', () => {
     await page.goto('/custom-activities');
     await expect(page.getByText('Alpha Draft')).toBeVisible({ timeout: 15_000 });
 
-    // Power (enable/disable) is canAdmin-only → Operator sees none.
+    // Power (enable/disable) is canAdmin-only, so an Operator sees none.
     await expect(page.getByTitle(/^enable$|^disable$|^aktivieren$|^deaktivieren$/i)).toHaveCount(0);
 
-    // Alpha (Draft) is editable by an Operator → Edit button title = "Edit", not disabled.
+    // Alpha (Draft) is editable by an Operator, so its Edit button reads "Edit" and is enabled.
     const alphaEdit = page.locator('tr', { hasText: 'Alpha Draft' }).getByTitle(/^edit$|^bearbeiten$/i);
     await expect(alphaEdit).toBeVisible();
     await expect(alphaEdit).toBeEnabled();
 
-    // Beta (Live) is NOT editable by an Operator → Edit button title = lockedHint, disabled.
-    // lockedHint (en): "This node is live (enabled). Only an administrator can edit it …"
+    // Beta (Live) is not editable by an Operator, so its Edit button is disabled and its title
+    // is lockedHint: "This node is live (enabled). Only an administrator can edit it".
     const betaLocked = page.locator('tr', { hasText: 'Beta Live' }).getByTitle(/this node is live|ist live/i);
     await expect(betaLocked).toBeVisible();
     await expect(betaLocked).toBeDisabled();
@@ -365,18 +359,18 @@ test.describe('Custom Activities', () => {
     await page.goto('/custom-activities');
     await expect(page.getByText('My Node')).toBeVisible({ timeout: 15_000 });
 
-    // History button — icon-only, title = actions.versions ("Version history" / DE "Versionsverlauf").
+    // The History button is icon-only; its title is actions.versions ("Version history").
     await page.getByTitle(/version history|versionsverlauf/i).click();
 
-    // versionsTitle = "Version history" — heading "Version history — My Node".
+    // versionsTitle = "Version history"; the heading reads "Version history - My Node".
     await expect(page.getByRole('heading', { name: /version history|versionsverlauf/i })).toBeVisible();
-    // versions.current = "Current state: v{{version}}" (DE: "Aktueller Stand: v{{version}}").
+    // versions.current = "Current state: v{{version}}" (DE "Aktueller Stand: v{{version}}").
     await expect(page.getByText(/current state: v3|aktueller stand: v3/i)).toBeVisible();
 
-    // Previous snapshots v1 + v2 are listed as rollback targets (rollback button per row).
+    // Previous snapshots v1 and v2 are listed as rollback targets, one button per row.
     await expect(page.locator('tr', { hasText: 'v2' }).getByRole('button', { name: /roll back to this version|auf diese version zurücksetzen/i })).toBeVisible();
     await expect(page.locator('tr', { hasText: 'v1' }).getByRole('button', { name: /roll back to this version|auf diese version zurücksetzen/i })).toBeVisible();
-    // The live version (v3) is NOT a snapshot row → only 2 rollback targets exist.
+    // The live version (v3) is not a snapshot row, so only two rollback targets exist.
     await expect(page.getByRole('button', { name: /roll back to this version|auf diese version zurücksetzen/i })).toHaveCount(2);
   });
 
@@ -411,15 +405,15 @@ test.describe('Custom Activities', () => {
     await expect(page.getByText('Roll Target')).toBeVisible({ timeout: 15_000 });
     await page.getByTitle(/version history|versionsverlauf/i).click();
 
-    // Rollback on the v2 row (rollback = "Roll back to this version" / DE "Auf diese Version zurücksetzen").
+    // Roll back from the v2 row; the button label is "Roll back to this version".
     await page.locator('tr', { hasText: 'v2' }).getByRole('button', { name: /roll back to this version|auf diese version zurücksetzen/i }).click();
 
-    // In-app confirm modal → OK (common:ok = "OK").
+    // Confirm in the in-app modal (common:ok = "OK").
     await page.getByRole('button', { name: /^ok$/i }).click();
 
     await expect.poll(() => rollbackHit, { timeout: 10_000 }).toBe(true);
     expect(rollbackVersion).toBe(2);
-    // rollbackDone = "Rolled back to version {{version}}." (DE: "Auf Version … zurückgesetzt.").
+    // rollbackDone = "Rolled back to version {{version}}."
     await expect(page.getByText(/rolled back to version 2|auf version 2 zurückgesetzt/i)).toBeVisible();
   });
 
@@ -434,7 +428,7 @@ test.describe('Custom Activities', () => {
           body: JSON.stringify([entryJson({ id, name: 'Exportable', key: 'exportable', isEnabled: true, version: 1 })]),
         }),
     );
-    // GET /custom-activities/export → array envelope.
+    // GET /custom-activities/export returns the array envelope.
     await page.route((url) => url.pathname === '/api/custom-activities/export', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([entryJson({ id: 'exp-1', name: 'Packed', key: 'packed' })]) }),
     );
@@ -448,19 +442,18 @@ test.describe('Custom Activities', () => {
     });
 
     await page.goto('/custom-activities');
-    // exact:true — the row key <code>exportable</code> would else collide (case-insensitive match).
+    // exact:true keeps the case-insensitive match off the row key <code>exportable</code>.
     await expect(page.getByText('Exportable', { exact: true })).toBeVisible({ timeout: 15_000 });
 
-    // Export (customActivities:export = "Export" / DE "Exportieren") → blob download named
-    // `custom-nodes.npca.json` (hard-coded in onExport).
+    // Export downloads a blob named `custom-nodes.npca.json`, hard-coded in onExport.
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.getByRole('button', { name: /^export$|^exportieren$/i }).click(),
     ]);
     expect(download.suggestedFilename()).toBe('custom-nodes.npca.json');
 
-    // Import: drive the hidden <input type="file" accept=".npca,.json,..."> directly (no
-    // HTML5 drag). The page reads the file text, JSON.parses it, and POSTs the envelope as-is.
+    // Import drives the hidden file input directly instead of simulating a drag. The page reads
+    // the file text, parses it as JSON, and POSTs the envelope unchanged.
     await page.setInputFiles('input[type="file"][accept*=".npca"]', {
       name: 'custom-nodes.npca',
       mimeType: 'application/json',
@@ -469,7 +462,7 @@ test.describe('Custom Activities', () => {
 
     await expect.poll(() => importHit, { timeout: 10_000 }).toBe(true);
     expect(importBody).toBeTruthy();
-    // importDone = "Imported {{count}} custom node(s) (disabled — review and enable)."
+    // importDone = "Imported {{count}} custom node(s) (disabled, review and enable)."
     await expect(page.getByText(/imported 1 custom node\(s\)|1 custom node\(s\) importiert/i)).toBeVisible();
   });
 
@@ -493,21 +486,20 @@ test.describe('Custom Activities', () => {
     await page.goto('/custom-activities');
     await expect(page.getByText('Live RO')).toBeVisible({ timeout: 15_000 });
 
-    // New / Import / Export are canWrite-gated → absent for Viewer.
+    // New, Import and Export are canWrite-gated, so a Viewer does not see them.
     await expect(page.getByRole('button', { name: /new custom node|neue custom node/i })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^import$|^importieren$/i })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^export$|^exportieren$/i })).toHaveCount(0);
-    // Power is canAdmin-gated → absent.
+    // Power is canAdmin-gated, so it is absent.
     await expect(page.getByTitle(/^enable$|^disable$|^aktivieren$|^deaktivieren$/i)).toHaveCount(0);
-    // History (versions) is canWrite-gated → absent.
+    // History (versions) is canWrite-gated, so it is absent.
     await expect(page.getByTitle(/version history|versionsverlauf/i)).toHaveCount(0);
-    // Edit: for a Viewer canEdit is always false → the edit button's title is the lockedHint
-    // (not "Edit"), so an anchored /^edit$/i match finds none.
+    // For a Viewer canEdit is always false, so the edit button carries the lockedHint title
+    // instead of "Edit" and an anchored /^edit$/i match finds none.
     await expect(page.getByTitle(/^edit$|^bearbeiten$/i)).toHaveCount(0);
 
-    // ADAPTATION: the Trash button is always rendered (title "Delete") but disabled when
-    // !canEdit — so for a Viewer it is present-but-disabled, not count 0. The task brief
-    // listed "Trash count 0"; the source renders it disabled instead. Assert disabled.
+    // The Trash button (title "Delete") is always rendered and only disabled when !canEdit,
+    // so for a Viewer it is present but disabled rather than absent.
     const trashButtons = page.getByTitle(/^delete$|^löschen$/i);
     await expect(trashButtons).toHaveCount(2);
     for (const btn of await trashButtons.all()) await expect(btn).toBeDisabled();
@@ -525,7 +517,7 @@ test.describe('Custom Activities', () => {
         }
         if (req.method() === 'POST') {
           postedBody = req.postDataJSON();
-          // Non-empty warnings → onSuccess keeps the modal open and surfaces them.
+          // With warnings present, onSuccess keeps the modal open and shows them.
           return route.fulfill({
             status: 201,
             contentType: 'application/json',
@@ -555,9 +547,9 @@ test.describe('Custom Activities', () => {
 
     await expect.poll(() => postedBody, { timeout: 10_000 }).not.toBeNull();
 
-    // Modal stays open (warnings present → onSuccess does not close).
+    // The modal stays open because warnings are present.
     await expect(panel).toBeVisible();
-    // lintWarnings heading = "Security lint warnings" (DE: "Security-Lint-Warnungen").
+    // lintWarnings heading = "Security lint warnings" (DE "Security-Lint-Warnungen").
     await expect(panel.getByText(/security lint warnings|security-lint-warnungen/i)).toBeVisible();
     // The warning message itself is rendered in the amber <ul>.
     await expect(panel.getByText(/invoke-expression is forbidden/i)).toBeVisible();

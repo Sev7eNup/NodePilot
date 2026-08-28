@@ -27,23 +27,11 @@ interface DragState {
 const HANDLE_RADIUS = 8;
 
 /**
- * Pen-tool style cubic Bezier control handles for an edge. Renders two SVG circles
- * (the control points) plus two dashed lines from each port to its handle. Visibility
- * is driven by hover/select state owned by the parent edge component.
- *
- * Drag flow:
- *   pointerdown → ctx.beginEdgeReshape(id) ONCE (parent commits history + sets dirty)
- *   pointermove → ctx.updateEdgeShape(id, newCps) (live; no history/dirty per tick)
- *   pointerup   → release pointer capture
- *
- * Why no setEdges / commitHistory here: keeps history + dirty centralized in
- * WorkflowEditorPage. Mirrors the existing onInsertRequest pattern.
- *
- * Coordinate space: all (x, y) numbers are flow space. Mouse deltas are converted via
- * useReactFlow().screenToFlowPosition so zoom level scales correctly.
- *
- * Skipped at the parent level for backward edges (segments.length > 1) and for
- * read-only views (canWrite=false) — see LabeledEdge for the gates.
+ * Pen-tool style cubic Bezier control handles for an edge: two SVG circles (control points)
+ * plus two dashed guide lines from each port to its handle, visible on hover/select via the
+ * parent edge component. pointerdown commits history once via beginEdgeReshape, then
+ * pointermove streams live updates via updateEdgeShape with no history/dirty per tick. All
+ * coordinates are flow space; skipped for backward edges and read-only views (see LabeledEdge).
  */
 export function EdgeReshapeHandles({
   edgeId,
@@ -61,15 +49,15 @@ export function EdgeReshapeHandles({
   const [draggingHandle, setDraggingHandle] = useState<HandleId | null>(null);
 
   // Effective control points: user-defined override, otherwise port-aware default.
-  // Defaults are NOT persisted — the user has to actually drag for `controlPoints` to
-  // appear in edge.data. Until then, the handles just visualize the auto-curve's shape.
+  // Defaults are not persisted — controlPoints only appears in edge.data once the user
+  // actually drags a handle. Until then the handles just visualize the auto-curve's shape.
   const effective: ControlPoints = controlPoints ?? defaultControlPoints({
     sourceX, sourceY, sourcePosition,
     targetX, targetY, targetPosition,
   });
 
-  // Stable refs for the in-flight drag callbacks. We don't want pointermove to depend
-  // on `effective` (it'd change every render and the listener would churn).
+  // Stable ref for the in-flight drag callbacks, so pointermove does not depend on
+  // `effective` (it would change every render and churn the listener).
   const latestRef = useRef({
     edgeId, screenToFlowPosition, snapToGrid, snapGridSize, updateEdgeShape, effective,
   });
@@ -121,10 +109,10 @@ export function EdgeReshapeHandles({
     };
   }, [draggingHandle]);
 
-  // Takes the handle as a plain argument instead of being curried. The previous
-  // `(handle) => (e) => ...` form had to be *called* during render to produce the prop, which
-  // put the ref write below on a render-reachable path as far as the React Compiler is
-  // concerned (react-hooks/refs). The JSX now passes an inline arrow instead.
+  // Takes the handle as a plain argument instead of being curried. A curried
+  // `(handle) => (e) => ...` form has to be called during render to produce the prop, which
+  // puts the ref write below on a render-reachable path as far as the React Compiler is
+  // concerned (react-hooks/refs).
   const onHandlePointerDown = (handle: HandleId, e: React.PointerEvent<HTMLDivElement>) => {
     if (!canWrite) return;
     e.stopPropagation();
@@ -136,8 +124,8 @@ export function EdgeReshapeHandles({
     dragStateRef.current = {
       handle,
       startScreen: { x: e.clientX, y: e.clientY },
-      // Snapshot the EFFECTIVE points (incl. defaults) so the first drag on a never-shaped
-      // edge starts from the visible handle position, not from (0,0).
+      // Snapshot the effective points (including defaults) so the first drag on a
+      // never-shaped edge starts from the visible handle position, not from (0,0).
       startCp: { ...effective },
     };
     beginEdgeReshape(edgeId);

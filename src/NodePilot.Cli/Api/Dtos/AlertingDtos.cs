@@ -1,7 +1,8 @@
 namespace NodePilot.Cli.Api.Dtos;
 
 // Mirror of the API's alerting DTOs (NodePilot.Api.Dtos.AlertingDtos). Duplicated by convention —
-// the CLI takes no ProjectReference on the API. camelCase over the wire via JsonSerializerDefaults.Web.
+// the CLI takes no ProjectReference on the API. camelCase over the wire via
+// JsonSerializerDefaults.Web.
 
 public sealed record NotificationRouteDto(Guid? Id, string Channel, string Target, string? Secret, int Order, string? ConditionExpressionJson = null);
 

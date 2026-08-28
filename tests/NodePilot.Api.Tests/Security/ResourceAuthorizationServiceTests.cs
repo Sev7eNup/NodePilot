@@ -38,9 +38,9 @@ public sealed class ResourceAuthorizationServiceTests : IDisposable
 
         // Folder tree:
         //   Root
-        //   â”œâ”€â”€ Finance
-        //   â”‚    â””â”€â”€ Reports
-        //   â””â”€â”€ Sales
+        //     Finance
+        //       Reports
+        //     Sales
         var rootId = SharedWorkflowFolder.RootFolderId;
         _db.SharedWorkflowFolders.AddRange(
             new SharedWorkflowFolder { Id = _financeId, ParentFolderId = rootId, Name = "Finance", Path = "/Finance", Depth = 1 },
@@ -99,7 +99,7 @@ public sealed class ResourceAuthorizationServiceTests : IDisposable
         (await svc.CanAccessWorkflowAsync(editor, _financeId, ResourceOp.Admin)).Should().BeFalse(
             "FolderEditor does not include FolderAdmin (permission management)");
 
-        // Inherited via /Finance â†’ /Finance/Reports.
+        // Inherited via /Finance to /Finance/Reports.
         (await svc.CanAccessWorkflowAsync(editor, _financeReportsId, ResourceOp.Edit)).Should().BeTrue(
             "permissions inherit down the folder tree");
     }
@@ -110,7 +110,7 @@ public sealed class ResourceAuthorizationServiceTests : IDisposable
         var svc = NewService();
         var editor = MakePrincipal(_editorId, "Operator");
 
-        // /Sales is a sibling of /Finance â€” no grant chain to it.
+        // /Sales is a sibling of /Finance; no grant chain reaches it.
         (await svc.CanAccessWorkflowAsync(editor, _salesId, ResourceOp.Read)).Should().BeFalse();
     }
 
@@ -141,8 +141,8 @@ public sealed class ResourceAuthorizationServiceTests : IDisposable
     [Fact]
     public async Task GetAccessibleFolderIds_IncludesGrantFolderAndAllDescendants()
     {
-        // Editor has FolderEditor on /Finance â€” accessible set must contain /Finance AND
-        // /Finance/Reports, but NOT Root (no grant on Root) and NOT /Sales.
+        // Editor has FolderEditor on /Finance, so the accessible set must include /Finance
+        // and /Finance/Reports, but not Root (no grant there) and not /Sales.
         var svc = NewService();
         var editor = MakePrincipal(_editorId, "Operator");
 
@@ -157,9 +157,9 @@ public sealed class ResourceAuthorizationServiceTests : IDisposable
     [Fact]
     public async Task HighestRoleWins_WhenMultipleGrantsResolveToSameUser()
     {
-        // Add a SECOND grant for editorId on /Finance/Reports â€” FolderViewer (lower).
-        // Despite the explicit lower grant on the child, the inherited FolderEditor from
-        // /Finance must win because we collect the whole ancestry and take Max.
+        // Add a second, lower grant (FolderViewer) for editorId directly on /Finance/Reports.
+        // The inherited FolderEditor from /Finance must still win, because the capability
+        // check collects the whole ancestry and takes the highest role.
         _db.SharedFolderPermissions.Add(new SharedFolderPermission
         {
             Id = Guid.NewGuid(), FolderId = _financeReportsId,
@@ -181,7 +181,8 @@ public sealed class ResourceAuthorizationServiceTests : IDisposable
         var editor = MakePrincipal(_editorId, "Operator");
 
         var caps = await svc.GetWorkflowCapabilitiesAsync(editor, _financeId);
-        // Operator + FolderEditor: every workflow operation except Delete (Admin-only) and Admin (FolderAdmin only).
+        // Operator + FolderEditor: every workflow operation except Delete (Admin-only) and Admin
+        // (FolderAdmin only).
         caps.Should().Be(new ResourceCapabilities(CanRead: true, CanRun: true, CanEdit: true, CanDelete: false, CanAdmin: false));
     }
 
@@ -206,7 +207,7 @@ public sealed class ResourceAuthorizationServiceTests : IDisposable
     [Fact]
     public async Task UnauthenticatedPrincipal_GetsNoAccess()
     {
-        // ClaimsPrincipal with no NameIdentifier â€” typical for an unauthenticated request
+        // ClaimsPrincipal with no NameIdentifier, typical for an unauthenticated request
         // that somehow reached the service. Defaults to fully-denied.
         var svc = NewService();
         var anon = new ClaimsPrincipal(new ClaimsIdentity());
@@ -219,8 +220,8 @@ public sealed class ResourceAuthorizationServiceTests : IDisposable
     [Fact]
     public async Task FolderCapabilities_TreatsRunAsEdit()
     {
-        // Folder-shaped resources don't have a "run" semantic â€” the service maps Runâ†’Edit
-        // internally. So a FolderEditor passes a Run check on a folder.
+        // Folder-shaped resources don't have a "run" semantic; the service maps Run to Edit
+        // internally, so a FolderEditor passes a Run check on a folder.
         var svc = NewService();
         var editor = MakePrincipal(_editorId, "Operator");
 
@@ -228,10 +229,10 @@ public sealed class ResourceAuthorizationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// F3 fix â€” capabilities must be capped by the user's global UserRole. A global Viewer
-    /// who somehow holds FolderOperator (or higher) on a folder is still globally Viewer:
-    /// the controller's <c>[Authorize(Roles="Admin,Operator")]</c> would 403 any run/edit
-    /// attempt, so the UI must not promise the buttons via canRun=true.
+    /// Capabilities must be capped by the user's global UserRole. A global Viewer who holds
+    /// FolderOperator or higher on a folder is still globally Viewer: the controller's
+    /// <c>[Authorize(Roles="Admin,Operator")]</c> would 403 any run/edit attempt, so the UI
+    /// must not promise those buttons via canRun=true.
     /// </summary>
     [Fact]
     public async Task GetWorkflowCapabilities_GlobalViewer_NeverGetsCanRunOrCanEdit_EvenWithFolderOperatorGrant()
@@ -259,8 +260,8 @@ public sealed class ResourceAuthorizationServiceTests : IDisposable
     [Fact]
     public async Task GetWorkflowCapabilities_GlobalOperator_GetsRunAndEdit_ButNeverAdmin()
     {
-        // editor is global Operator + FolderEditor on /Finance â€” runs/edits OK, admin denied
-        // because the role cap on Operator strips CanAdmin too.
+        // editor is global Operator with FolderEditor on /Finance: runs and edits succeed,
+        // but admin is denied because the role cap on Operator strips CanAdmin too.
         var svc = NewService();
         var editor = MakePrincipal(_editorId, "Operator");
 
@@ -272,14 +273,14 @@ public sealed class ResourceAuthorizationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// F5 fix â€” InvalidateAll must drop every cache so a capability lookup after a
-    /// mutation reflects the new state.
+    /// InvalidateAll must drop every cache so a capability lookup after a mutation
+    /// reflects the new state.
     /// </summary>
     /// <summary>
-    /// R2 â€” CanAccess* must apply the global role cap, not just GetWorkflowCapabilities.
-    /// The folder/permission controllers gate via [Authorize] + _authz only (no role
-    /// attribute), so without this cap a global Viewer with FolderAdmin could call
-    /// grant/revoke and the API would accept it.
+    /// CanAccess* must apply the global role cap, not just GetWorkflowCapabilities. The
+    /// folder and permission controllers gate via [Authorize] plus _authz only, with no
+    /// role attribute, so without this cap a global Viewer with FolderAdmin could call
+    /// grant or revoke and the API would accept it.
     /// </summary>
     [Fact]
     public async Task CanAccessWorkflow_GlobalViewer_CannotEdit_EvenWithFolderAdminGrant()

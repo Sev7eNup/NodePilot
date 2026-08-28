@@ -3,18 +3,16 @@ using System.Text.Json;
 namespace NodePilot.Ai;
 
 /// <summary>
-/// Tolerant extraction of a JSON object from a raw LLM response. Shared between
-/// <see cref="WorkflowGenerationService"/> (workflow generation) and
-/// <see cref="WorkflowAssistantService"/> (chat assistant) — both need to fish the actual JSON
-/// object out of a response that may be decorated with code fences and prose.
+/// Tolerant extraction of a JSON object from a raw LLM response. Shared by
+/// <see cref="WorkflowGenerationService"/> and <see cref="WorkflowAssistantService"/>, which both
+/// have to pull the JSON object out of a response decorated with code fences and prose.
 /// </summary>
 internal static class WorkflowDefinitionJsonHelper
 {
     /// <summary>
-    /// Strips leading/trailing prose and markdown fences and looks for the first balanced
-    /// <c>{...}</c> block that also parses as valid JSON. Tolerant of LLMs that mention example
-    /// snippets like <c>{key: value}</c> in a preamble before the actual response JSON follows.
-    /// Returns <c>null</c> when none is found.
+    /// Skips surrounding prose and markdown fences and returns the first balanced <c>{...}</c>
+    /// block that parses as valid JSON, so a preamble mentioning a snippet like
+    /// <c>{key: value}</c> is ignored. Returns <c>null</c> when no such block exists.
     /// </summary>
     internal static string? ExtractJsonObject(string raw)
     {
@@ -37,7 +35,7 @@ internal static class WorkflowDefinitionJsonHelper
             }
             catch (JsonException)
             {
-                // Not real JSON (e.g. "{ key: value }" with unquoted keys) — skip it and keep
+                // Not real JSON, for example "{ key: value }" with unquoted keys. Skip it and keep
                 // looking from the next '{'.
                 pos = start + 1;
             }

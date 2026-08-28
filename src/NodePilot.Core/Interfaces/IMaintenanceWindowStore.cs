@@ -9,7 +9,8 @@ namespace NodePilot.Core.Interfaces;
 /// </summary>
 public interface IMaintenanceWindowStore
 {
-    /// <summary>All windows with their targets, ordered by name. Includes disabled windows.</summary>
+    /// <summary>All windows with their targets, ordered by name. Includes disabled
+    /// windows.</summary>
     Task<IReadOnlyList<MaintenanceWindow>> GetAllAsync(CancellationToken ct);
 
     Task<MaintenanceWindow?> GetAsync(Guid id, CancellationToken ct);

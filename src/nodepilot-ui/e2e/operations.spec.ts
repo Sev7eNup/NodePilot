@@ -141,8 +141,8 @@ test('a start suppressed by a maintenance window is flagged, not hidden', async 
   await page.goto('/operations');
 
   const rows = page.getByRole('table').locator('tbody tr');
-  // Staging Job fires in 10 min but a Blackout window will swallow it: it keeps its
-  // sort position and swaps the countdown for the blackout marker.
+  // Staging Job fires in 10 min but a maintenance window suppresses it: the row keeps its
+  // sort position and shows the blackout marker instead of the countdown.
   await expect(rows.nth(0)).toContainText('Staging Job');
   await expect(rows.nth(0)).toContainText('maintenance');
   await expect(rows.nth(0)).toHaveAttribute('title', /Weekend Freeze/);
@@ -171,8 +171,8 @@ test('a run past the long-running threshold surfaces in the stuck strip', async 
   await installDefaultMocks(page);
   await page.route('**/api/operations/graph*', (r) => json(r, {
     ...GRAPH(),
-    // 3 hours old: clamped to the left edge of the 30-minute window, so on the bar alone it is
-    // indistinguishable from a 21-minute run.
+    // 3 hours old: clamped to the left edge of the 30-minute window, so the bar alone cannot
+    // show its real age.
     running: [{ executionId: 'ex-1', workflowId: 'wf-1', status: 'Running', startedAt: new Date(now() - 180 * MIN).toISOString(), stepsFinished: 3, lastCompletedStepName: 'Copy files', lastProgressAt: new Date(now() - 40 * MIN).toISOString(), activeStepCount: 0 }],
     meta: { overdueSeconds: 600, windowMinutes: 30, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false },
   }));
@@ -185,7 +185,7 @@ test('a run past the long-running threshold surfaces in the stuck strip', async 
   await expect(strip).toBeVisible();
   await expect(strip).toContainText('Nightly Backup');
   await expect(strip).toContainText('running for 3:00');
-  // The distinguishing detail: long vs. stuck on ONE step.
+  // This is what separates a long run from one stuck on a single step.
   await expect(strip).toContainText('last step 40:0');
   await expect(strip).toContainText('Copy files');
 
@@ -217,7 +217,7 @@ test('quarantine confirms, then disables before cancelling all runs', async ({ p
   await page.getByTitle(/Nightly Backup · Running/).click();
   await page.getByRole('button', { name: 'Quarantine' }).click();
 
-  // Destructive action → confirm dialog first; nothing has been sent yet.
+  // Destructive action: the confirm dialog comes first and nothing has been sent yet.
   // (ModalShell carries no role="dialog", so match on the confirm copy instead.)
   await expect(page.getByText(/Quarantine “Nightly Backup”\?/)).toBeVisible();
   expect(order).toEqual([]);
@@ -265,7 +265,7 @@ test('window selector re-requests the snapshot and freeze pins the view', async 
   await page.getByLabel('Window').selectOption('60');
   await expect.poll(() => windows.at(-1)).toBe('60');
 
-  // Freeze: loud badge, and the poll stops (no further requests land).
+  // Freeze shows a badge and stops the poll, so no further requests land.
   await page.getByRole('button', { name: 'Freeze view' }).click();
   await expect(page.getByTestId('ops-frozen-badge')).toBeVisible();
   const atFreeze = windows.length;
@@ -281,12 +281,12 @@ test('a window the bars cannot cover is filled with density, not left empty', as
 
   await page.goto('/operations');
   await expect(page.getByTitle(/Nightly Backup · Running/)).toBeVisible();
-  // The track has to actually span the wider window for the aggregate to have anywhere to sit —
-  // the window the user picked is what sets the visible span, the snapshot only fills it.
+  // The selected window sets the visible span and the snapshot only fills it, so the track
+  // must span the wider window for the aggregate to have room.
   await page.getByLabel('Window').selectOption('60');
 
-  // The whole point: at 1 h the stretch older than the newest bars carries the run counts
-  // instead of the hatched "nothing came back" band it used to show.
+  // At 1 h the stretch older than the newest bars carries the run counts instead of a
+  // hatched empty band.
   const cells = page.getByTestId('ops-density-cell');
   await expect(cells).toHaveCount(3);
   await expect(page.getByTestId('ops-density-notice')).toContainText('40 finished runs');
@@ -299,15 +299,15 @@ test('a window the bars cannot cover is filled with density, not left empty', as
   await expect(announced).toBeVisible();
   await expect(announced).not.toHaveAttribute('tabindex');
 
-  // The marks that keep the aggregate from reading as one long run — asserted in a real browser
-  // with real layout, because that is where the flat slab actually manifested. One baseline per
-  // density lane; only wf-2's slice holds failures, so only it gets a rug under the line.
+  // The marks that keep the aggregate from reading as one long run, asserted against real
+  // browser layout. One baseline per density lane; only wf-2's slice holds failures, so only
+  // it gets a rug under the line.
   await expect(page.getByTestId('ops-density-axis')).toHaveCount(2);
   await expect(page.getByTestId('ops-density-rug')).toHaveCount(1);
   const column = await cells.first().boundingBox();
   expect(column!.height).toBeLessThan(22);
 
-  // Consecutive buckets remain distinct columns instead of merging into the old solid slab.
+  // Consecutive buckets remain distinct columns instead of merging into one solid block.
   const nextColumn = await cells.nth(1).boundingBox();
   expect(nextColumn!.x - (column!.x + column!.width)).toBeGreaterThan(0);
 });
@@ -351,9 +351,9 @@ test('timeline keyboard navigation is one tab stop and opens the active run', as
   await expect(board).toBeFocused();
 });
 
-// 1024x768 is the narrowest viewport the timeline is rendered at all: below Tailwind's `lg`
-// the page swaps it for the mobile run list (see mobile-responsive.spec.ts), because a 390px
-// screen leaves the track ~190px wide and every bar a sliver.
+// 1024x768 is the narrowest viewport that renders the timeline: below Tailwind's `lg` the page
+// swaps in the mobile run list (see mobile-responsive.spec.ts), because a phone screen leaves
+// the track too narrow for readable bars.
 test('a capped lane keeps every run and the time axis aligned at the narrowest desktop', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 });
   await installDefaultMocks(page);
@@ -386,8 +386,8 @@ test('a capped lane keeps every run and the time axis aligned at the narrowest d
   const axis = await page.getByTestId('ops-time-axis').boundingBox();
   const labels = await page.locator('.np-ops-lane-labels').boundingBox();
   expect(track!.width).toBeGreaterThanOrEqual(120);
-  // The label column is `clamp(140px, 24vw, 380px)` — proportional, so the track keeps usable
-  // width as the window narrows. The exact value is CSS's business; the band is the contract.
+  // The label column is `clamp(140px, 24vw, 380px)`, so the track keeps usable width as the
+  // window narrows. The exact value is up to CSS; the band is the contract.
   expect(labels!.width).toBeGreaterThanOrEqual(140);
   expect(labels!.width).toBeLessThanOrEqual(380);
   expect(Math.abs(axis!.x - track!.x)).toBeLessThanOrEqual(1);
@@ -435,7 +435,8 @@ test('folder filter scopes timeline and departure board together', async ({ page
 
   await expect(page.getByTitle(/Nightly Backup · Running/)).toBeVisible();
 
-  // Scope to /Staging: no bars in the window → idle hero; board only shows the staging trigger.
+  // Scope to /Staging: no bars in the window, so the idle hero shows and the board lists only
+  // the staging trigger.
   await page.getByLabel('Folder').selectOption('staging');
   await expect(page.getByText('Nothing is running right now.')).toBeVisible();
   await expect(page.getByTitle(/Nightly Backup · Running/)).toHaveCount(0);

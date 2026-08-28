@@ -1,13 +1,13 @@
-# Preflight fuer den NodePilot-API-Member-Server (npapi01) vor dem Windows-SSO-Feldtest.
+# Preflight for the NodePilot API member server (npapi01) before the Windows SSO field test.
 #
-# AUSFUEHREN AUF: npapi01, elevated (setspn/Zertifikatsstore/Firewall brauchen Rechte).
-# Read-only -- das Skript aendert NICHTS, es prueft nur und meldet PASS/WARN/FAIL.
+# RUN ON: npapi01, elevated (setspn, certificate store and firewall need privileges).
+# Read-only: the script changes nothing, it only checks and reports PASS/WARN/FAIL.
 #
-# Aufruf: powershell -NoProfile -ExecutionPolicy Bypass -File .\Setup-ApiHost.ps1 `
-#             -ApiFqdn npapi01.np.lab -NtlmAliasFqdn npapi01-ntlm.np.lab -DcFqdn dc01.np.lab
+# Usage: powershell -NoProfile -ExecutionPolicy Bypass -File .\Setup-ApiHost.ps1 `
+#            -ApiFqdn npapi01.np.lab -NtlmAliasFqdn npapi01-ntlm.np.lab -DcFqdn dc01.np.lab
 #
-# Jeder FAIL hier erzeugt spaeter ein Kerberos-Fehlerbild, das wie ein Produktdefekt
-# aussieht. Der Preflight muss gruen sein, BEVOR die Testmatrix laeuft.
+# Every FAIL here later produces a Kerberos error that looks like a product defect, so the
+# preflight has to be green before the test matrix runs.
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', '',
     Justification = 'Wegwerf-Lab-Credentials. Der LDAPS-Bind-Check spiegelt bewusst exakt das, was der API-Prozess tut -- NetworkCredential nimmt Klartext entgegen.')]
 param(
@@ -27,9 +27,9 @@ function Add-Check([string]$name, [string]$verdict, [string]$detail) {
     [void]$results.Add([pscustomobject]@{ Check = $name; Verdict = $verdict; Detail = $detail })
 }
 
-# ---------- 1. Domain-Join ----------
-# Ohne Domain-Join hat der Prozess keinen Schluessel zum Entschluesseln des Service-Tickets.
-# ASP.NET Negotiate nutzt auf Windows SSPI -- ein Keytab-Ersatz existiert hier nicht.
+# ---------- 1. Domain join ----------
+# Without a domain join the process has no key to decrypt the service ticket. ASP.NET
+# Negotiate uses SSPI on Windows; there is no keytab equivalent here.
 $cs = Get-CimInstance Win32_ComputerSystem
 if ($cs.PartOfDomain) {
     Add-Check '1. Domain-Join' 'PASS' "Domain=$($cs.Domain) Host=$($cs.Name)"
@@ -37,15 +37,15 @@ if ($cs.PartOfDomain) {
     Add-Check '1. Domain-Join' 'FAIL' 'Host ist NICHT domaenengejoint -- Negotiate kann nicht funktionieren.'
 }
 
-# ---------- 2. Zeitversatz gegen den DC ----------
-# Kerberos toleriert +/-5 min. Ein Versatz darueber liefert KRB_AP_ERR_SKEW und sieht
-# im Fehlerbild aus wie "SPN falsch".
+# ---------- 2. Clock skew against the DC ----------
+# Kerberos tolerates +/-5 min. A larger skew returns KRB_AP_ERR_SKEW, which looks like a
+# wrong SPN.
 try {
     $chart = & w32tm /stripchart /computer:$DcFqdn /samples:3 /dataonly 2>&1 | Out-String
-    # w32tm gibt den Offset auch auf de-DE mit PUNKT als Dezimaltrenner aus ("-00.0010514s").
-    # Der PowerShell-Cast [double] konvertiert invariant und ist damit korrekt.
-    # NICHT auf [double]::Parse() umbauen: das nutzt die aktuelle Kultur und liest unter
-    # de-DE "-00.0010514" als -10514 -- aus 1 ms Versatz wuerde ein Fehlalarm von 3 Stunden.
+    # w32tm prints the offset with a dot as decimal separator on any locale ("-00.0010514s"),
+    # and the PowerShell [double] cast converts invariantly, so it reads that correctly.
+    # Do not switch to [double]::Parse(): it uses the current culture and would read
+    # "-00.0010514" as -10514 under de-DE.
     $offsets = [regex]::Matches($chart, '([+-]?\d+\.\d+)s') | ForEach-Object { [double]$_.Groups[1].Value }
     if ($offsets.Count -gt 0) {
         $worst = ($offsets | ForEach-Object { [math]::Abs($_) } | Measure-Object -Maximum).Maximum
@@ -58,9 +58,9 @@ try {
     Add-Check '2. Zeitversatz zum DC' 'WARN' "w32tm fehlgeschlagen: $($_.Exception.Message)"
 }
 
-# ---------- 3. DNS: API-FQDN und NTLM-Alias zeigen auf DIESEN Host ----------
-# Der Alias muss dieselbe IP liefern (gleiches Kestrel), darf aber keinen SPN haben --
-# das ist der deterministische NTLM-Ausloeser fuer W19.
+# ---------- 3. DNS: API FQDN and NTLM alias point at this host ----------
+# The alias must resolve to the same IP (same Kestrel) but must not carry an SPN; that is
+# the deterministic NTLM trigger for W19.
 $localIps = @(Get-NetIPAddress -AddressFamily IPv4 |
     Where-Object { $_.IPAddress -ne '127.0.0.1' } | Select-Object -ExpandProperty IPAddress)
 foreach ($pair in @(@{ N = '3a. DNS API-FQDN'; F = $ApiFqdn }, @{ N = '3b. DNS NTLM-Alias'; F = $NtlmAliasFqdn })) {
@@ -75,8 +75,8 @@ foreach ($pair in @(@{ N = '3a. DNS API-FQDN'; F = $ApiFqdn }, @{ N = '3b. DNS N
     }
 }
 
-# CNAME-Falle: Chromium kanonisiert den Host und bildet den SPN aus dem A-Record-Ziel.
-# Ein CNAME auf einen anderen Namen erzeugt damit einen SPN, den niemand registriert hat.
+# Chromium canonicalizes the host and builds the SPN from the A record target, so a CNAME
+# to another name produces an SPN that nobody has registered.
 foreach ($f in @($ApiFqdn, $NtlmAliasFqdn)) {
     $cname = @(Resolve-DnsName -Name $f -Type CNAME -ErrorAction SilentlyContinue |
         Where-Object QueryType -eq 'CNAME')
@@ -86,10 +86,10 @@ foreach ($f in @($ApiFqdn, $NtlmAliasFqdn)) {
     }
 }
 
-# ---------- 4. SPN-Lage ----------
-# Variante A (LocalSystem/Maschinenkonto): HOST/<fqdn> deckt HTTP/ implizit ueber
-# sPNMappings ab -- ein EXPLIZITER HTTP/-SPN auf einem anderen Konto gewinnt dagegen und
-# bricht den Handshake. Variante B (gMSA): genau ein expliziter Treffer ist erwuenscht.
+# ---------- 4. SPN state ----------
+# Variant A (LocalSystem / machine account): HOST/<fqdn> covers HTTP/ implicitly via
+# sPNMappings, while an explicit HTTP/ SPN on another account wins and breaks the
+# handshake. Variant B (gMSA): exactly one explicit hit is expected.
 $machine = "$($cs.Name)$"
 $spnList = (& setspn -L $machine 2>&1 | Out-String)
 $hasHostSpn = $spnList -match [regex]::Escape("HOST/$ApiFqdn")
@@ -106,7 +106,7 @@ if ($spnHits.Count -eq 0) {
     Add-Check '4b. Expliziter HTTP-SPN' 'FAIL' "MEHRERE Treffer ($($spnHits.Count)) -- Kerberos bricht auf KRB_AP_ERR_MODIFIED oder still auf NTLM."
 }
 
-# Der NTLM-Alias MUSS SPN-frei bleiben, sonst faellt W19 nicht mehr auf NTLM zurueck.
+# The NTLM alias has to stay SPN-free, otherwise W19 no longer falls back to NTLM.
 $aliasQuery = (& setspn -Q "HTTP/$NtlmAliasFqdn" 2>&1 | Out-String)
 $aliasHits = @([regex]::Matches($aliasQuery, '(?im)^\s*CN=.+$'))
 Add-Check '4c. NTLM-Alias ist SPN-frei' $(if ($aliasHits.Count -eq 0) { 'PASS' } else { 'FAIL' }) `
@@ -116,8 +116,8 @@ $dup = (& setspn -X 2>&1 | Out-String)
 Add-Check '4d. Domaenenweite SPN-Duplikate' $(if ($dup -match 'found 0 group') { 'PASS' } else { 'WARN' }) `
     (($dup -split "`n" | Where-Object { $_ -match 'duplicate|found \d+ group' } | Select-Object -First 2) -join ' | ')
 
-# ---------- 5. Verschluesselungstypen ----------
-# RC4-only-Konto plus AES-erzwingende Domain-Policy ergibt KDC_ERR_ETYPE_NOSUPP.
+# ---------- 5. Encryption types ----------
+# An RC4-only account plus an AES-enforcing domain policy gives KDC_ERR_ETYPE_NOSUPP.
 try {
     $etypes = (Get-ADComputer $cs.Name -Properties 'msDS-SupportedEncryptionTypes' -Server $DcFqdn -ErrorAction Stop).'msDS-SupportedEncryptionTypes'
     # Bit 3 (0x08) = AES128, Bit 4 (0x10) = AES256.
@@ -128,9 +128,9 @@ try {
     Add-Check '5. Kerberos-Verschluesselungstypen' 'WARN' "Nicht lesbar (RSAT fehlt?): $($_.Exception.Message)"
 }
 
-# ---------- 6. Kestrel-Zertifikat: SAN muss BEIDE Namen tragen ----------
-# Eine einzige Kette: URL-Host = SPN-Host = Zertifikats-SAN. Der NTLM-Alias braucht die
-# zweite SAN, damit W19 kein Zertifikatswarnungs-Interstitial produziert.
+# ---------- 6. Kestrel certificate: the SAN must carry both names ----------
+# One chain: URL host = SPN host = certificate SAN. The NTLM alias needs the second SAN so
+# that W19 does not produce a certificate warning interstitial.
 try {
     $certs = @(Get-ChildItem Cert:\LocalMachine\My)
     if ($CertificateThumbprint) {
@@ -155,10 +155,10 @@ try {
     Add-Check '6a. Kestrel-Zertifikat' 'FAIL' "EXCEPTION: $($_.Exception.Message)"
 }
 
-# ---------- 7. LDAPS mit scharfer Zertifikatsvalidierung ----------
-# Spiegelt exakt das, was SystemLdapConnectionAdapter tut: Port 636, SSL, KEIN
-# Validierungs-Callback -- die DC-Kette muss im LocalMachine\Root des API-Hosts liegen.
-# Es gibt dafuer keinen In-App-Bypass.
+# ---------- 7. LDAPS with strict certificate validation ----------
+# Mirrors exactly what SystemLdapConnectionAdapter does: port 636, SSL, no validation
+# callback. The DC chain must be in LocalMachine\Root of the API host; there is no
+# in-app bypass.
 try {
     Add-Type -AssemblyName System.DirectoryServices.Protocols
     $id = New-Object System.DirectoryServices.Protocols.LdapDirectoryIdentifier($DcFqdn, 636)
@@ -176,13 +176,13 @@ try {
     Add-Check '7. LDAPS-Bind + BaseDn-Read' 'PASS' "636/SSL ok, $($resp.Entries.Count) Eintrag(e) unter $BaseDn"
     $conn.Dispose()
 } catch {
-    # Fehler 81 ("server unavailable") maskiert auch Zertifikatsprobleme -- deshalb der
-    # explizite Hinweis statt einer nackten Exception.
+    # Error 81 ("server unavailable") also masks certificate problems, hence the explicit
+    # hint instead of a bare exception.
     Add-Check '7. LDAPS-Bind + BaseDn-Read' 'FAIL' `
         "$($_.Exception.Message) | Bei LdapException 81: DC-Zertifikat/SAN, CA-Trust im LocalMachine\Root, FQDN statt IP pruefen."
 }
 
-# ---------- 8. Firewall / Port-Erreichbarkeit ----------
+# ---------- 8. Firewall and port reachability ----------
 foreach ($p in @(@{ N = '8a. LDAPS 636 zum DC'; H = $DcFqdn; P = 636 })) {
     $t = Test-NetConnection -ComputerName $p.H -Port $p.P -WarningAction SilentlyContinue
     Add-Check $p.N $(if ($t.TcpTestSucceeded) { 'PASS' } else { 'FAIL' }) "TcpTestSucceeded=$($t.TcpTestSucceeded)"
@@ -193,11 +193,11 @@ $fw = @(Get-NetFirewallRule -Enabled True -Direction Inbound -ErrorAction Silent
 Add-Check '8b. Inbound-Regel fuer 443' $(if ($fw.Count -gt 0) { 'PASS' } else { 'WARN' }) `
     "$($fw.Count) aktive Allow-Regel(n) fuer TCP/443"
 
-# ---------- 9. Erinnerung an die Kestrel-Konfiguration ----------
-# HTTP/1.1 wird nur gepinnt, wenn Kestrel:Https:Enabled=true UND
-# Authentication:Windows:Enabled=true gesetzt sind (KestrelHttpsConfigurator.cs:92/138).
-# Ein "dotnet run --urls https://..." umgeht den Pfad, ALPN handelt h2 aus, und Negotiate
-# bricht mit diffusen 401.
+# ---------- 9. Reminder about the Kestrel configuration ----------
+# HTTP/1.1 is only pinned when Kestrel:Https:Enabled=true and
+# Authentication:Windows:Enabled=true are set (KestrelHttpsConfigurator.cs:92/138).
+# A "dotnet run --urls https://..." bypasses that path, ALPN negotiates h2, and Negotiate
+# fails with vague 401 responses.
 $kestrelEnabled = $env:Kestrel__Https__Enabled
 $winEnabled = $env:Authentication__Windows__Enabled
 if ($kestrelEnabled -eq 'true' -and $winEnabled -eq 'true') {
@@ -207,7 +207,7 @@ if ($kestrelEnabled -eq 'true' -and $winEnabled -eq 'true') {
         "In DIESER Session: Kestrel__Https__Enabled='$kestrelEnabled', Authentication__Windows__Enabled='$winEnabled'. Der API-Prozess muss beides auf 'true' sehen -- sonst h2 statt HTTP/1.1."
 }
 
-# ---------- Ausgabe ----------
+# ---------- Output ----------
 ""
 "================ PREFLIGHT npapi01 ================"
 $pass = 0; $warn = 0; $fail = 0

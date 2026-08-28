@@ -167,7 +167,8 @@ public class ScorchLayoutTests
     }
 
     /// <summary>
-    /// Two source nodes on the same point cannot be pulled apart by any scale, so the arrangement is
+    /// Two source nodes on the same point cannot be pulled apart by any scale, so the arrangement
+    /// is
     /// not reproducible and the import falls back to laying the graph out — visibly, not silently.
     /// </summary>
     [Fact]
@@ -214,7 +215,8 @@ public class ScorchLayoutTests
 
     /// <summary>
     /// The designer routes a right-to-left edge as a rectangular U-loop below both nodes once the
-    /// target's left port sits more than <c>BACKWARD_THRESHOLD</c> = 60 px behind the source's right
+    /// target's left port sits more than <c>BACKWARD_THRESHOLD</c> = 60 px behind the source's
+    /// right
     /// port (<c>designer/edges/smartEdgePath.ts</c>). Measured between PORTS, so a pair sitting in
     /// the same column trips it just by being a node wide — which, on a source that stacks steps
     /// vertically, is most of the graph. Not one imported edge may come out that way.
@@ -240,7 +242,8 @@ public class ScorchLayoutTests
     /// <summary>
     /// The cheap remedy, and the one that covers most of the real cases: a pair drawn one above the
     /// other docks bottom-to-top instead of right-to-left. The loop is keyed on the port pair, so
-    /// this settles it without either node moving a pixel — the arrangement is what we came to keep.
+    /// this settles it without either node moving a pixel — the arrangement is what we came to
+    /// keep.
     /// </summary>
     [Fact]
     public void StackedPair_DocksVerticallyInsteadOfMovingEitherNode()
@@ -276,7 +279,8 @@ public class ScorchLayoutTests
     // ---------- the layered fallback, exercised directly ----------
 
     /// <summary>
-    /// A part of the graph no trigger reaches gets its own band below the main flow, laid out by its
+    /// A part of the graph no trigger reaches gets its own band below the main flow, laid out by
+    /// its
     /// own depth. Parking it in one extra column instead produced a column as tall as the node
     /// count: in the reference export a single disabled activity cut 44 of 47 nodes loose, and they
     /// came out stacked nearly 8000 px deep — technically non-overlapping, practically unreadable.
@@ -303,7 +307,8 @@ public class ScorchLayoutTests
     }
 
     /// <summary>
-    /// The MCP <c>suggest_layout</c> tool shares this engine. Its preset must keep producing exactly
+    /// The MCP <c>suggest_layout</c> tool shares this engine. Its preset must keep producing
+    /// exactly
     /// what it always did — the move into Core was a relocation, not a behaviour change.
     /// </summary>
     [Fact]

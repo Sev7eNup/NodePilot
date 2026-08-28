@@ -2,19 +2,19 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 63 — Workflows-Listenansicht UI.
+ * E2ETests.md part 63 — workflow list view UI.
  *
  * Hermetic: page.route() mocks only (no backend), per fixtures/mockApi.ts conventions.
  * The preview/dev build resolves i18n from the browser locale (renders EN here), so
  * selectors use bilingual regexes or stable title attributes that exist in both locales.
  *
  * Covers:
- *   - 63.1 — column-header sorting (Name asc → desc, then switch to Updated). The page
- *            sorts client-side (WorkflowsPage.handleSort/sortedWorkflows), so we assert the
- *            visual row reorder.
- *   - 63.2 — enable/disable toggle in a list row: POST /enable|/disable fires + optimistic
- *            icon flip (the mutation setQueryData flips isEnabled without a refetch).
- *   - 63.3 — delete confirm dialog: in-app ConfirmHost modal — cancel leaves the row, OK fires
+ *   - 63.1 — column-header sorting (Name ascending, then descending, then switch to Updated).
+ *            The page sorts client-side (WorkflowsPage.handleSort/sortedWorkflows), so the
+ *            assertion is on the visual row order.
+ *   - 63.2 — enable/disable toggle in a list row: POST /enable|/disable fires and the
+ *            mutation's setQueryData flips isEnabled without a refetch.
+ *   - 63.3 — delete confirm dialog (in-app ConfirmHost modal): cancel leaves the row, OK fires
  *            DELETE /api/workflows/{id} and removes the row after invalidation.
  *   Plus status badges (productive / disabled / locked-by-other) and trigger badges.
  */
@@ -52,15 +52,14 @@ function workflow(overrides: Record<string, unknown> = {}) {
 }
 
 /**
- * The order of workflow name buttons currently rendered in the table body, top-to-bottom.
- * Each first-column cell renders the workflow name inside a <button>; reading them in DOM
- * order gives the visual sort order. Filtered to the canonical fixture names so the
- * version-badge span / description don't leak into the result.
+ * The workflow name buttons currently rendered in the table body, in top-to-bottom DOM order.
+ * Each first-column cell renders the workflow name inside a button, so this is the visual
+ * sort order.
  */
 async function rowNames(page: Page): Promise<string[]> {
   return page.evaluate(() => {
-    // Addressed by testid, not by column position — the table gained a leading selection
-    // column, and a positional selector silently returns [] instead of failing loudly.
+    // Addressed by testid rather than column position: the leading selection column shifts
+    // the indexes, and a positional selector would silently return [] instead of failing.
     const cells = Array.from(document.querySelectorAll('table tbody tr [data-testid="workflow-row-name"]'));
     return cells.map((c) => (c.textContent ?? '').trim());
   });
@@ -76,8 +75,8 @@ test.describe('Workflows-Listenansicht UI (Teil 63)', () => {
 
   // ---------- 63.1 — column-header sorting ----------
   test('63.1 — clicking Name header sorts asc, second click desc; Updated header re-sorts', async ({ page }) => {
-    // Three rows in a deliberately unsorted server order so the default (no sort) does NOT
-    // already equal the alphabetical order — proves the click actually reorders.
+    // Three rows in an unsorted server order, so the default view does not already match the
+    // alphabetical order and the click is shown to reorder.
     await page.route('**/api/workflows', (route) =>
       route.fulfill({
         status: 200,
@@ -96,15 +95,15 @@ test.describe('Workflows-Listenansicht UI (Teil 63)', () => {
     // Server (unsorted) order.
     expect(await rowNames(page)).toEqual(['Bravo', 'Alpha', 'Charlie']);
 
-    // Click Name → ascending.
+    // Click Name for ascending order.
     await page.getByRole('button', { name: /^Name$/i }).click();
     await expect.poll(() => rowNames(page)).toEqual(['Alpha', 'Bravo', 'Charlie']);
 
-    // Second click on Name → descending.
+    // Second click on Name for descending order.
     await page.getByRole('button', { name: /^Name$/i }).click();
     await expect.poll(() => rowNames(page)).toEqual(['Charlie', 'Bravo', 'Alpha']);
 
-    // Switch to the Updated header → ascending by updatedAt (Alpha=Jan, Charlie=Feb, Bravo=Mar).
+    // Switch to the Updated header: ascending by updatedAt (Alpha=Jan, Charlie=Feb, Bravo=Mar).
     await page.getByRole('button', { name: /^Updated$|Geändert/i }).click();
     await expect.poll(() => rowNames(page)).toEqual(['Alpha', 'Charlie', 'Bravo']);
   });
@@ -175,14 +174,14 @@ test.describe('Workflows-Listenansicht UI (Teil 63)', () => {
     const row = page.getByRole('row').filter({ hasText: 'Alpha' });
     await expect(row).toBeVisible({ timeout: 15_000 });
 
-    // First: cancel the in-app ConfirmHost modal — workflow must stay.
+    // First: cancel the in-app ConfirmHost modal; the workflow must stay.
     await row.getByRole('button', { name: /^delete$|löschen/i }).click();
     await page.getByRole('button', { name: 'Cancel' }).click();
     await page.waitForTimeout(300);
     expect(deleteHit).toBe(false);
     await expect(page.getByRole('button', { name: 'Alpha' })).toBeVisible();
 
-    // Second: confirm via OK — DELETE fires, list invalidates, row disappears.
+    // Second: confirm with OK; DELETE fires, the list invalidates, the row disappears.
     await row.getByRole('button', { name: /^delete$|löschen/i }).click();
     await page.getByRole('button', { name: 'OK' }).click();
     await expect.poll(() => deleteHit, { timeout: 10_000 }).toBe(true);
@@ -253,7 +252,7 @@ test.describe('Workflows-Listenansicht UI (Teil 63)', () => {
 
     await row.getByRole('button', { name: /run now|jetzt ausführen|ausführen/i }).click();
 
-    // The empty definition has no manualTrigger, so the run goes straight through — no dialog.
+    // The empty definition has no manualTrigger, so the run goes straight through, no dialog.
     await expect.poll(() => executeBody, { timeout: 10_000 }).not.toBeUndefined();
     await expect(page.getByRole('dialog')).toHaveCount(0);
   });

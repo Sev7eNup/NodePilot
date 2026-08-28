@@ -119,8 +119,8 @@ describe('OperationsPage', () => {
   // ---- Incident actions --------------------------------------------------------------------
 
   it('hides the action buttons when the node carries no folder rights', async () => {
-    // Regression for the bug this PR fixes: capability used to come from the GLOBAL role, so a
-    // global Operator with folder-Viewer rights was offered buttons that then 403'd.
+    // Capability comes from the per-node folder rights, not the global role, so a global Operator
+    // with folder-Viewer rights is not offered buttons whose requests would fail with 403.
     server.use(http.get(`${BASE}/api/operations/graph`, () => HttpResponse.json({
       ...GRAPH,
       nodes: GRAPH.nodes.map((n) => ({ ...n, canRun: false, canEdit: false })),

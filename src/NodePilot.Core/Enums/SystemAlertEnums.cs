@@ -1,12 +1,12 @@
 namespace NodePilot.Core.Enums;
 
 /// <summary>
-/// Broad grouping for a <c>ISystemAlertSource</c>, used to cluster catalog cards in the alerting UI.
-/// Append-only — the names are the persisted/serialized contract.
+/// Broad grouping for an <c>ISystemAlertSource</c>; clusters catalog cards in the alerting UI.
+/// Append-only: the names are the persisted contract.
 /// </summary>
 public enum SystemAlertCategory
 {
-    /// <summary>Terminal execution results, long-running / queued-long detection, credential failures.</summary>
+    /// <summary>Terminal execution results, long-running steps, credential failures.</summary>
     Execution = 0,
     /// <summary>Backlog / pending depth and cancel-rate metrics over the execution queue.</summary>
     Queue = 1,
@@ -21,8 +21,8 @@ public enum SystemAlertCategory
 }
 
 /// <summary>
-/// Value type of a system-alert observation field or source parameter. Drives the UI input control and
-/// the operator set exposed for the field. Append-only.
+/// Value type of a system-alert observation field or source parameter. Drives the UI input
+/// control and the operator set exposed for the field. Append-only.
 /// </summary>
 public enum SystemAlertFieldType
 {
@@ -30,15 +30,17 @@ public enum SystemAlertFieldType
     Number = 1,
     Boolean = 2,
     Enum = 3,
-    /// <summary>A count of seconds; semantically numeric but rendered as a duration control in the UI.</summary>
+    /// <summary>Seconds; numeric, but rendered as a duration control in the UI.</summary>
     Duration = 4,
 }
 
-/// <summary>How far a source's policies may be scoped. Mirrors the <see cref="NotificationScopeKind"/> axis.</summary>
+/// <summary>
+/// How far a source's policies may be scoped. Mirrors <see cref="NotificationScopeKind"/>.
+/// </summary>
 public enum SystemAlertScopeCapability
 {
-    /// <summary>Global only — observations carry no workflow/folder identity (e.g. backlog depth, cancel-rate).</summary>
+    /// <summary>Global only: observations carry no workflow or folder identity.</summary>
     GlobalOnly = 0,
-    /// <summary>May be Global, Folders, or Workflows — observations carry workflow/folder identity.</summary>
+    /// <summary>Global, Folders or Workflows: observations carry a workflow identity.</summary>
     WorkflowScoped = 1,
 }

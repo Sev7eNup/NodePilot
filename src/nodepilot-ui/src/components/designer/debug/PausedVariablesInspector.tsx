@@ -4,13 +4,12 @@ import { useTranslation } from 'react-i18next';
 import { formatTime } from '../../../lib/format';
 
 /**
- * Debug panel for a step that's paused at a breakpoint. Reads the variable snapshot from
- * the backend (already secret-redacted) and lets the user edit values before clicking
- * Resume — classic "what-if" testing: set `{{globals.ENV}}` to `prod`, click Continue, and
- * the downstream steps see the new value.
+ * Debug panel for a step paused at a breakpoint. Shows the secret-redacted variable
+ * snapshot from the backend and lets the user edit values before resuming, so the rest
+ * of the run can continue with different input values.
  *
- * Variables are grouped by prefix (`globals.*`, `manual.*`, step outputs per upstream step)
- * so 30+ entries don't turn into a wall of text.
+ * Variables are grouped by prefix (`globals.*`, `manual.*`, step outputs per upstream
+ * step) to keep a long variable list readable.
  */
 export interface PausedVariablesInspectorProps {
   stepName: string;
@@ -27,12 +26,10 @@ export function PausedVariablesInspector(props: Readonly<PausedVariablesInspecto
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<null | 'continue' | 'stepOver' | 'stop'>(null);
 
-  // Grouped for readability. The prefix scheme mirrors VariableResolver.BuildStepVariables:
-  // `globals.*`, `manual.*`, `<stepVar>.output`, `<stepVar>.error`, `<stepVar>.param.*`.
-  // There is no `trigger.` or `webhook.` namespace in the engine — webhook payloads land as
-  // `manual.webhookBody`/`manual.webhookHeader_X` (see WebhooksController).
-  // We group on a stable, language-independent key and only translate at render time —
-  // otherwise the sorting/lookup logic would be tied to the UI language.
+  // Grouped for readability, using the prefix scheme from VariableResolver.BuildStepVariables:
+  // `globals.*`, `manual.*`, and `<stepVar>.output|error|param.*` (webhook payloads also land
+  // under `manual.*`, see WebhooksController). The group key is language-independent; the
+  // display label is translated separately at render time.
   const groups = useMemo(() => {
     const g: Record<string, Array<[string, string]>> = {};
     for (const [k, v] of Object.entries(variables)) {
@@ -80,8 +77,8 @@ export function PausedVariablesInspector(props: Readonly<PausedVariablesInspecto
 
   return (
     <div className="h-full overflow-y-auto flex flex-col">
-      {/* Debug action bar — paused-token accent (dark-fähig) so it's unmistakable that
-          we're in paused mode. */}
+      {/* Debug action bar uses the paused-token accent color (dark-mode aware) so it's
+          unmistakable that we're in paused mode. */}
       <div className="px-4 py-3 bg-paused-container/50 border-b border-paused/30 border-t-2 border-t-paused flex items-center gap-3 shrink-0">
         <Debug size={16} className="text-paused shrink-0" />
         <div className="flex-1 min-w-0">

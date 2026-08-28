@@ -7,33 +7,21 @@ import { portToPosition, type EdgePortSide } from '../../../lib/edgePorts';
 interface Props {
   sourceNodeId: string;
   sourcePort: EdgePortSide;
-  /** Port-Seite der noch bestehenden Edge — Fallback, solange der Cursor über keinem Node steht. */
+  /** Port side of the existing edge — fallback while the cursor is over no node. */
   targetPort: EdgePortSide;
   canvasRef: RefObject<HTMLElement | null>;
-  /** Darf an diesen Node angedockt werden? Filtert Quell-Node, Duplikate, Gruppen/Sticky-Notes. */
+  /** Whether this node can be docked to (excludes source node, duplicates, groups/notes). */
   canDockTo: (nodeId: string) => boolean;
-  /** Meldet den Node, an dem die Linie gerade andockt — für den Hover-Ring auf der Canvas. */
+  /** Reports the node the line is currently docking to, for the hover ring on the canvas. */
   onDockTargetChange: (nodeId: string | null) => void;
 }
 
 /**
- * Vorschau-Linie für ein per Kontextmenü gelöstes Edge-Ziel: läuft vom Quell-Port zum Cursor
- * und **dockt am nächstgelegenen Port an**, sobald der Cursor über einem gültigen Ziel-Node
- * steht. Was hier zu sehen ist, erzeugt der Klick anschließend genau so — beide Seiten fragen
- * dasselbe `resolveDockTarget`.
- *
- * Gerendert in `<ViewportPortal>`, also in FLOW-Koordinaten — nur so bleibt die Linie beim
- * Pannen und Zoomen an ihrem Anker kleben. Ein Overlay in Screen-Koordinaten würde ohne
- * Mausbewegung veralten.
- *
- * Die Komponente hängt ihren eigenen `pointermove` an die Canvas (rAF-gedrosselt, Muster wie
- * EdgeReshapeHandles) statt den geteilten `pointerFlowPositionStore` mitzubenutzen: der ist
- * bewusst an `autoHidePorts` gekoppelt und liefert sonst gar nichts. Sie mountet nur während
- * eines aktiven Detach, kostet also im Normalbetrieb nichts.
- *
- * Zwei Taktungen, bewusst getrennt: die Cursor-Position bleibt als lokaler State hier (ändert
- * sich bei jeder Bewegung), der angedockte Node geht über `onDockTargetChange` nach oben —
- * aber NUR beim Wechsel. Sonst würde die ganze Editor-Seite pro Mausbewegung neu rendern.
+ * Preview line for an edge target detached via the context menu. Runs from the source port
+ * to the cursor and docks at the nearest port over a valid target node, using the same
+ * resolveDockTarget the click later uses to create the real edge. Rendered inside
+ * ViewportPortal (flow coordinates) so it stays anchored while panning and zooming, with its
+ * own throttled pointermove listener since it only mounts during an active detach.
  */
 export function EdgeDetachPreview({
   sourceNodeId, sourcePort, targetPort, canvasRef, canDockTo, onDockTargetChange,
@@ -45,8 +33,8 @@ export function EdgeDetachPreview({
   const rafRef = useRef<number | null>(null);
   const lastDockNodeRef = useRef<string | null>(null);
 
-  // Meldet einen Node-Wechsel nach oben und schluckt jede Wiederholung. Das Ref wird
-  // ausschließlich innerhalb dieses Callbacks gelesen und geschrieben, nie im Render.
+  // Reports a node change upward and swallows repeats. The ref is read and written
+  // only inside this callback, never during render.
   const publishDockNode = useCallback((nodeId: string | null, notify: (id: string | null) => void) => {
     if (lastDockNodeRef.current === nodeId) return;
     lastDockNodeRef.current = nodeId;
@@ -75,18 +63,17 @@ export function EdgeDetachPreview({
     };
   }, [canvasRef, screenToFlowPosition, publishDockNode, canDockTo, onDockTargetChange]);
 
-  // Ring beim Ende des Detach löschen — bewusst als EIGENER Effekt, der NUR beim Unmount
-  // aufräumt (Deps sind stabil). Im Cleanup des Listener-Effekts oben wäre es falsch: der
-  // hängt unter anderem an `canDockTo`, dessen Identität sich bei jeder Graph-Änderung
-  // ändert, und würde den Dock-Node dann bei jedem Re-Attach kurz auf null zurücksetzen.
-  // Der jeweils aktuelle Callback kommt über ein Ref, das ausschließlich in Effekten
-  // beschrieben und gelesen wird — im Render wäre beides ein React-Compiler-Verstoß.
+  // Clears the dock ring at the end of a detach, as its own effect that only runs on
+  // unmount (deps are stable) — doing it in the listener effect's cleanup above would
+  // reset the dock node on every re-attach, since that effect depends on canDockTo, whose
+  // identity changes on every graph edit. The current callback is read via a ref that is
+  // only written and read inside effects, per the React Compiler rules.
   const notifyRef = useRef(onDockTargetChange);
   useEffect(() => { notifyRef.current = onDockTargetChange; }, [onDockTargetChange]);
   useEffect(() => () => publishDockNode(null, (id) => notifyRef.current(id)), [publishDockNode]);
 
   const from = detachedSourcePoint(sourceNode, sourcePort);
-  // Bis der Cursor sich das erste Mal bewegt hat, gibt es kein loses Ende zu zeichnen.
+  // Nothing to draw until the cursor has moved at least once.
   if (!from || !cursor) return null;
 
   const to = dock?.point ?? cursor;

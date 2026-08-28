@@ -77,25 +77,22 @@ export interface PortPoint {
 }
 
 /**
- * Reihenfolge, in der bei Gleichstand gesucht wird — bewusst NICHT `EDGE_PORT_SIDES`, das die
- * Button-Reihenfolge im Properties-Panel bestimmt und dort oben/rechts/unten/links lautet.
- * Ein Klick exakt in der Node-Mitte liegt zu allen vier Punkten gleich weit entfernt; dass
- * dann die Horizontale gewinnt, passt zum Links-nach-rechts-Default des Designers.
+ * Scan order for breaking ties. Not `EDGE_PORT_SIDES`, which sets the button order in the
+ * properties panel. A click exactly at the node center is equidistant from all four points;
+ * letting a horizontal port win there matches the designer's left-to-right default.
  */
 const NEAREST_PORT_SCAN_ORDER: EdgePortSide[] = ['left', 'right', 'top', 'bottom'];
 
 /**
- * Der Port, dessen Punkt `(x, y)` am nächsten liegt.
+ * The port whose point lies closest to `(x, y)`.
  *
- * Nimmt bewusst **explizite Punkte** statt einer Node-Größe: die Handles eines Nodes sitzen
- * nicht zwangsläufig auf dem Rand seines Bounding-Rechtecks. Im Classic-Layout hängen sie am
- * inneren Icon-/Shape-Wrapper, während das äußere Rechteck zusätzlich das Label darunter
- * umfasst, und `handleInset` schiebt einzelne Seiten je nach Shape noch weiter nach innen.
- * Aus `width`/`height` gerechnete Punkte lägen also neben den echten Handles — siehe
- * `readHandlePoints` in `edgeDetach.ts`, das die Punkte aus dem DOM liest.
+ * Takes explicit points rather than a node size, because handles do not sit on the border of
+ * the node's bounding rectangle: in the classic layout they hang off the inner shape wrapper
+ * while the outer rectangle also covers the label below, and `handleInset` moves sides further
+ * in per shape. `readHandlePoints` in `edgeDetach.ts` reads the points from the DOM.
  *
- * Koordinatensystem ist egal, solange alle Punkte und `(x, y)` dasselbe benutzen: die
- * Distanzen skalieren gleichförmig, der Gewinner ist damit zoom-invariant.
+ * The coordinate system does not matter as long as the points and `(x, y)` share it: distances
+ * scale uniformly, so the winner is zoom-invariant.
  */
 export function nearestPortPoint(points: PortPoint[], x: number, y: number): PortPoint | null {
   let best: PortPoint | null = null;
@@ -105,7 +102,7 @@ export function nearestPortPoint(points: PortPoint[], x: number, y: number): Por
     if (!point) continue;
     const dx = point.x - x;
     const dy = point.y - y;
-    const distance = dx * dx + dy * dy; // Quadrat reicht — Wurzel ändert die Ordnung nicht.
+    const distance = dx * dx + dy * dy; // Squared distance preserves the ordering.
     if (distance < bestDistance) {
       bestDistance = distance;
       best = point;

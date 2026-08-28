@@ -25,11 +25,14 @@ public static class DatabaseConnectionString
     ///
     /// <para>This matters more than it looks. Measured on 2026-08-06: against a hung-but-listening
     /// server a command timeout costs <c>CommandTimeout + 2 x ConnectTimeout</c> in wall clock,
-    /// because the driver answers a timeout by sending a cancel request over a <i>new</i> connection
-    /// that runs into the same wedge. The connect timeout is therefore on the critical path twice, and
+    /// because the driver answers a timeout by sending a cancel request over a <i>new</i>
+    /// connection
+    /// that runs into the same wedge. The connect timeout is therefore on the critical path twice,
+    /// and
     /// the shipped default of 15 s is what turns a 3 s budget into a 33 s hang.</para>
     /// </summary>
-    /// <returns>The adjusted connection string, or the input unchanged if it cannot be parsed.</returns>
+    /// <returns>The adjusted connection string, or the input unchanged if it cannot be
+    /// parsed.</returns>
     public static string EnsureConnectTimeout(string? provider, string? connectionString, int seconds)
     {
         if (string.IsNullOrWhiteSpace(connectionString)) return connectionString ?? string.Empty;
@@ -41,8 +44,10 @@ public static class DatabaseConnectionString
         try
         {
             // The presence test deliberately uses the RAW builder rather than the typed one:
-            // SqlConnectionStringBuilder.ContainsKey returns true for every supported keyword whether
-            // it was set or not, so asking the typed builder would silently no-op this whole method.
+            // SqlConnectionStringBuilder.ContainsKey returns true for every supported keyword
+            // whether
+            // it was set or not, so asking the typed builder would silently no-op this whole
+            // method.
             var raw = new DbConnectionStringBuilder { ConnectionString = connectionString };
             if (raw.ContainsKey(key)) return connectionString;
             if (isSqlServer && raw.ContainsKey("Connection Timeout")) return connectionString; // synonym
@@ -52,7 +57,8 @@ public static class DatabaseConnectionString
         }
         catch (ArgumentException)
         {
-            // An unparseable connection string is not this method's problem to report - the provider
+            // An unparseable connection string is not this method's problem to report - the
+            // provider
             // raises a far better error moments later. Deliberately swallowed without logging the
             // string, which carries the password. Same reasoning as DatabaseTlsBootValidator.
             return connectionString;
@@ -60,11 +66,14 @@ public static class DatabaseConnectionString
     }
 
     /// <summary>
-    /// Derives the availability probe's own connection string: pooling off, its own short timeouts, and
-    /// a distinct application name so it is identifiable in <c>pg_stat_activity</c> / <c>sys.dm_exec_sessions</c>.
+    /// Derives the availability probe's own connection string: pooling off, its own short timeouts,
+    /// and
+    /// a distinct application name so it is identifiable in <c>pg_stat_activity</c> /
+    /// <c>sys.dm_exec_sessions</c>.
     ///
     /// <para>Pooling is off on purpose. The probe must never queue behind the very pool it is
-    /// adjudicating — under <c>too_many_connections</c> or a pool exhausted by 800 blocked callers, a
+    /// adjudicating — under <c>too_many_connections</c> or a pool exhausted by 800 blocked callers,
+    /// a
     /// pooled probe would report an outage caused by the callers rather than by the server.</para>
     /// </summary>
     public static string ForProbe(string? provider, string? connectionString, int connectTimeoutSeconds, int commandTimeoutSeconds)

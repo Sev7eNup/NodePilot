@@ -17,9 +17,11 @@ namespace NodePilot.Engine.Activities;
 ///   stop         — Stop-Service -Force.
 ///   restart      — Restart-Service -Force.
 ///   status       — Get-Service projected to Name/Status/StartType (human-readable).
-///   create       — New-Service. Required: binaryPath. Optional: displayName, description, startupType.
-///   delete       — sc.exe delete (after Stop-Service if running). Works on PS 5.1; Remove-Service is PS 6+.
-///   setStartType — Set-Service -StartupType for Automatic|Manual|Disabled, sc.exe config for AutomaticDelayedStart.
+///   create       - New-Service with binaryPath and optional metadata
+/// delete — sc.exe delete (after Stop-Service if running). Works on PS 5.1; Remove-Service is PS
+/// 6+.
+/// setStartType — Set-Service -StartupType for Automatic|Manual|Disabled, sc.exe config for
+/// AutomaticDelayedStart.
 ///
 /// Common config:
 ///   serviceName  string, required — service short name (not display name).
@@ -68,7 +70,7 @@ public class ServiceManagementActivity : BaseRemoteActivity
 
         // Always route through PowerShellQuoter — serviceName may originate from an upstream
         // step's output (via {{step.param.X}} resolution), i.e. data from another machine that
-        // we do not trust to be apostrophe-free.
+        // is not trusted to be apostrophe-free.
         var q = PowerShellQuoter.Literal(serviceName);
 
         return action switch
@@ -108,7 +110,7 @@ public class ServiceManagementActivity : BaseRemoteActivity
             sb.Append(" -Description ").Append(PowerShellQuoter.Literal(description));
 
         // New-Service in PS 5.1 doesn't know AutomaticDelayedStart. Create with Automatic, then
-        // patch the delayed-auto bit via sc.exe — same trick setStartType uses.
+        // patch the delayed-auto bit via sc.exe — the same approach setStartType uses.
         if (string.Equals(startupType, "AutomaticDelayedStart", StringComparison.OrdinalIgnoreCase))
         {
             sb.Append(" -StartupType Automatic");
@@ -124,10 +126,9 @@ public class ServiceManagementActivity : BaseRemoteActivity
 
     private static string BuildDeleteScript(string qServiceName)
     {
-        // Stop the service first if present and running — sc.exe delete on a running service
-        // marks it for deletion but only completes after stop. SilentlyContinue keeps a missing
-        // service from raising before sc.exe gets to print its own error (which is what the
-        // user wants to see in the Output panel).
+        // Stop the service first if present and running: sc.exe delete on a running service
+        // marks it for deletion but completes only after it stops. SilentlyContinue prevents a
+        // missing service from raising before sc.exe prints its own, more specific error.
         return
             $"if (Get-Service -Name {qServiceName} -ErrorAction SilentlyContinue) " +
             $"{{ Stop-Service -Name {qServiceName} -Force -ErrorAction SilentlyContinue }}; " +
@@ -144,9 +145,8 @@ public class ServiceManagementActivity : BaseRemoteActivity
                 $"Service Management (setStartType): unknown startupType '{startupType}'. " +
                 $"Allowed: {string.Join(", ", KnownStartupTypes)}");
 
-        // AutomaticDelayedStart isn't supported by Set-Service on PS 5.1. Use sc.exe config:
-        // the bit pattern is "start= auto" + a separate "delayed-auto" flag in newer schtasks
-        // form, but `start= delayed-auto` is the documented one-shot since Vista.
+        // Set-Service on PS 5.1 does not support AutomaticDelayedStart. Use sc.exe config
+        // instead — `start= delayed-auto` sets the delayed-auto flag directly.
         if (string.Equals(startupType, "AutomaticDelayedStart", StringComparison.OrdinalIgnoreCase))
         {
             return $"& sc.exe config {qServiceName} start= delayed-auto | Out-Null; " +
@@ -158,9 +158,9 @@ public class ServiceManagementActivity : BaseRemoteActivity
 
     protected override ActivityResult PostProcess(ActivityResult raw, JsonElement config)
     {
-        // Default mirrors BuildScript: when action is omitted we run `status`, so PostProcess
-        // must default the same way — otherwise OutputParameters stays empty and downstream
-        // edges comparing param.status get "" and fail their == checks.
+        // Mirrors BuildScript: when action is omitted, the default is `status`. PostProcess
+        // must use the same default, or OutputParameters stays empty and downstream edges
+        // comparing param.status get "" and fail their == checks.
         var action = (config.GetStringOrNull("action") ?? "status").ToLowerInvariant();
         if (action != "status" || !raw.Success || string.IsNullOrWhiteSpace(raw.Output))
             return raw;

@@ -87,7 +87,8 @@ public class GlobalVariableResolutionTests
     /// <summary>
     /// Regression test for a secret-resolution fix: when a workflow references a global that
     /// exists in the DB but cannot be decrypted on this host (DPAPI scope mismatch / clustered
-    /// HA with DPAPI / wrong AES key), the engine must FAIL the run loudly. The previous behaviour left the literal
+    /// HA with DPAPI / wrong AES key), the engine must FAIL the run loudly. The previous behaviour
+    /// left the literal
     /// "{{globals.X}}" in the resolved config, so the activity ran with that literal in
     /// place of the secret — silent corruption of every downstream call.
     /// </summary>
@@ -116,7 +117,7 @@ public class GlobalVariableResolutionTests
             await dpapiStore.CreateAsync("STRIPE_KEY", "sk_test_real_value", isSecret: true,
                 description: null, folderId: GlobalVariableFolder.RootFolderId, updatedBy: "test", ct: CancellationToken.None);
 
-            // Switch to AES-GCM at engine-resolve time → DPAPI rows decrypt-fail and land
+            // Switch to AES-GCM at engine-resolve time -> DPAPI rows decrypt-fail and land
             // in the Unresolvable set.
             var aesKey = new byte[32];
             for (var i = 0; i < aesKey.Length; i++) aesKey[i] = (byte)(i + 1);

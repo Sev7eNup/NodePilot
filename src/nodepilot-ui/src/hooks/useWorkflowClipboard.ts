@@ -8,9 +8,9 @@ export function useWorkflowClipboard(commitHistory: (label?: string) => void) {
   const { getNodes, getEdges, setNodes, setEdges } = useReactFlow();
   const pasteCountRef = useRef(0);
   const selectionRef = useRef<{ nodeIds: string[]; edgeIds: string[] }>({ nodeIds: [], edgeIds: [] });
-  // Workflow nodes can contain inline credentials. Keep the clipboard inside this hook instance
-  // so it dies when the editor unmounts (including logout/user switch) instead of persisting it in
-  // browser storage where the next signed-in user in the same tab could recover it.
+  // Workflow nodes can contain inline credentials, so the clipboard lives in this hook instance
+  // and is dropped when the editor unmounts, including on logout. Browser storage would let the
+  // next signed-in user in the same tab recover it.
   const clipboardRef = useRef<WorkflowClipboard | null>(null);
 
   const resetPasteCount = useCallback(() => { pasteCountRef.current = 0; }, []);
@@ -26,7 +26,7 @@ export function useWorkflowClipboard(commitHistory: (label?: string) => void) {
     const edges = getEdges();
     const nodeIdSet = new Set(nodeIds);
     const selectedNodes = nodes.filter((n) => nodeIdSet.has(n.id));
-    // Edges only copied when both endpoints are in the selection.
+    // An edge is copied only when both of its endpoints are in the selection.
     const selectedEdges = edges.filter((e) =>
       (edgeIds.includes(e.id) || (nodeIdSet.has(e.source) && nodeIdSet.has(e.target)))
       && nodeIdSet.has(e.source) && nodeIdSet.has(e.target)

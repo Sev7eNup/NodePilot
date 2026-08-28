@@ -58,10 +58,9 @@ public class PrometheusResponseParserTests
     [Fact]
     public void TryExtractScalar_NaNStringValue_ReturnsNullForJsonSafety()
     {
-        // Prometheus encodes "NaN" as the literal string "NaN". double.TryParse with
-        // NumberStyles.Float accepts that and returns double.NaN. Pin the actual
-        // behaviour: the parser returns NaN, NOT null. The Dashboard layer is responsible
-        // for filtering NaN before display if it wants to render "—".
+        // Prometheus encodes NaN as the literal string "NaN". double.TryParse accepts that and
+        // yields double.NaN, but NaN is not valid JSON, so the parser treats it as unparseable
+        // and returns null instead of leaking a non-JSON-safe value into the response.
         const string body =
             "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\"," +
             "\"result\":[{\"metric\":{},\"value\":[1700000000,\"NaN\"]}]}}";
@@ -124,8 +123,8 @@ public class PrometheusResponseParserTests
     [Fact]
     public void TryExtractScalar_InvariantCultureFormat_NotLocaleDependent()
     {
-        // Prometheus emits decimal points (e.g. "1.5"). On a German-locale CI runner,
-        // a culture-sensitive parse could try to read 1,5 → 15. Pin invariant parsing.
+        // Prometheus emits decimal points (e.g. "1.5"). On a German-locale CI runner, a
+        // culture-sensitive parse could misread 1,5 as 15. Pin invariant parsing.
         const string body =
             "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\"," +
             "\"result\":[{\"metric\":{},\"value\":[1700000000,\"1234.567\"]}]}}";

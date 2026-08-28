@@ -10,7 +10,8 @@ namespace NodePilot.Api.Dtos.Settings;
 
 public sealed class LoggingSettingsDto : IValidatableObject
 {
-    /// <summary>Rolling-file format. Allowed: <c>text</c>, <c>cmtrace</c>, <c>json</c>, <c>ecs-json</c>.</summary>
+    /// <summary>Rolling-file format. Allowed: <c>text</c>, <c>cmtrace</c>, <c>json</c>,
+    /// <c>ecs-json</c>.</summary>
     [Required(AllowEmptyStrings = false)]
     public string Format { get; set; } = "text";
 
@@ -89,10 +90,12 @@ public sealed class RedactionDto
 /// </summary>
 public sealed class SupportLogDto
 {
-    /// <summary>When false, the second sink is not registered. Boot-only — changes require an API restart.</summary>
+    /// <summary>When false, the second sink is not registered. Boot-only — changes require an API
+    /// restart.</summary>
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Optional absolute or relative path. Empty → <c>{ContentRoot}/logs/nodepilot-support-.log</c>.</summary>
+    /// <summary>Optional absolute or relative path. Empty to
+    /// <c>{ContentRoot}/logs/nodepilot-support-.log</c>.</summary>
     [StringLength(2048)]
     public string Path { get; set; } = "";
 
@@ -209,7 +212,8 @@ public sealed class PrometheusSettingsDto
     [StringLength(255)]
     public string Username { get; set; } = "";
 
-    /// <summary>Read: <c>"********"</c> or null. Write: <c>"__unchanged__"</c> keeps, plaintext rotates, null clears.</summary>
+    /// <summary>Read: <c>"********"</c> or null. Write: <c>"__unchanged__"</c> keeps, plaintext
+    /// rotates, null clears.</summary>
     public string? Password { get; set; }
 
     /// <summary>Same secret-field semantics as <see cref="Password"/>.</summary>

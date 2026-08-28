@@ -2,31 +2,19 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 38 — Admin Settings (lines 3101-3135) + Teil 76 — Admin Settings UI sections
- * (lines 3997-4040). The admin Settings page has a top-level Personal/System tab split; the
- * System tab (Admin-only) hosts eight sub-sections, each a GET-snapshot + ETag-PUT form with the
- * shared RestartBanner above them.
+ * E2ETests.md sections 38 and 76 — Admin Settings. The Settings page splits into Personal and
+ * System tabs; the Admin-only System tab hosts the configuration sub-sections, each a GET
+ * snapshot plus an ETag-guarded PUT form, with the shared RestartBanner above them.
  *
- * Specs:
- *  - 76.1 — every System section tab renders; the default Integrations card shows SMTP + LLM.
- *  - 38.2 — SMTP TestProbeModal surfaces a structured `{ok:false}` probe result (no crash).
- *  - 38.3 — LLM TestProbeModal surfaces a structured probe result.
- *  - 76.3a — Retention (hot-reloadable) save issues a PUT with If-Match and the Hot-Reload
- *            hint is rendered on the card (no restart banner for a live section).
- *  - 76.3b — a restart-pflichtig section surfaces the orange RestartBanner when /status flips
- *            restartRequired (38.1's status payload feeds the banner).
- *  - 76.5 — System-Info shows live DB-provider / app-version etc.
- *  - 38.5 / 76.1 — an Operator (and a Viewer) never sees the Admin-only System tab.
- *
- * Hermetic: predicate catch-all from fixtures/mockApi.ts. The `/api/admin/settings/*` family is
- * mocked per test — the default-active Integrations tab fetches `Smtp` + `Llm`, RestartBanner
- * polls `/status`, so those three are always mocked in beforeEach. Sections expose `data.payload`
- * directly, so each mock returns a fully-shaped payload (an empty `{}` would white-screen the
- * form). SPA renders ENGLISH under Playwright → bilingual /regex/i + role selectors.
+ * Hermetic: the predicate catch-all in fixtures/mockApi.ts backs every unmocked call. The
+ * default Integrations tab fetches `Smtp` and `Llm` and RestartBanner polls `/status`, so those
+ * three are mocked in beforeEach. Sections read `data.payload` directly, so every mock returns a
+ * fully shaped payload; an empty `{}` white-screens the form. The SPA renders English under
+ * Playwright, so use bilingual /regex/i and role selectors.
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Section payload fixtures — shaped to the C# DTOs the sections read.
+// Section payload fixtures, shaped like the C# DTOs the sections read.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function sectionResponse(sectionPath: string, payload: unknown, etag = '"etag-v1"', isHotReloadable = true) {
@@ -92,9 +80,9 @@ const TEST_PROBE_FAIL = JSON.stringify({
   errorKind: 'SocketException',
 });
 
-/** Mock every section GET the System tab might fetch with a sensible default payload, so any
- *  sub-tab the operator clicks mounts without a white-screen. Specific tests override the ones
- *  they assert against (last-added wins). */
+/** Mocks every section GET the System tab can fetch with a default payload, so any sub-tab
+ *  mounts without a white screen. Individual tests override the sections they assert against,
+ *  because the last route added wins. */
 async function mockAllSections(page: Page) {
   await page.route('**/api/admin/settings/Smtp', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: sectionResponse('Smtp', SMTP_PAYLOAD) }),
@@ -105,7 +93,7 @@ async function mockAllSections(page: Page) {
 }
 
 /** The top-level "System" tab button. "System" also matches the sidebar theme toggle and the
- *  appearance theme option, so we scope to the tab bar that holds the "Personal" tab. */
+ *  appearance theme option, so scope the lookup to the tab bar holding the "Personal" tab. */
 function systemTab(page: Page) {
   const tabBar = page
     .getByRole('button', { name: /^personal$|^persönlich$/i })
@@ -113,7 +101,7 @@ function systemTab(page: Page) {
   return tabBar.getByRole('button', { name: /^system$/i });
 }
 
-/** Switch from the default Personal tab to the Admin System tab. */
+/** Switches from the default Personal tab to the Admin System tab. */
 async function openSystemTab(page: Page) {
   await page.goto('/settings');
   await systemTab(page).click();
@@ -121,7 +109,7 @@ async function openSystemTab(page: Page) {
 
 test.describe('Admin Settings (Teil 38 + 76)', () => {
   test.beforeEach(async ({ page }) => {
-    await installDefaultMocks(page); // MOCK_USER is Admin → System tab visible
+    await installDefaultMocks(page); // MOCK_USER is an Admin, so the System tab is visible
     await page.route('**/api/admin/settings/status', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: statusJson() }),
     );
@@ -131,10 +119,9 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
   test('76.1 — all System section tabs render; Integrations shows SMTP + LLM', async ({ page }) => {
     await openSystemTab(page);
 
-    // The nine section sub-tabs are always rendered in the tab bar, in this order:
-    // integrations → security → operations → data, then the read-only tab.
-    // System info is deliberately LAST — it is the only read-only tab, so it sits after
-    // every tab that edits configuration instead of splitting that run.
+    // The nine section sub-tabs always render in the tab bar in this order, grouped as
+    // integrations, security, operations and data. System info comes last because it is the
+    // only read-only tab and would otherwise split the run of tabs that edit configuration.
     const tabs = [
       /integrations/i,
       /ai knowledge/i,
@@ -150,8 +137,8 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
       await expect(page.getByRole('button', { name }).first()).toBeVisible({ timeout: 15_000 });
     }
     // Pin the order, not just the presence: the read-only tab must stay at the right edge.
-    // Three `.np-tab-list`s are on screen (Personal/System, these sub-tabs, the LLM profile
-    // strip inside Integrations) — pick ours by the one tab only it carries.
+    // Three `.np-tab-list` elements are on screen (Personal/System, these sub-tabs, the LLM
+    // profile strip inside Integrations), so select this one by a tab only it carries.
     const tabBar = page.locator('.np-tab-list')
       .filter({ has: page.getByRole('button', { name: /^security$/i }) });
     const rendered = await tabBar.getByRole('button').allInnerTexts();
@@ -160,11 +147,11 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
       'logging & telemetry', 'performance', 'database', 'retention', 'system info',
     ]);
 
-    // Default active tab is Integrations → SMTP + LLM cards mount from their mocked snapshots.
+    // The default active tab is Integrations, so the SMTP and LLM cards mount from their mocks.
     await expect(page.getByRole('heading', { name: /^smtp$/i })).toBeVisible();
     await expect(page.getByRole('heading', { name: /llm/i })).toBeVisible();
-    // A live value from the SMTP snapshot proves the GET round-tripped into the form: the Host
-    // field (first textbox in the SMTP card) is populated from the mocked payload.
+    // A value from the SMTP snapshot shows the GET reached the form: the Host field, the first
+    // textbox in the SMTP card, is populated from the mocked payload.
     const smtpCard = page.getByRole('heading', { name: /^smtp$/i }).locator('..');
     await expect(smtpCard.getByRole('textbox').first()).toHaveValue('mail.example.com');
   });
@@ -179,13 +166,13 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
     await openSystemTab(page);
     await expect(page.getByRole('heading', { name: /^smtp$/i })).toBeVisible({ timeout: 15_000 });
 
-    // Open the SMTP probe modal — the "Test" button on the SMTP card.
+    // Open the SMTP probe modal via the "Test" button on the SMTP card.
     await page.getByRole('button', { name: /^test$|^testen$/i }).first().click();
     // Run the probe inside the modal.
     await page.getByRole('button', { name: /run test|test ausführen|test starten/i }).click();
 
     await expect.poll(() => probeHit, { timeout: 10_000 }).toBe(true);
-    // The modal renders the structured failure result, not a stack trace / blank.
+    // The modal renders the structured failure result, not a stack trace or a blank panel.
     await expect(page.getByText(/failed|fehlgeschlagen/i).first()).toBeVisible();
     await expect(page.getByText(/server unreachable/i)).toBeVisible();
   });
@@ -204,9 +191,9 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
     await openSystemTab(page);
     await expect(page.getByRole('heading', { name: /llm/i })).toBeVisible({ timeout: 15_000 });
 
-    // Scope to the LLM card: its heading is already on screen while the section snapshot is
-    // still loading, so a page-wide `.last()` can resolve to SMTP's Test button in the window
-    // before the profile form mounts — and then this test would drive the wrong probe.
+    // Scope to the LLM card: its heading is on screen while the section snapshot still loads,
+    // so a page-wide `.last()` can resolve to SMTP's Test button before the profile form
+    // mounts and drive the wrong probe.
     const llmCard = page.locator('.np-card', { has: page.getByRole('heading', { name: /llm/i }) });
     await llmCard.getByRole('button', { name: /^test$|^testen$/i }).click();
     await page.getByRole('button', { name: /run test|test ausführen|test starten/i }).click();
@@ -232,7 +219,7 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
 
     await page.getByRole('button', { name: /add profile|profil hinzufügen/i }).click();
 
-    // Two profile chips now; the newly added one is selected and editable.
+    // Two profile chips are present; the newly added one is selected and editable.
     await expect(page.getByRole('tab')).toHaveCount(2);
     const nameField = page.getByLabel(/^name$/i);
     await nameField.fill('Local Ollama');
@@ -281,7 +268,7 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
           body: sectionResponse('Retention', RETENTION_PAYLOAD, '"etag-v2"', true),
         });
       }
-      // Retention is hot-reloadable → isHotReloadable: true → card renders the live hint.
+      // Retention is hot-reloadable, so isHotReloadable is true and the card shows the hint.
       return route.fulfill({ status: 200, contentType: 'application/json', body: sectionResponse('Retention', RETENTION_PAYLOAD, '"etag-v1"', true) });
     });
 
@@ -290,7 +277,7 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
     // Go to the Retention sub-tab and save.
     await page.getByRole('button', { name: /retention/i }).click();
     await expect(page.getByRole('heading', { name: /executions/i })).toBeVisible();
-    // Hot-reloadable section → the emerald "applies immediately" hint is rendered on each card.
+    // Hot-reloadable section -> the emerald "applies immediately" hint is rendered on each card.
     await expect(page.getByText(/changes apply immediately/i).first()).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: /^save$|^speichern$/i }).first().click();
 
@@ -335,7 +322,7 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
     await page.route('**/api/admin/settings/Retention', (route) => {
       const req = route.request();
       if (req.method() === 'PUT') {
-        // 412 with the server's current snapshot in the body → the conflict dialog.
+        // 412 with the server's current snapshot in the body -> the conflict dialog.
         return route.fulfill({
           status: 412,
           contentType: 'application/json',

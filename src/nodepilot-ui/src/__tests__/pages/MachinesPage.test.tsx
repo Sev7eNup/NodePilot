@@ -169,7 +169,7 @@ describe('MachinesPage', () => {
     const { container } = renderPage();
 
     await waitFor(() => expect(screen.getByText('Web-01')).toBeInTheDocument());
-    // Reachable row → Wifi icon coloured green-500. Unreachable row → WifiOff
+    // Reachable row -> Wifi icon coloured green-500. Unreachable row -> WifiOff
     // coloured with surface-highest (the muted "neutral / no data yet" tone).
     expect(container.querySelectorAll('.text-green-500').length).toBeGreaterThan(0);
     expect(container.querySelectorAll('.text-surface-highest').length).toBeGreaterThan(0);
@@ -232,7 +232,7 @@ describe('MachinesPage', () => {
     renderPage('Admin');
 
     await waitFor(() => expect(screen.getByText('Web-01')).toBeInTheDocument());
-    // Default sort = name asc → DB-01 appears before Web-01. Scope the Edit
+    // Default sort = name asc -> DB-01 appears before Web-01. Scope the Edit
     // lookup to Web-01's row so the test doesn't depend on row index.
     const web01Row = screen.getByText('Web-01').closest('tr');
     expect(web01Row).toBeTruthy();
@@ -283,7 +283,7 @@ describe('MachinesPage', () => {
     await waitFor(() => expect(screen.getByText('Web-01')).toBeInTheDocument());
     // Web-01 is used by 4 workflows — count surfaces as plain text in the cell.
     expect(screen.getByText('4')).toBeInTheDocument();
-    // DB-01 has 0 references → cell should NOT render a "0", it renders a dash
+    // DB-01 has 0 references -> cell should NOT render a "0", it renders a dash
     // (we check by counting Boxes icons: only the used machine gets one).
     const db01Row = screen.getByText('DB-01').closest('tr');
     expect(db01Row).toBeTruthy();
@@ -296,9 +296,9 @@ describe('MachinesPage', () => {
     renderPage();
 
     await waitFor(() => expect(screen.getByText('Web-01')).toBeInTheDocument());
-    // Web-01: total=20, failed=1 → success=19 → "19/20" displayed.
+    // Web-01: total=20, failed=1 -> success=19 -> "19/20" displayed.
     expect(screen.getByText('19/20')).toBeInTheDocument();
-    // DB-01 has 0 steps → cell renders a dash, not "0/0".
+    // DB-01 has 0 steps -> cell renders a dash, not "0/0".
     const db01Row = screen.getByText('DB-01').closest('tr');
     expect(within(db01Row!).queryByText('0/0')).not.toBeInTheDocument();
   });
@@ -309,9 +309,9 @@ describe('MachinesPage', () => {
     renderPage();
 
     await waitFor(() => expect(screen.getByText('Web-01')).toBeInTheDocument());
-    // Web-01: activeRunCount=2 → "2 running" badge appears.
+    // Web-01: activeRunCount=2 -> "2 running" badge appears.
     expect(screen.getByText(/2 running/i)).toBeInTheDocument();
-    // DB-01: idle → no "running" text in that row.
+    // DB-01: idle -> no "running" text in that row.
     const db01Row = screen.getByText('DB-01').closest('tr');
     expect(within(db01Row!).queryByText(/running/i)).not.toBeInTheDocument();
   });

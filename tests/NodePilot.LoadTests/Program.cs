@@ -131,7 +131,8 @@ static List<LoadSimulation> BuildSimulations(LoadTestOptions opts)
         },
         "burst" => new()
         {
-            // All requests launched in 1 second, then wait for them to drain within the terminal timeout.
+            // All requests launched in 1 second, then wait for them to drain within the terminal
+            // timeout.
             Simulation.Inject(
                 rate: opts.Burst.Concurrency,
                 interval: TimeSpan.FromSeconds(1),

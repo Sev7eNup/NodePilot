@@ -2,24 +2,14 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 8 — Speichern & Persistierung (lines 1129-1172).
+ * Covers section 8 of docs/testing/E2ETests.md: saving and persistence.
  *
- * Hermetic: page.route() mocks only (predicate catch-all from fixtures/mockApi.ts). The
- * workflow is mocked locked-by-me (checkedOutByUserId === MOCK_USER.id, isEnabled:false) so the
- * editor opens in State B (editable) — Save / autosave are live. EN locale under Playwright.
- *
- * Covers:
- *   8.1a — manual save (Save button) fires PUT /api/workflows/{id} with the edited definition
- *          and clears the dirty indicator (amber dot on the Save button).
- *   8.1b — Ctrl+S triggers the same save.
- *   8.1c — autosave: a dirty edit fires a PUT on its own ~5 s after the change, no click.
- *   8.2  — versioning: each save snapshots a version on the backend; the diff modal surfaces
- *          the version history (GET /versions) and the save PUT carries the new definition that
- *          becomes the next version. (The snapshot itself is a server-side concern — we assert
- *          the client surfaces the history + sends the mutation that drives a new snapshot.)
+ * Hermetic: page.route() mocks only (predicate catch-all from fixtures/mockApi.ts). The workflow
+ * is mocked as locked by the current user (checkedOutByUserId === MOCK_USER.id, isEnabled:false),
+ * so the editor opens editable and both Save and autosave are live. The SPA renders English.
  *
  * The save PUT body is the source of truth for the graph: the React Flow canvas is virtualized
- * (onlyRenderVisibleElements), so we assert against the captured PUT, not the canvas DOM.
+ * (onlyRenderVisibleElements), so the assertions read the captured PUT, not the canvas DOM.
  */
 
 const WF_ID = '8888bbbb-8888-8888-8888-888888888888';
@@ -69,7 +59,7 @@ function routeWorkflow(page: Page) {
   return state;
 }
 
-/** Open editor, wait for the seeded node, select it → PropertiesPanel opens. */
+/** Opens the editor, waits for the seeded node and selects it so the PropertiesPanel opens. */
 async function openAndSelect(page: Page) {
   await seedExpertMode(page);
   await page.goto(`/workflows/${WF_ID}`);
@@ -78,12 +68,12 @@ async function openAndSelect(page: Page) {
   await expect(page.getByText(/delay/i).first()).toBeVisible({ timeout: 10_000 });
 }
 
-/** The Save button (icon-only, accessible name = title). The amber dot inside it = dirty. */
+/** The Save button (icon-only, named by its title). The amber dot inside it marks unsaved edits. */
 function saveButton(page: Page) {
   return page.getByRole('button', { name: /save in place|zwischen.?speichern|speichern|^save/i }).first();
 }
 
-/** Edit the delay seconds field — makes the editor dirty and changes the definition. */
+/** Edits the delay seconds field, which makes the editor dirty and changes the definition. */
 async function editSeconds(page: Page, value: string) {
   const secondsInput = page.locator('input[type="number"]').first();
   await expect(secondsInput).toBeVisible();
@@ -100,7 +90,7 @@ test.describe('Speichern & Persistierung (Teil 8)', () => {
     const state = routeWorkflow(page);
     await openAndSelect(page);
 
-    // Pristine load → no dirty dot. Edit → dirty dot appears inside the Save button.
+    // A pristine load has no dirty dot; an edit makes one appear inside the Save button.
     const save = saveButton(page);
     const dirtyDot = save.locator('span.bg-warning');
     await expect(dirtyDot).toHaveCount(0);
@@ -138,18 +128,17 @@ test.describe('Speichern & Persistierung (Teil 8)', () => {
 
   // ---------- 8.1c — autosave (timer-based, ~5 s after last change) ----------
   test('8.1c — autosave fires a PUT ~5 s after a dirty edit without any save click', async ({ page }) => {
-    test.slow(); // timer-based: the editor only saves 5 s AFTER the last graph mutation.
+    test.slow(); // timer-based: the editor saves only 5 s after the last graph mutation.
     const state = routeWorkflow(page);
     await openAndSelect(page);
 
-    // Let mount-time annotation effects (machine-coloring, var-flow, workflow-enabled tagging)
-    // settle FIRST — each re-derives `nodes`, and the autosave timer restarts on every `nodes`
-    // change. Editing only after the canvas is quiescent gives the 5 s timer a clean run instead
-    // of racing the initial churn (which, under parallel-worker CPU contention, can stretch out).
+    // Wait for the mount-time annotation effects (machine coloring, var flow, workflow-enabled
+    // tagging) to settle: each re-derives `nodes`, and the autosave timer restarts on every
+    // `nodes` change. Editing once the canvas is quiet gives the 5 s timer a clean run.
     await page.waitForTimeout(2500);
 
     await editSeconds(page, '31');
-    // Do NOT click Save. The editor autosaves on its own ~5 s after this (the only) change.
+    // No Save click here: the editor autosaves on its own about 5 s after this single change.
     await expect.poll(() => state.putCount, { timeout: 25_000 }).toBeGreaterThanOrEqual(1);
     const def = JSON.parse(state.lastPut!.definitionJson!) as { nodes: { data: { config: { seconds: number } } }[] };
     expect(def.nodes[0].data.config.seconds).toBe(31);
@@ -161,7 +150,7 @@ test.describe('Speichern & Persistierung (Teil 8)', () => {
   test('8.2 — diff modal surfaces version history; a save sends the next-snapshot definition', async ({ page }) => {
     const state = routeWorkflow(page);
 
-    // Version history endpoint — two prior versions + the current one (isCurrent filtered in UI).
+    // Version history endpoint: two prior versions plus the current one, which the UI filters out.
     const VERSIONS = [
       { version: 2, isCurrent: true, createdAt: '2026-06-02T10:00:00.000Z', createdBy: 'e2e-admin', changeNote: 'edit two' },
       { version: 1, isCurrent: false, createdAt: '2026-06-01T10:00:00.000Z', createdBy: 'e2e-admin', changeNote: 'initial' },
@@ -178,7 +167,7 @@ test.describe('Speichern & Persistierung (Teil 8)', () => {
 
     await openAndSelect(page);
 
-    // History is reachable via the editor's "Werkzeuge" (Tools) menu → Diff row → modal.
+    // History is reachable through the editor's Tools menu: the Diff row opens the modal.
     await page.getByTestId('tools-menu-trigger').click();
     const diffBtn = page.getByRole('menuitem', { name: /diff against a previous version|diff gegen vorherige version/i });
     await expect(diffBtn).toBeVisible({ timeout: 10_000 });
@@ -188,8 +177,8 @@ test.describe('Speichern & Persistierung (Teil 8)', () => {
     // Current version (2) is excluded from the restore-able timeline.
     await expect(page.getByText('Version 2', { exact: true })).toHaveCount(0);
 
-    // Close the modal, make an edit and save → this PUT is what the backend snapshots as the
-    // next version. Assert the mutation fires with the changed definition.
+    // Close the modal, edit and save. The backend snapshots this PUT as the next version, so
+    // the assertion checks that the mutation carries the changed definition.
     await page.getByRole('button', { name: /^close$/i }).click();
     await expect(page.getByRole('heading', { name: /workflow diff/i })).toHaveCount(0);
 

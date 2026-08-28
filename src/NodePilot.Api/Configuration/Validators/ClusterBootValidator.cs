@@ -1,13 +1,11 @@
 namespace NodePilot.Api.Configuration.Validators;
 
 /// <summary>
-/// Pre-flight checks for active/passive cluster mode. Replaces the standalone
-/// <c>ClusterConfigValidator</c>; the rule set is unchanged: when
-/// <c>Cluster:Enabled=true</c>, the JWT trio (Key / Issuer / Audience) must be set
-/// explicitly so both nodes sign + validate against the same values, and
-/// <c>Cluster:NodeId</c> must not look like an auto-generated container hash because
-/// those rebind on every container restart and would make OwnerNodeId tracking
-/// useless.
+/// Pre-flight checks for active/passive cluster mode. With <c>Cluster:Enabled=true</c> the JWT
+/// keys (Key, Issuer, Audience) must be set explicitly so both nodes sign and validate against
+/// the same values, and <c>Cluster:NodeId</c> must not look like an auto-generated container
+/// hash, because such names change on every container restart and would make OwnerNodeId
+/// tracking useless.
 /// </summary>
 public sealed class ClusterBootValidator : IBootValidator
 {
@@ -50,11 +48,10 @@ public sealed class ClusterBootValidator : IBootValidator
     }
 
     /// <summary>
-    /// Heuristic: a hostname that's exactly 12 hex chars (common Docker default) or that
-    /// matches a UUID-ish pattern is almost certainly an auto-generated container ID.
-    /// Tested explicitly against actual hostnames is impossible cross-platform, so we
-    /// just refuse the most likely-broken case and let the operator override with
-    /// <c>Cluster:NodeId</c>.
+    /// Heuristic: a hostname made only of hex characters and dashes is most likely an
+    /// auto-generated container ID, such as the 12 hex characters Docker uses by default.
+    /// Detecting this reliably across platforms is not possible, so only the clearest case is
+    /// rejected and the operator can override it with <c>Cluster:NodeId</c>.
     /// </summary>
     public static bool LooksLikeContainerHash(string s)
     {

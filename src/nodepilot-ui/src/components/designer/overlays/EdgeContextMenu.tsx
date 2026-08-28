@@ -17,18 +17,14 @@ interface Props {
 }
 
 /**
- * Right-click pop-up on a canvas edge. Mirrors NodeContextMenu's interaction model
- * (outside-click + Escape close, action+close-on-click) via the shared ContextMenuShell.
+ * Right-click menu for a canvas edge. Shares NodeContextMenu's interaction model
+ * (outside-click/Escape close, action-then-close) via the shared ContextMenuShell.
  *
- * "Edit condition" is intentionally NOT a menu item — the right-click handler in the parent
- * already auto-selects the edge, which surfaces the EdgePropertiesPanel where the condition
- * is edited. A menu item that does nothing extra would be redundant.
- *
- * "Detach target" is deliberately NOT gated on expert mode, unlike swap/reset-shape:
- * re-routing an edge to another node is a primary editing operation, not a power-user
- * affordance. It exists because the drag-based path (React Flow's `edgesReconnectable`,
- * already wired in the parent) demands a precise grab on the endpoint and gets unusable on
- * large graphs where source and new target aren't on screen together.
+ * "Edit condition" is not a menu item: right-click already selects the edge, which opens
+ * the EdgePropertiesPanel where the condition is edited. "Detach target" stays available
+ * outside expert mode because re-routing an edge is a primary editing action, and the
+ * drag-based alternative (React Flow's `edgesReconnectable`) needs a precise grab on the
+ * endpoint, which is hard on large graphs where source and target are far apart.
  */
 export function EdgeContextMenu({
   x, y, isDisabled, hasCustomShape,

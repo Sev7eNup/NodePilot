@@ -11,10 +11,8 @@ namespace NodePilot.Engine.Tests.PowerShell;
 /// <para>The globals and step-output patterns are not disjoint: a global variable may be named
 /// <c>output</c>, <c>error</c> or <c>success</c> (<c>GlobalVariablesController.NameRegex</c>
 /// accepts all three), and <c>{{globals.output}}</c> then matches both patterns over the very
-/// same span — once as global "output", once as step "globals" with tail "output". Both extents
-/// used to reach the right-to-left replacement loop, which cut the span twice: the second cut
-/// came out of a buffer the first had already rewritten, so it ate the characters that followed
-/// the template.</para>
+/// same span: once as global "output" and once as step "globals" with tail "output". The resolver
+/// must replace that shared span only once to preserve the text that follows it.</para>
 ///
 /// <para>These assertions are deliberately made on the resolved script text rather than on the
 /// output of a real PowerShell run. The corrupted script — <c>Write-Output 'v'ite-Output

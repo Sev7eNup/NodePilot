@@ -19,7 +19,8 @@ public sealed class EffectiveSizingDto
     /// <summary>Mode the process actually booted in.</summary>
     public required bool ManualTuning { get; init; }
 
-    /// <summary>Mode currently saved in configuration — differs after a save until restart.</summary>
+    /// <summary>Mode currently saved in configuration — differs after a save until
+    /// restart.</summary>
     public required bool DesiredManualTuning { get; init; }
 
     public required int ProcessorCount { get; init; }
@@ -27,13 +28,15 @@ public sealed class EffectiveSizingDto
     /// <summary>Detected usable memory, or null when detection failed (CPU-only sizing).</summary>
     public required long? UsableMemoryBytes { get; init; }
 
-    /// <summary><c>Deployment:Mode=Desktop</c> — NodePilot then claims a smaller share of memory.</summary>
+    /// <summary><c>Deployment:Mode=Desktop</c> — NodePilot then claims a smaller share of
+    /// memory.</summary>
     public required bool IsDesktop { get; init; }
 
     public required IReadOnlyList<SizedValueDto> Values { get; init; }
 }
 
-/// <summary>One resolved knob: the configuration key, the value in force, and which constraint produced it.</summary>
+/// <summary>One resolved knob: the configuration key, the value in force, and which constraint
+/// produced it.</summary>
 public sealed class SizedValueDto
 {
     /// <summary>Configuration key, e.g. <c>Engine:Runspace:MaxRunspaces</c>.</summary>

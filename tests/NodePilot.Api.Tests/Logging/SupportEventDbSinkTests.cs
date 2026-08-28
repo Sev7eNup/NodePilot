@@ -84,7 +84,7 @@ public class SupportEventDbSinkTests
         row!.PropertiesJson.Should().NotBeNull();
         row.PropertiesJson.Should().Contain("duration_sec");
         row.PropertiesJson.Should().Contain("steps_ok");
-        // Known properties must NOT land in PropertiesJson — they have their own dedicated columns
+        // Known properties must not land in PropertiesJson — they have their own dedicated columns
         row.PropertiesJson.Should().NotContain("support.event_type");
         row.PropertiesJson.Should().NotContain("workflow_execution_id");
     }

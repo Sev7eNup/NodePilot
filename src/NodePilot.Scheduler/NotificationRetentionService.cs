@@ -14,12 +14,17 @@ namespace NodePilot.Scheduler;
 /// Trims the alerting delivery ledger so it doesn't grow unbounded. Simple Delete-Where, no
 /// archive — delivery attempts are operational telemetry, not audit-grade. Leader-only.
 ///
-/// <para>Deletes terminal (Sent/Failed) <c>NotificationDeliveryAttempt</c> rows older than the cutoff —
+/// <para>Deletes terminal (Sent/Failed) <c>NotificationDeliveryAttempt</c> rows older than the
+/// cutoff —
 /// Pending rows are never touched (they are actively retried by the dispatcher). Also prunes stale
-/// <c>NotificationSuppressionState</c> rows whose last fire is older than the cutoff. This is a no-op for
-/// behaviour as long as a rule's cooldown window has expired by then — which the API enforces by capping
-/// <c>CooldownMinutes</c>/<c>OccurrenceWindowMinutes</c> at 30 days, far below the default 90-day cutoff.
-/// (If an operator lowers <c>Retention:Notifications:MaxAgeDays</c> below the 30-day throttle cap, keep it
+/// <c>NotificationSuppressionState</c> rows whose last fire is older than the cutoff. This is a
+/// no-op for
+/// behaviour as long as a rule's cooldown window has expired by then — which the API enforces by
+/// capping
+/// <c>CooldownMinutes</c>/<c>OccurrenceWindowMinutes</c> at 30 days, far below the default 90-day
+/// cutoff.
+/// (If an operator lowers <c>Retention:Notifications:MaxAgeDays</c> below the 30-day throttle cap,
+/// keep it
 /// above the longest configured cooldown to preserve that invariant.)</para>
 ///
 /// <para>Config: <see cref="NotificationsRetentionOptions"/> (<c>Retention:Notifications:*</c> —
@@ -94,7 +99,8 @@ public class NotificationRetentionService : LeaderGatedRetentionService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
 
-        // Only terminal attempts — never delete a Pending row out from under the dispatcher's retry loop.
+        // Only terminal attempts — never delete a Pending row out from under the dispatcher's retry
+        // loop.
         var deletedAttempts = await db.NotificationDeliveryAttempts
             .Where(a => a.Status != NotificationDeliveryStatus.Pending && a.CreatedAt < cutoff)
             .ExecuteDeleteAsync(ct);
@@ -103,9 +109,12 @@ public class NotificationRetentionService : LeaderGatedRetentionService
             .Where(s => s.LastFiredAt != null && s.LastFiredAt < cutoff)
             .ExecuteDeleteAsync(ct);
 
-        // System-alert per-instance state (ADR 0008): prune rows whose instance hasn't been observed since the
-        // cutoff — deleted credentials/workflows/completed executions leave state behind that would otherwise
-        // accrete forever on an active policy. The evaluator also drops state for disabled/removed policies each
+        // System-alert per-instance state (ADR 0008): prune rows whose instance hasn't been
+        // observed since the
+        // cutoff — deleted credentials/workflows/completed executions leave state behind that would
+        // otherwise
+        // accrete forever on an active policy. The evaluator also drops state for disabled/removed
+        // policies each
         // pass; this covers stale instances of still-active policies.
         var deletedPolicyStates = await db.SystemAlertPolicyStates
             .Where(s => s.LastObservedAt < cutoff)

@@ -6,10 +6,10 @@ type ConditionType = 'script' | 'pathExists' | 'serviceRunning' | 'portOpen' | '
 /**
  * Config editor for the Wait-For-Condition activity.
  *
- * Since 2026-05-17 the activity supports four typed sub-modes in addition to the classic
- * `script` mode. The typed modes accept `{{upstream}}` templates in their fields — the
- * engine quotes them safely before passing them to PowerShell. The classic `script` mode
- * still forbids templates (to prevent injection).
+ * The activity supports four typed sub-modes in addition to the classic `script` mode.
+ * Typed modes accept `{{upstream}}` templates in their fields; the engine quotes them
+ * safely before passing them to PowerShell. The `script` mode forbids templates to
+ * prevent injection.
  */
 export function WaitForConditionConfig({ config, onUpdate, upstreamVars = [] }: Readonly<ConfigProps>) {
   const { t } = useTranslation('properties');

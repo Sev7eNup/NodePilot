@@ -147,7 +147,7 @@ public sealed class CredentialStoreCoverageTests
     [Fact]
     public async Task DecryptPassword_LegacyPath_AuditWriteFailure_IsSwallowed()
     {
-        // No scope factory → legacy path writes the audit row on the shared DbContext.
+        // No scope factory -> legacy path writes the audit row on the shared DbContext.
         // Disposing that context before decrypt makes the AuditLog.Add/SaveChanges throw;
         // the store's inner try/catch must swallow it and still return the plaintext.
         var db = TestDbFactory.Create();

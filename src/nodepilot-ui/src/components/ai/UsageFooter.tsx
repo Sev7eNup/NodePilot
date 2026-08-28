@@ -6,12 +6,10 @@ import type { ChatDoneMeta } from '../../api/ai';
  * throughput. Shared by the global AI chat page and the workflow designer's assistant panel —
  * both render the exact same line.
  *
- * The tok/s figure divides completion tokens by `generationMs`, never by `durationMs`. The wall
- * clock also covers prompt prefill and tool execution; with a multi-thousand-token system prompt
- * those dominate completely, so dividing by them reported a small fraction of the model's real
- * decode speed (0.2 tok/s where the server was doing ~50). Very short answers still read noisy —
- * the measurement window is only a few milliseconds wide there — but they are in the right
- * order of magnitude, which the old figure never was.
+ * The tok/s figure divides completion tokens by `generationMs`, not by `durationMs`, because the
+ * wall clock also covers prompt prefill and tool execution and would understate decode speed.
+ * Very short answers can still look noisy because the measurement window is only a few
+ * milliseconds wide.
  */
 export function UsageFooter({ meta }: Readonly<{ meta: ChatDoneMeta }>) {
   const { t } = useTranslation(['ai']);
@@ -31,7 +29,7 @@ export function UsageFooter({ meta }: Readonly<{ meta: ChatDoneMeta }>) {
     });
   } else if (tokens != null) {
     // No generation window reported (endpoint streamed nothing measurable) — drop the rate
-    // rather than fall back to the wall clock, which would be the old, misleading number.
+    // rather than fall back to the wall clock, which would misrepresent decode speed.
     label = t('ai:chat.usageTokens', { model: meta.model, ms: meta.durationMs, tokens });
   } else {
     label = t('ai:chat.usageNoTokens', { model: meta.model, ms: meta.durationMs });

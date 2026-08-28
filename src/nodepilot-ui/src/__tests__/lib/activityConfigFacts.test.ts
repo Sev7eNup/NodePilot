@@ -2,10 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { checkRequiredActivityConfig, summarizeActivityConfig } from '../../lib/activityConfigFacts';
 
 /**
- * Activity summaries are the one-line previews shown in the node header on the canvas
- * (e.g. "GET https://…", "Wait 5 seconds"). Each summarizer collapses a config blob into
- * a single string. Pin the substring/key choices so a refactor that drops a field doesn't
- * silently break the in-canvas preview.
+ * Activity summaries are the one-line previews shown in the node header on the canvas,
+ * such as "GET https://..." or "Wait 5 seconds". Each summarizer collapses a config object
+ * into a single string, and these tests pin the fields every summarizer relies on.
  */
 
 describe('summarizeActivityConfig', () => {
@@ -36,7 +35,7 @@ describe('summarizeActivityConfig', () => {
     });
 
     it('acceptsTemplateBaseUrlButRejectsInvalidLiteral', () => {
-      // Template baseUrl is resolved by the StepRunner → allowed at design time.
+      // A template baseUrl is resolved by the StepRunner, so it passes the design-time check.
       expect(checkRequiredActivityConfig('llmQuery', { prompt: 'hi', baseUrl: '{{globals.LLM_BASE_URL}}' })).toBeNull();
       expect(checkRequiredActivityConfig('llmQuery', { prompt: 'hi', baseUrl: 'ftp://x' })).toContain('http');
     });
@@ -136,8 +135,8 @@ describe('summarizeActivityConfig', () => {
 
   describe('legacy fileSystemOperation type is removed', () => {
     it('returnsEmptyString_indicatingTheActivityIsNoLongerKnown', () => {
-      // Pin the clean-cut behaviour: the legacy type is gone, summarizer falls through
-      // to the default empty-string branch. A smoke-test that catches a partial revert.
+      // The type is not part of the catalog, so the summarizer falls through to its
+      // default empty-string branch.
       expect(summarizeActivityConfig('fileSystemOperation', { operation: 'copy', path: 'X', destination: 'Y' }))
         .toBe('');
     });
@@ -290,7 +289,7 @@ describe('summarizeActivityConfig', () => {
       expect(summarizeActivityConfig('generateText', {})).toBe('16 chars (alphanumeric)');
     });
 
-    // Pre-publish guard mirrors the backend TryBuildCharset rule: mode=custom needs a charset.
+    // The pre-publish guard mirrors the backend TryBuildCharset rule: mode=custom needs a charset.
     it('customModeWithoutCharset_returnsError', () => {
       expect(checkRequiredActivityConfig('generateText', { mode: 'custom' })).toContain('customCharset');
     });
@@ -305,10 +304,9 @@ describe('summarizeActivityConfig', () => {
   });
 
   describe('textFileEdit', () => {
-    // Pre-publish guard: without this entry the designer would happily publish a
-    // textFileEdit step with no path / no content / no selector, and the runtime
-    // would surface the misuse only at execution time. Each branch below pins one
-    // of the C#-side ValidateOpRequirements rules so the two validators stay in sync.
+    // The pre-publish guard stops the designer from publishing a textFileEdit step with no
+    // path, content or selector, which would otherwise fail only at execution time. Each
+    // case below covers one rule of the C# ValidateOpRequirements so both validators agree.
 
     it('missingPath_returnsError', () => {
       expect(checkRequiredActivityConfig('textFileEdit', { operation: 'append', content: 'x' }))
@@ -347,8 +345,8 @@ describe('summarizeActivityConfig', () => {
     });
 
     it('replaceWithEmptyReplaceString_isAccepted', () => {
-      // An empty `replace` is intentional — "delete the matches in-place". The validator
-      // must distinguish "key missing" from "key === empty string".
+      // An empty `replace` means "delete the matches in place", so the validator has to
+      // tell a missing key apart from a key set to an empty string.
       expect(checkRequiredActivityConfig('textFileEdit', {
         operation: 'replace', path: 'C:\\f.txt', matchPattern: 'a', replace: '',
       })).toBeNull();
@@ -360,9 +358,8 @@ describe('summarizeActivityConfig', () => {
     });
 
     it('templatePath_isAccepted', () => {
-      // The validator treats {{template}}-expressions as filled — actual resolution
-      // happens at run-time and might still come up empty, but the design-time check
-      // can't second-guess that.
+      // The validator treats a {{template}} expression as filled. It resolves at run time
+      // and may still come up empty, which the design-time check cannot know.
       expect(checkRequiredActivityConfig('textFileEdit', {
         operation: 'append', path: '{{step.param.path}}', content: 'x',
       })).toBeNull();

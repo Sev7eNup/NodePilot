@@ -7,8 +7,10 @@ namespace NodePilot.Api.Services.Backup.Parts;
 
 /// <summary>
 /// Exports workflow definitions. Inline secret config values (<c>secret</c>, <c>apiKey</c>, …) are
-/// encrypted for backup via <see cref="WorkflowDefinitionSecretRewriter"/>; the <c>targetMachineId</c>
-/// / <c>credentialId</c> GUID references are left verbatim and remapped on restore (K3/K13). Each item
+/// encrypted for backup via <see cref="WorkflowDefinitionSecretRewriter"/>; the
+/// <c>targetMachineId</c>
+/// / <c>credentialId</c> GUID references are left verbatim and remapped on restore (K3/K13). Each
+/// item
 /// carries its original <c>sourceId</c> so restore can build the workflow id-map.
 /// </summary>
 public sealed class WorkflowBackupPart(NodePilotDbContext db) : IBackupPart

@@ -3,9 +3,9 @@
 .SYNOPSIS
     Rejects environment-local settings from a final publish/package stage.
 .DESCRIPTION
-    dotnet publish output is only the first input to NodePilot's release artifacts. The server
-    build adds a source snapshot and the desktop build adds several payload trees afterwards, so
-    both call this guard against their complete stage immediately before packaging.
+    dotnet publish output is only the first input to a NodePilot release artifact: the server
+    build adds a source snapshot and the desktop build adds payload trees afterwards. Both call
+    this guard against the complete stage directory immediately before packaging.
 #>
 
 function Assert-NodePilotPublishSettingsHygiene {

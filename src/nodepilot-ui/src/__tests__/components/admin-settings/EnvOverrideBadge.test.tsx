@@ -16,8 +16,8 @@ describe('EnvOverrideBadge', () => {
 
   it('renders the CLI variant when the source is cli', () => {
     render(<EnvOverrideBadge source="cli" configKey="Engine:MaxConcurrentSteps" />);
-    // CLI tooltip doesn't echo a specific arg name (operators rarely remember it
-    // verbatim) — just labels the field as overridden via command line.
+    // The CLI tooltip names no specific argument; it only marks the field as overridden
+    // on the command line.
     const badge = screen.getByText(/Environment|Wert/i);
     expect(badge).toBeInTheDocument();
   });

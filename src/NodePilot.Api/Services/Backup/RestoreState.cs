@@ -5,7 +5,8 @@ using NodePilot.Data.Security;
 namespace NodePilot.Api.Services.Backup;
 
 /// <summary>
-/// Mutable working state for one restore (ADR 0001). Holds the source→target id-maps (K3) built as
+/// Mutable working state for one restore (ADR 0001). Holds the source to target id-maps (K3) built
+/// as
 /// each section is applied, the by-natural-key lookups + existing-id sets of the target DB (loaded
 /// once up front), and the set of source ids present in the backup per type (used by the K12
 /// reference-resolvability check). Created before the transaction; mutated as sections restore.
@@ -92,7 +93,8 @@ internal sealed class RestoreState
         : GlobalFolderMap.TryGetValue(g, out var t) ? t : ExistingGlobalFolderIds.Contains(g) ? g : null;
 
     /// <summary>Maps a backed-up custom-activity definition id to its restored target id (for
-    /// <c>config.__customDefinitionId</c> in workflow node configs). Null when neither in the backup
+    /// <c>config.__customDefinitionId</c> in workflow node configs). Null when neither in the
+    /// backup
     /// nor the target DB — validation rejects that restore before any write.</summary>
     public Guid? ResolveCustomActivity(Guid g) =>
         CustomActivityMap.TryGetValue(g, out var t) ? t : ExistingCustomActivityIds.Contains(g) ? g : null;

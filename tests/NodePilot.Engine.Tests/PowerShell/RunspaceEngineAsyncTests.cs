@@ -7,25 +7,17 @@ using Xunit;
 namespace NodePilot.Engine.Tests.PowerShell;
 
 /// <summary>
-/// Verifies the async behavior of RunspaceExecutionEngine after the BeginInvoke/EndInvoke
-/// port. Four properties matter under load:
-///   1. Caller cancellation tears down the running script promptly (used to be impossible
-///      with Task.Run(() => ps.Invoke()) — the token only cancelled scheduling).
-///   2. Caller cancellation surfaces as OperationCanceledException, not as a failed result.
-///   3. Per-script timeout actually stops the pipeline (same rationale) and stays a failure.
-///   4. Many concurrent ExecuteAsync calls all complete with correct, non-interleaved output.
+/// Verifies cancellation, timeout, and concurrency behavior of the BeginInvoke/EndInvoke path.
+/// Caller cancellation must stop the script and surface as OperationCanceledException. Script
+/// timeout remains a failed result, and concurrent calls must keep their output isolated.
 /// </summary>
 public class RunspaceEngineAsyncTests
 {
     [Fact]
     public async Task Execute_CallerCancellation_ThrowsInsteadOfReturningAFailedResult()
     {
-        // Caller cancellation is how a waitAny/waitNofM junction stands down the branches that
-        // lost the race. StepRunner records those as Cancelled — but only if the exception reaches
-        // it. This engine used to convert the cancellation into Success=false, so the loser was
-        // written as a Failed step, and a single Failed step fails the whole execution: every
-        // junction race reported a correct run as red. `delay` never had the problem because it
-        // lets the exception through, which is exactly the behaviour pinned here.
+        // waitAny and waitNofM cancel losing branches. The exception must reach StepRunner so it
+        // records those branches as Cancelled instead of Failed.
         using var engine = new RunspaceExecutionEngine(
             NullLogger<RunspaceExecutionEngine>.Instance,
             minRunspaces: 1,

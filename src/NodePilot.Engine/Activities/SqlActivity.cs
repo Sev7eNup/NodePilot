@@ -39,25 +39,24 @@ namespace NodePilot.Engine.Activities;
 ///   timeoutSeconds   int, default 60 (overridable per activity via the config field).
 ///
 /// Output shape (rows):
-///   - SELECT rows → JSON array in <c>Output</c>, <c>rowCount</c> + first-row columns in
+///   - SELECT rows -> JSON array in <c>Output</c>, <c>rowCount</c> + first-row columns in
 ///     <c>OutputParameters</c>, plus <c>row{i}_{col}</c> for up to 20 rows.
-///   - DML/DDL → <c>rowsAffected</c> in <c>OutputParameters</c>.
+///   - DML/DDL -> <c>rowsAffected</c> in <c>OutputParameters</c>.
 /// </summary>
 public class SqlActivity : IActivityExecutor
 {
     private readonly IConfiguration _configuration;
 
-    // Per CLAUDE.md SQL-activity defaults: 60s aligns with the operational reality —
-    // legitimate workflow queries are sub-second, anything beyond a minute is almost
-    // always a runaway. Configurable per-activity via the `timeoutSeconds` config field.
+    // Default command timeout. Workflow queries are normally fast, so anything running
+    // longer is treated as a runaway. Override per activity via the `timeoutSeconds` config field.
     internal const int DefaultCommandTimeoutSeconds = 60;
 
-    // D3: hard row cap on the materialised result set. Beyond this we set the
-    // `truncated=true` output parameter so consumers see the cap was hit.
+    // Hard row cap on the materialized result set. Beyond this, the `truncated=true`
+    // output parameter is set so consumers know the cap was hit.
     internal const int MaxRowsReturned = 1000;
 
-    // D4: bound on flat row{i}_{col} + first-row scalar keys exposed in OutputParameters.
-    // 200 covers ergonomic single-row + a handful-of-rows access; wider/deeper consumers
+    // Cap on flat row{i}_{col} and first-row scalar keys exposed in OutputParameters.
+    // Covers single-row and small multi-row access; consumers needing more should
     // parse the full JSON Output instead. flatKeysTruncated=true signals overflow.
     internal const int MaxFlatOutputKeys = 200;
     internal const int MaxRowsForFlatProjection = 20;
@@ -79,13 +78,10 @@ public class SqlActivity : IActivityExecutor
             if (string.IsNullOrWhiteSpace(query))
                 return new ActivityResult { Success = false, ErrorOutput = "SQL: 'query' is required" };
 
-            // H-1 (security audit 2026-05-15): refuse query text that still carries
-            // {{var}} templates. The engine deliberately excludes `query` from the
-            // template-resolution pass (see StepRunner + VariableResolver.ResolveVariablesExcept)
-            // so that dynamic values cannot be smuggled into a raw CommandText. Anything that
-            // arrives here with residual placeholders is either the author bypassing the
-            // intended `parameters` flow or a future code-path that forgot to opt into the
-            // field guard — both must fail closed.
+            // Refuse query text that still carries {{var}} templates. The engine deliberately
+            // excludes `query` from the template-resolution pass (see StepRunner +
+            // VariableResolver.ResolveVariablesExcept) so dynamic values cannot be smuggled into
+            // a raw CommandText. Bind dynamic values via `parameters` instead.
             if (query.Contains("{{", StringComparison.Ordinal) && query.Contains("}}", StringComparison.Ordinal))
                 return new ActivityResult
                 {
@@ -103,10 +99,9 @@ public class SqlActivity : IActivityExecutor
             await conn.OpenAsync(ct);
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = query;
-            // C1: default 60 seconds — operationally the most useful tradeoff. A typical
-            // workflow query is sub-second; runaway scans should be the exception. Override
-            // per activity by setting `timeoutSeconds` in the node config (positive integer).
-            // ADO.NET still treats 0 as "no timeout", but we never set 0 implicitly anymore.
+            // Default command timeout is 60 seconds. Override per activity by setting
+            // `timeoutSeconds` in the node config (positive integer). ADO.NET treats 0 as
+            // "no timeout", but that value is never set implicitly here.
             cmd.CommandTimeout = timeoutSeconds ?? DefaultCommandTimeoutSeconds;
             BindParameters(cmd, config);
 
@@ -119,11 +114,10 @@ public class SqlActivity : IActivityExecutor
                     row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
                 rows.Add(row);
             }
-            // D3: probe whether the result set had more rows than the cap allowed. Without
-            // this signal, a workflow that expects N rows but receives the silently-capped
-            // 1000 makes wrong business-logic decisions. Caller sees `truncated=true` and
-            // can branch on it. We do this AFTER the loop so we don't waste a read on the
-            // common (non-truncated) case.
+            // Check whether more rows remain beyond the cap. Without this, a workflow expecting
+            // N rows would receive a silently-capped result. Exposed as `truncated=true` so
+            // callers can branch on it. Checked after the loop to avoid an extra read in the
+            // common non-truncated case.
             var truncated = rows.Count >= MaxRowsReturned && await reader.ReadAsync(ct);
 
             var outputParams = new Dictionary<string, string>();
@@ -135,10 +129,10 @@ public class SqlActivity : IActivityExecutor
                 outputParams["rowCount"] = rows.Count.ToString();
                 outputParams["truncated"] = truncated ? "true" : "false";
 
-                // D4: bound flat-key explosion. First-row scalars + row{i}_{col} can produce
-                // hundreds of keys for wide schemas (50 cols × 20 rows = 1000+ keys), bloating
-                // the variable map for downstream steps and the persisted OutputParametersJson.
-                // Cap is enforced across BOTH projections (first-row scalars + multi-row flat).
+                // Bound flat-key growth. First-row scalars plus row{i}_{col} keys can otherwise
+                // produce hundreds of keys for wide schemas, bloating the variable map for
+                // downstream steps and the persisted OutputParametersJson. The cap applies
+                // across both projections combined (first-row scalars + multi-row flat).
                 var flatKeyBudget = MaxFlatOutputKeys;
                 // First row's scalar columns as plain keys (single-row-query ergonomics)
                 foreach (var (col, val) in rows[0])
@@ -189,10 +183,10 @@ public class SqlActivity : IActivityExecutor
 
     /// <summary>
     /// Resolves the connection string from the workflow config. Preference order:
-    ///   1. <c>connectionRef</c> → look up <c>SqlActivity:ConnectionStrings:{name}</c>.
+    ///   1. <c>connectionRef</c> -> look up <c>SqlActivity:ConnectionStrings:{name}</c>.
     ///   2. Builder fields (<c>server</c>/<c>host</c>/<c>dataSource</c> depending on provider)
-    ///      → composed via the provider's own <c>ConnectionStringBuilder</c>.
-    ///   3. <c>connectionString</c> → raw inline string. Rejected by default; set
+    ///      -> composed via the provider's own <c>ConnectionStringBuilder</c>.
+    ///   3. <c>connectionString</c> -> raw inline string. Rejected by default; set
     ///      <c>SqlActivity:RequireConnectionRef=false</c> only for explicit dev compatibility.
     /// Returns (connection-string, error) — exactly one is non-null.
     ///
@@ -260,7 +254,7 @@ public class SqlActivity : IActivityExecutor
         if (!string.IsNullOrWhiteSpace(config.GetStringOrNull("username"))) return true;
         if (!string.IsNullOrWhiteSpace(config.GetStringOrNull("password"))) return true;
 
-        // SQL Server's "authentication" knob can flip from integrated → SQL auth without a
+        // SQL Server's "authentication" knob can flip from integrated -> SQL auth without a
         // password field at the top level (the password may be templated in via {{globals.X}}
         // and resolved later). Treat any non-integrated value as credential-bearing.
         if (provider is "sqlserver" or "")
@@ -461,11 +455,10 @@ public class SqlActivity : IActivityExecutor
     }
 
     /// <summary>
-    /// Adds any <c>parameters</c> from config to the command. Using real ADO.NET parameters
-    /// defeats SQL injection even when the query text itself was assembled from a webhook
-    /// payload — the engine's <c>{{...}}</c> template substitution should never have been
-    /// used for SQL values, but historically it was. Keep the migration path open by still
-    /// accepting a query string as-is.
+    /// Adds any <c>parameters</c> from config to the command. Real ADO.NET parameters prevent
+    /// SQL injection even when the query text came from a webhook payload. The engine's
+    /// <c>{{...}}</c> template substitution must not be used for SQL values; bind dynamic
+    /// values via this <c>parameters</c> object instead.
     /// </summary>
     private static void BindParameters(DbCommand cmd, JsonElement config)
     {

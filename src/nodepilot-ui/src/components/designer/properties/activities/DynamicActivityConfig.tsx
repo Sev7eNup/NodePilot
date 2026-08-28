@@ -3,10 +3,11 @@ import { Field, VariableInsertField, type ConfigProps } from '../shared';
 import { getCustomActivityFacts } from '../../../../lib/customActivities';
 
 /**
- * Generic config form for a user-authored custom activity. Renders one field per declared input
- * parameter (driven by the runtime catalog), writing each value into `config[name]`. String / number
- * / multiline fields use {@link VariableInsertField} so authors can wire `{{upstream}}` / `{{globals.X}}`
- * just like runScript. The definition reference (`config.__customKey`) is set at node-creation time.
+ * Generic config form for a user-authored custom activity. Renders one field per declared
+ * input parameter (driven by the runtime catalog), writing each value into `config[name]`.
+ * String, number, and multiline fields use {@link VariableInsertField} so authors can wire
+ * `{{upstream}}` / `{{globals.X}}` just like runScript. The definition reference
+ * (`config.__customKey`) is set at node-creation time.
  */
 export function DynamicActivityConfig({ config, onUpdate, upstreamVars = [] }: Readonly<ConfigProps>) {
   const { t } = useTranslation('properties');

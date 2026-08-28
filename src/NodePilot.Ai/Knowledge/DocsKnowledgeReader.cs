@@ -14,8 +14,9 @@ public interface IDocsKnowledgeReader
 /// <summary>
 /// Reads the curated documentation corpus live from <see cref="AiKnowledgeOptions.DocsRootPath"/>
 /// (default <c>{AppBaseDir}/knowledge/docs</c>, shipped via the API csproj content copy). Every
-/// call re-reads the tree, so doc edits flow in automatically — no index, no build-time snapshot.
-/// Singleton: pure file IO reading the live <see cref="IOptionsMonitor{AiKnowledgeOptions}"/>.
+/// call re-reads the tree, so doc edits take effect without an index or build-time snapshot.
+/// Registered as a singleton: pure file IO over the live
+/// <see cref="IOptionsMonitor{AiKnowledgeOptions}"/>.
 /// </summary>
 public sealed class DocsKnowledgeReader(IOptionsMonitor<AiKnowledgeOptions> options) : IDocsKnowledgeReader
 {

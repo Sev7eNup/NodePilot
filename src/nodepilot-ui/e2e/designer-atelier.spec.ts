@@ -2,14 +2,14 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * Atelier design language — the designer's own skin-independent look (branch evaluation).
+ * Atelier design language: the designer's own skin-independent look.
  *
  * `designStore.designerTheme` ('atelier' default | 'classic') puts `.wd-atelier` on the
  * `.np-designer` root and `.wd-atelier-on` on <html>; a `role="switch"` header button
- * (`toggle-atelier-theme`) flips it. The whole existing hermetic suite is pinned to classic
- * via installDefaultMocks — these specs are the only ones that exercise the Atelier path:
- * fresh-profile default, scope classes, canvas dot-grid, toggle round-trip, persistence.
- * SPA renders ENGLISH under Playwright; hermetic page.route mocks.
+ * (`toggle-atelier-theme`) flips it. installDefaultMocks pins the rest of the hermetic suite to
+ * classic, so these specs are the only ones covering the Atelier path: fresh-profile default,
+ * scope classes, canvas dot grid, toggle round-trip and persistence.
+ * The SPA renders English under Playwright; all APIs are page.route mocks.
  */
 
 const WF_ID = 'a4e11e50-0000-4000-8000-a4e11e50a4e1';
@@ -35,19 +35,18 @@ function workflowJson() {
   });
 }
 
-/** Seed the designer into the Atelier look (fresh profiles default to it, but the suite-wide
- *  classic pin from installDefaultMocks must be overridden AFTER it was installed). Like the
- *  pin, this only seeds while no full app-persisted state exists — so a mid-test toggle
- *  survives page.reload and persistence stays testable. */
+/** Seed the designer into the Atelier look, overriding the suite-wide classic pin that
+ *  installDefaultMocks applies. Like that pin, it only seeds while no full app-persisted state
+ *  exists, so a mid-test toggle survives page.reload and persistence stays testable. */
 async function seedAtelier(page: Page) {
   await page.addInitScript(() => {
     const raw = localStorage.getItem('nodepilot-design');
     let appWritten = false;
     try { appWritten = !!raw && JSON.parse(raw).state?.nodeStyle !== undefined; } catch { /* reseed */ }
     if (!appWritten) {
-      // Carries the node-scale pin from installDefaultMocks too: this seed replaces the whole
-      // key, so without it the Atelier specs would be the only ones running at the `lg` default
-      // and would drift away from the rest of the suite's canvas geometry.
+      // Repeats the node-scale pin from installDefaultMocks: this seed replaces the whole key,
+      // so without it these specs would run at the `lg` default and drift away from the canvas
+      // geometry the rest of the suite uses.
       localStorage.setItem('nodepilot-design', JSON.stringify({
         state: { designerTheme: 'atelier', nodeScaleIndex: 1 }, version: 2,
       }));
@@ -76,8 +75,7 @@ test.describe('Atelier-Designsprache', () => {
     await expect(page.locator('.np-designer.wd-atelier')).toBeVisible();
     await expect(page.locator('html.wd-atelier-on')).toHaveCount(1);
 
-    // Canvas grid: free mode renders the unified dot grid (Premium + Classic share the
-    // same dot branch since the crosshatch was retired).
+    // Canvas grid: free mode renders the dot grid, which the Premium and Classic looks share.
     await expect(page.locator('pattern[id$="np-bg-dots"]')).toHaveCount(1);
 
     // Token proof: the editor header resolves the Atelier cobalt accent, not the base blue.
@@ -91,10 +89,10 @@ test.describe('Atelier-Designsprache', () => {
     await seedAtelier(page);
     await openEditor(page);
 
-    // Custom properties come back as AUTHORED, not as a normalised colour — and the production
-    // build shortens them: `#ffffff` reads as `#fff` off `vite preview`, which is what CI serves,
-    // but not off the dev server. Expand every value before comparing (the luminance maths also
-    // needs six digits), otherwise this spec passes locally and fails only in CI.
+    // Custom properties come back as authored rather than as a normalised colour, and the
+    // production build shortens them: `#ffffff` reads as `#fff` off `vite preview` but not off
+    // the dev server. Expand every value before comparing; the luminance maths also needs six
+    // digits.
     const readTokens = () => page.locator('.np-designer.wd-atelier').evaluate((el) => {
       const s = getComputedStyle(el);
       const hex = (name: string) => {
@@ -116,23 +114,22 @@ test.describe('Atelier-Designsprache', () => {
     };
     const readGround = readTokens;
 
-    // Default light skin: cobalt accent, and the SHELL's ground — `--color-surface-low`.
+    // Default light skin: cobalt accent on the shell's ground, `--color-surface-low`.
     expect(await readPalette()).toEqual({ accent: '#3e63e8', canvas: '#f3f4f6' });
 
-    // The light relationship is the app's, not the old designer's: the floating chrome
-    // (header/sidebar/inspector, painted with --wd-panel) is a WHITE PLATE on a grey ground,
-    // exactly like `.np-card` on `bg-surface-low`. Atelier used to invert this on a warm paper
-    // ramp, which is what made the designer read greyer and darker than every other page.
+    // In light skins the floating chrome (header, sidebar and inspector, painted with
+    // --wd-panel) is a white plate on a grey ground, exactly like `.np-card` on
+    // `bg-surface-low`.
     const lightGround = await readGround();
     expect(lightGround.panel).toBe('#ffffff');
     expect(lightGround.panelLum).toBeGreaterThan(lightGround.canvasLum);
 
-    // light-grey skin: lilac accent, and again that skin's own ground rather than a paper tint.
+    // light-grey skin: lilac accent on that skin's own ground.
     await page.evaluate(() => document.documentElement.setAttribute('data-skin', 'light-grey'));
     expect(await readPalette()).toEqual({ accent: '#7c3aed', canvas: '#f5f0eb' });
     expect((await readGround()).panel).toBe('#ffffff');
 
-    // light-bank too — the rule is per light skin, not a special case of the default one.
+    // light-bank too: the rule holds for every light skin, not just the default one.
     await page.evaluate(() => document.documentElement.setAttribute('data-skin', 'light-bank'));
     expect(await readPalette()).toEqual({ accent: '#c80000', canvas: '#f8fafc' });
     const bankGround = await readGround();
@@ -146,9 +143,8 @@ test.describe('Atelier-Designsprache', () => {
     });
     expect(await readPalette()).toEqual({ accent: '#4de4f7', canvas: '#0d1322' });
 
-    // Dark is untouched by the light realignment and keeps its own relationship: the chrome
-    // lifts OFF a deeper canvas floor. Guarding it here is what makes the light flip above a
-    // deliberate rule rather than something that could quietly spread to the dark skins.
+    // Dark skins keep the opposite relationship: the chrome lifts off a deeper canvas floor.
+    // Asserting it here keeps the light rule above from spreading to the dark skins.
     const darkGround = await readGround();
     expect(darkGround.panelLum).toBeGreaterThan(darkGround.canvasLum);
 
@@ -191,9 +187,8 @@ test.describe('Atelier-Designsprache', () => {
   });
 
   test('atelier.4 — Suite-Pin: ohne Atelier-Seed rendert der Editor klassisch', async ({ page }) => {
-    // installDefaultMocks pins classic for the whole hermetic suite — prove the pin works,
-    // otherwise every visual assertion in the 60+ existing specs would silently run against
-    // the Atelier tokens.
+    // installDefaultMocks pins classic for the whole hermetic suite. If that pin broke, the
+    // visual assertions in every other spec would silently run against the Atelier tokens.
     await openEditor(page);
     await expect(page.locator('.np-designer')).toBeVisible();
     await expect(page.locator('.np-designer.wd-atelier')).toHaveCount(0);
@@ -201,9 +196,8 @@ test.describe('Atelier-Designsprache', () => {
   });
 
   test('atelier.6 — auch klassisch: helle Skins zeigen weisse Chrome auf dem Seitengrund', async ({ page }) => {
-    // The ground/chrome relationship is a property of the LIGHT BASE, not of the Atelier look.
-    // Classic used to invert it too — docks on `bg-surface-low` around a brighter `bg-surface`
-    // canvas — so a user with the toggle off still saw grey boxes around a white hole.
+    // The ground/chrome relationship belongs to the light base, not to the Atelier look, so it
+    // has to hold with the toggle off as well.
     await openEditor(page);
     await expect(page.locator('.np-designer.wd-atelier')).toHaveCount(0);
 
@@ -223,7 +217,7 @@ test.describe('Atelier-Designsprache', () => {
       expect(seen.canvas, `${skin} canvas must not be the plate colour`).not.toBe('rgb(255, 255, 255)');
     }
 
-    // Dark keeps its own relationship — the realignment is light-only by design.
+    // Dark keeps its own relationship; the rule is light-only by design.
     await page.evaluate(() => {
       document.documentElement.classList.add('dark');
       document.documentElement.setAttribute('data-skin', 'dark');

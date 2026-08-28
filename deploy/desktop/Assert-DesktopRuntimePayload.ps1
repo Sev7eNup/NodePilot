@@ -28,9 +28,9 @@ function Assert-DesktopRuntimePayload {
         Fails the desktop build unless its self-contained .NET payload meets the security floor.
 
     .DESCRIPTION
-        Checks both the publish manifest and version resources from representative host, runtime,
-        WebSocket and ASP.NET Core binaries. This prevents a requested RuntimeFrameworkVersion
-        from becoming a paper-only control when a stale or mixed stage directory is packaged.
+        Checks the publish manifest and the version resources of representative host, runtime,
+        WebSocket and ASP.NET Core binaries, so a requested RuntimeFrameworkVersion still holds
+        when a stale or mixed stage directory is packaged.
     #>
     [CmdletBinding()]
     param(
@@ -84,14 +84,10 @@ function Get-NodePilotDesktopPostgresMajorVersion {
         Reads the PostgreSQL major version out of the bundled server binary itself.
 
     .DESCRIPTION
-        The binary is asked, never the directory it sits in. EDB's portable zip unpacks to a folder
-        called plain 'pgsql' with no version anywhere in the path, so a path check cannot tell 16
-        from 17 at all; and where a path does carry a version (the graphical installer's
-        'PostgreSQL\16'), it is a label a caller can rename or point past. Only the binary is
-        authoritative.
-        postgres.exe stamps PG_VERSION ('16.4') into its version resource; the numeric fields of the
-        same resource carry the major on their own, which keeps this readable even if the string form
-        ever changes.
+        The version comes from the binary, not from the directory path: EDB's portable zip unpacks
+        to a folder named 'pgsql' with no version in the path, and installer paths carry only a
+        label a caller can rename. postgres.exe stamps PG_VERSION into its version resource, and
+        the numeric fields of that resource carry the major on their own.
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)] [string] $PgRootPath)
@@ -117,14 +113,13 @@ function Get-NodePilotDesktopPostgresMajorVersion {
 function Assert-DesktopPostgresPayload {
     <#
     .SYNOPSIS
-        Fails the desktop build unless the bundled PostgreSQL binaries are the expected major version.
+        Fails the desktop build unless the bundled PostgreSQL is the expected major version.
 
     .DESCRIPTION
-        PostgreSQL refuses to start on a data directory written by a different major version, and the
-        desktop package upgrades in place over the existing pgdata. Staging a runtime from another
-        major therefore builds an installer that compiles, signs and ships without a single warning,
-        and then bricks every installation it lands on. Minor versions may move freely; the major is
-        a hard contract with the cluster already on disk, so it is asserted rather than assumed.
+        PostgreSQL refuses to start on a data directory written by a different major version, and
+        the desktop package upgrades in place over the existing pgdata. A runtime from another major
+        would still build and ship, then fail on every installation it lands on. Minor versions may
+        differ freely; the major is a contract with the cluster on disk and is checked here.
     #>
     [CmdletBinding()]
     param(

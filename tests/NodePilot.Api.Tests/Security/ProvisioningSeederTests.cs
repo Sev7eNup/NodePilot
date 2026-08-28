@@ -48,7 +48,8 @@ public sealed class ProvisioningSeederTests : IDisposable
             new NodePilot.Api.Services.WorkflowVersionDefinitionProtector(
                 _atRest, NullLogger<NodePilot.Api.Services.WorkflowVersionDefinitionProtector>.Instance));
 
-    /// <summary>A backup carrying one break-glass Admin — the minimum a seed must contain.</summary>
+    /// <summary>A backup carrying one break-glass Admin — the minimum a seed must
+    /// contain.</summary>
     private async Task<byte[]> BuildSeedAsync(string username = "seeded-admin")
     {
         using var source = TestDbFactory.Create();
@@ -98,10 +99,9 @@ public sealed class ProvisioningSeederTests : IDisposable
         var user = await db.Users.SingleAsync();
         user.Username.Should().Be("seeded-admin");
         user.Role.Should().Be(UserRole.Admin);
-        // The property the whole enterprise story hangs on: EnterpriseRecoveryInvariant refuses to
-        // start with SSO enabled unless a local break-glass Admin exists, and external JIT
-        // provisioning is blocked until one does. A seed that lost this flag would produce an
-        // instance that cannot enable the very thing it was provisioned for.
+        // EnterpriseRecoveryInvariant refuses to start with SSO enabled unless a local
+        // break-glass Admin exists, and blocks external JIT provisioning until one does. A
+        // seed that lost this flag would produce an instance that can never enable SSO.
         user.IsBreakGlass.Should().BeTrue();
     }
 

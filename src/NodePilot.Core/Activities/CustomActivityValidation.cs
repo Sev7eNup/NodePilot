@@ -3,25 +3,26 @@ using System.Text.RegularExpressions;
 namespace NodePilot.Core.Activities;
 
 /// <summary>
-/// Shared validation for a custom activity definition's metadata + parameter schema. Lives in Core
-/// so the API controller, the CLI and the MCP server all enforce the same rules. Returns the first
+/// Shared validation for a custom activity definition's metadata and parameter schema. It lives in
+/// Core so the API controller, the CLI and the MCP server enforce the same rules. Returns the first
 /// error message, or null when valid.
 /// </summary>
 public static partial class CustomActivityValidation
 {
-    // Parameter names become PowerShell variables, so they must match the wrapper's allow-list
-    // (ParameterKeyValidator: [A-Za-z0-9_]+) — stricter than the Key slug, which permits hyphens.
+    // Parameter names become PowerShell variables, so they must match the wrapper allow-list
+    // (ParameterKeyValidator: [A-Za-z0-9_]+). Stricter than the Key slug, which permits hyphens.
     [GeneratedRegex(@"^[A-Za-z0-9_]+$", RegexOptions.CultureInvariant)]
     private static partial Regex ParamNameRegex();
 
-    // Material Symbol names are lowercase snake_case; a light guard (full-set validation is impractical).
+    // Material Symbol names are lowercase snake_case. Shape check only, the full set is not
+    // checked.
     [GeneratedRegex(@"^[a-z0-9_]{1,60}$", RegexOptions.CultureInvariant)]
     private static partial Regex IconRegex();
 
     private static readonly IReadOnlySet<string> AllowedEngines =
         new HashSet<string>(StringComparer.Ordinal) { "auto", "pwsh", "powershell" };
 
-    // Names that collide with wrapper-injected / reserved PowerShell variables or the forced exitCode.
+    // Names that collide with wrapper-injected or reserved PowerShell variables, or with exitCode.
     private static readonly IReadOnlySet<string> ReservedParamNames =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -79,8 +80,8 @@ public static partial class CustomActivityValidation
                 return $"Output parameter '{o.Name}' has unsupported type '{o.Type}'.";
             if (!outputNames.Add(o.Name))
                 return $"Duplicate output parameter name '{o.Name}'.";
-            // Disjoint from inputs: a same-named output could otherwise surface a never-overwritten
-            // input value despite the capture allow-list.
+            // Outputs stay disjoint from inputs: a same-named output could otherwise surface an
+            // input value the script never overwrote, despite the capture allow-list.
             if (inputNames.Contains(o.Name))
                 return $"Parameter name '{o.Name}' is used for both an input and an output; names must be disjoint.";
         }

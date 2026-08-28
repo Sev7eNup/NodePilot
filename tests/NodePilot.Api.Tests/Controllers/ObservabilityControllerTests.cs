@@ -16,7 +16,7 @@ public class ObservabilityControllerTests
 {
     private static ObservabilityController CreateController(bool authenticated)
     {
-        // Populate every field that anonymous responses must NOT leak.
+        // Populate every field that anonymous responses must not leak.
         var options = new NodePilotTelemetryOptions
         {
             Enabled = true,
@@ -75,10 +75,10 @@ public class ObservabilityControllerTests
         resp.Environment.Should().Be("production");
     }
 
-    // Captures the PromQL each summary panel sends so we can assert it targets the REAL
+    // Captures the PromQL each summary panel sends so the test can check it targets the real
     // exported metric names. The OTel Prometheus exporter appends the unit (`_milliseconds`)
-    // to histogram families and `_seconds` to the HTTP histogram — the previously-shipped
-    // queries omitted those suffixes and silently returned no data.
+    // to histogram families and `_seconds` to the HTTP histogram; queries missing those
+    // suffixes bind to metric series that do not exist and silently return no data.
     private sealed class CapturingHandler : HttpMessageHandler
     {
         public ConcurrentBag<string> Queries { get; } = new();
@@ -125,8 +125,8 @@ public class ObservabilityControllerTests
         allQueries.Should().Contain("nodepilot_winrm_session_open_duration_milliseconds_bucket");
         allQueries.Should().Contain("http_server_request_duration_seconds_count");
 
-        // The previously-shipped wrong names (no unit suffix) must not reappear — they bound
-        // to metric series that do not exist, so the panels rendered "No Data".
+        // Names without the unit suffix don't match any real metric series and must not
+        // appear here; panels that use them silently render "No Data".
         allQueries.Should().NotContain("nodepilot_execution_duration_bucket");
         allQueries.Should().NotContain("nodepilot_winrm_session_open_duration_bucket");
         allQueries.Should().NotContain("http_server_request_duration_count");

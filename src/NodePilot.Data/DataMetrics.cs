@@ -21,11 +21,9 @@ public static class DataMetrics
         description: "DPAPI encrypt/decrypt latency, tagged by operation.");
 
     /// <summary>
-    /// Runs one crypto operation and records call-count + latency for it, tagged
-    /// success/failure. Every <see cref="Core.Interfaces.ISecretProtector"/> routes through
-    /// here so the two instrumented providers cannot drift into different tag sets — a
-    /// dashboard splitting on <c>provider</c> would otherwise silently lose a series.
-    /// Exceptions are recorded as a failure and rethrown unchanged.
+    /// Runs one crypto operation and records call count and latency, tagged success/failure.
+    /// Every <see cref="Core.Interfaces.ISecretProtector"/> routes through here so providers
+    /// share the same tag set. Exceptions are recorded as a failure and rethrown unchanged.
     /// </summary>
     public static T MeasureCrypto<T>(string operation, string provider, Func<T> body)
     {
@@ -55,9 +53,9 @@ public static class DataMetrics
     }
 
     /// <summary>
-    /// Counts decrypts served by the *legacy* protector when MigratingSecretProtector is
-    /// wired. Operators watch this drop to zero after a re-encrypt sweep — at that point
-    /// the legacy config can be removed safely.
+    /// Counts decrypts served by the legacy protector when MigratingSecretProtector is wired.
+    /// Operators watch this drop to zero after a re-encrypt sweep, then remove the legacy
+    /// config safely.
     /// </summary>
     public static readonly Counter<long> CredentialCryptoLegacyReads = Meter.CreateCounter<long>(
         "nodepilot.credential.crypto.legacy_reads", unit: "1",

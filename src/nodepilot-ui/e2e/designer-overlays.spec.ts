@@ -2,12 +2,12 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 54 — Designer-Overlays: Command Palette (Ctrl+Shift+P), Quick Switcher
- * (Ctrl+P) and Find & Replace (Ctrl+H). All three are toggled by `useEditorKeyboardShortcuts`
- * and rendered by EditorOverlays → CommandPalette / WorkflowQuickSwitcher / FindReplaceOverlay.
+ * E2ETests.md part 54 — designer overlays: command palette (Ctrl+Shift+P), quick switcher
+ * (Ctrl+P) and find and replace (Ctrl+H). All three are toggled by `useEditorKeyboardShortcuts`
+ * and rendered by EditorOverlays as CommandPalette, WorkflowQuickSwitcher and FindReplaceOverlay.
  *
- * Hermetic: page.route() mocks only (no backend). SPA renders EN under Playwright.
- * The workflow is locked-by-me so the lifecycle/edit commands the palette lists are enabled.
+ * Hermetic: page.route() mocks only, no backend. The SPA renders English under Playwright. The
+ * workflow is checked out by the current user so the palette's edit commands are enabled.
  */
 
 const WF_ID = 'eeeeeeee-5454-5454-5454-545454545454';
@@ -19,7 +19,7 @@ function workflowJson(definition: { nodes: unknown[]; edges: unknown[] }) {
     name: 'Overlays_E2E_WF',
     description: '',
     isEnabled: false,
-    checkedOutByUserId: MOCK_USER.id, // locked-by-me → canWrite
+    checkedOutByUserId: MOCK_USER.id, // checked out by the current user, so canWrite is true
     checkedOutByUserName: MOCK_USER.username,
     checkedOutAt: '2026-06-01T00:00:00.000Z',
     definitionJson: JSON.stringify(definition),
@@ -42,8 +42,8 @@ function definition() {
 }
 
 async function openEditor(page: Page) {
-  await seedExpertMode(page); // designer overlays live in the expert-mode toolbar (default is standard)
-  // The Quick-Switcher + palette read GET /api/workflows (list). Provide two entries.
+  await seedExpertMode(page); // designer overlays live in the expert-mode toolbar
+  // The quick switcher and the palette read GET /api/workflows, so provide two entries.
   await page.route('**/api/workflows', (route) =>
     route.fulfill({
       status: 200,
@@ -109,9 +109,9 @@ test.describe('Designer-Overlays (Teil 54)', () => {
     const input = page.getByPlaceholder(/switch to workflow/i);
     await expect(input).toBeVisible({ timeout: 10_000 });
 
-    // Fuzzy-match narrows to the other workflow. The switcher row uniquely carries the
-    // workflow's id-slice (ffffffff…) — the sidebar list does not — so it disambiguates the
-    // two "Payroll Nightly Sync" texts on the page.
+    // Fuzzy matching narrows to the other workflow. Only the switcher row carries the
+    // workflow's id slice, so it disambiguates the two "Payroll Nightly Sync" texts on
+    // the page.
     await input.fill('payroll');
     const switcherRow = page.getByRole('button').filter({ hasText: OTHER_WF_ID.slice(0, 8) });
     await expect(switcherRow).toBeVisible({ timeout: 10_000 });
@@ -138,18 +138,18 @@ test.describe('Designer-Overlays (Teil 54)', () => {
     const findInput = page.getByPlaceholder(/^find/i);
     await expect(findInput).toBeVisible({ timeout: 10_000 });
 
-    // Empty search → no crash, prompt message shown.
+    // An empty search shows the prompt message instead of crashing.
     await expect(page.getByText(/enter a search term to find matches/i)).toBeVisible();
 
-    // Type "hello" — match counter appears and result rows render.
+    // Typing "hello" shows the match counter and renders result rows.
     await findInput.fill('hello');
     await expect(page.getByText(/\d+ match(es)?/i)).toBeVisible({ timeout: 10_000 });
 
-    // Replace All "hello" → "world": fill replace, click the "All (N)" button.
+    // Replace "hello" with "world": fill the replace field, then click the "All (N)" button.
     await page.getByPlaceholder(/replace with/i).fill('world');
     await page.getByRole('button', { name: /^All \(\d+\)/ }).click();
 
-    // Overlay closes after Replace All; the rename landed on the node label.
+    // The overlay closes after Replace All and the rename reaches the node label.
     await expect(findInput).toHaveCount(0, { timeout: 10_000 });
     await expect(page.locator('.react-flow__node[data-id="step-hello11"]')).toContainText(/world/i);
   });

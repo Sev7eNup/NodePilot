@@ -18,9 +18,8 @@ foreach ($workflow in @($bundle.workflows)) {
   $edges = @($workflow.definition.edges)
   $nodeIds = @($nodes | ForEach-Object { $_.id })
 
-  # The cadence and the enabled flag are the whole point of the package: an orchestrator that
-  # ships disabled, or on a slower cron, silently stops driving its three activity tests. That
-  # is exactly how six of ten orchestrators went unnoticed-dark for days.
+  # Every orchestrator must ship enabled and on the one-minute cron. A disabled or slower one
+  # stops driving its three activity tests without reporting an error.
   if ($workflow.isEnabled -ne $true) {
     $errors.Add("$($workflow.name): must ship enabled, otherwise its three activity tests never run.")
   }

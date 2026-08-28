@@ -39,7 +39,7 @@ public readonly record struct SizedValue(int Value, SizingBound Bound)
 /// <summary>
 /// The complete, immutable sizing decision for this process. Built once at boot and read by
 /// every consumer, so a configuration reload can never leave the hot-reloadable ThreadPool
-/// tuned for one mode while boot-fixed consumers run in the other.
+/// tuned for one mode while the boot-fixed runspace pool and dispatch queue run in the other.
 /// </summary>
 public sealed record PerformancePlan
 {

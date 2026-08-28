@@ -64,7 +64,7 @@ public sealed class WorkflowRunCommand : BaseCommand<WorkflowRunSettings>
         if (settings.Follow)
             return await Exec.ExecWatcher.RunAsync(api, session, execution.Id, writer, ct);
 
-        // --wait → simple polling.
+        // --wait means simple polling.
         return await PollUntilTerminalAsync(api, execution.Id, writer, ct);
     }
 

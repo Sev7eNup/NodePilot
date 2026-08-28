@@ -428,13 +428,11 @@ describe('WorkflowsPage — folder permissions affordance', () => {
   });
 
   /**
-   * Regression: the button used to be a plain sibling of the tree inside a single
-   * `overflow-auto` aside. As soon as the card had a definite height — the user dragging
-   * the corner grip, or the `max-height: calc(100vh - 3rem)` clamp on a long folder list —
-   * the tree's own `h-full` claimed the entire card and pushed the button past the scroll
-   * fold. Since the tree has its own inner scroller it swallowed the wheel, so the button
-   * was invisible AND unreachable. jsdom does no layout, so we assert the structural
-   * invariant that makes the overflow impossible instead.
+   * The folder card can gain a definite height (manual resize, or the max-height
+   * clamp on a long list). Then the tree's `h-full` would claim the whole card,
+   * pushing the button past the scroll boundary where the tree's own scroller
+   * swallows the wheel and the button becomes unreachable. jsdom doesn't lay out
+   * elements, so this test checks the structural invariant that prevents this.
    */
   it('pins the permissions button outside the folder card scroll area', async () => {
     renderPage('Admin');
@@ -447,7 +445,7 @@ describe('WorkflowsPage — folder permissions affordance', () => {
     // Pinned footer: a direct child of the card, not nested inside the scrolling region.
     expect(button.parentElement).toBe(aside);
     expect(aside.className).toContain('flex-col');
-    // The card itself must never be the scroller — that is what buried the button.
+    // The card itself must never scroll — a scrolling card would push the button out of view.
     expect(aside.className).not.toContain('overflow-auto');
 
     // The tree lives in the one region that is allowed to consume leftover height.
@@ -699,12 +697,12 @@ describe('WorkflowsPage — Sorting', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('Alpha')).toBeInTheDocument());
 
-    // First click → asc, Alpha first
+    // First click -> asc, Alpha first
     fireEvent.click(screen.getByText('Name'));
     let rows = screen.getAllByRole('row');
     expect(rows[1].textContent).toContain('Alpha');
 
-    // Second click → desc, Bravo first
+    // Second click -> desc, Bravo first
     fireEvent.click(screen.getByText('Name'));
     rows = screen.getAllByRole('row');
     expect(rows[1].textContent).toContain('Bravo');
@@ -745,7 +743,7 @@ describe('WorkflowsPage — Sorting', () => {
     fireEvent.click(screen.getByText('Status'));
 
     const rows = screen.getAllByRole('row');
-    // Status sort uses Number(b.isEnabled) - Number(a.isEnabled) → enabled first asc
+    // Status sort uses Number(b.isEnabled) - Number(a.isEnabled), so enabled rows sort first asc
     expect(rows[1].textContent).toContain('OnOne');
   });
 
@@ -997,9 +995,9 @@ describe('WorkflowsPage — AI workflow generation', () => {
 });
 
 describe('WorkflowsPage — load failure', () => {
-  // The defect this covers, observed in production: the page read only `data` and `isLoading`,
-  // so a failing request fell through to the "no workflows yet" empty state. An overloaded
-  // database was indistinguishable from an empty installation — on a page whose counter said 70.
+  // The page must not read only `data` and `isLoading`: a failing request would then fall
+  // through to the "no workflows yet" empty state, making a database outage look identical
+  // to an empty installation.
   it('shows an error with a retry button instead of the empty state', async () => {
     server.use(
       http.get(`${BASE}/api/workflows`, () =>
@@ -1013,7 +1011,7 @@ describe('WorkflowsPage — load failure', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(/Could not load the workflows/i);
-    // The empty state must NOT be what the user sees; that is the whole point.
+    // The empty state must not be shown here; that is the behavior this test checks.
     expect(screen.queryByText(/No workflows yet/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
   });
@@ -1273,8 +1271,8 @@ describe('WorkflowsPage — bulk actions', () => {
     await waitFor(() => expect(disabled).toEqual(['wf-1', 'wf-2']));
   });
 
-  // POST /enable answers 423 for ANY checked-out workflow — including one the caller locked
-  // themselves — so the button refuses up front instead of failing once per row.
+  // POST /enable answers 423 for any checked-out workflow, including one the caller locked
+  // themselves, so the button refuses up front instead of failing once per row.
   it('enable is disabled when a checked-out workflow is selected', async () => {
     await selectBoth([
       mkWorkflow({ id: 'wf-1', name: 'Alpha' }),

@@ -6,16 +6,11 @@ using Xunit;
 namespace NodePilot.Api.Tests.Architecture;
 
 /// <summary>
-/// The three npm manifests carry their own <c>version</c> field, and nothing kept them in step
-/// with <c>Directory.Build.props</c>. They sat at 1.2.5 while the product shipped 1.2.10 — so
-/// "Apps &amp; features" reported 1.2.10 (the Inno <c>AppVersion</c> comes from the build) while the
-/// file properties of the packaged <c>NodePilot.exe</c> reported 1.2.5, because Electron takes its
-/// version from <c>package.json</c>.
-///
-/// This is the same defect <see cref="NodePilot.Cli.Tests"/> already guards for the CLI, whose own
-/// docblock records that it "still said 1.0.0 after the product version had moved on". Three more
-/// copies of a version number are three more chances to forget one, so they get the same treatment
-/// rather than a convention nobody can enforce.
+/// The three npm manifests carry their own <c>version</c> field, independent from
+/// <c>Directory.Build.props</c>. A drift between them means Electron's packaged
+/// <c>NodePilot.exe</c> reports a different version than "Apps &amp; features" (Inno's
+/// <c>AppVersion</c> comes from the build). <see cref="NodePilot.Cli.Tests"/> guards the
+/// same class of drift for the CLI; this extends that check to the npm manifests.
 /// </summary>
 public sealed class PackageVersionParityTests
 {

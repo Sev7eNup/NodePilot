@@ -10,9 +10,11 @@ namespace NodePilot.Engine.Notifications;
 
 /// <summary>
 /// Generic outbound-webhook sink: POSTs the rendered JSON to the route URL through the SSRF-guarded
-/// "NodePilot" named HttpClient (URL validated up front by <see cref="NetworkGuard.ValidateUrl"/> and
+/// "NodePilot" named HttpClient (URL validated up front by <see cref="NetworkGuard.ValidateUrl"/>
+/// and
 /// again at TCP-connect time inside the handler). If the route carries a secret, the body is signed
-/// with HMAC-SHA256 in an <c>X-NodePilot-Signature: sha256=…</c> header. Self-isolating with a bounded
+/// with HMAC-SHA256 in an <c>X-NodePilot-Signature: sha256=…</c> header. Self-isolating with a
+/// bounded
 /// timeout. (Teams/Slack are expected to reuse this sink with their own renderers in a
 /// later alerting release.)
 /// </summary>

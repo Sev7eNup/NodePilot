@@ -100,9 +100,10 @@ test.describe('Designer header layering', () => {
   test('header popovers stack above the canvas folder-path breadcrumb layer', async ({ page }) => {
     await openEditor(page);
 
-    // Open a header popover (the skin switcher) so a `[role="menu"]` is present. The layering
-    // invariant holds regardless of geometry: the header is its own stacking context (z-45)
-    // above the canvas breadcrumb layer (z-30), and its popovers (z-50) render above it.
+    // Open a header popover (the skin switcher) so a `[role="menu"]` is present. The skin
+    // switcher sits in the right toolbar zone and does not geometrically overlap the top-left
+    // breadcrumb, but the layering must still hold: the header is its own stacking context
+    // (z-45) above the canvas breadcrumb layer (z-30), and its popovers (z-50) render above it.
     await page.getByTestId('toggle-skin').click();
     await expect(page.getByRole('menu')).toBeVisible();
 

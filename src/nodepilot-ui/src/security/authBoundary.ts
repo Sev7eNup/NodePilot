@@ -51,7 +51,7 @@ let channel: BroadcastChannel | null | undefined;
 let transportListening = false;
 let authBoundaryGeneration = 0;
 
-/** Raised when a network result belongs to an identity which has already been replaced. */
+/** Raised when a network result belongs to an identity that has already been replaced. */
 export class AuthBoundaryChangedError extends Error {
   constructor() {
     super('Request result discarded because the authentication context changed.');
@@ -59,7 +59,7 @@ export class AuthBoundaryChangedError extends Error {
   }
 }
 
-/** Capture before starting async work which must not survive the next authentication boundary. */
+/** Capture before starting async work that must not survive the next authentication boundary. */
 export function captureAuthBoundaryGeneration(): number {
   return authBoundaryGeneration;
 }
@@ -118,9 +118,9 @@ function parseEvent(value: unknown): AuthBoundaryEvent | null {
     if (candidate.phase === 'started'
       || candidate.phase === 'succeeded'
       || candidate.phase === 'failed') return candidate as AuthBoundaryEvent;
-    // Fail closed for a tab still running the previous bundle, whose ambiguous `settled` event
-    // was emitted on both success and failure. It may suppress a harmless success re-probe, but
-    // must never remount an identity after a failed logout.
+    // Fail closed on the ambiguous `settled` phase that older tabs emit for both success and
+    // failure. This can suppress a harmless success re-probe, but never remounts an identity
+    // after a failed logout.
     return candidate.phase === 'settled'
       ? { ...candidate, phase: 'failed' } as AuthBoundaryEvent
       : null;
@@ -170,8 +170,8 @@ function stopTransport(): void {
 }
 
 function publish(event: AuthBoundaryEvent): void {
-  // App.tsx installs a long-lived listener before authentication starts. Isolated consumers (unit
-  // tests or a future lightweight entry point) still need to publish without leaking a channel.
+  // App.tsx installs a long-lived listener before authentication starts. Isolated consumers such
+  // as unit tests still need to publish without leaking a channel.
   if (!transportListening && channel === undefined && typeof globalThis.BroadcastChannel === 'function') {
     try {
       const transientChannel = new globalThis.BroadcastChannel(CHANNEL_NAME);
@@ -239,7 +239,7 @@ export function registerAuthBoundaryIdentityReprober(reprober: BoundaryClearer):
  */
 export function clearLocalAuthBoundary(): void {
   // Invalidate in-flight callbacks first. Even if an individual cleanup hook fails, no response
-  // which started under the previous identity may commit after this point.
+  // that started under the previous identity may commit after this point.
   authBoundaryGeneration++;
   for (const clear of liveStateClearers) {
     try { clear(); } catch { /* Continue clearing the other independent stores. */ }

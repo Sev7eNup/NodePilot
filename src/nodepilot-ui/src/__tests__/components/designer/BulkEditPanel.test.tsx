@@ -5,9 +5,9 @@ import { BulkEditPanel } from '../../../components/designer/BulkEditPanel';
 import type { ManagedMachine } from '../../../types/api';
 
 /**
- * BulkEditPanel is shown when ≥2 activity nodes are selected. Each field has its own
- * Apply button (vs. an all-or-nothing form), so we pin:
- *   - Header counts activity vs. non-activity correctly
+ * BulkEditPanel is shown when two or more activity nodes are selected. Each field has its
+ * own Apply button instead of one all-or-nothing form. Covered here:
+ *   - Header counts activity and non-activity nodes correctly
  *   - Apply on each field calls onApply with the right (patch, configPatch?) shape
  *   - Apply buttons stay disabled until a value is entered
  *   - Close button calls onClose
@@ -174,7 +174,7 @@ describe('BulkEditPanel', () => {
     fireEvent.change(timeoutInput, { target: { value: '120' } });
     fireEvent.click(screen.getByText('Apply timeout'));
 
-    // patch is empty {}, configPatch contains the timeout as a NUMBER (not string).
+    // patch stays empty; configPatch carries the timeout as a number, not a string.
     expect(onApply).toHaveBeenCalledWith(['a', 'b'], {}, { timeoutSeconds: 120 });
     const arg = onApply.mock.calls[0][2] as { timeoutSeconds: unknown };
     expect(typeof arg.timeoutSeconds).toBe('number');
@@ -248,7 +248,7 @@ describe('BulkEditPanel', () => {
       />
     );
 
-    // The X close button is the only button in the header (no name); query by role.
+    // The header close button has no accessible name, so it is selected by its class.
     const closeButton = container.querySelector('button.text-on-surface-variant') as HTMLButtonElement;
     fireEvent.click(closeButton);
     expect(onClose).toHaveBeenCalledOnce();

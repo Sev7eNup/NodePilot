@@ -60,8 +60,7 @@ public sealed class OutputRedactor : IAuditDetailsRedactor
         // M-5: widened value class — commas are legal inside secret strings (e.g. base64 pad
         // regions, concatenated tokens), so only whitespace / semicolons / quotes terminate.
         new(@"((?:api[_-]?key|password|passwd|pwd|secret|token|bearer|access[_-]?key|client[_-]?secret|private[_-]?key|auth(?:orization)?|session[_-]?key|refresh[_-]?token|thumbprint|fingerprint)\s*[=:]\s*)([^\s;""']+)", RxOpts, RegexTimeout),
-        // Double-quoted value shape: `password = "abc 123"` — previously slipped past the
-        // bareword pattern above because the capture class excluded '"'. Audit L6.
+        // Match double-quoted values separately because the bareword pattern excludes quotes.
         new(@"((?:api[_-]?key|password|passwd|pwd|secret|token|bearer|access[_-]?key|client[_-]?secret|private[_-]?key|auth(?:orization)?|session[_-]?key|refresh[_-]?token|thumbprint|fingerprint)\s*[=:]\s*"")([^""]*)", RxOpts, RegexTimeout),
         // Single-quoted value shape: `password = 'abc 123'` — PowerShell output form.
         new(@"((?:api[_-]?key|password|passwd|pwd|secret|token|bearer|access[_-]?key|client[_-]?secret|private[_-]?key|auth(?:orization)?|session[_-]?key|refresh[_-]?token|thumbprint|fingerprint)\s*[=:]\s*')([^']*)", RxOpts, RegexTimeout),

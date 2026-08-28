@@ -2,19 +2,13 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Part 73 — Manually Overriding an Edge Label (lines 3928-3945).
+ * E2ETests.md Part 73, manually overriding an edge label.
  *
- * Selecting an edge opens the EdgePropertiesPanel ("Connection"). Its Label field
- * (placeholder "e.g. On Success, If True...") writes `data.label` on the edge. A custom label
- * that differs from the condition-derived auto-label surfaces an amber "Custom label overrides
- * the condition" hint with an "Auto:" preview + a "Use auto" button that clears it back to the
- * automatic label.
- *
- * Edge creation by handle-drag is React-Flow d3-drag (not synthesizable), so the edge is
- * PRE-SEEDED. We exercise: set custom label → override hint appears + PUT carries data.label;
- * "Use auto" → label cleared.
- *
- * Hermetic: page.route mocks. Workflow locked-by-me (State B). SPA renders ENGLISH.
+ * Selecting an edge opens the EdgePropertiesPanel ("Connection"), whose Label field writes
+ * `data.label`. A custom label that differs from the condition-derived auto label shows an
+ * override hint with an "Auto:" preview and a "Use auto" button that clears it again.
+ * Handle-drag edge creation is not synthesizable, so the edge is pre-seeded.
+ * Hermetic: page.route mocks, workflow locked by the current user, English UI.
  */
 
 const WF_ID = 'e7373737-7373-7373-7373-737373737373';
@@ -31,8 +25,8 @@ function definition() {
         data: { label: 'Consumer', activityType: 'delay', config: { seconds: 1 } } },
     ],
     edges: [
-      // Condition .success → auto-label would be "On Success". Seed label empty so the field
-      // starts on the auto value; the test then types a custom label.
+      // The .success condition derives the auto label "On Success". The seeded label is empty
+      // so the field starts on that auto value; the test then types a custom label.
       { id: EDGE_ID, source: NODE_A, target: NODE_B, type: 'labeled',
         data: { label: '', condition: `${NODE_A}.success`, disabled: false } },
     ],
@@ -61,14 +55,14 @@ async function openEditor(page: Page, onPut?: (body: { definitionJson?: string }
   await expect(page.locator('.react-flow__edge')).toHaveCount(1);
 }
 
-/** Click the seeded edge midpoint → opens the Connection panel. */
+/** Clicks the midpoint of the seeded edge to open the Connection panel. */
 async function selectEdge(page: Page) {
   const heading = page.getByRole('heading', { name: /^connection$|^verbindung$/i });
   const interaction = page.locator(`.react-flow__edge[data-id="${EDGE_ID}"] .react-flow__edge-interaction`);
   await interaction.waitFor({ state: 'attached', timeout: 10_000 }); // SVG path: attached, not "visible"
   await page.waitForTimeout(500); // let the load-time fitView animation settle before measuring
-  // The fitView animation can shift the edge between measuring its box and the click landing, so a
-  // single centre click occasionally misses. Re-measure + click until the Connection panel opens.
+  // The fitView animation can shift the edge between measuring its box and the click landing, so
+  // a single centre click can miss. Re-measure and click until the Connection panel opens.
   for (let i = 0; i < 8; i++) {
     const box = await interaction.boundingBox();
     if (box) {
@@ -105,7 +99,7 @@ test.describe('Edge-Label Manuell Überschreiben (Teil 73)', () => {
     await expect(page.getByText(/Auto:/).first()).toBeVisible();
     await expect(page.getByText('On Success').first()).toBeVisible();
 
-    // Save → the custom label round-trips on the edge.
+    // Saving round-trips the custom label on the edge.
     await saveButton(page).click();
     await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
     const def = JSON.parse(putBody!.definitionJson as string) as { edges: { data?: { label?: string } }[] };
@@ -126,7 +120,7 @@ test.describe('Edge-Label Manuell Überschreiben (Teil 73)', () => {
     await expect(labelInput).toHaveValue('');
     await expect(page.getByText(/custom label overrides the condition/i)).toHaveCount(0);
 
-    // Save → the persisted label is empty/undefined (auto applies).
+    // After saving the persisted label is empty or undefined, so the auto label applies.
     await saveButton(page).click();
     await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
     const def = JSON.parse(putBody!.definitionJson as string) as { edges: { data?: { label?: string } }[] };

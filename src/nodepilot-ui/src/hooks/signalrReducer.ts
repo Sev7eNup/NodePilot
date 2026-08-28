@@ -1,7 +1,7 @@
-// Pure reducer functions for the live execution stream. No React, no SignalR client,
-// no DOM — just `prev state + event(s) → next state`. Extracted from `useSignalR` so the
-// merging / sorting / classification logic can be unit-tested in isolation and the hook
-// stays focused on connection lifecycle + side effects.
+// Pure reducer functions for the live execution stream. No React, no SignalR client and no
+// DOM: each function maps the previous state plus incoming events to the next state. Kept
+// separate from `useSignalR` so the merging, sorting and classification logic can be
+// unit-tested on its own and the hook stays focused on connection lifecycle and side effects.
 
 import type {
   ApiExecutionItem,
@@ -20,8 +20,8 @@ import type {
 import { parseOutputParametersJson } from '../lib/outputParameters';
 
 export function mergeHydrated(hydrated: LiveExecutionsById, prev: LiveExecutionsById): LiveExecutionsById {
-  // REST API snapshot is the baseline; SignalR events already applied to `prev` take precedence
-  // for the same stepId (they carry more recent status changes).
+  // The REST snapshot is the baseline; for the same stepId, SignalR events already applied to
+  // `prev` win because they carry the more recent status change.
   const result: LiveExecutionsById = { ...hydrated };
   for (const [execId, exec] of Object.entries(prev)) {
     if (!result[execId]) {
@@ -50,9 +50,8 @@ export function isActiveExecution(execution: LiveExecution): boolean {
 }
 
 export function sortLiveExecutions(executions: LiveExecution[]): LiveExecution[] {
-  // Pre-compute sort keys so steps.some() runs once per execution instead of
-  // O(N log N) times inside the comparator — makes a measurable difference when
-  // many executions have steps loaded simultaneously.
+  // Pre-compute the sort keys so steps.some() runs once per execution instead of once per
+  // comparator call.
   const keyed = executions.map((e) => ({
     exec: e,
     isPaused: e.steps.some((s) => s.status === 'Paused') ? 1 : 0,
@@ -68,10 +67,8 @@ export function sortLiveExecutions(executions: LiveExecution[]): LiveExecution[]
 }
 
 export function trimLiveExecutions(next: LiveExecutionsById): LiveExecutionsById {
-  // Active (Running/Pending) runs are never evicted — their ExecutionStatusChanged
-  // events must land even when 200+ run concurrently. Each listing-only run costs
-  // ~200 bytes; 200 active runs = 40 KB, which is negligible.
-  // Only completed runs are capped at 50 (oldest evicted first).
+  // Active (Running/Pending) runs are never evicted so their ExecutionStatusChanged events
+  // always land, however many run at once. Only completed runs are capped at 50, oldest first.
   const all = Object.values(next);
   const completed = all.filter((e) => !isActiveExecution(e));
   if (completed.length <= 50) return next;
@@ -81,11 +78,11 @@ export function trimLiveExecutions(next: LiveExecutionsById): LiveExecutionsById
 }
 
 /**
- * Merges an execution listing (status-only, no steps) into live state.
- * Used for the initial bulk-load pass: all relevant runs appear immediately as
- * status badges without waiting for N parallel GET /steps fetches.
- * Existing in-memory entries (from SignalR events or prior hydration) are preserved;
- * only status/completedAt/errorMessage are updated from the listing for terminal runs.
+ * Merges an execution listing (status only, no steps) into live state.
+ * Used for the initial bulk load, so every relevant run appears as a status badge without
+ * waiting for one GET /steps request per run. Existing in-memory entries (from SignalR events
+ * or earlier hydration) are preserved; only status, completedAt and errorMessage are taken
+ * from the listing, and only for terminal runs.
  */
 export function mergeListingOnly(items: ApiExecutionItem[], prev: LiveExecutionsById): LiveExecutionsById {
   const next = { ...prev };
@@ -115,13 +112,12 @@ export function mergeListingOnly(items: ApiExecutionItem[], prev: LiveExecutions
 }
 
 /**
- * Builds the databus entries for one step in the live view. Single source of truth for
- * the mapping `(stepId, alias?, output, error, paramMap) → DatabusEntry-Dict`, shared
- * between live StepCompleted events ({@link applyLiveEventUpdate}) and post-refresh
- * hydration ({@link buildDatabusFromHydratedSteps}). Matches the engine's
- * BuildStepVariables dual-lookup contract: every entry is written under both
- * `{stepId}.<channel>` and `{alias}.<channel>` keys so a downstream template that
- * references either form resolves identically in the UI overlay.
+ * Builds the databus entries for one step in the live view. Single source of truth for the
+ * mapping from stepId, alias, output, error and parameters to databus entries, shared by live
+ * StepCompleted events ({@link applyLiveEventUpdate}) and post-refresh hydration
+ * ({@link buildDatabusFromHydratedSteps}). As in the engine's BuildStepVariables, every entry
+ * is written under both `{stepId}.<channel>` and `{alias}.<channel>`, so a template using
+ * either form resolves the same way in the UI overlay.
  */
 export function buildStepDatabusEntries(args: {
   stepId: string;
@@ -151,12 +147,11 @@ export function buildStepDatabusEntries(args: {
 }
 
 /**
- * Reconstructs the databus from hydrated REST step rows (`/executions/{id}/steps`). Used
- * on browser refresh or lazy backfill: SignalR didn't deliver these `StepCompleted` events
- * in this session, so the live-event reducer never wrote the entries. Parses
- * `outputParametersJson` (already redacted server-side, may be null/empty for params-free
- * activities like `delay`/`log`) and reuses {@link buildStepDatabusEntries} so the keys
- * are byte-identical to what a live event would have produced.
+ * Rebuilds the databus from hydrated REST step rows (`/executions/{id}/steps`), for the cases
+ * where the reducer never saw the `StepCompleted` events: a browser refresh or a lazy backfill.
+ * Parses `outputParametersJson` (redacted server-side, may be null or empty for activities
+ * without parameters, such as `delay` and `log`) and reuses {@link buildStepDatabusEntries} so
+ * the keys are identical to what a live event would have produced.
  */
 export function buildDatabusFromHydratedSteps(
   steps: Array<{
@@ -170,9 +165,8 @@ export function buildDatabusFromHydratedSteps(
 ): Record<string, DatabusEntry> {
   const databus: Record<string, DatabusEntry> = {};
   for (const s of steps) {
-    // Best-effort: malformed JSON leaves param entries absent, .output/.error still
-    // get reconstructed. Hydration must never throw — a broken row shouldn't blank
-    // the whole live view.
+    // Malformed JSON leaves the param entries out while .output and .error are still rebuilt.
+    // Hydration must never throw: one broken row would blank the whole live view.
     const outputParameters = parseOutputParametersJson(s.outputParametersJson);
     Object.assign(
       databus,
@@ -190,8 +184,8 @@ export function buildDatabusFromHydratedSteps(
 }
 
 export function classifyEntry(key: string, value: string, stepNameMap: Map<string, string | null | undefined>): DatabusEntry {
-  // Engine only populates two runtime namespaces — globals.* and manual.*. There is no
-  // trigger.* / webhook.* namespace (webhook payload lives under manual.webhook…).
+  // The engine populates only two runtime namespaces: globals.* and manual.*. There is no
+  // trigger.* or webhook.* namespace; a webhook payload arrives under manual.*.
   if (key.startsWith('manual.')) return { value, kind: 'trigger' };
   if (key.startsWith('globals.')) return { value, kind: 'global' };
   const paramM = /^([^.]+)\.param\.(.+)$/.exec(key);
@@ -204,9 +198,9 @@ export function classifyEntry(key: string, value: string, stepNameMap: Map<strin
 }
 
 /**
- * Returns the single updated exec entry (or null when the event has no effect).
- * Reads the current exec from `state` — the caller's pre-spread working copy —
- * so the function itself never needs to spread the full dict.
+ * Returns the single updated exec entry, or null when the event has no effect.
+ * Reads the current exec from `state`, the caller's working copy, so this function never
+ * has to copy the whole dictionary itself.
  */
 export function applyLiveEventUpdate(
   state: LiveExecutionsById,
@@ -237,12 +231,10 @@ export function applyLiveEventUpdate(
         ?? { executionId: evt.executionId, workflowId: evt.workflowId, status: evt.status, steps: [], startedAt: evt.completedAt, databus: {} };
       const existingStep = exec.steps.find((s) => s.stepId === evt.stepId);
       const stepName = existingStep?.stepName ?? evt.stepName;
-      // The live databus mirrors the engine's variable dictionary: every step that
-      // produces output is addressable both by its `{stepId}` and by its configured
-      // `outputVariable` alias. Before this fix, only the `.param.*` entries were written
-      // here — `.output`/`.error` were missing entirely and the alias was never visible.
-      // As a result, the hover preview / expression tester showed less data during a
-      // running workflow than the paused debug snapshot did.
+      // The live databus mirrors the engine's variable dictionary: every step that produces
+      // output is addressable both by its `{stepId}` and by its configured `outputVariable`
+      // alias, so the hover preview and expression tester show the same data during a run as
+      // the paused debug snapshot does.
       const newEntries = buildStepDatabusEntries({
         stepId: evt.stepId,
         stepName,
@@ -287,11 +279,9 @@ export function applyLiveEventUpdate(
       const exec = state[evt.executionId];
       if (!exec) return null;
 
-      // When the execution reaches a terminal state, finalize any steps that are still
-      // marked Running. This happens when StepCompleted events were dropped due to
-      // SignalR channel overflow (DropNewest) or a brief network hiccup — the step's
-      // Completed event never arrived but the execution itself is done. Leaving them
-      // as Running would permanently show a spinner in the Live View.
+      // When the execution reaches a terminal state, finalize steps still marked Running.
+      // Their StepCompleted event can be lost to SignalR channel overflow (DropNewest) or a
+      // network hiccup; leaving them Running would show a spinner in the Live View forever.
       const isTerminal = evt.status === 'Succeeded' || evt.status === 'Failed' || evt.status === 'Cancelled';
       // Map execution terminal status to a valid StepUpdate status (no 'Cancelled' on step level).
       const terminalStepStatus: StepUpdate['status'] =
@@ -373,9 +363,8 @@ export function applyLiveEventUpdate(
 
 export function applyLiveEvents(prev: LiveExecutionsById, events: LiveEvent[]): LiveExecutionsById {
   if (events.length === 0) return prev;
-  // One shallow copy upfront so all events in the batch share the same baseline.
-  // The old pattern spread the full dict inside each applyLiveEvent call, giving
-  // O(N × M) property copies for N executions × M events. This is O(N + M).
+  // One shallow copy upfront so all events in the batch share the same baseline, which keeps
+  // the batch at O(N + M) property copies instead of copying the dictionary per event.
   const next = { ...prev };
   let mutated = false;
   for (const event of events) {

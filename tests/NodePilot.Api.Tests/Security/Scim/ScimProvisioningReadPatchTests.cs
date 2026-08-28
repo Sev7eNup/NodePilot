@@ -15,10 +15,10 @@ using Xunit;
 namespace NodePilot.Api.Tests.Security.Scim;
 
 /// <summary>
-/// Read and PATCH surface of <see cref="ScimProvisioningService"/> — the half an IdP actually
-/// drives on every sync cycle: GET/LIST with filters and paging, PUT/PATCH semantics, and
-/// group membership reconciliation. <see cref="ScimProvisioningServiceTests"/> covers the
-/// create/delete lifecycle.
+/// Tests the read and PATCH surface of <see cref="ScimProvisioningService"/>: GET/LIST with
+/// filters and paging, PUT/PATCH semantics, and group membership reconciliation. This is the
+/// part an IdP exercises on every sync cycle. <see cref="ScimProvisioningServiceTests"/> covers
+/// the create/delete lifecycle.
 /// </summary>
 public sealed class ScimProvisioningReadPatchTests : IDisposable
 {
@@ -390,8 +390,8 @@ public sealed class ScimProvisioningReadPatchTests : IDisposable
     [Fact]
     public async Task PatchUserAsync_PathlessObjectValue_AppliesBothAttributes()
     {
-        // Entra ID sends replace operations without a path and the whole resource fragment
-        // as the value — the shape that broke real-world syncs before it was handled.
+        // Entra ID sends replace operations without a path, with the whole resource
+        // fragment as the value. The service must handle this shape.
         var id = await SeedUserAsync("subject-1", "alice@example.test");
 
         var result = await Service().PatchUserAsync(
@@ -752,8 +752,8 @@ public sealed class ScimProvisioningReadPatchTests : IDisposable
         new AuditStager());
 
     /// <summary>
-    /// GetAuthority() only trusts an authority that is a valid issuer AND matches the OIDC
-    /// authority — a mismatch is how a half-configured deployment presents itself.
+    /// GetAuthority() only trusts an authority that is a valid issuer and matches the OIDC
+    /// authority. A mismatch is what a half-configured deployment looks like.
     /// </summary>
     private ScimProvisioningService ServiceWithoutAuthority() => new(
         _db,

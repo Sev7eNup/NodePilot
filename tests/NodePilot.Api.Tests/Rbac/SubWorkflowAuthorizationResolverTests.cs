@@ -9,8 +9,8 @@ namespace NodePilot.Api.Tests.Rbac;
 
 /// <summary>
 /// Engine-side runtime gate for cross-folder sub-workflow calls. Backstop for the
-/// publish-time PrePublishChecklist check â€” folder permissions can revoke between
-/// publish and run.
+/// publish-time PrePublishChecklist check, since folder permissions can be revoked
+/// between publish and run.
 /// </summary>
 public sealed class SubWorkflowAuthorizationResolverTests : IDisposable
 {
@@ -159,7 +159,7 @@ public sealed class SubWorkflowAuthorizationResolverTests : IDisposable
     [Fact]
     public async Task CrossFolder_PrincipalWithFolderViewerOnly_IsBlocked()
     {
-        // Editor on /Finance has no grant on /Sales â€” cross-folder call to /Sales fails.
+        // Editor on /Finance has no grant on /Sales, so the cross-folder call to /Sales fails.
         var exec = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = _financeParent.Id, Status = ExecutionStatus.Running, StartedByUserId = _editorUser.Id };
         var resolver = new SubWorkflowAuthorizationResolver(_db);
         var msg = await resolver.IsBlockedAsync(exec, _salesChild, CancellationToken.None);

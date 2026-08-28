@@ -1,18 +1,18 @@
 import type { ChatMessage } from '../stores/aiChatStore';
 
 export interface ChatMarkdownLabels {
-  /** Heading for a user turn, e.g. "Frage". */
+  /** Heading for a user turn. */
   user: string;
-  /** Heading for an assistant turn, e.g. "Assistent". */
+  /** Heading for an assistant turn. */
   assistant: string;
-  /** Inline label for a proposal summary, e.g. "Vorschlag". */
+  /** Inline label for a proposal summary. */
   proposal: string;
 }
 
 /**
- * Builds a Markdown transcript of a chat thread: a heading plus the (trimmed) content per
- * turn, with a short note for any attached workflow proposal. Pure and deterministic —
- * no DOM/Date access — the caller supplies the title/labels (i18n) and file name.
+ * Builds a Markdown transcript of a chat thread: a heading plus the trimmed content per turn,
+ * with a short note for any attached workflow proposal. Pure and deterministic, with no DOM or
+ * Date access; the caller supplies the title and the labels.
  */
 export function buildChatMarkdown(title: string, messages: ChatMessage[], labels: ChatMarkdownLabels): string {
   const lines: string[] = [`# ${title}`, ''];
@@ -34,9 +34,9 @@ export function buildChatMarkdown(title: string, messages: ChatMessage[], labels
 /**
  * Turns a chat title into a filename-safe slug.
  *
- * The dash trimming runs as an explicit scan rather than `/^-+|-+$/`: that pattern is
- * super-linear on a long run of dashes that is not at the string end, because the engine
- * retries the greedy `-+` from every position.
+ * Dash trimming uses an explicit scan instead of `/^-+|-+$/`, which is super-linear on a long
+ * run of dashes away from the string end because the engine retries the greedy `-+` from every
+ * position.
  */
 export function chatFilenameSlug(title: string): string {
   const collapsed = title.replace(/[^\w.-]+/g, '-');

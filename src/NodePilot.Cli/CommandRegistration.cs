@@ -23,9 +23,8 @@ namespace NodePilot.Cli;
 /// <summary>
 /// Single source of truth for the <c>np</c> command tree. Both <c>Program.cs</c>
 /// (production CLI host) and the test harness (<c>CommandTestHarness</c>) call into
-/// this method so every command available in production is also reachable from tests
-/// — and so a forgotten registration in the harness can no longer make new commands
-/// look "tested" while really only their API-client wrapper was covered.
+/// this method so every command available in production is also reachable from tests,
+/// with no separate registration to keep in sync.
 /// </summary>
 public static class CommandRegistration
 {

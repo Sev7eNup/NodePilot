@@ -18,9 +18,9 @@ public class ZipOperationActivity : BaseRemoteActivity
         "Optimal", "Fastest", "NoCompression",
     };
 
-    // Kept compatible with Windows PowerShell 5.1/.NET Framework. File.GetAttributes returns
-    // link-local metadata, so a dangling junction (including one aimed at a UNC share) is
-    // rejected without the validation itself dereferencing the target.
+    // Uses APIs compatible with Windows PowerShell 5.1/.NET Framework. File.GetAttributes
+    // reads link-local metadata, so a dangling junction (including one aimed at a UNC share)
+    // is rejected without the validation itself dereferencing the target.
     private const string ReparseGuardScript = """
         function Get-NodePilotPathAttributes {
             param([Parameter(Mandatory = $true)][string]$Path)
@@ -87,9 +87,8 @@ public class ZipOperationActivity : BaseRemoteActivity
     {
         // Default to "compress" when operation is missing or empty — the UI dropdown shows
         // "Compress (zip)" as visual default but won't persist 'compress' to config unless
-        // the user actively changes the dropdown. Workflows authored without touching the
-        // dropdown used to fail with "'operation' is required". source/destination are still
-        // mandatory below — defaulting operation only heals the dropdown-not-touched case.
+        // the user actively changes the dropdown. source/destination are still mandatory
+        // below — defaulting operation only covers the dropdown-not-touched case.
         var rawOperation = config.GetStringOrNull("operation");
         var operation = (string.IsNullOrWhiteSpace(rawOperation) ? "compress" : rawOperation).ToLowerInvariant();
 

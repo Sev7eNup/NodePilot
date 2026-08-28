@@ -34,7 +34,7 @@ internal sealed record OidcMapResult(User? User, OidcMapFailure Failure, string 
 
 /// <summary>
 /// Resolves an already validated OIDC principal by its immutable issuer + subject tuple.
-/// Human-readable claims are deliberately never used to link an existing account.
+/// Human-readable claims must not link an existing account.
 /// </summary>
 public sealed class OidcIdentityMapper(
     NodePilotDbContext db,

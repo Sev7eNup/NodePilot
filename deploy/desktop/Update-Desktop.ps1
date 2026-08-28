@@ -3,15 +3,15 @@
 <#
 .SYNOPSIS
     Coordinated update for the NodePilot desktop install. Two modes:
-      -BackupOnly : just take an ACL-protected pg_dump (invoked by the Inno installer before it
+      -BackupOnly : take an ACL-protected pg_dump only (invoked by the Inno installer before it
                     overwrites binaries on an upgrade).
-      full        : stage -> pg_dump -> stop shell + services -> swap binaries -> re-provision ->
-                    health-check, with rollback of binaries + config + DB dump on failure.
+      full        : pg_dump, stop the shell and services, swap binaries, re-provision, health
+                    check. Binaries, config and the DB dump are rolled back on failure.
 
 .DESCRIPTION
-    Postgres MAJOR-version upgrades are out of scope for v1 (the bundled PG stays on its major).
-    The DB password / port are read from the ACL-restricted service-environment connection string,
-    never from JSON. Not executed by Claude; requires on-VM validation.
+    Postgres major-version upgrades are out of scope; the bundled server stays on its major.
+    The DB password and port are read from the ACL-restricted service-environment connection
+    string, never from JSON. Not executed by Claude; requires on-VM validation.
 #>
 [CmdletBinding()]
 param(

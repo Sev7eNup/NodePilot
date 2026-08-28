@@ -5,8 +5,8 @@ namespace NodePilot.Api.Dtos;
 /// <summary>
 /// Request body for <c>POST /api/workflows/{id}/steps/{stepId}/test</c>.
 ///
-/// <para><b>MockVariables</b>: flat map of <c>stepName.field</c> → value (e.g.
-/// <c>"checkDisk.output": "7"</c>, <c>"checkDisk.param.freeGb": "7"</c>). Used to populate
+/// <para><b>MockVariables</b>: flat map of <c>stepName.field</c> -> value (e.g.
+/// <c>"checkDisk.output": "7"</c>, <c>"checkDisk.param.freeGb": "7"</c>). Populates
 /// upstream <c>{{step.output}}</c> / <c>{{step.param.x}}</c> references.</para>
 ///
 /// <para><b>ConfigOverride</b>: optional unsaved config JSON for the step under test. When

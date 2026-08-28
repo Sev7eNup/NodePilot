@@ -4,23 +4,18 @@ namespace NodePilot.Core.WorkflowDefinitions;
 
 /// <summary>
 /// Content-based secret detection for workflow-definition string values, complementing the
-/// key-name allowlist in <see cref="WorkflowSecretKeys"/>. It catches inline secrets that live in
-/// values whose config key is <b>not</b> itself secret-named — most importantly a restApi
-/// <c>headers</c> string (<c>Authorization: Bearer …</c>), a request <c>body</c>, or a runScript
-/// <c>script</c> that hard-codes a token.
+/// key-name allowlist in <see cref="WorkflowSecretKeys"/>. Catches inline secrets in values whose
+/// config key is not itself secret-named, such as a restApi <c>headers</c> string
+/// (<c>Authorization: Bearer …</c>), a request <c>body</c>, or a runScript <c>script</c> that
+/// hard-codes a token.
 ///
-/// A matching value is masked/encrypted <b>whole</b> (never partially), so the redact→edit
-/// round-trip stays intact: the merge layers (<c>WorkflowDefinitionMerge</c> /
-/// <c>WorkflowDefinitionPatcher</c>) restore a whole-<c>"***"</c> value from the unredacted
-/// original. Detection is deliberately high-signal — credential-header lines, unambiguous provider
-/// token shapes, and quoted secret-name assignments — and it first strips <c>{{…}}</c> template
-/// spans so the steered <c>{{globals.X}}</c> reference (a pointer, never a literal secret) is not
-/// flagged. False positives only cost redacted-view visibility, never data.
-///
-/// The provider token shapes and credential-header names mirror the runtime
-/// <c>OutputRedactor</c> vocabulary; <see cref="CredentialHeaderNames"/> is the single source of
-/// truth for generic content detection. Redirect forwarding uses the inverse policy: only
-/// <see cref="PublicHttpHeaderNames"/> may cross an authority boundary.
+/// <para>A matching value is masked whole, never partially, so the merge layers
+/// (<c>WorkflowDefinitionMerge</c> / <c>WorkflowDefinitionPatcher</c>) can restore it from the
+/// unredacted original on edit. Detection covers credential-header lines, provider token shapes,
+/// and quoted secret-name assignments; <c>{{…}}</c> template spans are stripped first so a
+/// <c>{{globals.X}}</c> reference is never flagged as a literal secret.
+/// <see cref="CredentialHeaderNames"/> is the source of truth for header names;
+/// <see cref="PublicHttpHeaderNames"/> is the inverse allowlist for redirect forwarding.</para>
 /// </summary>
 public static class WorkflowSecretContent
 {
@@ -28,9 +23,9 @@ public static class WorkflowSecretContent
     private const RegexOptions Opts = RegexOptions.CultureInvariant | RegexOptions.IgnoreCase;
 
     /// <summary>
-    /// Credential HTTP header names — the single source of truth, consumed by
-    /// generic content detection. Definition-aware HTTP header objects/strings additionally treat
-    /// every non-public literal header as secret.
+    /// Credential HTTP header names, the single source of truth consumed by generic content
+    /// detection. Definition-aware HTTP header objects and strings additionally treat every
+    /// non-public literal header as secret.
     /// </summary>
     public static readonly IReadOnlySet<string> CredentialHeaderNames =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -40,7 +35,8 @@ public static class WorkflowSecretContent
         };
 
     /// <summary>
-    /// HTTP request headers whose literal values are configuration metadata rather than credentials.
+    /// HTTP request headers whose literal values are configuration metadata rather than
+    /// credentials.
     /// Every other user-authored header is secret-bearing by default: custom authentication schemes
     /// deliberately do not have a universal naming convention.
     /// </summary>
@@ -82,7 +78,7 @@ public static class WorkflowSecretContent
     }
 
     // Any {{…}} template span (globals/databus reference). Stripped before detection so a value
-    // that only *references* a secret is never masked.
+    // that only references a secret is never masked.
     private static readonly Regex TemplateSpan = new(@"\{\{[^}]*\}\}", RegexOptions.CultureInvariant, Timeout);
 
     // One `Key: Value` header line — group 1 = name, group 2 = value.
@@ -97,7 +93,8 @@ public static class WorkflowSecretContent
 
     // Quoted secret-name assignment or JSON field: $token = "…", password: '…', "apiKey": "…"
     // (value ≥ 6 chars). The optional quote after the key name absorbs the JSON `"key":"value"`
-    // shape. {{…}} spans are stripped first, so a `"apiKey": "{{globals.X}}"` reference does not match.
+    // shape. {{…}} spans are stripped first, so a `"apiKey": "{{globals.X}}"` reference does not
+    // match.
     private static readonly Regex QuotedAssignment = new(
         @"(?:api[_-]?key|password|passwd|pwd|secret|token|bearer|access[_-]?key|client[_-]?secret|private[_-]?key|auth[_-]?token|refresh[_-]?token|session[_-]?key|webhook[_-]?secret)[""']?\s*[=:]\s*[""'][^""']{6,}[""']",
         Opts, Timeout);
@@ -114,16 +111,18 @@ public static class WorkflowSecretContent
         new(@"-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----", RegexOptions.CultureInvariant, Timeout),    // PEM private key
     };
 
-    /// <summary>True when the string value carries an inline secret, regardless of its config key name.</summary>
+    /// <summary>True when the string value carries an inline secret, regardless of its config key
+    /// name.</summary>
     public static bool LooksSecret(string? value)
     {
         if (string.IsNullOrEmpty(value) || value.Length < 6) return false;
 
-        // The steered pattern is `{{globals.X}}` — a reference, never a literal secret. Remove all
+        // The expected pattern is `{{globals.X}}` — a reference, never a literal secret. Strip all
         // template spans first so a header/body/script that only references a secret is not masked.
         var scrubbed = SafeReplace(TemplateSpan, value, " ");
 
-        // (1) A credential HTTP header line whose value has a literal remainder (not just a scheme word).
+        // (1) A credential HTTP header line whose value has a literal remainder (not just a scheme
+        // word).
         foreach (var line in scrubbed.Split('\n'))
         {
             var m = SafeMatch(HeaderLine, line);

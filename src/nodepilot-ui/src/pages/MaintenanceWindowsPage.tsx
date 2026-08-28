@@ -22,9 +22,10 @@ import { toast } from '../stores/toastStore';
 import { confirmDialog } from '../stores/confirmStore';
 
 /**
- * Admin/Operator view of maintenance windows. A window gates when its targeted workflows may
- * start: a Blackout blocks runs while active, AllowOnly permits runs only while active. Targeting
- * is Global, a set of folders (incl. descendants), or a set of workflows. Admin-only to mutate.
+ * Admin and Operator view of maintenance windows. A window controls when its targeted workflows
+ * may start: Blackout blocks runs while the window is active, AllowOnly permits runs only while it
+ * is active. Targets are Global, a set of folders including descendants, or a set of workflows.
+ * Only admins may change a window.
  */
 type TargetKind = 'Folder' | 'Workflow';
 type Mode = 'Blackout' | 'AllowOnly';
@@ -100,7 +101,7 @@ const hhmmToMinute = (s: string): number | null => {
   const h = Number(m[1]), min = Number(m[2]);
   return h >= 0 && h <= 23 && min >= 0 && min <= 59 ? h * 60 + min : null;
 };
-// UTC ISO <-> the `datetime-local` input value (which is wall-clock local time).
+// Convert between a UTC ISO timestamp and the `datetime-local` input value, which is local time.
 const isoToLocalInput = (iso: string | null): string => {
   if (!iso) return '';
   const d = new Date(iso);
@@ -233,7 +234,7 @@ export function MaintenanceWindowsPage() {
         case 'scope':   cmp = a.scopeKind.localeCompare(b.scopeKind); break;
         case 'when':    cmp = describeWhen(a).localeCompare(describeWhen(b)); break;
         case 'targets': {
-          // "Global" shows "all workflows" — sort it after any concrete count on asc.
+          // Global covers all workflows, so it sorts after any concrete count when ascending.
           const ta = a.scopeKind === 'Global' ? Infinity : a.targets.length;
           const tb = b.scopeKind === 'Global' ? Infinity : b.targets.length;
           cmp = ta - tb;
@@ -244,8 +245,8 @@ export function MaintenanceWindowsPage() {
     });
   }, [windows, search, sortBy, sortDir]);
 
-  // Resolve target ids to human names for the list. Dangling refs (deleted folder/workflow)
-  // fall back to a placeholder rather than showing a raw guid.
+  // Resolve target ids to readable names for the list. A reference to a deleted folder or
+  // workflow falls back to a placeholder instead of showing a raw guid.
   const folderPathById = useMemo(
     () => new Map((folders ?? []).map((f) => [f.id, f.path] as [string, string])), [folders]);
   const workflowNameById = useMemo(

@@ -16,13 +16,12 @@ using NodePilot.Core.Telemetry;
 namespace NodePilot.Api.Controllers;
 
 /// <summary>
-/// Edit-lock lifecycle (Lock / Unlock / Publish / ForceUnlock), version history
-/// (Versions / Rollback) and one-off step testing. All of these are mutations that
-/// participate in the SCOrch-style edit lock — the lock check lives in the shared
-/// <see cref="WorkflowsControllerBase"/> base class.
+/// Edit-lock lifecycle (lock, unlock, publish, force-unlock), version history
+/// (versions, rollback), and one-off step testing. These mutations use the
+/// SCOrch-style edit lock checked in <see cref="WorkflowsControllerBase"/>.
 ///
 /// <para>Sibling controllers: <see cref="WorkflowsController"/> (CRUD/lifecycle),
-/// <see cref="WorkflowImportExportController"/> (Export/Import).</para>
+/// <see cref="WorkflowImportExportController"/> (export/import).</para>
 /// </summary>
 [ApiController]
 [Route("api/workflows")]
@@ -51,17 +50,15 @@ public class WorkflowEditingController : WorkflowsControllerBase
     // --- Optimistic-concurrency core (shared by Publish + Rollback) ------------------------
 
     /// <summary>
-    /// M-3 (security audit 2026-05-15): field mutation + history snapshot inside one
-    /// execution-strategy transaction, with the workflow UPDATE an atomic compare-and-swap on
-    /// (folder, lock owner, lock timestamp, version). This closes two TOCTOU windows the old
-    /// load→check→SaveChanges left open: (a) a force-unlock + re-lock by another user landing
-    /// between the in-memory <c>EnsureWriteLockAsync</c> check and the write (lock-theft), and
-    /// (b) a concurrent publish/update bumping the version (lost-update). A return value of 0
-    /// means one of those raced us — the caller re-reads via <see cref="LostCompareAndSwapAsync"/>
-    /// to return the right 423/409 verdict.
+    /// Applies the field mutation and the history snapshot inside one execution-strategy
+    /// transaction, with the workflow UPDATE as an atomic compare-and-swap on
+    /// (folder, lock owner, lock timestamp, version). This prevents a concurrent
+    /// force-unlock plus re-lock from stealing the lock, and a concurrent publish or update
+    /// from causing a lost update. A return value of 0 means one of those raced ahead — the
+    /// caller re-reads via <see cref="LostCompareAndSwapAsync"/> for the correct 423/409 verdict.
     ///
     /// <para>Publish and Rollback differ only in the setter chain and the snapshot row, so both
-    /// come in as parameters. The snapshot is a <b>factory</b>, not an instance: every retry of
+    /// come in as parameters. The snapshot is a <b>factory</b>, not an instance: each retry of
     /// the execution strategy clears the change tracker and must stage a fresh row.</para>
     /// </summary>
     private Task<int> CompareAndSwapWorkflowAsync(
@@ -117,7 +114,8 @@ public class WorkflowEditingController : WorkflowsControllerBase
         });
     }
 
-    /// <summary>Same conflict body, but for the unique-index violation raised by a racing insert.</summary>
+    /// <summary>Same conflict body, but for the unique-index violation raised by a racing
+    /// insert.</summary>
     private async Task<ActionResult> VersionUniqueConflictAsync(Guid id, string conflictMessage, CancellationToken ct)
         => Conflict(new
         {
@@ -201,11 +199,9 @@ public class WorkflowEditingController : WorkflowsControllerBase
             .FirstOrDefaultAsync(v => v.WorkflowId == id && v.Version == version, ct);
         if (target is null) return NotFound(new { message = $"Version {version} not found for this workflow." });
 
-        // Validate the historic definition before applying it. Older versions can break the
-        // current schema (column renamed, required field added, activity removed), in which case
-        // rolling forward would push a definition that the engine refuses to load at fire time.
-        // Surface the failure to the operator now instead of letting the next trigger discover it.
-        // Lint warnings are non-fatal — same semantics as Create/Update.
+        // Validate the historic definition before applying it. Older versions can violate the
+        // current schema, and rolling forward would push one the engine refuses to load at
+        // fire time. Lint warnings are non-fatal, same as Create/Update.
         var targetDefinitionJson = _versionDefinitions.Unprotect(target.DefinitionJson);
         var rollbackSizeError = ValidateDefinitionJson(targetDefinitionJson);
         if (rollbackSizeError is not null) return rollbackSizeError;
@@ -279,8 +275,8 @@ public class WorkflowEditingController : WorkflowsControllerBase
     // --- Edit-Lock (SCOrch-style) -------------------------------------------------------
 
     /// <summary>
-    /// Atomic „Bearbeiten starten": flips <c>IsEnabled=false</c> AND assigns the lock to the
-    /// caller. The combined operation makes the productive-→-edit transition a single audit
+    /// Atomic "Bearbeiten starten": flips <c>IsEnabled=false</c> AND assigns the lock to the
+    /// caller. The combined operation makes the productive- to -edit transition a single audit
     /// event and prevents a race where a triggered run fires between the disable and the
     /// lock claim. Returns 409 Conflict if another user already holds the lock; 200 OK
     /// (idempotent) when the caller already holds it.
@@ -373,7 +369,7 @@ public class WorkflowEditingController : WorkflowsControllerBase
     }
 
     /// <summary>
-    /// „Bearbeitung beenden": clears the lock. <c>IsEnabled</c> is left untouched — the
+    /// "Bearbeitung beenden": clears the lock. <c>IsEnabled</c> is left untouched — the
     /// workflow stays disabled until the user explicitly hits Enable or Publish. Returns 423
     /// if the caller is not the lock owner (use <c>force-unlock</c> as Admin to break a
     /// foreign lock).
@@ -396,7 +392,7 @@ public class WorkflowEditingController : WorkflowsControllerBase
         }
 
         // M-3 (security audit 2026-05-15): atomic compare-and-swap — only the lock owner clears
-        // the lock, in a single statement. Closes the load→EnsureWriteLockAsync→SaveChanges
+        // the lock, in a single statement. Closes the load to EnsureWriteLockAsync to SaveChanges
         // TOCTOU window where a force-unlock + re-lock by another user could land between the
         // in-memory check and the write, letting a non-owner's unlock stomp the new lock.
         var now = DateTime.UtcNow;
@@ -444,10 +440,9 @@ public class WorkflowEditingController : WorkflowsControllerBase
     }
 
     /// <summary>
-    /// Atomic „Veröffentlichen": save the current draft, enable the workflow, and release
-    /// the lock — all in one transaction. Replaces the previous two-call PUT+enable
-    /// frontend dance, so a tab reload between save and enable can no longer leave the
-    /// workflow half-published. Requires the caller to hold the edit-lock.
+    /// Saves the draft, enables the workflow, and releases the lock in one transaction.
+    /// This prevents a partially published workflow if the client disconnects between operations.
+    /// Requires the caller to hold the edit lock.
     /// </summary>
     [HttpPost("{id:guid}/publish")]
     [Authorize(Roles = "Admin,Operator")]

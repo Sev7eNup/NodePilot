@@ -8,7 +8,7 @@ import {
 
 const noop = () => {};
 
-/** A fully-populated context with everything "off" — tests flip only the fields they exercise. */
+/** A fully populated context with everything off; tests flip only the fields they exercise. */
 function makeCtx(overrides: Partial<CommandPaletteContext> = {}): CommandPaletteContext {
   return {
     roleCanWrite: false,
@@ -104,7 +104,7 @@ describe('filterCommandsForDesignerMode', () => {
 
   it('returns the list unchanged in expert mode', () => {
     const result = filterCommandsForDesignerMode(cmds, 'expert');
-    expect(result).toBe(cmds); // same reference — no filtering applied
+    expect(result).toBe(cmds); // same reference, no filtering applied
     expect(result).toHaveLength(4);
   });
 

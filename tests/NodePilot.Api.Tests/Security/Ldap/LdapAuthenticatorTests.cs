@@ -43,10 +43,10 @@ public class LdapAuthenticatorTests
     [InlineData("   ")]
     public async Task EmptyPassword_ReturnsInvalidCredentials_WithoutBinding(string? password)
     {
-        // Regression: a zero-length password is an RFC 4513 unauthenticated bind that AD
-        // accepts with LDAP_SUCCESS. It must be rejected as invalid credentials BEFORE the
-        // adapter's Bind is ever reached — otherwise "knowing a username" bypasses the password.
-        // Whitespace-only is folded in as belt-and-suspenders.
+        // A zero-length password is an RFC 4513 unauthenticated bind that AD accepts with
+        // LDAP_SUCCESS. It must be rejected as invalid credentials before the adapter's Bind
+        // is ever reached — otherwise "knowing a username" bypasses the password.
+        // Whitespace-only input is rejected the same way.
         var adapter = new FakeLdapConnectionAdapter { Result = Sample("alice@firma.de") };
         var breaker = new LdapCircuitBreaker(failureThreshold: 2);
         var auth = NewAuthenticator(EnabledOptions(), adapter, breaker);
@@ -112,11 +112,11 @@ public class LdapAuthenticatorTests
     [Fact]
     public async Task UserObjectMissing_ReturnsDirectoryObjectMissing_NeverTripsBreaker()
     {
-        // Lab regression 2026-08-01: an AD account whose userPrincipalName attribute is unset
-        // still binds (AD resolves the implicit samAccountName@domain UPN), but the follow-up
-        // search finds no object. That is a per-account data problem, so it must never be
-        // counted as an outage — otherwise one broken account trips the breaker and blocks
-        // LDAP logins for every user. Repeat past the failure threshold to prove it.
+        // An AD account whose userPrincipalName attribute is unset still binds (AD resolves
+        // the implicit samAccountName@domain UPN), but the follow-up search then finds no
+        // object. This is a per-account data problem, not an outage, so it must never trip
+        // the breaker and block LDAP logins for every user. Repeat past the failure threshold
+        // to prove it.
         var adapter = new FakeLdapConnectionAdapter { ThrowUserObjectMissing = true };
         var breaker = new LdapCircuitBreaker(failureThreshold: 2);
         var auth = NewAuthenticator(EnabledOptions(), adapter, breaker);

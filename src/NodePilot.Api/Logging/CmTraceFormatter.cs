@@ -26,7 +26,7 @@ public sealed class CmTraceFormatter : ITextFormatter
             msgBuf.Append(logEvent.Exception.ToString());
         }
 
-        // Append all structured properties except SourceContext (→ component field).
+        // Append all structured properties except SourceContext ( to  component field).
         foreach (var (k, v) in logEvent.Properties)
         {
             if (k == "SourceContext") continue;

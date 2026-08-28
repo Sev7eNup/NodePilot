@@ -6,11 +6,12 @@ namespace NodePilot.Mcp.Mapping;
 
 /// <summary>
 /// Turns NodePilot API failures into actionable MCP tool errors. Centralises the
-/// status-code → guidance mapping so every tool reports failures consistently.
+/// status-code -> guidance mapping so every tool reports failures consistently.
 /// </summary>
 public static class ApiErrorMapper
 {
-    /// <summary>Run an API call, translating <see cref="ApiException"/>/<see cref="NotConfiguredException"/>
+    /// <summary>Run an API call, translating <see cref="ApiException"/>/<see
+    /// cref="NotConfiguredException"/>
     /// into an <see cref="McpException"/> with a clear, role-aware message.</summary>
     public static async Task<T> Guard<T>(Func<Task<T>> call)
     {

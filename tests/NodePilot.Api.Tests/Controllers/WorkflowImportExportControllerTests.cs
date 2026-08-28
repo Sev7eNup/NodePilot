@@ -780,7 +780,8 @@ public class WorkflowImportExportControllerTests
     /// <summary>
     /// The endpoint's body limit and the importer's document limit have to agree, and they live in
     /// different projects. Raise one without the other and a body the controller happily accepts
-    /// dies inside <see cref="NodePilot.Engine.Scorch.ScorchImporter"/> with a flat "Failed to parse
+    /// dies inside <see cref="NodePilot.Engine.Scorch.ScorchImporter"/> with a flat "Failed to
+    /// parse
     /// XML" — which is precisely what happened when the endpoint went from 50 to 300 MiB.
     /// </summary>
     [Fact]
@@ -864,7 +865,7 @@ public class WorkflowImportExportControllerTests
     }
 
     /// <summary>
-    /// The same collision against a runbook that was already in NodePilot before this import.
+    /// Covers a collision with a runbook that already exists in NodePilot.
     /// </summary>
     [Fact]
     public async Task ImportScorch_ChildNameTakenByAnExistingWorkflow_CallFollowsTheImportedOne()
@@ -987,10 +988,7 @@ public class WorkflowImportExportControllerTests
     [Fact]
     public async Task ExportAll_RestrictedUserWithNoAccessibleFolders_StillEmitsBulkAudit()
     {
-        // Regression: the early-return for accessible.FolderIds.Count == 0 used to bypass
-        // the audit emission. An attempted catalogue-pull from a viewer who has no folder
-        // access is exactly the signal SIEM wants to see (WORKFLOW_EXPORTED_BULK count=0
-        // by a restricted principal).
+        // Emit a zero-count bulk audit event when the caller has no accessible folders.
         var db = CreateContext();
         db.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "Hidden", DefinitionJson = "{}" });
         await db.SaveChangesAsync();

@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { aiApi, type GenerateWorkflowResponse } from '../../api/ai';
 
 interface Props {
-  /** Posts the generated definition to /api/workflows. Caller closes the dialog and navigates on success. */
+  /** Posts the generated definition to /api/workflows. Caller closes the dialog and navigates on
+   * success. */
   onCreate: (req: { name: string; description: string; definitionJson: string }) => Promise<void>;
   onClose: () => void;
 }
@@ -12,12 +13,11 @@ interface Props {
 type Stage = 'prompt' | 'preview';
 
 /**
- * Two-stage dialog for AI workflow generation. Stage 1 collects the prompt, stage 2
- * shows the workflow returned by the LLM as a preview (editable name + description,
- * stats, raw JSON) — once the user confirms, the workflow is persisted through the
- * existing <c>POST /api/workflows</c> mutation. Deliberately NO React Flow render in
- * the preview (risk of double-mounting the canvas, plus bundle cost) — the stats are
- * enough, and the full graph is just one click away in the editor.
+ * Two-stage dialog for AI workflow generation: stage 1 collects the prompt, stage 2 shows the
+ * generated workflow as a preview (editable name + description, stats, raw JSON). Confirming
+ * persists it through the existing <c>POST /api/workflows</c> mutation. The preview skips
+ * rendering React Flow to avoid double-mounting the canvas and extra bundle cost — the stats
+ * are enough, and the full graph is one click away in the editor.
  */
 export function WorkflowGenerationDialog({ onCreate, onClose }: Readonly<Props>) {
   const { t } = useTranslation(['ai', 'common']);
@@ -68,9 +68,8 @@ export function WorkflowGenerationDialog({ onCreate, onClose }: Readonly<Props>)
         description: editedDescription.trim(),
         definitionJson: generated.definitionJson,
       });
-      // The caller closes the dialog and navigates away. If onCreate resolves without
-      // us being closed, we leave the state as-is — there's no success indicator to
-      // show from this path.
+      // The caller closes the dialog and navigates away. If onCreate resolves without the
+      // dialog closing, the state stays as-is since there is no success indicator to show here.
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);

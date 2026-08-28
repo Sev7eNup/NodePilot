@@ -145,7 +145,8 @@ public class ExecutionRetentionServiceTests
 
             var deleted = await service.PurgeOnceAsync(maxAgeDays: 30, batchSize: 3, CancellationToken.None);
 
-            // 7 candidates / batchSize 3 → two full batches (3+3) then a short batch (1) — all 7 deleted in one PurgeOnce call.
+            // 7 candidates / batchSize 3 to two full batches (3+3) then a short batch (1) — all 7
+            // deleted in one PurgeOnce call.
             deleted.Should().Be(7);
             (await db.WorkflowExecutions.CountAsync()).Should().Be(0);
         }
@@ -236,7 +237,7 @@ public class ExecutionRetentionServiceTests
         // catch branch that disables archival but keeps deleting.
         var blockingFile = Path.Combine(Path.GetTempPath(), $"exec-archive-block-{Guid.NewGuid():N}");
         await File.WriteAllTextAsync(blockingFile, "x");
-        var archiveDir = Path.Combine(blockingFile, "sub"); // child of a file → invalid dir
+        var archiveDir = Path.Combine(blockingFile, "sub"); // child of a file -> invalid dir
         var (db, factory, conn) = CreateEnvironment();
         try
         {
@@ -267,7 +268,8 @@ public class ExecutionRetentionServiceTests
     /// <summary>
     /// Hot-reload: RunIterationAsync reads IOptionsMonitor&lt;RetentionOptions&gt;.CurrentValue per
     /// pass, so a live toggle of Retention:Executions:Enabled takes effect without a restart.
-    /// Drive the monitor (the test stand-in for a reloadOnChange config reload) from disabled→enabled
+    /// Drive the monitor (the test stand-in for a reloadOnChange config reload) from disabled to
+    /// enabled
     /// between two iterations on the SAME service instance and assert the gate flips live.
     /// </summary>
     [Fact]
@@ -294,7 +296,7 @@ public class ExecutionRetentionServiceTests
             await service.RunIterationAsync(CancellationToken.None);
             (await db.WorkflowExecutions.CountAsync()).Should().Be(1);
 
-            // Operator enables Retention:Executions in the Settings UI → config reload.
+            // Operator enables Retention:Executions in the Settings UI -> config reload.
             monitor.Set(new NodePilot.Scheduler.Options.RetentionOptions
             {
                 Executions = new ExecutionsRetentionOptions { Enabled = true, MaxAgeDays = 30 }
@@ -333,12 +335,12 @@ public class ExecutionRetentionServiceTests
                 NullLogger<ExecutionRetentionService>.Instance,
                 NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
-            // MaxAgeDays=50 → only the 60-day row is past the cutoff.
+            // MaxAgeDays=50 -> only the 60-day row is past the cutoff.
             await service.RunIterationAsync(CancellationToken.None);
             (await db.WorkflowExecutions.CountAsync()).Should().Be(1);
             (await db.WorkflowExecutions.FirstAsync()).Id.Should().Be(keepAtFifty.Id);
 
-            // Operator tightens the window to 30 days → the 40-day row now also qualifies.
+            // Operator tightens the window to 30 days -> the 40-day row now also qualifies.
             monitor.Set(new NodePilot.Scheduler.Options.RetentionOptions
             {
                 Executions = new ExecutionsRetentionOptions { Enabled = true, MaxAgeDays = 30 }
@@ -352,7 +354,7 @@ public class ExecutionRetentionServiceTests
 
     /// <summary>
     /// Hot-reload: a changed ArchivePath is re-probed on the next pass. Start with a broken path
-    /// (child of a file → CreateDirectory throws) so the first pass deletes without archiving;
+    /// (child of a file -> CreateDirectory throws) so the first pass deletes without archiving;
     /// mutate to a valid directory and assert the next pass writes the NDJSON archive — proving
     /// the cached "broken" verdict was invalidated by the path change.
     /// </summary>
@@ -379,7 +381,7 @@ public class ExecutionRetentionServiceTests
                 NullLogger<ExecutionRetentionService>.Instance,
                 NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
-            // First pass: broken archive path → deletes but writes no archive.
+            // First pass: broken archive path -> deletes but writes no archive.
             await service.RunIterationAsync(CancellationToken.None);
             (await db.WorkflowExecutions.CountAsync()).Should().Be(0);
             Directory.Exists(validDir).Should().BeFalse();
@@ -392,7 +394,8 @@ public class ExecutionRetentionServiceTests
                 Executions = new ExecutionsRetentionOptions { Enabled = true, MaxAgeDays = 30, ArchivePath = validDir }
             });
 
-            // Same service instance: the path change invalidates the cache → re-probe succeeds → archive written.
+            // Same service instance: the path change invalidates the cache to re-probe succeeds to
+            // archive written.
             await service.RunIterationAsync(CancellationToken.None);
             (await db.WorkflowExecutions.CountAsync()).Should().Be(0);
             var files = Directory.GetFiles(validDir, "executions-*.ndjson");

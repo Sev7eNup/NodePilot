@@ -68,8 +68,7 @@ public class PowerShellEngineFactoryTests
     [Fact]
     public void GetEngine_EngineTypeCaseInsensitive()
     {
-        // Workflow JSON has used both "Runspace" and "runspace" historically — pin
-        // case-insensitive matching so both still resolve.
+        // Accept engine type casing already present in workflow JSON.
         var factory = new PowerShellEngineFactory(NewLoggerFactory());
 
         factory.GetEngine("RUNSPACE").EngineType.Should().Be("runspace");

@@ -199,7 +199,9 @@ public class WorkflowAnalyzerTests
         r.Findings.Should().ContainSingle().Which.Code.Should().Be("fan-in-requires-junction");
     }
 
-    /// <summary>An empty workflow runs through with 0 steps and Succeeds — "no trigger" would lie.</summary>
+    /// <summary>
+    /// An empty workflow succeeds with zero steps; reporting "no trigger" would be incorrect.
+    /// </summary>
     [Fact]
     public void Analyze_EmptyWorkflow_ReportsNothing()
     {

@@ -10,26 +10,25 @@ namespace NodePilot.Api.Tests.Hosting;
 /// <summary>
 /// Pins the documented role matrix (CLAUDE.md "## Autorisierung") end-to-end: real users
 /// seeded with the production BCrypt path, real logins through POST /api/auth/login, real
-/// cookie + CSRF handling, real [Authorize(Roles=...)] evaluation by the authorization
-/// middleware. Direct-controller tests can't cover this — they hand-craft ClaimsPrincipals
-/// and never execute the attribute metadata.
+/// cookie and CSRF handling, and real [Authorize(Roles=...)] evaluation by the authorization
+/// middleware. Direct-controller tests can't cover this, since they hand-craft
+/// ClaimsPrincipals and never execute the attribute metadata.
 ///
 /// Verdict semantics per row:
 /// <list type="bullet">
-///   <item>Denied: expected 403 from the ROLE gate. All mutating requests carry a valid
-///     X-CSRF-Token, and the body is additionally checked for the csrf_mismatch marker, so
-///     a CSRF 403 (which fires BEFORE authorization in the pipeline) can never be mistaken
-///     for a role denial.</item>
-///   <item>Passed gate: anything but 401/403. Rows use nonexistent GUIDs / minimal bodies,
-///     so the expected happy statuses are 404 (resource lookup after the gate), 400 (model
-///     or domain validation after the gate) or 2xx — every one of them proves the request
-///     got PAST authentication + authorization.</item>
+///   <item>Denied: expects 403 from the role gate. Mutating requests carry a valid
+///     X-CSRF-Token, and the body is also checked for the csrf_mismatch marker, so a CSRF
+///     403 (which fires before authorization) is never mistaken for a role denial.</item>
+///   <item>Passed gate: anything but 401/403. Rows use nonexistent GUIDs and minimal bodies,
+///     so the expected statuses are 404 (lookup after the gate), 400 (validation after the
+///     gate) or 2xx, all of which prove the request passed authentication and
+///     authorization.</item>
 /// </list>
 ///
-/// One factory boot, three logins, all rows driven sequentially — keeps the WAF cost of the
-/// whole matrix at a single host start.
+/// One factory boot, three logins, and all rows run sequentially, keeping the cost of the
+/// whole matrix to a single host start.
 /// </summary>
-[Collection(ApiPipelineCollection.Name)] // serialize full-host boots — see ApiPipelineCollection
+[Collection(ApiPipelineCollection.Name)] // serializes full-host boots, see ApiPipelineCollection
 public sealed class RoleMatrixSmokeTests
 {
     private sealed record UserSession(string Label, HttpClient Client, string CsrfToken);
@@ -65,9 +64,9 @@ public sealed class RoleMatrixSmokeTests
         var viewer = new UserSession("Viewer", viewerClient,
             (await ApiPipelineFactory.LoginAsync(viewerClient, "smoke-viewer", password)).CsrfToken);
 
-        // Bodies: minimal but VALID where the positive row should demonstrate a clean pass
-        // (workflows/machines create → 201); empty where a 400 after the gate is the point
-        // (alerting rules). Random GUIDs make the delete/cancel rows deterministic 404s.
+        // Bodies are minimal but valid where the positive row should show a clean pass
+        // (workflows/machines create returns 201), and empty where a 400 after the gate is
+        // the point (alerting rules). Random GUIDs make the delete/cancel rows deterministic 404s.
         var workflowBody = """{"name":"Role matrix smoke","definitionJson":"{\"nodes\":[],\"edges\":[]}"}""";
         var machineBody = """{"name":"role-matrix-smoke","hostname":"smoke-host"}""";
 

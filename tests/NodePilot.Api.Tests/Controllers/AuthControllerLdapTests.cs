@@ -25,10 +25,9 @@ using NodePilot.TestCommons;
 namespace NodePilot.Api.Tests.Controllers;
 
 /// <summary>
-/// Coverage for phase PR4 of the LDAP/Windows-SSO rollout: AuthController.Login with LDAP
-/// wired in. Builds a real AuthController
-/// against an in-memory SQLite DB, a real LdapAuthenticator + ExternalUserMapper, and a
-/// fake ILdapConnectionAdapter so we can program directory verdicts deterministically.
+/// Tests AuthController.Login with LDAP wired in. Builds a real AuthController against
+/// an in-memory SQLite DB, a real LdapAuthenticator and ExternalUserMapper, and a fake
+/// ILdapConnectionAdapter so directory verdicts can be programmed deterministically.
 /// </summary>
 public sealed class AuthControllerLdapTests : IDisposable
 {
@@ -50,10 +49,9 @@ public sealed class AuthControllerLdapTests : IDisposable
         envMock.SetupGet(e => e.EnvironmentName).Returns("Test");
         _env = envMock.Object;
 
-        // Rollout phase PR10 added a rule: the empty-DB bootstrap gate now refuses external
-        // just-in-time (JIT) user provisioning for non-Admin roles. Seed an admin so these
-        // tests exercise the post-bootstrap mainline (which is what they were written to
-        // cover). The dedicated bootstrap-gate tests live in the PR10 regression file.
+        // The empty-DB bootstrap gate refuses external just-in-time (JIT) user provisioning
+        // for non-Admin roles. Seed an admin so these tests exercise the post-bootstrap
+        // login path instead. Bootstrap-gate behavior has its own dedicated tests.
         _db.Users.Add(new User
         {
             Id = Guid.NewGuid(),
@@ -239,10 +237,9 @@ public sealed class AuthControllerLdapTests : IDisposable
     [Fact]
     public async Task Login_EmptyDbWithSetupTokenHeader_SkipsLdapForBootstrap()
     {
-        // With LDAP enabled the LDAP-first bind would otherwise intercept the one-shot
-        // bootstrap login (unknown username → InvalidCredentials/503), making an instance
-        // with LDAP already on impossible to initialise. A presented X-Setup-Token on an
-        // empty Users table must therefore bypass LDAP and reach the local bootstrap path.
+        // With LDAP enabled, the LDAP-first bind would otherwise intercept the one-shot
+        // bootstrap login (unknown username becomes InvalidCredentials/503), so an
+        // instance with LDAP already on could never initialize without this bypass.
         _db.Users.RemoveRange(_db.Users);
         await _db.SaveChangesAsync();
 
@@ -330,9 +327,9 @@ public sealed class AuthControllerLdapTests : IDisposable
     [Fact]
     public async Task OverlongPassword_IsRejectedBeforeLdapOrThrottleWork()
     {
-        // M-32: the entry point still bounds the payload, but at the DIRECTORY maximum — no AD
-        // password can be longer, so anything past it is unauthenticatable by construction and
-        // must not cost a directory round-trip or a throttle slot.
+        // The entry point still bounds the payload, but at the directory maximum: no AD
+        // password can be longer, so anything past it is unauthenticatable by construction
+        // and must not cost a directory round-trip or a throttle slot.
         var (controller, adapter) = NewController();
 
         var result = await controller.Login(
@@ -347,9 +344,9 @@ public sealed class AuthControllerLdapTests : IDisposable
     [Fact]
     public async Task LongPassphrase_PastBcryptsLimit_StillReachesTheLdapBind()
     {
-        // BCrypt's 72-byte truncation is a property of LOCAL accounts. An AD passphrase lives in
-        // the directory and never touches BCrypt, so a ~12-word passphrase — exactly what the
-        // security-conscious orgs that deploy LDAP SSO hand out — must reach the bind intact.
+        // BCrypt's 72-byte truncation is a property of local accounts. An AD passphrase lives
+        // in the directory and never touches BCrypt, so a long passphrase, the kind
+        // security-conscious organizations issue for LDAP SSO, must reach the bind intact.
         var passphrase = new string('a', AuthController.MaxPasswordBytes + 28);
         var (controller, adapter) = NewController();
         controller.Request.Headers[AuthController.TokenResponseHeader] = "true";
@@ -445,10 +442,9 @@ public sealed class AuthControllerLdapTests : IDisposable
     [Fact]
     public async Task LdapInvalidCredentials_RatchetsFailureCount_AndLocksAtThreshold()
     {
-        // M-2 (security audit 2026-05-15): the LDAP path must apply the same per-account lockout
-        // as the local path. Without it the only LDAP guard was the service-wide circuit breaker,
-        // which trips on infra failures — NOT credential rejections — so a known account could be
-        // brute-forced indefinitely. One more rejection at the threshold must lock the account.
+        // The LDAP path must apply the same per-account lockout as the local path — without
+        // it, only the service-wide circuit breaker guards it, and that trips on infra
+        // failures, not credential rejections, letting a known account be brute-forced.
         var ldapUser = new User
         {
             Id = Guid.NewGuid(),
@@ -478,9 +474,9 @@ public sealed class AuthControllerLdapTests : IDisposable
     [Fact]
     public async Task LdapLogin_WhenAccountAlreadyLocked_RefusedBeforeDirectoryCall()
     {
-        // M-2: a locked LDAP account is refused before the directory is even consulted — even
-        // when the (would-be) credentials are valid. The valid adapter result below would mint a
-        // token if the lock gate did not run first.
+        // A locked LDAP account is refused before the directory is even consulted, even when
+        // the credentials would be valid. The adapter result below would mint a token if the
+        // lock gate did not run first.
         _db.Users.Add(new User
         {
             Id = Guid.NewGuid(),
@@ -518,8 +514,8 @@ public sealed class AuthControllerLdapTests : IDisposable
 
         result.Result.Should().BeOfType<ObjectResult>()
             .Which.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
-        // Lab regression 2026-08-01: this branch used to return 503 without any audit row,
-        // leaving the operator with a failing login and no trace of why.
+        // This branch must return 503 together with an audit row, so operators are not
+        // left with a failing login and no trace of why.
         audit.Calls.Should().Contain(c =>
             c.Action == AuditActions.LoginFailed
             && c.Details!.Contains("infrastructure_failure"));
@@ -528,11 +524,10 @@ public sealed class AuthControllerLdapTests : IDisposable
     [Fact]
     public async Task LdapUserObjectMissing_Returns401_AuditsDistinctReason_AndDoesNotFallThroughToLocal()
     {
-        // Lab regression 2026-08-01: an AD account without a userPrincipalName attribute
-        // binds successfully (implicit samAccountName@domain) but has no searchable object.
-        // That must read as a refused login with its own audit reason — not as a directory
-        // outage (503, previously unaudited) — and must never fall through to a local
-        // account that happens to share the username.
+        // An AD account without a userPrincipalName attribute binds successfully (implicit
+        // samAccountName@domain) but has no searchable object. That must read as a refused
+        // login with its own audit reason, not as a directory outage, and must never fall
+        // through to a local account that happens to share the username.
         _db.Users.Add(new User
         {
             Id = Guid.NewGuid(),
@@ -610,10 +605,10 @@ public sealed class AuthControllerLdapTests : IDisposable
     [Fact]
     public async Task LdapInvalidCredentials_DoesNotFallThroughOnUnknownUser()
     {
-        // No local user matches the input. LDAP says no. Don't try to BCrypt against
-        // a non-existent local user — but the existing local path already handles that
-        // by returning 401. We assert the response is 401 with the LDAP failure reason
-        // (not the bootstrap branch's "Admin bootstrap required").
+        // No local user matches the input, and LDAP says no. Don't try to BCrypt against a
+        // non-existent local user; the local path already returns 401 for that case. The
+        // response must be 401 with the LDAP failure reason, not the bootstrap branch's
+        // "Admin bootstrap required".
         var auditCapture = new CapturingAuditWriter();
         var (controller, adapter) = NewController(audit: auditCapture);
         adapter.Result = null;
@@ -648,7 +643,7 @@ public sealed class AuthControllerLdapTests : IDisposable
         var result = await controller.Login(new LoginRequest("alice", "pw"), default);
 
         var unauth = result.Result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
-        // Security-audit finding L-2: generic "Invalid credentials" response — see AuthControllerExtraTests
+        // Generic "Invalid credentials" response — see AuthControllerExtraTests
         // commentary on Login_DisabledUser_RejectedEvenWithCorrectPassword.
         unauth.Value!.ToString()!.Should().Contain("Invalid credentials");
     }

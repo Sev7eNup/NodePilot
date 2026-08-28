@@ -21,8 +21,8 @@ using Xunit;
 namespace NodePilot.Api.Tests.Hosting;
 
 /// <summary>
-/// The hosted services and diagnostics helpers that had no test at all: session retention,
-/// the support-event flush loop, support-log path resolution and the capacity → 503 mapping.
+/// Tests for hosted services and diagnostics helpers: session retention, the support-event
+/// flush loop, support-log path resolution, and the mapping from capacity exceptions to 503.
 /// </summary>
 public sealed class BackgroundServiceAndDiagnosticsTests
 {
@@ -99,8 +99,8 @@ public sealed class BackgroundServiceAndDiagnosticsTests
     public async Task SupportEventFlush_PersistsQueuedEvents()
     {
         // The service writes from its own thread, so it gets its own context over the same
-        // SQLite connection — sharing one DbContext across both threads is a data race and
-        // made this test flaky under a full parallel run.
+        // SQLite connection — sharing one DbContext across both threads is a data race that
+        // can make this test flaky under a full parallel run.
         var (connection, readContext) = TestDbFactory.CreateWithConnection();
         using var _ = connection;
         using var db = readContext;
@@ -260,7 +260,8 @@ public sealed class BackgroundServiceAndDiagnosticsTests
 
     // ---------------------------------------------------------------- helpers
 
-    /// <summary>AuthSession.UserId is a real FK — SQLite enforces it, so the row must exist.</summary>
+    /// <summary>AuthSession.UserId is a real FK — SQLite enforces it, so the row must
+    /// exist.</summary>
     private static Guid SeedUser(NodePilotDbContext db)
     {
         var user = new User
@@ -319,7 +320,8 @@ public sealed class BackgroundServiceAndDiagnosticsTests
             availability ?? NodePilot.TestCommons.TestDatabaseAvailability.Available);
     }
 
-    /// <summary>Polls a condition instead of sleeping a fixed span — keeps the loop tests fast and stable.</summary>
+    /// <summary>Polls a condition instead of sleeping a fixed span — keeps the loop tests fast and
+    /// stable.</summary>
     private static async Task WaitForAsync(Func<Task<bool>> condition)
     {
         for (var attempt = 0; attempt < 300; attempt++)

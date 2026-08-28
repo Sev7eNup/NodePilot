@@ -6,10 +6,9 @@ namespace NodePilot.Data;
 
 /// <summary>
 /// Default <see cref="IGlobalVariableFolderStore"/>. Owns the organizational folder tree for
-/// global variables. The reparent/rename/delete logic mirrors
-/// <c>SharedWorkflowFoldersController</c> (cycle check, depth cap, sibling uniqueness,
-/// subtree path recompute) but without any RBAC — folder access is Admin-gated at the
-/// controller, not per-folder authorized.
+/// global variables. Reparent, rename and delete apply the same rules as
+/// <c>SharedWorkflowFoldersController</c> (cycle check, depth cap, sibling uniqueness, subtree
+/// path recompute) without RBAC: folder access is Admin-gated at the controller.
 /// </summary>
 public class GlobalVariableFolderStore(NodePilotDbContext db) : IGlobalVariableFolderStore
 {
@@ -146,7 +145,7 @@ public class GlobalVariableFolderStore(NodePilotDbContext db) : IGlobalVariableF
         var subtreeIds = DescendantFolderIds(all, id);
         var doomedFolders = all
             .Where(f => subtreeIds.Contains(f.Id))
-            .OrderByDescending(f => f.Depth)   // bottom-up: Folder→Folder is Restrict, not Cascade
+            .OrderByDescending(f => f.Depth)   // bottom-up: Folder to Folder is Restrict, not Cascade
             .ToList();
 
         var strategy = db.Database.CreateExecutionStrategy();

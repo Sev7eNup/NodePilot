@@ -7,14 +7,11 @@ namespace NodePilot.Api.Configuration.Validators;
 /// <see cref="LlmServiceCollectionExtensions.AddNodePilotAi"/> so the Settings UI
 /// cannot persist an LLM configuration that would break the next service start.
 ///
-/// <para>Without this validator, an admin save with
-/// <c>Llm:Enabled=true</c> + <c>Llm:BaseUrl=http://169.254.169.254/</c> would pass the
-/// existing boot-validator pipeline, get written to <c>appsettings.runtime.json</c>,
-/// and only fail on the next restart with <c>SECURITY: Llm:BaseUrl …</c> — at which
-/// point the service can't boot and the operator has to hand-edit the override file.
-/// This validator closes that loop: the same rule, evaluated against the merged
-/// post-save config, surfaces the same error as a 400 BadRequest BEFORE the file is
-/// written.</para>
+/// <para>A save with <c>Llm:Enabled=true</c> and <c>Llm:BaseUrl=http://169.254.169.254/</c>
+/// would otherwise reach <c>appsettings.runtime.json</c> and fail only on the next restart
+/// with <c>SECURITY: Llm:BaseUrl …</c>, leaving the service unable to boot until the override
+/// file is edited by hand. Evaluating the same rule against the merged post-save config
+/// rejects it with 400 BadRequest before the file is written.</para>
 /// </summary>
 public sealed class LlmConfigBootValidator : IBootValidator
 {
@@ -23,12 +20,12 @@ public sealed class LlmConfigBootValidator : IBootValidator
     public void Validate(IConfiguration configuration, IList<BootValidationIssue> issues)
     {
         if (!bool.TryParse(configuration["Llm:Enabled"], out var enabled) || !enabled)
-            return; // Llm:Enabled=false → AddNodePilotAi skips the check too; stay consistent.
+            return; // AddNodePilotAi skips the check as well when Llm:Enabled=false.
 
-        // Exactly the helper AddNodePilotAi calls, so a save this validator accepts can never
-        // produce a configuration that refuses to boot. Covers EVERY profile, not just the active
-        // one: switching the active profile is a plain settings save with no restart, so a parked
-        // metadata endpoint would only detonate on the switch.
+        // Runs the same helper as AddNodePilotAi, so a save this validator accepts cannot produce
+        // a configuration that refuses to boot. Every profile is checked, not just the active one:
+        // switching the active profile is a plain settings save without a restart, so a metadata
+        // endpoint parked in an inactive profile would only take effect on the switch.
         foreach (var issue in LlmProfileValidation.ValidateProfileEndpoints(configuration))
             issues.Add(new BootValidationIssue(Name, BootValidationSeverity.Error, issue.ConfigKey, issue.Message));
 

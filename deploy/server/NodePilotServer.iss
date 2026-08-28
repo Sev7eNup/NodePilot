@@ -1,12 +1,12 @@
 ; NodePilot server setup (Inno Setup 6).
 ;
-; A wizard in front of Install-NodePilot.ps1 - pages and payload, no installation logic. What it
-; collects goes into an ACL-protected JSON answer file that deploy\Invoke-NodePilotSetup.ps1 reads
-; and passes to the deployment scripts. A file rather than a command line, because
-; -PostgresPassword is a [SecureString], and it also enables /SILENT /ANSWERFILE= rollouts.
+; A wizard in front of Install-NodePilot.ps1: pages and payload, no installation logic. Collected
+; values go into an ACL-protected JSON answer file that deploy\Invoke-NodePilotSetup.ps1 reads and
+; splats into the deployment scripts. A file rather than a command line because -PostgresPassword
+; is a [SecureString], and it also enables /SILENT /ANSWERFILE= for unattended runs.
 ;
-; There is no [Run] section: [Run] cannot inspect an exit code. Everything runs through Exec() in
-; [Code] with the result checked. Test-DeploymentTemplates.ps1 enforces that.
+; There is no [Run] section: it cannot inspect an exit code, so every call goes through Exec() in
+; [Code] with the result checked. Test-DeploymentTemplates.ps1 pins that.
 ;
 ; Built by deploy\server\Build-ServerInstaller.ps1, which passes the /D defines below.
 
@@ -44,52 +44,56 @@ SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
-; Windows Server 2022 is build 20348. The desktop installer pins 22000 for Windows 11; that value
-; would make this server installer refuse to run on its own target platform.
+; Windows Server 2022 is build 20348. The desktop installer's higher floor targets Windows 11
+; and does not apply to the server installer.
 MinVersion=10.0.20348
 OutputDir={#OutputDir}
 OutputBaseFilename=NodePilot-Server-Setup-{#AppVersion}
 WizardStyle=modern
-; Larger than the default because the prerequisites page needs it: at the default width most check
-; rows wrap to two lines and the remediation box is left with about one line for a CREATE LOGIN /
-; CREATE USER block.
+; Larger than the default so the prerequisites page fits. Each check row renders as
+; "Title: Detail", and at the default width most rows wrap, leaving the remediation box too small
+; to show a CREATE LOGIN / CREATE USER block. Extra width unwraps most rows and extra height gives
+; the remediation box room.
 ;
-; WizardResizable stays off: the network and prerequisites pages position their controls once at
-; construction and carry no anchors, so a resized window would grow around them. A fixed larger
-; start size is safe, because every control that must grow is sized from SurfaceWidth.
+; WizardResizable stays off: the controls on the network and prerequisites pages are positioned
+; once at wizard construction and carry no anchors, so a resized window would leave them behind.
+; A fixed larger start size is safe because every control that must grow is sized from SurfaceWidth.
 WizardSizePercent=125,145
 SetupIconFile={#StageDir}\setup-icon.ico
 LicenseFile={#StageDir}\LICENSE.txt
-; A failed setup has to be diagnosable without asking the operator to reproduce it.
+; Keeps a setup log so a failure can be diagnosed without reproducing it.
 SetupLogging=yes
 
 [Files]
-; Everything setup needs at runtime is dontcopy and extracted to {tmp} on demand, because every
-; phase that uses it runs before Inno has copied any file: the readiness page during the wizard,
-; and the installation from PrepareToInstall.
+; Everything setup needs at runtime is dontcopy and extracted to {tmp} on demand, because the
+; phases that use it run before Inno has copied any file: the readiness page during the wizard,
+; and the installation itself from PrepareToInstall.
 ;
-; The installation cannot run in ssPostInstall: neither RaiseException nor Abort in that step
+; The installation cannot live in ssPostInstall: neither RaiseException nor Abort in that step
 ; changes the exit code, so a failed install would still report success. PrepareToInstall returns
-; a message and exits 7, which is visible to whatever launched setup.
+; a message and setup exits non-zero, so failure is visible to whatever launched it.
 ;
-; payload\ and deploy\ are separate staging trees holding the same scripts twice. Inno deduplicates
-; identical source files, so listing one file both dontcopy and with a DestDir collapses the pair
-; and the dontcopy variant disappears.
+; payload\ and deploy\ are separate staging trees holding the same scripts twice. Inno
+; deduplicates identical source files, so listing one file both dontcopy and with a DestDir
+; collapses the pair into a single entry and the dontcopy variant disappears.
 Source: "{#StageDir}\payload\*";    Flags: dontcopy
 
-; The only files that stay on disk: the deployment scripts, for the uninstaller below and for
-; running Update-NodePilot.ps1 by hand later. Copied after PrepareToInstall, because
+; The only files that stay on disk: the deployment scripts, used by the uninstaller below and for
+; running Update-NodePilot.ps1 by hand. Copied after PrepareToInstall, because
 ; Install-NodePilot.ps1 wipes its install directory before repopulating it.
 Source: "{#StageDir}\deploy\*";     DestDir: "{app}\deploy"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [UninstallDelete]
 ; Inno decides whether {app} is empty before it removes its own uninstaller from inside it, so
-; without this the uninstall leaves an empty installation folder behind. This entry runs last.
+; the uninstall would otherwise leave an empty directory behind. This entry runs last and
+; removes it.
 Type: dirifempty; Name: "{app}"
 
-; No [UninstallRun] section, for the same reason [Run] is absent above, plus one more: Inno
-; evaluates {code:...} in [UninstallRun] parameters at install time and freezes the result in
-; unins000.dat, so an uninstall-time switch such as /PURGEDATA never reaches the script. The
+; There is no [UninstallRun] section, for the same reasons [Run] is absent above.
+;
+; It cannot inspect an exit code, and it cannot carry an uninstall-time decision either: Inno
+; evaluates {code:...} in [UninstallRun] parameters at install time and freezes the resulting
+; string in unins000.dat, so a switch such as /PURGEDATA could never reach the script. The
 ; uninstall is invoked from [Code] instead.
 
 [Code]
@@ -99,14 +103,14 @@ const
   ExitInstallFailed = 4;
   CheckCount = 10;
 
-  // How long to wait for the adapter before giving up. Generous on purpose: the only case this
-  // guards against is an adapter killed from Task Manager, where result.ini never appears and the
-  // loop would otherwise wait forever.
+  // How long to wait for the adapter before giving up. Deliberately generous: it guards only
+  // against an adapter that was killed, where result.ini never appears and the loop would
+  // otherwise wait forever.
   AdapterTimeoutMs = 2700000;   // 45 minutes
   AdapterPollMs = 250;
 
-  // Status glyphs. Written as character codes so this file stays pure ASCII on disk; a .iss that
-  // needs a specific encoding to compile is easy to break when editing.
+  // Status glyphs, written as character codes so this file stays pure ASCII on disk and does not
+  // depend on an encoding to compile.
   MarkPass = #$2713;  // check mark
   MarkFail = #$2717;  // ballot X
   MarkWarn = '!';
@@ -133,35 +137,32 @@ var
   CheckFixes: array[0..CheckCount - 1] of TNewCheckBox;
   // Whether a pre-ticked fix has already had its default applied. Applied once per run: a probe
   // runs again after every fix attempt, and re-applying the default would re-tick a box the
-  // operator just cleared, so Next would run the same failing fix again.
+  // operator has just cleared.
   CheckFixDefaulted: array[0..CheckCount - 1] of Boolean;
   RemediationBox: TNewMemo;
   RemediationText: String;
   RecheckButton: TNewButton;
   SaveButton: TNewButton;
 
-  // Certificate picker on the TLS page. A thumbprint of an installed certificate is otherwise only
-  // reachable through the certificate MMC, whose copy button prepends an invisible U+200E, which is
-  // why the installer strips non-hex characters before measuring the length.
+  // Certificate picker on the TLS page. Without it the thumbprint of an installed certificate is
+  // only reachable through the certificate MMC, whose copy button prepends an invisible U+200E.
   CertCombo: TNewComboBox;
   CertThumbprints: array of String;
 
-  // Whether the bundled psql client has been extracted to {tmp} yet. Extraction is attempted at
-  // most once per run, whether or not this build carries a client.
+  // Whether the bundled psql client has been extracted to {tmp}. Extraction is attempted at most
+  // once per run, whether or not this build carries a client.
   PgClientExtracted: Boolean;
 
-  // The runtime installer is a dontcopy payload as well. Interactive auto-fix runs before
-  // PrepareToInstall, so extraction cannot wait for that phase. The helper is shared by the silent
-  // and interactive paths and stays idempotent.
+  // The runtime installer is a dontcopy payload too. Interactive auto-fix runs before
+  // PrepareToInstall, so extraction cannot wait for that phase, and the helper is shared by the
+  // silent and interactive paths, so it stays idempotent.
   RuntimePayloadExtracted: Boolean;
 
-  // Drawn while the adapter installs, so the wizard does not sit on "Preparing to Install" with no
-  // feedback for the whole run.
+  // Drawn while the adapter installs, which takes minutes and would otherwise show no progress.
   ProgressPage: TOutputProgressWizardPage;
 
-  // Finish page. The values here are reachable nowhere else: the API key is generated by the
-  // adapter and printed to a console that does not exist under a hidden Exec, and
-  // install-report.txt omits it by design.
+  // Finish page. The values shown here are available nowhere else: the API key is generated by
+  // the adapter, printed to a hidden console, and left out of install-report.txt by design.
   FinishMemo: TNewMemo;
   FinishSaveButton: TNewButton;
   FinishSummary: String;
@@ -190,26 +191,26 @@ begin
     Result := 'NodePilot';
 end;
 
-// Always the {tmp} copy, never {app}\deploy: the readiness page runs before any file is installed,
-// and two locations depending on the phase would drift apart. {app}\deploy\ still ships, for the
-// uninstaller and for later manual use.
+// Always the {tmp} copy, never {app}\deploy: the readiness page runs before any file has been
+// installed, and one location for every phase keeps the two copies from diverging.
+// {app}\deploy\ still ships, for the uninstaller and for later manual use.
 function AdapterPath(): String;
 begin
   Result := ExpandConstant('{tmp}\Invoke-NodePilotSetup.ps1');
 end;
 
-// -PayloadRoot is passed explicitly rather than derived from the script's own location. The two
-// are the same directory today, but that is not guaranteed if either one moves.
+// -PayloadRoot is passed explicitly rather than derived from the script's own location, so the
+// script and the payload can live in different directories.
 function AdapterArguments(const Arguments: String): String;
 begin
   Result := '-NoProfile -ExecutionPolicy Bypass -File "' + AdapterPath() + '"' +
     ' -PayloadRoot "' + ExpandConstant('{tmp}') + '" ' + Arguments;
 end;
 
-// The bundled psql client, extracted on first need rather than at startup: it is several megabytes
-// an installation onto SQL Server never touches, and the wizard has to stay responsive.
+// Extracts the bundled psql client on first need rather than at startup: an installation onto
+// SQL Server never touches it, and it is large enough to delay the wizard.
 //
-// The build script's -PgBinariesPath is optional, so a setup without a client is a normal build,
+// The build script's -PgBinariesPath is optional, so a setup without a client is a valid build,
 // hence try/except rather than a check. The adapter decides what to do by looking for the file.
 procedure EnsurePgClient();
 begin
@@ -236,9 +237,8 @@ begin
     ewWaitUntilTerminated, ResultCode);
 end;
 
-// Same call, returning immediately. ResultCode is meaningless here because the process has not
-// finished, so it only says whether the process started. The caller reads the outcome from the
-// adapter's result file.
+// Same call, returning immediately. ResultCode says only whether the process started, because the
+// process has not finished; the caller learns the outcome from the adapter's result file.
 function StartPowerShell(const Arguments: String): Boolean;
 var
   Ignored: Integer;
@@ -246,10 +246,9 @@ begin
   Result := Exec('powershell.exe', AdapterArguments(Arguments), '', SW_HIDE, ewNoWait, Ignored);
 end;
 
-// The adapter writes the session path with Set-Content -Encoding UTF8, which on Windows PowerShell
-// 5.1 adds a byte-order mark. LoadStringFromFile returns raw bytes as an AnsiString, so the BOM
-// arrives as leading characters that Trim() does not remove, giving a path that resolves to
-// nothing. Stripped in both encodings.
+// The adapter writes the session path with Set-Content -Encoding UTF8, which on Windows
+// PowerShell 5.1 adds a byte-order mark. LoadStringFromFile returns raw bytes as an AnsiString,
+// so the BOM arrives as leading characters that Trim() does not remove.
 function StripBom(const Value: String): String;
 begin
   Result := Value;
@@ -260,8 +259,8 @@ begin
   Result := Trim(Result);
 end;
 
-// Escapes a string for embedding in JSON. This is the whole Pascal-side JSON surface, which is why
-// the answer file is written here and parsed strictly on the PowerShell side.
+// Escapes a string for embedding in JSON. This is the only JSON handling on the Pascal side; the
+// answer file is parsed strictly on the PowerShell side.
 function JsonString(const Value: String): String;
 var
   I: Integer;
@@ -336,7 +335,7 @@ begin
 end;
 
 // Locates the uninstaller this setup family registered. Empty when the installation came from the
-// zip package: that leaves the HKLM marker DetectExistingInstallation reads, but no unins000.exe.
+// zip package, which leaves the HKLM marker DetectExistingInstallation reads but no unins000.exe.
 function UninstallerPath(): String;
 var
   Raw: String;
@@ -366,13 +365,13 @@ begin
   Result := SessionDir + '\answers.json';
 end;
 
-// Built as a line array rather than one concatenated string so it can be written with
-// SaveStringsToUTF8File. This Inno version has no SaveStringToUTF8File, and the AnsiString-based
-// SaveStringToFile would encode non-ASCII passwords or host names in the system codepage, which
-// the adapter, reading UTF-8, would reject or mangle.
+// Answer lines are built as an array rather than one concatenated string so they can be written
+// with SaveStringsToUTF8File. This Inno version has no SaveStringToUTF8File, and the
+// AnsiString-based SaveStringToFile would encode a non-ASCII password or host name in the system
+// codepage, which the adapter, reading UTF-8, would reject or mangle.
 //
-// Which auto-fix the operator ticked, looked up by check id rather than by position: inserting a
-// check shifts every later index, and the tick would then be read off the wrong row.
+// Reports whether the operator ticked a given auto-fix, looked up by check id rather than by
+// array position so that inserting a check does not shift the mapping.
 function IsFixRequested(const Id: String): Boolean;
 var
   I: Integer;
@@ -381,7 +380,8 @@ begin
   for I := 0 to CheckCount - 1 do
     if CheckIds[I] = Id then
     begin
-      // Visible as well as checked: a hidden box can still carry a tick from an earlier probe.
+      // Visible as well as checked: a hidden box can still carry a tick from an earlier probe,
+      // and a fix the operator cannot see is not one they asked for.
       Result := CheckFixes[I].Visible and CheckFixes[I].Checked;
       Exit;
     end;
@@ -464,9 +464,8 @@ begin
   AddLine(Lines, Count, '    "thumbprint": ' + JsonString(Trim(NetworkPage.Values[4])) + ',');
   AddLine(Lines, Count, '    "source": "existing"');
 
-  // The probe file carries no fix flags - it asks a question rather than giving an instruction. It
-  // does carry the PostgreSQL superuser, because whether those credentials exist decides if the
-  // Postgres row may offer a fix at all.
+  // The probe file carries no fix flags; it only asks. It does carry the PostgreSQL superuser,
+  // because those credentials decide whether the Postgres row may offer a fix at all.
   if ForProbe and (not IsSqlServerSelected()) and (Trim(PostgresAuthPage.Values[3]) <> '') then
   begin
     AddLine(Lines, Count, '  },');
@@ -483,10 +482,10 @@ begin
     AddLine(Lines, Count, '  "provisioning": {');
     AddLine(Lines, Count, '    "installDotnetRuntime": ' + JsonBool(IsFixRequested('dotnet')) + ',');
     AddLine(Lines, Count, '    "generateSelfSignedCertificate": ' + JsonBool(IsFixRequested('certificate')) + ',');
-    // Two rows, one key: Provision-NodePilotDatabase.ps1 is existence-guarded end to end, so one
-    // run covers both "nothing exists yet" and "everything exists except the service identity's
-    // grant". On the Postgres path the same key routes to Provision-NodePilotPostgres.ps1; the
-    // script follows from the provider, not from a second flag that could contradict the first.
+    // Two rows, one key: Provision-NodePilotDatabase.ps1 is existence-guarded throughout, so one
+    // run covers both a missing database and a missing grant for the service identity. On the
+    // Postgres path the same key routes to Provision-NodePilotPostgres.ps1; the provider decides
+    // which script runs, so no second flag can contradict it.
     AddLine(Lines, Count, '    "createDatabaseAndLogin": ' +
       JsonBool(IsFixRequested('database') or IsFixRequested('databaseServiceLogin')) + ',');
     if not IsSqlServerSelected() then
@@ -505,11 +504,10 @@ end;
 
 procedure WriteAnswerFile(const AnswerMode: String; const ForProbe: Boolean);
 begin
-  // /ANSWERFILE wins over the pages. This is the unattended path, and the reason the answer file
-  // is a file rather than a command line: -PostgresPassword is a [SecureString].
+  // /ANSWERFILE wins over the pages; this is the unattended path.
   //
   // The supplied file is copied into the session directory rather than used where it lies, so it
-  // inherits that directory's restrictive DACL and is shredded with it. The original is left alone.
+  // inherits that directory's restrictive DACL and is shredded with it. The original is untouched.
   if AnswerFileOverride <> '' then
   begin
     if not FileCopy(AnswerFileOverride, AnswerFilePath(), False) then
@@ -517,9 +515,9 @@ begin
     Exit;
   end;
 
-  // Written into the session directory, whose DACL is SYSTEM + Administrators + the installing
-  // user, applied atomically when the adapter created it. The file inherits that, which is why
-  // nothing here does ACL work.
+  // Written into the session directory, whose DACL the adapter set to SYSTEM, Administrators and
+  // the installing user when it created the directory. The file inherits that, so nothing here
+  // does ACL work.
   if not SaveStringsToUTF8File(AnswerFilePath(), BuildAnswerLines(AnswerMode, ForProbe), False) then
     RaiseException('Could not write the answer file to ' + AnswerFilePath());
 end;
@@ -547,28 +545,25 @@ procedure CheckLabelClick(Sender: TObject);
 var
   I: Integer;
 begin
-  // Either half of a row is a valid click target - the glyph sits in its own control, and
-  // hitting it should do what hitting the text does.
+  // Either half of a row is a valid click target: the glyph sits in its own control and does the
+  // same thing as the text.
   for I := 0 to CheckCount - 1 do
     if (CheckLabels[I] = Sender) or (CheckMarks[I] = Sender) then
       UpdateRemediation(I);
 end;
 
-// Rows are placed here rather than at construction time because a hidden auto-fix checkbox used
-// to reserve its 16 px anyway: eight of them ate 128 px of a 309 px surface for controls that are
-// almost never shown, which is what squeezed the remediation area down to a single line.
+// Rows are placed here rather than at construction time so that hidden auto-fix checkboxes claim
+// no vertical space and the remediation area keeps room.
 procedure LayoutReadiness();
 var
   I, Y, ButtonTop, FixTop, FixFloor, FixCount, Available: Integer;
 begin
   ButtonTop := ReadinessPage.SurfaceHeight - ScaleY(24);
 
-  // Counted before anything is placed, because the guarantee below is about the LAST fix box: with
-  // N of them, the first may sit no lower than N*19 px above the buttons. Ten rows, several wrapped
-  // to three lines, push the stack past the bottom of a page that does not scroll - and a checkbox
-  // drawn behind "Check again" is a fix that cannot be ticked. That is how the publisher row
-  // shipped: visible, explained, and unreachable. Clamping overlaps the text above it, which is
-  // visibly wrong rather than invisibly missing.
+  // Counted before anything is placed, because the clamp below is about the last fix box: with N
+  // of them the first may sit no lower than N*19 px above the buttons, so the last one still
+  // lands on the page. The page does not scroll, and a checkbox drawn behind the buttons cannot
+  // be ticked. Clamping overlaps the text above it, which is visible rather than missing.
   FixCount := 0;
   for I := 0 to CheckCount - 1 do
     if CheckLabels[I].Visible and CheckFixes[I].Visible then FixCount := FixCount + 1;
@@ -598,16 +593,10 @@ begin
 
   RemediationBox.Top := Y + ScaleY(8);
   Available := ButtonTop - ScaleY(6) - RemediationBox.Top;
-  // Never negative, never overlapping the buttons: with every row wrapped and every fix offered
-  // there is little left, and a label with no room is still better than one drawn over them.
-  //
-  // The floor is two lines plus the scrollbar rather than one. At one line the control reads as a
-  // broken edit field instead of an explanation - which is exactly what it looked like with ten
-  // checks before the window was enlarged. The larger window means this is not reached in
-  // practice; it is here for high-DPI scaling and for the day an eleventh check arrives.
-  //
-  // Rows still win and the box still gives: the other precedence would draw the explanation over
-  // the last checks, and a check nobody can see is worse than an explanation that has to scroll.
+  // Never negative and never overlapping the buttons. The floor is two lines plus the scrollbar,
+  // because at one line the control reads as a broken edit field. It is reached only under
+  // high-DPI scaling or if another check is added. Rows keep their space and this box gives it
+  // up: an explanation that has to scroll is better than a check nobody can see.
   if Available < ScaleY(34) then Available := ScaleY(34);
   RemediationBox.Height := Available;
 end;
@@ -618,9 +607,9 @@ function EnsureSession(): String;
 var
   ResultCode: Integer;
   HandoffFile: String;
-  // LoadStringFromFile hands back an AnsiString - this Inno version has no UTF-8 counterpart.
-  // Safe only because the adapter puts the session under %ProgramData%, whose path is ASCII on
-  // every system; %TEMP% contains the account name and would not be.
+  // LoadStringFromFile returns an AnsiString; this Inno version has no UTF-8 counterpart. Safe
+  // because the adapter puts the session under %ProgramData%, whose path is ASCII, unlike %TEMP%,
+  // which contains the account name.
   RawSession: AnsiString;
 begin
   Result := '';
@@ -700,8 +689,8 @@ begin
     CheckLabels[I].Caption := Title + ': ' + Detail;
     CheckMarks[I].Visible := True;
 
-    // Colour alone carried the status until now, which says nothing to anyone who cannot
-    // separate this green from this red - and nothing at all in a greyscale screenshot.
+    // A glyph as well as a colour, so the status stays readable without colour vision and in a
+    // greyscale screenshot.
     if Status = 'Pass' then
     begin
       CheckMarks[I].Caption := MarkPass;
@@ -727,23 +716,20 @@ begin
       CheckMarks[I].Font.Color := clGray;
     end;
 
-    // A fix is only offered for a red row that the adapter says it can act on. Ticking one and
-    // clicking Next runs Provision and then re-runs this probe - the fix is never assumed to
-    // have worked.
-    // Yellow rows can carry a fix too. The publisher row is optional - the installation verifies
-    // the signature against a pinned thumbprint and does not need the machine to trust anyone - but
-    // the import is still worth offering, and limiting the box to red rows would have hidden it the
-    // moment the row stopped blocking. canAutoFix and the label stay the gate, so nothing grows a
-    // checkbox that has no fix behind it.
+    // A fix is offered for a failed or warning row that the adapter says it can act on. Ticking
+    // one and clicking Next runs Provision and then re-runs this probe; the fix is never assumed
+    // to have worked. Warning rows can carry a fix too, such as importing the publisher
+    // certificate, which is optional because the installation verifies the signature against a
+    // pinned thumbprint. canAutoFix and the label are the gate, so no checkbox appears without a
+    // fix behind it.
     CheckFixes[I].Visible := ((Status = 'Fail') or (Status = 'Warn')) and
       (GetIniString('check.' + CheckIds[I], 'canAutoFix', '0', Ini) = '1') and
       (AutoFixLabel <> '');
     CheckFixes[I].Caption := AutoFixLabel;
     if not CheckFixes[I].Visible then
       CheckFixes[I].Checked := False
-    // Some fixes arrive ticked - see AutoFixDefault in Preflight.ps1. The box is still shown and
-    // still clearable; the default only spares the operator a click for work that is part of
-    // installing rather than a decision about their SQL Server.
+    // Some fixes arrive ticked; see AutoFixDefault in Preflight.ps1. The box is still shown and
+    // still clearable, so the default only saves a click.
     else if (not CheckFixDefaulted[I]) and
       (GetIniString('check.' + CheckIds[I], 'autoFixDefault', '0', Ini) = '1') then
     begin
@@ -793,8 +779,8 @@ procedure SaveRemediationClick(Sender: TObject);
 var
   Target: String;
 begin
-  // Inno Setup's Pascal Script has no clipboard API and the text lives in a label rather than a
-  // selectable memo, so this button is the only way the instructions leave the wizard.
+  // Inno Setup's Pascal Script has no clipboard API, so writing the text to a file is how the
+  // instructions leave the wizard.
   Target := ExpandConstant('{userdesktop}\nodepilot-prerequisites.txt');
   if SaveTextToFile(Target, RemediationText) then
     MsgBox('Saved to ' + Target, mbInformation, MB_OK)
@@ -815,10 +801,9 @@ begin
     MsgBox('Could not write ' + Target, mbError, MB_OK);
 end;
 
-// Everything an operator needs to reach the installation for the first time, assembled from the
-// adapter's result file. Two of these values exist nowhere else they can get at: the
-// External-Trigger API key is generated by the adapter and deliberately absent from
-// install-report.txt, and the admin setup token is consumed by the first login.
+// Everything needed to reach the installation for the first time, assembled from the adapter's
+// result file. The External-Trigger API key is absent from install-report.txt and the admin setup
+// token is consumed by the first login, so neither is available anywhere else.
 procedure BuildFinishSummary(const ResultIni: String);
 var
   Url, Token, ApiKey, Thumb, InstallDir, DataDir, Service, S: String;
@@ -835,10 +820,8 @@ begin
   BootstrapUser := GetIniString('bootstrap', 'username', '', ResultIni);
   BootstrapPassword := GetIniString('bootstrap', 'password', '', ResultIni);
 
-  // A label per line, value straight after it. The previous version wrapped explanatory sentences
-  // across the memo, which has no word wrap - so every prose line was simply cut off at the right
-  // edge mid-word ("so the database already h"). Short labelled lines cannot be truncated into
-  // something that reads as a different sentence, and they scan in one pass.
+  // A label per line with the value straight after it. The memo has no word wrap, so long prose
+  // lines would be cut off at the right edge.
   S := '';
   if Url <> '' then S := S + 'Address       ' + Url + #13#10;
   if Service <> '' then S := S + 'Service       ' + Service + #13#10;
@@ -846,8 +829,7 @@ begin
   if DataDir <> '' then S := S + 'Data          ' + DataDir + #13#10;
   if Thumb <> '' then S := S + 'Certificate   ' + Thumb + #13#10;
 
-  // Credentials last and in their own block: they are the reason this page has a Save button, and
-  // burying them between paths is how they get missed.
+  // Credentials last and in their own block, so they are not missed among the paths above.
   S := S + #13#10;
   if BootstrapUser <> '' then
   begin
@@ -881,9 +863,8 @@ end;
 // Certificate picker
 // ---------------------------------------------------------------------------
 
-// Pops the text up to the next '|' off Rest and returns it. Inno's Pascal has no split, and the
-// line format is fixed at four fields by Format-NodePilotCertificateLine, which also guarantees no
-// separator can appear inside the subject.
+// Pops the text up to the next '|' off Rest and returns it. Inno's Pascal has no split, and
+// Format-NodePilotCertificateLine fixes the line at four fields with no separator in the subject.
 function PopField(var Rest: String): String;
 var
   Separator: Integer;
@@ -901,17 +882,11 @@ begin
   end;
 end;
 
-// Inno lays an input page out at 54 px per label+edit pair, which is generous: a prompt label is
-// about 13 px tall and an edit about 21. Five pairs therefore claim 270 of the 309 px surface and
-// leave the picker below the bottom edge - it shipped drawn as a sliver, because an input page
-// does not scroll and gives no hint that anything is under the edge.
-//
-// Reflowing the same controls at the heights they actually have frees roughly 55 px, which is
-// enough for the picker on the SAME page. Splitting the page would have been the other way out and
-// a worse one: five values that belong to one decision, spread over two screens.
-//
-// Measured off the controls rather than off constants, so a font change or a sixth field moves it
-// instead of quietly reintroducing the clipping.
+// Inno lays an input page out at a fixed height per label+edit pair, which is more than the
+// controls need. Five pairs fill nearly the whole surface and push the certificate picker below
+// the bottom edge, and an input page does not scroll. Reflowing the controls at their real heights
+// frees enough room for the picker on the same page. Positions are measured off the controls
+// rather than off constants, so a font change or another field moves them.
 procedure CompactNetworkPage();
 var
   I, Top: Integer;
@@ -922,23 +897,21 @@ begin
     NetworkPage.PromptLabels[I].Top := Top;
     Top := Top + NetworkPage.PromptLabels[I].Height + ScaleY(2);
     NetworkPage.Edits[I].Top := Top;
-    // 6 px between an edit and the next prompt. Chosen so the picker lands inside the surface even
-    // if an edit turns out to be 23 px rather than 21 - the clamp below is a backstop, not the plan.
+    // Gap between an edit and the next prompt, small enough that the picker still lands inside
+    // the surface if the edits turn out slightly taller. The clamp below is a backstop.
     Top := Top + NetworkPage.Edits[I].Height + ScaleY(6);
   end;
 
   CertCombo.Top := Top;
-  // Last line of defence, and the reason this is not just arithmetic: whatever the reflow computes,
-  // the picker has to end up inside the surface. Being a few pixels too low is invisible in the
-  // source and unmistakable on screen.
+  // Backstop: whatever the reflow computes, the picker has to end up inside the surface.
   if CertCombo.Top + CertCombo.Height > NetworkPage.SurfaceHeight then
     CertCombo.Top := NetworkPage.SurfaceHeight - CertCombo.Height;
 end;
 
 procedure CertComboChange(Sender: TObject);
 begin
-  // Entry 0 is the prompt and maps to an empty thumbprint deliberately: landing back on it must
-  // not wipe a thumbprint the operator typed by hand.
+  // Entry 0 is the prompt and maps to an empty thumbprint, so selecting it does not wipe a
+  // thumbprint typed by hand.
   if (CertCombo.ItemIndex > 0) and (CertCombo.ItemIndex < GetArrayLength(CertThumbprints)) then
     NetworkPage.Values[4] := CertThumbprints[CertCombo.ItemIndex];
 end;
@@ -948,9 +921,8 @@ var
   ResultCode, Count, Added, I: Integer;
   Ini, Rest, Thumbprint, Subject, HasKey, Expires, Entry, Current: String;
 begin
-  // Into {tmp} rather than the protected session directory, and not out of laziness: this runs on
-  // the TLS page, which comes before anything has created a session, and thumbprints and subjects
-  // out of a store every local user can read are not a secret to begin with.
+  // Into {tmp} rather than the protected session directory: this runs on the TLS page, before a
+  // session exists, and thumbprints and subjects from a world-readable store are not secret.
   Ini := ExpandConstant('{tmp}\certificates.ini');
   DeleteFile(Ini);
   CertCombo.Items.Clear();
@@ -960,9 +932,8 @@ begin
 
   if not RunPowerShell('-Mode Certificates -OutFile "' + Ini + '"', ResultCode) or (ResultCode <> 0) then
   begin
-    // Never blocking. The field above still takes a thumbprint typed by hand and the prerequisite
-    // page checks it either way, so a picker that cannot be filled costs convenience and nothing
-    // else. Reporting it as an error would stop an installation that is perfectly able to proceed.
+    // Never blocking: the field above still takes a thumbprint typed by hand and the prerequisite
+    // page checks it either way, so a picker that cannot be filled only costs convenience.
     CertCombo.Items.Add('The certificate list could not be read - type the thumbprint above');
     CertCombo.ItemIndex := 0;
     Exit;
@@ -984,20 +955,16 @@ begin
     Subject := PopField(Rest);
     HasKey := PopField(Rest);
     Expires := Rest;
-    // A malformed line is dropped rather than offered: selecting it would put something that is
-    // not a thumbprint into the field and fail the next page for a reason that is not the truth.
+    // A malformed line is dropped rather than offered: selecting it would put a non-thumbprint
+    // into the field and fail the next page for the wrong reason.
     if Length(Thumbprint) <> 40 then Continue;
 
-    // The thumbprint is in the caption, not just behind it. On the lab host two certificates share
-    // a subject AND an expiry date - "NodePilot Lab HTTPS" and "NodePilot Lab SQL TLS", issued 39
-    // seconds apart - so subject and date rendered two identical lines, and picking the wrong one
-    // would have configured Kestrel with the database's certificate without saying anything.
-    // Showing the value that lands in the box above also means the operator can check it against a
-    // thumbprint they were handed, instead of selecting on trust.
+    // The thumbprint is part of the caption. Two certificates can share a subject and an expiry
+    // date, which would render as identical lines, and showing the value that lands in the field
+    // above lets the operator check it against a thumbprint they were given.
     Entry := Subject + '   ' + Thumbprint + '   expires ' + Expires;
-    // Listed, not filtered out. "It is in the store, why is it not offered?" has one common
-    // answer - a .cer was imported where a .pfx was meant - and hiding the certificate keeps that
-    // a mystery until the prerequisite page says it about a thumbprint typed out by hand.
+    // Listed rather than filtered out, so a certificate imported without its private key is
+    // visible together with the reason it cannot be used.
     if HasKey <> '1' then
       Entry := Entry + '   NO PRIVATE KEY';
     CertCombo.Items.Add(Entry);
@@ -1006,9 +973,8 @@ begin
   end;
   SetArrayLength(CertThumbprints, Added);
 
-  // Show what the field already holds, so returning to this page does not offer "pick one" over a
-  // thumbprint that is already set - including the one a generated certificate wrote into the
-  // field from the prerequisite page.
+  // Preselect what the field already holds, including a thumbprint written back by a generated
+  // certificate, so returning to this page does not show the prompt over a value that is set.
   CertCombo.ItemIndex := 0;
   Current := Trim(NetworkPage.Values[4]);
   if Current <> '' then
@@ -1032,8 +998,8 @@ begin
     CheckLabels[I].Parent := ReadinessPage.Surface;
     CheckLabels[I].Left := 0;
     CheckLabels[I].Width := ReadinessPage.SurfaceWidth - ScaleX(20);
-    // Wrapping matters: several details are long enough to be cut mid-sentence at this width,
-    // and a check that reports half a sentence is worse than one that takes two lines.
+    // Wrap rather than truncate: several details are long enough to be cut mid-sentence at this
+    // width.
     CheckLabels[I].WordWrap := True;
     CheckLabels[I].AutoSize := True;
     CheckLabels[I].Cursor := crHand;
@@ -1057,21 +1023,16 @@ begin
     CheckFixes[I].Visible := False;
   end;
 
-  // A read-only memo sized to the leftovers ended up one line tall with a scrollbar, which reads
-  // as a broken edit field. A wrapped label carries the same text and cannot be mistaken for
-  // something to type into. The cost is that the text is no longer selectable, so "Save
-  // instructions..." is now the only way to get it out of the wizard - it stays for that reason.
+  // Read-only memo holding the remediation text for the selected check. A memo keeps the text
+  // selectable, so it can be copied out as well as saved with the button below.
   RemediationBox := TNewMemo.Create(ReadinessPage);
   RemediationBox.Parent := ReadinessPage.Surface;
   RemediationBox.Left := 0;
   RemediationBox.Width := ReadinessPage.SurfaceWidth;
   RemediationBox.ReadOnly := True;
   RemediationBox.WordWrap := True;
-  // Scrollable, because the content is not bounded: a database remediation is a CREATE LOGIN /
-  // CREATE USER / ALTER ROLE block, and nine check rows leave roughly five lines for it. A label
-  // simply stopped at the last line that fit - the SQL an operator is meant to hand to a DBA was
-  // cut off by the buttons below it. It also makes the text selectable again, which is what the
-  // "Save instructions..." button had to exist for.
+  // Scrollable because the content is unbounded: a database remediation is a multi-statement
+  // CREATE LOGIN / CREATE USER / ALTER ROLE block and the check rows above leave it few lines.
   RemediationBox.ScrollBars := ssVertical;
   RemediationBox.Text := '';
 
@@ -1108,17 +1069,14 @@ begin
   CheckIds[6] := 'database';
   CheckIds[7] := 'databaseVersion';
   CheckIds[8] := 'databaseServiceLogin';
-  // Last in the list, first thing the installation does. Without this row a host that does not
-  // trust the publisher showed nine green checks and then failed at CheckSignature with exit
-  // code 4 and a rollback - the one requirement the page could not see.
+  // Last in the list, but the first thing the installation verifies: on a host that does not
+  // trust the publisher, CheckSignature fails and the installation rolls back.
   CheckIds[9] := 'signer';
 
   // Before anything can call the adapter, and that is every phase of this wizard.
   ExtractTemporaryFiles('*.ps1');
-  // The publisher certificate used to be extracted in PrepareToInstall, which is after the
-  // readiness page has already run. The page now reports whether this machine trusts that
-  // publisher, so it has to be able to read it - a kilobyte, extracted once, at the only moment
-  // that is earlier than every phase.
+  // The readiness page reports whether this machine trusts the publisher, so the certificate is
+  // extracted here, before any phase that reads it.
   ExtractTemporaryFile('nodepilot-release-signing.cer');
 
   DetectExistingInstallation();
@@ -1133,8 +1091,8 @@ begin
     'What should this setup do?', True, False);
   ModePage.Add('Update the program files and keep the current configuration');
   ModePage.Add('Set the installation up again from scratch (issues a new External-Trigger API key)');
-  // Removal belongs on the page an operator actually reaches. It is also reachable through
-  // Apps & Features, but nobody who just double-clicked the setup goes looking there.
+  // Removal is offered here as well as in Apps & Features, so it is reachable from the setup an
+  // operator has just launched.
   ModePage.Add('Remove NodePilot from this computer (your database is left untouched)');
   ModePage.SelectedValueIndex := 0;
 
@@ -1160,12 +1118,10 @@ begin
   ProviderPage.Add('PostgreSQL 16 or newer');
   ProviderPage.SelectedValueIndex := 0;
 
-  // Each page is anchored to the one created BEFORE it, never to a shared parent. Inno inserts a
+  // Each page is anchored to the one created before it, never to a shared parent. Inno inserts a
   // page directly after the ID it is given, so two pages anchored to the same parent come out in
-  // reverse creation order - and anything anchored to the earlier of the two then lands in front
-  // of the later one. Anchoring SqlPage and PostgresPage both to ProviderPage produced
-  // Provider -> Postgres -> Network -> Prerequisites -> Sql: the SQL page sat AFTER the page that
-  // reads its values, so it was never shown and its fields stayed at their defaults.
+  // reverse creation order, and a later page anchored to the first of them lands ahead of the
+  // second.
   SqlPage := CreateInputQueryPage(ProviderPage.ID,
     'SQL Server',
     'Where does NodePilot find its database?',
@@ -1175,11 +1131,9 @@ begin
   SqlPage.Add('Certificate host name (leave blank to derive it):', False);
   SqlPage.Values[1] := 'NodePilot';
 
-  // Split across two pages, and not for cosmetic reasons: an Inno input page has 309 pixels of
-  // surface and each label+edit pair costs 54, so the sixth field lands at 337 and is simply not
-  // drawn. Measured. The page does not scroll and gives no hint that anything is missing - the
-  // root-certificate field was invisible, and the wizard then failed on a value the operator was
-  // never given the chance to enter. Five is the maximum; every page here stays at three.
+  // Split across two pages because an Inno input page fits at most five label+edit pairs: a sixth
+  // is laid out below the surface and never drawn, and the page does not scroll, so the missing
+  // field gives no hint of itself. Every page here stays at three fields.
   PostgresPage := CreateInputQueryPage(SqlPage.ID,
     'PostgreSQL - server',
     'Where does NodePilot find its database?',
@@ -1474,12 +1428,7 @@ begin
       Thumbprint := Trim(NetworkPage.Values[4]);
       StringChangeEx(Thumbprint, ' ', '', True);
       NetworkPage.Values[4] := Uppercase(Thumbprint);
-      // An empty field passes on purpose: it is how you say "I do not have one yet", and it is
-      // already how the answer file says it. The page used to reject it while telling the operator
-      // to leave it as is - so on a host with no certificate at all, the only way to reach the
-      // prerequisite page that offers to create one was to invent 40 hexadecimal characters. The
-      // check is not lost, it is moved: the certificate row goes red there and blocks Next until
-      // something real is in the store.
+      // Empty means no certificate is available yet. The prerequisite page validates the store.
       if (NetworkPage.Values[4] <> '') and (Length(NetworkPage.Values[4]) <> 40) then
       begin
         MsgBox('A certificate thumbprint is 40 hexadecimal characters. Leave the field empty if ' +

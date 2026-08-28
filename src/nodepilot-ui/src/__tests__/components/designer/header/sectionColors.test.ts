@@ -5,23 +5,21 @@ import { dirname, join } from 'node:path';
 import { SECTION_GLOW_COLOR } from '../../../../components/designer/header/sectionColors';
 
 /**
- * Mirror of activityCssPalette.test.ts: each toolbar section glows in a color that must be a
- * `var(--token)` referencing an index.css custom property declared in BOTH light (:root /
- * @theme) and dark (html.dark) mode. A single (or missing) declaration would leave one theme
- * with an empty color-mix → an invisible bloom. Resolving index.css up four levels lands at
- * src/index.css from src/__tests__/components/designer/header/.
+ * Each toolbar section glows in a color that must be a `var(--token)` referencing an
+ * index.css custom property declared in both light (:root / @theme) and dark (html.dark)
+ * mode. A theme without the declaration renders an empty color-mix and an invisible bloom.
+ * Going up four levels from src/__tests__/components/designer/header/ lands at src/index.css.
  */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const cssText = readFileSync(join(__dirname, '..', '..', '..', '..', 'index.css'), 'utf8');
 
 /**
- * Classify each top-level CSS block as light (default scope: `:root` / `@theme`) or dark
- * (any selector containing `html.dark`), then report how many of each declare `varName`.
- * Scope-aware on purpose: a token may be legitimately re-declared under multiple dark
- * scopes (e.g. base `html.dark` + the `html.dark .np-shell` app-shell override), so a raw
- * occurrence count is the wrong signal. What matters for an empty-color-mix bloom is that
- * the token is present in BOTH a light and a dark scope.
+ * Classify each top-level CSS block as light (`:root` / `@theme`) or dark (any selector
+ * containing `html.dark`), then report how many of each declare `varName`. A token may be
+ * re-declared under several dark scopes (base `html.dark` plus the `html.dark .np-shell`
+ * app-shell override), so a raw occurrence count is the wrong signal; what matters is that
+ * the token is present in both a light and a dark scope.
  */
 function declarationScopes(css: string, varName: string): { light: number; dark: number } {
   const escaped = varName.replace(/[-\\]/g, '\\$&');

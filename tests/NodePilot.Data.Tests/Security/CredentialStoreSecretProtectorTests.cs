@@ -66,10 +66,9 @@ public class CredentialStoreSecretProtectorTests
     [Fact]
     public async Task ProviderName_Surfaces_Through_AuditDetails_Indirectly()
     {
-        // We don't read AuditLog here (the audit append is fire-and-forget on a different
-        // scope), but the contract-test is: ProviderName is exposed on ISecretProtector
-        // and CredentialStore reads it for audit details. So if the audit row appears in
-        // production it will carry the provider tag.
+        // AuditLog isn't read here (the audit append is fire-and-forget on a different
+        // scope). This checks the underlying contract instead: ProviderName is exposed on
+        // ISecretProtector and CredentialStore reads it for audit details.
         var protector = new AesGcmSecretProtector(DeterministicKey());
         protector.ProviderName.Should().Be("AesGcm");
     }

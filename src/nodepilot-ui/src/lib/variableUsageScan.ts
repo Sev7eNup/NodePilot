@@ -1,29 +1,27 @@
 import type { Node, Edge } from '@xyflow/react';
 
 /**
- * Matches `{{name.field…}}` references — identical to the runtime resolver pattern in
- * `WorkflowEngine.ResolveVariables`. Captured group is the head (`name`), which is what
- * tells us "this references step `name`'s output". The `.field…` tail is intentionally
- * permissive (`.output`, `.error`, `.param.foo`, `.param.foo.bar`).
- *
- * Lazy-rebuilt per scan because RegExp objects with `g` flag carry mutable `lastIndex`
- * state — sharing a single instance across calls invites off-by-one bugs.
+ * Matches `{{name.field}}` references, the same pattern the runtime resolver in
+ * `WorkflowEngine.ResolveVariables` uses. The captured group is the head (`name`), the step
+ * whose output is referenced; the tail is deliberately permissive (`.output`, `.error`,
+ * `.param.foo`, `.param.foo.bar`). Callers rebuild the regex per scan because a `g`-flagged
+ * RegExp carries mutable `lastIndex` state that a shared instance would leak across calls.
  */
 const TEMPLATE_REGEX_SOURCE = /\{\{\s*([a-zA-Z0-9_-]+)(\.[a-zA-Z0-9_.-]+)?\s*\}\}/g;
 
 /**
- * Heads that the engine injects at runtime — never count them as upstream-step refs.
- * Limited to `globals` and `manual`: those are the only two namespaces the engine
- * actually populates ({@link VariableResolver.BuildStepVariables}). There is no
- * `trigger.` / `webhook.` namespace — webhook payload is exposed under `manual.*` keys.
+ * Heads the engine injects at runtime; they never count as upstream-step references.
+ * `globals` and `manual` are the only namespaces the engine populates
+ * ({@link VariableResolver.BuildStepVariables}). There is no `trigger.` or `webhook.`
+ * namespace: the webhook payload is exposed under `manual.*` keys.
  */
 const RUNTIME_HEADS = new Set(['globals', 'manual']);
 
 /**
- * Recursively walks an arbitrary node-config payload and returns every `{{head.…}}` head
- * found anywhere in string values (top-level or nested in objects/arrays). Heads are
- * deduplicated; runtime prefixes (globals/manual) are filtered out so callers can
- * directly intersect with upstream-step IDs / outputVariables.
+ * Recursively walks an arbitrary node-config payload and returns every `{{head}}` head found
+ * in string values, at the top level or nested in objects and arrays. Heads are deduplicated
+ * and runtime prefixes (globals, manual) are filtered out, so callers can intersect the result
+ * directly with upstream step ids and outputVariables.
  */
 export function findReferencedVariables(value: unknown): string[] {
   const heads = new Set<string>();
@@ -66,9 +64,8 @@ export function variablesUsedByNode(node: Node): string[] {
 }
 
 /**
- * One-shot computation of `nodeId → referenced heads`. Cheap enough to run on every
- * `nodes` change for the data-flow overlay (≤ low-100s of nodes in practice; each
- * config payload is small and stringly-shallow).
+ * Maps each node id to the heads it references. Cheap enough to run on every `nodes` change
+ * for the data-flow overlay, since workflows stay small and config payloads are shallow.
  */
 export function usedVariablesPerNode(nodes: Node[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
@@ -80,8 +77,8 @@ export function usedVariablesPerNode(nodes: Node[]): Map<string, string[]> {
 }
 
 /**
- * Returns the canonical "head" a step exposes to downstream — its `outputVariable` if set,
- * otherwise the node id (matches WorkflowEngine.ResolveVariables fallback exactly).
+ * Returns the head a step exposes downstream: its `outputVariable` if set, otherwise the node
+ * id, matching the fallback in WorkflowEngine.ResolveVariables.
  */
 function exposedHead(node: Node): string {
   const data = (node.data as Record<string, unknown> | undefined) ?? {};
@@ -90,17 +87,13 @@ function exposedHead(node: Node): string {
 }
 
 /**
- * For each edge in the workflow, returns the list of variable heads that actually flow
- * across it — i.e. heads exposed by the source step (or any of its already-flowing upstream
- * heads, propagated transitively along edge direction) AND referenced by the target step
- * or any of its successors.
+ * For each edge, returns the variable heads that flow across it: heads exposed by the source
+ * step or any of its upstream steps, propagated along edge direction, that are referenced by
+ * the target step or any of its successors. The transitive part keeps a whole chain highlighted
+ * when a later step reads an earlier step's output, instead of lighting only the consuming edge.
  *
- * Why transitive propagation: a chain `A → B → C` where C does `{{A.output}}` should still
- * highlight the A→B edge as flowing — without that, only the directly-consuming edge would
- * light up and the chain visualisation would be misleading.
- *
- * Disabled edges are skipped (they don't carry runtime data). The result is a `Map<edgeId,
- * heads[]>` so the renderer can look up O(1) per edge.
+ * Disabled edges are skipped, since they carry no runtime data. The result is a `Map<edgeId,
+ * heads[]>` so the renderer can look up each edge in O(1).
  */
 export function computeFlowingVariablesPerEdge(
   nodes: Node[],
@@ -113,7 +106,7 @@ export function computeFlowingVariablesPerEdge(
   const headByNode = new Map<string, string>();
   for (const n of nodes) headByNode.set(n.id, exposedHead(n));
 
-  // Build adjacency lists, skipping disabled edges (their data wouldn't move at runtime).
+  // Build adjacency lists, skipping disabled edges since their data does not move at runtime.
   const outgoing = new Map<string, string[]>();
   const incoming = new Map<string, string[]>();
   for (const n of nodes) {
@@ -130,10 +123,9 @@ export function computeFlowingVariablesPerEdge(
     activeEdges.push(e);
   }
 
-  // Per-node BFS for forward + backward reachability. Iterative DP with memo + cycle marker
-  // gives wrong answers on cycles (visit order leaks into the cached partial result), so we
-  // run a fresh BFS per query. Workflows top out at low-100s of nodes so the O(N · E) total
-  // is well below noticeable cost — and the result is always exact regardless of cycles.
+  // A fresh per-node search for forward and backward reachability. Memoised DP with a cycle
+  // marker returns wrong answers on cycles, because visit order leaks into the cached partial
+  // result. Running a search per query stays exact, and workflows are small enough for the cost.
   const reachForward = (start: string): Set<string> => {
     const reached = new Set<string>();
     const stack = [start];
@@ -157,7 +149,7 @@ export function computeFlowingVariablesPerEdge(
     return reached;
   };
 
-  // Memoise per node — multiple edges sharing a source/target endpoint pay only once.
+  // Memoise per node so multiple edges sharing a source or target endpoint pay only once.
   const downstreamCache = new Map<string, Set<string>>();
   const upstreamCache = new Map<string, Set<string>>();
   const downstreamUsageOf = (id: string): Set<string> => {

@@ -2,21 +2,12 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 50 — Workflow Duplicate, By-Name-Lookup & Bulk-Export.
+ * E2ETests.md part 50: workflow duplicate, by-name lookup, and bulk export.
  *
- * Hermetic: page.route() mocks only (no backend), per fixtures/mockApi.ts conventions.
- * EN locale under Playwright; selectors are bilingual / title-attribute based.
- *
- * Covers the UI surfaces of Teil 50:
- *   - 50.1 — Duplicate: the row's duplicate button fires POST /api/workflows/{id}/duplicate.
- *   - 50.5 — Bulk-Export: the "Export All" button GETs /api/workflows/export and triggers a
- *            browser download (downloadFromApi → anchor click).
- *   - Single export (per-row "Export as JSON") fires GET /api/workflows/{id}/export.
- *   - 50.6 — Operator can bulk-export (button visible & functional); the disabled state when
- *            there are zero workflows is also asserted.
- *
- * 50.2/50.3/50.4 (by-name lookup + by-name contract) are pure REST concerns with no UI entry
- * point in this SPA — they're exercised by the dotnet API tests, so they're skipped here.
+ * Covers the UI surfaces: the per-row duplicate button, "Export All" against
+ * /api/workflows/export, the per-row "Export as JSON", and the Operator permission case.
+ * By-name lookup and contract (50.2 to 50.4) are REST-only and covered by the dotnet API tests.
+ * Hermetic: page.route mocks only, EN locale under Playwright, bilingual/title selectors.
  */
 
 const ME = MOCK_USER; // Admin
@@ -44,7 +35,7 @@ function workflow(overrides: Record<string, unknown> = {}) {
     totalCount: 0,
     avgDurationMs: null,
     lastExecution: null,
-    // No capabilities → row falls back to global role flags (Admin/Operator can edit).
+    // Without capabilities the row falls back to global role flags (Admin/Operator can edit).
     ...overrides,
   };
 }
@@ -102,7 +93,7 @@ test.describe('Workflow Duplicate, By-Name & Bulk-Export (Teil 50)', () => {
     await page.goto('/workflows');
     await expect(page.getByRole('button', { name: 'E2E_Basic_Test' })).toBeVisible({ timeout: 15_000 });
 
-    // The button click both fires GET /export AND triggers an anchor-download — assert both.
+    // The click both fires GET /export and triggers an anchor download; assert both.
     const downloadPromise = page.waitForEvent('download', { timeout: 10_000 });
     await page.getByRole('button', { name: /export all|alle exportieren/i }).click();
 
@@ -166,15 +157,15 @@ test.describe('Workflow Duplicate, By-Name & Bulk-Export (Teil 50)', () => {
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
     );
     await page.goto('/workflows');
-    // Empty-state copy renders → list is loaded, not still spinning.
+    // The empty-state copy proves the list is loaded rather than still spinning.
     await expect(page.getByText(/no workflows|keine workflows/i)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: /export all|alle exportieren/i })).toBeDisabled();
   });
 
   // ---------- 50.2 / 50.3 / 50.4 — By-Name lookup + contract (API-only) ----------
   test.skip('50.2/50.3/50.4 — by-name lookup & contract are REST-only (covered by dotnet API tests)', () => {
-    // GET /api/workflows/by-name/{name} and .../contract have no dedicated UI entry point in
-    // this SPA — the workflow list navigates by id, not by name. Exact-case 404 behaviour and
-    // the contract shape (inputs/outputs/hasManualTrigger) are asserted server-side.
+    // GET /api/workflows/by-name/{name} and .../contract have no UI entry point in this SPA:
+    // the workflow list navigates by id, not by name. Exact-case 404 behaviour and the contract
+    // shape (inputs/outputs/hasManualTrigger) are asserted server-side.
   });
 });

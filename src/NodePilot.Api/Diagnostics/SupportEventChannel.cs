@@ -40,6 +40,7 @@ public sealed class SupportEventChannel
     /// </summary>
     public bool TryWrite(SupportEvent ev) => _channel.Writer.TryWrite(ev);
 
-    /// <summary>Reader for the flush service. Iterates until Channel.Complete() is called.</summary>
+    /// <summary>Reader for the flush service. Iterates until Channel.Complete() is
+    /// called.</summary>
     public ChannelReader<SupportEvent> Reader => _channel.Reader;
 }

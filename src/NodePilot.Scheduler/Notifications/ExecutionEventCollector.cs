@@ -18,9 +18,12 @@ namespace NodePilot.Scheduler.Notifications;
 internal sealed class ExecutionEventCollector : INotificationCollector
 {
     // Don't scan executions whose CompletedAt is newer than (now - this). Closes the keyset-cursor
-    // race: an execution can be assigned a CompletedAt in-memory and commit a moment later, so a row
-    // could otherwise become visible with a timestamp at/below an already-advanced watermark boundary
-    // and be skipped forever. The lag keeps the boundary safely behind commit visibility. Settable in tests.
+    // race: an execution can be assigned a CompletedAt in-memory and commit a moment later, so a
+    // row
+    // could otherwise become visible with a timestamp at/below an already-advanced watermark
+    // boundary
+    // and be skipped forever. The lag keeps the boundary safely behind commit visibility. Settable
+    // in tests.
     internal TimeSpan ScanSafetyLag { get; set; } = TimeSpan.FromSeconds(5);
 
     public async Task<NotificationCollection?> CollectAsync(
@@ -58,7 +61,8 @@ internal sealed class ExecutionEventCollector : INotificationCollector
             contexts.AddRange(batch.Where(ExecutionEventSupport.LooksLikeCredentialFailure)
                 .Select(ExecutionEventSupport.BuildCredentialFailureContext));
 
-        // Stage the watermark advance to the last scanned execution. It is persisted together with the
+        // Stage the watermark advance to the last scanned execution. It is persisted together with
+        // the
         // Pending attempts inside the pipeline's save, so a crash now leaves replayable rows.
         var lastRow = batch[^1];
         state.LastCompletedAtSeen = lastRow.CompletedAt;

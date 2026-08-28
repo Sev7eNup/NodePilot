@@ -132,7 +132,8 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByText('Top Workflows (7 days)')).toBeInTheDocument());
     expect(screen.getByText('10 runs')).toBeInTheDocument();
     expect(screen.getByText(/avg/i)).toBeInTheDocument();
-    // The new "p95 · Top Workflows" chart title also matches /p95/i, so assert ≥1 instead of unique.
+    // The new "p95 · Top Workflows" chart title also matches /p95/i, so assert ≥1 instead of
+    // unique.
     expect(screen.getAllByText(/p95/i).length).toBeGreaterThanOrEqual(1);
   });
 
@@ -212,7 +213,7 @@ describe('DashboardPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /New workflow/i }));
     expect(screen.getByPlaceholderText(/Name of the new workflow/i)).toBeInTheDocument();
 
-    // Click a KPI label that lives outside the new-workflow control → the input must close.
+    // Click a KPI label that lives outside the new-workflow control -> the input must close.
     await userEvent.click(screen.getByText('Workflows'));
     expect(screen.queryByPlaceholderText(/Name of the new workflow/i)).not.toBeInTheDocument();
   });
@@ -396,7 +397,7 @@ describe('DashboardPage', () => {
   });
 
   it('folds Pending/Paused/Skipped into an "Other" donut segment', async () => {
-    // total 50 but only 45 are succeeded+failed → 5 land in "Other".
+    // total 50 but only 45 are succeeded+failed -> 5 land in "Other".
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
       ...BASE_STATS,
       last24h: { total: 50, succeeded: 40, failed: 5, running: 0, cancelled: 0 },
@@ -422,7 +423,8 @@ describe('DashboardPage', () => {
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({ ...BASE_STATS, last24hBuckets: buckets })));
     renderPage();
     await waitFor(() => expect(screen.getByText('Success Rate Trend (24h)')).toBeInTheDocument());
-    // With data present, the trend no longer shows the empty state (only the running panel is empty here).
+    // With data present, the trend no longer shows the empty state (only the running panel is empty
+    // here).
     expect(screen.queryByText('No executions yet')).not.toBeInTheDocument();
   });
 

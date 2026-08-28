@@ -4,7 +4,7 @@ import type { Edge, Node } from '@xyflow/react';
 import { EdgePropertiesPanel } from '../../../components/designer/EdgePropertiesPanel';
 import { useDesignStore } from '../../../stores/designStore';
 
-// Store-driven confirm replaces the native confirm(); default-resolve true (user confirms).
+// The store-driven confirm dialog replaces the native confirm() and resolves true by default.
 vi.mock('../../../stores/confirmStore', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../../../stores/confirmStore')>();
   return { ...mod, confirmDialog: vi.fn().mockResolvedValue(true) };
@@ -12,15 +12,11 @@ vi.mock('../../../stores/confirmStore', async (importOriginal) => {
 import { confirmDialog } from '../../../stores/confirmStore';
 
 /**
- * EdgePropertiesPanel edits one edge's label, condition (simple or expression mode), and
- * disabled state. We pin:
- *   - All onUpdate / onDelete / onClose call shapes
- *   - Mode-toggle (simple ↔ expression) clears the inactive field
- *   - Quick-buttons On Success/Failure/Always set the right `condition`
- *   - Delete uses confirmDialog() and bails out on cancel
- *   - Custom-label-overrides-warning + Use-Auto button
- *
- * ConditionBuilder is mocked — it has its own tests in components/ConditionBuilder.test.tsx.
+ * EdgePropertiesPanel edits one edge's label, condition (simple or expression mode) and
+ * disabled state. These tests pin the onUpdate, onDelete and onClose call shapes, that a mode
+ * switch clears the inactive field, that the quick buttons set the right `condition`, that
+ * delete goes through confirmDialog(), and the custom-label override warning.
+ * ConditionBuilder is mocked; it is covered by components/ConditionBuilder.test.tsx.
  */
 
 vi.mock('../../../components/designer/ConditionBuilder', () => ({
@@ -70,8 +66,7 @@ describe('EdgePropertiesPanel', () => {
   });
 
   it('showsPortControlsInExpertMode_andUpdatesHandles', () => {
-    // Alle vier Ports sind seit dem Wegfall der klassischen 2-Port-Variante immer
-    // verfuegbar; der Selektor haengt nur noch am Expert-Modus.
+    // All four ports are always available; the selector is gated only by expert mode.
     const props = defaultProps();
     render(<EdgePropertiesPanel {...props} />);
 
@@ -108,7 +103,7 @@ describe('EdgePropertiesPanel', () => {
 
     const [, patch] = (props.onUpdate as ReturnType<typeof vi.fn>).mock.calls[0];
     expect((patch.data as Record<string, unknown>).condition).toBe('step-1.success');
-    // Canonical empty label → derived to 'On Success'
+    // An empty label is derived from the condition, which yields 'On Success'.
     expect((patch.data as Record<string, unknown>).label).toBe('On Success');
   });
 
@@ -133,9 +128,8 @@ describe('EdgePropertiesPanel', () => {
 
     const [, patch] = (props.onUpdate as ReturnType<typeof vi.fn>).mock.calls[0];
     expect((patch.data as Record<string, unknown>).condition).toBe('');
-    // The label is CLEARED, not set to "Always". An edge with no condition runs always; persisting
-    // the word made the same state look two different ways depending on whether anyone had ever
-    // been through this panel.
+    // The label is cleared rather than set to "Always". An edge without a condition always
+    // runs, so the panel keeps no label for that state.
     expect((patch.data as Record<string, unknown>).label).toBe('');
   });
 
@@ -148,7 +142,7 @@ describe('EdgePropertiesPanel', () => {
     fireEvent.click(screen.getByText('Expression'));
 
     expect(screen.getByTestId('condition-builder')).toBeInTheDocument();
-    // Switching to expression clears the simple condition
+    // Switching to expression mode clears the simple condition.
     const [, patch] = (props.onUpdate as ReturnType<typeof vi.fn>).mock.calls[0];
     expect((patch.data as Record<string, unknown>).condition).toBe('');
   });
@@ -161,15 +155,15 @@ describe('EdgePropertiesPanel', () => {
     });
     render(<EdgePropertiesPanel {...props} />);
 
-    // Builder is initially shown because edge has a conditionExpression
+    // The builder is shown initially because the edge carries a conditionExpression.
     expect(screen.getByTestId('condition-builder')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Simple'));
 
-    // After switching, builder is gone and the simple input is rendered
+    // After the switch the builder is gone and the simple input is rendered.
     expect(screen.queryByTestId('condition-builder')).not.toBeInTheDocument();
     const [, patch] = (props.onUpdate as ReturnType<typeof vi.fn>).mock.calls[0];
-    // conditionExpression cleared (set to undefined)
+    // conditionExpression is cleared by setting it to undefined.
     expect((patch.data as Record<string, unknown>).conditionExpression).toBeUndefined();
   });
 
@@ -184,7 +178,7 @@ describe('EdgePropertiesPanel', () => {
     fireEvent.click(screen.getByText('cb-set-expr'));
 
     const [, patch] = (props.onUpdate as ReturnType<typeof vi.fn>).mock.calls[0];
-    // The mock builder emits the AST shape from our vi.mock block above.
+    // The mocked builder emits the AST shape defined in the vi.mock block above.
     expect((patch.data as Record<string, unknown>).conditionExpression).toEqual({
       type: 'comparison', op: '==',
       left: { kind: 'literal', value: 'a' },
@@ -200,7 +194,7 @@ describe('EdgePropertiesPanel', () => {
 
     const [, patch] = (props.onUpdate as ReturnType<typeof vi.fn>).mock.calls[0];
     expect((patch.data as Record<string, unknown>).disabled).toBe(true);
-    // animated should flip to false when disabling
+    // Disabling the edge also turns off the animation.
     expect(patch.animated).toBe(false);
   });
 
@@ -239,7 +233,7 @@ describe('EdgePropertiesPanel', () => {
     const props = defaultProps();
     const { container } = render(<EdgePropertiesPanel {...props} />);
 
-    // X close button in header
+    // The close button in the panel header.
     const closeBtn = container.querySelector('button.text-on-surface-variant') as HTMLButtonElement;
     fireEvent.click(closeBtn);
     expect(props.onClose).toHaveBeenCalledOnce();
@@ -252,8 +246,8 @@ describe('EdgePropertiesPanel', () => {
     render(<EdgePropertiesPanel {...props} />);
 
     expect(screen.getByText(/Custom label overrides the condition/)).toBeInTheDocument();
-    // The auto-suggestion label "On Success" appears in the warning box AND on the
-    // quick-button — checking that at least one match exists is enough.
+    // The suggested label "On Success" appears both in the warning box and on the quick
+    // button, so checking for at least one match is enough.
     expect(screen.getAllByText(/On Success/).length).toBeGreaterThanOrEqual(1);
   });
 

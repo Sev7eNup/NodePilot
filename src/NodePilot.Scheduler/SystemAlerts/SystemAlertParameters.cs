@@ -3,12 +3,14 @@ using System.Text.Json;
 namespace NodePilot.Scheduler.SystemAlerts;
 
 /// <summary>
-/// Serialization helpers for a policy's <c>SourceParametersJson</c> — one place converts between the stored
+/// Serialization helpers for a policy's <c>SourceParametersJson</c> — one place converts between
+/// the stored
 /// JSON, the API-facing dictionary, and a <see cref="SystemAlertQuery"/> for sampling.
 /// </summary>
 public static class SystemAlertParameters
 {
-    /// <summary>Parses the stored JSON to a dictionary for API responses (null/blank → null).</summary>
+    /// <summary>Parses the stored JSON to a dictionary for API responses (null/blank to
+    /// null).</summary>
     public static IReadOnlyDictionary<string, object?>? FromJson(string? json)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;

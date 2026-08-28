@@ -9,10 +9,9 @@ namespace NodePilot.Api.Tests.Hubs;
 /// <summary>
 /// Coverage for the static auth-map helpers used by <see cref="HubRevocationSweeper"/>.
 /// The hub's instance methods (<c>JoinExecution</c> / <c>JoinWorkflow</c>) need a full
-/// SignalR runtime — they're exercised end-to-end by the manual E2E playbook
-/// (<c>E2ETests.md</c>) rather than here. This test file pins the auth-map contract:
-/// FindConnectionsToDrop returns the right ids based on revoked jtis or deactivated users,
-/// and the dictionary doesn't double-count or leak.
+/// SignalR runtime, so they are covered by the manual E2E playbook (<c>E2ETests.md</c>)
+/// instead. This file pins the auth-map contract: FindConnectionsToDrop returns the right
+/// ids for revoked jtis or deactivated users, and the map never double-counts or leaks.
 /// </summary>
 [Collection(ExecutionHubStaticStateCollection.Name)]
 public sealed class ExecutionHubTests : IDisposable

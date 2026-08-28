@@ -4,11 +4,10 @@ import { Card, GroupHeading, Toggle, WarningNote } from '../../../components/adm
 import { Chat } from '@carbon/icons-react';
 
 /**
- * Die Layout-Primitive der Admin-Settings. Sie sind der EINZIGE Ort, an dem der Rhythmus der
- * Seite steht — vorher lag z. B. der Gruppen-Abstand als `mt-4 mb-2`-Literal 12× kopiert in
- * vier Sektionsdateien. Diese Tests pinnen deshalb zwei Dinge: dass die Primitive existieren
- * und die gemeinsame Struktur liefern, und dass `Toggle` seine Erklärungen/Warnungen als
- * eigene Slots trägt statt als frei schwebende Geschwister-Elemente am Call-Site.
+ * Layout primitives of the admin settings page. They are the only place that defines the
+ * spacing rhythm, so the section files never repeat those class literals. These tests pin
+ * two things: the primitives render the shared structure, and `Toggle` carries its hints and
+ * warnings in its own slots instead of leaving them as loose siblings at the call site.
  */
 
 const toggleProps = {
@@ -30,11 +29,11 @@ describe('GroupHeading', () => {
   it('carries its own separation instead of relying on the call site', () => {
     render(<GroupHeading>Wissensquellen</GroupHeading>);
     const heading = screen.getByRole('heading', { name: 'Wissensquellen' });
-    // Regel + Luft darüber sind der Grund, warum es die Komponente gibt.
+    // The separator rule and the space above it are the reason this component exists.
     expect(heading.className).toContain('border-t');
     expect(heading.className).toMatch(/\bmt-\d/);
     expect(heading.className).toMatch(/\bpt-\d/);
-    // …aber nicht für die Gruppe, die eine Karte eröffnet.
+    // The first group in a card gets no rule above it.
     expect(heading.className).toContain('first:border-t-0');
   });
 });
@@ -50,8 +49,8 @@ describe('Toggle', () => {
   it('renders a hint indented under its own label', () => {
     render(<Toggle label="Betrieb" checked hint="Nur Definition und Analyse." onChange={vi.fn()} {...toggleProps} />);
     const hint = screen.getByText('Nur Definition und Analyse.');
-    // Eingerückt am Checkbox-Vorsprung vorbei — sonst liest sich der Text als Zwischentext
-    // zwischen zwei Schaltern statt als Erklärung zu diesem einen.
+    // Indented past the checkbox so the text reads as an explanation of this one switch
+    // rather than as loose text between two switches.
     expect(hint.parentElement!.className).toContain('ml-[1.625rem]');
   });
 
@@ -74,8 +73,8 @@ describe('WarningNote', () => {
   it('uses the warning status tokens, not palette literals', () => {
     render(<WarningNote>Achtung</WarningNote>);
     const note = screen.getByText('Achtung');
-    // Skins überschreiben die Status-Tokens bewusst nicht — ein `amber-500`-Literal
-    // (der Vorgänger) hängt dagegen an Tailwinds Palette fest.
+    // Status tokens follow the active skin, while a palette literal such as `amber-500`
+    // stays pinned to the Tailwind palette.
     expect(note.className).toContain('border-warning/40');
     expect(note.className).toContain('bg-warning-container/25');
     expect(note.className).toContain('text-on-warning-container');

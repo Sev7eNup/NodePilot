@@ -5,8 +5,8 @@ namespace NodePilot.Core.Activities;
 
 /// <summary>
 /// Input field descriptor for a custom activity. Stored as a JSON array in
-/// <c>CustomActivityDefinition.InputParametersJson</c>; parsed here by the executor (to inject
-/// values), the controller (to validate), and surfaced to the frontend as the config-form schema.
+/// <c>CustomActivityDefinition.InputParametersJson</c>, parsed here by the executor to inject
+/// values and by the controller to validate, and sent to the frontend as the config-form schema.
 /// </summary>
 public sealed record CustomActivityInputParameter(
     string Name,
@@ -17,13 +17,15 @@ public sealed record CustomActivityInputParameter(
     IReadOnlyList<string>? Options = null,
     string? Description = null);
 
-/// <summary>Output descriptor. The set of <see cref="Name"/>s is the wrapper's capture allow-list.</summary>
+/// <summary>Output descriptor. The set of <see cref="Name"/>s is the wrapper's capture
+/// allow-list.</summary>
 public sealed record CustomActivityOutputParameter(string Name, string Type);
 
 /// <summary>
-/// Allowed input field <c>type</c> values. Deliberately excludes a <c>secret</c> type: free-form
-/// secret fields cannot be reliably redacted out of workflow JSON / export / backup / AI context
-/// (redaction is key-name based), so secrets must arrive via <c>{{globals.X}}</c> / credentials.
+/// Allowed <c>type</c> values for input and output fields. There is no <c>secret</c> type:
+/// redaction is key-name based, so a free-form secret field cannot be redacted out of workflow
+/// JSON, export, backup or AI context. Secrets have to arrive via <c>{{globals.X}}</c> or
+/// credentials.
 /// </summary>
 public static class CustomActivityParameterTypes
 {
@@ -34,7 +36,8 @@ public static class CustomActivityParameterTypes
         new HashSet<string>(StringComparer.Ordinal) { "string", "number", "boolean", "object", "array" };
 }
 
-/// <summary>JSON (de)serialization for the parameter arrays. Tolerant: malformed JSON → empty list.</summary>
+/// <summary>JSON (de)serialization for the parameter arrays. Malformed JSON gives an empty
+/// list.</summary>
 public static class CustomActivityParameters
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)

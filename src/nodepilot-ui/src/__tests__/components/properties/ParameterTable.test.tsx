@@ -4,16 +4,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ParameterTable } from '../../../components/designer/properties/ParameterTable';
 
 /**
- * ParameterTable is a key/value editor used by startWorkflow + forEach configs. Pin:
- *   - Empty map renders the empty message and no rows
- *   - "+ Parameter" appends a blank row
- *   - Editing key/value emits the full updated map (preserving order)
- *   - Removing a row emits a map without that key
- *   - Custom addLabel is rendered when provided
+ * ParameterTable is a key/value editor used by the startWorkflow and forEach configs. Covers
+ * the empty state, adding a blank row, editing a key or value (which emits the full map in its
+ * original order), removing a row, and rendering a custom addLabel.
  */
 
-// VariableInsertField transitively imports GlobalVariablePicker which fans out to
-// /api/global-variables — stub fetch so we don't need an MSW server here.
+// VariableInsertField transitively imports GlobalVariablePicker, which calls
+// /api/global-variables, so fetch is stubbed instead of running an MSW server.
 beforeEach(() => {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(
     new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } }),
@@ -114,7 +111,7 @@ describe('ParameterTable', () => {
       />
     );
 
-    // Both rows have an "✕" remove button — click the first one.
+    // Both rows carry a remove button, so click the first one.
     const removes = screen.getAllByTitle('Remove');
     fireEvent.click(removes[0]);
 
@@ -122,8 +119,8 @@ describe('ParameterTable', () => {
   });
 
   it('renamingPreservesOrder', () => {
-    // Pin the iteration order — Object.entries on a plain object gives insertion order
-    // for string keys. Without preserving it, the row would jump around in the UI.
+    // Object.entries returns string keys in insertion order. Renaming a key must keep that
+    // order, otherwise the row jumps to a different position in the UI.
     const onChange = vi.fn();
     wrap(
       <ParameterTable
@@ -138,7 +135,7 @@ describe('ParameterTable', () => {
     fireEvent.change(keyInputs[1], { target: { value: 'BB' } });
 
     expect(onChange).toHaveBeenCalledWith({ a: '1', BB: '2', c: '3' });
-    // Critical: keys are in original order, not "renamed key shoved to the end".
+    // Keys keep their original order; the renamed key does not move to the end.
     expect(Object.keys(onChange.mock.calls[0][0])).toEqual(['a', 'BB', 'c']);
   });
 

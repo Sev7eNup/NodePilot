@@ -33,7 +33,7 @@ public class SecretProtectorRegistryTests
     [Fact]
     public void LegacyAesGcm_WrapsActiveInMigratingProtector()
     {
-        // Active = default DPAPI, legacy = AES-GCM → BuildProtector(AesGcm) path + the
+        // Active = default DPAPI, legacy = AES-GCM -> BuildProtector(AesGcm) path + the
         // MigratingSecretProtector registration branch.
         var config = Config(
             ("Secrets:LegacyProvider", "AesGcm"),
@@ -84,7 +84,7 @@ public class SecretProtectorRegistryTests
     [Fact]
     public void LegacyDpapi_WrapsActiveInMigratingProtector()
     {
-        // Active = default DPAPI, legacy = DPAPI with an explicit valid scope → the
+        // Active = default DPAPI, legacy = DPAPI with an explicit valid scope -> the
         // BuildProtector(Dpapi) return branch.
         var config = Config(
             ("Secrets:LegacyProvider", "Dpapi"),

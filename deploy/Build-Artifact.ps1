@@ -10,8 +10,8 @@
 
     With -IncludeDesktopInstaller it then chains deploy\desktop\Build-DesktopInstaller.ps1
     and drops NodePilot-Desktop-Setup-<version>.exe into the same .\out\ directory, so one
-    release build produces both shipping targets under ONE version. A SHA256SUMS file over
-    everything produced is written either way.
+    release build produces both shipping targets under a single version. A SHA256SUMS file
+    over everything produced is written either way.
 .PARAMETER Version
     Version tag baked into the artifact filenames, and shared with the desktop installer.
     Defaults to the <Version> from Directory.Build.props.
@@ -33,30 +33,30 @@
 .PARAMETER IncludeDesktopInstaller
     Also build the Electron desktop installer and place it next to the server zip in .\out\.
     Needs Inno Setup 6 and a PostgreSQL binaries folder; when either is missing the desktop
-    step is SKIPPED with a warning and the server zip is still produced.
+    step is skipped with a warning and the server zip is still produced.
 .PARAMETER PgBinariesPath
     PostgreSQL 16 "pgsql" directory (from the EDB zip distribution). The desktop installer bundles
-    the whole server runtime from it; the server setup lifts only the psql CLIENT (seven files,
-    ~8 MB) so its wizard can create a PostgreSQL role and database the way it already creates a
-    SQL Server login. Optional for the server setup - without it that installer is built exactly
-    as before and says so on its readiness page. Release builds pass it.
+    the whole server runtime from it; the server setup takes only the psql client, so its wizard
+    can create a PostgreSQL role and database the way it creates a SQL Server login. Optional for
+    the server setup, which says on its readiness page when it was built without it. Release
+    builds pass it.
 .PARAMETER IsccPath
     Inno Setup 6 compiler, passed through to the desktop installer build. Only read when
     -IncludeDesktopInstaller is set; defaults to the desktop script's own default.
 .PARAMETER IncludeServerInstaller
     Also build the GUI setup for the Windows-service deployment and place it next to the server
     zip in .\out\. Needs Inno Setup 6 and a signed artifact; when either is missing the step is
-    SKIPPED with a warning and the server zip is still produced.
+    skipped with a warning and the server zip is still produced.
 .PARAMETER RuntimePayloadPath
     A pre-fetched ASP.NET Core runtime installer for the server setup payload. Downloaded and
     verified by deploy\Get-DotnetRuntimePayload.ps1 when omitted.
 .PARAMETER InstallerSigningCertificateThumbprint
     Authenticode-sign every installer this run produces with this certificate, before the
     checksums are written. Signing afterwards by hand invalidates the SHA256SUMS entry for the
-    .exe, which is why this is a build parameter rather than a documented follow-up step.
-    Note that signing does NOT silence SmartScreen: the release certificate is self-signed and
-    carries no reputation, so a downloaded installer raises the unrecognised-app prompt whether
-    it is signed or not (docs/deployment-guide.md, "First run: the SmartScreen prompt").
+    .exe, which is why this is a build parameter rather than a follow-up step.
+    Signing does not silence SmartScreen: the release certificate is self-signed and carries no
+    reputation, so a downloaded installer raises the unrecognised-app prompt whether it is
+    signed or not (docs/deployment-guide.md, "First run: the SmartScreen prompt").
 .EXAMPLE
     .\deploy\Build-Artifact.ps1
 .EXAMPLE
@@ -87,19 +87,17 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-# Version 3.0 catches typos / uninitialised vars but stays compatible with the
-# ErrorRecord objects that native-command wrappers (npm, dotnet) emit under PS7.
-# `Latest` trips on an internal ".Statement" property access somewhere in the
-# npm PS-shim path and aborts the build before npm even runs.
+# Version 3.0 catches typos and uninitialised variables but stays compatible with the ErrorRecord
+# objects that native-command wrappers (npm, dotnet) emit under PS7. Latest trips on an internal
+# ".Statement" property access in the npm PS-shim path and aborts the build before npm runs.
 Set-StrictMode -Version 3.0
 
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $ApiCsproj = Join-Path $RepoRoot 'src\NodePilot.Api\NodePilot.Api.csproj'
 # Operator clients. Both are HTTP-only clients against the REST API, so they carry no server
-# configuration and no privileged path -- they are shipped because an installation without them
-# is only half usable: `np` is the documented way to drive NodePilot from a script, and
-# nodepilot-mcp is the only way to point an AI agent at the installation. Until 1.2.7 the
-# artifact held exactly one executable and the docs told operators to build these themselves.
+# configuration and no privileged path. They ship with the artifact because np is the documented
+# way to drive NodePilot from a script and nodepilot-mcp is the way to point an AI agent at an
+# installation.
 $CliCsproj = Join-Path $RepoRoot 'src\NodePilot.Cli\NodePilot.Cli.csproj'
 $McpCsproj = Join-Path $RepoRoot 'src\NodePilot.Mcp\NodePilot.Mcp.csproj'
 $UiDir = Join-Path $RepoRoot 'src\nodepilot-ui'
@@ -114,10 +112,9 @@ $ServerBuildScript = Join-Path $PSScriptRoot 'server\Build-ServerInstaller.ps1'
 $BuildPropsPath = Join-Path $RepoRoot 'Directory.Build.props'
 $SdkPolicyScript = Join-Path $RepoRoot 'scripts\Assert-DotnetSdkPolicy.ps1'
 
-# Directory.Build.props is the single source of the product version (it also stamps the
-# assemblies). Deriving the default from it keeps the server zip, the desktop installer and
-# the compiled binaries on ONE number instead of the timestamp-vs-hand-typed drift that
-# produced NodePilot-1.0.0-lab3.zip next to NodePilot-Desktop-Setup-1.0.3.exe.
+# Directory.Build.props is the single source of the product version and also stamps the
+# assemblies. Deriving the default from it keeps the server zip, the desktop installer and the
+# compiled binaries on one number.
 if (-not $Version) {
     if (-not (Test-Path $BuildPropsPath)) { throw "Cannot derive -Version: $BuildPropsPath not found. Pass -Version explicitly." }
     $versionMatch = [regex]::Match((Get-Content $BuildPropsPath -Raw), '<Version>\s*([^<\s]+)\s*</Version>')
@@ -161,10 +158,9 @@ if (-not (Test-Path $PublishSettingsHygieneScript)) { throw "Publish settings hy
 . $PublishSettingsHygieneScript
 
 # --- desktop installer pre-flight ------------------------------------------------------------
-# Decided BEFORE the server build so a missing Inno Setup surfaces in second one rather than
-# after a ten-minute publish. Missing prerequisites downgrade to a skip, never to a failure:
-# the server zip must stay buildable on a machine that has no Inno Setup and no Postgres
-# distribution lying around.
+# Decided before the server build so a missing Inno Setup surfaces immediately rather than after
+# a long publish. Missing prerequisites downgrade to a skip, never to a failure: the server zip
+# must stay buildable on a machine that has no Inno Setup and no PostgreSQL distribution.
 $buildDesktop = $false
 $desktopSkipReasons = @()
 # Declared up front: both pre-flight blocks read it, and either can be the only one that runs.
@@ -210,9 +206,8 @@ if ($IncludeServerInstaller) {
         $serverSkipReasons += "Server setup build script missing: $ServerBuildScript"
     }
     if ($AllowUnsignedDevelopmentArtifact) {
-        # Not a limitation worth working around: the wizard runs the same
-        # Assert-NodePilotSignedArtifact the scripted path does, so an unsigned payload would
-        # produce an installer that refuses its own contents.
+        # The wizard runs the same Assert-NodePilotSignedArtifact as the scripted path, so an
+        # unsigned payload would produce an installer that refuses its own contents.
         $serverSkipReasons += 'The server setup embeds the signed artifact and verifies it at install time, so it cannot be built from an -AllowUnsignedDevelopmentArtifact run.'
     }
     if (-not $resolvedIscc) {
@@ -258,9 +253,8 @@ if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXIT
 # under runtimes\win\lib\<tfm>\Modules, but the hosted runspace pool resolves them via
 # $PSHOME\Modules, where $PSHOME is the directory holding System.Management.Automation.dll —
 # after publish that is the stage root. Without this copy the in-process engine finds no
-# cmdlet modules at all and every runScript fails with "The term 'Write-Output' is not
-# recognized" (server-lab finding 2026-08-01; implicit WinPS compat used to mask this by
-# delegating to powershell.exe and is deliberately disabled). Same staging as
+# cmdlet modules at all and every runScript fails to resolve core commands. Implicit WinPS
+# compatibility is disabled. Same staging as
 # deploy\desktop\Build-DesktopInstaller.ps1.
 Write-Host "[build] Staging PowerShell built-in modules" -ForegroundColor Cyan
 $psModuleSource = Get-ChildItem -Path (Join-Path $StageDir 'runtimes\win\lib') -Directory -ErrorAction SilentlyContinue |
@@ -330,7 +324,7 @@ if (-not $SkipFrontend) {
         }
         # Temporarily lower ErrorActionPreference so that Vite/Rolldown warnings on stderr
         # (e.g. the harmless [EVAL] warning from @protobufjs/inquire) don't trigger
-        # PS 5.1's NativeCommandError → terminating exception under Stop mode.
+        # PS 5.1's NativeCommandError -> terminating exception under Stop mode.
         # We still check $LASTEXITCODE to catch real npm failures.
         $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
         cmd.exe /c 'npm run build'
@@ -353,7 +347,7 @@ Copy-Item (Join-Path $DistDir '*') $WwwRoot -Recurse -Force
 
 # Ship a git-tracked source snapshot into knowledge\source so the global "AI Chat" knowledge
 # assistant can serve source-code questions on a production Windows-service install. `git archive
-# HEAD` emits ONLY tracked files → bin/obj, node_modules, dist and every gitignored secret
+# HEAD` emits ONLY tracked files -> bin/obj, node_modules, dist and every gitignored secret
 # (jwt-secret.key, appsettings.runtime.json, *.pfx/*.pem, .env, data-protection-keys/) fall out
 # automatically. The reader applies a read-time DENY-list on top (the authoritative secret guard).
 # The whole tracked tree ships (incl. deploy/, scripts/, tests/) — see docs/ai-features.md.
@@ -560,11 +554,7 @@ Write-Host "         $(Split-Path $DeployScriptsZip -Leaf) ($($deployScriptFiles
 # downloader to read the thumbprint out of this file and compare it against the release notes, and
 # calls that comparison "the trust decision".
 #
-# It is produced HERE, as a build output, because it used to be attached to releases by hand: it
-# rode along in 1.1.0, 1.2.0 and 1.2.4 and was then simply forgotten from 1.2.8 onwards, which left
-# the documented verification impossible to perform. It is also listed in SHA256SUMS below - as a
-# hand-attached file it never was, so the one artifact the whole ceremony rests on was the only one
-# nobody could check.
+# Produce the trust artifact as a build output and include it in SHA256SUMS with the archives.
 $publisherCertPath = $null
 if (-not $AllowUnsignedDevelopmentArtifact) {
     Write-Host "[build] Export publisher certificate" -ForegroundColor Cyan

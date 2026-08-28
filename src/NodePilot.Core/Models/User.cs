@@ -96,17 +96,12 @@ public class User
     public DateTime? LockedUntil { get; set; }
 
     /// <summary>
-    /// H-1 (security audit 2026-05-15): monotonically increasing version that authorization
-    /// claims must match. The JWT carries the value at mint time as the <c>np_secstamp</c>
-    /// claim; the <c>TokenValidityMiddleware</c> compares it against the current row value
-    /// and rejects any token whose stamp is stale.
-    ///
+    /// Monotonically increasing version that authorization claims must match. The JWT carries
+    /// the value at mint time as the <c>np_secstamp</c> claim; <c>TokenValidityMiddleware</c>
+    /// compares it against the current row value and rejects any token whose stamp is stale.
     /// <para>
-    /// Bumped on every change that must invalidate existing sessions for this user:
-    /// role changes (a demoted Admin must lose Admin scope immediately, not at 12h-token-
-    /// expiry), activation toggles, and password resets (the latter already uses
-    /// <see cref="PasswordChangedAt"/> too — the stamp gives forensic granularity even when
-    /// two resets land in the same millisecond).
+    /// Bumped on every change that must invalidate existing sessions: role changes, activation
+    /// toggles, and password resets (which also update <see cref="PasswordChangedAt"/>).
     /// </para>
     /// </summary>
     public int SecurityStamp { get; set; } = 0;

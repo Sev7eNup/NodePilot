@@ -14,11 +14,10 @@ using Xunit;
 namespace NodePilot.Engine.Tests.Execution;
 
 // WorkflowScheduler's step gate is a process-global static semaphore, and several tests here
-// call Configure(1) to shrink it to a single slot. Without this attribute the class runs in
-// parallel with every other collection in the assembly — including the WorkflowEngine tests that
-// drive RunAsync through that same gate (WorkflowEngineCapacityTests even runs a 10-way parallel
-// execution). They then contend for the one slot we installed, which skews the timing this file
-// depends on. Join the collection those engine tests already share so the gate has one owner.
+// call Configure(1) to shrink it to a single slot. Without this attribute the class would run
+// in parallel with other collections that drive the same gate, including the WorkflowEngine
+// tests, which would skew the timing these tests depend on. Join the collection those engine
+// tests share so the gate has one owner.
 [Collection("SerialEngineTests")]
 public class WorkflowSchedulerTests
 {
@@ -287,10 +286,10 @@ public class WorkflowSchedulerTests
     [Fact]
     public async Task RunAsync_WithGlobalStepCap_LimitsConcurrentInFlightSteps()
     {
-        // Per-process step concurrency gate — caps in-flight steps across ALL executions.
-        // Prevents 50 parallel workflows × ~10 fan-out = 500 concurrent step tasks from
-        // saturating ThreadPool / DbContext / regex passes. Ten sibling roots all kick
-        // off at once but only 2 may run concurrently when Configure(2) is set.
+        // Per-process step concurrency gate: caps in-flight steps across every execution
+        // running in this process, so large fan-outs cannot saturate the thread pool and
+        // DB connections. Ten sibling roots all start at once but only 2 may run
+        // concurrently when Configure(2) is set.
         WorkflowScheduler.ResetForTests();
         WorkflowScheduler.Configure(2);
         try
@@ -667,11 +666,8 @@ public class WorkflowSchedulerTests
     [Fact]
     public async Task RunAsync_FailedStep_LogsTheFailureWithoutTheRawErrorPayload()
     {
-        // M-31. StepRunner returns the RAW ActivityResult on purpose — the data bus has to resolve
-        // {{step.error}} to the real value — and redacts only on the way out to the DB, the UI,
-        // telemetry and the support log. The scheduler used to interpolate result.ErrorOutput into
-        // a LogWarning, which made the main log (and any SIEM shipping it) the single sink that saw
-        // unredacted stderr while the UI showed "***".
+        // StepRunner keeps raw errors for data-bus resolution. Every external sink, including the
+        // scheduler log, must redact that payload before emission.
         WorkflowScheduler.ResetForTests();
         const string secret = "Login failed for user 'sa' with password=Sup3rSecret!";
 

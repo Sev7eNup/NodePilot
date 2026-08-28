@@ -3,17 +3,16 @@ using System.Reflection;
 namespace NodePilot.Ai;
 
 /// <summary>
-/// Loads the static system prompts and the workflow example from embedded resources in THIS
-/// (Ai) assembly. Singleton — the resources are read once at startup and then kept in memory. There is
-/// no file-override path: prompts are part of the build and are versioned together with the code
-/// that consumes them.
+/// Loads the static system prompts and the workflow example from embedded resources in this
+/// assembly. Singleton: the resources are read once at startup and kept in memory. There is no
+/// file-override path, so prompts are part of the build and versioned with the code that uses
+/// them.
 ///
-/// <para>The activity/definition reference (<c>activity-reference.md</c>) has been split out of
-/// the workflow-generation prompt so that the chat assistant (<see cref="AssistantSystemPrompt"/>)
-/// can reuse the same activity knowledge <b>without</b> the generation output rules ("only
-/// {nodes,edges}", "no prose", "exactly one trigger") — those rules would conflict with the chat
-/// response format. <see cref="WorkflowSystemPrompt"/> recombines both pieces for generation, so
-/// the existing drift test and workflow generation stay unaffected.</para>
+/// <para>The activity/definition reference (<c>activity-reference.md</c>) is a separate resource
+/// so that the chat assistant (<see cref="AssistantSystemPrompt"/>) can reuse the same activity
+/// knowledge without the generation output rules ("only {nodes,edges}", "no prose", "exactly one
+/// trigger"), which would conflict with the chat response format.
+/// <see cref="WorkflowSystemPrompt"/> recombines both pieces for generation.</para>
 /// </summary>
 public sealed class PromptCatalog
 {
@@ -26,16 +25,19 @@ public sealed class PromptCatalog
 
     public string ScriptSystemPrompt { get; }
 
-    /// <summary>Shared activity/definition reference (schema, catalog, variables, layout). Does not include output rules.</summary>
+    /// <summary>Shared activity/definition reference (schema, catalog, variables, layout). Does not
+    /// include output rules.</summary>
     public string ActivityReference { get; }
 
     /// <summary>Workflow-generation prompt: output rules + activity reference (combined).</summary>
     public string WorkflowSystemPrompt { get; }
 
-    /// <summary>Chat-assistant prompt (explain + edit). Gets the activity reference injected separately.</summary>
+    /// <summary>Chat-assistant prompt (explain + edit). Gets the activity reference injected
+    /// separately.</summary>
     public string AssistantSystemPrompt { get; }
 
-    /// <summary>Global "AI Chat" knowledge/operations assistant prompt (read-only, tool-driven).</summary>
+    /// <summary>Global "AI Chat" knowledge/operations assistant prompt (read-only,
+    /// tool-driven).</summary>
     public string KnowledgeSystemPrompt { get; }
 
     public string WorkflowExampleJson { get; }
@@ -49,8 +51,8 @@ public sealed class PromptCatalog
         KnowledgeSystemPrompt = LoadResource(asm, KnowledgeSystemResource);
         WorkflowExampleJson = LoadResource(asm, WorkflowExampleResource);
 
-        // Generation needs the output rules + the activity reference combined into one prompt.
-        // The drift test scans both prompt files separately; we join them here at runtime.
+        // Generation needs the output rules and the activity reference as one prompt. The drift
+        // test scans both prompt files separately, so they are joined here at runtime.
         WorkflowSystemPrompt = LoadResource(asm, WorkflowSystemRulesResource)
                                + "\n\n"
                                + ActivityReference;
@@ -58,9 +60,8 @@ public sealed class PromptCatalog
 
     /// <summary>
     /// Substitutes the activity-catalog placeholder in the static reference with the catalog
-    /// rendered from <c>ActivityCatalog</c> + <c>ActivityConfigReference</c>. The list used to be
-    /// maintained by hand inside the markdown, which let activity types (notably <c>llmQuery</c>)
-    /// silently drop out of the model's world.
+    /// rendered from <c>ActivityCatalog</c> and <c>ActivityConfigReference</c>, so the prompt
+    /// always lists every registered activity type.
     /// </summary>
     private static string RenderActivityCatalog(string reference)
     {

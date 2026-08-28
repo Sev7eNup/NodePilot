@@ -10,8 +10,8 @@
       pgsql\   : the bundled PostgreSQL binaries (from -PgBinariesPath)
       deploy\  : the provisioning / update / uninstall scripts + the appsettings template
 
-    Nothing here is run by Claude. Requires: dotnet 10 SDK, Node/npm, Inno Setup 6 (ISCC.exe),
-    and a PostgreSQL 16 binaries directory (the "pgsql" folder from the EDB zip distribution).
+    Requires: dotnet 10 SDK, Node/npm, Inno Setup 6 (ISCC.exe), and a PostgreSQL 16 binaries
+    directory (the "pgsql" folder from the EDB zip distribution).
 
 .EXAMPLE
     ./Build-DesktopInstaller.ps1 -PgBinariesPath 'C:\Packages\pgsql' -Version 1.2.10
@@ -36,18 +36,16 @@ $UiDir        = Join-Path $RepoRoot 'src\nodepilot-ui'
 $ApiCsproj    = Join-Path $RepoRoot 'src\NodePilot.Api\NodePilot.Api.csproj'
 $PublishSettingsHygieneScript = Join-Path $RepoRoot 'deploy\Assert-PublishSettingsHygiene.ps1'
 $DesktopRuntimeVersion = '10.0.11'
-# The one place the bundled PostgreSQL major is written down. It is a compatibility contract, not a
-# preference: a cluster initialised by one major cannot be opened by another, and this package
-# upgrades in place over the pgdata a previous version created.
+# The one place the bundled PostgreSQL major is written down. A cluster initialised by one major
+# cannot be opened by another, and this package upgrades in place over an existing pgdata.
 $DesktopPostgresMajorVersion = 16
 
 function Write-Step([string] $m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Assert-Tool([string] $name, [string] $probe) {
     if (-not (Get-Command $probe -ErrorAction SilentlyContinue)) { throw "Required tool '$name' not found on PATH ($probe)." }
 }
-# Runs a native tool with stderr demoted so a warning written to stderr (e.g. vite/rolldown's
-# INVALID_ANNOTATION note, or dotnet/packager diagnostics) does not get escalated to a terminating
-# error under $ErrorActionPreference='Stop'. Success is decided solely by the exit code.
+# Runs a native tool with stderr demoted so a warning written to stderr does not escalate to a
+# terminating error under $ErrorActionPreference='Stop'. Success is decided by the exit code alone.
 function Invoke-Tool([scriptblock] $Command, [string] $FailMessage) {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
@@ -77,8 +75,8 @@ $IsccPath = $resolvedIscc
 if (-not (Test-Path -LiteralPath (Join-Path $PgBinariesPath 'bin\postgres.exe'))) {
     throw "PgBinariesPath does not look like a PostgreSQL install (no bin\postgres.exe): $PgBinariesPath"
 }
-# Asserted here rather than after staging so a wrong distribution costs seconds instead of a full
-# publish + SPA + Electron build. What ships is a byte copy of exactly these binaries.
+# Checked here rather than after staging, so a wrong distribution fails before the publish, SPA and
+# Electron builds. What ships is a byte copy of exactly these binaries.
 Assert-DesktopPostgresPayload -PgRootPath $PgBinariesPath -ExpectedMajorVersion $DesktopPostgresMajorVersion
 
 if (Test-Path -LiteralPath $Stage) { Remove-Item -LiteralPath $Stage -Recurse -Force }
@@ -86,16 +84,14 @@ New-Item -ItemType Directory -Force -Path $Stage, $OutputRoot | Out-Null
 
 # --- icons -----------------------------------------------------------------------------------
 # Derived from the tracked brand assets so the installer, Start-Menu entry, taskbar and tray all
-# show the real NodePilot logo. The generated files stay out of git (assets/.gitignore); the
-# SOURCES are versioned, which is why a clean clone can always rebuild them. The generator also
-# emits assets/skins/<id>.* so the shell can recolor its window + tray icon with the SPA skin.
+# show the NodePilot logo. The generated files stay out of git (assets/.gitignore) while the sources
+# are versioned, so a clean clone can rebuild them. The generator also emits assets/skins/<id>.* so
+# the shell can recolor its window and tray icon with the SPA skin.
 Write-Step 'Generating application icons from the brand assets'
-# Launched through powershell.exe (Windows PowerShell 5.1) rather than dot-called in-process,
-# because the generator is built entirely on GDI+ (`Add-Type -AssemblyName System.Drawing`) and
-# that assembly name does not resolve the same way outside Windows PowerShell. This script's
-# `#requires -Version 5.1` admits PowerShell 7 too, so without pinning the shell the icon step
-# would depend on which console the operator happened to start the build from. The npm script
-# `nodepilot-desktop: icons` already pins it the same way.
+# Launched through powershell.exe (Windows PowerShell 5.1) rather than dot-called in-process: the
+# generator builds on GDI+ (`Add-Type -AssemblyName System.Drawing`), and that assembly name does
+# not resolve the same way in PowerShell 7, which this script also runs under. Pinning the shell
+# keeps the icon step independent of the console the build was started from.
 $iconScript = Join-Path $RepoRoot 'scripts\generate-desktop-icons.ps1'
 Invoke-Tool {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $iconScript `
@@ -114,11 +110,10 @@ Assert-DesktopRuntimePayload -AppPath $appStage -MinimumVersion ([version]$Deskt
 
 # --- 1b. PowerShell built-in modules -> <app>\Modules ----------------------------------------
 # Microsoft.PowerShell.SDK ships its built-in modules (Utility, Management, CimCmdlets, ...) under
-# runtimes\win\lib\<tfm>\Modules, but the hosted runspace looks for them at $PSHOME\Modules, where
-# $PSHOME is the directory holding System.Management.Automation.dll (the app root). Without this
-# copy every script fails with "the module could not be loaded ... compatible with the 'Core'
-# edition" unless PowerShell 7 happens to be installed system-wide -- which the desktop package
-# must not depend on (offline, zero prerequisites).
+# runtimes\win\lib\<tfm>\Modules, but the hosted runspace looks for them at $PSHOME\Modules, the
+# directory holding System.Management.Automation.dll (the app root). Without this copy, scripts load
+# their modules only where PowerShell 7 is installed system-wide, which this offline package cannot
+# require.
 Write-Step 'Staging PowerShell built-in modules'
 $psModuleSource = Get-ChildItem -Path (Join-Path $appStage 'runtimes\win\lib') -Directory -ErrorAction SilentlyContinue |
     ForEach-Object { Join-Path $_.FullName 'Modules' } |
@@ -132,14 +127,11 @@ if (-not (Test-Path -LiteralPath (Join-Path $appStage 'Modules\Microsoft.PowerSh
 Write-Host ("    " + ((Get-ChildItem (Join-Path $appStage 'Modules') -Directory | Select-Object -ExpandProperty Name) -join ', '))
 
 # --- 1c. Operator clients -> <stage>\tools\{np,mcp} -------------------------------------------
-# Self-contained, unlike the server artifact's framework-dependent copies. The desktop package
-# promises zero prerequisites and offline install: there is no shared .NET runtime to bind to,
-# and a framework-dependent apphost cannot borrow the runtime sitting next to the API. Each
-# client keeps its own directory so no publish overwrites another's assembly versions.
-#
-# nodepilot-mcp is the reason this matters on desktop in particular: it is the only way to
-# point an AI agent at the local installation, and a desktop user has no build toolchain to
-# produce it themselves.
+# Self-contained, unlike the server artifact's framework-dependent copies: the desktop package
+# installs offline with no prerequisites, so there is no shared .NET runtime to bind to, and a
+# framework-dependent apphost cannot borrow the runtime sitting next to the API. Each client keeps
+# its own directory so no publish overwrites another's assembly versions. nodepilot-mcp is shipped
+# here because it is the only way to point an AI agent at a local installation.
 Write-Step 'Publishing operator clients (np, nodepilot-mcp)'
 foreach ($client in @(
         @{ Name = 'np';  Csproj = Join-Path $RepoRoot 'src\NodePilot.Cli\NodePilot.Cli.csproj'; Exe = 'np.exe' },
@@ -199,10 +191,9 @@ if (Test-Path -LiteralPath $nested) {
 
 # --- 4. Postgres binaries --------------------------------------------------------------------
 # Only the server runtime is shipped: bin (postgres/initdb/pg_ctl/psql/pg_dump...), lib (extension
-# libraries) and share (postgres.bki, timezone data, SQL bootstrap scripts -- initdb fails without
-# it). A stock EDB distribution also carries pgAdmin 4 (~630 MB, a GUI with its own Chromium), doc,
-# include and StackBuilder, none of which NodePilot uses -- excluding them cuts the installer by
-# roughly two thirds.
+# libraries) and share (postgres.bki, timezone data, SQL bootstrap scripts, without which initdb
+# fails). A stock EDB distribution also carries pgAdmin 4, doc, include and StackBuilder, none of
+# which NodePilot uses; leaving them out keeps the installer much smaller.
 Write-Step 'Staging PostgreSQL binaries (server runtime only)'
 $pgStage = Join-Path $Stage 'pgsql'
 New-Item -ItemType Directory -Force -Path $pgStage | Out-Null

@@ -78,7 +78,7 @@ public sealed class WorkflowSecretRedactorTests
     [InlineData("webhookSecret")]
     public void Redact_MasksExtendedSecretKeys(string key)
     {
-        // Custom-activity inputs (and cloud/OAuth creds) named with these keys previously leaked.
+        // Custom-activity inputs (and cloud/OAuth creds) can use these key names; must be masked.
         var def = Parse($$"""{ "config": { "{{key}}": "s3cr3t-value" } }""");
         var cfg = WorkflowSecretRedactor.Redact(def).AsObject()["config"]!.AsObject();
         cfg[key]!.GetValue<string>().Should().Be("***");
@@ -166,7 +166,8 @@ public sealed class WorkflowSecretRedactorTests
     [Fact]
     public void Redact_RestApiStringHeaders_ReferencingGlobals_StillMaskedAsOpaque()
     {
-        // The steered pattern references a secret global — no literal secret lives in the definition.
+        // The steered pattern references a secret global — no literal secret lives in the
+        // definition.
         var def = Parse("""
         { "config": { "headers": "Content-Type: application/json\nAuthorization: Bearer {{globals.API_TOKEN}}" } }
         """);

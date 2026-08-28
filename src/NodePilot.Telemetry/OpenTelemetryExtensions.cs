@@ -82,18 +82,18 @@ public static class OpenTelemetryExtensions
                         //
                         // Verified via reflection against 1.15.1-beta.1, the *defaults* are
                         // already aligned with our audit posture:
-                        //   - SetDbQueryParameters = false  → parameter VALUES are NOT
+                        //   - SetDbQueryParameters = false  -> parameter VALUES are NOT
                         //                                     emitted as `db.query.parameter.*`
                         //                                     tags. This is the redaction
                         //                                     control we care about.
-                        //   - EmitOldAttributes    = true   → legacy `db.statement` carries
+                        //   - EmitOldAttributes    = true   -> legacy `db.statement` carries
                         //                                     the parameterised SQL text
                         //                                     (column / table names + @p0
                         //                                     placeholders). No row-level
                         //                                     data leaks through this path
                         //                                     because EFCore parameterises
                         //                                     properly.
-                        //   - EmitNewAttributes    = false  → new `db.query.text` schema
+                        //   - EmitNewAttributes    = false  -> new `db.query.text` schema
                         //                                     opt-in only.
                         //
                         // The properties themselves are *internal* on this package (Filter

@@ -25,24 +25,22 @@ import { AiKnowledgeSection } from '../components/admin-settings/AiKnowledgeSect
 type SubTab = 'integrations' | 'ai-knowledge' | 'retention' | 'system-info'
   | 'authentication' | 'logging-telemetry' | 'security' | 'performance' | 'db-admin';
 
-// Order is grouped by topic, not by implementation history: outbound integrations →
-// security → operations → data. `integrations` stays first because it is also the
-// default/fallback section for a bare `?tab=system`, and `system-info` sits LAST because
-// it is the only read-only tab here — it belongs after everything that edits config
-// rather than splitting that run.
-// Order is presentation only: nothing indexes into this array and deep links address a
-// section by `?section=<id>`, so reordering breaks no bookmark.
+// Tabs grouped by topic: integrations, security, operations, data. `integrations` comes first
+// because it is also the fallback section for a bare `?tab=system`, and `system-info` comes
+// last because it is the only read-only tab. The order is presentation only: nothing indexes
+// into this array and deep links address a section by `?section=<id>`, so reordering breaks
+// no bookmark.
 const TABS: SubTab[] = [
-  // External connections — AI knowledge sources hang off the LLM profile configured next door.
+  // External connections. AI knowledge sources build on the LLM profile configured alongside.
   'integrations',
   'ai-knowledge',
-  // Security — the two access/hardening tabs stay adjacent.
+  // Security: the access and hardening tabs stay adjacent.
   'authentication',
   'security',
   // Operations.
   'logging-telemetry',
   'performance',
-  // Data lifecycle — retention is a database-side concern, so it follows the DB tab.
+  // Data lifecycle. Retention is a database concern, so it follows the DB tab.
   'db-admin',
   'retention',
   // Read-only, always last.
@@ -61,8 +59,8 @@ const ICONS: Record<SubTab, React.ComponentType<{ size?: number }>> = {
   'db-admin': DataBase,
 };
 
-// i18n key per sub-tab. Doubles as the whitelist for the `?section=` deep link: a value is
-// accepted iff it is a key here, so a new sub-tab cannot be link-addressable without a label.
+// i18n key per sub-tab. Also the allow-list for the `?section=` deep link: only a key from
+// this map is accepted, so a new sub-tab needs a label before it can be addressed by link.
 const LABEL_KEYS: Record<SubTab, string> = {
   'integrations': 'subTabIntegrations',
   'ai-knowledge': 'subTabAiKnowledge',
@@ -83,8 +81,8 @@ function isSubTab(value: string | null): value is SubTab {
 
 export function SystemSettingsPage() {
   const { t } = useTranslation(['adminSettings']);
-  // Deep-link: /settings?tab=system&section=<subTab> opens the requested sub-tab directly.
-  // The dashboard's "LLM config" shortcut targets `integrations` (SMTP + LLM cards).
+  // Deep link: /settings?tab=system&section=<subTab> opens the requested sub-tab directly.
+  // The dashboard's "LLM config" shortcut targets `integrations` (SMTP and LLM cards).
   const [searchParams, setSearchParams] = useSearchParams();
   const sectionParam = searchParams.get('section');
   const active: SubTab = isSubTab(sectionParam) ? sectionParam : DEFAULT_SUB_TAB;

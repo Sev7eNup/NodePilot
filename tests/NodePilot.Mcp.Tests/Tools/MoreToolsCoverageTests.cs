@@ -9,7 +9,8 @@ using Xunit;
 
 namespace NodePilot.Mcp.Tests.Tools;
 
-/// <summary>Coverage for telemetry, supporting-data, destructive and remaining canvas tools.</summary>
+/// <summary>Coverage for telemetry, supporting-data, destructive and remaining canvas
+/// tools.</summary>
 public sealed class MoreToolsCoverageTests
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web) { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };

@@ -5,13 +5,13 @@ using NodePilot.Core.Activities;
 namespace NodePilot.Core.WorkflowDefinitions;
 
 /// <summary>
-/// In-process static analysis of a workflow definition, including unsaved canvas state.
-/// Reports nodes that never run (no active path from a trigger), a missing or disabled trigger
-/// (0 roots, so the run fails), cycles, remote activities without a target machine, and unknown
-/// activity types.
+/// In-process static analysis of a workflow definition (works on the unsaved canvas state).
+/// Surfaces common traps: nodes with no active path from a trigger, a missing or disabled
+/// trigger (0 roots means the run fails), cycles, remote activities without a target machine,
+/// and unknown activity types.
 ///
-/// <para>The single analyzer behind <c>analyze_workflow</c> on both surfaces, the MCP tool and the
-/// AI chat. Finding codes and severities stay aligned with the canvas linter
+/// <para>The single analyzer behind <c>analyze_workflow</c> on both surfaces: the MCP tool and
+/// the AI chat. Finding codes and severities are kept aligned with the canvas linter
 /// (<c>workflowLint.ts</c>), guarded by <c>WorkflowAnalyzerFrontendParityTests</c>.</para>
 /// </summary>
 public static class WorkflowAnalyzer
@@ -70,9 +70,9 @@ public static class WorkflowAnalyzer
         AddUnresolvedReferenceFindings(doc, definition, findings);
 
         // Remote activities without a target machine. Unknown activity types are not checked here:
-        // the structural pre-check above already rejects them with a more precise message, and it
-        // validates the custom:<slug> grammar. Custom activities are skipped below because their
-        // RunsRemote flag cannot be resolved without the database.
+        // the structural check above already rejects them with a more specific message, and also
+        // validates the custom:<slug> grammar, so a custom activity here is well-formed. Its
+        // RunsRemote flag is not resolvable without the DB, so the heuristic below skips it.
         foreach (var node in doc.Nodes)
         {
             if (doc.DisabledNodeIds.Contains(node.Id)) continue;
@@ -123,12 +123,11 @@ public static class WorkflowAnalyzer
     }
 
     /// <summary>
-    /// Template references that will not resolve at run time.
-    ///
-    /// <para>Severity follows what the engine does with the reference. For most activities an
-    /// unresolved placeholder aborts the step, so it is an error. <c>runScript</c> and custom
-    /// activities resolve their own templates and tolerate a leftover <c>{{...}}</c> because it
-    /// may be legitimate script text; the run survives, so it is a warning.</para>
+    /// Flags template references that will not resolve at run time, covering ground the separate
+    /// <c>find_unresolved_references</c> tool does not reach from <c>analyze_workflow</c> callers.
+    /// Severity mirrors engine behavior: an unresolved placeholder normally aborts the step
+    /// (error), but <c>runScript</c> and custom activities resolve their own templates and treat
+    /// a leftover <c>{{...}}</c> as possibly legitimate script text (warning).
     /// </summary>
     private static void AddUnresolvedReferenceFindings(
         WorkflowDefinitionDocument doc, JsonElement definition, List<Finding> findings)

@@ -2,23 +2,23 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 58 — Variable Autocomplete & Preview Tooltip (lines 3612-3631).
+ * E2ETests.md part 58 — variable autocomplete and preview tooltip.
  *
- * Hermetic: page.route() mocks only. Workflow is locked-by-me → editable (State B), so the
- * PropertiesPanel inputs are live.
+ * Hermetic: page.route() mocks only. The workflow is locked by the mock user, so it is
+ * editable (State B) and the PropertiesPanel inputs are live.
  *
  * 58.1 — Typing `{{` in a downstream node's input (here the `log` activity's "Message"
- *        textarea, a plain-HTML VariableInsertField — NOT the CodeMirror script field, whose
- *        completion is an editor-internal widget) opens the inline-autocomplete dropdown
+ *        textarea, a plain-HTML VariableInsertField rather than the CodeMirror script field,
+ *        whose completion is an editor-internal widget) opens the inline-autocomplete dropdown
  *        rendered by VariableSuggestionsDropdown (role="listbox"). The list offers the upstream
- *        step's output/error/success/param.* expressions PLUS globals.* (loaded from
- *        /api/global-variables). Filtering is case-insensitive; Enter/Tab inserts the
+ *        step's output/error/success/param.* expressions and globals.* (loaded from
+ *        /api/global-variables). Filtering is case-insensitive; Enter or Tab inserts the
  *        chosen `{{…}}` expression into the field.
  *
- * 58.2 — The Variable-Preview tooltip (VariablePreviewTooltip) hovers over a variable row in
- *        the "Input Variables" list and shows the last-run value/channel. Without a completed
- *        execution it shows the "no value from last run" message — which is still the
- *        tooltip-on-hover contract. We assert the hover surface produces a role="tooltip".
+ * 58.2 — The variable preview tooltip (VariablePreviewTooltip) opens on hover over a row in
+ *        the "Input Variables" list and shows the last-run value and channel. Without a
+ *        completed execution it shows the "no value from last run" message, which still
+ *        satisfies the tooltip-on-hover contract asserted here via role="tooltip".
  */
 
 const WF_ID = 'a5a5a5a5-5858-5858-5858-585858585858';
@@ -46,10 +46,10 @@ async function selectNode(page: Page, id: string, expectActivityLabel: RegExp) {
   await expect(page.getByText(expectActivityLabel).first()).toBeVisible({ timeout: 10_000 });
 }
 
-// runScript (producer, var "probe") → log (consumer, downstream). Using runScript as the
-// producer also gives the contract param.* tail surface; the log step's Message field is a
+// A runScript producer with output variable "probe" feeds a downstream log consumer. runScript
+// as the producer also provides the param.* tail surface; the log step's Message field is a
 // plain-HTML VariableInsertField driving the inline autocomplete. The consumer sees
-// {{probe.output}} etc. and — once a global is mocked — {{globals.ADMIN_EMAIL}}.
+// {{probe.output}} and, once a global is mocked, {{globals.ADMIN_EMAIL}}.
 function definition() {
   return JSON.stringify({
     nodes: [
@@ -83,13 +83,13 @@ test.describe('Variable Autocomplete & Preview Tooltip (Teil 58)', () => {
     await expect(node(page, 'step-log')).toBeVisible({ timeout: 15_000 });
     await selectNode(page, 'step-log', /log message/i);
 
-    // The `log` activity's "Message" is a plain-HTML multiline VariableInsertField textarea —
+    // The `log` activity's "Message" is a plain-HTML multiline VariableInsertField textarea,
     // the only textarea in the Configuration section. Inline autocomplete is on by default.
     const scriptField = page.locator('textarea').last();
     await expect(scriptField).toBeVisible({ timeout: 10_000 });
     await scriptField.click();
     await scriptField.fill('');
-    // Type the trigger. keyUp fires autocomplete.refresh → dropdown opens.
+    // Type the trigger sequence; keyUp fires autocomplete.refresh and the dropdown opens.
     await scriptField.type('{{');
 
     // Dropdown is a portal with role="listbox".
@@ -100,12 +100,12 @@ test.describe('Variable Autocomplete & Preview Tooltip (Teil 58)', () => {
     // step's `.output` expression, its captured structured `.param.*` (the producer script
     // declares `$hostName`), and every global `{{globals.NAME}}`. (`.error`/`.success` are
     // contract-resolvable tails but are not emitted as autocomplete entries by
-    // describeNodeOutputs — they are typed as literals, see 58.1 note in the dropdown help.)
+    // describeNodeOutputs; they are typed as literals.)
     await expect(listbox.getByText('{{probe.output}}')).toBeVisible();
     await expect(listbox.getByText('{{probe.param.hostName}}')).toBeVisible();
     await expect(listbox.getByText('{{globals.ADMIN_EMAIL}}')).toBeVisible();
 
-    // Case-insensitive filter: narrow to "OUTPUT" (upper) → only the output expression remains.
+    // Case-insensitive filter: typing "OUTPUT" in upper case leaves only the output expression.
     await scriptField.type('probe.OUTPUT');
     await expect(listbox.getByText('{{probe.output}}')).toBeVisible();
     await expect(listbox.getByText('{{probe.param.hostName}}')).toHaveCount(0);
@@ -131,8 +131,8 @@ test.describe('Variable Autocomplete & Preview Tooltip (Teil 58)', () => {
     await expect(row).toBeVisible();
 
     // VariablePreviewTooltip opens after a 250 ms hover delay. No completed execution is mocked,
-    // so the tooltip shows the "no value from last run" copy — but the on-hover tooltip contract
-    // is exactly what 58.2 verifies.
+    // so the tooltip shows the "no value from last run" copy; the on-hover contract is what
+    // 58.2 verifies.
     await row.hover();
     const tooltip = page.locator('[role="tooltip"]');
     await expect(tooltip).toBeVisible({ timeout: 5_000 });

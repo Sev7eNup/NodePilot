@@ -1,19 +1,25 @@
 namespace NodePilot.Api.Services.Backup;
 
-/// <summary>How a restore treats an item whose natural key already exists in the target DB.</summary>
+/// <summary>
+/// How a restore treats an item whose natural key already exists in the target DB.
+/// </summary>
 public enum RestoreConflictPolicy
 {
     /// <summary>Keep the existing row untouched; map the backup id onto it. Default.</summary>
     Skip,
 
-    /// <summary>Create the backup row under a suffixed name, leaving the existing one intact.</summary>
+    /// <summary>
+    /// Create the backup row under a suffixed name, leaving the existing one intact.
+    /// </summary>
     Rename,
 
     /// <summary>Update the existing row from the backup.</summary>
     Overwrite,
 }
 
-/// <summary>Per-section preview diff. Without a passphrase, secrets are not compared (K10).</summary>
+/// <summary>
+/// Per-section preview diff. Without a passphrase, secrets are not compared (K10).
+/// </summary>
 public sealed record BackupPreviewSection(string Section, int InBackup, int New, int Conflicts);
 
 /// <summary>
@@ -39,5 +45,7 @@ public sealed record BackupRestoreResult(
     SettingsRestoreResult? Settings,
     IReadOnlyList<string> Warnings);
 
-/// <summary>Raised when a restore must abort (wrong passphrase, failed MAC, unresolvable refs, last-admin).</summary>
+/// <summary>
+/// Raised when a restore must abort (wrong passphrase, failed MAC, unresolvable refs, last-admin).
+/// </summary>
 public sealed class BackupRestoreException(string message) : Exception(message);

@@ -4,12 +4,11 @@ using NodePilot.Core.Models;
 namespace NodePilot.Data;
 
 /// <summary>
-/// Shared by-name workflow resolution for every surface that accepts a workflow NAME
+/// Shared by-name workflow resolution for every surface that accepts a workflow name
 /// (API by-name endpoints, external trigger, webhooks, engine startWorkflow/forEach).
-/// Semantics: an exact-case match always wins; otherwise the lookup is case-insensitive.
-/// More than one candidate at the winning tier is reported as <see cref="Ambiguity"/>
-/// instead of silently picking an arbitrary row — Workflow.Name carries no unique index,
-/// so "Daily" and "daily" (or two identical names) can legitimately coexist.
+/// An exact-case match always wins; otherwise the lookup is case-insensitive. Multiple
+/// candidates at the winning tier are reported as <see cref="Ambiguity"/> rather than
+/// picking an arbitrary row, since Workflow.Name has no unique index.
 /// </summary>
 public static class WorkflowNameResolver
 {
@@ -23,23 +22,20 @@ public static class WorkflowNameResolver
     }
 
     /// <summary>
-    /// Resolve <paramref name="name"/> against <paramref name="source"/> (pass the query
-    /// with whatever tracking/includes the caller needs). One case-insensitive query
-    /// (ToLower is the only CI predicate that translates on all three providers —
-    /// Npgsql/SQL Server/SQLite; EF.Functions.ILike is Postgres-only), then the
-    /// exact-case tier is decided IN MEMORY with ordinal comparison. Deciding the exact
-    /// tier in SQL would inherit the database collation — on SQL Server's typical CI
-    /// default, <c>Name == @p</c> matches case-insensitively and the exact-case
-    /// tiebreaker would silently stop working.
+    /// Resolves <paramref name="name"/> against <paramref name="source"/> (pass a query with
+    /// whatever tracking or includes the caller needs). Runs one case-insensitive query using
+    /// ToLower, the only predicate that translates on all three providers (Npgsql, SQL Server,
+    /// SQLite), then picks the exact-case tier in memory with ordinal comparison, since doing
+    /// it in SQL would inherit the database collation and could defeat the tiebreaker.
     /// </summary>
     public static async Task<Result> ResolveByNameAsync(IQueryable<Workflow> source, string name, CancellationToken ct)
     {
         var trimmed = name.Trim();
         if (trimmed.Length == 0) return Result.NotFound;
 
-        // Cap the candidate fetch: >1 per tier is all the outcome logic needs. The cap
-        // only matters for the pathological ">6 case-variant duplicates and exactly one
-        // exact match outside the sample" corner, which we accept.
+        // Caps the candidate fetch: the outcome logic only needs to know if a tier has more
+        // than one match. This can miss the exact match in the pathological case of more
+        // than six case-variant duplicates, which is an accepted tradeoff.
         var lower = trimmed.ToLowerInvariant();
         var candidates = await source.Where(w => w.Name.ToLower() == lower).Take(6).ToListAsync(ct);
 

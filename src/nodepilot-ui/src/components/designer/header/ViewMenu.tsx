@@ -7,11 +7,11 @@ import { usePopover } from './menuPrimitives';
 const TITLE_ID = 'canvas-settings-title';
 
 /**
- * "Darstellung" (canvas-display) dialog — one popover holding every canvas-display preference
+ * Canvas-display dialog — one popover holding every canvas-display preference
  * ({@link CanvasSettingsPanel}: node-style, icon-view, ports, edge animation/routing/width,
- * label size, grid-snap, …) as labeled, described rows. It's a settings *dialog*, not a menu:
+ * label size, grid-snap, …) as labeled, described rows. It's a settings dialog, not a menu:
  * `role="dialog"` + focus moves into the panel on open and back to the trigger on close. The
- * overlays and the activity-type filter keep their OWN standalone toolbar buttons
+ * overlays and the activity-type filter keep their own standalone toolbar buttons
  * (see OverlaysMenu / ActivityTypeFilter).
  */
 export function ViewMenu() {

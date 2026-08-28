@@ -89,8 +89,8 @@ public class WorkflowGenerationCustomActivityTests
     [Fact]
     public async Task GenerateAsync_AlwaysSeesLlmQueryInTheCatalog()
     {
-        // Regression: llmQuery used to be withheld from the prompt, so generation emitted a
-        // hand-rolled OpenAI POST on a restApi node when asked for an AI call.
+        // Without llmQuery in the prompt, generation would emit a hand-rolled OpenAI POST
+        // on a restApi node when asked for an AI call.
         var fake = new FakeLlmClient().EnqueueContent(MinimalEnvelope);
         var svc = new WorkflowGenerationService(new FakeLlmClientFactory(fake), new PromptCatalog());
 

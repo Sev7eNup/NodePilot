@@ -6,14 +6,14 @@ import { TRIGGER_META } from './workflowTriggerMeta';
 import { formatDuration, formatRelative } from '../../lib/format';
 
 interface Props {
-  /** The workflow to describe — hovered row, or the currently-open workflow as fallback. */
+  /** The workflow to describe: the hovered row, or the currently open workflow as fallback. */
   workflow: Workflow | null;
 }
 
 /**
- * Compact details panel shown beneath the (halved) workflow list in the browser. Pure
- * presentation: every field comes from the `Workflow` already loaded by the `['workflows']`
- * query, so there is no extra API call. Rows whose data is absent are omitted.
+ * Compact details panel shown beneath the workflow list in the browser. Presentation only:
+ * every field comes from the `Workflow` already loaded by the `['workflows']` query, so no
+ * extra API call is made. Rows without data are omitted.
  */
 export function WorkflowInfoCard({ workflow }: Readonly<Props>) {
   const { t } = useTranslation('designer');
@@ -37,7 +37,7 @@ export function WorkflowInfoCard({ workflow }: Readonly<Props>) {
 
   return (
     <div data-testid="workflow-info-card" className="px-4 py-3 space-y-2">
-      {/* Header: status dot + name + version */}
+      {/* Header with status dot, name and version */}
       <div className="flex items-center gap-2">
         <span
           className={`inline-block w-2 h-2 rounded-full shrink-0 ${workflow.isEnabled ? 'bg-emerald-500' : 'bg-outline'}`}

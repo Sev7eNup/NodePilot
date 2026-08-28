@@ -9,9 +9,8 @@ export function ZipOperationConfig({ config, onUpdate, upstreamVars = [] }: Read
   const operation = (config.operation as string) || 'compress';
   const force = config.force === true;
 
-  // Persist the visual default for `operation` the moment the panel opens. Otherwise the
-  // dropdown shows "Compress (zip)" but the saved JSON has no operation key, and the run
-  // fails with "'operation' is required". Matches what the user actually sees.
+  // Persist the default operation when the panel opens, so the saved config matches the value
+  // the dropdown already shows. Without it the run fails on the missing operation key.
   useEffect(() => {
     if (config.operation === undefined) {
       onUpdate({ operation: 'compress' });

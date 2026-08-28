@@ -4,10 +4,10 @@ using NodePilot.Api.Hubs;
 namespace NodePilot.Api.Tests.TestSupport;
 
 /// <summary>
-/// <see cref="IHubContext{THub}"/> double that records group add/remove calls. Exists for the
-/// M-33 move paths, where the assertion is "which subscriptions were revoked" rather than
-/// anything about message delivery — so <see cref="Clients"/> is deliberately not implemented
-/// and throws if a test ever reaches for it.
+/// <see cref="IHubContext{THub}"/> double that records group add/remove calls, for tests
+/// where the assertion is "which subscriptions were revoked" rather than anything about
+/// message delivery. <see cref="Clients"/> is deliberately not implemented and throws if a
+/// test ever reaches for it.
 /// </summary>
 public sealed class RecordingHubContext : IHubContext<ExecutionHub>
 {
@@ -18,7 +18,8 @@ public sealed class RecordingHubContext : IHubContext<ExecutionHub>
 
     public IGroupManager Groups => _groups;
 
-    /// <summary>(connectionId, groupName) pairs passed to RemoveFromGroupAsync, in call order.</summary>
+    /// <summary>(connectionId, groupName) pairs passed to RemoveFromGroupAsync, in call
+    /// order.</summary>
     public IReadOnlyList<(string ConnectionId, string Group)> Removed => _groups.Removed;
 
     /// <summary>(connectionId, groupName) pairs passed to AddToGroupAsync, in call order.</summary>

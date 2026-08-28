@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock the low-level client so we can feed a real, chunked SSE ReadableStream into the parser.
+// Mock the low-level client so a real, chunked SSE ReadableStream can be fed to the parser.
 const postEventStreamMock = vi.fn();
 vi.mock('../../api/client', () => ({
   api: { post: vi.fn() },
@@ -10,7 +10,7 @@ vi.mock('../../api/client', () => ({
 import { chatStream, generateScriptStream, type WorkflowChatProposal } from '../../api/ai';
 import { clearLocalAuthBoundary } from '../../security/authBoundary';
 
-/** Builds a real Response backed by a chunked ReadableStream — exercises the SSE frame/boundary parsing logic. */
+/** Builds a Response backed by a chunked ReadableStream to exercise SSE boundary parsing. */
 function sseResponse(chunks: string[]): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -88,7 +88,7 @@ describe('chatStream SSE parser', () => {
   it('ignores comment lines and a trailing frame without blank line', async () => {
     postEventStreamMock.mockResolvedValue(sseResponse([
       ': keep-alive comment\nevent: delta\ndata: {"text":"a"}\n\n',
-      'event: delta\ndata: {"text":"b"}', // no trailing blank line — must still flush
+      'event: delta\ndata: {"text":"b"}', // no trailing blank line; must still flush
     ]));
     const deltas: string[] = [];
     await chatStream({ question: 'q', workflowJson: '{}', baseDefinitionHash: 'x', history: [] }, {

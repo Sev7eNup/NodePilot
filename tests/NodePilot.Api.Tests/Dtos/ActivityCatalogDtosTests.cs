@@ -7,7 +7,7 @@ namespace NodePilot.Api.Tests.DtoMapping;
 
 /// <summary>
 /// Unit coverage for the <see cref="ActivityCatalogEntryResponse"/> mapping surface that the
-/// designer-palette endpoint (<c>GET /api/activity-catalog</c>) serves. The enum→wire-token
+/// designer-palette endpoint (<c>GET /api/activity-catalog</c>) serves. The enum-to-wire-token
 /// projections (category, timeout) are the contract the frontend catalog mirror depends on.
 /// </summary>
 public class ActivityCatalogDtosTests

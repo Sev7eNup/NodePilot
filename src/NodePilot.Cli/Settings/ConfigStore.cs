@@ -13,7 +13,7 @@ namespace NodePilot.Cli.Settings;
 /// </summary>
 public sealed class ConfigStore : ClientConfigStore
 {
-    // Write-side only: indentation and null-skipping shape the file we emit. Reading goes
+    // Write-side only: indentation and null-skipping shape the emitted file. Reading goes
     // through the base store, which needs neither.
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {

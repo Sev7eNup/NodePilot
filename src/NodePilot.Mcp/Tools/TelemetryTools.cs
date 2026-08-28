@@ -43,8 +43,10 @@ public sealed class TelemetryTools
     }
 
     /// <summary>
-    /// How many finished runs <c>get_operations_graph</c> hands an agent. Deliberately far below the
-    /// server's own render budget: the SPA draws every returned run, an agent reads a few and pays for
+    /// How many finished runs <c>get_operations_graph</c> hands an agent. Deliberately far below
+    /// the
+    /// server's own render budget: the SPA draws every returned run, an agent reads a few and pays
+    /// for
     /// the rest in context. Truncation is reported in the payload rather than done silently.
     /// </summary>
     private const int RecentToolCap = 200;
@@ -59,10 +61,13 @@ public sealed class TelemetryTools
         var graph = JsonNode.Parse(root.GetRawText())!.AsObject();
 
         // The console's budget is not an agent's. A busy 1 h window can fill 'recent' with the
-        // server cap's worth of rows -- roughly 900 KB of GUIDs and ISO timestamps -- which is a sensible
-        // payload for a timeline that draws every one of them and a waste of an agent's context, which
+        // server cap's worth of rows -- roughly 900 KB of GUIDs and ISO timestamps -- which is a
+        // sensible
+        // payload for a timeline that draws every one of them and a waste of an agent's context,
+        // which
         // reads a handful. Trimmed from the OLD end: the server orders newest-first, and "what just
-        // finished" is the question this list answers. 'running' is never trimmed -- it is the answer to
+        // finished" is the question this list answers. 'running' is never trimmed -- it is the
+        // answer to
         // "what is going on right now" and it is small.
         if (graph["recent"] is JsonArray recent && recent.Count > RecentToolCap)
         {

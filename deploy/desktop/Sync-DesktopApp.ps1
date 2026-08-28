@@ -2,29 +2,29 @@
 #requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Pushes local code changes into an ALREADY INSTALLED NodePilot desktop app in ~1 minute,
-    instead of rebuilding the full installer (~10-15 minutes).
+    Pushes local code changes into an already installed NodePilot desktop app, instead of
+    rebuilding the full installer.
 
 .DESCRIPTION
     The installed app is just files under <InstallPath> plus two Windows services, so a code change
-    only needs the changed artefacts copied in and (for backend changes) a service restart. Rebuild
-    the installer only when you want to DISTRIBUTE.
+    only needs the changed artefacts copied in and, for backend changes, a service restart. Rebuild
+    the installer only for distribution.
 
     Which loop to use for what:
 
-      Electron shell   ->  `npm start` in src/nodepilot-desktop. It runs from source against the
-                           installed backend (it reads %ProgramData%\NodePilot\desktop.json), so no
-                           packaging is involved at all. This script does NOT sync the shell: the
-                           packaged app lives in an asar archive that cannot be patched sensibly.
-      Backend / SPA    ->  normal dev mode (port 5000 + Vite 5173) for day-to-day work.
-      Backend / SPA    ->  THIS SCRIPT, when you specifically want to test the packaged desktop
-                           app (service identity = LocalSystem, bundled Postgres, loopback TLS).
-      Distribution     ->  Build-DesktopInstaller.ps1.
+      Electron shell : `npm start` in src/nodepilot-desktop. It runs from source against the
+                       installed backend, found through %ProgramData%\NodePilot\desktop.json, so
+                       no packaging is involved. This script does not sync the shell, because the
+                       packaged app lives in an asar archive that cannot be patched sensibly.
+      Backend / SPA  : normal dev mode (port 5000 plus Vite on 5173) for day-to-day work.
+      Backend / SPA  : this script, to test the packaged desktop app itself (LocalSystem service
+                       identity, bundled Postgres, loopback TLS).
+      Distribution   : Build-DesktopInstaller.ps1.
 
 .EXAMPLE
-    ./Sync-DesktopApp.ps1 -Component spa      # SPA only, no service restart (~30 s)
+    ./Sync-DesktopApp.ps1 -Component spa      # SPA only, no service restart
 .EXAMPLE
-    ./Sync-DesktopApp.ps1 -Component api      # backend, stops/starts the service (~1 min)
+    ./Sync-DesktopApp.ps1 -Component api      # backend, stops and starts the service
 .EXAMPLE
     ./Sync-DesktopApp.ps1 -Component all
 #>
@@ -49,8 +49,8 @@ $PublishTmp = Join-Path $env:TEMP 'nodepilot-sync-publish'
 
 function Write-Step([string] $m) { Write-Host "==> $m" -ForegroundColor Cyan }
 
-# Native tools write progress/warnings to stderr; under $ErrorActionPreference='Stop' PowerShell 5.1
-# would escalate those to terminating errors even on exit code 0 (vite/rolldown does exactly that).
+# Native tools write progress and warnings to stderr, which PowerShell 5.1 escalates to a
+# terminating error under $ErrorActionPreference='Stop' even when the exit code is 0.
 function Invoke-Tool([scriptblock] $Command, [string] $FailMessage, [int[]] $OkExitCodes = @(0)) {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'

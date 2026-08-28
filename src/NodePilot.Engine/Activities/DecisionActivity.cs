@@ -11,7 +11,7 @@ namespace NodePilot.Engine.Activities;
 /// edge-condition machinery instead of introducing a new routing primitive in the engine.
 ///
 /// Config:
-///   cases             array, required — each entry: { name: string, condition: &lt;expression&gt; }
+///   cases             required array of named conditions
 ///                     where <c>condition</c> uses the same AST as edge <c>conditionExpression</c>
 ///                     (see <see cref="ConditionEvaluator"/>).
 ///   defaultCaseName   string, default "default" — value emitted when no case matches.
@@ -49,7 +49,7 @@ public class DecisionActivity : IActivityExecutor
         var aliasMap = context.OutputVariableToStepId;
         // Global/manual context must be threaded through so `source:"global"`/`"manual"` operands
         // and {{globals.X}}/{{manual.X}} literals resolve identically to the edge-condition path.
-        // Without these the evaluator returns "" for such operands → silent wrong branch.
+        // Without these the evaluator returns "" for such operands, causing a silent wrong branch.
         var conditionContext = new ConditionContext(results, aliasMap, context.GlobalVariables, context.InputParameters);
 
         var index = -1;
@@ -64,7 +64,7 @@ public class DecisionActivity : IActivityExecutor
 
             if (!caseEl.TryGetProperty("condition", out var condEl) || condEl.ValueKind != JsonValueKind.Object)
             {
-                // Missing/malformed condition → treat as never-matching, but keep iterating —
+                // Missing or malformed condition: treat as never-matching, but keep iterating —
                 // a sibling case can still match. The UI surfaces malformed cases via lint.
                 continue;
             }

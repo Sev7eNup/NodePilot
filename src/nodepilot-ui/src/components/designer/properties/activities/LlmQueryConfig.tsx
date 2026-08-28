@@ -2,11 +2,11 @@ import { useTranslation } from 'react-i18next';
 import { Field, VariableInsertField, type ConfigProps } from '../shared';
 
 /**
- * Config editor for the `llmQuery` activity. Prompt + optional system prompt support {{variable}}
- * insertion. The "Override" section lets a node target a different OpenAI-compatible endpoint/model
- * and tune maxTokens/temperature/jsonMode — all optional; empty fields fall back to the global
- * `Llm:*` config. `timeoutSeconds` is NOT rendered here: PropertiesPanel auto-renders it because the
- * activity declares `timeout: always`.
+ * Config editor for the `llmQuery` activity. Prompt and optional system prompt support
+ * {{variable}} insertion. The "Override" section lets a node target a different
+ * OpenAI-compatible endpoint/model and tune maxTokens/temperature/jsonMode — all optional;
+ * empty fields fall back to the global `Llm:*` config. `timeoutSeconds` is not rendered here:
+ * PropertiesPanel auto-renders it because the activity declares `timeout: always`.
  */
 export function LlmQueryConfig({ config, onUpdate, upstreamVars = [] }: Readonly<ConfigProps>) {
   const { t } = useTranslation('properties');

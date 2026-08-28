@@ -22,8 +22,8 @@
     Connects the way the runtime will: sslmode=verify-full against the same root certificate, so
     a success here cannot come from a laxer TLS path that the service could not repeat.
 .PARAMETER PsqlPath
-    psql.exe from the installer payload. The client is bundled with the setup; nothing here
-    assumes PostgreSQL is installed on the NodePilot host.
+    psql.exe from the installer payload. The client ships with the setup; PostgreSQL does not have
+    to be installed on the NodePilot host.
 .OUTPUTS
     An object with Status ('Pass' | 'Skipped' | 'Fail'), Detail and Remediation.
 #>
@@ -65,8 +65,8 @@ if (-not (Test-Path -LiteralPath $RootCertificate -PathType Leaf)) {
         'with sslmode=verify-full and so does this, so there is nothing to verify the server against.')
 }
 
-# Identifiers cannot be parameterised in DDL and these come from wizard text boxes. Same two
-# layers as the SQL Server side: an allowlist before interpolation, and quoting after it.
+# DDL cannot parameterise identifiers, and these come from wizard text boxes. Two layers, as on
+# the SQL Server side: an allowlist before interpolation, and quoting after it.
 foreach ($pair in @(@{ Name = 'Database'; Value = $Database }, @{ Name = 'Role'; Value = $User })) {
     if ($pair.Value -notmatch '^[A-Za-z_][A-Za-z0-9_]{0,62}$') {
         return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
@@ -105,8 +105,8 @@ function Invoke-Psql {
     )
     if ($Tuples) { $arguments += '-tA' }
 
-    # The statement travels on stdin, not as -c: CREATE ROLE carries the new role's password, and
-    # an argument is readable in the process list by every user on the machine while it runs.
+    # The statement goes over stdin rather than -c: CREATE ROLE carries the new role's password,
+    # and command-line arguments are readable in the process list by every user on the machine.
     return Invoke-NodePilotPsql -PsqlPath $PsqlPath -Arguments $arguments -Sql "$Sql;" `
         -Environment (Get-NodePilotPsqlEnvironment -Secret $Secret -RootCertificate $RootCertificate)
 }
@@ -115,8 +115,8 @@ $superSecret = ConvertFrom-NodePilotSecureString -Value $SuperPassword
 $roleSecret = ConvertFrom-NodePilotSecureString -Value $Password
 
 # --- permission gate: everything below this point mutates ---------------------------------------
-# Connects to 'postgres', which every cluster has: the target database may not exist yet, so it
-# cannot be the one used to authenticate.
+# Connects to 'postgres', which every cluster has. The target database may still have to be
+# created, so it cannot authenticate this connection.
 $gate = Invoke-Psql -ConnectAs $SuperUser -Secret $superSecret -Database 'postgres' -Tuples `
     -Sql "SELECT rolsuper OR (rolcreaterole AND rolcreatedb) FROM pg_roles WHERE rolname = current_user"
 if (-not $gate.Succeeded) {
@@ -138,8 +138,9 @@ if (-not $roleExists.Succeeded) {
         "Could not read pg_roles on $HostName`: $($roleExists.Error)")
 }
 if ($roleExists.Output -ne '1') {
-    # The password is a literal because CREATE ROLE has no parameters. It comes from the answer
-    # file or a wizard field, and quotes are doubled the same way as for the identifiers above.
+    # The password is a literal because CREATE ROLE takes no parameters. It comes from the answer
+    # file or a wizard field, never from the database, and quotes are doubled as for the
+    # identifiers above.
     $create = Invoke-Psql -ConnectAs $SuperUser -Secret $superSecret -Database 'postgres' `
         -Sql "CREATE ROLE $quotedUser WITH LOGIN PASSWORD '$($roleSecret.Replace("'", "''"))'"
     if (-not $create.Succeeded) {
@@ -165,8 +166,8 @@ if ($databaseExists.Output -ne '1') {
     $created.Add('database')
 }
 
-# What matters is whether the service can now log in and create objects, so the check runs as the
-# role itself. Same question the readiness page asks.
+# What matters is whether the service can log in and create objects, so the check connects as the
+# role itself rather than as the superuser. The readiness page asks the same question.
 $verify = Invoke-Psql -ConnectAs $User -Secret $roleSecret -Database $Database -Tuples `
     -Sql 'SELECT has_database_privilege(current_user, current_database(), ''CREATE'')'
 if (-not $verify.Succeeded) {

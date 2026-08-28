@@ -10,7 +10,6 @@ namespace NodePilot.Api.Controllers;
 /// <summary>
 /// System-configuration backup (ADR 0001). Admin-only — an export reads every secret-bearing
 /// resource (credentials, secret globals, user password hashes) and seals them behind a passphrase.
-/// Phase 1 exposes the manifest and the export; preview/restore arrive in Phase 2.
 /// </summary>
 [ApiController]
 [Route("api/backup")]
@@ -83,7 +82,7 @@ public sealed class BackupController : ControllerBase
 
     /// <summary>
     /// Dry-run a restore: reports per-section new/conflict counts without writing. Passphrase is
-    /// optional — without it the result is <c>integrityUnverified</c> and secrets are not compared (K10).
+    /// optional — without it the result is <c>integrityUnverified</c> and secrets are not compared.
     /// </summary>
     [HttpPost("preview")]
     [Consumes("multipart/form-data")]
@@ -111,8 +110,9 @@ public sealed class BackupController : ControllerBase
     }
 
     /// <summary>
-    /// Applies a restore. Requires the passphrase, verifies the whole-file MAC, validates references,
-    /// and writes all DB sections in one transaction (settings applied separately afterwards, K8).
+    /// Applies a restore. Requires the passphrase, verifies the whole-file MAC, validates
+    /// references,
+    /// and writes all DB sections in one transaction (settings are applied separately afterwards).
     /// </summary>
     [HttpPost("restore")]
     [Consumes("multipart/form-data")]
@@ -178,16 +178,15 @@ public sealed class BackupController : ControllerBase
 
     /// <summary>
     /// Parses the policy string: comma-separated <c>section=policy</c> pairs, plus an optional bare
-    /// token (e.g. <c>overwrite</c>) that sets the default for every section. Unknown → Skip.
+    /// token (e.g. <c>overwrite</c>) that sets the default for every section. Unknown maps to Skip.
     /// </summary>
     private static Dictionary<string, RestoreConflictPolicy> ParsePolicies(string? policy)
     {
         var result = new Dictionary<string, RestoreConflictPolicy>(StringComparer.Ordinal);
         if (string.IsNullOrWhiteSpace(policy)) return result;
 
-        // BackupSections.All, not a local copy: the previous hand-written list was missing
-        // globalVariableFolders, customActivities and alerting, so a global "overwrite" never
-        // reached those three and RestoreState.Policy fell back to Skip without telling anyone.
+        // Use BackupSections.All, not a local copy, so a bare global token like "overwrite"
+        // applies to every section instead of silently missing newly added ones.
         var allSections = BackupSections.All;
         foreach (var token in policy.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {

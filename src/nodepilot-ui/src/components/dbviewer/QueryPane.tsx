@@ -139,13 +139,11 @@ export function QueryPane({ insertSignal }: Readonly<Props>) {
     },
   });
 
-  // Imperatively insert a string at the current cursor position. Called when the
-  // sidebar fires an insertSignal — used to drop a table name into the editor.
-  // We quote with double-quotes because EF Core stores entity-set names in
-  // PascalCase ("Credential", "Workflow"…) and Postgres folds unquoted identifiers
-  // to lowercase, so an unquoted "from Credential" hits "credential" which doesn't
-  // exist. SQL Server (with default QUOTED_IDENTIFIER ON) and SQLite both accept
-  // ANSI double-quoted identifiers too, so one form covers all three providers.
+  // Imperatively insert a string at the cursor. Called when the sidebar fires an
+  // insertSignal to drop a table name into the editor.
+  // Table names are double-quoted because EF Core stores entity names in PascalCase
+  // ("Credential", "Workflow"…) while Postgres folds unquoted identifiers to lowercase.
+  // Double quotes work across Postgres, SQL Server, and SQLite alike.
   useEffect(() => {
     if (!insertSignal) return;
     const view = editorRef.current?.view;
@@ -285,10 +283,8 @@ export function QueryPane({ insertSignal }: Readonly<Props>) {
             </span>
           )}
 
-          {/* Visible hint when write-mode is server-disabled. The button itself only
-              carries a native title="..." tooltip, which means an operator who can't
-              click the toggle has no obvious clue why. This line tells them exactly
-              which setting to flip. */}
+          {/* Hint shown when write-mode is server-disabled — the disabled button's
+              title tooltip alone doesn't explain why, so this line names the setting. */}
           {info && !writeAllowed && (
             <span className="inline-flex items-center gap-1 text-[11px] text-on-surface-variant">
               <SecurityServices size={12} className="text-outline" />

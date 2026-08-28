@@ -6,8 +6,10 @@ using NodePilot.Data;
 namespace NodePilot.Scheduler.SystemAlerts.Sources;
 
 /// <summary>
-/// Global metric source: the count of executions cancelled across all workflows within a trailing window
-/// (parameter <c>windowMinutes</c>, default 10). Surfaces the global cancel rate a per-workflow flap
+/// Global metric source: the count of executions cancelled across all workflows within a trailing
+/// window
+/// (parameter <c>windowMinutes</c>, default 10). Surfaces the global cancel rate a per-workflow
+/// flap
 /// suppression can't express. Field <c>cancels</c>.
 /// </summary>
 public sealed class CancelRateSource : ISystemAlertSource

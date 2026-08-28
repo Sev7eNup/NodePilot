@@ -4,8 +4,8 @@ namespace NodePilot.Core.Security;
 
 /// <summary>
 /// Provider-neutral SQL identifier lexer shared by the API and external-agent adapters. It is not a
-/// validating SQL parser; it deliberately exposes only conservative security predicates while
-/// consistently ignoring comments and string literals and retaining quoted identifiers.
+/// validating SQL parser; it exposes only conservative security predicates, ignores comments and
+/// string literals, and keeps quoted identifiers.
 /// </summary>
 public static class SqlStatementInspector
 {
@@ -16,9 +16,9 @@ public static class SqlStatementInspector
 
     private static readonly HashSet<string> DynamicDataExporters = new(StringComparer.OrdinalIgnoreCase)
     {
-        // PostgreSQL functions that accept a table/query/schema/database name (often in a string)
-        // and return its data or schema. Source lineage cannot be established outside that string,
-        // so these are never safe in generic read-SQL surfaces.
+        // PostgreSQL functions that take a table/query/schema/database name (often as a string)
+        // and return its data or schema. The source cannot be determined outside that string,
+        // so these are never safe on generic read-SQL surfaces.
         "query_to_xml", "table_to_xml", "cursor_to_xml", "schema_to_xml", "database_to_xml",
         "query_to_xmlschema", "table_to_xmlschema", "schema_to_xmlschema", "database_to_xmlschema",
         "query_to_xml_and_xmlschema", "table_to_xml_and_xmlschema",
@@ -46,8 +46,8 @@ public static class SqlStatementInspector
         => FindFirstIdentifier(sql, DynamicDataExporters);
 
     /// <summary>
-    /// PostgreSQL's U&amp;"..." identifier form can encode every protected name. Agent-facing
-    /// lexical policies reject the form rather than trying to duplicate provider unescaping rules.
+    /// PostgreSQL's U&amp;"..." identifier form can encode any protected name. Agent-facing
+    /// lexical policies reject the form instead of duplicating provider unescaping rules.
     /// </summary>
     public static bool ContainsUnicodeEscapedIdentifier(string sql)
         => ReferencesAnyIdentifier(sql, UnicodeEscapedIdentifierMarkers);
@@ -55,7 +55,7 @@ public static class SqlStatementInspector
     /// <summary>
     /// True when <paramref name="second"/> follows <paramref name="first"/> as consecutive
     /// unquoted identifier tokens. Punctuation and comments are ignored, matching normal SQL
-    /// keyword-pair parsing; a quoted identifier breaks the chain.
+    /// keyword-pair parsing. A quoted identifier breaks the chain.
     /// </summary>
     public static bool ReferencesIdentifierPair(string sql, string first, string second)
     {

@@ -17,8 +17,8 @@ namespace NodePilot.Engine.Tests.Activities;
 /// <summary>
 /// Unit tests for the polling loop in <see cref="WaitForConditionActivity"/>. We mock the
 /// remote session and have it return deterministic marker output so the test runs without
-/// a real PowerShell engine. Goal: pin down the loop logic end-to-end (first match → success,
-/// timeout → failure with an "attempts" count) without needing to restart the API process.
+/// a real PowerShell engine. Goal: pin down the loop logic end-to-end (first match -> success,
+/// timeout -> failure with an "attempts" count) without needing to restart the API process.
 /// </summary>
 public sealed class WaitForConditionActivityTests : IDisposable
 {
@@ -37,8 +37,7 @@ public sealed class WaitForConditionActivityTests : IDisposable
             ["WaitForCondition:AllowedHosts:1"] = "api",
             ["WaitForCondition:AllowedHosts:2"] = "x",
             ["WaitForCondition:AllowedHosts:3"] = "localhost",
-            // Production posture, deliberately: this is the config under which httpOk used to
-            // be rejected by the restApi SSRF guard before the probe list was ever consulted.
+            // Use production posture to verify that the dedicated probe allowlist controls httpOk.
             ["RestApi:BlockPrivateNetworks"] = "true",
         })
         .Build();
@@ -63,7 +62,7 @@ public sealed class WaitForConditionActivityTests : IDisposable
             .Setup(f => f.CreateSessionAsync(It.IsAny<ManagedMachine>(), It.IsAny<Credential?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(_session.Object);
 
-        // A real, non-loopback machine → the activity picks the remote path (session) instead
+        // A real, non-loopback machine -> the activity picks the remote path (session) instead
         // of the localhost bypass. The hostname is deliberately "example.net" so that
         // IsLoopbackHostname doesn't trigger the in-process fallback.
         _machine = new ManagedMachine
@@ -128,7 +127,7 @@ public sealed class WaitForConditionActivityTests : IDisposable
             .ReturnsAsync(() => new RemoteExecutionResult
             {
                 Success = true,
-                // Three false polls, then true → success on attempt 4.
+                // Three false polls, then true -> success on attempt 4.
                 Output = call >= 4 ? "###NODEPILOT_COND:True###" : "###NODEPILOT_COND:False###",
             });
 
@@ -154,7 +153,7 @@ public sealed class WaitForConditionActivityTests : IDisposable
             });
 
         var activity = CreateActivity();
-        // Interval 1s, timeout 3s → expect ~3 attempts (initial poll plus two after sleeping)
+        // Interval 1s, timeout 3s -> expect ~3 attempts (initial poll plus two after sleeping)
         // within the budget, then bail out with a failure.
         var config = ParseConfig("{\"script\":\"$false\",\"intervalSeconds\":1,\"timeoutSeconds\":3}");
 

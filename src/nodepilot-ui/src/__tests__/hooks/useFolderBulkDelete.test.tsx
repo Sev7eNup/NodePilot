@@ -5,9 +5,9 @@ import type { ReactNode } from 'react';
 import { useFolderBulkDelete } from '../../hooks/useFolderBulkDelete';
 
 /**
- * The orchestration both folder trees share. What is worth pinning here rather than through a
- * rendered tree: the cover-set reduction, that a partial failure leaves exactly the failed ids
- * for a retry, and that the filter only moves when something actually went.
+ * Covers the bulk-delete orchestration both folder trees share: reducing a selection to its
+ * cover set, returning exactly the failed ids so a retry can keep them selected, and moving
+ * the filter only when the folder it points at was deleted.
  */
 vi.mock('../../stores/confirmStore', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../../stores/confirmStore')>();
@@ -102,13 +102,13 @@ describe('useFolderBulkDelete', () => {
     let failed: string[] = [];
     await act(async () => { failed = await hook.result.current.deleteMany([byId('a'), byId('b')]); });
 
-    // A failing folder does not abort the run — the other one is still gone.
+    // A failing folder does not abort the run; the other one is still deleted.
     expect(deleteRecursive).toHaveBeenCalledTimes(2);
     expect(failed).toEqual(['b']);
   });
 
   it('moves the filter only when the folder it points at actually went', async () => {
-    // a1 is never requested; it disappears with its parent.
+    // a1 is never requested; it is removed together with its parent.
     const deleteRecursive = vi.fn().mockResolvedValue({ deletedFolders: 2, deletedItems: 5 });
     const { hook, onFolderSelected } = setup({ deleteRecursive, selectedFolderId: 'a1' });
 
@@ -137,8 +137,8 @@ describe('useFolderBulkDelete', () => {
   });
 
   it('says so instead of doing nothing when the selection has evaporated', async () => {
-    // Only reachable when the selection empties between the render that showed the button and
-    // the click. Returning quietly made a dead Delete button look like a delete that failed.
+    // Reachable when the selection empties between the render that showed the button and the
+    // click. Reporting it keeps a dead Delete button from looking like a failed delete.
     const deleteRecursive = vi.fn();
     const { hook } = setup({ deleteRecursive });
 

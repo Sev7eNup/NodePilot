@@ -90,7 +90,7 @@ public class WinRmSessionFactoryTests
     {
         // Audit contract: actor = "winrm:<hostname>". Without the prefix and host tag,
         // a security review can't tie a decrypt event to a specific target machine — they
-        // have to join CredentialAuditLog → ExecutionStep → Workflow → Machine.
+        // have to join CredentialAuditLog -> ExecutionStep -> Workflow -> Machine.
         var cred = FakeCredential();
         var store = new Mock<ICredentialStore>();
         store.Setup(s => s.DecryptPassword(It.IsAny<Credential>(), It.IsAny<string>()))

@@ -91,8 +91,8 @@ describe('ConditionBuilder', () => {
     expect(arg.type).toBe('comparison');
     if (arg.type === 'comparison') {
       expect(arg.right?.kind).toBe('variable');
-      // Narrow to the step-source variant explicitly: the discriminated union now also
-      // includes global/manual variants, so TS rightly insists on the source check.
+      // Narrow to the step-source variant: the union also covers global, manual and event
+      // operands, which have no stepId or field.
       if (arg.right?.kind === 'variable' && arg.right.source !== 'global' && arg.right.source !== 'manual' && arg.right.source !== 'event') {
         expect(arg.right.stepId).toBe('stepA');
         expect(arg.right.field).toBe('output');

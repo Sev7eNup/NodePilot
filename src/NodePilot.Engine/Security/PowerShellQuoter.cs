@@ -12,11 +12,8 @@ namespace NodePilot.Engine.Security;
 /// apostrophe broke out of the literal and the rest of the value ran as PowerShell on the next
 /// target. The audit flagged this as H2.
 ///
-/// Related: <c>WorkflowEngine.ResolveVariables</c> used to JSON-escape values before the
-/// activity builders received them, producing a double-escape mismatch that could recreate
-/// the same break-out via <c>\'</c>. Activities that call <see cref="Literal"/> on already
-/// JSON-escaped input still produce safe output — the only thing that matters is that the
-/// *final* value lands inside a proper single-quoted literal with doubled apostrophes.
+/// <c>WorkflowEngine.ResolveVariables</c> can supply JSON-escaped input. <see cref="Literal"/>
+/// must still place the final value in a single-quoted literal with doubled apostrophes.
 /// </summary>
 public static class PowerShellQuoter
 {

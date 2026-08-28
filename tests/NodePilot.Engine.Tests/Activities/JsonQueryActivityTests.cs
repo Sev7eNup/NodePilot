@@ -92,10 +92,7 @@ public class JsonQueryActivityTests
         var cfg = Cfg(new { source = "inline", content = "{not json}", jsonPath = "$.x" });
         var result = await _activity.ExecuteAsync(Ctx(), cfg, CancellationToken.None);
 
-        // The JSON parser was switched to Newtonsoft's JsonTextReader with an explicit
-        // depth guard, which changed the error prefix from "JsonQuery error: ..." to
-        // "JsonQuery: parse failed:". This test just checks that failures still surface
-        // with that parse-error message.
+        // Malformed JSON must fail with an error message containing "parse failed".
         result.Success.Should().BeFalse();
         result.ErrorOutput.Should().Contain("parse failed");
     }

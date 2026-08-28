@@ -138,8 +138,8 @@ test.describe('Workflow bulk selection & actions', () => {
 
     await page.getByTestId('bulk-delete').click();
 
-    // Store-driven confirm dialog (ConfirmHost), not window.confirm, so it confirms with OK.
-    // One dialog for the whole batch is the behaviour under test: the count appears in it.
+    // The confirm dialog is the store-driven ConfirmHost, not window.confirm, and is confirmed
+    // with OK. One dialog for the whole batch is the behaviour under test, so it names the count.
     await expect(page.getByText(/2 selected workflows/i)).toBeVisible();
     await page.getByRole('button', { name: 'OK' }).click();
 

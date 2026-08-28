@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 56 — Error-Notifications & Empty States (lines 3561-3591).
+ * E2ETests.md Part 56 — Error-Notifications & Empty States (lines 3561-3591).
  *
  * Hermetic: page.route() mocks only.
  *
@@ -11,10 +11,10 @@ import { installDefaultMocks } from './fixtures/mockApi';
  * visible for an Admin.
  *
  * Error notification (56.2): API failures surface via the in-app toast stack (ToastHost,
- * data-testid="toast-error") — e.g. handleRunClick's executeMutation onError →
- * editor:executionStartFailed, and import's onError → common:importFailed. We assert the
- * toast-error text on a mocked 500. This is the in-product "error notification" the spec
- * asks for; "after reconnect: save succeeds" is a manual DevTools-offline step (skip note).
+ * data-testid="toast-error"): handleRunClick's executeMutation onError raises
+ * editor:executionStartFailed, import's onError raises common:importFailed. These tests assert
+ * the toast-error text on a mocked 500. The "after reconnect: save succeeds" half is a manual
+ * DevTools-offline step and is skipped below.
  */
 
 const WF_ID = '56565656-0000-0000-0000-000000000056';
@@ -25,7 +25,7 @@ function workflow(overrides: Record<string, unknown> = {}) {
     name: 'Notify_WF',
     description: '',
     isEnabled: true, // enabled so handleRunClick doesn't early-return with the "disabled" alert
-    checkedOutByUserId: null, // not locked-by-me → canWrite=false → Test skips the save, goes straight to /execute
+    checkedOutByUserId: null, // not locked by me: canWrite is false, so Test skips the save
     checkedOutByUserName: null,
     checkedOutAt: null,
     definitionJson: JSON.stringify({
@@ -79,7 +79,8 @@ test.describe('Error-Notifications & Empty States (Teil 56)', () => {
     await page.route(`**/api/workflows/${WF_ID}`, (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflow()) }),
     );
-    // /execute fails server-side → executeMutation.onError → toast.error(editor:executionStartFailed).
+    // A 500 from /execute drives executeMutation.onError into
+    // toast.error(editor:executionStartFailed).
     await page.route(`**/api/workflows/${WF_ID}/execute`, (route) =>
       route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'boom' }) }),
     );

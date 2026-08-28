@@ -4,8 +4,8 @@ import { Field, VariableInsertField, type ConfigProps } from '../shared';
 import { FieldGrid } from '../panelChrome';
 
 /**
- * Config editor for the Power-Management activity (shutdown / restart / logoff / abort / hibernate).
- * Wraps <c>shutdown.exe</c> on the target host.
+ * Config editor for the Power-Management activity (shutdown / restart / logoff / abort /
+ * hibernate). Wraps <c>shutdown.exe</c> on the target host.
  *
  * `logoff`, `abort` and `hibernate` ignore delay/force/message — the UI hides those fields
  * in those modes so the inputs don't mislead users into thinking they take effect.

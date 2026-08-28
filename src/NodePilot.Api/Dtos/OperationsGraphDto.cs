@@ -24,7 +24,8 @@ public record OperationsGraphDto(
     IReadOnlyList<OpsDensityLane> Density,
     OpsSnapshotMeta Meta);
 
-/// <summary>Snapshot-wide settings the console needs to render consistently with the backend.</summary>
+/// <summary>Snapshot-wide settings the console needs to render consistently with the
+/// backend.</summary>
 /// <param name="OverdueSeconds">
 /// A <c>Running</c> execution older than this counts as overdue in the timeline. Sourced from
 /// <c>Alerting:LongRunningSeconds</c> and floored with <c>Math.Max(1, …)</c> — byte-for-byte the
@@ -69,8 +70,10 @@ public record OpsSnapshotMeta(
     bool DensityCapped);
 
 /// <param name="RunningCount">Live count of Running/Pending executions at snapshot time.</param>
-/// <param name="LastStatus">Status of the most recent execution (from WorkflowStats), or null if never run.</param>
-/// <param name="CallFrequency">Run count in the stats window — drives node-size-by-throughput. Null if no stats row.</param>
+/// <param name="LastStatus">Status of the most recent execution (from WorkflowStats), or null if
+/// never run.</param>
+/// <param name="CallFrequency">Run count in the stats window — drives node-size-by-throughput. Null
+/// if no stats row.</param>
 /// <param name="CanRun">
 /// Caller may cancel / retry / cancel-all on THIS workflow: folder <c>ResourceOp.Run</c>, already
 /// ANDed with the global role by <c>GetWorkflowCapabilitiesAsync</c>. Per-node on purpose — the
@@ -94,10 +97,13 @@ public record OpsNode(
     bool CanRun,
     bool CanEdit);
 
-/// <param name="Target">Resolved target workflow id; null for dynamic/unresolved/ambiguous refs.</param>
+/// <param name="Target">Resolved target workflow id; null for dynamic/unresolved/ambiguous
+/// refs.</param>
 /// <param name="Kind"><c>startWorkflow</c> or <c>forEach</c>.</param>
-/// <param name="RefStatus"><c>Resolved</c> | <c>Dynamic</c> | <c>Unresolved</c> | <c>Ambiguous</c>.</param>
-/// <param name="RawRef">Original reference string — shown for non-resolved (dynamic/unresolved/ambiguous) edges.</param>
+/// <param name="RefStatus"><c>Resolved</c> | <c>Dynamic</c> | <c>Unresolved</c> |
+/// <c>Ambiguous</c>.</param>
+/// <param name="RawRef">Original reference string — shown for non-resolved
+/// (dynamic/unresolved/ambiguous) edges.</param>
 public record OpsEdge(
     string Id,
     Guid Source,
@@ -125,7 +131,8 @@ public record OpsEdge(
 /// Zero would be a false statement; the console renders nothing for null.
 /// </para>
 /// </param>
-/// <param name="LastCompletedStepName">Label of the most recently EXECUTED step (falls back to its step id); null when none has finished yet or the run was not enriched.</param>
+/// <param name="LastCompletedStepName">Label of the most recently EXECUTED step (falls back to its
+/// step id); null when none has finished yet or the run was not enriched.</param>
 /// <param name="LastProgressAt">
 /// When the most recent step finished. The actual answer to "is it working or is it hung?" —
 /// a run whose last progress was eleven minutes ago is stuck on one step, which no step COUNT
@@ -154,7 +161,8 @@ public record OpsRunningExecution(
 /// being dropped. Slim on purpose: rich details (error, triggeredBy, parent) come from
 /// <c>GET /api/executions/{id}</c> on drill-down.
 /// </summary>
-/// <param name="ParentExecutionId">Parent run for sub-workflow executions — see <see cref="OpsRunningExecution"/>.</param>
+/// <param name="ParentExecutionId">Parent run for sub-workflow executions — see <see
+/// cref="OpsRunningExecution"/>.</param>
 public record OpsRecentExecution(
     Guid ExecutionId,
     Guid WorkflowId,
@@ -180,7 +188,8 @@ public record OpsDensityLane(
 /// "worst status": a slice holding nineteen successes and one failure is neither green nor red,
 /// and collapsing it either way is a lie the operator would act on.
 /// </summary>
-/// <param name="BucketIndex">Slice offset from <c>Meta.RecentSinceUtc</c>, in <c>Meta.DensityBucketSeconds</c> steps.</param>
+/// <param name="BucketIndex">Slice offset from <c>Meta.RecentSinceUtc</c>, in
+/// <c>Meta.DensityBucketSeconds</c> steps.</param>
 /// <param name="Total">All settled runs in the slice, whatever their status.</param>
 /// <param name="Failed">Runs that ended <c>Failed</c>.</param>
 /// <param name="Cancelled">Runs that ended <c>Cancelled</c>.</param>

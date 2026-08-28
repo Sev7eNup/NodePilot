@@ -110,10 +110,10 @@ public class CmTraceFormatterTests
     [Fact]
     public void Format_MessageWithSeveralLogTerminatorLiterals_SanitizesEveryOccurrence()
     {
-        // A pasted multi-line log excerpt carries the terminator once per copied entry.
-        // Sanitising only the first occurrence would still let the later ones close the
-        // SMS wrapper early. Includes two adjacent occurrences so a scan that skips past
-        // its own replacement is exercised too.
+        // A pasted multi-line log excerpt can repeat the terminator once per copied entry.
+        // Sanitising only the first occurrence would let the later ones close the SMS
+        // wrapper early. Two adjacent occurrences exercise a scan that skips past its own
+        // replacement.
         var ev = MakeEvent(LogEventLevel.Information,
             "a ]LOG]!> b ]LOG]!>]LOG]!> c ]LOG]!>");
 
@@ -172,7 +172,7 @@ public class CmTraceFormatterTests
     [Fact]
     public void Format_SourceContext_AppearsAsComponentNotInMessageBody()
     {
-        // SourceContext is routed to the component= attribute and must NOT also be dumped
+        // SourceContext is routed to the component= attribute and must not also be dumped
         // into the message body (would be redundant noise and could contain chars that
         // disrupt later parsing).
         var ev = MakeEvent(

@@ -2,21 +2,14 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 12 — Keyboard-Shortcuts & Productivity, plus Teil 55 — Erweiterte
- * Keyboard-Shortcuts. Both target `useEditorKeyboardShortcuts` (the global keydown handler
- * wired up in WorkflowEditorPage) and the overlays it toggles.
+ * Covers E2ETests.md parts 12 and 55: designer keyboard shortcuts. Both target
+ * `useEditorKeyboardShortcuts`, the global keydown handler wired up in WorkflowEditorPage,
+ * and the overlays it toggles.
  *
- * Hermetic: page.route() mocks only (no backend). SPA renders EN under Playwright.
- * The workflow is locked-by-me (checkedOutByUserId === MOCK_USER.id) so `canWrite` is true and
- * the mutating shortcuts (undo, duplicate, group, nudge, …) are active.
- *
- * Caveats baked into the assertions:
- *   - React Flow virtualizes off-screen nodes (`onlyRenderVisibleElements`), so node-count
- *     assertions seed nodes near the top-left where they reliably mount.
- *   - Canvas drag (marquee, node-move) is not synthesizable — multiselect uses Ctrl+A.
- *   - Effects that are observable in the DOM (overlay open, node label, count of mounted
- *     nodes) are asserted directly; pure design-store toggles (edge width, font size) are
- *     verified via the rendered control state where surfaced, else covered by the help map.
+ * Hermetic mocks only. The workflow is locked by the current user, so `canWrite` is true and the
+ * mutating shortcuts are active. React Flow virtualizes off-screen nodes, so the fixtures cluster
+ * nodes near the top-left; canvas drag is not synthesizable, so multiselect goes through Ctrl+A.
+ * Design-store toggles such as edge width and font size are asserted as no-throw paths.
  */
 
 const WF_ID = 'cccccccc-1212-1212-1212-121212121212';
@@ -27,7 +20,7 @@ function workflowJson(definition: { nodes: unknown[]; edges: unknown[] }, overri
     name: 'Shortcuts_E2E_WF',
     description: '',
     isEnabled: false,
-    checkedOutByUserId: MOCK_USER.id, // locked-by-me → canWrite (Admin + own lock)
+    checkedOutByUserId: MOCK_USER.id, // locked-by-me -> canWrite (Admin + own lock)
     checkedOutByUserName: MOCK_USER.username,
     checkedOutAt: '2026-06-01T00:00:00.000Z',
     definitionJson: JSON.stringify(definition),
@@ -226,7 +219,7 @@ test.describe('Keyboard-Shortcuts & Productivity (Teil 12 + 55)', () => {
     // Make the workflow dirty (nudge a selected node) so Ctrl+S has something to persist.
     await page.locator('.react-flow__node[data-id="step-aaaa1111"]').click();
     await expect(page.locator('.react-flow__node[data-id="step-aaaa1111"].selected')).toHaveCount(1);
-    await page.keyboard.press('ArrowRight'); // nudge → dirty
+    await page.keyboard.press('ArrowRight'); // nudge -> dirty
     await page.keyboard.press('Control+s');
     await expect.poll(() => putSeen, { timeout: 10_000 }).toBe(true);
 
@@ -264,7 +257,7 @@ test.describe('Keyboard-Shortcuts & Productivity (Teil 12 + 55)', () => {
 
     await page.keyboard.press('Control+Shift+t');
 
-    // Auto-layout rewrites positions → the node's CSS transform (its position) changes.
+    // Auto-layout rewrites positions -> the node's CSS transform (its position) changes.
     await expect.poll(async () => transformOf('step-bbbb2222'), { timeout: 10_000 }).not.toBe(before);
 
     // Undo restores the original arrangement.

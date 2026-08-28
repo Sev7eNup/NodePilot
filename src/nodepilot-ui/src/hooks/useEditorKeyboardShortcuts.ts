@@ -26,9 +26,9 @@ interface EditorShortcutsOptions {
   toggleFullscreen: () => void;
   toggleQuickSwitcher: () => void;
   toggleCommandPalette: () => void;
-  // Lifecycle / save / run shortcuts. Each callback self-gates against the current state
-  // (e.g. `triggerSave` does nothing if no lock-by-me + not dirty) — the hook just routes
-  // the key combo without re-implementing the same conditions a second time.
+  // Lifecycle, save and run shortcuts. Each callback self-gates against the current state
+  // (`triggerSave` does nothing unless this user holds the lock and the workflow is dirty),
+  // so the hook only routes the key combo instead of repeating those conditions.
   triggerSave: () => void;
   triggerLock: () => void;
   triggerUnlock: () => void;
@@ -44,10 +44,9 @@ interface EditorShortcutsOptions {
   setDiffOpen: (open: boolean) => void;
   triggerSimulation: () => void;
   clearActivityTypeFilter: () => void;
-  // Style / canvas-view toggles. Single-letter shortcuts (Figma-style) — fire only when no
-  // input/textarea has focus, so a user typing into a search or label field never triggers
-  // them by accident. Bound to A / R / M / H / G for animation / routing / machines /
-  // heatmap / grid respectively.
+  // Style and canvas-view toggles, bound to single letters: A animation, R routing,
+  // M machines, H heatmap, G grid. They fire only when no input or textarea has focus, so
+  // typing into a search or label field never triggers them by accident.
   toggleEdgesAnimated: () => void;
   cycleEdgeRouting: () => void;
   edgeWidthInc: () => void;
@@ -61,12 +60,11 @@ interface EditorShortcutsOptions {
   toggleFailureHeatmap: () => void;
   toggleCriticalPath: () => void;
   toggleSnapToGrid: () => void;
-  // Per-node quick toggles applied to whichever Activity nodes are currently selected.
-  // `D` flips `disabled`, `B` flips `breakpoint`. Both no-op when no Activity nodes are
-  // selected — the WorkflowEditor implementation self-gates against the selection set so
-  // the hook stays stateless. M (mute) is intentionally NOT bound here because it would
-  // collide with the existing M=machine-coloring toggle and "mute" has no semantic distinct
-  // from `disabled` in the engine.
+  // Per-node quick toggles applied to the currently selected Activity nodes: `D` flips
+  // `disabled`, `B` flips `breakpoint`. Both do nothing when no Activity node is selected,
+  // because the WorkflowEditor implementation gates on the selection and keeps this hook
+  // stateless. M (mute) is not bound: it would collide with the machine-coloring toggle, and
+  // mute has no meaning in the engine beyond `disabled`.
   toggleSelectedDisabled: () => void;
   toggleSelectedBreakpoint: () => void;
   // Arrow-key nudge: moves all selected nodes by the given pixel delta. Shift = fine (1px).
@@ -118,10 +116,9 @@ export function useEditorKeyboardShortcuts({
         e.preventDefault();
         return;
       }
-      // Single-letter view toggles (Figma-style). Fire only when no input field has focus
-      // and no modifier is held — a user typing 'a' into a label or search input must never
-      // trigger these. Ctrl/Shift/Alt-modified letters fall through to the modifier-based
-      // shortcuts below.
+      // Single-letter view toggles. They fire only when no input field has focus and no
+      // modifier is held, so typing 'a' into a label or search input does not trigger them.
+      // Letters held with Ctrl, Shift or Alt fall through to the modifier shortcuts below.
       if (isExpert && !editable && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         switch (e.key) {
           case 'a': case 'A': toggleEdgesAnimated(); e.preventDefault(); return;
@@ -130,13 +127,13 @@ export function useEditorKeyboardShortcuts({
           case 'h': case 'H': toggleFailureHeatmap(); e.preventDefault(); return;
           case 'c': case 'C': toggleCriticalPath(); e.preventDefault(); return;
           case 'g': case 'G': toggleSnapToGrid(); e.preventDefault(); return;
-          // Per-node toggles. No-op when nothing's selected (self-gated in the implementation).
+          // Per-node toggles. They do nothing when nothing is selected; the callbacks self-gate.
           case 'd': case 'D': toggleSelectedDisabled(); e.preventDefault(); return;
           case 'b': case 'B': toggleSelectedBreakpoint(); e.preventDefault(); return;
         }
       }
-      // Escape closes open overlays first. A detached edge end outranks every overlay: it
-      // is a canvas-wide modal state, and leaving it armed while Escape closes something
+      // Escape closes open overlays. A detached edge end takes priority over every overlay:
+      // it is a canvas-wide modal state, and leaving it armed while Escape closes something
       // else would strand the user mid-operation.
       if (e.key === 'Escape') {
         if (edgeDetachActive) { cancelEdgeDetach(); e.preventDefault(); return; }
@@ -166,8 +163,8 @@ export function useEditorKeyboardShortcuts({
         navigateNode(e.shiftKey ? 'prev' : 'next');
         return;
       }
-      // F11: in-app fullscreen (hide sidebar/header). Replaces browser fullscreen on purpose —
-      // designer benefits more from extra horizontal space than from OS-level fullscreen.
+      // F11 toggles in-app fullscreen, hiding sidebar and header. It replaces browser fullscreen
+      // because the designer gains more from the extra horizontal space.
       if (e.key === 'F11' && !editable) {
         toggleFullscreen();
         e.preventDefault();
@@ -175,7 +172,7 @@ export function useEditorKeyboardShortcuts({
       }
       const mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
-      // Ctrl+Shift+P opens Command Palette; Ctrl+P (without shift) opens Quick-Switcher.
+      // Ctrl+Shift+P opens the command palette; Ctrl+P without shift opens the quick switcher.
       if (e.key === 'p' || e.key === 'P') {
         if (e.altKey) { exportPng(); e.preventDefault(); return; }
         if (e.shiftKey) toggleCommandPalette();
@@ -183,22 +180,22 @@ export function useEditorKeyboardShortcuts({
         e.preventDefault();
         return;
       }
-      // Ctrl+F opens Search even from input fields (suppresses browser find).
+      // Ctrl+F opens search even from input fields and suppresses the browser find bar.
       if ((e.key === 'f' || e.key === 'F') && !e.shiftKey) {
         setSearchOpen(true);
         e.preventDefault();
         return;
       }
-      // Ctrl+H opens Find & Replace.
+      // Ctrl+H opens find and replace.
       if (isExpert && (e.key === 'h' || e.key === 'H') && !e.shiftKey) {
         setFindReplaceOpen(true);
         e.preventDefault();
         return;
       }
-      // Ctrl+S → Save (interim-save while lock-by-me). Ctrl+Shift+S → Publish (smart toggle:
-      // Publish/Enable/Disable depending on workflow + lock state). Both prevent the browser's
-      // "save page as…" dialog. Fire even from input fields so a user mid-edit can save without
-      // first defocusing.
+      // Ctrl+S saves (an interim save while this user holds the lock). Ctrl+Shift+S publishes,
+      // switching between publish, enable and disable depending on workflow and lock state.
+      // Both suppress the browser save dialog and fire from input fields too, so an edit can be
+      // saved without defocusing first.
       if (e.key === 's' || e.key === 'S') {
         if (e.shiftKey) triggerPublish(); else triggerSave();
         e.preventDefault();
@@ -213,34 +210,34 @@ export function useEditorKeyboardShortcuts({
       if (e.key === 'y' || e.key === 'Y') { redo(); e.preventDefault(); return; }
       if (isExpert && (e.key === 'g' || e.key === 'G')) { groupSelection(); e.preventDefault(); return; }
       if (e.key === 'a' || e.key === 'A') { selectAll(); e.preventDefault(); return; }
-      // Ctrl+Shift+E → Zoom to selection (existing). Ctrl+E → Bearbeiten (new): claim the
-      // edit lock + atomic Disable. Self-gated; no-op if already locked by me/other.
+      // Ctrl+Shift+E zooms to the selection. Ctrl+E starts editing: it claims the edit lock and
+      // disables the workflow in one step, and does nothing when a lock is already held.
       if (e.key === 'e' || e.key === 'E') {
         if (e.shiftKey && isExpert) zoomToSelection(); else if (!e.shiftKey) triggerLock();
         e.preventDefault();
         return;
       }
-      // Ctrl+U → Unlock (release edit lock). Ctrl+Shift+U → Force unlock (Admin).
+      // Ctrl+U releases the edit lock. Ctrl+Shift+U force-unlocks, which requires Admin.
       if (e.key === 'u' || e.key === 'U') {
         if (e.shiftKey && isExpert) triggerForceUnlock(); else if (!e.shiftKey) triggerUnlock();
         e.preventDefault();
         return;
       }
-      // Ctrl+Enter → Test run; Ctrl+Shift+Enter → Debug run. Both no-op when a run is
-      // already in flight (handler self-checks against liveExecution).
+      // Ctrl+Enter starts a test run, Ctrl+Shift+Enter a debug run. Both do nothing while a run
+      // is already in flight; the handler checks liveExecution itself.
       if (e.key === 'Enter') {
         if (e.shiftKey && isExpert) triggerDebug(); else if (!e.shiftKey) triggerTest();
         e.preventDefault();
         return;
       }
-      // Ctrl+Shift+X → Cancel running execution.
+      // Ctrl+Shift+X cancels the running execution.
       if ((e.key === 'x' || e.key === 'X') && e.shiftKey && !e.altKey) {
         triggerCancel();
         e.preventDefault();
         return;
       }
-      // Ctrl+Shift+T → Tidy auto-layout. Ctrl+Shift+L → Lint panel toggle. Both prevent
-      // the browser defaults (restore-tab / focus-search-bar respectively).
+      // Ctrl+Shift+T runs the tidy auto-layout, Ctrl+Shift+L toggles the lint panel. Both
+      // suppress the browser defaults, restore-tab and focus-search-bar.
       if ((e.key === 't' || e.key === 'T') && e.shiftKey) {
         triggerTidy();
         e.preventDefault();
@@ -251,52 +248,52 @@ export function useEditorKeyboardShortcuts({
         e.preventDefault();
         return;
       }
-      // Ctrl+Shift+O → Restore original layout.
+      // Ctrl+Shift+O restores the original layout.
       if (isExpert && (e.key === 'o' || e.key === 'O') && e.shiftKey) {
         restoreOrigLayout();
         e.preventDefault();
         return;
       }
-      // Ctrl+Shift+D → Diff against version.
+      // Ctrl+Shift+D opens the diff against a version.
       if (isExpert && (e.key === 'd' || e.key === 'D') && e.shiftKey) {
         setDiffOpen(true);
         e.preventDefault();
         return;
       }
-      // Ctrl+Shift+R → Run/clear dry-run simulation.
+      // Ctrl+Shift+R runs or clears the dry-run simulation.
       if (isExpert && (e.key === 'r' || e.key === 'R') && e.shiftKey) {
         triggerSimulation();
         e.preventDefault();
         return;
       }
-      // Ctrl+Alt+X → Clear activity-type filter.
+      // Ctrl+Alt+X clears the activity-type filter.
       if (isExpert && (e.key === 'x' || e.key === 'X') && e.altKey) {
         clearActivityTypeFilter();
         e.preventDefault();
         return;
       }
-      // Ctrl+Shift+N → Toggle Classic/Card node view.
+      // Ctrl+Shift+N switches between the Classic and Card node view.
       if (isExpert && (e.key === 'n' || e.key === 'N') && e.shiftKey) {
         toggleNodeStyle();
         e.preventDefault();
         return;
       }
-      // Ctrl+Shift+J → Export workflow as JSON.
+      // Ctrl+Shift+J exports the workflow as JSON.
       if (isExpert && (e.key === 'j' || e.key === 'J') && e.shiftKey) {
         exportJson();
         e.preventDefault();
         return;
       }
-      // Ctrl+] / Ctrl+[ → Edge width increase / decrease.
+      // Ctrl+] and Ctrl+[ increase and decrease the edge width.
       if (isExpert && e.key === ']') { edgeWidthInc(); e.preventDefault(); return; }
       if (isExpert && e.key === '[') { edgeWidthDec(); e.preventDefault(); return; }
-      // Ctrl+Shift+. (> key) / Ctrl+Shift+, (< key) → Node size increase / decrease.
+      // Ctrl+Shift+. (> key) and Ctrl+Shift+, (< key) increase and decrease the node size.
       if (isExpert && e.shiftKey && e.key === '>') { nodeSizeInc(); e.preventDefault(); return; }
       if (isExpert && e.shiftKey && e.key === '<') { nodeSizeDec(); e.preventDefault(); return; }
-      // Ctrl+Alt+. / Ctrl+Alt+, → Label font increase / decrease.
+      // Ctrl+Alt+. and Ctrl+Alt+, increase and decrease the label font size.
       if (isExpert && e.altKey && e.key === '.') { labelFontInc(); e.preventDefault(); return; }
       if (isExpert && e.altKey && e.key === ',') { labelFontDec(); e.preventDefault(); return; }
-      // Ctrl+Shift+1..5 → Navigate to Workflows / Executions / Machines / Globals / Audit.
+      // Ctrl+Shift+1..5 navigate to Workflows, Executions, Machines, Globals and Audit.
       if (isExpert && e.shiftKey && e.key >= '1' && e.key <= '5') {
         const routes = ['/workflows', '/executions', '/machines', '/global-variables', '/audit'];
         const idx = Number(e.key) - 1;

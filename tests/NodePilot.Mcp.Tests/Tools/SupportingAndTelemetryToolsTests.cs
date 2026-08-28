@@ -290,7 +290,7 @@ public sealed class SupportingAndTelemetryToolsTests
             .RespondWith(Response.Create().WithStatusCode(204));
 
         var tools = new SupportingDataTools(api.Client());
-        // Change only the value; do NOT pass isSecret → must stay secret.
+        // Change only the value; do NOT pass isSecret -> must stay secret.
         await tools.UpdateGlobalVariable(id.ToString(), value: "new-token-value");
 
         var body = api.Server.LogEntries.Last(e => e.RequestMessage!.Method == "PUT").RequestMessage!.Body ?? "";

@@ -6,11 +6,11 @@ namespace NodePilot.Data.Security;
 /// The on-disk/in-column AES-GCM envelope every NodePilot secret is wrapped in:
 /// <c>[version:1][nonce:12][ciphertext:n][tag:16]</c>.
 /// <para>
-/// This is a persisted wire format — a stored credential written today must still open years
-/// later. It therefore lives in exactly one place: <see cref="AesGcmSecretProtector"/> (credential
-/// column) and <see cref="PassphraseSecretProtector"/> (backup rewrap) previously carried
-/// byte-compatible copies of the layout, where any edit to one would have silently produced blobs
-/// the other could not read.
+/// This is a persisted wire format: a stored credential written today must still open years
+/// later. It lives in exactly one place so <see cref="AesGcmSecretProtector"/> (credential
+/// column) and <see cref="PassphraseSecretProtector"/> (backup rewrap) stay byte-compatible;
+/// duplicating the layout in both places would risk one silently producing blobs the other
+/// cannot read.
 /// </para>
 /// </summary>
 internal static class SecretEnvelope
@@ -29,8 +29,8 @@ internal static class SecretEnvelope
         var ciphertext = new byte[plain.Length];
         var tag = new byte[TagSize];
 
-        // .NET 10's AesGcm constructor takes the key + tag size — the latter is required
-        // since 9.0 (was inferable before; explicit prevents later breaking-change pain).
+        // The AesGcm constructor requires an explicit tag size; passing it explicitly avoids
+        // depending on default inference that could change in a future .NET version.
         using (var gcm = new AesGcm(key, TagSize))
             gcm.Encrypt(nonce, plain, ciphertext, tag);
 

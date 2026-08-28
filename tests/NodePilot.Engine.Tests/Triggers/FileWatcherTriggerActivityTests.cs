@@ -8,12 +8,11 @@ using Xunit;
 namespace NodePilot.Engine.Tests.Triggers;
 
 /// <summary>
-/// IActivityExecutor coverage for <see cref="FileWatcherTrigger"/>. Two distinct shapes:
+/// IActivityExecutor coverage for <see cref="FileWatcherTrigger"/>. Two execution shapes:
 ///
-///   * Triggered execution: the FileWatcher source pushed manual.filePath/fileAction
-///     into context.Variables → the activity surfaces those and returns immediately.
-///   * Manual execution: someone hits "Run now" on the workflow → no manual.* present →
-///     the activity scans the directory once.
+///   * Triggered execution: the FileWatcher source supplies manual.filePath/fileAction through
+///     context.Variables; the activity surfaces them and returns immediately.
+///   * Manual execution: no manual.* values are present, so the activity scans the directory once.
 /// </summary>
 public class FileWatcherTriggerActivityTests
 {
@@ -62,7 +61,7 @@ public class FileWatcherTriggerActivityTests
     [Fact]
     public async Task Execute_ManualScan_ReportsFileCount()
     {
-        // No manual.* payload → "Run now" mode. Activity scans the directory once and
+        // No manual.* payload -> "Run now" mode. Activity scans the directory once and
         // returns the list. This is what the editor's manual-fire button hits.
         var tempDir = Path.Combine(Path.GetTempPath(), "nodepilot-fwtrigger-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);

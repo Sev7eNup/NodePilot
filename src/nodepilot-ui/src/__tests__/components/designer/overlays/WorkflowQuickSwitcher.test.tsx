@@ -7,10 +7,10 @@ import { WorkflowQuickSwitcher } from '../../../../components/designer/overlays/
 import { api } from '../../../../api/client';
 
 /**
- * Pin: when the user picks a different workflow from inside an editor route, the
- * navigation carries `fromWorkflow` in location.state. Dirty confirmation is owned by
- * WorkflowEditorPage/useBlocker, so this component must not prompt or pre-write recents
- * before a blockable editor-to-editor navigation succeeds.
+ * Picking a different workflow from inside an editor route carries `fromWorkflow` in
+ * location.state. Dirty confirmation belongs to WorkflowEditorPage/useBlocker, so this
+ * component must not prompt or pre-write recents before a blockable editor-to-editor
+ * navigation succeeds.
  */
 
 vi.mock('../../../../api/client', () => ({
@@ -25,8 +25,8 @@ const getCapturedState = () => capturedState;
 
 function LocationSpy() {
   const location = useLocation();
-  // Capture in an effect, not during render — render-phase reassignment of an outer
-  // binding is a side effect (react-hooks/globals). act() flushes this before assertions.
+  // Capture in an effect, not during render: reassigning an outer binding while rendering is a
+  // side effect (react-hooks/globals). act() flushes the effect before assertions run.
   useEffect(() => { capturedState = location.state as CapturedLocationState | null; }, [location.state]);
   return null;
 }

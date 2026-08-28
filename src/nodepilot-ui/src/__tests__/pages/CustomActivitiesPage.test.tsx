@@ -337,11 +337,10 @@ describe('CustomActivitiesPage', () => {
   });
 
   it('createDialog_fieldsUseThePageDialogOutlineStyle_notTheRecessedInputField', async () => {
-    // `.input-field` is the recessed designer-panel style and needs a raised surface to sink
-    // into. ModalShell only gets that lift in the dark skins, so on `light-grey` these fields
-    // rendered as flat beige boxes on a white panel and lost their outline on focus. The fix is
-    // the outline chain every other admin dialog uses — pin it, because the class choice IS the
-    // decision here and a copy-paste from a designer panel would silently undo it.
+    // `.input-field` is the recessed designer-panel style, which needs a raised surface to
+    // sink into. ModalShell only provides that lift in the dark skins, so `light-grey`
+    // dialogs need the outline chain every other admin dialog uses. This pins the class
+    // choice so a copy-paste from a designer panel does not silently swap it back.
     seed([]);
     renderPage('Admin');
     await waitFor(() => expect(screen.getByRole('button', { name: /New Custom Node/i })).toBeInTheDocument());

@@ -4,12 +4,11 @@ using System.Text.Json;
 namespace NodePilot.Api.Configuration;
 
 /// <summary>
-/// Reads a GUID list from one configuration provider instead of from IConfiguration's merged
-/// child view. Array indices are not replacement values in Microsoft.Extensions.Configuration:
-/// a higher-priority one-element array otherwise leaves lower-priority indices 1..N visible.
-/// Security allow-lists must instead use the complete value from the highest-priority provider
-/// that declares the section. An explicitly empty JSON array is represented by that provider as
-/// an exact key with a null value and therefore acts as a deny-all tombstone.
+/// Reads a GUID list from a single configuration provider rather than from the merged view of
+/// IConfiguration. Array indices are not replacement values there, so a higher-priority
+/// one-element array still leaves lower-priority indices visible. Security allow-lists take the
+/// whole value from the highest-priority provider that declares the section; an empty JSON array
+/// arrives as an exact key with a null value and acts as a deny-all tombstone.
 /// </summary>
 internal static class ProviderAtomicGuidList
 {

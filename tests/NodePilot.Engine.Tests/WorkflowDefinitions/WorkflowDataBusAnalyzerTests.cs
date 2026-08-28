@@ -61,10 +61,10 @@ public sealed class WorkflowDataBusAnalyzerTests
         var unresolved = WorkflowDataBusAnalyzer.FindUnresolved(def);
 
         unresolved.Should().Contain(r => r.Code == "unknown-template-ref" && r.Reference == "{{ghost.output}}");
-        // invalid tail on a real step name → stays literal, with a param.X hint.
+        // invalid tail on a real step name -> stays literal, with a param.X hint.
         unresolved.Should().Contain(r => r.Code == "invalid-template-tail" && r.Reference == "{{check.freeGb}}"
             && r.Reason.Contains("check.param.freeGb"));
-        // no-tail on a real step name → suggests adding a tail.
+        // no-tail on a real step name -> suggests adding a tail.
         unresolved.Should().Contain(r => r.Code == "invalid-template-tail" && r.Reference == "{{check}}"
             && r.Reason.Contains("add a tail"));
         // valid tail must NOT be reported.
@@ -132,7 +132,7 @@ public sealed class WorkflowDataBusAnalyzerTests
         // default arm (unknown operation) yields no dynamic params — only the base output triad.
         vars.Upstream.Should().Contain("{{rdef.output}}");
         vars.Upstream.Should().NotContain("{{rdef.param.values}}");
-        // read without a valueName → values/count (ternary false branch).
+        // read without a valueName -> values/count (ternary false branch).
         vars.Upstream.Should().Contain("{{rempty.param.values}}").And.Contain("{{rempty.param.count}}");
     }
 

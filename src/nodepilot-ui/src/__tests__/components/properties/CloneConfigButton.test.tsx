@@ -52,7 +52,7 @@ describe('CloneConfigButton — visibility', () => {
 
   it('does not render when source remote nodes have no machine set', () => {
     const current = activityNode('s1', { activityType: 'serviceManagement' });
-    // Different type, but the only remote sibling has no machine — clone would copy null.
+    // Different type, and the only remote sibling has no machine, so cloning would copy null.
     const sibling = activityNode('s2', { activityType: 'runScript', targetMachineId: null });
     const { container } = render(
       <CloneConfigButton currentNode={current} allNodes={[current, sibling]} onClone={vi.fn()} />,
@@ -129,11 +129,11 @@ describe('CloneConfigButton — clone action', () => {
     const patched = onClone.mock.calls[0][0] as Record<string, unknown>;
     expect(patched.targetMachineId).toBe('machine-A');
     expect(patched.credentialId).toBe('cred-1');
-    // Full source config replaces target config — including the script body
+    // The full source config replaces the target config, including the script body.
     expect((patched.config as Record<string, unknown>).script).toBe('echo source');
     expect((patched.config as Record<string, unknown>).timeoutSeconds).toBe(60);
     expect((patched.config as Record<string, unknown>).engine).toBe('pwsh');
-    // Step identity (label + outputVariable) stays
+    // Step identity (label and outputVariable) is kept.
     expect(patched.label).toBe('Target Step');
     expect(patched.outputVariable).toBe('targetOut');
   });
@@ -150,7 +150,7 @@ describe('CloneConfigButton — clone action', () => {
     fireEvent.click(screen.getByTestId('clone-source-s2'));
 
     expect(screen.getByText('Adopted')).toBeInTheDocument();
-    // Badge resets after the timeout fires
+    // The badge resets once the timeout fires.
     act(() => { vi.advanceTimersByTime(2000); });
     expect(screen.queryByText('Adopted')).not.toBeInTheDocument();
   });
@@ -187,7 +187,7 @@ describe('CloneConfigButton — scope toggle', () => {
     render(<CloneConfigButton currentNode={current} allNodes={[current, sameType, remoteOther]} onClone={vi.fn()} />);
 
     fireEvent.click(screen.getByTestId('clone-config-button'));
-    // Default scope = "all", only same-type appears
+    // The default scope is "all", so only same-type nodes appear.
     expect(screen.queryByText('Service-Step')).not.toBeInTheDocument();
 
     // Switch scope

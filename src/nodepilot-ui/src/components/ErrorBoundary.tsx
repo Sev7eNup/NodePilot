@@ -4,9 +4,8 @@ type FallbackRenderer = (error: Error, reset: () => void) => ReactNode;
 
 type Props = {
   children: ReactNode;
-  /** Optional custom fallback. When provided, replaces the default full-page error UI —
-   *  useful for nesting a boundary inside a page so a partial crash doesn't blank the
-   *  entire app. */
+  /** Optional custom fallback that replaces the default full-page error UI. Lets a boundary
+   *  sit inside a page so a partial crash does not blank the whole app. */
   fallback?: FallbackRenderer;
   /** Tag for the console log so nested boundaries are distinguishable in DevTools. */
   scope?: string;

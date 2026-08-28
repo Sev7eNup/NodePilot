@@ -11,13 +11,12 @@ using Spectre.Console.Cli;
 
 namespace NodePilot.Cli.Commands.Settings;
 
-// Branch: `np settings ...` — wraps /api/admin/settings/* (Admin role).
+// `np settings ...` wraps /api/admin/settings/* (Admin role).
 //
-// Design: every mutation is file-based + ETag-gated, mirroring the API contract one-to-one.
-// We deliberately do not provide a `set key=value` shortcut: the backend works on
-// whole-section payloads with DataAnnotations + boot-validator pre-flight; piecing
-// together a single key from the CLI would require local schema knowledge and would
-// break on any backend additions. File-roundtrip is the honest interface.
+// Every mutation is file-based and ETag-gated, matching the API contract directly. There is no
+// `set key=value` shortcut: the backend validates whole-section payloads with DataAnnotations
+// and a boot-validator pre-flight, so a single-key path would need its own schema knowledge and
+// would break on backend additions. File round-trip keeps the interface honest.
 
 /// <summary>
 /// Renders a server-shaped JSON document while honouring the caller's <c>-o</c> choice:

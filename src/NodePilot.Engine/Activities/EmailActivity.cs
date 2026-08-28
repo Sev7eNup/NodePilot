@@ -37,41 +37,39 @@ public class EmailActivity : IActivityExecutor
             var body = config.GetString("body", "");
 
             // Header-injection defense: CR/LF in address or subject would split headers. .NET's
-            // MailMessage already rejects these in most paths, but we fail early with a clear error.
+            // MailMessage already rejects these in most paths, but we fail early with a clear
+            // error.
             if (SmtpTransport.HasHeaderInjection(to, subject))
                 return new ActivityResult { Success = false, ErrorOutput = "Email: newline characters are not allowed in 'to' or 'subject'" };
 
-            // H-2 (security audit 2026-05-15): default-on TLS. SmtpClient defaults to
-            // EnableSsl=false; that would send LOGIN/PLAIN credentials + the whole message
-            // body in plaintext. The option now lives on SmtpOptions with a safe default,
-            // and SecurityHardeningWarnings yells at boot if an operator flipped it off
-            // while still configuring a Username.
+            // TLS is on by default. SmtpClient itself defaults to EnableSsl=false, which would
+            // send LOGIN/PLAIN credentials and the whole message body in plaintext. SmtpOptions
+            // sets a safe default, and SecurityHardeningWarnings warns at boot if TLS is off
+            // while a Username is still configured.
             //
-            // Hot-reload: read SmtpOptions per execution so a live config edit takes effect
-            // without a service restart.
+            // SmtpOptions is read per execution so a live config edit takes effect without a
+            // service restart.
             var o = _smtp.CurrentValue;
             using var smtpClient = SmtpTransport.CreateClient(o);
 
             var message = new MailMessage(o.From, to, subject, body);
 
-            // D5: accept `true`-literal AND `"true"`-string, matching every other
-            // boolean knob in the engine. The previous `isHtml.GetBoolean()` call
-            // threw InvalidOperationException when the value came in as a string
-            // (which happens after template resolution of e.g. {{manual.isHtml}}).
+            // Accepts boolean true or the string "true", matching every other boolean config
+            // knob in the engine — a value can arrive as a string after template resolution,
+            // e.g. {{manual.isHtml}}.
             if (config.GetBool("isHtml", false))
                 message.IsBodyHtml = true;
 
-            // D6: honour `timeoutSeconds` from the activity config. Default 30s
-            // (mirrors SmtpClient's default).
+            // Honors `timeoutSeconds` from the activity config. Default 30s, mirroring
+            // SmtpClient's own default.
             //
-            // System.Net.Mail.SmtpClient's own cancellation is RACY: a token that trips
-            // mid-connect (dev SMTP black-holing the SYN, or a slow relay) can leave the
-            // returned Task unresolved. An unresolved step task parks the engine scheduler
-            // inside `Task.WhenAny` forever, so the whole execution strands in `Running`.
-            // Bound the AWAIT itself with WaitAsync so the step is GUARANTEED to resolve
-            // within the timeout — TimeoutException -> failed step, run-cancel -> Cancelled —
-            // regardless of SmtpClient's internal state. The abandoned send task is torn down
-            // when `smtpClient` is disposed on the way out.
+            // System.Net.Mail.SmtpClient's own cancellation is unreliable: a token that trips
+            // mid-connect (a dev SMTP server black-holing the SYN, or a slow relay) can leave
+            // the returned Task unresolved, parking the engine scheduler's Task.WhenAny forever
+            // and stranding the whole execution in Running. Bounding the await with WaitAsync
+            // makes the step always resolve within the timeout — TimeoutException becomes a
+            // failed step, run-cancel becomes Cancelled — regardless of SmtpClient's internal
+            // state. The abandoned send task is torn down when `smtpClient` is disposed.
             var timeoutSeconds = config.GetOptionalPositiveInt("timeoutSeconds") ?? DefaultSmtpTimeoutSeconds;
             try
             {
@@ -84,10 +82,9 @@ public class EmailActivity : IActivityExecutor
             catch (SmtpException ex)
             {
                 // SmtpException.Message is almost always the constant "Failure sending mail.",
-                // which is useless on its own: a refused connection, a TLS mismatch and a
-                // rejected recipient all look identical. Field finding 2026-08-02 — 2021
-                // failures in one lab, every one of them with that same seven-word message.
-                // Report where we tried to send and what the underlying transport said.
+                // which does not distinguish a refused connection, a TLS mismatch, or a
+                // rejected recipient. Report the endpoint used and the underlying transport
+                // error instead.
                 return new ActivityResult
                 {
                     Success = false,
@@ -117,7 +114,7 @@ public class EmailActivity : IActivityExecutor
                + $"(TLS={(options.EnableSsl ? "on" : "off")}{status}) failed: {cause}";
     }
 
-    // D6: bounded SMTP timeout so a stuck connection cannot pin a step indefinitely.
-    // Override per-activity via the `timeoutSeconds` config field (positive integer).
+    // Bounds the SMTP send so a stuck connection cannot pin a step indefinitely. Override
+    // per-activity via the `timeoutSeconds` config field (positive integer).
     internal const int DefaultSmtpTimeoutSeconds = 30;
 }

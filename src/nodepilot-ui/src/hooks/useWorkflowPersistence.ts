@@ -61,7 +61,7 @@ export function useWorkflowPersistence({
   const persistableDefinition = useMemo(() => stripRuntimeDefinition({ nodes, edges }), [nodes, edges]);
 
   // Always points at the newest rendered draft. Request bodies copy from this ref once; a
-  // follow-up save deliberately captures it again after the preceding request has completed.
+  // follow-up save captures it again after the preceding request completes.
   const draftRef = useRef({ workflowId, name, description: workflow?.description ?? '', persistableDefinition });
   useLayoutEffect(() => {
     if (renderedWorkflowIdRef.current !== workflowId) {
@@ -235,7 +235,7 @@ export function useWorkflowPersistence({
     setIsPublishQueued(true);
     void (async () => {
       try {
-        // Serialize Save -> Publish. The atomic publish then snapshots the latest durable draft.
+        // Let the pending save finish first. The atomic publish then snapshots the latest draft.
         if (saveLoopRef.current) await saveLoopRef.current;
         const snapshot = captureSnapshot();
         if (!snapshot) {

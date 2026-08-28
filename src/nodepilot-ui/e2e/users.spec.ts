@@ -2,21 +2,21 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Part 15 — Admin & User Management.
+ * E2ETests.md part 15 — admin and user management.
  *
  * Hermetic: page.route() mocks only (no backend), per fixtures/mockApi.ts. The SPA renders
- * EN under Playwright, so selectors use roles/attributes + bilingual regexes.
+ * English under Playwright, so selectors use roles and attributes plus bilingual regexes.
  *
- * The /users page is Admin-only (App.tsx <AdminOnly> guard redirects non-Admin → "/"). The
- * default MOCK_USER is Admin, so the page mounts. Self-protection compares by `username`
- * (authStore.username ← me.username == 'e2e-admin'); the row whose username matches gets a
- * "you" badge and a disabled delete button.
+ * The /users page is Admin-only (the App.tsx <AdminOnly> guard redirects non-Admin to "/").
+ * The default MOCK_USER is Admin, so the page mounts. Self-protection compares by `username`
+ * (authStore.username, taken from me.username == 'e2e-admin'); the row whose username matches
+ * gets a "you" badge and a disabled delete button.
  *
  * Maps to:
- *   - 15.1 — Create user (Admin): New User dialog → Create → POST /api/users.
- *   - 15.3 — Password reset: Reset-Password dialog → PUT /api/users/{id} { password }.
- *   - 15.4 — Delete user + self-/last-admin protection: DELETE /api/users/{id}, native confirm(),
- *            self-row delete disabled, last-admin 4xx surfaced in the UI.
+ *   - 15.1 — create user (Admin): New User dialog, Create, POST /api/users.
+ *   - 15.3 — password reset: Reset-Password dialog, PUT /api/users/{id} { password }.
+ *   - 15.4 — delete user plus self- and last-admin protection: DELETE /api/users/{id}, native
+ *            confirm(), self-row delete disabled, last-admin 4xx surfaced in the UI.
  */
 
 const OP_ID = '00000000-0000-0000-0000-0000000000a1';
@@ -41,14 +41,14 @@ function userRow(overrides: Partial<UserRow> = {}): UserRow {
   };
 }
 
-// The admin's own row — username must equal MOCK_USER.username so the self-protection fires.
+// The admin's own row. The username must equal MOCK_USER.username so self-protection fires.
 function selfRow(overrides: Partial<UserRow> = {}): UserRow {
   return userRow({ id: MOCK_USER.id, username: MOCK_USER.username, role: 'Admin', ...overrides });
 }
 
 test.describe('Admin & User-Management (Teil 15)', () => {
   test.beforeEach(async ({ page }) => {
-    await installDefaultMocks(page); // MOCK_USER = Admin → page mounts
+    await installDefaultMocks(page); // MOCK_USER is Admin, so the page mounts
   });
 
   test('15.1 — create new user posts username/role/password', async ({ page }) => {
@@ -185,9 +185,9 @@ test.describe('Admin & User-Management (Teil 15)', () => {
   });
 
   test('15.4c — last-admin delete is rejected and the UI surfaces the 4xx message', async ({ page }) => {
-    // A *second* admin so the delete button is enabled (not self-protected), but the server
-    // refuses the delete because it's the last admin. The UI surfaces the failure as an
-    // error toast (toast-error).
+    // A second admin keeps the delete button enabled (not self-protected), while the server
+    // refuses the delete as a last-admin removal. The UI surfaces the failure as an error
+    // toast (toast-error).
     const otherAdmin = userRow({ id: 'admin-2', username: 'admin2', role: 'Admin' });
 
     await page.route('**/api/users', (route) =>
@@ -240,7 +240,7 @@ test.describe('Admin & User-Management (Teil 15)', () => {
     const dialog = page.getByRole('heading', { name: /edit user:|benutzer bearbeiten/i }).locator('..');
     await expect(dialog).toBeVisible();
 
-    // Promote Operator → Admin. (Save is disabled until something actually changes.)
+    // Promote the Operator to Admin. Save stays disabled until something actually changes.
     await dialog.locator('select').selectOption('Admin');
     await dialog.getByRole('button', { name: /^save$|^speichern$/i }).click();
 

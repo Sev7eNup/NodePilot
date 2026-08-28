@@ -2,26 +2,13 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 26 — RBAC Rollen-Crossings (the core value here).
+ * Covers E2ETests.md part 26: RBAC role crossings.
  *
- * Hermetic: page.route() mocks only. We simulate each role by overriding `/api/auth/me`
- * with role Admin / Operator / Viewer (authStore reads me.id + me.role). The client-side
- * mirror lives in src/lib/rbac.ts: canWrite = Admin|Operator, canDelete = Admin only,
- * canAdmin = Admin only. WorkflowsPage rows fall back to those global flags when the server
- * omits per-row `capabilities` (so we leave capabilities OUT of the mocks here to exercise
- * the role gate, not the folder-ACL gate).
- *
- * Maps to:
- *   - 26.1 — Viewer cannot write: no "New Workflow", no edit/disable/delete on rows.
- *   - 26.2 — Operator can edit but not delete: edit/duplicate present, delete hidden; same on
- *            Machines (test/edit visible, delete hidden) and Credentials.
- *   - 26.4 — Force-Unlock only Admin: a row locked-by-other shows force-unlock for Admin only.
- *   - 26.5 — DB-Admin viewer only Admin: sidebar /database link + /users + /audit hidden for
- *            non-admins; direct nav to an admin route redirects non-admins away. Same gate
- *            covers /support-log (moved out of Settings → System onto its own admin-only route).
- *
- *  Note: API-level 403 assertions (curl with a role JWT) are server-side and not coverable in
- *  this hermetic UI harness; we assert the UI affordances the server 403 would otherwise back.
+ * Hermetic page.route() mocks only. Each role is simulated by overriding `/api/auth/me` with
+ * Admin, Operator or Viewer; the client-side mirror is src/lib/rbac.ts (canWrite = Admin or
+ * Operator, canDelete and canAdmin = Admin). The mocks omit per-row `capabilities` so that
+ * WorkflowsPage falls back to those global flags, which exercises the role gate rather than the
+ * folder ACL gate. API-level 403s are server-side and are asserted only through the UI here.
  */
 
 const ME_ADMIN = { id: '00000000-0000-0000-0000-0000000000a0', username: 'admin1', role: 'Admin' };
@@ -37,7 +24,7 @@ async function asRole(page: import('@playwright/test').Page, me: typeof ME_ADMIN
   );
 }
 
-// A workflow WITHOUT `capabilities` so WorkflowsPage uses the global role flags for the row.
+// A workflow without `capabilities` so WorkflowsPage falls back to the global role flags.
 function workflow(overrides: Record<string, unknown> = {}) {
   return {
     id: WF_ID,
@@ -125,7 +112,7 @@ test.describe('RBAC Rollen-Crossings (Teil 26)', () => {
     await page.goto('/workflows');
     await expect(page.getByRole('button', { name: 'WF_RBAC' })).toBeVisible({ timeout: 15_000 });
 
-    // Operator CAN create.
+    // Operator can create.
     await expect(page.getByRole('button', { name: /new workflow|neuer workflow/i })).toBeVisible();
 
     const row = page.getByRole('row').filter({ hasText: 'WF_RBAC' });
@@ -196,7 +183,7 @@ test.describe('RBAC Rollen-Crossings (Teil 26)', () => {
   test('26.5 — Operator direct-nav to /database redirects away (admin-only route)', async ({ page }) => {
     await asRole(page, ME_OPERATOR);
     await page.goto('/database');
-    // AdminOnly guard → <Navigate to="/" replace/>. We land on the dashboard, not the DB viewer.
+    // The AdminOnly guard navigates to "/", so the dashboard renders instead of the DB viewer.
     await expect(page).toHaveURL(/\/$|\/dashboard|localhost:\d+\/$/, { timeout: 15_000 });
     await expect(page).not.toHaveURL(/\/database/);
   });

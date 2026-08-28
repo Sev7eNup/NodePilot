@@ -6,9 +6,12 @@ using NodePilot.Data;
 namespace NodePilot.Scheduler.SystemAlerts.Sources;
 
 /// <summary>
-/// Event source: terminal workflow executions (Succeeded / Failed / Cancelled), keyed by execution id and
-/// scoped to the run's workflow/folder. The <c>lookbackSeconds</c> parameter bounds how far back a raw
-/// sample reaches; the evaluator layers per-policy activation-watermark + episode dedup on top so history
+/// Event source: terminal workflow executions (Succeeded / Failed / Cancelled), keyed by execution
+/// id and
+/// scoped to the run's workflow/folder. The <c>lookbackSeconds</c> parameter bounds how far back a
+/// raw
+/// sample reaches; the evaluator layers per-policy activation-watermark + episode dedup on top so
+/// history
 /// is not back-alerted on first activation (ADR 0008).
 /// </summary>
 public sealed class ExecutionResultSource : ISystemAlertSource

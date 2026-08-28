@@ -2,29 +2,17 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 19 — Workflow-Diff / Version-Compare.
+ * E2ETests.md part 19: workflow diff and version compare.
  *
- * Hermetic: page.route() mocks only (no backend), per fixtures/mockApi.ts conventions.
- * EN locale under Playwright.
- *
- * The version diff lives in the workflow designer (WorkflowDiffModal, opened from the editor
- * toolbar's GitCompare button — title "Diff against a previous version"). It:
- *   - lists historical versions from GET /api/workflows/{id}/versions (filtering out isCurrent),
- *   - fetches a chosen version's definition from GET /api/workflows/{id}/versions/{v}
- *     (shape { definition: { nodes, edges } }),
- *   - computes the diff CLIENT-SIDE between that base and the current editor draft
- *     (the workflow's definitionJson), rendering Added (green) / Removed (red) / Changed (amber)
- *     stats + per-node lists,
- *   - and offers "Restore vN" → POST /api/workflows/{id}/rollback/{v} when the caller canWrite.
- *
- * Covers:
- *   - 19.1 — version history list (chronological rows with version + timestamp + author).
- *   - 19.2 — diff modal: added/removed/changed stats + per-node lists, modal closeable.
- *   - 19.3 — rollback fires POST /rollback/{v} after the confirm dialog.
+ * WorkflowDiffModal opens from the designer toolbar, lists historical versions from
+ * GET /api/workflows/{id}/versions, fetches a chosen version from /versions/{v}, computes the
+ * diff against the current editor draft on the client, and offers a restore that posts to
+ * /api/workflows/{id}/rollback/{v} when the caller can write.
+ * Hermetic: page.route mocks only, EN locale under Playwright.
  */
 
 const WF_ID = 'eeeeeeee-1111-2222-3333-444444444444';
-const ME = MOCK_USER; // Admin → canWrite (Restore enabled)
+const ME = MOCK_USER; // Admin, so canWrite is true and Restore is enabled
 
 // Current draft (what the editor loads from definitionJson): nodes step-A + step-B.
 const CURRENT_DEF = {
@@ -35,8 +23,8 @@ const CURRENT_DEF = {
   edges: [{ id: 'e-AB', source: 'step-A', target: 'step-B', type: 'labeled', data: {} }],
 };
 
-// Version 2 (historical base): nodes step-A + step-C. So vs. current:
-//   step-B is ADDED (in current, not in v2), step-C is REMOVED (in v2, not in current).
+// Version 2 (historical base): nodes step-A + step-C. Against the current draft that makes
+// step-B an addition and step-C a removal.
 const V2_DEF = {
   nodes: [
     { id: 'step-A', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'Alpha', activityType: 'log', config: {} } },
@@ -51,7 +39,7 @@ function workflowJson(overrides: Record<string, unknown> = {}) {
     name: 'WF-Versioned',
     description: 'version-diff e2e fixture',
     isEnabled: true,
-    // locked-by-me so the editor opens editable and Restore (canWrite) is enabled.
+    // Locked by the current user so the editor opens editable and Restore is enabled.
     checkedOutByUserId: ME.id,
     checkedOutByUserName: ME.username,
     checkedOutAt: '2026-06-01T00:00:00.000Z',
@@ -70,9 +58,9 @@ const VERSIONS = [
 async function openDiffModal(page: import('@playwright/test').Page) {
   await seedExpertMode(page);
   await page.goto(`/workflows/${WF_ID}`);
-  // Diff now lives inside the "Werkzeuge" (Tools) menu — open it first, then click the row.
+  // The diff entry sits inside the Tools menu, so open that menu first.
   await page.getByTestId('tools-menu-trigger').click();
-  // Toolbar diff row (role=menuitem) — title resolves to "Diff against a previous version" (EN).
+  // Toolbar diff row (role=menuitem); its title reads "Diff against a previous version" in EN.
   const diffBtn = page.getByRole('menuitem', { name: /diff against a previous version|diff gegen vorherige version/i });
   await expect(diffBtn).toBeVisible({ timeout: 20_000 });
   await diffBtn.click();
@@ -117,21 +105,21 @@ test.describe('Workflow-Diff / Version-Compare (Teil 19)', () => {
   test('19.2 — picking v2 renders added/removed stats and per-node lists', async ({ page }) => {
     await openDiffModal(page);
 
-    // Scope every assertion to the diff modal panel — "Bravo"/"Charlie" also appear on the
+    // Scope every assertion to the diff modal panel: "Bravo" and "Charlie" also appear on the
     // React Flow canvas underneath, so unscoped text matches are ambiguous. The modal is the
     // fixed full-screen overlay that contains the "Workflow Diff" heading.
     const modal = page.locator('div.fixed.inset-0').filter({ hasText: 'Workflow Diff' });
 
-    // Pick version 2 on the left → diff computes against the current draft.
+    // Pick version 2 on the left; the diff is computed against the current draft.
     await modal.getByText('Version 2', { exact: true }).click();
 
-    // Stats grid: vs. current (A+B) the base v2 (A+C) yields step-B added, step-C removed.
-    // Each stat card is "LABEL" + a count. Assert the section labels render.
+    // Stats grid: base v2 (A+C) against the current draft (A+B) yields one addition and one
+    // removal. Each stat card is a label plus a count, so assert the labels render.
     await expect(modal.getByText('Added', { exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(modal.getByText('Removed', { exact: true })).toBeVisible();
     await expect(modal.getByText('Changed', { exact: true })).toBeVisible();
 
-    // Per-node lists: "Nodes added" → Bravo (step-B), "Nodes removed" → Charlie (step-C).
+    // Per-node lists: "Nodes added" holds Bravo (step-B), "Nodes removed" holds Charlie (step-C).
     await expect(modal.getByText(/nodes added/i)).toBeVisible();
     await expect(modal.getByText('Bravo', { exact: true })).toBeVisible();
     await expect(modal.getByText(/nodes removed/i)).toBeVisible();
@@ -155,12 +143,12 @@ test.describe('Workflow-Diff / Version-Compare (Teil 19)', () => {
     await openDiffModal(page);
     await page.getByText('Version 2', { exact: true }).click();
 
-    // The "Restore v2" button appears once a version is selected (canWrite=true → enabled).
+    // The "Restore v2" button appears once a version is selected, enabled because canWrite.
     const restore = page.getByRole('button', { name: /restore v2/i });
     await expect(restore).toBeVisible({ timeout: 10_000 });
 
     await restore.click();
-    // ConfirmHost modal "Restore workflow to version 2?" — confirm via OK.
+    // Confirm the ConfirmHost modal "Restore workflow to version 2?" via OK.
     await page.getByRole('button', { name: 'OK' }).click();
 
     await expect.poll(() => rollbackVersion, { timeout: 10_000 }).toBe('2');

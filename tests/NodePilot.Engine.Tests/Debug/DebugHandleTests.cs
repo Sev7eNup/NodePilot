@@ -17,7 +17,8 @@ public class DebugHandleTests
         var handle = new DebugHandle();
         var awaitTask = handle.AwaitResumeAsync("step-1", CancellationToken.None);
 
-        // Resume happens "later" (asynchronously) — awaitTask must return exactly this request object.
+        // Resume happens "later" (asynchronously) — awaitTask must return exactly this request
+        // object.
         var resumed = handle.Resume("step-1", new ResumeRequest(ResumeCommand.Continue, null));
         resumed.Should().BeTrue();
 
@@ -46,7 +47,7 @@ public class DebugHandleTests
     public void Resume_OnUnknownStep_ReturnsFalse()
     {
         var handle = new DebugHandle();
-        // Nobody is waiting → Resume has nothing to resolve.
+        // Nobody is waiting -> Resume has nothing to resolve.
         var ok = handle.Resume("non-existent", new ResumeRequest(ResumeCommand.Continue, null));
         ok.Should().BeFalse();
     }

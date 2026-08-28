@@ -7,7 +7,8 @@ namespace NodePilot.Engine.Tests.Scorch;
 
 /// <summary>
 /// Covers the SCOrch .ois_export importer against the real export format:
-///   - Links are <c>Object</c> elements with <c>ObjectTypeName="Link"</c>, not separate <c>&lt;Link&gt;</c>.
+/// - Links are <c>Object</c> elements with <c>ObjectTypeName="Link"</c>, not separate
+/// <c>&lt;Link&gt;</c>.
 ///   - Activity properties are direct children of <c>Object</c> (e.g. <c>&lt;ScriptBody&gt;</c>).
 ///   - Positions live in <c>PositionX</c> / <c>PositionY</c>.
 ///   - Variable references use the <c>`d.T.~Vb/{GUID}`d.T.~Vb/</c> pattern.
@@ -275,7 +276,8 @@ public class ScorchImporterTests
         var def = JsonSerializer.Deserialize<JsonElement>(result.Workflows[0].DefinitionJson);
         var useNode = def.GetProperty("nodes").EnumerateArray()
             .First(n => n.GetProperty("id").GetString() == dstId.ToString());
-        // References resolve through the source node's outputVariable, derived from its SCOrch name,
+        // References resolve through the source node's outputVariable, derived from its SCOrch
+        // name,
         // so an imported canvas shows "{{Get.param.X}}" rather than a bare GUID.
         var scriptOut = useNode.GetProperty("data").GetProperty("config").GetProperty("script").GetString();
         scriptOut.Should().Contain("{{Get.param.LastModificationDateTime}}");
@@ -302,7 +304,7 @@ public class ScorchImporterTests
     [Fact]
     public void Parse_RealisticPolicy_ProducesExpectedShape()
     {
-        // Mini-reproduction of the user's real export: a schedule → get-file → compare → email
+        // Mini-reproduction of the user's real export: a schedule -> get-file -> compare -> email
         // chain with real link-trigger conditions + variable substitution.
         var varGuid = Guid.NewGuid();
         var schedule = Guid.NewGuid();
@@ -396,7 +398,7 @@ public class ScorchImporterTests
         getFileNode.GetProperty("data").GetProperty("config").GetProperty("path").GetString()
             .Should().Contain("{{globals.TargetServer}}");
 
-        // The second edge (getFile → compare) has a comparison expression against
+        // The second edge (getFile -> compare) has a comparison expression against
         // the getFile step's FileExists param.
         var edges = def.GetProperty("edges").EnumerateArray().ToList();
         var condEdge = edges.First(e =>

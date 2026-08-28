@@ -3,28 +3,26 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { VariableSuggestion } from './useVariableAutocomplete';
 
-// In narrow FieldGrid cells (~180px) the anchor width isn't enough for long variable
-// expressions + label. 420px covers roughly 30 monospace characters + 25 sans-serif
-// label characters + padding/gap.
+// In narrow FieldGrid cells the anchor is too small to show a long variable expression next
+// to its label, so the dropdown gets its own minimum width.
 const MIN_WIDTH = 420;
 
 function computePos(rect: DOMRect) {
   const width = Math.max(rect.width, MIN_WIDTH);
-  // If the input sits far to the right in the panel, a 420px-wide dropdown would stick
-  // out past the right edge of the viewport — shift it left so the right edge stays on-screen.
+  // If the input sits far to the right, the dropdown would extend past the viewport edge,
+  // so shift it left far enough to keep its right edge on screen.
   const left = Math.max(8, Math.min(rect.left, globalThis.innerWidth - width - 8));
   return { top: rect.bottom + 4, left, width };
 }
 
 /**
- * Renders the `{{`-autocomplete dropdown anchored beneath its host input. Uses a portal
- * so the dropdown escapes any `overflow-hidden` / `overflow-auto` ancestor (the panel
- * scroll container, the redesigned Section card, etc.) and can extend over everything
- * below it. Position is recomputed on scroll/resize/open via the input's
- * getBoundingClientRect.
+ * Renders the `{{` autocomplete dropdown anchored beneath its host input. A portal keeps the
+ * dropdown out of any `overflow-hidden` or `overflow-auto` ancestor, such as the panel scroll
+ * container, so it can extend over the content below. The position is recomputed on open,
+ * scroll and resize from the input's getBoundingClientRect.
  *
- * onMouseDown (not onClick) on the items because the host's input fires onBlur first —
- * onClick would land in the void after the dropdown closes itself.
+ * Items use onMouseDown instead of onClick because the host input fires onBlur first, which
+ * closes the dropdown before an onClick could arrive.
  */
 export function VariableSuggestionsDropdown({
   open,
@@ -45,15 +43,15 @@ export function VariableSuggestionsDropdown({
   const { t } = useTranslation('properties');
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
-  // Compute position synchronously after layout so the dropdown appears at the right
-  // place on the same frame it opens (no flicker).
+  // Compute the position synchronously after layout so the dropdown appears in the right
+  // place on the same frame it opens, without flicker.
   useLayoutEffect(() => {
     if (!open || !anchorRef.current) { setPos(null); return; }
     setPos(computePos(anchorRef.current.getBoundingClientRect()));
   }, [open, anchorRef]);
 
-  // Re-position on scroll (capture phase to catch the panel's internal scroll container,
-  // not just window) and on resize. Closing handled by the host input's onBlur.
+  // Reposition on scroll and resize. The capture phase catches the panel's internal scroll
+  // container as well as the window. Closing is handled by the host input's onBlur.
   useEffect(() => {
     if (!open) return;
     const update = () => {
@@ -70,8 +68,8 @@ export function VariableSuggestionsDropdown({
 
   if (!open || suggestions.length === 0 || !pos) return null;
 
-  // Cap height to leave a small gap to the viewport bottom; if the input is near the
-  // bottom of the screen, still allow at least 200 px so the user gets a useful list.
+  // Cap the height to leave a small gap at the viewport bottom, but keep a floor so an input
+  // near the bottom of the screen still shows a usable list.
   const maxHeight = Math.max(200, globalThis.innerHeight - pos.top - 8);
 
   return createPortal(

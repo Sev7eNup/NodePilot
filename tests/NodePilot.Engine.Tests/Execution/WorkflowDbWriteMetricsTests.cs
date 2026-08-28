@@ -151,8 +151,10 @@ public class WorkflowDbWriteMetricsTests
 
     /// <summary>
     /// Runs <paramref name="action"/> with a live <see cref="MeterListener"/> attached to the
-    /// DB-write instruments and returns everything that was emitted for <paramref name="operation"/>.
-    /// The operation tag is unique per test, so measurements from tests running in parallel are filtered out.
+    /// DB-write instruments and returns everything that was emitted for <paramref
+    /// name="operation"/>.
+    /// The operation tag is unique per test, so measurements from tests running in parallel are
+    /// filtered out.
     /// </summary>
     private static async Task<IReadOnlyList<CapturedMeasurement>> MeasureAsync(string operation, Func<Task> action)
     {

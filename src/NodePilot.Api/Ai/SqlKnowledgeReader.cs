@@ -6,22 +6,22 @@ using NodePilot.Core.Interfaces;
 namespace NodePilot.Api.Ai;
 
 /// <summary>
-/// <see cref="ISqlKnowledgeReader"/> over the existing DbAdmin services. Reuses
-/// <see cref="DbAdminMetadataService"/> (singleton — schema is stable) for the catalog and
-/// <see cref="DbAdminQueryExecutor"/> (scoped — owns the request DbContext) for read-only execution,
+/// <see cref="ISqlKnowledgeReader"/> over the DbAdmin services. Uses
+/// <see cref="DbAdminMetadataService"/> (singleton, the schema is stable) for the catalog and
+/// <see cref="DbAdminQueryExecutor"/> (scoped, owns the request DbContext) for read-only execution,
 /// then redacts every cell before it leaves the reader. Scoped, matching
 /// <see cref="SettingsKnowledgeReader"/>.
 ///
-/// <para><b>Redaction (three layers):</b> first, <see cref="DbAdminSecretColumns"/> refuses statements
+/// <para><b>Redaction (three layers):</b> first, <see cref="DbAdminSecretColumns"/> refuses
+/// statements
 /// that name a protected column and replaces protected result columns with <c>"***"</c>; second, it
 /// refuses whole-row serializers over those tables, which would otherwise carry the secret past the
 /// name-based mask; third, every remaining cell is stringified and run through
 /// <see cref="IAuditDetailsRedactor"/>. Result rows are capped (token budget) and cells truncated.
 /// Only <c>string?</c> ever leaves this reader.</para>
 ///
-/// <para>This closes the secret-leak gap that raw SQL otherwise opens. The same
-/// <see cref="DbAdminSecretColumns"/> guard runs on the <c>/api/dbadmin/query</c> endpoint, so the
-/// MCP/CLI/UI raw-SQL path enforces the identical contract.</para>
+/// <para>The same <see cref="DbAdminSecretColumns"/> guard runs on the <c>/api/dbadmin/query</c>
+/// endpoint, so the MCP/CLI/UI raw-SQL path enforces the identical contract.</para>
 /// </summary>
 public sealed class SqlKnowledgeReader : ISqlKnowledgeReader
 {
@@ -110,7 +110,8 @@ public sealed class SqlKnowledgeReader : ISqlKnowledgeReader
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            // Bad SQL, timeout, multi-statement, … — surface as Error so the model can correct the query.
+            // Bad SQL, timeout, multi-statement: surface as Error so the model can correct the
+            // query.
             return new SqlQueryKnowledgeResult(Array.Empty<string>(), Array.Empty<IReadOnlyList<string?>>(), false, sw.ElapsedMilliseconds, ex.Message);
         }
 

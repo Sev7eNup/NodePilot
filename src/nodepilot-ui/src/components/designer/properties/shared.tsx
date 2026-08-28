@@ -27,9 +27,8 @@ import { useVariableAutocomplete } from './useVariableAutocomplete';
 import { VariableSuggestionsDropdown } from './VariableSuggestionsDropdown';
 import { AnchoredPickerPopover } from './AnchoredPickerPopover';
 
-/** Preference store for the autocomplete toggle. Wrapped in its own module so every
- *  VariableInsertField instance reads the same value (and a change instantly propagates
- *  to all open fields, since they all share the same storage key + read path). */
+/** Preference store for the autocomplete toggle. Every VariableInsertField instance shares this
+ *  storage key and read path, so a change applies to all open fields at once. */
 const AUTOCOMPLETE_STORAGE_KEY = 'nodepilot.designer.inlineAutocomplete';
 function readAutocompletePref(): boolean {
   if (typeof window === 'undefined') return true;
@@ -37,7 +36,7 @@ function readAutocompletePref(): boolean {
   return v === null ? true : v === 'true';
 }
 
-/** Minimal shape returned by GET /api/global-variables — admin lists + picker share this. */
+/** Minimal global-variable shape shared by admin lists and the picker. */
 type GlobalVariableRow = {
   id: string;
   name: string;
@@ -48,9 +47,9 @@ type GlobalVariableRow = {
 
 export { ACTIVITY_ICONS, REMOTE_ACTIVITY_TYPES, TIMEOUT_ACTIVITY_TYPES };
 
-/** Quiet picker/toggle chip shared by all field-level pickers (Vars/Globals/Liste/`{{`).
- *  Active = the app-wide accent state (`bg-primary/15 text-primary`, like toolbar toggles);
- *  everything else stays neutral so accent color is reserved for interactive states. */
+/** Chip class shared by all field-level pickers (variables, globals, options, `{{`).
+ *  The active state uses the app-wide accent color; every other state stays neutral so the
+ *  accent is reserved for interactive states. */
 export const pickerChipClass = (active = false) =>
   `inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-label font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-default ${
     active
@@ -58,8 +57,8 @@ export const pickerChipClass = (active = false) =>
       : 'bg-surface-high text-on-surface-variant hover:bg-surface-highest'
   }`;
 
-/** Locale-aware label for an activity type. Custom activities use their author-set name (never i18n);
- *  built-ins fall back to the raw type if unmapped. */
+/** Locale-aware label for an activity type. Custom activities keep their author-set name and are
+ *  never translated; built-ins fall back to the raw type when unmapped. */
 export function getActivityLabel(type: string): string {
   if (isCustomActivityType(type)) return getCustomActivityFacts(type)?.name ?? type;
   const key = ACTIVITY_LABEL_KEYS[type];
@@ -71,18 +70,18 @@ export interface ConfigProps {
   config: Record<string, unknown>;
   onUpdate: (patch: Record<string, unknown>) => void;
   upstreamVars?: UpstreamVariable[];
-  // Only relevant for StartWorkflow / ForEach — ignored by other configs.
+  // Only relevant for StartWorkflow and ForEach; other configs ignore it.
   onOpenWorkflowPicker?: () => void;
-  // Identity of the step being edited. Used by configs that offer an inline step-test
-  // (currently only RunScriptConfig's "Run" button inside the script editor).
+  // Identity of the step being edited. Used by configs that offer an inline step test,
+  // currently only the Run button in RunScriptConfig's script editor.
   workflowId?: string;
   stepId?: string;
   outputVariableName?: string;
   lastStepsByStepId?: Map<string, import('../../../types/api').StepExecution>;
   /**
-   * True when the step targets local execution (no remote machine). Defaults to true at the call
-   * site so a config rendered standalone (e.g. in tests) isn't wrongly treated as remote. Used by
-   * RunScriptConfig to gate the process-isolation toggle, which is local-only.
+   * True when the step runs locally (no remote machine). Call sites default it to true so a
+   * config rendered standalone is not treated as remote. RunScriptConfig uses it to gate the
+   * process-isolation toggle, which is local-only.
    */
   isLocalTarget?: boolean;
 }
@@ -121,11 +120,9 @@ export function Field({ label, children }: Readonly<{ label: string; children: R
 }
 
 /**
- * Boolean toggle rendered as a modern switch pill. Semantically still an
- * `<input type="checkbox">` (checkbox role, aria-label, keyboard behavior),
- * so existing tests keep working — only the visual is a switch (`.np-switch`
- * in index.css hides the native box and paints track + knob). Replaces the
- * old "checkbox stuffed into an .input-field" pattern in the config panes.
+ * Boolean toggle rendered as a switch pill. It stays an `<input type="checkbox">`
+ * (checkbox role, aria-label, keyboard behavior); only the visual is a switch, since
+ * `.np-switch` in index.css hides the native box and paints track and knob.
  */
 export function SwitchField({ label, stateText, checked, onChange, disabled = false, ariaLabel }: Readonly<{
   /** Optional inline text right of the switch (e.g. current-state wording). */
@@ -163,9 +160,11 @@ export function VariableInsertField({
   rows?: number;
   placeholder?: string;
   mono?: boolean;
-  /** Compact mode: hide picker toolbar, keep inline `{{` autocomplete. For dense rows like ParameterTable. */
+  /** Compact mode: hide picker toolbar, keep inline `{{` autocomplete. For dense rows like
+   * ParameterTable. */
   compact?: boolean;
-  /** Optional additional picker chips rendered next to Variable/Global pickers (e.g. options-list picker). */
+  /** Optional additional picker chips rendered next to Variable/Global pickers (e.g. options-list
+   * picker). */
   extraPickers?: React.ReactNode;
 }>) {
   const { t } = useTranslation(['properties']);
@@ -294,9 +293,9 @@ export function VariableInsertField({
           <span>{sqlTemplateWarning}</span>
         </div>
       )}
-      {/* Picker tray BELOW the input — the label → input → tray order makes sure that
-          in a FieldGrid all inputs align at the top edge, no matter how many picker
-          chips a field has (e.g. Operation: Field/Select has none; Path: VariableInsertField has 3+). */}
+      {/* Picker tray sits below the input. Ordering label, then input, then tray keeps all
+          inputs in a FieldGrid aligned at the top edge, no matter how many picker chips a
+          field has. */}
       {!compact && (
         <div className="flex flex-wrap items-center gap-1 pt-0.5">
           {upstreamVars.length > 0 && (
@@ -304,8 +303,8 @@ export function VariableInsertField({
           )}
           <GlobalVariablePicker onPick={insertVariable} />
           {extraPickers}
-          {/* Toggle for inline autocomplete. When on, typing `{{...` pops open a
-              dropdown below the input. */}
+          {/* Toggle for inline autocomplete. When on, typing `{{...` opens a dropdown
+              below the input. */}
           <button
             type="button"
             onClick={toggleAutocomplete}
@@ -322,10 +321,10 @@ export function VariableInsertField({
 }
 
 /**
- * Open/close + search state shared by the field pickers below: outside-click and Escape close the
- * popover and clear the query, and the search box autofocuses once the popover has mounted.
- * The query lives here (not inside {@link PickerPopover}) so each picker can filter with a plain
- * top-level `useMemo`.
+ * Open/close and search state shared by the field pickers below. An outside click or Escape
+ * closes the popover and clears the query; the search box autofocuses once the popover mounts.
+ * The query lives here rather than inside {@link PickerPopover} so each picker can filter with
+ * a plain top-level `useMemo`.
  */
 function useSearchablePicker() {
   const [open, setOpen] = useState(false);
@@ -362,7 +361,7 @@ function useSearchablePicker() {
   return { open, toggle, close, query, setQuery, containerRef, popoverRef, searchRef };
 }
 
-/** Chip trigger + anchored popover + search box. `children` renders the (already filtered) rows. */
+/** Chip trigger, anchored popover and search box. `children` renders the already filtered rows. */
 function PickerPopover({
   picker, icon, chipLabel, count, title, placeholder, surfaceClass, children,
 }: Readonly<{
@@ -416,9 +415,9 @@ function PickerPopover({
 }
 
 /**
- * Compact variable picker — a single button that opens a searchable popover
- * instead of rendering every upstream variable as a chip inline. Keeps per-field
- * UI small even when many upstream variables exist.
+ * Compact variable picker: a single button that opens a searchable popover instead of
+ * rendering every upstream variable as an inline chip. Keeps the per-field UI small even
+ * when many upstream variables exist.
  */
 export function VariablePicker({
   upstreamVars, onPick,
@@ -429,7 +428,7 @@ export function VariablePicker({
   const { t } = useTranslation(['properties', 'common']);
   const picker = useSearchablePicker();
 
-  // Group by step for readability; filter by query (matches expression or label)
+  // Group by step for readability and filter by query, matching expression or label.
   const { groups, total } = useMemo(() => {
     const q = picker.query.trim().toLowerCase();
     const filtered = q
@@ -485,10 +484,10 @@ export function VariablePicker({
 }
 
 /**
- * Picker for admin-managed global variables — inserts <c>{{globals.NAME}}</c>. Renders the
- * button even when no globals exist (the popover then shows an empty-state hint with a link
- * explaining where to create them) so users discover the feature. Data is cached across the
- * session via React Query so opening the popover on many fields doesn't fan out to the API.
+ * Picker for admin-managed global variables. Inserts `{{globals.NAME}}`. The button renders
+ * even when no globals exist, in which case the popover shows a hint linking to where they
+ * are created. React Query caches the data for the session so opening the popover on many
+ * fields does not fan out to the API.
  */
 export function GlobalVariablePicker({ onPick }: Readonly<{ onPick: (expression: string) => void }>) {
   const { t } = useTranslation(['properties', 'common']);
@@ -497,7 +496,7 @@ export function GlobalVariablePicker({ onPick }: Readonly<{ onPick: (expression:
   const { data: globals = [], isLoading } = useQuery({
     queryKey: ['global-variables'],
     queryFn: () => api.get<GlobalVariableRow[]>('/global-variables'),
-    // Long staleTime — globals rarely change, and the picker is opened often.
+    // Long staleTime: globals rarely change and the picker is opened often.
     staleTime: 60_000,
   });
 
@@ -557,18 +556,13 @@ export function GlobalVariablePicker({ onPick }: Readonly<{ onPick: (expression:
 }
 
 /**
- * Unified target/credential field. Always renders a single text input plus the standard
- * Variable / Global / Options pickers above it — no Select/Variable mode toggle. The user
- * can type a literal ID, paste a `{{var}}` expression, pick from upstream/global pickers,
- * or click "Liste" to choose from `options` (which inserts the option's `id`).
+ * Unified target/credential field. Renders a single text input plus the standard variable,
+ * global and options pickers above it. The user can type a literal ID, paste a `{{var}}`
+ * expression, pick from the upstream or global pickers, or use the options picker, which
+ * inserts the option's `id`.
  *
- * If the current value matches one of the options' IDs, the option's friendly label is
- * shown as a small caption below — so the user immediately sees which machine/credential
- * the GUID resolves to.
- *
- * Replaces the previous Select/Variable two-mode design that surfaced two visually
- * different layouts depending on whether the value happened to be a known GUID or a
- * literal/variable expression.
+ * When the current value matches one of the options' IDs, that option's label is shown as a
+ * small caption below, so the user sees which machine or credential the GUID resolves to.
  */
 export function DynamicTargetField({
   label, value, onChange, options, placeholder, upstreamVars, emptyLabel, optionPickerLabel = 'Liste',
@@ -581,7 +575,7 @@ export function DynamicTargetField({
   upstreamVars: UpstreamVariable[];
   /** Caption shown below the input when value is empty (no preselected option). */
   emptyLabel: string;
-  /** Picker-button label, e.g. "Maschine wählen" or "Credential wählen". */
+  /** Label for the options picker button, for example "choose machine" or "choose credential". */
   optionPickerLabel?: string;
 }>) {
   const matchedOption = useMemo(() => options.find((o) => o.id === value), [options, value]);
@@ -615,8 +609,8 @@ export function DynamicTargetField({
 
 /**
  * Picker chip for choosing one of `options` from a searchable popover. Mirrors the
- * VariablePicker / GlobalVariablePicker visual style so the row of pickers above an
- * input stays coherent.
+ * VariablePicker and GlobalVariablePicker styling so the row of pickers above an input
+ * stays consistent.
  */
 export function OptionsPicker({
   options, onPick, label,

@@ -4,7 +4,8 @@ namespace NodePilot.Mcp.Api.Dtos;
 // infra/health alerts (e.g. backlog too high, a machine unreachable, a credential about to
 // expire) — a fixed catalog of sources an admin enables and tunes, as opposed to the free-form
 // custom rules in AlertingDtos.cs. Duplicated by convention (MCP is HTTP-only against the REST
-// API). Reuses NotificationRouteDto/NotificationRuleTargetDto/TestFireResponse from AlertingDtos.cs.
+// API). Reuses NotificationRouteDto/NotificationRuleTargetDto/TestFireResponse from
+// AlertingDtos.cs.
 
 public sealed record SystemAlertCatalogResponse(List<SystemAlertSourceDto> Sources);
 

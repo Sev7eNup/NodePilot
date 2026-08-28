@@ -19,13 +19,13 @@ export interface RecursiveDeleteCounts {
 }
 
 export interface FolderBulkDeleteOptions<T extends FolderLike> {
-  /** The tree as currently known — ancestry and the impact estimate are resolved against it. */
+  /** The tree as currently known; ancestry and the impact estimate are resolved against it. */
   folders: readonly T[];
   /** Recursive delete of one folder. Returns what the server actually removed. */
   deleteRecursive: (folder: T) => Promise<RecursiveDeleteCounts>;
   /** Query keys to invalidate after a run: the folder tree plus the list it filters. */
   invalidateKeys: readonly (readonly unknown[])[];
-  /** Direct item count of one folder — `workflowCount` here, `variableCount` there. */
+  /** Direct item count of one folder: `workflowCount` in one tree, `variableCount` in the other. */
   countOf: (folder: T) => number;
   /** Display path used in the confirmation list and the failure report. */
   pathOf: (folder: T) => string;
@@ -43,7 +43,7 @@ export interface FolderBulkDeleteOptions<T extends FolderLike> {
 }
 
 export interface FolderBulkDelete<T extends FolderLike> {
-  /** True while a run is in flight — the caller disables its controls on it. */
+  /** True while a run is in flight; the caller disables its controls on it. */
   busy: boolean;
   /** Confirm + delete one folder (context menu). */
   deleteOne: (folder: T) => Promise<void>;
@@ -54,13 +54,13 @@ export interface FolderBulkDelete<T extends FolderLike> {
 
 /**
  * The delete half of the folder multi-select, shared by the workflow tree and the global-variable
- * tree. Both do the same thing — reduce the selection to a cover set, confirm with the impact,
- * delete one subtree per request, report the server's numbers, and reset the filter when the
- * folder it pointed at is gone. Only the API call, the query keys, and the labels differ.
+ * tree. Both reduce the selection to a cover set, confirm with the impact, delete one subtree per
+ * request, report the server's numbers, and reset the filter when the folder it pointed at is
+ * gone. Only the API call, the query keys and the labels differ.
  *
- * Sequential single-folder requests rather than one batch call: every folder keeps its own
- * authorization check and its own audit rows, and a folder that refuses does not take the rest
- * of the run down with it.
+ * The requests are sequential and per folder rather than one batch call, so every folder keeps
+ * its own authorization check and audit rows, and a folder that refuses does not abort the rest
+ * of the run.
  */
 export function useFolderBulkDelete<T extends FolderLike>(
   options: FolderBulkDeleteOptions<T>,
@@ -81,9 +81,9 @@ export function useFolderBulkDelete<T extends FolderLike>(
   }, [queryClient, invalidateKeys]);
 
   /**
-   * Confirmation shared by the context menu and the bulk bar: names every folder that goes and
-   * how much rides along. The numbers are an estimate — folders the caller cannot read are not
-   * in `folders` — so the toast afterwards reports what the server actually removed.
+   * Confirmation shared by the context menu and the bulk bar: it lists every folder that will be
+   * deleted and how much goes with it. The numbers are an estimate, because folders the caller
+   * cannot read are missing from `folders`, so the toast afterwards reports the server's counts.
    */
   const confirmDeletion = useCallback(async (roots: readonly T[]) => {
     const impact = subtreeImpact(roots, folders, countOf);
@@ -107,22 +107,21 @@ export function useFolderBulkDelete<T extends FolderLike>(
     setBusy(true);
     const foldersBefore = [...folders];
     try {
-      // Always recursive: "delete only when empty" was the limitation this replaced. The
-      // confirmation above already stated what goes with it.
+      // Always recursive; the confirmation above already stated what goes with the folder.
       const counts = await deleteRecursive(folder);
       await invalidateAll();
       toast.success(t(`${ns}:folder.bulk.deleted`, {
         folders: counts.deletedFolders,
         items: counts.deletedItems,
       }));
-      // The filtered folder may be the one deleted OR a descendant that went with it.
+      // The filtered folder may be the deleted one or a descendant that went with it.
       if (isInDeletedSubtree(selectedFolderId, [folder.id], foldersBefore)) {
         onFolderSelected(rootFolderId);
       }
       onMutated?.();
     } catch (e) {
       // 423 (someone else holds an edit lock in the subtree), 409 (contents changed mid-delete)
-      // or 400/403 — the backend message is already user-friendly, so pass it through as-is.
+      // or 400/403. The backend message is already readable, so pass it through unchanged.
       toast.error(t(`${ns}:folder.deleteFailed`, { msg: (e as Error).message }));
     } finally {
       setBusy(false);
@@ -135,8 +134,8 @@ export function useFolderBulkDelete<T extends FolderLike>(
     // request and 404 on its own.
     const roots = topMostFolders(selected, folders);
     if (roots.length === 0) {
-      // Reachable only if the selection evaporated between the render that showed the button and
-      // the click. Returning quietly is what made a dead Delete button look like a failed delete.
+      // Reachable only if the selection disappeared between the render that showed the button
+      // and the click. Say so, otherwise the click looks like a delete that silently failed.
       toast.info(t(`${ns}:folder.bulk.nothingSelected`));
       return [];
     }
@@ -165,7 +164,7 @@ export function useFolderBulkDelete<T extends FolderLike>(
         );
       }
 
-      // Only the folders that actually went may move the filter — and a filtered DESCENDANT
+      // Only folders that were actually deleted may move the filter, and a filtered descendant
       // disappears without ever being requested, so the check runs against the pre-delete tree.
       const deletedIds = result.succeeded.map((f) => f.id);
       if (isInDeletedSubtree(selectedFolderId, deletedIds, foldersBefore)) {

@@ -3,14 +3,13 @@ import type { OpsRunningExecution } from '../types/api';
 
 // Status strings that mean "a run is currently in flight".
 const ACTIVE = new Set(['Running', 'Pending']);
-// Status strings that mark a run as finished. Only these (and never active) arrive via the
-// running[] snapshot's per-exec `status` — terminal transitions come exclusively via SignalR.
+// Status strings that mark a run as finished. The running[] snapshot never reports these in its
+// per-exec `status`; terminal transitions arrive only via SignalR.
 const TERMINAL = new Set(['Succeeded', 'Failed', 'Cancelled', 'Canceled', 'TimedOut']);
 
-// Tombstones are kept for 24h purely as a MEMORY BOUND. The race-safety comes from the fact
-// that execution ids are GUIDs and are never reused — so a tombstoned id can never refer to
-// a fresh, genuinely-active run. 24h is far longer than any snapshot staleness, which means a
-// tombstone is always present when a stale snapshot tries to resurrect a just-terminated run.
+// Tombstones expire after 24h purely to bound memory. Execution ids are GUIDs and are never
+// reused, so a tombstoned id can never name a fresh run, and 24h outlives any snapshot
+// staleness that could resurrect a just-terminated one.
 const TOMBSTONE_TTL_MS = 24 * 60 * 60 * 1000;
 
 // Locally-settled runs only need to survive until the next snapshot (5 s poll + debounce)
@@ -52,7 +51,7 @@ export interface OpsState {
    * Race-safe reconcile against an authoritative snapshot.
    * @param running        snapshot's running[] (only Running|Pending entries).
    * @param lastStatusByWf snapshot's per-workflow lastStatus (from nodes; only Succeeded|Failed|
-   *                        Cancelled|null). Used to reconcile the terminal overlay: for workflows
+ *                        Cancelled|null). Reconciles the terminal overlay: for workflows
    *                        with no active live execs, the snapshot's lastStatus wins and replaces
    *                        any stale live terminal status. Entries for workflows no longer in the
    *                        snapshot (RBAC/scope change) are cleared.
@@ -172,7 +171,7 @@ export const useOperationsStore = create<OpsState>((set) => ({
       }
 
       if (ACTIVE.has(status)) {
-        // Late active event for an already-terminated run: do NOT resurrect.
+        // Late active event for an already-terminated run: do not resurrect it.
         if (tombs[executionId] !== undefined) return { terminalTombstones: tombs };
         const cur = state.runningExecsByWorkflow[workflowId] ?? [];
         const existing = cur.find((e) => e.id === executionId);

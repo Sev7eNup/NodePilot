@@ -2,14 +2,14 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
 /**
- * System-Configuration Backup & Restore (ADR 0001) — the /backup admin page (BackupPage).
- * Two tabs: "Create backup" (pick sections + passphrase → sealed .npbackup download) and
- * "Restore" (upload a .npbackup → integrity-checked preview with per-section conflict policy
- * → run). E2ETests.md lists Teil 9.x backup at the API level; this is the UI subset.
+ * System configuration backup and restore (ADR 0001) on the /backup admin page (BackupPage).
+ * Two tabs: "Create backup" picks sections plus a passphrase and downloads a sealed .npbackup,
+ * "Restore" uploads one and shows an integrity-checked preview with a per-section conflict
+ * policy before running. E2ETests.md covers Teil 9.x at the API level; this is the UI part.
  *
- * Hermetic: page.route() mocks only. /backup is Admin-only (App.tsx <AdminOnly>); the default
+ * Hermetic: page.route() mocks only. /backup is Admin-only (App.tsx <AdminOnly>) and the default
  * MOCK_USER is Admin, so the page mounts. The SPA renders EN under Playwright. The file picker
- * is a real <input type=file> → Playwright can drive it with setInputFiles (unlike a canvas drop).
+ * is a real <input type=file>, so Playwright can drive it with setInputFiles.
  */
 
 function manifest() {
@@ -29,7 +29,7 @@ async function mockManifest(page: Page) {
 
 test.describe('Backup & Restore (/backup)', () => {
   test.beforeEach(async ({ page }) => {
-    await installDefaultMocks(page); // MOCK_USER = Admin → page mounts
+    await installDefaultMocks(page); // MOCK_USER is Admin, so the page mounts
   });
 
   // ---------- Create-backup tab ----------
@@ -133,7 +133,7 @@ test.describe('Backup & Restore (/backup)', () => {
     await page.getByRole('button', { name: /^preview$|^vorschau$/i }).click();
 
     await expect(page.getByText(/integrity verified|integrität verifiziert/i)).toBeVisible({ timeout: 10_000 });
-    // The diff row surfaces the conflict count, and a per-section conflict policy select is offered.
+    // The diff row surfaces the conflict count and offers a per-section conflict policy select.
     const policySelect = page.locator('table select').first();
     await expect(policySelect).toBeVisible();
     await expect(policySelect.locator('option', { hasText: /overwrite|überschreiben/i })).toHaveCount(1);
@@ -160,7 +160,7 @@ test.describe('Backup & Restore (/backup)', () => {
       name: 'cfg.npbackup', mimeType: 'application/octet-stream', buffer: Buffer.from('sealed'),
     });
 
-    // No Preview click — the diff table has to be there on its own.
+    // Without a Preview click the diff table has to appear on its own.
     await expect(page.locator('table select').first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/enter the passphrase for a full check|Passphrase eingeben/i)).toBeVisible();
     expect(previewCalls).toBe(1);
@@ -198,8 +198,8 @@ test.describe('Backup & Restore (/backup)', () => {
     await page.getByRole('button', { name: /^preview$|^vorschau$/i }).click();
     await expect(page.getByText(/integrity verified|integrität verifiziert/i)).toBeVisible({ timeout: 10_000 });
 
-    // Pick "Overwrite" for the conflicting section, then run the restore (the bg-error button —
-    // the second "Restore" on the page after the tab button), confirming via ConfirmHost.
+    // Pick "Overwrite" for the conflicting section, then run the restore. The run button is the
+    // second "Restore" on the page after the tab button; ConfirmHost asks for confirmation.
     await page.locator('table select').first().selectOption('overwrite');
     await page.getByRole('button', { name: /^restore$|^wiederherstellen$/i }).last().click();
     await page.getByRole('button', { name: 'OK' }).click();

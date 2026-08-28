@@ -9,10 +9,10 @@ public enum ExecutionStatus
     Skipped,
     Cancelled,
     /// <summary>
-    /// The step is paused at a breakpoint, waiting for a resume command from the debugger.
-    /// Sits between Running and the terminal states — only set when the execution was started
-    /// with debugEnabled=true AND the current node has `data.breakpoint=true` (or StepOverArmed
-    /// was left active by a previous step-over resume command).
+    /// The step is paused at a breakpoint and waits for a resume command from the debugger.
+    /// Sits between Running and the terminal states. Set only when the execution started with
+    /// debugEnabled=true and the current node has data.breakpoint=true, or StepOverArmed is
+    /// still active from an earlier step-over resume.
     /// </summary>
     Paused,
 }

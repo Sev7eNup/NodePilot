@@ -3,8 +3,8 @@ import type { BrowserWindow, Session } from 'electron';
 
 /**
  * Pins the loopback server certificate by SHA-256 fingerprint and locks the session down
- * (no permissions, no downloads). No system root CA is installed — the trust decision lives
- * entirely here, per the desktop security model.
+ * (no permissions, no downloads). No system root CA is installed, so this is the only place
+ * where trust is decided.
  */
 export function hardenSession(sess: Session, pinnedSha256: string): void {
   sess.setCertificateVerifyProc((request, callback) => {
@@ -20,7 +20,7 @@ export function hardenSession(sess: Session, pinnedSha256: string): void {
       }
       return;
     }
-    // Nothing else should ever be contacted; defer to Chromium's default verification if it is.
+    // No other host is expected; if one is reached, fall back to Chromium's own verification.
     callback(-3);
   });
 
@@ -30,9 +30,9 @@ export function hardenSession(sess: Session, pinnedSha256: string): void {
 }
 
 /**
- * Blocks the window from navigating away from the configured origin and denies every popup /
- * new-window request. In-page (History API) routing used by the SPA is unaffected — only full
- * navigations and window.open are intercepted.
+ * Blocks the window from navigating away from the configured origin and denies every popup or
+ * new-window request. Only full navigations and window.open are intercepted, so the in-page
+ * History API routing of the SPA keeps working.
  */
 export function hardenWindow(win: BrowserWindow, allowedOrigin: string): void {
   const sameOrigin = (url: string): boolean => {

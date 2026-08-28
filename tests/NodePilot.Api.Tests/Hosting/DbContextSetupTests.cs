@@ -15,7 +15,7 @@ namespace NodePilot.Api.Tests.Hosting;
 
 /// <summary>
 /// Pins the contract of <see cref="DbContextSetup"/> — the helper that <c>Program.cs</c>
-/// delegates DB-Provider-Branching to. We verify the three observable outputs of the
+/// delegates database-provider branching to. It verifies three observable outputs of the
 /// registration:
 /// <list type="bullet">
 ///   <item>NodePilotDbContext is registered (no matter which provider).</item>
@@ -80,8 +80,8 @@ public class DbContextSetupTests
     public void AddNodePilotDbContext_AcceptsPostgresAliases()
     {
         // The dispatcher accepts "postgres", "postgresql" and "npgsql" — all map to
-        // the same Npgsql provider. A regression in the alias list once silently fell
-        // through to the "unknown" branch and crashed startup.
+        // the same Npgsql provider. A missing alias would silently fall through to the
+        // "unknown" branch and crash startup.
         foreach (var alias in new[] { "postgresql", "npgsql" })
         {
             var config = BuildConfig(new Dictionary<string, string?>
@@ -132,7 +132,7 @@ public class DbContextSetupTests
         var config = BuildConfig(new Dictionary<string, string?>
         {
             // Provider intentionally absent — must default to "postgres"
-            // (matches CLAUDE.md "Datenbank" default).
+            // (matches the database default documented in CLAUDE.md).
             ["ConnectionStrings:Postgres"] = "Host=127.0.0.1;Database=t;Username=u;Password=p",
         });
 
@@ -230,10 +230,10 @@ public class DbContextSetupTests
     }
 
     /// <summary>
-    /// The pooled DbContext resolves the availability breaker and both interceptors while building its
-    /// options, so a bare ServiceCollection no longer suffices. Registered here rather than made
-    /// optional in production: an interceptor that silently does not run would turn the breaker into a
-    /// component that exists but never trips.
+    /// The pooled DbContext resolves the availability breaker and both interceptors while
+    /// building its options, so a bare ServiceCollection is not enough. This registration is
+    /// required, not optional: a silently skipped interceptor would leave the breaker unable
+    /// to trip.
     /// </summary>
     private static void AddAvailability(
         IServiceCollection services,

@@ -68,7 +68,7 @@ describe('AuthenticationSection', () => {
     renderSection();
     await waitFor(() => expect(screen.getByDisplayValue('S-1-5-21-1-2-3-4567')).toBeInTheDocument());
     fireEvent.click(screen.getAllByRole('button', { name: /add mapping/i })[0]);
-    // Two rows now — the original SID plus a blank new one.
+    // The existing SID rows plus the blank row just added.
     const sidInputs = screen.getAllByPlaceholderText('S-1-5-21-...');
     expect(sidInputs.length).toBe(3);
   });

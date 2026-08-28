@@ -6,9 +6,9 @@ using Xunit;
 namespace NodePilot.Api.Tests.Security;
 
 /// <summary>
-/// Centralised role-membership helpers gate every privileged action in the API —
-/// regression tests here keep the canonical role-name strings ("Admin"/"Operator"/
-/// "Viewer") pinned so a typo can't silently strip authorization checks.
+/// Tests for the role-membership helpers that gate every privileged action in the API.
+/// They pin the canonical role-name strings ("Admin"/"Operator"/"Viewer") so a typo
+/// cannot silently disable an authorization check.
 /// </summary>
 public class RoleExtensionsTests
 {
@@ -60,16 +60,16 @@ public class RoleExtensionsTests
     [Fact]
     public void IsPrivileged_AdminAndOperator_True()
     {
-        // Defensive: a user could have both roles claimed if the JWT was minted with
-        // multiple role-claims (unusual but legitimate).
+        // A user can have both roles claimed if the JWT was minted with multiple
+        // role claims. Unusual but legitimate.
         Principal("Admin", "Operator").IsPrivileged().Should().BeTrue();
     }
 
     [Fact]
     public void RoleName_CaseSensitive_DocumentsAspNetBehavior()
     {
-        // ClaimsPrincipal.IsInRole is case-sensitive by default. If somebody flips this
-        // to a case-insensitive match (intentional or not), this test will catch it.
+        // ClaimsPrincipal.IsInRole is case-sensitive by default. This test catches any
+        // change to case-insensitive matching, intentional or not.
         Principal("admin").IsAdmin().Should().BeFalse(
             "ASP.NET role membership is case-sensitive — lower-case 'admin' must not match");
     }

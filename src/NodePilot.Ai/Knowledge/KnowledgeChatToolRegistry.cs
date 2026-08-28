@@ -25,22 +25,24 @@ public sealed record KnowledgeToolContext(
 /// <summary>Read-only tool registry for the global "AI Chat" knowledge assistant.</summary>
 public interface IKnowledgeToolRegistry
 {
-    /// <summary>The tool definitions offered to the LLM, filtered by which knowledge sources are enabled/permitted.</summary>
+    /// <summary>
+    /// The tool definitions offered to the model, filtered by the enabled and permitted sources.
+    /// </summary>
     IReadOnlyList<LlmToolDefinition> GetTools(KnowledgeToolContext context);
 
-    /// <summary>Executes a tool and returns its result as a JSON string. Every gate is re-checked here
-    /// (defense-in-depth); unknown/disallowed tools and errors return <c>{ "error": … }</c>.</summary>
+    /// <summary>
+    /// Executes a tool and returns its result as a JSON string. Every gate is re-checked here;
+    /// unknown or disallowed tools and errors return <c>{ "error": ... }</c>.
+    /// </summary>
     Task<string> ExecuteAsync(string name, string argumentsJson, KnowledgeToolContext context, CancellationToken ct);
 }
 
 /// <summary>
-/// Source-gated tool registry. Docs tools require <see cref="KnowledgeToolContext.DocsEnabled"/>;
-/// operational read tools require the operational reader; workflow-<b>content</b> tools
-/// (<c>get_workflow_definition</c>, <c>analyze_workflow</c>) additionally require
-/// <see cref="KnowledgeToolContext.IsPrivileged"/>; source-code tools require
-/// <see cref="KnowledgeToolContext.SourceCodeEnabled"/> and privilege; raw database tools require
-/// global Admin independently of folder access. Stateless singleton — the per-request bits live
-/// in the context; the docs/source readers are injected singletons.
+/// Source-gated tool registry. Docs tools need <see cref="KnowledgeToolContext.DocsEnabled"/>;
+/// operational tools need the operational reader, the workflow-content ones also
+/// <see cref="KnowledgeToolContext.IsPrivileged"/>; source-code tools need
+/// <see cref="KnowledgeToolContext.SourceCodeEnabled"/> plus privilege; database tools need global
+/// Admin regardless of folder access. Stateless singleton; per-request state lives in the context.
 /// </summary>
 public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
 {

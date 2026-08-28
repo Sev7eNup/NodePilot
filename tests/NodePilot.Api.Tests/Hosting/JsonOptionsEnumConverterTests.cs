@@ -10,14 +10,11 @@ using Xunit;
 namespace NodePilot.Api.Tests.Hosting;
 
 /// <summary>
-/// Regression guard for finding #2 of the CLI-catch-up review: shared-folder
-/// permission DTOs use <see cref="FolderPrincipalType"/> and <see cref="SharedFolderRole"/>,
-/// while the UI and CLI both type those fields as <c>string</c>. Without a global
-/// <c>JsonStringEnumConverter</c> on the MVC JSON pipeline, the API would serialise the
-/// enums as numbers and break both clients on the read path. This test asserts the wiring
-/// in <c>Program.cs</c> (<c>AddControllers().AddJsonOptions(...)</c>) by spinning up a
-/// minimal builder configured the same way and round-tripping a sample DTO through MVC's
-/// resolved <see cref="JsonOptions"/>.
+/// Regression guard: shared-folder permission DTOs use <see cref="FolderPrincipalType"/> and
+/// <see cref="SharedFolderRole"/>, while the UI and CLI both type those fields as <c>string</c>.
+/// Without a global <c>JsonStringEnumConverter</c> on the MVC JSON pipeline, the API would
+/// serialise the enums as numbers and break both clients. This mirrors the <c>Program.cs</c>
+/// wiring and round-trips a sample DTO through MVC's resolved <see cref="JsonOptions"/>.
 /// </summary>
 public class JsonOptionsEnumConverterTests
 {

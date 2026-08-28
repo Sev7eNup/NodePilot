@@ -5,9 +5,9 @@ import { LANGUAGES, LANGUAGE_LABELS, type Lang } from '../i18n/languages'
 /**
  * Language control for the sidebar footer: a segmented `DE | EN`.
  *
- * Both languages are shown rather than only the active one, so the choice is visible without
- * having to click to discover it — and each segment targets its own language directly instead of
- * cycling, which keeps the control honest if a third language is ever added to `LANGUAGES`.
+ * Both languages are shown so the choice is visible without clicking, and each segment targets
+ * its own language directly instead of cycling, so the control still works if `LANGUAGES` gains
+ * a third entry.
  *
  * Switching keeps the reader on the same page: only the language segment of the route changes,
  * so `/de/security/hardening` becomes `/en/security/hardening`.
@@ -24,8 +24,8 @@ export default function LanguageSwitcher({ lang, current }: { lang: Lang; curren
           <button
             key={code}
             type="button"
-            // The active segment stays a button (not a disabled one) so the group keeps a
-            // predictable tab order; pressing it is simply a no-op navigation to where you are.
+            // The active segment stays an enabled button so the group keeps a predictable
+            // tab order; pressing it does nothing.
             onClick={() => !active && navigate(`/${code}/${current}`)}
             className={active ? 'is-active' : undefined}
             aria-current={active ? 'true' : undefined}

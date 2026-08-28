@@ -8,23 +8,15 @@ import { SupportEventsTable } from './SupportEventsTable';
 type LevelFilter = 'all' | 'info' | 'warn' | 'error';
 type ViewMode = 'table' | 'plain';
 
-// Höhe des Plain-Text-Log-Fensters — per Drag-Handle am unteren Rand verstellbar, in
-// localStorage persistiert. Spiegelt bewusst die resizable Höhe der DB-Tabelle
-// (SupportEventsTable) 1:1 wider, damit sich beide Views identisch anfühlen.
+// Persist the resizable plain-text viewport height to match SupportEventsTable behavior.
 const PLAIN_DEFAULT_HEIGHT = 832;
 const PLAIN_MIN_HEIGHT = 240;
-// `.v2`: der Default stieg von 640 auf 832 px. Der Key-Bump ist der Reset — sonst gewinnt in
-// jedem bereits benutzten Browser der alte gespeicherte Wert und der neue Default bleibt unsichtbar.
+// The versioned key resets stored heights when the default changes.
 const PLAIN_HEIGHT_STORAGE_KEY = 'nodepilot.supportLog.plainHeight.v2';
 
 /**
- * Support-Log-Viewer (standalone Page /support-log, Admin-only). Zwei View-Modes:
- *  - <b>Tabelle (DB)</b>: strukturierte SupportEvents aus der DB-Projektion (Default).
- *    Liefert Filter, Sortierung, Cursor-Pagination, Export — die Source-of-Truth für
- *    den Enterprise-Viewer.
- *  - <b>Plain-Text (Datei)</b>: Live-Tail der <c>nodepilot-support-*.log</c>-Datei mit
- *    Download-Button. Fallback wenn die DB-Projektion disabled ist oder der Operator
- *    den rohen RDP-Style-Tail braucht.
+ * Admin-only support log viewer with a structured database table and a live file tail.
+ * The file view remains available when database projection is disabled or raw output is needed.
  */
 export function SupportLogViewerSection() {
   const [mode, setMode] = useState<ViewMode>('table');
@@ -63,7 +55,7 @@ function PlainTextTailView() {
   const [downloadDate, setDownloadDate] = useState(() => new Date().toISOString().slice(0, 10));
   const scrollRef = useRef<HTMLPreElement | null>(null);
 
-  // Resizable Fenster-Höhe (Drag-Handle unten + localStorage), 1:1 wie die DB-Tabelle.
+  // Match the database table with a persisted, bottom-handle resize interaction.
   const [viewHeight, setViewHeight] = useState<number>(() => {
     if (typeof window === 'undefined') return PLAIN_DEFAULT_HEIGHT;
     try {
@@ -154,9 +146,8 @@ function PlainTextTailView() {
         <span className="ml-auto">{visibleLines.length} / {data?.lineCount ?? 0} Zeilen</span>
       </div>
 
-      {/* Container spiegelt die Chrome der DB-Tabelle (border/rounded/surface) — der
-          Plain-Text-View fügt sich damit optisch in den Rest ein statt als schwarzes
-          Terminal herauszustechen. Höhe per Drag-Handle unten verstellbar. */}
+      {/* Match the database table frame and expose a bottom handle
+          for resizing. */}
       <div className="border border-outline-variant rounded overflow-hidden bg-surface-lowest">
         <pre ref={scrollRef}
           style={{ height: viewHeight }}
@@ -167,8 +158,8 @@ function PlainTextTailView() {
                 <div key={i} className={lineColor(l)}>{l || ' '}</div>
               ))}
         </pre>
-        {/* Bottom-Resize-Handle — identisch zur DB-Tabelle (SupportEventsTable), damit sich
-            beide Views gleich anfühlen. Drag nach unten vergrößert das Fenster. */}
+        {/* Use the same bottom resize interaction
+            as SupportEventsTable. */}
         <div
           onPointerDown={(e) => { e.preventDefault(); startHeightResize(e.clientY, viewHeight); }}
           className="h-1.5 bg-surface-low hover:bg-blue-500/40 cursor-row-resize border-t border-outline-variant flex items-center justify-center group"
@@ -191,8 +182,8 @@ function PlainTextTailView() {
   );
 }
 
-// Pro-Zeile-Tönung analog zur DB-Tabelle: ERROR/FATAL rot, WARN amber, sonst neutral.
-// Marker im Serilog-Text-Sink: [INFO] / [WARN] / [ERR ] / [FATL] (ERR mit Trailing-Space).
+// Match table semantics: errors are red, warnings amber, and other lines neutral.
+// Serilog text markers are [INFO], [WARN], [ERR ], and [FATL].
 function lineColor(line: string): string {
   if (/\[(ERR\s|FATL)\]/.test(line)) return 'text-red-600 dark:text-red-400';
   if (/\[WARN\]/.test(line)) return 'text-amber-600 dark:text-amber-400';

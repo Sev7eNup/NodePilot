@@ -59,9 +59,7 @@ public class DecisionActivityTests
     [Fact]
     public async Task GlobalOperand_ResolvesFromContext_StructuredAndLiteralTemplate()
     {
-        // Regression: DecisionActivity used to call ConditionEvaluator without global/manual
-        // context, so both a source:"global" operand and a {{globals.X}} literal resolved to ""
-        // and silently took the wrong branch. Pin both forms.
+        // Both structured global operands and {{globals.X}} literals require the global context.
         var cfg = Cfg(@"{
             ""defaultCaseName"":""default"",
             ""cases"":[
@@ -180,7 +178,7 @@ public class DecisionActivityTests
     [Fact]
     public async Task MalformedCondition_DoesNotMatchAndContinues()
     {
-        // The first case has a broken condition (no "type") → it must be skipped.
+        // The first case has a broken condition (no "type") -> it must be skipped.
         // The second case matches.
         var cfg = Cfg(@"{
             ""cases"":[
@@ -228,7 +226,7 @@ public class DecisionActivityTests
             },
         };
 
-        // a == 1 AND b == 2 -> true → matches "both"
+        // a == 1 AND b == 2 -> true -> matches "both"
         var cfg = Cfg(@"{
             ""cases"":[
                 { ""name"":""both"", ""condition"":{

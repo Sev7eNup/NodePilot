@@ -225,7 +225,7 @@ public sealed class RunScriptExecutionTargetTests : IDisposable
     [WindowsFact]
     public async Task ExecuteAsync_IsolatedTrueLocal_RunsOutOfProcessNotInRunspacePool()
     {
-        // No target machine + isolated:true must route to a process engine and run in a SEPARATE
+        // No target machine + isolated:true must route to a process engine and run in a separate
         // process — proven by comparing the script's $PID to the test process id. A regression that
         // fell back to the in-process runspace pool would emit the test process id and fail here.
         var result = await CreateActivity().ExecuteAsync(

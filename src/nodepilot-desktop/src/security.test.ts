@@ -4,9 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { hardenSession, hardenWindow } from './security';
 
 /**
- * A self-signed leaf generated once for this suite (CN=localhost, valid until 2126). The shell
- * pins by SHA-256 fingerprint, so the test needs a real certificate whose fingerprint is known —
- * not a stub — otherwise the comparison under test is never actually exercised.
+ * Self-signed leaf certificate used by this suite (CN=localhost). The shell pins by SHA-256
+ * fingerprint, so the test needs a real certificate with a known fingerprint; a stub would
+ * never exercise the comparison under test.
  */
 const TEST_CERT_PEM = `-----BEGIN CERTIFICATE-----
 MIIDCzCCAfOgAwIBAgIUX5825i1yJZHLx86kFxXxNiFAK9owDQYJKoZIhvcNAQEL
@@ -87,7 +87,7 @@ describe('hardenSession — certificate pinning', () => {
   });
 
   it('defers to Chromium for any non-loopback host', () => {
-    // Nothing else should ever be contacted; a matching fingerprint must not buy trust here.
+    // A matching fingerprint must not grant trust for a host other than loopback.
     const { sess, verify } = fakeSession();
     hardenSession(sess, TEST_CERT_SHA256);
 

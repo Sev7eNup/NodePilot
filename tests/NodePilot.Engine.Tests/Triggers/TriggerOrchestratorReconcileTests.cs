@@ -336,9 +336,7 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
     [Fact]
     public async Task SyncAsync_DisposesAndRecreatesSource_WhenSourceReportsUnhealthy()
     {
-        // The headline case. Before this, a source whose config hash still matched was skipped by
-        // the add-loop forever, so a watcher killed by a vanished share never came back — not even
-        // once the share returned.
+        // Restart a missing source even when its stored config hash still matches.
         var created = UseFakeSources();
         await InsertWorkflowAsync(DefinitionWithSchedule("trg1", "0 0/1 * * * ?"));
 
@@ -388,7 +386,7 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
             return src;
         };
 
-        await _orchestrator.SyncAsync(CancellationToken.None); // evicts, re-registration fails → backoff
+        await _orchestrator.SyncAsync(CancellationToken.None); // evicts, re-registration fails -> backoff
         await _orchestrator.SyncAsync(CancellationToken.None); // still inside the 5s cool-down
 
         created.Should().HaveCount(2);

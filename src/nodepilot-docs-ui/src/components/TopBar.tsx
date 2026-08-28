@@ -9,9 +9,8 @@ interface TopBarProps {
 }
 
 /**
- * Slim chrome over the content column. Brand, search, theme, language and repo link all
- * live in the sidebar (as in the app shell), so this only carries the mobile menu trigger
- * and the breadcrumb.
+ * Slim header above the content column. Brand, search, theme, language and repo link live
+ * in the sidebar, so this carries only the mobile menu trigger and the breadcrumb.
  */
 export default function TopBar({ current, onOpenMenu }: TopBarProps) {
   const { t } = useTranslation()
@@ -32,7 +31,7 @@ export default function TopBar({ current, onOpenMenu }: TopBarProps) {
       <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
         <span className="shrink-0 text-on-surface-variant">{t('ui.breadcrumbRoot')}</span>
         {group && (
-          // The group crumb is dropped whole on phones — the page title matters more there.
+          // Hidden on phones so the limited width goes to the page title.
           <span className="hidden shrink-0 items-center gap-1.5 sm:flex">
             <ChevronRight size={13} className="shrink-0 text-outline/70" />
             <span className="text-on-surface-variant">{t(navGroupKey(group))}</span>

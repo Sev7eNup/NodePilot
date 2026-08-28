@@ -3,10 +3,9 @@ using System.Text;
 namespace NodePilot.Ai;
 
 /// <summary>
-/// Accumulates one streamed tool call (id/name arrive once, arguments arrive as string
-/// fragments) across SSE chunks, keyed by wire index. Dialect-agnostic — shared by both
-/// LLM clients, which previously carried byte-identical private copies (coherence audit
-/// 2026-08).
+/// Accumulates one streamed tool call across SSE chunks, keyed by wire index: id and name
+/// arrive once, arguments arrive as string fragments. Dialect-agnostic and shared by both
+/// LLM clients.
 /// </summary>
 internal sealed class ToolCallAccumulator
 {

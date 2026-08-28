@@ -16,27 +16,29 @@ export type QuickConnectState = {
 export type EdgeInsertState = { edgeId: string; x: number; y: number } | null;
 
 export interface CanvasConnectApi {
-  /** Quick-connect overlay state — set when a connection drag ends in empty space. */
+  /** Quick-connect overlay state. Set when a connection drag ends in empty space. */
   quickConnect: QuickConnectState;
   setQuickConnect: (s: QuickConnectState) => void;
-  /** Pass to ReactFlow's onConnectEnd — opens quick-connect when the drag ends without a target. */
+  /** Pass to ReactFlow's onConnectEnd. Opens quick-connect when the drag ends without a target. */
   handleConnectEnd: (event: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => void;
-  /** Pick handler for the quick-connect overlay. Creates node + edge, selects the new node. */
+  /** Pick handler for the quick-connect overlay. Creates the node and edge, selects the node. */
   handleQuickConnectPick: (type: string, label: string) => void;
 
-  /** Inline-insert overlay state — set when the `+` on an edge is clicked. */
+  /** Inline-insert overlay state. Set when the `+` on an edge is clicked. */
   insertAt: EdgeInsertState;
   setInsertAt: (s: EdgeInsertState) => void;
   /** Pass through EdgeInsertContext so labeled edges can request the picker. */
   requestInsert: (edgeId: string, x: number, y: number) => void;
-  /** Splits the target edge: A→B becomes A→NEW→B. The condition stays on the second hop. */
+  /** Splits the target edge so the new node sits between its source and target. The condition
+   *  stays on the second hop. */
   insertOnEdge: (type: string, label: string) => void;
 }
 
 /**
- * Quick-Connect (drag handle into empty canvas → picker → new node + edge) and
- * Inline-Insert on an edge (click `+` on edge → picker → splits A→B into A→NEW→B).
- * Both flows share state shape and depend on the same `setNodes`/`setEdges`/history.
+ * Quick-connect (drag a handle into empty canvas, pick a type, get a new node and edge) and
+ * inline insert on an edge (click the `+` on an edge, pick a type, and the edge is split so the
+ * new node sits between its source and target). Both flows share the same state shape and the
+ * same `setNodes`, `setEdges` and history callbacks.
  */
 export function useCanvasConnect({
   edges,
@@ -62,8 +64,8 @@ export function useCanvasConnect({
     if (!connectionState.fromNode) return;
     const clientX = 'clientX' in event ? (event as MouseEvent).clientX : (event as TouchEvent).touches[0]?.clientX ?? 0;
     const clientY = 'clientY' in event ? (event as MouseEvent).clientY : (event as TouchEvent).touches[0]?.clientY ?? 0;
-    // QuickConnectPicker is portaled to document.body and uses `fixed` positioning, so it
-    // needs viewport coordinates (clientX/clientY), not canvas-relative offsets.
+    // QuickConnectPicker is portaled to document.body and positioned `fixed`, so it needs
+    // viewport coordinates (clientX/clientY), not canvas-relative offsets.
     if (!canvasRef.current) return;
     setQuickConnect({
       fromNodeId: connectionState.fromNode.id,
@@ -111,8 +113,7 @@ export function useCanvasConnect({
     if (!target) { setInsertAt(null); return; }
     commitHistory('Insert node');
     const newNodeId = `step-${randomUuid()}`;
-    // Both edge halves share the same UUID prefix so they stay recognizable as a pair
-    // (previously this was the same Date.now() value with an -a/-b suffix).
+    // Both edge halves share the same UUID prefix so they stay recognizable as a pair.
     const edgePairId = randomUuid();
     const newNode: Node = {
       id: newNodeId,
@@ -120,9 +121,9 @@ export function useCanvasConnect({
       position: { x: insertAt.x - 100, y: insertAt.y - 40 },
       data: { label, activityType: type, targetMachineId: null, credentialId: null, config: {} },
     };
-    // First half: always unconditional (the original condition logically belongs to "what
-    // comes after NEW"). Second half inherits label + condition so an "On Success" path
-    // stays semantically equivalent.
+    // The first half is always unconditional, because the original condition belongs to what
+    // runs after the new node. The second half inherits label and condition, so a path such as
+    // "On Success" keeps its meaning.
     const firstHalf: Edge = {
       id: `edge-${edgePairId}-a`,
       source: target.source,

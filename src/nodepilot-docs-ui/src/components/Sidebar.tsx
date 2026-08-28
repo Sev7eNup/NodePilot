@@ -10,22 +10,21 @@ import logoLight from '../assets/logo-light.png'
 import logoDark from '../assets/logo-dark.png'
 
 interface SidebarProps {
-  /** Active language — every nav link is minted under it. */
+  /** Active language; every nav link is built under it. */
   lang: Lang
   /** Active content path, e.g. "getting-started/introduction". */
   current: string
-  /** Drawer state — only meaningful below `lg`, where the same <aside> is the off-canvas drawer. */
+  /** Drawer state; only used below `lg`, where the same <aside> is the off-canvas drawer. */
   open: boolean
   onClose: () => void
   onOpenSearch: () => void
 }
 
 /**
- * The full-height navigation rail, ported from the app shell's sidebar. One <aside>
- * serves both layouts: a sticky 292px rail from `lg` up, and an off-canvas drawer below
- * it. The mobile branch is written with `max-lg:` rather than `lg:` overrides on purpose —
- * a `translate` that survives into the desktop layout would make the element a containing
- * block for `position: fixed` descendants and its own stacking context.
+ * Full-height navigation rail. One <aside> serves both layouts: a sticky 292px rail from
+ * `lg` up and an off-canvas drawer below it. The mobile branch uses `max-lg:` instead of
+ * `lg:` overrides because a `translate` surviving into the desktop layout would make the
+ * element a containing block for `position: fixed` descendants and its own stacking context.
  */
 export default function Sidebar({ lang, current, open, onClose, onOpenSearch }: SidebarProps) {
   const { theme, toggle } = useTheme()
@@ -68,8 +67,8 @@ export default function Sidebar({ lang, current, open, onClose, onOpenSearch }: 
         </button>
       </div>
 
-      {/* Search — a button, not an input: it opens the existing search modal, and a
-          focus-triggered input would fight Ctrl-K for the focus. */}
+      {/* Search is a button, not an input: it opens the search modal, and a focus-triggered
+          input would compete with Ctrl-K for focus. */}
       <div className="px-[18px] pb-4 pt-5">
         <div className="relative">
           <Search
@@ -85,7 +84,7 @@ export default function Sidebar({ lang, current, open, onClose, onOpenSearch }: 
         </div>
       </div>
 
-      {/* Nav — scrolls on its own so the footer controls stay pinned. */}
+      {/* Nav scrolls on its own so the footer controls stay pinned. */}
       <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-[22px] pt-1">
         {navGroups.map((group, gi) => (
           <SidebarGroup
@@ -100,9 +99,8 @@ export default function Sidebar({ lang, current, open, onClose, onOpenSearch }: 
         ))}
       </nav>
 
-      {/* Download call-to-action. A reader who has understood the docs needs somewhere to go
-          next, and `/releases/latest` is the one GitHub URL that always resolves to the newest
-          release. It cannot be a fourth button in the footer row below: `.np-skin-btn` is a
+      {/* Download call-to-action. `/releases/latest` is the GitHub URL that always resolves
+          to the newest release. It does not fit in the footer row below: `.np-skin-btn` is a
           fixed 40x38 icon cell with no room for a word. */}
       <div className="px-[18px] pb-4">
         <a
@@ -116,8 +114,8 @@ export default function Sidebar({ lang, current, open, onClose, onOpenSearch }: 
         </a>
       </div>
 
-      {/* Footer — theme toggle, language and repo link. Extra bottom padding clears the
-          phone's system navigation bar (0 on desktop). */}
+      {/* Footer: theme toggle, language and repo link. Extra bottom padding clears the
+          phone's system navigation bar and is 0 on desktop. */}
       <div className="flex items-center gap-2 border-t border-outline-variant/60 px-3 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] pt-3">
         <button
           type="button"
@@ -167,8 +165,8 @@ function SidebarGroup({
 
   return (
     <div className={first ? 'mt-1.5' : 'mt-[18px]'}>
-      {/* Disclosure button. No `aria-controls` on purpose — the panel is conditionally
-          rendered, so the id it would name does not exist while collapsed. */}
+      {/* Disclosure button. No `aria-controls`: the panel is conditionally rendered, so the
+          id it would name does not exist while collapsed. */}
       <button
         type="button"
         onClick={() => setOverride(!open)}

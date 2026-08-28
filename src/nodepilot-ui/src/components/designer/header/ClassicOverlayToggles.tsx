@@ -3,9 +3,10 @@ import { useDesignStore } from '../../../stores/designStore';
 import { OVERLAY_DEFS } from './overlayDefs';
 
 /**
- * Per-overlay ACTIVE tint (keyed by testId) — the classic toolbar kept a distinct hue per
- * overlay (machine/data-flow = primary, failure = red, coverage = amber, critical-path = orange)
- * so an enabled overlay reads at a glance. Inactive share the neutral transparent-on-tray fill.
+ * Active-state tint per overlay, keyed by testId. The classic toolbar gives each overlay a
+ * distinct hue (machine/data-flow = primary, failure = red, coverage = amber, critical-path =
+ * orange) so an enabled overlay reads at a glance. Inactive overlays share the neutral
+ * transparent-on-tray fill.
  */
 const ACTIVE_TINT: Record<string, string> = {
   'toggle-machine-coloring': 'bg-primary/15 text-primary',

@@ -1,17 +1,17 @@
-# Sammelt die Kerberos-/NTLM-Belege, die der Feldtest als Evidenz braucht, und legt sie
-# unter .\evidence\<timestamp>\ ab (gitignored).
+# Collects the Kerberos and NTLM evidence the field test needs and writes it to
+# .\evidence\<timestamp>\ (gitignored).
 #
-# AUSFUEHREN AUF:
-#   npcli01  -> klist tickets, Browser-Policy (Client-Sicht)
-#   npapi01  -> Security-4624, NTLM-Operational (Server-Sicht)
-# Beide Seiten laufen lassen; -Role steuert, was gesammelt wird.
+# RUN ON:
+#   npcli01  -> klist tickets, browser policy (client side)
+#   npapi01  -> Security 4624, NTLM-Operational (server side)
+# Run both sides; -Role selects what is collected.
 #
-# Aufruf: powershell -NoProfile -ExecutionPolicy Bypass -File .\Get-KerberosEvidence.ps1 -Role Client
-#         .\Get-KerberosEvidence.ps1 -Role Server -SinceMinutes 30
+# Usage: powershell -NoProfile -ExecutionPolicy Bypass -File .\Get-KerberosEvidence.ps1 -Role Client
+#        .\Get-KerberosEvidence.ps1 -Role Server -SinceMinutes 30
 #
-# Warum ueberhaupt: ein Handshake, der auf NTLM zurueckfaellt, liefert HTTP 200 genauso
-# wie Kerberos, solange die Policy NTLM noch erlaubt. Ohne diese Belege ist "SSO
-# funktioniert" nicht von "NTLM funktioniert" zu unterscheiden.
+# A handshake that falls back to NTLM returns HTTP 200 just like Kerberos as long as policy
+# still allows NTLM, so without this evidence "SSO works" cannot be told apart from
+# "NTLM works".
 param(
     [ValidateSet('Client', 'Server', 'Both')]
     [string]$Role = 'Both',
@@ -41,8 +41,8 @@ function Save-Evidence([string]$file, [string[]]$lines) {
 if ($Role -in @('Client', 'Both')) {
     "Client-Belege:"
 
-    # Das Service-Ticket ist der harte Kerberos-Beweis. Ein NTLM-Fallback hinterlaesst
-    # hier keinen HTTP/-Eintrag.
+    # The service ticket is the hard proof of Kerberos. An NTLM fallback leaves no
+    # HTTP/ entry here.
     $tickets = @(& klist tickets 2>&1 | ForEach-Object { "$_" })
     Save-Evidence 'klist-tickets.txt' $tickets
     $hasSvc = ($tickets -join "`n") -match [regex]::Escape("HTTP/$ApiFqdn")
@@ -50,10 +50,9 @@ if ($Role -in @('Client', 'Both')) {
 
     Save-Evidence 'klist-tgt.txt' @(& klist tgt 2>&1 | ForEach-Object { "$_" })
 
-    # Browser-Policy: NICHT nur dumpen, sondern bewerten. Fehlt die Allowlist fuer den
-    # geprueften FQDN, fragt der Browser nach Credentials statt still das Ticket vorzuweisen
-    # -- und genau dann ist ein "stiller" Login nur der Credential-Cache oder ein Filler.
-    # Ohne diese Bewertung stand die Information zwar in der Evidenz, wurde aber uebersehen.
+    # Evaluate the browser policy instead of only dumping it. Without an allowlist entry for
+    # the checked FQDN the browser asks for credentials instead of presenting the ticket
+    # silently, so a silent login then comes from the credential cache or a filler.
     $policy = @()
     $allowlisted = $false
     foreach ($p in @('HKLM:\SOFTWARE\Policies\Microsoft\Edge', 'HKLM:\SOFTWARE\Policies\Google\Chrome')) {
@@ -76,7 +75,7 @@ if ($Role -in @('Client', 'Both')) {
         $policy += 'ZoneMap: keine Policy-Eintraege vorhanden'
     }
 
-    # Persistente Anmeldeinformationen maskieren eine fehlende Policy komplett.
+    # Stored credentials completely mask a missing policy.
     $stored = @(& cmdkey /list 2>&1 | Select-String -Pattern ([regex]::Escape($ApiFqdn)))
     $policy += ''
     $policy += "cmdkey-Eintraege fuer ${ApiFqdn}: $(if ($stored.Count) { $stored.Count } else { 0 })"
@@ -108,18 +107,12 @@ if ($Role -in @('Client', 'Both')) {
 if ($Role -in @('Server', 'Both')) {
     "Server-Belege:"
 
-    # 4624 LogonType 3 ist der serverseitige Gegenbeweis zum klist-Ticket.
+    # Event 4624 with LogonType 3 provides server-side evidence for the klist ticket.
     #
-    # Ausgewertet werden die strukturierten EventData-Felder, NICHT der Message-Text:
-    # der ist lokalisiert (auf de-DE steht dort "Anmeldetyp"/"Authentifizierungspaket"),
-    # ein Text-Regex faende auf einem deutschen Server null Treffer und saehe damit aus
-    # wie "kein Kerberos-Logon".
+    # Read structured EventData fields because localized message text is not stable.
     #
-    # Die Feldkombination ist das eigentliche Signal:
-    #   AuthenticationPackageName=Kerberos                      -> echtes Kerberos
-    #   AuthenticationPackageName=Negotiate + LmPackageName=NTLM -> SPNEGO auf NTLM
-    #                                                              zurueckgefallen
-    # Ein reiner Blick auf "Negotiate" wuerde den Fallback also gerade verdecken.
+    # AuthenticationPackageName=Kerberos proves Kerberos. Negotiate with LmPackageName=NTLM
+    # indicates an SPNEGO fallback to NTLM.
     try {
         $rows = @(Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 4624; StartTime = $since } -ErrorAction Stop |
             ForEach-Object {
@@ -148,8 +141,7 @@ if ($Role -in @('Server', 'Both')) {
         "  Security-Log nicht lesbar (elevated ausfuehren?): $($_.Exception.Message)"
     }
 
-    # 8004 = eingehendes NTLM im Auditmodus protokolliert (W19).
-    # 4004 = eingehendes NTLM durch "Deny all accounts" blockiert (W20).
+    # Event 8004 records incoming NTLM in audit mode; 4004 records policy rejection.
     try {
         $ntlmEvents = @(Get-WinEvent -FilterHashtable @{ LogName = 'Microsoft-Windows-NTLM/Operational'; StartTime = $since } -ErrorAction Stop |
             Select-Object -First 50 |
@@ -160,7 +152,7 @@ if ($Role -in @('Server', 'Both')) {
         "  NTLM-Operational-Log leer oder nicht aktiviert: $($_.Exception.Message)"
     }
 
-    # Registry-Beleg fuer die NtlmDisabledByPolicy-Attestierung.
+    # Registry evidence for the NtlmDisabledByPolicy attestation.
     $lsa = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0'
     $restrict = (Get-ItemProperty -Path $lsa -ErrorAction SilentlyContinue).RestrictReceivingNTLMTraffic
     Save-Evidence 'ntlm-policy-registry.txt' @(

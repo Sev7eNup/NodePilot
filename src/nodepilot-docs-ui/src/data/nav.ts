@@ -10,24 +10,23 @@ import {
 
 export interface NavPage {
   path: string // route + content key, e.g. "getting-started/introduction"
-  /** Sidebar glyph. Required on purpose: `tsc` then fails if a new page ships without one. */
+  /** Sidebar glyph. Required so `tsc` rejects a new page that ships without one. */
   icon: CarbonIconType
 }
 
 export interface NavGroup {
-  /** Stable id — the translation key suffix, never rendered directly. */
+  /** Stable id used as the translation key suffix, never rendered directly. */
   id: string
   items: NavPage[]
 }
 
-// Structure lives here exactly once; the visible titles live in `i18n/locales/*.json`
-// under `nav.groups.<id>` / `nav.pages.<path>`. Adding a page therefore means adding it
-// here plus one line per language — `navTitleKey()` derives the key from the path, so
-// there is no third mapping table to keep in sync.
+// The structure lives here once; the visible titles live in `i18n/locales/*.json` under
+// `nav.groups.<id>` and `nav.pages.<path>`. Adding a page means adding it here plus one
+// line per language: `navTitleKey()` derives the key from the path, so there is no third
+// mapping table to keep in sync.
 //
 // Icons mirror `nodepilot-ui/src/lib/navigation.ts` wherever a docs page maps onto an
-// app page (Workflows, Activities, CLI-Auth, Machines, Settings, …), so the two navs
-// read as one product.
+// app page, so both navigations read as one product.
 export const navGroups: NavGroup[] = [
   {
     id: 'getting-started',
@@ -115,8 +114,8 @@ export const navGroups: NavGroup[] = [
 
 export const allPages: NavPage[] = navGroups.flatMap((g) => g.items)
 
-/** Translation key for a page title. No page path contains a `.`, so the path can sit
- *  under `nav.pages` as a plain leaf without fighting i18next's key separator. */
+/** Translation key for a page title. No page path contains a `.`, so the path sits under
+ *  `nav.pages` as a plain leaf and never collides with i18next's key separator. */
 export function navTitleKey(path: string): string {
   return `nav.pages.${path}`
 }
@@ -129,7 +128,7 @@ export function pageByPath(path: string): NavPage | undefined {
   return allPages.find((p) => p.path === path)
 }
 
-/** Group id a page belongs to — the single source for the TopBar breadcrumb. */
+/** Group id a page belongs to. Source for the TopBar breadcrumb. */
 export function groupOf(path: string): string | undefined {
   return navGroups.find((g) => g.items.some((i) => i.path === path))?.id
 }

@@ -4,10 +4,12 @@ using NodePilot.Data.Availability;
 namespace NodePilot.Api.Hosting;
 
 /// <summary>
-/// Answers 503 immediately while the breaker is open, instead of letting every request queue behind a
+/// Answers 503 immediately while the breaker is open, instead of letting every request queue behind
+/// a
 /// database that is not going to reply.
 ///
-/// <para>This is the piece that turns the breaker from an observation into a behaviour. Without it the
+/// <para>This is the piece that turns the breaker from an observation into a behaviour. Without it
+/// the
 /// process still detects an outage, but each request still pays
 /// <c>TokenValidityMiddleware</c>'s three database reads first; without its dedicated short budget,
 /// that can still be minutes per caller with a bounded connection pool behind it.</para>
@@ -19,7 +21,8 @@ namespace NodePilot.Api.Hosting;
 /// <item>Before authentication, because <c>OidcTicketStore</c> resolves a DbContext inside
 /// <c>UseAuthentication()</c>, and before <c>TokenValidityMiddleware</c>, whose three reads are the
 /// actual hang.</item>
-/// <item>Before <c>LeaderRequiredMiddleware</c>: during a shared-database outage no node can renew its
+/// <item>Before <c>LeaderRequiredMiddleware</c>: during a shared-database outage no node can renew
+/// its
 /// lease, so every node self-demotes and would answer "not the leader" — a symptom that hides the
 /// cause.</item>
 /// </list></para>
@@ -40,8 +43,10 @@ public sealed class DatabaseAvailabilityMiddleware(RequestDelegate next, IDataba
         if (!ShouldGate(context))
         {
             // Authentication has not run yet at this point, so the gate cannot replace ctx.User
-            // itself. Mark only browser navigations carrying the auth cookie; TokenValidityMiddleware,
-            // which runs after UseAuthentication, consumes the marker and strips the principal before
+            // itself. Mark only browser navigations carrying the auth cookie;
+            // TokenValidityMiddleware,
+            // which runs after UseAuthentication, consumes the marker and strips the principal
+            // before
             // any revocation/session/user query. The SPA document can then render the outage banner
             // immediately instead of waiting for the short auth command budget to expire first.
             if ((HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
@@ -64,12 +69,16 @@ public sealed class DatabaseAvailabilityMiddleware(RequestDelegate next, IDataba
     /// Gates every database-backed HTTP surface; lets the static SPA document and health endpoints
     /// through so they can explain and report the outage.
     ///
-    /// <para><b>Everything else is load-bearing, not defensive.</b> There is no <c>UseDefaultFiles</c>
+    /// <para><b>Everything else is load-bearing, not defensive.</b> There is no
+    /// <c>UseDefaultFiles</c>
     /// in this pipeline, so <c>GET /</c>, <c>/login</c> and <c>/workflows</c> are served by
     /// <c>MapFallbackToFile("index.html")</c> — an *endpoint*, which runs after this middleware. A
-    /// blanket 503 would replace the very document that renders the outage banner, and the user would
-    /// see raw JSON instead of an explanation. <c>/healthz/*</c> needs no explicit carve-out (it matches
-    /// neither prefix) but is worth knowing about: it is how the SPA learns the outage exists.</para>
+    /// blanket 503 would replace the very document that renders the outage banner, and the user
+    /// would
+    /// see raw JSON instead of an explanation. <c>/healthz/*</c> needs no explicit carve-out (it
+    /// matches
+    /// neither prefix) but is worth knowing about: it is how the SPA learns the outage
+    /// exists.</para>
     /// </summary>
     internal static bool ShouldGate(HttpContext context)
     {
@@ -80,10 +89,13 @@ public sealed class DatabaseAvailabilityMiddleware(RequestDelegate next, IDataba
             || path.StartsWithSegments("/signin-oidc"))
             return true;
 
-        // The scrape endpoint is database-free and may deliberately be public so an external monitor
-        // can observe an outage. The default/protected endpoint, however, enters authentication before
-        // its Authorize metadata can be enforced and must therefore fail here with the same 503 body as
-        // /api. Endpoint metadata is normally available because routing runs before this middleware;
+        // The scrape endpoint is database-free and may deliberately be public so an external
+        // monitor
+        // can observe an outage. The default/protected endpoint, however, enters authentication
+        // before
+        // its Authorize metadata can be enforced and must therefore fail here with the same 503
+        // body as
+        // /api. Endpoint metadata is normally available because routing precedes this middleware;
         // fail closed if a non-standard pipeline invokes /metrics without a selected endpoint.
         if (path.StartsWithSegments("/metrics"))
         {

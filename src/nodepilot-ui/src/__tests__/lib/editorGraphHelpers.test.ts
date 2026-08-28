@@ -59,7 +59,7 @@ describe('renameVariableInNodeData', () => {
     const result = renameVariableInNodeData(data, 'a.b', 'c');
     const cfg = result.config as Record<string, string>;
     expect(cfg.a).toBe('{{c.output}}');
-    // "a.bX" is a different prefix — the escaped dot prevents a spurious match.
+    // "a.bX" is a different prefix; the escaped dot prevents a spurious match.
     expect(cfg.b).toBe('{{a.bX.output}}');
   });
 
@@ -68,7 +68,7 @@ describe('renameVariableInNodeData', () => {
     const result = renameVariableInNodeData(data, 'x+y', 'z');
     const cfg = result.config as Record<string, string>;
     expect(cfg.hit).toBe('{{z.output}}');
-    // Without escaping, "x+y" would match "xy" as a regex — escaping keeps it literal.
+    // Without escaping, "x+y" would match "xy" as a regex; escaping keeps it literal.
     expect(cfg.miss).toBe('{{xy.output}}');
   });
 
@@ -89,14 +89,14 @@ describe('renameVariableInNodeData', () => {
   it('only rewrites the config subtree, not sibling data fields', () => {
     const data = { outputVariable: '{{old.output}}', config: { script: '{{old.output}}' } };
     const result = renameVariableInNodeData(data, 'old', 'new');
-    // Sibling field is outside config → untouched.
+    // The sibling field sits outside config and stays untouched.
     expect(result.outputVariable).toBe('{{old.output}}');
     expect((result.config as { script: string }).script).toBe('{{new.output}}');
   });
 
   it('returns the original data object when the rewrite breaks JSON round-trip', () => {
-    // A newAlias containing a double-quote produces invalid JSON after the raw string
-    // replace → JSON.parse throws → the catch returns the untouched original.
+    // A newAlias containing a double quote produces invalid JSON after the raw string replace,
+    // so JSON.parse throws and the catch returns the untouched original.
     const data = { config: { script: '{{old.output}}' } };
     const result = renameVariableInNodeData(data, 'old', 'x"y');
     expect(result).toBe(data);
@@ -108,7 +108,7 @@ describe('renameVariableInEdge', () => {
     const edge = { id: 'e1', source: 'a', target: 'b', data: { condition: 'old.success' } } as unknown as Edge;
     const result = renameVariableInEdge(edge, 'old', 'new');
     expect((result.data as { condition: string }).condition).toBe('new.success');
-    expect(result).not.toBe(edge); // changed → new object
+    expect(result).not.toBe(edge); // changed, so a new object is returned
   });
 
   it('rewrites the legacy condition shortcut ".failed"', () => {

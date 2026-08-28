@@ -9,7 +9,8 @@ using Xunit;
 
 namespace NodePilot.Mcp.Tests.Tools;
 
-/// <summary>Coverage for read + execution + edit tools that the focused tests did not hit.</summary>
+/// <summary>Coverage for read + execution + edit tools that the focused tests did not
+/// hit.</summary>
 public sealed class MoreReadEditToolsTests
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web) { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
@@ -132,7 +133,7 @@ public sealed class MoreReadEditToolsTests
             .RespondWith(Response.Create().WithStatusCode(201).WithBodyAsJson(TestApi.WorkflowResponse(id, "New", "{}")));
 
         var tools = new WorkflowEditTools(api.Client());
-        // A new node with a secret the agent invented → must be masked, never sent as plaintext.
+        // A new node with a secret the agent invented -> must be masked, never sent as plaintext.
         var def = """{"nodes":[{"id":"h","type":"activity","data":{"activityType":"webhookTrigger","config":{"secret":"invented"}}}],"edges":[]}""";
         var res = J(await tools.CreateWorkflow("New", E(def)));
         res.Should().Contain("\"created\":true");
@@ -141,7 +142,7 @@ public sealed class MoreReadEditToolsTests
         body.Should().NotContain("invented");
         body.Should().Contain("***");
 
-        // Malformed shape → rejected, no second POST.
+        // Malformed shape -> rejected, no second POST.
         var act = async () => await tools.CreateWorkflow("Bad", E("{}"));
         await act.Should().ThrowAsync<Exception>();
     }

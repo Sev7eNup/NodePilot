@@ -48,7 +48,8 @@ public sealed class DocsKnowledgeReaderTests : IDisposable
     {
         var hits = Reader().Search("webhookTrigger");
         hits.Should().NotBeEmpty();
-        // triggers.md mentions the term multiple times → ranked first; notes.txt is not markdown → excluded.
+        // triggers.md mentions the term multiple times to ranked first; notes.txt is not markdown
+        // to excluded.
         hits[0].Path.Should().Be("concepts/triggers.md");
         hits.Select(h => h.Path).Should().NotContain(p => p.EndsWith(".txt"));
     }

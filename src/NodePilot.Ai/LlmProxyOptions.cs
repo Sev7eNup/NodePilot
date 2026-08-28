@@ -19,21 +19,14 @@ public enum LlmProxyMode
 
 /// <summary>
 /// HTTP-proxy settings for every outbound LLM call, bound from <c>Llm:Proxy:*</c>. One block for
-/// the whole feature rather than one per profile: the "cloud profile through the proxy, local
-/// Ollama direct" case is what <see cref="BypassList"/> is for, and a single block keeps one
-/// handler with one connection pool.
+/// the whole feature rather than one per profile: mixed setups are handled by
+/// <see cref="BypassList"/>, and a single block keeps one handler with one connection pool.
+/// The default is <see cref="LlmProxyMode.Off"/>, so prompts are never routed through a proxy
+/// nobody configured.
 ///
-/// <para><b>Default is <see cref="LlmProxyMode.Off"/></b> — a NodePilot instance never silently
-/// routes model prompts through a proxy nobody asked it to use. Corporate environments with a
-/// mandatory outbound proxy set <see cref="Mode"/> to <see cref="LlmProxyMode.System"/> once and
-/// are done.</para>
-///
-/// <para><b>Security note.</b> With a proxy in the path, NodePilot no longer resolves the
-/// destination's DNS itself — the proxy does. The connect-time SSRF guard
-/// (<c>LlmConnectGuard</c>) therefore only sees the proxy endpoint, and the destination is
-/// protected by the literal <c>BaseUrl</c> check that runs on every settings save and at boot.
-/// That is proportionate here: the LLM BaseUrl is a single Admin-only setting, not a per-step URL
-/// assembled from trigger payloads the way <c>restApi</c>'s is.</para>
+/// <para>With a proxy in the path the proxy resolves the destination's DNS, so the connect-time
+/// SSRF guard (<c>LlmConnectGuard</c>) sees only the proxy endpoint. The destination stays covered
+/// by the literal <c>BaseUrl</c> check that runs at boot and on every settings save.</para>
 /// </summary>
 public class LlmProxyOptions
 {
@@ -51,13 +44,14 @@ public class LlmProxyOptions
 
     /// <summary>
     /// Hosts that skip the proxy. Accepts shell globs (<c>localhost</c>, <c>*.intern</c>,
-    /// <c>10.0.0.1</c>). Only consulted in <see cref="LlmProxyMode.Custom"/> — in
-    /// <see cref="LlmProxyMode.System"/> the operating system's own bypass list applies, because
-    /// mixing the two would make "why did this not go through the proxy" unanswerable.
+    /// <c>10.0.0.1</c>). Only consulted in <see cref="LlmProxyMode.Custom"/>; in
+    /// <see cref="LlmProxyMode.System"/> the operating system's own bypass list applies instead,
+    /// so only one list is ever in effect.
     /// </summary>
     public List<string> BypassList { get; set; } = new();
 
-    /// <summary>Username for a proxy that wants Basic auth. Empty means no explicit credentials.</summary>
+    /// <summary>Username for a proxy that wants Basic auth. Empty means no explicit
+    /// credentials.</summary>
     public string? Username { get; set; }
 
     /// <summary>

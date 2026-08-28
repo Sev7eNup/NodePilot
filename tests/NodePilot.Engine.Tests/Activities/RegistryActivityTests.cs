@@ -261,7 +261,7 @@ public sealed class RegistryActivityTests : IDisposable
         _capturedScript.Should().Contain("O''Brian");
     }
 
-    // ---- PostProcess (Marker-Block → OutputParameters) ----
+    // ---- PostProcess (Marker-Block -> OutputParameters) ----
 
     [Fact]
     public async Task Read_SingleValue_ProjectsValueAndType()

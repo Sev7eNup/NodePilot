@@ -20,7 +20,7 @@ function rectToGlow(el: Element): GlowRect {
  * The control "unit" the bloom should hug within a section. A multi-button group (e.g. a
  * −/value/+ stepper) carries `data-glow-unit` so the whole group counts as one; otherwise a
  * standalone control is its own unit. Fast path: the unit directly under the cursor. Else
- * (cursor in a gap at row level): the horizontally-nearest unit — so sliding control→control
+ * (cursor in a gap at row level): the horizontally-nearest unit — so sliding control to control
  * never momentarily expands back to the full-section bloom.
  */
 function nearestUnitRect(section: Element, target: Element | null, cx: number): GlowRect | null {
@@ -55,20 +55,20 @@ function prefersReducedMotion(): boolean {
 
 /**
  * Provider for the toolbar proximity glow. Renders the toolbar-root flex container and tracks
- * the cursor on `document` so the glow reacts as the mouse APPROACHES the bar from below (out
- * of the canvas) — not only once it's over the buttons. Exactly ONE section glows at a time:
+ * the cursor on `document` so the glow reacts as the mouse approaches the bar from below (out
+ * of the canvas) — not only once it's over the buttons. Exactly one section glows at a time:
  * the section whose horizontal column the cursor is in (or the nearest in the gaps); nothing
  * glows when the cursor is left of the bar (over the logo / workflow-name) or far from it.
  *
  * Performance:
- *   • NO React re-renders — the handler writes `--np-glow` straight to the DOM via setProperty.
- *   • rAF-throttled, a single frame in flight → at most ~one update per animation frame.
+ *   • No React re-renders — the handler writes `--np-glow` straight to the DOM via setProperty.
+ *   • rAF-throttled, a single frame in flight, so at most one update per animation frame.
  *   • A cached vertical band gates the work: while the cursor is well above/below the toolbar
  *     (the hot path when panning/dragging the canvas), the rAF does a single coordinate compare
- *     and bails — NO getBoundingClientRect, no writes. Per-section layout reads happen only
+ *     and bails — no getBoundingClientRect, no writes. Per-section layout reads happen only
  *     while the cursor is within `REACH` of the bar's vertical band. The toolbar's Y is stable,
  *     so the cached band survives the workflow-name input changing the bar's horizontal width.
- *   • Only `opacity` animates in CSS (constant blur) → kept cheap and compositor-friendly.
+ *   • Only `opacity` animates in CSS (constant blur), so it stays cheap and compositor-friendly.
  *   • Touch points are ignored (a finger hovering isn't a meaningful "approach").
  *   • Under prefers-reduced-motion the effect is never wired up.
  */
@@ -85,7 +85,7 @@ export function ToolbarGlow({
 
   const register = useCallback((el: HTMLElement) => {
     sectionsRef.current.add(el);
-    bandRef.current = null; // section set changed → cached band stale
+    bandRef.current = null; // section set changed — cached band is stale
     return () => {
       sectionsRef.current.delete(el);
       bandRef.current = null;
@@ -96,7 +96,7 @@ export function ToolbarGlow({
   const ctxValue = useMemo(() => ({ register }), [register]);
 
   useEffect(() => {
-    if (prefersReducedMotion()) return; // no tracking → zero runtime cost
+    if (prefersReducedMotion()) return; // no tracking means zero runtime cost
     const root = rootRef.current;
     if (!root) return;
 
@@ -133,8 +133,8 @@ export function ToolbarGlow({
       litRef.current = !!active && active.intensity > 0;
 
       // Once the cursor is at the section's row level, hug a single control — the one under the
-      // cursor, or (in a gap between controls) the nearest one, so moving control→control slides
-      // the bloom instead of flashing the full-section width. While still approaching from below
+      // cursor, or (in a gap between controls) the nearest one, so moving control to control
+      // slides the bloom instead of flashing the full-section width. While still approaching
       // (cursor under the bar), keep the wide full-section bloom.
       if (active && active.intensity > 0) {
         const el = els[active.index];
@@ -153,7 +153,7 @@ export function ToolbarGlow({
       if (!p) return;
       const band = bandRef.current;
       if (band && (p.y < band.top - REACH || p.y > band.bottom + REACH)) {
-        if (litRef.current) zeroAll(); // cursor far from the bar → ensure nothing lingers lit
+        if (litRef.current) zeroAll(); // cursor far from the bar — clear anything left lit
         return;
       }
       computeAndApply(p.x, p.y, p.target);
@@ -201,7 +201,7 @@ export function ToolbarGlow({
       ro?.disconnect();
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
-      // Intentionally read the LIVE section set at teardown (stable ref, Set identity never
+      // Intentionally read the live section set at teardown (stable ref, Set identity never
       // changes) so late-registered sections are cleared too.
       // eslint-disable-next-line react-hooks/exhaustive-deps
       for (const el of sectionsRef.current) el.style.removeProperty('--np-glow');

@@ -4,8 +4,8 @@ import { useState } from 'react';
  * Centered workflow-name field for the editor header's middle zone. An always-present
  * `<input>` keeps rename wiring (and tests that query it via display value / textbox role)
  * intact; an in-flow styled layer renders the name with a muted/monospace leading
- * version-like token (e.g. "2.07.05.01") + the rest bold AND sizes the field so the input
- * grows to the FULL name — the name is never truncated as long as it fits the middle zone
+ * version-like token (e.g. "2.07.05.01") + the rest bold and sizes the field so the input
+ * grows to the full name — the name is never truncated as long as it fits the middle zone
  * (only an extreme, wider-than-the-zone name ellipsises). While the input is focused the
  * styled layer hides and the input text becomes visible for editing.
  */
@@ -17,7 +17,7 @@ export function WorkflowNameField({ name, onRename, canWrite, placeholder }: Rea
 }>) {
   const [focused, setFocused] = useState(false);
 
-  // Split off a leading version-like token ("2.07.05.01 Foo" → "2.07.05.01" + "Foo").
+  // Split off a leading version-like token ("2.07.05.01 Foo" becomes "2.07.05.01" + "Foo").
   // Done as an index scan rather than /^(\S+)\s+(.+)$/, whose greedy \S+ backtracks over the
   // whole name on every whitespace-free input.
   const wsIndex = name.search(/\s/);
@@ -27,7 +27,7 @@ export function WorkflowNameField({ name, onRename, canWrite, placeholder }: Rea
   const rest = versionPrefix ? tail : name;
 
   return (
-    // inline-grid with both layers in the same cell: the styled layer is IN-FLOW so it sizes
+    // inline-grid with both layers in the same cell: the styled layer is in-flow so it sizes
     // the cell to the full name (up to max-w-full); the input fills that cell (w-full).
     <div className="inline-grid max-w-full items-center">
       <div

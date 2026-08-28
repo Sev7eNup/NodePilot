@@ -1,14 +1,12 @@
-# NodePilot LDAP Live-Testsuite gegen den Samba-Test-DC (siehe README.md in diesem Ordner).
+# NodePilot LDAP live test suite against the Samba test DC (see README.md in this folder).
 #
-# Voraussetzungen:
-#   1. Test-DC-Container laeuft (docker run ... nodepilot-testdc, Port 636).
-#   2. API laeuft in PHASE B (LDAP aktiv, Endpoint 127.0.0.1:636) gegen die Wegwerf-DB.
-#   3. Break-Glass-Admin wurde in PHASE A gebootstrapped (Passwoerter siehe Params).
+# Prerequisites:
+#   1. Test DC container is running (docker run ... nodepilot-testdc, port 636).
+#   2. API runs in phase B (LDAP enabled, endpoint 127.0.0.1:636) against the throwaway DB.
+#   3. Break-glass admin was bootstrapped in phase A (passwords are the parameter defaults).
 #
-# Aufruf:   powershell -NoProfile -ExecutionPolicy Bypass -File .\ldap-live-test.ps1
-# Optional: -IncludeOutageDrill  (stoppt/startet den Container fuer den Fail-Closed-Test)
-#
-# Validierter Stand 2026-07-24: 13/13 PASS + Outage-Drill PASS.
+# Usage:    powershell -NoProfile -ExecutionPolicy Bypass -File .\ldap-live-test.ps1
+# Optional: -IncludeOutageDrill  (stops and starts the container for the fail-closed test)
 param(
     [string]$Base = 'http://localhost:5000',
     [string]$ContainerName = 'nodepilot-testdc',
@@ -28,7 +26,7 @@ function Add-Result([string]$name, [bool]$ok, [string]$detail) {
     [void]$results.Add([pscustomobject]@{ Test = $name; Ok = $ok; Detail = $detail })
 }
 
-# POST JSON; liefert @{Status=..; Body=..}; wirft nicht bei HTTP-Fehlerstatus.
+# Posts JSON and returns @{Status=..; Body=..}; an HTTP error status does not throw.
 function Invoke-JsonPost([string]$url, $bodyObj, [hashtable]$headers, [ref]$sessionRef) {
     $json = if ($null -ne $bodyObj) { $bodyObj | ConvertTo-Json -Depth 6 } else { '{}' }
     $p = @{ Uri = $url; Method = 'POST'; Body = $json; ContentType = 'application/json'; UseBasicParsing = $true }
@@ -52,8 +50,8 @@ function Invoke-JsonPost([string]$url, $bodyObj, [hashtable]$headers, [ref]$sess
     }
 }
 
-# SID der Allowed-Group live aus dem Container ziehen -- die Domain-SID ist pro
-# Provisionierung neu, hartkodierte SIDs waeren nach jedem frischen Container falsch.
+# Read the allowed group's SID from the running container. Every provisioning creates a new
+# domain SID, so a hardcoded value would be wrong for each fresh container.
 $accessSid = $null
 foreach ($line in (docker exec $ContainerName ldbsearch -H /var/lib/samba/private/sam.ldb '(sAMAccountName=NodePilot-Access)' objectSid)) {
     if ($line -match '^objectSid:\s*(\S+)') { $accessSid = $Matches[1]; break }
@@ -65,59 +63,59 @@ if (-not $accessSid) { throw "Konnte NodePilot-Access-SID nicht aus Container '$
 $m = Invoke-RestMethod -Uri "$Base/api/auth/methods"
 Add-Result '1. /auth/methods' ($m.ldap -eq $true -and $m.local -eq $true) ("ldap=$($m.ldap) local=$($m.local) windows=$($m.windows)")
 
-# ---------- 2. Directory-Health (Service-Bind + BaseDn-Read uebers echte LDAPS) ----------
+# ---------- 2. Directory health (service bind + BaseDn read over real LDAPS) ----------
 try { $h = Invoke-RestMethod -Uri "$Base/healthz/directory" } catch { $h = 'ERROR' }
 Add-Result '2. /healthz/directory' ($h -match 'Healthy') "$h"
 
-# ---------- 3. Lokaler Break-Glass-Login trotz aktivem LDAP (Local-Shadow) ----------
+# ---------- 3. Local break-glass login while LDAP is enabled (local shadow) ----------
 $adminSession = $null
 $r = Invoke-JsonPost "$Base/api/auth/login" @{ username = $BreakGlassUser; password = $BreakGlassPassword } $null ([ref]$adminSession)
 Add-Result '3. Break-Glass-Login lokal (LDAP aktiv, wird uebersprungen)' ($r.Status -eq 200 -and $r.Body.role -eq 'Admin') ("status=$($r.Status) role=$($r.Body.role)")
 
-# ---------- 4. LDAP-Login happy path: alice (NUR in NodePilot-Admins, nested in -Access) ----------
+# ---------- 4. LDAP login: alice (only in NodePilot-Admins, nested in -Access) ----------
 $aliceSession = $null
 $r = Invoke-JsonPost "$Base/api/auth/login" @{ username = 'alice.demo@nodepilot.test'; password = $AlicePassword } $null ([ref]$aliceSession)
 $aliceId = $r.Body.userId
 Add-Result '4. LDAP-Login alice (UPN) -> Admin via nested Group' ($r.Status -eq 200 -and $r.Body.role -eq 'Admin') ("status=$($r.Status) role=$($r.Body.role) user=$($r.Body.username)")
 
-# ---------- 5. /auth/me mit Alice-Cookie-Session ----------
+# ---------- 5. /auth/me with the cookie session from alice ----------
 try {
     $me = Invoke-RestMethod -Uri "$Base/api/auth/me" -WebSession $aliceSession
     Add-Result '5. /auth/me (Cookie-Session)' ($me.username -eq 'alice.demo@nodepilot.test') ("username=$($me.username) role=$($me.role)")
 } catch { Add-Result '5. /auth/me (Cookie-Session)' $false "EXCEPTION: $($_.Exception.Message)" }
 
-# ---------- 6. Bare Username -> UpnSuffix-Normalisierung, gleicher User ----------
+# ---------- 6. Bare username normalised via UpnSuffix, same user ----------
 $r = Invoke-JsonPost "$Base/api/auth/login" @{ username = 'alice.demo'; password = $AlicePassword } $null $null
 Add-Result '6. LDAP-Login alice (bare + UpnSuffix)' ($r.Status -eq 200 -and $r.Body.userId -eq $aliceId) ("status=$($r.Status) sameUserId=$($r.Body.userId -eq $aliceId)")
 
-# ---------- 7. Falsches Passwort -> 401 (echter AD-Fehler 49) ----------
+# ---------- 7. Wrong password returns 401 (real AD error 49) ----------
 $r = Invoke-JsonPost "$Base/api/auth/login" @{ username = 'alice.demo@nodepilot.test'; password = 'Falsch#Passw0rd!' } $null $null
 Add-Result '7. Falsches Passwort -> 401' ($r.Status -eq 401) ("status=$($r.Status)")
 
-# ---------- 8. Leeres Passwort -> abgelehnt (H-17, unauthenticated-bind-Bypass) ----------
+# ---------- 8. Empty password rejected (H-17, unauthenticated bind bypass) ----------
 $r = Invoke-JsonPost "$Base/api/auth/login" @{ username = 'alice.demo@nodepilot.test'; password = '' } $null $null
 Add-Result '8. Leeres Passwort abgelehnt (H-17)' ($r.Status -eq 400 -or $r.Status -eq 401) ("status=$($r.Status)")
 
-# ---------- 9. carol: nur NodePilot-Access -> Viewer (kein RoleMapping-Treffer) ----------
+# ---------- 9. carol: only NodePilot-Access, so Viewer (no RoleMapping match) ----------
 $r = Invoke-JsonPost "$Base/api/auth/login" @{ username = 'carol.demo@nodepilot.test'; password = $CarolPassword } $null $null
 Add-Result '9. LDAP-Login carol -> Viewer (kein RoleMapping)' ($r.Status -eq 200 -and $r.Body.role -eq 'Viewer') ("status=$($r.Status) role=$($r.Body.role)")
 
-# ---------- 10. bob: in keiner erlaubten Gruppe -> 401 generisch, kein JIT-Row ----------
+# ---------- 10. bob: in no allowed group, generic 401 and no JIT row ----------
 $r = Invoke-JsonPost "$Base/api/auth/login" @{ username = 'bob.demo@nodepilot.test'; password = $BobPassword } $null $null
 Add-Result '10. bob ohne AllowedGroup -> 401' ($r.Status -eq 401) ("status=$($r.Status)")
 
-# ---------- 11. Unbekannter Directory-User -> 401 ----------
+# ---------- 11. Unknown directory user returns 401 ----------
 $r = Invoke-JsonPost "$Base/api/auth/login" @{ username = 'unknown.user@nodepilot.test'; password = 'Irgend#Was2026!x' } $null $null
 Add-Result '11. Unbekannter User -> 401' ($r.Status -eq 401) ("status=$($r.Status)")
 
-# ---------- 12. Zweiter Alice-Login = JIT-Update, kein Duplikat ----------
+# ---------- 12. Second alice login updates the JIT user instead of duplicating it ----------
 $r = Invoke-JsonPost "$Base/api/auth/login" @{ username = 'alice.demo@nodepilot.test'; password = $AlicePassword } $null $null
 Add-Result '12. Re-Login alice -> selber User (JIT-Update)' ($r.Status -eq 200 -and $r.Body.userId -eq $aliceId) ("status=$($r.Status) sameUserId=$($r.Body.userId -eq $aliceId)")
 
-# ---------- 13. Admin-Settings LDAP-Probe ----------
-# Gotchas (beide 2026-07-24 live erlebt):
-#   a) Cookie-Werte sind URL-encodiert -- np_csrf VOR dem Header-Echo decodieren.
-#   b) Der Endpoint erwartet den Wrapper { settings: { ... } }.
+# ---------- 13. Admin settings LDAP probe ----------
+# Two details matter here:
+#   a) Cookie values are URL-encoded, so np_csrf is decoded before it is echoed as a header.
+#   b) The endpoint expects the wrapper { settings: { ... } }.
 try {
     $csrfRaw = ($adminSession.Cookies.GetCookies([Uri]$Base) | Where-Object Name -eq 'np_csrf').Value
     $csrf = [Uri]::UnescapeDataString($csrfRaw)
@@ -133,7 +131,7 @@ try {
     Add-Result '13. Admin LDAP-Testprobe' ($r.Status -eq 200 -and $okFlag) ("status=$($r.Status) ok=$okFlag msg=$($r.Body.message)")
 } catch { Add-Result '13. Admin LDAP-Testprobe' $false "EXCEPTION: $($_.Exception.Message)" }
 
-# ---------- 14./15. Optional: Outage-Drill (Fail-Closed + Recovery) ----------
+# ---------- 14./15. Optional outage drill (fail-closed + recovery) ----------
 if ($IncludeOutageDrill) {
     docker stop $ContainerName | Out-Null
     Start-Sleep 2
@@ -145,7 +143,7 @@ if ($IncludeOutageDrill) {
     Add-Result '15. DC zurueck -> Login ok' ($r.Status -eq 200) ("status=$($r.Status) role=$($r.Body.role)")
 }
 
-# ---------- Ausgabe ----------
+# ---------- Output ----------
 ""
 "================ ERGEBNIS ================"
 $pass = 0; $fail = 0

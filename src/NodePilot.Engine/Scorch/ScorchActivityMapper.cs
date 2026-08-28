@@ -5,19 +5,12 @@ using NodePilot.Core.Activities;
 namespace NodePilot.Engine.Scorch;
 
 /// <summary>
-/// Translates a SCOrch activity <c>&lt;Object&gt;</c> into NodePilot activity metadata.
-///
-/// <para>Classification is driven by <c>&lt;ObjectTypeName&gt;</c>, the human-readable type string.
-/// The names here are the ones SCOrch actually writes, which are not always the ones its designer
-/// shows: "Invoke Runbook" is <c>Trigger Policy</c> on the wire, and the property names differ from
-/// the designer labels too (<c>Run Program</c> carries <c>Program</c>/<c>Parameters</c>/
-/// <c>StartupDir</c>, not <c>FilePath</c>/<c>Arguments</c>/<c>WorkingDirectory</c>).</para>
-///
-/// <para>Every builder degrades rather than guesses. <see cref="EnforceContract"/> checks the result
-/// against the shipped config schema and turns a mapping that failed to fill a REQUIRED key back
-/// into a placeholder. Without that rule a wrong property-name assumption produces a node that
-/// looks correct and does nothing — which is exactly how <c>Run Program</c> imported with an empty
-/// <c>filePath</c>.</para>
+/// Translates a SCOrch activity <c>&lt;Object&gt;</c> into NodePilot activity metadata, using the
+/// wire-level <c>&lt;ObjectTypeName&gt;</c> and property names rather than the designer's labels
+/// (for example <c>Invoke Runbook</c> is <c>Trigger Policy</c> on the wire, and <c>Run Program</c>
+/// carries <c>Program</c>/<c>Parameters</c>/<c>StartupDir</c>). Every builder degrades rather than
+/// guesses: <see cref="EnforceContract"/> turns a mapping that fails to fill a required config key
+/// into a placeholder instead of a node that looks configured but does nothing.
 /// </summary>
 internal static class ScorchActivityMapper
 {
@@ -34,7 +27,7 @@ internal static class ScorchActivityMapper
     private delegate Mapping Builder(XElement obj, Dictionary<string, string> props);
 
     /// <summary>
-    /// SCOrch type name → builder. Case-insensitive because the type string is a display name and
+    /// SCOrch type name -> builder. Case-insensitive because the type string is a display name and
     /// nothing guarantees its casing across versions; the previous <c>switch</c> was ordinal-exact.
     /// </summary>
     private static readonly Dictionary<string, Builder> Builders = new(StringComparer.OrdinalIgnoreCase)
@@ -65,7 +58,8 @@ internal static class ScorchActivityMapper
 
         // --- standard activities with a clean NodePilot counterpart ---------------------------
         // Property names are probed with several candidates: unlike the block above these were not
-        // observed in a real export, so a miss must degrade to a placeholder, never to an empty node.
+        // observed in a real export, so a miss must degrade to a placeholder, never to an empty
+        // node.
         ["Copy File"] = (_, p) => BuildFileOperation(p, "copy"),
         ["Move File"] = (_, p) => BuildFileOperation(p, "move"),
         ["Rename File"] = (_, p) => BuildFileOperation(p, "rename"),
@@ -128,7 +122,8 @@ internal static class ScorchActivityMapper
     private static readonly HashSet<string> LocalComputerNames =
         new(StringComparer.OrdinalIgnoreCase) { "localhost", ".", "127.0.0.1", "::1" };
 
-    /// <summary>Every SCOrch type name this mapper claims to translate. Drives the contract guard.</summary>
+    /// <summary>Every SCOrch type name this mapper claims to translate. Drives the contract
+    /// guard.</summary>
     internal static IReadOnlyCollection<string> SupportedTypeNames => Builders.Keys;
 
     /// <summary>
@@ -172,7 +167,8 @@ internal static class ScorchActivityMapper
     }
 
     /// <summary>
-    /// Rejects a mapping that did not fill every REQUIRED config key of its target activity, per the
+    /// Rejects a mapping that did not fill every REQUIRED config key of its target activity, per
+    /// the
     /// shipped schema. This is what keeps a wrong property-name assumption from producing a node
     /// that looks configured and silently does nothing.
     /// </summary>
@@ -238,7 +234,8 @@ internal static class ScorchActivityMapper
 
     private static Mapping BuildRunScript(Dictionary<string, string> p)
     {
-        // SCOrch "Run .Net Script" exposes published variables via <PublishedData><ItemRoot><Entry>.
+        // SCOrch "Run .Net Script" exposes published variables via
+        // <PublishedData><ItemRoot><Entry>.
         // Those need no translation: NodePilot auto-captures every script-scope `$var` as
         // {{step.param.<var>}}, under the same name SCOrch published.
         var scriptType = FirstNonEmpty(p, "ScriptType");
@@ -251,7 +248,8 @@ internal static class ScorchActivityMapper
             Config: new()
             {
                 ["script"] = body,
-                // 'powershell' runs the body in Windows PowerShell 5.1, which is what the script was
+                // 'powershell' runs the body in Windows PowerShell 5.1, which is what the script
+                // was
                 // written against. 'auto' would use the in-process runspace, where implicit WinPS
                 // compatibility is off and Desktop-only modules fail.
                 ["engine"] = "powershell",
@@ -274,12 +272,14 @@ internal static class ScorchActivityMapper
     /// <summary>
     /// SCOrch's <c>Run Program</c> — an external call — always becomes a <c>startProgram</c> node.
     ///
-    /// <para>The export already draws the line this mapping needs: <c>Run .Net Script</c> carries an
+    /// <para>The export already draws the line this mapping needs: <c>Run .Net Script</c> carries
+    /// an
     /// embedded script body, <c>Run Program</c> launches something external. Deciding the node type
     /// from the SHAPE of the value instead second-guesses that, and got it wrong across whole
     /// imports — first on a space (any path under <c>C:\Program Files\</c>), then on a shell
     /// metacharacter, which fired on the <c>&amp;</c> of a perfectly ordinary
-    /// <c>powershell.exe -Command "&amp; 'x.ps1'"</c> and on SCOrch's own field separator. So the type
+    /// <c>powershell.exe -Command "&amp; 'x.ps1'"</c> and on SCOrch's own field separator. So the
+    /// type
     /// is now taken from the export verbatim and never overridden.</para>
     ///
     /// <para>What remains is presentation: filling <c>filePath</c> and <c>arguments</c> so the node
@@ -331,9 +331,11 @@ internal static class ScorchActivityMapper
             Note: notes.Count == 0 ? null : string.Join(" ", notes));
     }
 
-    // <ProgramMode> (1 = command-line mode, 0 = program and parameters as separate fields) is present
+    // <ProgramMode> (1 = command-line mode, 0 = program and parameters as separate fields) is
+    // present
     // in exports but deliberately not consulted: it is undocumented, we have seen it in very few
-    // exports, and the structural guard below recognises the command-line shape on its own. A signal
+    // exports, and the structural guard below recognises the command-line shape on its own. A
+    // signal
     // that only ever confirms what the shape already says would add a dependency without adding
     // certainty — and being wrong about it would cost a real pipe.
 
@@ -350,9 +352,12 @@ internal static class ScorchActivityMapper
         // Dropping it restores the command line the author typed.
         //
         // The guard is deliberately structural rather than trusting <ProgramMode>: exactly one bar,
-        // and a head that is nothing but a known launcher plus at most one switch. A real pipe never
-        // looks like that — "C:\W\cmd.exe /c attrib -h C:\x | find y" has five tokens before the bar
-        // and keeps its pipe. Mistaking a pipe for a separator would silently turn the second program
+        // and a head that is nothing but a known launcher plus at most one switch. A real pipe
+        // never
+        // looks like that — "C:\W\cmd.exe /c attrib -h C:\x | find y" has five tokens before the
+        // bar
+        // and keeps its pipe. Mistaking a pipe for a separator would silently turn the second
+        // program
         // into an argument, which is the one error the cmd.exe wrap below could not repair.
         var bar = v.IndexOf('|');
         if (bar > 0 && v.IndexOf('|', bar + 1) < 0)
@@ -384,8 +389,10 @@ internal static class ScorchActivityMapper
     /// Whether the arguments carry syntax that only a shell performs, so launching the executable
     /// directly would hand it the metacharacter as literal text instead.
     ///
-    /// <para>Two things make this narrower than "contains <c>| &amp; &gt; &lt;</c>". Quoted spans do not
-    /// count: the <c>&amp;</c> in <c>-Command "&amp; 'x.ps1'"</c> is PowerShell's call operator inside an
+    /// <para>Two things make this narrower than "contains <c>| &amp; &gt; &lt;</c>". Quoted spans
+    /// do not
+    /// count: the <c>&amp;</c> in <c>-Command "&amp; 'x.ps1'"</c> is PowerShell's call operator
+    /// inside an
     /// argument, and reading it as a chain is what degraded ordinary PowerShell calls to script
     /// nodes. And <c>cmd /c …</c> does not count either: everything after the switch is cmd's own
     /// command line, so <c>cmd.exe /c dir | find "x"</c> already works as a single launched
@@ -447,17 +454,24 @@ internal static class ScorchActivityMapper
     /// <summary>
     /// Puts the real interpreter in <c>filePath</c> when the program is a script.
     ///
-    /// <para>The engine launches through <c>CreateProcess</c> — <c>useShellExecute=true</c> is blocked
+    /// <para>The engine launches through <c>CreateProcess</c> — <c>useShellExecute=true</c> is
+    /// blocked
     /// by configuration — and that cannot start a <c>.ps1</c> or a <c>.vbs</c>: it fails with Win32
-    /// 193, "not a valid Win32 application". Leaving the script in <c>filePath</c> therefore imports a
-    /// node that can never run, and routing it through <c>cmd</c> is worse than that: <c>.PS1</c> is
-    /// not in <c>PATHEXT</c> and has no association, so the launch falls through to the shell handler
+    /// 193, "not a valid Win32 application". Leaving the script in <c>filePath</c> therefore
+    /// imports a
+    /// node that can never run, and routing it through <c>cmd</c> is worse than that: <c>.PS1</c>
+    /// is
+    /// not in <c>PATHEXT</c> and has no association, so the launch falls through to the shell
+    /// handler
     /// and opens the file in an editor, where it sits until the step's timeout expires.</para>
     ///
-    /// <para><c>cscript //nologo //B</c> rather than the file association on purpose: the association
-    /// for <c>.vbs</c> is <c>wscript.exe</c>, the WINDOWED host, which captures no stdout and turns a
+    /// <para><c>cscript //nologo //B</c> rather than the file association on purpose: the
+    /// association
+    /// for <c>.vbs</c> is <c>wscript.exe</c>, the WINDOWED host, which captures no stdout and turns
+    /// a
     /// <c>WScript.Echo</c> into a dialog no unattended session can answer. <c>-NoProfile -File</c>
-    /// deliberately WITHOUT <c>-ExecutionPolicy Bypass</c>: synthesizing an interpreter is already the
+    /// deliberately WITHOUT <c>-ExecutionPolicy Bypass</c>: synthesizing an interpreter is already
+    /// the
     /// smallest honest step, and quietly relaxing the execution policy would be a second one the
     /// export never asked for. If policy blocks the script it fails with a legible error.</para>
     /// </summary>
@@ -498,7 +512,8 @@ internal static class ScorchActivityMapper
 
     /// <summary>
     /// Whether a value is built from a reference rather than being a literal path: either a
-    /// NodePilot template, or a SCOrch Published-Data marker still awaiting rewrite. The mapper runs
+    /// NodePilot template, or a SCOrch Published-Data marker still awaiting rewrite. The mapper
+    /// runs
     /// BEFORE that rewrite, so the raw marker is what a program path built from a runbook variable
     /// actually looks like here — judging it as a path would put a bogus "needs an absolute path"
     /// warning on every such call.
@@ -527,10 +542,13 @@ internal static class ScorchActivityMapper
 
     /// <summary>
     /// Splits a SCOrch <c>&lt;Program&gt;</c> value into the executable and whatever follows it.
-    /// A quoted head is the executable verbatim; otherwise the split runs after the first executable
+    /// A quoted head is the executable verbatim; otherwise the split runs after the first
+    /// executable
     /// extension that ends a token, so <c>C:\W\cmd.exe /c dir</c> separates while
-    /// <c>C:\Program Files\Tools\backup.exe</c> stays whole. Failing both, a first token followed by
-    /// switch-shaped arguments is the executable ("cmd /c dir"). Null when nothing identifiable is at
+    /// <c>C:\Program Files\Tools\backup.exe</c> stays whole. Failing both, a first token followed
+    /// by
+    /// switch-shaped arguments is the executable ("cmd /c dir"). Null when nothing identifiable is
+    /// at
     /// the head — the caller wraps that in cmd.exe rather than guessing.
     /// </summary>
     private static (string Executable, string Trailing)? SplitCommandLine(string value)
@@ -544,7 +562,8 @@ internal static class ScorchActivityMapper
 
         // Scan left to right for the FIRST extension that ends a token, not extension-by-extension:
         // iterating the list per type made ".exe" anywhere beat an earlier ".cmd", so
-        // "C:\Tools\wrapper.cmd C:\Payload\setup.exe /S" split at the payload and put the whole line
+        // "C:\Tools\wrapper.cmd C:\Payload\setup.exe /S" split at the payload and put the whole
+        // line
         // in filePath.
         //
         // A match only counts when nothing before it looks like a switch. Without that,
@@ -568,10 +587,12 @@ internal static class ScorchActivityMapper
         if (!v.AsSpan().ContainsAny(WhitespaceChars)) return (v, "");
 
         // Several tokens. A first token carrying no directory of its own is a command NAME with its
-        // arguments ("cmd /c dir", "python C:\S\check.py --domain x"): still a program call, and the
+        // arguments ("cmd /c dir", "python C:\S\check.py --domain x"): still a program call, and
+        // the
         // absolute-path note below tells the operator to complete it. A value we merely failed to
         // delimit is not, because its continuation is more path
-        // ("C:\Program Files\Acme\launcher -x" → "Files\Acme\…") — that one goes to the shell wrap.
+        // ("C:\Program Files\Acme\launcher -x" to "Files\Acme\…") — that one goes to the shell
+        // wrap.
         var head = v.Split(WhitespaceSeparators, 2, StringSplitOptions.RemoveEmptyEntries);
         if (head.Length == 2 && !head[0].AsSpan().ContainsAny(PathSeparators))
             return (head[0], head[1].Trim());
@@ -607,8 +628,10 @@ internal static class ScorchActivityMapper
                 ["body"] = FirstNonEmpty(p, "MessageContent", "Body", "Message"),
                 ["isHtml"] = p.TryGetValue("MailFormat", out var mf) && mf == "1",
             },
-            // The SCOrch activity carries its own SMTP host/port/TLS/sender. emailNotification reads
-            // none of them — the relay comes from the installation's SMTP settings — so writing them
+            // The SCOrch activity carries its own SMTP host/port/TLS/sender. emailNotification
+            // reads
+            // none of them — the relay comes from the installation's SMTP settings — so writing
+            // them
             // into the node would only look like they applied.
             Note: HasAny(p, "OutgoingServer", "SmtpServer", "SenderAddress", "From")
                 ? $"SCOrch 'Send Email' sent via {FirstNonEmpty(p, "OutgoingServer", "SmtpServer")} as " +
@@ -617,12 +640,15 @@ internal static class ScorchActivityMapper
                 : null);
 
     /// <summary>
-    /// SCOrch Monitor Date/Time. Collapses Every{Day,Hour,Minute}Value to a total and emits a Quartz
+    /// SCOrch Monitor Date/Time. Collapses Every{Day,Hour,Minute}Value to a total and emits a
+    /// Quartz
     /// cron that approximates it.
     ///
     /// <para>Shapes are chosen so the result is always VALID and always armable: an increment above
-    /// 59 in a minute field makes Quartz throw <c>FormatException</c> when the trigger is armed, and
-    /// intervals below the scheduler's minimum are refused. "Every N days" has no cron form at all —
+    /// 59 in a minute field makes Quartz throw <c>FormatException</c> when the trigger is armed,
+    /// and
+    /// intervals below the scheduler's minimum are refused. "Every N days" has no cron form at all
+    /// —
     /// <c>*/N</c> on day-of-month restarts each month — so it degrades to a daily fire.</para>
     /// </summary>
     private static Mapping BuildScheduleTrigger(Dictionary<string, string> p)
@@ -685,7 +711,8 @@ internal static class ScorchActivityMapper
     }
 
     /// <summary>
-    /// SCOrch keeps the file filter in a nested <c>&lt;Filters&gt;</c> XML document rather than in a
+    /// SCOrch keeps the file filter in a nested <c>&lt;Filters&gt;</c> XML document rather than in
+    /// a
     /// plain string, so a flat property read returns the concatenated markup.
     /// </summary>
     private static string ExtractFileFilter(Dictionary<string, string> p)
@@ -917,7 +944,8 @@ internal static class ScorchActivityMapper
             Config: new()
             {
                 ["provider"] = "sqlserver",
-                // Deliberately no connectionString: the SCOrch value routinely embeds a password, and
+                // Deliberately no connectionString: the SCOrch value routinely embeds a password,
+                // and
                 // copying it would persist that secret in the workflow definition. SqlActivity also
                 // requires a named connectionRef unless the deployment opts out, so a raw string
                 // would fail on a default install anyway.
@@ -972,7 +1000,8 @@ internal static class ScorchActivityMapper
 
     /// <summary>
     /// SCOrch calls this "Trigger Policy" on the wire. The child is addressed by NAME: the export's
-    /// PolicyObjectID is a SCOrch identifier that means nothing to NodePilot, and the last segment of
+    /// PolicyObjectID is a SCOrch identifier that means nothing to NodePilot, and the last segment
+    /// of
     /// PolicyPath is the runbook's name — which is what the imported child workflow is called.
     /// </summary>
     private static Mapping BuildStartWorkflow(XElement obj, Dictionary<string, string> p)
@@ -994,8 +1023,10 @@ internal static class ScorchActivityMapper
     }
 
     /// <summary>
-    /// The child runbook's inputs live in a nested <c>&lt;TRIGGER_POLICY_PARAMETERS&gt;</c> block, so
-    /// the flat property bag cannot see them. They map straight onto <c>startWorkflow.parameters</c>;
+    /// The child runbook's inputs live in a nested <c>&lt;TRIGGER_POLICY_PARAMETERS&gt;</c> block,
+    /// so
+    /// the flat property bag cannot see them. They map straight onto
+    /// <c>startWorkflow.parameters</c>;
     /// dropping them left every sub-runbook call without its arguments.
     /// </summary>
     private static Dictionary<string, object?> ExtractTriggerParameters(XElement obj)
@@ -1054,7 +1085,8 @@ internal static class ScorchActivityMapper
                   "value with the upstream reference it should return.");
     }
 
-    /// <summary>Names declared in an object's <c>&lt;PublishedData&gt;&lt;ItemRoot&gt;</c> block.</summary>
+    /// <summary>Names declared in an object's <c>&lt;PublishedData&gt;&lt;ItemRoot&gt;</c>
+    /// block.</summary>
     private static IEnumerable<string> PublishedDataNames(XElement obj)
     {
         var raw = obj.Element("PublishedData")?.Value;
@@ -1074,8 +1106,10 @@ internal static class ScorchActivityMapper
     /// <summary>
     /// SCOrch "Compare Values" evaluates one comparison and publishes the outcome; its outgoing
     /// links then branch on that outcome. NodePilot's <c>decision</c> is the same shape, so the
-    /// comparison becomes a single case named <c>true</c> with <c>defaultCaseName</c> <c>false</c> —
-    /// which makes <c>param.case</c> carry literally "true"/"false", the very values the SCOrch link
+    /// comparison becomes a single case named <c>true</c> with <c>defaultCaseName</c> <c>false</c>
+    /// —
+    /// which makes <c>param.case</c> carry literally "true"/"false", the very values the SCOrch
+    /// link
     /// filters compare against.
     ///
     /// <para>Importing it as a <c>log</c> instead (as this did) kept the node visible but killed
@@ -1084,7 +1118,8 @@ internal static class ScorchActivityMapper
     /// </summary>
     private static Mapping BuildCompareValues(XElement obj, Dictionary<string, string> p)
     {
-        // The activity carries a string comparison and a numeric one; only the populated pair counts.
+        // The activity carries a string comparison and a numeric one; only the populated pair
+        // counts.
         var left = FirstNonEmpty(p, "StringToCompare", "ValueA", "Value1");
         var right = FirstNonEmpty(p, "StringToCompareTo", "ValueB", "Value2");
         var rawOption = FirstNonEmpty(p, "StringTestOption");
@@ -1144,7 +1179,8 @@ internal static class ScorchActivityMapper
 
     /// <summary>
     /// SCOrch stores the comparison as a numeric option. Two are attested by a real export: 2 is
-    /// equality (compared against TRUE / XPKG / SYNCPAC / 1) and 7 is its wildcard "matches pattern"
+    /// equality (compared against TRUE / XPKG / SYNCPAC / 1) and 7 is its wildcard "matches
+    /// pattern"
     /// (compared against <c>V9*</c>). The other numbers are not verifiable from anything we have,
     /// and a guessed operator silently reverses a branch — so they are reported, not invented.
     /// </summary>
@@ -1183,7 +1219,8 @@ internal static class ScorchActivityMapper
     ///
     /// <para>Every branch requires the EVIDENCE the target activity actually needs, not merely a
     /// suggestive key name. The previous rule fired on any key whose name contained "script", so an
-    /// activity carrying a <c>ScriptType</c> or <c>ScriptTimeout</c> property became a runScript with
+    /// activity carrying a <c>ScriptType</c> or <c>ScriptTimeout</c> property became a runScript
+    /// with
     /// an empty body — and because heuristics carried no note, nothing reported it. Each branch now
     /// states itself in the import report.</para>
     /// </summary>
@@ -1265,7 +1302,8 @@ internal static class ScorchActivityMapper
     private static bool HasAny(Dictionary<string, string> p, params string[] keys)
         => FirstNonEmpty(p, keys).Length > 0;
 
-    /// <summary>Trims a SCOrch connection/DSN name down to the ref grammar, or returns null.</summary>
+    /// <summary>Trims a SCOrch connection/DSN name down to the ref grammar, or returns
+    /// null.</summary>
     private static string? SanitizeRef(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;

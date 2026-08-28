@@ -5,9 +5,9 @@ namespace NodePilot.Core.Clients;
 
 /// <summary>
 /// Response plumbing shared by the two HTTP-only clients: every non-2xx becomes an
-/// <see cref="ApiException"/> carrying the <c>ProblemDetails</c> title/detail, so callers
+/// <see cref="ApiException"/> carrying the <c>ProblemDetails</c> title and detail, so callers
 /// branch on a single exception type. Each client passes its own
-/// <see cref="JsonSerializerOptions"/> — the deserializer settings stay client-owned.
+/// <see cref="JsonSerializerOptions"/>, keeping deserializer settings client-owned.
 /// </summary>
 public static class ApiResponseReader
 {

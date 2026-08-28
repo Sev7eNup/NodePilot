@@ -109,10 +109,9 @@ public sealed class EncryptingJsonConfigurationProviderTests : IDisposable
         var path = WritePayload(json);
         var source = new EncryptingJsonConfigurationSource(path, new FakeProtector(), optional: false, reloadOnChange: false);
         var act = () => BuildWith(source);
-        // FileConfigurationProvider wraps our exception in an InvalidDataException — but the
-        // actionable message we authored lives on the inner exception, which is what the
-        // operator sees in the boot log. Assert against the inner type so a future change to
-        // the wrapping behaviour doesn't silently neutralise the contract.
+        // FileConfigurationProvider wraps the exception in InvalidDataException; the actionable
+        // message lives on the inner exception, which is what the operator sees in the boot log.
+        // Assert on the inner type so a future change to the wrapping doesn't silently break this.
         act.Should().Throw<System.IO.InvalidDataException>()
             .WithInnerException<InvalidOperationException>()
             .WithMessage("*Smtp:Password*",
@@ -123,9 +122,8 @@ public sealed class EncryptingJsonConfigurationProviderTests : IDisposable
     public void Load_ProtectorRejectsCiphertext_ThrowsActionableError()
     {
         var protector = new FakeProtector { ShouldFailDecrypt = true };
-        // The blob itself is structurally valid base64 of a 1-byte payload, just one the
-        // (failing) protector refuses to decrypt — mirrors the "AES-GCM key rotated"
-        // scenario in production.
+        // The blob is structurally valid base64 for a 1-byte payload; the (failing) protector
+        // simply refuses to decrypt it, mirroring an "AES-GCM key rotated" scenario in production.
         var ciphertext = "enc:v1:" + Convert.ToBase64String(new byte[] { 0x42, 0xAA });
         var json = "{\"Smtp\":{\"Password\":\"" + ciphertext + "\"}}";
         var path = WritePayload(json);

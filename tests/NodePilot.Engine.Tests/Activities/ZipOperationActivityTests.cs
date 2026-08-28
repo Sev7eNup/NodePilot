@@ -94,10 +94,7 @@ public sealed class ZipOperationActivityTests : IDisposable
         ###NODEPILOT_ZIP_RESULT_END###
         """;
 
-    // The UI's operation dropdown shows "Compress (zip)" as visual default but won't
-    // persist 'compress' to config until the user actually changes the dropdown. Workflows
-    // authored without touching the dropdown used to fail with "'operation' is required".
-    // The activity now defaults to "compress" so those workflows run.
+    // The UI can omit its visual "compress" default, so the activity applies the same default.
     [Fact]
     public async Task MissingOperation_DefaultsToCompress()
     {

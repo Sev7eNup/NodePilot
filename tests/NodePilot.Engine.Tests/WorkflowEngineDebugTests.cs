@@ -176,7 +176,7 @@ public class WorkflowEngineDebugTests
     [Fact]
     public async Task DebugDisabled_BreakpointIgnored_RunsToCompletion()
     {
-        // Breakpoint is present in the JSON, but debugEnabled=false → the engine should ignore it.
+        // Breakpoint is present in the JSON, but debugEnabled=false -> the engine should ignore it.
         var wf = CreateWorkflow(BuildBreakpointWorkflow(breakpointOnFirstStep: true, breakpointOnSecondStep: true));
         _db.Workflows.Add(wf);
         await _db.SaveChangesAsync();
@@ -265,7 +265,7 @@ public class WorkflowEngineDebugTests
     [Fact]
     public async Task BreakpointCondition_FalsyValue_DoesNotPause()
     {
-        // breakpoint:true + breakpointCondition resolved to "false" → engine skips the pause.
+        // breakpoint:true + breakpointCondition resolved to "false" -> engine skips the pause.
         // Without the parser fix, this test would still pass by accident (BreakpointCondition
         // =null means "always pause", so the test would wait for a pause and time out).
         // Combined with the truthy test above, this covers both code paths.

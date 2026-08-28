@@ -2,28 +2,25 @@ import type { Edge, XYPosition } from '@xyflow/react';
 import { getPortPoint, isEdgePortSide, nearestPortPoint, type EdgePortSide, type PortPoint } from './edgePorts';
 
 /**
- * Edge-Detach: „Ziel lösen" im Edge-Kontextmenü hängt das Zielende einer Edge ab; der
- * nächste Klick auf einen Node hängt es dort wieder an. Die Edge selbst wird währenddessen
- * NICHT mutiert — der Detach-Zustand ist rein transient in WorkflowEditorPage. Deshalb ist
- * jeder Abbruchweg (Esc, Pane-Klick, Rechtsklick) trivial korrekt und hinterlässt weder
- * einen History-Eintrag noch ein `isDirty`.
+ * Edge detach: the edge context menu releases the target end of an edge, and the next click on
+ * a node reattaches it there. The edge is not mutated while detached; the detach state lives in
+ * WorkflowEditorPage, so every way out (Esc, pane click, right click) leaves no history entry
+ * and no `isDirty`.
  *
- * Diese Datei hält die beiden Teile, die ohne React Flow testbar sind: die Klassifikation
- * eines Klick-Ziels und die Berechnung des Quell-Endpunkts für die Vorschau-Linie.
+ * This file holds the two parts that are testable without React Flow: classifying a click
+ * target and computing the source endpoint for the preview line.
  */
 
 /**
- * Ergebnis eines Klicks auf einen Node, während ein Edge-Ende gelöst ist.
+ * Result of clicking a node while one end of an edge is detached.
  *
- * - `ok`            — anhängen. Schließt den **bisherigen Ziel-Node ausdrücklich ein**: dort
- *                     erneut anzudocken ist der Weg, nur die Port-Seite zu wechseln, ohne die
- *                     Edge zu löschen und neu zu ziehen. Ob sich dabei überhaupt etwas ändert,
- *                     entscheidet der Aufrufer (gleicher Node + gleicher Port = No-Op).
- * - `selfLoop`      — der Quell-Node der Edge. Eine Edge auf sich selbst ist im Graphen
- *                     bedeutungslos und ist als Fehlklick weit wahrscheinlicher als Absicht.
- * - `duplicate`     — von derselben Quelle existiert schon eine ANDERE Edge dorthin. Gleiche
- *                     Regel wie `onConnect`/`onReconnect`: pro Knotenpaar höchstens eine Edge.
- * - `invalidTarget` — Gruppe oder Sticky-Note. Beide haben keine Ausführungssemantik.
+ * - `ok`            — attach here. Includes the current target node, so reattaching there is
+ *                     the way to change only the port side. Whether anything actually changes
+ *                     is up to the caller (same node and same port is a no-op).
+ * - `selfLoop`      — the edge's own source node. A self-edge carries no meaning in the graph.
+ * - `duplicate`     — another edge from the same source already reaches this node. Same rule
+ *                     as `onConnect`/`onReconnect`: at most one edge per node pair.
+ * - `invalidTarget` — a group or sticky note. Neither has execution semantics.
  */
 export type ReattachVerdict = 'ok' | 'selfLoop' | 'duplicate' | 'invalidTarget';
 
@@ -43,12 +40,11 @@ export function classifyReattachTarget({
   sourceId: string;
   candidate: ReattachCandidate;
 }): ReattachVerdict {
-  // Reihenfolge ist bedeutungstragend: der Quell-Node bekommt seine eigene Meldung statt der
-  // generischen Typ-Ablehnung.
+  // Order matters: the source node gets its own verdict instead of the generic type rejection.
   if (candidate.id === sourceId) return 'selfLoop';
   if (candidate.type !== 'activity') return 'invalidTarget';
-  // `e.id !== edgeId` schließt die bewegte Edge aus — sonst würde sie sich selbst als
-  // Duplikat erkennen, sobald man sie auf ihrem eigenen Ziel neu andockt.
+  // `e.id !== edgeId` excludes the edge being moved, so reattaching it to its own target
+  // does not count as a duplicate.
   if (edges.some((e) => e.id !== edgeId && e.source === sourceId && e.target === candidate.id)) {
     return 'duplicate';
   }
@@ -56,8 +52,8 @@ export function classifyReattachTarget({
 }
 
 /**
- * Minimal-Ausschnitt aus React Flows `InternalNode`. Bewusst strukturell typisiert, damit
- * der Test hier kein komplettes Node-Internals-Objekt bauen muss.
+ * Minimal slice of React Flow's `InternalNode`. Structurally typed so tests do not have to
+ * build a complete node-internals object.
  */
 export interface SourceNodeGeometry {
   measured: { width?: number; height?: number };
@@ -65,12 +61,12 @@ export interface SourceNodeGeometry {
 }
 
 /**
- * Ankerpunkt der Vorschau-Linie: die Mitte des Quell-Ports in Flow-Koordinaten. Nutzt
- * dieselbe Port-Geometrie wie der Designer sonst auch (`getPortPoint`), damit die Vorschau
- * exakt dort startet, wo die committete Edge starten wird.
+ * Anchor point of the preview line: the center of the source port in flow coordinates. Uses
+ * the same port geometry as the rest of the designer (`getPortPoint`), so the preview starts
+ * exactly where the committed edge will start.
  *
- * Gibt `null` zurück, solange React Flow den Node noch nicht vermessen hat — der Aufrufer
- * rendert dann einfach nichts.
+ * Returns `null` while React Flow has not measured the node yet; the caller then renders
+ * nothing.
  */
 export function detachedSourcePoint(
   node: SourceNodeGeometry | null | undefined,
@@ -85,18 +81,16 @@ export function detachedSourcePoint(
 }
 
 /**
- * Die vier Port-Mittelpunkte eines Nodes in **Screen**-Koordinaten, direkt aus dem DOM.
+ * The four port centers of a node in screen coordinates, measured from the DOM.
  *
- * Bewusst gemessen statt gerechnet: das äußere `.react-flow__node`-Rechteck ist nicht die
- * Port-Geometrie. Die Handles hängen im inneren Shape-/Icon-Wrapper (das äußere Rechteck
- * umfasst zusätzlich das Label darunter), und `portHandleStyle` schiebt einzelne Seiten je
- * nach Shape über `handleInset` weiter nach innen. Eine Rechnung aus `width`/`height` würde
- * deshalb Punkte liefern, die sichtbar neben den echten Handles liegen — und damit den
- * falschen Port gewinnen lassen. `getBoundingClientRect` ist zugleich zoom-korrekt.
+ * Measured rather than computed: the outer `.react-flow__node` rectangle also covers the label
+ * below the shape, and `portHandleStyle` insets individual sides per shape via `handleInset`,
+ * so points derived from `width`/`height` would sit next to the real handles and let the wrong
+ * port win. `getBoundingClientRect` is zoom-correct as well.
  *
- * React Flow schreibt an jedes Handle `data-handleid` (bei uns die Port-Seite, siehe die
- * `id={side}`-Handles in ActivityNode) und `data-nodeid`. Über `data-nodeid` wird gefiltert,
- * damit ein verschachtelt gerendertes Node-Element keine fremden Handles einschleust.
+ * React Flow puts `data-handleid` (here the port side, see the `id={side}` handles in
+ * ActivityNode) and `data-nodeid` on every handle. Filtering on `data-nodeid` keeps the handles
+ * of nested node elements out.
  */
 export function readHandlePoints(nodeEl: Element, nodeId: string): PortPoint[] {
   const points: PortPoint[] = [];
@@ -113,20 +107,19 @@ export function readHandlePoints(nodeEl: Element, nodeId: string): PortPoint[] {
 export interface DockTarget {
   nodeId: string;
   port: EdgePortSide;
-  /** Mittelpunkt des gewählten Handles in Screen-Koordinaten. */
+  /** Center of the chosen handle in screen coordinates. */
   screenPoint: { x: number; y: number };
 }
 
 /**
- * Wohin würde ein Zeiger an `(clientX, clientY)` andocken?
+ * Resolves where a pointer at `(clientX, clientY)` would dock.
  *
- * Einziger Auflösungspfad für **beide** Seiten des Edge-Detach — die Vorschau-Linie im
- * `pointermove` und das tatsächliche Umhängen im Klick. Nur weil beide dieselbe Funktion
- * fragen, kann die Vorschau nicht etwas anderes zeigen, als der Klick dann erzeugt.
+ * The single resolution path for both sides of edge detach: the preview line on `pointermove`
+ * and the actual reattach on click. Sharing it keeps the preview from showing something other
+ * than what the click produces.
  *
- * `canDockTo` hält Nodes heraus, die als Ziel ohnehin abgelehnt würden (Quell-Node,
- * Duplikat, Gruppe/Sticky-Note) — dort darf weder die Linie andocken noch der Hover-Ring
- * erscheinen.
+ * `canDockTo` filters out nodes that would be rejected as a target anyway (source node,
+ * duplicate, group or sticky note), so neither the line nor the hover ring reaches them.
  */
 export function resolveDockTarget(
   target: EventTarget | null,

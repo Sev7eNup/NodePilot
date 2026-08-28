@@ -6,9 +6,9 @@ import { api } from '../../../../api/client';
 import { useAiScriptStream } from '../../../../hooks/useAiScriptStream';
 import type { StepTestResult } from '../../../../types/api';
 
-// Monaco editor pulls in ~1 MB of language tokenizer assets — lazy-loaded so the
-// initial workflow editor bundle stays unchanged and the chunk lands only when
-// the user actually clicks "Open Editor".
+// Monaco editor pulls in a large language tokenizer bundle — lazy-loaded so the
+// initial workflow editor bundle stays small, and the chunk loads only when
+// the user clicks "Open Editor".
 const ScriptEditorDialog = lazy(() => import('../../ScriptEditorDialog'));
 
 const CODE_HINT = 'bg-amber-100/80 dark:bg-amber-900/40 px-1 rounded';

@@ -8,17 +8,11 @@ namespace NodePilot.Engine.Activities;
 
 /// <summary>
 /// Writes a user-authored log entry at the chosen level (info/warning/error) through the
-/// standard <see cref="ILogger"/> pipeline — so entries land in the Rolling-File sink,
-/// the Console sink, and (when configured) the OTLP log exporter. Enriched with
-/// workflow_execution_id / step_id / activity scope so Serilog's <c>{Properties:j}</c>
-/// token renders them.
-///
-/// Additionally mirrors the message into <c>ActivityResult.Output</c> so the UI's
+/// standard <see cref="ILogger"/> pipeline, so entries land in the Rolling-File sink, the
+/// Console sink, and (when configured) the OTLP log exporter. Enriched with
+/// workflow_execution_id / step_id / activity scope so Serilog's <c>{Properties:j}</c> token
+/// renders them. Also mirrors the message into <c>ActivityResult.Output</c> so the UI's
 /// Execution Panel shows it next to the step.
-///
-/// Config:
-///   level    "info" | "warning" | "error"   (default "info")
-///   message  string, required               (supports {{templates}} — resolved by engine)
 /// </summary>
 public class LogActivity : IActivityExecutor
 {
@@ -61,14 +55,11 @@ public class LogActivity : IActivityExecutor
                 sanitized = sanitized[..MaxMessageChars] + "…(truncated)";
             var message = _redactor.Redact(sanitized) ?? sanitized;
 
-            // SupportLog=true: user-authored log lines are by definition operator-relevant —
-            // this scope property is filtered on by the sub-sink in LoggingSetup, which writes
-            // the entry additionally into nodepilot-support-*.log.
-            //
-            // The workflow and step identifiers are placed directly in the message template
-            // (not just in the scope dictionary) so the plain-text SupportLogFormatter renders
-            // them into the line — without these fields the support log wouldn't show which
-            // workflow wrote the entry.
+            // SupportLog=true marks user-authored log lines as operator-relevant; the sub-sink in
+            // LoggingSetup filters on this scope property and also writes the entry into
+            // nodepilot-support-*.log. The workflow and step identifiers are placed directly in
+            // the message template, not just the scope dictionary, so the plain-text
+            // SupportLogFormatter can render them into the line.
             var execShort = context.WorkflowExecutionId.ToString("N")[..8];
             var workflowName = string.IsNullOrEmpty(context.WorkflowName) ? "-" : context.WorkflowName;
             var stepLabel = string.IsNullOrEmpty(context.StepLabel) ? context.StepId : context.StepLabel;
@@ -85,10 +76,9 @@ public class LogActivity : IActivityExecutor
                 // Event-type discriminator for the DB sink — it projects this into the
                 // `EventType` column for indexed filtering.
                 ["support.event_type"] = "USER_LOG",
-                // Clean message for the DB projection: ONLY the wording, without the
-                // workflow/exec/step prefix (those already land in their own columns).
-                // The plain-text file sink still renders the full template from the
-                // LogInformation call below.
+                // Message wording only, without the workflow/exec/step prefix, since those
+                // already have their own columns. The plain-text file sink still renders the
+                // full template from the LogInformation call below.
                 ["support.message"] = message,
             }))
             {

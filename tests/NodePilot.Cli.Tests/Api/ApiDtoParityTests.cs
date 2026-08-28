@@ -7,9 +7,8 @@ namespace NodePilot.Cli.Tests.Api;
 /// <summary>
 /// The CLI and the MCP server are HTTP-only clients that keep their own copies of the API's
 /// response/request records — <c>NodePilot.Mcp/Api/NodePilotApiClient.cs</c> says so in its own
-/// header ("Copied/adapted from the CLI's client"). 97 record names are shared between the API
-/// and the CLI, 62 between the API and the MCP server, and until now exactly two of them were
-/// guarded by hand, so the copies could drift silently.
+/// header ("Copied/adapted from the CLI's client"). These tests guard against the copies
+/// drifting silently out of sync with the API.
 ///
 /// <para>These tests discover the shared names instead of listing them. The invariant is
 /// one-directional on purpose: a client may carry <em>extra</em> fields (harmless — they stay
@@ -133,7 +132,7 @@ public sealed class ApiDtoParityTests
 
     /// <summary>
     /// Parses every positional record under <paramref name="relativeFolder"/> into
-    /// name → field names (positional parameters plus <c>{ get; init; }</c> body properties).
+    /// name -> field names (positional parameters plus <c>{ get; init; }</c> body properties).
     /// First declaration wins on a duplicate name, matching how the compiler would resolve it
     /// within one namespace.
     /// </summary>

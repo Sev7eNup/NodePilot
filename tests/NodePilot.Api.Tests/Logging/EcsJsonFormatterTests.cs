@@ -8,11 +8,10 @@ using Xunit;
 namespace NodePilot.Api.Tests.Logging;
 
 /// <summary>
-/// Pin the ECS field-naming contract: SIEM ingest pipelines (Elastic Filebeat module,
-/// Splunk HEC parser, Sentinel data connector) all bind to specific JSON field paths.
-/// A regression that renamed <c>@timestamp</c> to <c>timestamp</c> would silently
-/// breaks dashboards months later — these tests are the only thing standing between
-/// "log shipping works" and "the SIEM gets unparseable rows".
+/// Pins the ECS field-naming contract: SIEM ingest pipelines (Elastic Filebeat module,
+/// Splunk HEC parser, Sentinel data connector) bind to specific JSON field paths.
+/// A rename such as <c>@timestamp</c> to <c>timestamp</c> would silently break those
+/// pipelines, so these tests guard the field names directly.
 /// </summary>
 public class EcsJsonFormatterTests
 {
@@ -140,8 +139,8 @@ public class EcsJsonFormatterTests
     }
 
     /// <summary>
-    /// SIEM dashboards filter by service.name + deployment.environment; both must land
-    /// at the JSON root in their proper nested ECS shape, NOT under nodepilot.*.
+    /// SIEM dashboards filter by service.name and deployment.environment; both must land
+    /// at the JSON root in their proper nested ECS shape, not under nodepilot.*.
     /// Without this hoist, a Kibana board grouping by service.name would see no data.
     /// </summary>
     [Fact]
@@ -163,7 +162,7 @@ public class EcsJsonFormatterTests
         json.GetProperty("host").GetProperty("name").GetString().Should().Be("np-prod-01");
         json.GetProperty("deployment").GetProperty("environment").GetString().Should().Be("prod");
 
-        // ECS-prefixed props must NOT also appear under nodepilot — that would double the
+        // ECS-prefixed props must not also appear under nodepilot — that would double the
         // bytes per event and break dashboards that count distinct service names.
         var np = json.GetProperty("nodepilot");
         np.TryGetProperty("service_name", out _).Should().BeFalse();
@@ -172,11 +171,10 @@ public class EcsJsonFormatterTests
     }
 
     /// <summary>
-    /// S2 (a SIEM-integration finding) — per-event ECS fields must also land at the JSON root. Standard SIEM
-    /// detection rules (Sigma, Sentinel analytics, Elastic detection) bind to
-    /// <c>event.action</c>, <c>user.id</c>, <c>source.ip</c>, <c>trace.id</c> etc.
-    /// Hiding those under nodepilot.* would force every operator to write custom
-    /// field-mapping pipelines.
+    /// Per-event ECS fields must also land at the JSON root. Standard SIEM detection rules
+    /// (Sigma, Sentinel analytics, Elastic detection) bind to <c>event.action</c>,
+    /// <c>user.id</c>, <c>source.ip</c>, <c>trace.id</c> and similar fields. Hiding those
+    /// under nodepilot.* would force every operator to write custom field-mapping pipelines.
     /// </summary>
     [Fact]
     public void Format_PerEventEcsFields_AreHoistedToJsonRoot()
@@ -208,11 +206,11 @@ public class EcsJsonFormatterTests
     }
 
     /// <summary>
-    /// S3 (a SIEM-integration finding) — two source-property names that normalize to the same snake_case form must
-    /// not produce duplicate JSON keys. Several SIEM ingest pipelines (Filebeat strict
-    /// mode, Splunk HEC validating endpoint) reject duplicate-key documents outright;
-    /// others silently last-wins. Pinning last-wins explicitly keeps every ingest
-    /// pipeline consistent.
+    /// Two source-property names that normalize to the same snake_case form must not
+    /// produce duplicate JSON keys. Some SIEM ingest pipelines (Filebeat strict mode,
+    /// Splunk HEC validating endpoint) reject duplicate-key documents outright; others
+    /// silently keep only one. Pinning last-write-wins keeps every ingest pipeline
+    /// consistent.
     /// </summary>
     [Fact]
     public void Format_DuplicateNormalizedKeys_AreDeduplicated_LastWins()
@@ -276,7 +274,7 @@ public class EcsJsonFormatterTests
             new LogEventProperty("dto", new ScalarValue(dto)),
             new LogEventProperty("guidv", new ScalarValue(guid)),
             new LogEventProperty("nullv", new ScalarValue(null)),
-            // TimeSpan is not a first-class scalar → default branch stringifies it.
+            // TimeSpan is not a first-class scalar, so the default branch stringifies it.
             new LogEventProperty("fallbackv", new ScalarValue(TimeSpan.FromSeconds(5))),
         };
         var evt = Make(LogEventLevel.Information, "x", props);
@@ -307,7 +305,7 @@ public class EcsJsonFormatterTests
             new ScalarValue(1.5d),
             // Non-first-class scalar (default branch of the element writer).
             new ScalarValue(TimeSpan.FromMinutes(1)),
-            // Non-scalar element → stringified fallback.
+            // Non-scalar element: stringified fallback.
             new StructureValue(new[] { new LogEventProperty("k", new ScalarValue("v")) }),
         });
         var evt = Make(LogEventLevel.Information, "x", new[] { new LogEventProperty("tags", seq) });

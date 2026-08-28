@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import type { Node, Edge } from '@xyflow/react';
 
-// useReactFlow under @testing-library's renderHook does not have a real ReactFlow store
-// to talk to (no `<ReactFlow>` element is mounted). We mock it with a per-test in-memory
-// store so getNodes/setNodes round-trip the way the production hook expects.
+// renderHook mounts no <ReactFlow> element, so useReactFlow has no real store to talk to.
+// The mock below backs it with a per-test in-memory store so getNodes and setNodes
+// round-trip the way the production hook expects.
 let mockNodes: Node[] = [];
 let mockEdges: Edge[] = [];
 vi.mock('@xyflow/react', () => ({
@@ -20,7 +20,7 @@ vi.mock('@xyflow/react', () => ({
   }),
 }));
 
-// Imported AFTER vi.mock so it picks up the mocked module.
+// Imported after vi.mock so these bindings resolve to the mocked module.
 import { useWorkflowHistory } from '../../hooks/useWorkflowHistory';
 import { useReactFlow } from '@xyflow/react';
 
@@ -68,11 +68,9 @@ describe('useWorkflowHistory', () => {
     expect(result.current.flow.getNodes().map(n => n.id)).toEqual(['a']);
     expect(result.current.history.historyPast).toHaveLength(0);
     expect(result.current.history.historyFuture).toHaveLength(1);
-    // We deliberately do NOT assert on historyFuture[0].nodes contents here. The snapshot
-    // is taken inside a nested setState updater that React processes after the
-    // setNodes mutation, so the captured array reflects the post-undo state - a subtle
-    // store/scheduler interaction shared between the production hook and our mock. The
-    // stack-length contract above is what the toolbar's undo/redo buttons actually rely on.
+    // The contents of historyFuture[0].nodes are not asserted: the snapshot is taken in a
+    // nested setState updater that React runs after the setNodes mutation, so it holds the
+    // post-undo state. The stack lengths above are what the undo/redo buttons rely on.
   });
 
   it('redo pops from the future stack and pushes onto the past stack', () => {

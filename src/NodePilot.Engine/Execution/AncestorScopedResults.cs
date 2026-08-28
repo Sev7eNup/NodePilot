@@ -7,22 +7,18 @@ namespace NodePilot.Engine.Execution;
 /// A read-only view over the run's shared step-result map, restricted to the graph ancestors of
 /// one step.
 ///
-/// <para>The scheduler keeps every completed step's result in a single dictionary and hands that
-/// same dictionary to every step as <c>previousResults</c>. Unrestricted, a step could therefore
-/// resolve <c>{{other.output}}</c> from a node on an unrelated parallel branch — but only if that
-/// node happened to finish first. The same definition with the same inputs would resolve on one
-/// run and fail the unresolved-template check on the next, and a workflow that is reliably green
-/// on a fast developer machine could fail intermittently under production load. Scoping the view
-/// to ancestors makes the outcome depend on the graph instead of on the scheduler's timing.</para>
+/// <para>The scheduler keeps every completed step's result in one dictionary shared by all
+/// steps. Without scoping, a step could resolve <c>{{other.output}}</c> from an unrelated
+/// parallel branch whenever that branch happened to finish first — the same workflow would then
+/// resolve or fail an unresolved-template check depending on timing. Scoping to ancestors makes
+/// the outcome depend on the graph instead of on scheduler timing.</para>
 ///
-/// <para>This is a filtering wrapper rather than a copy: a step's ancestor set can be most of the
-/// graph, and the map is read on the hot path of every step.</para>
+/// <para>This is a filtering wrapper rather than a copy, since a step's ancestor set can be most
+/// of the graph and the map is read on the hot path of every step.</para>
 ///
-/// <para>Note what this does <i>not</i> promise. An ancestor can legitimately have no result —
-/// a <c>junction</c> in wait-any mode leaves the losing branch unrun, and a disabled or
-/// condition-skipped node never produces one. Those references still fail, and they should:
-/// the value genuinely does not exist. What is gone is the case where availability was decided
-/// by a race.</para>
+/// <para>An ancestor can still legitimately have no result — a <c>junction</c> in wait-any mode
+/// leaves the losing branch unrun, and a disabled or condition-skipped node never produces one.
+/// Those references still fail correctly; only the race-based case is removed.</para>
 /// </summary>
 internal sealed class AncestorScopedResults : IReadOnlyDictionary<string, ActivityResult>
 {
@@ -59,14 +55,12 @@ internal sealed class AncestorScopedResults : IReadOnlyDictionary<string, Activi
     /// produced a result yet.
     ///
     /// <para>The membership test is deliberately the compiled node set and not the result map.
-    /// Asking "did it already run" reintroduces the race this class exists to remove: a sibling
-    /// that has finished is recognised as out-of-scope, while the very same reference on the very
-    /// same graph reads as an unknown step when the sibling is still running. Callers that treat
+    /// Asking "did it already run" instead would reintroduce the race this class exists to
+    /// remove: a finished sibling would read as out-of-scope, while the same reference on the
+    /// same graph reads as an unknown step while the sibling is still running. Callers that treat
     /// out-of-scope as fatal but unknown steps as tolerable — the runScript / custom-activity
-    /// exemption in <see cref="StepRunner"/> — then let the literal through on the fast path and
-    /// fail on the slow one. Measured end to end: a cross-branch <c>$x = {{sibling.output}}</c>
-    /// reached PowerShell verbatim and the run reported green having written
-    /// "Ergebnis: {sibling.output}".</para>
+    /// exemption in <see cref="StepRunner"/> — would then let a cross-branch reference through as
+    /// a literal string on the fast path instead of failing.</para>
     ///
     /// <para>Reference by an <c>outputVariable</c> alias is resolved to the node id by the caller,
     /// which owns that mapping.</para>

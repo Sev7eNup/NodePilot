@@ -6,14 +6,10 @@ using Xunit;
 namespace NodePilot.Api.Tests.Architecture;
 
 /// <summary>
-/// The hot-reload split is an operational promise: a <c>true</c> section takes effect on save,
-/// a <c>false</c> section shows the restart banner. CLAUDE.md states the two counts, and they
-/// had drifted — the doc said 11 hot-reloadable while the code had 12, missing the
-/// <c>Threading</c> section that <c>ThreadPoolTuningService</c> re-applies on every config
-/// reload. Nothing noticed, because nothing counted.
-///
-/// <para>Same spirit as <c>DocumentationCountsTests</c> in the MCP suite: derive the number from
-/// the code and fail when the prose disagrees.</para>
+/// The hot-reload split is an operational promise: a <c>true</c> section takes effect on
+/// save, a <c>false</c> section shows the restart banner. CLAUDE.md states the two counts,
+/// so this derives them from <c>SettingsSchema</c> and fails if the doc disagrees — same
+/// approach as <c>DocumentationCountsTests</c> in the MCP suite.
 /// </summary>
 public sealed class SettingsSchemaDocumentationTests
 {

@@ -4,13 +4,13 @@ import { VariableInsertField } from './shared';
 import type { UpstreamVariable } from '../../../lib/upstreamVariables';
 
 interface ParameterTableProps {
-  /** Label for the section header (e.g. "Parameter", "Zusätzliche Parameter"). */
+  /** Label for the section header, for example "Parameters". */
   label: string;
   /** Text for the add-row action; defaults to "+ Parameter". */
   addLabel?: string;
   /** Text rendered when no rows exist; shown in italics. */
   emptyMessage: string;
-  /** Current map of key → value. */
+  /** Current key/value map. */
   parameters: Record<string, string>;
   /** Called with the next map whenever the user adds, edits, or removes a row. */
   onChange: (next: Record<string, string>) => void;
@@ -20,11 +20,8 @@ interface ParameterTableProps {
 
 /**
  * Key/value editor used by the startWorkflow and forEach config panes. Each row is a pair
- * of <input>s (key, value) with a remove button; the add-button appends a blank row.
- *
- * Extracted from ForEachConfig/StartWorkflowConfig because both maintained an identical
- * handler triple (add / update / remove) and near-identical JSX. ReturnDataConfig has a
- * structurally different row (VariableInsertField for the value) and is not covered here.
+ * of <input>s (key, value) with a remove button; the add button appends a blank row.
+ * ReturnDataConfig uses a structurally different row and is not covered here.
  */
 export function ParameterTable({
   label,

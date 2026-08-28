@@ -6,10 +6,10 @@ namespace NodePilot.Api.Services.Backup.Parts;
 /// <summary>
 /// Exports custom-activity definitions (the live row of each, including disabled drafts). The
 /// PowerShell <c>scriptTemplate</c> is encrypted as one opaque value under the backup passphrase.
-/// Like a workflow's runScript field it can contain arbitrary legacy literals that no key-name
-/// heuristic can classify safely. Version-history snapshots are
-/// intentionally excluded (DR snapshot = live config, not history). Restored faithfully with their
-/// enabled state — unlike the dedicated <c>.npca</c> import, which forces disabled.
+/// Like a workflow's runScript field it can contain arbitrary text that no key-name heuristic can
+/// classify safely. Version-history snapshots are excluded (a DR snapshot is live config, not
+/// history). Restored with their enabled state as-is — unlike the dedicated <c>.npca</c> import,
+/// which forces disabled.
 /// </summary>
 public sealed class CustomActivityBackupPart(ICustomActivityDefinitionStore store) : IBackupPart
 {

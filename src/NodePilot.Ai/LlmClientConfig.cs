@@ -18,8 +18,8 @@ public sealed record LlmConnection(
 /// The fully-resolved connection an <see cref="ILlmClient"/> instance is bound to: the global
 /// <see cref="LlmOptions"/> with any per-call <see cref="LlmConnection"/> overrides applied.
 /// <see cref="Endpoint"/> is already validated and dialect-resolved via
-/// <see cref="LlmEndpointGuard.ResolveEndpoint"/>. <see cref="Temperature"/> is per-call only (no
-/// global default) — null ⇒ omit <c>temperature</c> from the request body.
+/// <see cref="LlmEndpointGuard.ResolveEndpoint"/>. <see cref="Temperature"/> is per-call only and
+/// has no global default; when it is null, <c>temperature</c> is omitted from the request body.
 /// </summary>
 public sealed record LlmClientConfig(
     LlmEndpointTarget Endpoint,

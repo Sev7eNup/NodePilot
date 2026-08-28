@@ -6,21 +6,9 @@ using Xunit;
 namespace NodePilot.Api.Tests.Services;
 
 /// <summary>
-/// Pins these behaviors:
-/// - Manual trigger + returnData → full contract with all 4 system outputs + user outputs
-/// - Only a manualTrigger → HasReturnData=false, only system outputs in Outputs[]
-/// - No manualTrigger → HasManualTrigger=false, empty Inputs (workflow is still callable)
-/// - Multiple returnData nodes with overlapping keys → one entry per key, Source="multiple"
-/// - Malformed JSON → empty contract, no throw, system outputs are still present
-/// - manualTrigger without a parameters array → empty Inputs
-/// - Parameter without a type → defaults to "string"
-/// - Disabled manualTrigger / returnData nodes are ignored
-/// - Multiple manualTriggers are deduplicated by name
-/// - Multiple manualTriggers with diverging Type/Default → HasConflict=true (Variant B)
-/// - Required is OR'd across all triggers (conservative)
-/// - Reserved __keys are silently stripped from user-supplied returnData
-/// - Default coercion: bool/number → string, null → null, missing → null
-/// - Required+Default is not a conflict — both can coexist
+/// Verifies contract derivation from a workflow's manualTrigger and returnData nodes,
+/// covering full contracts, missing trigger or return data, malformed JSON, disabled nodes,
+/// conflicting or deduplicated multi-trigger declarations, and default value coercion.
 /// </summary>
 public class WorkflowContractDeriverTests
 {
@@ -304,10 +292,9 @@ public class WorkflowContractDeriverTests
     [Fact]
     public void Derive_RequiredPlusDefault_IsValidNotConflict()
     {
-        // Required + Default is a meaningful combination: the parameter is declared as "must
-        // be set, but if the caller omits it, fall back to the default". The deriver must not
-        // flag this as a conflict; the UI validation handles that distinction separately later
-        // (required+missing-with-no-default = error, required+missing-with-default = ok).
+        // Required + Default means "must be set, but fall back to the default if the caller
+        // omits it". The deriver must not treat this as a conflict — the UI validation layer
+        // separately handles required+missing-without-default as an error.
         var workflow = Wf("""
         {"nodes":[
           {"id":"t","data":{"activityType":"manualTrigger","config":{"parameters":[

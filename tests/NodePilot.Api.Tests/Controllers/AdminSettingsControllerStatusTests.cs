@@ -20,9 +20,9 @@ using NodePilot.TestCommons;
 namespace NodePilot.Api.Tests.Controllers;
 
 /// <summary>
-/// PR1 surface: status endpoint. PR4 added full GET/PUT — those have a dedicated
-/// test file (<c>AdminSettingsControllerSectionTests</c>); this file stays focused on
-/// the status-only assertions so the smaller test surface keeps the regression cause
+/// Covers the status endpoint. Full section GET/PUT has a dedicated test file
+/// (<c>AdminSettingsControllerSectionTests</c>); this file stays focused on the
+/// status-only assertions so the smaller test surface keeps the regression cause
 /// obvious when the file does fail.
 /// </summary>
 public sealed class AdminSettingsControllerStatusTests : IDisposable

@@ -8,7 +8,7 @@ import { SVGRenderer } from 'echarts/renderers';
 import type { EChartsOption } from 'echarts';
 
 // SVG renderer (not Canvas) on purpose: it needs no `getContext('2d')`, so it
-// renders crisp + scalable AND survives jsdom (vitest) without a canvas polyfill.
+// renders crisp and scalable, and works in jsdom (vitest) without a canvas polyfill.
 echarts.use([
   GaugeChart, LineChart, BarChart, PieChart, HeatmapChart,
   GridComponent, TooltipComponent, MarkLineComponent, VisualMapComponent, LegendComponent,
@@ -16,9 +16,9 @@ echarts.use([
 ]);
 
 /**
- * Thin, dependency-light React wrapper around ECharts core. We don't use
- * `echarts-for-react` because its peer-deps lag React 19; this hand-rolled
- * version is ~40 lines and fully under our control.
+ * Thin wrapper around ECharts core, used instead of `echarts-for-react` because its
+ * peer dependencies lag behind React 19. Keeping it hand-rolled keeps it small and
+ * fully under this project's control.
  */
 export function EChart({
   option, className, style, ariaLabel, onClick,
@@ -29,7 +29,7 @@ export function EChart({
   ariaLabel?: string;
   /** Optional click handler — bound to the ECharts `click` event; receives the raw
    *  event params (incl. `data`, `name`, `dataIndex`). Used by dashboard charts that
-   *  act as filters (e.g. donut segment → status filter). */
+   *  act as filters (e.g. a donut segment click sets a status filter). */
   onClick?: (params: unknown) => void;
 }>) {
   const elRef = useRef<HTMLDivElement>(null);

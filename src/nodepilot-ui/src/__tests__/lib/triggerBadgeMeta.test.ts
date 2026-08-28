@@ -3,10 +3,10 @@ import { TRIGGER_BADGE_META } from '../../lib/triggerBadgeMeta';
 import { EXTERNAL_TRIGGER_TYPES } from '../../lib/activityTypes';
 
 /**
- * TRIGGER_BADGE_META is a static lookup table consumed by WorkflowsPage and DashboardPage.
- * It must stay in lockstep with the trigger types listed in EXTERNAL_TRIGGER_TYPES (lib/
- * activityTypes.ts) — those are exactly the 5 trigger kinds that get pill badges in list
- * views. Pin the keys + label/className shape so a refactor can't drop one.
+ * TRIGGER_BADGE_META is a static lookup table used by WorkflowsPage and DashboardPage.
+ * It must stay in sync with EXTERNAL_TRIGGER_TYPES (lib/activityTypes.ts), the trigger
+ * kinds that get pill badges in list views. These tests pin the keys and the
+ * label/className shape so a refactor cannot drop one.
  */
 
 describe('TRIGGER_BADGE_META', () => {
@@ -24,15 +24,14 @@ describe('TRIGGER_BADGE_META', () => {
   });
 
   it('eachTriggerHasDistinctVisualColor', () => {
-    // Visual hint: the 5 trigger types should not share the same className — that would
-    // make them indistinguishable in list views.
+    // Distinct classNames keep the trigger types visually distinguishable in list views.
     const classNames = Object.values(TRIGGER_BADGE_META).map((m) => m.className);
     expect(new Set(classNames).size).toBe(classNames.length);
   });
 
   it('labelsAreShortEnoughForPillBadges', () => {
-    // Pills clip if labels exceed ~14 chars in the dashboard 1-col layout. Bumped
-    // from 10 to 14 to accommodate translated labels ("Datei-Watcher", "File Watcher").
+    // Pill badges clip when a label exceeds 14 characters in the single-column dashboard
+    // layout. The limit leaves room for translated labels.
     for (const [key, meta] of Object.entries(TRIGGER_BADGE_META)) {
       expect(meta.label.length, `label "${meta.label}" for ${key}`).toBeLessThanOrEqual(14);
     }

@@ -17,7 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 /**
- * Group → icon mapping. Lives next to the palette so adding a new group is one tuple, and
+ * Maps a group name to an icon. Lives next to the palette so adding a new group is one tuple, and
  * the visual identity stays in sync with `buildCommandPaletteCommands` in WorkflowEditorPage.
  * Falling back to a generic icon for unrecognized group names keeps the layout stable when
  * a future builder ships a group before the icon mapping catches up.
@@ -130,7 +130,7 @@ export function CommandPalette({ commands, onClose }: Readonly<Props>) {
     return [...map.entries()];
   }, [ranked]);
 
-  // Compute flat→absolute index mapping for highlight + click handlers.
+  // Compute a flat-to-absolute index mapping for highlight and click handlers.
   let cursor = 0;
 
   const totalCommands = commands.length;

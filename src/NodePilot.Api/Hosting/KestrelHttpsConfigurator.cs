@@ -170,7 +170,7 @@ public static class KestrelHttpsConfigurator
     }
 
     /// <summary>
-    /// Enables HTTP→HTTPS redirection when Kestrel HTTPS was configured and
+    /// Enables HTTP to HTTPS redirection when Kestrel HTTPS was configured and
     /// <c>RedirectHttpToHttps=true</c>. Called from Program.cs after UseForwardedHeaders so
     /// the redirect targets the public-facing HTTPS port. No-op otherwise.
     /// </summary>

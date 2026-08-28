@@ -8,7 +8,8 @@ using Xunit;
 namespace NodePilot.Engine.Tests.Security;
 
 /// <summary>
-/// Pins the DNS-rebinding closure (tracked as audit finding #5). The SocketsHttpHandler that the named
+/// Pins the DNS-rebinding closure (tracked as audit finding #5). The SocketsHttpHandler that the
+/// named
 /// "NodePilot" client wires up runs every TCP-connect attempt through the same SSRF policy
 /// that NetworkGuard.ValidateUrl applied to the URL — so even if the attacker's DNS rebinds
 /// the host between url-check and socket-open, the connect still has to clear the policy.
@@ -76,7 +77,7 @@ public class RestApiConnectCallbackTests
     [Fact]
     public async Task ConnectCallback_BlocksRfc1918_OnDefaultPolicy()
     {
-        var cfg = new ConfigurationBuilder().Build(); // missing key → reject (secure-by-default policy)
+        var cfg = new ConfigurationBuilder().Build(); // missing key -> reject (secure-by-default policy)
         var ctx = BuildContext("10.0.0.5", 443);
 
         var act = async () => await RestApiHttpClientProvider.ConnectWithSsrfGuardAsync(ctx, cfg, default);

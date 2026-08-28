@@ -2,15 +2,15 @@ namespace NodePilot.Core.Models;
 
 /// <summary>
 /// Immutable snapshot of a <see cref="Workflow"/> at a specific version number. A new row
-/// is appended every time <c>WorkflowsController.Update</c> replaces a definition (the
-/// <em>previous</em> state is captured, not the new one — the live row already holds that).
-/// Enables rollback + diff + blame ("who changed step X from A to B, and when?").
+/// is appended every time <c>WorkflowsController.Update</c> replaces a definition, capturing the
+/// <em>previous</em> state rather than the new one, which the live row already holds.
+/// Enables rollback, diff and blame.
 ///
 /// <para>
-/// The history is semantically append-only; the only in-place update re-wraps the opaque
-/// definition envelope during an explicit secret-provider migration. Rows are removed when the
-/// parent <see cref="Workflow"/> is deleted (FK cascade) or by configured retention. Rollback does not purge history
-/// — restoring a prior version increments the Workflow's <c>Version</c> counter and
+/// The history is append-only apart from one in-place update: an explicit secret-provider
+/// migration re-wraps the opaque definition envelope. Rows are removed when the parent
+/// <see cref="Workflow"/> is deleted (FK cascade) or by configured retention. Rollback keeps the
+/// history: restoring a prior version increments the Workflow's <c>Version</c> counter and
 /// emits a fresh snapshot so the roll-forward remains auditable.
 /// </para>
 /// </summary>

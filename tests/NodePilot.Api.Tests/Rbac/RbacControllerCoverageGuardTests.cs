@@ -6,18 +6,12 @@ using Xunit;
 namespace NodePilot.Api.Tests.Rbac;
 
 /// <summary>
-/// Reflection guard against silent permission-bypasses. The integration test suite covers
-/// the documented endpoints, but a future endpoint added later might forget to call
-/// <c>RequireWorkflowAccessAsync</c> / <c>_authz.*</c> and slip through review. This guard
-/// scans every public action method on every <c>*Controller</c> in the API assembly and
-/// asserts that any method whose body touches <c>_db.Workflows</c> or
-/// <c>_db.WorkflowExecutions</c> also references the authorization service somewhere in
-/// the same method body.
+/// Reflection guard against silent permission bypasses. Scans every public action method on
+/// every <c>*Controller</c> in the API assembly and fails if a method touching
+/// <c>_db.Workflows</c> or <c>_db.WorkflowExecutions</c> never references the authorization
+/// service in the same method body.
 /// <para>
-/// The check is conservative: it cannot prove correctness (a method might call the authz
-/// service for a different reason), but it does fail loudly when a method bypasses the
-/// service entirely. Combined with the integration tests this is enough to catch the
-/// "added a new endpoint, forgot the gate" class of regressions.
+/// This cannot prove correctness, but it catches endpoints that forget to call the RBAC gate.
 /// </para>
 /// </summary>
 public class RbacControllerCoverageGuardTests

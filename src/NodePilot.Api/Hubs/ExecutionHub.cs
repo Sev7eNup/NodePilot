@@ -40,12 +40,12 @@ public class ExecutionHub : Hub
         _authz = authz;
     }
 
-    // ConnectionId → set of group names the connection has joined. ConcurrentDictionary
+    // ConnectionId -> set of group names the connection has joined. ConcurrentDictionary
     // is safe for the hub lifetime; entries are cleaned up in OnDisconnectedAsync.
     private static readonly ConcurrentDictionary<string, HashSet<string>> _joinedGroups = new();
     private static readonly ConcurrentDictionary<string, int> _groupSubscriberCounts = new(StringComparer.Ordinal);
 
-    // ConnectionId → the RBAC scope captured when the connection joined the live-ops "NOC"
+    // ConnectionId -> the RBAC scope captured when the connection joined the live-ops "NOC"
     // feed. The ops-feed is NOT a SignalR group: a flat group cannot be filtered per-user at
     // broadcast time, which would leak the existence + status of out-of-scope workflows to
     // every authenticated viewer. Instead we record the accessible-folder set per connection
@@ -58,7 +58,7 @@ public class ExecutionHub : Hub
 
     internal sealed record OpsFeedScope(bool IsUnrestricted, HashSet<Guid> FolderIds);
 
-    // ConnectionId → { Jti, UserId, Context }. Used by the background job that periodically
+    // ConnectionId -> { Jti, UserId, Context }. Used by the background job that periodically
     // sweeps for revoked tokens / deactivated users, so it can find and disconnect any live
     // SignalR connections that are still authenticated with a now-invalid token or account.
     // We stash the full HubCallerContext so the sweeper can call
@@ -82,7 +82,8 @@ public class ExecutionHub : Hub
         DateTime? RevokedAt);
 
     /// <summary>
-    /// Iterates every live connection and returns those whose jti is in <paramref name="revokedJtis"/>
+    /// Iterates every live connection and returns those whose jti is in <paramref
+    /// name="revokedJtis"/>
     /// or whose user id is in <paramref name="deactivatedUsers"/>. The sweeper calls this,
     /// then iterates <see cref="TryGetContext"/> to call <c>Abort()</c> on each. Living in
     /// the hub keeps the auth map private to the type that owns it.
@@ -217,7 +218,7 @@ public class ExecutionHub : Hub
         var set = _joinedGroups.GetOrAdd(connectionId, _ => new HashSet<string>(StringComparer.Ordinal));
         lock (set)
         {
-            if (set.Contains(groupName)) return true;      // already in → no-op, not a new slot
+            if (set.Contains(groupName)) return true;      // already in -> no-op, not a new slot
             if (set.Count >= MaxGroupsPerConnection) return false;
             set.Add(groupName);
             IncrementGroupSubscriber(groupName);
@@ -349,7 +350,8 @@ public class ExecutionHub : Hub
         UnregisterGroup(Context.ConnectionId, group);
     }
 
-    /// <summary>Join a workflow channel to receive all execution updates for that workflow.</summary>
+    /// <summary>Join a workflow channel to receive all execution updates for that
+    /// workflow.</summary>
     [ExcludeFromCodeCoverage(Justification = "Hub method; only reachable through a live SignalR connection.")]
     public async Task<object> JoinWorkflow(string workflowId)
     {
@@ -487,7 +489,8 @@ public record StepPausedEvent(
     Guid ExecutionId, Guid WorkflowId, string StepId, string? StepName,
     Dictionary<string, string> Variables, DateTime PausedAt, string Reason);
 
-/// <summary>Sent after a paused step resumes, so the frontend can clear its debug overlay.</summary>
+/// <summary>Sent after a paused step resumes, so the frontend can clear its debug
+/// overlay.</summary>
 public record StepResumedEvent(Guid ExecutionId, Guid WorkflowId, string StepId);
 
 public record LiveEventBatchItem(string Type, object Event);

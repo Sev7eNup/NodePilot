@@ -80,7 +80,7 @@ public class RenderersCoverageTests
         output.Should().Contain("Nightly");
         output.Should().Contain("tweaked cron");
         output.Should().Contain($"{def.Length} bytes");
-        output.Should().Contain("yes"); // IsCurrent → "yes"
+        output.Should().Contain("yes"); // IsCurrent -> "yes"
     }
 
     [Fact]
@@ -130,7 +130,7 @@ public class RenderersCoverageTests
         output.Should().Contain("APP-01");
         output.Should().Contain("app01.corp");
         output.Should().Contain("5985");
-        output.Should().Contain("-"); // DefaultCredential + Tags + LastCheck → "-"
+        output.Should().Contain("-"); // DefaultCredential + Tags + LastCheck -> "-"
     }
 
     // ---- Credentials ------------------------------------------------------------
@@ -200,7 +200,7 @@ public class RenderersCoverageTests
 
         output.Should().Contain("One Shot");
         output.Should().Contain("→");   // OneTime range arrow
-        output.Should().Contain("all"); // Global scope → "all" targets
+        output.Should().Contain("all"); // Global scope -> "all" targets
     }
 
     [Fact]
@@ -212,7 +212,7 @@ public class RenderersCoverageTests
         var output = Render(c => Renderers.MaintenanceWindows(c, new[] { w }));
 
         output.Should().Contain("No Days");
-        output.Should().Contain("--:--"); // null minute → "--:--"
+        output.Should().Contain("--:--"); // null minute -> "--:--"
     }
 
     [Fact]
@@ -332,7 +332,7 @@ public class RenderersCoverageTests
 
         output.Should().Contain("CPU Usage").And.Contain($"{42.5:F2}"); // culture-aware separator
         output.Should().Contain("Memory").And.Contain("scrape timeout");
-        output.Should().Contain("Disk").And.Contain("-"); // null value, no error → "-"
+        output.Should().Contain("Disk").And.Contain("-"); // null value, no error -> "-"
     }
 
     // ---- StatusMarkup (all branches) --------------------------------------------

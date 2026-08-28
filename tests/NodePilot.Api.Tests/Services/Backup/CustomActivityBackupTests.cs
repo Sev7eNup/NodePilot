@@ -30,7 +30,8 @@ public sealed class CustomActivityBackupTests : IDisposable
     private static byte[] Key() { var k = new byte[32]; for (var i = 0; i < k.Length; i++) k[i] = (byte)(i + 7); return k; }
     private string TempPath() { var p = Path.Combine(Path.GetTempPath(), "np-ca-bk-" + Guid.NewGuid().ToString("N") + ".json"); _tempFiles.Add(p); return p; }
 
-    // Full part set so the Workflows dependency closure (folders/credentials/machines/globals) resolves.
+    // Full part set so the Workflows dependency closure (folders/credentials/machines/globals)
+    // resolves.
     private IBackupPart[] Parts(NodePilotDbContext db) =>
     [
         new FolderBackupPart(db), new UserBackupPart(db), new CredentialBackupPart(db, _atRest),
@@ -126,7 +127,7 @@ public sealed class CustomActivityBackupTests : IDisposable
         SeedWorkflow(src, srcDef.Id);
         var backup = await ExportAsync(src);
 
-        // Destination already has the same key under a DIFFERENT id (separate store → fresh GUID).
+        // Destination already has the same key under a DIFFERENT id (separate store -> fresh GUID).
         using var dst = TestDbFactory.Create();
         SeedAdmin(dst, adminId);
         var dstDef = await SeedAsync(dst, enabled: true);

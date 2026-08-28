@@ -1,26 +1,25 @@
 <#
 .SYNOPSIS
-  Seeds 17 useful, DISABLED-by-default custom alerting rules into a running NodePilot instance.
+  Seeds 17 custom alerting rules, disabled by default, into a running NodePilot instance.
 
 .DESCRIPTION
   Custom alerting rules (Kind=Custom) fire on execution-scoped events and filter over the shared
   event-field catalog (NotificationContext.ToFieldMap). Unlike the system-alert policies
-  (scripts/seed-system-alert-policies.ps1, which watch infra/health gauges), these react to what
-  individual workflow runs actually do. They are created disabled with a single Email route so nothing
-  fires until an operator reviews the target and enables them.
+  (scripts/seed-system-alert-policies.ps1, which watch infra and health gauges), these react to
+  what individual workflow runs do. They are created disabled with a single Email route, so
+  nothing fires until an operator reviews the target and enables them.
 
-  They deliberately cover the common day-to-day questions an operator asks: "did anything fail on
-  auth?", "did a child workflow blow up?", "did something time out / get killed by the system /
-  fail over?", "is the queue backing up?", "is a run that still succeeds creeping slower?", "is a
-  specific workflow flapping?", "did a scheduled/webhook run fail unattended?", "is it a
-  permission/network problem?" — each exercising a different event type and filter field.
+  The set covers the common day-to-day checks: authentication failures, failed child workflows,
+  timeouts, system and failover cancellations, queue backlog, slow but successful runs, flapping
+  workflows, failures of unattended schedule and webhook runs, and permission or network errors.
+  Each rule exercises a different event type and filter field.
 
   Two rules use the flap mechanic (minOccurrences/occurrenceWindowMinutes): with the default dedup
-  key ({ruleId}:{workflowId}:{eventType}) these fire only when the SAME workflow trips N times inside
-  the window, i.e. "this workflow is flapping", not a single blip.
+  key ({ruleId}:{workflowId}:{eventType}) they fire only when the same workflow trips N times
+  inside the window, rather than on a single blip.
 
-  Note on filters: contains/startsWith/endsWith are Ordinal (case-sensitive); 'matches' is a regex
-  with inline (?i) for case-insensitivity — that's why error-text / trigger-source rules use 'matches'.
+  Filters: contains/startsWith/endsWith are Ordinal (case-sensitive); 'matches' is a regex and
+  takes inline (?i) for case-insensitivity, so the error-text and trigger-source rules use it.
 
   Run against a local dev instance:
       pg_ctl start ... ; dotnet run --project src/NodePilot.Api --urls http://localhost:5000
@@ -39,7 +38,8 @@ function UnaryCond($field, $op) {
   @{ type = 'comparison'; left = @{ kind = 'variable'; source = 'event'; name = $field }; op = $op } | ConvertTo-Json -Depth 6 -Compress
 }
 
-# name, description, eventTypes, filter (or $null), cooldownMinutes, minOccurrences, occurrenceWindowMinutes
+# name, description, eventTypes, filter (or $null), cooldownMinutes, minOccurrences,
+# occurrenceWindowMinutes
 $rules = @(
   # --- batch 1: outcome & lifecycle basics ---
   @{ name = 'Credential-/Login-Fehler';    desc = 'Ein Lauf scheiterte an Authentifizierung/Credential (falsches Passwort, gesperrtes Konto, WinRM-Login).';                events = @('CredentialFailure');    filter = $null;                                                    cd = 15; minOcc = 1; win = 0  },

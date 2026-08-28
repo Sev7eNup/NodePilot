@@ -27,8 +27,8 @@ describe('useRole (RBAC client mirror)', () => {
   });
 
   it('operator_canWrite_butCannotDeleteOrAdmin', () => {
-    // Mirror of the server matrix in CLAUDE.md §Autorisierung: Operators can create/edit
-    // but DELETE and admin-only actions (users, audit, globals write) are Admin-only.
+    // Mirrors the server role matrix: Operators can create and edit, while delete and
+    // admin-only actions (users, audit, globals write) need Admin.
     useAuthStore.setState({ role: 'Operator' });
     const { result } = renderHook(() => useRole());
 
@@ -52,9 +52,9 @@ describe('useRole (RBAC client mirror)', () => {
   });
 
   it('nullRole_defaultsToViewer', () => {
-    // Pre-init / unauthenticated state: store role is null. The hook treats this as
-    // Viewer so the UI renders the most-restrictive set of affordances during
-    // the /auth/me probe — if we defaulted to Admin we'd flash sensitive controls.
+    // Before init and while unauthenticated the store role is null. The hook treats that as
+    // Viewer so the UI shows the most restrictive controls during the /auth/me probe instead
+    // of briefly exposing sensitive ones.
     useAuthStore.setState({ role: null });
     const { result } = renderHook(() => useRole());
 
@@ -66,8 +66,8 @@ describe('useRole (RBAC client mirror)', () => {
   });
 
   it('roleTransition_updatesPermissions', () => {
-    // Verify the hook re-evaluates when the store changes. Critical because the layout
-    // re-renders on role change (e.g. user is demoted by an admin during a session).
+    // The hook re-evaluates when the store changes, so the layout follows a role change
+    // that happens during a session.
     useAuthStore.setState({ role: 'Viewer' });
     const { result, rerender } = renderHook(() => useRole());
 
@@ -81,9 +81,8 @@ describe('useRole (RBAC client mirror)', () => {
   });
 
   it('canWrite_isAlsoTrueForAdmin', () => {
-    // Admin is implicitly a superset of Operator's write capability — the hook expresses
-    // this by ORing the role checks in canWrite. Pin it so a refactor to a strict-equality
-    // comparison would break this test, signaling the intent.
+    // Admin includes Operator's write capability, so canWrite ors both role checks. Pinned
+    // here so narrowing it to a strict equality check fails the test.
     useAuthStore.setState({ role: 'Admin' });
     const { result } = renderHook(() => useRole());
 

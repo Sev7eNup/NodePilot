@@ -15,7 +15,7 @@ namespace NodePilot.Api.Tests.Controllers;
 /// <summary>
 /// Controller tests for the global-variable folder tree. Verifies the store's typed exceptions
 /// map to the right HTTP status (409 conflict / 400 validation / 404 not-found), audit entries
-/// are written, and the variable → folder move endpoint on <see cref="GlobalVariablesController"/>
+/// are written, and the variable-to-folder move endpoint on <see cref="GlobalVariablesController"/>
 /// behaves.
 /// </summary>
 public class GlobalVariableFoldersControllerTests
@@ -209,7 +209,7 @@ public class GlobalVariableFoldersControllerTests
         list.Should().Contain(f => f.Id == Root);
     }
 
-    // ---- Variable → folder move (GlobalVariablesController.MoveToFolder) ----
+    // ---- Variable-to-folder move (GlobalVariablesController.MoveToFolder) ----
 
     private static GlobalVariablesController NewVarController(NodePilotDbContext db, out CapturingAuditWriter audit)
     {

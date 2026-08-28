@@ -367,8 +367,8 @@ function StatsCard() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Local UI widgets. Card and ErrorsAndSave deliberately do NOT come from
-// SectionFormHelpers: this tab's cards are the tighter p-4/mt-4 variant, and
+// Local UI widgets. Card and ErrorsAndSave deliberately don't come from
+// SectionFormHelpers: this tab's cards use the tighter p-4/mt-4 variant, and
 // swapping in the shared ones would re-chrome all three cards.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -474,7 +474,7 @@ function Select({
   );
 }
 
-// camelCase (UI) → PascalCase (backend DTO) key map for simple flat objects.
+// Maps camelCase (UI) keys to PascalCase (backend DTO) keys for simple flat objects.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapPascal(obj: Record<string, any>): Record<string, any> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

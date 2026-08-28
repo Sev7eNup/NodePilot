@@ -6,11 +6,9 @@ import { http, HttpResponse } from 'msw';
 import { SupportLogViewerSection } from '../../../components/admin-settings/SupportLogViewerSection';
 
 /**
- * The plain-text tail view sizes its window from a persisted, drag-resizable height. The
- * default grew from 640px to 832px so an operator sees ~30% more lines without dragging,
- * and the localStorage key moved `.v1` → `.v2` to make that new default actually reachable
- * in a browser that already stored a height. Both halves are behaviour, so both are pinned:
- * a silent revert of the key bump would leave every existing profile on the old window.
+ * The plain-text tail view sizes its window from a persisted, drag-resizable height. Both the
+ * default height and the localStorage key version are behaviour and are pinned here: the key
+ * version is what makes a raised default reachable in a browser that already stored a height.
  */
 
 const PLAIN_DEFAULT_HEIGHT = 832;
@@ -56,8 +54,8 @@ describe('SupportLogViewerSection — plain-text window height', () => {
   });
 
   it('ignoresTheStaleV1Height_soTheNewDefaultWins', async () => {
-    // A browser that used the old viewer has 640 sitting under the v1 key. Reading it back
-    // would defeat the whole point of raising the default.
+    // A height stored under the v1 key belongs to the old default and must not be read back,
+    // otherwise the raised default never takes effect.
     globalThis.localStorage.setItem(V1_KEY, '640');
     const pre = await renderPlainView();
     expect(pre.style.height).toBe(`${PLAIN_DEFAULT_HEIGHT}px`);
@@ -65,7 +63,7 @@ describe('SupportLogViewerSection — plain-text window height', () => {
 
   it('ignoresAPersistedHeightBelowTheMinimum', async () => {
     // Guards the `n >= PLAIN_MIN_HEIGHT` read-back: a corrupt or hand-edited tiny value must
-    // not collapse the window to an unusable sliver.
+    // not collapse the window to an unusable height.
     globalThis.localStorage.setItem(V2_KEY, '12');
     const pre = await renderPlainView();
     expect(pre.style.height).toBe(`${PLAIN_DEFAULT_HEIGHT}px`);

@@ -12,12 +12,11 @@ using Xunit;
 namespace NodePilot.Data.Tests;
 
 /// <summary>
-/// Drift guard for the provider-agnostic migration convention (see the "Datenbank"
-/// section of CLAUDE.md). Freshly generated EF migrations contain provider-specific
+/// Drift guard for the provider-agnostic migration convention (see the Database section
+/// of CLAUDE.md). Freshly generated EF migrations can contain provider-specific
 /// column-type strings (<c>type: "uuid"</c>, <c>type: "uniqueidentifier"</c>,
-/// <c>type: "text"</c>, …); if those aren't removed before commit, the inactive
-/// provider breaks at <c>Migrate()</c> time. These tests catch that in CI — before
-/// it turns into a production bug during a provider switch.
+/// <c>type: "text"</c>, ...); left in place, the inactive provider breaks at
+/// <c>Migrate()</c> time. These tests catch that in CI.
 /// </summary>
 public class MigrationDriftTests
 {
@@ -191,22 +190,14 @@ public class MigrationDriftTests
 
     /// <summary>
     /// Second half of the mandatory post-processing after <c>dotnet ef migrations add</c>
-    /// (see the "Datenbank" section of CLAUDE.md). EF scaffolds each
-    /// <c>*.Designer.cs</c> with the store types of whichever provider was active at
-    /// generation time — <c>HasColumnType("uuid")</c>, <c>HasColumnType("timestamp with
-    /// time zone")</c>, … Those persisted names must not override the active provider's
-    /// CLR type mapping when EF rebuilds a migration target model, so every designer
-    /// closes its <c>BuildTargetModel</c> with a call to
-    /// <see cref="MigrationModelPortability.UseActiveProviderStoreTypes"/>.
-    ///
-    /// <para>The step is manual and was silently skipped once already
-    /// (AddWorkflowExecutionCompletedAtIndex, 2026-07-14) — nothing caught it, because
-    /// the sibling <c>type: "…"</c> scan deliberately excludes designer files. This test
-    /// closes that gap.</para>
-    ///
-    /// <para><c>NodePilotDbContextModelSnapshot.cs</c> is intentionally NOT covered: it is
-    /// the design-time diff base for the next <c>migrations add</c>, not a migration
-    /// target model, and it has never carried the call.</para>
+    /// (see the Database section of CLAUDE.md). Each scaffolded <c>*.Designer.cs</c> keeps
+    /// the store types of the provider that generated it, so every designer's
+    /// <c>BuildTargetModel</c> must end with a call to
+    /// <see cref="MigrationModelPortability.UseActiveProviderStoreTypes"/>; otherwise it
+    /// overrides the active provider's CLR type mapping when EF rebuilds a migration
+    /// target model. The sibling <c>type: "..."</c> scan skips designer files, so this
+    /// test covers them separately. <c>NodePilotDbContextModelSnapshot.cs</c> is excluded:
+    /// it is a design-time diff base, not a migration target model.
     /// </summary>
     [Fact]
     public void EveryMigrationDesigner_AppliesProviderStoreTypePortability()
@@ -251,9 +242,9 @@ public class MigrationDriftTests
 
     /// <summary>
     /// The keyset index for the notification event poller (ExecutionEventCollector) must be
-    /// emitted as a covering <c>(CompletedAt, Id) INCLUDE (Status)</c> index on BOTH providers.
-    /// The migration is generated under whichever provider is active, so the *other* provider's
-    /// Include annotation is added by hand — this guards it from being dropped.
+    /// emitted as a covering <c>(CompletedAt, Id) INCLUDE (Status)</c> index on both providers.
+    /// The migration is generated under whichever provider is active, so the other provider's
+    /// Include annotation is added by hand; this test guards it from being dropped.
     /// </summary>
     [Fact]
     public void CompletedAtKeysetIndex_IsCovering_OnBothProviders()
@@ -282,10 +273,10 @@ public class MigrationDriftTests
 
     /// <summary>
     /// Every migration must be discoverable by EF: it needs both a <c>[Migration]</c> id and a
-    /// <c>[DbContext]</c> attribute, or <c>Migrate()</c> silently skips it and the schema drifts
-    /// (the bug documented in AddNotificationRouteConditionExpression). The single deliberate
-    /// exception is the intentionally-invisible <c>RemoveUserWorkflowFolders</c>; its cleanup is
-    /// now done by the attributed <c>DropOrphanedUserFolderTables</c> migration instead.
+    /// <c>[DbContext]</c> attribute, or <c>Migrate()</c> silently skips it and the schema drifts.
+    /// The one deliberate exception is <c>RemoveUserWorkflowFolders</c>, which is intentionally
+    /// invisible; its cleanup runs through the attributed <c>DropOrphanedUserFolderTables</c>
+    /// migration.
     /// </summary>
     [Fact]
     public void EveryMigration_IsDiscoverable_ExceptTheIntentionallyInvisibleOne()
@@ -353,12 +344,10 @@ public class MigrationDriftTests
     }
 
     /// <summary>
-    /// Walks upward from the test assembly directory until it finds a folder that
-    /// looks like the repo root (<c>.slnx</c>, <c>.sln</c>, or <c>.git</c>), then
-    /// builds the path to <c>src/NodePilot.Data/Migrations</c>. Robust against build
-    /// configuration changes (Debug/Release) and test-runner working-directory
-    /// quirks — deliberately uses the assembly directory instead of the current
-    /// directory.
+    /// Walks upward from the test assembly directory until it finds a folder that looks like
+    /// the repo root (<c>.slnx</c>, <c>.sln</c>, or <c>.git</c>), then builds the path to
+    /// <c>src/NodePilot.Data/Migrations</c>. Uses the assembly directory rather than the
+    /// current directory so this works regardless of build configuration or working directory.
     /// </summary>
     private static string ResolveMigrationsDirectory()
     {

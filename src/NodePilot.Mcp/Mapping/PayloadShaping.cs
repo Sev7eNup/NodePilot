@@ -12,7 +12,8 @@ public static class PayloadShaping
 {
     public const int DefaultMaxChars = 4_000;
 
-    /// <summary>Truncate a possibly-large string, appending a marker noting how many chars were dropped.</summary>
+    /// <summary>Truncate a possibly-large string, appending a marker noting how many chars were
+    /// dropped.</summary>
     public static string? Truncate(string? value, int maxChars = DefaultMaxChars)
     {
         if (value is null || value.Length <= maxChars) return value;
@@ -21,7 +22,8 @@ public static class PayloadShaping
     }
 
     /// <summary>
-    /// Deep-copy a JSON value, truncating EVERY string leaf to <paramref name="maxChars"/>. Used for
+    /// Deep-copy a JSON value, truncating EVERY string leaf to <paramref name="maxChars"/>. Used
+    /// for
     /// free-form diagnostics payloads (support log lines, event messages, propertiesJson) where the
     /// shape is open-ended but any single string field could be very large.
     /// </summary>

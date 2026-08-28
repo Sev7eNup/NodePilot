@@ -107,8 +107,8 @@ public class NotificationLongRunningTests
             var email = new RecordingSink(NotificationChannel.Email);
             var dispatcher = Build(factory, TimeSpan.FromSeconds(60), email);
 
-            await dispatcher.DispatchOnceAsync(CancellationToken.None); // crosses the threshold → fire
-            await dispatcher.DispatchOnceAsync(CancellationToken.None); // still running → existence-check dedups
+            await dispatcher.DispatchOnceAsync(CancellationToken.None); // crosses the threshold -> fire
+            await dispatcher.DispatchOnceAsync(CancellationToken.None); // still running -> existence-check dedups
 
             email.Sends.Should().ContainSingle("one alert per running execution, deduped across passes");
             email.Sends[0].ctx.EventType.Should().Be(NotificationEventType.ExecutionRunningLong);
@@ -197,8 +197,10 @@ public class NotificationLongRunningTests
     [Fact]
     public async Task CrashRecovery_ReconstructsRunlongContext()
     {
-        // A runlong: attempt left Pending by a crash between persist and send must be re-derived from the
-        // still-running row and delivered — NOT failed out (which the exec:/gauge:-only parser would do).
+        // A runlong: attempt left Pending by a crash between persist and send must be re-derived
+        // from the
+        // still-running row and delivered — NOT failed out (which the exec:/gauge:-only parser
+        // would do).
         var (db, factory, conn) = CreateEnv();
         try
         {

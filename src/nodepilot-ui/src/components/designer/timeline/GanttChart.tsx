@@ -1,11 +1,9 @@
 /**
- * Shared Gantt rendering used by both the History tab (StepTimeline, played-back
- * StepExecution rows from the DB) and the Live tab (LiveTimeline, in-flight
- * StepUpdate rows from SignalR).
+ * Shared Gantt rendering used by the History tab, which replays StepExecution rows from the
+ * database, and by the Live tab, which shows in-flight StepUpdate rows from SignalR.
  *
- * Callers are responsible for normalizing their domain rows into `GanttRow[]`. A
- * caller that wants live-growing bars passes `nowMs` (current Date.now()), which
- * extends the rendered span to "now" and stretches running rows up to that point.
+ * Callers normalize their domain rows into `GanttRow[]`. Passing `nowMs` extends the rendered
+ * span to the current time and stretches running rows up to that point.
  *
  * History adds the optional scrub slider; live mode skips it.
  */
@@ -27,21 +25,21 @@ interface ScrubConfig {
 
 interface Props {
   rows: GanttRow[];
-  /** Live-now timestamp. When set, the right edge of the chart extends to here and
-   *  any row with `status === 'Running'` and `endMs == null` is rendered up to here. */
+  /** Current timestamp. When set, the right edge of the chart extends to it and any row
+   *  with `status === 'Running'` and `endMs == null` is rendered up to it. */
   nowMs?: number;
-  /** Click on a row → caller-defined navigation. Most commonly: select that step. */
+  /** Called when a row is clicked. Callers usually select that step. */
   onSelectRow?: (id: string) => void;
-  /** History-only scrub cursor + range slider for time-travel replay. */
+  /** Scrub cursor and range slider for replay. Used by the History tab only. */
   scrub?: ScrubConfig;
-  /** Min width in px — keeps short runs from collapsing into a single column. */
+  /** Minimum width in pixels. Keeps short runs from collapsing into a single column. */
   minWidthPx?: number;
 }
 
 export function GanttChart({ rows, nowMs, onSelectRow, scrub, minWidthPx = 600 }: Readonly<Props>) {
   const { t } = useTranslation('designer');
-  // Effective end resolves "still running" to nowMs so live bars grow with the ticker.
-  // Skipped/no-startedAt rows stay null and render as "—".
+  // The effective end resolves a still-running row to nowMs so live bars grow with the ticker.
+  // Skipped rows and rows without a start time stay null and render as a dash.
   const effectiveRows = rows.map((r) => ({
     ...r,
     effEndMs: r.endMs ?? (r.status === 'Running' && nowMs != null ? nowMs : null),
@@ -157,7 +155,7 @@ export function GanttChart({ rows, nowMs, onSelectRow, scrub, minWidthPx = 600 }
         );
       })}
 
-      {/* Scrubber — vertical cursor + range slider for time-travel replay */}
+      {/* Scrubber: vertical cursor and range slider for replay */}
       {scrub && ganttEnd > ganttStart && (
         <div
           className="relative px-2 py-2 border-t border-outline-variant/20 bg-surface-low/60"
@@ -174,8 +172,8 @@ export function GanttChart({ rows, nowMs, onSelectRow, scrub, minWidthPx = 600 }
                 value={scrub.value ?? ganttEnd}
                 onChange={(e) => scrub.onChange(Number(e.target.value))}
                 onMouseUp={(e) => {
-                  // Read from the input directly — avoids stale-closure where React
-                  // hasn't flushed onChange before mouseup fires.
+                  // Read from the input directly to avoid a stale closure when React has
+                  // not flushed onChange before mouseup fires.
                   const t = Number((e.target as HTMLInputElement).value);
                   if (t >= ganttEnd) scrub.onChange(null);
                 }}

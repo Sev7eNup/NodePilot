@@ -20,7 +20,7 @@ namespace NodePilot.Ai.Tests;
 /// </summary>
 public sealed class LlmConnectGuardTests
 {
-    // ---- IsLinkLocal classification matrix (private static → Reflection) --------------
+    // ---- IsLinkLocal classification matrix (private static -> Reflection) --------------
 
     private static bool IsLinkLocal(string ip)
     {
@@ -43,8 +43,8 @@ public sealed class LlmConnectGuardTests
     }
 
     [Theory]
-    [InlineData("169.253.0.1")]            // boundary: second octet != 254 → NOT link-local
-    [InlineData("168.254.0.1")]            // boundary: first octet != 169 → NOT link-local
+    [InlineData("169.253.0.1")]            // boundary: second octet != 254 -> NOT link-local
+    [InlineData("168.254.0.1")]            // boundary: first octet != 169 -> NOT link-local
     [InlineData("127.0.0.1")]              // loopback — deliberately allowed for local LLMs
     [InlineData("10.0.0.5")]               // private — allowed
     [InlineData("192.168.1.10")]           // private — allowed
@@ -60,7 +60,8 @@ public sealed class LlmConnectGuardTests
     // ---- End-to-end via the real ConnectCallback -------------------------------------
 
     /// <summary>
-    /// Mirrors the production handler from <see cref="LlmServiceCollectionExtensions.AddNodePilotAi"/>
+    /// Mirrors the production handler from <see
+    /// cref="LlmServiceCollectionExtensions.AddNodePilotAi"/>
     /// so this suite exercises the guard in the shape it actually ships in. Production carries
     /// <c>UseProxy = true</c> with a configured <see cref="LlmConfiguredProxy"/>; in
     /// <see cref="LlmProxyMode.Off"/> — the default asserted here — that proxy bypasses every

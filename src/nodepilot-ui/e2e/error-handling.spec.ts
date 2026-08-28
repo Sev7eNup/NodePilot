@@ -2,19 +2,11 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 7 — Fehlerbehandlung & Edge Cases.
- *
- * These scenarios are about how the editor's STATIC validation reacts to malformed graphs —
- * the runtime behaviours ("execution Failed", "node Skipped") are engine semantics observed over
- * SignalR (mocked 404 here) and are owned by NodePilot.Engine.Tests. What IS observable in the
- * hermetic browser:
- *   - lintWorkflow() (src/lib/workflowLint.ts) runs on every graph change and surfaces a lint pill
- *     in the toolbar Run-cluster with the combined error+warning count (title "N errors, M warnings").
- *   - A graph with no (enabled) trigger — including a cycle-only graph — surfaces a `no-trigger`
- *     lint error (roots are trigger-only; there is no separate cycle banner).
- *
- * The lint pill renders whenever lintCount > 0 regardless of edit-lock, so these fixtures don't
- * need lock-by-me. The pill's accessible name is its tooltip: "{{errors}} errors, {{warnings}} warnings".
+ * E2ETests.md section "Teil 7": error handling and edge cases. Only the editor's static
+ * validation is observable in the hermetic browser; runtime behaviour such as failed executions
+ * or skipped nodes belongs to NodePilot.Engine.Tests. lintWorkflow() (src/lib/workflowLint.ts)
+ * runs on every graph change and shows a pill in the toolbar Run cluster with the combined
+ * error and warning count; it renders whenever lintCount > 0, so no edit lock is needed here.
  */
 
 const WF_ID = 'e7e7e7e7-0000-0000-0000-000000000007';
@@ -25,7 +17,7 @@ function workflowJson(definitionJson: string, overrides: Record<string, unknown>
     name: 'ErrorCase_Test',
     description: '',
     isEnabled: false,
-    checkedOutByUserId: MOCK_USER.id, // lock-by-me so the editor is fully mounted/editable
+    checkedOutByUserId: MOCK_USER.id, // locked by the current user, so the editor is editable
     checkedOutByUserName: MOCK_USER.username,
     checkedOutAt: '2026-06-01T00:00:00.000Z',
     definitionJson,
@@ -38,9 +30,9 @@ function workflowJson(definitionJson: string, overrides: Record<string, unknown>
   });
 }
 
-// The lint pill: an AlertTriangle button in the Run cluster. Its visible text is just the count
-// number, so its accessible name is the digit — we target the descriptive `title` attribute
-// ("N errors, M warnings") instead, which is unique to this button.
+// The lint pill is an AlertTriangle button in the Run cluster. Its visible text is only the
+// count, so it is matched by its `title` attribute ("N errors, M warnings"), which is unique
+// to this button.
 function lintPill(page: import('@playwright/test').Page) {
   return page.getByTitle(/\d+ errors?, \d+ warnings?/i);
 }
@@ -51,8 +43,8 @@ test.describe('Fehlerbehandlung & Edge Cases (Teil 7)', () => {
   });
 
   test('7.1 — template referencing an unknown variable raises a lint warning', async ({ page }) => {
-    // A log node whose message references {{unknownVariable.output}} — no upstream node exposes
-    // that name → lint code "unknown-template-ref" (warning). Pill must surface ≥1 warning.
+    // A log node references {{unknownVariable.output}}, which no upstream node exposes, so lint
+    // reports the warning "unknown-template-ref" and the pill shows at least one warning.
     const def = JSON.stringify({
       nodes: [
         { id: 't', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'Trg', activityType: 'manualTrigger', config: {} } },
@@ -78,9 +70,8 @@ test.describe('Fehlerbehandlung & Edge Cases (Teil 7)', () => {
   });
 
   test('7.3 — cycle-only / trigger-less workflow surfaces a no-trigger lint error', async ({ page }) => {
-    // A → B → C → A. Every node has in-degree ≥ 1 and there is no trigger → roots are trigger-only,
-    // so the engine would run nothing. The lint surfaces a single `no-trigger` error (this replaces
-    // the old "all nodes form a cycle" banner).
+    // A cycle of three nodes: every node has an incoming edge and there is no trigger. Roots are
+    // trigger-only, so the engine would run nothing and lint reports a single `no-trigger` error.
     const def = JSON.stringify({
       nodes: [
         { id: 'A', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'A', activityType: 'log', config: { message: 'A' } } },
@@ -102,13 +93,13 @@ test.describe('Fehlerbehandlung & Edge Cases (Teil 7)', () => {
     const pill = lintPill(page);
     await expect(pill).toBeVisible({ timeout: 15_000 });
     await pill.click();
-    // Lint message: "Workflow hat keinen Trigger. … kein Einstiegspunkt …" (code chip NO-TRIGGER).
+    // The lint message states that the workflow has no trigger and no entry point.
     await expect(page.getByText(/keinen Trigger|Einstiegspunkt|no-trigger/i).first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('7.4 — isolated (orphan) nodes raise lint errors', async ({ page }) => {
-    // Two log nodes, no edges, no trigger → each is fully disconnected → "isolated-node" ERROR ×2
-    // (plus one `no-trigger` error, since there's no trigger either — both are listed in the panel).
+    // Two log nodes with no edges and no trigger: each one is disconnected, so lint reports two
+    // "isolated-node" errors plus one `no-trigger` error, and the panel lists all of them.
     const def = JSON.stringify({
       nodes: [
         { id: 'n1', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'Lonely One', activityType: 'log', config: { message: 'one' } } },
@@ -130,8 +121,8 @@ test.describe('Fehlerbehandlung & Edge Cases (Teil 7)', () => {
   });
 
   test('7.5 — a disabled node with downstream edges raises lint warnings', async ({ page }) => {
-    // A → B(disabled) → C. Lint flags "edge-to-disabled" + "disabled-with-downstream" warnings,
-    // mirroring the engine's cascade-skip of B and C. Observable as the lint pill.
+    // A chain whose middle node is disabled. Lint flags "edge-to-disabled" and
+    // "disabled-with-downstream" warnings, matching the engine skipping it and its successors.
     const def = JSON.stringify({
       nodes: [
         { id: 'A', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'A', activityType: 'manualTrigger', config: {} } },

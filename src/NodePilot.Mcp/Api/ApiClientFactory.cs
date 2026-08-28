@@ -7,7 +7,8 @@ namespace NodePilot.Mcp.Api;
 
 /// <summary>
 /// Builds the singleton <see cref="NodePilotApiClient"/> for the process from the resolved
-/// <see cref="SessionContext"/>. A refreshable DPAPI session gets the <see cref="TokenRefreshHandler"/>;
+/// <see cref="SessionContext"/>. A refreshable DPAPI session gets the <see
+/// cref="TokenRefreshHandler"/>;
 /// a raw env bearer does not. The client is always constructed (even unconfigured) so the server
 /// can start and tools can return an actionable "run np auth login" error.
 /// </summary>

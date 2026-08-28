@@ -25,7 +25,7 @@ public class AiChatControllerTests
 
     // Mirrors the internal WorkflowAssistantService.DefinitionDelimiter. Kept as a local copy so
     // this Api-side test does not depend on NodePilot.Ai internals (the assistant lives in a
-    // separate assembly now; only NodePilot.Ai.Tests holds the InternalsVisibleTo grant).
+    // separate assembly; only NodePilot.Ai.Tests holds the InternalsVisibleTo grant).
     private const string DefinitionDelimiter = "===NODEPILOT-DEFINITION===";
 
     private static (AiChatController controller, CapturingAuditWriter audit, FakeLlmClient llm, MemoryStream body, NodePilotDbContext db)
@@ -37,7 +37,8 @@ public class AiChatControllerTests
         var llm = new FakeLlmClient();
         var db = TestDbFactory.Create();
         // Real reader backed by the test DB: the gating tests observe which tools get advertised
-        // (llm.Calls[..].Tools) — the controller decides whether the reader's tools make it into the context.
+        // (llm.Calls[..].Tools) — the controller decides whether the reader's tools make it into
+        // the context.
         var assistant = new WorkflowAssistantService(new FakeLlmClientFactory(llm), new PromptCatalog(), new WorkflowChatToolRegistry(), options,
             customStore: null, executionLogs: new ExecutionLogReader(db, new StubAuditDetailsRedactor()));
         var audit = new CapturingAuditWriter();
@@ -209,14 +210,16 @@ public class AiChatControllerTests
         var result = await controller.Chat(Req(), new CancellationToken(canceled: true));
 
         result.Should().BeOfType<EmptyResult>();
-        // On cancellation there is no success audit entry, but an audit entry with cancelled=true is still written.
+        // On cancellation there is no success audit entry, but an audit entry with cancelled=true
+        // is still written.
         var call = audit.Calls.Should().ContainSingle(c => c.Action == "AI_WORKFLOW_EXPLAINED").Subject;
         call.Details.Should().Contain("\"cancelled\":true");
     }
 
     // ---- Execution-log tools: folder-RBAC gate --------------------------------------
     // Observed via the tool-advertising on FakeLlmClient (Calls[..].Tools) — the workflow ID is
-    // client-controlled, so the controller's gate decides whether the execution-log tools get offered.
+    // client-controlled, so the controller's gate decides whether the execution-log tools get
+    // offered.
 
     [Fact]
     public async Task Chat_AdminWithSavedWorkflow_AdvertisesExecutionLogTools()
@@ -274,7 +277,7 @@ public class AiChatControllerTests
         llm.Calls.Single().Tools!.Select(t => t.Name).Should().NotContain("list_recent_executions");
     }
 
-    // ---- Audit visibility (PR3-C) ------------------------------------------------
+    // ---- Audit visibility ----------------------------------------------------------
 
     private static void SeedWorkflow(NodePilotDbContext db, Guid id)
     {
@@ -318,8 +321,8 @@ public class AiChatControllerTests
     [Fact]
     public async Task ChatApplied_OperatorWithoutFolderAccess_Returns404_NoAudit()
     {
-        // Operator without an explicit folder grant cannot access the workflow → masked as 404,
-        // no AI_PROPOSAL_APPLIED written for someone else's workflow.
+        // Operator without an explicit folder grant cannot access the workflow, so it is masked
+        // as 404, and no AI_PROPOSAL_APPLIED is written for someone else's workflow.
         var (controller, audit, _, _, db) = Build(role: "Operator");
         var wf = Guid.NewGuid();
         SeedWorkflow(db, wf);
@@ -366,9 +369,10 @@ public class AiChatControllerTests
     }
 
     /// <summary>
-    /// Hot-reload: AiChatController reads IOptionsMonitor&lt;LlmOptions&gt;.CurrentValue per request,
+    /// Hot-reload: AiChatController reads IOptionsMonitor&lt;LlmOptions&gt;.CurrentValue per
+    /// request,
     /// so toggling Llm:Enabled in the Settings UI flips the 503 gate live without a restart. Drive
-    /// the monitor from disabled→enabled between two Chat calls on the SAME controller/assistant
+    /// the monitor from disabled to enabled between two Chat calls on the same controller/assistant
     /// instance and assert the gate flips.
     /// </summary>
     [Fact]
@@ -394,7 +398,7 @@ public class AiChatControllerTests
         (await controller.Chat(Req(), CancellationToken.None))
             .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
 
-        // Operator enables LLM in the Settings UI → config reload.
+        // Operator enables LLM in the Settings UI, triggering a config reload.
         monitor.Set(LlmTestOptions.WithProfile(
             baseUrl: "http://localhost/v1", model: "test-model", maxTokens: 100, timeoutSeconds: 30));
         llm.EnqueueStream("Der Workflow ", "startet manuell.");

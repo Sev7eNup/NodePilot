@@ -139,7 +139,7 @@ public class WorkflowStatsRefresherTests
             await db.SaveChangesAsync();
 
             var when = DateTime.UtcNow.AddHours(-1);
-            // Durations: 100, 200, 300, 400, 500 → avg 300, p50 300, p95 480
+            // Durations: 100, 200, 300, 400, 500 -> avg 300, p50 300, p95 480
             db.WorkflowExecutions.AddRange(
                 Exec(wf.Id, ExecutionStatus.Succeeded, when, 100),
                 Exec(wf.Id, ExecutionStatus.Succeeded, when.AddMinutes(1), 200),

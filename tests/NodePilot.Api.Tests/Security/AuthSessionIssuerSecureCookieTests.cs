@@ -23,12 +23,10 @@ namespace NodePilot.Api.Tests.Security;
 
 /// <summary>
 /// Verifies the env-aware Secure-flag policy on the auth cookie pair (<c>np_auth</c> +
-/// <c>np_csrf</c>). The legacy behaviour ("Secure follows <c>Request.IsHttps</c>") still
-/// kicks in when the issuer was constructed without an <see cref="IHostEnvironment"/>
-/// (test fixtures and dev-time direct construction). When the host environment is
-/// non-Development, the cookies must be Secure regardless of <c>Request.IsHttps</c> —
-/// a Reverse-Proxy that strips <c>X-Forwarded-Proto</c> would otherwise hand out cookies
-/// that a passive on-path attacker could replay over plain HTTP.
+/// <c>np_csrf</c>). Without an <see cref="IHostEnvironment"/> (test fixtures, direct
+/// construction), Secure follows <c>Request.IsHttps</c>. In any non-Development environment
+/// cookies are always Secure, so a reverse proxy that strips <c>X-Forwarded-Proto</c> cannot
+/// cause a session cookie to go out over plain HTTP.
 /// </summary>
 public class AuthSessionIssuerSecureCookieTests
 {
@@ -113,9 +111,7 @@ public class AuthSessionIssuerSecureCookieTests
     [Fact]
     public async Task NoEnvironment_HttpRequest_OmitsSecure()
     {
-        // Legacy behaviour for the 10 test fixtures that construct the issuer with the 3-arg
-        // ctor: the missing env falls back to "Secure follows Request.IsHttps" — same shape
-        // those fixtures were written against.
+        // A missing environment derives the Secure flag from Request.IsHttps for isolated tests.
         var issuer = new AuthSessionIssuer(NewConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance);
         var ctx = NewHttpContext(isHttps: false);
 
@@ -163,7 +159,7 @@ public class AuthSessionIssuerSecureCookieTests
     [Fact]
     public async Task StagingEnvironment_HttpsRequest_SetsSecure()
     {
-        // Staging is also non-Development → same hardening as Production.
+        // Staging is also non-Development, so it gets the same hardening as Production.
         var env = new FakeEnvironment { EnvironmentName = Environments.Staging };
         var issuer = new AuthSessionIssuer(NewConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance, env);
         var ctx = NewHttpContext(isHttps: true);

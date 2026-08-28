@@ -17,8 +17,8 @@ vi.mock('../../api/ai', async (orig) => {
 const askMock = askStream as unknown as ReturnType<typeof vi.fn>;
 const capsMock = getKnowledgeCapabilities as unknown as ReturnType<typeof vi.fn>;
 
-// The `if (!h) return` guard mirrors the designer test: vitest's mock-spread invokes the impl a
-// second time under act() without handlers; the real component calls askStream once.
+// The `if (!h) return` guard is needed because vitest's mock spread invokes the implementation a
+// second time under act() without handlers; the component itself calls askStream once.
 function streamMock(opts: { reply: string; meta?: ChatDoneMeta }) {
   return (_req: KnowledgeAskRequest, h?: KnowledgeStreamHandlers) => {
     if (!h) return Promise.resolve();
@@ -46,7 +46,7 @@ beforeEach(() => {
   askMock.mockReset();
   capsMock.mockReset();
   capsMock.mockResolvedValue({ enabled: true, docs: true, operational: true, sourceCode: false, db: false });
-  // History lives in a module-global store — clear it so threads don't leak between tests.
+  // History lives in a module-global store, so clear it to keep threads from leaking between tests.
   useAiChatStore.setState({ messagesByThread: {}, threadsByScope: {}, activeThreadByScope: {} });
   useAuthStore.setState({ userId: null });
 });
@@ -55,7 +55,7 @@ describe('AiChatPage', () => {
   it('renders the header and (once loaded) the active source badges', async () => {
     renderPage();
     expect(screen.getByRole('heading', { name: /ai chat/i })).toBeInTheDocument();
-    // Docs + operational enabled → their badges appear; sourceCode is off → absent.
+    // Docs and operational are enabled, so their badges show; sourceCode is off, so it does not.
     await waitFor(() => expect(screen.getByText(/^docs$/i)).toBeInTheDocument());
     expect(screen.getByText(/workflows & operations/i)).toBeInTheDocument();
     expect(screen.queryByText(/^source code$/i)).not.toBeInTheDocument();
@@ -156,9 +156,8 @@ describe('AiChatPage', () => {
   it('derives tok/s from the generation window, not from the total duration', async () => {
     askMock.mockImplementation(streamMock({
       reply: 'done answer',
-      // A realistic knowledge-chat turn: the system prompt plus tool schemas make prefill the
-      // bulk of the wall clock. 40 tokens generated in 800 ms is 50 tok/s — dividing by the
-      // 12 s total would claim 3 tok/s for the exact same run.
+      // In a knowledge-chat turn the system prompt and tool schemas make prefill most of the
+      // wall clock, so the rate must be derived from generationMs rather than durationMs.
       meta: { model: 'gpt-x', durationMs: 12000, generationMs: 800, promptTokens: 2600, completionTokens: 40 },
     }));
     renderPage();
@@ -174,8 +173,8 @@ describe('AiChatPage', () => {
     askMock.mockImplementation(streamMock({ reply: 'ok' }));
     renderPage();
 
-    // Default caps have db:false → the lite set, whose second prompt is the webhook how-to.
-    // `find*`, not `get*`: the grid only mounts once capabilities resolve.
+    // The default capabilities have db:false, which selects the lite prompt set containing the
+    // webhook how-to. Use `find*` rather than `get*`: the grid mounts only once caps resolve.
     fireEvent.click(await screen.findByRole('button', { name: /webhook trigger/i }));
 
     await waitFor(() => expect(askMock).toHaveBeenCalledTimes(1));
@@ -187,7 +186,7 @@ describe('AiChatPage', () => {
     askMock.mockImplementation(streamMock({ reply: 'ok' }));
     renderPage();
 
-    // db:true swaps the whole slate: ops questions in, docs-only lite prompts out.
+    // db:true replaces the whole set: operational questions appear, the lite prompts drop out.
     fireEvent.click(await screen.findByRole('button', { name: /failed runs/i }));
     expect(screen.queryByRole('button', { name: /webhook trigger/i })).not.toBeInTheDocument();
 

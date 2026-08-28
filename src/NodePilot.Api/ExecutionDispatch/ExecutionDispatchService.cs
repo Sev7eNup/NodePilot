@@ -231,7 +231,8 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
                 // Authoritative maintenance-window gate. Catches every admission path and closes
                 // the TOCTOU where a window opens between a caller's early check and worker
                 // pickup. Recovery operations (manual retry) and resume/sub-workflow bypass this
-                // via RequireMaintenanceWindowCheck=false; an Admin force-run sets BypassMaintenanceWindow.
+                // via RequireMaintenanceWindowCheck=false; an Admin force-run sets
+                // BypassMaintenanceWindow.
                 if (request.RequireMaintenanceWindowCheck && !request.BypassMaintenanceWindow)
                 {
                     var verdict = _maintenance.Evaluate(workflow.Id, workflow.FolderId, DateTime.UtcNow);
@@ -247,7 +248,8 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
                         // Race fix: the window opened between the caller's early check and this
                         // worker pickup, so an external-trigger idempotency key may already be
                         // committed pointing at this now-Cancelled row. Drop it, otherwise the same
-                        // key would replay the Cancelled ghost for its 24h TTL even after the window
+                        // key would replay the Cancelled ghost for its 24h TTL even after the
+                        // window
                         // closes. A legitimate retry then runs instead.
                         await db.IdempotencyKeys
                             .Where(k => k.ExecutionId == pending.Id)
@@ -267,7 +269,8 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
                     return ExecutionDispatchOutcome.Completed;
                 }
 
-                // Crossing this line transfers ownership to the engine. Any exception afterwards has
+                // Crossing this line transfers ownership to the engine. Any exception afterwards
+                // has
                 // unknown side effects/claim state and must never cause an automatic second start.
                 engineStarted = true;
                 var executed = await engine.ExecuteAsync(

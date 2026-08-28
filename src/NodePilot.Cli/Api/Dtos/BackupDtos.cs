@@ -1,6 +1,7 @@
 namespace NodePilot.Cli.Api.Dtos;
 
-// Mirrors src/NodePilot.Api/Dtos/BackupDtos.cs (see ADR 0001 — the system-config-backup/restore design).
+// Mirrors src/NodePilot.Api/Dtos/BackupDtos.cs (see ADR 0001 — the system-config-backup/restore
+// design).
 public sealed record BackupManifestResponse(List<BackupSectionCountDto> Sections);
 public sealed record BackupSectionCountDto(string Section, int Count);
 public sealed record BackupExportRequest(List<string> Sections, string Passphrase);

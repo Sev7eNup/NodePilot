@@ -11,36 +11,29 @@ public interface ICredentialStore
     Task DeleteAsync(Guid id, CancellationToken ct);
 
     /// <summary>
-    /// Decrypts the credential's stored password and appends an audit entry pointing at the
-    /// caller. <paramref name="actor"/> is free-form (user id, workflow execution id, "scheduler",
-    /// …) so engine paths without an HTTP context can still provide a traceable identity.
-    /// Passing null falls back to "unknown" — you almost never want that, because the audit
-    /// entry then cannot be attributed during forensics (audit M11).
+    /// Decrypts the credential's stored password and appends an audit entry naming the caller.
+    /// <paramref name="actor"/> is free-form (user id, workflow execution id, "scheduler") so
+    /// engine paths without an HTTP context can still supply a traceable identity. Passing null
+    /// falls back to "unknown", which leaves the audit entry unattributable.
     /// </summary>
     string DecryptPassword(Credential credential, string? actor = null, Guid? workflowExecutionId = null);
 
     /// <summary>
-    /// Re-encrypts every credential's password with the currently active
-    /// <c>ISecretProtector</c>. Used by the post-provider-rotation admin command
-    /// after switching <c>Secrets:Provider</c> so the deployment doesn't carry a
-    /// long tail of old-provider ciphertexts that only get rewritten when something
-    /// happens to read them. Returns rewrite + skip counts; rows that fail to
-    /// decrypt are skipped (not aborted) and surfaced to the caller so an operator
-    /// sees them rather than discovering the gap at next workflow run.
+    /// Re-encrypts every credential's password with the currently active <c>ISecretProtector</c>.
+    /// Run by the admin command after switching <c>Secrets:Provider</c> so the deployment keeps no
+    /// old-provider ciphertexts. Returns rewrite and skip counts; rows that fail to decrypt are
+    /// skipped instead of aborting the sweep and are reported back to the caller.
     /// </summary>
     Task<ReencryptionSummary> ReencryptAllCredentialsAsync(CancellationToken ct);
 }
 
 /// <summary>
-/// Result of a bulk re-encrypt sweep. <see cref="Rewritten"/> is the number of rows
-/// that were successfully decrypted and re-written under the active provider.
-/// <see cref="Skipped"/> are rows whose ciphertext could not be decrypted under any
-/// configured protector — those need manual re-entry by an admin and are listed in
-/// <see cref="SkippedDetails"/> so the API response can name them. Splitting succeeded
-/// from skipped here (rather than throwing on the first skip) is intentional: an admin
-/// who just rotated the master key wants the sweep to make as much progress as it can,
-/// then deal with the leftovers explicitly. A response with <c>Skipped&gt;0</c> is NOT
-/// a clean success — the controller flags that distinctly.
+/// Result of a bulk re-encrypt sweep. <see cref="Rewritten"/> counts rows successfully decrypted
+/// and re-written under the active provider. <see cref="Skipped"/> counts rows whose ciphertext no
+/// configured protector could decrypt; they are listed in <see cref="SkippedDetails"/> so the API
+/// response can name them, and need manual re-entry by an admin. Counting instead of throwing on
+/// the first skip lets the sweep finish; a result with <c>Skipped&gt;0</c> is not a clean success
+/// and the controller flags it separately.
 /// </summary>
 public sealed record ReencryptionSummary(
     int Rewritten,
@@ -48,8 +41,8 @@ public sealed record ReencryptionSummary(
     IReadOnlyList<ReencryptionSkip> SkippedDetails);
 
 /// <summary>
-/// One row that the sweep could not move to the active provider. <see cref="Reason"/>
-/// is the exception type name (CryptographicException, FormatException, …) so the
-/// admin can correlate to the operational cause without needing log access.
+/// One row the sweep could not move to the active provider. <see cref="Reason"/> is the exception
+/// type name (CryptographicException, FormatException) so an admin can identify the cause without
+/// log access.
 /// </summary>
 public sealed record ReencryptionSkip(Guid Id, string Name, string Reason);

@@ -143,10 +143,10 @@ public sealed record WorkflowDefinitionDocument(
             activeEdgeByEndpoints.TryAdd((edge.Source, edge.Target), edge);
         }
 
-        // Roots are EXCLUSIVELY trigger-type entry activities — never a plain activity. A workflow
-        // without an (enabled) trigger has no root → no node executes (the engine fails it with a
-        // clear "no start activity" message). Disconnected/orphan activities are never roots and
-        // therefore never run. There is intentionally NO inDegree==0 fallback.
+        // Roots are exclusively trigger-type entry activities, never a plain activity. A workflow
+        // without an enabled trigger has no root, so no node executes (the engine fails the run
+        // with a clear "no start activity" message). Disconnected or orphan activities are never
+        // roots and never run. There is intentionally no inDegree==0 fallback.
         var rootNodes = nodes
             .Where(n => ActivityCatalog.TriggerTypes.Contains(n.Type) && !disabledNodeIds.Contains(n.Id))
             .ToList();

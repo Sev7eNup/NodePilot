@@ -34,7 +34,7 @@ const EXPIRY_WARN_DAYS = 14;
  */
 function CredentialExpiryBadge({ expiresAt }: { expiresAt: string | null }) {
   const { t } = useTranslation(['credentials']);
-  // Day-granular badge → a mount-time "now" suffices (same pattern as EditorStatusBanners,
+  // Day-granular badge -> a mount-time "now" suffices (same pattern as EditorStatusBanners,
   // sans interval) and keeps Date.now() out of render for react-hooks/purity.
   const [nowMs] = useState(() => Date.now());
   if (!expiresAt) return null;
@@ -62,7 +62,7 @@ export function SettingsPage() {
   const { t } = useTranslation(['settings', 'adminSettings']);
   const { isAdmin } = useRole();
   // Deep-link support: the dashboard banner shortcuts navigate to /settings?tab=system
-  // (LLM config lives under the System → Integrations sub-tab) or ?tab=personal. The
+  // (LLM config lives under the System -> Integrations sub-tab) or ?tab=personal. The
   // Keep tab state in the URL so the app-header breadcrumb, deep links and browser
   // back/forward navigation always describe the same view.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -124,7 +124,8 @@ function PersonalSettings() {
   const { canWrite, canDelete } = useRole();
   const emptyForm = { name: '', username: '', password: '', domain: '', expiresAt: '' };
   const [showCreate, setShowCreate] = useState(false);
-  // Non-null while the inline panel edits an existing credential (mutually exclusive with showCreate).
+  // Non-null while the inline panel edits an existing credential (mutually exclusive with
+  // showCreate).
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   // Original expiresAt of the credential being edited. The date input is day-granular,
@@ -132,7 +133,7 @@ function PersonalSettings() {
   // CLI-set time-of-day (e.g. T18:00:00Z) must not be rewritten to midnight by a rename.
   const [originalExpiresAt, setOriginalExpiresAt] = useState<string | null>(null);
 
-  /** `<input type="date">` value (yyyy-MM-dd) → ISO UTC midnight; empty stays null. */
+  /** `<input type="date">` value (yyyy-MM-dd) -> ISO UTC midnight; empty stays null. */
   const toIsoExpiry = (d: string) => (d ? `${d}T00:00:00Z` : null);
 
   /** Preserve the original timestamp when the picked date still matches its date part. */

@@ -16,7 +16,7 @@ namespace NodePilot.Api.Services.Backup;
 /// Restores a <c>nodepilot-system-backup/v1</c> archive (ADR 0001 Phase 2). Preview is read-only
 /// and passphrase-optional; restore requires the passphrase, verifies the whole-file MAC, validates
 /// that every hard reference resolves (K12), then writes all DB sections in one transaction in
-/// dependency order (K4) while building source→target id-maps (K3). Workflow-definition GUID
+/// dependency order (K4) while building source to target id-maps (K3). Workflow-definition GUID
 /// references are remapped (K13), user sessions are invalidated on overwrite (K16), the last active
 /// admin is protected (K11), and settings are applied last, outside the transaction (K8).
 /// </summary>
@@ -130,8 +130,7 @@ public sealed class BackupRestoreService(
 
     // ---- Restore ------------------------------------------------------------
 
-    // Dependency order (K4): users → folder-structure → credentials → machines → globals →
-    // workflows → folder-grants. Settings (K8) are applied after, outside the transaction.
+    // Restore dependencies in array order. Apply settings afterward, outside the transaction.
     private static readonly string[] RestoreOrder =
     [
         BackupSections.Users, BackupSections.Folders, BackupSections.Credentials,
@@ -166,7 +165,7 @@ public sealed class BackupRestoreService(
         // a retrying strategy (NpgsqlRetryingExecutionStrategy), which forbids a user-initiated
         // BeginTransaction unless it's wrapped here so the transaction can be replayed atomically
         // on a transient failure. Each attempt rebuilds the state and clears the change tracker so
-        // a retry starts clean. SQLite (tests) returns a non-retrying strategy → runs once.
+        // a retry starts clean. SQLite (tests) returns a non-retrying strategy -> runs once.
         var results = new List<SectionRestoreResult>();
         var warnings = new List<string>();
         var strategy = db.Database.CreateExecutionStrategy();
@@ -291,7 +290,8 @@ public sealed class BackupRestoreService(
                 if (policy == RestoreConflictPolicy.Skip) { s.UserMap[sourceId] = existing.Id; skipped++; continue; }
                 if (policy == RestoreConflictPolicy.Overwrite)
                 {
-                    // K16 — bump SecurityStamp (invalidate live sessions) on a security-relevant change.
+                    // K16 — bump SecurityStamp (invalidate live sessions) on a security-relevant
+                    // change.
                     if (existing.Role != role || existing.IsActive != isActive
                         || existing.IsBreakGlass != isBreakGlass || existing.IsTombstoned != isTombstoned
                         || existing.PasswordHash != passwordHash)
@@ -457,7 +457,8 @@ public sealed class BackupRestoreService(
             s.Folders,
             s.ExistingFolderIds,
             s.FolderMap,
-            // Root is represented by a null ParentFolderId here, and an unresolvable parent stays null.
+            // Root is represented by a null ParentFolderId here, and an unresolvable parent stays
+            // null.
             parentSource => parentSource is null ? null : s.ResolveFolder(parentSource.Value),
             FolderTrees.Shared,
             folder => db.SharedWorkflowFolders.Add(folder),
@@ -500,13 +501,14 @@ public sealed class BackupRestoreService(
         int created = 0, overwritten = 0, skipped = 0, renamed = 0;
         var structure = (s.Reader.Sections[section] as JsonObject)?["structure"] as JsonArray ?? [];
 
-        // Id -> restored Path, so a child derives its Path from the *restored* parent Path instead of
-        // the stale backup path. The export orders folders by Depth (parents first), so every parent
-        // is already in this map when its children are processed. Seeded with Root (path prefix "") and
-        // the target DB's pre-existing folders — an existing folder reused as a parent (Skip policy)
-        // must expose its current Path to its restored children. Without this, a parent renamed on
-        // conflict left its children with the old backup Path while their ParentFolderId pointed at the
-        // renamed parent → inconsistent materialized Path for the whole subtree.
+        // Id -> restored Path, so a child derives its Path from the *restored* parent Path instead
+        // of the stale backup path. The export orders folders by Depth (parents first), so every
+        // parent is already in this map when its children are processed. Seeded with Root (path
+        // prefix "") and the target DB's pre-existing folders — an existing folder reused as a
+        // parent (Skip policy) must expose its current Path to its restored children. Without this,
+        // a parent renamed on conflict left its children with the old backup Path while their
+        // ParentFolderId pointed at the renamed parent -> inconsistent materialized Path for the
+        // whole subtree.
         var pathById = new Dictionary<Guid, string> { [rootId] = "" };
         foreach (var f in byPath.Values)
             pathById[shape.Id(f)] = shape.Path(f) == "/" ? "" : shape.Path(f);
@@ -522,10 +524,10 @@ public sealed class BackupRestoreService(
             var parentTarget = resolveParent(GidN(item["parentFolderId"]));
             var createdBy = ResolveUserOrNull(s, GidN(item["createdByUserId"])); // remaps the folder-creator's user id; null if it can't be resolved (K17)
 
-            // Recompute the Path from the parent's restored Path + this folder's name. The backup path
-            // is only a serialization hint; the stored Path must follow the actual parent chain (which
-            // may have been renamed above). Conflict detection runs on this recomputed path so a folder
-            // clashes with whatever already lives at its true target position.
+            // Recompute the Path from the parent's restored Path + this folder's name. The backup
+            // path is only a serialization hint; the stored Path must follow the actual parent
+            // chain (which may have been renamed above). Conflict detection runs on this recomputed
+            // path so a folder clashes with whatever already lives at its true target position.
             var parentPath = parentTarget is null ? "" : pathById.GetValueOrDefault(parentTarget.Value, "");
             var path = parentPath.Length == 0 ? "/" + name : parentPath + "/" + name;
 
@@ -538,9 +540,9 @@ public sealed class BackupRestoreService(
                     pathById[shape.Id(existing)] = path;
                     folderMap[sourceId] = shape.Id(existing); overwritten++; continue;
                 }
-                // Rename: the DB enforces unique(ParentFolderId, Name), so we MUST give the new
-                // folder a sibling-unique name and recompute the Path from it so the in-memory lookup
-                // key tracks the actual stored Path.
+                // Rename: the DB enforces unique(ParentFolderId, Name), so we must give the new
+                // folder a sibling-unique name and recompute the Path from it so the in-memory
+                // lookup key tracks the actual stored Path.
                 var siblingNames = new HashSet<string>(
                     byPath.Values.Where(f => shape.ParentId(f) == parentTarget).Select(shape.Name), StringComparer.Ordinal);
                 name = UniqueName(name, siblingNames);
@@ -710,7 +712,7 @@ public sealed class BackupRestoreService(
             var isSecret = item["isSecret"]?.GetValue<bool>() ?? false;
             var description = item["description"]?.GetValue<string>();
             var storedValue = StoredGlobalValue(item, s, name, isSecret);
-            // Remap the backed-up folderId onto its restored target; unknown/missing → Root.
+            // Remap the backed-up folderId onto its restored target; unknown/missing -> Root.
             var folderSource = GidN(item["folderId"]);
             var folderId = folderSource is null ? GlobalVariableFolder.RootFolderId
                 : (s.ResolveGlobalFolder(folderSource.Value) ?? GlobalVariableFolder.RootFolderId);
@@ -759,7 +761,8 @@ public sealed class BackupRestoreService(
                     overwritten++; continue;
                 }
                 // Skip OR Rename: a custom activity's Key is embedded in every referencing workflow
-                // (custom:<key> activityType + __customKey), so it cannot be safely renamed on restore.
+                // (custom:<key> activityType + __customKey), so it cannot be safely renamed on
+                // restore.
                 // Both policies keep the existing definition and map references onto it.
                 if (policy == RestoreConflictPolicy.Rename)
                     s.Warnings.Add($"Custom activity '{key}' already exists — keys cannot be renamed (they are embedded in workflow references); kept the existing definition.");
@@ -929,7 +932,8 @@ public sealed class BackupRestoreService(
         rule.SourceParametersJson = item["sourceParametersJson"]?.GetValue<string>();
         rule.SustainForSeconds = item["sustainForSeconds"]?.GetValue<int>() ?? 0;
         rule.SeverityOverride = Enum.TryParse<NotificationSeverity>(item["severityOverride"]?.GetValue<string>(), out var sev) ? sev : null;
-        // A restored enabled System policy gets a fresh activation watermark so it never back-alerts history.
+        // A restored enabled System policy gets a fresh activation watermark so it never
+        // back-alerts history.
         rule.ActivatedAt = kind == NotificationRuleKind.System && isEnabled ? DateTime.UtcNow : null;
     }
 
@@ -955,8 +959,10 @@ public sealed class BackupRestoreService(
         return routes;
     }
 
-    // Remaps scope targets onto restored folder/workflow ids; a target that resolves to nothing (its
-    // folder/workflow was not in the backup and doesn't exist here) is dropped with a warning — targets are
+    // Remaps scope targets onto restored folder/workflow ids; a target that resolves to nothing
+    // (its
+    // folder/workflow was not in the backup and doesn't exist here) is dropped with a warning —
+    // targets are
     // soft references, so a missing one must not abort the restore.
     private static List<NotificationRuleTarget> RestoredTargets(JsonNode item, RestoreState s, Guid ruleId)
     {
@@ -1096,13 +1102,13 @@ public sealed class BackupRestoreService(
     {
         var unresolved = new List<string>();
 
-        // machines → credentials
+        // machines -> credentials
         foreach (var m in Items(s.Reader, BackupSections.Machines))
         {
             var c = GidN(m!["defaultCredentialId"]);
             if (c is not null && !s.CredentialResolvable(c.Value)) unresolved.Add($"machine '{m["name"]}' → credential {c}");
         }
-        // workflows → folder + definition refs
+        // workflows -> folder + definition refs
         foreach (var w in Items(s.Reader, BackupSections.Workflows))
         {
             var f = GidN(w!["folderId"]);
@@ -1122,7 +1128,7 @@ public sealed class BackupRestoreService(
                     if (!ok) unresolved.Add($"workflow '{w["name"]}' → {kind} {id}");
                 }
         }
-        // folder structure → parent
+        // folder structure -> parent
         var structure = (s.Reader.Sections[BackupSections.Folders] as JsonObject)?["structure"] as JsonArray ?? [];
         foreach (var fo in structure)
         {
@@ -1130,7 +1136,7 @@ public sealed class BackupRestoreService(
             if (p is not null && p != SharedWorkflowFolder.RootFolderId && !s.FolderResolvable(p.Value))
                 unresolved.Add($"folder '{fo["name"]}' → parent {p}");
         }
-        // global-variable folder structure → parent
+        // global-variable folder structure -> parent
         var gStructure = (s.Reader.Sections[BackupSections.GlobalVariableFolders] as JsonObject)?["structure"] as JsonArray ?? [];
         foreach (var fo in gStructure)
         {
@@ -1138,7 +1144,7 @@ public sealed class BackupRestoreService(
             if (p is not null && p != GlobalVariableFolder.RootFolderId && !s.GlobalFolderResolvable(p.Value))
                 unresolved.Add($"global-variable folder '{fo["name"]}' → parent {p}");
         }
-        // globals → folder
+        // globals -> folder
         foreach (var v in Items(s.Reader, BackupSections.GlobalVariables))
         {
             var f = GidN(v!["folderId"]);
@@ -1237,9 +1243,11 @@ public sealed class BackupRestoreService(
         // Validation already guaranteed resolvability; this is belt-and-suspenders.
         if (unresolved.Count > 0)
             throw new BackupRestoreException("Workflow definition has unresolvable references: " + string.Join(", ", unresolved));
-        // Remap custom-activity node references (config.__customDefinitionId) onto their restored ids.
+        // Remap custom-activity node references (config.__customDefinitionId) onto their restored
+        // ids.
         // Custom activities restore before workflows, so the map is complete here. Handles the
-        // overwrite-merge case where the live id differs from the backed-up source id; a no-op for a
+        // overwrite-merge case where the live id differs from the backed-up source id; a no-op for
+        // a
         // clean DR restore (source ids preserved).
         RemapCustomActivityRefs(node, s);
         return node.ToJsonString();
@@ -1269,9 +1277,11 @@ public sealed class BackupRestoreService(
     }
 
     /// <summary>
-    /// Reverses the backup's <c>$enc</c> wrapping for a runtime-settings value and re-seals it in the
+    /// Reverses the backup's <c>$enc</c> wrapping for a runtime-settings value and re-seals it in
+    /// the
     /// <c>enc:v1:</c> at-rest form (K9) so secrets never land in <c>appsettings.runtime.json</c> as
-    /// plaintext. The EncryptingJsonConfigurationProvider transparently decrypts these on next load.
+    /// plaintext. The EncryptingJsonConfigurationProvider transparently decrypts these on next
+    /// load.
     /// </summary>
     private JsonNode RewrapSettingValue(JsonNode node, PassphraseSecretProtector protector)
     {

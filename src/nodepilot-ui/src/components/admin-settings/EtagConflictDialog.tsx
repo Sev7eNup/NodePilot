@@ -8,7 +8,8 @@ type Props = {
   serverSnapshot: SettingsSectionResponse<unknown> | null;
   /** Operator's draft — the "my values" side of the merge. */
   localDraft: unknown;
-  /** Operator picks "overwrite server with my draft": parent retries the PUT with the server's current ETag. */
+  /** Operator picks "overwrite server with my draft": parent retries the PUT with the server's
+   * current ETag. */
   onKeepMine: () => void;
   /** Operator picks "discard my changes": parent replaces the form state with the server snapshot. */
   onTakeTheirs: () => void;
@@ -17,19 +18,10 @@ type Props = {
 };
 
 /**
- * Three-way conflict dialog shown when a PUT returns 412. Renders both the server's
- * current state and the operator's pending draft side-by-side as JSON, with three
- * resolution options that match how operators actually think about concurrent edits:
- *
- * <list type="bullet">
- *   <item><b>Mine wins</b> — useful when the other tab was an old session that should be discarded.</item>
- *   <item><b>Theirs wins</b> — useful when the operator realises someone else made the change intentionally.</item>
- *   <item><b>Cancel</b> — operator wants to reason about it in the form themselves, e.g. cherry-pick fields.</item>
- * </list>
- *
- * Deliberately a "show me both sides" dialog rather than an in-place merge editor:
- * the latter is its own project, and operators tend to think in "I'll re-do my changes
- * on top of the new server state" terms anyway.
+ * Conflict dialog shown when a PUT returns 412. Shows the server's current state and the
+ * operator's pending draft side by side as JSON, with three choices: keep mine, take theirs,
+ * or cancel and resolve it by hand in the form. Shows both sides rather than offering an
+ * in-place merge editor, since operators tend to just redo their changes on the new state.
  */
 export function EtagConflictDialog({ open, serverSnapshot, localDraft, onKeepMine, onTakeTheirs, onCancel }: Readonly<Props>) {
   const { t } = useTranslation(['adminSettings']);

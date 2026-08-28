@@ -16,25 +16,25 @@ const GROUP_ORDER = [
   '__none__'
 ];
 
-// In folder view the tree sizes itself to its content and only starts scrolling past this
-// cap, so a flat "\" root with two folders no longer reserves half the sidebar. The workflow
-// list below takes whatever is left (flex-1), which keeps both blocks pinned to the top.
-// Cap = 10 tree rows × 26px (icon row + py-1) + 8px list padding = 268px.
+// In folder view the tree sizes itself to its content and starts scrolling only past this cap,
+// so a shallow tree does not reserve half the sidebar. The workflow list below takes whatever
+// space is left, which keeps both blocks pinned to the top.
+// The cap is 10 tree rows of 26px plus 8px of list padding.
 export const FOLDER_TREE_MAX_HEIGHT_PX = 10 * 26 + 8;
 
 interface Props {
-  /** id of the currently-open workflow — excluded from the list to avoid recursive selection */
+  /** Id of the currently open workflow, excluded from the list to avoid recursive selection. */
   currentWorkflowId?: string;
-  /** callback when user clicks "Open" on a workflow (navigate to its designer) */
+  /** Called when the user opens a workflow, to navigate to its designer. */
   onOpen: (workflow: Workflow) => void;
-  /** optional: if a startWorkflow step is selected, this is the id it targets right now. Enables the "Insert here" affordance. */
+  /** True when a startWorkflow step is selected, which enables the insert affordance. */
   canEmbed: boolean;
   onEmbed?: (workflow: Workflow) => void;
 }
 
 /**
- * Right-side companion panel in the editor's left sidebar. Lists all workflows
- * grouped either by primary trigger type or by the org-level shared folder tree.
+ * Companion panel in the editor's left sidebar. Lists all workflows grouped either by
+ * primary trigger type or by the shared folder tree.
  */
 export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }: Readonly<Props>) {
   const { t } = useTranslation('designer');
@@ -51,8 +51,8 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
   const [hoveredWorkflow, setHoveredWorkflow] = useState<Workflow | null>(null);
   const { viewMode, setViewMode, collapsedFolders, toggleFolder, infoCardHeight, setInfoCardHeight } = useWorkflowBrowserStore();
 
-  // Splitter between the workflow list and the info card. The card sits *below* the splitter,
-  // so dragging down must shrink the card (and grow the list) — hence `height - delta`.
+  // Splitter between the workflow list and the info card. The card sits below the splitter,
+  // so dragging down shrinks the card and grows the list, hence `height - delta`.
   const infoDragStartRef = useRef<{ y: number; height: number } | null>(null);
   const handleInfoDividerMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -71,7 +71,7 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
     globalThis.addEventListener('mouseup', onMouseUp);
   }, [infoCardHeight, setInfoCardHeight]);
 
-  // Exclude current workflow in embed-picker mode; apply text search.
+  // Exclude the current workflow in embed-picker mode, then apply the text search.
   const baseFiltered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return workflows.filter((w) => {
@@ -81,14 +81,14 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
     });
   }, [workflows, query, canEmbed, currentWorkflowId]);
 
-  // In folder mode: when a folder is selected, narrow to that folder + descendants
-  // via path prefix (same logic as WorkflowsPage).
+  // In folder mode a selected folder narrows the list to that folder and its descendants,
+  // using the same path-prefix logic as WorkflowsPage.
   const filteredByFolder = useMemo(() => {
     if (!selectedFolderId) return baseFiltered;
     return baseFiltered.filter((w) => w.folderId === selectedFolderId);
   }, [baseFiltered, selectedFolderId]);
 
-  // Trigger-mode grouping (unchanged from previous implementation).
+  // Grouping used by trigger view: bucket workflows by their primary trigger type.
   const grouped = useMemo(() => {
     const byGroup = new Map<string, Workflow[]>();
     for (const w of baseFiltered) {
@@ -103,9 +103,9 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
       .filter((g) => g.items.length > 0);
   }, [baseFiltered]);
 
-  // Move a workflow to a shared folder. SharedFolderTree only fires this when the
-  // destination folder has canEdit; we also gate on the source workflow's canEdit so
-  // a Viewer can't drag-initiate a workflow they're not allowed to move.
+  // Move a workflow to a shared folder. SharedFolderTree fires this only when the destination
+  // folder has canEdit; the source workflow's canEdit is gated as well so a Viewer cannot
+  // start dragging a workflow they may not move.
   const handleWorkflowDropped = useCallback(
     (workflowId: string, folderId: string) => {
       sharedFoldersApi.moveWorkflowToFolder(workflowId, folderId).then(() => {
@@ -118,9 +118,9 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
 
   const totalShown = filteredByFolder.length;
 
-  // The info card describes whatever the user is hovering; when nothing is hovered it falls
-  // back to the currently-open workflow so the panel is never empty. Derived from the shared
-  // `workflows` array, so it works identically in both folder and trigger view.
+  // The info card describes the hovered workflow and falls back to the currently open one so
+  // the panel is never empty. It reads the shared `workflows` array, so it behaves the same
+  // in folder view and trigger view.
   const cardWorkflow = hoveredWorkflow ?? workflows.find((w) => w.id === currentWorkflowId) ?? null;
 
   return (
@@ -157,8 +157,8 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
           />
         </div>
       </div>
-      {/* Shared folder tree — hugs its content (scrolls past the cap) so a shallow tree
-          doesn't push the workflow list into the middle of the panel. */}
+      {/* Shared folder tree sized to its content and scrolling past the cap, so a shallow
+          tree does not push the workflow list into the middle of the panel. */}
       {viewMode === 'folder' && (
         <div
           data-testid="workflow-folder-tree"
@@ -173,7 +173,7 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
           />
         </div>
       )}
-      {/* Flat workflow list — takes all space left over by the tree above in both view modes,
+      {/* Flat workflow list taking the space left over by the tree above in both view modes,
           so rows always start directly under the tree instead of floating mid-panel. */}
       <div
         data-testid="workflow-list"
@@ -183,7 +183,7 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
           <div className="text-[11px] font-label text-on-surface-variant px-2">Loading…</div>
         )}
 
-        {/* Nach Trigger view */}
+        {/* Trigger view */}
         {viewMode === 'trigger' && grouped.length === 0 && !isLoading && (
           <div className="text-[11px] font-label text-on-surface-variant px-2 py-4 text-center">
             {query ? 'Keine Treffer.' : 'Keine anderen Workflows vorhanden.'}
@@ -224,7 +224,7 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
           );
         })}
 
-        {/* Ordner view — flat list filtered by selected folder */}
+        {/* Folder view: flat list filtered by the selected folder */}
         {viewMode === 'folder' && !isLoading && totalShown === 0 && (
           <div className="text-[11px] font-label text-on-surface-variant px-2 py-4 text-center">
             {query
@@ -254,7 +254,7 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
       >
         <div className="w-8 h-0.5 rounded-full bg-outline-variant group-hover:bg-primary/50 transition-colors" />
       </div>
-      {/* Workflow-details card — describes the hovered (fallback: open) workflow */}
+      {/* Workflow details card describing the hovered workflow, or the open one */}
       <div className="shrink-0 overflow-y-auto" style={{ height: infoCardHeight }}>
         <WorkflowInfoCard workflow={cardWorkflow} />
       </div>
@@ -277,8 +277,8 @@ function WorkflowBrowserItem({
   const [hover, setHover] = useState(false);
   const primaryAction = canEmbed && onEmbed ? onEmbed : onOpen;
 
-  // "You are here" rendering: non-clickable marker for the currently-open workflow. Still
-  // hover-tracked so the info card updates when the user mouses over the open workflow.
+  // The currently open workflow renders as a non-clickable marker. Hover is still tracked
+  // so the info card updates when the user mouses over it.
   if (isCurrent) {
     return (
       <div

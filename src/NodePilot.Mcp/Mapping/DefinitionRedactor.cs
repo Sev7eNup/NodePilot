@@ -15,6 +15,7 @@ namespace NodePilot.Mcp.Mapping;
 public static class DefinitionRedactor
 {
     /// <summary>Return a redacted copy of the definition with secret config values masked to "***".
-    /// Thin wrapper over the shared Core walk so the MCP redaction can never drift from the API/AI paths.</summary>
+    /// Thin wrapper over the shared Core walk so the MCP redaction can never drift from the API/AI
+    /// paths.</summary>
     public static JsonNode Redact(JsonElement root) => WorkflowSecretRedactor.Redact(root);
 }

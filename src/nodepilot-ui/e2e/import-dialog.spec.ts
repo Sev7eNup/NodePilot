@@ -2,29 +2,21 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 67 — Import-Dialog mit Drag & Drop (lines 3787-3802).
+ * E2ETests.md Part 67 — import dialog with drag and drop.
  *
- * Hermetic: page.route() mocks only. The WorkflowsPage import affordance is an "Import" toolbar
+ * Hermetic: page.route mocks only. The import affordance on WorkflowsPage is an "Import" toolbar
  * button that triggers a hidden `<input type="file" accept="application/json,.json" multiple>`
- * (importInputRef). On change, each selected file is read, JSON-parsed, and POSTed to
- * `/api/workflows/import` (one envelope per file); the aggregated result is shown via a native
- * `alert()` summary (workflows:importedSummary / importedSummaryBatch).
+ * (importInputRef). Each selected file is read, JSON-parsed and POSTed to
+ * `/api/workflows/import` as its own envelope; the aggregated result is shown as a toast.
  *
- * There is NO HTML5 drop-zone on WorkflowsPage — the "Drag & Drop" file-drop part of 67.1 is
- * not present in this surface (the page's drag-and-drop is for moving workflow ROWS into folder
- * tree nodes, not for importing files). So:
- *   - 67.1 — VERIFIED via setInputFiles: button + hidden input exist; selecting a file POSTs the
- *            import and the result summary (alert) appears. The file-DROP-onto-zone gesture is
- *            SKIPPED with a reason.
- *   - 67.2 — Multi-file import: two files → two import POSTs; one invalid-JSON file fails
- *            independently while the valid file still imports (per-file result aggregation).
- *
- * MOCK_USER is Admin → canEditRoot (Root falls back to canWrite when shared-folders empty),
- * so the Import button renders. SPA renders ENGLISH under Playwright.
+ * WorkflowsPage has no HTML5 drop zone, so the file-drop half of this part does not apply here:
+ * the page's drag and drop moves workflow rows into folder tree nodes. The tests drive the hidden
+ * input with setInputFiles instead. MOCK_USER is an Admin, so the Import button renders, and the
+ * SPA renders English under Playwright.
  */
 
 function envelope(name: string) {
-  // Minimal nodepilot-workflow-export/v1 envelope the import handler will JSON.parse + POST.
+  // Minimal nodepilot-workflow-export/v1 envelope that the import handler parses and posts.
   return JSON.stringify({
     format: 'nodepilot-workflow-export/v1',
     workflows: [{ name, definitionJson: '{"nodes":[],"edges":[]}' }],
@@ -49,7 +41,7 @@ test.describe('Import-Dialog (Teil 67)', () => {
 
     await page.goto('/workflows');
 
-    // Import button is present (Admin → can edit the import target folder).
+    // The Import button renders because an Admin may edit the import target folder.
     const importBtn = page.getByRole('button', { name: /^import$/i }).first();
     await expect(importBtn).toBeVisible({ timeout: 15_000 });
 
@@ -64,8 +56,8 @@ test.describe('Import-Dialog (Teil 67)', () => {
       buffer: Buffer.from(envelope('Imported_WF')),
     });
 
-    // One import POST fired and the summary appears as a SUCCESS toast (a clean import
-    // has no failures; the former blocking alert() was retired).
+    // One import POST fires and the summary appears as a success toast, because a clean
+    // import reports no per-file failures.
     await expect.poll(() => importPosts, { timeout: 10_000 }).toBe(1);
     await expect(page.getByTestId('toast-success')).toContainText(/import|wf\.json|1/i, { timeout: 10_000 });
   });
@@ -94,9 +86,9 @@ test.describe('Import-Dialog (Teil 67)', () => {
       { name: 'broken.json', mimeType: 'application/json', buffer: Buffer.from('{ this is not valid json ') },
     ]);
 
-    // Only the valid file reaches the server (the broken one fails client-side JSON.parse
-    // before any POST). Because at least one file failed, the aggregated per-file summary
-    // surfaces as a long-lived ERROR toast naming the failed file.
+    // Only the valid file reaches the server; the broken one fails the client-side JSON.parse
+    // before any POST. With at least one failure, the aggregated summary surfaces as a
+    // long-lived error toast that names the failed file.
     await expect.poll(() => importPosts, { timeout: 10_000 }).toBe(1);
     const errorToast = page.getByTestId('toast-error');
     await expect(errorToast).toContainText(/broken\.json/i, { timeout: 10_000 });

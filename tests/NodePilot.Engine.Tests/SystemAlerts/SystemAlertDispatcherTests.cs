@@ -18,9 +18,12 @@ using Xunit;
 namespace NodePilot.Engine.Tests.SystemAlerts;
 
 /// <summary>
-/// End-to-end: a System policy evaluated by the dispatcher reuses the delivery pipeline (persist-Pending →
-/// send), fires exactly once per episode, and recovers silently — proving the system-alert evaluator
-/// (the modular alert-source architecture from ADR-0008) is wired into the real dispatcher pass, not just
+/// End-to-end: a System policy evaluated by the dispatcher reuses the delivery pipeline
+/// (persist-Pending to
+/// send), fires exactly once per episode, and recovers silently — proving the system-alert
+/// evaluator
+/// (the modular alert-source architecture from ADR-0008) is wired into the real dispatcher pass,
+/// not just
 /// unit-correct in isolation.
 /// </summary>
 public class SystemAlertDispatcherTests
@@ -104,7 +107,7 @@ public class SystemAlertDispatcherTests
             var attempts = db.NotificationDeliveryAttempts.AsNoTracking().ToList();
             attempts.Should().ContainSingle().Which.Status.Should().Be(NotificationDeliveryStatus.Sent);
 
-            // Second pass while the same episode is open → no new delivery (exactly-once guard).
+            // Second pass while the same episode is open -> no new delivery (exactly-once guard).
             await dispatcher.DispatchOnceAsync(CancellationToken.None);
             sink.Sends.Should().HaveCount(1, "the open episode already delivered");
         }

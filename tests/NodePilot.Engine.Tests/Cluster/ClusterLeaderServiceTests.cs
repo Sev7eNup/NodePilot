@@ -142,7 +142,7 @@ public sealed class ClusterLeaderServiceTests : IDisposable
     {
         var (svc, _) = BuildService("node-a");
 
-        await TickAsync(svc);   // acquire (epoch 0 → 1)
+        await TickAsync(svc);   // acquire (epoch 0 -> 1)
         var afterAcquire = svc.LeaseEpoch;
 
         await TickAsync(svc);   // renew, must NOT increment
@@ -260,7 +260,8 @@ public sealed class ClusterLeaderServiceTests : IDisposable
     public async Task ExecuteAsync_BreakerOpenWhileLeader_DemotesBeforeParking()
     {
         // The regression this pins: parking on the availability signal is correct, but the ONLY
-        // producer of OnLeadershipLost sits in the tick's catch block — past the gate. Parking first
+        // producer of OnLeadershipLost sits in the tick's catch block — past the gate. Parking
+        // first
         // meant a leader that lost the database never ticked, never demoted and never fenced, while
         // the surviving node took over and cancelled its executions. This node's parked steps would
         // then resume on recovery and run real WinRM/file activities for executions the cluster had

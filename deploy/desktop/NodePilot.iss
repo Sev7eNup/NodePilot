@@ -37,10 +37,9 @@ WizardStyle=modern
 SetupIconFile={#StageDir}\setup-icon.ico
 
 [Tasks]
-; The desktop shortcut is the one optional part of this install. Checked by default, as is
-; conventional for a desktop application; unticking it still leaves the Start-Menu entry, which is
-; created unconditionally. Literal English text rather than {cm:CreateDesktopIcon}, because this
-; script declares no [Languages] section - every other user-visible string here is literal too.
+; The desktop shortcut is the one optional part of this install; the Start-Menu entry is created
+; unconditionally. The description is literal English rather than {cm:CreateDesktopIcon}, because
+; this script declares no [Languages] section.
 Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "Additional shortcuts:"
 
 [Files]
@@ -57,12 +56,11 @@ Name: "{group}\NodePilot";         Filename: "{app}\desktop\NodePilot.exe"
 Name: "{commondesktop}\NodePilot"; Filename: "{app}\desktop\NodePilot.exe"; Tasks: desktopicon
 
 [Run]
-; NOTE: provisioning is NOT a [Run] entry. [Run] discards the exit code, so a failed provisioning
-; produced a green "installation complete" and a dead app. It runs from CurStepChanged below,
-; where ResultCode can be inspected. See ProvisionRuntime().
-; Launch the shell as the interacting user (installer runs elevated) - but only when provisioning
-; actually succeeded, otherwise the user gets a second error dialog from the shell for a problem
-; they were already told about.
+; NOTE: provisioning is not a [Run] entry. [Run] discards the exit code, so a failed provisioning
+; would still report a successful install. It runs from CurStepChanged below, where ResultCode can
+; be inspected. See ProvisionRuntime().
+; Launches the shell as the interacting user (the installer runs elevated), and only when
+; provisioning succeeded, so the user is not shown a second dialog for a problem already reported.
 Filename: "{app}\desktop\NodePilot.exe"; \
   Description: "Launch NodePilot"; \
   Check: ProvisionSucceeded; \
@@ -85,12 +83,8 @@ begin
   Result := ProvisionOk;
 end;
 
-// Runs the elevated provisioning script and REPORTS ITS EXIT CODE. Previously this was a [Run]
-// entry, which throws the exit code away: a provisioning that aborted (port pool exhausted, the
-// API service never reaching /healthz/ready, a cluster whose secrets went missing) still produced
-// a "Setup completed successfully" page, and the first thing the user saw was the shell failing
-// to connect. Deliberately does NOT abort setup - the files are already in place and a rollback
-// here would delete a database the user may still want. It reports plainly and names the log.
+// Runs elevated provisioning and reports its exit code. Failure does not roll back files or a
+// database that the user may still need; the installer reports the log instead.
 procedure ProvisionRuntime();
 var
   ResultCode: Integer;

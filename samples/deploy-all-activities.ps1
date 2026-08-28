@@ -1,18 +1,19 @@
 # Deploys the "all activities" showcase workflows (parent + child) into a running NodePilot API.
 #
 # Usage:
-#   pwsh ./samples/deploy-all-activities.ps1                                  # prompts for credentials
-#   pwsh ./samples/deploy-all-activities.ps1 -BaseUrl http://localhost:5000 -Username admin -Password 'pw'
+#   pwsh ./samples/deploy-all-activities.ps1 # prompts for credentials
+# pwsh ./samples/deploy-all-activities.ps1 -BaseUrl http://localhost:5000 -Username admin -Password
+# 'pw'
 #
 # What it does:
-#   1. POST /api/auth/login    -> JWT
-#   2. POST /api/workflows     -> "Showcase Child"   (sub-workflow, must exist for startWorkflow)
-#   3. POST /api/workflows     -> "Showcase All Activities"  (parent — uses scheduleTrigger as start)
+#   1. POST /api/auth/login for a JWT.
+#   2. POST /api/workflows to create "Showcase Child" (sub-workflow required by startWorkflow).
+#   3. POST /api/workflows to create "Showcase All Activities" (parent, scheduleTrigger start).
 #
 # Notes:
 #   - Re-running creates duplicates (no upsert).
-#   - emailNotification will fail unless SMTP is configured (Smtp:Host etc.) — the
-#     parent edges route past that failure via an explicit "On Failure" branch.
+#   - emailNotification fails unless SMTP is configured (Smtp:Host etc.); the parent
+#     routes past that failure via an explicit "On Failure" branch.
 
 [CmdletBinding()]
 param(
@@ -61,8 +62,8 @@ function New-Workflow {
     return $resp
 }
 
-# Order matters semantically (parent calls child by name), but the engine only resolves
-# the name at execution time, so technically both orders work. Create child first for clarity.
+# The parent references the child by name and the engine resolves that name at execution
+# time, so either creation order works. The child is created first for clarity.
 $child  = New-Workflow -Name "Showcase Child" `
                        -Description "Sub-workflow invoked by 'Showcase All Activities' via startWorkflow." `
                        -DefinitionPath $childPath

@@ -3,13 +3,17 @@ using System.Text.Json.Serialization;
 namespace NodePilot.Api.Dtos;
 
 /// <summary>
-/// The server-owned system-alert catalog (ADR 0008): the single source of truth for source metadata the
-/// alerting UI renders from (fields, units, operators, parameters, presets, scope, availability). Enum-typed
-/// backend values are projected to their string names so the wire contract is stable and human-readable.
+/// The server-owned system-alert catalog (ADR 0008): the single source of truth for source metadata
+/// the
+/// alerting UI renders from (fields, units, operators, parameters, presets, scope, availability).
+/// Enum-typed
+/// backend values are projected to their string names so the wire contract is stable and
+/// human-readable.
 /// </summary>
 public sealed record SystemAlertCatalogResponse(IReadOnlyList<SystemAlertSourceDto> Sources);
 
-/// <summary>One catalog source card. <c>Available</c> reflects a best-effort availability probe at read time.</summary>
+/// <summary>One catalog source card. <c>Available</c> reflects a best-effort availability probe at
+/// read time.</summary>
 public sealed record SystemAlertSourceDto(
     string SourceId,
     string Category,
@@ -43,7 +47,8 @@ public sealed record SystemAlertPresetDto(
     string? ConditionJson,
     IReadOnlyDictionary<string, object?>? Parameters);
 
-/// <summary>A configured system-alert policy (ADR 0008). Reuses the shared route/target DTOs.</summary>
+/// <summary>A configured system-alert policy (ADR 0008). Reuses the shared route/target
+/// DTOs.</summary>
 public sealed record SystemAlertPolicyResponse(
     Guid Id,
     string Name,
@@ -84,7 +89,8 @@ public sealed record SaveSystemAlertPolicyRequest(
     [property: JsonRequired] int MinOccurrences,
     [property: JsonRequired] int OccurrenceWindowMinutes);
 
-/// <summary>Stateless preview: sample the source now and report which current instances match the condition.</summary>
+/// <summary>Stateless preview: sample the source now and report which current instances match the
+/// condition.</summary>
 public sealed record SystemAlertPreviewRequest(
     string SourceId,
     IReadOnlyDictionary<string, object?>? SourceParameters,

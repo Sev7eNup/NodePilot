@@ -10,9 +10,7 @@ namespace NodePilot.Cli.Commands;
 /// Resolves a CLI workflow argument that may be either a Guid or a name. The name half goes
 /// through <c>GET /api/workflows/by-name/{name}</c>, so `np` resolves exactly like the engine,
 /// the API and the trigger path do: exact case wins, otherwise case-insensitive, ambiguity is
-/// an error. Listing and filtering client-side used to disagree with all three — two workflows
-/// differing only in case were "ambiguous" to `np` while every other caller picked the exact
-/// match — and it dragged the whole workflow list over the wire to resolve one name.
+/// an error.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public static class WorkflowResolver

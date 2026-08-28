@@ -7,7 +7,8 @@ namespace NodePilot.Engine.Triggers;
 /// Manual trigger — allows a user to start a workflow with custom input parameters.
 /// Config defines the parameter schema (name, type, required, default).
 /// Output is a JSON object of all parameter values, making them accessible
-/// to downstream steps via {{varName.output}} (full JSON) or {{varName.param.paramName}} (individual).
+/// to downstream steps via {{varName.output}} (full JSON) or {{varName.param.paramName}}
+/// (individual).
 /// </summary>
 public class ManualTrigger : IActivityExecutor
 {

@@ -28,14 +28,11 @@ public class AuthController : ControllerBase
     // resistance against login latency. Raise when hardware gets meaningfully faster.
     internal const int BCryptWorkFactor = 12;
 
-    // Precomputed hash used to burn the same CPU cycles on unknown-username logins as on
-    // real ones, so response time does not leak which usernames exist.
+    // This precomputed hash equalizes CPU cost for known and unknown usernames.
     private static readonly string DummyHash =
         BCrypt.Net.BCrypt.HashPassword("dummy-password-for-timing-equalization", BCryptWorkFactor);
 
-    // Minimum password length at first-admin bootstrap. The UsersController enforces 8 for
-    // every other user; historically the bootstrap branch had NO length check, so a rushed
-    // operator could ship with `password=a`. Match the rest of the system (L1).
+    // Apply the same minimum password length during first-admin bootstrap as for other users.
     internal const int MinPasswordLength = 8;
 
     // BCrypt silently truncates inputs longer than 72 bytes, so "A*72 + X" and "A*72 + Y"
@@ -125,7 +122,8 @@ public class AuthController : ControllerBase
     internal static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(15);
 
     /// <summary>Single write point for the login-outcome metric. Tag names, order and values are
-    /// dashboard contract — every login path funnels through here instead of restating them.</summary>
+    /// dashboard contract — every login path funnels through here instead of restating
+    /// them.</summary>
     private static void RecordLoginAttempt(string result, string reason) =>
         ApiMetrics.AuthLoginAttempts.Add(1,
             new KeyValuePair<string, object?>("result", result),
@@ -185,7 +183,8 @@ public class AuthController : ControllerBase
 
     /// <summary>Login / LDAP opt-in: caller explicitly requested the token in the body. Only
     /// meaningful on password-gated paths (see class-level comment). Null-safe: a controller
-    /// constructed without an HttpContext (unit tests) counts as "no opt-in" → identity-only.</summary>
+    /// constructed without an HttpContext (unit tests) counts as "no opt-in" to
+    /// identity-only.</summary>
     private bool TokenInBodyRequested()
     {
         var ctx = HttpContext;
@@ -205,7 +204,8 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>Builds the auth success body: <see cref="LoginResponse"/> (with JWT) for
-    /// programmatic callers, <see cref="AuthIdentityResponse"/> (identity only) for browsers.</summary>
+    /// programmatic callers, <see cref="AuthIdentityResponse"/> (identity only) for
+    /// browsers.</summary>
     private OkObjectResult SessionResult(IssuedSession session, User user, bool includeToken)
         => includeToken
             ? Ok(new LoginResponse(
@@ -230,12 +230,8 @@ public class AuthController : ControllerBase
     private void ClearAuthCookies()
     {
         if (HttpContext is null) return;
-        // L-1a (security audit 2026-05-15): the set-path and the clear-path share
-        // AuthCookieOptionsBuilder so the Secure / SameSite / Path triple matches.
-        // Previously this used Request.IsHttps while AuthSessionIssuer.SetAuthCookies used
-        // environment.IsDevelopment() — behind a TLS-terminating proxy with broken
-        // ForwardedHeaders the delete-cookie did not match the set-cookie, and the browser
-        // kept the stale auth cookie.
+        // Build set and clear cookies from the same Secure, SameSite, and Path options.
+        // Matching attributes ensure logout removes the session behind TLS-terminating proxies.
         Response.Cookies.Delete(AuthCookieName,
             AuthCookieOptionsBuilder.ForAuth(HttpContext, _environment, DateTimeOffset.UnixEpoch));
         Response.Cookies.Delete(CsrfCookieName,
@@ -385,8 +381,8 @@ public class AuthController : ControllerBase
         }
 
         // PR4: LDAP-first when the feature is wired up + enabled. The helper encapsulates
-        // the decision tree (Success → mint session, RefusedCollision → 401, InvalidCredentials
-        // for known-LDAP user → 401, Unavailable / unknown user → fall through to local).
+        // the decision tree (Success -> mint session, RefusedCollision -> 401, InvalidCredentials
+        // for known-LDAP user -> 401, Unavailable / unknown user -> fall through to local).
         var ldapShortCircuit = await TryLdapLoginAsync(request, ct);
         if (ldapShortCircuit is not null) return ldapShortCircuit;
 
@@ -458,8 +454,7 @@ public class AuthController : ControllerBase
                     });
                 }
 
-                // L1: enforce the password policy during bootstrap too — previously skipped,
-                // so a rushed deployment could ship with a one-character admin password.
+                // Enforce the standard password policy during bootstrap.
                 if (ValidatePasswordPolicy(request.Password) is { } policyError)
                     return BadRequest(new { message = policyError });
 
@@ -673,7 +668,7 @@ public class AuthController : ControllerBase
         // Bootstrap window: while no user exists yet, a presented X-Setup-Token signals intent
         // to create the local break-glass Admin. Skip LDAP so that path stays reachable — the
         // LDAP-first bind would otherwise intercept the bootstrap login (an unknown username
-        // → 401 InvalidCredentials, or 503 during a DC outage) and an instance with LDAP already
+        // -> 401 InvalidCredentials, or 503 during a DC outage) and an instance with LDAP already
         // enabled could never be initialised. Gated on an empty Users table so a stray header
         // can never bypass LDAP once real accounts exist. The local path still validates the
         // token against the on-disk file.
@@ -700,7 +695,7 @@ public class AuthController : ControllerBase
 
         // Look up an existing local row for this username — by raw username and by the
         // UPN form so an LDAP user typed as "alice" still matches their stored
-        // "alice@firma.de" row. Used to decide:
+        // "alice@firma.de" row. This determines:
         //   - whether to attempt LDAP at all (skip when the user is provably Local).
         //   - whether to fall back to local on InvalidCredentials (local-row exists).
         var existing = await _db.Users.FirstOrDefaultAsync(u => u.Username == request.Username, ct);
@@ -718,14 +713,8 @@ public class AuthController : ControllerBase
         var hasLocalRow = existing is not null && existing.Provider == AuthProvider.Local;
         if (hasLocalRow && !string.IsNullOrEmpty(existing!.PasswordHash)) return null;
 
-        // M-2 (security audit 2026-05-15): per-account lockout for the LDAP path, mirroring the
-        // local password path's H-4 policy. Previously the LDAP login had only the service-wide
-        // LdapCircuitBreaker, which trips on infrastructure failures — NOT on credential
-        // rejections — so an attacker could brute-force a single known account indefinitely. A
-        // locked account is now refused before we even reach the directory; the generic message
-        // does not reveal that the account exists. Scoped to provisioned LDAP rows — local
-        // accounts are ratcheted by the local password path, unknown usernames by the
-        // ExternalLoginThrottle above.
+        // Apply per-account lockout to provisioned LDAP users without involving the infrastructure
+        // circuit breaker. Local accounts and unknown usernames use their dedicated throttles.
         if (existing is { Provider: AuthProvider.Ldap } && existing.LockedUntil is { } ldapLockedUntil && ldapLockedUntil > DateTime.UtcNow)
         {
             await _audit.LogAsync(AuditActions.LoginLocked, "User", existing.Id,

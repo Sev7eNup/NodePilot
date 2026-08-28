@@ -3,14 +3,14 @@ import { normalizeQuartzCron, previewSchedule, relativeFromNow } from '../../lib
 
 describe('normalizeQuartzCron', () => {
   it('replacesQuestionMarkWildcardWithStar', () => {
-    // Quartz cron uses ? in dom OR dow as the "not specified" marker. cron-parser
-    // doesn't speak Quartz, so we have to translate.
+    // Quartz uses ? in the day-of-month or day-of-week field as the not-specified marker.
+    // cron-parser does not understand Quartz, so the marker is translated first.
     expect(normalizeQuartzCron('0 0 12 ? * MON-FRI')).toBe('0 0 12 * * MON-FRI');
     expect(normalizeQuartzCron('0 0 12 1 * ?')).toBe('0 0 12 1 * *');
   });
 
   it('truncatesYearField_byDroppingTheSeventhField', () => {
-    // Quartz allows an optional 7th "year" field. cron-parser doesn't; we just drop it.
+    // Quartz allows an optional seventh year field; cron-parser does not, so it is dropped.
     expect(normalizeQuartzCron('0 0 12 * * ? 2026')).toBe('0 0 12 * * *');
   });
 
@@ -19,11 +19,10 @@ describe('normalizeQuartzCron', () => {
   });
 
   it('leavesShortExpressionsUnpadded_paddingIsTheParsersJob', () => {
-    // Deliberate: the normalizer only truncates and translates `?`. Padding a short
-    // expression to six fields is cron-parser's business, and it prepends the missing
-    // leading fields — so a 5-field Unix cron keeps reading minute-first, not
-    // seconds-first. Pinning that here means a normalizer that starts padding on its
-    // own (and would shift every field by one) fails loudly.
+    // The normalizer only truncates and translates `?`. Padding a short expression to six
+    // fields belongs to cron-parser, which prepends the missing leading fields, so a
+    // five-field Unix cron keeps reading minute-first. Padding here would shift every
+    // field by one.
     expect(normalizeQuartzCron('0 2 * * *')).toBe('0 2 * * *');
     expect(normalizeQuartzCron('20 15 * *')).toBe('20 15 * *');
   });
@@ -61,28 +60,25 @@ describe('previewSchedule', () => {
   });
 
   it('handlesQuartzQuestionMark_withoutThrowing', () => {
-    // The whole reason normalizeQuartzCron exists — the UI lets users type the
-    // Quartz form with `?`, the preview must still render fires.
+    // The UI lets users type the Quartz form with `?`, and the preview must still
+    // render fire times for it.
     const result = previewSchedule('0 0 8 ? * MON-FRI');
     expect(result.error).toBeNull();
     expect(result.fireTimes.length).toBeGreaterThan(0);
   });
 
   // ── Short expressions ──────────────────────────────────────────────────────
-  // The designer accepts free text, so a user who knows standard Unix cron types five
-  // fields, and a typo leaves four. Neither form is Quartz, but both reach the preview,
-  // and until cron-parser 5.10.0 the shorter ones were padded from the wrong end: the
-  // seconds default landed last instead of first, so `20 15 * *` previewed as "every
-  // second". Every other case in this file uses six or seven fields, which is exactly
-  // why that stayed invisible. These two pin the behaviour the preview depends on.
+  // The designer accepts free text, so the preview also receives five-field Unix cron and
+  // four-field typos. Neither form is Quartz, and both must be padded from the leading end
+  // so the seconds default lands first rather than last.
   //
-  // Both assert *relative* spacing rather than wall-clock times: previewSchedule reads
+  // Both cases assert relative spacing rather than wall-clock times: previewSchedule reads
   // `new Date()` internally, so there is no base date to pin.
 
   it('fiveFieldUnixCron_readsMinuteFirst_matchingItsSixFieldEquivalent', () => {
     // `0 2 * * *` (Unix) and `0 0 2 * * *` (Quartz) are the same schedule: 02:00 daily.
-    // If the parser ever padded from the wrong end, the five-field form would collapse
-    // to "second 0 of minute 2 of every hour" and the two would diverge.
+    // Padding from the trailing end would collapse the five-field form to second 0 of
+    // minute 2 of every hour, and the two would diverge.
     const short = previewSchedule('0 2 * * *', 3);
     const long = previewSchedule('0 0 2 * * *', 3);
 
@@ -91,9 +87,8 @@ describe('previewSchedule', () => {
   });
 
   it('fourFieldCron_doesNotCollapseToEverySecond', () => {
-    // The regression this guards: pre-5.10.0 cron-parser padded `20 15 * *` such that
-    // it fired once per second. A preview claiming a per-second schedule for what the
-    // user meant as a daily job is worse than an error message.
+    // Padding `20 15 * *` from the trailing end would make it fire once per second. A
+    // preview claiming a per-second schedule for a daily job is worse than an error.
     const { fireTimes, error } = previewSchedule('20 15 * *', 3);
 
     expect(error).toBeNull();

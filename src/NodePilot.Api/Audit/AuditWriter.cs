@@ -9,12 +9,12 @@ namespace NodePilot.Api.Audit;
 /// <see cref="IHttpContextAccessor"/> at write time, delegates entry construction
 /// (redaction + 4 KiB cap) to <see cref="IAuditStager"/>, persists via the scoped
 /// DbContext, and emits the ECS-shaped structured-log line that SIEM forwarders consume.
-/// Swallows-and-logs any write failure so the caller's mutation is never blocked by an
+/// Logs and swallows any write failure so the caller's mutation is never blocked by an
 /// audit problem.
 ///
 /// <para>
 /// Non-HTTP callers (CredentialStore, TriggerOrchestrator, DbAdminController) skip this
-/// type and consume <see cref="IAuditStager"/> directly — they own their own DbContext
+/// type and consume <see cref="IAuditStager"/> directly: they own their own DbContext
 /// lifetime (background scopes, in-transaction commits) but still flow through the same
 /// stager so redaction + cap apply uniformly.
 /// </para>
@@ -35,9 +35,8 @@ public class AuditWriter : IAuditWriter
         _db = db;
         _httpContextAccessor = httpContextAccessor;
         _logger = logger;
-        // Test ergonomics: callers that instantiate AuditWriter directly (the existing
-        // AuditWriterTests) can omit the stager and we fall back to a redaction-less one.
-        // Production wiring always supplies a real stager from DI.
+        // Test ergonomics: callers that construct AuditWriter directly may omit the stager and
+        // get a redaction-less fallback. Production wiring always supplies a real stager from DI.
         _stager = stager ?? new AuditStager();
     }
 
@@ -59,18 +58,17 @@ public class AuditWriter : IAuditWriter
             NodePilot.Engine.EngineMetrics.AuditWrites.Add(1,
                 new KeyValuePair<string, object?>("result", "success"));
 
-            // SIEM forward: emit the audit row as a structured log line so a SIEM that
-            // tails the JSON log file sees mutations in real time without polling the DB.
-            // Delegated to AuditEventForwarder — the ONE implementation of the ECS scope
-            // shape and the support-log allowlist, shared with all background/atomic audit
-            // call sites (this class previously carried a diverging inline copy of both).
+            // Emit the audit row as a structured log line so a SIEM that tails the JSON log
+            // file sees mutations in real time without polling the DB. AuditEventForwarder is
+            // the single implementation of the ECS scope shape and the support-log allowlist,
+            // shared with all background and atomic audit call sites.
             AuditEventForwarder.ForwardCommitted(_logger, entry);
         }
         catch (Exception ex)
         {
-            // Never let an audit write failure abort the triggering mutation. A missing row
-            // shows up in the AuditLog gap — a lost POST/PUT would be worse. The metric is
-            // the only operational signal that the audit write silently dropped.
+            // Never let an audit write failure abort the triggering mutation: a gap in the
+            // AuditLog is better than a lost POST/PUT. The metric is the only operational
+            // signal that an audit write was dropped.
             NodePilot.Engine.EngineMetrics.AuditWrites.Add(1,
                 new KeyValuePair<string, object?>("result", "failure"),
                 new KeyValuePair<string, object?>("error_class", ex.GetType().Name));

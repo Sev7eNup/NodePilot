@@ -13,8 +13,8 @@ import {
 import { ACTIVITY_CATALOG } from '../../lib/activityCatalog.generated';
 
 /** Min/max x where the polygon silhouette crosses the horizontal mid-line (y=50%).
- *  Used to assert a shape touches the LEFT (≈0) and RIGHT (≈100) edge-midpoints, where
- *  ReactFlow anchors ports/edges. */
+ *  Asserts that a shape touches the left (about 0) and right (about 100) edge-midpoints,
+ *  where ReactFlow anchors ports and edges. */
 function spanAtMidY(clip: string): [number, number] {
   const pts = clip.replace(/^polygon\(/, '').replace(/\)$/, '').split(',')
     .map((p) => p.trim().split(/\s+/).map((n) => parseFloat(n)) as [number, number]);
@@ -30,7 +30,7 @@ function spanAtMidY(clip: string): [number, number] {
   return [Math.min(...xs), Math.max(...xs)];
 }
 
-/** Mirror every x-coordinate (x → 100-x) of a `polygon(...)` clip-path, leaving y untouched. */
+/** Mirror every x-coordinate of a `polygon(...)` clip-path (x becomes 100-x); y is untouched. */
 function mirrorX(clip: string): string {
   const inner = clip.replace(/^polygon\(/, '').replace(/\)$/, '');
   const mirrored = inner.split(',').map((pair) => {
@@ -75,7 +75,7 @@ describe('node shape mapping — category shapes', () => {
 
   it('only falls back to square for unknown / unmapped activity types', () => {
     expect(getNodeShape('totallyUnknownActivity')).toBe('square');
-    // every real activity now resolves to a non-square shape (see completeness test below)
+    // every real activity resolves to a non-square shape (see the completeness test below)
     expect(getNodeShape('runScript')).not.toBe('square');
   });
 });
@@ -108,7 +108,7 @@ describe('node shape mapping — per-activity control-flow shapes', () => {
 
   it('marks exactly the 4 control shapes as the control-flow group', () => {
     expect(Object.values(CONTROL_MAP).every(isControlFlowShape)).toBe(true);
-    // bookends + a sample action are NOT control
+    // bookends and a sample action are not control shapes
     for (const s of ['flag', 'pennant', 'square', 'cylinder', 'hexFlat'] as NodeShape[]) {
       expect(isControlFlowShape(s)).toBe(false);
     }
@@ -136,7 +136,7 @@ describe('node shape mapping — per-activity control-flow shapes', () => {
     const all = [...Object.values(ACTION_MAP), ...Object.values(CONTROL_MAP)];
     expect(all).toHaveLength(26);
     expect(new Set(all).size).toBe(26);
-    // and the shape-name union itself has no duplicate entries
+    // the shape-name union itself has no duplicate entries
     expect(new Set(NODE_SHAPES).size).toBe(NODE_SHAPES.length);
   });
 });

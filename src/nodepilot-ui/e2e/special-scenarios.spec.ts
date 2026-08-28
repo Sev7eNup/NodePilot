@@ -2,17 +2,17 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 9 — Spezielle Szenarien.
+ * E2ETests.md part 9 — special scenarios.
  *
- * Hermetic constraints (fixtures/mockApi.ts + playbook): SignalR is 404, so anything that depends
- * on live execution progress (parent↔child timeline, schedule-trigger firing) is engine behaviour
- * owned by NodePilot.Engine.Tests. What IS observable:
+ * SignalR answers 404 in these hermetic runs, so anything driven by live execution progress
+ * (parent/child timeline, schedule-trigger firing) belongs to NodePilot.Engine.Tests. Observable
+ * here:
  *   - 9.1 / 9.2 — the designer renders the seeded nodes and the manual Test run posts /execute.
  *   - 9.3 — a 50-node workflow opens and the canvas mounts without timing out.
  *   - 9.4 — the editor Export button hits GET /workflows/{id}/export.
  *
- * Nodes/edges are pre-seeded via definitionJson (canvas drag is not synthesizable). Executable
- * fixtures set isEnabled:true so handleRunClick doesn't alert+bail.
+ * Nodes and edges are pre-seeded via definitionJson because canvas drag is not synthesizable.
+ * Executable fixtures set isEnabled:true so handleRunClick does not alert and bail.
  */
 
 const WF_ID = 'e9e9e9e9-0000-0000-0000-000000000009';
@@ -53,9 +53,9 @@ test.describe('Spezielle Szenarien (Teil 9)', () => {
   });
 
   test('9.1 — parent with a startWorkflow node runs and posts the env parameter', async ({ page }) => {
-    // Parent: manualTrigger(env) → startWorkflow(Child, {environment: {{param.env}}}). The
-    // parameter HANDOFF to the child is engine behaviour over SignalR (mocked) — what we assert is
-    // the parent's run dialog surfaces `env` and the execute call carries it.
+    // Parent: manualTrigger(env) feeding startWorkflow(Child, {environment: {{param.env}}}).
+    // The handoff to the child is engine behaviour over SignalR, which is mocked here, so the
+    // assertion is that the run dialog surfaces env and the execute call carries it.
     const def = JSON.stringify({
       nodes: [
         { id: 'trg', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'Manual', activityType: 'manualTrigger', config: { title: 'Run Parent', parameters: [{ name: 'env', type: 'string', required: true, default: 'dev' }] } } },
@@ -109,7 +109,7 @@ test.describe('Spezielle Szenarien (Teil 9)', () => {
     await expect(page.locator('.react-flow__node', { hasText: 'Manual Start' })).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('.react-flow__node', { hasText: 'Hourly Schedule' })).toBeVisible();
 
-    // No manualTrigger parameters → Test runs directly (no dialog).
+    // The manualTrigger declares no parameters, so Test runs directly without a dialog.
     await page.getByRole('button', { name: /test run/i }).click();
     await expect.poll(() => sink.body, { timeout: 10_000 }).not.toBeNull();
     expect(sink.body).toMatchObject({ debug: false });
@@ -133,9 +133,9 @@ test.describe('Spezielle Szenarien (Teil 9)', () => {
     await seedExpertMode(page);
     await page.goto(`/workflows/${WF_ID}`);
 
-    // The name lands in the editor's name field, and the canvas renders many nodes — the editor
-    // is responsive (mounted without hanging) under 50 nodes. The trigger label is unique; the
-    // last step (n49 → "Step 49") is unambiguous too, so no strict-mode collision.
+    // The name lands in the editor's name field and the canvas mounts with many nodes. Both the
+    // trigger label and the last step ("Step 49") are unique labels, so the locators cannot run
+    // into a strict-mode collision.
     await expect(page.getByRole('textbox', { name: /workflow.?name/i })).toHaveValue('Big_Workflow', { timeout: 20_000 });
     await expect(page.locator('.react-flow__node', { hasText: 'Trigger' })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('rf__node-n49')).toBeVisible({ timeout: 15_000 });
@@ -167,7 +167,7 @@ test.describe('Spezielle Szenarien (Teil 9)', () => {
     await seedExpertMode(page);
     await page.goto(`/workflows/${WF_ID}`);
 
-    // The Export-as-JSON action now lives in the "Werkzeuge" (Tools) menu (role=menuitem).
+    // The Export-as-JSON action sits in the Tools menu as a role=menuitem entry.
     await page.getByTestId('tools-menu-trigger').click();
     await page.getByRole('menuitem', { name: /export as json/i }).click();
     await expect.poll(() => exportHit, { timeout: 10_000 }).toBe(true);

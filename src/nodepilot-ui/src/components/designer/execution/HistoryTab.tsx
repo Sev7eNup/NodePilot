@@ -46,12 +46,10 @@ export function HistoryTab({ executions, scope, workflowNames, expandedId, onTog
       : { key, direction: defaultHistorySortDirection(key) });
   };
 
-  // Virtualizing the history table: with several hundred terminal runs, the old
-  // `sortedExecutions.map` approach triggered a full re-render of all rows on every resize
-  // tick of the panel — visible as stutter while drag-resizing. @tanstack/react-virtual keeps
-  // the DOM node count constant (~viewport + overscan), independent of list length. Sort +
-  // expand stay client-side — `expandedId === exec.id` triggers the row growing, and
-  // `measureElement` re-measures the new height afterward via ResizeObserver.
+  // Virtualizes the history table so the DOM node count stays roughly constant (viewport +
+  // overscan) regardless of how many terminal runs there are. Sort and expand stay
+  // client-side — `expandedId === exec.id` grows the row, and `measureElement` re-measures
+  // the new height afterward via ResizeObserver.
   const parentRef = useRef<HTMLDivElement>(null);
   const gridTemplate = useMemo(() => historyGridTemplate(scope), [scope]);
 
@@ -77,8 +75,8 @@ export function HistoryTab({ executions, scope, workflowNames, expandedId, onTog
 
   return (
     <div ref={parentRef} className="overflow-auto h-full" role="table">
-      {/* Sticky header above all rows. Uses the same grid-template-columns as the rows, so
-          columns stay aligned even after switching from <table> to <div>+grid. */}
+      {/* Sticky header above all rows. Uses the same grid-template-columns as the rows so
+          the header and body columns stay aligned. */}
       <div
         role="row"
         className="sticky top-0 z-10 bg-surface-low text-[10px] font-label font-semibold text-on-surface-variant uppercase tracking-wide grid items-center"
@@ -134,18 +132,14 @@ export function HistoryTab({ executions, scope, workflowNames, expandedId, onTog
   );
 }
 
-/** Grid template for the history table. The header and each row are independent grid
- *  containers (required by the @tanstack/react-virtual wrapper) — which means the column
- *  widths MUST be deterministic, otherwise CSS Grid's `auto` columns size differently per
- *  container depending on content width (header "Started" ~50px, row "7.5.2026, 11:49:29"
- *  ~140px → columns would drift out of alignment between header and rows). So: fixed px
- *  values for all content-dependent columns, `fr` only for the genuinely flexible columns
- *  (Trigger / User / Failed Step / Error / Workflow). The Workflow column only appears when
- *  `scope === 'all'`. Min-widths prevent squishing; if the panel gets too narrow, the
- *  container scrolls horizontally (overflow-auto). */
+/** Grid template for the history table. Header and rows are independent grid containers
+ *  (required by @tanstack/react-virtual), so column widths must be fixed px — CSS Grid's
+ *  `auto` sizing would otherwise drift between header and rows. `fr` is used only for the
+ *  flexible columns (Trigger / User / Failed Step / Error / Workflow). Min-widths prevent
+ *  squishing; a too-narrow panel scrolls horizontally instead. */
 function historyGridTemplate(scope: 'current' | 'all'): string {
   const cols: string[] = [
-    '130px',                  // Status (worst-case German label "Fehlgeschlagen" ~102px + px-3 cell padding)
+    '130px',                  // Status (longest status label ~102px + px-3 cell padding)
     ...(scope === 'all' ? ['minmax(120px, 1.2fr)'] : []), // Workflow (flex)
     '80px',                   // ID (8-char mono + button padding)
     'minmax(120px, 1fr)',     // Trigger (flex)
@@ -221,14 +215,13 @@ function compareHistoryExecutions(
     case 'user':
       return compareText(a.startedByUsername ?? '', b.startedByUsername ?? '');
     case 'steps':
-      // Sort by the numerator of "completed/total" (i.e. how far the run got).
-      // Runs without steps (e.g. cycle-only) stay at 0, sorted to the back.
+      // Sort by the numerator of "completed/total" (how far the run got). Runs without
+      // steps (e.g. cycle-only) stay at 0, sorted to the back.
       return compareNumber(a.stepsCompleted ?? 0, b.stepsCompleted ?? 0);
     case 'failedStep':
       // Sorted by the first failed step (name, falling back to step ID). With parallel
-      // branches that have multiple failures, the first one determines the sort key — that's
-      // enough, because the secondary tiebreak on StartedAt in the outer sortedExecutions call
-      // takes care of the rest.
+      // branches that have multiple failures, the first one determines the sort key; the
+      // secondary tiebreak on StartedAt in sortedExecutions handles the rest.
       return compareText(failedStepLabel(a), failedStepLabel(b));
     case 'started':
       return compareNumber(new Date(a.startedAt).getTime(), new Date(b.startedAt).getTime());
@@ -411,7 +404,8 @@ const HistoryRow = memo(function HistoryRow({ execution, scope, workflowName, is
               workflowId={execution.workflowId}
               onScrubTime={onScrubTime ? (t) => {
                 // Auto-activate replay for THIS execution when user starts scrubbing,
-                // so the canvas reflects the scrub time even if user didn't click "Show on canvas" first.
+                // so the canvas reflects the scrub time even if user didn't click "Show on canvas"
+                // first.
                 if (t != null && onReplay && activeReplayId !== execution.id) onReplay(execution.id);
                 onScrubTime(t);
               } : undefined}
@@ -428,19 +422,11 @@ const HistoryRow = memo(function HistoryRow({ execution, scope, workflowName, is
 });
 
 /**
- * A dense timeline view of an execution run. One row per step, showing status, name, relative
- * start (offset from execution start), duration, the gap to the previous step, and an inline
- * bar scaling the duration relative to the longest step. Clicking a row expands output/error
- * inline.
- *
- * Design decisions:
- *   - Relative offsets instead of absolute timestamps — people read "+2.3s after start" faster
- *     than "20:23:51.124". The absolute time is shown in the tooltip (hover).
- *   - The gap to the previous step is rendered separately, so "there was 1s of dead time
- *     between step 3 and 4" is immediately visible. Steps running in parallel get a ∥ icon
- *     instead of a negative gap.
- *   - Steps are sorted by <c>startedAt</c> — the API's own order mirrors persistence order,
- *     which isn't chronological for parallel branches.
+ * A dense timeline view of an execution run: one row per step, with status, name, offset
+ * from execution start, duration, and the gap to the previous step. Clicking a row expands
+ * its output/error. Uses relative offsets instead of absolute timestamps because they read
+ * faster; the absolute time is in the tooltip. Steps are sorted by `startedAt`, since the
+ * API's own order isn't chronological for parallel branches.
  */
 function StepTimeline({ steps, executionStart, workflowId, onScrubTime }: Readonly<{
   steps: StepExecution[]; executionStart: string; workflowId: string;
@@ -468,9 +454,9 @@ function StepTimeline({ steps, executionStart, workflowId, onScrubTime }: Readon
     const durationMs = startMs && endMs ? endMs - startMs : null;
     const offsetMs = startMs != null ? startMs - execStartMs : null;
 
-    // Gap relative to the end of the PREVIOUS step in the sorted list. If the current
-    // step started before the previous one ended → it's a parallel branch, marked visually
-    // as such.
+    // Gap relative to the end of the previous step in the sorted list. If the current
+    // step started before the previous one ended, it's a parallel branch, marked
+    // visually as such.
     const prev = i > 0 ? sorted[i - 1] : null;
     const prevEndMs = prev?.completedAt ? new Date(prev.completedAt).getTime() : null;
     const gapMs = startMs != null && prevEndMs != null ? startMs - prevEndMs : null;
@@ -489,9 +475,8 @@ function StepTimeline({ steps, executionStart, workflowId, onScrubTime }: Readon
     return firstStart && lastEnd ? lastEnd - firstStart : null;
   })();
 
-  // Normalized rows for the shared GanttChart. Same source-of-truth as the list view —
-  // both use `step.stepId` as the stable identifier so any future row-click → inspector
-  // wiring stays in sync between the two views.
+  // Normalized rows for the shared GanttChart. Same source of truth as the list view —
+  // both use `step.stepId` as the stable identifier so the two views stay in sync.
   const ganttRows: GanttRow[] = sorted.map((s) => ({
     id: s.stepId,
     name: s.stepName || s.stepId,
@@ -541,9 +526,8 @@ function StepTimeline({ steps, executionStart, workflowId, onScrubTime }: Readon
       {viewMode === 'list' && (
       <>
       {/* Timeline rows. Grid template: #, Status, Name, Type, Start, End, Duration, Gap, Bar.
-          Start + End are absolute HH:MM:SS.mmm — the user explicitly asked to see both times
-          (the gap can be derived from them, but the absolute view is often more valuable for
-          root-cause diagnosis ("what was running at 20:23:54?") than the relative offset). */}
+          Start + End show absolute HH:MM:SS.mmm because that answers "what was running at
+          this exact time?" during root-cause diagnosis better than the relative offset. */}
       <div className="overflow-hidden rounded-md border border-outline-variant/20 bg-surface-lowest">
         <div className="grid grid-cols-[24px_18px_minmax(280px,1fr)_minmax(110px,auto)_88px_88px_72px_60px_minmax(90px,160px)] gap-x-2 px-2.5 py-1 bg-surface-low text-[10px] font-label font-bold text-outline uppercase tracking-wider">
           <span></span>

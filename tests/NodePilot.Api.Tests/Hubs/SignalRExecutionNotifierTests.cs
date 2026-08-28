@@ -78,9 +78,9 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
         var (notifier, capture) = Build();
         var execId = Guid.NewGuid();
         var wfId = Guid.NewGuid();
-        // Step events now go only to the per-execution group. Workflow-group subscribers
-        // receive ExecutionStatusChanged only (so the Live tab shows status badges without
-        // pulling step events for every one of 100 concurrent runs).
+        // Step events go only to the per-execution group. Workflow-group subscribers receive
+        // ExecutionStatusChanged only, so the Live tab can show status badges without
+        // pulling step events for every concurrent execution.
         ExecutionHub.RegisterGroupForTest("conn-1", execId.ToString());
 
         await notifier.StepStartedAsync(execId, wfId, "step-1", "Check Disk", "runScript", DateTime.UtcNow);
@@ -100,7 +100,7 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
         var (notifier, capture) = Build();
         var execId = Guid.NewGuid();
         var wfId = Guid.NewGuid();
-        // Register the workflow group only, NOT the execution group.
+        // Register the workflow group only, not the execution group.
         ExecutionHub.RegisterGroupForTest("conn-1", $"workflow-{wfId}");
 
         await notifier.StepStartedAsync(execId, wfId, "step-1", "Check Disk", "runScript", DateTime.UtcNow);
@@ -159,11 +159,9 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
     [Fact]
     public async Task StepCompletedAsync_PayloadCarriesOutputVariableAlias()
     {
-        // The UI databus uses the outputVariable alias to mirror the engine's dual-lookup
-        // contract: both {stepId}.output and {alias}.output must show up live. The alias
-        // travels on the StepCompleted payload (engine knows it from node.Data.OutputVariable);
-        // a null value means the producer node has no alias and the UI should fall back to
-        // stepId-only keys.
+        // The outputVariable alias mirrors the engine's dual-lookup contract: both
+        // {stepId}.output and {alias}.output must resolve live. A null alias means the
+        // producer node has none, so the UI falls back to stepId-only keys.
         var (notifier, capture) = Build();
         var execId = Guid.NewGuid();
         var wfId = Guid.NewGuid();
@@ -200,9 +198,9 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
     [Fact]
     public async Task ExecutionStatusChangedAsync_SendsToBothExecutionAndWorkflowGroups()
     {
-        // Status events fan to both groups: the per-execution watcher AND the workflow
-        // firehose. This is the only event that workflow-group subscribers receive —
-        // it powers the status badge in the Live tab without requiring JoinExecution.
+        // Status events fan out to both groups: the per-execution watcher and the workflow
+        // firehose. This is the only event workflow-group subscribers receive; it powers
+        // the status badge in the Live tab without requiring JoinExecution.
         var (notifier, capture) = Build();
         var execId = Guid.NewGuid();
         var wfId = Guid.NewGuid();
@@ -233,10 +231,10 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
     [Fact]
     public async Task ExecutionStatusChangedAsync_GoesToBatchingChannel_AndArrivesAfterFlush()
     {
-        // ExecutionStatusChanged now goes through the shared batching channel so that
-        // 200 concurrent terminal events are coalesced into a single flush rather than
-        // 200 individual SendAsync calls. The channel capacity (32768) is large enough
-        // that status events are never dropped under realistic concurrency.
+        // ExecutionStatusChanged goes through the shared batching channel, coalescing
+        // concurrent terminal events into a single flush instead of one send per event.
+        // The channel capacity is large enough that status events are never dropped
+        // under realistic concurrency.
         var (notifier, capture) = Build();
         var execId = Guid.NewGuid();
         var wfId = Guid.NewGuid();
@@ -288,7 +286,7 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
         var hub = new Mock<IHubContext<ExecutionHub>>();
         hub.SetupGet(h => h.Clients).Returns(clients.Object);
 
-        // No per-execution/per-workflow group subscribers → the only path is the ops-feed.
+        // No per-execution/per-workflow group subscribers, so the only path is the ops-feed.
         // Folder resolver maps our workflow to FolderA.
         var notifier = new SignalRExecutionNotifier(
             hub.Object,
@@ -306,7 +304,7 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
     [Fact]
     public async Task ExecutionStatusChanged_NoOpsFeedAndNoGroupSubscribers_DropsEvent()
     {
-        // Both group subscribers absent AND ops-feed empty → nothing is sent.
+        // Both group subscribers absent and ops-feed empty: nothing is sent.
         var (notifier, capture) = Build(hasSubscribers: false);
 
         await notifier.ExecutionStatusChangedAsync(Guid.NewGuid(), Guid.NewGuid(),
@@ -355,11 +353,9 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
     [Fact]
     public async Task SendBatchAsync_SendsAllGroupsConcurrently_NotSequentially()
     {
-        // Regression guard: SendBatchAsync previously awaited each group's SendAsync
-        // sequentially. With N parallel executions this meant N × send_latency total
-        // flush time, overflowing the 50ms flush interval under load.
-        // After the fix (Task.WhenAll), all sends fire concurrently — total time stays
-        // near the cost of a single send regardless of N.
+        // Regression guard: SendBatchAsync must send all groups concurrently via
+        // Task.WhenAll. A sequential loop would make total flush time scale with the
+        // number of execution groups and could exceed the 50ms flush interval under load.
         const int n = 10;
         var sentGroups = new ConcurrentBag<IReadOnlyList<string>>();
         var started = 0;
@@ -402,7 +398,8 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
 
         sentGroups.Should().HaveCount(n, "every execution group must have received its batch");
 
-        // All sends must start before any mocked send is released; a sequential loop would hang here.
+        // All sends must start before any mocked send is released; a sequential loop would hang
+        // here.
         releaseSends.SetResult();
         await flush.WaitAsync(TimeSpan.FromSeconds(2));
     }
@@ -410,13 +407,11 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
     [Fact]
     public async Task ExecuteAsync_OpsFeedFolderLookupThrows_LoopSurvivesAndKeepsSending()
     {
-        // The regression this pins, byte for byte: every per-group send was already wrapped
-        // (SendGroupSafeAsync), but the ops-feed folder lookup - `await _resolveFolder(...)` -
-        // was a bare await inside SendBatchAsync, and ExecuteAsync's outer catch only handled
-        // OperationCanceledException. With BackgroundServiceExceptionBehavior at its repo-wide
-        // default of StopHost, one database exception raised there while a status event flowed
-        // took the WHOLE HOST down - during a database outage, with ops-feed watchers online,
-        // that is not a corner case but the common case.
+        // If the ops-feed folder lookup throws (for example during a database outage), the
+        // error must stay inside ExecuteAsync's per-event handling instead of escaping the
+        // run loop. BackgroundServiceExceptionBehavior defaults to StopHost repo-wide, so an
+        // escaped exception here would stop the whole host while other executions are still
+        // sending status updates.
         var sendCalls = 0;
         var proxy = new Mock<IClientProxy>();
         proxy.Setup(p => p.SendCoreAsync(It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()))

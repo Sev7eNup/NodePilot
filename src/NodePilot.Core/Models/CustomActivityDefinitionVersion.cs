@@ -2,16 +2,16 @@ namespace NodePilot.Core.Models;
 
 /// <summary>
 /// Immutable snapshot of a <see cref="CustomActivityDefinition"/> at a specific version number.
-/// A new row is appended every time the definition is updated (the <em>previous</em> state is
-/// captured — the live row already holds the new one), mirroring <see cref="WorkflowVersion"/>.
-/// Enables rollback + blame. The table is append-only; rollback restores a prior snapshot by
-/// bumping the live counter and emitting a fresh snapshot so the roll-forward stays auditable.
+/// Every update appends a row holding the previous state, since the live row already holds the
+/// new one, mirroring <see cref="WorkflowVersion"/>. This enables rollback and blame. The table
+/// is append-only: a rollback restores an earlier snapshot by bumping the live counter and
+/// writing a fresh snapshot, so the roll-forward stays auditable.
 ///
 /// <para>
-/// Because executions persist only the key/version/hash that ran (see
-/// <c>StepExecution.CustomActivity*</c>), these snapshots are the only place the actual script of a
-/// past run survives a later edit — which is why deletion of a definition is a soft tombstone, not
-/// a hard delete.
+/// Executions persist only the key, version and hash that ran (see
+/// <c>StepExecution.CustomActivity*</c>), so these snapshots are the only place where the script
+/// of a past run survives a later edit. Deleting a definition is therefore a soft tombstone
+/// rather than a hard delete.
 /// </para>
 /// </summary>
 public class CustomActivityDefinitionVersion
@@ -19,7 +19,8 @@ public class CustomActivityDefinitionVersion
     public Guid Id { get; set; }
     public Guid DefinitionId { get; set; }
 
-    /// <summary>The version number this row snapshots; matches <see cref="CustomActivityDefinition.Version"/> at write time.</summary>
+    /// <summary>The version number this row snapshots; matches
+    /// <see cref="CustomActivityDefinition.Version"/> at write time.</summary>
     public int Version { get; set; }
 
     public string Name { get; set; } = string.Empty;

@@ -126,7 +126,7 @@ public sealed class ExecWatcherTests : IDisposable
     private void StubProgression(Guid execId, params string[] statuses)
     {
         // WireMock state machine: each call to /api/executions/{id} flips to the next status.
-        // The first mapping has NO WhenStateIs — it's the implicit initial state of the scenario.
+        // The first mapping has no WhenStateIs; it is the implicit initial state of the scenario.
         var scenario = "exec-progress-" + execId;
         for (int i = 0; i < statuses.Length; i++)
         {

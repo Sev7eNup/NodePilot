@@ -101,15 +101,18 @@ public sealed class ClusterLeaderService : BackgroundService, IClusterStateProvi
         {
             // Demote BEFORE parking. Parking is the right behaviour (retrying every renew interval
             // would turn one database failure into a cluster-wide connection storm), but the only
-            // producer of OnLeadershipLost — and therefore the only trigger for ClusterFencingHost's
+            // producer of OnLeadershipLost — and therefore the only trigger for
+            // ClusterFencingHost's
             // CancelAllLocalAsync — sits in the catch below, past this gate. Parking first meant a
             // leader that lost the database never ticked, never demoted and never fenced: the new
             // leader would cancel its runs while this node's parked steps resumed on recovery and
             // executed real WinRM/file activities for executions the cluster had already declared
             // Cancelled, leaving only a fenced terminal write as evidence.
             //
-            // ApplyLeadershipChange raises only on a real true→false edge, so this is idempotent and
-            // a no-op on a follower. IsLeader is time-based and decays silently, which is exactly why
+            // ApplyLeadershipChange raises only on a real true to false edge, so this is idempotent
+            // and
+            // a no-op on a follower. IsLeader is time-based and decays silently, which is exactly
+            // why
             // the explicit demotion is needed: decay alone raises nothing.
             if (!_availability.IsServable)
                 ApplyLeadershipChange(isLeader: false, leaseExpiresAt: null, epoch: null);

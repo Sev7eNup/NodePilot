@@ -4,14 +4,13 @@
     Unit tests for the machine-PATH helpers shared by install, update and uninstall.
 .DESCRIPTION
     The helpers decide whether <install>\tools\np is added to or removed from the machine PATH.
-    The cases that matter are the ones a manual test never reproduces: a re-install must not grow
-    PATH (it has a real length limit, and install/upgrade cycles repeat), and Windows treats
-    "C:\NP\tools\np\" and "c:\np\TOOLS\np" as the same directory while a naive string compare
-    does not - a mismatch there means an uninstall leaves a dead entry pointing at a deleted
-    directory.
+    They must be idempotent, because PATH has a length limit and install/upgrade cycles repeat,
+    and they must compare entries the way Windows does: "C:\NP\tools\np\" and "c:\np\TOOLS\np"
+    name the same directory, so an uninstall that compares strings naively leaves a dead entry
+    behind.
 
-    Dependency-free and side-effect-free: the functions are pure string transforms, so nothing
-    here touches the real environment.
+    The helpers are pure string transforms, so these checks need no dependencies and touch
+    nothing in the real environment.
 #>
 
 [CmdletBinding()]
@@ -62,7 +61,7 @@ Assert-Equal 'a null PATH is treated as empty' `
     $tools `
     (Add-NodePilotPathEntry -PathValue $null -Directory $tools)
 
-# The re-install case. Without this the variable grows on every upgrade until PATH is truncated.
+# The re-install case: without this the variable grows on every upgrade until PATH is truncated.
 Assert-Equal 'adding twice is a no-op' `
     "C:\Windows;$tools" `
     (Add-NodePilotPathEntry -PathValue "C:\Windows;$tools" -Directory $tools)

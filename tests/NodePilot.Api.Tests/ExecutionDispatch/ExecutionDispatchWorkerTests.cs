@@ -17,6 +17,11 @@ using Xunit;
 
 namespace NodePilot.Api.Tests.ExecutionDispatch;
 
+/// <summary>
+/// Coverage for the dispatch worker pool — the loop that pulls items off the queue,
+/// runs them, and emits success/failure metrics. Uses a real ExecutionDispatchQueue so
+/// the worker-to-queue contract isn't mocked away.
+/// </summary>
 public class ExecutionDispatchWorkerTests
 {
     [Fact]

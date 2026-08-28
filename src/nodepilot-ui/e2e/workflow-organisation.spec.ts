@@ -211,7 +211,7 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
     const folders = [rootFolder(), folder({ id: DEV_ID, name: 'Development', workflowCount: 0 })];
     await routeFolders(page, () => folders);
     let deleteHit = false;
-    // The context-menu delete is recursive, so the path carries ?recursive=true.
+    // The context-menu delete is recursive, so the path carries `?recursive=true`.
     await page.route(`**/api/shared-workflow-folders/${DEV_ID}*`, (route) => {
       if (route.request().method() === 'DELETE') {
         deleteHit = true;
@@ -240,9 +240,9 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
   });
 
   // ---------- 52.3 — delete a non-empty folder, contents and all ----------
-  // Deleting a folder together with its contents is the covered behaviour, and the confirmation
-  // names the blast radius. The non-recursive path answers 409 instead and is covered by the API
-  // and CLI tests, because no UI surface calls it.
+  // Deleting a folder together with its contents is the supported UI path; the confirmation
+  // dialog names what gets removed. The non-recursive variant answers 409 and is covered by
+  // the API and CLI tests.
   test('52.3 — deleting a non-empty folder removes it with its contents', async ({ page }) => {
     const folders = [rootFolder(), folder({ id: PROD_ID, name: 'Production', workflowCount: 3 })];
     await routeFolders(page, () => folders);
@@ -269,7 +269,7 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
     await prodRow.click({ button: 'right' });
     await page.getByTestId('shared-folder-menu-delete').click();
 
-    // The dialog must name what will be deleted; it is the only safety net.
+    // The dialog must name what gets deleted; it is the only safety net.
     await expect(page.getByTestId('confirm-details')).toContainText('/Production');
     await page.getByRole('button', { name: /^(OK|Delete|Löschen)/ }).click();
 
@@ -339,9 +339,10 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
     await page.goto('/workflows');
     await expect(page.getByRole('button', { name: 'RootFlow' })).toBeVisible({ timeout: 15_000 });
 
-    // The visible drag of a workflow row onto a folder is HTML5 drag-and-drop, which Playwright
-    // cannot synthesize. The drop handler ends in POST .../move-folder {targetFolderId}, so the
-    // same request is driven directly here to assert that contract.
+    // Dragging a workflow row onto a folder is HTML5 drag-and-drop (see the file header).
+    // The drop handler (WorkflowsPage onWorkflowDropped, then moveWorkflowMutation) ends up
+    // firing POST .../move-folder {targetFolderId}. Drive the same client API the handler
+    // uses so the request shape is asserted end-to-end.
     await page.evaluate(
       async ([wfId, targetId]) => {
         const res = await fetch(`/api/workflows/${wfId}/move-folder`, {
@@ -395,12 +396,12 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
     expect((await sizeOf()).h).toBeGreaterThan(before.h + 80);
   });
 
-  // ---------- HTML5 drag-and-drop + folder-to-folder move (uncoverable) ----------
+  // ---------- HTML5 drag-and-drop and folder-to-folder move (not coverable) ----------
   test.skip('18.1 / 52.1 / 52.2 — workflow-row drag-drop & folder→folder move are HTML5 DnD / no UI', () => {
     // 1) Dragging a workflow row onto a folder node relies on the native HTML5 dataTransfer
     //    carrying the "application/x-nodepilot-workflow" MIME (SharedFolderTree onDrop).
-    //    Playwright's synthetic dragTo does not populate that custom MIME, so onDrop bails.
-    //    Test 52.4 above asserts the resulting POST /move-folder through the same contract.
+    //    Playwright's synthetic dragTo does not populate that MIME, so onDrop bails. The
+    //    resulting POST /move-folder is asserted by test 52.4 above via the client contract.
     // 2) Folder-to-folder move (52.1) and the circular-reference guard (52.2) have no UI
     //    affordance in SharedFolderTree (folders are not draggable, no "move to" menu). POST
     //    /shared-workflow-folders/{id}/move and its 400 are covered by the dotnet API tests.

@@ -25,14 +25,16 @@ public sealed class PowerShellExecutionRequest
     /// </summary>
     public bool Isolated { get; init; }
 
-    /// <summary>Optional OS-enforced resource caps applied when <see cref="Isolated"/> is true.</summary>
+    /// <summary>Optional OS-enforced resource caps applied when <see cref="Isolated"/> is
+    /// true.</summary>
     public ProcessIsolationLimits? IsolationLimits { get; init; }
 
     /// <summary>
     /// Restricts the wrapper's output-parameter capture to exactly these variable names. Null (the
-    /// default, used by <c>runScript</c>) keeps the legacy behaviour of capturing every new local.
+    /// default for <c>runScript</c>) captures every new local variable.
     /// Set by <c>CustomActivityExecutor</c> to the definition's declared output names, so injected
-    /// inputs and undeclared helper locals never leak into <c>{{node.param.X}}</c>. The always-present
+    /// inputs and undeclared helper locals never leak into <c>{{node.param.X}}</c>. The
+    /// always-present
     /// <c>exitCode</c> is emitted separately and is unaffected.
     /// </summary>
     public IReadOnlyCollection<string>? OutputCaptureAllowlist { get; init; }

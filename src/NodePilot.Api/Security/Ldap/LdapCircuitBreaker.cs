@@ -12,13 +12,13 @@ namespace NodePilot.Api.Security.Ldap;
 /// threshold flips to Open.</item>
 /// <item><b>Open</b> — every attempt fast-fails. After the cooldown elapses we move to
 /// HalfOpen on the next probe.</item>
-/// <item><b>HalfOpen</b> — exactly one probe is allowed through. Success → Closed and the
-/// failure counter resets; failure → Open with a fresh cooldown.</item>
+/// <item><b>HalfOpen</b> — exactly one probe is allowed through. Success -> Closed and the
+/// failure counter resets; failure -> Open with a fresh cooldown.</item>
 /// </list>
 /// </para>
 /// Thread-safe via a single lock — contention is irrelevant at login rates and avoids the
 /// subtle correctness bugs of a lock-free version (interleaved CAS races between
-/// Closed→Open and HalfOpen→Closed are easy to miss).
+/// Closed to Open and HalfOpen to Closed are easy to miss).
 /// </summary>
 public sealed class LdapCircuitBreaker
 {

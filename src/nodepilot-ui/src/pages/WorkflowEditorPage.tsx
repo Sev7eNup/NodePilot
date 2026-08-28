@@ -115,10 +115,9 @@ type SelectedItem = { type: 'node'; id: string } | { type: 'edge'; id: string } 
 
 export function WorkflowEditorPage() {
   const { t } = useTranslation(['editor']);
-  // Local boundary so a SignalR-init crash, a malformed workflow JSON, or a React Flow
-  // render-time exception only blanks the editor area — the AppLayout sidebar / header
-  // / navigation remain intact, and the user can switch to another page without a full
-  // browser reload. The outer App.tsx boundary still catches anything that escapes here.
+  // Local boundary so a SignalR init crash, malformed workflow JSON, or a React Flow render
+  // error only blanks the editor area and leaves the AppLayout sidebar, header and navigation
+  // usable. The outer App.tsx boundary still catches anything that escapes here.
   return (
     <ErrorBoundary
       scope="WorkflowEditor"
@@ -185,9 +184,9 @@ function WorkflowEditorInner() {
     }
     setPointerFlow(null, null);
   }, [setPointerFlow]);
-  // On unmount, cancel any pending frame and clear the shared pointer store so a stale editor cursor
-  // can't leak port-reveals into other ReactFlow instances (mobile / sub-workflow preview) that reuse
-  // ActivityNode. getState() keeps this effect dependency-free.
+  // On unmount, cancel any pending frame and clear the shared pointer store so a stale cursor
+  // cannot leak port reveals into other ReactFlow instances that reuse ActivityNode.
+  // getState() keeps this effect dependency-free.
   useEffect(() => () => {
     if (pointerRafRef.current != null) cancelAnimationFrame(pointerRafRef.current);
     usePointerFlowPosition.getState().set(null, null);
@@ -198,8 +197,8 @@ function WorkflowEditorInner() {
   const designerMode = useDesignStore((s) => s.designerMode);
   const designerTheme = useDesignStore((s) => s.designerTheme);
   const isAtelier = designerTheme === 'atelier';
-  // Atelier marker on <html>: body-portaled designer UI (activity tooltips via
-  // .np-tooltip-portal) escapes the .np-designer token scope — the root marker lets
+  // Atelier marker on <html>: designer UI portaled to body (activity tooltips via
+  // .np-tooltip-portal) escapes the .np-designer token scope, so the root marker lets
   // designer-atelier.css re-assert the Atelier surface tokens on those portals too.
   useEffect(() => {
     const rootEl = document.documentElement;
@@ -216,8 +215,8 @@ function WorkflowEditorInner() {
   const [searchQuery, setSearchQuery] = useState('');
   const [leftTab, setLeftTab] = useState<'nodes' | 'workflows'>('workflows');
   const [leftCollapsed, setLeftCollapsed] = useState(false);
-  // Node-library categories are collapsible/expandable. Persisted to localStorage so the
-  // user doesn't have to re-expand their preferred categories next time they open a workflow.
+  // Node-library categories are collapsible. Persisted to localStorage so the user does not
+  // have to re-expand their preferred categories the next time they open a workflow.
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>(() => {
     if (typeof window === 'undefined') return {};
     try {
@@ -228,7 +227,7 @@ function WorkflowEditorInner() {
   useEffect(() => {
     try {
       globalThis.localStorage.setItem('nodepilot.designer.collapsedCategories', JSON.stringify(collapsedCategories));
-    } catch { /* storage full / disabled — non-fatal */ }
+    } catch { /* storage full or disabled, non-fatal */ }
   }, [collapsedCategories]);
   const toggleCategory = useCallback((name: string) => {
     setCollapsedCategories((prev) => ({ ...prev, [name]: !prev[name] }));
@@ -247,9 +246,9 @@ function WorkflowEditorInner() {
     toggleReplay,
     scrubTo,
   } = useCanvasExecutionState({ liveExecutions, workflowId: id, joinExecution, leaveExecution });
-  // Default panel sizes tuned for 1440-and-up screens: big enough that the common
-  // content (workflow names, node-property labels, history rows) fits without needing
-  // a first-time drag. Upper bounds relaxed so users on wider screens can push further.
+  // Default panel sizes target screens 1440px and wider: large enough that workflow names,
+  // node-property labels and history rows fit without a first drag. The upper bounds let
+  // users on wider screens push the panels further.
   const leftPanel = useResizable({ initialSize: 350, minSize: 160, maxSize: 500, direction: 'horizontal' });
   const rightPanel = useResizable({ initialSize: 450, minSize: 280, maxSize: 640, direction: 'horizontal', reverse: true });
   const bottomPanel = useResizable({ initialSize: 340, minSize: 100, maxSize: 700, direction: 'vertical', reverse: true });
@@ -282,10 +281,10 @@ function WorkflowEditorInner() {
     staleTime: 60_000,
   });
 
-  // Create-new-workflow from the canvas: mirrors WorkflowsPage.createMutation, except the
-  // target folder comes from the currently open workflow (RBAC R3 — otherwise defaulting to
-  // Root would 403 for folder-scoped users). onSuccess invalidates the workflow list and
-  // navigates into the new empty workflow; the header allows inline renaming there.
+  // Create a workflow from the canvas. Mirrors WorkflowsPage.createMutation, except the target
+  // folder comes from the currently open workflow, because defaulting to Root would return 403
+  // for folder-scoped users. On success the workflow list is invalidated and the new, empty
+  // workflow is opened, where the header allows inline renaming.
   const queryClient = useQueryClient();
   const [newWorkflowOpen, setNewWorkflowOpen] = useState(false);
   const [newWorkflowName, setNewWorkflowName] = useState('');
@@ -327,9 +326,8 @@ function WorkflowEditorInner() {
     }, 800);
   }, [commitHistory]);
 
-  // Tracks which workflow id we've already fit-viewed. Prevents lifecycle
-  // refetches (lock/unlock/publish/disable) from re-fitting and stealing the
-  // user's current zoom/pan.
+  // Tracks which workflow id was already fit-viewed, so lifecycle refetches
+  // (lock/unlock/publish/disable) do not re-fit and steal the user's current zoom and pan.
   const fittedWorkflowIdRef = useRef<string | null>(null);
 
   // ---- Copy / Paste -------------------------------------------------------
@@ -346,15 +344,11 @@ function WorkflowEditorInner() {
         const rawNodes: Node[] = (def.nodes || []);
         setNodes([...rawNodes].sort((a) => (a.type === 'group' ? -1 : 1)));
         setEdges(def.edges || []);
-        // Call fitView explicitly after loading — only if the workflow actually has
-        // nodes. The setTimeout gives React Flow time to render the nodes into its
-        // internal store before the viewport calculation runs.
-        // We deliberately do NOT use the fitView prop on <ReactFlow>, since it re-fires
-        // on every 0→1 node transition and would then distort both the zoom level and
-        // the drop position during the very first drag-and-drop.
-        // fitView only runs on the *first* load of a workflow — not on refetches
-        // triggered by lock/unlock/publish/disable, which only change the lifecycle
-        // status and must respect the user's current zoom.
+        // Fit the view once, on the first load of a workflow that has nodes. The setTimeout
+        // lets React Flow render the nodes into its internal store before the viewport is
+        // computed. The fitView prop on <ReactFlow> is not used because it re-fires on every
+        // transition from zero to one node and would distort both the zoom level and the drop
+        // position during the first drag-and-drop.
         if (rawNodes.length > 0 && fittedWorkflowIdRef.current !== workflow.id) {
           fittedWorkflowIdRef.current = workflow.id;
           setTimeout(() => fitView({ padding: 0.15 }), 50);
@@ -458,8 +452,8 @@ function WorkflowEditorInner() {
     [nodes, edges, setEdges, commitHistory, hasDuplicateConnection, showConnectionNotice, markDirty, offerRequiredJunction],
   );
 
-  // Endpunkt einer existierenden Edge auf andere Source/Target ziehen — Detach-und-Reattach.
-  // edge.data (label, condition, disabled, sourceHandle/targetHandle-Defaults) bleiben erhalten.
+  // Drags the endpoint of an existing edge onto a different source or target (detach and
+  // reattach). edge.data (label, condition, disabled, port defaults) is preserved.
   const onReconnect = useCallback(
     (oldEdge: Edge, newConnection: Connection) => {
       const targetChanged =
@@ -504,15 +498,15 @@ function WorkflowEditorInner() {
     else setSelected(null);
   }, [updateSelection]);
 
-  // ---- Quick-Edit Popup (Doppelklick auf Node) ----------------------------
+  // ---- Quick-edit popup (double-click on a node) --------------------------
   const [quickEdit, setQuickEdit] = useState<{ node: Node; x: number; y: number } | null>(null);
   const [scriptEditNodeId, setScriptEditNodeId] = useState<string | null>(null);
 
   const onNodeDoubleClick = useCallback((_e: React.MouseEvent, node: Node) => {
     if (node.type !== 'activity') return;
     const activityType = (node.data as Record<string, unknown>)?.activityType as string | undefined;
-    // RunScript bekommt den vollen ScriptEditorDialog (CodeMirror, PowerShell-Lint, Run-Button)
-    // statt des Quick-Edit-Popups — die Mini-Textarea ist dafür völlig unzureichend.
+    // runScript opens the full ScriptEditorDialog (CodeMirror, PowerShell lint, run button)
+    // instead of the quick-edit popup, whose small textarea is not enough for scripts.
     if (activityType === 'runScript') {
       setScriptEditNodeId(node.id);
       return;
@@ -520,13 +514,13 @@ function WorkflowEditorInner() {
     setQuickEdit({ node, x: _e.clientX, y: _e.clientY });
   }, []);
 
-  // Live drop-target highlight: id of the group the dragged node currently hovers over (and would
-  // be reparented into on drop). Null clears the highlight. Only flips when the target actually
-  // changes, so re-renders stay rare even though onNodeDrag fires on every move.
+  // Live drop-target highlight: id of the group the dragged node hovers over and would be
+  // reparented into on drop. Null clears the highlight. Only changes when the target changes,
+  // so re-renders stay rare even though onNodeDrag fires on every move.
   const [dropTargetGroupId, setDropTargetGroupId] = useState<string | null>(null);
 
-  // The drag callbacks hand back the native event (React Flow 12.11 widened OnNodeDrag from
-  // React.MouseEvent to MouseEvent | TouchEvent), not a synthetic one. We only need the node.
+  // The drag callbacks hand back a native event, not a synthetic one, because React Flow types
+  // OnNodeDrag as MouseEvent | TouchEvent. Only the node is needed here.
   const onNodeDrag = useCallback((_e: MouseEvent | TouchEvent, node: Node) => {
     if (node.type === 'group') { setDropTargetGroupId(null); return; }
     const over = findDropTargetGroupId(nodes, node);
@@ -535,10 +529,10 @@ function WorkflowEditorInner() {
     setDropTargetGroupId((prev) => (prev === next ? prev : next));
   }, [nodes]);
 
-  // n8n-style drag-into-group: when a drag ends, a node whose center landed inside a group frame
-  // becomes that group's child (and one dragged out is detached). History is already committed by
-  // onNodeDragStart('Move nodes'), so the reparent rides the same undo step; the move itself
-  // already marked the workflow dirty. The third arg carries every node of a multi-select drag.
+  // Drag into a group: when a drag ends, a node whose center landed inside a group frame becomes
+  // that group's child, and a node dragged out is detached. History is already committed by
+  // onNodeDragStart('Move nodes'), so the reparent rides the same undo step. The third argument
+  // carries every node of a multi-select drag.
   const onNodeDragStop = useCallback((_e: MouseEvent | TouchEvent, node: Node, draggedNodes: Node[]) => {
     setDropTargetGroupId(null);
     const ids = (draggedNodes.length > 0 ? draggedNodes : [node]).map((n) => n.id);
@@ -547,10 +541,10 @@ function WorkflowEditorInner() {
   }, [setNodes, markDirty]);
 
   const handleQuickEditSave = useCallback((nodeId: string, configPatch: Record<string, unknown>) => {
-    // Reihenfolge analog zum Delete-Handler: commitHistory() + markDirty() MÜSSEN vor
-    // setNodes feuern, sonst snapshottet useWorkflowHistory den bereits mutierten State und
-    // Undo ist kaputt. Programmatisches setNodes triggert onNodesChange nicht, also wird
-    // die Auto-Dirty-Logik in onNodesChangeDirty hier nicht aktiv — setIsDirty explizit.
+    // Same order as the delete handler: commitHistory() and markDirty() must run before
+    // setNodes, otherwise useWorkflowHistory snapshots the already mutated state and undo
+    // breaks. Programmatic setNodes does not trigger onNodesChange, so the auto-dirty logic
+    // in onNodesChangeDirty does not run here and the dirty flag is set explicitly.
     commitHistory('Quick edit');
     markDirty();
     setNodes((nds) => nds.map((n) => {
@@ -566,33 +560,30 @@ function WorkflowEditorInner() {
   // ---- Fullscreen / Distraction-free (F11) -------------------------------
   const [fullscreen, setFullscreen] = useState(false);
 
-  // KI-Workflow-Assistent (angedocktes rechtes Panel)
+  // AI workflow assistant, docked in the right panel.
   const [aiChatOpen, setAiChatOpen] = useState(false);
   const getCurrentDefinition = useCallback(
     () => stripRuntimeDefinition({ nodes, edges }),
     [nodes, edges],
   );
   const applyAiDefinition = useCallback((def: { nodes: Node[]; edges: Edge[] }) => {
-    // Reihenfolge wie bei jeder programmatischen Graph-Mutation: History + Dirty VOR setNodes,
-    // damit Undo den Vor-Zustand snapshottet. group-Nodes vor Children (wie beim Initial-Load).
+    // Same order as any programmatic graph mutation: history and dirty before setNodes, so undo
+    // snapshots the previous state. Group nodes come before their children, as on initial load.
     commitHistory('AI assistant change');
     markDirty();
     setNodes([...def.nodes].sort((a) => (a.type === 'group' ? -1 : 1)));
     setEdges(def.edges);
   }, [commitHistory, markDirty, setNodes, setEdges]);
-  // Das rechte Panel ist geteilte Fläche: der KI-Chat legt sich über die Node-/Edge-Properties.
-  // Sobald auf der Canvas etwas selektiert wird, will der User die Properties zurück — der Chat
-  // weicht. Deckt alle Selektions-Wege ab (Klick, Marquee mit Einzeltreffer, Drop, Suche,
-  // Tastatur-Navigation, Kontextmenü); der Klick auf einen *bereits* selektierten Node ändert
-  // `selected` nicht und wird deshalb separat in `onNodeClick` gefangen.
+  // The right panel is shared space: the AI chat covers the node and edge properties. Selecting
+  // anything on the canvas brings the properties back and closes the chat. Clicking an already
+  // selected node does not change `selected`, so that case is handled in `onNodeClick`.
   useEffect(() => {
     if (selected) setAiChatOpen(false);
   }, [selected]);
-  // `onNodeClick` steht weiter unten, direkt bei `completeEdgeReattach` — es schließt den
-  // KI-Chat UND vollendet ein laufendes Edge-Detach und braucht dessen Handler in seiner
-  // Dependency-Liste.
+  // `onNodeClick` is defined further down, next to `completeEdgeReattach`: it closes the AI
+  // chat and finishes a pending edge detach, so it needs that handler in its dependency list.
   //
-  // Aktuelle Canvas-Selektion (Labels) für das „Auswahl"-Scoping im KI-Chat.
+  // Current canvas labels scope AI chat to the selection.
   const aiSelection = useMemo(() => ({
     nodeLabels: nodes.filter((n) => n.selected).map((n) => (n.data?.label as string) || n.id),
     edgeCount: edges.filter((e) => e.selected).length,
@@ -650,7 +641,7 @@ function WorkflowEditorInner() {
   // ---- Help overlay -------------------------------------------------------
   const [helpOpen, setHelpOpen] = useState(false);
 
-  // ---- Auto-Layout (Tidy) — cycles through LR → TB → Compact → ELK --------
+  // ---- Auto-layout (Tidy): cycles LR, TB, Compact, ELK --------------------
   const layoutMode = useDesignStore((s) => s.layoutMode);
   const setLayoutMode = useDesignStore((s) => s.setLayoutMode);
   // Snapshot of positions before the first auto-layout in this session.
@@ -738,10 +729,9 @@ function WorkflowEditorInner() {
   // ---- Node Alignment (multi-select) --------------------------------------
 
   // ---- Export as PNG ------------------------------------------------------
-  // WYSIWYG: capture the entire `.react-flow` element at its current size and
-  // current viewport transform, so the PNG matches what the user sees on screen
-  // (background pattern, edges, nodes, panels). Editor chrome (Controls,
-  // MiniMap, attribution) is filtered out — that's UI, not workflow content.
+  // Captures the whole `.react-flow` element at its current size and viewport transform, so
+  // the PNG matches what the user sees (background pattern, edges, nodes, panels). Editor
+  // chrome (Controls, MiniMap, attribution) is filtered out; it is UI, not workflow content.
   const exportPng = useCallback(async () => {
     const flow = canvasRef.current?.querySelector('.react-flow') as HTMLElement | null;
     if (!flow) return;
@@ -775,16 +765,16 @@ function WorkflowEditorInner() {
   // ---- Dry-Run / Simulate -------------------------------------------------
   const { simulation, revealIndex, runSimulation, clearSimulation } = useWorkflowSimulation(nodes, edges);
 
-  // ---- Edge-Detach ("Ziel lösen") -----------------------------------------
-  // Steht bewusst VOR den beiden Kontextmenü-Handlern: beide brechen ein laufendes Detach
-  // ab und brauchen `cancelEdgeDetach` bereits in ihrer Dependency-Liste.
+  // ---- Edge detach (release the target) -----------------------------------
+  // Declared before both context-menu handlers, which cancel a running detach and therefore
+  // need `cancelEdgeDetach` in their dependency lists.
   //
-  // Der Zustand ist rein transient — die Edge selbst wird erst beim erfolgreichen Klick auf
-  // den neuen Ziel-Node angefasst. Abbrechen heißt deshalb schlicht: State auf null, keine
-  // History, kein Dirty-Flag.
+  // The state is purely transient: the edge is only changed on a successful click on the new
+  // target node, so cancelling just resets the state to null, with no history entry and no
+  // dirty flag.
   const [edgeDetach, setEdgeDetach] = useState<{ edgeId: string } | null>(null);
-  // Node, an dem die Vorschau-Linie gerade andockt. Wechselt nur beim Überqueren einer
-  // Node-Grenze (EdgeDetachPreview meldet entsprechend selten), nicht pro Mausbewegung.
+  // Node the preview line is currently docking to. Changes only when the pointer crosses a
+  // node boundary, which is when EdgeDetachPreview reports, not on every mouse move.
   const [dockTargetNodeId, setDockTargetNodeId] = useState<string | null>(null);
   const cancelEdgeDetach = useCallback(() => {
     setEdgeDetach(null);
@@ -792,13 +782,12 @@ function WorkflowEditorInner() {
   }, []);
 
   /**
-   * Rechtsklick bricht ein laufendes Detach ab — überall auf der Canvas, egal ob unter dem
-   * Cursor ein Node, eine Edge oder nur leere Fläche liegt. Der Klick wird dabei VERBRAUCHT:
-   * es öffnet sich kein Kontextmenü und auch nicht das des Browsers. „Rechtsklick" ist die
-   * gewohnte Abbruchgeste für eine schwebende Operation; würde er zusätzlich ein Menü
-   * aufziehen, müsste der Nutzer es gleich wieder wegklicken.
+   * A right-click cancels a running detach anywhere on the canvas, whether the cursor is over
+   * a node, an edge or empty space. The click is consumed: neither the app context menu nor
+   * the browser one opens, since right-click is the usual gesture for cancelling a pending
+   * operation and opening a menu would force the user to dismiss it again.
    *
-   * Rückgabe: true, wenn der Klick als Abbruch verbraucht wurde.
+   * Returns true when the click was consumed as a cancel.
    */
   const consumeContextMenuAsDetachCancel = useCallback((e: React.MouseEvent | MouseEvent): boolean => {
     if (!edgeDetach) return false;
@@ -811,8 +800,8 @@ function WorkflowEditorInner() {
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
 
   const handleNodeContextMenu = useCallback((e: React.MouseEvent, node: Node) => {
-    // VOR der Node-Typ-Prüfung: ein Rechtsklick auf eine Gruppe oder Sticky-Note soll das
-    // Detach genauso abbrechen, obwohl diese Node-Typen kein eigenes Kontextmenü haben.
+    // Runs before the node-type check so a right-click on a group or sticky note also cancels
+    // the detach, even though those node types have no context menu of their own.
     if (consumeContextMenuAsDetachCancel(e)) return;
     if (node.type !== 'activity') return;
     e.preventDefault();
@@ -826,7 +815,7 @@ function WorkflowEditorInner() {
 
   const handleEdgeContextMenu = useCallback((e: React.MouseEvent, edge: Edge) => {
     if (consumeContextMenuAsDetachCancel(e)) return;
-    if (!canWrite) return;  // Viewers / read-only mode get no edit-actions menu
+    if (!canWrite) return;  // Viewers and read-only mode get no edit-actions menu
     e.preventDefault();
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -834,7 +823,7 @@ function WorkflowEditorInner() {
     setSelected({ type: 'edge', id: edge.id });
   }, [canWrite, consumeContextMenuAsDetachCancel]);
 
-  // ---- Quick-Connect (drag handle → empty canvas) + Edge-Insert (`+` on edge) ----
+  // ---- Quick-connect (drag a handle onto empty canvas) + edge insert (`+` on edge) ----
   const {
     quickConnect, setQuickConnect, handleConnectEnd, handleQuickConnectPick,
     insertAt, setInsertAt, requestInsert, insertOnEdge,
@@ -861,28 +850,27 @@ function WorkflowEditorInner() {
     canvasRef, screenToFlowPosition,
   });
 
-  // useEditorKeyboardShortcuts is set up later in the file, AFTER all the mutations,
-  // tidyLayout, handleRunClick and lintPanel state it depends on are declared. See the
-  // call-site near `handleRunClick` for the actual binding.
+  // useEditorKeyboardShortcuts is set up later in the file, after the mutations, tidyLayout,
+  // handleRunClick and lintPanel state it depends on are declared. See the call site near
+  // `handleRunClick` for the actual binding.
 
   const handleNodeDataUpdate = useCallback(
     (nodeId: string, newData: Record<string, unknown>) => {
       const isStructural = 'disabled' in newData || 'breakpoint' in newData || 'outputVariable' in newData || 'breakpointCondition' in newData;
       if (isStructural) commitHistory('Edit property'); else commitHistoryForPropertyEdit();
       markDirty();
-      // Merge onto the existing node data — never replace it. Callers that pass a full
-      // data object (PropertiesPanel, "Embed Workflow") are unaffected, but partial-patch
-      // callers (the right-click context menu's disable/breakpoint toggles) would otherwise
-      // wipe activityType/config/label and produce an invalid definition that the backend
-      // rejects on save (400 "data.activityType is required").
+      // Merge onto the existing node data instead of replacing it. Callers that pass a full
+      // data object are unaffected, but partial-patch callers such as the context menu's
+      // disable and breakpoint toggles would otherwise wipe activityType, config and label
+      // and produce a definition the backend rejects on save.
       setNodes((nds: Node[]) => {
         const oldNode = nds.find((n) => n.id === nodeId);
         const oldAlias = (oldNode?.data as Record<string, unknown>)?.outputVariable as string | undefined;
         const newAlias = newData.outputVariable as string | undefined;
         if (oldAlias && newAlias && oldAlias !== newAlias) {
           const downstream = getDownstreamNodeIds(nodeId, edges);
-          // Auto-refactor edges too — legacy condition shortcuts + conditionExpression variable refs.
-          // Done as a side effect on the same alias change so node + edge stay consistent.
+          // Rename the alias in edges too: condition shortcuts and conditionExpression
+          // variable references. Done on the same change so nodes and edges stay consistent.
           setEdges((eds) => eds.map((e) => renameVariableInEdge(e, oldAlias, newAlias)));
           return nds.map((n) => {
             if (n.id === nodeId) return { ...n, data: { ...(n.data as Record<string, unknown>), ...newData } };
@@ -927,9 +915,9 @@ function WorkflowEditorInner() {
     [setEdges, commitHistory, markDirty],
   );
 
-  // Reshape actions for cubic-Bezier edge handles. History/Dirty centralized here
-  // (commit BEFORE mutation so the snapshot captures the pre-shape state — undo restores
-  // correctly). Programmatic setEdges bypasses onEdgesChangeDirty, so setIsDirty is explicit.
+  // Reshape actions for cubic-Bezier edge handles. History and dirty state are handled here,
+  // committing before the mutation so the snapshot captures the pre-shape state. Programmatic
+  // setEdges bypasses onEdgesChangeDirty, so the dirty flag is set explicitly.
   const beginEdgeReshape = useCallback((_edgeId: string) => {
     commitHistory('Reshape edge');
     markDirty();
@@ -955,20 +943,16 @@ function WorkflowEditorInner() {
   }, [setEdges, commitHistory, markDirty]);
 
   const beginEdgeDetach = useCallback((edgeId: string) => {
-    // Selektiert lassen: das EdgePropertiesPanel zeigt währenddessen die Bedingung, die
-    // mit umzieht — genau die Information, die der Nutzer beim Umhängen im Blick haben will.
+    // Keep the edge selected so EdgePropertiesPanel shows the condition that moves with it.
     setSelected({ type: 'edge', id: edgeId });
     setEdgeDetach({ edgeId });
   }, []);
 
   /**
-   * Klick auf einen Node, während ein Edge-Ziel gelöst ist. Rückgabe sagt dem Aufrufer, ob
-   * der Klick verbraucht wurde. Ablehnungen (Self-Loop/Duplikat/falscher Node-Typ) melden
-   * sich über die Notice-Pille und LASSEN das Detach aktiv — ein Fehlklick soll die Aktion
-   * nicht wegwerfen.
+   * Handles a node click while an edge target is detached and reports whether it consumed the
+   * click. Invalid targets show a notice and keep the detach active.
    *
-   * Der **bisherige Ziel-Node ist ein gültiges Ziel**: dort erneut anzudocken ist der Weg,
-   * nur die Port-Seite zu wechseln, ohne die Edge zu löschen und neu zu ziehen.
+   * The current target remains valid so users can change only the target port.
    */
   const completeEdgeReattach = useCallback((event: React.MouseEvent, node: Node): boolean => {
     if (!edgeDetach) return false;
@@ -984,20 +968,16 @@ function WorkflowEditorInner() {
       showConnectionNotice(t(`editor:edgeDetach.${verdict}`));
       return true;
     }
-    // Die Port-Seite folgt der Klickposition: derselbe Resolver, den die Vorschau-Linie im
-    // pointermove befragt — nur deshalb erzeugt der Klick garantiert genau das, was der
-    // Nutzer eben andocken gesehen hat. Findet er kein Handle (dürfte nie vorkommen), bleibt
-    // der bisherige `targetHandle` stehen statt einer willkürlichen Seite.
+    // Use the preview resolver so the committed port matches the click position. Preserve the
+    // current targetHandle if no handle can be resolved.
     const dock = resolveDockTarget(event.target, event.clientX, event.clientY, (id) => id === node.id);
     const nextPort = dock?.port ?? edgeTargetPort(edge);
-    // Landet die Edge exakt dort, wo sie schon hing (gleicher Node UND gleicher Port), ist
-    // nichts passiert: kein History-Eintrag, kein Dirty-Flag. Sonst würde jedes Zurücklegen
-    // aufs alte Ziel einen leeren Undo-Schritt erzeugen und "ungespeicherte Änderungen" melden.
+    // Returning to the same node and port must not create an empty undo step or dirty state.
     if (node.id === edge.target && nextPort === edgeTargetPort(edge)) {
       cancelEdgeDetach();
       return true;
     }
-    // Gleiche History-Marke wie beim Drag-Reconnect — für den Nutzer ist es dieselbe Operation.
+    // Drag and click reconnection share the same history action.
     commitHistory('Move edge');
     markDirty();
     setEdges((eds: Edge[]) => eds.map((e) => (
@@ -1007,8 +987,7 @@ function WorkflowEditorInner() {
     return true;
   }, [edgeDetach, edges, cancelEdgeDetach, commitHistory, markDirty, setEdges, showConnectionNotice, t]);
 
-  // Dockbarkeit für Vorschau UND Hover-Ring: jeder Node, den der Klick auch annehmen würde —
-  // inklusive des bisherigen Ziels, damit man dort sichtbar eine andere Port-Seite anfahren kann.
+  // Preview and hover accept the same targets as the click, including the current target.
   const canDockTo = useCallback((nodeId: string): boolean => {
     if (!edgeDetach) return false;
     const edge = edges.find((e) => e.id === edgeDetach.edgeId);
@@ -1022,17 +1001,14 @@ function WorkflowEditorInner() {
     }) === 'ok';
   }, [edgeDetach, edges, nodes]);
 
-  // Aufräumen, wenn dem Detach die Grundlage wegbricht: Schreibrecht verloren (Unlock,
-  // Publish, Tidy) oder die Edge wurde inzwischen gelöscht.
+  // Cancel detachment when write access is lost or the edge no longer exists.
   useEffect(() => {
     if (!edgeDetach) return;
     if (!canWrite || !edges.some((e) => e.id === edgeDetach.edgeId)) cancelEdgeDetach();
   }, [edgeDetach, canWrite, edges, cancelEdgeDetach]);
 
-  // Klick auf einen bereits selektierten Node feuert kein onSelectionChange — hier direkt
-  // schließen. Multi-Select-Klicks (Shift/Ctrl/Meta) bauen nur die Auswahl auf und lassen den
-  // Chat stehen: er zeigt die Mehrfachauswahl als Kontext-Chip. Läuft gerade ein Edge-Detach,
-  // ist der Klick dessen Ziel-Wahl und wird vorher abgefangen.
+  // A click on an already selected node does not fire onSelectionChange, so close chat here.
+  // Multi-select keeps chat open, and edge detachment consumes its target click first.
   const onNodeClick = useCallback((e: React.MouseEvent, node: Node) => {
     if (e.shiftKey || e.ctrlKey || e.metaKey) return;
     if (completeEdgeReattach(e, node)) return;
@@ -1053,9 +1029,7 @@ function WorkflowEditorInner() {
   // graph with nodes but no (enabled) trigger — including a cycle-only graph — yields the
   // `no-trigger` lint error (which also blocks publish). No separate cycle banner needed.
 
-  // Statische Validierung — läuft auf jeder Graph-Änderung, Ergebnis rendert im Header-Badge
-  // und (bei Click) im Lint-Panel über der Canvas. Keine Blockade: der User kann trotzdem
-  // speichern, aber sieht die Warnungen sofort.
+  // Revalidate every graph change for the header badge and lint panel without blocking saves.
   const lintResult = useMemo(() => lintWorkflow(nodes, edges, allWorkflows), [nodes, edges, allWorkflows]);
   const [lintPanelOpen, setLintPanelOpen] = useState(false);
 
@@ -1108,7 +1082,7 @@ function WorkflowEditorInner() {
       return;
     }
     if (isPublishing || isEnabling) return;
-    // Clean lint → straight through. Otherwise gate behind the modal so the user sees the
+    // Clean lint -> straight through. Otherwise gate behind the modal so the user sees the
     // outstanding issues exactly once before going live.
     if (prePublishLint.errors.length === 0 && prePublishLint.warnings.length === 0) {
       if (isLockedByMe) publish();
@@ -1288,8 +1262,7 @@ function WorkflowEditorInner() {
     dockTargetNodeId,
   });
 
-  // Rohe (nicht projizierte) Edge des laufenden Detach — Quelle + Port-Seiten für die
-  // Vorschau-Linie und das Label für die Hinweis-Pille.
+  // The raw detached edge supplies source, ports, and label to the preview and notice.
   const detachedEdge = edgeDetach ? edges.find((e) => e.id === edgeDetach.edgeId) ?? null : null;
   const detachedEdgeLabel = ((detachedEdge?.data as Record<string, unknown> | undefined)?.label as string) || '';
 
@@ -1454,8 +1427,7 @@ function WorkflowEditorInner() {
             isValidConnection={isValidConnection}
             onNodeContextMenu={handleNodeContextMenu}
             onEdgeContextMenu={handleEdgeContextMenu}
-            // Nur für den Detach-Abbruch. Ohne aktives Detach passiert hier bewusst nichts,
-            // damit das Browser-Kontextmenü auf der leeren Fläche erhalten bleibt.
+            // Consume the pane menu only to cancel an active detach.
             onPaneContextMenu={consumeContextMenuAsDetachCancel}
             onNodeDoubleClick={canWrite ? onNodeDoubleClick : undefined}
             onDragOver={(e) => {
@@ -1504,8 +1476,7 @@ function WorkflowEditorInner() {
             onBeforeDelete={async ({ nodes: toDelete, edges: toDeleteEdges }) => {
               const groupIds = new Set(toDelete.filter((n) => n.type === 'group').map((n) => n.id));
               if (groupIds.size > 0) {
-                // Kinder der zu löschenden Gruppen ungroupen: absolute Positionen wiederherstellen
-                // und parentId entfernen, bevor RF die Nodes löscht.
+                // Ungroup children and restore absolute positions before React Flow deletes groups.
                 const groupPos = new Map(nodes.filter((n) => groupIds.has(n.id)).map((n) => [n.id, n.position]));
                 setNodes((nds: Node[]) => nds.map((n) => {
                   if (!n.parentId || !groupIds.has(n.parentId)) return n;
@@ -1514,8 +1485,7 @@ function WorkflowEditorInner() {
                   void _p;
                   return { ...rest, position: { x: n.position.x + gp.x, y: n.position.y + gp.y } };
                 }));
-                // Nur die Gruppen selbst löschen — Kinder und ihre Edges bleiben erhalten.
-                // RF packt Kinder-Edges automatisch in toDeleteEdges, deshalb explizit rausfiltern.
+                // Delete only groups; remove child edges from React Flow's automatic deletion set.
                 const childIds = new Set(nodes.filter((n) => n.parentId && groupIds.has(n.parentId)).map((n) => n.id));
                 return {
                   nodes: toDelete.filter((n) => !childIds.has(n.id)),
@@ -1539,16 +1509,9 @@ function WorkflowEditorInner() {
             minZoom={0.15}
             connectOnClick={false}
             elevateEdgesOnSelect
-            // Viewport-Virtualisierung: Nodes außerhalb des sichtbaren Bereichs werden
-            // nicht als DOM-Elemente gemountet. Greift spürbar ab ~50+ Nodes; für die
-            // üblichen 5–20-Node-Workflows neutral, für große Graphen (tech-demo+) ein
-            // deutlicher Pan/Zoom-Gewinn. Null-Cost-Flip, daher immer an.
+            // Mount only visible nodes to keep pan and zoom responsive on large graphs.
             onlyRenderVisibleElements
-            // Marquee-Selection: linker Maus-Drag auf leerer Canvas zieht ein Auswahl-
-            // Rechteck. Mittlere/rechte Maustaste pant weiterhin (panOnDrag=[1,2]).
-            // SelectionMode.Partial wählt alles, was das Rechteck *berührt* — Full würde
-            // nur vollständig enthaltene Nodes treffen und verlangt in der Praxis ein
-            // frustrierend großes Rechteck über breite Workflow-Graphen.
+            // Left-drag selects every node touched by the marquee. Middle and right drag pan.
             selectionOnDrag
             panOnDrag={[1, 2]}
             selectionMode={SelectionMode.Partial}
@@ -1582,11 +1545,7 @@ function WorkflowEditorInner() {
                 className="opacity-25"
               />
             ) : (
-              // Free mode (Premium UND Classic): ein einzelnes Punktraster (Dot grid),
-              // für beide Modi identisch — alleine, ohne Karomuster. Die Farbe kommt aus
-              // `--np-canvas-dot`, das jede Base selbst setzt; hier steht bewusst KEIN
-              // `isDark`-Ternär mehr. Der helle Zweig war ein hartes `rgba(0,0,0,.42)` und
-              // damit der Grund, warum die Canvas im hellen Skin schwer und grau wirkte.
+              // Free mode uses the same token-based dot grid in Premium and Classic themes.
               <Background
                 id="np-bg-dots"
                 variant={BackgroundVariant.Dots}
@@ -1616,10 +1575,7 @@ function WorkflowEditorInner() {
               zoomable
               nodeStrokeWidth={3}
               maskColor={isAtelier ? 'var(--np-minimap-mask-atelier)' : 'var(--np-minimap-mask)'}
-              // Node-Farbe im Mini-Map spiegelt den Activity-Typ grob via `borderColor` —
-              // sonst sieht der MiniMap für große Graphen aus wie ein grauer Fleck und man
-              // kann seinen Target-Node nicht ausfindig machen. Farben aus den semantischen
-              // Status-Tokens (dark folgt automatisch).
+              // Use semantic border colors so activity types remain distinguishable in the minimap.
               nodeColor={(n) => {
                 const d = n.data as Record<string, unknown>;
                 const live = d.__liveStatus as string | undefined;

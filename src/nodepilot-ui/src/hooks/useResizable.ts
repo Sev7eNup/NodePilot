@@ -16,20 +16,15 @@ export function useResizable({ initialSize, minSize, maxSize, direction, reverse
   const startSize = useRef(0);
 
   const onMouseDown = useCallback(
-    // `startSizeOverride` lets a caller seed the drag from a freshly measured DOM size
-    // instead of the hook's tracked `size` — used when a panel defaults to auto/content
-    // height and only becomes pixel-sized once the user grabs the handle, so the first
-    // drag continues smoothly from the visible height instead of jumping to `initialSize`.
+    // `startSizeOverride` lets a caller seed the drag from a freshly measured DOM size instead
+    // of the tracked `size`, for panels that stay auto/content sized until the handle is grabbed.
     (e: React.MouseEvent, startSizeOverride?: number) => {
       e.preventDefault();
       isDragging.current = true;
       startPos.current = direction === 'horizontal' ? e.clientX : e.clientY;
       startSize.current = startSizeOverride ?? size;
-      // When seeded from a measured DOM size, also sync the state so a consumer that
-      // switches from auto/content sizing to `size`-driven sizing on mousedown renders
-      // at the measured height immediately — instead of flashing to `initialSize` until
-      // the first mousemove corrects it (a plain click with no drag would otherwise stick
-      // the panel at `initialSize`).
+      // Seeding from a measured size also syncs the state, so a consumer that switches from
+      // auto sizing to `size`-driven sizing on mousedown renders at the measured height.
       if (startSizeOverride !== undefined) setSize(startSizeOverride);
       document.body.style.cursor = direction === 'horizontal' ? 'col-resize' : 'row-resize';
       document.body.style.userSelect = 'none';

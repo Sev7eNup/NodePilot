@@ -46,7 +46,7 @@ export function MetricsPage() {
 }
 
 function DashboardContent({ widgets }: { widgets: MetricsWidget[] }) {
-  // One probe + one observer for the whole grid rather than one per widget.
+  // One probe and one observer for the whole grid rather than one per widget.
   const { probeRef, tokens } = useChartTokens();
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-12">
@@ -80,11 +80,10 @@ function ChartWidget({ widget, tokens }: { widget: MetricsWidget; tokens: ChartT
 /**
  * Builds the ECharts option for one metrics widget.
  *
- * `tokens` carries the live design tokens plus the categorical series palette; it
- * defaults so the builder stays a pure function that is callable without a probe.
- * Every chart here keeps its text legend — that is what carries series identity
- * for readers who cannot separate the hues, and it is also the "relief" the three
- * lower-contrast light-mode slots require.
+ * `tokens` carries the live design tokens plus the categorical series palette. It has a
+ * default so the builder stays a pure function that can be called without a probe.
+ * Every chart keeps its text legend, which identifies the series for readers who cannot
+ * tell the hues apart and gives the lower-contrast light-mode colors a second cue.
  */
 export function buildMetricsChartOption(widget: MetricsWidget, tokens: ChartTokens = DEFAULT_CHART_TOKENS): EChartsOption {
   const { series: palette, axis, grid: gridLine, surfaceHigh, onSurface } = tokens;
@@ -119,8 +118,8 @@ export function buildMetricsChartOption(widget: MetricsWidget, tokens: ChartToke
     const buckets = widget.data.map((series) => series.label);
     const values = widget.data.flatMap((series, y) => series.points.flatMap((point) => point.value == null ? [] : [[timestamps.indexOf(point.timestamp), y, point.value]]));
     const max = Math.max(1, ...values.map((value) => Number(value[2])));
-    // A heatmap encodes magnitude, so it takes a single-hue sequential ramp keyed to
-    // the skin accent — never the categorical palette and never a rainbow.
+    // A heatmap encodes magnitude, so it uses a single-hue sequential ramp keyed to the
+    // skin accent rather than the categorical palette.
     return { tooltip: tooltipStyle, grid: base.grid, xAxis: { type: 'category', data: timestamps.map((timestamp) => formatTime(timestamp * 1000)), axisLabel }, yAxis: { type: 'category', data: buckets, axisLabel }, visualMap: { min: 0, max, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, textStyle: { color: axis }, inRange: { color: [surfaceHigh, tokens.primaryContainer, tokens.primary] } }, series: [{ type: 'heatmap', data: values }] };
   }
   return { ...base, xAxis: { type: 'time', axisLabel }, yAxis: { type: 'value', axisLabel, splitLine: { lineStyle: { color: gridLine } } }, series: widget.data.map((series, index) => ({ name: series.label, type: 'line', smooth: true, showSymbol: false, lineStyle: { width: 2 }, areaStyle: { opacity: widget.data.length === 1 ? .12 : 0 }, itemStyle: { color: seriesColor(index) }, data: series.points.filter((point) => point.value != null).map((point) => [point.timestamp * 1000, point.value]) })) };

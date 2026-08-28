@@ -1,9 +1,11 @@
 namespace NodePilot.Ai.Knowledge;
 
-/// <summary>One search hit: repo-relative path plus a short context snippet around the first match.</summary>
+/// <summary>One search hit: repo-relative path plus a short context snippet around the
+/// first match.</summary>
 public sealed record KnowledgeSearchHit(string Path, string Snippet);
 
-/// <summary>Result of reading a single knowledge file: content on success, or an error message.</summary>
+/// <summary>Result of reading a single knowledge file: content on success, or an error
+/// message.</summary>
 public sealed record KnowledgeFileResult(bool Ok, string? Path, string? Content, string? Error)
 {
     public static KnowledgeFileResult Fail(string error) => new(false, null, null, error);
@@ -11,22 +13,22 @@ public sealed record KnowledgeFileResult(bool Ok, string? Path, string? Content,
 }
 
 /// <summary>
-/// Path/traversal guard and keyword file search shared by the docs and source-code knowledge
-/// readers. Deliberately NOT the config-bound <c>FileSystemOperation</c> PathGuard — this is a
-/// small, self-contained guard scoped to a single knowledge root. Every resolve confines the path
-/// under the root (rejects absolute paths, <c>..</c>, and any symlink/normalisation escape).
+/// Path guard and keyword file search shared by the docs and source-code knowledge readers.
+/// Separate from the config-bound <c>FileSystemOperation</c> PathGuard: a small, self-contained
+/// guard scoped to a single knowledge root. Every resolve confines the path under the root and
+/// rejects absolute paths, <c>..</c>, and any symlink or normalisation escape.
 /// </summary>
 internal static class KnowledgeFileSearch
 {
-    /// <summary>Upper bound on files scanned per search — a cold search over a large source tree is
-    /// O(files); this caps the worst case (the caller's per-source result cap bounds the output).</summary>
+    /// <summary>Upper bound on files scanned per search, so a search over a large source tree stays
+    /// bounded. The caller's per-source result cap bounds the returned hits.</summary>
     private const int ScanCap = 8_000;
 
     private const int SnippetWindow = 320;
 
     /// <summary>
     /// Resolves <paramref name="relPath"/> under <paramref name="root"/>, confined to the root.
-    /// Returns false (and empty out) for absolute/rooted paths, <c>..</c> escapes, or anything that
+    /// Returns false and an empty out value for rooted paths, <c>..</c> escapes, or anything that
     /// normalises outside the root.
     /// </summary>
     public static bool TryResolveWithin(string root, string relPath, out string fullPath)
@@ -63,11 +65,11 @@ internal static class KnowledgeFileSearch
     }
 
     /// <summary>
-    /// Live keyword search under <paramref name="root"/>: enumerates eligible files
-    /// (<paramref name="isEligible"/> on the full path), scores each against the query terms
-    /// (filename hit weighted heaviest, then body-occurrence count), and returns the top
-    /// <paramref name="maxResults"/> as relative-path + snippet. Reads every candidate fresh, so
-    /// changes flow in automatically — no index. Unreadable directories are skipped.
+    /// Keyword search under <paramref name="root"/>: enumerates eligible files
+    /// (<paramref name="isEligible"/> is called with the full path), scores each against the query
+    /// terms (a filename hit weighs most, then the number of body occurrences), and returns the top
+    /// <paramref name="maxResults"/> as relative path plus snippet. There is no index; every
+    /// candidate is read fresh, so file changes are picked up. Unreadable directories are skipped.
     /// </summary>
     public static IReadOnlyList<KnowledgeSearchHit> Search(
         string root, string query, int maxResults, int maxFileBytes, Func<string, bool> isEligible)

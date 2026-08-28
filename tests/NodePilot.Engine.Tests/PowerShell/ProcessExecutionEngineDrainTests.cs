@@ -10,7 +10,8 @@ namespace NodePilot.Engine.Tests.PowerShell;
 /// (<see cref="ProcessExecutionEngine.DrainReadsAsync"/>) — the guarantee that closes the
 /// "isolated runScript stuck in Running forever" bug. Root cause: a leaked inherited stdout/stderr
 /// pipe handle in an unrelated process keeps the pipe write-end open, so the isolated
-/// <c>ReadToEndAsync</c> never reaches EOF and the step Task never completes. After the root process
+/// <c>ReadToEndAsync</c> never reaches EOF and the step Task never completes. After the root
+/// process
 /// has exited and its job tree has been terminated, no legitimate writer remains, so the drain MUST
 /// be bounded. These tests drive the drain with a read that never EOFs (the leak) and prove it
 /// returns promptly with whatever was captured.
@@ -47,7 +48,8 @@ public class ProcessExecutionEngineDrainTests
         sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5),
             "the drain is bounded by the grace window — this is the regression guard for the stuck-Running hang");
 
-        // The abandoned read is observed: faulting it later (as reader disposal would) must not raise
+        // The abandoned read is observed: faulting it later (as reader disposal would) must not
+        // raise
         // an UnobservedTaskException.
         stderrNeverEof.SetException(new ObjectDisposedException("reader"));
         GC.Collect();

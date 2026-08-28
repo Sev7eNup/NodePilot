@@ -3,9 +3,12 @@ using System.Globalization;
 namespace NodePilot.Scheduler.SystemAlerts;
 
 /// <summary>
-/// Descriptor-validated, normalized source parameters for one <c>ObserveAsync</c> call. Values are typed
-/// per the source's declared <c>SystemAlertParameter</c>s. Two policies of the same source with identical
-/// normalized queries are sampled once per dispatcher pass (grouped by source + normalized parameters).
+/// Descriptor-validated, normalized source parameters for one <c>ObserveAsync</c> call. Values are
+/// typed
+/// per the source's declared <c>SystemAlertParameter</c>s. Two policies of the same source with
+/// identical
+/// normalized queries are sampled once per dispatcher pass (grouped by source + normalized
+/// parameters).
 /// </summary>
 public sealed class SystemAlertQuery
 {

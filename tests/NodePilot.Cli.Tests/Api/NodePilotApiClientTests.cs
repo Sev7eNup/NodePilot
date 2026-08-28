@@ -74,8 +74,7 @@ public sealed class NodePilotApiClientTests : IDisposable
     public async Task LoginAsync_OptsInToTokenInBody_ViaXAuthTokenResponseHeader()
     {
         // The CLI is a Bearer client: it must opt in to receiving the JWT in the body, because
-        // the server now withholds the token from browser (cookie) callers by default — a
-        // security hardening from a past audit finding (tracked as H-5).
+        // the server withholds the token from browser (cookie) callers by default.
         _server.Given(Request.Create().WithPath("/api/auth/login").UsingPost()
                 .WithHeader("X-Auth-Token-Response", "true"))
                .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
@@ -646,9 +645,9 @@ public sealed class NodePilotApiClientTests : IDisposable
     [Fact]
     public async Task HealthAsync_DatabaseUnavailable_SurfacesStatusAndReasonWithoutFoldingIntoReady()
     {
-        // /healthz/database answers 200 in every state by design (memory-only breaker view) -
-        // the STATUS FIELD carries the outage, and it must stay display-only: `ready` already
-        // flips on a database outage, so folding this in would double-count the same condition.
+        // /healthz/database always answers 200 by design (memory-only breaker view) - the
+        // status field carries the outage and stays display-only: `ready` already flips on a
+        // database outage, so folding this in would double-count the same condition.
         _server.Given(Request.Create().WithPath("/healthz/live").UsingGet()).RespondWith(Response.Create().WithStatusCode(200));
         _server.Given(Request.Create().WithPath("/healthz/ready").UsingGet()).RespondWith(Response.Create().WithStatusCode(503));
         _server.Given(Request.Create().WithPath("/healthz/database").UsingGet())

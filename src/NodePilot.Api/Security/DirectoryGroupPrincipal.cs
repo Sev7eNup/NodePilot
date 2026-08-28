@@ -29,7 +29,8 @@ internal sealed record DirectoryGroupPrincipal(string Authority, string GroupKey
 
     /// <summary>
     /// SQL-translatable grant predicate shared by every folder-permission lookup: the user's own
-    /// grants plus any group grant whose key and authority both appear in <paramref name="groups"/>.
+    /// grants plus any group grant whose key and authority both appear in <paramref
+    /// name="groups"/>.
     /// Coarse on purpose — the authority-exact, per-authority string comparison lives in
     /// <see cref="Matches"/> and has to run in memory over the candidates (see
     /// <see cref="ExactMatches"/>). A grant written before authority scoping carries an empty

@@ -3,30 +3,20 @@ import { useEffect, useRef, useState } from 'react';
 /**
  * Shared chart theming for every ECharts surface (Dashboard, Metrics).
  *
- * ECharts renders to SVG/Canvas and cannot resolve `var(--color-*)`, so chart
- * colours have to be concrete hex. This module reads the live, skin-scoped design
- * tokens once per theme change and hands them to the chart builders.
+ * ECharts renders to SVG and Canvas and cannot resolve `var(--color-*)`, so chart
+ * colours have to be concrete hex values. This module reads the live, skin-scoped
+ * design tokens once per theme change and hands them to the chart builders.
  *
- * ── Categorical series palette ────────────────────────────────────────────────
- * Eight fixed slots, assigned in order and never cycled — colour follows the
- * entity, not its rank, so filtering series out must not repaint the survivors.
- * Light and dark are the same eight hues stepped for their own surface; dark is a
- * selected set, not an automatic flip.
+ * The categorical palette has eight fixed slots, assigned in order and never cycled,
+ * so a colour belongs to an entity rather than to its rank and filtering series out
+ * leaves the remaining colours unchanged. Light and dark hold the same hues, each
+ * tuned for its own surface. Several light hues stay below 3:1 contrast on white, so
+ * charts using the palette also carry a text legend and never encode identity by
+ * colour alone. Scatter and bubble charts compare all pairs at once, so past three
+ * series they group the rest or facet instead.
  *
- * Validated as a set against the app's real chart surfaces (light card #ffffff,
- * dark card #1a1c21) on the adjacent pairlist used by lines, bars and stacks:
- *   dark  — lightness band, chroma floor, CVD ΔE 8.4, normal-vision ΔE 19.3,
- *           contrast >= 3:1 … all pass
- *   light — CVD ΔE 9.1, normal-vision ΔE 19.6; aqua/yellow/magenta land below
- *           3:1 on white, which obliges secondary encoding. Every chart that uses
- *           this palette ships a text legend, so identity is never colour-alone.
- *
- * Past three series, scatter/bubble forms (which compare ALL pairs, not just
- * adjacent ones) must fold to "Other" or facet instead — slot 4 puts yellow and
- * orange on screen together and that pair fails the all-pairs floors.
- *
- * These are deliberately NOT the semantic status colours. success/warning/error
- * stay reserved for state and never stand in for "series 4".
+ * These slots are not the semantic status colours: success, warning and error stay
+ * reserved for state.
  */
 export const CHART_SERIES_LIGHT = [
   '#2a78d6', // 1 blue
@@ -54,7 +44,7 @@ export interface ChartTokens {
   isDark: boolean;
   /** Axis labels, legend text, tick text. */
   axis: string;
-  /** Split lines / grid lines. Recessive by contract. */
+  /** Split lines and grid lines. Kept visually recessive. */
   grid: string;
   /** Tooltip + popup background. */
   surfaceHigh: string;
@@ -67,7 +57,7 @@ export interface ChartTokens {
   series: readonly string[];
 }
 
-/** Literals used when no probe has resolved yet (jsdom, first paint). They mirror
+/** Values used before a probe resolves, such as in jsdom or on first paint. They mirror
  *  the dark skin, which is what `system` resolves to on a dark OS. */
 const FALLBACK: ChartTokens = {
   isDark: false,
@@ -84,9 +74,9 @@ const FALLBACK: ChartTokens = {
  * Mount the returned `probeRef` on any element inside the themed scope
  * (`.np-shell` / `.np-designer`), then feed `tokens` to the chart builders.
  *
- * Re-reads on BOTH `class` and `data-skin`: switching e.g. dark → dark-lila keeps
- * the same `class` (both are `dark` + `np-accent-remap`) and only flips
- * `data-skin`, so a class-only filter would leave charts on the previous skin
+ * Re-reads on both `class` and `data-skin`: switching from dark to dark-lila keeps
+ * the same `class` (both are `dark` plus `np-accent-remap`) and only changes
+ * `data-skin`, so watching `class` alone would leave charts on the previous skin
  * until a reload.
  */
 export function useChartTokens(): { probeRef: React.RefObject<HTMLDivElement | null>; tokens: ChartTokens } {
@@ -120,5 +110,5 @@ export function useChartTokens(): { probeRef: React.RefObject<HTMLDivElement | n
   return { probeRef, tokens };
 }
 
-/** Chart-builder default, so pure builders stay callable without a probe (tests). */
+/** Default for chart builders, so they stay callable without a probe, as in tests. */
 export const DEFAULT_CHART_TOKENS: ChartTokens = FALLBACK;

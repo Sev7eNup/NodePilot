@@ -8,10 +8,12 @@ namespace NodePilot.Engine.Tests.Notifications;
 
 /// <summary>
 /// F8: <see cref="NotificationRuleTarget"/>.<c>TargetId</c> is a soft reference (no FK) to a
-/// folder/workflow, mirroring <see cref="MaintenanceWindowTarget"/>. <see cref="NotificationRuleSemantics.ScopeMatches"/>
+/// folder/workflow, mirroring <see cref="MaintenanceWindowTarget"/>. <see
+/// cref="NotificationRuleSemantics.ScopeMatches"/>
 /// is a pure in-memory id matcher, so a target pointing at a deleted folder/workflow must simply be
 /// inert — it can never match a different, live folder/workflow. These tests pin that no-op down
-/// directly (the store cannot dangle a target through code, so the guarantee is asserted at the matcher).
+/// directly (the store cannot dangle a target through code, so the guarantee is asserted at the
+/// matcher).
 /// </summary>
 public class NotificationRuleSemanticsTests
 {
@@ -75,7 +77,8 @@ public class NotificationRuleSemanticsTests
     [Fact]
     public void Scope_NullContextIds_NeverMatchScopedRule()
     {
-        // A scoped rule with no matching context id (e.g. a system event carrying no workflow/folder)
+        // A scoped rule with no matching context id (e.g. a system event carrying no
+        // workflow/folder)
         // is inert regardless of its targets.
         var rule = Rule(NotificationScopeKind.Workflows,
             new NotificationRuleTarget { Id = Guid.NewGuid(), TargetKind = NotificationTargetKind.Workflow, TargetId = Guid.NewGuid() });

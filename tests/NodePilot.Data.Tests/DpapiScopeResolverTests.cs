@@ -7,9 +7,9 @@ namespace NodePilot.Data.Tests;
 
 /// <summary>
 /// Single source of truth for the DPAPI scope used by every encrypted-at-rest store.
-/// Security-audit finding L-5: previous behaviour silently folded typos into CurrentUser, which
-/// caused service-account-rotation to fail with no diagnostic — these tests pin the
-/// strict-match-or-throw contract.
+/// A misspelled or unrecognized scope value must throw with a diagnostic instead of
+/// silently falling back to CurrentUser, since that would break decryption after a
+/// service account rotation. These tests pin the strict-match-or-throw contract.
 /// </summary>
 public class DpapiScopeResolverTests
 {

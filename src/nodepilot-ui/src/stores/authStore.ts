@@ -23,15 +23,15 @@ import {
 const LEGACY_WORKFLOW_CLIPBOARD_KEY = 'np_clipboard';
 
 function clearLegacyWorkflowClipboard(): void {
-  // Releases before 1.2.5 persisted complete workflow nodes (including inline credentials)
-  // in sessionStorage. New clipboard data is memory-only, but an upgrade can leave an old
-  // value behind in an already-open tab. Treat every authentication boundary as a migration
-  // point so that residue can never cross to the next identity.
+  // A legacy key that can hold complete workflow nodes, including inline credentials, in
+  // sessionStorage. Clipboard data is memory-only now, but an already-open tab may still carry
+  // such a value. Clearing it at every authentication boundary keeps the residue from reaching
+  // the next identity.
   try {
     sessionStorage.removeItem(LEGACY_WORKFLOW_CLIPBOARD_KEY);
   } catch {
-    // Storage can be disabled by browser policy. The current clipboard implementation never
-    // writes browser storage, so there is no new persisted secret to clean in that environment.
+    // Storage can be disabled by browser policy. The clipboard never writes browser storage,
+    // so there is no persisted secret to clean in that environment.
   }
 }
 
@@ -45,17 +45,14 @@ interface AcceptIdentityOptions {
 }
 
 /**
- * Auth store (rewritten by a security-audit fix): the JWT now lives in an httpOnly `np_auth` cookie
- * that JS cannot read. This store holds only the user-facing fields (username, role)
- * plus an `isAuthenticated` tri-state so the router can render a loading shell during
- * the initial `/auth/me` probe without flashing the login page for a signed-in user.
- *
- * No localStorage is touched anywhere in the auth flow, AND no auth endpoint returns the
- * JWT in its response body for the browser (login/refresh/windows all yield identity only)
- * — so a future XSS has no path to exfiltrate a long-lived, off-host admin token.
+ * Auth store. The JWT lives in an httpOnly `np_auth` cookie that JS cannot read, so this store
+ * holds only the user-facing fields (username, role) plus an `isAuthenticated` tri-state, letting
+ * the router render a loading shell during the initial `/auth/me` probe instead of flashing the
+ * login page for a signed-in user. No auth flow touches localStorage and no auth endpoint returns
+ * the JWT in its body, so an XSS has no path to exfiltrate a long-lived admin token.
  */
 interface AuthState {
-  /** Stable user id from `/auth/me` — used by the edit-lock UI to compare against
+  /** Stable user id from `/auth/me`, compared by the edit-lock UI against
    *  `Workflow.checkedOutByUserId`. Null while initializing or anonymous. */
   userId: string | null;
   username: string | null;
@@ -98,9 +95,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           { 'X-Setup-Token': setupToken },
         )
       : await api.post<LoginResponse>('/auth/login', { username, password });
-    // The server set np_auth + np_csrf cookies on this response. The body carries only our
-    // identity (userId/username/role) — never the JWT. The token reaches Bearer callers
-    // (CLI/API) only, and only when they opt in; the SPA relies solely on the httpOnly cookie.
+    // The server set the np_auth and np_csrf cookies on this response. The body carries only the
+    // identity (userId/username/role), never the JWT. Bearer callers such as the CLI receive the
+    // token when they opt in; the SPA relies solely on the httpOnly cookie.
     get().acceptAuthenticatedIdentity(response, { expectedBoundaryGeneration });
   },
 
@@ -146,8 +143,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await api.post('/auth/logout');
       serverLogoutSucceeded = true;
     } catch (err) {
-      // Server unreachable — local cleanup has already run, but the
-      // cookie may remain valid server-side until it expires (~12h). Warn so this isn't silent.
+      // The server is unreachable. Local cleanup has already run, but the cookie may stay valid
+      // server-side until it expires. Warn so the failure is not silent.
       console.warn(
         '[auth] Logout request failed — state cleared locally but cookie may remain valid server-side until it expires (~12h).',
         err,
@@ -168,10 +165,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // New builds no longer write sensitive content to localStorage. Remove residue without
     // discarding valid same-user sessionStorage state before /auth/me has identified its owner.
     clearLegacySensitiveLocalStorage();
-    // Ask the server who we are. The browser auto-attaches np_auth if present.
-    // Success → signed in. 401 → anonymous (the api client intercepts 401s and triggers
-    // a /login redirect, but only when we're not already on /login, so the LoginPage
-    // renders cleanly on first load).
+    // Ask the server who we are; the browser attaches np_auth if present. Success means signed
+    // in, 401 means anonymous. The api client intercepts 401s and redirects to /login, but only
+    // when not already there, so the LoginPage renders cleanly on first load.
     try {
       const me = commitOptions.broadcastIdentity === false
         ? await api.get<{ id: string; username: string; role: string }>(
@@ -187,13 +183,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // A response belonging to an older auth generation has no authority over the current UI,
       // whether it is a stale 200, 401, or infrastructure failure.
       if (!isAuthBoundaryGenerationCurrent(expectedBoundaryGeneration)) return;
-      // A database outage or an unreachable process says NOTHING about this user's session — the
-      // cookie may be perfectly valid. The old bare catch signed the user out, so a page reload
-      // during an outage ejected them to a login form that itself answers 503 (and, before it
-      // carried a third branch, blamed their credentials). Instead: stay in the loading shell
-      // (isAuthenticated stays null) and re-ask the moment the health probe reports recovery.
+      // A database outage or an unreachable process says nothing about this user's session; the
+      // cookie may still be valid. Stay in the loading shell (isAuthenticated stays null) and
+      // re-ask as soon as the health probe reports recovery.
       const outage = (err instanceof ApiError && (err.status === 503 || err.code?.startsWith('DATABASE_')))
-        || err instanceof TypeError; // fetch network failure — process unreachable/restarting
+        || err instanceof TypeError; // fetch network failure: process unreachable or restarting
       if (outage) {
         const unsubscribe = useDbHealthStore.subscribe((state) => {
           if (state.status !== 'ok') return;
@@ -215,16 +209,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const response = await api.post<LoginResponse>('/auth/refresh');
       get().acceptAuthenticatedIdentity(response, { expectedBoundaryGeneration });
     } catch {
-      // Refresh failure → client.ts already redirected to /login on 401. Nothing to do.
+      // On a 401, client.ts has already redirected to /login. Nothing to do here.
     }
   },
 
   maybeRefresh: async () => {
-    // Without access to the JWT expiry (it's in an httpOnly cookie), the SPA can no longer
-    // schedule a just-in-time refresh. A no-op is the honest behavior: 12 h JWT lifetime
-    // covers most sessions, and the api client's 401 handler redirects cleanly on expiry.
-    // If a future need emerges (workflows with 12+ h sessions), the backend can emit a
-    // plain-text `np_auth_exp` cookie and we wire a lazy refresh here.
+    // The JWT expiry sits in an httpOnly cookie, so the SPA cannot schedule a just-in-time
+    // refresh. This stays a no-op: the api client's 401 handler redirects on expiry. Wiring a
+    // lazy refresh here would require the backend to emit a plain-text `np_auth_exp` cookie.
     return;
   },
 }));

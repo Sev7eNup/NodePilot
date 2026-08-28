@@ -18,43 +18,39 @@ const INVALIDATE_KEYS = [['shared-folders'], ['workflows']] as const;
 
 /**
  * Sidebar that renders the org-level shared-folder tree from
- * <c>GET /api/shared-workflow-folders</c>. The selected folder id flows back to the
- * parent (WorkflowsPage) which uses it to filter the list of workflows. Folders the
- * caller can't read are not in the API response, so this component does no client-side
- * filtering — it just renders what the server returned.
- *
- * Capabilities-aware: the "+ New" button under a folder is only enabled when
- * <c>capabilities.canEdit</c> is true.
+ * <c>GET /api/shared-workflow-folders</c>. The selected folder id flows back to the parent
+ * (WorkflowsPage), which filters the workflow list by it. Folders the caller cannot read are
+ * absent from the API response, so this component renders what the server returned without
+ * filtering. The "+ New" button is enabled only when <c>capabilities.canEdit</c> is true.
  */
 export interface SharedFolderTreeProps {
   selectedFolderId: string | null;
   onFolderSelected: (folderId: string | null) => void;
-  /** Optional callback fired when a folder is created — the parent uses it to refresh
-   *  workflow counts / re-fetch lists. */
+  /** Called after a folder is created; the parent uses it to refresh workflow counts
+   *  and re-fetch lists. */
   onTreeMutated?: () => void;
-  /** Drag-and-drop: caller sets this to enable workflow→folder drop handling on tree
-   *  nodes. Receives the workflow id (read from dataTransfer "application/x-nodepilot-workflow")
-   *  and the destination folder id. The caller is responsible for the API call,
-   *  query invalidation, and error reporting. Drop is silently ignored on folders
-   *  where the caller lacks canEdit. */
+  /** Set this to accept a workflow dropped onto a tree node. Receives the workflow id (read
+   *  from dataTransfer "application/x-nodepilot-workflow") and the destination folder id. The
+   *  caller performs the API call, query invalidation and error reporting. A drop on a folder
+   *  where the caller lacks canEdit is ignored. */
   onWorkflowDropped?: (workflowId: string, folderId: string) => void;
-  /** Opens the folder-permissions modal for a folder. When set, the right-click menu
-   *  gains a "permissions" entry on every folder the caller has `capabilities.canAdmin`
-   *  on — including Root, which has no rename/delete entries. Omit for navigation-only
-   *  embeddings (designer sidebar). */
+  /** Opens the folder-permissions modal for a folder. When set, the right-click menu gains a
+   *  permissions entry on every folder the caller has `capabilities.canAdmin` on, including
+   *  Root, which has no rename or delete entries. Omit for navigation-only embeddings such as
+   *  the designer sidebar. */
   onManagePermissions?: (folderId: string) => void;
-  /** When true, the "Shared Folders" header + refresh button are hidden (for embedding in
-   *  narrow panels like the designer sidebar where the parent already provides context). */
+  /** When true, the "Shared Folders" header and refresh button are hidden, for narrow panels
+   *  such as the designer sidebar where the parent already provides the context. */
   compact?: boolean;
-  /** When true, folder management affordances are hidden: no "+ new subfolder" button,
-   *  no right-click rename/delete context menu. Suitable for navigation-only use. */
+  /** When true, folder management is hidden: no new-subfolder button and no right-click
+   *  rename or delete menu. Suitable for navigation-only use. */
   hideManagement?: boolean;
   /**
    * Opt-in multi-select: a checkbox per row plus the bulk bar above the tree.
    *
-   * Off by default on purpose — this component is also the designer's folder browser
-   * (`WorkflowBrowser`), where a delete affordance has no business being. Only the
-   * workflows page turns it on.
+   * Off by default because this component is also the designer's folder browser
+   * (`WorkflowBrowser`), where a delete affordance does not belong. Only the workflows
+   * page turns it on.
    */
   bulkDeleteEnabled?: boolean;
 }
@@ -76,12 +72,9 @@ export function SharedFolderTree({
   hideManagement = false,
   bulkDeleteEnabled = false,
 }: Readonly<SharedFolderTreeProps>) {
-  // Shared cache key with WorkflowsPage so any mutation that calls
+  // Shared cache key with WorkflowsPage, so any mutation that calls
   // `queryClient.invalidateQueries({queryKey: ['shared-folders']})` (workflow create,
-  // workflow move-folder, permission grant, …) automatically refreshes the tree's
-  // workflowCount badges. Previously the tree maintained its own useState + manual
-  // reload(), which meant counts only updated when the user clicked the ↻ icon or
-  // refreshed the page — every workflow mutation in the parent went unnoticed here.
+  // workflow move-folder, permission grant) also refreshes the workflowCount badges here.
   const queryClient = useQueryClient();
   const { data: folders, error: queryError, isLoading } = useQuery({
     queryKey: ['shared-folders'],
@@ -94,15 +87,15 @@ export function SharedFolderTree({
   const [busy, setBusy] = useState(false);
   const [creatingUnderId, setCreatingUnderId] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
-  // The folder id currently under a drag — drives the per-row drop-target highlight
-  // without re-rendering the entire tree on every dragover frame.
+  // The folder id currently under a drag. Drives the per-row drop-target highlight
+  // without re-rendering the whole tree on every dragover frame.
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
-  // Right-click context-menu state. Position is in viewport-coords (clientX/clientY)
-  // because the menu uses position:fixed. Only set when the row qualifies (canEdit AND
+  // Right-click context-menu state. The position is in viewport coordinates (clientX/clientY)
+  // because the menu uses position:fixed. Only set when the row qualifies (canEdit and
   // non-Root); otherwise the browser's default menu shows.
   const [menuState, setMenuState] = useState<{ x: number; y: number; folder: SharedFolder } | null>(null);
-  // Inline-rename state — similar to the create flow below, except the folder row
-  // itself is swapped for an input instead of a new input appearing underneath it.
+  // Inline rename state. Like the create flow below, except the folder row itself is
+  // replaced by an input instead of a new input appearing underneath it.
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
@@ -122,9 +115,9 @@ export function SharedFolderTree({
 
   const tree = useMemo(() => buildTree(folders ?? []), [folders]);
 
-  // Selection runs over the VISIBLE rows, not the whole tree: `useBulkSelection` derives its
+  // Selection runs over the visible rows, not the whole tree: `useBulkSelection` derives its
   // shift-range from the index in this list and prunes ids that leave it, so a collapsed branch
-  // must not be in here. Root and folders without the explicit delete capability are excluded.
+  // must not appear here. Root is excluded because it cannot be deleted.
   const selectableFolders = useMemo(
     () => (bulkDeleteEnabled
       ? flattenVisible(tree, collapsedIds)
@@ -158,7 +151,7 @@ export function SharedFolderTree({
       return;
     }
     if (trimmed === folder.name) {
-      // No-op: same as the existing name → skip the backend call and just close.
+      // Name unchanged, so close without calling the backend.
       setRenamingId(null);
       return;
     }
@@ -171,9 +164,8 @@ export function SharedFolderTree({
       await queryClient.invalidateQueries({ queryKey: ['shared-folders'] });
       onTreeMutated?.();
     } catch (e) {
-      // 400 (empty / >120 characters) or 409 (sibling name collision) — the backend
-      // response body already carries a user-friendly message, which we surface as-is
-      // in the error banner.
+      // 400 (empty or over 120 characters) or 409 (sibling name collision). The response
+      // body already carries a readable message, so show it unchanged in the error banner.
       setLocalError(t('workflows:folder.renameFailed', {
         defaultValue: 'Umbenennen fehlgeschlagen: {{msg}}',
         msg: (e as Error).message,
@@ -203,7 +195,7 @@ export function SharedFolderTree({
   });
 
   const deleteSelected = async () => {
-    // Keep only what failed selected, so a retry is one click away.
+    // Keep only the failures selected, so a retry is one click away.
     const failedIds = await bulkDelete.deleteMany(selection.selectedItems);
     selection.retain(failedIds);
   };
@@ -272,15 +264,15 @@ export function SharedFolderTree({
           onDragOver={(e) => {
             if (!dragEnabled) return;
             if (!e.dataTransfer.types.includes(WORKFLOW_DRAG_MIME)) return;
-            // preventDefault is what tells the browser this element accepts the drop —
-            // without it, onDrop never fires.
+            // preventDefault tells the browser this element accepts the drop; without it
+            // onDrop never fires.
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
             if (dragOverFolderId !== node.folder.id) setDragOverFolderId(node.folder.id);
           }}
           onDragLeave={(e) => {
-            // Only clear when leaving the row itself, not when crossing into a child element
-            // (relatedTarget contained inside the row counts as still-inside).
+            // Only clear when leaving the row itself, not when crossing into a child element:
+            // a relatedTarget inside the row still counts as inside.
             if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
             if (dragOverFolderId === node.folder.id) setDragOverFolderId(null);
           }}
@@ -309,7 +301,7 @@ export function SharedFolderTree({
               />
             </span>
           )}
-          {/* Chevron toggle or spacer for leaf nodes — both w-4 for consistent text alignment */}
+          {/* Chevron toggle, or a spacer for leaf nodes; both w-4 so labels stay aligned */}
           {node.children.length > 0 ? (
             <button
               type="button"
@@ -476,7 +468,7 @@ function buildTree(folders: SharedFolder[]): TreeNode[] {
     } else {
       const parent = byId.get(node.folder.parentFolderId);
       if (parent) parent.children.push(node);
-      else roots.push(node);  // parent not visible → render as orphan root
+      else roots.push(node);  // parent not visible, so render as an orphan root
     }
   }
   return roots;

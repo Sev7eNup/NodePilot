@@ -15,20 +15,19 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { diagnostics, type SupportEventQuery, type SupportEventResponse } from '../../api/diagnostics';
 
 /**
- * Strukturierte Tabelle der <c>SupportEvents</c>-Tabelle. Virtualisierte Body-Zeilen
- * über <c>@tanstack/react-virtual</c>, Spalten per Drag-Handle resizable, gespeichert
- * in localStorage damit die Operator-Konfiguration einen Tab-Refresh überlebt.
+ * Structured table view of the <c>SupportEvents</c> data. Body rows are virtualized via
+ * <c>@tanstack/react-virtual</c>, columns are resizable via a drag handle, and widths are
+ * saved in localStorage so the layout survives a tab refresh.
  */
 const PAGE_SIZE = 200;
-// Eng-gepackte Log-Optik: 22px Zeilenhöhe gibt bei text-xs (12px) genau Single-Line +
-// 5px Top-/Bottom-Luft. Bei 702px Viewport sieht der Operator damit ~30 Zeilen auf einmal
-// — gleiches "echtes Log"-Gefühl wie Notepad++/CMTrace.
+// Compact row height: fits one line of text-xs with small top/bottom padding, giving a
+// real log-viewer feel similar to Notepad++ or CMTrace.
 const ROW_HEIGHT = 22;
 const HEADER_HEIGHT = 26;
 const DEFAULT_TABLE_HEIGHT = 702;
 const MIN_TABLE_HEIGHT = 180;
-// `.v2`: der Default stieg von 540 auf 702 px. Ohne Key-Bump bliebe jeder Browser, der die
-// Seite schon offen hatte, auf seiner gespeicherten Höhe und würde den neuen Default nie sehen.
+// `.v2`: bumping the storage key resets the value. Without a new key, a browser with an
+// existing stored height would never pick up the new default.
 const HEIGHT_STORAGE_KEY = 'nodepilot.supportEvents.tableHeight.v2';
 
 const LEVEL_LABELS: Record<number, string> = {
@@ -44,22 +43,18 @@ const EVENT_TYPE_OPTIONS = [
 type ColumnId = 'time' | 'level' | 'type' | 'status' | 'workflow' | 'exec' | 'step' | 'user' | 'message';
 
 /**
- * Spalten-Definition. <c>sortKey</c> ist der Backend-Allowlist-Wert (null = nicht sortierbar).
- * Status und Message sind UI-side abgeleitet bzw. zu groß für sinnvolle Sortierung —
- * darum nicht klickbar.
+ * Column definition. <c>sortKey</c> is the backend allowlist value; null disables sorting.
+ * Status and message are not sortable because the UI derives one and the other may be large.
  */
-// Reihenfolge: Zeit · Level · Message · Typ · Status · Workflow · Step · Exec · User.
-// Message steht bewusst weit vorne (Position 3) — der Operator soll den Text ohne
-// Horizontal-Scroll direkt im Blick haben (klassische Log-Viewer-Ordnung: Zeitstempel +
-// Level + Text zuerst, Metadaten danach). Message ist die einzige Flex-Spalte (siehe
-// gridTemplate: minmax(minWidth, 1fr)) und füllt die Restbreite — daher nicht per-px resizable.
+// The message appears before metadata so operators can read it without horizontal scrolling.
+// It is the only flexible column and fills the remaining width, so it is not pixel-resizable.
 const MESSAGE_COLUMN_ID: ColumnId = 'message';
 const COLUMNS: { id: ColumnId; label: string; defaultWidth: number; minWidth: number; sortKey: string | null }[] = [
   { id: 'time',     label: 'Zeit',             defaultWidth: 170, minWidth: 120, sortKey: 'timestamp' },
   { id: 'level',    label: 'Level',            defaultWidth: 60,  minWidth: 50,  sortKey: 'level' },
   { id: 'message',  label: 'Message',          defaultWidth: 420, minWidth: 220, sortKey: 'message' },
   { id: 'type',     label: 'Typ',              defaultWidth: 150, minWidth: 80,  sortKey: 'eventType' },
-  // Status wird im Backend auf EventType gesortet (gleiche Stati zusammen).
+  // The backend sorts status by EventType to keep matching states together.
   { id: 'status',   label: 'Status',           defaultWidth: 90,  minWidth: 60,  sortKey: 'status' },
   { id: 'workflow', label: 'Workflow',         defaultWidth: 220, minWidth: 100, sortKey: 'workflowName' },
   { id: 'step',     label: 'Step / Activity',  defaultWidth: 220, minWidth: 100, sortKey: 'stepLabel' },
@@ -88,15 +83,13 @@ function loadColumnWidths(): Record<ColumnId, number> {
 
 export function SupportEventsTable() {
   const { t } = useTranslation(['adminSettings', 'common']);
-  // Spalten-Label: nur 'step' leakt Englisch ("Step / Activity"), der Rest ist German
-  // oder technisch-identisch — darum gezielt nur diese eine Spalte übersetzen.
+  // Only the step label needs translation; the other labels are German or language-neutral.
   const columnLabel = useCallback(
     (col: typeof COLUMNS[number]) => (col.id === 'step' ? t('supportEvents.stepActivityColumn') : col.label),
     [t]
   );
-  // Default-Sort: timestamp DESC (Backend-Default). Klick auf Header togglet ASC/DESC,
-  // Klick auf anderen Header wechselt Spalte mit Default-Richtung DESC. Wir kennen die
-  // Sortable-Columns nur über COLUMNS[].sortKey — Status/Message bleiben unklickbar.
+  // Match the backend default by sorting newest first. Header clicks toggle direction or select
+  // another sortable column; columns without a sort key remain inactive.
   const [filter, setFilter] = useState<SupportEventQuery>({
     take: PAGE_SIZE,
     sortBy: 'timestamp',
@@ -110,10 +103,10 @@ export function SupportEventsTable() {
     if (!col.sortKey) return;
     setFilter((f) => {
       if (f.sortBy === col.sortKey) {
-        // gleiche Spalte zweimal → Richtung umdrehen
+        // A repeated click on the same column reverses its direction.
         return { ...f, sortDir: f.sortDir === 'desc' ? 'asc' : 'desc' };
       }
-      // andere Spalte → Default-Richtung DESC (matched die übliche „neueste/höchste zuerst"-Erwartung)
+      // A newly selected column starts in descending order.
       return { ...f, sortBy: col.sortKey ?? undefined, sortDir: 'desc' };
     });
   }, []);
@@ -124,8 +117,7 @@ export function SupportEventsTable() {
     try { globalThis.localStorage.setItem(WIDTH_STORAGE_KEY, JSON.stringify(widths)); } catch { /* quota / private mode */ }
   }, [widths]);
 
-  // Höhe des Scroll-Containers — über Drag-Handle am unteren Rand verstellbar, in
-  // localStorage persistiert. Für „Operator will mehr Zeilen auf einmal sehen".
+  // Persist the resizable viewport height so operators can retain their preferred row count.
   const [tableHeight, setTableHeight] = useState<number>(() => {
     if (typeof window === 'undefined') return DEFAULT_TABLE_HEIGHT;
     try {
@@ -176,8 +168,7 @@ export function SupportEventsTable() {
     estimateSize: () => ROW_HEIGHT,
     getScrollElement: () => scrollRef.current,
     overscan: 8,
-    // measureElement lässt react-virtual bei expanded Rows die echte DOM-Höhe messen
-    // (inkl. EventDetail-Block) statt der fixen ROW_HEIGHT — verhindert Overlay-Effekt.
+    // Measure expanded rows from the DOM because their detail block exceeds the fixed row height.
     measureElement: typeof window !== 'undefined' ? (el) => el.getBoundingClientRect().height : undefined,
   });
 
@@ -187,18 +178,14 @@ export function SupportEventsTable() {
     return Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6);
   }, [rows]);
 
-  // Message ist die Flex-Füll-Spalte (minmax(min, 1fr)): das Grid spannt immer 100 % der
-  // Wrapper-Breite → Header kann nicht clippen und Message füllt die Restbreite. Alle
-  // anderen Spalten bleiben fix-px (und resizable).
+  // The flexible message column fills the wrapper while every other column stays resizable.
   const gridTemplate = useMemo(
     () => COLUMNS.map((c) =>
       c.id === MESSAGE_COLUMN_ID ? `minmax(${c.minWidth}px, 1fr)` : `${widths[c.id]}px`
     ).join(' '),
     [widths]
   );
-  // Minimalbreite des Grids = Summe der Fix-Spalten + Message-Min. Als min-width des
-  // geteilten Scroll-Wrappers: erst wenn selbst das nicht passt, greift Horizontal-Scroll
-  // (Header + Body gemeinsam) — sonst füllt das Grid die volle verfügbare Breite.
+  // The shared minimum width makes the header and body scroll together only when necessary.
   const minGridWidth = useMemo(
     () => COLUMNS.reduce((sum, c) =>
       sum + (c.id === MESSAGE_COLUMN_ID ? c.minWidth : widths[c.id]), 0),
@@ -301,16 +288,12 @@ export function SupportEventsTable() {
         )}
       </div>
       <div className="border border-outline-variant rounded overflow-hidden bg-surface-lowest">
-        {/* Geteilter Horizontal-Scroll: Header UND Body liegen im selben overflow-x-Container
-            und teilen sich denselben min-width-Wrapper. Dadurch scrollen sie auf schmalen
-            Screens gemeinsam (nie Header-Clipping / Auseinanderdriften wie zuvor, als der
-            Header in overflow-hidden lag und der Body separat horizontal scrollte). Auf
-            breiten Screens spannt das Grid 100 % → kein Horizontal-Scroll, Message-1fr füllt. */}
+        {/* The header and body share one horizontal scroll container and
+            minimum-width wrapper. */}
         <div className="overflow-x-auto">
           <div style={{ minWidth: minGridWidth }}>
-        {/* Header — Klick sortiert, Drag-Handle am Rand resize't. Beide
-            Pointer-Interaktionen sind getrennt: Resize-Handle stopt Propagation, damit
-            der Klick nicht doppelt feuert. */}
+        {/* Header clicks sort; edge handles resize without propagating
+            the pointer event. */}
         <div className="grid items-center text-[11px] font-medium bg-surface-low text-on-surface-variant border-b border-outline-variant relative"
           style={{ height: HEADER_HEIGHT, gridTemplateColumns: gridTemplate }}>
           {COLUMNS.map((col) => {
@@ -334,27 +317,19 @@ export function SupportEventsTable() {
                     ? (dir === 'asc' ? <ArrowUp size={9} className="shrink-0" /> : <ArrowDown size={9} className="shrink-0" />)
                     : <ArrowsVertical size={9} className="shrink-0 opacity-30" />
                 )}
-                {/* Resize-Handle für alle Fix-Spalten. Message ist die Flex-Füll-Spalte
-                    (minmax(min,1fr)) und daher NICHT per-px resizable — sie absorbiert die
-                    Restbreite automatisch, ein px-Handle wäre widersprüchlich. */}
+                {/* Fixed columns have resize handles; the flexible message column
+                    does not. */}
                 {col.id !== MESSAGE_COLUMN_ID && (
                   <div
                     onPointerDown={(e) => {
-                      // Stop-Propagation: sonst feuert der Header-Click den Sort-Toggle
-                      // beim Resize-Drag mit. Das Resize hat Priorität.
+                      // Prevent a resize gesture from also toggling the sort direction.
                       e.preventDefault();
                       e.stopPropagation();
                       startResize(col.id, e.clientX, widths[col.id]);
                     }}
-                    // Click-Capture: blockt den Click bevor er den Header-onClick erreicht.
-                    // Bubble-stopPropagation alleine reicht nicht, weil der Browser den Click
-                    // auf dem äußeren Container feuern kann, wenn der Down knapp neben dem
-                    // Handle landet — beide Phasen abdichten.
+                    // Capture clicks because a near-edge press may target the outer header.
                     onClickCapture={(e) => e.stopPropagation()}
-                    // 8 px breite Trefferzone, 2 px über die Kante hinaus auf beide Seiten —
-                    // touch-freundlich und sicher zu treffen auch wenn die Spalte (z.B.
-                    // Status) sehr kurz ist und Label/Sort-Icon den rechten Rand füllen.
-                    // z-10 hebt den Handle über den Header-Text falls overlap.
+                    // Keep the hit area wide and above header text so narrow columns remain usable.
                     className="absolute top-0 -right-1 h-full w-2 cursor-col-resize hover:bg-blue-500/60 z-10"
                     title={t('adminSettings:supportEvents.resizeColumn')}
                   />
@@ -364,11 +339,8 @@ export function SupportEventsTable() {
           })}
         </div>
 
-        {/* Body (virtualisiert). Kompakt-Modus: text-[11px] + minimal padding pro Zelle.
-            Nur vertikaler Scroll — der horizontale liegt am geteilten Wrapper (oben), damit
-            Header + Body niemals horizontal auseinanderdriften. Zell-Reihenfolge MUSS exakt
-            der COLUMNS-Reihenfolge folgen (Grid-Spalten sind positionsbasiert): Zeit · Level
-            · Message · Typ · Status · Workflow · Step · Exec · User. */}
+        {/* Virtualized body. Cell order must match COLUMNS because grid columns
+            are positional. */}
         <div ref={scrollRef} style={{ height: tableHeight, overflowY: 'auto', overflowX: 'hidden' }}>
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
             {virtualizer.getVirtualItems().map((vi) => {
@@ -414,8 +386,8 @@ export function SupportEventsTable() {
           </div>
         </div>
 
-        {/* Bottom-Resize-Handle — Drag nach unten vergrößert den Viewport. 6 px hoch
-            damit's gut greifbar ist, hover-Highlight zeigt Operator das interaktive Element. */}
+        {/* Dragging the bottom handle resizes
+            the viewport. */}
         <div
           onPointerDown={(e) => {
             e.preventDefault();
@@ -477,9 +449,8 @@ function levelColor(level: number): string {
 }
 
 /**
- * Status leitet sich aus dem <c>EventType</c> ab. Bewusst UI-side gemappt — der EventType
- * trägt die Semantik schon, eine eigene Spalte im DB-Schema wäre Duplikat. Für Quellen
- * ohne Outcome (USER_LOG, SYSTEM_BOOT, MIGRATION_APPLIED, AUDIT-info) wird "—" angezeigt.
+ * Derives status from <c>EventType</c> because a separate database field would duplicate it.
+ * Events without an outcome display a dash.
  */
 function deriveStatus(r: SupportEventResponse): string {
   switch (r.eventType) {
@@ -491,8 +462,7 @@ function deriveStatus(r: SupportEventResponse): string {
     case 'SYSTEM_BOOT':         return 'Started';
     case 'MIGRATION_APPLIED':   return 'Applied';
   }
-  // Audit-Events: aus dem Level abgeleitet. Failure-Audit (LOGIN_FAILED etc.) ist Level
-  // Warning oder höher, Success-Audit ist Information.
+  // Audit events use their level: failures are warnings or higher, while successes are information.
   if (r.eventType === 'AUDIT') return r.level >= 3 ? 'Failed' : 'OK';
   return '—';
 }
@@ -506,9 +476,8 @@ function statusColor(r: SupportEventResponse): string {
   return 'text-on-surface-variant';
 }
 
-// Zeilen-Tint: subtile, semantik-tragende Tönung, die auf hell UND dunkel trägt.
-// `-500`-Basis mit niedriger Opacity (statt der alten `-50`-Light-Werte, die auf
-// der warmen Dunkelfläche unsichtbar/fahl wurden). Fehler kräftiger als Erfolg.
+// A low-opacity semantic tint remains visible in both light and dark themes.
+// Failures use a stronger tint than successes.
 function rowColor(r: SupportEventResponse): string {
   if (r.level >= 4) return 'bg-red-500/5 dark:bg-red-500/10';
   if (r.eventType === 'STEP_FAILED' || r.eventType === 'EXECUTION_FAILED') return 'bg-red-500/5 dark:bg-red-500/[0.08]';

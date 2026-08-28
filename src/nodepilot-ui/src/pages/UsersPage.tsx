@@ -34,18 +34,17 @@ type DialogMode =
 
 const ROLES: Array<UserRow['role']> = ['Admin', 'Operator', 'Viewer'];
 
-// Role-precedence used as the sort key. Higher number = higher privilege, so
-// sorting asc lists viewers first, desc lists admins first — both directions
-// have intuitive meaning.
+// Role precedence used as the sort key. A higher number means more privilege, so
+// ascending lists viewers first and descending lists admins first.
 const ROLE_RANK: Record<UserRow['role'], number> = { Viewer: 0, Operator: 1, Admin: 2 };
 
-// Mirrors MachinesPage: ColKey covers every sortable column; ResizableColKey
-// drops the auto-flex column (username) which has no explicit width and no
-// drag-handle. Username is the primary identifier and absorbs leftover space.
+// ColKey covers every sortable column. ResizableColKey drops username, the auto-flex
+// column: it is the primary identifier, has no explicit width and no drag handle, and
+// absorbs the space the fixed columns leave over.
 type ColKey = 'username' | 'identity' | 'role' | 'status' | 'directory' | 'created';
 type ResizableColKey = Exclude<ColKey, 'username'>;
 
-const ACTIONS_WIDTH = 130; // 3 buttons × ~28px + gap-1 + px-4 cell padding
+const ACTIONS_WIDTH = 130; // three buttons plus gap-1 and px-4 cell padding
 const USERNAME_MIN_WIDTH = 220;
 const DEFAULT_WIDTHS: Record<ResizableColKey, number> = {
   identity: 240, role: 120, status: 130, directory: 190, created: 150,
@@ -147,8 +146,8 @@ export function UsersPage() {
   const [sortBy, setSortBy] = useState<ColKey | null>('username');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
-  // Column resizing (same pattern as MachinesPage). Username is the auto-flex
-  // column, so it has no inline width and no drag-handle.
+  // Column resizing. Username is the auto-flex column, so it has no inline width
+  // and no drag handle.
   const [colWidths, setColWidths] = useState(DEFAULT_WIDTHS);
   const tableMinWidth = useMemo(
     () => Object.values(colWidths).reduce((a, b) => a + b, 0) + ACTIONS_WIDTH + USERNAME_MIN_WIDTH,
@@ -255,9 +254,9 @@ export function UsersPage() {
     <div className="max-w-7xl mx-auto np-fade-up">
       <div className="flex items-center justify-between mb-6">
         <div>
-          {/* Trans rendert die <strong>-Tags aus dem i18n-String als echte React-Elemente,
-              statt sie via dangerouslySetInnerHTML zu injizieren. Damit kann ein zukünftiger
-              Translator keinen unbeabsichtigten XSS-Payload mehr einschmuggeln. */}
+          {/* Trans renders the <strong> tags of the i18n string as real React elements
+              instead of injecting them via dangerouslySetInnerHTML, so a translation
+              cannot smuggle in an XSS payload. */}
           <p className="text-sm text-on-surface-variant mt-1">
             <Trans i18nKey="users:subtitle" components={{ strong: <strong /> }} />
           </p>
@@ -270,8 +269,8 @@ export function UsersPage() {
           <Add size={16} /> <span className="hidden sm:inline">{t('users:newUser')}</span>
         </button>
       </div>
-      {/* Toolbar: full-width search box. Mirrors MachinesPage so both admin
-          surfaces feel consistent. Hidden when the list is empty. */}
+      {/* Toolbar with a full-width search box. Hidden while the list is
+          empty. */}
       {totalCount > 0 && (
         <div className="np-card p-3 mb-3 flex flex-wrap items-center gap-3">
           <div className="relative w-full sm:flex-1 sm:min-w-[220px]">
@@ -388,8 +387,8 @@ export function UsersPage() {
           >
             <thead className="np-col-header text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
               <tr>
-                {/* Username = auto-flex. No explicit width, no resize handle —
-                    it absorbs whatever horizontal space the fixed columns leave. */}
+                {/* Username is auto-flex: no explicit width and no resize handle, it
+                    absorbs the horizontal space the fixed columns leave. */}
                 <th style={{ minWidth: USERNAME_MIN_WIDTH }} className="relative px-4 py-2 whitespace-nowrap overflow-hidden">
                   <button
                     onClick={() => handleSort('username')}

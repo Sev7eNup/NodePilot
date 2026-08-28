@@ -7,11 +7,8 @@ using Xunit;
 namespace NodePilot.Engine.Tests.WorkflowDefinitions;
 
 /// <summary>
-/// The single mirror guard for the static workflow analysis. <c>WorkflowAnalyzer</c> and
-/// <c>WorkflowDataBusAnalyzer</c> live in Core and serve BOTH the MCP tools and the AI chat, so
-/// this file is the one place that pins their codes against the canvas linter
-/// (<c>workflowLint.ts</c>). It used to sit in Mcp.Tests, back when the chat had its own second
-/// analyzer that nothing pinned against anything.
+/// Keeps the Core <c>WorkflowAnalyzer</c> and <c>WorkflowDataBusAnalyzer</c> codes aligned with
+/// the canvas linter (<c>workflowLint.ts</c>) used by MCP tools and AI chat.
 /// </summary>
 public sealed class WorkflowAnalyzerFrontendParityTests
 {
@@ -78,7 +75,8 @@ public sealed class WorkflowAnalyzerFrontendParityTests
         result.Ok.Should().BeTrue("the run survives, so the analysis must not call it broken");
     }
 
-    /// <summary>A reference on a disabled node cannot fail anything — that node never runs.</summary>
+    /// <summary>A reference on a disabled node cannot fail anything — that node never
+    /// runs.</summary>
     [Fact]
     public void AnalyzeWorkflow_UnresolvableReferenceOnDisabledNode_IsNotReported()
     {

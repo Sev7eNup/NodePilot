@@ -14,10 +14,8 @@ namespace NodePilot.Scheduler.Sources;
 ///
 /// <para>Config parsing, defaults, validation and connection resolution live in
 /// <see cref="DatabaseTriggerSettings"/>, shared with the node executor
-/// (<c>NodePilot.Engine.Triggers.DatabaseTrigger</c>) so a documented key cannot be honoured by one
-/// runtime and silently dropped by the other. This source used to read its interval from
-/// <c>intervalSeconds</c> while the designer, the docs and the node executor all wrote
-/// <c>pollingIntervalSeconds</c> — the configured interval never reached the poll loop.</para>
+/// (<c>NodePilot.Engine.Triggers.DatabaseTrigger</c>) so both runtimes honor the same documented
+/// keys, including <c>pollingIntervalSeconds</c>.</para>
 /// </summary>
 public class DatabaseTriggerSource : ITriggerSource
 {

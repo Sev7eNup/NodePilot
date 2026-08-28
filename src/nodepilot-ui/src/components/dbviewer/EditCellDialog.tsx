@@ -53,8 +53,8 @@ export function EditCellDialog({ tableName, column, currentValue, onSave, onClos
       if (!value) {
         coerced = null;
       } else {
-        // Convert datetime-local (which is in local time) to UTC ISO string correctly.
-        // Do NOT just append "Z" — that would misinterpret local time as UTC.
+        // Convert datetime-local (local time) to a UTC ISO string.
+        // Appending "Z" directly would misinterpret local time as UTC.
         const dt = new Date(value);
         if (isNaN(dt.getTime())) { setError('Ungültiges Datum'); return; }
         coerced = dt.toISOString();
@@ -223,8 +223,8 @@ function isJsonColumn(col: DbAdminColumnInfo): boolean {
 function formatForInput(value: unknown, clrType: string): string {
   if (value === null || value === undefined) return '';
   if (clrType.startsWith('datetime') && typeof value === 'string') {
-    // Convert ISO UTC string to datetime-local format (strip "Z", keep to minutes)
-    // new Date(isoString) parses correctly, then we convert back to local datetime-local value
+    // Convert an ISO UTC string to datetime-local format.
+    // Parse the ISO string, then format the result back in local time.
     try {
       const dt = new Date(value as string);
       if (!isNaN(dt.getTime())) {

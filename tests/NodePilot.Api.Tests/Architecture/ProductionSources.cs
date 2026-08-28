@@ -3,13 +3,9 @@ namespace NodePilot.Api.Tests.Architecture;
 /// <summary>
 /// Shared source enumeration for the architecture guards that scan production code as text.
 ///
-/// <para>The naive form — <c>EnumerateFiles(src, "*.cs", AllDirectories)</c> — walks the whole
-/// <c>src/</c> tree to find C# files, which means descending into <c>node_modules</c>,
-/// <c>dist</c> and <c>coverage</c> under the three npm projects. That is tens of thousands of
-/// irrelevant entries per test, and any one of them being unreadable (a half-written coverage
-/// report, a lock, a path past MAX_PATH) fails a test that has nothing to do with it.</para>
-///
-/// <para>C# only ever lives under <c>src/NodePilot.*</c>, so that is where the walk goes.</para>
+/// <para>A plain recursive scan of <c>src/</c> would also walk into <c>node_modules</c>,
+/// <c>dist</c> and <c>coverage</c> under the npm projects — huge, sometimes unreadable, and
+/// irrelevant. C# only lives under <c>src/NodePilot.*</c>, so the walk is scoped there.</para>
 /// </summary>
 internal static class ProductionSources
 {

@@ -45,7 +45,7 @@ describe('describeNodeOutputs', () => {
 
     const out = describeNodeOutputs(n);
 
-    // Output + 3 params = 4 entries
+    // Primary output plus the 3 declared parameters.
     expect(out).toHaveLength(4);
     const serverName = out.find((v) => v.variable === 'trigger.param.serverName')!;
     const restartCount = out.find((v) => v.variable === 'trigger.param.restartCount')!;
@@ -75,7 +75,7 @@ describe('describeNodeOutputs', () => {
     expect(params).toEqual(expect.arrayContaining([
       'wh.param.ticketId',
       'wh.param.severity',
-      // static catalog outputs must still be present alongside the dynamic mappings
+      // Static catalog outputs stay present alongside the dynamic mappings.
       'wh.param.webhookBody',
     ]));
     expect(params.filter((p) => p.endsWith('.param.'))).toHaveLength(0);
@@ -129,8 +129,8 @@ describe('describeNodeOutputs', () => {
   });
 
   it('startWorkflow_emitsExecutionMetadataParams', () => {
-    // The four __metadata params (executionId, status, workflowId, workflowName) are
-    // a stable contract for downstream activities to read.
+    // The four metadata params (executionId, status, workflowId, workflowName) are a
+    // stable contract that downstream activities read.
     const n = node('sw', { activityType: 'startWorkflow', outputVariable: 'sub' });
     const out = describeNodeOutputs(n);
 
@@ -157,7 +157,7 @@ describe('describeNodeOutputs', () => {
       'loop.param.firstError',
     ]));
 
-    // Counters should be typed as numbers, results as array.
+    // Counters are typed as numbers, results as an array.
     expect(out.find((v) => v.variable === 'loop.param.total')?.type).toBe('number');
     expect(out.find((v) => v.variable === 'loop.param.results')?.type).toBe('array');
   });
@@ -236,9 +236,9 @@ describe('describeNodeOutputs', () => {
   });
 
   it('wmiQuery_withCaptureProperties_emitsCountAndEachProperty', () => {
-    // Added 2026-05-17: wmiQuery now projects user-listed CIM properties into
-    // param.<Name> (plus param.count for the row total). The variable picker
-    // surfaces them so authors get autocomplete on {{wmi_os.param.Caption}}.
+    // wmiQuery projects the listed CIM properties into param.<Name>, plus param.count for
+    // the row total. The variable picker surfaces them so authors get autocomplete on
+    // {{wmi_os.param.Caption}}.
     const n = node('w', {
       activityType: 'wmiQuery',
       outputVariable: 'wmi_os',
@@ -261,10 +261,9 @@ describe('describeNodeOutputs', () => {
   });
 
   it('wmiQuery_withoutCaptureProperties_emitsOnlyPrimaryOutput', () => {
-    // Legacy contract: a wmiQuery node without captureProperties produces no
-    // per-property params. The variable picker must NOT pretend they exist —
-    // otherwise authors would see them offered here but get an "unresolved
-    // variable" error at runtime when the value was never actually captured.
+    // A wmiQuery node without captureProperties produces no per-property params, so the
+    // variable picker must not offer them: the value is never captured and the reference
+    // would fail at runtime as an unresolved variable.
     const n = node('w', {
       activityType: 'wmiQuery',
       outputVariable: 'wmi_legacy',
@@ -319,7 +318,7 @@ describe('describeNodeOutputs', () => {
     const out = describeNodeOutputs(n);
     const params = out.filter((v) => v.expression.includes('.param.')).map((v) => v.variable);
 
-    // Output + 3 status fields = 4 entries
+    // Primary output plus the 3 status fields.
     expect(out).toHaveLength(4);
     expect(params).toEqual(expect.arrayContaining([
       'statusResult.param.name',
@@ -330,8 +329,8 @@ describe('describeNodeOutputs', () => {
   });
 
   it('manualTriggerWithEmptyParameterName_isSkipped', () => {
-    // The UI lets users add a blank row, then they fill in the name. Until then we
-    // must not emit a phantom .param. entry — pin that behaviour.
+    // The UI lets users add a blank row before typing the name. No .param. entry is
+    // emitted while the name is still empty.
     const n = node('trg', {
       activityType: 'manualTrigger',
       outputVariable: 'trg',
@@ -347,8 +346,8 @@ describe('describeNodeOutputs', () => {
 
 describe('getUpstreamVariables', () => {
   it('linearChain_returnsAllAncestors_inOrderOfDistance', () => {
-    // a → b → c → target. From target's perspective, c is the closest ancestor,
-    // then b, then a. The function returns ALL of them.
+    // In the chain a, b, c, target, c is the closest ancestor of target, then b, then a.
+    // All of them are returned, not just the closest one.
     const a = node('a', { activityType: 'runScript' });
     const b = node('b', { activityType: 'runScript' });
     const c = node('c', { activityType: 'runScript' });
@@ -370,7 +369,7 @@ describe('getUpstreamVariables', () => {
   });
 
   it('diamondGraph_visitsCommonAncestorOnce', () => {
-    // a → {b, c} → d. From d, both b and c lead back to a. Pin that a is visited only once.
+    // a feeds b and c, both feed d. From d, both paths lead back to a, which is visited once.
     const a = node('a', { activityType: 'runScript' });
     const b = node('b', { activityType: 'runScript' });
     const c = node('c', { activityType: 'runScript' });
@@ -380,9 +379,8 @@ describe('getUpstreamVariables', () => {
     const vars = getUpstreamVariables('d', [a, b, c, d], edges);
     const fromA = vars.filter((v) => v.stepId === 'a');
 
-    // a is reachable via both b and c, but must be visited only once: its outputs appear without
-    // duplicates (a second visit would repeat every expression). Count-agnostic to the exact
-    // number of outputs a runScript emits (output + param.exitCode + scanned vars).
+    // a is reachable via both b and c but is visited once, so its expressions carry no
+    // duplicates. The assertion does not depend on how many outputs a runScript emits.
     const exprs = fromA.map((v) => v.expression);
     expect(exprs.length).toBeGreaterThan(0);
     expect(new Set(exprs).size).toBe(exprs.length);
@@ -418,10 +416,9 @@ describe('findEdgePathBetween', () => {
   });
 
   it('diamond_returnsOneCompletePath_BFSMarksOnDiscover', () => {
-    // BFS marks targets visited the moment they're queued, so when both a→b→d and
-    // a→c→d exist, only the FIRST-arrival path's edges land in the result. This is
-    // intentional — finding all shortest paths would need a multi-parent search.
-    // Pin the actual behaviour so a refactor that changes BFS semantics surfaces here.
+    // BFS marks a target visited the moment it is queued, so with both a-b-d and a-c-d
+    // only the edges of the first path to arrive land in the result. Returning all
+    // shortest paths would require a multi-parent search.
     const edges = [edge('e1', 'a', 'b'), edge('e2', 'a', 'c'), edge('e3', 'b', 'd'), edge('e4', 'c', 'd')];
 
     const result = findEdgePathBetween('a', 'd', edges);

@@ -25,7 +25,8 @@ public sealed class TestApi : IDisposable
         return client;
     }
 
-    /// <summary>An <see cref="McpServerConfig"/> backed by a throwaway config dir (no real %APPDATA%).</summary>
+    /// <summary>An <see cref="McpServerConfig"/> backed by a throwaway config dir (no real
+    /// %APPDATA%).</summary>
     public static McpServerConfig Config()
     {
         var dir = Path.Combine(Path.GetTempPath(), "np-mcp-test-" + Guid.NewGuid().ToString("N"));

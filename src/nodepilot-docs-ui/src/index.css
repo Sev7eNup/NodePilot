@@ -1,25 +1,25 @@
 @import 'tailwindcss';
 
-/* Dark variant anchored to html.dark — mirrors the NodePilot app shell.
-   Deliberately kept even though nothing uses a `dark:` utility today: it is the guard
-   that stops a stray third-party `.dark` class from matching. */
+/* Dark variant anchored to html.dark, mirroring the NodePilot app shell. Kept even though
+   no `dark:` utility is used today: it stops a stray third-party `.dark` class from
+   matching. */
 @custom-variant dark (html.dark &);
 
 @import '@fontsource-variable/geist';
 @import '@fontsource-variable/jetbrains-mono';
 
 /* ─────────────────────────────────────────────────────────────────────────────
-   Design tokens — ported from the NodePilot app UI (`src/nodepilot-ui/src/index.css`).
-   Light = the app's base `@theme` (blue primary); Dark = the app's default dark skin
-   "AZUR" (cool graphite ground + a single azure accent, app index.css:335-397), so the
-   docs site reads native to NodePilot users.
+   Design tokens, ported from the NodePilot app UI (`src/nodepilot-ui/src/index.css`).
+   Light is the app's base `@theme` (blue primary); dark is the app's default dark skin
+   "AZUR" (graphite ground with a single azure accent), so the docs site looks native to
+   NodePilot users.
 
-   PORTING RULE — two mechanical rewrites are applied to every block copied from the app,
-   because the docs site has neither the 7-skin system nor a single `<aside>`:
-     1. `[data-skin="dark"]` is dropped (there is no `data-skin` attribute here).
-     2. bare `aside` in a selector becomes `.np-sidebar` — Toc.tsx would otherwise inherit
+   Porting rule: every block copied from the app gets two mechanical rewrites, because the
+   docs site has neither the skin system nor a single `<aside>`:
+     1. `[data-skin="dark"]` is dropped; there is no `data-skin` attribute here.
+     2. A bare `aside` in a selector becomes `.np-sidebar`, so Toc.tsx does not inherit
         the rail gradient and its accent edge.
-   Keep those rewrites mechanical so a future re-sync against the app stays a trivial diff.
+   Keeping the rewrites mechanical keeps a later re-sync against the app a small diff.
    ──────────────────────────────────────────────────────────────────────────── */
 @theme {
   --color-surface: #f8f9fb;
@@ -70,13 +70,12 @@
 :root { color-scheme: light; }
 html.dark { color-scheme: dark; }
 
-/* Dark mode — the app's default dark skin "AZUR" (app index.css:335-397, flattened from
-   `html.dark .np-shell` onto `html.dark` since there is only one dark skin here).
-   Ground: hue 220 at ~5% saturation — not neutral grey and not blue, just enough chroma
-   that the near-blacks read as chosen. The azure accent sits ~5° off the ground hue, so
-   it never clashes but is the only vivid thing on screen.
-   The tertiary / error / inverse families come from the app's `html.dark` base block
-   (app index.css:238-260) — Azur does not redeclare them, but the `@theme` above does. */
+/* Dark mode: the app's default dark skin "AZUR", flattened from `html.dark .np-shell`
+   onto `html.dark` because there is only one dark skin here. The ground is hue 220 at low
+   saturation, so the near-blacks carry a trace of chroma, and the azure accent sits close
+   to that hue, which keeps it the only vivid colour on screen.
+   The tertiary, error and inverse families come from the app's `html.dark` base block;
+   Azur does not redeclare them, but the `@theme` above does. */
 html.dark {
   --color-surface:          #111216;
   --color-surface-dim:      #08090b;
@@ -137,8 +136,8 @@ html.dark {
 
 @layer base {
   html {
-    /* Matches the 3rem sticky TopBar plus a little air, so a `#hash` target or a TOC
-       jump never lands underneath it. */
+    /* Clears the 3rem sticky TopBar, so a `#hash` target or a TOC jump never lands
+       underneath it. */
     scroll-padding-top: 4.5rem;
   }
   @media (prefers-reduced-motion: no-preference) {
@@ -154,9 +153,9 @@ html.dark {
   ::selection { background: color-mix(in srgb, var(--np-accent) 25%, transparent); }
 }
 
-/* ── Scrollbars (app index.css:1495-1526) ──────────────────────────────────────
-   Thin, transparent track, thumb in the outline tokens. Firefox/old Edge use
-   `scrollbar-width/color`, Chromium/Safari the ::-webkit pseudos. */
+/* ── Scrollbars ────────────────────────────────────────────────────────────────
+   Thin, transparent track, thumb in the outline tokens. Firefox and old Edge use
+   `scrollbar-width/color`, Chromium and Safari the ::-webkit pseudos. */
 * {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--color-outline-variant) 70%, transparent) transparent;
@@ -175,19 +174,16 @@ html.dark {
 ::-webkit-scrollbar-corner { background: transparent; }
 
 /* ── App ground + accent depth-glow ────────────────────────────────────────────
-   The app paints this glow on `main` (app index.css:401-405) because its <main> is a
-   viewport-height overflow-hidden box. The docs scrolls the DOCUMENT, so `main` is
-   document-tall and a percentage-sized radial gradient degenerates (and would seam at
-   the content-column edges). Painted here as a viewport-fixed pseudo-element instead.
+   Painted as a viewport-fixed pseudo-element: the docs site scrolls the document, so
+   `main` is document-tall and a percentage-sized radial gradient would degenerate there
+   and seam at the content-column edges.
 
-   `isolation: isolate` + `z-index: -1` is what puts the glow BEHIND the content: a
+   `isolation: isolate` plus `z-index: -1` keeps the glow behind the content, because a
    negative-z child paints just above its stacking context's background. Without the
-   isolate `.np-shell` would not form one and the pseudo would sink behind the page fill
-   entirely; without the negative z, a positioned pseudo would paint OVER the static
-   content column and tint the body text. (Same pattern as the app's `.np-login` /
-   `.np-login-aurora`.) `isolation` creates a stacking context but NOT a containing
-   block, so the fixed pseudo — and the drawer/backdrop/modal inside — stay
-   viewport-anchored. */
+   isolate, `.np-shell` forms no stacking context and the pseudo-element sinks behind the
+   page fill; without the negative z it paints over the content column and tints the body
+   text. `isolation` creates a stacking context but no containing block, so the fixed
+   pseudo-element, and the drawer, backdrop and modal inside, stay viewport-anchored. */
 .np-shell { background-color: var(--color-surface); isolation: isolate; }
 html.dark .np-shell { background-color: var(--color-surface-low); }
 html.dark .np-shell::before {
@@ -201,11 +197,11 @@ html.dark .np-shell::before {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   SIDEBAR — ported from app index.css:1767-1960 + 2091-2108 + 501-528.
-   Geometry / gradients / shadows are the app's 1:1; every colour flows through the
+   Sidebar, ported from the app's index.css.
+   Geometry, gradients and shadows match the app; every colour flows through the
    --color-* tokens plus the sidebar-local --np-sb-* set derived from them, so the look
-   adapts to light/dark on its own. On-surface-alpha overlays are used for chrome so
-   they auto-invert between the two bases.
+   adapts to light and dark on its own. Chrome uses on-surface alpha overlays so it
+   inverts with the base it sits on.
    ──────────────────────────────────────────────────────────────────────────── */
 .np-sidebar {
   isolation: isolate;
@@ -216,8 +212,8 @@ html.dark .np-shell::before {
   --np-sb-control-hover: color-mix(in srgb, var(--color-on-surface) 9%, transparent);
   --np-sb-heading:       color-mix(in srgb, var(--color-on-surface-variant) 64%, transparent);
   --np-sb-muted:         color-mix(in srgb, var(--color-on-surface-variant) 74%, transparent);
-  /* Brighter "raised" fill for the search box. Light bases → near-white; dark bases
-     override to a soft white overlay below. */
+  /* Brighter raised fill for the search box. Light bases resolve to near-white; dark
+     bases override it with a soft white overlay below. */
   --np-sb-raised:        color-mix(in srgb, #ffffff 82%, var(--color-surface));
   --np-sb-raised-hover:  color-mix(in srgb, #ffffff 94%, var(--color-surface));
 
@@ -237,17 +233,15 @@ html.dark .np-shell::before {
 html.dark .np-sidebar {
   --np-sb-raised:        color-mix(in srgb, #ffffff 6%, transparent);
   --np-sb-raised-hover:  color-mix(in srgb, #ffffff 9%, transparent);
-  /* Section labels sat at 64% of an already-muted ink, which put them under 4.5:1 on
-     the darker rail (app index.css:3170-3174). */
+  /* Section labels need a lighter ink on the darker rail to stay above 4.5:1. */
   --np-sb-heading: color-mix(in srgb, var(--color-on-surface-variant) 72%, transparent);
 }
 
 /* Rail: a vertical gradient plus a lit accent edge on its right side.
-   The edge is painted as a BACKGROUND LAYER, not a ::after pseudo-element. That is
-   deliberate — Sidebar.tsx puts `np-sidebar` and the mobile drawer's
-   `fixed inset-y-0 -translate-x-full` on the SAME <aside>, so giving this element
-   `position: relative` (which a positioned ::after would require) drops the off-canvas
-   drawer back into the document flow and breaks it on mobile. (app index.css:501-512) */
+   The edge is a background layer rather than an ::after pseudo-element: Sidebar.tsx puts
+   `np-sidebar` and the mobile drawer's `fixed inset-y-0 -translate-x-full` on the same
+   <aside>, so the `position: relative` a positioned ::after needs would drop the
+   off-canvas drawer back into the document flow and break it on mobile. */
 html.dark .np-sidebar {
   background:
     linear-gradient(180deg, transparent 6%, var(--np-accent) 50%, transparent 94%) right / 1px 100% no-repeat,
@@ -265,7 +259,7 @@ html.dark .np-sidebar {
     inset 0 1px 0 color-mix(in srgb, var(--color-on-surface) 8%, transparent),
     0 8px 24px color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
-/* Faint accent halo so the logo reads as lit, not pasted on (app index.css:526-528). */
+/* Faint accent halo so the logo reads as lit rather than pasted on. */
 html.dark .np-brand-mark img {
   filter: drop-shadow(0 0 7px color-mix(in srgb, var(--np-accent) 35%, transparent));
 }
@@ -284,9 +278,8 @@ html.dark .np-brand-mark img {
 }
 
 /* ── Search ────────────────────────────────────────────────────────────────── */
-/* Same treatment as the app's nav filter, but this is a BUTTON that opens the search
-   modal — the docs search has always been a modal, and a focus-triggered <input> would
-   fight Ctrl-K for the focus. */
+/* Same treatment as the app's nav filter, but this is a button that opens the search
+   modal. A focus-triggered <input> would compete with Ctrl-K for the focus. */
 .np-sb-search-input {
   width: 100%;
   height: 40px;
@@ -329,10 +322,9 @@ button.np-sb-search-input {
 }
 
 /* ── Download CTA ──────────────────────────────────────────────────────────── */
-/* Shares the search field's geometry so the rail keeps one rhythm, but is the only
-   accent-filled control in the sidebar — it is the single action the site is trying to
-   produce, and nothing else competes with it. Colours come from the skin tokens, so it
-   follows light/dark without a second rule. */
+/* Shares the search field's geometry so the rail keeps one rhythm, and is the only
+   accent-filled control in the sidebar, so the primary action stands alone. Colours come
+   from the skin tokens, so it follows light and dark without a second rule. */
 .np-sb-download {
   display: flex;
   align-items: center;
@@ -348,28 +340,26 @@ button.np-sb-search-input {
   font-weight: 600;
   transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
 }
-/* Hover deepens the fill toward the accent — but the label is drawn IN the accent, so a
-   deeper fill moves background and text together and costs contrast. 22% is the ceiling
-   that still clears AA in the light skin (4.76:1; 26% lands at 4.43:1 and fails). Dark is
-   not the binding case here — its label is the far lighter --np-accent-text. */
+/* Hover deepens the fill toward the accent. The label is drawn in the accent too, so a
+   deeper fill moves background and text together and costs contrast; 22% is the highest
+   value that still clears AA in the light skin, which is the binding case. */
 .np-sb-download:hover {
   border-color: color-mix(in srgb, var(--np-accent) 78%, transparent);
   background: color-mix(in srgb, var(--np-accent) 22%, transparent);
 }
-/* A real outline, not a tinted box-shadow. A translucent accent halo over this rail
-   measures ~1.3:1 and is invisible — far below the 3:1 WCAG 1.4.11 asks of a focus
-   indicator. An opaque outline in --np-accent-text gives 6.8:1 (light) / 7.5:1 (dark),
-   and unlike box-shadow it survives forced-colors/high-contrast mode. */
+/* An outline, not a tinted box-shadow. A translucent accent halo over this rail stays
+   below the 3:1 that WCAG 1.4.11 asks of a focus indicator, while an opaque outline in
+   --np-accent-text clears it in both themes and survives forced-colors mode. */
 .np-sb-download:focus-visible {
   outline: 2px solid var(--np-accent-text);
   outline-offset: 2px;
 }
 
 /* ── Sections ──────────────────────────────────────────────────────────────── */
-/* Category label with a divider line filling the rest of the row. Rendered as a
-   <button> here (the docs groups collapse), so it needs the cursor back — Tailwind v4
-   dropped `cursor: pointer` from the button preflight. The ::after divider is `flex: 1`
-   and always the LAST flex item, so the chevron necessarily sits between label and rule. */
+/* Category label with a divider line filling the rest of the row. It is a <button>
+   because the docs groups collapse, and Tailwind v4 drops `cursor: pointer` from the
+   button preflight, so the cursor is set again here. The ::after divider is `flex: 1` and
+   the last flex item, which places the chevron between label and rule. */
 .np-sb-section-title {
   display: flex;
   align-items: center;
@@ -391,7 +381,7 @@ button.np-sb-search-input {
   height: 1px;
   background: var(--np-sb-divider);
 }
-/* `color` is set unlayered above, so a `hover:text-*` utility would never win. */
+/* `color` is set unlayered above, so a `hover:text-*` utility cannot override it. */
 .np-sb-section-title:hover { color: var(--color-on-surface-variant); }
 
 /* ── Nav links: [icon tile] [label] grid ───────────────────────────────────── */
@@ -433,8 +423,8 @@ button.np-sb-search-input {
   background: var(--np-sb-control);
 }
 
-/* Active route: accent gradient fill + border + glow, lit icon tile, left accent bar.
-   Keys off the `aria-current="page"` that react-router's NavLink sets itself. */
+/* Active route: accent gradient fill, border and glow, lit icon tile, left accent bar.
+   Driven by the `aria-current="page"` that react-router's NavLink sets itself. */
 .np-sidebar a.np-nav[aria-current="page"] {
   border-color: var(--np-sb-active-border, color-mix(in srgb, var(--color-primary) 24%, transparent));
   background: var(--np-sb-active-background, linear-gradient(90deg,
@@ -484,9 +474,8 @@ button.np-sb-search-input {
 
 /* ── Language segment (DE | EN) ────────────────────────────────────────────── */
 /* Shares the height and shell of .np-skin-btn so the footer row stays one line of
-   controls, but carries two text segments instead of a glyph. Text-only by design:
-   a flag would be wrong (languages are not countries) and a globe says "language"
-   without saying WHICH — the two codes say both at a glance. */
+   controls, but carries two text segments instead of a glyph. Text rather than an icon:
+   a flag stands for a country, not a language, and a globe does not name the language. */
 .np-sb-lang {
   display: flex;
   height: 38px;
@@ -521,9 +510,9 @@ button.np-sb-search-input {
   outline-offset: -2px;
 }
 
-/* The mobile drawer is always mounted (one <aside> serves both layouts), so it must be
-   taken out of the tab order when closed — otherwise 40 off-screen links stay reachable.
-   `visibility` is transitioned with a delay so the slide-out still plays. */
+/* The mobile drawer stays mounted, because one <aside> serves both layouts, so it must
+   leave the tab order when closed or its off-screen links stay reachable. `visibility`
+   is transitioned with a delay so the slide-out still plays. */
 .np-sidebar { transition-property: transform, visibility; }
 .np-sidebar.is-closed { transition-delay: 0s, 200ms; }
 
@@ -532,10 +521,10 @@ button.np-sb-search-input {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   CARDS — app index.css:1536-1541 + the Azur depth layer at 3037-3075.
-   The material is LIT, not glass: a lit rim on top, a face gradient shading downward,
-   a shaded lip at the bottom, and a hard contact line under a soft form shadow.
-   Deliberately no `backdrop-filter` — the face gradient carries the same read at zero cost.
+   Cards, ported from the app's index.css and its Azur depth layer.
+   The material reads as lit, not glass: a lit rim on top, a face gradient shading
+   downward, a shaded lip at the bottom, and a hard contact line under a soft form shadow.
+   No `backdrop-filter`: the face gradient gives the same result without the cost.
    ──────────────────────────────────────────────────────────────────────────── */
 .np-card {
   position: relative;
@@ -566,7 +555,7 @@ html.dark .np-card {
   box-shadow: var(--np-az-sheen), var(--np-az-shadow-lg);
 }
 /* Prev/next cards. `html.dark .np-card` sets the four border-*-color longhands
-   unlayered, so a Tailwind `hover:border-*` utility could never win here. */
+   unlayered, so a Tailwind `hover:border-*` utility cannot override them. */
 .np-card.np-doc-nav { transition: border-color .16s ease; }
 .np-card.np-doc-nav:hover { border-color: color-mix(in srgb, var(--np-accent-ring) 45%, transparent); }
 
@@ -599,8 +588,8 @@ html.dark .np-card {
 .np-prose tbody tr:last-child td { border-bottom: none; }
 
 /* ── Code blocks ──────────────────────────────────────────────────────────────
-   Tokenized so the block lives INSIDE the surface ramp instead of being a foreign
-   near-black island — one rule serves both themes. */
+   Tokenized so the block sits inside the surface ramp instead of being a foreign
+   near-black island; one rule serves both themes. */
 .np-prose pre {
   background: var(--color-surface-lowest);
   border: 1px solid var(--color-outline-variant);
@@ -609,7 +598,7 @@ html.dark .np-card {
 }
 .np-prose pre code { font-family: var(--font-mono); color: var(--color-on-surface); background: transparent; padding: 0; border: 0; }
 
-/* highlight.js token colors — light palette (default). GitHub-light-ish. */
+/* highlight.js token colors, light palette (default), close to the GitHub light theme. */
 .hljs-comment, .hljs-quote { color: #6e7781; font-style: italic; }
 .hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: #cf222e; }
 .hljs-string, .hljs-attr { color: #0a7d33; }
@@ -622,9 +611,8 @@ html.dark .np-card {
 .hljs-deletion { color: #cf222e; }
 .hljs-addition { color: #0a7d33; }
 
-/* Dark palette — GitHub-dark, cool-dominant. The previous warm set (#ff9b6e keywords,
-   #fda4af variables) fought the azure accent; on Azur the accent must stay the only
-   vivid thing on screen. */
+/* Dark palette, close to the GitHub dark theme and cool-dominant, so the azure accent
+   stays the most vivid colour on screen. */
 html.dark .hljs-comment, html.dark .hljs-quote { color: #8b949e; }
 html.dark .hljs-keyword, html.dark .hljs-selector-tag, html.dark .hljs-built_in { color: #ff7b72; }
 html.dark .hljs-string, html.dark .hljs-attr { color: #a5d6ff; }

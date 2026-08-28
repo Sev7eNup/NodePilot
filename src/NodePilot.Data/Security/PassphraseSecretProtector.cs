@@ -5,27 +5,25 @@ using NodePilot.Core.Interfaces;
 namespace NodePilot.Data.Security;
 
 /// <summary>
-/// Passphrase-derived <see cref="ISecretProtector"/> used exclusively by the system-backup
-/// feature (ADR 0001 — the disaster-recovery `.npbackup` snapshot format). Unlike the at-rest
+/// Passphrase-derived <see cref="ISecretProtector"/> used only by the system-backup feature
+/// (ADR 0001, the disaster-recovery <c>.npbackup</c> snapshot format). Unlike the at-rest
 /// protectors (DPAPI / AES-GCM master key), this one derives its keys from an operator-supplied
-/// passphrase + a random per-file salt, so a <c>.npbackup</c> archive is portable to any host:
-/// whoever has the passphrase can restore it.
+/// passphrase plus a random per-file salt, so a <c>.npbackup</c> archive is portable to any host
+/// with the right passphrase.
 ///
 /// <para>
-/// Key separation (a design requirement from ADR 0001, tracked there as item K14): the
-/// passphrase is run through PBKDF2-SHA256 into a single 256-bit master secret, which is then
-/// split via HKDF-Expand into three independent subkeys —
-/// <c>encKey</c> (AES-256-GCM of the per-field <c>$enc</c> blobs), <c>macKey</c> (whole-file
-/// HMAC-SHA256 over the canonical JSON) and <c>verifierKey</c> (encrypts a known token so a
-/// wrong passphrase is detected before any write). The same PBKDF2 output is never used for
-/// more than one purpose.
+/// Key separation (ADR 0001 item K14): the passphrase goes through PBKDF2-SHA256 into a single
+/// 256-bit master secret, then splits via HKDF-Expand into three independent subkeys:
+/// <c>encKey</c> (AES-256-GCM for the per-field <c>$enc</c> blobs), <c>macKey</c> (whole-file
+/// HMAC-SHA256 over the canonical JSON), and <c>verifierKey</c> (encrypts a known token so a
+/// wrong passphrase is detected before any write). Each PBKDF2 output serves only one purpose.
 /// </para>
 ///
 /// <para>
 /// The <see cref="ISecretProtector"/> surface (<see cref="Protect"/> / <see cref="Unprotect"/>)
-/// covers only the per-field encryption with <c>encKey</c>; the MAC and verifier are exposed as
-/// concrete members because they have no meaning for the generic at-rest abstraction.
-/// Wire format of a field blob matches <see cref="AesGcmSecretProtector"/>:
+/// covers only per-field encryption with <c>encKey</c>; the MAC and verifier are exposed as
+/// concrete members since they have no meaning for the generic at-rest abstraction. Wire format
+/// of a field blob matches <see cref="AesGcmSecretProtector"/>:
 /// <c>[1 byte version=0x01] [12 byte nonce] [N byte ciphertext] [16 byte tag]</c>.
 /// </para>
 /// </summary>
@@ -80,7 +78,7 @@ public sealed class PassphraseSecretProtector : ISecretProtector
             Encoding.UTF8.GetBytes(passphrase), salt, iterations, HashAlgorithmName.SHA256, KeySize);
         try
         {
-            // master is already uniformly random → HKDF-Expand (no extract salt needed) is sufficient.
+            // master is already random, so HKDF-Expand (no extract salt) suffices.
             var enc = HKDF.Expand(HashAlgorithmName.SHA256, master, KeySize, EncInfo);
             var mac = HKDF.Expand(HashAlgorithmName.SHA256, master, KeySize, MacInfo);
             var ver = HKDF.Expand(HashAlgorithmName.SHA256, master, KeySize, VerifierInfo);
@@ -104,7 +102,9 @@ public sealed class PassphraseSecretProtector : ISecretProtector
         return Encoding.UTF8.GetString(plain);
     }
 
-    /// <summary>HMAC-SHA256 over the canonical file bytes using the dedicated <c>macKey</c> (the MAC-subkey requirement from ADR 0001, item K5).</summary>
+    /// <summary>
+    /// HMAC-SHA256 over the canonical file bytes using the dedicated <c>macKey</c> (ADR 0001 K5).
+    /// </summary>
     public byte[] ComputeMac(byte[] canonicalBytes)
     {
         ArgumentNullException.ThrowIfNull(canonicalBytes);
@@ -119,7 +119,9 @@ public sealed class PassphraseSecretProtector : ISecretProtector
         return CryptographicOperations.FixedTimeEquals(actual, expectedMac);
     }
 
-    /// <summary>Produces the verifier blob stored in the file header (<c>crypto.verifier</c>).</summary>
+    /// <summary>
+    /// Produces the verifier blob stored in the file header (<c>crypto.verifier</c>).
+    /// </summary>
     public byte[] CreateVerifier() => EncryptGcm(_verifierKey, VerifierToken);
 
     /// <summary>

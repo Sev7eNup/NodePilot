@@ -27,17 +27,17 @@ public interface IClusterStateProvider
     DateTime? LeaseExpiresAt { get; }
 
     /// <summary>
-    /// Monotonic fencing token. Increments by 1 each time *any* node acquires the lease
-    /// (not on renew). Audit events emit this so the leader-handoff history is reconstructable.
+    /// Monotonic fencing token. Increments by 1 each time any node acquires the lease
+    /// (not on renew). Audit events emit it so the leader-handoff history is reconstructable.
     /// </summary>
     long LeaseEpoch { get; }
 
     /// <summary>
     /// UTC timestamp of the most recent successful DB-side lease renewal. <c>null</c> if no
-    /// renewal has succeeded yet. The fail-closed leader-health endpoint refuses to answer
-    /// 200 once <c>now − LastSuccessfulRenewAt &gt; LeaseTtl</c>, regardless of in-memory
-    /// <see cref="IsLeader"/> state — so a leader that has lost DB connectivity cannot keep
-    /// pretending to be the active node.
+    /// renewal has succeeded yet. The fail-closed leader-health endpoint stops answering 200
+    /// once <c>now − LastSuccessfulRenewAt &gt; LeaseTtl</c>, regardless of the in-memory
+    /// <see cref="IsLeader"/> state, so a leader that lost DB connectivity cannot keep
+    /// reporting itself as the active node.
     /// </summary>
     DateTime? LastSuccessfulRenewAt { get; }
 

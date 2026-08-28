@@ -2,20 +2,20 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 10 — UI/UX Tests.
+ * E2ETests.md part 10 — UI/UX tests.
  *
- * 10.1 Properties-Panel Responsiveness → select a node, type fast into a per-keystroke field
- *      (the Output-Variable input updates the store on every change), assert nothing is lost
+ * 10.1 Properties panel responsiveness: select a node, type fast into a per-keystroke field
+ *      (the Output Variable input updates the store on every change), assert nothing is lost
  *      and the inline node-name editor commits the full typed value.
- * 10.2 Mobile Responsiveness (optional) → shrink to 375px and confirm pages still render and
- *      navigation works (no crash). A "desktop-only" warning is acceptable per the spec — we
- *      assert the app stays mounted and usable rather than a specific layout.
- * 10.3 Accessibility (basic)            → buttons/links expose accessible names, form fields
- *      are reachable & labelled, and keyboard nav (Tab focus, Enter activate, Escape close)
- *      works. Full axe scans are out of scope for a hermetic spec; we assert the concrete,
- *      checkable affordances.
+ * 10.2 Mobile responsiveness (optional): shrink to 375px and confirm pages still render and
+ *      navigation works. A "desktop-only" warning is acceptable per the spec, so the test
+ *      asserts the app stays mounted and usable rather than a specific layout.
+ * 10.3 Accessibility (basic): buttons and links expose accessible names, form fields are
+ *      reachable and labelled, and keyboard nav (Tab focus, Enter activate, Escape close)
+ *      works. Full axe scans are out of scope for a hermetic spec, so only the concrete,
+ *      checkable affordances are asserted.
  *
- * Hermetic: page.route() mocks only (no backend). SPA renders EN under Playwright.
+ * Hermetic: page.route() mocks only (no backend). The SPA renders English under Playwright.
  */
 
 const WF_ID = '10101010-1010-1010-1010-101010101010';
@@ -27,7 +27,7 @@ function workflowWithNode() {
     name: 'UIUX_E2E_WF',
     description: '',
     isEnabled: false,
-    checkedOutByUserId: MOCK_USER.id, // locked-by-me → canWrite (Admin + own lock)
+    checkedOutByUserId: MOCK_USER.id, // Locked by the mock admin, so canWrite is true
     checkedOutByUserName: MOCK_USER.username,
     checkedOutAt: '2026-06-01T00:00:00.000Z',
     definitionJson: JSON.stringify({
@@ -57,7 +57,7 @@ async function openEditorAndSelectNode(page: Page) {
   const node = page.locator(`.react-flow__node[data-id="${NODE_ID}"]`);
   await expect(node).toBeVisible({ timeout: 20_000 });
   await node.click();
-  // Properties panel opens → its header inline-editable "Node name" is present.
+  // The properties panel opens with the inline-editable "Node name" header present.
   await expect(page.getByRole('button', { name: 'Node name' }).or(page.getByRole('textbox', { name: 'Node name' }))).toBeVisible({ timeout: 10_000 });
 }
 
@@ -82,7 +82,7 @@ test.describe('UI/UX (Teil 10)', () => {
     await outInput.pressSequentially('diskCheckResult', { delay: 8 });
     // No lost characters: the input holds the full value.
     await expect(outInput).toHaveValue('diskCheckResult');
-    // Commit (Enter closes the popover) and confirm the pill reflects the value (UI stayed in sync).
+    // Enter commits and closes the popover; the pill then reflects the value.
     await outInput.press('Enter');
     await expect(page.getByRole('button', { name: /diskCheckResult/ })).toBeVisible();
 

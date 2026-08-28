@@ -39,6 +39,7 @@ public static class LlmTestOptions
             },
         };
 
-    /// <summary>Enabled, but with no profile to resolve — the 503 <c>LLM_NO_ACTIVE_PROFILE</c> state.</summary>
+    /// <summary>Enabled, but with no profile to resolve — the 503 <c>LLM_NO_ACTIVE_PROFILE</c>
+    /// state.</summary>
     public static LlmOptions EnabledWithoutProfile() => new() { Enabled = true };
 }

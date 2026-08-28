@@ -1,8 +1,8 @@
 namespace NodePilot.Core.Enums;
 
 /// <summary>
-/// What a <see cref="NodePilot.Core.Models.MaintenanceWindow"/> applies to. Exactly ONE
-/// kind per window — for mixed coverage, compose multiple windows.
+/// What a <see cref="NodePilot.Core.Models.MaintenanceWindow"/> applies to. A window has exactly
+/// one kind; compose several windows for mixed coverage.
 /// </summary>
 public enum MaintenanceScopeKind
 {
@@ -10,8 +10,8 @@ public enum MaintenanceScopeKind
     Global,
 
     /// <summary>
-    /// The folders listed in Targets (TargetKind=Folder) and ALL their descendant folders.
-    /// Folder membership resolves via <c>ParentFolderId</c> traversal, not the display path.
+    /// The folders listed in Targets (TargetKind=Folder) and all their descendant folders.
+    /// Membership resolves by <c>ParentFolderId</c> traversal, not by the display path.
     /// </summary>
     Folders,
 

@@ -4,13 +4,13 @@ import { VariablePreviewTooltip } from '../../../components/designer/properties/
 import type { StepExecution } from '../../../types/api';
 
 /**
- * VariablePreviewTooltip wraps a hoverable surface (typically a variable-row) and pops a
- * delayed bubble showing the last-run value. We pin:
+ * VariablePreviewTooltip wraps a hoverable surface (typically a variable row) and shows a
+ * delayed bubble with the last-run value. Covered here:
  *   - 250 ms hover delay before opening
- *   - leave-before-delay closes silently
- *   - empty step → "no value" italics
+ *   - leaving before the delay elapses closes it silently
+ *   - a step without a value renders the fallback message
  *   - existing onMouseEnter / onMouseLeave / onClick handlers still fire alongside the tooltip
- *   - cleanup of the timer on unmount (no console errors / setState-on-unmount warnings)
+ *   - the timer is cleared on unmount, so no state is set after unmounting
  */
 
 function step(over: Partial<StepExecution> = {}): StepExecution {
@@ -63,7 +63,7 @@ describe('VariablePreviewTooltip', () => {
   });
 
   it('noStep_showsNoValueMessage', () => {
-    // Workflow has never run yet → preview is null → friendly fallback text.
+    // The workflow has never run, so the preview is null and the fallback text is shown.
     render(
       <VariablePreviewTooltip step={undefined} expression="{{disk.output}}">
         <div data-testid="row">disk.output</div>
@@ -87,7 +87,7 @@ describe('VariablePreviewTooltip', () => {
   });
 
   it('forwardsMouseEnterAndLeaveHandlers', () => {
-    // The tooltip wraps existing var-flow-highlight hover handlers — those must still fire.
+    // The tooltip wraps existing var-flow-highlight hover handlers, which must still fire.
     const onEnter = vi.fn();
     const onLeave = vi.fn();
     render(
@@ -135,7 +135,7 @@ describe('VariablePreviewTooltip', () => {
   });
 
   it('unmountWhilePending_doesNotThrow', () => {
-    // No state-on-unmounted-component warnings — clearTimeout in cleanup must run.
+    // Cleanup must clear the pending timer so no state is set on an unmounted component.
     const { unmount } = render(
       <VariablePreviewTooltip step={step()} expression="{{disk.output}}">
         <div data-testid="row" />

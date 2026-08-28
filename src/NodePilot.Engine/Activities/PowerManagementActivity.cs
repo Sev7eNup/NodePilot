@@ -15,9 +15,9 @@ namespace NodePilot.Engine.Activities;
 ///   action        string, required — "shutdown" | "restart" | "logoff" | "abort" | "hibernate"
 ///   delaySeconds  int, default 0   — /t N countdown before execution (shutdown/restart only)
 ///   force         bool, default true — /f, closes running apps without prompting
-///   message       string, optional  — /c "comment" shown in the shutdown dialog (shutdown/restart only)
+///   message       optional shutdown or restart dialog comment
 ///
-/// IMPORTANT: a "restart" targeting the host that NodePilot itself runs on terminates the API
+/// A "restart" targeting the host that NodePilot itself runs on terminates the API
 /// process and every execution running on it. A delay &gt; 0 gives the step time to return
 /// cleanly before the OS shuts down.
 /// </summary>
@@ -43,21 +43,21 @@ public class PowerManagementActivity : BaseRemoteActivity
 
     protected override string BuildScript(JsonElement config, StepExecutionContext context)
     {
-        // INTENTIONAL: do NOT default `action` server-side. PowerManagement only has
-        // destructive actions (shutdown/restart/logoff/hibernate); a silent default
-        // would turn a malformed import or AI-generated workflow into a real shutdown
-        // of a remote host (the C4 guard only catches localhost without creds). The
-        // UI persists the visual default on first render so user-authored configs are
-        // never empty; this throw is the defence-in-depth boundary for everything else.
+        // Do not default `action` server-side. PowerManagement only has destructive
+        // actions (shutdown/restart/logoff/hibernate); a silent default would turn a
+        // malformed import or AI-generated workflow into a real shutdown of a remote
+        // host (the self-shutdown guard below only catches localhost without creds).
+        // The UI persists the visual default on first render so user-authored configs
+        // are never empty; this throw is the defence-in-depth boundary for everything else.
         var action = config.GetStringOrNull("action")?.ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(action))
             throw new InvalidOperationException(
                 "Power Management: 'action' is required (shutdown/restart/logoff/abort/hibernate)");
 
-        // C4: refuse to shut down / restart / hibernate the NodePilot host itself unless
-        // an admin explicitly opts in. The localhost-bypass otherwise lets a careless
-        // workflow take the entire engine offline (and any in-flight executions with it).
-        // Conditions: target resolves to localhost AND no explicit remote credential.
+        // Refuse to shut down / restart / hibernate the NodePilot host itself unless an
+        // admin explicitly opts in. The localhost bypass otherwise lets a careless
+        // workflow take the entire engine offline, along with any in-flight executions.
+        // Conditions: target resolves to localhost and no explicit remote credential is set.
         var machine = context.ResolvedMachine;
         var hasExplicitCredential = context.CredentialId is not null
             || (machine?.DefaultCredentialId is not null);

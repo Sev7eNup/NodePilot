@@ -319,7 +319,8 @@ public sealed class AdminSettingsController : ControllerBase
     {
         if (request?.Settings is null) return BadRequest(new { code = "SETTINGS_BODY_INVALID" });
 
-        // "Use the stored key" needs a stored key to point at: ProfileId is the single authoritative
+        // "Use the stored key" needs a stored key to point at: ProfileId is the single
+        // authoritative
         // id here (the probe DTO deliberately carries none), and it must name an existing profile.
         if (SettingsSchema.IsUnchangedSecretValue(request.Settings.ApiKey))
         {

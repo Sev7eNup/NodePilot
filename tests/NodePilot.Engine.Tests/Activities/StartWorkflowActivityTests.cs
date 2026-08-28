@@ -147,7 +147,7 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
         var parent = await InsertWorkflowAsync("parent");
         var parentExec = await InsertExecutionAsync(parent.Id);
         var child = await InsertWorkflowAsync("Child-Job");
-        child.IsEnabled = false; // resolution happens before the enabled check → "disabled"
+        child.IsEnabled = false; // resolution happens before the enabled check -> "disabled"
         await _db.SaveChangesAsync(); // proves the CI lookup FOUND it (vs "not found")
 
         var result = await CreateActivity().ExecuteAsync(
@@ -192,7 +192,8 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
             Cfg("""{"workflowNameOrId":"Daily"}"""),
             CancellationToken.None);
 
-        // The exact-case row ("Daily", disabled) must win over the CI duplicate — no ambiguity error.
+        // The exact-case row ("Daily", disabled) must win over the CI duplicate — no ambiguity
+        // error.
         result.Success.Should().BeFalse();
         result.ErrorOutput.Should().Contain("'Daily' is disabled");
     }
@@ -204,7 +205,8 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
         var parentExec = await InsertExecutionAsync(parent.Id);
         var child = await InsertWorkflowAsync("child");
 
-        // Pre-create the child execution row that the activity will look up after engine.ExecuteAsync.
+        // Pre-create the child execution row that the activity will look up after
+        // engine.ExecuteAsync.
         var childExecId = Guid.NewGuid();
         _db.WorkflowExecutions.Add(new WorkflowExecution
         {
@@ -327,8 +329,7 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
     [Fact]
     public async Task ExecuteAsync_FireAndForget_ExplicitTimeout_IsHonoredOnDetachedChild()
     {
-        // Previously the detached path ignored timeoutSeconds entirely — a node author who set
-        // one got no ceiling. It must now be forwarded to the child engine run.
+        // Detached child runs must receive the configured timeout ceiling.
         var parent = await InsertWorkflowAsync("parent");
         var parentExec = await InsertExecutionAsync(parent.Id);
         await InsertWorkflowAsync("child");

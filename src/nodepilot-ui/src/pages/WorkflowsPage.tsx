@@ -42,8 +42,8 @@ type ImportResponse = { created: number; workflows: ImportedWorkflowInfo[]; erro
 type ScorchImportedWorkflowInfo = {
   id: string; name: string; originalName: string | null;
   activityCount: number; heuristicCount: number; fallbackCount: number;
-  /** Where it landed. A SCOrch export carries its own folder tree, which the import rebuilds
-   *  below the chosen destination — so this is not necessarily the folder that was picked. */
+  /** Folder the workflow landed in. A SCOrch export carries its own folder tree, which the
+   *  import rebuilds below the chosen destination, so it is not always the picked folder. */
   folderPath: string | null;
 };
 type ScorchImportedVariableInfo = {
@@ -59,7 +59,7 @@ type ScorchImportResponse = {
   errors: string[];
 };
 
-/** Module-level so the identity stays stable across renders — useBulkSelection memoizes on it. */
+/** Module-level so the identity stays stable across renders; useBulkSelection memoizes on it. */
 const workflowKey = (w: Workflow) => w.id;
 
 function buildTriggerMeta(t: (k: string) => string): Record<string, { label: string; icon: typeof Time; className: string }> {
@@ -119,17 +119,16 @@ export function WorkflowsPage() {
   const [newName, setNewName] = useState('');
   const [showAiGenerate, setShowAiGenerate] = useState(false);
   // Left-sidebar shared-folder filter (part of the folder-permissions/RBAC feature).
-  // null = "All folders" (the legacy unfiltered view); a folder id pins the list to
-  // that folder + descendants.
+  // null shows all folders unfiltered; a folder id pins the list to that folder and
+  // its descendants.
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  // Admin's "manage permissions on this folder" modal — only visible to a user with
+  // Modal for managing permissions on a folder. Only available to a user with
   // FolderAdmin (capabilities.canAdmin) on the selected folder.
   const [permissionsModalFolderId, setPermissionsModalFolderId] = useState<string | null>(null);
-  // Drag-resizable Shared-Folders sidebar (deep nesting + long folder names need wider view).
-  // Width is always pixel-sized. Height defaults to AUTO (fits the folder list so you see
-  // everything at once) and only becomes pixel-sized once the user drags the corner grip —
-  // tracked by `folderHeightDirty`. The drag seeds from the measured current height
-  // (`folderBoxRef`) so the first pull continues smoothly instead of jumping.
+  // Drag-resizable Shared-Folders sidebar (deep nesting and long folder names need a wider view).
+  // Width is always pixel-sized. Height stays auto, fitting the folder list, until the user drags
+  // the corner grip, which `folderHeightDirty` tracks. The drag seeds from the measured current
+  // height (`folderBoxRef`) so the first pull continues smoothly instead of jumping.
   const folderPanel = useResizable({ initialSize: 256, minSize: 180, maxSize: 600, direction: 'horizontal' });
   const folderPanelHeight = useResizable({ initialSize: 360, minSize: 160, maxSize: 800, direction: 'vertical' });
   const [folderHeightDirty, setFolderHeightDirty] = useState(false);
@@ -138,19 +137,18 @@ export function WorkflowsPage() {
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
   const [scrollMargin, setScrollMargin] = useState(0);
 
-  // Shared-folder tree as a separate query so we can read capabilities for the selected
-  // folder directly (without inferring from workflows). This way an empty folder still
-  // surfaces the permissions button when the caller is FolderAdmin on it.
+  // Shared-folder tree as a separate query so capabilities for the selected folder can be read
+  // directly instead of inferred from workflows. An empty folder then still shows the
+  // permissions button when the caller is FolderAdmin on it.
   const { data: sharedFolders } = useQuery({
     queryKey: ['shared-folders'],
     queryFn: () => sharedFoldersApi.list(),
     staleTime: 30_000,
   });
 
-  // User picker for the permissions modal — pulled lazily so the page doesn't pay the
-  // /api/users round-trip on every load (only callers with FolderAdmin somewhere ever
-  // open the modal). Trigger as soon as any folder we know about has canAdmin — that's
-  // the broadest condition under which the modal could be opened.
+  // User picker for the permissions modal, loaded lazily so the page does not pay the
+  // /api/users round-trip on every load. Any known folder with canAdmin is enough of a
+  // trigger, since that is the broadest condition under which the modal can be opened.
   const anyFolderWithAdmin = useMemo(
     () => (sharedFolders ?? []).some((f: SharedFolder) => f.capabilities.canAdmin),
     [sharedFolders],
@@ -162,10 +160,10 @@ export function WorkflowsPage() {
     staleTime: 60_000,
   });
 
-  // isError and refetch are read, not just data and isLoading. Without them a failed request
-  // fell through to the "no workflows" empty state, so an overloaded database was indistinguishable
-  // from an empty installation. silentError suppresses the global toast because this page shows
-  // the failure in place, with a retry button.
+  // isError and refetch are read alongside data and isLoading so a failed request does not fall
+  // through to the "no workflows" empty state, which would make an overloaded database look like
+  // an empty installation. silentError suppresses the global toast because this page shows the
+  // failure in place, with a retry button.
   const {
     data: workflows,
     isLoading,
@@ -181,9 +179,9 @@ export function WorkflowsPage() {
 
   const createMutation = useMutation({
     mutationFn: (name: string) =>
-      // Target the folder the user is currently viewing. Without this, a user with
-      // FolderEditor on /Finance could click "New" inside /Finance and hit a 403/404
-      // because the server defaults to Root (where they have no edit rights).
+      // Target the folder the user is currently viewing. Otherwise a user with FolderEditor
+      // on /Finance could click "New" inside /Finance and hit a 403/404, because the server
+      // defaults to Root, where they have no edit rights.
       api.post<Workflow>('/workflows', {
         name,
         description: '',
@@ -198,10 +196,9 @@ export function WorkflowsPage() {
     },
   });
 
-  // AI-generated workflow: saves the same way as createMutation, but with the
-  // name/description/definitionJson coming from the LLM instead of the user's typed
-  // name. Kept as its own mutation because the request body shape differs and the
-  // dialog has its own error-state UI.
+  // AI-generated workflow: saves like createMutation, but name, description and definitionJson
+  // come from the LLM instead of the user's typed name. Kept as its own mutation because the
+  // request body shape differs and the dialog has its own error-state UI.
   const aiCreateMutation = useMutation({
     mutationFn: (req: { name: string; description: string; definitionJson: string }) =>
       api.post<Workflow>('/workflows', { ...req, folderId: selectedFolderId ?? undefined }),
@@ -241,10 +238,10 @@ export function WorkflowsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workflows'] }),
   });
 
-  // Drag-and-drop: workflow row → folder tree node. The backend (POST
-  // /api/workflows/{id}/move-folder) checks Edit on both source and destination, so
-  // permission inheritance is automatic — once the workflow lives in the new folder,
-  // the folder's grants govern who can read/run/edit it.
+  // Drag-and-drop of a workflow row onto a folder tree node. The backend (POST
+  // /api/workflows/{id}/move-folder) checks Edit on both source and destination, so permission
+  // inheritance is automatic: once the workflow lives in the new folder, that folder's grants
+  // govern who can read, run and edit it.
   const moveWorkflowMutation = useMutation({
     mutationFn: ({ workflowId, targetFolderId }: { workflowId: string; targetFolderId: string }) =>
       sharedFoldersApi.moveWorkflowToFolder(workflowId, targetFolderId),
@@ -258,18 +255,16 @@ export function WorkflowsPage() {
   });
 
   const importInputRef = useRef<HTMLInputElement>(null);
-  // Multi-file import: posts each selected file as its own envelope (the server's
-  // /workflows/import accepts one envelope per call) and aggregates the per-file
-  // results into one summary. A single file with a JSON-parse error or HTTP failure
-  // does NOT abort the batch — operators selecting 20 exports don't want one bad
-  // file to nuke the run, they want a final report telling them which ones to retry.
+  // Multi-file import: posts each selected file as its own envelope, because /workflows/import
+  // accepts one envelope per call, and aggregates the per-file results into one summary. A file
+  // with a JSON-parse error or HTTP failure does not abort the batch; the final report lists
+  // which files to retry.
   type PerFileResult =
     | { kind: 'ok'; file: string; resp: ImportResponse }
     | { kind: 'fail'; file: string; message: string };
-  // Mirror the backend MaxRequestBodyBytes guard (6 MiB on /api/workflows/import).
-  // Without an early frontend check the Browser reads gigabyte-files into a string before
-  // we even start the upload — that pegs Tab-Memory and gives the user a confusing OOM
-  // tab-crash instead of a clean "file too large" message.
+  // Mirrors the backend MaxRequestBodyBytes guard (6 MiB on /api/workflows/import). Without an
+  // early check in the browser, a huge file is read into a string before the upload starts,
+  // which exhausts tab memory and crashes the tab instead of showing a "file too large" message.
   const MAX_IMPORT_BYTES = 6 * 1024 * 1024;
   const importMutation = useMutation({
     mutationFn: async ({ files, authBoundaryGeneration }: {
@@ -295,8 +290,8 @@ export function WorkflowsPage() {
           } catch {
             throw new Error(t('workflows:importInvalidJson', { file: file.name }));
           }
-          // Import lands in the currently selected folder (Root when "all" is selected) —
-          // same targeting as Create; the server enforces Edit on that folder.
+          // Import lands in the currently selected folder, Root when "all" is selected, the
+          // same targeting as Create. The server enforces Edit on that folder.
           const importUrl = selectedFolderId
             ? `/workflows/import?folderId=${selectedFolderId}`
             : '/workflows/import';
@@ -306,7 +301,7 @@ export function WorkflowsPage() {
           results.push({ kind: 'ok', file: file.name, resp });
         } catch (err) {
           // Boundary aborts are control flow, not malformed-file results. Continuing the loop
-          // would start the next User-A file under User B's cookie and authorization context.
+          // would upload the next file under another user's cookie and authorization context.
           if (err instanceof AuthBoundaryChangedError) throw err;
           if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) {
             throw new AuthBoundaryChangedError();
@@ -326,14 +321,14 @@ export function WorkflowsPage() {
       const failResults = results.filter((r): r is Extract<PerFileResult, { kind: 'fail' }> => r.kind === 'fail');
 
       if (results.length === 1 && okResults.length === 1) {
-        // Single-file path keeps the original phrasing so existing translations stay accurate.
+        // Single-file path uses the singular wording that the translations expect.
         const only = okResults[0];
         const renamed = only.resp.workflows.filter(w => w.originalName).map(w => `"${w.originalName}" → "${w.name}"`);
         lines.push(t('workflows:importedSummary', { count: only.resp.created, file: only.file }));
         if (renamed.length > 0) lines.push('', t('workflows:renamedHeader'), ...renamed);
         if (only.resp.errors.length > 0) lines.push('', t('workflows:errorsHeader'), ...only.resp.errors);
       } else {
-        // Multi-file: one top-line tally + per-file detail block.
+        // Multi-file: one top-line tally plus a detail block per file.
         const totalCreated = okResults.reduce((sum, r) => sum + r.resp.created, 0);
         lines.push(t('workflows:importedSummaryBatch', {
           count: totalCreated,
@@ -353,7 +348,7 @@ export function WorkflowsPage() {
       }
       const hasFailures = failResults.length > 0 || okResults.some((r) => r.resp.errors.length > 0);
       if (hasFailures) {
-        // Failure reports must not vanish after the default 4s — keep them up long enough to read.
+        // Failure reports stay up far longer than the default toast timeout so they can be read.
         toast.error(lines.join('\n'), 30_000);
       } else {
         toast.success(lines.join('\n'));
@@ -366,9 +361,9 @@ export function WorkflowsPage() {
     },
   });
 
-  // Importing from System Center Orchestrator (SCOrch) produces much more detail
-  // than a normal import (per-runbook warnings, counts of heuristic guesses) — a
-  // modal surfaces all of that instead of hiding it in a plain alert().
+  // An import from System Center Orchestrator (SCOrch) returns far more detail than a normal
+  // import, such as per-runbook warnings and counts of heuristic guesses, so a modal shows
+  // all of it instead of a plain alert().
   const scorchInputRef = useRef<HTMLInputElement>(null);
   const [scorchResult, setScorchResult] = useState<{ resp: ScorchImportResponse; filename: string } | null>(null);
   // SCOrch imports allow a more generous 50 MiB (see ScorchImporter.cs on the backend) —
@@ -561,7 +556,7 @@ export function WorkflowsPage() {
     getItemKey: (index) => sortedWorkflows[index].id,
     measureElement: (el) => el?.getBoundingClientRect().height ?? 52,
     scrollMargin,
-    // jsdom has no layout (height = 0) → virtualizer renders 0 items → tests fail.
+    // jsdom has no layout (height = 0) -> virtualizer renders 0 items -> tests fail.
     // A generous initialRect makes all test-sized datasets (≤ ~30 items) fully visible
     // until the real scroll element provides its actual rect.
     initialRect: { width: 1200, height: 900 },
@@ -734,10 +729,7 @@ export function WorkflowsPage() {
             />
           );
           const permissionsButton = selectedFolderId && (() => {
-            // Show "manage permissions" only when the caller has Admin on the selected
-            // folder. Read capabilities directly from the folder list — an earlier version
-            // inferred them from workflows in the folder, which broke for empty folders
-            // even when the caller actually had FolderAdmin.
+            // Read folder capabilities directly so empty folders still expose FolderAdmin actions.
             const folder = sharedFolders?.find((f: SharedFolder) => f.id === selectedFolderId);
             const canAdmin = folder?.capabilities.canAdmin ?? isAdmin;
             if (!canAdmin) return null;
@@ -768,7 +760,7 @@ export function WorkflowsPage() {
                 className="relative shrink-0 sticky top-0 self-start"
                 style={{
                   width: folderPanel.size,
-                  // Auto until dragged → box is exactly as tall as the folder list.
+                  // Auto until dragged -> box is exactly as tall as the folder list.
                   height: folderHeightDirty ? folderPanelHeight.size : undefined,
                   maxHeight: 'calc(100vh - 3rem)',
                 }}
@@ -1143,8 +1135,8 @@ export function WorkflowsPage() {
                   <td className="px-4 py-2 overflow-hidden">
                     {(() => {
                       // Status badge: 4 mutually exclusive states.
-                      // Productive (enabled, no lock) → green. Disabled (no lock) → gray.
-                      // Lock-by-me → blue. Lock-by-other → amber + owner name.
+                      // Productive (enabled, no lock) -> green. Disabled (no lock) -> gray.
+                      // Lock-by-me -> blue. Lock-by-other -> amber + owner name.
                       const lockedByMe = !!w.checkedOutByUserId && w.checkedOutByUserId === currentUserId;
                       const lockedByOther = !!w.checkedOutByUserId && !lockedByMe;
                       if (lockedByMe) {

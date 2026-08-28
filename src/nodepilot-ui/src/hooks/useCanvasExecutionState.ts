@@ -5,7 +5,7 @@ import type { StepExecution } from '../types/api';
 import type { LiveExecution } from './useSignalR';
 
 interface UseCanvasExecutionStateArgs {
-  /** Live executions from useWorkflowSignalR — used to resolve the pinned canvas run. */
+/** Live executions from useWorkflowSignalR for resolving the pinned canvas run. */
   liveExecutions: LiveExecution[];
   /** Current workflow id (route param). Resets the pinned/replay state on change. */
   workflowId: string | undefined;
@@ -14,23 +14,22 @@ interface UseCanvasExecutionStateArgs {
 }
 
 /**
- * Replay/snapshot state machine for the designer canvas. Owns, as one cohesive unit:
- *  - the *pinned* live execution whose green path-coloring is shown on the canvas
- *    (`designerCanvasExecutionId`), incl. a snapshot that outlives the 30 s SignalR TTL
- *    eviction so the highlight + test-run banner stay until the user dismisses them,
- *  - the per-execution SignalR group join/leave for that pinned run, and
- *  - the *replay* timeline (a terminal execution scrubbed via `scrubTimeMs`).
+ * Replay and snapshot state machine for the designer canvas. It owns three things:
+ *  - the pinned live execution whose path coloring is shown on the canvas
+ *    (`designerCanvasExecutionId`), plus a snapshot that outlives the SignalR TTL eviction so
+ *    highlight and test-run banner stay until the user dismisses them,
+ *  - the per-execution SignalR group join and leave for that pinned run, and
+ *  - the replay timeline (a terminal execution scrubbed via `scrubTimeMs`).
  *
- * Exposes a narrow, intent-oriented command surface (pin / toggleReplay / scrub /
- * clearReplay / clearDesignerCanvasHighlight) — no raw setters leak out.
+ * Only intent-oriented commands are exposed (pin, toggleReplay, scrub, clearReplay,
+ * clearDesignerCanvasHighlight); no raw setters leak out.
  */
 export function useCanvasExecutionState({ liveExecutions, workflowId, joinExecution, leaveExecution }: UseCanvasExecutionStateArgs) {
   const [designerCanvasExecutionId, setDesignerCanvasExecutionId] = useState<string | null>(null);
   const [canvasRunIsTerminalState, setCanvasRunIsTerminalState] = useState(false);
-  // Snapshot of the canvas execution so the green path-coloring + test-run banner
-  // survive the 30s TTL eviction in useSignalR. Without this the canvas reverts to its
-  // pristine state the moment liveExecutionsById drops the run, even though the user
-  // hasn't dismissed the highlight via the X-button yet.
+  // Snapshot of the canvas execution so path coloring and test-run banner survive the TTL
+  // eviction in useSignalR. Without it the canvas resets the moment liveExecutionsById drops
+  // the run, before the user has dismissed the highlight.
   const [canvasExecutionSnapshot, setCanvasExecutionSnapshot] = useState<LiveExecution | null>(null);
   const [replayExecutionId, setReplayExecutionId] = useState<string | null>(null);
   const [scrubTimeMs, setScrubTimeMs] = useState<number | null>(null);
@@ -56,14 +55,11 @@ export function useCanvasExecutionState({ liveExecutions, workflowId, joinExecut
     [designerCanvasExecutionId, liveExecutions],
   );
 
-  // Keep a fresh snapshot of the canvas execution while it's still in the SignalR state,
-  // and surface the terminal-state flag in the same pass. Previously these were two
-  // useEffects (one on canvasLiveExecution, one on effectiveCanvasExecution) — under a
-  // SignalR burst that fired the same logical state change through both paths, the
-  // snapshot-update and the terminal-flag-update could interleave across renders.
-  // After the 30 s TTL drops the live entry, canvasLiveExecution goes null and we
-  // fall back to canvasExecutionSnapshot (computed below) so the green path-coloring
-  // and the test-run banner stay until the user dismisses them via the X-button.
+  // Keep a fresh snapshot of the canvas execution while it is still in the SignalR state and
+  // set the terminal-state flag in the same pass, so a burst of events cannot interleave the
+  // two updates across renders. Once the TTL drops the live entry, canvasLiveExecution goes
+  // null and canvasExecutionSnapshot (used below) takes over, keeping the path coloring and
+  // the test-run banner on screen until the user dismisses them.
   useEffect(() => {
     if (!canvasLiveExecution) return;
     setCanvasExecutionSnapshot(canvasLiveExecution);
@@ -76,13 +72,11 @@ export function useCanvasExecutionState({ liveExecutions, workflowId, joinExecut
   }, [canvasLiveExecution]);
   const effectiveCanvasExecution = canvasLiveExecution ?? canvasExecutionSnapshot;
 
-  // Auto-join the per-execution SignalR group as soon as a canvas execution is set,
-  // so StepStarted/StepCompleted events flow into liveExecution.steps and the canvas
-  // pulse (an amber "Running" animation) lights up immediately. Without this the
-  // editor only sees ExecutionStatusChanged on the workflow firehose — step-level
-  // events were moved off that channel for the 200-job parallel-run perf fix
-  // (commit 1e6b42f), so the canvas would otherwise stay un-pulsing until the
-  // 10-second hydrateActive tick backfills steps via REST.
+  // Join the per-execution SignalR group as soon as a canvas execution is set, so
+  // StepStarted/StepCompleted events flow into liveExecution.steps and the canvas pulse (an
+  // amber "Running" animation) starts at once. The workflow-wide firehose carries only
+  // ExecutionStatusChanged, so without this the canvas would stay static until the
+  // hydrateActive tick backfills steps via REST.
   useEffect(() => {
     if (!designerCanvasExecutionId) return;
     void joinExecution(designerCanvasExecutionId, workflowId ?? '');
@@ -99,7 +93,7 @@ export function useCanvasExecutionState({ liveExecutions, workflowId, joinExecut
     setCanvasExecutionSnapshot(null);
   }, [workflowId]);
 
-  /** Pin a live execution's path-coloring onto the canvas (e.g. when a run starts). */
+  /** Pin a live execution's path coloring onto the canvas, for example when a run starts. */
   const pinCanvasExecution = useCallback((executionId: string) => {
     setDesignerCanvasExecutionId(executionId);
   }, []);
@@ -108,7 +102,7 @@ export function useCanvasExecutionState({ liveExecutions, workflowId, joinExecut
     clearDesignerCanvasHighlight();
     setReplayExecutionId((prev) => prev === executionId ? null : executionId);
   }, [clearDesignerCanvasHighlight]);
-  /** Move the replay scrubber (null = no scrub). */
+  /** Move the replay scrubber; null means no scrub. */
   const scrubTo = useCallback((t: number | null) => { setScrubTimeMs(t); }, []);
 
   return {

@@ -20,10 +20,9 @@ public sealed class WorkflowContractCommand : BaseCommand<WorkflowGetSettings>
     {
         var api = ClientFactory.Create(session);
 
-        // Use the by-name endpoint directly when the arg is non-Guid — it mirrors the engine's
-        // resolution (exact-case wins, else case-insensitive; ambiguous → 409), so the CLI
-        // shows the same contract the runtime would resolve
-        // (which is the point: CI gates need to verify "what would startWorkflow see").
+        // Use the by-name endpoint directly for a non-Guid argument. It mirrors the engine's
+        // resolution (exact-case wins, else case-insensitive; ambiguous returns 409), so the
+        // CLI shows the same contract the runtime would resolve for startWorkflow.
         WorkflowContractResponse contract;
         if (Guid.TryParse(settings.IdOrName, out var id))
             contract = await api.GetContractAsync(id, ct);

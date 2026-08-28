@@ -10,7 +10,8 @@ namespace NodePilot.Data.Tests;
 /// <summary>
 /// Verifies the additive system-alert-policy schema (ADR 0008 — the design record for the built-in
 /// system-alert-policy feature, migration AddSystemAlertPolicies): the new
-/// NotificationRule columns default/round-trip, existing custom rules stay Custom, and the two new state
+/// NotificationRule columns default/round-trip, existing custom rules stay Custom, and the two new
+/// state
 /// tables enforce their unique indexes.
 /// </summary>
 public class SystemAlertPolicySchemaTests

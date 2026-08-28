@@ -312,10 +312,8 @@ public class WebhooksControllerTests
     [Fact]
     public async Task Hit_NoSecretConfigured_DefaultPolicy_Returns403()
     {
-        // Phase-3 hardening: a missing Webhook:RequireSecret key now reads as "true" so a
-        // stripped-down deployment falls on the safe side. Webhook nodes saved without a
-        // secret are rejected by default — no upgrade-compatibility shim. Operators that
-        // need legacy behaviour set the flag to "false" explicitly.
+        // A missing Webhook:RequireSecret setting defaults to true. Operators must
+        // explicitly disable it to allow webhook nodes without a secret.
         var db = CreateContext();
         var wf = new Workflow { Id = Guid.NewGuid(), Name = "OpenWf", DefinitionJson = WebhookDefinitionNoSecret };
         db.Workflows.Add(wf);
@@ -331,9 +329,7 @@ public class WebhooksControllerTests
     [Fact]
     public async Task Hit_NoSecretConfigured_RequireSecretTrue_Returns403()
     {
-        // Strict mode: operators can opt into Webhook:RequireSecret=true to reject
-        // secret-less webhooks fleet-wide. Critical security-feature contract — must have
-        // a regression test even though the default policy now produces the same result.
+        // Explicit strict mode rejects secretless webhooks across the deployment.
         var db = CreateContext();
         var wf = new Workflow { Id = Guid.NewGuid(), Name = "OpenWf", DefinitionJson = WebhookDefinitionNoSecret };
         db.Workflows.Add(wf);

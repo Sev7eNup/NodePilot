@@ -263,11 +263,12 @@ function LiveExecutionDetail({ execution, workflowId, historyExecutions }: Reado
   const { t } = useTranslation('designer');
   const [selectedStep, setSelectedStep] = useState<string | null>(null);
   // Mouse-resizable step-list column. Initial 256 px matches the previous fixed `w-64`;
-  // range 180–640 px covers "tight sidebar" → "half the panel". Double-click the handle
+  // range 180–640 px covers "tight sidebar" -> "half the panel". Double-click the handle
   // resets to the initial width (see useResizable).
   const stepList = useResizable({ initialSize: 300, minSize: 180, maxSize: 640, direction: 'horizontal' });
 
-  // Mouse-resizable inspector panel (left, when step selected). Initial 550px (very wide), min 250px, max 800px.
+  // Mouse-resizable inspector panel (left, when step selected). Initial 550px (very wide), min
+  // 250px, max 800px.
   const inspectorPanel = useResizable({ initialSize: 550, minSize: 250, maxSize: 800, direction: 'horizontal' });
 
   // Median duration of past terminal runs of THIS workflow — used as ETA estimate by the

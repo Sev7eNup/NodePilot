@@ -37,15 +37,12 @@ import type { EditorHeaderProps } from './editorHeaderTypes';
 const iconBtn = 'flex items-center justify-center rounded-md h-9 w-9 bg-transparent hover:bg-surface-high text-on-surface-variant transition-colors disabled:opacity-30 disabled:cursor-not-allowed';
 
 /**
- * Classic editor header — the pre-redesign layout where every control is its own inline button
- * in a row (no grouped popover menus, no green CTA, right-aligned name). Selected via
- * `designStore.toolbarLayout === 'classic'` by the {@link EditorHeader} dispatcher.
- *
- * Each cluster is a {@link ToolbarSection} inside {@link ToolbarGlow}, so the cursor-proximity
- * glow + the subtle tinted tray background work exactly like the compact toolbar. Responsive rule: the toolbar wraps
- * whole clusters onto multiple lines (`flex-wrap`) instead of overflowing — the header grows taller
- * and the canvas below shrinks. The layout toggle + skin switcher are last so they stay reachable
- * even when wrapped.
+ * Classic editor header — every control is its own inline button in a row (no popover menus,
+ * no green CTA, right-aligned name), selected via `designStore.toolbarLayout === 'classic'`
+ * through the {@link EditorHeader} dispatcher. Each cluster sits in a {@link ToolbarSection}
+ * inside {@link ToolbarGlow} for the same glow and tray styling as the compact toolbar;
+ * `flex-wrap` moves whole clusters to a new line so the layout toggle and skin switcher stay
+ * reachable when the header wraps.
  */
 export function ClassicEditorHeader({
   workflowId, workflow, name, onRename, isDirty, canWrite, nodes,
@@ -233,7 +230,7 @@ export function ClassicEditorHeader({
           </ToolbarSection>
         </ToolbarGlow>
 
-        {/* Atelier switch + layout toggle + skin switcher — last group, always reachable even when wrapped. */}
+        {/* Atelier switch, layout toggle, and skin switcher — last group, reachable when wrapped. */}
         <div className="flex items-center gap-1">
           <AtelierThemeToggle />
           <ToolbarLayoutToggle />

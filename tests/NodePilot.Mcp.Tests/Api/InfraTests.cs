@@ -12,7 +12,8 @@ using NodePilot.Core.Clients;
 
 namespace NodePilot.Mcp.Tests.Api;
 
-/// <summary>Plumbing coverage: error mapping, config resolution, client guard, token store, factory.</summary>
+/// <summary>Plumbing coverage: error mapping, config resolution, client guard, token store,
+/// factory.</summary>
 [Collection("EnvMutating")]
 public sealed class InfraTests
 {
@@ -55,7 +56,7 @@ public sealed class InfraTests
         {
             var store = new TokenStore(dir);
             var session = new StoredSession { Server = "https://x/", Token = "jwt", Username = "admin", UserId = Guid.NewGuid(), Role = "Admin", ExpiresAt = DateTime.UtcNow.AddHours(12) };
-            store.Save("pro/d:1", session); // illegal path chars → sanitized
+            store.Save("pro/d:1", session); // illegal path chars -> sanitized
 
             var loaded = store.Load("pro/d:1");
             loaded.Should().NotBeNull();
@@ -103,7 +104,7 @@ public sealed class InfraTests
                 session.Profile.Should().Be("prod");
                 session.Server.Should().Be("https://prod-srv/");
                 session.Token.Should().Be("dpapi-jwt");
-                session.UsesRefreshableSession.Should().BeTrue(); // came from the store → auto-refresh wired
+                session.UsesRefreshableSession.Should().BeTrue(); // came from the store -> auto-refresh wired
             }
             finally { TryDelete(dir); }
         });

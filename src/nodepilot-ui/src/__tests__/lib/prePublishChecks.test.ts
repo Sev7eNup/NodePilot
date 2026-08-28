@@ -18,9 +18,8 @@ function edge(id: string, source: string, target: string, opts: Partial<{ disabl
 
 const emptyLint: LintResult = { errors: [], warnings: [] };
 
-// The "no trigger" gate moved OUT of the pre-publish checks into the always-on lint
-// (`no-trigger` error in workflowLint) — see workflowLint.test.ts. getPrePublishIssues no longer
-// emits `no-trigger-prepublish`; it only does the trigger-WITHOUT-outgoing + description hints.
+// The missing-trigger gate lives in the always-on lint (`no-trigger` in workflowLint), not here.
+// getPrePublishIssues only covers triggers without an outgoing edge and the description hint.
 
 describe('getPrePublishIssues — trigger without outgoing edge', () => {
   it('warns when trigger has no out-edges at all', () => {
@@ -112,7 +111,7 @@ describe('getPrePublishLint', () => {
       base,
       [activityNode('s', 'runScript')], // no-trigger is handled by the base lint, not here
       [],
-      { description: '' },              // no description → adds a pre-publish warning
+      { description: '' },              // no description adds a pre-publish warning
     );
     // Base error preserved; the pre-publish checks add no error of their own here.
     expect(result.errors.map((e) => e.code).sort()).toEqual(['missing-required-config']);

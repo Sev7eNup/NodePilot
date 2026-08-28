@@ -5,8 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 /**
  * Test wrapper: useWorkflowSignalR calls useQueryClient(), which requires a
- * QueryClientProvider. We create a fresh QueryClient per renderHook call (no retry,
- * no gcTime bleed between tests).
+ * QueryClientProvider. A fresh QueryClient per renderHook call keeps retries off and
+ * prevents cached data from bleeding between tests.
  */
 function makeWrapper() {
   const client = new QueryClient({
@@ -20,9 +20,9 @@ function makeWrapper() {
 const renderHook: typeof rtlRenderHook = ((callback, options) =>
   rtlRenderHook(callback, { wrapper: makeWrapper(), ...(options ?? {}) })) as typeof rtlRenderHook;
 
-// SignalR mock: capture event handlers per connection so tests can drive events
-// without spinning up a real WebSocket. We expose the captured handlers via
-// `__currentConnection` so each test can read the latest mock and emit events.
+// SignalR mock: captures event handlers per connection so tests can drive events without a
+// real WebSocket. The captured handlers are exposed through `__currentConnection` so each
+// test can read the latest mock and emit events.
 type Handler = (...args: unknown[]) => unknown;
 type MockConnection = {
   handlers: Map<string, Handler>;
@@ -89,9 +89,9 @@ import { useWorkflowSignalR, COMPLETED_EXECUTION_TTL_MS, MAX_ACTIVE_DISPLAYED, M
 import { resetDbHealth, useDbHealthStore } from '../../stores/dbHealthStore';
 
 /**
- * useWorkflowSignalR intentionally backfills snapshots over HTTP as soon as a transport connects.
- * Tests that only exercise SignalR events still need an explicit empty API, otherwise Node's native
- * fetch tries to resolve browser-relative URLs and produces misleading network stderr.
+ * useWorkflowSignalR backfills snapshots over HTTP as soon as a transport connects. Tests that
+ * only exercise SignalR events still need an explicit empty API, otherwise Node's native fetch
+ * tries to resolve browser-relative URLs and produces misleading network stderr.
  */
 function installDefaultFetchMock() {
   vi.stubGlobal('fetch', vi.fn(async () => new Response('[]', {
@@ -113,7 +113,7 @@ describe('useWorkflowSignalR', () => {
   });
   afterEach(() => {
     vi.clearAllMocks();
-    // Keep late cleanup/hydration continuations away from the real network too.
+    // Keep late cleanup and hydration continuations away from the real network as well.
     installDefaultFetchMock();
   });
 
@@ -552,12 +552,10 @@ describe('useWorkflowSignalR', () => {
   });
 
   it('schedules TTL eviction for terminal runs that arrive via hydration after navigation', async () => {
-    // Regression guard: when the user navigates away from a workflow and comes back,
-    // useWorkflowSignalR remounts and bulk-hydrates currently-relevant executions —
-    // including ones that completed while we weren't subscribed. Previously these
-    // landed in state with NO eviction timer (scheduleEviction was only called from
-    // live ExecutionStatusChanged events). Result: terminal runs hung in the Live tab
-    // forever, polluting the view across hours of usage.
+    // When the user navigates away from a workflow and back, useWorkflowSignalR remounts and
+    // bulk-hydrates the currently relevant executions, including ones that completed while it
+    // was unsubscribed. Those runs need an eviction timer too, otherwise they stay in the Live
+    // tab forever.
     vi.useFakeTimers();
     try {
       const completedAt = new Date(Date.now() - 5_000).toISOString(); // finished 5s ago
@@ -582,12 +580,12 @@ describe('useWorkflowSignalR', () => {
       vi.stubGlobal('fetch', fetchMock);
 
       const { result } = renderHook(() => useWorkflowSignalR('wf-1'));
-      // Flush the start-promise + hydration micro/macro tasks so liveExecutions is populated.
+      // Flush the start promise and the hydration tasks so liveExecutions is populated.
       await act(async () => { await vi.advanceTimersByTimeAsync(50); });
       expect(result.current.connected).toBe(true);
       await act(async () => { await vi.advanceTimersByTimeAsync(150); });
 
-      // Hydration finished — the Failed run is now in the Live state.
+      // Hydration finished, so the Failed run is now in the Live state.
       expect(result.current.liveExecutions).toHaveLength(1);
       expect(result.current.liveExecutions[0]).toMatchObject({
         executionId: 'exec-done', status: 'Failed',
@@ -646,11 +644,7 @@ describe('useWorkflowSignalR', () => {
   });
 
   it('caps concurrent step-list fetches so a 100-run burst does not saturate the connection pool', async () => {
-    // Regression guard: starting 100 workflows in parallel previously fired 100 simultaneous
-    // GET /executions/{id}/steps calls, queueing them behind the browser's per-origin limit
-    // (~6) AND saturating the API server which was already busy dispatching the runs.
-    // The symptom was that F5 navigation would stall because /api/auth/me + /api/workflows
-    // couldn't get a connection. The semaphore caps in-flight hydration fetches at 4.
+    // The hydration semaphore caps step-list requests during a large workflow burst.
     const MAX_OBSERVED_CAP = 4;
     let inFlight = 0;
     let peakInFlight = 0;
@@ -966,7 +960,7 @@ describe('useWorkflowSignalR', () => {
       expect(exec0Before.steps).toHaveLength(0);
       expect(stepsFetched).not.toContain('exec-0');
 
-      // User expands exec-0 → joinExecution triggers the step fetch.
+      // User expands exec-0 -> joinExecution triggers the step fetch.
       await act(async () => {
         await result.current.joinExecution('exec-0', 'wf-1');
       });
@@ -1039,7 +1033,7 @@ describe('useWorkflowSignalR', () => {
           startedAt: '2026-04-26T12:00:03Z' },
       ];
 
-      // User explicitly expands the run → must refetch despite prior auto-hydration.
+      // User explicitly expands the run -> must refetch despite prior auto-hydration.
       await act(async () => {
         await result.current.joinExecution('exec-1', 'wf-1');
       });
@@ -1121,7 +1115,7 @@ describe('useWorkflowSignalR', () => {
         });
       });
 
-      // The run transitions from active to completed → liveActiveCount decrements.
+      // The run transitions from active to completed -> liveActiveCount decrements.
       await waitFor(() => expect(result.current.liveActiveCount).toBe(RUN_COUNT - 1));
     } finally {
       installDefaultFetchMock();
@@ -1180,12 +1174,7 @@ describe('useWorkflowSignalR', () => {
   });
 
   it('periodic tick hydrates at most MAX_AUTO_HYDRATE newly-discovered runs', async () => {
-    // Regression guard: periodic mode previously used toAutoHydrate = relevant (all
-    // newly-discovered runs without a cap). During a 200-parallel stress test the first
-    // 10-second tick found all 200 as "new discoveries" and triggered 200 GET /steps
-    // fetches, making every run show full step detail ("3/3 steps") instead of the
-    // listing-only status badge ("0/0 steps"). The fix applies the same MAX_AUTO_HYDRATE
-    // cap in periodic mode as in initial mode.
+    // Periodic and initial hydration apply the same MAX_AUTO_HYDRATE limit.
     vi.useFakeTimers();
     let stepsFetchCount = 0;
     let listCallCount = 0;

@@ -232,9 +232,9 @@ describe('AuditLogPage', () => {
   });
 
   it('loadMorePages_persistAcrossManualRefresh', async () => {
-    // Regression: setExtraPages([]) used to live inside queryFn, which also runs on the
-    // 15s polling refetch and on the Refresh button. Both wiped the user's paginated
-    // history. The reset must be tied to filter changes, not to the fetch event itself.
+    // Regression guard: the page reset must stay tied to filter changes, not to the fetch
+    // event. If reset ran inside queryFn, the 15s polling refetch and the Refresh button
+    // would both wipe the user's paginated history.
     const page1Cursor = { timestamp: '2026-04-25T10:00:00Z', id: 'cursor-1' };
     const page2 = [{
       id: 'page2-row',

@@ -41,10 +41,9 @@ export function WatchTab({ workflowId, databus, nodes }: Readonly<{ workflowId: 
     // is enough, matching the behavior of VariableInsertField.
   });
 
-  // Picker list = workflow-defined step outputs ∪ globals ∪ live databus keys.
-  // Step outputs come directly from the workflow definition (`nodes`), so the picker is still
-  // useful without an active execution — the user should be able to set watches *before* the
-  // run starts.
+  // Picker list combines workflow step outputs, globals, and live databus keys.
+  // Step outputs come from the workflow definition, so the picker still works before
+  // any execution has started.
   const allEntries = useMemo<WatchPickerEntry[]>(() => {
     const seen = new Set<string>();
     const out: WatchPickerEntry[] = [];
@@ -104,8 +103,8 @@ export function WatchTab({ workflowId, databus, nodes }: Readonly<{ workflowId: 
   }, [newExpr]);
 
   const openPicker = useCallback((e: React.MouseEvent) => {
-    // Suppress browser context menu — we replace it with the variables list. Same
-    // pattern used by other right-click pickers (e.g. NodeContextMenu in the designer).
+    // Suppress the browser context menu and show the variables list instead, matching
+    // other right-click pickers such as NodeContextMenu in the designer.
     e.preventDefault();
     setPicker({ x: e.clientX, y: e.clientY });
   }, []);
@@ -139,7 +138,7 @@ export function WatchTab({ workflowId, databus, nodes }: Readonly<{ workflowId: 
       return { value: String(val ?? ''), found: true };
     }
 
-    // Try with step output variable name: "stepName.output" → look for matching stepId
+    // Try a step-output variable name: "stepName.output" maps to a matching stepId
     const parts = key.split('.');
     if (parts.length >= 2) {
       const [stepName, ...fieldParts] = parts;
@@ -262,13 +261,12 @@ export function WatchTab({ workflowId, databus, nodes }: Readonly<{ workflowId: 
 }
 
 /**
- * Right-click variable picker for the Watch tab's expression input. Renders as a portal
- * anchored at the mouse position so it escapes the panel's overflow container. Click
- * inserts the bare key (no `{{` `}}` — the Watch input renders its own framing chars).
+ * Right-click variable picker for the Watch tab's input field. Renders as a portal
+ * anchored at the mouse position so it escapes the panel's overflow container. Picking
+ * an entry inserts the bare key; the input renders the `{{` `}}` framing itself.
  *
- * Closed by: outside click, Escape, or picking an entry. Filter input gets initial focus
- * so the user can immediately type to narrow down — for workflows with 30+ step outputs
- * the unfiltered list is impractical to scan visually.
+ * Closes on outside click, Escape, or a pick. The filter input starts focused so long
+ * lists stay searchable without an extra click.
  */
 function WatchVariablePicker({ anchor, entries, onPick, onClose }: Readonly<{
   anchor: { x: number; y: number } | null;
@@ -315,7 +313,7 @@ function WatchVariablePicker({ anchor, entries, onPick, onClose }: Readonly<{
     if (selectedIdx >= filtered.length) setSelectedIdx(Math.max(0, filtered.length - 1));
   }, [filtered.length, selectedIdx]);
 
-  // Close on outside click + Escape. mousedown so we beat the focus shuffle.
+  // Closes on outside click or Escape. Uses mousedown so it fires before the focus shuffle.
   useEffect(() => {
     if (!anchor) return;
     const onDown = (e: MouseEvent) => {

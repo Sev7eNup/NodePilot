@@ -6,19 +6,16 @@ using NodePilot.Data;
 namespace NodePilot.Api.Services.DbAdmin;
 
 /// <summary>
-/// Executes ad-hoc SQL against the active EF connection on behalf of the admin query
-/// console. Two stances:
-///
+/// Executes ad-hoc SQL against the active EF connection for the admin query console.
 /// <list type="bullet">
-///   <item><b>Read</b> — provider-specific read-only transaction wraps the statement so
-///   writes can't persist even if the keyword whitelist is bypassed. Defence-in-depth.</item>
-///   <item><b>Write</b> — executes inside a normal transaction. Only used when the caller
-///   has opted in via <see cref="DbAdminOptions.AllowWriteQueries"/> AND the per-request
+///   <item><b>Read</b> — a read-only transaction wraps the statement so writes cannot
+///   persist even if the keyword whitelist is bypassed. Defence-in-depth.</item>
+///   <item><b>Write</b> — runs in a normal transaction, only when the caller has opted in
+///   via <see cref="DbAdminOptions.AllowWriteQueries"/> and sent the per-request
 ///   confirmation header. Persists on success.</item>
 /// </list>
-///
-/// Row-count and statement-text caps are enforced here — controller stays thin. Provider-
-/// error sanitisation is left to the controller (it has the HttpContext for correlation IDs).
+/// Row-count and statement-length caps are enforced here so the controller stays thin;
+/// the controller sanitises provider errors, since it has the HttpContext for correlation IDs.
 /// </summary>
 public sealed class DbAdminQueryExecutor
 {

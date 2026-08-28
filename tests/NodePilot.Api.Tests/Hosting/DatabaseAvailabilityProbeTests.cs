@@ -94,9 +94,9 @@ public sealed class DatabaseAvailabilityProbeTests
     public async Task SuccessfulProbe_WhenUnavailableNotificationIsDelayed_ClearsPoolOncePerEpisode(
         int successesToRecover)
     {
-        // The tracker publishes its state before invoking subscribers. A slow subscriber registered
-        // ahead of the probe must not leave the probe using the previous episode number while it can
-        // already observe Unavailable.
+        // The tracker publishes state before notifying subscribers. A slow subscriber registered
+        // ahead of the probe must not see the probe still using the previous episode number once
+        // Unavailable is already observable.
         var availability = Booted(successesToRecover);
         var transitionEntered = NewSignal();
         var releaseTransition = NewSignal();

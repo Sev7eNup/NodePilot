@@ -21,11 +21,11 @@ namespace NodePilot.Engine.Activities;
 ///   resultMode  "single" | "all"             (default "single")
 ///
 /// Result:
-///   Success → Output = single match InnerText (single-mode) or JSON array of InnerText
+///   Success -> Output = single match InnerText (single-mode) or JSON array of InnerText
 ///             values (all-mode); OutputParameters["result"] = Output,
 ///             OutputParameters["count"] = match count. No match in single-mode succeeds
 ///             with empty Output and count=0 (use edge conditions to branch on that).
-///   Failure → ErrorOutput carries the exception message (invalid XML, invalid XPath,
+///   Failure -> ErrorOutput carries the exception message (invalid XML, invalid XPath,
 ///             file not found).
 /// </summary>
 public class XmlQueryActivity : IActivityExecutor

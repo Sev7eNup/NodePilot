@@ -6,8 +6,10 @@ using NodePilot.Data;
 namespace NodePilot.Scheduler.SystemAlerts.Sources;
 
 /// <summary>
-/// Event/level source: currently-Running executions and how long they have been running. One observation
-/// per in-flight execution, keyed by execution id, exposing <c>runningMinutes</c>. Nothing else alerts on a
+/// Event/level source: currently-Running executions and how long they have been running. One
+/// observation
+/// per in-flight execution, keyed by execution id, exposing <c>runningMinutes</c>. Nothing else
+/// alerts on a
 /// live hang — the startup reconciler only cleans stuck runs at boot — so a policy like
 /// <c>runningMinutes &gt; 30</c> catches a deploy that has been wedged for half an hour.
 /// </summary>

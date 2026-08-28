@@ -19,10 +19,9 @@ internal sealed class LlmHttpTransport
 {
     private const int BodyExcerptMaxChars = 500;
 
-    // L-4 (security audit 2026-05-15): cap upstream response bodies before parsing them so
-    // a hostile or runaway LLM endpoint cannot exhaust memory by streaming gigabytes into
-    // JsonDocument.ParseAsync. 16 MiB is well above any realistic chat-completion payload
-    // (typical Workflow-Gen responses are <100 KiB) and safe to allocate in one shot.
+    // Cap upstream response bodies before parsing so a hostile or runaway LLM endpoint cannot
+    // exhaust memory by streaming very large payloads into JsonDocument.ParseAsync. The limit sits
+    // well above any realistic chat-completion payload.
     internal const long MaxResponseBytes = 16L * 1024 * 1024;
 
     private readonly IHttpClientFactory _httpClientFactory;
@@ -37,9 +36,9 @@ internal sealed class LlmHttpTransport
     }
 
     /// <summary>
-    /// Timeout via a linked CTS, so the caller can cancel at any time without HttpClient.Timeout
-    /// getting in the way globally. Non-streaming: one scope per attempt. Streaming: one scope for
-    /// the whole stream — the read loop has to stay inside it.
+    /// Creates a timeout scope linked to the caller's token, so the caller can still cancel and
+    /// HttpClient.Timeout stays out of the way. Non-streaming: one scope per attempt. Streaming:
+    /// one scope for the whole stream, so the read loop has to stay inside it.
     /// </summary>
     public CancellationTokenSource CreateTimeoutScope(CancellationToken ct)
     {
@@ -55,8 +54,9 @@ internal sealed class LlmHttpTransport
     /// </summary>
     /// <param name="io">The timeout-scoped token every I/O operation runs under.</param>
     /// <param name="caller">
-    /// The caller's own token. Only used to tell a timeout apart from a genuine caller-side cancel:
-    /// when the caller cancelled, the <see cref="OperationCanceledException"/> propagates untouched.
+    /// The caller's token distinguishes a timeout from genuine caller-side cancellation:
+    /// when the caller cancelled, the <see cref="OperationCanceledException"/> propagates
+    /// untouched.
     /// </param>
     public async Task<HttpResponseMessage> SendAsync(
         Dictionary<string, object?> body,
@@ -82,8 +82,8 @@ internal sealed class LlmHttpTransport
         }
         catch (OperationCanceledException) when (!caller.IsCancellationRequested)
         {
-            // Reaching the endpoint has its own, much shorter budget (LlmConnectGuard), so by the
-            // time this fires the request was on the wire and the model is simply still thinking.
+            // Connecting has its own, much shorter budget (LlmConnectGuard), so once this fires the
+            // request is on the wire and the model is still generating.
             throw new LlmException(LlmErrorKind.Timeout,
                 $"LLM endpoint accepted the request but sent no answer within {_config.TimeoutSeconds}s "
                 + $"({_config.Endpoint.PostUrl}). The connection itself was fine — raise the profile's "
@@ -101,14 +101,11 @@ internal sealed class LlmHttpTransport
     }
 
     /// <summary>
-    /// Turns a transport failure into a message that names <b>which stage</b> failed.
-    ///
-    /// <para>Every one of these used to arrive as the same "did not respond" sentence, which is
-    /// why an unreachable endpoint and a slow model were indistinguishable from the UI. The stages
-    /// are separable because each has its own deadline: DNS and TCP fail inside
-    /// <c>LlmConnectGuard</c> with a message that already names them, certificate validation
-    /// raises <see cref="AuthenticationException"/>, and the handler's <c>ConnectTimeout</c> can
-    /// only fire <i>after</i> those two have passed — so it means the TLS handshake stalled.</para>
+    /// Turns a transport failure into a message that names which stage failed. The stages are
+    /// separable because each has its own deadline: DNS and TCP fail inside <c>LlmConnectGuard</c>
+    /// with a message that already names them, certificate validation raises
+    /// <see cref="AuthenticationException"/>, and the handler's <c>ConnectTimeout</c> can only fire
+    /// once those two have passed, so it means the TLS handshake stalled.
     /// </summary>
     internal string DescribeUnreachable(Exception ex)
     {
@@ -134,8 +131,7 @@ internal sealed class LlmHttpTransport
                  + "never negotiates.";
         }
 
-        // Anything from the connect guard already names its own stage; don't wrap it in a second
-        // sentence that says less.
+        // Messages from the connect guard already name their stage, so they pass through unwrapped.
         return innermost is IOException io && io.Message.StartsWith("LLM endpoint ", StringComparison.Ordinal)
             ? io.Message
             : $"LLM endpoint unreachable ({url}): {innermost.Message}";
@@ -176,9 +172,9 @@ internal sealed class LlmHttpTransport
 
     /// <summary>
     /// Parses a success response body into a <see cref="JsonDocument"/> (the caller owns it), under
-    /// the L-4 byte cap. The pre-flight Content-Length check rejects oversized responses without
-    /// ever touching the body; an upstream omitting Content-Length still goes through
-    /// <see cref="LengthLimitedStream"/>, so this is the cheap-path optimization only.
+    /// the response byte cap. The Content-Length check rejects an oversized response without
+    /// reading the body; an upstream that omits Content-Length is still bounded by
+    /// <see cref="LengthLimitedStream"/>.
     /// </summary>
     public static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage resp, CancellationToken ct)
     {
@@ -197,7 +193,7 @@ internal sealed class LlmHttpTransport
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("Body-Limit", StringComparison.Ordinal))
         {
-            // LengthLimitedStream tripped — upstream sent more than MaxResponseBytes.
+            // LengthLimitedStream tripped: upstream sent more than MaxResponseBytes.
             throw new LlmException(LlmErrorKind.MalformedResponse, ex.Message, inner: ex);
         }
         catch (JsonException ex)
@@ -210,8 +206,8 @@ internal sealed class LlmHttpTransport
     /// <summary>
     /// Yields the payload of every <c>data:</c> line of an SSE response, skipping blank lines and
     /// stopping at the <c>[DONE]</c> sentinel (Chat Completions sends it; the Responses API simply
-    /// ends the stream). Enforces the L-4 byte cap across the whole stream, which
-    /// <see cref="LengthLimitedStream"/> can't cover here.
+    /// ends the stream). Enforces the response byte cap across the whole stream, which
+    /// <see cref="LengthLimitedStream"/> does not cover here.
     /// </summary>
     public async IAsyncEnumerable<string> ReadSseDataAsync(
         HttpResponseMessage resp,
@@ -278,10 +274,9 @@ public static class LlmHttpClient
 }
 
 /// <summary>
-/// Read-only stream wrapper that throws after <paramref name="maxBytes"/> have been read.
-/// L-4: protects <see cref="JsonDocument.ParseAsync(Stream, JsonDocumentOptions, CancellationToken)"/>
-/// from gigabyte-scale upstream responses when the LLM endpoint omits Content-Length or lies
-/// about it.
+/// Read-only stream wrapper that throws after <paramref name="maxBytes"/> have been read. Protects
+/// <see cref="JsonDocument.ParseAsync(Stream, JsonDocumentOptions, CancellationToken)"/> from
+/// oversized upstream responses when the LLM endpoint omits Content-Length or reports it wrongly.
 /// </summary>
 internal sealed class LengthLimitedStream : Stream
 {

@@ -38,8 +38,8 @@ import { DatabaseTriggerConfig } from './triggers/DatabaseTriggerConfig';
 import { EventLogTriggerConfig } from './triggers/EventLogTriggerConfig';
 import { ManualTriggerConfig } from './triggers/ManualTriggerConfig';
 
-// Routing from activityType → its config-editor component. Keeps PropertiesPanel.tsx
-// free of the 26-branch if-cascade. Adding a new activity = one line here.
+// Maps an activityType to its config-editor component, which keeps PropertiesPanel.tsx free
+// of branching. A new activity needs one entry here.
 export const ACTIVITY_CONFIG_COMPONENTS: Record<string, ComponentType<ConfigProps>> = {
   [ACTIVITY_TYPES.RUN_SCRIPT]: RunScriptConfig,
   [ACTIVITY_TYPES.FILE_OPERATION]: FileOperationConfig,

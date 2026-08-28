@@ -2,45 +2,37 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * Window- and tray-icon selection for the shell, following the color skin the user picked in the
- * SPA.
- *
- * The signal is the SPA's own favicon: `applyFavicon` (nodepilot-ui/src/lib/appIcon.ts) writes
- * `/appicon-<skin>.png` into `<link rel="icon">` on every skin change, and Chromium reports that
- * to the main process as `page-favicon-updated`. Reusing it keeps the production SPA window
- * preload-less and IPC-free — the shell reads a one-way signal the renderer already broadcasts
- * instead of being handed a channel that could be talked into doing more.
- *
- * The skin ids are deliberately NOT mirrored here. `scripts/generate-desktop-icons.ps1` emits one
- * `assets/skins/<skin>.png` per `appicon-<skin>.png` the SPA ships, so "which skins exist" is
- * answered by the files on disk. A skin added to the UI without a regenerated icon set degrades
- * to keeping the current icon — never to a wrong one.
+ * Window- and tray-icon selection for the shell, following the color skin picked in the SPA.
+ * `applyFavicon` (nodepilot-ui/src/lib/appIcon.ts) writes `/appicon-<skin>.png` into the SPA's
+ * `<link rel="icon">`, and Chromium reports that to the main process as `page-favicon-updated`,
+ * so the shell needs no preload script or IPC channel. Skin ids are not mirrored here: the files
+ * `scripts/generate-desktop-icons.ps1` emits under `assets/skins/` decide which skins resolve.
  */
 
-/** Skin ids arrive from the renderer and end up in a path join, so they are held to the same
- *  strict charset the generator enforces (see $SKIN_ID there). */
+/** Skin ids come from the renderer and end up in a path join, so they must match the strict
+ *  charset the icon generator enforces ($SKIN_ID there). */
 const SKIN_ID = /^[a-z][a-z0-9-]{0,31}$/;
 
-/** `appicon-<skin>.png` — the file-name shape `APP_ICON_BY_SKIN` produces. */
+/** The `appicon-<skin>.png` file-name shape that `APP_ICON_BY_SKIN` produces. */
 const FAVICON_NAME = /^appicon-([a-z][a-z0-9-]{0,31})\.png$/;
 
 export interface SkinIcons {
-  /** 256px window icon — title bar, Alt+Tab, taskbar. */
+  /** 256px window icon for the title bar, Alt+Tab and the taskbar. */
   window: string;
   /** 32px notification-area icon. */
   tray: string;
 }
 
 /**
- * The build-time default pair. Blue by design: the generator renders it from the default skin's
- * brand asset, not from the untinted orange source art. Applied to every window until the SPA
- * reports its skin, and to the exe/installer/Start-Menu entry, which cannot follow a skin at all.
+ * The build-time default pair, rendered from the default skin's brand asset. Used for every
+ * window until the SPA reports its skin, and for the exe, installer and Start-Menu entry, which
+ * cannot follow a skin at all.
  */
 export function defaultIcons(assetsDir: string): SkinIcons {
   return { window: join(assetsDir, 'icon.png'), tray: join(assetsDir, 'tray.png') };
 }
 
-/** The skin id encoded in a SPA favicon URL, or null if the URL is not one of ours. */
+/** The skin id encoded in a SPA favicon URL, or null when the URL is not a skin favicon. */
 export function skinFromFaviconUrl(url: string): string | null {
   let name: string;
   try {
@@ -52,9 +44,9 @@ export function skinFromFaviconUrl(url: string): string | null {
 }
 
 /**
- * The generated icon pair for a skin, or null when this build has none — a dev run straight from
+ * The generated icon pair for a skin, or null when this build has none: a dev run straight from
  * source (assets/ is generated, not committed) or a skin newer than the icon set. Callers keep
- * whatever icon they already show in that case.
+ * the icon they already show in that case.
  */
 export function skinIcons(
   assetsDir: string,

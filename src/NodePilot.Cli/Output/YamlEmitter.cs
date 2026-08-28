@@ -6,9 +6,9 @@ using NodePilot.Cli.Api;
 namespace NodePilot.Cli.Output;
 
 /// <summary>
-/// Minimal YAML emitter for CLI output. We only use it as a human-readable, line-oriented
-/// rendering of API responses — there is no round-trip parsing. Keeping it in-house avoids
-/// pulling in YamlDotNet just for `--output yaml`.
+/// Minimal YAML emitter for CLI output: a human-readable, line-oriented rendering of API
+/// responses only, with no round-trip parsing. Kept in-house to avoid pulling in YamlDotNet
+/// just for `--output yaml`.
 /// </summary>
 public static class YamlEmitter
 {

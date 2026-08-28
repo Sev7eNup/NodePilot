@@ -31,7 +31,7 @@ public sealed class HostIdentityProvider : IHostIdentityProvider
         catch
         {
             // Network stack unavailable / restricted — fall back to the machine name so the
-            // UI still shows *something* identifying. Never let host-info gathering throw.
+            // UI still shows something identifying. Never let host-info gathering throw.
             return new HostIdentity(machineName, machineName, null);
         }
     }

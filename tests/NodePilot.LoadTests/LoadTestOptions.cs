@@ -16,9 +16,11 @@ public class LoadTestOptions
 
 public class SeedOptions
 {
-    /// <summary>How many copies of each template to seed. Different copies have different UUIDs, so they don't collide.</summary>
+    /// <summary>How many copies of each template to seed. Different copies have different UUIDs, so
+    /// they don't collide.</summary>
     public int CopiesPerTemplate { get; set; } = 3;
-    /// <summary>If true, reuse workflows from a previous run (matches by name prefix). Default: seed fresh every run.</summary>
+    /// <summary>If true, reuse workflows from a previous run (matches by name prefix). Default:
+    /// seed fresh every run.</summary>
     public bool ReuseExisting { get; set; } = false;
     public int DeepSequentialDepth { get; set; } = 50;
     public int WideFanoutWidth { get; set; } = 30;
@@ -49,13 +51,15 @@ public class RampOptions
 public class BurstOptions
 {
     public int Concurrency { get; set; } = 100;
-    /// <summary>How long to wait for each execution to reach a terminal status (Succeeded/Failed/Cancelled) before timing out.</summary>
+    /// <summary>How long to wait for each execution to reach a terminal status
+    /// (Succeeded/Failed/Cancelled) before timing out.</summary>
     public int TerminalTimeoutSeconds { get; set; } = 300;
 }
 
 public class SignalRObserverOptions
 {
     public bool Enabled { get; set; } = false;
-    /// <summary>If enabled, the observer will connect to /hubs/execution and subscribe to a random subset of executions, measuring broadcast latency.</summary>
+    /// <summary>If enabled, the observer will connect to /hubs/execution and subscribe to a random
+    /// subset of executions, measuring broadcast latency.</summary>
     public double SampleRate { get; set; } = 0.1;
 }

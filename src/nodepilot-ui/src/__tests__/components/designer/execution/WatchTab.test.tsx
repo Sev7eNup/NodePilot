@@ -3,8 +3,8 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WatchTab } from '../../../../components/designer/execution/WatchTab';
 
-// The globals dropdown fires a useQuery against /global-variables — stub the client so the
-// test is deterministic and offline. WatchTab only consumes api.get.
+// The globals dropdown runs a useQuery against /global-variables, so the client is stubbed to
+// keep the test deterministic and offline. WatchTab only consumes api.get.
 vi.mock('../../../../api/client', () => ({
   api: { get: vi.fn(() => Promise.resolve([])) },
 }));
@@ -18,9 +18,8 @@ function renderWatch(workflowId: string) {
   );
 }
 
-// Characterization: the Watch tab persists user expressions to localStorage keyed by
-// workflowId, and restores them on mount. Pinned here because the extraction moved this
-// persistence out of ExecutionPanel; the existing ExecutionPanel suite does not cover it.
+// The Watch tab persists user expressions to localStorage keyed by workflowId and restores
+// them on mount. Covered here because the ExecutionPanel suite does not test it.
 describe('WatchTab — expression persistence (characterization)', () => {
   beforeEach(() => localStorage.clear());
 

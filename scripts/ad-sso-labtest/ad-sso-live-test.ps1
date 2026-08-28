@@ -1,22 +1,22 @@
-# NodePilot Windows-SSO/Kerberos Live-Testsuite gegen echtes AD (siehe README.md).
+# NodePilot Windows SSO/Kerberos live test suite against a real AD (see README.md).
 #
-# AUSFUEHREN AUF: dem Test-Client, in einer LOKALEN INTERAKTIVEN Sitzung.
-#   Ueber Enter-PSSession/WinRM hat der Prozess kein delegierbares TGT --
-#   -UseDefaultCredentials scheitert dann mit 401 und sieht aus wie ein Produktdefekt.
+# Run on the test client, in a local interactive session.
+#   Over Enter-PSSession/WinRM the process has no delegatable TGT, so
+#   -UseDefaultCredentials fails with 401 and looks like a product defect.
 #
-# Voraussetzungen:
-#   1. Setup-LabDirectory.ps1 auf dem DC gelaufen.
-#   2. Setup-ApiHost.ps1 auf npapi01 ohne FAIL.
-#   3. API laeuft in PHASE B (Windows-SSO + LDAPS aktiv) gegen die Wegwerf-DB.
-#   4. Break-Glass-Admin wurde in PHASE A gebootstrapped.
+# Prerequisites:
+#   1. Setup-LabDirectory.ps1 has run on the DC.
+#   2. Setup-ApiHost.ps1 has run on npapi01 without FAIL.
+#   3. API runs in PHASE B (Windows SSO + LDAPS active) against the throwaway DB.
+#   4. The break-glass admin was bootstrapped in PHASE A.
 #
-# Aufruf:
+# Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\ad-sso-live-test.ps1
 #   .\ad-sso-live-test.ps1 -IncludeNtlmProbe -IncludeRaceDrill -IncludeOutageDrill
 #
-# Abgedeckt: W1-W3, W5, W6a, W7-W12, W25 immer; W13/W14/W15/W16/W18/W19/W22 per Switch.
-# NICHT abgedeckt (manuell, siehe README "Manuelle Testpunkte"): W0, W4, W6b (Browser +
-# Fiddler), W17, W20, W21, W23, W24, W26, W27.
+# Always covered: W1-W3, W5, W6a, W7-W12, W25; W13/W14/W15/W16/W18/W19/W22 via switch.
+# Not covered (manual, see the README section "Manuelle Testpunkte"): W0, W4, W6b
+# (browser + Fiddler), W17, W20, W21, W23, W24, W26, W27.
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', '',
     Justification = 'Wegwerf-Lab-Credentials aus Setup-LabDirectory.ps1. Die Suite reicht sie an PSCredential/HttpClient weiter; SecureString wuerde nur den Copy-Paste-Ablauf des READMEs brechen, ohne das Lab-Geheimnis zu schuetzen.')]
 param(
@@ -28,12 +28,12 @@ param(
     [string]$BreakGlassPassword = 'Boot#20260802!Adm1n',
     [string]$LabPassword = 'Lab#20260802!Kq7z',
     [string]$NtlmAliasFqdn = 'npapi01-ntlm.np.lab',
-    # Muessen zu Setup-LabDirectory.ps1 passen. Eigenes Praefix, damit die Suite in
-    # einem Lab mit bestehender NodePilot-LDAP-Anbindung keine fremden Konten anfasst.
+    # Must match Setup-LabDirectory.ps1. The dedicated prefix keeps the suite from touching
+    # foreign accounts in a lab that already has a NodePilot LDAP binding.
     [string]$UserPrefix = 'nptest',
     [string]$AccessGroup = 'NPTest-Access',
 
-    # Optionale DB-Verifikation (Beleg fuer "kein JIT-Row" und "genau ein User").
+    # Optional DB verification (evidence for "no JIT row" and "exactly one user").
     [string]$PsqlPath = 'C:\NodePilot-Postgres\pgsql\bin\psql.exe',
     [string]$DbHost = '127.0.0.1',
     [string]$DbUser = 'nodepilot',
@@ -64,7 +64,7 @@ function Add-Skip([string]$name, [string]$reason) {
     [void]$results.Add([pscustomobject]@{ Test = $name; Ok = $null; Detail = "SKIP: $reason" })
 }
 
-# POST JSON; liefert @{Status;Body;Raw}; wirft nicht bei HTTP-Fehlerstatus.
+# POST JSON; returns @{Status;Body;Raw}; does not throw on an HTTP error status.
 function Invoke-JsonPost([string]$url, $bodyObj, [hashtable]$headers, [ref]$sessionRef) {
     $json = if ($null -ne $bodyObj) { $bodyObj | ConvertTo-Json -Depth 6 } else { '{}' }
     $p = @{ Uri = $url; Method = 'POST'; Body = $json; ContentType = 'application/json'; UseBasicParsing = $true }
@@ -87,9 +87,9 @@ function Invoke-JsonPost([string]$url, $bodyObj, [hashtable]$headers, [ref]$sess
     }
 }
 
-# SSO-Login. Ohne $cred laeuft der Handshake mit den Ambient-Credentials der Sitzung
-# (= der angemeldete Benutzer), mit $cred acquiriert SSPI ein TGT fuer dieses Konto.
-# Immer eine FRISCHE Session -- -WebSession und -SessionVariable schliessen sich aus.
+# SSO login. Without $cred the handshake uses the ambient credentials of the session
+# (the logged-on user); with $cred SSPI acquires a TGT for that account.
+# Always a fresh session, because -WebSession and -SessionVariable are mutually exclusive.
 function Invoke-SsoLogin([System.Management.Automation.PSCredential]$cred) {
     $p = @{ Uri = "$Base/api/auth/windows"; Method = 'POST'; Body = '{}'
             ContentType = 'application/json'; UseBasicParsing = $true; SessionVariable = 'ssoSession' }
@@ -119,7 +119,7 @@ function Get-SessionCookie($session, [string]$name) {
     ($session.Cookies.GetCookies([Uri]$Base) | Where-Object Name -eq $name)
 }
 
-# JWT-Payload dekodieren (base64url, Padding von Hand ergaenzen).
+# Decode the JWT payload (base64url, padding added by hand).
 function ConvertFrom-JwtPayload([string]$jwt) {
     $parts = $jwt.Split('.')
     if ($parts.Count -lt 2) { return $null }
@@ -128,18 +128,16 @@ function ConvertFrom-JwtPayload([string]$jwt) {
     [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p)) | ConvertFrom-Json
 }
 
-# psql -w: NIEMALS ohne -w, sonst haengt der Konsolen-Passwortprompt die Suite auf.
-# SQL ueber stdin (-f -), NICHT ueber -c: PowerShell verschluckt beim Aufruf einer nativen
-# exe die doppelten Anfuehrungszeichen im Argument, aus "Users" wird Users, und Postgres
-# antwortet 'relation "users" does not exist'. Fuer EF-PascalCase-Tabellen sind die Quotes
-# zwingend; stdin umgeht das Argument-Quoting vollstaendig.
+# psql -w is required; without it the console password prompt blocks the suite.
+# SQL goes through stdin (-f -) rather than -c: when calling a native exe PowerShell strips
+# the double quotes from the argument, so "Users" becomes Users and Postgres answers
+# 'relation "users" does not exist'. EF PascalCase tables need those quotes, and stdin
+# bypasses argument quoting entirely.
 #
-# Ein psql-Fehler darf die Suite NIE abbrechen: unter $ErrorActionPreference='Stop' macht
-# PowerShell 5.1 aus dem stderr einer nativen exe einen terminierenden NativeCommandError.
-# Vorher riss ein einziges fehlgeschlagenes Statement den ganzen Lauf mit -- alle danach
-# folgenden Tests waren verloren, obwohl sie mit dem Fehler nichts zu tun hatten.
-# Stattdessen: lokal auf 'Continue' schalten und den Fehler als Wert zurueckgeben, damit
-# die betroffene Assertion als FAIL mit lesbarem Detail erscheint und der Lauf weitergeht.
+# A psql failure must never abort the suite: under $ErrorActionPreference='Stop' PowerShell
+# 5.1 turns the stderr of a native exe into a terminating NativeCommandError. Switching to
+# 'Continue' locally and returning the error as a value lets the affected assertion report
+# FAIL with a readable detail while the run continues.
 function Invoke-Psql([string]$sql) {
     $env:PGPASSWORD = $DbPassword
     $prev = $ErrorActionPreference
@@ -168,7 +166,7 @@ Add-Result 'W1. /auth/methods meldet Windows-SSO' `
     ($m.windows -eq $true -and $m.windowsEndpoint -eq '/api/auth/windows') `
     ("windows=$($m.windows) endpoint=$($m.windowsEndpoint) ldap=$($m.ldap) local=$($m.local)")
 
-# ---------- W2. Health-Trias ----------
+# ---------- W2. Health trio ----------
 foreach ($probe in @(
     @{ N = 'W2a. /healthz/live'; U = '/healthz/live'; Match = $null }
     @{ N = 'W2b. /healthz/ready'; U = '/healthz/ready'; Match = $null }
@@ -180,41 +178,38 @@ foreach ($probe in @(
         $ok = ([int]$r.StatusCode -eq 200) -and (-not $probe.Match -or $r.Content -match $probe.Match)
         Add-Result $probe.N $ok "status=$([int]$r.StatusCode) body=$($r.Content.Trim())"
     } catch {
-        # Health-Endpoints antworten im Fehlerfall mit 503; Invoke-WebRequest wirft dann.
-        # Den Statuscode herausziehen statt die (lokalisierte) Exception zu protokollieren --
-        # "status=503" ist als Evidenz brauchbar, "Der Remoteserver hat einen Fehler
-        # zurueckgegeben" nicht.
+        # Health endpoints answer 503 on failure, which makes Invoke-WebRequest throw.
+        # Log the status code instead of the localized exception text: "status=503" is
+        # usable evidence, a translated "the remote server returned an error" is not.
         $st = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { -1 }
         Add-Result $probe.N $false $(if ($st -gt 0) { "status=$st" } else { "EXCEPTION: $($_.Exception.Message)" })
     }
 }
 
-# ---------- W3. Break-Glass-Login trotz aktivem SSO ----------
-# Der lokale Notfallpfad muss neben SSO erhalten bleiben -- sonst gibt es bei einem
-# DC-Ausfall keinen Weg zurueck in die Anwendung.
+# ---------- W3. Break-glass login while SSO is active ----------
+# The local emergency path has to survive next to SSO; otherwise a DC outage leaves no
+# way back into the application.
 $adminSession = $null
 $r = Invoke-JsonPost "$Base/api/auth/login" @{ username = $BreakGlassUser; password = $BreakGlassPassword } $null ([ref]$adminSession)
 Add-Result 'W3. Break-Glass-Login lokal (SSO aktiv)' ($r.Status -eq 200 -and $r.Body.role -eq 'Admin') `
     ("status=$($r.Status) role=$($r.Body.role)")
 
 # ---------- W5. Happy Path ----------
-# ZWEI Logins, bewusst getrennt:
-#   (a) Ambient-Credentials  -- der Pfad, den der Browser-Button geht. Wer die Suite
-#       ausfuehrt, ist beliebig; geprueft wird deshalb NUR der Statuscode, keine Rolle.
-#       Dieser Login zieht auch das Service-Ticket, das W6a in klist nachweist.
-#   (b) Explizit <prefix>.alice -- der Anker fuer die Identitaetskette W7/W9/W10.
-# Frueher gab es nur (a) und die Kette unterstellte, der angemeldete Benutzer SEI alice.
-# In einem Lab, in dem jemand anderes das Skript startet, verglich W9 dann zwei
-# verschiedene Menschen und meldete einen Produktfehler, wo keiner war.
+# Two logins, deliberately separate:
+#   (a) Ambient credentials, the path the browser button takes. Whoever runs the suite is
+#       arbitrary, so only the status code is checked, not the role. This login also pulls
+#       the service ticket that W6a proves via klist.
+#   (b) Explicit <prefix>.alice, the anchor for the identity chain W7/W9/W10, so the chain
+#       never assumes that the logged-on user is alice.
 $sso = Invoke-SsoLogin $null
 Add-Result 'W5a. SSO mit Ambient-Credentials (Browser-Pfad)' ($sso.Status -eq 200) `
     ("status=$($sso.Status) role=$($sso.Body.role) user=$($sso.Body.username)")
 
-# Der JWT darf bei Windows-SSO NIE im Body stehen (ambient-credential-getriebener Flow):
-# AuthController ruft SessionResult(..., includeToken: false).
+# With Windows SSO the JWT must never appear in the body (ambient-credential driven flow):
+# AuthController calls SessionResult(..., includeToken: false).
 #
-# Nur pruefbar, wenn der Login ueberhaupt geglueckt ist: ein 401-Body enthaelt
-# selbstverstaendlich kein Token, ein PASS daraus waere gruen ohne Messung.
+# Only checkable when the login succeeded at all: a 401 body carries no token anyway, so a
+# PASS from it would be green without measuring anything.
 if ($sso.Status -ne 200) {
     Add-Skip 'W5b. Kein Token im Response-Body' "W5a lieferte $($sso.Status) -- kein Erfolgs-Body zu pruefen"
 } else {
@@ -228,9 +223,9 @@ Add-Result 'W5c. np_auth (httpOnly) + np_csrf gesetzt' `
     (($null -ne $authCookie) -and $authCookie.HttpOnly -and ($null -ne $csrfCookie)) `
     ("np_auth=$($null -ne $authCookie) httpOnly=$($authCookie.HttpOnly) np_csrf=$($null -ne $csrfCookie)")
 
-# ---------- W6a. Kerberos-Beleg auf dem HTTP-Stack ----------
-# klist zeigt das Service-Ticket, das der Handshake gezogen hat. Ein NTLM-Fallback
-# hinterlaesst hier KEINEN HTTP/-Eintrag. (Der Browser-/Fiddler-Beleg W6b bleibt manuell.)
+# ---------- W6a. Kerberos evidence on the HTTP stack ----------
+# klist shows the service ticket the handshake pulled. An NTLM fallback leaves no HTTP/
+# entry here. The browser/Fiddler evidence W6b stays manual.
 try {
     $klist = (& klist tickets 2>&1 | Out-String)
     $hasTicket = $klist -match [regex]::Escape("HTTP/$apiHost")
@@ -240,44 +235,42 @@ try {
     Add-Result 'W6a. klist zeigt Service-Ticket HTTP/<fqdn>' $false "EXCEPTION: $($_.Exception.Message)"
 }
 
-# ---------- W5d. Explizit alice: transitive Gruppenaufloesung ----------
-# alice ist AUSSCHLIESSLICH in der Admins-Gruppe, und die ist ihrerseits Mitglied der
-# Access-Gruppe aus AllowedGroupSids. Ein 200 mit Role=Admin beweist damit beides:
-# Admission ueber die verschachtelte Mitgliedschaft (tokenGroups, nicht memberOf) und
-# das Rollen-Mapping.
+# ---------- W5d. Explicit alice: transitive group resolution ----------
+# alice is only in the Admins group, which is itself a member of the access group from
+# AllowedGroupSids. A 200 with Role=Admin therefore proves both admission through the
+# nested membership (tokenGroups, not memberOf) and the role mapping.
 $ssoAlice = Invoke-SsoLogin (New-LabCredential "$UserPrefix.alice")
 $aliceId = $ssoAlice.Body.userId
 Add-Result 'W5d. SSO alice -> 200 + Admin (transitiv ueber verschachtelte Gruppe)' `
     ($ssoAlice.Status -eq 200 -and $ssoAlice.Body.role -eq 'Admin') `
     ("status=$($ssoAlice.Status) role=$($ssoAlice.Body.role) user=$($ssoAlice.Body.username)")
 
-# ---------- W7. Session gueltig ----------
+# ---------- W7. Session valid ----------
 try {
     $me = Invoke-RestMethod -Uri "$Base/api/auth/me" -WebSession $ssoAlice.Session
-    # Gegen den Login vergleichen, aus dem die Session stammt -- nicht gegen einen
-    # erwarteten Namen.
-    # NICHT $matches nennen -- das ist die automatische Variable von -match.
+    # Compare against the login the session came from, not against an expected name.
+    # Do not name this $matches; that is the automatic variable of -match.
     $identityOk = ($me.username -eq $ssoAlice.Body.username) -or
                   ($aliceId -and $me.userId -eq $aliceId) -or
                   ($aliceId -and $me.id -eq $aliceId)
     Add-Result 'W7. /auth/me mit SSO-Cookie' $identityOk `
         ("username=$($me.username) role=$($me.role) erwartet=$($ssoAlice.Body.username)")
 } catch {
-    # Statuscode statt lokalisierter Exception -- siehe Kommentar bei W2.
+    # Status code instead of the localized exception; see the comment at W2.
     $st = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { -1 }
     Add-Result 'W7. /auth/me mit SSO-Cookie' $false $(if ($st -gt 0) { "status=$st" } else { "EXCEPTION: $($_.Exception.Message)" })
 }
 
-# ---------- W8. Keine Gruppen im JWT ----------
-# Directory-Gruppen bleiben serverseitig in DirectoryMemberships. Ein Gruppen-Claim im
-# Token waere eine stille Autorisierungs-Regression: das Token ueberlebte den Entzug bis
-# zum Ablauf, waehrend die serverseitige Pruefung sofort greift.
+# ---------- W8. No groups in the JWT ----------
+# Directory groups stay server-side in DirectoryMemberships. A group claim in the token
+# would be a silent authorization regression: the token would outlive a revocation until
+# it expires, while the server-side check takes effect immediately.
 #
-# Geprueft wird bewusst die ABWESENHEIT verbotener Claims, keine Positiv-Whitelist:
-# der Token traegt die langen Claim-URIs (.../claims/nameidentifier, /name, /role), nicht
-# die Kurzformen nameid/unique_name/role -- eine Whitelist waere gegen jede Aenderung des
-# OutboundClaimTypeMap sproede. Das Muster faengt beide Schreibweisen, weil ein
-# Gruppen-Claim in URI-Form ".../claims/groupsid" heisst.
+# The check looks for the absence of forbidden claims instead of a positive whitelist: the
+# token carries the long claim URIs (.../claims/nameidentifier, /name, /role), not the
+# short forms nameid/unique_name/role, so a whitelist would break on any change to
+# OutboundClaimTypeMap. The pattern catches both spellings, because a group claim in URI
+# form is called ".../claims/groupsid".
 if ($authCookie) {
     $payload = ConvertFrom-JwtPayload ([Uri]::UnescapeDataString($authCookie.Value))
     $claimNames = @($payload.PSObject.Properties.Name)
@@ -288,15 +281,15 @@ if ($authCookie) {
     Add-Result 'W8. JWT enthaelt keine Gruppen-/SID-Claims' $false 'np_auth-Cookie nicht verfuegbar'
 }
 
-# ---------- W9. LDAP und Windows loesen dieselbe Identitaet auf ----------
-# Beide Pfade teilen den kanonischen AD-Subject (objectSid) unter derselben Authority.
+# ---------- W9. LDAP and Windows resolve the same identity ----------
+# Both paths share the canonical AD subject (objectSid) under the same authority.
 $r = Invoke-JsonPost "$Base/api/auth/login" @{ username = "$UserPrefix.alice@$UpnSuffix"; password = $LabPassword } $null $null
 $sameUser = ($r.Status -eq 200 -and $r.Body.userId -eq $aliceId)
 Add-Result 'W9. LDAP-Login = gleiche UserId wie SSO' $sameUser `
     ("status=$($r.Status) ldapUserId=$($r.Body.userId) ssoUserId=$aliceId")
 
-# Ohne erfolgreichen SSO-Login ist $aliceId leer -- ein leeres UUID-Literal waere ein
-# Postgres-Syntaxfehler statt einer Aussage. Die Abhaengigkeit explizit machen.
+# Without a successful SSO login $aliceId is empty, and an empty UUID literal is a Postgres
+# syntax error rather than a result. Make the dependency explicit.
 if (-not $dbReady) {
     Add-Skip 'W9b. Genau eine ExternalIdentity fuer alice' 'keine DB-Verbindung konfiguriert'
 } elseif ([string]::IsNullOrWhiteSpace($aliceId)) {
@@ -306,21 +299,21 @@ if (-not $dbReady) {
     Add-Result 'W9b. Genau eine ExternalIdentity fuer alice' ($cnt -eq '1') "COUNT=$cnt"
 }
 
-# ---------- W10. Re-Login = JIT-Update, kein Duplikat ----------
-# Erneut ALS ALICE -- der Vergleich muss dieselbe Person betreffen wie W5d.
+# ---------- W10. Re-login = JIT update, no duplicate ----------
+# As alice again; the comparison has to cover the same person as W5d.
 $sso2 = Invoke-SsoLogin (New-LabCredential "$UserPrefix.alice")
-# Der Gleichheitsvergleich ist nur aussagekraeftig, wenn beide Laeufe eine UserId geliefert
-# haben -- sonst meldet "$null -eq $null" ein irrefuehrendes sameUserId=True neben einem 401.
+# The equality check only means something if both runs returned a UserId; otherwise
+# "$null -eq $null" reports a misleading sameUserId=True next to a 401.
 $sameUser = (-not [string]::IsNullOrWhiteSpace($aliceId)) -and ($sso2.Body.userId -eq $aliceId)
 Add-Result 'W10. Zweiter SSO-Login alice -> gleiche UserId' ($sso2.Status -eq 200 -and $sameUser) `
     ("status=$($sso2.Status) sameUserId=$sameUser (W5d=$aliceId W10=$($sso2.Body.userId))")
 
-# ---------- W11. carol: Allowed-Group ohne RoleMapping -> Viewer ----------
+# ---------- W11. carol: allowed group without RoleMapping -> Viewer ----------
 $r = Invoke-SsoLogin (New-LabCredential "$UserPrefix.carol")
 Add-Result 'W11. SSO carol -> Viewer (kein RoleMapping)' ($r.Status -eq 200 -and $r.Body.role -eq 'Viewer') `
     ("status=$($r.Status) role=$($r.Body.role)")
 
-# ---------- W12. bob: in keiner AllowedGroup -> 401, kein JIT-Row ----------
+# ---------- W12. bob: in no AllowedGroup -> 401, no JIT row ----------
 $r = Invoke-SsoLogin (New-LabCredential "$UserPrefix.bob")
 Add-Result 'W12a. SSO bob ohne AllowedGroup -> 401' ($r.Status -eq 401) "status=$($r.Status)"
 if ($dbReady) {
@@ -330,10 +323,10 @@ if ($dbReady) {
     Add-Skip 'W12b. Kein JIT-Row fuer bob' 'keine DB-Verbindung konfiguriert'
 }
 
-# ---------- W25. CSRF-Bootstrap-Ausnahme ----------
-# /api/auth/windows ist in CsrfMiddleware als Cookie-Bootstrap-Pfad ausgenommen: ein
-# veraltetes np_auth ohne passendes np_csrf darf kein 403 erzeugen, sonst kaeme ein
-# Benutzer mit abgelaufener Session nie wieder per SSO herein.
+# ---------- W25. CSRF bootstrap exemption ----------
+# CsrfMiddleware exempts /api/auth/windows as a cookie bootstrap path: a stale np_auth
+# without a matching np_csrf must not produce a 403, or a user with an expired session
+# could never get back in through SSO.
 if ($authCookie) {
     $stale = New-Object Microsoft.PowerShell.Commands.WebRequestSession
     $stale.Cookies.Add((New-Object System.Net.Cookie('np_auth', $authCookie.Value, '/', $apiHost)))
@@ -349,10 +342,10 @@ if ($authCookie) {
     Add-Skip 'W25. SSO ohne np_csrf -> kein 403' 'np_auth-Cookie nicht verfuegbar'
 }
 
-# ---------- W18. Race beim Erst-Login (optional) ----------
-# <prefix>.dave darf sich vorher NIE eingeloggt haben, sonst testet der Drill nur den
-# Update-Pfad. Start-Job statt Runspaces: jeder Job traegt die Credentials explizit,
-# damit kein Ticket-Sharing das Ergebnis verfaelscht.
+# ---------- W18. Race on first login (optional) ----------
+# <prefix>.dave must never have logged in before, otherwise the drill only exercises the
+# update path. Start-Job instead of runspaces: each job carries the credentials explicitly,
+# so ticket sharing cannot distort the result.
 if ($IncludeRaceDrill) {
     $jobs = 1..5 | ForEach-Object {
         Start-Job -ScriptBlock {
@@ -384,14 +377,12 @@ if ($IncludeRaceDrill) {
     Add-Skip 'W18. Race beim Erst-Login' 'nicht angefordert (-IncludeRaceDrill)'
 }
 
-# ---------- W19. NTLM-Negativtest (optional) ----------
+# ---------- W19. NTLM negative test (optional) ----------
 if ($IncludeNtlmProbe) {
     $probe = Join-Path $scriptDir 'Invoke-NtlmProbe.ps1'
     $p = & $probe -Base $Base -NtlmAliasFqdn $NtlmAliasFqdn -NetbiosDomain $NetbiosDomain `
         -SamAccountName "$UserPrefix.alice" -Password $LabPassword -PassThruResult
-    # 401 allein genuegt NICHT: ohne die Ablehnungsmeldung der Anwendung hat der Server
-    # gar keinen NTLM-Versuch gesehen (unbeantwortete Negotiate-Challenge). Siehe die
-    # ausfuehrliche Begruendung in Invoke-NtlmProbe.ps1.
+    # A 401 alone is inconclusive. The application rejection proves that NTLM reached the server.
     Add-Result 'W19a. Erzwungenes NTLM -> von der ANWENDUNG abgelehnt' `
         ($p.Status -eq 401 -and $p.AppRejected) `
         $(if ($p.AppRejected) { "status=$($p.Status), Ablehnungsmeldung vorhanden" }
@@ -401,8 +392,8 @@ if ($IncludeNtlmProbe) {
     Add-Skip 'W19. NTLM-Negativtest' 'nicht angefordert (-IncludeNtlmProbe)'
 }
 
-# ---------- W13. Deaktivierter AD-Account (optional) ----------
-# Braucht RSAT-AD-PowerShell auf dem Client. Nutzt <prefix>.erin, damit alice Admin bleibt.
+# ---------- W13. Disabled AD account (optional) ----------
+# Requires RSAT AD PowerShell on the client. Uses <prefix>.erin so alice remains an admin.
 if ($IncludeDisableDrill) {
     try {
         Import-Module ActiveDirectory -ErrorAction Stop
@@ -411,9 +402,8 @@ if ($IncludeDisableDrill) {
         Disable-ADAccount -Identity "$UserPrefix.erin" -Server $DcFqdn
         Start-Sleep -Seconds 5
         $r = Invoke-SsoLogin (New-LabCredential "$UserPrefix.erin")
-        # 401 ist die Erwartung. Wenn AD den Bind schon verweigert, kommt der Fehler
-        # frueher -- deshalb zaehlt auch ein Handshake-Fehlschlag als bestanden, solange
-        # KEINE Session entsteht.
+        # AD may reject the bind before the API returns 401. Either result passes if no session
+        # exists.
         Add-Result 'W13b. erin deaktiviert -> kein Login' ($r.Status -ne 200) "status=$($r.Status)"
         Enable-ADAccount -Identity "$UserPrefix.erin" -Server $DcFqdn
         "$UserPrefix.erin wieder aktiviert."
@@ -424,22 +414,19 @@ if ($IncludeDisableDrill) {
     Add-Skip 'W13. Deaktivierter AD-Account' 'nicht angefordert (-IncludeDisableDrill)'
 }
 
-# ---------- W15/W16. Revocation nach Gruppenentzug (optional) ----------
-# Zwei unabhaengige Uhren: DirectorySynchronizationService (1-5 min, leader-only) reagiert
-# auf den Entzug, ExternalAuthorizationStalenessService haelt die 15-Minuten-Decke.
-# Bestehensschwelle ist deshalb die Decke, nicht das Sync-Intervall.
+# ---------- W15/W16. Revocation after group removal (optional) ----------
+# Directory synchronization reacts to removal; authorization staleness enforces the upper bound.
 if ($IncludeRevocationDrill) {
     try {
         Import-Module ActiveDirectory -ErrorAction Stop
         $erin = Invoke-SsoLogin (New-LabCredential "$UserPrefix.erin")
         if ($erin.Status -ne 200) { throw "Vorbedingung verletzt: erin-Login lieferte $($erin.Status)" }
 
-        # Session in eine lokale Variable ziehen: [ref] auf einen Hashtable-Eintrag
-        # schreibt nicht zuverlaessig zurueck.
+        # Use a local variable because [ref] does not reliably update a hashtable entry.
         $erinSession = $erin.Session
         $execId = $null
         if ($RevocationWorkflowId) {
-            # np_csrf ist URL-encodiert -- vor dem Header-Echo decodieren.
+            # Decode the URL-encoded np_csrf value before echoing it into the header.
             $erinCsrf = [Uri]::UnescapeDataString((Get-SessionCookie $erinSession 'np_csrf').Value)
             $x = Invoke-JsonPost "$Base/api/workflows/$RevocationWorkflowId/execute" `
                 @{ parameters = @{}; timeoutSeconds = 900 } `
@@ -483,10 +470,8 @@ if ($IncludeRevocationDrill) {
     Add-Skip 'W15/W16. Revocation-Drill' 'nicht angefordert (-IncludeRevocationDrill)'
 }
 
-# ---------- W14. DC-Ausfall -> fail-closed (optional) ----------
-# Vorbedingung: /healthz/directory war vorher Healthy. Sonst ist das 503 nicht
-# aussagekraeftig -- eine LDAPS-Fehlkonfiguration liefert denselben Reason-Code
-# (windows_directory_unavailable) wie ein echter DC-Ausfall.
+# ---------- W14. DC outage fail-closed test (optional) ----------
+# Require a healthy directory first because LDAPS misconfiguration returns the same reason code.
 if ($IncludeOutageDrill) {
     $vmParams = @{ Name = $DcVmName }
     if ($HyperVHost) { $vmParams['ComputerName'] = $HyperVHost }
@@ -519,10 +504,8 @@ if ($IncludeOutageDrill) {
     Add-Skip 'W14. DC-Ausfall-Drill' 'nicht angefordert (-IncludeOutageDrill)'
 }
 
-# ---------- W22. Rate-Limit (optional, LAEUFT ZULETZT) ----------
-# UseRateLimiter() steht vor UseAuthentication() -- der anonyme Challenge-Leg des
-# Negotiate-Handshakes verbraucht deshalb ebenfalls ein Token. Erwartet wird also
-# deutlich weniger als 50 erfolgreiche Logins pro Minute.
+# ---------- W22. Rate limit (optional, runs last) ----------
+# The anonymous Negotiate challenge also consumes a token because rate limiting precedes auth.
 if ($IncludeRateLimitDrill) {
     $codes = @()
     for ($i = 0; $i -lt 60; $i++) {

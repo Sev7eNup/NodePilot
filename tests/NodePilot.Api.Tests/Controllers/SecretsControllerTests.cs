@@ -22,8 +22,7 @@ namespace NodePilot.Api.Tests.Controllers;
 /// is the API contract operators script against (CI / Ansible parses
 /// <c>partialSuccess</c> + the skip arrays). The tests pin both the happy path
 /// (200 + partialSuccess=false) and the partial-success path (207 + skipped names
-/// surfaced) because earlier the controller silently dropped skip information and
-/// returned a misleading 200.
+/// surfaced).
 /// </summary>
 public class SecretsControllerTests
 {
@@ -130,7 +129,7 @@ public class SecretsControllerTests
     public async Task Reencrypt_CallsBothStores_OnceEach()
     {
         using var db = TestDbFactory.Create();
-        // Pin the contract: the endpoint MUST sweep both surfaces. A regression that
+        // Pin the contract: the endpoint must sweep both surfaces. A regression that
         // forgot one would silently leave half the rotation incomplete.
         var ctrl = Build(
             new ReencryptionSummary(1, 0, Array.Empty<ReencryptionSkip>()),

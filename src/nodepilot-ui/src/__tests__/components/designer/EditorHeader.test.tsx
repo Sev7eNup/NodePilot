@@ -10,16 +10,16 @@ import { useDesignStore } from '../../../stores/designStore';
 import { useThemeStore, THEMES } from '../../../stores/themeStore';
 
 /**
- * EditorHeader back-button tests. The back button now uses navigate(-1) and reads
- * from location.state (fromWorkflow) for the tooltip. The dirty guard is handled
- * by useBlocker in the parent page, not the button itself.
+ * EditorHeader back-button tests. The back button calls navigate(-1) and reads fromWorkflow
+ * from location.state for its tooltip. The dirty guard lives in useBlocker on the parent
+ * page, not in the button.
  *
  * Pinned:
- *   - No fromWorkflow in state → generic "Back to workflow list" tooltip
- *   - fromWorkflow in state → tooltip names the previous workflow
- *   - fromWorkflow click calls browser-back behavior
- *   - missing fromWorkflow falls back to /workflows
- *   - Button is never disabled
+ *   - without fromWorkflow the tooltip reads "Back to workflow list"
+ *   - with fromWorkflow the tooltip names the previous workflow
+ *   - a click with fromWorkflow goes back in history
+ *   - a click without fromWorkflow falls back to /workflows
+ *   - the button is never disabled
  */
 
 
@@ -90,8 +90,8 @@ function defaultProps(over: Partial<Parameters<typeof EditorHeader>[0]> = {}) {
 let capturedPathname = '';
 function LocationSpy() {
   const { pathname } = useLocation();
-  // Capture in an effect, not during render — render-phase reassignment of an outer
-  // binding is a side effect (react-hooks/globals). act() flushes this before assertions.
+  // Capture in an effect, not during render: reassigning an outer binding while rendering is
+  // a side effect (react-hooks/globals). act() flushes the effect before the assertions run.
   useEffect(() => { capturedPathname = pathname; }, [pathname]);
   return null;
 }
@@ -101,15 +101,15 @@ const defaultCaps: KnowledgeCapabilities = {
 };
 
 // EditorIdentity gates the AI-assistant button on the shared capabilities query. Seeding the
-// cache (fresh data → no fetch at mount) keeps these tests deterministic without MSW; the
-// default `llm: true` preserves the pre-gating DOM for every existing test.
+// cache with fresh data avoids a fetch at mount and keeps these tests deterministic without
+// MSW; the default `llm: true` keeps the assistant button visible for the other tests.
 function makeClient(caps: KnowledgeCapabilities | null = defaultCaps) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   if (caps) qc.setQueryData(['ai-knowledge-capabilities'], caps);
   return qc;
 }
 
-// Render with a MemoryRouter that provides location.state
+// Render inside a MemoryRouter that provides location.state.
 function renderWithState(
   state: Record<string, unknown> | undefined,
   entries: Parameters<typeof MemoryRouter>[0]['initialEntries'] = [{ pathname: '/workflows/wf-current', state }],
@@ -127,7 +127,7 @@ function renderWithState(
 }
 
 function getBackButton(): HTMLButtonElement {
-  // The button always renders — title varies based on fromWorkflow state
+  // The button always renders; only its title varies with the fromWorkflow state.
   return screen.getByRole('button', { name: /^(Back to:|Back to workflow list)/i }) as HTMLButtonElement;
 }
 
@@ -210,19 +210,19 @@ describe('EditorHeader — toolbar-layout toggle', () => {
   it('classic_unfoldsThePopoversIntoInlineControls', () => {
     useDesignStore.setState({ toolbarLayout: 'classic' });
     renderWithState(undefined);
-    // Overlays are inline buttons now, not behind the Eye popover; the compact "Display" and
-    // "Overlays" popover triggers are gone.
+    // In the classic layout the overlay toggles are inline buttons, so the compact "Display"
+    // and "Overlays" popover triggers are absent.
     expect(screen.getByTestId('toggle-dataflow-overlay')).toBeInTheDocument();
     expect(screen.queryByTestId('view-overlays-trigger')).not.toBeInTheDocument();
     expect(screen.queryByTestId('canvas-settings-trigger')).not.toBeInTheDocument();
-    // Run stays resolvable by its accessible name (icon-only Play, no "Run" label).
+    // The run button is icon-only, so it is resolved by its accessible name.
     expect(screen.getByRole('button', { name: 'Test run' })).toBeInTheDocument();
     expect(screen.getByTestId('toggle-toolbar-layout')).toBeInTheDocument();
   });
 });
 
-// Role / lifecycle affordances come from the SHARED RunControls + LifecycleControls, so they must
-// behave identically in both layouts. Run the same contract against each.
+// Role and lifecycle affordances come from the shared RunControls and LifecycleControls, so they
+// must behave the same in both layouts. The same contract runs against each.
 describe.each(['compact', 'classic'] as const)('EditorHeader — role contract (%s layout)', (layout) => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -230,7 +230,7 @@ describe.each(['compact', 'classic'] as const)('EditorHeader — role contract (
   });
 
   it('writer_seesRunAndDisable', () => {
-    // defaultProps: roleCanWrite true, workflow.isEnabled true → Run + Disable (PowerOff).
+    // defaultProps sets roleCanWrite and workflow.isEnabled, so Run and Disable are shown.
     renderWithState(undefined);
     expect(screen.getByRole('button', { name: 'Test run' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Disable' })).toBeInTheDocument();
@@ -276,7 +276,7 @@ describe('EditorHeader — color-skin switcher', () => {
     expect(menu).not.toHaveClass('z-30');
     const opts = screen.getAllByRole('menuitemradio');
     expect(opts).toHaveLength(THEMES.length + 1); // every skin + `system`
-    // Options render in THEMES order → selecting one updates the global store and closes the popover.
+    // Options render in THEMES order; selecting one updates the store and closes the popover.
     fireEvent.click(opts[1]);
     expect(useThemeStore.getState().theme).toBe(THEMES[1].id);
     expect(screen.queryAllByRole('menuitemradio')).toHaveLength(0);
@@ -300,7 +300,7 @@ describe('EditorHeader — AI assistant visibility (capabilities.llm)', () => {
   });
 
   it('capabilitiesNotLoaded_hidesTheAssistantToggle', () => {
-    // Empty cache = the query is still loading (or failed) → hidden, same as the sidebar nav.
+    // An empty cache means the query is loading or failed, so the toggle stays hidden.
     renderWithState(undefined, undefined, undefined, null);
     expect(screen.queryByTestId('toggle-ai-assistant')).not.toBeInTheDocument();
   });

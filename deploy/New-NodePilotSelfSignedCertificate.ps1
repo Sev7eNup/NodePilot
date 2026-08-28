@@ -4,16 +4,16 @@
 .SYNOPSIS
     Creates a self-signed TLS certificate for Kestrel. Lab and pilot use only.
 .DESCRIPTION
-    Opt-in helper behind the setup wizard's readiness page, for the case where the certificate
-    row is red and no PKI is available yet.
+    Opt-in helper behind the setup wizard's readiness page, for a machine that has no PKI
+    certificate yet.
 
     Two deliberate limits:
 
-      * Two years, not ten. A lab certificate that outlives the lab is worse than one that
-        expires while someone still remembers what it was for.
-      * It is NOT imported into LocalMachine\Root. Minting a machine-trusted certificate because
-        an installer offered to is not a decision an installer gets to make. The commands to do
-        that are printed instead, and they have to be repeated on every browser client anyway.
+      * The default lifetime is two years, so a lab certificate expires while its purpose is
+        still known.
+      * The certificate is not imported into LocalMachine\Root; granting machine-wide trust is
+        left to the operator. The commands are printed instead, and they have to be run on every
+        client anyway.
 .PARAMETER PublicHostname
     The name clients will use. Becomes the subject and the first SAN entry.
 .PARAMETER ValidityYears

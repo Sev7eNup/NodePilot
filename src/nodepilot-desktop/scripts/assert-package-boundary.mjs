@@ -8,9 +8,8 @@ function isOutside(root, candidate) {
 }
 
 /**
- * Reject links and reparse-backed paths in the packaged desktop tree. Electron's vendor
- * extractor already validates archive entries before writing; this second boundary ensures the
- * exact directory handed to Inno Setup cannot redirect a later recursive copy outside itself.
+ * Reject symbolic links and reparse points in the packaged desktop tree, so the directory
+ * handed to Inno Setup cannot redirect a later recursive copy outside itself.
  */
 export async function assertPackageBoundary(packageRoot) {
   const absoluteRoot = resolve(packageRoot);

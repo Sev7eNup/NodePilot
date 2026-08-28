@@ -4,37 +4,19 @@ import { ACTIVITY_CONFIG_COMPONENTS } from '../../components/designer/properties
 import { getRegisteredActivityFactTypes } from '../../lib/activityConfigFacts';
 
 /**
- * Cross-registry drift detector for activity wiring.
- *
- * Adding a new activity touches four parallel registries — and TypeScript can't catch
- * a missing entry in any of them because each registry is a plain Record/string-keyed
- * structure:
- *
- *   1. NodePilot.Core.Activities.ActivityCatalog   (backend, C#)
- *   2. activityCatalog.generated.ts                (frontend mirror — verified by
- *                                                   ActivityCatalogFrontendSyncTests on
- *                                                   the C# side)
- *   3. activityConfigMap.ts                        (PropertiesPanel routing → which
- *                                                   React component edits this activity's
- *                                                   config blob)
- *   4. activityConfigFacts.ts                      (pre-publish validation + canvas
- *                                                   summary + smart defaults)
- *   5. index.css                                   (color/bg/border CSS vars — covered by
- *                                                   activityCssPalette.test.ts separately)
- *
- * The frontend-sync test already pins (1) ↔ (2). The CSS-palette test pins (5). This
- * test pins (3) and (4) against the canonical catalog, so a missed registry surfaces at
- * CI time rather than as a runtime "panel renders nothing" / "publish accepts garbage".
+ * Cross-registry drift detector for activity wiring. An activity is declared in several
+ * parallel string-keyed registries, so TypeScript cannot catch a missing entry. The
+ * frontend-sync test pins the backend catalog against activityCatalog.generated.ts and
+ * activityCssPalette.test.ts pins the CSS variables; this test pins activityConfigMap
+ * (PropertiesPanel routing) and activityConfigFacts against the generated catalog.
  */
 
 describe('Activity registry drift', () => {
   const catalogTypes = new Set<string>(ACTIVITY_CATALOG.map((a) => a.type));
 
   describe('activityConfigMap (PropertiesPanel routing)', () => {
-    // Adding an activity to the catalog without a routing entry leaves the
-    // PropertiesPanel with no editor component to render — the side-panel is empty
-    // when the user selects the node. This is the failure mode that "feels broken"
-    // without throwing any error.
+    // A catalog entry without a routing entry leaves the PropertiesPanel with no editor
+    // component, so the side panel stays empty on selection and no error is raised.
     for (const activity of ACTIVITY_CATALOG) {
       it(`routes "${activity.type}" to a config component`, () => {
         expect(
@@ -58,10 +40,8 @@ describe('Activity registry drift', () => {
   });
 
   describe('activityConfigFacts (pre-publish validation + summary)', () => {
-    // Unlike activityConfigMap, NOT every catalog entry needs a facts entry — simpler
-    // activities (delay, fileHash) get along fine with the default no-op stubs. So we
-    // only enforce the orphan check, not the inverse "every catalog entry must have
-    // facts" rule (that would be too prescriptive — keep facts opt-in by intent).
+    // Facts entries are optional: simple activities such as delay or fileHash use the
+    // default no-op stubs. Only the orphan check is enforced, not full catalog coverage.
     it('has no orphan entries (every facts key exists in the catalog)', () => {
       const orphans = getRegisteredActivityFactTypes().filter((t) => !catalogTypes.has(t));
       expect(

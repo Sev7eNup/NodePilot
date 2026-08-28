@@ -449,7 +449,7 @@ public static class SettingsSectionAdapters
 
     /// <summary>
     /// Which configuration source owns a profile besides the runtime overrides file — see
-    /// <see cref="LlmProfileSettingsDto.ManagedBy"/>. Null ⇒ the Settings UI can delete it.
+    /// <see cref="LlmProfileSettingsDto.ManagedBy"/>. Null means the Settings UI can delete it.
     /// </summary>
     private static string? LlmProfileManagedBy(IConfigurationRoot configRoot, string profileId)
         => EffectiveSourceDetector.DetectNonRuntimeSource(
@@ -564,7 +564,7 @@ public static class SettingsSectionAdapters
                 ["EnableToolCalling"] = p.EnableToolCalling,
                 ["ToolCallMaxDepth"] = p.ToolCallMaxDepth,
             };
-            // Match the previous secret BY ID, never by position: ids are immutable, so a rename or
+            // Match the previous secret by id, never by position: ids are immutable, so a rename or
             // a deletion elsewhere in the list can't hand this profile someone else's API key.
             var previousProfile = previousProfiles[id] as JsonObject ?? new JsonObject();
             WriteSecretField(profile, "ApiKey", p.ApiKey, previousProfile, protector);

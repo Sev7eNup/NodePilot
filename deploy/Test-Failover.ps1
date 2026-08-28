@@ -5,8 +5,8 @@
   leader rejoins as follower on restart.
 
 .DESCRIPTION
-  Run from any machine that can reach both nodes' /healthz/leader endpoint. Designed for
-  PowerShell 5.1 and 7.x — no em-dashes, ASCII punctuation only (per project convention).
+  Run from any machine that can reach both nodes' /healthz/leader endpoint. Works on
+  PowerShell 5.1 and 7.x.
 
 .PARAMETER NodeAUrl
   Base URL of node A (e.g. http://nodepilot-a:5000). The script polls
@@ -25,8 +25,8 @@
   actually stopping anything (then a manual stop is expected separately).
 
 .PARAMETER MaxWaitSeconds
-  Hard upper bound for how long to wait for the takeover to be visible on the other node.
-  Default 120 (2x typical RTO). Failed if exceeded.
+  Upper bound for how long to wait until the takeover is visible on the other node.
+  Default 120. The test fails if the bound is exceeded.
 
 .EXAMPLE
   .\Test-Failover.ps1 -NodeAUrl http://nodepilot-a:5000 -NodeBUrl http://nodepilot-b:5000
@@ -47,7 +47,7 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
-# Trust self-signed certs in lab setups (PS 5.1 + PS 7 compatible).
+# Trust self-signed certificates so the script works against lab setups.
 if (-not ([System.Net.ServicePointManager]::ServerCertificateValidationCallback)) {
     [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 }
@@ -71,7 +71,7 @@ function Get-LeaderHealth([string]$baseUrl) {
             Reason = if ($body) { $body.reason } else { $null }
         }
     } catch {
-        # 503 from a follower throws — extract status code from response.
+        # A follower answers 503, which throws here; read the status code off the response.
         $code = 0
         try { $code = [int]$_.Exception.Response.StatusCode.Value__ } catch {}
         return [PSCustomObject]@{
@@ -86,7 +86,7 @@ function Get-LeaderHealth([string]$baseUrl) {
 }
 
 function Wait-ForLeaderTransition([string]$baseUrl, [string]$expectedReason, [int]$timeoutSec) {
-    # Polls $baseUrl/healthz/leader until either it becomes leader (200) or the timeout expires.
+    # Poll $baseUrl/healthz/leader until the node reports leader (200) or the timeout expires.
     $deadline = (Get-Date).AddSeconds($timeoutSec)
     while ((Get-Date) -lt $deadline) {
         $h = Get-LeaderHealth $baseUrl
@@ -189,12 +189,13 @@ if (-not $SkipServiceStop) {
         exit 0
     }
 
-    # Wait for the original leader to come back as follower (its own /healthz/leader → 503).
+    # Wait until the original leader is back as a follower, so its own /healthz/leader gives 503.
     $rejoinDeadline = (Get-Date).AddSeconds(60)
     $rejoined = $false
     while ((Get-Date) -lt $rejoinDeadline) {
         $h = Get-LeaderHealth $leaderUrl
-        # Follower correctly: 503 with reason="not_leader". Or process still starting: connection-refused.
+        # A follower answers 503 with reason=not_leader; a process still starting refuses the
+        # connection.
         if ($h.StatusCode -eq 503 -and $h.Reason -eq 'not_leader') { $rejoined = $true; break }
         Start-Sleep -Milliseconds 2000
     }

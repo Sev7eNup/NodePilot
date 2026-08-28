@@ -6,18 +6,18 @@ namespace NodePilot.Ai;
 
 /// <summary>
 /// Safety core of the chat assistant: merges a definition proposed by the LLM back onto the
-/// (unredacted) original, so the AI can never lose data or invent secrets. Per node/edge
+/// unredacted original, so the AI can neither lose data nor invent secrets. Per node/edge
 /// <c>id</c>:
 /// <list type="bullet">
-/// <item>fields the AI omitted are carried over from the original — layout (<c>position</c>,
-/// <c>sourceHandle</c>/<c>targetHandle</c>, <c>parentId</c>, group/sticky styles) and semantics
-/// (<c>credentialId</c>, <c>conditionExpression</c>, …) are preserved;</item>
-/// <item>for secret keys (<see cref="WorkflowSecretKeys.SecretConfigKeys"/>) the rule is
-/// <b>always</b>: restore the real value from the original; any different value set by the AI is
-/// discarded (replaced with <c>"***"</c>) and recorded as a note.</item>
+/// <item>fields the AI omitted are carried over from the original, preserving layout
+/// (<c>position</c>, <c>sourceHandle</c>/<c>targetHandle</c>, <c>parentId</c>, group/sticky
+/// styles) and semantics (<c>credentialId</c>, <c>conditionExpression</c>);</item>
+/// <item>secret keys (<see cref="WorkflowSecretKeys.SecretConfigKeys"/>) always take the real
+/// value from the original; any different value set by the AI is replaced with <c>"***"</c> and
+/// recorded as a note.</item>
 /// </list>
-/// IDs missing from the proposal are treated as deletions; new IDs are carried through (position
-/// fallback is handled by the caller / AI validation).
+/// IDs missing from the proposal count as deletions; new IDs are carried through, with position
+/// fallback left to the caller.
 /// </summary>
 internal static class WorkflowDefinitionMerge
 {
@@ -27,8 +27,8 @@ internal static class WorkflowDefinitionMerge
 
     /// <summary>
     /// Merges <paramref name="proposed"/> onto <paramref name="original"/>. Both must have
-    /// <c>nodes</c>/<c>edges</c> arrays (checked by the caller). Returns the merged definition
-    /// plus notes (e.g. about discarded secrets).
+    /// <c>nodes</c> and <c>edges</c> arrays, which the caller checks. Returns the merged
+    /// definition plus notes, for example about discarded secrets.
     /// </summary>
     internal static MergeResult Merge(JsonElement original, JsonElement proposed)
     {
@@ -92,8 +92,8 @@ internal static class WorkflowDefinitionMerge
 
     /// <summary>
     /// Recursive merge of one object: (1) keys present in the original but missing from the
-    /// proposal are carried over; (2) each object-valued child is then merged recursively, and
-    /// every secret key is reconciled.
+    /// proposal are carried over; (2) object-valued children are merged recursively and every
+    /// secret key is reconciled.
     /// </summary>
     private static void MergeObject(JsonObject target, JsonObject? source, List<string> notes)
     {
@@ -131,9 +131,9 @@ internal static class WorkflowDefinitionMerge
                 && orig != SecretMask
                     ? orig : null;
 
-            // Universal redaction round-trip: a proposed "***" means "unchanged / was redacted" for
-            // ANY key — restore the original. This covers inline secrets masked by CONTENT (a restApi
-            // headers string, body, or script) whose config key is not itself in SecretConfigKeys.
+            // A proposed "***" means the value was redacted and stays unchanged, for any key, so
+            // the original is restored. This covers secrets masked by content (a restApi headers
+            // string, body, or script) whose config key is not itself in SecretConfigKeys.
             var proposedIsMask = targetVal is JsonValue mv
                 && mv.TryGetValue(out string? mm) && mm == SecretMask;
             if (proposedIsMask)
@@ -154,8 +154,8 @@ internal static class WorkflowDefinitionMerge
                 && !string.IsNullOrEmpty(prop)
                     ? prop : null;
 
-            // Named-secret rule: ALWAYS restore an existing real value from the original; new or
-            // differing values proposed by the AI are rejected (and noted).
+            // Named secrets always take the existing real value from the original; a new or
+            // differing value proposed by the AI is rejected and noted.
             if (hasOriginal is not null)
             {
                 target[key] = JsonValue.Create(hasOriginal);
@@ -164,7 +164,7 @@ internal static class WorkflowDefinitionMerge
             }
             else if (proposedReal is not null)
             {
-                // The AI set a secret value that didn't exist in the original → discard it.
+                // The AI set a secret value that did not exist in the original, so discard it.
                 target[key] = JsonValue.Create(SecretMask);
                 notes.Add($"Secret '{key}' bitte manuell am Node setzen — die KI darf keine Secrets vergeben.");
             }
@@ -172,11 +172,10 @@ internal static class WorkflowDefinitionMerge
     }
 
     /// <summary>
-    /// Reconciles nested arrays used by grouped conditions and decision cases. Arrays have no
-    /// stable identity contract, so if the redacted proposal still contains a mask the complete
-    /// original array is retained rather than pairing a secret with the wrong item after a reorder.
-    /// Arrays without masks are traversed by index so named-secret protection still applies to
-    /// newly proposed nested objects.
+    /// Reconciles nested arrays used by grouped conditions and decision cases. Array items have no
+    /// stable identity, so a mask anywhere in the proposal restores the whole original array rather
+    /// than risking a secret paired with the wrong item after a reorder. Mask-free arrays are
+    /// traversed by index, so named-secret protection still applies to newly proposed objects.
     /// </summary>
     private static void MergeNestedArray(JsonArray target, JsonArray? source, List<string> notes)
     {

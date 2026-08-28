@@ -5,21 +5,21 @@
 
 .DESCRIPTION
   Runs in the current user's context with "run only when the user is logged on" (LogonType
-  Interactive) so NO password needs to be stored. StartWhenAvailable makes a missed run
-  (machine off/asleep at trigger time) catch up at next opportunity.
+  Interactive), so no password has to be stored. StartWhenAvailable lets a missed run
+  (machine off or asleep at trigger time) catch up at the next opportunity.
 
-  To run even when you are NOT logged on, you must supply credentials — easiest via Task
-  Scheduler GUI (set "Run whether user is logged on or not") or:
+  Running while not logged on requires credentials, set through the Task Scheduler GUI
+  ("Run whether user is logged on or not") or with:
     schtasks /Change /TN "NodePilot Nightly Tests" /RU <user> /RP <password>
 
-  Re-run this script any time to change the time (-Time) — it uses -Force to overwrite.
+  Re-run this script to change the time (-Time); it uses -Force to overwrite the task.
 
 .PARAMETER Time
   Daily start time, HH:mm. Default 22:00.
 
 .PARAMETER ScriptPath
-  Path to the nightly runner. Defaults to nightly-tests.ps1 sitting next to this script, so
-  the task registers correctly from any checkout location (not a hard-coded absolute path).
+  Path to the nightly runner. Defaults to nightly-tests.ps1 next to this script, so the task
+  registers correctly from any checkout location.
 #>
 [CmdletBinding()]
 param(

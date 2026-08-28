@@ -26,7 +26,8 @@ public class AiKnowledgeControllerTests
               string role = "Operator", bool enableToolCalling = false, bool db = false, bool withProfile = true,
               SharedFolderRole? folderRole = null)
     {
-        // withProfile: false = Llm:Enabled on but no resolvable active profile (LLM_NO_ACTIVE_PROFILE state).
+        // withProfile: false = Llm:Enabled on but no resolvable active profile
+        // (LLM_NO_ACTIVE_PROFILE state).
         var llmOptions = new StaticOptionsMonitor<LlmOptions>(withProfile
             ? LlmTestOptions.WithProfile(
                 enabled: llmEnabled, baseUrl: "http://localhost/v1", model: "test-model",
@@ -94,14 +95,16 @@ public class AiKnowledgeControllerTests
         (c.Capabilities().Result as OkObjectResult)!.Value as KnowledgeCapabilitiesDto
         ?? throw new InvalidOperationException("capabilities not returned");
 
-    // These controller tests never exercise read_settings (tool-calling is off by default); an empty
+    // These controller tests never exercise read_settings (tool-calling is off by default); an
+    // empty
     // snapshot keeps the assistant constructible.
     private sealed class StubSettingsKnowledgeReader : ISettingsKnowledgeReader
     {
         public IReadOnlyList<SettingsSectionKnowledge> GetRedactedSnapshot() => Array.Empty<SettingsSectionKnowledge>();
     }
 
-    // text2sql tools are only exercised via the manual smoke path; an empty stub keeps the assistant constructible.
+    // text2sql tools are only exercised via the manual smoke path; an empty stub keeps the
+    // assistant constructible.
     private sealed class StubSqlKnowledgeReader : ISqlKnowledgeReader
     {
         public string Provider => "sqlite";
@@ -179,7 +182,8 @@ public class AiKnowledgeControllerTests
     public async Task Ask_ToolCall_WithNonCanonicalFinishReason_StillExecutes()
     {
         var (controller, _, llm, body) = Build(enableToolCalling: true);
-        // Local endpoint reports finish_reason "stop" while still emitting a tool call — must still run.
+        // Local endpoint reports finish_reason "stop" while still emitting a tool call — must still
+        // run.
         llm.EnqueueToolCallStreamWithFinish(new[] { new LlmToolCall("c1", "get_next_scheduled_fires", "{}") }, "stop");
         llm.EnqueueStream("Die nächsten Cron-Feuerzeiten.");
 
@@ -340,7 +344,8 @@ public class AiKnowledgeControllerTests
     [Fact]
     public void Capabilities_LlmUsableButKnowledgeDisabled_LlmTrueEnabledFalse()
     {
-        // The state that shows the designer/script/workflow-gen AI buttons while the AI-Chat nav stays hidden.
+        // The state that shows the designer/script/workflow-gen AI buttons while the AI-Chat nav
+        // stays hidden.
         var (controller, _, _, _) = Build(knowledgeEnabled: false);
         var caps = Caps(controller);
         caps.Llm.Should().BeTrue();

@@ -6,8 +6,10 @@ using NodePilot.Data;
 namespace NodePilot.Scheduler.SystemAlerts.Sources;
 
 /// <summary>
-/// Per-service health source: one observation per background service, keyed by service name, exposing
-/// <c>staleSeconds</c> (heartbeat age) and <c>expectedIntervalSeconds</c>. A policy decides staleness
+/// Per-service health source: one observation per background service, keyed by service name,
+/// exposing
+/// <c>staleSeconds</c> (heartbeat age) and <c>expectedIntervalSeconds</c>. A policy decides
+/// staleness
 /// (e.g. <c>staleSeconds &gt; 180</c>), replacing the old fixed 3×-interval formula.
 /// </summary>
 public sealed class ServiceStaleSource : ISystemAlertSource

@@ -6,21 +6,18 @@
 .DESCRIPTION
     Sibling of deploy\desktop\Build-DesktopInstaller.ps1. Stages the payload and calls ISCC.
 
-    The payload carries the SIGNED zip plus its detached manifest and signature, unchanged. The
-    wizard verifies them at install time exactly as a hand-run deployment would - the GUI path
-    does not get a weaker trust chain than the scripted one, it just makes the publisher decision
-    easier to make.
+    The payload carries the signed zip plus its detached manifest and signature unchanged, so the
+    wizard verifies them at install time the same way a hand-run deployment does.
 
-    The zip stays framework-dependent, like the released one. Publishing a self-contained copy
-    for the installer would mean a later Update-NodePilot.ps1 run with a downloaded release
-    overwrote a self-contained installation with framework-dependent binaries. The ASP.NET Core
-    runtime is bundled as Microsoft's own installer instead - see Get-DotnetRuntimePayload.ps1.
+    The zip stays framework-dependent, like the released one. A self-contained copy would later be
+    overwritten with framework-dependent binaries by an Update-NodePilot.ps1 run against a
+    downloaded release. The ASP.NET Core runtime ships as Microsoft's own installer instead - see
+    Get-DotnetRuntimePayload.ps1.
 .PARAMETER ArtifactPath
     The signed NodePilot-<version>.zip. Its .manifest.json and .manifest.json.p7s must sit beside it.
 .PARAMETER TrustedSignerThumbprint
     Compiled into the wizard so the installer can verify the payload without asking the operator
-    for it. Also shown on the Ready page: silently pinning a thumbprint nobody ever saw would be
-    worse than today's explicit parameter.
+    for it. Also shown on the Ready page, so the pinned thumbprint stays visible.
 .PARAMETER SignerCertificatePath
     Public part of the signing certificate, shipped so the wizard can offer to trust it.
 .PARAMETER Version
@@ -31,12 +28,11 @@
     A pre-fetched ASP.NET Core runtime installer. Fetched and verified when omitted.
 .PARAMETER PgBinariesPath
     A PostgreSQL distribution ("pgsql" from the EDB zip), same input the desktop installer takes.
-    Only the psql CLIENT is taken from it - seven files, ~8 MB - so the wizard can create the role
-    and database on a PostgreSQL server the way it already can on SQL Server.
+    Only the psql client is taken from it, so the wizard can create the role and database on a
+    PostgreSQL server the way it already can on SQL Server.
 
-    OPTIONAL, unlike the desktop build. Omitted, the installer is built exactly as before and the
-    readiness page says the Postgres fix is unavailable in this build rather than offering a button
-    that cannot work. Release builds pass it.
+    Optional, unlike the desktop build. When omitted, the readiness page reports that the Postgres
+    fix is unavailable in this build. Release builds pass it.
 .PARAMETER OutputRoot
     Where the .exe lands. Defaults to deploy\server\out.
 #>
@@ -67,9 +63,8 @@ function Write-Info { param([string]$Text) Write-Host "[server-setup] $Text" -Fo
 
 function Invoke-Tool {
     <#
-      Native tools write progress to stderr, which PowerShell would otherwise escalate into a
-      terminating error under $ErrorActionPreference = 'Stop'. Judge success by the exit code, the
-      way Build-DesktopInstaller.ps1 does.
+      Native tools write progress to stderr, which PowerShell escalates into a terminating error
+      under $ErrorActionPreference = 'Stop'. Success is judged by the exit code instead.
     #>
     param([Parameter(Mandatory)][string]$FilePath, [string[]]$Arguments = @())
     $previous = $ErrorActionPreference
@@ -119,14 +114,13 @@ Write-Info "  ISCC: $resolvedIscc"
 
 # Two staging trees on purpose:
 #
-#   payload\  everything setup needs while it RUNS, shipped with Inno's dontcopy flag and
+#   payload\  everything setup needs while it runs, shipped with Inno's dontcopy flag and
 #             extracted to {tmp} - the readiness page and PrepareToInstall both run before a
 #             single file has been installed.
 #   deploy\   the copy that stays on disk, for the uninstaller and for later manual use.
 #
 # They must not share source paths. Inno deduplicates identical source files, so listing the same
-# file both dontcopy and with a DestDir collapses into one entry and the dontcopy variant silently
-# disappears - observed as scripts landing in a literal "{app}\deploy" folder under {tmp}.
+# file both dontcopy and with a DestDir collapses into one entry and drops the dontcopy variant.
 $stage = Join-Path $scriptDirectory 'stage'
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 foreach ($directory in 'payload', 'deploy\templates') {
@@ -189,11 +183,10 @@ if ($stagedRuntimeVersion -lt $MinimumRuntimeVersion) {
 }
 Write-Info "  $($stagedRuntime.Name)"
 
-# The psql CLIENT only - the seven files it actually loads, measured off its import table, not
-# bin\*. A stock distribution's bin folder is 57 MB, of which 27 MB is ICU and 8 MB is wxWidgets
-# for pgAdmin; none of it is reachable from psql. Staged FLAT into payload\ rather than into a
+# The psql client only: the files it loads according to its import table, not the whole bin\
+# folder, most of which psql never touches. Staged flat into payload\ rather than into a
 # subfolder, because the [Files] entry that carries the payload is "payload\*" with no
-# recursesubdirs - a subdirectory would compile without complaint and simply not be there.
+# recursesubdirs, so a subdirectory would compile without complaint and not be extracted.
 $pgClientFiles = @(
     'psql.exe'
     'LIBPQ.dll'
@@ -267,8 +260,7 @@ Invoke-Tool -FilePath $resolvedIscc -Arguments @(
     "/DSignerThumbprint=$normalizedThumbprint",
     "/DArtifactFileName=$artifactName",
     # Exact name rather than a wildcard: ExtractTemporaryFiles throws when a pattern matches
-    # nothing, and debugging "no files matching aspnetcore-runtime-*.exe" on a target machine is a
-    # poor use of anyone's evening.
+    # nothing, which is hard to diagnose on a target machine.
     "/DRuntimeFileName=$($stagedRuntime.Name)",
     (Join-Path $scriptDirectory 'NodePilotServer.iss'))
 

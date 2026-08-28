@@ -118,9 +118,9 @@ function SizingModeNote({ mode }: Readonly<{ mode: SizingMode }>) {
 }
 
 /**
- * The plan only governs the fields while automatic sizing is *both* chosen and booted. With
- * manual tuning chosen the operator has to be able to type the values a restart will pick up,
- * and with manual tuning still booted the stored numbers are what the process runs on.
+ * The plan only governs the fields while automatic sizing is both chosen and booted. With
+ * manual tuning chosen, the operator must be able to type the values a restart will pick up;
+ * with manual tuning still booted, the stored numbers are what the process runs on.
  */
 const planGovernsFields = (mode: SizingMode) => !mode.chosen && !mode.booted;
 
@@ -164,11 +164,9 @@ function EngineCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: Effe
   });
   if (ui.loading) return <Card icon={Chip} title={t('perf.engineCardTitle')}><p className="text-sm">{t('loading')}</p></Card>;
   const { form, set, data, save, errors } = ui;
-  // Reuse the env-lock path to grey out the fields the sizing plan governs: same disabled
-  // styling, and under automatic sizing those values genuinely are not in force. Two fields are
-  // exempt because the plan does not cover them — the debug pause, and MaxConcurrentExecutions,
-  // which is a safety cap against trigger loops rather than a performance knob and therefore
-  // stays configuration-driven in both modes.
+  // Reuse the env-lock path to grey out fields the sizing plan governs: same disabled styling,
+  // and under automatic sizing those values are not in force. MaxConcurrentExecutions and the
+  // debug pause are exempt — they are safety/config knobs the plan does not cover.
   const planGoverns = (k: string) =>
     k.startsWith('Engine:Runspace:') || k === 'Engine:MaxConcurrentSteps';
   const isEnvLocked = (k: string) => ui.isEnvLocked(k) || (planGovernsFields(mode) && planGoverns(k));
@@ -249,7 +247,7 @@ function ThreadingCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: E
   return (
     <Card icon={Box} title={t('perf.threadingCardTitle')}>
       {/* The ThreadPool floor is the one sizing knob that can be re-applied without a restart —
-          but only while the process BOOTED into manual tuning: `ThreadPoolTuningService` follows
+          but only while the process booted into manual tuning: `ThreadPoolTuningService` follows
           the boot plan, so ticking the checkbox does not make a save take effect live. */}
       <HotReloadHint isHotReloadable={data.isHotReloadable && mode.booted} />
       <SizingModeNote mode={mode} />

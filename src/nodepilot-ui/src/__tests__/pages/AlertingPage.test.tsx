@@ -50,7 +50,8 @@ function LocationProbe() {
 function renderPage(role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
   useAuthStore.setState({ isAuthenticated: true, username: 'u', role });
   patchFetch();
-  // The page opens on the System-alerts tab (ADR 0008); these tests target the Custom-rules tab, so stub the
+  // The page opens on the System-alerts tab (ADR 0008); these tests target the Custom-rules tab, so
+  // stub the
   // system endpoints (empty) and switch to Custom after render.
   server.use(
     http.get(`${BASE}/api/alerting/system/catalog`, () => HttpResponse.json({ sources: [] })),

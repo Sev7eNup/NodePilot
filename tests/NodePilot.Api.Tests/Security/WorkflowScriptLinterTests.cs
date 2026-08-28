@@ -191,7 +191,7 @@ public class WorkflowScriptLinterTests
     [Fact]
     public void Lint_MultilineScript_FlagsCorrectRule()
     {
-        // Pattern is on line 3 — Regex must still match across multiline
+        // Pattern is on line 3; the regex must still match across multiple lines.
         const string script = "Get-Date\nWrite-Output hello\nInvoke-Expression $x\nGet-Process";
         var warnings = WorkflowScriptLinter.Lint(Def(script));
         warnings.Should().ContainSingle(w => w.Rule == "invoke-expression");

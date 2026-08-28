@@ -21,7 +21,8 @@ public static class WorkflowDefinitionPatcher
 
     public sealed record PatchOp(string Op, JsonObject? Node, JsonObject? Edge, string? Id);
 
-    /// <summary>Parse the tool's <c>operations</c> JSON array into typed ops (throws on malformed input).</summary>
+    /// <summary>Parse the tool's <c>operations</c> JSON array into typed ops (throws on malformed
+    /// input).</summary>
     public static List<PatchOp> ParseOps(JsonElement operations)
     {
         if (operations.ValueKind != JsonValueKind.Array)
@@ -143,7 +144,8 @@ public static class WorkflowDefinitionPatcher
             list[list.IndexOf(existing)] = merged;
     }
 
-    // Backfill untouched fields from the original + protect secret keys (adapted from the API merge).
+    // Backfill untouched fields from the original + protect secret keys (adapted from the API
+    // merge).
     private static void MergeObject(JsonObject target, JsonObject? source, List<string> notes)
     {
         if (source is not null)

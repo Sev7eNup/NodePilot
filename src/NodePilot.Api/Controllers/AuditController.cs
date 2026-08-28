@@ -12,10 +12,8 @@ using NodePilot.Api.Export;
 namespace NodePilot.Api.Controllers;
 
 /// <summary>
-/// Read-only query endpoint for the compliance audit log. Admin-only — the whole purpose
-/// of the log is to hold people accountable, so broader read-access would defeat the
-/// deterrence effect (anyone could spot their own forbidden action and delete it before
-/// review … except there's no DELETE endpoint, and there never will be).
+/// Read-only query endpoint for the compliance audit log. Admin-only, because the log records
+/// user actions for accountability. No endpoint deletes entries.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -23,8 +21,8 @@ namespace NodePilot.Api.Controllers;
 [EnableRateLimiting("audit")]
 public class AuditController : ControllerBase
 {
-    // Hard cap so a forgotten `?take=999999` cannot degrade the DB. Operators paginate
-    // with `since`/`until` filters when they need to reach further back.
+    // Upper bound on page size so a large `take` value cannot overload the database.
+    // Callers reach further back with the `since`/`until` filters.
     private const int MaxTake = 500;
 
     private readonly NodePilotDbContext _db;
@@ -37,22 +35,23 @@ public class AuditController : ControllerBase
     }
 
     /// <summary>
-    /// Returns audit entries newest-first. All filters are optional and AND-combined.
-    /// Cursor pagination via <paramref name="afterTs"/> + <paramref name="afterId"/>:
-    /// the response's <c>nextCursor</c> object can be passed back verbatim to fetch the
-    /// next page. The cursor pins both the timestamp AND id so rows that share a
-    /// timestamp (common at ingest bursts) paginate deterministically — a pure
-    /// timestamp cursor would skip or duplicate ties.
+    /// Returns audit entries newest-first. All filters are optional and combined with AND.
+    /// Cursor pagination uses <paramref name="afterTs"/> plus <paramref name="afterId"/>: pass
+    /// the response's <c>nextCursor</c> back verbatim to fetch the next page. Pinning both
+    /// timestamp and id keeps rows that share a timestamp in a deterministic order.
     /// </summary>
-    /// <param name="action">Exact action code (e.g. <c>WORKFLOW_UPDATED</c>). Case-sensitive.</param>
-    /// <param name="resourceType">Exact resource label (<c>Workflow</c>, <c>Machine</c>, ...).</param>
+    /// <param name="action">Exact action code (e.g. <c>WORKFLOW_UPDATED</c>).
+    /// Case-sensitive.</param>
+    /// <param name="resourceType">Exact resource label (<c>Workflow</c>, <c>Machine</c>,
+    /// ...).</param>
     /// <param name="resourceId">Exact resource id.</param>
     /// <param name="userId">Exact actor id.</param>
-    /// <param name="ipAddress">Exact remote IP (string). Useful for forensic timelines.</param>
+    /// <param name="ipAddress">Exact remote IP address as a string.</param>
     /// <param name="since">Only entries with Timestamp &gt;= since.</param>
     /// <param name="until">Only entries with Timestamp &lt; until.</param>
     /// <param name="afterTs">Cursor: Timestamp of the last row from the previous page.</param>
-    /// <param name="afterId">Cursor: Id of the last row from the previous page. Required when afterTs is set.</param>
+    /// <param name="afterId">Cursor: Id of the last row from the previous page. Required when
+    /// afterTs is set.</param>
     /// <param name="take">Page size (default 100, max 500).</param>
     /// <param name="ct">Cancellation token forwarded to the EF query.</param>
     [HttpGet]
@@ -122,7 +121,8 @@ public class AuditController : ControllerBase
     /// Streaming bulk export — for compliance auditors who want "all activity in date range"
     /// as a single download. Unlike <see cref="GetAll"/> there's no <c>take</c> cap; the
     /// endpoint streams rows directly from the DB cursor to the response body so even a
-    /// 500k-row pull doesn't materialize in memory. <paramref name="since"/>/<paramref name="until"/>
+    /// 500k-row pull doesn't materialize in memory. <paramref name="since"/>/<paramref
+    /// name="until"/>
     /// are the only paging mechanism — operators are expected to use a date range, not a
     /// "fetch everything ever" call.
     /// <para>

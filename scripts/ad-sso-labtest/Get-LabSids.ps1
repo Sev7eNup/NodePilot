@@ -1,13 +1,13 @@
-# Liest die Gruppen-/User-SIDs des Testverzeichnisses und gibt einen copy-paste-fertigen
-# Env-Var-Block fuer PHASE B der API aus (siehe README.md, Abschnitt "PHASE B").
+# Reads the group and user SIDs of the test directory and prints a copy-paste ready
+# env var block for PHASE B of the API (see README.md, section "PHASE B").
 #
-# AUSFUEHREN AUF: dc01 oder einem Host mit RSAT-AD-PowerShell (dann -Server dc01.np.lab).
+# RUN ON: dc01 or a host with RSAT-AD-PowerShell (then pass -Server dc01.np.lab).
 #
-# Aufruf: powershell -NoProfile -ExecutionPolicy Bypass -File .\Get-LabSids.ps1
-#         .\Get-LabSids.ps1 -AsEnvBlock | Set-Clipboard
+# Usage: powershell -NoProfile -ExecutionPolicy Bypass -File .\Get-LabSids.ps1
+#        .\Get-LabSids.ps1 -AsEnvBlock | Set-Clipboard
 #
-# Die Domain-SID ist pro Lab-Provisionierung neu. SIDs deshalb NIE hartkodieren, sondern
-# vor jedem Testlauf frisch auslesen.
+# The domain SID is new for every lab provisioning, so never hardcode SIDs; read them
+# fresh before each test run.
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', '',
     Justification = 'Das Service-Bind-Passwort wird bewusst im Klartext in den Env-Block gerendert -- genau so muss es der API-Prozess in PHASE B sehen.')]
 param(
@@ -17,8 +17,8 @@ param(
     [string]$DcFqdn = 'dc01.np.lab',
     [string]$Server = $null,
     [string]$ServicePassword = 'Lab#20260802!Kq7z',
-    # Muessen zu Setup-LabDirectory.ps1 passen -- eigenes Praefix, damit vorhandene
-    # NodePilot-Gruppen einer laufenden LDAP-Anbindung unberuehrt bleiben.
+    # Must match Setup-LabDirectory.ps1. The prefix is separate so that existing NodePilot
+    # groups of a live LDAP binding stay untouched.
     [string]$AccessGroup = 'NPTest-Access',
     [string]$AdminsGroup = 'NPTest-Admins',
     [string]$UserPrefix = 'nptest',
@@ -31,9 +31,9 @@ $srv = @{}
 if ($Server) { $srv['Server'] = $Server }
 
 $ouDn = "OU=$OuName,$DomainDn"
-# OU-gescopet lesen: in einem Lab mit bestehender NodePilot-LDAP-Anbindung koennte eine
-# gleichnamige Gruppe anderswo stehen, und deren SID in die Testkonfiguration zu schreiben
-# waere ein stiller Fehlgriff auf fremde Objekte.
+# Read scoped to the OU: in a lab with an existing NodePilot LDAP binding a group of the
+# same name may live elsewhere, and writing its SID into the test configuration would
+# silently point at foreign objects.
 $accessSid = (Get-ADGroup -Filter "Name -eq '$AccessGroup'" -SearchBase $ouDn -Properties objectSid @srv).SID.Value
 $adminsSid = (Get-ADGroup -Filter "Name -eq '$AdminsGroup'" -SearchBase $ouDn -Properties objectSid @srv).SID.Value
 if (-not $accessSid -or -not $adminsSid) {

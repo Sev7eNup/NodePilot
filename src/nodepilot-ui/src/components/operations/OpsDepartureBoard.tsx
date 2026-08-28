@@ -7,9 +7,9 @@ import { formatTime } from '../../lib/format';
 import { STATUS_TEXT_CLASS } from '../../lib/statusTokens';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 
-// Next-fires "departure board": upcoming scheduled starts, soonest first, split-flap style.
-// Rows are keyed by workflow+nextFire so a changed fire time remounts the row and replays
-// the flip-in animation (CSS only — no per-character flap machinery).
+// Departure board of upcoming scheduled starts, soonest first, in split-flap style.
+// Rows are keyed by workflow and next fire time, so a changed fire time remounts the row and
+// replays the flip-in animation, which is pure CSS.
 
 const BOARD_CAP = 8;
 
@@ -18,8 +18,8 @@ export function OpsDepartureBoard({ triggers, nowMs }: Readonly<{
   nowMs: number;
 }>) {
   const { t } = useTranslation(['operations']);
-  // A branch, not `lg:hidden`: rendering both layouts would put every departure in the DOM twice,
-  // and a screen reader walking the page would read the whole board a second time.
+  // A branch rather than `lg:hidden`: rendering both layouts would put every departure in the
+  // DOM twice, and a screen reader walking the page would read the whole board a second time.
   const isMobile = useIsMobile();
 
   const rows = useMemo(() => {
@@ -46,9 +46,9 @@ export function OpsDepartureBoard({ triggers, nowMs }: Readonly<{
         <p className="text-sm text-outline">{t('operations:board.empty')}</p>
       ) : (
         isMobile ? (
-        /* Phones stack each departure into two lines. The four-column board needs the workflow
-           name truncated to nothing at 390 px — and a board of "[Dauertest 1m] …" rows tells an
-           operator which starts are coming but not which workflows they belong to. */
+        /* Phones stack each departure into two lines. The four-column board would truncate the
+           workflow name away on a narrow screen, leaving the operator with start times but no
+           way to tell which workflows they belong to. */
         <ul className="space-y-2 font-mono text-sm">
           {rows.map((trigger) => {
             const f = rowFacts(trigger, nowMs, t);
@@ -106,9 +106,8 @@ export function OpsDepartureBoard({ triggers, nowMs }: Readonly<{
 }
 
 /**
- * The cells both layouts share. A blocked row keeps its sort position and stays visible on
- * purpose: the whole point is that the operator reads "14:30 — Nightly Backup — blocked by X"
- * instead of a start that silently never happens.
+ * The cells both layouts share. A blocked row keeps its sort position and stays visible so the
+ * operator sees the time, the workflow and what blocks it, instead of a start that never happens.
  */
 function rowFacts(
   trigger: OpsArmedTrigger,

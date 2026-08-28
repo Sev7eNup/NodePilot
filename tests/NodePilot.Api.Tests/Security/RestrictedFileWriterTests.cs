@@ -7,11 +7,8 @@ using Xunit;
 namespace NodePilot.Api.Tests.Security;
 
 /// <summary>
-/// Pins the H-3 fix (a security-audit finding): the file is written through a handle that
-/// already carries the owner-only ACL, so the secret content never lives on disk
-/// world-readable. The previous "File.WriteAllText then SetAccessControl" pattern left a
-/// multi-millisecond TOCTOU window (time-of-check to time-of-use — a gap an attacker can
-/// race) where a sibling process could read the JWT key / bootstrap token.
+/// Verifies that secret files receive an owner-only ACL before content is written, preventing
+/// another process from reading the JWT key or bootstrap token during creation.
 /// </summary>
 public sealed class RestrictedFileWriterTests : IDisposable
 {
@@ -143,11 +140,8 @@ public sealed class RestrictedFileWriterTests : IDisposable
     {
         if (!OperatingSystem.IsWindows()) return;
 
-        // The rejection used to read "grants mutation rights to an untrusted principal" and stop
-        // there. True, and unusable: the usual cause is a leftover ACE from an earlier install
-        // that ran under a different service identity, and without the principal there is nothing
-        // to search for or hand to icacls. A server operator hit exactly this on 1.2.3 and the
-        // message pointed at the JWT key file instead of at the directory's ACL.
+        // The diagnostic identifies the untrusted principal so operators can locate and
+        // remove the offending directory ACE.
         var dir = new DirectoryInfo(_tempDir);
         var acl = dir.GetAccessControl();
         acl.AddAccessRule(new FileSystemAccessRule(

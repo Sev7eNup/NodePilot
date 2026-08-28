@@ -155,13 +155,13 @@ public class RenderersTableCommandTests
                     new
                     {
                         id = Guid.NewGuid(), workflowId = Guid.NewGuid(), status = "Succeeded",
-                        startedAt = DateTime.UtcNow.AddMinutes(-5), completedAt = DateTime.UtcNow, // → duration cell
+                        startedAt = DateTime.UtcNow.AddMinutes(-5), completedAt = DateTime.UtcNow, // Duration cell.
                         triggeredBy = "alice", errorMessage = (string?)null,
                     },
                     new
                     {
                         id = Guid.NewGuid(), workflowId = Guid.NewGuid(), status = "Running",
-                        startedAt = DateTime.UtcNow, completedAt = (DateTime?)null, // → "-" duration branch
+                        startedAt = DateTime.UtcNow, completedAt = (DateTime?)null, // "-" duration branch.
                         triggeredBy = (string?)null, errorMessage = (string?)null,
                     },
                 },
@@ -207,7 +207,7 @@ public class RenderersTableCommandTests
                 {
                     id = Guid.NewGuid(), stepId = "s1", stepName = "Disk", stepType = "runScript",
                     targetMachine = (string?)null, status = "Succeeded",
-                    startedAt = DateTime.UtcNow.AddSeconds(-3), completedAt = DateTime.UtcNow, // → duration cell
+                    startedAt = DateTime.UtcNow.AddSeconds(-3), completedAt = DateTime.UtcNow, // -> duration cell
                     output = (string?)null, errorOutput = (string?)null, attemptCount = 1,
                     pausedAt = (DateTime?)null, variablesSnapshot = (string?)null, traceOutput = (string?)null,
                 },
@@ -215,7 +215,7 @@ public class RenderersTableCommandTests
                 {
                     id = Guid.NewGuid(), stepId = "s2", stepName = "Wait", stepType = "delay",
                     targetMachine = (string?)null, status = "Skipped",
-                    startedAt = (DateTime?)null, completedAt = (DateTime?)null, // → "-" duration branch
+                    startedAt = (DateTime?)null, completedAt = (DateTime?)null, // -> "-" duration branch
                     output = (string?)null, errorOutput = (string?)null, attemptCount = 0,
                     pausedAt = (DateTime?)null, variablesSnapshot = (string?)null, traceOutput = (string?)null,
                 },
@@ -238,14 +238,15 @@ public class RenderersTableCommandTests
             {
                 items = new object[]
                 {
-                    // long details → truncation branch; resource present; username wins over userId
+                    // long details to truncation branch; resource present; username wins over
+                    // userId
                     new
                     {
                         id = Guid.NewGuid(), timestamp = DateTime.UtcNow, userId = Guid.NewGuid(), username = "bob",
                         action = "WORKFLOW_PUBLISHED", resourceType = "Workflow", resourceId = Guid.NewGuid(),
                         details = new string('x', 200), ipAddress = "10.9.8.7",
                     },
-                    // no resource + no user → the "-" fallbacks
+                    // no resource + no user -> the "-" fallbacks
                     new
                     {
                         id = Guid.NewGuid(), timestamp = DateTime.UtcNow, userId = (Guid?)null, username = (string?)null,
@@ -282,7 +283,7 @@ public class RenderersTableCommandTests
                 {
                     id = Guid.NewGuid(), name = "DB01", hostname = "db01", winRmPort = 5985, useSsl = false,
                     defaultCredentialId = (Guid?)null, tags = (string?)null,
-                    lastConnectivityCheck = (DateTime?)null, isReachable = false, // → "no" + "-" branches
+                    lastConnectivityCheck = (DateTime?)null, isReachable = false, // -> "no" + "-" branches
                 },
             }));
 
@@ -631,7 +632,7 @@ public class RenderersTableCommandTests
         var result = h.Run("exec", "watch", id.ToString(), "--no-signalr", "-o", "table");
 
         result.ExitCode.Should().Be(ExitCodes.Success);
-        // Final ExecutionDetail (table mode) → stdout; the per-step line goes to stderr.
+        // Final ExecutionDetail (table mode) -> stdout; the per-step line goes to stderr.
         result.Output.Should().Contain("poll-trace");
         result.AnyOutput.Should().Contain("Ping"); // step surfaced by the poll loop
     }
@@ -657,7 +658,7 @@ public class RenderersTableCommandTests
     private static object AlertingRuleJson(Guid id, string name) => new
     {
         id, name, description = (string?)null, isEnabled = true,
-        eventTypes = new[] { "ExecutionFailed", "ExecutionSucceeded", "ExecutionCancelled" }, // 3 → "+1" overflow branch
+        eventTypes = new[] { "ExecutionFailed", "ExecutionSucceeded", "ExecutionCancelled" }, // 3 -> "+1" overflow branch
         filterExpressionJson = (string?)null, scopeKind = "Global",
         cooldownMinutes = 15, minOccurrences = 1, occurrenceWindowMinutes = 0,
         routes = new object[] { new { id = Guid.NewGuid(), channel = "Email", target = "ops@x", secret = (string?)null, order = 0 } },

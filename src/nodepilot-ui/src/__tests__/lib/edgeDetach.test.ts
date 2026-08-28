@@ -3,16 +3,11 @@ import type { Edge } from '@xyflow/react';
 import { classifyReattachTarget, detachedSourcePoint } from '../../lib/edgeDetach';
 
 /**
- * Edge-Detach ("Ziel lösen" im Edge-Kontextmenü). Gepinnt wird hier die reine Logik:
- *   - die Klassifikation eines angeklickten Nodes, inklusive ihrer Reihenfolge (der
- *     Quell-Node bekommt seine eigene Meldung statt der generischen Typ-Ablehnung)
- *   - der Ankerpunkt der Vorschau-Linie je Port-Seite
- *
- * Der BISHERIGE Ziel-Node ist ausdrücklich ein gültiges Ziel: dort erneut anzudocken ist der
- * Weg, nur die Port-Seite zu wechseln. Die Duplikat-Regel schließt die bewegte Edge deshalb
- * aus — sonst würde sie sich selbst als Duplikat erkennen, sobald man sie auf ihrem eigenen
- * Ziel neu ablegt. Ob dabei überhaupt etwas passiert (gleicher Node UND gleicher Port =
- * No-Op ohne History-Eintrag), entscheidet der Aufrufer in WorkflowEditorPage.
+ * Edge detach ("release target" in the edge context menu): classification of a clicked node
+ * including verdict precedence, plus the anchor point of the preview line per port side.
+ * The current target node counts as a valid target, because reattaching there is how the port
+ * side is changed; the duplicate rule therefore excludes the edge being moved. Whether the drop
+ * changes anything at all is decided by the caller in WorkflowEditorPage.
  */
 
 const EDGES: Edge[] = [
@@ -29,7 +24,7 @@ function classify(candidateId: string, type: string | undefined, edges: Edge[] =
   });
 }
 
-/** Der Normalfall: ein Activity-Node. */
+/** The common case: an activity node. */
 const activity = (candidateId: string, edges?: Edge[]) => classify(candidateId, 'activity', edges);
 
 describe('classifyReattachTarget', () => {
@@ -38,9 +33,9 @@ describe('classifyReattachTarget', () => {
   });
 
   it('currentTarget_returnsOk_soThePortCanBeRepicked', () => {
-    // Das bisherige Ziel ist kein Sonderfall mehr: nur so lässt sich die Port-Seite wechseln,
-    // ohne die Edge samt Bedingung zu löschen und neu zu ziehen. Dass die Edge sich dabei
-    // nicht selbst als Duplikat sieht, hängt am `e.id !== edgeId`-Filter.
+    // Reattaching to the current target is the only way to change the port side without
+    // deleting the edge and its condition. The `e.id !== edgeId` filter keeps the edge from
+    // seeing itself as a duplicate.
     expect(activity('b')).toBe('ok');
   });
 
@@ -65,20 +60,20 @@ describe('classifyReattachTarget', () => {
   });
 
   it('sameTargetFromDifferentSource_returnsOk', () => {
-    // Ein anderer Node darf dasselbe Ziel haben — die Regel ist "eine Edge pro Knotenpaar",
-    // nicht "ein eingehender Nachbar".
+    // Another node may point at the same target: the rule is one edge per node pair, not one
+    // incoming neighbor.
     const edges: Edge[] = [{ id: 'e1', source: 'a', target: 'b' }, { id: 'e2', source: 'x', target: 'c' }];
     expect(activity('c', edges)).toBe('ok');
   });
 
   it('edgeBeingMoved_isExcludedFromDuplicateCheck', () => {
-    // Nur e1 existiert: der Klick auf ein freies Ziel darf nicht an der eigenen Zeile scheitern.
+    // Only e1 exists: clicking a free target must not fail because of the edge's own entry.
     const edges: Edge[] = [{ id: 'e1', source: 'a', target: 'b' }];
     expect(activity('z', edges)).toBe('ok');
   });
 
   it('sourceNodeThatIsAlsoAGroup_prefersSelfLoopVerdict', () => {
-    // Reihenfolge-Pin: der präzisere Befund gewinnt gegen die generische Typ-Ablehnung.
+    // Precedence: the more specific verdict wins over the generic type rejection.
     expect(classify('a', 'group')).toBe('selfLoop');
   });
 });
@@ -108,8 +103,8 @@ describe('detachedSourcePoint', () => {
   });
 
   it('unmeasuredNode_returnsNull', () => {
-    // React Flow vermisst Nodes erst nach dem ersten Layout-Pass. Bis dahin gibt es keinen
-    // sinnvollen Anker — der Aufrufer rendert dann einfach nichts, statt auf (0,0) zu zeigen.
+    // React Flow measures nodes only after the first layout pass. Without a size there is no
+    // sensible anchor, so the caller renders nothing instead of pointing at (0,0).
     expect(detachedSourcePoint({ measured: {}, internals: { positionAbsolute: { x: 1, y: 2 } } }, 'right')).toBeNull();
   });
 });

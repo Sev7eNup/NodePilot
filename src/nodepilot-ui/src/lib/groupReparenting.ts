@@ -1,17 +1,12 @@
 import type { Node } from '@xyflow/react';
 
 /**
- * n8n-style drag-into-group reparenting. After a drag ends, a node whose CENTER lands inside a
- * group frame becomes that group's child (React Flow `parentId`); a child whose center leaves its
- * group is detached again. Positions are converted between absolute (top-level) and
- * parent-relative so the node does not visually jump on reparent.
+ * Drag-into-group reparenting. When a drag ends, a node whose center lands inside a group frame
+ * becomes that group's child (React Flow `parentId`), and a child whose center leaves its group is
+ * detached. Positions convert between absolute and parent-relative so the node does not jump.
  *
- * Pure + side-effect free so it can be unit-tested without React Flow. Returns a new nodes array
- * when at least one node changed parent, or `null` when nothing changed (caller keeps prev state).
- *
- * Model (matches the rest of the designer): groups are top-level, sized via `style.width/height`;
- * children carry `parentId` and a position relative to the group origin. Nested groups are not
- * supported — a group is never reparented into another.
+ * Groups are top-level and sized via `style.width/height`; children carry `parentId` and a position
+ * relative to the group origin. Nested groups are not supported.
  */
 
 type XY = { x: number; y: number };
@@ -60,8 +55,8 @@ export function reparentDraggedNodes(nodes: Node[], draggedIds: string[]): Node[
   if (draggedIds.length === 0) return null;
   const byId = new Map(nodes.map((n) => [n.id, n]));
 
-  // Drop targets: expanded groups only. A collapsed group renders small, so its full-size bounds
-  // would be a misleading hit area — skip it.
+  // Drop targets are expanded groups only. A collapsed group renders small, so its full-size
+  // bounds would be a misleading hit area.
   const groupRects = nodes
     .filter((n) => n.type === 'group' && !isCollapsed(n))
     .map((g) => {
@@ -80,7 +75,7 @@ export function reparentDraggedNodes(nodes: Node[], draggedIds: string[]): Node[
     const { w, h } = nodeSize(node);
     const center = { x: abs.x + w / 2, y: abs.y + h / 2 };
 
-    // Among overlapping groups, the LAST in array order renders on top → it wins.
+    // Among overlapping groups, the last in array order renders on top and wins.
     let target: { id: string; x: number; y: number } | null = null;
     for (const r of groupRects) {
       if (r.id === id) continue;
@@ -117,10 +112,10 @@ export function reparentDraggedNodes(nodes: Node[], draggedIds: string[]): Node[
 }
 
 /**
- * The id of the (expanded) group the dragged node's CENTER currently sits over, or null. Used for
- * the live drop-target highlight while dragging — same containment rule as {@link reparentDraggedNodes}.
- * Returns the topmost group on overlap. The dragged node's own live position is taken from
- * `dragged` (which carries the in-flight position during a drag), so callers don't need fresh state.
+ * The id of the expanded group the dragged node's center currently sits over, or null. Drives the
+ * live drop-target highlight while dragging, with the same containment rule as
+ * {@link reparentDraggedNodes}. Returns the topmost group on overlap; the dragged node's in-flight
+ * position comes from `dragged`, so callers do not need fresh state.
  */
 export function findDropTargetGroupId(nodes: Node[], dragged: Node): string | null {
   if (dragged.type === 'group') return null;

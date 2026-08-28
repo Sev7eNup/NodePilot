@@ -26,8 +26,8 @@ export function ActivityTypeIcon({ type }: Readonly<{ type: string }>) {
   return <Icon size={16} className="shrink-0" style={{ color: cfg.color }} aria-hidden="true" />;
 }
 
-/** HH:MM:SS.mmm in 24-hour format. Milliseconds are visibly necessary because many steps
- *  take <1s — without .mmm they'd all look identical. */
+/** HH:MM:SS.mmm in 24-hour format. Milliseconds are shown because many steps take under
+ *  1s, and without them those steps would all look identical. */
 export function formatClock(ms: number): string {
   const d = new Date(ms);
   const hh = String(d.getHours()).padStart(2, '0');
@@ -37,10 +37,9 @@ export function formatClock(ms: number): string {
   return `${hh}:${mm}:${ss}.${mmm}`;
 }
 
-/** Inline bar giving a visual comparison of step durations against each other. Scaled to
- *  the longest step in the table (not an absolute scale), otherwise a 5ms step next to a
- *  10s step would be invisible — and the reverse would lose all visual contrast.
- *  Minimum width 2px, so even nominally 0ms steps leave a visible trace. */
+/** Inline bar comparing step durations against each other. Scaled to the longest step in
+ *  the table rather than an absolute scale, so a short step next to a long one stays
+ *  visible instead of shrinking to nothing. Minimum width 2px so a 0ms step still shows. */
 export function DurationBar({ durationMs, maxMs, status }: Readonly<{ durationMs: number | null; maxMs: number; status: string }>) {
   if (durationMs == null) return <span className="text-outline text-[10px]">—</span>;
   const pct = Math.max(2, Math.min(100, (durationMs / maxMs) * 100));
@@ -56,7 +55,7 @@ export function DurationBar({ durationMs, maxMs, status }: Readonly<{ durationMs
   );
 }
 
-/** Human-friendly ms format. <1s → ms, <60s → s with 1 decimal, otherwise m+s. */
+/** Human-friendly ms format. <1s -> ms, <60s -> s with 1 decimal, otherwise m+s. */
 export function formatMs(ms: number): string {
   if (ms < 0) ms = 0;
   if (ms < 1000) return `${Math.round(ms)}ms`;
@@ -70,9 +69,9 @@ export function formatMs(ms: number): string {
 
 /**
  * Static input block: reads the workflow definition, finds the node by stepId, and
- * renders its compiled config, target machine, credential override + output variable.
- * Deliberately read from the DEFINITION — not the execution row — so the execution record
- * stays lean. Templates like `{{step.param.x}}` are shown as-is; during a debug run the
+ * renders its config, target machine, credential override and output variable. Reads
+ * from the definition rather than the execution row so the execution record stays lean.
+ * Templates like `{{step.param.x}}` are shown as-is; during a debug run the
  * PausedVariablesInspector shows the resolved values.
  */
 export function StepInputBlock({ workflowId, stepId }: Readonly<{ workflowId: string; stepId: string }>) {
@@ -224,8 +223,8 @@ export function StepStatusIcon({ status, size = 14 }: Readonly<{ status: string;
 
 export function ExecutionStatusBadge({ status }: Readonly<{ status: string }>) {
   const { t } = useTranslation('designer');
-  // Tonale Status-Chips aus den semantischen Tokens (statusTokens.ts) statt
-  // handverdrahteter light/dark-Palettenpaare je Status.
+  // Tonal status chips built from the semantic tokens (statusTokens.ts) instead of
+  // hand-wired light/dark palette pairs per status.
   const styles: Record<string, string> = {
     Succeeded: `${STATUS_BADGE_CLASS.success} border-success/30`,
     Failed: `${STATUS_BADGE_CLASS.failed} border-error/30`,
@@ -260,8 +259,8 @@ export function firstLine(s: string): string {
 /**
  * Human-friendly label for the `triggeredBy` column. The raw API value can be anything
  * from `manual` (UI click) to `scheduleTrigger` / `webhookTrigger` / `api` (external key)
- * / `retry:<guid>` (re-run) / `startWorkflow:<stepId>` (sub-workflow parent). We colour +
- * rename them so the history column isn't a wall of camel-case.
+ * / `retry:<guid>` (re-run) / `startWorkflow:<stepId>` (sub-workflow parent). Coloring and
+ * renaming these keeps the history column from turning into a wall of camel-case.
  */
 export function TriggerCell({ triggeredBy }: Readonly<{ triggeredBy: string | null }>) {
   const { t } = useTranslation('designer');
@@ -288,9 +287,9 @@ export function TriggerCell({ triggeredBy }: Readonly<{ triggeredBy: string | nu
 }
 
 /**
- * Tiny icon row that tells-at-a-glance whether an execution carries params, returned data,
- * or is linked to a distributed trace. Each icon hovers a tooltip with either the content
- * or a short explanation so the user doesn't have to expand the row to peek.
+ * Small icon row showing at a glance whether an execution carries params, returned data,
+ * or is linked to a distributed trace. Each icon has a tooltip with the content or a short
+ * explanation, so the user doesn't need to expand the row to check.
  */
 export function ExtrasCell({ execution }: Readonly<{ execution: WorkflowExecution }>) {
   const { t } = useTranslation('designer');

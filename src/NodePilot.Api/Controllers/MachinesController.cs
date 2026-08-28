@@ -328,7 +328,8 @@ public class MachinesController : ControllerBase
             // potential WinRM-credential sweeps against a target list. Logging every probe
             // (success or failure) closes that forensics gap. Two distinct verbs because the
             // AuditWriter's SIEM mapping derives event.outcome from the suffix (_TEST_FAILED
-            // → failure, _TESTED → success) — matches the established LOGIN_SUCCESS / LOGIN_FAILED
+            // to failure, _TESTED to success) — matches the established LOGIN_SUCCESS /
+            // LOGIN_FAILED
             // pattern and lets Sigma/Sentinel rules gate on event.outcome=failure without
             // having to parse the Details JSON for a `success` field.
             var action = result.Success

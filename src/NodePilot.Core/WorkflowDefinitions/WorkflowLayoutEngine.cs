@@ -10,15 +10,14 @@ namespace NodePilot.Core.WorkflowDefinitions;
 /// <param name="RowHeight">Vertical distance between two nodes in the same layer.</param>
 /// <param name="Margin">Offset of the first column/row from the origin.</param>
 /// <param name="TriggerHeadroom">
-/// Extra horizontal gap after the first column. Trigger nodes render as octagons at 1.55x their
-/// bounding box, so the styleguide asks for more room right after them than between two ordinary
-/// steps.
+/// Extra horizontal gap after the first column. Trigger nodes render as octagons larger than their
+/// bounding box and need more room after them than an ordinary step.
 /// </param>
-/// <param name="GridSnap">Round every coordinate to a multiple of this. 0 disables snapping.</param>
+/// <param name="GridSnap">Round every coordinate to a multiple of this. 0 disables
+/// snapping.</param>
 /// <param name="OrderRowsByExistingY">
-/// Order the nodes within a layer by the y they already have, instead of by their order in the
-/// document. This is what lets an imported graph keep the author's vertical arrangement while
-/// getting NodePilot's spacing.
+/// Order the nodes within a layer by the y they already have instead of by document order. This
+/// lets an imported graph keep its vertical arrangement while getting NodePilot's spacing.
 /// </param>
 public sealed record WorkflowLayoutOptions(
     double ColumnWidth,
@@ -28,7 +27,8 @@ public sealed record WorkflowLayoutOptions(
     double GridSnap = 0,
     bool OrderRowsByExistingY = false)
 {
-    /// <summary>Tight spacing, and the exact numbers the MCP <c>suggest_layout</c> tool has always used.</summary>
+    /// <summary>Tight spacing, and the exact numbers the MCP <c>suggest_layout</c> tool has always
+    /// used.</summary>
     public static readonly WorkflowLayoutOptions Compact = new(280, 120, 60);
 
     /// <summary>
@@ -67,7 +67,8 @@ public sealed record WorkflowLayoutOptions(
 /// hundreds of pixels wider than anything on screen required.</para>
 /// </param>
 /// <param name="Margin">Where the top-left of the graph lands.</param>
-/// <param name="GridSnap">Round every coordinate to a multiple of this. 0 disables snapping.</param>
+/// <param name="GridSnap">Round every coordinate to a multiple of this. 0 disables
+/// snapping.</param>
 /// <param name="MaxScale">
 /// Refuse to preserve beyond this factor. A source graph whose nodes sit a few pixels apart would
 /// need a scale that turns the canvas into something nobody can navigate; falling back to a layered
@@ -85,7 +86,8 @@ public sealed record PreservedLayoutOptions(
 /// <summary>
 /// Simple left-to-right layered auto-layout: triggers/roots go in the leftmost column, each node
 /// sits one column right of its deepest predecessor, and nodes stack vertically within a column.
-/// <see cref="Reflow(JsonElement, WorkflowLayoutOptions)"/> rewrites node.position and nothing else;
+/// <see cref="Reflow(JsonElement, WorkflowLayoutOptions)"/> rewrites node.position and nothing
+/// else;
 /// <see cref="TryPreserveGeometry"/> may additionally set an edge's handles (see there).
 ///
 /// <para>Lives in Core because two very different callers need it: the MCP <c>suggest_layout</c>
@@ -99,7 +101,8 @@ public static class WorkflowLayoutEngine
     /// Reproduces the graph's own arrangement instead of re-laying it out, by scaling it uniformly
     /// until no two node cards can overlap and translating it to the margin.
     ///
-    /// <para>A uniform scale is a similarity transform: every distance and angle keeps its ratio, so
+    /// <para>A uniform scale is a similarity transform: every distance and angle keeps its ratio,
+    /// so
     /// the result is the SAME picture at a different size. That matters for an imported runbook —
     /// the author's arrangement is what makes it recognisable, and re-laying it out means handing
     /// someone a graph they have to read from scratch. The scale is needed because the source draws
@@ -111,7 +114,8 @@ public static class WorkflowLayoutEngine
     ///
     /// <para>Returns null when the arrangement cannot be reproduced: two nodes on the same point
     /// (no scale separates them), fewer than two positions to go on, a required scale beyond
-    /// <see cref="PreservedLayoutOptions.MaxScale"/>, or edges that will not settle. The caller then
+    /// <see cref="PreservedLayoutOptions.MaxScale"/>, or edges that will not settle. The caller
+    /// then
     /// falls back to <see cref="Reflow(JsonElement, WorkflowLayoutOptions)"/>.</para>
     /// </summary>
     public static JsonObject? TryPreserveGeometry(JsonElement definition, PreservedLayoutOptions options)
@@ -120,7 +124,8 @@ public static class WorkflowLayoutEngine
         if (positions.Count < 2) return null;
 
         // Centre-to-centre distance a pair needs: the node itself plus the gap we want to SEE
-        // between its edges. The gap doubles as the snapping allowance - rounding can move each of a
+        // between its edges. The gap doubles as the snapping allowance - rounding can move each of
+        // a
         // pair by half a step, and MinGap is required to exceed a full step.
         var width = options.NodeWidth + options.MinGap;
         var height = options.NodeHeight + options.MinGap;
@@ -135,7 +140,8 @@ public static class WorkflowLayoutEngine
                 var dy = Math.Abs(points[i].Y - points[j].Y);
                 if (dx == 0 && dy == 0) return null; // coincident: no scale ever separates them
 
-                // The pair is clear as soon as EITHER axis separates it, so the cheaper axis decides.
+                // The pair is clear as soon as EITHER axis separates it, so the cheaper axis
+                // decides.
                 var byX = dx > 0 ? width / dx : double.PositiveInfinity;
                 var byY = dy > 0 ? height / dy : double.PositiveInfinity;
                 required = Math.Max(required, Math.Min(byX, byY));
@@ -172,8 +178,10 @@ public static class WorkflowLayoutEngine
     /// U-loops, changing as little of the arrangement as possible.
     ///
     /// <para>The designer draws that U-loop for a right-to-left edge that runs backwards — which,
-    /// because the offset is measured between PORTS, includes every pair sitting in the SAME column.
-    /// On a real import that was 13 of 15 kinked edges: the source stacks activities vertically, and
+    /// because the offset is measured between PORTS, includes every pair sitting in the SAME
+    /// column.
+    /// On a real import that was 13 of 15 kinked edges: the source stacks activities vertically,
+    /// and
     /// preserving its arrangement preserved the stacking.</para>
     ///
     /// <para>So two remedies, cheapest first. A stacked pair only needs to dock top-to-bottom
@@ -209,7 +217,8 @@ public static class WorkflowLayoutEngine
             Math.Abs(x[e.Target] - x[e.Source]) < options.NodeWidth
             && Math.Abs(y[e.Target] - y[e.Source]) >= options.NodeHeight;
 
-        // Pulling a node right can bring it onto a neighbour, and separating that neighbour can undo
+        // Pulling a node right can bring it onto a neighbour, and separating that neighbour can
+        // undo
         // a pull, so the two run together until nothing moves. Every move rounds UP to the grid, so
         // each one strictly satisfies the constraint that triggered it and cannot be re-triggered:
         // rounding to the NEAREST multiple would land short of the target (148 is not a multiple of
@@ -229,8 +238,10 @@ public static class WorkflowLayoutEngine
                 moved = true;
             }
 
-            // Ties are broken by id so a pair the pull left on the same x still separates, and always
-            // in the same direction — otherwise neither node is "the right-hand one" and this spins.
+            // Ties are broken by id so a pair the pull left on the same x still separates, and
+            // always
+            // in the same direction — otherwise neither node is "the right-hand one" and this
+            // spins.
             var byX = placed.Keys.OrderBy(id => x[id]).ThenBy(id => id, StringComparer.Ordinal).ToList();
             for (var i = 0; i < byX.Count; i++)
             {
@@ -257,8 +268,7 @@ public static class WorkflowLayoutEngine
         foreach (var id in placed.Keys.ToList()) placed[id] = (x[id] - left + origin, y[id]);
         foreach (var id in x.Keys.ToList()) x[id] = placed[id].X;
 
-        // Ports last, against the settled positions — a node moved by the pull above must not be
-        // classified from where it used to be.
+        // Classify ports from settled positions after all node movement.
         foreach (var e in pullable)
         {
             if (!Stacked(e)) continue;
@@ -355,16 +365,19 @@ public static class WorkflowLayoutEngine
     {
         var doc = WorkflowDefinitionDocument.FromJsonElement(definition);
 
-        // Layer = longest distance from any root over active edges; unreached nodes get the next layer.
+        // Layer = longest distance from any root over active edges; unreached nodes get the next
+        // layer.
         // The cap at node count bounds the layer value so a CYCLE reachable from a trigger
-        // (t→a→b→a) terminates instead of relaxing the distance forever.
+        // (t to a to b to a) terminates instead of relaxing the distance forever.
         var layer = new Dictionary<string, int>(StringComparer.Ordinal);
         Relax(doc, doc.RootNodes.Select(r => r.Id), layer);
 
         // Everything the roots cannot reach gets its own band BELOW the main graph, laid out by its
         // own depth. Parking it all in one extra column instead produced a single column as tall as
-        // the node count: one disabled activity part-way through a real 47-node runbook cut 44 nodes
-        // loose, and they came out stacked nearly 8000 px deep. Unreached does not mean unstructured.
+        // the node count: one disabled activity part-way through a real 47-node runbook cut 44
+        // nodes
+        // loose, and they came out stacked nearly 8000 px deep. Unreached does not mean
+        // unstructured.
         var band = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var id in layer.Keys) band[id] = 0;
 
@@ -372,7 +385,8 @@ public static class WorkflowLayoutEngine
         if (unreached.Count > 0)
         {
             var unreachedSet = unreached.ToHashSet(StringComparer.Ordinal);
-            // Entry points of the detached part: no predecessor that is itself detached. A component
+            // Entry points of the detached part: no predecessor that is itself detached. A
+            // component
             // that is a pure cycle has none, so fall back to seeding it whole.
             var seeds = unreached
                 .Where(id => !doc.ReverseAdjacency.TryGetValue(id, out var preds)
@@ -431,7 +445,8 @@ public static class WorkflowLayoutEngine
     /// <paramref name="ports"/> is given — an edge's sourceHandle/targetHandle.
     ///
     /// <para>Rewriting a handle stretches this method's "positions only" remit, deliberately: which
-    /// side an edge leaves and enters is part of laying a graph out, and the styleguide sequences it
+    /// side an edge leaves and enters is part of laying a graph out, and the styleguide sequences
+    /// it
     /// that way too ("plan the layout first, then choose handles"). Only the geometry-preserving
     /// path passes them; <see cref="Reflow(JsonElement, WorkflowLayoutOptions)"/> does not, so the
     /// MCP layout tool's output is unaffected.</para>
@@ -488,7 +503,8 @@ public static class WorkflowLayoutEngine
 
     /// <summary>
     /// Longest-path relaxation from the given seeds over active edges. The cap at node count bounds
-    /// the layer value so a CYCLE reachable from a seed (t→a→b→a) terminates instead of relaxing the
+    /// the layer value so a CYCLE reachable from a seed (t to a to b to a) terminates instead of
+    /// relaxing the
     /// distance forever.
     /// </summary>
     private static void Relax(

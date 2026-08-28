@@ -139,9 +139,8 @@ public sealed class SharedFolderDeleteCommand : BaseCommand<SharedFolderDeleteSe
     public SharedFolderDeleteCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
     protected override async Task<int> RunAsync(CommandContext _, SharedFolderDeleteSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        // `--yes` is only demanded for the recursive variant. A plain delete refuses non-empty
-        // folders server-side, so it cannot destroy anything unattended — and scripts relying on
-        // that have run without a flag since the command existed.
+        // `--yes` is required only for the recursive variant. A plain delete refuses non-empty
+        // folders server-side, so it cannot destroy anything unattended without a flag.
         if (settings.Recursive && !settings.Yes && Console.IsInputRedirected)
         {
             writer.Error("Rekursives Löschen ist destruktiv — in nicht-interaktiven Läufen mit --yes bestätigen.");

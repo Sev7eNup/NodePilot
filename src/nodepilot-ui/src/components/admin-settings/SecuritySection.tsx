@@ -143,16 +143,14 @@ function RestApiCard() {
 // ─────────────────────────────────────────────────────────────────────────────
 // WaitForCondition (probe allow-list)
 //
-// Deliberately its own card next to RestApi: the two allow-lists look alike but
-// govern different guards. This one admits the PowerShell-backed portOpen/httpOk
-// probes; RestApi:AllowedHosts is the loopback exception for restApi calls. Merging
-// them would mean "let a workflow check whether my own service is up" silently also
-// opens outbound HTTP to loopback — whose URLs can come from trigger payloads.
+// Its own card next to RestApi: the two allow-lists look alike but govern different
+// guards. This one admits the PowerShell-backed portOpen/httpOk probes; RestApi:AllowedHosts
+// is the loopback exception for restApi calls. Merging them would mean "let a workflow
+// check whether my own service is up" silently also opens outbound HTTP to loopback,
+// whose URLs can come from trigger payloads.
 //
-// The separation only became true end-to-end in 2026-08: httpOk additionally ran
-// through the restApi SSRF guard, so this card was inert for loopback targets on
-// every hardened instance while still advertising hot-reload — the RestApi section
-// it silently depended on is restart-required.
+// httpOk probes also run through the restApi SSRF guard, so a change to RestApi's
+// allow-list can affect httpOk even though this card is hot-reloadable on its own.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type WaitForConditionDto = { allowedHosts: string[] };

@@ -46,7 +46,7 @@ public static class AdminBootstrap
         }
         if (usersExist)
         {
-            // Users exist → the auto-admin branch is unreachable anyway. If a stale token
+            // Users exist -> the auto-admin branch is unreachable anyway. If a stale token
             // still lives on disk, remove it so a later accidental DB wipe cannot combine
             // with a leaked old token.
             if (File.Exists(path))

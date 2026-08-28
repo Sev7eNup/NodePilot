@@ -3,19 +3,16 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * Playwright config for NodePilot UI E2E tests.
  *
- * Scenario catalogue: see [E2ETests.md](../../docs/testing/E2ETests.md) —
- * that document is the source of truth for what each E2E test covers, the
- * happy-path tour, and the manual checklists that are executed via the
- * Playwright MCP browser. Test files in this folder are the automated subset
- * of those scenarios.
+ * Scenario catalogue: [E2ETests.md](../../docs/testing/E2ETests.md) is the source of truth
+ * for what each E2E test covers, the happy-path tour, and the manual checklists run through
+ * the Playwright MCP browser. The test files in this folder are the automated subset.
  *
- * The webServer block builds the SPA and serves it via `vite preview` — this is
- * faster than `vite dev` for CI and matches what users actually deploy. All API
- * requests are intercepted per-test via `page.route()`; we never spin up a real
- * backend in E2E tests, so flake from backend cold-start / migrations is impossible.
+ * The webServer block builds the SPA and serves it with `vite preview`, which is faster than
+ * `vite dev` for CI and matches what is deployed. Every API request is intercepted per test
+ * via `page.route()`, so no backend runs and backend cold start cannot cause flake.
  *
  * To run locally:
- *   1. `npx playwright install --with-deps chromium`  (one-time, ~200 MB)
+ *   1. `npx playwright install --with-deps chromium`  (one-time)
  *   2. `npm run test:e2e`
  */
 export default defineConfig({
@@ -28,8 +25,8 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:4173',
     trace: 'on-first-retry',
-    // Designer relies on DOMMatrix + ResizeObserver — both are real in headless
-    // Chromium so we don't need the jsdom shims that the unit-test suite carries.
+    // The designer relies on DOMMatrix and ResizeObserver. Both are real in headless
+    // Chromium, so the jsdom shims used by the unit-test suite are not needed here.
     viewport: { width: 1440, height: 900 },
   },
   projects: [

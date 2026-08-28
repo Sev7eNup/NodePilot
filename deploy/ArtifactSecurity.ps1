@@ -13,12 +13,11 @@ function Normalize-NodePilotThumbprint {
 
 function New-NodePilotRandomBase64 {
     <#
-      One definition, three consumers: the installer's External-Trigger key default, the setup
-      adapter (which has to generate that key itself, because the installer prints it to a console
-      the wizard does not have), and anything else that needs a CSPRNG secret.
+      Returns a Base64-encoded CSPRNG secret. Shared by the installer's External-Trigger key
+      default, the setup adapter, and anything else that needs a random secret.
 
-      RNGCryptoServiceProvider works on both Windows PowerShell 5.1 (.NET Framework) and
-      PowerShell 7 (.NET 6+). RandomNumberGenerator.Fill() is Core-only.
+      RNGCryptoServiceProvider works on both Windows PowerShell 5.1 and PowerShell 7;
+      RandomNumberGenerator.Fill() is Core-only.
     #>
     param([int]$ByteCount = 48)
     $buffer = New-Object byte[] $ByteCount
@@ -29,15 +28,12 @@ function New-NodePilotRandomBase64 {
 
 function Import-NodePilotPkcsTypes {
     <#
-      The assembly carrying SignedCms is named differently per edition: Windows PowerShell 5.1
-      ships it inside System.Security, PowerShell 7 as System.Security.Cryptography.Pkcs.
+      Loads the assembly that carries SignedCms. Windows PowerShell 5.1 ships it inside
+      System.Security, PowerShell 7 as System.Security.Cryptography.Pkcs.
 
-      Asked by edition rather than attempted and caught. The try/catch this replaces worked, but
-      Add-Type raises a TERMINATING error under the setup's Stop preference, and Start-Transcript
-      records it before the catch can swallow it - so every setup log carried a red
-      "Die Assembly ... konnte nicht gefunden werden" immediately above the line confirming the
-      signature had verified. An operator reading that in CMTrace has every reason to abort a
-      perfectly healthy installation.
+      The edition is checked instead of trying a load and catching the failure: Add-Type raises a
+      terminating error under the setup's Stop preference, and Start-Transcript records it before
+      a catch can swallow it, leaving a misleading error in every setup log.
     #>
     if ('System.Security.Cryptography.Pkcs.SignedCms' -as [type]) { return }
     if ($PSVersionTable.PSEdition -eq 'Core') {
@@ -51,9 +47,8 @@ function Import-NodePilotPkcsTypes {
 function Import-NodePilotZipTypes {
     <#
       System.IO.Compression.ZipFile lives in a separate assembly that Windows PowerShell 5.1 does
-      not load on its own; PowerShell 7 has it in the default set. Asked by edition for the same
-      reason as Import-NodePilotPkcsTypes: a try/catch here would write a red terminating error
-      into every setup transcript before swallowing it.
+      not load on its own; PowerShell 7 has it in the default set. The edition is checked instead
+      of catching a failed load, for the same reason as Import-NodePilotPkcsTypes.
     #>
     if ('System.IO.Compression.ZipFile' -as [type]) { return }
     if ($PSVersionTable.PSEdition -ne 'Core') {
@@ -128,19 +123,12 @@ function New-NodePilotRestrictedFileSecurity {
 
 function Set-NodePilotServiceOwnedFileAcl {
     <#
-      Hands a secret the SERVICE wrote for itself over to a new service identity.
+      Transfers a secret the service wrote for itself to a new service identity.
 
-      RestrictedFileWriter creates jwt-secret.key and admin-setup.token owned by whoever the
-      service was at the time, protected, with exactly one ACE: that identity, FullControl. It
-      then refuses to use a file it cannot verify - which is correct, and which is why an
-      installation that changes the service identity leaves both files behind as rubble: the new
-      identity cannot open them, and the old one no longer runs.
-
-      This writes the same descriptor the service itself would have written, for the identity it
-      is about to become. Owner AND the single ACE, because the validator checks both.
-
-      Applied unconditionally rather than only when the identity changed: it is idempotent, and a
-      machine that is already stuck in that state is repaired by installing over it.
+      RestrictedFileWriter creates jwt-secret.key and admin-setup.token with the service identity
+      as owner and a single FullControl ACE for it, and refuses files it cannot verify, so a
+      changed service identity leaves both files unusable. This rewrites that descriptor for the
+      new identity, owner and ACE, and runs unconditionally because it is idempotent.
     #>
     [CmdletBinding()]
     param(
@@ -150,8 +138,8 @@ function Set-NodePilotServiceOwnedFileAcl {
 
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
 
-    # Well-known SIDs, never localised names: BUILTIN\Administrators and NT AUTHORITY\SYSTEM do
-    # not resolve on a German Windows, which is the rule the rest of this file already follows.
+    # Use well-known SIDs, never localised names: BUILTIN\Administrators and NT AUTHORITY\SYSTEM
+    # do not resolve on a German Windows host.
     $normalized = $ServiceAccount.Trim().ToLowerInvariant()
     $identity = if ($normalized -in @('localsystem', '.\localsystem', 'system', 'nt authority\system', 's-1-5-18')) {
         [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')
@@ -174,17 +162,11 @@ function Set-NodePilotServiceOwnedFileAcl {
 
 function Write-NodePilotBootstrapCredentialFile {
     <#
-      Leaves the generated first-admin credentials where an unattended rollout can collect them.
-
-      This is the whole point of the random-password path: a silent installation has nobody to show
-      a password to, so it has to be written down somewhere predictable. ACL-before-content through
-      the same primitive the signed-artifact staging uses - the file exists with SYSTEM +
-      Administrators and nothing else from its very first byte, never briefly inheriting from
-      DataPath and never existing unprotected with content in it.
-
-      It is a live credential and is deliberately NOT deleted afterwards: a rollout that has not
-      collected it yet would otherwise be left with an account nobody can use. Retrieving it,
-      removing it and rotating the password is the operator's step, and the documentation says so.
+      Writes the generated first-admin credentials where an unattended rollout can collect them:
+      a silent installation has nobody to show a password to. The ACL is applied in the create
+      call, so the file carries SYSTEM plus Administrators only from its first byte. It holds a
+      live credential and is not deleted afterwards; collecting it, deleting it and rotating the
+      password is an operator step covered by the documentation.
     #>
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
         'PSAvoidUsingPlainTextForPassword', 'Password',
@@ -372,10 +354,10 @@ function Write-NodePilotRestrictedFile {
 
 function New-NodePilotRestrictedStagingDirectory {
     <#
-      An unpredictable directory whose DACL is SYSTEM + Administrators + the current user only,
-      applied atomically in the create call rather than afterwards. Also used by the setup
-      adapter for its answer file, which is why the name is configurable: an operator who finds
-      one of these lying around should be able to tell what put it there.
+      Creates an unpredictable directory whose DACL grants only SYSTEM, Administrators and the
+      current user, applied in the create call rather than afterwards. The name prefix is
+      configurable because the setup adapter also uses this for its answer file, so a leftover
+      directory can be traced back to whatever created it.
     #>
     [CmdletBinding()]
     param(
@@ -448,33 +430,18 @@ function Expand-NodePilotArtifactToStaging {
         [string]$ParentPath = [IO.Path]::GetTempPath()
     )
 
-    # Absolute paths: ExtractToDirectory resolves relative ones against the PROCESS working
-    # directory, which is not the caller's location and is not the staging parent either.
+    # Resolve to an absolute path: ExtractToDirectory resolves relative paths against the process
+    # working directory, which is neither the caller's location nor the staging parent.
     $resolvedArtifact = (Resolve-Path -LiteralPath $ArtifactPath -ErrorAction Stop).Path
     $stagingPath = New-NodePilotRestrictedStagingDirectory -ParentPath $ParentPath
     try {
         # ExtractToDirectory rather than Expand-Archive, which pays per-entry pipeline overhead
-        # that dominates a tree of mostly sub-64 KB files. Faster everywhere measured, but the
-        # margin is strongly environment-dependent, so do not quote a single multiplier:
+        # that dominates a tree of mostly small files.
         #
-        #   Win 11 workstation (PS 5.1.22621)   24.3-24.8 s  ->  2.0-2.7 s   ~9-12x
-        #   Server 2025 VM, 4 cores (26100)      7.3- 7.7 s  ->  4.6-5.2 s   ~1.6x
-        #
-        # Same artifact (2867 files, 114 MB), three and two runs respectively. The workstation is
-        # the faster machine on the new path and the slower one on the old, so the difference is
-        # in what Expand-Archive costs per entry there, not in raw I/O. Worth having on both, but
-        # the lab number is the one to expect on a server.
-        #
-        # The two were verified to produce identical trees: same 2867 files, same 377 directories,
-        # zero differences in relative path, length or SHA-256.
-        #
-        # Zip-slip protection is NOT lost in the trade. .NET refuses an entry whose resolved path
-        # leaves the destination ("Durch Extrahieren des Zip-Eintrags wuerde eine Datei ausserhalb
-        # des angegebenen Zielverzeichnisses erstellt"), verified against a crafted archive
-        # carrying '../escaped.txt'. Assert-NodePilotExtractedFiles below is the second line
-        # anyway: it rejects rooted or dot-dot paths in the manifest, requires an exact file
-        # count, and hashes every file against the signed manifest - so an entry that landed
-        # somewhere unexpected inside staging would fail there regardless.
+        # Zip-slip protection is kept: .NET refuses an entry whose resolved path leaves the
+        # destination, and Assert-NodePilotExtractedFiles below rejects rooted or dot-dot paths in
+        # the manifest, requires an exact file count, and hashes every file against the signed
+        # manifest.
         Import-NodePilotZipTypes
         [IO.Compression.ZipFile]::ExtractToDirectory($resolvedArtifact, $stagingPath)
         Assert-NodePilotExtractedFiles -RootPath $stagingPath
@@ -544,20 +511,13 @@ function Assert-NodePilotExtractedFiles {
 
 function Assert-NodePilotInstallRootHardened {
     <#
-      H-18. The install directory is the image path of a service running as LocalSystem or a gMSA,
-      so write access to it IS code execution as that account. Assert-NodePilotExtractedFiles proves
-      the files are the ones we shipped at this instant; this proves nobody can replace them
-      afterwards, which is the actual hijack window - the service starts later, and again on every
-      boot.
+      Checks that only trusted principals can write to the install directory. It is the image path
+      of a service running as LocalSystem or a gMSA, so write access there is code execution as
+      that account. Shared with the updater, which has to answer the same question.
 
-      Lives here rather than in the installer because the updater has to answer the same question:
-      an installation made before this check exists keeps its inherited ACL forever otherwise, and
-      replacing the binaries on every upgrade would never notice.
-
-      -RequireProtectedRules is for the installer, which has just applied a protected DACL and can
-      insist on it. The updater deliberately does not: an older installation under Program Files
-      inherits a perfectly safe ACL from its parent, and failing that would block upgrades on hosts
-      that are not actually exposed.
+      -RequireProtectedRules is for the installer, which has just applied a protected DACL. The
+      updater omits it, because an older installation under Program Files inherits a safe ACL from
+      its parent.
     #>
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -569,8 +529,8 @@ function Assert-NodePilotInstallRootHardened {
         throw "Install directory '$Path' still inherits ACEs from its parent. Refusing to register a service whose binaries are governed by an inherited ACL."
     }
 
-    # SYSTEM, Administrators and TrustedInstaller are the principals a machine administrator already
-    # trusts with the binaries; anything else holding a write-shaped right is a hijack primitive.
+    # SYSTEM, Administrators and TrustedInstaller are the principals a machine administrator
+    # already trusts with the binaries; any other identity holding a write right can hijack them.
     $trusted = @('S-1-5-18', 'S-1-5-32-544', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
     $writeMask =
         [System.Security.AccessControl.FileSystemRights]::WriteData -bor
@@ -607,15 +567,10 @@ function Assert-NodePilotInstallRootHardened {
 
 function Assert-NodePilotCodeSigningCertificate {
     <#
-      What the certificate is for, and what its key is allowed to do. Two different questions, and
-      until Assert-NodePilotSignedArtifact stopped validating the chain, only the first one was
-      asked here - the chain engine's default policy answered the second on our behalf: where a
-      KeyUsage extension is present it must permit DigitalSignature or NonRepudiation.
-
-      CheckSignature($true) verifies the signature and nothing else. Without the check below, a
-      certificate carrying the code-signing EKU while its KeyUsage forbade signing would have
-      passed: the EKU says what the certificate is FOR, KeyUsage says what the key MAY DO, and only
-      both together answer "may this key sign code".
+      Checks both what the certificate is for and what its key may do. The EKU must include code
+      signing, and a KeyUsage extension, when present, must permit DigitalSignature or
+      NonRepudiation. Only both together answer whether this key may sign code; the CMS signature
+      check verifies neither.
     #>
     param([Parameter(Mandatory)][System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate)
 
@@ -628,7 +583,7 @@ function Assert-NodePilotCodeSigningCertificate {
     }
 
     # An absent KeyUsage extension means unrestricted in X.509, so only a present one can reject
-    # anything - looping over what is there rather than demanding it be there.
+    # anything. Loop over the extensions that exist instead of requiring one.
     $signingUsages = [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature -bor
                      [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::NonRepudiation
     foreach ($keyUsage in @($Certificate.Extensions | Where-Object {
@@ -718,21 +673,11 @@ function Assert-NodePilotSignedArtifact {
     $cms.Decode([IO.File]::ReadAllBytes($signaturePath))
     if ($cms.SignerInfos.Count -ne 1) { throw "Artifact manifest must contain exactly one signer." }
 
-    # $true = verify the signature, do NOT validate the certificate chain.
-    #
-    # The publisher is self-signed, so the trust anchor of its chain IS the signing certificate:
-    # validating the chain only confirms what the thumbprint comparison below already establishes,
-    # and it does so by demanding that an administrator first import that certificate into
-    # LocalMachine\Root - a permanent, machine-wide change on every target, for no gain in
-    # authenticity. Requiring it made the first installation on any untouched host fail.
-    #
-    # What the chain policy did enforce beyond trust is now enforced here, explicitly and in one
-    # place: the key usage (Assert-NodePilotCodeSigningCertificate) and the validity window below.
-    #
-    # Deliberately given up, and worth knowing before anyone signs with a CA-issued certificate
-    # instead: the trust anchor, time nesting across a chain, basic/name/policy constraints, and
-    # revocation. For a self-signed end-entity certificate with no CRL distribution point only the
-    # first of those was ever real - and that one is the point of this change.
+    # $true verifies the signature only and skips certificate chain validation. The publisher
+    # certificate is self-signed, so the chain adds nothing over the thumbprint comparison below
+    # while requiring that certificate to be imported into LocalMachine\Root on every host. Key
+    # usage and the validity window are checked explicitly instead; trust anchor, constraints and
+    # revocation are not, which matters if a CA-issued certificate is ever used here.
     $cms.CheckSignature($true)
 
     $signerCertificate = $cms.SignerInfos[0].Certificate
@@ -740,16 +685,15 @@ function Assert-NodePilotSignedArtifact {
     Assert-NodePilotCodeSigningCertificate $signerCertificate
     $actualSigner = Normalize-NodePilotThumbprint $signerCertificate.Thumbprint
     $expectedSigner = Normalize-NodePilotThumbprint $TrustedSignerThumbprint
-    # The thumbprint is a SHA-1 hash of the certificate - "the expected publisher", not "provably
-    # this exact certificate and no other". Good enough against a fixed, published value; a SHA-256
-    # pin over RawData would be the stronger form and is a change of its own, because the pinned
-    # value is compiled into the setup and printed in every release note.
+    # The thumbprint is a SHA-1 hash of the certificate, so this identifies the expected publisher
+    # rather than proving the exact certificate. A SHA-256 pin over RawData would be stronger, but
+    # the pinned value is compiled into the setup and published in the release notes.
     if ($actualSigner -ne $expectedSigner) {
         throw "Artifact was signed by untrusted certificate $actualSigner; expected $expectedSigner."
     }
 
-    # Was implicit in the chain validation. Checked after the pin so that the wrong certificate is
-    # reported as the wrong certificate rather than as an expired one.
+    # Validity window, checked after the thumbprint pin so a wrong certificate is reported as
+    # wrong rather than as expired.
     $now = [DateTime]::UtcNow
     if ($signerCertificate.NotBefore.ToUniversalTime() -gt $now) {
         throw ("Artifact signer certificate $actualSigner is not valid until " +

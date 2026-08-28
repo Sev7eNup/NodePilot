@@ -8,11 +8,7 @@ using Xunit;
 namespace NodePilot.Ai.Tests;
 
 /// <summary>
-/// Every way of failing to reach an LLM endpoint used to arrive as the same sentence — "LLM
-/// endpoint did not respond within {TimeoutSeconds}s" — because one budget covered DNS, TCP, TLS
-/// and the model's answer alike. With a profile at 360 s that meant six minutes of silence and
-/// then a message that pointed at the model when the real cause was a firewall or an untrusted
-/// certificate.
+/// Verifies that LLM connection failures distinguish DNS, TCP, TLS, and response timeout causes.
 ///
 /// <para>These tests pin the split: each stage now fails on its own deadline and says which one it
 /// was. They assert the <i>stage naming</i>, not the exact prose — the wording is allowed to

@@ -3,10 +3,10 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { CornerResizeHandle } from '../../../components/designer/library/NodeLibrary';
 
 /**
- * CornerResizeHandle is the bottom-right grip used to 2D-resize the "Freigegebene
- * Ordner" box on the workflows page. It carries no resize math itself — it forwards
- * mouse/double-click events to two useResizable instances (width + height). These
- * tests pin that forwarding contract and the corner cursor affordance.
+ * CornerResizeHandle is the bottom-right grip that resizes the shared-folders box on the
+ * workflows page in both directions. It holds no resize math of its own; it forwards mouse
+ * and double-click events to two useResizable instances (width and height). These tests pin
+ * that forwarding contract and the corner cursor affordance.
  */
 describe('CornerResizeHandle', () => {
   it('rendersWithCornerCursorAffordance', () => {
@@ -22,9 +22,9 @@ describe('CornerResizeHandle', () => {
     const handle = screen.getByTestId('folder-panel-corner-resize');
     const svg = handle.querySelector('svg');
     expect(svg).not.toBeNull();
-    // Classic resize grip = several nested diagonal strokes (not the old single corner bracket).
+    // The grip glyph is drawn as several nested diagonal strokes.
     expect(svg!.querySelectorAll('line').length).toBeGreaterThanOrEqual(2);
-    // Decorative only — pointer events must pass through to the drag wrapper.
+    // The glyph is decorative, so pointer events must pass through to the drag wrapper.
     expect(svg!.getAttribute('class')).toContain('pointer-events-none');
   });
 
