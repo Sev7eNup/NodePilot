@@ -63,6 +63,7 @@ public static class CommandRegistration
             wf.AddCommand<WorkflowEnableCommand>("enable").WithDescription("Enable trigger evaluation.");
             wf.AddCommand<WorkflowDisableCommand>("disable").WithDescription("Disable a workflow (kill switch).");
             wf.AddCommand<WorkflowCancelAllCommand>("cancel-all").WithDescription("Cancel every running execution of a workflow.");
+            wf.AddCommand<WorkflowConcurrencyLimitCommand>("concurrency-limit").WithDescription("Cap how many executions of a workflow run at once (further runs queue).");
             wf.AddCommand<WorkflowDuplicateCommand>("duplicate").WithDescription("Create a copy of a workflow.");
             wf.AddCommand<WorkflowDeleteCommand>("delete").WithDescription("Permanently delete a workflow (Admin only).");
             wf.AddCommand<WorkflowExportCommand>("export").WithDescription("Export one or all workflows.");

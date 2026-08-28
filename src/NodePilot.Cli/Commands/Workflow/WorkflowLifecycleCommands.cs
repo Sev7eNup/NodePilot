@@ -38,6 +38,41 @@ public sealed class WorkflowUnlockCommand : BaseCommand<WorkflowGetSettings>
     }
 }
 
+public sealed class WorkflowConcurrencyLimitSettings : WorkflowGetSettings
+{
+    [CommandOption("-m|--max <COUNT>")]
+    [Description("Maximum concurrent executions (1-1000). Omit or pass 'none' for unlimited.")]
+    public string? Max { get; set; }
+}
+
+[SupportedOSPlatform("windows")]
+public sealed class WorkflowConcurrencyLimitCommand : BaseCommand<WorkflowConcurrencyLimitSettings>
+{
+    public WorkflowConcurrencyLimitCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
+    protected override async Task<int> RunAsync(CommandContext _, WorkflowConcurrencyLimitSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
+    {
+        int? limit = null;
+        if (!string.IsNullOrWhiteSpace(settings.Max)
+            && !settings.Max.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!int.TryParse(settings.Max, out var parsed))
+            {
+                writer.Error($"'{settings.Max}' is not a number. Pass a count or 'none' for unlimited.");
+                return ExitCodes.Error;
+            }
+            limit = parsed;
+        }
+
+        var api = ClientFactory.Create(session);
+        var w = await WorkflowResolver.ResolveAsync(api, settings.IdOrName, ct);
+        await api.SetWorkflowConcurrencyLimitAsync(w.Id, limit, ct);
+        writer.Success(limit is { } value
+            ? $"Workflow [bold]{Markup.Escape(w.Name)}[/] limited to {value} concurrent execution(s); further runs queue."
+            : $"Concurrency limit removed from [bold]{Markup.Escape(w.Name)}[/] — unlimited.");
+        return ExitCodes.Success;
+    }
+}
+
 [SupportedOSPlatform("windows")]
 public sealed class WorkflowEnableCommand : BaseCommand<WorkflowGetSettings>
 {

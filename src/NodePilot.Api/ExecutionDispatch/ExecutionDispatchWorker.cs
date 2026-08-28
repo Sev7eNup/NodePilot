@@ -11,10 +11,18 @@ public sealed class ExecutionDispatchWorker : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// Longer than <see cref="RetryDelay"/>: a workflow at its limit stays there until a run
+    /// finishes, and the claim filter already skips it, so this only paces the residual race.
+    /// </summary>
+    private static readonly TimeSpan ConcurrencyDeferralDelay = TimeSpan.FromSeconds(5);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ExecutionDispatchSignal _signal;
     private readonly IClusterStateProvider _cluster;
+    private readonly IWorkflowConcurrencyGate _concurrency;
     private readonly ILogger<ExecutionDispatchWorker> _logger;
     private readonly IDatabaseAvailability _availability;
     private readonly int _workerCount;
@@ -24,12 +32,14 @@ public sealed class ExecutionDispatchWorker : BackgroundService
         ExecutionDispatchSignal signal,
         IOptions<ExecutionDispatchOptions> options,
         IClusterStateProvider cluster,
+        IWorkflowConcurrencyGate concurrency,
         ILogger<ExecutionDispatchWorker> logger,
         IDatabaseAvailability availability)
     {
         _scopeFactory = scopeFactory;
         _signal = signal;
         _cluster = cluster;
+        _concurrency = concurrency;
         _logger = logger;
         _availability = availability;
         _workerCount = Math.Max(1, options.Value.WorkerCount);
@@ -83,16 +93,27 @@ public sealed class ExecutionDispatchWorker : BackgroundService
                     await using var scope = _scopeFactory.CreateAsyncScope();
                     var dispatcher = scope.ServiceProvider.GetRequiredService<ExecutionDispatchService>();
                     var outcome = await dispatcher.ProcessOutboxAsync(executionId.Value, stoppingToken);
-                    if (outcome == ExecutionDispatchOutcome.RetryBeforeStart)
+                    // Every non-Completed outcome keeps its durable intent and must have its
+                    // lease released, or the item sits idle for the full lease duration. Tags
+                    // and back-off are per outcome so queueing and failed handoff stay apart.
+                    switch (outcome)
                     {
-                        await ReleaseForRetryAsync(executionId.Value, leaseOwner, stoppingToken);
-                        ApiMetrics.DispatchItemsProcessed.Add(1,
-                            new KeyValuePair<string, object?>("result", "retry_before_start"));
-                    }
-                    else
-                    {
-                        ApiMetrics.DispatchItemsProcessed.Add(1,
-                            new KeyValuePair<string, object?>("result", "success"));
+                        case ExecutionDispatchOutcome.RetryBeforeStart:
+                            await ReleaseForRetryAsync(
+                                executionId.Value, leaseOwner, RetryDelay, countAttempt: true, stoppingToken);
+                            ApiMetrics.DispatchItemsProcessed.Add(1,
+                                new KeyValuePair<string, object?>("result", "retry_before_start"));
+                            break;
+                        case ExecutionDispatchOutcome.DeferredByConcurrencyLimit:
+                            await ReleaseForRetryAsync(
+                                executionId.Value, leaseOwner, ConcurrencyDeferralDelay, countAttempt: false, stoppingToken);
+                            ApiMetrics.DispatchItemsProcessed.Add(1,
+                                new KeyValuePair<string, object?>("result", "deferred_workflow_concurrency"));
+                            break;
+                        default:
+                            ApiMetrics.DispatchItemsProcessed.Add(1,
+                                new KeyValuePair<string, object?>("result", "success"));
+                            break;
                     }
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -106,7 +127,8 @@ public sealed class ExecutionDispatchWorker : BackgroundService
                     _logger.LogError(ex,
                         "Execution dispatch worker {WorkerId} failed processing outbox execution {ExecutionId}.",
                         workerId, executionId);
-                    await ReleaseForRetryAsync(executionId.Value, leaseOwner, CancellationToken.None);
+                    await ReleaseForRetryAsync(
+                        executionId.Value, leaseOwner, RetryDelay, countAttempt: true, CancellationToken.None);
                 }
 
                 _signal.Pulse();
@@ -123,9 +145,19 @@ public sealed class ExecutionDispatchWorker : BackgroundService
         await using var scope = _scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
         var now = DateTime.UtcNow;
-        var candidates = await db.ExecutionDispatchOutbox.AsNoTracking()
+        var query = db.ExecutionDispatchOutbox.AsNoTracking()
             .Where(item => item.AvailableAt <= now
-                           && (item.LeaseExpiresAt == null || item.LeaseExpiresAt <= now))
+                           && (item.LeaseExpiresAt == null || item.LeaseExpiresAt <= now));
+
+        // Skip workflows already at their concurrency limit. Without this, one saturated
+        // workflow's queued rows fill every candidate slot (they are the oldest) and no other
+        // workflow is ever seen. Only applied when the set is non-empty so the common case
+        // keeps the exact SQL shape it has today.
+        var blocked = _concurrency.BlockedWorkflowIds;
+        if (blocked.Length > 0)
+            query = query.Where(item => !blocked.Contains(item.WorkflowId));
+
+        var candidates = await query
             .OrderByDescending(item => item.Priority)
             .ThenBy(item => item.CreatedAt)
             .Select(item => item.ExecutionId)
@@ -148,15 +180,33 @@ public sealed class ExecutionDispatchWorker : BackgroundService
         return null;
     }
 
-    private async Task ReleaseForRetryAsync(Guid executionId, string leaseOwner, CancellationToken ct)
+    /// <param name="countAttempt">
+    /// False for a concurrency deferral: the claim already incremented the counter, and a run
+    /// that waits an hour for a slot would otherwise show hundreds of attempts as if it kept
+    /// failing. Rolling it back here keeps the number a handoff-failure signal.
+    /// </param>
+    private async Task ReleaseForRetryAsync(
+        Guid executionId, string leaseOwner, TimeSpan delay, bool countAttempt, CancellationToken ct)
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
-        await db.ExecutionDispatchOutbox
-            .Where(item => item.ExecutionId == executionId && item.LeaseOwner == leaseOwner)
-            .ExecuteUpdateAsync(setters => setters
+        var claimed = db.ExecutionDispatchOutbox
+            .Where(item => item.ExecutionId == executionId && item.LeaseOwner == leaseOwner);
+        var availableAt = DateTime.UtcNow.Add(delay);
+
+        if (countAttempt)
+        {
+            await claimed.ExecuteUpdateAsync(setters => setters
                 .SetProperty(item => item.LeaseOwner, (string?)null)
                 .SetProperty(item => item.LeaseExpiresAt, (DateTime?)null)
-                .SetProperty(item => item.AvailableAt, DateTime.UtcNow.AddSeconds(1)), ct);
+                .SetProperty(item => item.AvailableAt, availableAt), ct);
+            return;
+        }
+
+        await claimed.ExecuteUpdateAsync(setters => setters
+            .SetProperty(item => item.LeaseOwner, (string?)null)
+            .SetProperty(item => item.LeaseExpiresAt, (DateTime?)null)
+            .SetProperty(item => item.AvailableAt, availableAt)
+            .SetProperty(item => item.AttemptCount, item => item.AttemptCount > 0 ? item.AttemptCount - 1 : 0), ct);
     }
 }

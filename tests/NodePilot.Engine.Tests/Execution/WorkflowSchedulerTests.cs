@@ -613,7 +613,8 @@ public class WorkflowSchedulerTests
             var forEach = new ForEachActivity(
                 services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
                 db,
-                new InMemorySubWorkflowGate());
+                new InMemorySubWorkflowGate(),
+                new InMemoryWorkflowConcurrencyGate());
 
             var config = JsonSerializer.Serialize(new Dictionary<string, object?>
             {

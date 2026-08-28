@@ -7,18 +7,19 @@ using NodePilot.Api.Security;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
+using NodePilot.Core.Validation;
 using NodePilot.Data;
 using NodePilot.Data.Security;
 
 namespace NodePilot.Api.Services.Backup;
 
 /// <summary>
-/// Restores a <c>nodepilot-system-backup/v1</c> archive (ADR 0001 Phase 2). Preview is read-only
-/// and passphrase-optional; restore requires the passphrase, verifies the whole-file MAC, validates
+/// Restores an authenticated <c>nodepilot-system-backup/v4</c> archive (ADR 0001). Preview and
+/// restore both require the passphrase and decrypt the complete configuration payload before it is inspected. The service validates
 /// that every hard reference resolves (K12), then writes all DB sections in one transaction in
 /// dependency order (K4) while building source to target id-maps (K3). Workflow-definition GUID
 /// references are remapped (K13), user sessions are invalidated on overwrite (K16), the last active
-/// admin is protected (K11), and settings are applied last, outside the transaction (K8).
+/// admin is protected (K11), and settings-file changes are compensated if the DB commit fails (K8).
 /// </summary>
 public sealed class BackupRestoreService(
     NodePilotDbContext db,
@@ -34,20 +35,10 @@ public sealed class BackupRestoreService(
     public async Task<BackupPreviewResult> PreviewAsync(byte[] content, string? passphrase, CancellationToken ct)
     {
         var reader = BackupFileReader.Parse(content);
-        var warnings = new List<string>();
-
-        var protector = string.IsNullOrEmpty(passphrase) ? null : reader.TryUnlock(passphrase);
-        var integrityVerified = false;
-        if (!string.IsNullOrEmpty(passphrase))
-        {
-            if (protector is null) warnings.Add("Passphrase is incorrect — integrity could not be verified.");
-            else if (!reader.VerifyMac(protector)) warnings.Add("Whole-file MAC does not match — the file may be corrupt or tampered.");
-            else integrityVerified = true;
-        }
-        else
-        {
-            warnings.Add("No passphrase supplied — integrity unverified; secret values are not compared (K10).");
-        }
+        if (string.IsNullOrEmpty(passphrase))
+            throw new BackupRestoreException("A passphrase is required to preview this fully encrypted backup.");
+        _ = reader.TryUnlock(passphrase)
+            ?? throw new BackupRestoreException("Passphrase is incorrect.");
 
         var sections = new List<BackupPreviewSection>();
         foreach (var key in RestoreOrder.Concat([BackupSections.Settings]))
@@ -56,7 +47,7 @@ public sealed class BackupRestoreService(
             sections.Add(await PreviewSectionAsync(key, reader, ct));
         }
 
-        return new BackupPreviewResult(integrityVerified, reader.AppVersion, sections, warnings);
+        return new BackupPreviewResult(true, reader.AppVersion, sections, []);
     }
 
     private async Task<BackupPreviewSection> PreviewSectionAsync(string key, BackupFileReader reader, CancellationToken ct)
@@ -130,7 +121,8 @@ public sealed class BackupRestoreService(
 
     // ---- Restore ------------------------------------------------------------
 
-    // Restore dependencies in array order. Apply settings afterward, outside the transaction.
+    // Restore dependencies in array order. Runtime settings participate through an atomic file
+    // replacement plus compensation if the database transaction cannot commit.
     private static readonly string[] RestoreOrder =
     [
         BackupSections.Users, BackupSections.Folders, BackupSections.Credentials,
@@ -144,9 +136,6 @@ public sealed class BackupRestoreService(
         var reader = BackupFileReader.Parse(content);
         var protector = reader.TryUnlock(passphrase)
             ?? throw new BackupRestoreException("Passphrase is incorrect.");
-        if (!reader.VerifyMac(protector))
-            throw new BackupRestoreException("Whole-file MAC does not match — the backup is corrupt or has been tampered with. Restore aborted.");
-
         // Join every other path that can reduce the active-Admin set. Holding the gate
         // across guard + transaction prevents concurrent individually-safe mutations
         // from collectively removing every active Admin.
@@ -168,6 +157,9 @@ public sealed class BackupRestoreService(
         // a retry starts clean. SQLite (tests) returns a non-retrying strategy -> runs once.
         var results = new List<SectionRestoreResult>();
         var warnings = new List<string>();
+        var restoresSettings = reader.Sections[BackupSections.Settings] is not null;
+        var originalSettings = restoresSettings ? overrides.ReadOrEmpty() : null;
+        var restoredSettings = restoresSettings ? BuildRestoredSettings(reader, protector) : null;
         var strategy = db.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
@@ -180,6 +172,7 @@ public sealed class BackupRestoreService(
             await using var tx = await db.Database.BeginTransactionAsync(ct);
             if (restoresUsers)
                 await AdminAccountMutationGate.AcquireTransactionLockAsync(db, ct);
+            var settingsApplied = false;
             try
             {
                 if (reader.Sections[BackupSections.Users] is not null) results.Add(await RestoreUsersAsync(ctx, ct));
@@ -207,11 +200,32 @@ public sealed class BackupRestoreService(
                 if (reader.Sections[BackupSections.Alerting] is not null) results.Add(await RestoreAlertingAsync(ctx, ct));
                 if (reader.Sections[BackupSections.Folders] is not null) results.Add(await RestoreGrantsAsync(ctx, ct));
 
+                if (ctx.Warnings.Count > 0)
+                    throw new BackupRestoreException(
+                        "Restore aborted because it would be incomplete: " + string.Join(" | ", ctx.Warnings));
+
                 await db.SaveChangesAsync(ct);
+                if (restoredSettings is not null)
+                {
+                    overrides.ReplaceAll(restoredSettings);
+                    settingsApplied = true;
+                }
                 await tx.CommitAsync(ct);
             }
             catch
             {
+                if (settingsApplied && originalSettings is not null)
+                {
+                    try { overrides.ReplaceAll(originalSettings); }
+                    catch (Exception compensationError)
+                    {
+                        logger.LogCritical(
+                            compensationError,
+                            "Backup restore could not compensate runtime settings after database rollback.");
+                        throw new BackupRestoreException(
+                            "Restore failed and the original runtime settings could not be restored. Manual recovery is required.");
+                    }
+                }
                 await tx.RollbackAsync(ct);
                 throw;
             }
@@ -219,10 +233,11 @@ public sealed class BackupRestoreService(
             warnings.AddRange(ctx.Warnings);
         });
 
-        // K8 — settings are file-based (RuntimeOverridesWriter), not part of the DB transaction.
-        SettingsRestoreResult? settings = null;
-        if (reader.Sections[BackupSections.Settings] is not null)
-            settings = RestoreSettings(reader, protector);
+        SettingsRestoreResult? settings = restoresSettings
+            ? new SettingsRestoreResult(
+                true,
+                "Runtime settings replaced atomically with the database restore. A service restart may be required.")
+            : null;
 
         return new BackupRestoreResult(results, settings, warnings);
     }
@@ -828,6 +843,10 @@ public sealed class BackupRestoreService(
                 var description = item["description"]?.GetValue<string>();
                 var isEnabled = item["isEnabled"]?.GetValue<bool>() ?? false;
                 var version = item["version"]?.GetValue<int>() ?? 1;
+                // Absent in backups written before the column existed, which reads as unlimited.
+                // Validated because restore writes the entity directly, bypassing the endpoint.
+                var maxConcurrent = item["maxConcurrentExecutions"]?.GetValue<int?>();
+                if (WorkflowConcurrency.Validate(maxConcurrent) is not null) maxConcurrent = null;
                 var folderTarget = s.ResolveFolder(GidN(item["folderId"]) ?? SharedWorkflowFolder.RootFolderId)
                     ?? SharedWorkflowFolder.RootFolderId;
                 var definitionJson = RestoreDefinitionJson(item["definition"], s);
@@ -857,6 +876,7 @@ public sealed class BackupRestoreService(
                         existing.DefinitionJson = definitionJson;
                         existing.Version = checked(existing.Version + 1);
                         existing.IsEnabled = isEnabled;
+                        existing.MaxConcurrentExecutions = maxConcurrent;
                         existing.FolderId = folderTarget;
                         existing.UpdatedAt = now;
                         existing.UpdatedBy = "restore";
@@ -868,6 +888,7 @@ public sealed class BackupRestoreService(
                         {
                             Id = id, Name = finalName, Description = description, DefinitionJson = definitionJson,
                             Version = Math.Max(1, version), IsEnabled = isEnabled, FolderId = folderTarget,
+                            MaxConcurrentExecutions = maxConcurrent,
                             CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
                         };
                         WorkflowMetadata.PopulateComputedColumns(created);
@@ -1064,36 +1085,26 @@ public sealed class BackupRestoreService(
         return new SectionRestoreResult("folderGrants", created, overwritten, skipped, 0);
     }
 
-    private SettingsRestoreResult RestoreSettings(BackupFileReader reader, PassphraseSecretProtector protector)
+    private JsonObject BuildRestoredSettings(BackupFileReader reader, PassphraseSecretProtector protector)
     {
-        try
-        {
-            var runtimeJson = (reader.Sections[BackupSections.Settings] as JsonObject)?["runtimeJson"] as JsonObject;
-            if (runtimeJson is null) return new SettingsRestoreResult(false, "No runtime settings in backup.");
+        var runtimeJson = (reader.Sections[BackupSections.Settings] as JsonObject)?["runtimeJson"] as JsonObject
+            ?? throw new BackupRestoreException(
+                "Restore aborted: the settings section has no runtime settings payload.");
+        var root = overrides.ReadOrEmpty();
 
-            overrides.MutateAndWrite(root =>
-            {
-                // Replace, don't merge: a restore must reproduce the backup's runtime-override
-                // state, so any top-level override that exists in the target but NOT in the backup
-                // is removed. __meta (transient restart-marker bookkeeping) is preserved.
-                var keep = new HashSet<string>(
-                    runtimeJson.Select(kv => kv.Key).Append(RuntimeOverridesWriter.MetaSectionKey), StringComparer.Ordinal);
-                foreach (var staleKey in root.Select(kv => kv.Key).Where(k => !keep.Contains(k)).ToList())
-                    root.Remove(staleKey);
+        // Replace, don't merge: a restore reproduces the backup's override state while keeping
+        // the target host's transient restart-marker bookkeeping.
+        var keep = new HashSet<string>(
+            runtimeJson.Select(kv => kv.Key).Append(RuntimeOverridesWriter.MetaSectionKey), StringComparer.Ordinal);
+        foreach (var staleKey in root.Select(kv => kv.Key).Where(k => !keep.Contains(k)).ToList())
+            root.Remove(staleKey);
 
-                foreach (var (key, value) in runtimeJson)
-                {
-                    if (key == RuntimeOverridesWriter.MetaSectionKey) continue;
-                    root[key] = value is null ? null : RewrapSettingValue(value, protector);
-                }
-            });
-            return new SettingsRestoreResult(true, "Runtime settings replaced. A service restart may be required to take effect.");
-        }
-        catch (Exception ex)
+        foreach (var (key, value) in runtimeJson)
         {
-            logger.LogWarning(ex, "Settings restore failed (DB sections already committed).");
-            return new SettingsRestoreResult(false, $"Settings restore failed: {ex.Message}");
+            if (key == RuntimeOverridesWriter.MetaSectionKey) continue;
+            root[key] = value is null ? null : RewrapSettingValue(value, protector);
         }
+        return root;
     }
 
     // ---- validation: confirm every referenced id resolves before any write happens (K12) ----

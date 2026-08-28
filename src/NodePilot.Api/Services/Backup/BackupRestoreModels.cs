@@ -18,13 +18,13 @@ public enum RestoreConflictPolicy
 }
 
 /// <summary>
-/// Per-section preview diff. Without a passphrase, secrets are not compared (K10).
+/// Per-section preview diff from an authenticated, successfully decrypted backup (K10).
 /// </summary>
 public sealed record BackupPreviewSection(string Section, int InBackup, int New, int Conflicts);
 
 /// <summary>
-/// Preview of what a restore would do. <see cref="IntegrityVerified"/> is false when no passphrase
-/// was supplied (status <c>integrityUnverified</c>, K5/K10) — counts/names are still shown.
+/// Preview of what a restore would do. A successful v4 preview has already authenticated and
+/// decrypted the complete payload, so <see cref="IntegrityVerified"/> is true (K5/K10).
 /// </summary>
 public sealed record BackupPreviewResult(
     bool IntegrityVerified,
@@ -36,7 +36,7 @@ public sealed record BackupPreviewResult(
 public sealed record SectionRestoreResult(
     string Section, int Created, int Overwritten, int Skipped, int Renamed);
 
-/// <summary>Settings restore is non-transactional and reported separately (K8).</summary>
+/// <summary>Settings-file restore is reported separately and compensated if the DB commit fails (K8).</summary>
 public sealed record SettingsRestoreResult(bool Applied, string? Message);
 
 /// <summary>Full restore outcome.</summary>
@@ -46,6 +46,6 @@ public sealed record BackupRestoreResult(
     IReadOnlyList<string> Warnings);
 
 /// <summary>
-/// Raised when a restore must abort (wrong passphrase, failed MAC, unresolvable refs, last-admin).
+/// Raised when a restore must abort (wrong passphrase, failed authentication, unresolvable refs, last-admin).
 /// </summary>
 public sealed class BackupRestoreException(string message) : Exception(message);

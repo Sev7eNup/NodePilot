@@ -45,12 +45,19 @@ public class StartWorkflowActivity : IActivityExecutor
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly NodePilotDbContext _db;
     private readonly ISubWorkflowGate _gate;
+    // Per-workflow cap on the child. Required on every constructor: an overload without it
+    // would silently run unlimited if dependency injection ever picked the shorter one.
+    private readonly IWorkflowConcurrencyGate _workflowConcurrency;
     private readonly IWorkflowExecutionDispatcher? _executionDispatcher;
     private readonly ISubWorkflowAuthorizationResolver? _subWorkflowAuthz;
     private readonly ILogger<StartWorkflowActivity>? _logger;
 
-    public StartWorkflowActivity(IServiceScopeFactory scopeFactory, NodePilotDbContext db, ISubWorkflowGate gate)
-        : this(scopeFactory, db, gate, null, null)
+    public StartWorkflowActivity(
+        IServiceScopeFactory scopeFactory,
+        NodePilotDbContext db,
+        ISubWorkflowGate gate,
+        IWorkflowConcurrencyGate workflowConcurrency)
+        : this(scopeFactory, db, gate, workflowConcurrency, null, null)
     {
     }
 
@@ -58,8 +65,9 @@ public class StartWorkflowActivity : IActivityExecutor
         IServiceScopeFactory scopeFactory,
         NodePilotDbContext db,
         ISubWorkflowGate gate,
+        IWorkflowConcurrencyGate workflowConcurrency,
         IWorkflowExecutionDispatcher? executionDispatcher)
-        : this(scopeFactory, db, gate, executionDispatcher, null)
+        : this(scopeFactory, db, gate, workflowConcurrency, executionDispatcher, null)
     {
     }
 
@@ -67,6 +75,7 @@ public class StartWorkflowActivity : IActivityExecutor
         IServiceScopeFactory scopeFactory,
         NodePilotDbContext db,
         ISubWorkflowGate gate,
+        IWorkflowConcurrencyGate workflowConcurrency,
         IWorkflowExecutionDispatcher? executionDispatcher,
         ISubWorkflowAuthorizationResolver? subWorkflowAuthz,
         ILogger<StartWorkflowActivity>? logger = null)
@@ -74,6 +83,7 @@ public class StartWorkflowActivity : IActivityExecutor
         _scopeFactory = scopeFactory;
         _db = db;
         _gate = gate;
+        _workflowConcurrency = workflowConcurrency;
         _executionDispatcher = executionDispatcher;
         _subWorkflowAuthz = subWorkflowAuthz;
         _logger = logger;
@@ -261,10 +271,20 @@ public class StartWorkflowActivity : IActivityExecutor
         async Task<ActivityResult> ExecuteSynchronousChildAsync()
         {
             var gateAcquired = false;
+            var concurrencySlotHeld = false;
             try
             {
                 await _gate.WaitAsync(linkedCts.Token);
                 gateAcquired = true;
+
+                // Child's own concurrency limit. Acquired after the engine-wide gate and never
+                // before it, so both sub-workflow activities take the two gates in the same
+                // order. This waits rather than queueing because the caller is already running;
+                // linkedCts carries the step timeout, so a limit that can never be satisfied
+                // surfaces as a step timeout instead of hanging.
+                await _workflowConcurrency.AcquireAsync(
+                    childWorkflow.Id, childWorkflow.MaxConcurrentExecutions, linkedCts.Token);
+                concurrencySlotHeld = true;
 
             // Use the execution-level CTS instead of the step-level `ct` so the child's lifetime
             // is decoupled from step cancellation. A waitAny junction cancels the losing branch's
@@ -351,6 +371,8 @@ public class StartWorkflowActivity : IActivityExecutor
         }
         finally
         {
+            // Reverse acquisition order.
+            if (concurrencySlotHeld) _workflowConcurrency.Release(childWorkflow.Id);
             if (gateAcquired) _gate.Release();
         }
         }

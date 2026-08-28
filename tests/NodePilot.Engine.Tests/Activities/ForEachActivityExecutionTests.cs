@@ -239,12 +239,65 @@ public sealed class ForEachActivityExecutionTests : IDisposable
         engine.MaxObservedConcurrency.Should().Be(1, "the default is a sequential loop");
     }
 
+    // -------------------------------------------------- per-workflow concurrency limit
+
+    [Fact]
+    public async Task ExecuteAsync_ChildHasConcurrencyLimit_NeverExceedsIt()
+    {
+        // maxParallelism bounds this loop; the child's own limit bounds the child across every
+        // caller. The tighter of the two has to win.
+        _child.MaxConcurrentExecutions = 2;
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var engine = new FakeEngine { Delay = TimeSpan.FromMilliseconds(60) };
+
+        var result = await Run(engine, "a\nb\nc\nd\ne\nf", extraConfig: new Dictionary<string, object?>
+        {
+            ["maxParallelism"] = 6,
+        });
+
+        result.OutputParameters["succeeded"].Should().Be("6", "every item still runs, just not at once");
+        engine.MaxObservedConcurrency.Should().BeLessThanOrEqualTo(2);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ChildHasConcurrencyLimit_ReleasesEverySlot()
+    {
+        _child.MaxConcurrentExecutions = 2;
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var gate = new InMemoryWorkflowConcurrencyGate();
+
+        await Run(new FakeEngine(), "a\nb\nc\nd", concurrency: gate);
+
+        // A leaked slot would wedge the child workflow for every later caller.
+        gate.BlockedWorkflowIds.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenChildSlotNeverFrees_ItemTimesOutInsteadOfHanging()
+    {
+        // The per-item timeout covers the gate wait, so a limit that cannot be satisfied
+        // surfaces as a timeout rather than a stuck loop.
+        _child.MaxConcurrentExecutions = 1;
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var gate = new InMemoryWorkflowConcurrencyGate();
+        gate.TryAcquire(_child.Id, 1).Should().BeTrue();
+
+        var result = await Run(new FakeEngine(), "a", extraConfig: new Dictionary<string, object?>
+        {
+            ["timeoutSecondsPerItem"] = 1,
+        }, concurrency: gate);
+
+        result.OutputParameters["failed"].Should().Be("1");
+        result.OutputParameters["firstError"].Should().Contain("timed out");
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private async Task<ActivityResult> Run(
         FakeEngine engine,
         string items,
-        Dictionary<string, object?>? extraConfig = null)
+        Dictionary<string, object?>? extraConfig = null,
+        IWorkflowConcurrencyGate? concurrency = null)
     {
         var config = new Dictionary<string, object?>
         {
@@ -259,7 +312,8 @@ public sealed class ForEachActivityExecutionTests : IDisposable
         var activity = new ForEachActivity(
             services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
             _db,
-            new InMemorySubWorkflowGate());
+            new InMemorySubWorkflowGate(),
+            concurrency ?? new InMemoryWorkflowConcurrencyGate());
 
         return await activity.ExecuteAsync(
             new StepExecutionContext { WorkflowExecutionId = Guid.NewGuid(), StepId = "fe1" },

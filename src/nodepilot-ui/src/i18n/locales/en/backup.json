@@ -1,6 +1,7 @@
 {
   "title": "Backup & Restore",
   "subtitle": "System configuration backup. Includes workflows, folders/sharing, machines, credentials, global variables, users and settings — but NOT execution history, audit logs or statistics.",
+  "scopeNotice": "This is configuration portability, not a complete disaster-recovery backup. Also back up the native database, ProgramData, service configuration and key material, and test that restore procedure.",
   "tabs": {
     "backup": "Create backup",
     "restore": "Restore"
@@ -33,11 +34,10 @@
   "restore": {
     "selectFile": "Backup file (.npbackup)",
     "passphrase": "Passphrase",
-    "passphraseHint": "Without a passphrase only a structure preview is shown (integrity unverified).",
+    "passphraseHint": "Required to decrypt and authenticate the archive before its contents can be previewed.",
     "preview": "Preview",
     "previewing": "Analysing …",
     "integrityVerified": "Integrity verified",
-    "integrityUnverified": "Integrity unverified — enter the passphrase for a full check",
     "appVersion": "Backup version",
     "col": {
       "section": "Section",

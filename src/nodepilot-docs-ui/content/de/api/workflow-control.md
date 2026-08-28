@@ -17,9 +17,31 @@ Fortschritt via SignalR. Mit `debug: true` → Breakpoints, `StepPaused`, Resume
 | `POST /execute` | Startet Lauf |
 | `POST /enable` / `/disable` | Kill-Switch. `enable` verlangt einen **lock-freien** Workflow — ein bestehender Lock (auch der eigene) liefert `423`; aus dem Edit-Modus heraus wird stattdessen publiziert. `disable` ignoriert Locks. |
 | `POST /cancel-all` | Cancelt alle Running-Executions des Workflows |
+| `PUT /concurrency-limit` | Begrenzt, wie viele Ausführungen gleichzeitig laufen. Body: `{"maxConcurrentExecutions": 5}`, oder `null` für unbegrenzt. Die Property ist Pflicht — ein leerer Body ist ein `400`, damit ein Client das Limit nie durch Weglassen löscht. `0` wird abgelehnt; dafür den Workflow deaktivieren. |
 | `POST /executions/{id}/cancel|retry|resume` | Einzelner Lauf |
 
 **Disable + cancel-all = Quarantäne.**
+
+## Parallelitätslimit
+
+`MaxConcurrentExecutions` begrenzt, wie viele Ausführungen eines Workflows gleichzeitig laufen.
+Das Limit gilt über **alle** Aufrufer hinweg — manuelle Läufe, Schedule-/File-/Database-/
+EventLog-Trigger, Webhooks, External-Trigger und Sub-Workflow-Aufrufe aus `startWorkflow` und
+`forEach`. Zwei Eltern-Workflows, die auf dasselbe Kind fächern, können es zusammen also nicht
+überschreiten.
+
+Ist das Limit erreicht, wird **eingereiht statt abgelehnt**: ein wartender Lauf bleibt `Pending`
+und startet von selbst, sobald ein Platz frei wird. Es geht nichts verloren, und kein Lauf wird
+als fehlgeschlagen markiert. Das `maxParallelism` einer `forEach`-Schleife begrenzt weiterhin
+diese eine Schleife; das Workflow-Limit begrenzt das Kind über alle Schleifen hinweg — der
+engere der beiden Werte gewinnt.
+
+Eine Änderung wirkt sofort. Wird das Limit unter die Zahl der aktiven Läufe gesenkt, bricht
+nichts ab — der Überhang läuft aus, danach greift die Grenze. Eine Anhebung gibt wartende Läufe
+sofort frei, nicht einen pro abgeschlossenem Lauf.
+
+Das Setzen braucht keinen Edit-Lock und erzeugt keine neue Workflow-Version, weil es eine
+Betriebseinstellung ist und keine Änderung der Workflow-Definition.
 
 ## Edit-Lock (SCOrch-style)
 

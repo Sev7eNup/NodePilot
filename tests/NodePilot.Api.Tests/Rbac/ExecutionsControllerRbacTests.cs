@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -87,6 +87,7 @@ public sealed class ExecutionsControllerRbacTests : IDisposable
             new OutputRedactor(null),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
             NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
+            new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate(),
             NullLogger<ExecutionDispatchService>.Instance);
 
         var ctrl = new ExecutionsController(

@@ -162,6 +162,7 @@ public sealed class WorkflowReadTools
         triggerTypes = w.TriggerTypes,
         checkedOutBy = w.CheckedOutByUserName,
         checkedOutAt = w.CheckedOutAt,
+        maxConcurrentExecutions = w.MaxConcurrentExecutions,
         successCount = w.SuccessCount,
         totalCount = w.TotalCount,
         avgDurationMs = w.AvgDurationMs,

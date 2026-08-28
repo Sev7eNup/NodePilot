@@ -1,6 +1,7 @@
 {
   "title": "Backup & Wiederherstellung",
   "subtitle": "Konfigurations-Backup des Systems. Enthält Workflows, Ordner/Freigaben, Maschinen, Anmeldedaten, globale Variablen, Benutzer und Einstellungen — aber KEINE Ausführungshistorie, Audit-Logs oder Statistiken.",
+  "scopeNotice": "Dies dient der Übertragung der Konfiguration und ist kein vollständiges Disaster-Recovery-Backup. Sichere zusätzlich die native Datenbank, ProgramData, Dienstkonfiguration und Schlüssel und teste diesen Wiederherstellungsweg.",
   "tabs": {
     "backup": "Backup erstellen",
     "restore": "Wiederherstellen"
@@ -33,11 +34,10 @@
   "restore": {
     "selectFile": "Backup-Datei (.npbackup)",
     "passphrase": "Passphrase",
-    "passphraseHint": "Ohne Passphrase nur Struktur-Vorschau (Integrität nicht geprüft).",
+    "passphraseHint": "Erforderlich, um das Archiv vor der Vorschau zu entschlüsseln und seine Integrität zu prüfen.",
     "preview": "Vorschau",
     "previewing": "Analysiere …",
     "integrityVerified": "Integrität geprüft",
-    "integrityUnverified": "Integrität nicht geprüft — Passphrase eingeben für vollständige Prüfung",
     "appVersion": "Backup-Version",
     "col": {
       "section": "Bereich",

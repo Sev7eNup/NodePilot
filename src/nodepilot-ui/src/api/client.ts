@@ -210,7 +210,7 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
   // Raw-body POST with an explicit Content-Type. The main entrypoint is the SCOrch
   // import which ships the .ois_export XML payload verbatim.
-  postRaw: <T>(path: string, body: string, contentType: string) =>
+  postRaw: <T>(path: string, body: BodyInit, contentType: string) =>
     request<T>(path, { method: 'POST', body, headers: { 'Content-Type': contentType } }),
   // POST with extra per-call headers — used by the admin SQL console to send
   // the X-Confirm-Write confirmation gesture alongside a write-mode statement.

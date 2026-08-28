@@ -27,6 +27,9 @@
     "historyScope": {
       "thisWorkflow": "This workflow",
       "allWorkflows": "All workflows",
+      "previousPage": "Previous history page",
+      "nextPage": "Next history page",
+      "pageOf": "Page {{page}} of {{totalPages}}",
       "openFullList": "Open full list →"
     },
     "live": {

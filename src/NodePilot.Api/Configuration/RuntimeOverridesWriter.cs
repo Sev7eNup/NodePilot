@@ -97,6 +97,26 @@ public sealed class RuntimeOverridesWriter
     }
 
     /// <summary>
+    /// Atomically replaces the complete runtime override document. Used by disaster-recovery
+    /// restore so the caller can stage the target document and compensate with the original when
+    /// the surrounding database transaction fails.
+    /// </summary>
+    public void ReplaceAll(JsonObject replacement)
+    {
+        ArgumentNullException.ThrowIfNull(replacement);
+        using var mutex = AcquireMutex();
+        try
+        {
+            EnsureDirectoryExists();
+            WriteAtomic((JsonObject)replacement.DeepClone());
+        }
+        finally
+        {
+            try { mutex.ReleaseMutex(); } catch (ApplicationException) { }
+        }
+    }
+
+    /// <summary>
     /// Compute the ETag for a given top-level section (or the empty-object ETag if the
     /// section is missing). Stable across key reordering — keys are canonicalized
     /// alphabetically before hashing.

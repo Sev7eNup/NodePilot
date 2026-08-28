@@ -172,6 +172,22 @@ public sealed class MoreReadEditToolsTests
     }
 
     [Fact]
+    public async Task SetWorkflowConcurrencyLimit_Works()
+    {
+        var id = Guid.NewGuid();
+        using var api = new TestApi();
+        api.Server.Given(Request.Create().WithPath($"/api/workflows/{id}").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(TestApi.WorkflowResponse(id, "WF", "{}")));
+        api.Server.Given(Request.Create().WithPath($"/api/workflows/{id}/concurrency-limit").UsingPut())
+            .RespondWith(Response.Create().WithStatusCode(204));
+
+        var tools = new WorkflowEditTools(api.Client());
+
+        J(await tools.SetWorkflowConcurrencyLimit(id.ToString(), 5)).Should().Contain("\"maxConcurrentExecutions\":5");
+        J(await tools.SetWorkflowConcurrencyLimit(id.ToString(), null)).Should().Contain("\"maxConcurrentExecutions\":null");
+    }
+
+    [Fact]
     public async Task ImportWorkflow_AndScorch_Work()
     {
         using var api = new TestApi();
@@ -183,7 +199,15 @@ public sealed class MoreReadEditToolsTests
         var tools = new WorkflowEditTools(api.Client());
         var env = """{"schema":"nodepilot-workflow-export/v1","exportVersion":1,"exportedAt":"2026-01-01T00:00:00Z","workflows":[{"name":"WF","definition":{"nodes":[],"edges":[]}}]}""";
         J(await tools.ImportWorkflow(E(env))).Should().Contain("\"created\":1");
-        J(await tools.ImportScorchWorkflow("<runbook/>")).Should().Contain("best-effort");
+        var xml = System.Text.Encoding.Unicode.GetPreamble()
+            .Concat(System.Text.Encoding.Unicode.GetBytes("<runbook/>"))
+            .ToArray();
+        J(await tools.ImportScorchWorkflow(Convert.ToBase64String(xml))).Should().Contain("best-effort");
+        var request = api.Server.LogEntries
+            .Single(entry => entry.RequestMessage?.Path == "/api/workflows/import-scorch")
+            .RequestMessage;
+        request.Should().NotBeNull();
+        request!.BodyAsBytes.Should().Equal(xml);
     }
 
     [Fact]
@@ -201,7 +225,8 @@ public sealed class MoreReadEditToolsTests
         var tools = new WorkflowEditTools(api.Client());
         var env = """{"schema":"nodepilot-workflow-export/v1","exportVersion":1,"exportedAt":"2026-01-01T00:00:00Z","workflows":[{"name":"WF","definition":{"nodes":[],"edges":[]}}]}""";
         J(await tools.ImportWorkflow(E(env), folderId)).Should().Contain("\"created\":1");
-        J(await tools.ImportScorchWorkflow("<runbook/>", folderId)).Should().Contain("\"created\":1");
+        J(await tools.ImportScorchWorkflow(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("<runbook/>")), folderId))
+            .Should().Contain("\"created\":1");
     }
 
     [Fact]

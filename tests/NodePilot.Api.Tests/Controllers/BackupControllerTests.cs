@@ -180,16 +180,14 @@ public sealed class BackupControllerTests : IDisposable
     }
 
     [Fact]
-    public async Task Preview_WithoutPassphrase_StillParsesButLeavesIntegrityUnverified()
+    public async Task Preview_WithoutPassphrase_ReturnsConflict()
     {
         var backup = await ExportBytesAsync();
 
         var result = await Controller().Preview(
             FileOf(backup), passphrase: null, TestContext.Current.CancellationToken);
 
-        result.Result.Should().BeOfType<OkObjectResult>()
-            .Which.Value.Should().BeOfType<BackupPreviewResult>()
-            .Which.IntegrityVerified.Should().BeFalse();
+        result.Result.Should().BeOfType<ConflictObjectResult>();
     }
 
     // ---------------------------------------------------------------- restore
@@ -223,7 +221,7 @@ public sealed class BackupControllerTests : IDisposable
             FileOf(backup), "definitely-the-wrong-pass", policy: null, TestContext.Current.CancellationToken);
 
         result.Result.Should().BeOfType<ConflictObjectResult>(
-            "a wrong passphrase fails the whole-file MAC and is a conflict, not a server fault");
+            "a wrong passphrase fails authenticated decryption and is a conflict, not a server fault");
     }
 
     [Fact]

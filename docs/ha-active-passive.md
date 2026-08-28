@@ -276,14 +276,16 @@ if it did not, cluster mode is accidentally off on one node.
 
 1. **Workflows caught mid-failover are cancelled.** There is no auto-retry. The operator clicks retry.
    A genuinely resumable engine would be several extra person-days (persisting step state mid-execution).
-2. **File-watcher events during the failover window are lost.** `FileSystemWatcher` is process-local.
-   If you need an atomic guarantee: an external queue + a webhook trigger.
-3. **Quartz misfires.** One cron fire per workflow can be lost in the 30–60 s failover window
-   (`MisfireHandlingInstructionDoNothing`). A backfill storm would be worse.
+2. **Transient file events can remain unreconstructable.** Durable snapshots replay lasting
+   create/change/delete state after failover and pair unambiguous renames. A file created and
+   deleted completely while no watcher can observe it leaves no state to reconcile. Use an
+   external queue/journal when every transient event matters.
+3. **Quartz misfires are reconciled.** `MisfireHandlingInstructionDoNothing` prevents Quartz's own
+   one-shot behavior; NodePilot replays every cron time after the durable per-trigger cursor.
 4. **The database is a single point of failure.** Database HA is the operator's responsibility.
-5. **No STONITH fencing.** After a long GC pause, an old leader could still fire for ~10 s.
-   Mitigation: a defensive `IsLeader` check in `FireAsync`. The worst-case window is
-   `LeaseRenewSeconds`.
+5. **No STONITH fencing.** A stale leader can still observe a source signal after a long GC pause,
+   but the admission path checks the lease epoch immediately before the transactional dispatch.
+   Duplicate observations converge on the unique event receipt.
 6. **SignalR reconnect after a failover.** The browser SDK reconnects to the VIP automatically. The
    JWT stays valid (a shared `Jwt:Key`+`Issuer`+`Audience`).
 

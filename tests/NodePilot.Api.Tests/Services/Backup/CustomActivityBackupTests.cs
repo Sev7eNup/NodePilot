@@ -157,6 +157,7 @@ public sealed class CustomActivityBackupTests : IDisposable
 
         result.AutoIncludedSections.Should().Contain(BackupSections.CustomActivities);
         var reader = BackupFileReader.Parse(result.Content);
+        reader.TryUnlock(Passphrase).Should().NotBeNull();
         reader.Sections[BackupSections.CustomActivities]!["items"]!.AsArray().Should().ContainSingle();
     }
 
@@ -179,31 +180,16 @@ public sealed class CustomActivityBackupTests : IDisposable
     }
 
     [Fact]
-    public async Task Restore_LegacyV2PlaintextCustomActivityFields_RemainsCompatible()
+    public async Task Restore_LegacyV2Archive_IsRejected()
     {
         using var src = TestDbFactory.Create();
         await SeedAsync(src, enabled: true);
         var current = await new BackupService(Parts(src)).ExportAsync(
             [BackupSections.CustomActivities], Passphrase, "admin", CancellationToken.None);
-        var reader = BackupFileReader.Parse(current.Content);
-        var protector = reader.TryUnlock(Passphrase)!;
         var envelope = (JsonObject)JsonNode.Parse(Encoding.UTF8.GetString(current.Content))!;
         envelope["schema"] = BackupSections.SchemaV2;
-        var item = envelope["sections"]![BackupSections.CustomActivities]!["items"]![0]!;
-        item["scriptTemplate"] = "legacy-plaintext-script";
-        item["inputParametersJson"] = """[{"name":"token","type":"string","default":"legacy-default"}]""";
-        envelope["mac"] = Convert.ToBase64String(protector.ComputeMac(
-            BackupCanonicalJson.Canonicalize(envelope, excludeKey: "mac")));
-
-        using var dst = TestDbFactory.Create();
-        SeedAdmin(dst);
-        await Restore(dst).RestoreAsync(
-            Encoding.UTF8.GetBytes(envelope.ToJsonString()), Passphrase,
-            new Dictionary<string, RestoreConflictPolicy>(), CancellationToken.None);
-
-        var restored = dst.CustomActivityDefinitions.Single();
-        restored.ScriptTemplate.Should().Be("legacy-plaintext-script");
-        restored.InputParametersJson.Should().Contain("legacy-default");
+        var act = () => BackupFileReader.Parse(Encoding.UTF8.GetBytes(envelope.ToJsonString()));
+        act.Should().Throw<BackupFormatException>().WithMessage("*Unsupported backup schema*");
     }
 
     [Fact]

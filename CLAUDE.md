@@ -41,7 +41,7 @@ Diese Datei ist der Index; die Tiefe liegt in `docs/`:
 - **Remote Execution:** PowerShell SDK / WinRM, agentless. `Remote:Provider`: `winrm` (default) | `noop` (`noop` muss per `Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1` quittiert werden, sonst Boot-Abbruch). Engine-local (In-Proc-Pool): implizite WinPS-Kompatibilität **deaktiviert** (Desktop-only-Module → lauter Fehler statt `powershell.exe -s`-Session-Leak; `Microsoft.PowerShell.Archive` gebündelt) — Details `docs/claude-reference.md` + `docs/performance-improvements.md`
 - **Real-time:** SignalR (`/hubs/execution`)
 - **Logging:** Serilog. Format via `Logging:Format`: `text`|`cmtrace`|`json`|`ecs-json` (ECS 1.x für SIEM, siehe `docs/siem-logging.md`). Support-Log: File + DB-Projektion
-- **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 100 Tools, HTTP-only gegen die REST-API
+- **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 101 Tools, HTTP-only gegen die REST-API
 - **Enterprise (opt-in):** Active/Passive HA (`Cluster:Enabled`), pluggable Secret-Provider (`Secrets:Provider` = `Dpapi`|`AesGcm`), LDAP/Windows-SSO, ECS-JSON-SIEM, Folder-RBAC
 
 ## Solution-Struktur
@@ -128,9 +128,20 @@ Routen + Rollen-Gating stehen an den Controllern in `src/NodePilot.Api/Controlle
 | `POST /execute` | Startet Lauf. Body: `{"parameters": {}, "timeoutSeconds": N, "debug": bool}`. 202 + ExecutionId. |
 | `POST /enable` / `/disable` | Kill-Switch. `enable` verlangt einen lock-freien Workflow — jeder bestehende Lock (auch der eigene) → 423. `disable` ignoriert Locks. |
 | `POST /cancel-all` | Cancelt alle Running-Executions des Workflows. |
+| `PUT /concurrency-limit` | Setzt `MaxConcurrentExecutions` (1..1000, `null` = unbegrenzt). Body: `{"maxConcurrentExecutions": N}` — Property ist **Pflicht** (fehlend → 400, sonst würde `{}` das Limit still löschen). `0` wird abgelehnt. Operativ: kein Edit-Lock, kein Version-Bump, kein History-Snapshot. |
 | `POST /executions/{id}/cancel\|retry\|resume` | Einzelner Lauf. Resume-Body: `{"stepId": "<node-id>", "mode": "continue"\|"stepOver"\|"stop", "overrides": {}}` — `stepId` ist **Pflicht** (`ResumeDebugRequest`), ohne ihn 400. |
 
 **Disable+cancel-all = Quarantäne.**
+
+**Per-Workflow-Parallelität (SCOrch „max running instances"):** `Workflow.MaxConcurrentExecutions`
+begrenzt, wie viele Läufe *eines* Workflows gleichzeitig laufen — über **alle** Aufrufer hinweg
+(manuell, Trigger, Webhook, External-Trigger, `startWorkflow`, `forEach`; Debug eingeschlossen).
+Ist das Limit erreicht, wird **eingereiht statt abgelehnt**: über die Outbox dispatchte Läufe
+bleiben `Pending` (`DeferredByConcurrencyLimit`), die synchronen Sub-Workflow-Pfade warten am
+Step- bzw. Per-Item-Timeout. Ein Zähler für beide Wege: `IWorkflowConcurrencyGate` (Core,
+In-Memory-Impl in der Engine, Singleton — Vorbild `ISubWorkflowGate`). Der Dispatch-Claim
+überspringt Workflows am Limit, sonst verhungern andere hinter deren Rückstau. Nicht versioniert
+und nicht im Update/Publish-Body — Details `docs/claude-reference.md`.
 
 ## Edit-Lifecycle (SCOrch-style Edit-Lock)
 
@@ -344,7 +355,7 @@ Scoped Testing übersieht genau eine Fehlerklasse — die Parity-/Drift-Tests, d
 
 ## Clients (`np` CLI + `nodepilot-mcp`)
 
-Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad. Beide werden **von beiden Installern mitgeliefert**: Server-Artefakt und Desktop-Paket enthalten `tools\np\np.exe` und `tools\mcp\nodepilot-mcp.exe`; `Install-NodePilot.ps1`/`Update-NodePilot.ps1` hängen `tools\np` idempotent an die Maschinen-`PATH` (gemeinsame Helfer in `deploy/MachinePath.ps1`, Uninstall entfernt sie wieder), der MCP-Server wird per absolutem Pfad in `.mcp.json` referenziert und bewusst **nicht** in die PATH aufgenommen. Aus einem Source-Checkout weiterhin per `dotnet publish`; **keine** `dotnet global tool`s — `PackAsTool` verträgt das geerbte `net10.0-windows`-TFM nicht (NETSDK1146, siehe `docs/roadmap.md`-Sperrvermerk). Der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (100 Tools, 3 Resources, stdio) und reused die DPAPI-Session der CLI (`np auth login`).
+Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad. Beide werden **von beiden Installern mitgeliefert**: Server-Artefakt und Desktop-Paket enthalten `tools\np\np.exe` und `tools\mcp\nodepilot-mcp.exe`; `Install-NodePilot.ps1`/`Update-NodePilot.ps1` hängen `tools\np` idempotent an die Maschinen-`PATH` (gemeinsame Helfer in `deploy/MachinePath.ps1`, Uninstall entfernt sie wieder), der MCP-Server wird per absolutem Pfad in `.mcp.json` referenziert und bewusst **nicht** in die PATH aufgenommen. Aus einem Source-Checkout weiterhin per `dotnet publish`; **keine** `dotnet global tool`s — `PackAsTool` verträgt das geerbte `net10.0-windows`-TFM nicht (NETSDK1146, siehe `docs/roadmap.md`-Sperrvermerk). Der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (101 Tools, 3 Resources, stdio) und reused die DPAPI-Session der CLI (`np auth login`).
 
 **Jeder neue API-Endpoint braucht beide Clients.** Mechanik, Befehlsbereiche und Tool-Katalog: `src/NodePilot.Cli/CLAUDE.md`, `src/NodePilot.Mcp/CLAUDE.md`, `docs/mcp-server.md`, `docs/claude-reference.md`.
 
@@ -422,11 +433,12 @@ Opt-in (`Llm:Enabled=false` default), OpenAI-kompatibler Endpunkt, Rate-Limit 20
 
 ## Workflow Import/Export
 
-`GET /{id}/export` / `GET /export` / `POST /import`. Envelope `nodepilot-workflow-export/v1`. Import erzeugt neue Einträge, Namenskollisionen → Suffix `" (Imported 2)"`. SCOrch-Import via `POST /import-scorch`. Ziel-Folder via `?folderId=` (fehlt → Root); RBAC = Edit auf dem gewählten Folder. **Secrets werden hier redigiert** (`***`) — Teilen-Artefakt, kein DR.
+`GET /{id}/export` / `GET /export` / `POST /import`. Envelope `nodepilot-workflow-export/v1`. Import erzeugt neue Einträge immer disabled und liefert deren IDs; explizite Aktivierung danach via `POST /{id}/enable` beziehungsweise `np workflow enable <id>`. CLI-Importe geben mit `-o json` den vollständigen Report maschinenlesbar auf stdout aus. Namenskollisionen → Suffix `" (Imported 2)"`. SCOrch-Import via `POST /import-scorch` — übernimmt die Job-Concurrency des Runbooks
+(`<MaxParallelRequests>`) originalgetreu als `MaxConcurrentExecutions`, inklusive `1`. Ziel-Folder via `?folderId=` (fehlt → Root); RBAC = Edit auf dem gewählten Folder. **Secrets werden hier redigiert** (`***`) — Teilen-Artefakt, kein DR.
 
 ## System-Configuration Backup (ADR 0001)
 
-Getrennt vom Workflow-Export: voller DR-Snapshot der Konfiguration (Workflows+Folders, Machines, Credentials, Globals, Users, Custom Activities, Alerting, Settings — **keine** Execution-History/Audit/Stats). Admin-only, Envelope `nodepilot-system-backup/v2` (`.npbackup`); Secrets per **Passphrase-Rewrap** (PBKDF2→HKDF→AES-GCM) + Whole-file-HMAC. Restore: Ref-Validierung, transaktional mit ID-Remap, Konflikt-Policy (skip/rename/overwrite), Last-Admin-Schutz. UI `/backup`, CLI `np backup manifest|export|preview|restore`. Details: `docs/claude-reference.md`.
+Getrennt vom Workflow-Export: portables Konfigurations-Backup (Workflows+Folders, Machines, Credentials, Globals, Users, Custom Activities, Alerting, Settings — **keine** Execution-History/Audit/Stats und kein vollständiges DR). Admin-only, ausschließlich Envelope `nodepilot-system-backup/v4` (`.npbackup`); kompletter Payload passphrasenbasiert verschlüsselt und authentifiziert. Preview braucht die Passphrase; unvollständige Exporte und Restores brechen fail-closed ab. Native DB-, ProgramData-, Konfigurations- und Key-Sicherung plus Restore-Drill bleiben für DR erforderlich. UI `/backup`, CLI `np backup manifest|export|preview|restore`. Details: `docs/claude-reference.md`.
 
 ## Konventionen & Feinheiten
 

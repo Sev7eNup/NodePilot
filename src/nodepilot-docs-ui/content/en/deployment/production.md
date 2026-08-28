@@ -513,6 +513,53 @@ format.
 
 The binary backup contains no secret-bearing `appsettings.Production.json`. It is therefore replaced last during the swap, so that an abort does not destroy it.
 
+## Replacing the HTTPS certificate
+
+The certificate can be changed at any time on a running installation — to replace a self-signed
+setup certificate with one from your own PKI, or for a routine renewal. No reinstallation is needed;
+this is a configuration change.
+
+```powershell
+# 1. Import the new certificate with its private key
+$pfxPassword = Read-Host -AsSecureString "PFX password"
+$cert = Import-PfxCertificate -FilePath 'C:\PKI\nodepilot-new.pfx' `
+  -CertStoreLocation Cert:\LocalMachine\My -Password $pfxPassword
+$cert.Thumbprint
+```
+
+**2. Grant the service account read access to the private key.** This is the step a manual swap
+misses — during installation the installer does it for you. Without it the service does not start
+after the restart, and the message does not mention the certificate.
+
+```powershell
+$rsa = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($cert)
+$keyFile = Join-Path $env:ProgramData `
+  "Microsoft\Crypto\RSA\MachineKeys\$($rsa.Key.UniqueName)"
+icacls.exe $keyFile /grant '<service account>:(R)'
+```
+
+With `LocalSystem` as the service identity the step is unnecessary — `SYSTEM` already has read
+access to `MachineKeys`. For a gMSA, give `<service account>` as `DOMAIN\gmsa$`. For an ECDSA
+certificate use `GetECDsaPrivateKey` instead of `GetRSAPrivateKey` and look for the file under
+`Microsoft\Crypto\Keys`.
+
+**3. Set the thumbprint in the configuration.** In `C:\Program Files\NodePilot\appsettings.Production.json`:
+
+```json
+"Kestrel": { "Https": { "CertificateThumbprint": "<new thumbprint>" } }
+```
+
+**4. Restart the service.** `Kestrel` belongs to the boot-fixed part of the configuration — hot
+reload does not apply there.
+
+```powershell
+Restart-Service NodePilot
+Invoke-WebRequest https://<host>:<port>/healthz/ready -UseBasicParsing
+```
+
+Leave the old certificate in the store until the restart has succeeded: if the service fails to
+start, the way back is to put the previous thumbprint into that same line. Remove it afterwards.
+
 ## Uninstalling
 
 ```powershell

@@ -119,6 +119,8 @@ np workflow unlock deploy-prod
 np workflow enable deploy-prod     # 423 wenn gelockt
 np workflow disable deploy-prod    # ignoriert Locks (Incident-Kill-Switch)
 np workflow cancel-all deploy-prod
+np workflow concurrency-limit deploy-prod -m 5   # hoechstens 5 gleichzeitig; weitere reihen sich ein
+np workflow concurrency-limit deploy-prod -m none  # wieder unbegrenzt
 np workflow duplicate deploy-prod
 np workflow force-unlock deploy-prod   # Admin; fragt nach
 ```
@@ -167,9 +169,16 @@ cat all.json | np workflow import -f -               # Namenskollision → Suffi
 np workflow import -f ./deploy.json --target-folder 8a2f...        # Ziel-Folder (fehlt → Root)
 np workflow import-scorch -f ./scorch-export.ois_export   # SCOrch .ois_export XML
 np workflow import-scorch -f ./scorch.ois_export --target-folder 8a2f...
+
+# Sicherer CI-Ablauf: Import bleibt disabled, ID aus JSON lesen, danach bewusst aktivieren
+workflow_id="$(np workflow import -f ./deploy.json -o json | jq -r '.workflows[0].id')"
+np workflow enable "$workflow_id"
 ```
 
-`--target-folder <GUID>` erfordert Edit auf dem Ziel-Folder (RBAC).
+`--target-folder <GUID>` erfordert Edit auf dem Ziel-Folder (RBAC). JSON- und SCOrch-Importe
+erzeugen Workflows immer deaktiviert. Mit `-o json` steht der vollständige Importreport inklusive
+der erzeugten IDs auf stdout; Logs und Warnungen bleiben auf stderr. Für einen Bulk-Import jede
+gewünschte ID aus `.workflows[]` separat mit `np workflow enable <ID>` aktivieren.
 
 ### move-folder
 

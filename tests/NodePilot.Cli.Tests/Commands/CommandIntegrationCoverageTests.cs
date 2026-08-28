@@ -291,13 +291,15 @@ public class CommandIntegrationCoverageTests
             }));
 
         var file = WriteTempBytes(new byte[] { 9, 9, 9 });
+        var pwFile = WriteTemp("correct horse battery staple");
         try
         {
-            var (exit, output) = RunWithStaticConsole(h, "backup", "preview", file);
+            var (exit, output) = RunWithStaticConsole(
+                h, "backup", "preview", file, "--passphrase-file", pwFile);
             exit.Should().Be(ExitCodes.Success);
             output.Should().Contain("workflows");
         }
-        finally { Del(file); }
+        finally { Del(file); Del(pwFile); }
     }
 
     [Fact]

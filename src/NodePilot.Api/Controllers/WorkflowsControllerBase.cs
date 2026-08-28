@@ -126,6 +126,7 @@ public abstract class WorkflowsControllerBase : ControllerBase
         CheckedOutByUserId = w.CheckedOutByUserId,
         CheckedOutByUserName = lockOwnerUserName,
         CheckedOutAt = w.CheckedOutAt,
+        MaxConcurrentExecutions = w.MaxConcurrentExecutions,
         FolderId = w.FolderId,
         FolderPath = folderPath,
         // Default-deny when the caller doesn't supply caps. The previous "all true"

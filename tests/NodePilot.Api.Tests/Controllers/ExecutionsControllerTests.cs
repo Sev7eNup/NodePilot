@@ -48,6 +48,7 @@ public class ExecutionsControllerTests
             new OutputRedactor(null),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
             NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
+            new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionDispatchService>.Instance,
             signal: dispatchSignal);
     }
@@ -1551,6 +1552,84 @@ public class ExecutionsControllerTests
         executions.Select(e => e.Id).Should().NotContain(running.Id);
         executions.Select(e => e.Id).Should().NotContain(pending.Id);
         executions.Select(e => e.Id).Should().NotContain(paused.Id);
+    }
+
+    [Fact]
+    public async Task GetAll_StatusFilter_AppliesBeforePaging()
+    {
+        var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
+        db.Workflows.Add(workflow);
+        db.WorkflowExecutions.AddRange(
+            new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Succeeded, StartedAt = DateTime.UtcNow.AddSeconds(-2) },
+            new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Failed, StartedAt = DateTime.UtcNow.AddSeconds(-1) });
+        await db.SaveChangesAsync();
+
+        var controller = NewController(db, new Mock<IWorkflowEngine>().Object);
+
+        var result = await controller.GetAll(
+            workflow.Id,
+            activeOnly: false,
+            terminalOnly: true,
+            CancellationToken.None,
+            page: 1,
+            pageSize: 1,
+            status: ExecutionStatus.Failed);
+
+        var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        var page = ok.Value.Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject;
+        page.Total.Should().Be(1);
+        page.Items.Should().ContainSingle().Which.Status.Should().Be("Failed");
+    }
+
+    [Fact]
+    public async Task GetAll_SearchFilter_AppliesBeforePaging()
+    {
+        var db = CreateContext();
+        var matchingWorkflow = new Workflow { Id = Guid.NewGuid(), Name = "Nightly Backup", DefinitionJson = "{}" };
+        var otherWorkflow = new Workflow { Id = Guid.NewGuid(), Name = "Disk Check", DefinitionJson = "{}" };
+        db.Workflows.AddRange(matchingWorkflow, otherWorkflow);
+        var matchingExecution = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = matchingWorkflow.Id, Status = ExecutionStatus.Succeeded,
+            StartedAt = DateTime.UtcNow.AddSeconds(-2), TriggeredBy = "schedule",
+        };
+        db.WorkflowExecutions.AddRange(
+            matchingExecution,
+            new WorkflowExecution
+            {
+                Id = Guid.NewGuid(), WorkflowId = otherWorkflow.Id, Status = ExecutionStatus.Failed,
+                StartedAt = DateTime.UtcNow.AddSeconds(-1), TriggeredBy = "manual",
+            });
+        await db.SaveChangesAsync();
+
+        var controller = NewController(db, new Mock<IWorkflowEngine>().Object);
+
+        var byTextResult = await controller.GetAll(
+            workflowId: null,
+            activeOnly: false,
+            terminalOnly: true,
+            CancellationToken.None,
+            page: 1,
+            pageSize: 1,
+            search: "BACKUP");
+        var byText = byTextResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject;
+        byText.Total.Should().Be(1);
+        byText.Items.Should().ContainSingle().Which.Id.Should().Be(matchingExecution.Id);
+
+        var byIdResult = await controller.GetAll(
+            workflowId: null,
+            activeOnly: false,
+            terminalOnly: true,
+            CancellationToken.None,
+            page: 1,
+            pageSize: 1,
+            search: matchingExecution.Id.ToString());
+        var byId = byIdResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject;
+        byId.Total.Should().Be(1);
+        byId.Items.Should().ContainSingle().Which.Id.Should().Be(matchingExecution.Id);
     }
 
     [Fact]

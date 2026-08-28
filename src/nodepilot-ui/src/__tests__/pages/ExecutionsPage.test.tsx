@@ -112,6 +112,38 @@ describe('ExecutionsPage', () => {
     expect(screen.getByText('Loading...')).toBeInTheDocument();
   });
 
+  it('renders the first server page without downloading the complete history', async () => {
+    const requestedPages: number[] = [];
+    server.use(
+      http.get(`${BASE}/api/executions`, ({ request }) => {
+        const page = Number(new URL(request.url).searchParams.get('page') ?? '1');
+        requestedPages.push(page);
+
+        return HttpResponse.json({
+          items: [MOCK_EXECUTIONS[page === 1 ? 0 : 1]],
+          page,
+          pageSize: 200,
+          total: 426_000,
+          totalPages: 2_130,
+        });
+      }),
+      http.get(`${BASE}/api/workflows`, () => HttpResponse.json(MOCK_WORKFLOWS))
+    );
+
+    renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Disk Check' })).toBeInTheDocument()
+    );
+    expect(requestedPages).toEqual([1]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Backup Job' })).toBeInTheDocument()
+    );
+    expect(requestedPages).toEqual([1, 2]);
+  });
+
   it('shows empty state when no executions', async () => {
     server.use(
       http.get(`${BASE}/api/executions`, () => HttpResponse.json([])),
@@ -225,12 +257,20 @@ describe('ExecutionsPage', () => {
 
   it('filters by free-text search', async () => {
     mockList();
+    let requestedSearch: string | null = null;
+    server.use(
+      http.get(`${BASE}/api/executions`, ({ request }) => {
+        requestedSearch = new URL(request.url).searchParams.get('search');
+        return HttpResponse.json(requestedSearch ? [MOCK_EXECUTIONS[1]] : MOCK_EXECUTIONS);
+      })
+    );
     renderPage();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Disk Check' })).toBeInTheDocument());
 
     fireEvent.change(screen.getByPlaceholderText(/Search workflow/i), { target: { value: 'backup' } });
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Disk Check' })).not.toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Backup Job' })).toBeInTheDocument();
+    await waitFor(() => expect(requestedSearch).toBe('backup'));
   });
 
   it('hides the retry button for Viewers', async () => {

@@ -422,12 +422,16 @@ public sealed class NodePilotApiClientResourcesTests : IDisposable
                    errors = Array.Empty<string>(),
                }));
 
-        var resp = await _client.ImportScorchAsync("<Policy/>", folderId: null, CancellationToken.None);
+        var xml = new byte[] { 0xFF, 0xFE, 0x3C, 0x00, 0x50, 0x00, 0x2F, 0x00, 0x3E, 0x00 };
+        var resp = await _client.ImportScorchAsync(xml, folderId: null, CancellationToken.None);
         resp.Created.Should().Be(1);
         resp.Workflows[0].Name.Should().Be("Migrated");
 
         var entry = _server.LogEntries.Should().ContainSingle().Subject;
-        entry.RequestMessage!.Headers!["Content-Type"].Should().ContainMatch("application/xml*");
+        var request = entry.RequestMessage;
+        request.Should().NotBeNull();
+        request!.Headers!["Content-Type"].Should().ContainMatch("application/xml*");
+        request.BodyAsBytes.Should().Equal(xml);
     }
 
     [Fact]

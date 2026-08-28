@@ -564,6 +564,68 @@ public class ScorchImporterTests
 
     // ---- helpers ----------------------------------------------------------------------------
 
+    // ---------------------------------------------- MaxParallelRequests (job concurrency)
+
+    [Theory]
+    [InlineData("1", 1)]
+    [InlineData("5", 5)]
+    [InlineData("1000", 1000)]
+    public void Parse_MaxParallelRequests_BecomesTheConcurrencyLimit(string raw, int expected)
+    {
+        // Carried over as-is, including 1: an imported runbook keeps the job concurrency it had
+        // in Orchestrator rather than silently becoming unlimited.
+        var result = Importer.Parse(BuildExport(PolicyWithConcurrency("wf", raw)));
+
+        result.Workflows.Should().ContainSingle()
+            .Which.MaxConcurrentExecutions.Should().Be(expected);
+    }
+
+    [Fact]
+    public void Parse_WithoutMaxParallelRequests_ImportsUnlimited()
+    {
+        var result = Importer.Parse(BuildExport(PolicyWith("wf", [])));
+
+        result.Workflows.Should().ContainSingle()
+            .Which.MaxConcurrentExecutions.Should().BeNull();
+    }
+
+    [Fact]
+    public void Parse_NullTypedMaxParallelRequests_ImportsUnlimited()
+    {
+        // Orchestrator writes datatype="null" with an empty body for unset properties.
+        var result = Importer.Parse(BuildExport(PolicyWithConcurrency("wf", "", datatype: "null")));
+
+        result.Workflows.Should().ContainSingle()
+            .Which.MaxConcurrentExecutions.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-3")]
+    [InlineData("99999")]
+    [InlineData("lots")]
+    public void Parse_UnsupportedMaxParallelRequests_ImportsUnlimitedAndWarns(string raw)
+    {
+        var result = Importer.Parse(BuildExport(PolicyWithConcurrency("wf", raw)));
+
+        result.Workflows.Should().ContainSingle()
+            .Which.MaxConcurrentExecutions.Should().BeNull();
+        result.Warnings.Should().ContainMatch("*MaxParallelRequests*");
+    }
+
+    private static string PolicyWithConcurrency(string name, string raw, string datatype = "int")
+    {
+        var escaped = System.Security.SecurityElement.Escape(name);
+        return $$"""
+            <Policy>
+              <UniqueID datatype="string">{{{Guid.NewGuid()}}}</UniqueID>
+              <Name datatype="string">{{escaped}}</Name>
+              <Description datatype="null"></Description>
+              <MaxParallelRequests datatype="{{datatype}}">{{raw}}</MaxParallelRequests>
+            </Policy>
+            """;
+    }
+
     private static string BuildExport(string policyXml) => $$"""
         <?xml version="1.0" encoding="utf-8"?>
         <ExportData>

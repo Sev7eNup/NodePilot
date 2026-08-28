@@ -138,6 +138,12 @@ public static class ApiMetrics
         "nodepilot.dispatch.items_processed", unit: "1",
         description: "Items processed by the execution dispatch worker pool, tagged by result.");
 
+    // Runs held back by a workflow's own MaxConcurrentExecutions. Expected to be non-zero
+    // whenever a limit is doing its job, so it measures queueing, not failure.
+    public static readonly Counter<long> WorkflowConcurrencyDeferrals = Meter.CreateCounter<long>(
+        "nodepilot.dispatch.workflow_concurrency_deferrals", unit: "1",
+        description: "Dispatched runs deferred because the workflow was at its concurrency limit, tagged by trigger source.");
+
     // Revoked-tokens cleanup
     public static readonly Counter<long> RevokedTokensDeleted = Meter.CreateCounter<long>(
         "nodepilot.security.revoked_tokens.deleted", unit: "1",

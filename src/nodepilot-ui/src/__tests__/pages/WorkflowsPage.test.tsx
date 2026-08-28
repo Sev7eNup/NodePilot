@@ -329,8 +329,8 @@ describe('WorkflowsPage — import result toast', () => {
   });
 
   it('does not start a SCOrch upload after its local file read crosses an auth boundary', async () => {
-    let finishRead!: (xml: string) => void;
-    const deferredRead = new Promise<string>((resolve) => { finishRead = resolve; });
+    let finishRead!: (xml: ArrayBuffer) => void;
+    const deferredRead = new Promise<ArrayBuffer>((resolve) => { finishRead = resolve; });
     let posted = false;
     server.use(
       http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
@@ -342,20 +342,43 @@ describe('WorkflowsPage — import result toast', () => {
     const { container, queryClient } = renderPage('Admin');
     await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
     const file = new File(['<old-user />'], 'user-a.ois_export', { type: 'application/xml' });
-    vi.spyOn(file, 'text').mockReturnValue(deferredRead);
+    vi.spyOn(file, 'arrayBuffer').mockReturnValue(deferredRead);
     const input = container.querySelector(
       'input[accept=".ois_export,.ore,application/xml,text/xml,.xml"]',
     ) as HTMLInputElement;
     fireEvent.change(input, { target: { files: [file] } });
 
     clearLocalAuthBoundary();
-    finishRead('<old-user />');
+    finishRead(new TextEncoder().encode('<old-user />').buffer);
 
     await waitFor(() => expect(
       queryClient.getMutationCache().getAll().some((mutation) => mutation.state.status === 'error'),
     ).toBe(true));
     expect(posted).toBe(false);
     expect(useToastStore.getState().toasts).toEqual([]);
+  });
+
+  it('uploads the original SCOrch bytes without transcoding UTF-16', async () => {
+    const utf16 = new Uint8Array([0xff, 0xfe, 0x3c, 0x00, 0x50, 0x00, 0x2f, 0x00, 0x3e, 0x00]);
+    let received: Uint8Array | null = null;
+    server.use(
+      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.post(`${BASE}/api/workflows/import-scorch`, async ({ request }) => {
+        received = new Uint8Array(await request.arrayBuffer());
+        return HttpResponse.json({ created: 0, workflows: [], variables: [], warnings: [], errors: [] });
+      }),
+    );
+
+    const { container } = renderPage('Admin');
+    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
+    const file = new File([utf16], 'utf16.ois_export', { type: 'application/xml' });
+    const input = container.querySelector(
+      'input[accept=".ois_export,.ore,application/xml,text/xml,.xml"]',
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => expect(received).not.toBeNull());
+    expect(Array.from(received!)).toEqual(Array.from(utf16));
   });
 });
 

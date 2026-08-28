@@ -97,6 +97,23 @@ public sealed class WorkflowImportCommand : BaseCommand<WorkflowImportSettings>
         var api = ClientFactory.Create(session);
         var result = await api.ImportAsync(envelope, settings.TargetFolder, ct);
         writer.Success($"Imported: {result.Created}, Errors: {result.Errors.Count}");
+        writer.WriteData(result, (console, value) =>
+        {
+            var table = new Table().Border(TableBorder.Rounded)
+                .AddColumn("Id")
+                .AddColumn("Name")
+                .AddColumn("Imported from")
+                .AddColumn("State");
+            foreach (var workflow in value.Workflows)
+            {
+                table.AddRow(
+                    workflow.Id.ToString(),
+                    Markup.Escape(workflow.Name),
+                    Markup.Escape(workflow.OriginalName ?? workflow.Name),
+                    "[grey]disabled[/]");
+            }
+            console.Write(table);
+        });
         foreach (var e in result.Errors) writer.Warning($"  - {e}");
         return result.Errors.Count == 0 ? ExitCodes.Success : ExitCodes.Error;
     }
@@ -108,11 +125,11 @@ public sealed class WorkflowImportScorchCommand : BaseCommand<WorkflowImportSett
     public WorkflowImportScorchCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
     protected override async Task<int> RunAsync(CommandContext _, WorkflowImportSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        string xml;
+        byte[] xml;
         if (settings.File == "-")
-            xml = await Console.In.ReadToEndAsync(ct);
+            xml = global::System.Text.Encoding.UTF8.GetBytes(await Console.In.ReadToEndAsync(ct));
         else if (!string.IsNullOrWhiteSpace(settings.File) && File.Exists(settings.File))
-            xml = await File.ReadAllTextAsync(settings.File, ct);
+            xml = await File.ReadAllBytesAsync(settings.File, ct);
         else
         {
             writer.Error($"Datei nicht gefunden: {settings.File}");
@@ -122,13 +139,25 @@ public sealed class WorkflowImportScorchCommand : BaseCommand<WorkflowImportSett
         var api = ClientFactory.Create(session);
         var result = await api.ImportScorchAsync(xml, settings.TargetFolder, ct);
         writer.Success($"SCOrch import: {result.Created} Workflows, {result.Variables.Count(v => v.CreatedNow)} neue Variablen.");
-        foreach (var w in result.Workflows)
+        writer.WriteData(result, (console, value) =>
         {
-            // The folder is worth printing: an export brings its own tree, so a workflow does not
-            // necessarily land in the folder that was passed on the command line.
-            var folder = w.FolderPath is null or "/" ? "" : $" [dim]in {Markup.Escape(w.FolderPath)}[/]";
-            writer.Info($"  + [bold]{Markup.Escape(w.Name)}[/]{folder} — {w.ActivityCount} Activities ({w.HeuristicCount} heuristisch, {w.FallbackCount} Fallbacks)");
-        }
+            var table = new Table().Border(TableBorder.Rounded)
+                .AddColumn("Id")
+                .AddColumn("Name")
+                .AddColumn("Folder")
+                .AddColumn("Activities")
+                .AddColumn("State");
+            foreach (var workflow in value.Workflows)
+            {
+                table.AddRow(
+                    workflow.Id.ToString(),
+                    Markup.Escape(workflow.Name),
+                    Markup.Escape(workflow.FolderPath ?? "/"),
+                    $"{workflow.ActivityCount} ({workflow.HeuristicCount} heuristic, {workflow.FallbackCount} fallback)",
+                    "[grey]disabled[/]");
+            }
+            console.Write(table);
+        });
         foreach (var w in result.Warnings) writer.Warning($"  ! {w}");
         foreach (var e in result.Errors) writer.Error($"  - {e}");
         // Errors should fail the command — translation may have produced unusable runbooks.

@@ -21,7 +21,8 @@ namespace NodePilot.Api.Tests.Controllers;
 internal sealed record WorkflowControllerHarness(
     WorkflowsController Workflows,
     WorkflowEditingController Editing,
-    WorkflowImportExportController ImportExport);
+    WorkflowImportExportController ImportExport,
+    IWorkflowConcurrencyGate Concurrency);
 
 internal static class WorkflowControllerHarnessFactory
 {
@@ -62,9 +63,11 @@ internal static class WorkflowControllerHarnessFactory
         // the dedicated RBAC test fixtures instead of this harness.
         authz ??= new AlwaysAllowAuthorizationService();
         var versionDefinitions = VersionDefinitions();
+        var concurrency = new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate();
         var workflows = new WorkflowsController(
             db, NullLogger<WorkflowsController>.Instance, audit, authz,
-            new NodePilot.Api.Services.WorkflowContractDeriver(), versionDefinitions)
+            new NodePilot.Api.Services.WorkflowContractDeriver(), versionDefinitions,
+            concurrency)
         {
             ControllerContext = NewCtx()
         };
@@ -81,6 +84,6 @@ internal static class WorkflowControllerHarnessFactory
             ControllerContext = NewCtx()
         };
 
-        return new WorkflowControllerHarness(workflows, editing, importExport);
+        return new WorkflowControllerHarness(workflows, editing, importExport, concurrency);
     }
 }

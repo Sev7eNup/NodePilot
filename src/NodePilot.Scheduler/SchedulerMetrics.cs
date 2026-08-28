@@ -15,12 +15,11 @@ public static class SchedulerMetrics
     public static readonly Meter Meter = new(TelemetryConstants.Meters.Scheduler, "1.0.0");
 
     /// <summary>
-    /// Fires actually observed by active trigger sources and dropped because the database was
-    /// unavailable. This is not a count of source events missed while sources were disposed and it
-    /// is never replayed after recovery.
+    /// Admission attempts deferred because durable persistence was temporarily unavailable. The
+    /// source retains or reconstructs these signals and retries them after recovery.
     /// </summary>
-    public static readonly Counter<long> TriggersDroppedDbUnavailable = Meter.CreateCounter<long>(
-        "nodepilot.scheduler.triggers.dropped_db_unavailable");
+    public static readonly Counter<long> TriggerAdmissionsDeferred = Meter.CreateCounter<long>(
+        "nodepilot.scheduler.triggers.admission_deferred");
 
     public static readonly Counter<long> TriggersFired = Meter.CreateCounter<long>(
         "nodepilot.triggers.fired", unit: "1", description: "Number of times a trigger fired a workflow execution (tagged by trigger_type).");

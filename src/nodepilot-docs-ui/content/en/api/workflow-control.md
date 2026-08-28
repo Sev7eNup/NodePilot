@@ -17,9 +17,29 @@ Progress through SignalR. With `debug: true` → breakpoints, `StepPaused`, resu
 | `POST /execute` | Starts a run |
 | `POST /enable` / `/disable` | The kill switch. `enable` requires a **lock-free** workflow — an existing lock (including your own) returns `423`; from edit mode you publish instead. `disable` ignores locks. |
 | `POST /cancel-all` | Cancels every running execution of the workflow |
+| `PUT /concurrency-limit` | Caps how many executions run at once. Body: `{"maxConcurrentExecutions": 5}`, or `null` for unlimited. The property is required — an empty body is a `400`, so a client can never clear the limit by omission. `0` is rejected; disable the workflow instead. |
 | `POST /executions/{id}/cancel|retry|resume` | A single run |
 
 **Disable + cancel-all = quarantine.**
+
+## Concurrency limit
+
+`MaxConcurrentExecutions` caps how many executions of one workflow run at the same time. The
+limit holds across **every** caller — manual runs, schedule/file/database/event-log triggers,
+webhooks, external triggers and sub-workflow calls from `startWorkflow` and `forEach` — so two
+parents fanning out to the same child cannot exceed it between them.
+
+Reaching the limit **queues**, it never rejects: a queued run stays `Pending` and starts on its
+own as soon as a slot frees. Nothing is lost and no run is marked failed. A `forEach` loop's
+`maxParallelism` still bounds that one loop; the workflow limit bounds the child across all of
+them, and the tighter of the two wins.
+
+Changing the limit takes effect immediately. Lowering it below the number of active runs cancels
+nothing — the excess drains and the cap applies from then on. Raising it releases queued runs at
+once rather than one per completing run.
+
+Setting it needs no edit lock and creates no new workflow version, because it is an operational
+control rather than a change to the workflow definition.
 
 ## The edit lock (SCOrch style)
 

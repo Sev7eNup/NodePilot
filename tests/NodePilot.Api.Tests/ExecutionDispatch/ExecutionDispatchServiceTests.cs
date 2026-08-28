@@ -253,6 +253,7 @@ public class ExecutionDispatchServiceTests
             new OutputRedactor(null),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
             NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
+            new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate(),
             NullLogger<ExecutionDispatchService>.Instance);
         var pending = await service.DispatchAsync(
             new WorkflowDispatchIntent(workflow.Id, "manual", null), CancellationToken.None);
@@ -264,6 +265,170 @@ public class ExecutionDispatchServiceTests
             .Should().BeTrue();
         (await db.WorkflowExecutions.AsNoTracking().SingleAsync()).Status
             .Should().Be(ExecutionStatus.Pending);
+    }
+
+    [Fact]
+    public async Task ProcessOutbox_AtWorkflowConcurrencyLimit_LeavesExecutionPendingAndKeepsOutboxRow()
+    {
+        await using var db = NodePilot.TestCommons.TestDbFactory.Create();
+        var workflow = EnabledWorkflow();
+        workflow.MaxConcurrentExecutions = 1;
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var engine = new Mock<IWorkflowEngine>();
+
+        var gate = new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate();
+        gate.TryAcquire(workflow.Id, 1).Should().BeTrue(); // the one slot is already taken
+        await using var fixture = CreateFixture(db, engine.Object, gate);
+        var pending = await fixture.Service.DispatchAsync(
+            new WorkflowDispatchIntent(workflow.Id, "manual", null), CancellationToken.None);
+
+        var outcome = await fixture.Service.ProcessOutboxAsync(pending.Id, CancellationToken.None);
+
+        // Queued, not failed: the run must survive to be dispatched once a slot frees.
+        outcome.Should().Be(ExecutionDispatchOutcome.DeferredByConcurrencyLimit);
+        VerifyEngineCalls(engine, Times.Never());
+        (await db.ExecutionDispatchOutbox.AnyAsync(item => item.ExecutionId == pending.Id))
+            .Should().BeTrue();
+        (await db.WorkflowExecutions.AsNoTracking().SingleAsync(e => e.Id == pending.Id)).Status
+            .Should().Be(ExecutionStatus.Pending);
+    }
+
+    [Fact]
+    public async Task ProcessOutbox_WhenSlotFrees_RunsThePreviouslyDeferredExecution()
+    {
+        await using var db = NodePilot.TestCommons.TestDbFactory.Create();
+        var workflow = EnabledWorkflow();
+        workflow.MaxConcurrentExecutions = 1;
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var engine = SucceedingEngine();
+
+        var gate = new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate();
+        gate.TryAcquire(workflow.Id, 1);
+        await using var fixture = CreateFixture(db, engine.Object, gate);
+        var pending = await fixture.Service.DispatchAsync(
+            new WorkflowDispatchIntent(workflow.Id, "manual", null), CancellationToken.None);
+        await fixture.Service.ProcessOutboxAsync(pending.Id, CancellationToken.None);
+
+        gate.Release(workflow.Id);
+        var outcome = await fixture.Service.ProcessOutboxAsync(pending.Id, CancellationToken.None);
+
+        outcome.Should().Be(ExecutionDispatchOutcome.Completed);
+        VerifyEngineCalls(engine, Times.Once());
+    }
+
+    [Fact]
+    public async Task ProcessOutbox_WithLimit_ReleasesTheSlotAfterTheRun()
+    {
+        await using var db = NodePilot.TestCommons.TestDbFactory.Create();
+        var workflow = EnabledWorkflow();
+        workflow.MaxConcurrentExecutions = 1;
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+
+        await using var fixture = CreateFixture(db, SucceedingEngine().Object);
+        var pending = await fixture.Service.DispatchAsync(
+            new WorkflowDispatchIntent(workflow.Id, "manual", null), CancellationToken.None);
+        await fixture.Service.ProcessOutboxAsync(pending.Id, CancellationToken.None);
+
+        fixture.Concurrency.BlockedWorkflowIds.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ProcessOutbox_WhenEngineThrows_StillReleasesTheConcurrencySlot()
+    {
+        await using var db = NodePilot.TestCommons.TestDbFactory.Create();
+        var workflow = EnabledWorkflow();
+        workflow.MaxConcurrentExecutions = 1;
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var engine = new Mock<IWorkflowEngine>();
+        engine.Setup(candidate => candidate.ExecuteAsync(
+                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
+                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
+                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(),
+                It.IsAny<bool>()))
+            .ThrowsAsync(new InvalidOperationException("boom"));
+
+        await using var fixture = CreateFixture(db, engine.Object);
+        var pending = await fixture.Service.DispatchAsync(
+            new WorkflowDispatchIntent(workflow.Id, "manual", null), CancellationToken.None);
+        await fixture.Service.ProcessOutboxAsync(pending.Id, CancellationToken.None);
+
+        // A leaked slot would wedge the workflow permanently.
+        fixture.Concurrency.BlockedWorkflowIds.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ProcessOutbox_BlockedByMaintenanceWindow_DoesNotConsumeAConcurrencySlot()
+    {
+        await using var db = NodePilot.TestCommons.TestDbFactory.Create();
+        var workflow = EnabledWorkflow();
+        workflow.MaxConcurrentExecutions = 1;
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var services = new ServiceCollection();
+        services.AddSingleton(db);
+        services.AddSingleton(Mock.Of<IWorkflowEngine>());
+        await using var provider = services.BuildServiceProvider();
+        var gate = new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate();
+        var service = new ExecutionDispatchService(
+            db,
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            new OutputRedactor(null),
+            new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
+            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.Blocking("PatchWindow"),
+            gate,
+            NullLogger<ExecutionDispatchService>.Instance);
+        var pending = await service.DispatchAsync(
+            new WorkflowDispatchIntent(workflow.Id, "schedule", null,
+                RequireMaintenanceWindowCheck: true),
+            CancellationToken.None);
+
+        await service.ProcessOutboxAsync(pending.Id, CancellationToken.None);
+
+        // The run ends Cancelled, so it must never have held a slot.
+        gate.BlockedWorkflowIds.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ProcessOutbox_WithNoLimit_BehavesAsBefore()
+    {
+        await using var db = NodePilot.TestCommons.TestDbFactory.Create();
+        var workflow = EnabledWorkflow();
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var engine = SucceedingEngine();
+
+        await using var fixture = CreateFixture(db, engine.Object);
+        var pending = await fixture.Service.DispatchAsync(
+            new WorkflowDispatchIntent(workflow.Id, "manual", null), CancellationToken.None);
+
+        (await fixture.Service.ProcessOutboxAsync(pending.Id, CancellationToken.None))
+            .Should().Be(ExecutionDispatchOutcome.Completed);
+        VerifyEngineCalls(engine, Times.Once());
+        fixture.Concurrency.BlockedWorkflowIds.Should().BeEmpty();
+    }
+
+    private static Mock<IWorkflowEngine> SucceedingEngine()
+    {
+        var engine = new Mock<IWorkflowEngine>();
+        engine.Setup(candidate => candidate.ExecuteAsync(
+                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
+                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
+                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(),
+                It.IsAny<bool>()))
+            .ReturnsAsync((Workflow wf, string _, CancellationToken _, Dictionary<string, string>? _,
+                int? _, bool _, Guid? _, Guid? _, int _, Guid? executionId, bool _) =>
+                new WorkflowExecution
+                {
+                    Id = executionId ?? Guid.NewGuid(),
+                    WorkflowId = wf.Id,
+                    Status = ExecutionStatus.Succeeded,
+                });
+        return engine;
     }
 
     private static void VerifyEngineCalls(Mock<IWorkflowEngine> engine, Times times)
@@ -278,26 +443,33 @@ public class ExecutionDispatchServiceTests
         Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}", IsEnabled = true,
     };
 
-    private static Fixture CreateFixture(NodePilotDbContext db, IWorkflowEngine engine)
+    private static Fixture CreateFixture(
+        NodePilotDbContext db,
+        IWorkflowEngine engine,
+        IWorkflowConcurrencyGate? concurrency = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton(db);
         services.AddSingleton(engine);
         var provider = services.BuildServiceProvider();
+        var gate = concurrency ?? new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate();
         var service = new ExecutionDispatchService(
             db,
             provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
             NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
+            gate,
             NullLogger<ExecutionDispatchService>.Instance);
-        return new Fixture(provider, service);
+        return new Fixture(provider, service, gate);
     }
 
-    private sealed class Fixture(ServiceProvider provider, ExecutionDispatchService service)
+    private sealed class Fixture(
+        ServiceProvider provider, ExecutionDispatchService service, IWorkflowConcurrencyGate concurrency)
         : IAsyncDisposable
     {
         public ExecutionDispatchService Service { get; } = service;
+        public IWorkflowConcurrencyGate Concurrency { get; } = concurrency;
         public ValueTask DisposeAsync() => provider.DisposeAsync();
     }
 

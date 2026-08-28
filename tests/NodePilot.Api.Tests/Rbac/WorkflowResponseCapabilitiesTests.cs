@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -81,7 +81,8 @@ public sealed class WorkflowResponseCapabilitiesTests : IDisposable
             _db, NullLogger<WorkflowsController>.Instance, NoopAuditWriter.Instance,
             new ResourceAuthorizationService(_db),
             new NodePilot.Api.Services.WorkflowContractDeriver(),
-            NodePilot.Api.Tests.Controllers.WorkflowControllerHarnessFactory.VersionDefinitions())
+            NodePilot.Api.Tests.Controllers.WorkflowControllerHarnessFactory.VersionDefinitions(),
+            new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate())
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } }
         };

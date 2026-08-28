@@ -254,7 +254,7 @@ public class WorkflowImportExportControllerTests
     }
 
     [Fact]
-    public async Task Import_EnvelopeWithIsEnabledTrue_RespectsFlag()
+    public async Task Import_EnvelopeWithIsEnabledTrue_StillImportsDisabled()
     {
         var db = CreateContext();
         var h = NewController(db);
@@ -266,8 +266,33 @@ public class WorkflowImportExportControllerTests
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
         ok.Value.Should().BeOfType<ImportWorkflowsResponse>();
         var saved = await db.Workflows.AsNoTracking().FirstAsync();
-        saved.IsEnabled.Should().BeTrue(
-            "explicit IsEnabled=true in the envelope wins — only the missing-flag case defaults to disabled");
+        saved.IsEnabled.Should().BeFalse(
+            "activation state from another environment must never start imported triggers");
+    }
+
+    [Fact]
+    public async Task Import_ResponseId_CanBeExplicitlyEnabledThroughTheApi()
+    {
+        var db = CreateContext();
+        var h = NewController(db);
+        var ct = TestContext.Current.CancellationToken;
+
+        var import = await h.ImportExport.Import(
+            EnvelopeWithSingle("Pipeline-Deploy", """{"nodes":[],"edges":[]}""", enabled: true),
+            null, ct);
+
+        var imported = import.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ImportWorkflowsResponse>().Subject.Workflows
+            .Should().ContainSingle().Subject;
+        (await db.Workflows.AsNoTracking().SingleAsync(w => w.Id == imported.Id))
+            .IsEnabled.Should().BeFalse("import never trusts activation state from the source environment");
+
+        var enable = await h.Workflows.Enable(imported.Id, ct);
+
+        enable.Should().BeOfType<NoContentResult>();
+        db.ChangeTracker.Clear();
+        (await db.Workflows.AsNoTracking().SingleAsync(w => w.Id == imported.Id))
+            .IsEnabled.Should().BeTrue("the returned id is the explicit API activation handle");
     }
 
     [Fact]
@@ -318,7 +343,7 @@ public class WorkflowImportExportControllerTests
     }
 
     [Fact]
-    public async Task Import_RespectsSourceIsEnabledFlag()
+    public async Task Import_EnvelopeWithIsEnabledFalse_ImportsDisabled()
     {
         var db = CreateContext();
         var h = NewController(db);
@@ -329,7 +354,7 @@ public class WorkflowImportExportControllerTests
 
         result.Result.Should().BeOfType<OkObjectResult>();
         var saved = await db.Workflows.AsNoTracking().FirstAsync();
-        saved.IsEnabled.Should().BeFalse("source-IsEnabled=false must round-trip");
+        saved.IsEnabled.Should().BeFalse("all native imports require explicit post-import review and enablement");
     }
 
     [Fact]
@@ -1078,5 +1103,106 @@ public class WorkflowImportExportControllerTests
 
         result.Result.Should().BeOfType<BadRequestObjectResult>();
         (await db.Workflows.AsNoTracking().CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ImportScorch_CarriesMaxParallelRequestsAndReportsIt()
+    {
+        // Orchestrator's job concurrency comes over as-is — including 1, which means "one at a
+        // time" there too. The report says so, because the workflow would otherwise serialize
+        // after import without anyone being told.
+        var db = CreateContext();
+        var h = NewController(db);
+        var xml = $"""
+                   <ExportData>
+                     <Policies>
+                       <Folder>
+                         <UniqueID>{Guid.Empty}</UniqueID>
+                         <Name>Policies</Name>
+                         <Policy>
+                           <UniqueID datatype="string">{Guid.NewGuid()}</UniqueID>
+                           <Name datatype="string">Throttled Runbook</Name>
+                           <Description datatype="null"></Description>
+                           <MaxParallelRequests datatype="int">5</MaxParallelRequests>
+                         </Policy>
+                       </Folder>
+                     </Policies>
+                   </ExportData>
+                   """;
+        h.ImportExport.Request.Body = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = await h.ImportExport.ImportScorch(null, CancellationToken.None);
+
+        var response = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ScorchImportResponse>().Subject;
+        response.Created.Should().Be(1);
+        (await db.Workflows.AsNoTracking().SingleAsync()).MaxConcurrentExecutions.Should().Be(5);
+        response.Warnings.Should().ContainMatch("*concurrency limit*MaxParallelRequests*");
+    }
+
+    // -------------------------------------------------- concurrency limit round-trip
+
+    [Fact]
+    public async Task Export_CarriesTheConcurrencyLimit()
+    {
+        var db = CreateContext();
+        var wf = new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "Limited", DefinitionJson = """{"nodes":[],"edges":[]}""",
+            IsEnabled = true, MaxConcurrentExecutions = 4,
+        };
+        db.Workflows.Add(wf);
+        await db.SaveChangesAsync();
+        var h = NewController(db);
+
+        var result = await h.ImportExport.ExportOne(wf.Id, CancellationToken.None);
+
+        var json = result.Should().BeOfType<ContentResult>().Subject.Content!;
+        using var document = JsonDocument.Parse(json);
+        document.RootElement.GetProperty("workflow").GetProperty("maxConcurrentExecutions")
+            .GetInt32().Should().Be(4);
+    }
+
+    [Fact]
+    public async Task Import_RestoresTheConcurrencyLimit()
+    {
+        var db = CreateContext();
+        var h = NewController(db);
+        var item = ItemFor("Limited", """{"nodes":[],"edges":[]}""") with { MaxConcurrentExecutions = 6 };
+
+        await h.ImportExport.Import(EnvelopeWithMany(item), null, CancellationToken.None);
+
+        (await db.Workflows.AsNoTracking().SingleAsync()).MaxConcurrentExecutions.Should().Be(6);
+    }
+
+    [Fact]
+    public async Task Import_LegacyFileWithoutTheField_ImportsAsUnlimited()
+    {
+        var db = CreateContext();
+        var h = NewController(db);
+
+        await h.ImportExport.Import(
+            EnvelopeWithMany(ItemFor("Legacy", """{"nodes":[],"edges":[]}""")),
+            null, CancellationToken.None);
+
+        (await db.Workflows.AsNoTracking().SingleAsync()).MaxConcurrentExecutions.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Import_OutOfRangeConcurrencyLimit_ImportsUnlimitedAndReportsIt()
+    {
+        // The file is untrusted input and bypasses the endpoint's validation, so the range is
+        // enforced on the import path too — without failing the whole file.
+        var db = CreateContext();
+        var h = NewController(db);
+        var item = ItemFor("Bogus", """{"nodes":[],"edges":[]}""") with { MaxConcurrentExecutions = 99999 };
+
+        var result = await h.ImportExport.Import(EnvelopeWithMany(item), null, CancellationToken.None);
+
+        var response = result.Result.Should().BeOfType<OkObjectResult>().Subject
+            .Value.Should().BeOfType<ImportWorkflowsResponse>().Subject;
+        response.Created.Should().Be(1);
+        response.Errors.Should().ContainSingle(e => e.Contains("Concurrency limit"));
+        (await db.Workflows.AsNoTracking().SingleAsync()).MaxConcurrentExecutions.Should().BeNull();
     }
 }

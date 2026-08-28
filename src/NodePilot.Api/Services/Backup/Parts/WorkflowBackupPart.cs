@@ -51,6 +51,7 @@ public sealed class WorkflowBackupPart(NodePilotDbContext db) : IBackupPart
                 ["name"] = w.Name,
                 ["description"] = w.Description,
                 ["isEnabled"] = w.IsEnabled,
+                ["maxConcurrentExecutions"] = w.MaxConcurrentExecutions,
                 ["folderId"] = w.FolderId.ToString(),
                 ["version"] = w.Version,
                 ["definition"] = definition,

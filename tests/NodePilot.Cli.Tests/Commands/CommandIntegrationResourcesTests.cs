@@ -68,8 +68,12 @@ public class CommandIntegrationResourcesTests
     public void WorkflowImportScorch_FromFile_ReturnsZero()
     {
         using var h = new CommandTestHarness();
+        var importedId = Guid.NewGuid();
         var path = Path.Combine(h.ConfigDir, "policy.ois_export");
-        File.WriteAllText(path, "<Policy/>");
+        var xml = System.Text.Encoding.Unicode.GetPreamble()
+            .Concat(System.Text.Encoding.Unicode.GetBytes("<Policy/>"))
+            .ToArray();
+        File.WriteAllBytes(path, xml);
         h.Server.Given(Request.Create().WithPath("/api/workflows/import-scorch").UsingPost())
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
             {
@@ -78,7 +82,7 @@ public class CommandIntegrationResourcesTests
                 {
                     new
                     {
-                        id = Guid.NewGuid(), name = "Migrated", originalName = (string?)null,
+                        id = importedId, name = "Migrated", originalName = (string?)null,
                         activityCount = 3, heuristicCount = 0, fallbackCount = 0,
                     },
                 },
@@ -89,6 +93,66 @@ public class CommandIntegrationResourcesTests
 
         var result = h.Run("workflow", "import-scorch", "--file", path);
         result.ExitCode.Should().Be(ExitCodes.Success);
+        using (var output = System.Text.Json.JsonDocument.Parse(result.Output))
+        {
+            output.RootElement.GetProperty("workflows")[0].GetProperty("id").GetGuid()
+                .Should().Be(importedId, "CI must receive the id needed by `workflow enable`");
+        }
+        var request = h.Server.LogEntries.Should().ContainSingle().Subject.RequestMessage;
+        request.Should().NotBeNull();
+        request!.BodyAsBytes.Should().Equal(xml);
+    }
+
+    [Fact]
+    public void WorkflowImport_JsonOutputId_CanBePassedToWorkflowEnable()
+    {
+        using var h = new CommandTestHarness();
+        var importedId = Guid.NewGuid();
+        var path = Path.Combine(h.ConfigDir, "pipeline.workflow.json");
+        File.WriteAllText(path, """
+        {
+          "schema": "nodepilot-workflow-export/v1",
+          "exportVersion": 1,
+          "exportedAt": "2026-08-27T00:00:00Z",
+          "workflow": {
+            "name": "Pipeline-Deploy",
+            "definition": { "nodes": [], "edges": [] },
+            "isEnabled": true
+          }
+        }
+        """);
+        h.Server.Given(Request.Create().WithPath("/api/workflows/import").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                created = 1,
+                workflows = new[]
+                {
+                    new { id = importedId, name = "Pipeline-Deploy", originalName = "Pipeline-Deploy" },
+                },
+                errors = Array.Empty<string>(),
+            }));
+
+        var import = h.Run("workflow", "import", "--file", path);
+
+        import.ExitCode.Should().Be(ExitCodes.Success);
+        using (var output = System.Text.Json.JsonDocument.Parse(import.Output))
+        {
+            output.RootElement.GetProperty("workflows")[0].GetProperty("id").GetGuid()
+                .Should().Be(importedId);
+        }
+
+        h.Server.Given(Request.Create().WithPath($"/api/workflows/{importedId}").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBody(Single(importedId, "Pipeline-Deploy")));
+        h.Server.Given(Request.Create().WithPath($"/api/workflows/{importedId}/enable").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(204));
+
+        var enable = h.Run("workflow", "enable", importedId.ToString());
+
+        enable.ExitCode.Should().Be(ExitCodes.Success);
+        h.Server.LogEntries.Should().Contain(entry =>
+            entry.RequestMessage != null
+            && entry.RequestMessage.Path == $"/api/workflows/{importedId}/enable"
+            && string.Equals(entry.RequestMessage.Method, "POST", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

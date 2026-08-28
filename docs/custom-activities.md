@@ -105,7 +105,8 @@ Audit codes: `CUSTOM_ACTIVITY_CREATED|UPDATED|DELETED|ENABLED|DISABLED|IMPORTED|
 Custom activities are part of the `.npbackup` DR snapshot (`CustomActivityBackupPart`, section
 `customActivities`). The live definition of each (including disabled drafts) is exported. The
 PowerShell script template and the complete input-schema JSON (whose defaults become runtime
-values) are encrypted under the backup passphrase; v1/v2 plaintext fields remain restore-compatible.
+values) are encrypted under the backup passphrase inside the fully encrypted v4 payload. Earlier
+plaintext-envelope schemas are rejected by the current reader.
 Version-history snapshots are excluded. Restore is full-fidelity (the enabled state is preserved, unlike the `.npca` import which
 forces disabled), conflict policies skip/overwrite apply by `Key` (rename is unsupported — a key is
 embedded in workflow references — and falls back to skip with a warning). A workflow node's

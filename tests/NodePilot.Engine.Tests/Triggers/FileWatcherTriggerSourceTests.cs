@@ -580,6 +580,48 @@ public class FileWatcherTriggerSourceTests
     }
 
     [Fact]
+    public async Task StartAsync_ReconcilesAFileCreatedWhileTheSourceWasOffline()
+    {
+        using var tempDir = new TempDirectory();
+        var path = Path.Combine(tempDir.Path, "offline.txt");
+        await File.WriteAllTextAsync(path, "arrived during downtime");
+        var delivered = new TaskCompletionSource<TriggerSignal>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var context = Ctx(
+            $$"""{"directory":"{{Esc(tempDir.Path)}}","filter":"*.txt","watchType":"created"}""");
+        context = new TriggerContext
+        {
+            WorkflowId = context.WorkflowId,
+            NodeId = context.NodeId,
+            Config = context.Config,
+            OnFire = context.OnFire,
+            ReadCheckpoint = () => Task.FromResult<TriggerCheckpoint?>(new TriggerCheckpoint("{}", "seed")),
+            OnDurableFire = signal =>
+            {
+                delivered.TrySetResult(signal);
+                return Task.FromResult(true);
+            },
+        };
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            ConfigWith(("Trigger:FileWatcher:HealthProbeSeconds", "0")));
+
+        try
+        {
+            await src.StartAsync(context, CancellationToken.None);
+            var signal = await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            signal.EventKey.Should().StartWith("file-reconcile:");
+            signal.Parameters["fileAction"].Should().Be("created");
+            signal.Parameters["filePath"].Should().Be(path);
+        }
+        finally
+        {
+            await src.DisposeAsync();
+        }
+    }
+
+    [Fact]
     public async Task DisposeAsync_IsSafe_WhenStartAsyncWasNeverCalled()
     {
         var src = new FileWatcherTriggerSource(NullLogger<FileWatcherTriggerSource>.Instance, EmptyConfig());

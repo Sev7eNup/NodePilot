@@ -32,7 +32,8 @@ public class MaintenanceWindowEnforcementTests
         var dispatch = new ExecutionDispatchService(
             db, provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null), new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            evaluator, NullLogger<ExecutionDispatchService>.Instance);
+            evaluator, new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate(),
+            NullLogger<ExecutionDispatchService>.Instance);
 
         var ctrl = new ExecutionsController(
             db, Mock.Of<IWorkflowEngine>(), dispatch, new OutputRedactor(null),
@@ -114,7 +115,8 @@ public class MaintenanceWindowEnforcementTests
         var service = new ExecutionDispatchService(
             db, provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null), new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            StubMaintenanceWindowEvaluator.Blocking("PatchWindow"), NullLogger<ExecutionDispatchService>.Instance);
+            StubMaintenanceWindowEvaluator.Blocking("PatchWindow"), new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate(),
+            NullLogger<ExecutionDispatchService>.Instance);
 
         WorkflowDispatchSuppression? suppression = null;
         var pending = await service.DispatchAsync(
@@ -151,7 +153,8 @@ public class MaintenanceWindowEnforcementTests
         var service = new ExecutionDispatchService(
             db, provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null), new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            StubMaintenanceWindowEvaluator.Blocking("PatchWindow"), NullLogger<ExecutionDispatchService>.Instance);
+            StubMaintenanceWindowEvaluator.Blocking("PatchWindow"), new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate(),
+            NullLogger<ExecutionDispatchService>.Instance);
 
         WorkflowDispatchSuppression? suppression = null;
         var pending = await service.DispatchAsync(
@@ -185,7 +188,8 @@ public class MaintenanceWindowEnforcementTests
         var service = new ExecutionDispatchService(
             db, provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null), new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            StubMaintenanceWindowEvaluator.Blocking("PatchWindow"), NullLogger<ExecutionDispatchService>.Instance);
+            StubMaintenanceWindowEvaluator.Blocking("PatchWindow"), new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate(),
+            NullLogger<ExecutionDispatchService>.Instance);
 
         var pending = await service.DispatchAsync(
             new WorkflowDispatchIntent(wf.Id, "api", null, RequireWorkflowEnabled: true),

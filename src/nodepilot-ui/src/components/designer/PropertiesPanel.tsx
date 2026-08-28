@@ -13,7 +13,7 @@ import { useState, useRef, useMemo, memo, createElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api } from '../../api/client';
-import { getAllPages } from '../../api/paging';
+import { getPage } from '../../api/paging';
 import type { Node, Edge } from '@xyflow/react';
 import type { ManagedMachine, Credential, WorkflowExecution, StepExecution } from '../../types/api';
 import { getUpstreamVariables } from '../../lib/upstreamVariables';
@@ -100,9 +100,13 @@ function PropertiesPanelImpl({
     staleTime: 10_000,
     queryFn: async () => {
       const authBoundaryGeneration = captureAuthBoundaryGeneration();
-      const executions = await getAllPages<WorkflowExecution>(`/executions?workflowId=${workflowId}`);
+      const executions = await getPage<WorkflowExecution>(
+        `/executions?workflowId=${workflowId}&terminalOnly=true`,
+        1,
+        1,
+      );
       assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
-      const last = executions.find((e) => ['Succeeded', 'Failed', 'Cancelled'].includes(e.status));
+      const last = executions.items[0];
       if (!last) return null;
       assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       return await api.get<StepExecution[]>(`/executions/${last.id}/steps`);

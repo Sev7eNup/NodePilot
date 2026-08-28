@@ -106,11 +106,20 @@ curl -s -b cookie.jar "$NP/api/workflows/21f1c0d4-.../coverage?windowDays=7" | j
 
 ```bash
 curl -s -b cookie.jar "$NP/api/workflows/21f1c0d4-.../export" -o deploy.envelope.json
-curl -s -b cookie.jar -X POST "$NP/api/workflows/import" \
-  -H 'Content-Type: application/json' --data-binary @deploy.envelope.json
+import_result="$(curl -s -b cookie.jar -X POST "$NP/api/workflows/import" \
+  -H 'Content-Type: application/json' --data-binary @deploy.envelope.json)"
+workflow_id="$(printf '%s' "$import_result" | jq -r '.workflows[0].id')"
+
+# Import ist immer disabled; erst dieser ausdrückliche zweite Call schaltet den Workflow scharf.
+curl -s -o /dev/null -w '%{http_code}\n' -b cookie.jar -X POST \
+  "$NP/api/workflows/$workflow_id/enable"
 ```
 
-Envelope-Typ: `nodepilot-workflow-export/v1`. Secrets werden hier redigiert (`***`) — Teilen-Artefakt, kein DR.
+Beide Importendpoints erzeugen Workflows immer deaktiviert und liefern deren IDs im Feld
+`workflows[].id`. `POST /api/workflows/{id}/enable` ist idempotent, benötigt Admin/Operator plus
+Edit auf dem Workflow-Folder und antwortet erfolgreich mit `204`. Ein Edit-Lock oder eine unsichere
+Workflowdefinition verhindert die Aktivierung weiterhin sichtbar. Envelope-Typ:
+`nodepilot-workflow-export/v1`. Secrets werden hier redigiert (`***`) — Teilen-Artefakt, kein DR.
 
 ## Executions
 

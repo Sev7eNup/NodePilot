@@ -40,6 +40,7 @@ public sealed record WorkflowResponse(
     Guid? CheckedOutByUserId,
     string? CheckedOutByUserName,
     DateTime? CheckedOutAt,
+    int? MaxConcurrentExecutions = null,
     Guid FolderId = default,
     string? FolderPath = null,
     WorkflowCapabilities? Capabilities = null);
@@ -51,6 +52,7 @@ public sealed record CreateWorkflowRequest(
     string Name, string? Description, string DefinitionJson, Guid? FolderId = null);
 public sealed record UpdateWorkflowRequest(string Name, string? Description, string DefinitionJson);
 public sealed record PublishWorkflowRequest(string Name, string? Description, string DefinitionJson);
+public sealed record SetWorkflowConcurrencyLimitRequest(int? MaxConcurrentExecutions);
 public sealed record RollbackRequest(string? Reason);
 
 public sealed record WorkflowContractInput(
@@ -67,7 +69,7 @@ public sealed record WorkflowVersionDetail(
     int Version, string Name, string? Description, string DefinitionJson,
     DateTime CreatedAt, string? CreatedBy, string? ChangeNote, bool IsCurrent);
 
-public sealed record WorkflowExportItem(string Name, string? Description, JsonElement Definition, bool? IsEnabled = null);
+public sealed record WorkflowExportItem(string Name, string? Description, JsonElement Definition, bool? IsEnabled = null, int? MaxConcurrentExecutions = null);
 public sealed record WorkflowExportEnvelope(
     string Schema, int ExportVersion, DateTime ExportedAt,
     WorkflowExportItem? Workflow, List<WorkflowExportItem>? Workflows);

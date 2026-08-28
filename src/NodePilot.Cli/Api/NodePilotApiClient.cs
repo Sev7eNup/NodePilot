@@ -139,6 +139,14 @@ public sealed class NodePilotApiClient
         await EnsureSuccessAsync(res, ct);
     }
 
+    /// <summary>Null clears the limit (unlimited).</summary>
+    public async Task SetWorkflowConcurrencyLimitAsync(Guid id, int? limit, CancellationToken ct)
+    {
+        var req = new SetWorkflowConcurrencyLimitRequest(limit);
+        using var res = await _http.PutAsJsonAsync($"api/workflows/{id}/concurrency-limit", req, JsonOptions, ct);
+        await EnsureSuccessAsync(res, ct);
+    }
+
     public async Task<CancelAllResponse> CancelAllAsync(Guid id, CancellationToken ct)
     {
         using var res = await _http.PostAsync($"api/workflows/{id}/cancel-all", content: null, ct);
@@ -243,10 +251,11 @@ public sealed class NodePilotApiClient
         return await ParseAsync<WorkflowResponse>(res, ct);
     }
 
-    public async Task<ScorchImportResponse> ImportScorchAsync(string xml, Guid? folderId, CancellationToken ct)
+    public async Task<ScorchImportResponse> ImportScorchAsync(ReadOnlyMemory<byte> xml, Guid? folderId, CancellationToken ct)
     {
         var path = folderId is null ? "api/workflows/import-scorch" : $"api/workflows/import-scorch?folderId={folderId}";
-        using var content = new StringContent(xml, System.Text.Encoding.UTF8, "application/xml");
+        using var content = new ByteArrayContent(xml.ToArray());
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/xml");
         using var res = await _http.PostAsync(path, content, ct);
         return await ParseAsync<ScorchImportResponse>(res, ct);
     }

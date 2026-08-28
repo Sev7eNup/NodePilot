@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
@@ -30,10 +31,18 @@ public class ForEachActivity : IActivityExecutor
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly NodePilotDbContext _db;
     private readonly ISubWorkflowGate _gate;
+    // Per-workflow cap on the child, on top of maxParallelism: that one bounds this loop, this
+    // one bounds the child across every caller. Required on both constructors so no path runs
+    // unlimited.
+    private readonly IWorkflowConcurrencyGate _workflowConcurrency;
     private readonly ISubWorkflowAuthorizationResolver? _subWorkflowAuthz;
 
-    public ForEachActivity(IServiceScopeFactory scopeFactory, NodePilotDbContext db, ISubWorkflowGate gate)
-        : this(scopeFactory, db, gate, null)
+    public ForEachActivity(
+        IServiceScopeFactory scopeFactory,
+        NodePilotDbContext db,
+        ISubWorkflowGate gate,
+        IWorkflowConcurrencyGate workflowConcurrency)
+        : this(scopeFactory, db, gate, workflowConcurrency, null)
     {
     }
 
@@ -41,11 +50,13 @@ public class ForEachActivity : IActivityExecutor
         IServiceScopeFactory scopeFactory,
         NodePilotDbContext db,
         ISubWorkflowGate gate,
+        IWorkflowConcurrencyGate workflowConcurrency,
         ISubWorkflowAuthorizationResolver? subWorkflowAuthz)
     {
         _scopeFactory = scopeFactory;
         _db = db;
         _gate = gate;
+        _workflowConcurrency = workflowConcurrency;
         _subWorkflowAuthz = subWorkflowAuthz;
     }
 
@@ -316,8 +327,28 @@ public class ForEachActivity : IActivityExecutor
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(rctx.TimeoutPerItem));
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(parentCt, timeoutCts.Token);
 
+        var concurrencySlotHeld = false;
         try
         {
+            // The child was resolved once for the whole loop, so its limit may have changed
+            // since. Re-read per item — one indexed lookup beside starting a whole execution —
+            // otherwise a limit raised mid-loop would not take effect until the loop ends.
+            // Falls back to the loop's snapshot when the scope has no context, which is the
+            // behaviour this loop had before the re-read existed.
+            var scopedDb = scope.ServiceProvider.GetService<NodePilotDbContext>();
+            var limit = scopedDb is null
+                ? rctx.ChildWorkflow.MaxConcurrentExecutions
+                : await scopedDb.Workflows
+                    .AsNoTracking()
+                    .Where(w => w.Id == rctx.ChildWorkflow.Id)
+                    .Select(w => w.MaxConcurrentExecutions)
+                    .FirstOrDefaultAsync(linkedCts.Token);
+
+            // Taken after ISubWorkflowGate, which the caller still holds — the same order both
+            // sub-workflow activities use. The per-item timeout covers this wait.
+            await _workflowConcurrency.AcquireAsync(rctx.ChildWorkflow.Id, limit, linkedCts.Token);
+            concurrencySlotHeld = true;
+
             var childExec = await engine.ExecuteAsync(rctx.ChildWorkflow, $"forEach:{rctx.StepId}[{index}]", linkedCts.Token, childParams);
             return (childExec, null);
         }
@@ -328,6 +359,10 @@ public class ForEachActivity : IActivityExecutor
         catch (Exception ex)
         {
             return (null, $"{ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            if (concurrencySlotHeld) _workflowConcurrency.Release(rctx.ChildWorkflow.Id);
         }
     }
 

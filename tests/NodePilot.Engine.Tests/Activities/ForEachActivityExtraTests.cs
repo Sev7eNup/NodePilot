@@ -26,7 +26,7 @@ public sealed class ForEachActivityExtraTests : IDisposable
     private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement;
 
     private ForEachActivity CreateActivity() =>
-        new(Mock.Of<IServiceScopeFactory>(), _db, new InMemorySubWorkflowGate());
+        new(Mock.Of<IServiceScopeFactory>(), _db, new InMemorySubWorkflowGate(), new InMemoryWorkflowConcurrencyGate());
 
     [Fact]
     public async Task ExecuteAsync_ItemsExceedMaxCount_ReturnsErrorAboutFiltering()

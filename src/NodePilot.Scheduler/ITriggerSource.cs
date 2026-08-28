@@ -48,7 +48,44 @@ public sealed class TriggerContext
     public required Guid WorkflowId { get; init; }
     public required string NodeId { get; init; }
     public required JsonElement Config { get; init; }
+    /// <summary>Stable hash of the trigger configuration. Production cursors are scoped to this
+    /// value so changing a directory, query or cron expression starts from a fresh baseline.</summary>
+    public string ConfigurationHash { get; init; } = string.Empty;
     /// <summary>Caller-supplied callback invoked when the trigger fires. The orchestrator
     /// turns this into an engine.ExecuteAsync call with the given parameters.</summary>
     public required Func<Dictionary<string, string>, Task> OnFire { get; init; }
+
+    /// <summary>
+    /// Production delivery boundary. Returns true only after the signal and its source cursor
+    /// were committed durably. Sources retry or reconcile while it returns false. Optional so
+    /// isolated source tests and embedders can keep using <see cref="OnFire"/>.
+    /// </summary>
+    public Func<TriggerSignal, Task<bool>>? OnDurableFire { get; init; }
+
+    public Func<Task<TriggerCheckpoint?>>? ReadCheckpoint { get; init; }
+    public Func<TriggerCheckpoint, Task<bool>>? InitializeCheckpoint { get; init; }
+    public Func<TriggerCheckpoint, Task<bool>>? SaveCheckpoint { get; init; }
+
+    public async Task<bool> DeliverAsync(TriggerSignal signal)
+    {
+        if (OnDurableFire is not null) return await OnDurableFire(signal);
+        await OnFire(signal.Parameters);
+        return true;
+    }
+
+    public Task<TriggerCheckpoint?> ReadCheckpointAsync()
+        => ReadCheckpoint?.Invoke() ?? Task.FromResult<TriggerCheckpoint?>(null);
+
+    public Task<bool> InitializeCheckpointAsync(TriggerCheckpoint checkpoint)
+        => InitializeCheckpoint?.Invoke(checkpoint) ?? Task.FromResult(true);
+
+    public Task<bool> SaveCheckpointAsync(TriggerCheckpoint checkpoint)
+        => SaveCheckpoint?.Invoke(checkpoint) ?? Task.FromResult(true);
 }
+
+public sealed record TriggerSignal(
+    string EventKey,
+    string Position,
+    Dictionary<string, string> Parameters);
+
+public sealed record TriggerCheckpoint(string Position, string Version);

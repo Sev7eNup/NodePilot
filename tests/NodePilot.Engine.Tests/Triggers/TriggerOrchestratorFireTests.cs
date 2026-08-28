@@ -96,6 +96,71 @@ public sealed class TriggerOrchestratorFireTests : IAsyncDisposable
             "trigger params are matched case-insensitively downstream in the data bus");
     }
 
+    [Fact]
+    public async Task AdmitFireAsync_ReplayedEvent_IsDispatchedExactlyOnceAndAdvancesCheckpoint()
+    {
+        var workflowId = SeedWorkflow(enabled: true);
+        var orchestrator = Orchestrator();
+        var signal = new TriggerSignal("schedule:638919936000000000", "2026-08-27T10:00:00Z", []);
+
+        var first = await orchestrator.AdmitFireAsync(
+            workflowId, "schedule-node", "scheduleTrigger", "config-v1", signal);
+        var replay = await orchestrator.AdmitFireAsync(
+            workflowId, "schedule-node", "scheduleTrigger", "config-v1", signal);
+
+        first.Should().BeTrue();
+        replay.Should().BeTrue("the persisted receipt acknowledges a source retry");
+        _dispatcher.Intents.Should().ContainSingle();
+        _db.ChangeTracker.Clear();
+        (await _db.TriggerDeliveryReceipts.AsNoTracking().ToListAsync()).Should().ContainSingle()
+            .Which.EventKey.Should().Be(signal.EventKey);
+        (await _db.TriggerDeliveryCheckpoints.AsNoTracking().SingleAsync()).Position
+            .Should().Be(signal.Position);
+    }
+
+    [Fact]
+    public async Task Checkpoint_ConfigurationChange_StartsFromAFreshBaseline()
+    {
+        var workflowId = SeedWorkflow(enabled: true);
+        var orchestrator = Orchestrator();
+        var oldSignal = new TriggerSignal("database:old", "old-sentinel", []);
+        (await orchestrator.AdmitFireAsync(
+            workflowId, "database-node", "databaseTrigger", "config-v1", oldSignal)).Should().BeTrue();
+
+        (await orchestrator.ReadCheckpointAsync(workflowId, "database-node", "config-v2"))
+            .Should().BeNull("a changed query or connection must not compare against the old sentinel");
+        var newBaseline = new TriggerCheckpoint("new-sentinel", "database-seed:new");
+        (await orchestrator.InitializeCheckpointAsync(
+            workflowId, "database-node", "databaseTrigger", "config-v2", newBaseline)).Should().BeTrue();
+
+        (await orchestrator.ReadCheckpointAsync(workflowId, "database-node", "config-v2"))
+            .Should().Be(newBaseline);
+    }
+
+    [Fact]
+    public async Task AdmitFireAsync_DispatchFailure_RollsBackReceiptAndCanBeRetried()
+    {
+        var workflowId = SeedWorkflow(enabled: true);
+        var orchestrator = Orchestrator();
+        var signal = new TriggerSignal("database:change-42", "42", []);
+        _dispatcher.Failure = new InvalidOperationException("simulated dispatch failure");
+
+        var failed = await orchestrator.AdmitFireAsync(
+            workflowId, "database-node", "databaseTrigger", "config-v1", signal);
+
+        failed.Should().BeFalse();
+        _db.ChangeTracker.Clear();
+        (await _db.TriggerDeliveryReceipts.AsNoTracking().CountAsync()).Should().Be(0);
+        (await _db.TriggerDeliveryCheckpoints.AsNoTracking().CountAsync()).Should().Be(0);
+
+        _dispatcher.Failure = null;
+        var retried = await orchestrator.AdmitFireAsync(
+            workflowId, "database-node", "databaseTrigger", "config-v1", signal);
+
+        retried.Should().BeTrue();
+        _dispatcher.Intents.Should().ContainSingle();
+    }
+
     // ---------------------------------------------------------------- suppression
 
     [Fact]
@@ -174,7 +239,7 @@ public sealed class TriggerOrchestratorFireTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task FireAsync_DatabaseUnavailable_DropsBeforeReadingLeadership()
+    public async Task AdmitFireAsync_DatabaseUnavailable_DefersBeforeReadingLeadership()
     {
         var cluster = new ThrowingClusterState();
         var orchestrator = new TriggerOrchestrator(
@@ -185,10 +250,11 @@ public sealed class TriggerOrchestratorFireTests : IAsyncDisposable
             NodePilot.TestCommons.TestDatabaseAvailability.Unavailable,
             new TriggerHealthRegistry());
 
-        var act = () => orchestrator.FireAsync(Guid.NewGuid(), "scheduleTrigger", []);
+        var admitted = await orchestrator.AdmitFireAsync(
+            Guid.NewGuid(), "schedule-node", "scheduleTrigger", "config-v1",
+            new TriggerSignal("schedule:outage", "2026-08-27T10:00:00Z", []));
 
-        await act.Should().NotThrowAsync(
-            "an outage fire is counted and discarded even after lease demotion; leadership must not hide it");
+        admitted.Should().BeFalse("the source must retain and retry an outage signal");
         cluster.IsLeaderReads.Should().Be(0);
         _dispatcher.Intents.Should().BeEmpty();
     }
@@ -248,9 +314,11 @@ public sealed class TriggerOrchestratorFireTests : IAsyncDisposable
     private sealed class RecordingDispatcher : IWorkflowExecutionDispatcher
     {
         public List<WorkflowDispatchIntent> Intents { get; } = [];
+        public Exception? Failure { get; set; }
 
         public Task<WorkflowExecution> DispatchAsync(WorkflowDispatchIntent intent, CancellationToken ct)
         {
+            if (Failure is not null) throw Failure;
             Intents.Add(intent);
             return Task.FromResult(new WorkflowExecution
             {

@@ -1,6 +1,7 @@
 import {
   ArrowDownRight,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ChevronUp,
   CircleDash,
@@ -11,10 +12,10 @@ import {
   Search,
   WarningAltFilled,
 } from '@carbon/icons-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { api } from '../api/client';
-import { getAllPages } from '../api/paging';
+import { getPage } from '../api/paging';
 import type { WorkflowExecution, StepExecution, Workflow } from '../types/api';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -41,6 +42,7 @@ type ColKey = 'status' | 'workflow' | 'trigger' | 'startedBy' | 'steps' | 'durat
 type ResizableColKey = Exclude<ColKey, 'workflow'>;
 
 const WORKFLOW_MIN_WIDTH = 240;
+const PAGE_SIZE = 200;
 const ACTIONS_WIDTH = 120; // ≤3 icon buttons × ~30px + gap + px-4 cell padding
 const DEFAULT_WIDTHS: Record<ResizableColKey, number> = {
   status: 140, trigger: 160, startedBy: 140, steps: 150, duration: 100, started: 180,
@@ -68,7 +70,8 @@ export function ExecutionsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(() => searchParams.get('id'));
   const initialIdRef = useRef<string | null>(searchParams.get('id'));
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('id') ?? '');
+  const [debouncedSearch, setDebouncedSearch] = useState(() => searchParams.get('id') ?? '');
   // Deep-link: the dashboard's "Show failed" shortcut navigates here with ?status=Failed.
   // Read once on mount so the list lands on the matching filter instead of showing all.
   const statusParam = searchParams.get('status');
@@ -77,18 +80,35 @@ export function ExecutionsPage() {
       ? statusParam : 'all';
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(initialStatus);
   const [workflowFilter, setWorkflowFilter] = useState<string>('all');
+  const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState<ColKey>('started');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  useEffect(() => {
+    const timer = globalThis.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPage(1);
+    }, 250);
+    return () => globalThis.clearTimeout(timer);
+  }, [search]);
 
   // The global executions list shows only finished runs (Succeeded / Failed / Cancelled).
   // Running runs belong in the designer's live panel, not in this history list.
   // No refetchInterval: SignalR's ExecutionStatusChanged invalidates this cache
   // specifically (see useSignalR.scheduleQueryInvalidate). Every real status change
   // triggers a debounced refetch — no more 5s polling against a possibly idle server.
-  const { data: executions, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['executions', 'terminalOnly'],
-    queryFn: () => getAllPages<WorkflowExecution>('/executions?terminalOnly=true'),
+  const { data: executionPage, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ['executions', 'terminalOnly', statusFilter, workflowFilter, debouncedSearch, page],
+    queryFn: () => {
+      const params = new URLSearchParams({ terminalOnly: 'true' });
+      if (statusFilter !== 'all') params.set('status', statusFilter);
+      if (workflowFilter !== 'all') params.set('workflowId', workflowFilter);
+      if (debouncedSearch) params.set('search', debouncedSearch);
+      return getPage<WorkflowExecution>(`/executions?${params}`, page, PAGE_SIZE);
+    },
+    placeholderData: keepPreviousData,
   });
+  const executions = executionPage?.items;
 
   const { data: workflows } = useQuery({
     queryKey: ['workflows'],
@@ -142,8 +162,8 @@ export function ExecutionsPage() {
     else { setSortBy(col); setSortDir(col === 'started' || col === 'duration' ? 'desc' : 'asc'); }
   };
 
-  // Summary over the FULL (unfiltered) result set so the headline numbers don't shift
-  // as the user narrows the table.
+  // Status and timing aggregates describe the currently visible server page. Computing
+  // them over the complete history would require downloading every execution again.
   const summary = useMemo(() => {
     const list = executions ?? [];
     const succeeded = list.filter((e) => e.status === 'Succeeded').length;
@@ -153,7 +173,7 @@ export function ExecutionsPage() {
     const avg = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null;
     const rateBase = succeeded + failed; // cancelled runs aren't a quality signal
     const successRate = rateBase > 0 ? Math.round((succeeded / rateBase) * 100) : null;
-    return { total: list.length, succeeded, failed, cancelled, avg, successRate };
+    return { succeeded, failed, cancelled, avg, successRate };
   }, [executions]);
 
   const filteredSorted = useMemo(() => {
@@ -246,7 +266,14 @@ export function ExecutionsPage() {
   const sortIcon = (col: ColKey) =>
     sortBy === col ? (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : <span className="w-3" />;
 
-  const totalCount = executions?.length ?? 0;
+  const totalCount = executionPage?.total ?? 0;
+  const totalPages = executionPage?.totalPages ?? 0;
+
+  const changePage = (nextPage: number) => {
+    if (nextPage < 1 || nextPage > totalPages || nextPage === page) return;
+    setExpandedId(null);
+    setPage(nextPage);
+  };
 
   return (
     <div className="max-w-[1600px] mx-auto np-fade-up">
@@ -262,10 +289,11 @@ export function ExecutionsPage() {
           <Renew size={16} className={isFetching ? 'animate-spin' : ''} /> <span className="hidden sm:inline">{t('common:refresh')}</span>
         </button>
       </div>
-      {/* Summary chips — quick read on the whole result set. */}
+      {/* Total spans the query; the remaining summary chips describe this page. */}
       {totalCount > 0 && (
         <div className="np-card p-3 mb-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-          <SummaryStat label={t('executions:summary.total')} value={summary.total} />
+          <SummaryStat label={t('executions:summary.total')} value={totalCount} />
+          <span className="text-xs text-on-surface-variant">{t('executions:summary.currentPage')}</span>
           <SummaryStat label={t('executions:summary.succeeded')} value={summary.succeeded} tone="green" />
           <SummaryStat label={t('executions:summary.failed')} value={summary.failed} tone={summary.failed > 0 ? 'red' : undefined} />
           <SummaryStat label={t('executions:summary.cancelled')} value={summary.cancelled} tone={summary.cancelled > 0 ? 'amber' : undefined} />
@@ -298,7 +326,7 @@ export function ExecutionsPage() {
               return (
                 <button
                   key={s}
-                  onClick={() => setStatusFilter(s)}
+                  onClick={() => { setStatusFilter(s); setPage(1); }}
                   className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
                     active ? 'bg-primary text-on-primary' : 'bg-surface-high text-on-surface-variant hover:bg-surface-highest'
                   }`}
@@ -311,7 +339,7 @@ export function ExecutionsPage() {
 
           <select
             value={workflowFilter}
-            onChange={(e) => setWorkflowFilter(e.target.value)}
+            onChange={(e) => { setWorkflowFilter(e.target.value); setPage(1); }}
             className="px-2 py-1.5 border border-outline-variant rounded-md text-sm bg-surface-lowest text-on-surface focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[220px]"
           >
             <option value="all">{t('executions:allWorkflows')}</option>
@@ -408,9 +436,36 @@ export function ExecutionsPage() {
         </div></div>
       )}
       {filteredSorted.length > 0 && (
-        <p className="font-label text-[11px] text-on-surface-variant mt-3">
-          {t('executions:showing', { count: filteredSorted.length, total: totalCount })}
-        </p>
+        <div className="flex items-center justify-between gap-3 mt-3">
+          <p className="font-label text-[11px] text-on-surface-variant">
+            {t('executions:showing', { count: filteredSorted.length, total: totalCount })}
+          </p>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2 font-label text-xs text-on-surface-variant">
+              <button
+                type="button"
+                onClick={() => changePage(page - 1)}
+                disabled={page <= 1 || isFetching}
+                aria-label={t('executions:pagination.previous')}
+                className="p-1.5 rounded-md border border-outline-variant bg-surface-lowest hover:bg-surface-low disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="tabular-nums">
+                {t('executions:pagination.pageOf', { page, totalPages })}
+              </span>
+              <button
+                type="button"
+                onClick={() => changePage(page + 1)}
+                disabled={page >= totalPages || isFetching}
+                aria-label={t('executions:pagination.next')}
+                className="p-1.5 rounded-md border border-outline-variant bg-surface-lowest hover:bg-surface-low disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

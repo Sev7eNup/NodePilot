@@ -20,8 +20,7 @@ namespace NodePilot.Api.Tests.Services.Backup;
 /// system-configuration backup/restore feature): full round-trip into a fresh DB with secret +
 /// GUID-reference fidelity, conflict policies, a guard that blocks a restore that would leave
 /// zero active Admins (K11), an abort when a workflow references a GUID that isn't in the
-/// backup (K12), and rejection of a backup file whose whole-file MAC (tamper-evidence
-/// checksum) does not verify (K5).
+/// backup (K12), and rejection of an unauthenticated encrypted payload (K5).
 /// </summary>
 public sealed class BackupRestoreServiceTests : IDisposable
 {
@@ -66,6 +65,18 @@ public sealed class BackupRestoreServiceTests : IDisposable
 
     private async Task<byte[]> ExportAsync(NodePilotDbContext db, List<string> sections)
         => (await new BackupService(Parts(db)).ExportAsync(sections, Passphrase, "admin", CancellationToken.None)).Content;
+
+    private static byte[] MutatePayload(byte[] backup, Action<JsonObject> mutate)
+    {
+        var outer = (JsonObject)JsonNode.Parse(Encoding.UTF8.GetString(backup))!;
+        var salt = Convert.FromBase64String(outer["crypto"]!["salt"]!.GetValue<string>());
+        var protector = PassphraseSecretProtector.Derive(Passphrase, salt);
+        var payload = (JsonObject)JsonNode.Parse(
+            protector.Unprotect(Convert.FromBase64String(outer["payload"]!.GetValue<string>())))!;
+        mutate(payload);
+        outer["payload"] = Convert.ToBase64String(protector.Protect(payload.ToJsonString()));
+        return Encoding.UTF8.GetBytes(outer.ToJsonString());
+    }
 
     // Seeds a full source DB; returns the machine id (referenced from the workflow definition).
     private static async Task<(Guid machineId, Guid credId, Guid childFolderId)> SeedFullAsync(NodePilotDbContext db)
@@ -555,20 +566,22 @@ public sealed class BackupRestoreServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Restore_TamperedFile_FailsMac()
+    public async Task Restore_TamperedCiphertext_FailsAuthentication()
     {
         using var src = TestDbFactory.Create();
         await SeedFullAsync(src);
         var backup = await ExportAsync(src, AllSections);
 
-        // Flip a plaintext value without recomputing the MAC.
+        // Flip one ciphertext byte. AES-GCM authentication rejects the whole payload.
         var env = (JsonObject)JsonNode.Parse(Encoding.UTF8.GetString(backup))!;
-        env["sections"]!["machines"]!["items"]![0]!["hostname"] = "evil.local";
+        var payload = Convert.FromBase64String(env["payload"]!.GetValue<string>());
+        payload[payload.Length / 2] ^= 0x01;
+        env["payload"] = Convert.ToBase64String(payload);
         var tampered = Encoding.UTF8.GetBytes(env.ToJsonString());
 
         using var dst = TestDbFactory.Create();
         var act = () => Restore(dst).RestoreAsync(tampered, Passphrase, Empty(), CancellationToken.None);
-        await act.Should().ThrowAsync<BackupRestoreException>().WithMessage("*MAC*");
+        await act.Should().ThrowAsync<BackupFormatException>().WithMessage("*authentication*");
     }
 
     [Fact]
@@ -581,6 +594,31 @@ public sealed class BackupRestoreServiceTests : IDisposable
         using var dst = TestDbFactory.Create();
         var act = () => Restore(dst).RestoreAsync(backup, "wrong-passphrase-x", Empty(), CancellationToken.None);
         await act.Should().ThrowAsync<BackupRestoreException>().WithMessage("*assphrase*");
+    }
+
+    [Fact]
+    public async Task Restore_UnrecoverableSecretWarning_RollsBackTheCompleteRestore()
+    {
+        using var src = TestDbFactory.Create();
+        src.Credentials.Add(new Credential
+        {
+            Id = Guid.NewGuid(), Name = "svc", Username = "svc",
+            EncryptedPassword = _atRest.Protect("secret"),
+        });
+        await src.SaveChangesAsync();
+        var backup = await ExportAsync(src, [BackupSections.Credentials]);
+        var incomplete = MutatePayload(backup, payload =>
+            payload["sections"]![BackupSections.Credentials]!["items"]![0]!["password"] = null);
+
+        using var dst = TestDbFactory.Create();
+        var act = () => Restore(dst).RestoreAsync(
+            incomplete, Passphrase, Empty(), CancellationToken.None);
+
+        await act.Should().ThrowAsync<BackupRestoreException>()
+            .WithMessage("*incomplete*");
+        dst.ChangeTracker.Clear();
+        (await dst.Credentials.AsNoTracking().CountAsync()).Should().Be(0,
+            "a restore that cannot recover every selected secret must leave no partial rows");
     }
 
     [Fact]
@@ -700,20 +738,113 @@ public sealed class BackupRestoreServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Preview_WithoutPassphrase_ReportsIntegrityUnverified()
+    public async Task Preview_WithoutPassphrase_IsRejectedBecausePayloadIsEncrypted()
     {
         using var src = TestDbFactory.Create();
         await SeedFullAsync(src);
         var backup = await ExportAsync(src, AllSections);
 
         using var dst = TestDbFactory.Create();
-        var preview = await Restore(dst).PreviewAsync(backup, passphrase: null, CancellationToken.None);
-
-        preview.IntegrityVerified.Should().BeFalse();
-        preview.Sections.Single(s => s.Section == BackupSections.Workflows).New.Should().Be(1);
+        var act = () => Restore(dst).PreviewAsync(backup, passphrase: null, CancellationToken.None);
+        await act.Should().ThrowAsync<BackupRestoreException>().WithMessage("*passphrase is required*");
     }
 
     private static Dictionary<string, RestoreConflictPolicy> Empty() => new(StringComparer.Ordinal);
+    // -------------------------------------------------- concurrency limit round-trip
+
+    [Fact]
+    public async Task Restore_CreateBranch_RestoresTheConcurrencyLimit()
+    {
+        using var src = TestDbFactory.Create();
+        src.Workflows.Add(new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "limited", DefinitionJson = "{}",
+            FolderId = SharedWorkflowFolder.RootFolderId, MaxConcurrentExecutions = 5,
+        });
+        await src.SaveChangesAsync();
+        var backup = await ExportAsync(src, [BackupSections.Workflows]);
+
+        using var dst = TestDbFactory.Create();
+        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), CancellationToken.None);
+
+        (await dst.Workflows.SingleAsync()).MaxConcurrentExecutions.Should().Be(5);
+    }
+
+    [Fact]
+    public async Task Restore_OverwriteBranch_RestoresTheConcurrencyLimit()
+    {
+        using var src = TestDbFactory.Create();
+        src.Workflows.Add(new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "limited", DefinitionJson = "{}",
+            FolderId = SharedWorkflowFolder.RootFolderId, MaxConcurrentExecutions = 3,
+        });
+        await src.SaveChangesAsync();
+        var backup = await ExportAsync(src, [BackupSections.Workflows]);
+
+        using var dst = TestDbFactory.Create();
+        dst.Workflows.Add(new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "limited", DefinitionJson = "{}",
+            FolderId = SharedWorkflowFolder.RootFolderId, MaxConcurrentExecutions = 99,
+        });
+        await dst.SaveChangesAsync();
+
+        await Restore(dst).RestoreAsync(
+            backup, Passphrase,
+            Policy(BackupSections.Workflows, RestoreConflictPolicy.Overwrite),
+            CancellationToken.None);
+
+        dst.ChangeTracker.Clear();
+        (await dst.Workflows.SingleAsync()).MaxConcurrentExecutions.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task Restore_LegacyBackupWithoutTheField_RestoresAsUnlimited()
+    {
+        using var src = TestDbFactory.Create();
+        src.Workflows.Add(new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "legacy", DefinitionJson = "{}",
+            FolderId = SharedWorkflowFolder.RootFolderId, MaxConcurrentExecutions = 4,
+        });
+        await src.SaveChangesAsync();
+        // A backup written before the column existed simply has no key.
+        var backup = MutatePayload(await ExportAsync(src, [BackupSections.Workflows]), payload =>
+        {
+            foreach (var item in (JsonArray)payload["sections"]![BackupSections.Workflows]!["items"]!)
+                ((JsonObject)item!).Remove("maxConcurrentExecutions");
+        });
+
+        using var dst = TestDbFactory.Create();
+        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), CancellationToken.None);
+
+        (await dst.Workflows.SingleAsync()).MaxConcurrentExecutions.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Restore_OutOfRangeConcurrencyLimit_RestoresAsUnlimited()
+    {
+        // Restore writes the entity directly, so the range rule has to hold here too.
+        using var src = TestDbFactory.Create();
+        src.Workflows.Add(new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "bogus", DefinitionJson = "{}",
+            FolderId = SharedWorkflowFolder.RootFolderId, MaxConcurrentExecutions = 2,
+        });
+        await src.SaveChangesAsync();
+        var backup = MutatePayload(await ExportAsync(src, [BackupSections.Workflows]), payload =>
+        {
+            foreach (var item in (JsonArray)payload["sections"]![BackupSections.Workflows]!["items"]!)
+                ((JsonObject)item!)["maxConcurrentExecutions"] = 999999;
+        });
+
+        using var dst = TestDbFactory.Create();
+        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), CancellationToken.None);
+
+        (await dst.Workflows.SingleAsync()).MaxConcurrentExecutions.Should().BeNull();
+    }
+
     private static Dictionary<string, RestoreConflictPolicy> Policy(string section, RestoreConflictPolicy p)
         => new(StringComparer.Ordinal) { [section] = p };
 
