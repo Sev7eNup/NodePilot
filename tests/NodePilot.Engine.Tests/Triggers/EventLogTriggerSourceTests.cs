@@ -106,4 +106,44 @@ public class EventLogTriggerSourceTests
         // Must not throw - the source initializes lazily inside StartAsync.
         await src.DisposeAsync();
     }
+
+    [Fact]
+    public void PlanSkip_AdvancesStaleCursorToTopOfLog_KeepingGeneration()
+    {
+        // Entries written while the source was down are never replayed: the cursor jumps straight
+        // to the top of the log. The generation must survive the jump — a new one is only minted
+        // when the log was cleared.
+        var stale = new EventLogTriggerSource.EventLogCursor("gen-a", 100);
+
+        var planned = EventLogTriggerSource.PlanSkip(stale, 420);
+
+        planned.Should().NotBeNull();
+        planned!.Index.Should().Be(420);
+        planned.Generation.Should().Be("gen-a");
+    }
+
+    [Fact]
+    public void PlanSkip_ReturnsNull_WhenCursorIsAlreadyCurrent()
+    {
+        var current = new EventLogTriggerSource.EventLogCursor("gen-a", 420);
+
+        EventLogTriggerSource.PlanSkip(current, 420).Should().BeNull();
+    }
+
+    [Fact]
+    public void PlanSkip_ReturnsNull_WhenCursorIsAheadOfLog()
+    {
+        // A cursor above the top index means the log was cleared. That is the reset path's job,
+        // not the skip path's — the skip only ever moves forward.
+        var ahead = new EventLogTriggerSource.EventLogCursor("gen-a", 500);
+
+        EventLogTriggerSource.PlanSkip(ahead, 12).Should().BeNull();
+    }
+
+    [Fact]
+    public void PlanSkip_ReturnsNull_WhenThereIsNoCursorYet()
+    {
+        // No cursor means a fresh seed, which already lands on the top of the log.
+        EventLogTriggerSource.PlanSkip(null, 420).Should().BeNull();
+    }
 }

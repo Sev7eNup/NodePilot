@@ -172,6 +172,7 @@
     "rangeError": "Enter a number between 1 and 1000.",
     "queueHint": "Runs beyond the limit are queued and start automatically as slots free up. Nothing is rejected.",
     "action": "Concurrency limit",
-    "badge": "max {{count}} at once"
+    "badge": "max {{count}} at once",
+    "noLimitPlaceholder": "no limit"
   }
 }

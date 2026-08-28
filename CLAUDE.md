@@ -107,13 +107,13 @@ Zwei Provider, umschaltbar über `Database:Provider`:
 - Credentials mit DPAPI verschlüsselt (`Credentials:DpapiScope`).
 - **DB-TLS strikt (default):** `DatabaseTlsBootValidator` bricht den Boot ab, wenn die Connection den Server nicht verifiziert (`Encrypt=Strict`/`TrustServerCertificate=False` bzw. `SSL Mode=VerifyFull`). Escape `Database:AllowInsecureTls=true` nur bei Loopback-Host **und** entweder Development-Env **oder** `Deployment:Mode=Desktop` (Desktop-Posture, siehe Production Deployment).
 
-Retention-Services im Scheduler: Execution (30d), AuditLog (365d), WorkflowVersions (50/Workflow), SupportEvents (90d), Notifications (90d) — opt-out via `Retention:*:Enabled: false`. IdempotencyKeys (24h, fixe TTL) läuft immer.
+Retention-Services im Scheduler: Execution (30d), AuditLog (365d), WorkflowVersions (50/Workflow), SupportEvents (90d), Notifications (90d), TriggerReceipts (7d) — opt-out via `Retention:*:Enabled: false`. IdempotencyKeys (24h, fixe TTL) läuft immer.
 
 ### Datenbank-Verfügbarkeit (Laufzeit-Ausfall, ADR 0011)
 
 Prozessweiter In-Memory-Breaker (`NodePilot.Data.Availability`): fällt die DB zur Laufzeit aus, antwortet `/api` sofort `503 DATABASE_UNAVAILABLE` (+ `Retry-After`, `reason`, `retryable`) statt Minuten zu hängen; eine Sonde (`SELECT 1` auf eigener ungepoolter Verbindung — **nie** `CanConnectAsync`, ein hängender Server besteht das) erkennt und schließt; Erholung automatisch nach 2 Erfolgen inkl. gezieltem `ClearPool`. **Einzelschreiber-Regel: nur die Sonde publiziert `Available`, EF-Interceptors degradieren nur.** Ein Command-Timeout öffnet nie direkt — er *armt* die Sonde (`Armed`-Zustand; eine langsame Abfrage ist kein Ausfall und bleibt `DATABASE_TIMEOUT`). Klassifizierung in `DbErrorClassifier.Classify` (geordnete Präzedenz; **Kontext schlägt Form** — Npgsql liefert Connect- und Command-Timeout in identischer Exception-Gestalt). `BreakerAware*ExecutionStrategy` ersetzt `EnableRetryOnFailure` (wiederholt nie Command-Timeouts, global; 53300/Deadlock-Retry bleibt). Hintergrunddienste parken via `WaitUntilServableAsync` (wirft nie; Gate **über** der Leader-Prüfung), Trigger-Fires werden gezählt gedroppt statt gepuffert; Engine pausiert vor jedem *neuen* Step und korrigiert die zeilenzählende Finalisierung per In-Memory-Flag (sonst würde eine gescheiterte Activity nach Erholung als Succeeded finalisiert). Health: `/healthz/ready` = schneller 503 fürs LB, `/healthz/database` = **immer 200** mit Status fürs SPA (Banner + TopBar-Ampel; Poll 15 s/3 s). Boot bleibt fail-closed (`Database:StartupWaitSeconds`) — der Boot-Block wird bewusst **nicht** nachgeholt (StartupRecovery/Setup-Token, siehe ADR). Config `Database:Probe:*`, `Database:ConnectTimeoutSeconds` (liegt gemessen **doppelt** auf dem kritischen Pfad), `Database:AuthReadTimeoutSeconds` (wie alle Availability-Budgets typisierte, restart-pflichtige Boot-Config; bewusst **kein** `SettingsSchema`-Eintrag — der Connection-String gehört auf keine HTTP-Fläche). Details: `docs/adr/0011-*.md` + `docs/claude-reference.md`.
 
-**Bekannte Falle (bewusst so):** `HostOptions.BackgroundServiceExceptionBehavior` bleibt auf `StopHost`, und die sechs Retention-Dienste haben ihren breiten Catch eine Ebene *unter* der host-fatalen Grenze — Code, der in deren `RunIterationAsync` außerhalb des inneren `try` landet, kann den Host töten.
+**Bekannte Falle (bewusst so):** `HostOptions.BackgroundServiceExceptionBehavior` bleibt auf `StopHost`, und die sieben Retention-Dienste haben ihren breiten Catch eine Ebene *unter* der host-fatalen Grenze — Code, der in deren `RunIterationAsync` außerhalb des inneren `try` landet, kann den Host töten.
 
 ## API Endpoints
 
@@ -127,7 +127,7 @@ Routen + Rollen-Gating stehen an den Controllern in `src/NodePilot.Api/Controlle
 |---|---|
 | `POST /execute` | Startet Lauf. Body: `{"parameters": {}, "timeoutSeconds": N, "debug": bool}`. 202 + ExecutionId. |
 | `POST /enable` / `/disable` | Kill-Switch. `enable` verlangt einen lock-freien Workflow — jeder bestehende Lock (auch der eigene) → 423. `disable` ignoriert Locks. |
-| `POST /cancel-all` | Cancelt alle Running-Executions des Workflows. |
+| `POST /cancel-all` | Cancelt alle `Running`- **und** `Pending`-Executions des Workflows. |
 | `PUT /concurrency-limit` | Setzt `MaxConcurrentExecutions` (1..1000, `null` = unbegrenzt). Body: `{"maxConcurrentExecutions": N}` — Property ist **Pflicht** (fehlend → 400, sonst würde `{}` das Limit still löschen). `0` wird abgelehnt. Operativ: kein Edit-Lock, kein Version-Bump, kein History-Snapshot. |
 | `POST /executions/{id}/cancel\|retry\|resume` | Einzelner Lauf. Resume-Body: `{"stepId": "<node-id>", "mode": "continue"\|"stepOver"\|"stop", "overrides": {}}` — `stepId` ist **Pflicht** (`ResumeDebugRequest`), ohne ihn 400. |
 
@@ -273,6 +273,15 @@ Contract-Derivation: `GET /{id}/contract` liefert Inputs aus `manualTrigger.para
 `TriggerOrchestrator` scannt alle 5 s. Trigger-Daten landen als `manual.*`-Variablen im Run (`{{manual.<name>}}`) + als `param.*` des Trigger-Nodes — **kein** `trigger.*`-Namespace. Key-Namen pro Trigger-Typ: siehe `docs/claude-reference.md`.
 
 **Config-Vertrag (eine Vokabel, zwei Laufzeiten):** Jeder Trigger-Node wird von zwei Pfaden gelesen — Node-Executor (`Engine/Triggers/`, manueller Diagnose-Lauf) und Hintergrundquelle (`Scheduler/Sources/`, feuert real). Beide parsen über die geteilte Schicht `Core/Triggers/` (`EventLogTriggerSettings`, `DatabaseTriggerSettings`): Keys, Defaults, Validierung, Matching, Connection-Auflösung liegen dort **einmal**. Neuer Trigger-Key = Settings-Klasse + `activity-config-reference.json` + Designer-Feld; `TriggerContractParityTests` bricht sonst. Alias-Keys (`level`→`entryType`, `intervalSeconds`→`pollingIntervalSeconds`) bleiben gültig und werden von beiden Pfaden gelesen — exakter Key gewinnt. `databaseTrigger` feuert bei **Sentinel-Änderung** (erste Spalte der ersten Zeile), nicht pro Zeile; `lookbackMinutes` gilt nur für den manuellen Lauf. Details: `docs/claude-reference.md`.
+
+**Kein Nachholen nach Neustart oder Failover.** Der durable Cursor je Trigger-Node dient der
+Deduplizierung und der Diagnose, nicht dem Backfill: Beim Start spult jede Quelle ihn auf den
+aktuellen Stand vor, ohne zu feuern, und meldet das übersprungene Fenster in einer Log-Zeile plus
+`nodepilot.scheduler.triggers.fires_skipped`. Der **laufende** Betrieb ist davon unberührt — ein
+beobachtetes Signal, das an einer DB-Störung scheitert, wird weiterhin wiederholt, bis es angenommen
+ist, und FileWatcher/EventLog holen Benachrichtigungen nach, die ihnen im Betrieb entgehen. Preis:
+Dateien und EventLog-Einträge aus einem Stillstandsfenster werden nicht verarbeitet. Details je
+Quelle: `docs/claude-reference.md`.
 
 **Selbstheilung (Laufzeit-Tod einer Quelle):** Jede `ITriggerSource` beantwortet `Health` — vertraglich ein **reiner In-Memory-Read** (der Orchestrator wertet ihn sequenziell für *jeden* Trigger im 5-s-Pass aus; ein blockierender Probe dort legt die Reconciliation aller Workflows lahm). Meldet eine Quelle `unhealthy`, wirft der Orchestrator sie raus und der vorhandene Add-Pfad baut sie mit Exponential-Backoff (5 s→300 s, unbegrenzt) neu auf — ein `fileWatcherTrigger`, dessen UNC-Freigabe verschwindet, läuft also von selbst wieder an, sobald der Pfad zurück ist. Ein `FileSystemWatcher` lässt sich dabei **nicht** in-place re-armen (`EnableRaisingEvents` liest auf der Leiche noch `true`, der Setter ist ein No-Op) — nur eine frische Instanz hilft. Buffer-Overflow gilt bewusst **nicht** als Fault (Runtime stellt den Read neu aus, Evicten würde flappen). Alertbar über die System-Policy `trigger-unhealthy`; Details + Config-Keys: `docs/claude-reference.md`.
 

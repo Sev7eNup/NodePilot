@@ -30,6 +30,22 @@ For every step, a workflow run (`POST /execute`, asynchronous, `202` + `Executio
 
 Step states: `Pending`, `Running`, `Succeeded`, `Failed`, `Skipped`, `Paused`.
 
+## Triggers after a restart or failover
+
+**Nothing is caught up.** Every trigger source keeps a durable cursor, but that cursor exists for
+deduplication and diagnostics — not for backfilling. On start each source fast-forwards it to the
+current state without firing, and writes one log line plus a
+`nodepilot.scheduler.triggers.fires_skipped` counter for the size of the window it skipped. Without
+this rule a per-minute schedule produces 60 runs per hour of downtime, per workflow.
+
+The **running** service is unaffected: a signal a live source has already observed is retried until
+the database accepts it, and the file watcher and event-log sources still recover notifications that
+escape them while they are up.
+
+The price is stated plainly: files created and event-log entries written while NodePilot was
+stopped, failing over, or without a leader are not processed. If a workload cannot lose those, put a
+durable queue in front of it rather than relying on the trigger.
+
 ## Retry & timeout
 
 - **Retry per step:** `config.retry` with `maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayMs`.

@@ -203,4 +203,98 @@ public class ScheduleTriggerSourceTests
             await overflows.DisposeAsync();
         }
     }
+
+    // ------------------------------------------- missed fires are skipped, never replayed
+
+    private static ISchedulerFactory WorkingFactory()
+    {
+        var factory = new Mock<ISchedulerFactory>();
+        factory.Setup(f => f.GetScheduler(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Mock.Of<IScheduler>());
+        return factory.Object;
+    }
+
+    [Fact]
+    public async Task StartAsync_WithStaleCursor_DeliversNothingAndFastForwardsIt()
+    {
+        // A restart used to replay every cron occurrence between the cursor and now: an hour of
+        // downtime on a minute cadence meant sixty runs per workflow, before any live work.
+        var stale = DateTimeOffset.UtcNow.AddHours(-1);
+        var saved = new List<TriggerCheckpoint>();
+        var delivered = 0;
+        var ctx = new TriggerContext
+        {
+            WorkflowId = Guid.NewGuid(),
+            NodeId = "trg",
+            Config = Cfg("""{"cronExpression":"0 * * * * ?"}"""),
+            OnFire = _ => Task.CompletedTask,
+            OnDurableFire = _ => { delivered++; return Task.FromResult(true); },
+            ReadCheckpoint = () => Task.FromResult<TriggerCheckpoint?>(
+                new TriggerCheckpoint(stale.ToString("O"), "prev")),
+            SaveCheckpoint = cp => { saved.Add(cp); return Task.FromResult(true); },
+        };
+        var src = new ScheduleTriggerSource(
+            WorkingFactory(), NullLogger<ScheduleTriggerSource>.Instance, EmptyConfig());
+
+        await src.StartAsync(ctx, CancellationToken.None);
+        await src.DisposeAsync();
+
+        delivered.Should().Be(0, "missed schedule ticks carry no data and are never replayed");
+        saved.Should().ContainSingle();
+        DateTimeOffset.Parse(saved[0].Position, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind)
+            .Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1),
+                "the cursor has to move past the skipped window, or the next start replays it");
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenCursorCannotBeAdvanced_DoesNotGoLive()
+    {
+        // Going live on a cursor still pointing into the past would deliver current fires while
+        // the next start replays exactly the window this one skipped.
+        var ctx = new TriggerContext
+        {
+            WorkflowId = Guid.NewGuid(),
+            NodeId = "trg",
+            Config = Cfg("""{"cronExpression":"0 * * * * ?"}"""),
+            OnFire = _ => Task.CompletedTask,
+            OnDurableFire = _ => Task.FromResult(true),
+            ReadCheckpoint = () => Task.FromResult<TriggerCheckpoint?>(
+                new TriggerCheckpoint(DateTimeOffset.UtcNow.AddHours(-1).ToString("O"), "prev")),
+            SaveCheckpoint = _ => Task.FromResult(false),
+        };
+        var src = new ScheduleTriggerSource(
+            WorkingFactory(), NullLogger<ScheduleTriggerSource>.Instance, EmptyConfig());
+
+        var act = () => src.StartAsync(ctx, CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*could not be advanced*");
+        await src.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task StartAsync_WithoutCursor_SeedsWithoutDelivering()
+    {
+        var delivered = 0;
+        TriggerCheckpoint? seeded = null;
+        var ctx = new TriggerContext
+        {
+            WorkflowId = Guid.NewGuid(),
+            NodeId = "trg",
+            Config = Cfg("""{"cronExpression":"0 * * * * ?"}"""),
+            OnFire = _ => Task.CompletedTask,
+            OnDurableFire = _ => { delivered++; return Task.FromResult(true); },
+            ReadCheckpoint = () => Task.FromResult<TriggerCheckpoint?>(null),
+            InitializeCheckpoint = cp => { seeded = cp; return Task.FromResult(true); },
+        };
+        var src = new ScheduleTriggerSource(
+            WorkingFactory(), NullLogger<ScheduleTriggerSource>.Instance, EmptyConfig());
+
+        await src.StartAsync(ctx, CancellationToken.None);
+        await src.DisposeAsync();
+
+        delivered.Should().Be(0);
+        seeded.Should().NotBeNull();
+    }
 }

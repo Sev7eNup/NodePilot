@@ -172,6 +172,7 @@
     "rangeError": "Bitte eine Zahl zwischen 1 und 1000 eingeben.",
     "queueHint": "Läufe über dem Limit werden eingereiht und starten automatisch, sobald ein Platz frei wird. Es geht nichts verloren.",
     "action": "Parallelitätslimit",
-    "badge": "max. {{count}} gleichzeitig"
+    "badge": "max. {{count}} gleichzeitig",
+    "noLimitPlaceholder": "kein Limit"
   }
 }

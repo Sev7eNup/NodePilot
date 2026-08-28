@@ -32,7 +32,6 @@ public class ScheduleTriggerSource : ITriggerSource
     private JobKey? _jobKey;
     private TriggerKey? _triggerKey;
     private CancellationTokenSource? _deliveryCts;
-    private Task? _reconcileTask;
     private readonly SemaphoreSlim _deliveryGate = new(1, 1);
     private TriggerCheckpoint? _checkpoint;
 
@@ -112,7 +111,7 @@ public class ScheduleTriggerSource : ITriggerSource
         }
         else
         {
-            await CatchUpAsync(context, parsed, deliveryCt);
+            await SkipMissedFiresAsync(context, parsed);
         }
 
         var scheduler = await _schedulerFactory.GetScheduler(ct);
@@ -135,9 +134,9 @@ public class ScheduleTriggerSource : ITriggerSource
             .UsingJobData("callbackKey", _jobKey.ToString())
             .Build();
 
-        // Quartz's "SmartPolicy" fires only once after downtime, which is neither complete nor
-        // deterministic. Quartz therefore skips its own misfire callback; CatchUpAsync replays
-        // every missed fire in order from the durable cursor.
+        // Missed fires are skipped, not replayed, so Quartz's own misfire callback stays off and
+        // the durable cursor is fast-forwarded instead. A schedule tick carries no data — running
+        // an hour's worth of them at once helps nobody and buries the live workload.
         var trigger = TriggerBuilder.Create()
             .WithIdentity(_triggerKey)
             .WithCronSchedule(cron, x => x
@@ -146,58 +145,55 @@ public class ScheduleTriggerSource : ITriggerSource
             .Build();
 
         await scheduler.ScheduleJob(job, trigger, ct);
-        var reconcileSeconds = Math.Max(1, _config.GetValue<int?>("Trigger:Schedule:ReconcileSeconds") ?? 30);
-        _reconcileTask = ReconcileLoopAsync(
-            context, parsed, TimeSpan.FromSeconds(reconcileSeconds), deliveryCt);
         _logger.LogInformation("ScheduleTrigger: scheduled {Job} with cron '{Cron}'", _jobKey, cron);
     }
 
-    private async Task ReconcileLoopAsync(
-        TriggerContext context,
-        CronExpression cron,
-        TimeSpan interval,
-        CancellationToken ct)
+    /// <summary>
+    /// Moves the durable cursor to now without delivering anything, so a restart or failover does
+    /// not turn a downtime window into a burst of runs. The skipped ticks are counted and logged
+    /// because an outage must not vanish silently.
+    /// <para>
+    /// The cursor is written with <c>SaveCheckpointAsync</c>, not the seeding call:
+    /// <c>InitializeCheckpointAsync</c> returns early for an existing row whose configuration hash
+    /// matches and would leave the position untouched. If the write fails the source must not go
+    /// live — it would deliver current fires while the cursor still points into the past, and the
+    /// next start would replay exactly the window this method skipped.
+    /// </para>
+    /// </summary>
+    private async Task SkipMissedFiresAsync(TriggerContext context, CronExpression cron)
     {
-        using var timer = new PeriodicTimer(interval);
-        try
-        {
-            while (await timer.WaitForNextTickAsync(ct))
-                await CatchUpAsync(context, cron, ct);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "ScheduleTrigger reconciliation stopped unexpectedly.");
-        }
-    }
+        if (_checkpoint is null) return;
 
-    private async Task CatchUpAsync(TriggerContext context, CronExpression cron, CancellationToken ct)
-    {
-        await _deliveryGate.WaitAsync(ct);
-        try
+        var now = DateTimeOffset.UtcNow;
+        var skipped = 0;
+        if (DateTimeOffset.TryParse(
+                _checkpoint.Position,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind,
+                out var cursor))
         {
-            if (_checkpoint is null
-                || !DateTimeOffset.TryParse(
-                    _checkpoint.Position,
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    System.Globalization.DateTimeStyles.RoundtripKind,
-                    out var cursor))
-                return;
-
-            var upperBound = DateTimeOffset.UtcNow;
-            while (cron.GetNextValidTimeAfter(cursor) is { } next && next <= upperBound)
+            var at = cursor;
+            while (cron.GetNextValidTimeAfter(at) is { } next && next <= now)
             {
-                ct.ThrowIfCancellationRequested();
-                var nextAfter = cron.GetNextValidTimeAfter(next);
-                if (!await DeliverAtCoreAsync(context, next, nextAfter?.UtcDateTime.ToString("O") ?? ""))
-                    return;
-                cursor = next;
+                skipped++;
+                at = next;
             }
         }
-        finally
-        {
-            _deliveryGate.Release();
-        }
+
+        var advanced = new TriggerCheckpoint(now.ToString("O"), $"schedule-skip:{Guid.NewGuid():N}");
+        if (!await context.SaveCheckpointAsync(advanced))
+            throw new InvalidOperationException(
+                "ScheduleTrigger: durable cursor could not be advanced past the missed window");
+        _checkpoint = advanced;
+
+        if (skipped == 0) return;
+
+        SchedulerMetrics.TriggerFiresSkipped.Add(skipped,
+            new KeyValuePair<string, object?>("trigger_type", ActivityType));
+        _logger.LogWarning(
+            "ScheduleTrigger: skipped {Skipped} missed fire(s) for workflow {WorkflowId} node {NodeId} "
+            + "between {From:u} and {To:u}. Missed schedule ticks are never replayed.",
+            skipped, context.WorkflowId, context.NodeId, cursor, now);
     }
 
     private async Task DeliverAtAsync(
@@ -252,11 +248,8 @@ public class ScheduleTriggerSource : ITriggerSource
             if (_deliveryCts is not null)
             {
                 await _deliveryCts.CancelAsync();
-                try { if (_reconcileTask is not null) await _reconcileTask; }
-                catch (OperationCanceledException) { }
                 _deliveryCts.Dispose();
                 _deliveryCts = null;
-                _reconcileTask = null;
             }
             // jobKey is null when StartAsync failed after taking the slot but before
             // scheduling — there is nothing to unschedule, but the slot still must go back.

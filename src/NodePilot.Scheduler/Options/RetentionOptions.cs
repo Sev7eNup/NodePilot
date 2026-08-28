@@ -1,8 +1,8 @@
 namespace NodePilot.Scheduler.Options;
 
 /// <summary>
-/// Shared settings for the five config-backed retention sweepers (Executions, AuditLog,
-/// WorkflowVersions, Notifications, SupportEvents). Bound from the <c>Retention:*</c>
+/// Shared settings for the six config-backed retention sweepers (Executions, AuditLog,
+/// WorkflowVersions, Notifications, SupportEvents, TriggerReceipts). Bound from the <c>Retention:*</c>
 /// configuration section. Each sweeper reads its subsection off this parent POCO — registered
 /// once so operators see a single cohesive block in appsettings.
 /// (<c>IdempotencyKeyCleanupService</c> is deliberately not represented here: its sweep is
@@ -22,6 +22,7 @@ public sealed class RetentionOptions
     public WorkflowVersionsRetentionOptions WorkflowVersions { get; set; } = new();
     public NotificationsRetentionOptions Notifications { get; set; } = new();
     public SupportEventsRetentionOptions SupportEvents { get; set; } = new();
+    public TriggerReceiptsRetentionOptions TriggerReceipts { get; set; } = new();
 }
 
 public sealed class ExecutionsRetentionOptions
@@ -90,5 +91,18 @@ public sealed class SupportEventsRetentionOptions
 {
     public bool Enabled { get; set; } = true;
     public int MaxAgeDays { get; set; } = 90;
+    public int IntervalMinutes { get; set; } = 360;
+}
+
+/// <summary>
+/// Durable trigger-delivery receipts (<c>Retention:TriggerReceipts:*</c>). One row is written per
+/// observed trigger signal, so a busy installation accumulates them faster than any other table
+/// here. They only have to outlive the window in which a source may re-observe the same signal and
+/// retry it, which is minutes — the default keeps a week so an operator can still audit a fire.
+/// </summary>
+public sealed class TriggerReceiptsRetentionOptions
+{
+    public bool Enabled { get; set; } = true;
+    public int MaxAgeDays { get; set; } = 7;
     public int IntervalMinutes { get; set; } = 360;
 }
