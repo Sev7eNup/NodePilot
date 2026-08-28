@@ -1102,30 +1102,39 @@ public class FileWatcherTriggerSourceTests
     {
         // The baseline has to predate arming. Captured afterwards, a file landing in the
         // arm-to-publish window would be folded into the baseline while the identity guard still
-        // drops its event — and nothing would ever deliver it.
+        // drops its event — and nothing would ever deliver it. Asserted on the delivery rather
+        // than on the snapshot: an accepted delivery folds the path into the snapshot too, so
+        // reading the snapshot races the watcher.
         using var tempDir = new TempDirectory();
+        var delivered = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var ctx = new TriggerContext
         {
             WorkflowId = Guid.NewGuid(),
             NodeId = "trg",
-            Config = Cfg($$"""{"directory":"{{Esc(tempDir.Path)}}","watchType":"created"}"""),
+            Config = Cfg($$"""{"directory":"{{Esc(tempDir.Path)}}","filter":"*.txt","watchType":"created"}"""),
             OnFire = _ => Task.CompletedTask,
-            OnDurableFire = _ => Task.FromResult(true),
+            OnDurableFire = signal =>
+            {
+                delivered.TrySetResult(signal.Parameters.GetValueOrDefault("filePath", ""));
+                return Task.FromResult(true);
+            },
             ReadCheckpoint = () => Task.FromResult<TriggerCheckpoint?>(null),
             InitializeCheckpoint = _ => Task.FromResult(true),
+            SaveCheckpoint = _ => Task.FromResult(true),
         };
         var src = new FileWatcherTriggerSource(
-            NullLogger<FileWatcherTriggerSource>.Instance, EmptyConfig());
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            ConfigWith(("Trigger:FileWatcher:HealthProbeSeconds", "0")));
 
-        await src.StartAsync(ctx, CancellationToken.None);
         try
         {
-            var late = Path.Combine(tempDir.Path, "after-start.txt");
-            await File.WriteAllTextAsync(late, "x");
+            await src.StartAsync(ctx, CancellationToken.None);
+            await File.WriteAllTextAsync(Path.Combine(tempDir.Path, "after-start.txt"), "x");
 
-            // The snapshot the source is holding must not already contain the new file.
-            src.SnapshotPathsForTests().Should().NotContain(late,
-                "the baseline predates arming, so a file created afterwards is a real change");
+            var path = await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            path.Should().EndWith("after-start.txt",
+                "a file created after arming is a real change, not part of the baseline");
         }
         finally
         {
