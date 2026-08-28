@@ -12,6 +12,47 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.19] - 2026-08-28
+
+A workflow can now cap how many of its executions run at once, trigger deliveries survive a
+restart, and the code comments were rewritten across the repository.
+
+### Added
+
+- **Per-workflow concurrency limit.** `Workflow.MaxConcurrentExecutions` caps how many executions
+  of one workflow may run at the same time, across every caller — manual runs, schedule, file,
+  database and event-log triggers, webhooks, external triggers, and sub-workflow calls from
+  `startWorkflow` and `forEach`. This is the System Center Orchestrator "maximum number of running
+  instances" behaviour: reaching the limit **queues** rather than rejects, so a run beyond the cap
+  stays `Pending` and starts on its own as soon as a slot frees. Nothing is lost and no run is
+  marked failed. A `forEach` loop's `maxParallelism` still bounds that one loop; the workflow limit
+  bounds the child across all of them, and the tighter of the two wins. Set through
+  `PUT /api/workflows/{id}/concurrency-limit`, `np workflow concurrency-limit`, the
+  `set_workflow_concurrency_limit` MCP tool, or the workflow list in the UI. It needs no edit lock
+  and creates no new workflow version, because it is an operational control rather than a change to
+  the workflow definition.
+- **SCOrch job concurrency is imported.** A runbook's `MaxParallelRequests` becomes the workflow's
+  concurrency limit verbatim, the value `1` included — that means "one at a time" in Orchestrator
+  and is its default, so an imported runbook keeps the behaviour it had. Because that default is so
+  common, the import report says how many workflows arrived limited, so nothing serializes
+  unnoticed after a migration.
+- **Durable trigger delivery.** An externally observed trigger signal is acknowledged by a
+  `TriggerDeliveryReceipt` committed in the same transaction as the dispatch outbox entry (or a
+  deliberate suppression), so a source may retry until that acknowledgement exists without risking a
+  duplicate run. A `TriggerDeliveryCheckpoint` records the last acknowledged source cursor, which
+  lets a source reconcile after a restart, a failover, a watcher overflow or a database outage
+  instead of silently losing signals.
+
+### Changed
+
+- **Backup and import hardening.** The backup envelope reader, the restore models and the backup
+  service were tightened, with the workflow import/export surface and the CLI following.
+- **Code comments rewritten across the repository.** Comments now state what the code does and why,
+  in plain English, without the narrative, the retrospectives on earlier attempts, or measured
+  numbers quoted as evidence. Comments that had outgrown the code beneath them were cut back. No
+  behaviour changes.
+- The findings from the POC audit pass were remediated.
+
 ## [1.2.18] - 2026-08-26
 
 Folders can be deleted with everything inside them, and several at a time — in the workflow tree
@@ -882,6 +923,7 @@ multi-step automation in the browser, with no agents on the targets.
 - Licensed under Apache-2.0
 
 [Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.17...main
+[1.2.19]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.19
 [1.2.18]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.18
 [1.2.17]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.17
 [1.2.16]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.16
