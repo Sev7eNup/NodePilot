@@ -10,9 +10,7 @@ namespace NodePilot.Engine.Tests.Activities;
 
 public sealed class LlmQueryActivityTests
 {
-    // Test doubles come from TestCommons (FakeLlmClient / FakeLlmClientFactory) — this file
-    // previously carried private near-copies of both while already importing TestCommons
-    // (coherence audit 2026-08, consolidation residue).
+    // Test doubles (FakeLlmClient, FakeLlmClientFactory) come from TestCommons.
 
     private static StepExecutionContext Ctx() => new() { WorkflowExecutionId = Guid.NewGuid(), StepId = "step-1" };
 
@@ -53,8 +51,8 @@ public sealed class LlmQueryActivityTests
         var result = await activity.ExecuteAsync(Ctx(), Cfg(new { prompt = "hi" }), CancellationToken.None);
 
         result.Success.Should().BeTrue();
-        // Contract: the token/finish-reason keys are ALWAYS present in OutputParameters, just
-        // empty strings when the server didn't return usage/finish_reason data.
+        // Contract: the token and finish-reason keys are always present in OutputParameters,
+        // as empty strings when the server did not return usage/finish_reason data.
         result.OutputParameters.Should().ContainKeys("promptTokens", "completionTokens", "totalTokens", "finishReason");
         result.OutputParameters["promptTokens"].Should().Be("");
         result.OutputParameters["totalTokens"].Should().Be("");
@@ -177,7 +175,7 @@ public sealed class LlmQueryActivityTests
 
         await activity.ExecuteAsync(Ctx(), Cfg(new { prompt = "hi" }), CancellationToken.None);
 
-        // Empty overrides → factory resolves everything from the global Llm:* config.
+        // Empty overrides: the factory resolves everything from the global Llm:* config.
         var overrides = factory.Connections.Should().ContainSingle().Subject!;
         overrides.BaseUrl.Should().BeNull();
         overrides.ApiKey.Should().BeNull();
@@ -188,9 +186,10 @@ public sealed class LlmQueryActivityTests
     [Fact]
     public async Task ExecuteAsync_DisabledGate_FlipsLiveAfterConfigReload()
     {
-        // Hot-reload: LlmQueryActivity reads IOptionsMonitor<LlmOptions>.CurrentValue per execution,
+        // Hot-reload: LlmQueryActivity reads IOptionsMonitor<LlmOptions>.CurrentValue per
+        // execution,
         // so toggling Llm:Enabled in the Settings UI takes effect without a restart. Drive the
-        // monitor (the test stand-in for a reloadOnChange config reload) from disabled→enabled
+        // monitor (the test stand-in for a reloadOnChange config reload) from disabled to enabled
         // between two acts and assert the gate flips.
         var client = new FakeLlmClient().EnqueueContent("live", "m");
         var factory = new FakeLlmClientFactory(client);
@@ -202,10 +201,10 @@ public sealed class LlmQueryActivityTests
         blocked.Success.Should().BeFalse();
         blocked.ErrorOutput.Should().Contain("Llm:Enabled=false");
 
-        // Simulate the operator enabling LLM in the Settings UI → config reload.
+        // Simulate the operator enabling LLM in the Settings UI, causing a config reload.
         monitor.Set(LlmTestOptions.WithProfile(enabled: true));
 
-        // Same activity instance, no re-creation → next execution succeeds.
+        // Same activity instance, no re-creation: the next execution succeeds.
         var allowed = await activity.ExecuteAsync(Ctx(), Cfg(new { prompt = "hi" }), CancellationToken.None);
         allowed.Success.Should().BeTrue();
         allowed.Output.Should().Be("live");
@@ -214,9 +213,9 @@ public sealed class LlmQueryActivityTests
     [Fact]
     public async Task ExecuteAsync_NoActiveProfile_FailsWithActionableMessage()
     {
-        // The activity layers its per-node overrides on top of the ACTIVE profile, so without one
-        // there is nothing to layer onto. The factory throws, the activity turns it into a step
-        // failure rather than an unhandled exception.
+        // The activity layers its per-node overrides on top of the active profile, so without one
+        // there is nothing to layer onto. The factory throws, and the activity turns it into a
+        // step failure rather than an unhandled exception.
         var factory = new NodePilot.Ai.LlmClientFactory(
             new StubHttpClientFactory(),
             new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.EnabledWithoutProfile()),

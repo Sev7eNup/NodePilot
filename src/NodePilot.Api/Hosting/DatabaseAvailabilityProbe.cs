@@ -107,7 +107,8 @@ public sealed class DatabaseAvailabilityProbe : BackgroundService
     {
         if (string.IsNullOrWhiteSpace(_runtime.ConnectionString))
         {
-            // Boot validation owns the actionable configuration error. Avoid a hot failure loop if a
+            // Boot validation owns the actionable configuration error. Avoid a hot failure loop if
+            // a
             // host is nevertheless assembled without a connection string (notably in unit tests).
             _logger.LogWarning("Database availability probe disabled: no connection string configured.");
             return;
@@ -153,7 +154,8 @@ public sealed class DatabaseAvailabilityProbe : BackgroundService
     private async Task WaitForNextProbeAsync(TimeSpan interval, CancellationToken stoppingToken)
     {
         // A token scoped to this one WhenAny is the ownership boundary for both tasks. Whichever
-        // finishes first cancels the loser; awaiting both tears down its timer/token registration and
+        // finishes first cancels the loser; awaiting both tears down its timer/token registration
+        // and
         // observes a concurrent fault before another tick is allowed to allocate a waiter.
         using var iteration = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         var delay = _runtime.Delay(interval, iteration.Token);
@@ -189,7 +191,8 @@ public sealed class DatabaseAvailabilityProbe : BackgroundService
                     cancellationToken)
                 .ConfigureAwait(false);
 
-            // Only a real Unavailable transition constitutes an outage episode. Armed is deliberately
+            // Only a real Unavailable transition constitutes an outage episode. Armed is
+            // deliberately
             // servable adjudication and must not churn a healthy application pool.
             var observed = _availability.Snapshot;
             if (observed.CurrentOutage is { } outage)
@@ -208,8 +211,10 @@ public sealed class DatabaseAvailabilityProbe : BackgroundService
         }
         catch (Exception ex)
         {
-            // Publish evidence before touching a provider object that may itself block forever while
-            // disposing a half-open socket. Readiness and request shedding therefore change promptly
+            // Publish evidence before touching a provider object that may itself block forever
+            // while
+            // disposing a half-open socket. Readiness and request shedding therefore change
+            // promptly
             // even if cleanup has to be abandoned at its deadline.
             var reason = ClassifyProbeFailure(ex);
             var previousReason = _availability.CurrentOutage?.Reason;
@@ -264,7 +269,8 @@ public sealed class DatabaseAvailabilityProbe : BackgroundService
             .ConfigureAwait(false);
 
         var connection = _runtime.CreateTransport();
-        // Assign before Open: if Open fails or times out, the outer failure path can report first and
+        // Assign before Open: if Open fails or times out, the outer failure path can report first
+        // and
         // then dispose this exact half-built provider object under the cleanup deadline.
         _connection = connection;
 
@@ -314,7 +320,8 @@ public sealed class DatabaseAvailabilityProbe : BackgroundService
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Shutdown owns the deadline; recovery will not be published after the host is stopping.
+            // Shutdown owns the deadline; recovery will not be published after the host is
+            // stopping.
             throw;
         }
         catch (Exception ex)

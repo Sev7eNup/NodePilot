@@ -7,8 +7,8 @@ import { MenuButton } from './menuPrimitives';
 
 /**
  * Standard-mode overflow menu — folds the less-frequent actions (diff, shortcuts, export)
- * behind a single "…" button so the standard toolbar stays minimal. Shared by both editor-header
- * layouts (extracted so the classic layout can reuse it, not just the compact one).
+ * behind a single "…" button so the standard toolbar stays minimal. Shared by both the
+ * compact and the classic editor-header layouts.
  */
 export function StandardMoreMenu({
   workflowId, workflowName, hasNodes, exportPng, openDiff, openHelp,

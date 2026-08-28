@@ -3,8 +3,8 @@ import { installDefaultMocks } from './fixtures/mockApi';
 
 test.describe('SPA smoke', () => {
   test('unauthenticated visit redirects to /login', async ({ page }) => {
-    // Override the default authenticated mock with a 401 — simulates a fresh browser
-    // without np_auth cookie. The router must take us to /login.
+    // Override the default authenticated mock with a 401 to simulate a fresh browser without
+    // the np_auth cookie. The router must then redirect to /login.
     await page.route('**/api/auth/me', (route) =>
       route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"unauthenticated"}' }),
     );
@@ -22,8 +22,8 @@ test.describe('SPA smoke', () => {
 
     await page.goto('/');
 
-    // Dashboard shows the username badge once auth resolves. We assert on a stable
-    // role rather than a specific label that may move between releases.
+    // The dashboard shows the username badge once auth resolves. Asserting on it avoids
+    // depending on a label that may change between releases.
     await expect(page.getByText(/e2e-admin/i)).toBeVisible({ timeout: 15_000 });
   });
 });

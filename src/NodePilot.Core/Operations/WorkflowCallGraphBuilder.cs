@@ -12,26 +12,34 @@ public enum WorkflowRefStatus
 {
     /// <summary>Reference resolved to exactly one workflow (by id, or by a unique name).</summary>
     Resolved = 0,
-    /// <summary>Reference is a <c>{{...}}</c> data-bus template — only known at runtime.</summary>
+    /// <summary>
+    /// Reference is a <c>{{...}}</c> data-bus template, resolved only at runtime.
+    /// </summary>
     Dynamic = 1,
-    /// <summary>Reference matched no workflow in the provided set (deleted, or out of RBAC scope).</summary>
+    /// <summary>Reference matched no workflow in the set (deleted, or out of RBAC scope).</summary>
     Unresolved = 2,
-    /// <summary>Reference is a name that matches more than one workflow (workflow names are not unique).</summary>
+    /// <summary>
+    /// Reference is a name matching more than one workflow (names are not unique).
+    /// </summary>
     Ambiguous = 3,
 }
 
-/// <summary>Input row for <see cref="WorkflowCallGraphBuilder"/>: the minimum a workflow needs to derive call edges.</summary>
+/// <summary>
+/// Input row for <see cref="WorkflowCallGraphBuilder"/>: the minimum a workflow needs to derive
+/// call edges.
+/// </summary>
 public sealed record WorkflowCallGraphInput(Guid Id, string Name, string DefinitionJson);
 
 /// <summary>
-/// One child-workflow reference lifted out of a definition, before it is resolved against anything.
+/// One child-workflow reference lifted out of a definition, before it is resolved against
+/// anything.
 /// <para>
-/// This is the half of the derivation that depends ONLY on the workflow's own definition, which is
-/// what makes it cacheable across snapshots: a definition changes when the workflow is saved, not
-/// every time somebody polls. Resolution is deliberately NOT baked in — a name-based reference
-/// resolves against every other workflow's name, so renaming a sibling changes the edge without
-/// touching this workflow's definition. Caching resolved edges would go stale on that rename;
-/// caching call sites cannot.
+/// This is the half of the derivation that depends only on the workflow's own definition, which
+/// is what makes it cacheable across snapshots: a definition changes when the workflow is saved,
+/// not every time somebody polls. Resolution is deliberately not baked in — a name-based
+/// reference resolves against every other workflow's name, so renaming a sibling changes the
+/// edge without touching this workflow's definition. Caching resolved edges would go stale on
+/// that rename; caching call sites cannot.
 /// </para>
 /// </summary>
 public sealed record WorkflowCallSite(string Kind, string RawRef);
@@ -58,12 +66,13 @@ public sealed record WorkflowCallEdge(
 /// Reads each workflow's <c>DefinitionJson</c> via <see cref="WorkflowDefinitionDocument"/> and
 /// extracts edges from <c>startWorkflow.config.workflowNameOrId</c> and
 /// <c>forEach.config.childWorkflowNameOrId</c>, applying the same name-or-id resolution rule the
-/// frontend uses (GUID → by id, else by case-insensitive name; <c>{{...}}</c> stays dynamic).
+/// frontend uses (GUID -> by id, else by case-insensitive name; <c>{{...}}</c> stays dynamic).
 /// <para>
 /// The builder only resolves against the workflows it is handed, so the caller controls scope:
-/// passing an RBAC-filtered set means a reference to a workflow the caller cannot see resolves to
-/// <see cref="WorkflowRefStatus.Unresolved"/> (existence is not leaked). Duplicate references to the
-/// same target within one source are collapsed into a single edge with <see cref="WorkflowCallEdge.CallCount"/>.
+/// passing an RBAC-filtered set means a reference to a workflow the caller cannot see resolves
+/// to <see cref="WorkflowRefStatus.Unresolved"/> (existence is not leaked). Duplicate references
+/// to the same target within one source collapse into a single edge with
+/// <see cref="WorkflowCallEdge.CallCount"/>.
 /// </para>
 /// </summary>
 public static class WorkflowCallGraphBuilder
@@ -96,10 +105,10 @@ public static class WorkflowCallGraphBuilder
 
     /// <summary>
     /// Lifts every child-workflow reference out of one definition. Pure and definition-local: the
-    /// result depends on nothing but <paramref name="definitionJson"/>, which is what lets a caller
-    /// cache it against the workflow's <c>UpdatedAt</c> instead of re-parsing 20–40 KB of JSON per
-    /// workflow on every snapshot poll. Unparseable or empty definitions yield no call sites — a
-    /// broken definition is not an edge, and it must not take the whole graph down with it.
+    /// result depends on nothing but <paramref name="definitionJson"/>, which lets a caller cache
+    /// it against the workflow's <c>UpdatedAt</c> instead of re-parsing the definition on every
+    /// snapshot poll. Unparseable or empty definitions yield no call sites — a broken definition
+    /// is not an edge, and it must not take the whole graph down with it.
     /// </summary>
     public static IReadOnlyList<WorkflowCallSite> ExtractCallSites(string definitionJson)
     {
@@ -126,14 +135,14 @@ public static class WorkflowCallGraphBuilder
     }
 
     /// <summary>
-    /// Resolves already-extracted call sites into edges. This is the half that depends on the whole
-    /// set — a name-based reference needs every other workflow's name — and it is cheap: dictionary
-    /// lookups over a handful of refs, no JSON in sight.
+    /// Resolves already-extracted call sites into edges. This is the half that depends on the
+    /// whole set — a name-based reference needs every other workflow's name — and it is cheap:
+    /// dictionary lookups over a handful of refs, no JSON in sight.
     /// <para>
     /// Scope still comes from the caller: only workflows present in <paramref name="workflows"/>
-    /// can be resolved against, so an RBAC-filtered set keeps an invisible workflow's existence out
-    /// of the answer. A workflow with no entry in <paramref name="callSitesByWorkflow"/> simply
-    /// contributes no outgoing edges.
+    /// can be resolved against, so an RBAC-filtered set keeps an invisible workflow's existence
+    /// out of the answer. A workflow with no entry in <paramref name="callSitesByWorkflow"/>
+    /// simply contributes no outgoing edges.
     /// </para>
     /// </summary>
     public static IReadOnlyList<WorkflowCallEdge> BuildFromCallSites(
@@ -157,7 +166,8 @@ public static class WorkflowCallGraphBuilder
 
         // (source, dedupKey, kind, status) -> aggregate. dedupKey is the resolved target id when
         // resolved, otherwise the raw ref text, so two startWorkflow nodes pointing at the same
-        // child collapse to one edge with CallCount=2, while two distinct dynamic refs stay separate.
+        // child collapse to one edge with CallCount=2, while two distinct dynamic refs stay
+        // separate.
         var acc = new Dictionary<(Guid Source, string DedupKey, string Kind, WorkflowRefStatus Status), (Guid? Target, string Raw, int Count)>();
 
         foreach (var wf in workflows)

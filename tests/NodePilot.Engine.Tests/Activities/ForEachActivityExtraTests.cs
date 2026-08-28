@@ -110,7 +110,7 @@ public sealed class ForEachActivityExtraTests : IDisposable
     [Fact]
     public async Task ExecuteAsync_AutoFormat_NonArrayJsonObject_FallsBackToLines()
     {
-        // "{...}" starts with `{` → auto-mode tries JSON first; doc.RootElement is an Object,
+        // "{...}" starts with `{` -> auto-mode tries JSON first; doc.RootElement is an Object,
         // not Array. The branch falls through to line-split. The single line "{...}" then
         // becomes one item, which still fails at child-lookup with "not found".
         var activity = CreateActivity();
@@ -160,7 +160,7 @@ public sealed class ForEachActivityExtraTests : IDisposable
     [Fact]
     public async Task ExecuteAsync_EmptyRawString_TreatedAsEmptyCollection()
     {
-        // Empty string → ParseItems returns empty list → success/zero — the orig tests
+        // Empty string -> ParseItems returns empty list -> success/zero — the orig tests
         // covered the JSON "[]" route but not the "raw is empty after trim" branch.
         var activity = CreateActivity();
         var ctx = new StepExecutionContext { WorkflowExecutionId = Guid.NewGuid(), StepId = "fe1" };

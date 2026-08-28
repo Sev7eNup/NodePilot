@@ -125,7 +125,7 @@ public sealed class AdminBootstrapTests : IDisposable
     [Fact]
     public void Validate_NoTokenFile_ReturnsFalse()
     {
-        // No call to EnsureBootstrapTokenIfNeeded → file does not exist
+        // EnsureBootstrapTokenIfNeeded was never called, so the file does not exist.
         AdminBootstrap.Validate(_env, "any-token").Should().BeFalse();
     }
 
@@ -266,11 +266,10 @@ public sealed class AdminBootstrapTests : IDisposable
     {
         if (!OperatingSystem.IsWindows()) return;
 
-        // The failure this reports is otherwise undiscoverable. Granting a named principal access
-        // to the token - which is exactly what Windows Explorer's "You don't currently have
-        // permission to access this folder / Continue" button does to the directory - stops the
-        // file validating, and every correct token is refused for the rest of the installation's
-        // life. Reported as a mismatch, it sends the operator to check the one thing that is fine.
+        // Granting a named principal access to the token - what Explorer's "you don't have
+        // permission, click Continue" button does to the folder - fails validation for every
+        // correct token from then on. It must be reported as a security failure, not a token
+        // mismatch, or the operator ends up checking the one thing that is actually fine.
         AdminBootstrap.EnsureBootstrapTokenIfNeeded(
             _env, usersExist: false, NullLogger.Instance);
         var token = File.ReadAllText(TokenPath).Trim();

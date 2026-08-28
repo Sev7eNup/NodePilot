@@ -50,10 +50,10 @@ public class NotificationRetentionServiceTests
         var (db, factory, conn) = CreateEnv();
         try
         {
-            AddAttempt(db, NotificationDeliveryStatus.Sent, DateTime.UtcNow.AddDays(-100));   // old terminal → delete
-            AddAttempt(db, NotificationDeliveryStatus.Failed, DateTime.UtcNow.AddDays(-100)); // old terminal → delete
-            AddAttempt(db, NotificationDeliveryStatus.Pending, DateTime.UtcNow.AddDays(-100)); // old but Pending → keep
-            AddAttempt(db, NotificationDeliveryStatus.Sent, DateTime.UtcNow.AddDays(-1));      // recent → keep
+            AddAttempt(db, NotificationDeliveryStatus.Sent, DateTime.UtcNow.AddDays(-100));   // old terminal -> delete
+            AddAttempt(db, NotificationDeliveryStatus.Failed, DateTime.UtcNow.AddDays(-100)); // old terminal -> delete
+            AddAttempt(db, NotificationDeliveryStatus.Pending, DateTime.UtcNow.AddDays(-100)); // old but Pending -> keep
+            AddAttempt(db, NotificationDeliveryStatus.Sent, DateTime.UtcNow.AddDays(-1));      // recent -> keep
             await db.SaveChangesAsync();
 
             var deleted = await Service(factory).PurgeOnceAsync(maxAgeDays: 90, CancellationToken.None);

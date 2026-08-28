@@ -9,9 +9,11 @@ namespace NodePilot.Engine.PowerShell;
 
 /// <summary>
 /// Pure, side-effect-free primitives shared by <c>RunScriptActivity</c> and
-/// <c>CustomActivityExecutor</c> (a custom activity is a reusable runScript preset): PowerShell-safe
+/// <c>CustomActivityExecutor</c> (a custom activity is a reusable runScript preset):
+/// PowerShell-safe
 /// <c>{{...}}</c> resolution into the script text, the marker-block parser that splits raw stdout
-/// into clean output / transcript / output-parameters / exit code, and the error-based success rule.
+/// into clean output / transcript / output-parameters / exit code, and the error-based success
+/// rule.
 /// Extracted from RunScriptActivity so both code paths stay byte-for-byte identical.
 /// </summary>
 internal static class PowerShellActivitySupport
@@ -25,7 +27,8 @@ internal static class PowerShellActivitySupport
 
     /// <summary>
     /// Resolves <c>{{globals.NAME}}</c>, <c>{{manual.NAME}}</c> and
-    /// <c>{{varName.output|error|success|param.x}}</c> in script text. In code context textual values become single-quoted PowerShell literals; inside an
+    /// <c>{{varName.output|error|success|param.x}}</c> in script text. In code context textual
+    /// values become single-quoted PowerShell literals; inside an
     /// existing PowerShell string/here-string only the string content is escaped. Booleans become
     /// <c>$true</c>/<c>$false</c>. Unresolved references are left verbatim.
     /// </summary>
@@ -34,12 +37,9 @@ internal static class PowerShellActivitySupport
         if (!script.Contains("{{"))
             return script;
 
-        // Do not infer PowerShell lexical context with a hand-written quote scanner. In
-        // particular, an apostrophe inside a line/block comment is not a string delimiter;
-        // treating it as one caused the following untrusted template value to be inserted as
-        // executable code. Tokenize a same-length, neutral surrogate through PowerShell's own
-        // parser instead, then apply replacements from right to left so token offsets remain
-        // valid. Ambiguous/invalid template extents fail closed before the script is executed.
+        // Use PowerShell's own parser to find lexical context instead of a hand-written quote
+        // scanner, which cannot tell a comment's apostrophe from a string delimiter. Replace
+        // matches right to left so offsets stay valid; fail closed on any ambiguous extent.
         var expressions = FindTemplateExpressions(script);
         if (expressions.Count == 0)
             return script;
@@ -85,21 +85,18 @@ internal static class PowerShellActivitySupport
         public int Index => Match.Index;
         public int Length => Match.Length;
 
-        /// <summary>Flat-namespace forms win an overlap against the step form — see FindTemplateExpressions.</summary>
+        /// <summary>Flat-namespace forms win an overlap against the step form — see
+        /// FindTemplateExpressions.</summary>
         public bool IsFlatNamespace => Kind != TemplateKind.Step;
     }
 
     /// <summary>
     /// Collects every template extent in the script from both patterns, ordered by position.
     ///
-    /// <para>The two patterns are not disjoint: a global variable may legitimately be named
-    /// <c>output</c>, <c>error</c> or <c>success</c>, and <c>{{globals.output}}</c> then matches
-    /// GlobalsPattern (name = "output") AND StepPattern (step = "globals", tail = "output") over
-    /// the exact same span. Both would land in the list, and the right-to-left replacement loop
-    /// would then cut the span twice — the second cut from a buffer the first had already
-    /// rewritten, shredding the surrounding script text. Overlaps are therefore dropped here,
-    /// with the global interpretation winning, which is also the precedence
-    /// <see cref="VariableResolver"/> applies by replacing globals before step outputs.</para>
+    /// <para>The two patterns can overlap: a global may legitimately be named <c>output</c>,
+    /// <c>error</c> or <c>success</c>, so <c>{{globals.output}}</c> matches both GlobalsPattern
+    /// and StepPattern over the same span. Overlaps are dropped here, with the global
+    /// interpretation winning, the same precedence <see cref="VariableResolver"/> applies.</para>
     /// </summary>
     private static List<TemplateExpression> FindTemplateExpressions(string script)
     {
@@ -114,10 +111,9 @@ internal static class PowerShellActivitySupport
             .Cast<Match>()
             .Select(match => new TemplateExpression(match, TemplateKind.Step)));
 
-        // Position first; at equal position the flat-namespace form wins, so it is the one kept
-        // below. A trigger input named "output"/"error"/"success" collides the same way a global
-        // with that name does: {{manual.output}} matches ManualPattern AND StepPattern over the
-        // identical span, and cutting the span twice would shred the surrounding script.
+        // Sort by position; at equal position the flat-namespace form wins and is kept below.
+        // A trigger input named "output"/"error"/"success" collides with StepPattern the same
+        // way a global does, and matching it twice would shred the surrounding script.
         expressions.Sort(static (left, right) => left.Index != right.Index
             ? left.Index.CompareTo(right.Index)
             : right.IsFlatNamespace.CompareTo(left.IsFlatNamespace));
@@ -189,10 +185,9 @@ internal static class PowerShellActivitySupport
                 _ => TemplateContext.Code,
             };
 
-            // Inside `$()` PowerShell performs another parse whose terminator scan is not
-            // safely handled by merely single-quoting arbitrary content (a `)` in the value
-            // can terminate that scan). Use a fixed expression over base64 data instead; the
-            // attacker controls only the base64 literal, never PowerShell syntax.
+            // Inside `$()`, single-quoting arbitrary content is not safe since a `)` in the
+            // value can terminate PowerShell's nested parse early. Encode the value as base64
+            // instead, so an attacker controls only the base64 literal, never PowerShell syntax.
             if (context == TemplateContext.Code
                 && flattenedTokens.Any(candidate =>
                     !ReferenceEquals(candidate, token)
@@ -436,7 +431,8 @@ internal static class PowerShellActivitySupport
 
     /// <summary>
     /// Engine-agnostic finalisation of success + the <c>exitCode</c> param. Default (null
-    /// <paramref name="successExitCodes"/>) is pure error-based; when set, success also requires the
+    /// <paramref name="successExitCodes"/>) is pure error-based; when set, success also requires
+    /// the
     /// captured exit code to be in the set.
     /// </summary>
     public static (bool success, Dictionary<string, string> parameters) ApplyExitCodeSemantics(
@@ -457,7 +453,8 @@ internal static class PowerShellActivitySupport
         return (success, parameters);
     }
 
-    /// <summary>Parses a comma-separated exit-code allow-list; null/empty → null (no gate).</summary>
+    /// <summary>Parses a comma-separated exit-code allow-list; null/empty to null (no
+    /// gate).</summary>
     public static HashSet<int>? ParseSuccessExitCodes(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;

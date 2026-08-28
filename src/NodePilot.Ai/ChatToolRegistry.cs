@@ -15,10 +15,10 @@ public sealed record ChatToolContext(
     IExecutionLogReader? ExecutionLogs = null);
 
 /// <summary>
-/// Provides the AI chat assistant with a curated set of <b>read-only</b> tools (function
-/// calling). Under <c>tool_choice: auto</c>, the LLM itself decides whether to call one. v1:
-/// purely in-process analysis of the definition; v2 adds execution-log tools (DB reads via the
-/// reader carried in the context — the registry itself stays a stateless singleton).
+/// Provides the AI chat assistant with a curated set of read-only tools (function calling). Under
+/// <c>tool_choice: auto</c>, the LLM decides whether to call one. The tools cover in-process
+/// analysis of the definition plus execution-log reads through the reader carried in the context;
+/// the registry itself stays a stateless singleton.
 /// </summary>
 public interface IChatToolRegistry
 {
@@ -27,7 +27,8 @@ public interface IChatToolRegistry
     IReadOnlyList<LlmToolDefinition> GetTools(ChatToolContext context);
 
     /// <summary>Executes a tool and returns the result as a JSON string (for the tool-role turn).
-    /// Unknown tools / errors come back as <c>{ "error": … }</c> instead of aborting the loop.</summary>
+    /// Unknown tools / errors come back as <c>{ "error": … }</c> instead of aborting the
+    /// loop.</summary>
     Task<string> ExecuteAsync(string name, string argumentsJson, ChatToolContext context, CancellationToken ct);
 }
 
@@ -45,9 +46,9 @@ public sealed class WorkflowChatToolRegistry : IChatToolRegistry
         ChatToolDispatch.ParseParams("""{"type":"object","properties":{}}""");
     private static readonly JsonSerializerOptions Json = new();
 
-    // Token-budget caps: redaction happens in the reader on the FULL string; truncation only
-    // happens here (never truncate-then-redact). Smaller than the MCP server's 4 KB caps — the
-    // chat prompt already carries the workflow JSON with it, leaving less room to spare.
+    // Token-budget caps. The reader redacts the full string and truncation happens only here, so
+    // no secret can survive a truncate-then-redact order. The caps stay below the MCP server's
+    // because the chat prompt already carries the workflow JSON.
     private const int MaxOutputChars = 1_500;
     private const int MaxErrorMessageChars = 500;
     private const int FailureContextOutputChars = 2_000;
@@ -161,11 +162,10 @@ public sealed class WorkflowChatToolRegistry : IChatToolRegistry
         }).ToArray(),
     };
 
-    // ---- Execution-Log-Tools -------------------------------------------------------------------
+    // ---- Execution log tools -------------------------------------------------------------------
 
-    /// <summary>Defense-in-depth guard: catches the case where an execution tool is called despite
-    /// there being no reader (not offered does not mean not callable — the model can hallucinate
-    /// tool names).</summary>
+    /// <summary>Defense-in-depth guard for an execution tool called without a reader: a tool that
+    /// is not offered to the model can still be named by it.</summary>
     private static bool TryGetExecutionScope(ChatToolContext ctx, out IExecutionLogReader logs, out Guid workflowId)
     {
         if (ctx.ExecutionLogs is { } reader && ctx.WorkflowId is { } id && id != Guid.Empty)

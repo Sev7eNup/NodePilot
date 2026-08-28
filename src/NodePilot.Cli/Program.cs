@@ -21,17 +21,16 @@ var app = new CommandApp(registrar);
 app.Configure(config =>
 {
     config.SetApplicationName("np");
-    // Read from the assembly rather than a literal: Directory.Build.props is the single source
-    // of the product version, and a hand-maintained string here silently reported the previous
-    // release long after the version was bumped. Strip the "+<commit>" source-revision suffix
-    // the SDK appends to the informational version.
+    // Read the version from the assembly rather than a literal, since Directory.Build.props
+    // is the single source of the product version. Strip the "+<commit>" source-revision
+    // suffix the SDK appends to the informational version.
     config.SetApplicationVersion(CliVersion.Current);
     config.UseStrictParsing();
     config.PropagateExceptions();
 
-    // Command tree lives in CommandRegistration so the test harness can re-use the same
-    // graph. Anything we register here MUST flow through that method — otherwise tests
-    // think the new command is covered when really only its API-client is exercised.
+    // Command tree lives in CommandRegistration so the test harness can reuse the same
+    // graph. Anything registered here must flow through that method, or tests report a
+    // new command as covered when really only its API client is exercised.
     CommandRegistration.Register(config);
 });
 

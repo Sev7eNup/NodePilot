@@ -4,13 +4,10 @@ import type { Node, Edge } from '@xyflow/react';
 import { FindReplaceOverlay } from '../../../components/designer/overlays/FindReplaceOverlay';
 
 /**
- * FindReplaceOverlay is a thin UI on top of lib/findReplace. We don't re-test the matching
- * algorithm (covered by findReplace.test.ts) — we pin the wiring:
- *   - empty search → "enter a search term" hint
- *   - non-empty search with results → match list rendered with kind-badges
- *   - "All" button → calls onApply with the full transformed graph and closes
- *   - Esc / close button → onClose
- *   - scope checkboxes → toggling re-evaluates matches
+ * FindReplaceOverlay is a thin UI over lib/findReplace. These tests cover the wiring only:
+ * the empty-search hint, the rendered match list, the replace buttons calling onApply,
+ * closing via Esc or the close button, and scope checkboxes re-evaluating matches.
+ * The matching algorithm itself is covered by findReplace.test.ts.
  */
 
 function node(id: string, label: string, config: Record<string, unknown> = {}): Node {
@@ -47,7 +44,7 @@ describe('FindReplaceOverlay', () => {
     fireEvent.change(screen.getByPlaceholderText(/Find/i), { target: { value: 'step' } });
 
     expect(screen.getByText(/2 matches/i)).toBeInTheDocument();
-    // Each match renders the label twice (displayName + contextSnippet) — getAllByText.
+    // Each match renders the label twice (displayName and contextSnippet), so use getAllByText.
     expect(screen.getAllByText('Foo step').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Bar step').length).toBeGreaterThanOrEqual(1);
   });
@@ -176,7 +173,7 @@ describe('FindReplaceOverlay', () => {
       <FindReplaceOverlay nodes={[]} edges={[]} onApply={vi.fn()} onClose={onClose} />
     );
 
-    // Backdrop is the outermost div with onClick={onClose}
+    // The backdrop is the outermost div and carries onClick={onClose}.
     fireEvent.click(screen.getByPlaceholderText(/Find/i).closest('.fixed')!);
     expect(onClose).toHaveBeenCalledOnce();
   });

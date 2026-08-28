@@ -93,8 +93,8 @@ public sealed class SettingsTestProbeTests
     [InlineData("http://127.0.0.1:1234/v1/chat/completions")]
     public async Task TestLlmAsync_BaseUrlWithEndpointSuffix_ProbesTheApiRootModels(string baseUrl)
     {
-        // A BaseUrl that already names the endpoint must not get /models nested underneath it —
-        // that path exists on neither dialect and made the Test button fail on a working profile.
+        // A BaseUrl that already names the endpoint must not get /models nested under it —
+        // that path exists on neither dialect and would break the Test button on a valid profile.
         var handler = StubHandler(HttpStatusCode.OK, "{\"data\":[]}");
 
         var result = await Probe(handler).TestLlmAsync(

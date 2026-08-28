@@ -102,12 +102,9 @@ public class SharedFolderPermissionsController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.PrincipalKey))
             return BadRequest(new { message = "PrincipalKey is required." });
 
-        // Validate PrincipalKey format per type AND normalise to the canonical form the
-        // authorization path compares against. Without normalisation, a User-grant created
-        // via the API with a mixed-case Guid string is stored verbatim, while
-        // ResourceAuthorizationService computes user-key as `userId.ToString("D")` (always
-        // lowercase). On a case-sensitive collation (Postgres default) the grant then never
-        // matches and the user silently has no access.
+        // Validate PrincipalKey format per type and normalize to the canonical form
+        // ResourceAuthorizationService compares against (lowercase Guid). A mismatched
+        // case would silently deny access on a case-sensitive collation (Postgres default).
         string principalKey;
         string principalAuthority;
         if (req.PrincipalType == FolderPrincipalType.User)
@@ -130,19 +127,16 @@ public class SharedFolderPermissionsController : ControllerBase
                 return BadRequest(new { message = "Group PrincipalKey must not exceed 256 characters." });
             if (principalAuthority == ExternalIdentity.ActiveDirectoryAuthority)
             {
-            // SID format check: S-1-<auth>-<sub-auth>+. Permissive — exact AD-validity
-            // is impossible without an LDAP roundtrip and a syntactically-valid SID
-            // for an unknown group is fine (will simply never match a user's group set).
-            // Case-insensitive because operators paste SIDs in either case; we normalise
-            // to uppercase on store below.
+            // SID format check: S-1-<auth>-<sub-auth>+. Permissive, since full AD validity
+            // needs an LDAP roundtrip; a syntactically valid SID for an unknown group just
+            // never matches a user's group set. Case-insensitive; normalized to uppercase below.
             if (!System.Text.RegularExpressions.Regex.IsMatch(
                     req.PrincipalKey, @"^S-\d+-\d+(-\d+)+$",
                     System.Text.RegularExpressions.RegexOptions.IgnoreCase,
                     TimeSpan.FromSeconds(1)))
                 return BadRequest(new { message = "For PrincipalType=Group, PrincipalKey must be a Windows SID (e.g. S-1-5-21-...)." });
-            // AD canonical form is uppercase; resolver compares case-insensitively but we
-            // normalise on write so the audit log shows the canonical SID and exact-match
-            // queries elsewhere don't have to depend on collation.
+            // AD canonical form is uppercase; the resolver compares case-insensitively, but
+            // normalizing on write keeps the audit log canonical and avoids collation issues.
                 principalKey = req.PrincipalKey.ToUpperInvariant();
             }
             else
@@ -225,8 +219,8 @@ public class SharedFolderPermissionsController : ControllerBase
     public async Task<IActionResult> Update(Guid folderId, Guid permissionId,
         UpdateSharedFolderPermissionRequest req, CancellationToken ct)
     {
-        // Gate adds the 404 existence-mask this action previously lacked — a caller without
-        // Read on the folder can no longer distinguish "no folder" from "no permission".
+        // The access gate also masks folder existence: a caller without Read on the folder
+        // cannot tell "no folder" apart from "no permission" from the response.
         if (await this.RequireFolderAccessAsync(_authz, folderId, ResourceOp.Admin, ct) is { } updateDenied)
             return updateDenied;
 

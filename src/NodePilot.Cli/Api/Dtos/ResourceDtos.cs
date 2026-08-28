@@ -88,9 +88,15 @@ public sealed record UpdateMaintenanceWindowRequest(
 
 // ---- Users (Admin-only) ------------------------------------------------------
 
-public sealed record UserResponse(Guid Id, string Username, string Role, bool IsActive, DateTime CreatedAt);
-public sealed record CreateUserRequest(string Username, string Password, string Role);
-public sealed record UpdateUserRequest(string? Role, bool? IsActive, string? Password);
+public sealed record UserResponse(
+    Guid Id, string Username, string Role, bool IsActive, DateTime CreatedAt,
+    string Provider = "Local", string? Authority = null, string? Subject = null,
+    DateTime? LastDirectorySyncAt = null, string DirectorySyncStatus = "Never",
+    bool IsTombstoned = false, bool IsBreakGlass = false);
+public sealed record CreateUserRequest(
+    string Username, string Password, string Role, bool IsBreakGlass = false);
+public sealed record UpdateUserRequest(
+    string? Role, bool? IsActive, string? Password, bool? IsBreakGlass = null);
 
 // ---- Step Stats / Health -----------------------------------------------------
 
@@ -104,13 +110,30 @@ public sealed record StepStats(
 
 public sealed record ExecutionCounts(int Total, int Succeeded, int Failed, int Running, int Cancelled);
 public sealed record HourBucket(DateTime HourStart, int Succeeded, int Failed, int Cancelled);
-public sealed record TopWorkflow(Guid Id, string Name, int RunCount, int SuccessCount, int FailCount);
+public sealed record TopWorkflow(
+    Guid Id, string Name, int RunCount, int SuccessCount, int FailCount,
+    double? AvgDurationMs = null, double? P95DurationMs = null);
 public sealed record RunningExecutionInfo(
     Guid Id, Guid WorkflowId, string WorkflowName, string Status, DateTime StartedAt, string? TriggeredBy);
 public sealed record RecentExecutionInfo(
     Guid Id, Guid WorkflowId, string WorkflowName, string Status,
     DateTime StartedAt, DateTime? CompletedAt, long? DurationMs, string? TriggeredBy);
-public sealed record ArmedTriggerInfo(Guid WorkflowId, string WorkflowName, List<string> TriggerTypes);
+public sealed record ArmedTriggerInfo(
+    Guid WorkflowId, string WorkflowName, List<string> TriggerTypes,
+    DateTime? NextFireUtc = null, string? NextFireKind = null, int? PollIntervalSeconds = null,
+    string? BlockedByWindowName = null);
+
+public sealed record FailingWorkflow(
+    Guid Id, string Name, int FailCount, int RunCount, DateTime? LastFailureAt,
+    int PrevFailCount, int PrevRunCount);
+public sealed record EditLockInfo(
+    Guid WorkflowId, string WorkflowName, string LockOwnerUserName, DateTime LockedAt);
+public sealed record HealthHeartbeatInfo(
+    string ServiceName, DateTime LastHeartbeatAt, int ExpectedIntervalSeconds,
+    string? Status, bool IsStale);
+public sealed record DashboardAuditEvent(
+    DateTime Timestamp, string? ActorUserName, string Action,
+    string? ResourceType, Guid? ResourceId);
 
 public sealed record DashboardStats(
     int WorkflowsTotal, int WorkflowsEnabled,
@@ -121,7 +144,15 @@ public sealed record DashboardStats(
     List<TopWorkflow> TopWorkflows,
     List<RunningExecutionInfo> Running,
     List<RecentExecutionInfo> Recent,
-    List<ArmedTriggerInfo> ArmedTriggers);
+    List<ArmedTriggerInfo> ArmedTriggers,
+    int PendingCount = 0, int RunningCount = 0, int LongRunningCount = 0,
+    List<FailingWorkflow>? FailingWorkflows = null,
+    List<EditLockInfo>? EditLocks = null,
+    List<HealthHeartbeatInfo>? HealthHeartbeats = null,
+    string DatabaseProvider = "",
+    string? ClusterRole = null,
+    List<DashboardAuditEvent>? RecentAudit = null,
+    bool LlmEnabled = false);
 
 // ---- Observability -----------------------------------------------------------
 

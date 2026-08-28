@@ -5,8 +5,8 @@ using Xunit;
 namespace NodePilot.Cli.Tests.Api;
 
 /// <summary>
-/// Enforces the CLAUDE.md rule "Jeder neue API-Endpoint braucht beide Clients" at the level
-/// nothing guarded before: ENDPOINT EXISTENCE. <see cref="ApiDtoParityTests"/> compares
+/// Enforces the CLAUDE.md rule that every new API endpoint needs both clients, at the level
+/// nothing guarded before: endpoint existence. <see cref="ApiDtoParityTests"/> compares
 /// fields of DTOs a client already declares — a client that never adds the type (or never
 /// calls the route) was invisible. This guard scans the controllers for their route
 /// templates and each client project for the <c>"api/…"</c> URL literals it actually
@@ -15,8 +15,7 @@ namespace NodePilot.Cli.Tests.Api;
 ///
 /// <para>Matching is path-shape only (parameters normalized to <c>*</c>, query strings
 /// stripped, case-insensitive) and deliberately ignores the HTTP method — the invariant is
-/// "some client code path reaches this route", which is exactly the level at which the
-/// custom-activities surface went missing without anything failing.</para>
+/// that some client code path reaches this route.</para>
 /// </summary>
 public sealed class EndpointClientCoverageTests
 {
@@ -212,8 +211,8 @@ public sealed class EndpointClientCoverageTests
 
     /// <summary>
     /// The guard is only as good as its matcher, and the matcher has no other test — a leniency
-    /// bug here reports the whole API as covered and nothing fails. These cases pin the two rules
-    /// that went wrong: a client wildcard must not swallow a literal endpoint route, and a
+    /// bug here would report the whole API as covered without failing. These cases pin two
+    /// matching rules: a client wildcard must not swallow a literal endpoint route, and a
     /// query-string interpolation must not turn its own segment into a wildcard.
     /// </summary>
     [Theory]
@@ -309,13 +308,9 @@ public sealed class EndpointClientCoverageTests
     /// A client URL covers an endpoint when segment counts match and every segment is equal —
     /// with <c>*</c> matching only <c>*</c>.
     ///
-    /// <para>A client wildcard deliberately does NOT satisfy an endpoint literal. The lenient
-    /// rule (wildcard on either side) is what let the <c>effective-sizing</c> endpoint ship
-    /// without a CLI client while this guard reported the surface as covered: the CLI's
-    /// <c>api/admin/settings/{section}</c> call normalizes to <c>api/admin/settings/*</c> and
-    /// then matched every literal sibling route under that path. The by-id/by-name/by-section
-    /// call sites that make this shape common are exactly the ones with literal siblings, so
-    /// the leniency cost coverage everywhere it applied.</para>
+    /// <para>A client wildcard deliberately does not satisfy an endpoint literal: allowing a
+    /// wildcard on either side would let a by-id/by-name/by-section call site cover every
+    /// literal sibling route under the same path, hiding real gaps.</para>
     /// </summary>
     private static bool IsCovered(string endpoint, HashSet<string> clientRoutes)
     {
@@ -345,11 +340,10 @@ public sealed class EndpointClientCoverageTests
     /// <c>{Uri.EscapeDataString(x)}</c>) becomes <c>*</c>, compared case-insensitively.
     ///
     /// <para>A segment keeps whatever literal prefix precedes its first hole — only a segment
-    /// that STARTS with <c>{</c> is a parameter. This matters for the query-string idiom
-    /// <c>$"api/alerting/deliveries{qs}"</c>: collapsing that to <c>api/alerting/*</c> both
-    /// loses the route it actually calls and hands the strict matcher a wildcard that would
-    /// otherwise report every literal sibling (<c>catalog</c>, <c>preview-filter</c>, …) as
-    /// covered by the deliveries call site.</para>
+    /// that starts with <c>{</c> is a parameter. This matters for the query-string idiom
+    /// <c>$"api/alerting/deliveries{qs}"</c>: collapsing that to <c>api/alerting/*</c> would
+    /// lose the route it actually calls and turn it into a wildcard that covers every literal
+    /// sibling (<c>catalog</c>, <c>preview-filter</c>, …) instead.</para>
     /// </summary>
     private static string NormalizeRoute(string raw)
     {

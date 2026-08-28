@@ -219,7 +219,8 @@ public class WinRmSessionPoolTests
         await next.DisposeAsync();
     }
 
-    // A local loopback runspace produces a real WinRmSession instance without touching the network (see StubFactory).
+    // A local loopback runspace produces a real WinRmSession instance without touching the network
+    // (see StubFactory).
     private static WinRmSession LiveSession(string host = "h.example.net")
     {
         var rs = RunspaceFactory.CreateRunspace();
@@ -237,7 +238,7 @@ public class WinRmSessionPoolTests
         // key is full, a returned session is actually closed instead of being cached.
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Remote:Pool:MaxConcurrentPerMachine"] = "1", // ⇒ MaxIdlePerKey = max(1, default) = 1
+            ["Remote:Pool:MaxConcurrentPerMachine"] = "1", // -> MaxIdlePerKey = max(1, default) = 1
         }).Build();
         var (pool, _) = BuildPool(config);
         await using var _p = pool;
@@ -248,7 +249,7 @@ public class WinRmSessionPoolTests
         var s2 = LiveSession(machine.Hostname!);
 
         pool.Return(key, s1); // fits into the idle pool
-        pool.Return(key, s2); // idle pool already at capacity ⇒ actually disposed
+        pool.Return(key, s2); // idle pool already at capacity -> actually disposed
 
         s1.IsAlive.Should().BeTrue("die erste Session bleibt für Reuse im Idle-Pool");
         s2.IsAlive.Should().BeFalse("die überzählige Session wird geschlossen statt gepoolt");
@@ -284,7 +285,7 @@ public class WinRmSessionPoolTests
         // entry point instead of waiting for the 15-second timer.
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Remote:Pool:IdleTtlSeconds"] = "0", // jede Rücklage ist sofort abgelaufen
+            ["Remote:Pool:IdleTtlSeconds"] = "0", // Every returned session expires immediately.
         }).Build();
         var (pool, _) = BuildPool(config);
         await using var _p = pool;

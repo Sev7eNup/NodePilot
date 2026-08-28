@@ -33,7 +33,7 @@ describe('useAiCapabilities', () => {
     const { result } = renderHook(() => useAiCapabilities(), { wrapper: makeWrapper(client) });
 
     await waitFor(() => expect(result.current.data).toEqual(CAPS));
-    // Cache-sharing contract: the sidebar, AiChatPage and every gated button read the SAME entry.
+    // Cache-sharing contract: the sidebar, AiChatPage and every gated button read one entry.
     expect(client.getQueryData(AI_CAPABILITIES_QUERY_KEY)).toEqual(CAPS);
     expect(AI_CAPABILITIES_QUERY_KEY).toEqual(['ai-knowledge-capabilities']);
   });
@@ -49,7 +49,7 @@ describe('refreshAiCapabilities', () => {
     expect(invalidate).toHaveBeenCalledTimes(1);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: AI_CAPABILITIES_QUERY_KEY });
 
-    // Second invalidation once the backend's runtime.json watcher has certainly fired.
+    // A second invalidation runs after the backend's runtime.json watcher has fired.
     vi.advanceTimersByTime(2000);
     expect(invalidate).toHaveBeenCalledTimes(2);
     expect(invalidate).toHaveBeenLastCalledWith({ queryKey: AI_CAPABILITIES_QUERY_KEY });

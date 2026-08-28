@@ -73,7 +73,7 @@ public class MaintenanceWindowsControllerTests
     {
         await using var db = TestDbFactory.Create();
         var ctrl = Build(db);
-        // "every Mon–Fri, all day" — start == end is a full 24h window, no longer rejected.
+        // "every Mon–Fri, all day" — start == end is accepted as a full 24h window.
         var req = GlobalWeekly("AllDay") with { WeeklyStartMinuteOfDay = 0, WeeklyEndMinuteOfDay = 0 };
 
         (await ctrl.Create(req, CancellationToken.None)).Result.Should().BeOfType<CreatedAtActionResult>();

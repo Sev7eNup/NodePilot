@@ -2,13 +2,13 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 79 — Toolbar-Layout-Umschalter (kompakt ⇄ klassisch).
+ * E2ETests.md Part 79 — toolbar layout switch (compact and classic).
  *
  * A persisted `toolbarLayout` flag (designStore) switches the editor header between the compact
  * grouped toolbar (default) and the classic inline-button row. The `toggle-toolbar-layout` button
- * lives in BOTH layouts so it's always reachable. Classic un-folds the View/Overlays/Tools
- * popovers into inline buttons and wraps whole clusters on narrow viewports (no horizontal
- * overflow). SPA renders ENGLISH under Playwright; hermetic page.route mocks.
+ * exists in both layouts, so it stays reachable. Classic unfolds the View, Overlays and Tools
+ * popovers into inline buttons and wraps clusters on narrow viewports without horizontal
+ * overflow. The SPA renders English under Playwright; hermetic page.route mocks.
  */
 
 const WF_ID = 'e7171717-7171-7171-7171-717171717171';
@@ -51,14 +51,14 @@ test.describe('Toolbar-Layout-Umschalter (Teil 79)', () => {
   test('79.1 — toggle switches compact ⇄ classic and un-folds the popovers inline', async ({ page }) => {
     await openEditor(page);
 
-    // Compact by default: the "Display" canvas-settings popover + Overlays popover exist.
+    // Compact by default: both the "Display" canvas-settings popover and Overlays popover exist.
     await expect(page.getByTestId('canvas-settings-trigger')).toBeVisible();
     await expect(page.getByTestId('view-overlays-trigger')).toBeVisible();
 
     await page.getByTestId('toggle-toolbar-layout').click();
 
-    // Classic: overlays are inline buttons now (not behind the Eye popover), the compact
-    // popovers are gone, and the layout toggle is still present to switch back.
+    // Classic: overlays are inline buttons instead of sitting behind the Eye popover, the
+    // compact popovers are gone, and the layout toggle is still present to switch back.
     await expect(page.getByTestId('toggle-dataflow-overlay')).toBeVisible();
     await expect(page.getByTestId('canvas-settings-trigger')).toHaveCount(0);
     await expect(page.getByTestId('view-overlays-trigger')).toHaveCount(0);
@@ -70,9 +70,9 @@ test.describe('Toolbar-Layout-Umschalter (Teil 79)', () => {
   });
 
   test('79.2 — a persisted classic profile drives the classic layout and survives reload', async ({ page }) => {
-    // A profile the app previously wrote (designStore persist) carries toolbarLayout:'classic'.
-    // On load the editor must honour it — and keep honouring it across a reload. (The toggle's
-    // write path + the missing-key default are covered by the designStore unit tests.)
+    // A persisted designStore profile carries toolbarLayout:'classic'. The editor must honour
+    // it on load and across a reload. The toggle's write path and the missing-key default are
+    // covered by the designStore unit tests.
     await page.addInitScript(() => {
       localStorage.setItem('nodepilot-design', JSON.stringify({
         state: { designerMode: 'expert', toolbarLayout: 'classic' }, version: 1,
@@ -100,7 +100,7 @@ test.describe('Toolbar-Layout-Umschalter (Teil 79)', () => {
       }));
     });
     await openEditor(page);
-    // Missing key → compact default → the grouped popovers are present.
+    // A missing key falls back to the compact default, so the grouped popovers are present.
     await expect(page.getByTestId('canvas-settings-trigger')).toBeVisible();
     await expect(page.getByTestId('toggle-dataflow-overlay')).toHaveCount(0);
   });
@@ -112,13 +112,13 @@ test.describe('Toolbar-Layout-Umschalter (Teil 79)', () => {
       await page.getByTestId('toggle-toolbar-layout').click();
       await expect(page.getByTestId('toggle-dataflow-overlay')).toBeVisible();
 
-      // No horizontal overflow — clusters wrap onto extra lines instead of clipping.
+      // No horizontal overflow: clusters wrap onto extra lines instead of clipping.
       const overflow = await page.evaluate(() =>
         document.documentElement.scrollWidth - document.documentElement.clientWidth,
       );
       expect(overflow).toBeLessThanOrEqual(1);
 
-      // The layout toggle stays within the viewport and clickable (switches back).
+      // The layout toggle stays inside the viewport and clickable, switching back.
       const toggle = page.getByTestId('toggle-toolbar-layout');
       const box = await toggle.boundingBox();
       expect(box).not.toBeNull();

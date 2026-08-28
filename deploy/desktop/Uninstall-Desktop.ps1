@@ -2,11 +2,11 @@
 #requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Removes the NodePilot desktop runtime: stops + deletes both Windows services and removes the
-    self-signed loopback certificate. ProgramData (including the Postgres data directory) is
-    preserved unless -PurgeData is passed.
+    Removes the NodePilot desktop runtime: stops and deletes both Windows services and removes
+    the self-signed loopback certificate. ProgramData (including the Postgres data directory) is
+    kept unless -PurgeData is passed.
 .NOTES
-    Invoked by the Inno Setup uninstaller [UninstallRun]. Not executed by Claude.
+    Invoked by the Inno Setup uninstaller through [UninstallRun].
 #>
 [CmdletBinding()]
 param(
@@ -37,7 +37,7 @@ function Remove-NodePilotService([string] $name) {
 Remove-NodePilotService $ApiServiceName
 Remove-NodePilotService $DbServiceName
 
-# Remove the loopback certificate (identified by friendly name).
+# Remove the loopback certificate, identified by its friendly name.
 try {
     Get-ChildItem -Path Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
         Where-Object { $_.FriendlyName -eq 'NodePilot Desktop Local' } |
@@ -47,7 +47,7 @@ try {
         }
 } catch { Write-Warning "Certificate cleanup skipped: $($_.Exception.Message)" }
 
-# Best-effort: remove the per-user first-run handoff if it still exists.
+# Remove the per-user first-run handoff if it is still there. Failures are ignored.
 $handoff = Join-Path $env:LOCALAPPDATA 'NodePilot\admin-setup.handoff'
 if (Test-Path -LiteralPath $handoff) { Remove-Item -LiteralPath $handoff -Force -ErrorAction SilentlyContinue }
 

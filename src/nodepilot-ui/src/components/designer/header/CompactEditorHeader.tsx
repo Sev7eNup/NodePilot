@@ -44,9 +44,9 @@ export function CompactEditorHeader({
 
   return (
     <header className="np-editor-header relative z-[45] flex items-center gap-4 bg-surface-lowest px-6 py-3 shrink-0 border-b border-outline-variant/15">
-      {/* ── LEFT: identity ─────────────────────────────────────────────────── */}
+      {/* LEFT: identity (back button, brand, mode toggle, AI assistant). */}
       <EditorIdentity aiChatOpen={aiChatOpen} onToggleAiChat={onToggleAiChat} />
-      {/* ── CENTER: workflow name — centered, click-to-rename ───────────────── */}
+      {/* CENTER: workflow name, centered and click-to-rename. */}
       <div className="flex-1 min-w-0 flex items-center justify-center px-2">
         <WorkflowNameField
           name={name}
@@ -55,7 +55,7 @@ export function CompactEditorHeader({
           placeholder={t('workflowNamePlaceholder')}
         />
       </div>
-      {/* ── RIGHT: tools + actions ─────────────────────────────────────────── */}
+      {/* RIGHT: tools and actions. */}
       <div className="shrink-0 flex items-center">
         <ToolbarGlow className="flex items-center gap-2">
           {/* History. Always visible. */}
@@ -78,7 +78,7 @@ export function CompactEditorHeader({
             </button>
           </ToolbarSection>
 
-          {/* Inspect: search + the View/Overlays/Tools menus. Standard mode gets StandardMoreMenu. */}
+          {/* Inspect: search plus View/Overlays/Tools; Standard mode uses StandardMoreMenu. */}
           <ToolbarSection id="inspect">
             <button
               onClick={() => setSearchOpen(true)}
@@ -169,7 +169,7 @@ export function CompactEditorHeader({
             </ToolbarSection>
           )}
 
-          {/* Atelier-design switch + toolbar-layout toggle + colour-skin switcher — trailing, always visible. */}
+          {/* Atelier switch, layout toggle, and skin switcher — trailing, always visible. */}
           <AtelierThemeToggle />
           <ToolbarLayoutToggle />
           <SkinSwitcher />

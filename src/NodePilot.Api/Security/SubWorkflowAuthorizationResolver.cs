@@ -15,7 +15,8 @@ namespace NodePilot.Api.Security;
 /// <para>
 /// Effective principal resolution:
 /// <list type="number">
-///   <item><description>Manual run: <see cref="WorkflowExecution.StartedByUserId"/>.</description></item>
+/// <item><description>Manual run: <see
+/// cref="WorkflowExecution.StartedByUserId"/>.</description></item>
 ///   <item><description>Trigger-driven: parent workflow's stable
 ///   <see cref="Workflow.PublishedByUserId"/>. Routine metadata mutations cannot lend
 ///   a different user's privileges to a scheduled run.</description></item>

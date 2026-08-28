@@ -315,11 +315,8 @@ public class OperationsControllerTests
 
     // ---- Per-node action capabilities -------------------------------------------------------
     //
-    // These replace the old snapshot-wide OpsCapabilities.CanCancel, which was derived from the
-    // GLOBAL role only. Cancel/retry need folder ResourceOp.Run and disable needs Edit, so a
-    // global Operator holding just folder-Viewer used to be offered buttons the endpoints then
-    // 403'd. The flags are now per node and come straight from GetWorkflowCapabilitiesAsync,
-    // which already ANDs the folder role with the global one.
+    // Derive action flags per node from combined global and folder capabilities so the UI matches
+    // endpoint authorization for cancel, retry, and disable operations.
 
     [Fact]
     public async Task GetGraph_GlobalAdmin_NodeCarriesRunAndEdit()
@@ -358,8 +355,7 @@ public class OperationsControllerTests
     [Fact]
     public async Task GetGraph_FolderReadOnly_OffersNeitherRunNorEdit()
     {
-        // A global Operator with only folder-Viewer rights. Previously CanCancel was true here
-        // purely because of the global role, and every action button 403'd on click.
+        // A global Operator with folder-Viewer rights must not receive run or edit actions.
         var db = TestDbFactory.Create();
         SeedFolders(db);
         db.Workflows.Add(Wf(Guid.NewGuid(), "W", "{}", folderId: FolderA));
@@ -379,7 +375,7 @@ public class OperationsControllerTests
     [Fact]
     public async Task GetGraph_Capabilities_ResolvedOncePerDistinctFolder()
     {
-        // Three workflows across two folders → two lookups, not three. Guards the dedup that
+        // Three workflows across two folders -> two lookups, not three. Guards the dedup that
         // keeps the 5 s poll cheap on a large snapshot.
         var db = TestDbFactory.Create();
         SeedFolders(db);
@@ -487,8 +483,10 @@ public class OperationsControllerTests
     [Fact]
     public async Task GetGraph_ColdCacheWithThousandsOfWorkflows_LoadsEveryDefinitionInOneGo()
     {
-        // A cold cache asks for every workflow's definition in a single `WHERE Id IN (...)`. That shape
-        // has bitten this repo before (SQLITE_LIMIT_VARIABLE_NUMBER in GetStepStats), so the size is
+        // A cold cache asks for every workflow's definition in a single `WHERE Id IN (...)`. That
+        // shape
+        // has bitten this repo before (SQLITE_LIMIT_VARIABLE_NUMBER in GetStepStats), so the size
+        // is
         // worth pinning rather than assuming the provider copes. Also the warm-poll guarantee: the
         // second call must not re-read a single definition, which is the whole point of the cache.
         var db = TestDbFactory.Create();
@@ -515,8 +513,10 @@ public class OperationsControllerTests
     public async Task GetGraph_RunsSharingACompletedAt_AreOrderedDeterministicallyAcrossPolls()
     {
         // Without a tiebreaker the provider decides which row is the last one under the cap, so two
-        // polls of UNCHANGED data could return different sets at the boundary — bars flickering in and
-        // out, and a seam (OldestReturnedCompletedAt) that jumps. Everything here completes at the very
+        // polls of UNCHANGED data could return different sets at the boundary — bars flickering in
+        // and
+        // out, and a seam (OldestReturnedCompletedAt) that jumps. Everything here completes at the
+        // very
         // same instant, which is the case that has no natural order at all.
         var db = TestDbFactory.Create();
         var wf = Guid.NewGuid();
@@ -537,8 +537,10 @@ public class OperationsControllerTests
     [Fact]
     public async Task GetGraph_EvictedCacheEntry_DoesNotCostTheResponseItsEdges()
     {
-        // The response is built from a REQUEST-LOCAL snapshot of the call sites, not from a second read
-        // of the shared cache. Otherwise an eviction (or a racing poll) landing between the extraction
+        // The response is built from a REQUEST-LOCAL snapshot of the call sites, not from a second
+        // read
+        // of the shared cache. Otherwise an eviction (or a racing poll) landing between the
+        // extraction
         // and the read would silently drop edges this very request had already parsed.
         var db = TestDbFactory.Create();
         var parent = Guid.NewGuid();
@@ -727,9 +729,12 @@ public class OperationsControllerTests
         var buckets = graph.Density.Should().ContainSingle().Subject.Buckets;
         buckets.Select(b => b.BucketIndex).Should().BeInAscendingOrder();
         buckets.Should().OnlyContain(b => b.Total > 0);
-        // Everything was seeded into the newest stretch of the window, so every bucket has to land in
-        // the last `seededSpan / bucketWidth` slices. Derived rather than hard-coded: the bucket width
-        // follows the window, and a fixed tolerance silently stops meaning anything when either moves.
+        // Everything was seeded into the newest stretch of the window, so every bucket has to land
+        // in
+        // the last `seededSpan / bucketWidth` slices. Derived rather than hard-coded: the bucket
+        // width
+        // follows the window, and a fixed tolerance silently stops meaning anything when either
+        // moves.
         var lastIndex = (int)((DateTime.UtcNow - graph.Meta.RecentSinceUtc).TotalSeconds / graph.Meta.DensityBucketSeconds);
         var seededSlices = (int)Math.Ceiling(rows * spacing.TotalSeconds / graph.Meta.DensityBucketSeconds) + 1;
         buckets.Should().OnlyContain(b => b.BucketIndex <= lastIndex && b.BucketIndex >= lastIndex - seededSlices);
@@ -904,7 +909,7 @@ public class OperationsControllerTests
         var graph = await GetGraph(NewController(db));
 
         var run = graph.Running.Should().ContainSingle().Subject;
-        run.StepsFinished.Should().BeNull(); // no step rows at all → no aggregate row → unknown
+        run.StepsFinished.Should().BeNull(); // no step rows at all -> no aggregate row -> unknown
         run.LastProgressAt.Should().BeNull();
     }
 
@@ -952,7 +957,8 @@ public class OperationsControllerTests
         private readonly AccessibleFolderSet _set;
         public ScopedAuthz(AccessibleFolderSet set) => _set = set;
 
-        /// <summary>What <see cref="GetWorkflowCapabilitiesAsync"/> hands back. Defaults to full.</summary>
+        /// <summary>What <see cref="GetWorkflowCapabilitiesAsync"/> hands back. Defaults to
+        /// full.</summary>
         public ResourceCapabilities Capabilities { get; set; } = ResourceCapabilities.All;
 
         /// <summary>Every folder the subject asked about — asserts the per-folder dedup.</summary>

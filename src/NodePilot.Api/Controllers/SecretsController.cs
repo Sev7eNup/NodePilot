@@ -9,12 +9,11 @@ using NodePilot.Data;
 namespace NodePilot.Api.Controllers;
 
 /// <summary>
-/// Admin-only operations on the secret-protector layer. Today exposes a single endpoint
-/// — the bulk re-encrypt sweep — used after rotating <c>Secrets:Provider</c> or the
-/// AES-GCM master key. Without this sweep, ruhende secrets keep their old-format
-/// ciphertexts until the next time something happens to read them; with the sweep, the
-/// transition is deterministic and operators can drop the legacy-provider config in the
-/// follow-up restart.
+/// Admin-only operations on the secret-protector layer. Currently exposes one endpoint,
+/// the bulk re-encrypt sweep, used after rotating <c>Secrets:Provider</c> or the AES-GCM
+/// master key. Without it, secrets at rest keep their old ciphertext format until
+/// something reads them; the sweep makes the transition deterministic so operators can
+/// drop the legacy-provider config afterward.
 /// </summary>
 [ApiController]
 [Route("api/secrets")]
@@ -43,15 +42,14 @@ public class SecretsController : ControllerBase
 
     /// <summary>
     /// Re-encrypts every credential password and secret-flagged global variable with
-    /// the currently active <see cref="ISecretProtector"/>. Use after rotating the
-    /// AES-GCM master key or migrating from DPAPI to AES-GCM (with <c>Secrets:LegacyProvider</c>
-    /// configured for the fallback-read path during the rotation window).
+    /// the active <see cref="ISecretProtector"/>. Use after rotating the AES-GCM master
+    /// key or migrating from DPAPI to AES-GCM (set <c>Secrets:LegacyProvider</c> for the
+    /// fallback-read path during the rotation window).
     /// <para>
-    /// Returns 200 OK with <c>partialSuccess=false</c> when every row converted cleanly.
-    /// Returns 207 Multi-Status with <c>partialSuccess=true</c> when at least one row
-    /// could not be decrypted — the response body lists the affected names + the failure
-    /// reason class so the operator can re-enter them by hand. The rewritten rows are
-    /// committed regardless: a partial sweep still moves the deployment forward.
+    /// Returns 200 OK when every row converts cleanly. Returns 207 Multi-Status with
+    /// <c>partialSuccess=true</c> when some rows could not be decrypted; the body lists
+    /// the affected names and failure reason so the operator can re-enter them by hand.
+    /// Rewritten rows are always committed, even on a partial result.
     /// </para>
     /// </summary>
     [HttpPost("reencrypt")]
@@ -87,10 +85,8 @@ public class SecretsController : ControllerBase
 
         if (partial)
         {
-            // 207 Multi-Status communicates "we did some of what you asked, here's what
-            // didn't happen" — a deliberate choice over 200 (which suggests fully clean).
-            // Operators reading the status line in CI / Ansible see the difference and
-            // can branch on it without parsing the body.
+            // 207 signals a partial result instead of 200, so CI/Ansible callers can
+            // branch on the status code alone without parsing the response body.
             return StatusCode(StatusCodes.Status207MultiStatus, result);
         }
         return Ok(result);

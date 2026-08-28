@@ -9,10 +9,9 @@ namespace NodePilot.Api.Tests.Hosting;
 
 /// <summary>
 /// Pins the path-resolution contract of <see cref="LoggingSetup.ResolveLogFilePath"/>.
-/// The production installer relies on this exact behaviour to point writable log files
-/// at <c>C:\ProgramData\NodePilot\logs</c> while the install dir stays read-only —
-/// breaking it silently routes log writes back to a directory the service-account
-/// can't write to.
+/// The production installer relies on this exact behavior to point writable log files at
+/// <c>C:\ProgramData\NodePilot\logs</c> while the install dir stays read-only. Breaking it
+/// silently routes log writes back to a directory the service account can't write to.
 /// </summary>
 public class LoggingSetupTests
 {
@@ -69,9 +68,9 @@ public class LoggingSetupTests
         try
         {
             var config = LoggingSetup.BuildBootstrapConfiguration();
-            // We only check the resolver runs and returns a config — env-vars are
-            // assembled by ConfigurationBuilder.AddEnvironmentVariables(); proving
-            // they're present without leaking machine-specific assertions.
+            // Only checks that the resolver runs and returns a config. Env vars are
+            // assembled by ConfigurationBuilder.AddEnvironmentVariables(); asserting their
+            // exact values here would mean machine-specific assertions.
             config.Should().NotBeNull();
         }
         finally

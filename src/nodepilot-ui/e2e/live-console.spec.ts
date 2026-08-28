@@ -2,22 +2,18 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 71 — LiveConsole: Filter & Pause (lines 3885-3909).
+ * E2ETests.md Part 71 — LiveConsole filter and pause.
  *
- * The LiveConsole (filter field + "Errors only" toggle + Live/Paused pause-toggle) lives
- * inside the Live tab → LiveOverview → Console sub-tab, and only MOUNTS when there is an
- * active `liveExecution`. That object is fed exclusively by `useWorkflowSignalR(id)`. In the
- * hermetic harness SignalR negotiation is mocked to 404 (see fixtures/mockApi.ts), so no live
- * execution ever arrives and the LiveConsole's filter/errors/pause controls cannot render.
+ * The LiveConsole, with its filter field, "Errors only" toggle and Live/Paused control, sits in
+ * the Console sub-tab of LiveOverview under the Live tab and mounts only while a `liveExecution`
+ * is active. That object comes solely from `useWorkflowSignalR(id)`, and the hermetic harness
+ * answers SignalR negotiation with 404 (see fixtures/mockApi.ts), so those controls never render.
  *
- * Therefore:
- *   - We ASSERT what IS reachable hermetically: the bottom Execution panel and its tab bar
- *     (Live / History / Output / Watch) render, and the Live tab shows the documented
- *     "No active execution" empty state.
- *   - We test.skip the filter / errors-only / pause-toggle scenarios with a reason — those
- *     require a streaming SignalR execution which the mocked-404 harness deliberately denies.
+ * What stays reachable is asserted here: the bottom Execution panel with its Live, History,
+ * Output and Watch tabs, plus the "No active execution" empty state. The filter, errors-only and
+ * pause scenarios are skipped with a reason, since they need a streaming SignalR execution.
  *
- * Hermetic: page.route mocks only. SPA renders ENGLISH under Playwright.
+ * Hermetic: page.route mocks only. The SPA renders English under Playwright.
  */
 
 const WF_ID = 'e7171717-7171-7171-7171-717171717171';
@@ -55,13 +51,13 @@ test.describe('LiveConsole — Filter & Pause (Teil 71)', () => {
   test('71.0 — Execution panel renders the Live/History/Output/Watch tab bar', async ({ page }) => {
     await openEditor(page);
 
-    // The bottom Execution panel + its four tabs are present without any live run.
+    // The bottom Execution panel and its four tabs render without any live run.
     await expect(page.getByRole('button').filter({ hasText: /^Live/ }).first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button').filter({ hasText: /^History/ }).first()).toBeVisible();
     await expect(page.getByRole('button').filter({ hasText: /^Output/ }).first()).toBeVisible();
     await expect(page.getByRole('button').filter({ hasText: /^Watch/ }).first()).toBeVisible();
 
-    // The Live tab (default) shows the "No active execution" empty state because SignalR is mocked off.
+    // The Live tab is the default and shows the empty state, because SignalR is mocked off.
     await expect(page.getByText(/No active execution|keine aktive/i).first()).toBeVisible();
   });
 

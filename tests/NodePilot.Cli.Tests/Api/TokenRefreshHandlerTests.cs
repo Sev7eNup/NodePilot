@@ -54,7 +54,8 @@ public sealed class TokenRefreshHandlerTests : IDisposable
         _server.Given(Request.Create().WithPath("/api/auth/refresh").UsingPost())
                .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(rotated));
 
-        // First call to /api/auth/me returns 401 with stale token, second call returns 200 with fresh token.
+        // First call to /api/auth/me returns 401 with stale token, second call returns 200 with
+        // fresh token.
         _server.Given(Request.Create().WithPath("/api/auth/me").UsingGet().WithHeader("Authorization", "Bearer stale-token"))
                .RespondWith(Response.Create().WithStatusCode(401));
         _server.Given(Request.Create().WithPath("/api/auth/me").UsingGet().WithHeader("Authorization", "Bearer fresh-token"))

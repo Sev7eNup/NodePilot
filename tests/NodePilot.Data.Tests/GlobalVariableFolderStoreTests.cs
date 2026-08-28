@@ -97,7 +97,7 @@ public class GlobalVariableFolderStoreTests
         using var db = TestDbFactory.Create();
         var store = NewStore(db);
 
-        // Root(0) → 1 → 2 → 3 → 4 → 5 is the max; a 6th level is rejected.
+        // Root is depth 0; depth 5 is the max, so a 6th level is rejected.
         var parentId = Root;
         for (var i = 1; i <= GlobalVariableFolder.MaxDepth; i++)
             parentId = (await store.CreateAsync(parentId, $"L{i}", null, CancellationToken.None)).Id;
@@ -278,9 +278,8 @@ public class GlobalVariableFolderStoreTests
     /// Writes a variable into <paramref name="folderId"/> right before the subtree DELETE runs —
     /// the window a concurrent writer would use.
     ///
-    /// Hooked on the DELETE, not on the snapshot SELECT: an interceptor fires *before* the command
-    /// it wraps, so inserting at the SELECT would put the row INTO the snapshot — the opposite of
-    /// what the test needs.
+    /// Hooked on the DELETE, not on the snapshot SELECT: an interceptor fires before the command
+    /// it wraps, so inserting at the SELECT would put the row into the snapshot instead.
     /// </summary>
     private sealed class InsertVariableBeforeDelete(SqliteConnection conn, Guid folderId) : DbCommandInterceptor
     {
@@ -339,11 +338,9 @@ public class GlobalVariableFolderStoreTests
                 "the interceptor must fire inside the transaction, otherwise the test proves nothing");
 
             db.ChangeTracker.Clear();
-            // Limit of the simulation: the interceptor writes inside the store's own transaction,
-            // so the latecomer disappears again with the rollback and cannot be asserted on. A real
-            // concurrent writer would sit in its own transaction and its row would survive. What
-            // this pins is what matters either way — the run is refused as a race rather than
-            // silently sweeping up a row it never snapshotted, and nothing else is lost.
+            // The interceptor writes inside the store's own transaction, so its row disappears on
+            // rollback and can't be asserted directly. What matters is pinned either way: the run
+            // is refused as a race instead of silently sweeping up a row it never snapshotted.
             db.GlobalVariableFolders.Any(f => f.Id == a.Id).Should().BeTrue();
             db.GlobalVariables.Count(v => v.FolderId == a.Id).Should().Be(1);
         }

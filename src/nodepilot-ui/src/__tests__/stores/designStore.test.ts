@@ -25,7 +25,7 @@ describe('useDesignStore', () => {
   it('defaults_matchClassicLayoutAndLargeNodeScale', () => {
     const s = useDesignStore.getState();
     expect(s.nodeStyle).toBe('classic');
-    expect(s.nodeScaleIndex).toBe(3); // lg — sm was legible but too small to author in
+    expect(s.nodeScaleIndex).toBe(3); // lg — sm is legible but too small to author in
     expect(s.edgesAnimated).toBe(true);
     expect(s.layoutMode).toBe('LR');
     expect(s.snapToGrid).toBe(false);
@@ -50,8 +50,7 @@ describe('useDesignStore', () => {
   });
 
   it('toolbarLayout_hydratesToCompact_whenAbsentFromAPersistedV1Profile', async () => {
-    // A stored profile written before this feature has no `toolbarLayout` key. After rehydration
-    // the merged state must fall back to the compact default (never `undefined`).
+    // Profiles without toolbarLayout hydrate to the compact default instead of undefined.
     localStorage.setItem('nodepilot-design', JSON.stringify({
       state: { designerMode: 'expert', nodeStyle: 'classic' },
       version: 1,
@@ -116,7 +115,8 @@ describe('useDesignStore', () => {
   });
 
   it('autoHidePorts_defaultsOn_andToggleAlternates', () => {
-    // Default: ports hide until the cursor nears / node selected / connecting. Toggle → always show.
+    // Default: ports hide until the cursor nears, a node is selected, or connecting. Toggle
+    // switches to always show.
     expect(useDesignStore.getState().autoHidePorts).toBe(true);
     useDesignStore.getState().toggleAutoHidePorts();
     expect(useDesignStore.getState().autoHidePorts).toBe(false);
@@ -222,10 +222,10 @@ describe('useDesignStore', () => {
   });
 
   describe('persist migrate', () => {
-    // v2 raised the node-scale default sm(1) → lg(3). The migration has to be able to tell
-    // "never touched the stepper" from "deliberately chose sm", and the only signal available
-    // is whether the stored index still equals the OLD default. Pin both directions, plus the
-    // v1 designerMode branch that must keep working alongside it.
+    // v2 raised the node-scale default from sm(1) to lg(3). The migration must distinguish
+    // "never touched the stepper" from "deliberately chose sm", and the only signal is whether
+    // the stored index still equals the old default. Pin both directions, plus the v1
+    // designerMode branch that must keep working alongside it.
     const migrate = (persisted: unknown, version: number) =>
       useDesignStore.persist.getOptions().migrate!(persisted, version) as Partial<
         ReturnType<typeof useDesignStore.getState>

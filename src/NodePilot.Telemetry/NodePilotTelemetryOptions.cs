@@ -12,7 +12,8 @@ public sealed class NodePilotTelemetryOptions
     public ExporterToggles Exporters { get; set; } = new();
     public TraceUiOptions TraceUi { get; set; } = new();
     public PrometheusOptions Prometheus { get; set; } = new();
-    /// <summary>Optional public base URL for the Grafana instance used by native dashboard drill-down links.</summary>
+    /// <summary>Optional public base URL for the Grafana instance used by native dashboard
+    /// drill-down links.</summary>
     public string? GrafanaBaseUrl { get; set; }
 
     /// <summary>

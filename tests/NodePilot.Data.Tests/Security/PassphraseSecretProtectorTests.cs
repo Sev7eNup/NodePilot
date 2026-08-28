@@ -10,7 +10,7 @@ namespace NodePilot.Data.Tests.Security;
 /// Crypto-level guarantees of <see cref="PassphraseSecretProtector"/> (the passphrase-based secret
 /// encryption used by the system-configuration backup/restore feature, ADR 0001): per-field
 /// round-trip, wrong-passphrase rejection, whole-file MAC, verifier check, and the
-/// subkey-separation invariant (K14 — encKey ≠ macKey ≠ verifierKey).
+/// subkey-separation invariant (encKey, macKey, and verifierKey must all differ).
 /// </summary>
 public class PassphraseSecretProtectorTests
 {
@@ -105,7 +105,7 @@ public class PassphraseSecretProtectorTests
     [Fact]
     public void Subkeys_AreIndependent_EncBlobIsNotAValidVerifier()
     {
-        // K14: if encKey == verifierKey, a field blob would validate as a verifier. It must not.
+        // If encKey and verifierKey were equal, a field blob would validate as a verifier.
         var salt = PassphraseSecretProtector.GenerateSalt();
         var p = Derive(Pass, salt);
 

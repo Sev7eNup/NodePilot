@@ -17,7 +17,8 @@ public class PowerShellEngineFactory
     private readonly IPowerShellExecutionEngine _windowsPowerShell;
     private readonly IPowerShellExecutionEngine _runspace;
 
-    /// <summary>Test seam: inject engines with controlled availability. Not for production use.</summary>
+    /// <summary>Test seam: inject engines with controlled availability. Not for production
+    /// use.</summary>
     internal PowerShellEngineFactory(
         IPowerShellExecutionEngine pwsh,
         IPowerShellExecutionEngine windowsPowerShell,
@@ -35,22 +36,18 @@ public class PowerShellEngineFactory
     {
         var logger = loggerFactory.CreateLogger<PowerShellEngineFactory>();
 
-        // Bound the isolated stdout/stderr drain that runs after the root process exits + the job
-        // tree is terminated. A leaked inherited pipe handle in an unrelated process would otherwise
-        // keep the pipe write-end open forever and hang the step (see ProcessSpawnCoordinator).
-        // 0/negative falls back to the engine default (5s).
+        // Bounds the isolated stdout/stderr drain after the root process and its job tree exit,
+        // so a leaked inherited pipe handle in another process cannot hold the write end open
+        // and hang the step (see ProcessSpawnCoordinator). 0 or negative falls back to default.
         var drainGraceSeconds = configuration?.GetValue<int?>("Engine:IsolatedDrainGraceSeconds") ?? 5;
         var isolatedDrainGrace = drainGraceSeconds > 0 ? TimeSpan.FromSeconds(drainGraceSeconds) : (TimeSpan?)null;
 
         _pwsh = ProcessExecutionEngine.CreatePwsh(logger, isolatedDrainGrace);
         _windowsPowerShell = ProcessExecutionEngine.CreateWindowsPowerShell(logger, isolatedDrainGrace);
 
-        // Runspace pool sizing: process-spawn pwsh.exe per script costs ~50-200ms (process
-        // start + temp file write + module load). The runspace pool reuses in-process runspaces
-        // at <5 ms per script. The sizing decision itself belongs to the process-wide
-        // PerformancePlan (hardware-derived by default, operator values under manual tuning);
-        // the fallback below only covers hosts that construct the factory without a plan —
-        // tests and the CLI-side tooling — and mirrors the plan's own auto formula.
+        // Runspace pool sizing belongs to the process-wide PerformancePlan (hardware-derived,
+        // or operator-set under manual tuning). The fallback here covers only hosts that build
+        // the factory without a plan (tests, CLI tooling) and mirrors the plan's auto formula.
         var plan = performancePlan ?? PerformanceSizing.Create(
             new DetectedResources(Environment.ProcessorCount, null, IsDesktop: false),
             manualTuning: false,
@@ -70,10 +67,9 @@ public class PowerShellEngineFactory
             "pwsh" => _pwsh.IsAvailable ? _pwsh : throw new InvalidOperationException("pwsh.exe (PowerShell 7) is not installed"),
             "powershell" => _windowsPowerShell.IsAvailable ? _windowsPowerShell : throw new InvalidOperationException("powershell.exe is not available"),
             "runspace" => _runspace,
-            // Perf: "auto" prefers the in-process runspace pool over spawning a fresh
-            // pwsh.exe / powershell.exe process per script. Runspace = PS5.1 (in-process
-            // SDK); workflows that need PS7-only features (Foreach-Object -Parallel,
-            // ternary operator, …) must opt in explicitly via engine: "pwsh".
+            // "auto" prefers the in-process runspace pool over spawning pwsh.exe or
+            // powershell.exe. Runspace is PS5.1 (in-process SDK); workflows needing PS7-only
+            // features (Foreach-Object -Parallel, ternary, …) must opt in via engine: "pwsh".
             "auto" => _runspace.IsAvailable ? _runspace
                 : (_pwsh.IsAvailable ? _pwsh : _windowsPowerShell),
             _ => _runspace.IsAvailable ? _runspace
@@ -82,12 +78,10 @@ public class PowerShellEngineFactory
     }
 
     /// <summary>
-    /// Engine resolution for an optionally process-isolated request. When <paramref name="isolated"/>
-    /// is false this delegates to the legacy overload. When true, isolation REQUIRES an out-of-process
-    /// host (the in-process runspace pool cannot contain a crash/leak), so the runspace pool is never
-    /// returned: explicit pwsh/powershell must be available or it throws; auto/runspace/unknown prefer
-    /// pwsh, then powershell, and throw if neither exists (rather than silently degrading to the
-    /// un-isolated pool, which would void the opt-in security guarantee).
+    /// Resolves an engine for an optionally process-isolated request. False
+    /// <paramref name="isolated"/> delegates to the legacy overload. True requires an
+    /// out-of-process host (the runspace pool cannot isolate a crash), so it throws instead of
+    /// silently degrading to the un-isolated pool when no pwsh/powershell host is available.
     /// </summary>
     public IPowerShellExecutionEngine GetEngine(string engineType, bool isolated)
     {
@@ -103,7 +97,7 @@ public class PowerShellEngineFactory
                 ? _pwsh
                 : throw new InvalidOperationException("pwsh.exe (PowerShell 7) is not available for isolated execution.");
 
-        // auto / runspace / unknown → force a process engine, never the in-process pool.
+        // auto, runspace, and unknown all force a process engine, never the in-process pool.
         if (_pwsh.IsAvailable) return _pwsh;
         if (_windowsPowerShell.IsAvailable) return _windowsPowerShell;
         throw new InvalidOperationException(

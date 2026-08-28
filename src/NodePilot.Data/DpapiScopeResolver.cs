@@ -23,11 +23,10 @@ internal static class DpapiScopeResolver
         var trimmed = raw?.Trim();
         if (string.IsNullOrEmpty(trimmed)) return DataProtectionScope.CurrentUser;
 
-        // Security-audit finding L-5: previous behavior was `== "LocalMachine" ? LocalMachine : CurrentUser`, which
-        // silently folded every typo ("Local_Machine", "Machine", "current") into CurrentUser.
-        // That meant an operator who intended LocalMachine but mis-typed the key got CurrentUser
-        // without any diagnostic — a legitimate multi-user deployment would then fail to decrypt
-        // under a different service account with no clear hint why. Fail fast instead.
+        // A typo in the config value ("Local_Machine", "Machine", "current") must not silently
+        // fall back to CurrentUser: an operator who intended LocalMachine would get CurrentUser
+        // with no diagnostic, and a multi-user deployment would then fail to decrypt under a
+        // different service account with no clear hint why. Fail fast instead.
         return trimmed.ToLowerInvariant() switch
         {
             "currentuser" => DataProtectionScope.CurrentUser,

@@ -2,6 +2,12 @@
 
 Dokumentiert alle umgesetzten Performance-Optimierungen.
 
+> **Aktueller Dispatch-Vertrag (seit Durable-Outbox):** Wartende Starts liegen persistent in der
+> Datenbank und nicht mehr in einem begrenzten In-Memory-Channel. `ExecutionDispatch:Capacity`
+> wurde deshalb entfernt; nur `ExecutionDispatch:WorkerCount` begrenzt die gleichzeitig
+> arbeitenden Dispatcher. Ältere Messprotokolle weiter unten beschreiben bewusst den damaligen
+> Channel-Stand und sind keine aktuelle Konfigurationsanleitung.
+
 ---
 
 ## Manual-Tuning-Preset (Stand 2026-05-07)
@@ -28,7 +34,7 @@ Single source of truth für das konfigurierte Preset. Alle weiter unten dokument
 **Konfiguriert in [`appsettings.json`](../src/NodePilot.Api/appsettings.json):**
 
 ```json
-"ExecutionDispatch":      { "Capacity": 2048, "WorkerCount": 600 },
+"ExecutionDispatch":      { "WorkerCount": 600 },
 "Engine": {
   "MaxConcurrentExecutions": { "Global": 5000, "PerUser": 2000 },
   "MaxConcurrentSteps": 600,
@@ -39,7 +45,7 @@ Single source of truth für das konfigurierte Preset. Alle weiter unten dokument
   "Postgres":          "...;Maximum Pool Size=800;Minimum Pool Size=40;Connection Idle Lifetime=60",
   "DefaultConnection": "...;Min Pool Size=40;Max Pool Size=800"
 },
-"Logging": { "LogLevel": { "Default": "Warning" } }
+"Logging": { "LogLevel": { "Default": "Information" } }
 ```
 
 **Live in `C:\NodePilot-Postgres\data\postgresql.conf`:**
@@ -68,7 +74,7 @@ Vier Stellschrauben, alle mit Config-Override. Werte sind **historische Defaults
 | `5fd8ddb` | PowerShellEngineFactory (`engine: "auto"`) | **`auto` mappt auf in-process Runspace-Pool (PS5.1)** statt fresh `pwsh.exe`-Prozess-Spawn pro Step. ProcessExecutionEngine kostete ~50–200 ms Process-Start + Temp-`.ps1`-Datei + Module-Load + ~30 MB RAM pro Aufruf — bei 50 WFs × 5–10 Skript-Steps = hunderte Prozesse. RunspaceExecutionEngine reused Runspaces aus einem Pool: < 5 ms pro Skript. **Hard-Default im Code ist immer noch `min(64, ProcessorCount × 4)`** ([`PowerShellEngineFactory.cs:26`](../src/NodePilot.Engine/PowerShell/PowerShellEngineFactory.cs#L26)) — die in `appsettings.json` gesetzten 768 sind der Override; ohne Config-Override fällt der Pool auf 64 zurück. Workflows, die PS7-only-Features brauchen (`Foreach-Object -Parallel`, Ternary, …), setzen `engine: "pwsh"` explizit; Fallback-Reihenfolge wenn Runspace-Init scheitert: pwsh → powershell. |
 | `5fd8ddb` | ThreadPool MinThreads | `ThreadPool.SetMinThreads(workers, iocp)` aus Config. Default-MinThreads ist nur `ProcessorCount`; .NET injiziert darüber hinaus nur ~1–2 neue Threads pro Sekunde. Bei einem 50-Burst auf POST/execute warteten die letzten ~30 Anfragen mehrere Sekunden bevor sie überhaupt einen Thread bekamen. Tunable via `Threading:MinWorkerThreads` / `Threading:MinIoCompletionThreads`. |
 
-**Tests:** [`WorkflowSchedulerTests.RunAsync_WithGlobalStepCap_LimitsConcurrentInFlightSteps`](../tests/NodePilot.Engine.Tests/Execution/WorkflowSchedulerTests.cs) verifiziert das Gate-Verhalten, [`ExecutionDispatchServiceTests.EnqueueAsync_WorkerCallback_AwaitsEngineForFullWorkflowLifetime`](../tests/NodePilot.Api.Tests/ExecutionDispatch/ExecutionDispatchServiceTests.cs) pinnt den Backpressure-Contract (Worker hält Slot bis Engine fertig).
+**Tests:** [`WorkflowSchedulerTests.RunAsync_WithGlobalStepCap_LimitsConcurrentInFlightSteps`](../tests/NodePilot.Engine.Tests/Execution/WorkflowSchedulerTests.cs) verifiziert das Gate-Verhalten, [`ExecutionDispatchServiceTests.ProcessOutbox_HoldsWorkerUntilEngineCompletes`](../tests/NodePilot.Api.Tests/ExecutionDispatch/ExecutionDispatchServiceTests.cs) pinnt den Backpressure-Contract (Worker hält Slot bis Engine fertig).
 
 ### Engine / Hot-Path
 
@@ -526,7 +532,6 @@ nachgezogen (siehe Single-Source-Block oben).
 | Setting | Vorher | Jetzt (live) | Begründung |
 |---|---|---|---|
 | `ExecutionDispatch.WorkerCount` | 512 | **600** | 500 + 20 % Headroom für Burst-Backpressure |
-| `ExecutionDispatch.Capacity` | 1024 | **2048** | Queue-Buffer für Bursts |
 | `Engine.MaxConcurrentSteps` | 512 | **600** | Match WorkerCount (stabiles Plateau aus Memory) |
 | `Engine.Runspace.MaxRunspaces` | 512 | **768** | 50 % über typischem In-flight (~250-400) |
 | `Engine.Runspace.MinRunspaces` | 128 | **256** | Mehr Pre-Warm-Polster gegen Cold-Start |
@@ -626,7 +631,7 @@ Stress-Profil identisch zu den älteren Sessions: [`scripts/stress-test/launch-5
 | [`OutputRedactor.cs:98-105`](../src/NodePilot.Engine/Security/OutputRedactor.cs#L98-L105) | **Fast-Path:** vor den 16 compiled Regex-Pässen ein `IndexOf`-Probe gegen die Trigger-Substring-Liste (`password`, `token`, `Authorization`, `-----BEGIN`, `AKIA`, `eyJ`, `xox`, `glpat-`, `ghp_`, …). Inputs ohne irgendeinen Trigger gehen direkt zurück. Custom-Patterns aus `Logging:Redaction:Patterns` erzwingen weiterhin den Slow-Path. | In-Noise auf der 500-WF-Wall, aber jeder Step-Output (stdout + stderr + OutputParameters + TraceOutput) flutet hier durch. Bei 57 000 Step-Outputs pro Stress-Test entlastet der Probe vermutlich CPU-Time, die unter Saturation woanders fehlt — schwer separat messbar. **Risiko:** wenn ein Custom-Trigger neue Pattern-Form ergänzt wird, muss `DefaultTriggerKeywords` angepasst werden, sonst rutschen Matches durch. Tests in [`OutputRedactorTests.cs`](../tests/NodePilot.Engine.Tests/Security/OutputRedactorTests.cs) decken jeden Default-Pattern ab. |
 | [`MachineResolver.cs:11-21,42-48`](../src/NodePilot.Engine/Execution/MachineResolver.cs#L11-L48) | **Negative-Cache** (process-wide `ConcurrentDictionary<string, DateTime>`, TTL 30 s): wenn ein `targetMachineId`-String zur Ad-hoc-Fallback-Maschine resolvet (= keine `ManagedMachine` mit dieser ID/Hostname/Name in der DB), wird der negative Befund gemerkt. Hits gegen registrierte Maschinen werden **nicht** gecacht (EF-Tracking-Semantik braucht frisch tracked entities pro Scope). Invalidierung: `MachineResolver.InvalidateCache()` (Hook für Test/Admin nach Machine-Insert). | Bei einem 500-WF-Run gegen `localhost` werden ~12 000 redundante `Find` + `FirstOrDefault` SELECTs eliminiert. Per-Hit-Kosten waren 1–2 ms, also ~12–24 s kumulativ über alle Steps; parallelisiert über 600 In-Flight-Slots ergibt das ein paar 10 ms Wall-Clock-Ersparnis. Marginal, aber kostenfrei. |
 | [`SubWorkflowLimiter.cs`](../src/NodePilot.Engine/Activities/InMemorySubWorkflowGate.cs) | **`ChildSemaphore` 64 → 128** (process-wide Cap auf gleichzeitige Sub-Workflow-Aufrufe). Default-Annahme bisher: 64 reicht überall. Tatsächlich: bei 500 Parents × 3 `startWorkflow`-Calls = 1500 Sub-Workflow-Invocations, die seriell durch 64 Slots fließen. | r1-Win 161.6 s vs. 162.4 s default — innerhalb der Run-zu-Run-Varianz. Begründung trotzdem stichhaltig (siehe Iteration 10 unten zur Falle, das nicht auf 600 zu heben). Konstante seit 2026-05-08 in `SubWorkflowLimiter` extrahiert (vorher private in `StartWorkflowActivity`). |
-| [`appsettings.json`](../src/NodePilot.Api/appsettings.json) | `Logging:LogLevel:Default = "Warning"` (war `Information`) | ~3 % über 3 Runs. Serilog-Filter ist billig, aber bei 57 000 Steps × mehreren `LogInformation`-Calls pro Step pro Engine-Layer wird auch das billige messbar — gerade wenn Saturation-bedingt jede CPU-µs woanders gebraucht wird. |
+| [`appsettings.json`](../src/NodePilot.Api/appsettings.json) | `Logging:LogLevel:Default = "Information"`; Framework-/EF-Kategorien bleiben `Warning` | Der frühere `Warning`-Default brachte im synthetischen Saturationstest ~3 % über drei Runs, filterte aber zugleich erfolgreiche Support- und SIEM-Ereignisse vor den Sub-Sinks. Der Observability-Vertrag hat Vorrang; laute Framework-Kategorien bleiben separat gedämpft. |
 
 ### Was getestet und verworfen wurde
 
@@ -761,12 +766,12 @@ Kapazitätsgrenzen von App und Postgres addieren sich im Worst Case zu deutlich 
 
 `Performance:ManualTuning` (default **`false`**) entscheidet:
 
-- **Aus** — NodePilot leitet Runspace-Pool, Step-Cap, ThreadPool-Floor, Dispatch-Queue und die
-  Execution-Sanity-Caps aus **erkannter CPU und erkanntem Speicher** ab.
+- **Aus** — NodePilot leitet Runspace-Pool, Step-Cap, ThreadPool-Floor und Dispatch-Workerzahl aus
+  **erkannter CPU und erkanntem Speicher** ab.
 - **An** — die konfigurierten Werte gelten unverändert. So wird das gemessene Hochlast-Profil
   aktiviert; es bleibt in allen Templates als inertes, sofort einschaltbares Preset stehen.
 
-Der Schalter ist **restart-pflichtig**: Runspace-Pool und Dispatch-Queue entstehen einmal beim
+Der Schalter ist **restart-pflichtig**: Runspace-Pool und Dispatch-Worker-Pool entstehen einmal beim
 Boot. Der Plan wird deshalb genau einmal beim Start aufgelöst (`PerformancePlanFactory`) und als
 Singleton geteilt — sonst würde ein Config-Reload nur den hot-reloadbaren ThreadPool umschalten
 und der Prozess liefe in zwei Modi gleichzeitig. Die Settings-UI zeigt den **gewünschten** gegen
@@ -799,7 +804,6 @@ nie abgesenkt.
 | `Engine:MaxConcurrentSteps` | `Cores × 32` | 32 | 600 |
 | `Threading:MinWorkerThreads` / `MinIoCompletionThreads` | `max(200, Cores×16)` | 64 | 768 |
 | `ExecutionDispatch:WorkerCount` | `Cores × 3` | 20 | 200 |
-| `ExecutionDispatch:Capacity` | `WorkerCount × 8` | 128 | 2048 |
 
 **`Engine:MaxConcurrentExecutions:Global`/`PerUser` steht bewusst *nicht* in dieser Tabelle.** Das
 sind Sicherheits-Caps gegen pathologische Fälle (Trigger-Schleifen, Sub-Workflow-Kaskaden), kein
@@ -824,11 +828,11 @@ Speicher mehrfach verplant:
 appBudget = erkannterSpeicher × Share − 512 MB Sockel
   Share: 60 % (Server) bzw. 25 % (Desktop — dort laufen Postgres, Electron-Shell und
          die Anwendungen des Nutzers auf derselben Maschine)
-  Runspace-Pool 50 % · In-Flight-Steps 25 % · Dispatch-Queue 5 % · Reserve 20 %
+  Runspace-Pool 50 % · In-Flight-Steps 25 % · Reserve 25 %
 ```
 
 Invariante, per Test über ein CPU×RAM-Raster geprüft:
-`Sockel + Runspaces×R + Steps×S + Queue×Q ≤ appBudget`.
+`Sockel + Runspaces×R + Steps×S ≤ appBudget`.
 
 **Der DB-Pool ist bewusst nicht modelliert:** sein dominanter Anteil ist serverseitiger
 Postgres-Speicher, den keine App-Einstellung steuert, und unter Last sind nur ~85 von 480

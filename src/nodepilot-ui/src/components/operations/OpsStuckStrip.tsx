@@ -7,16 +7,15 @@ import { STATUS_TEXT_CLASS } from '../../lib/statusTokens';
 
 // Overdue runs, lifted out of the timeline into one line above it.
 //
-// Why a strip and not lane re-ordering: a run older than the 30-minute default window is clamped to the
-// left edge and looks like any other long bar, so the runs that matter most are the least
-// visible. Re-sorting lanes would fix that by churning the whole layout every time a bar crosses
-// the threshold — and would invalidate the deterministic lane order assignLanes() guarantees.
-// A separate strip is stable, bounded, and disappears entirely when nothing is stuck.
+// A run older than the visible window is clamped to the left edge and looks like any other long
+// bar, so the runs that matter most are the least visible. Re-sorting lanes instead would reshuffle
+// the layout whenever a bar crosses the threshold and would break the deterministic lane order
+// assignLanes() guarantees. A separate strip is stable, bounded, and hidden when nothing is stuck.
 
 const CAP = 5;
 
 export function OpsStuckStrip({ bars, nowMs, nameFor, onSelect }: Readonly<{
-  /** Already filtered to overdue bars by the caller (single source of truth: isOverdue). */
+  /** Already filtered to overdue bars by the caller, using isOverdue as the single source. */
   bars: PlacedBar[];
   nowMs: number;
   nameFor: (workflowId: string) => string;
@@ -24,7 +23,7 @@ export function OpsStuckStrip({ bars, nowMs, nameFor, onSelect }: Readonly<{
 }>) {
   const { t } = useTranslation(['operations']);
 
-  // Oldest first: the longest-running one is the most likely to be genuinely stuck.
+  // Oldest first: the longest-running run is the most likely to be genuinely stuck.
   const sorted = useMemo(
     () => [...bars].sort((a, b) => a.startedAtMs - b.startedAtMs),
     [bars],
@@ -56,8 +55,8 @@ export function OpsStuckStrip({ bars, nowMs, nameFor, onSelect }: Readonly<{
             <span className={`tabular-nums ${STATUS_TEXT_CLASS.warning}`}>
               {t('operations:stuck.since', { value: since })}
             </span>
-            {/* The distinguishing detail: "long" vs. "stuck on ONE step since 11 min". Only
-                shown when the server actually enriched this run (null = unknown, not zero). */}
+            {/* Separates a merely long run from one stuck on a single step. Shown only when the
+                server enriched this run; null means unknown, not zero. */}
             {bar.lastProgressAtMs !== null ? (
               <span className="tabular-nums text-on-surface-variant">
                 {t('operations:stuck.lastProgress', {

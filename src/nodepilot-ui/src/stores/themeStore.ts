@@ -4,36 +4,28 @@ import { persist } from 'zustand/middleware';
 export type ThemeBase = 'light' | 'dark';
 
 /**
- * A selectable color scheme ("skin").
+ * A selectable color scheme ("skin"). `base` decides whether the `dark` class goes on <html>
+ * and what `resolvedTheme` reports; Monaco, CodeMirror and React Flow read only that, so a
+ * re-accented dark skin such as `dark-lila` keeps `base: 'dark'`. `id` is also the `data-skin`
+ * attribute on <html>, which index.css keys accent and surface overrides on.
  *
- * - `base` decides whether the `dark` class goes on <html> and what `resolvedTheme`
- *   reports — the only thing code editors (Monaco/CodeMirror) and React Flow care
- *   about. So a purely re-accented dark skin (e.g. `dark-lila`) keeps `base: 'dark'`
- *   and needs ZERO changes in those consumers.
- * - `id` doubles as the `data-skin` attribute written to <html>; index.css keys
- *   skin-specific accent/surface overrides on `html.dark[data-skin="<id>"]`.
- *
- * ▶ To add another scheme: append one entry here, add one
- *   `html.dark[data-skin="<id>"] …` block in index.css, one i18n label
- *   (`settings`/`nav` namespaces), and one accent hue in
- *   `scripts/generate-logo-skins.py` + a `LOGO_BY_SKIN` entry in `BrandLogo.tsx`
- *   (re-run the script to emit `appicon-<id>.png`). Settings + the sidebar render
- *   it automatically.
+ * A new skin needs an entry here, an `html.dark[data-skin="<id>"]` block in index.css, an i18n
+ * label in the `settings` and `nav` namespaces, and an accent hue in
+ * `scripts/generate-logo-skins.py` plus a `LOGO_BY_SKIN` entry in `BrandLogo.tsx`.
  */
 export interface ThemeDef {
   id: string;
   base: ThemeBase;
   /** i18n key (present in both the `settings` and `nav` namespaces). */
   labelKey: string;
-  /** When the accent isn't blue, opt the skin into the `np-accent-remap` marker class
-   *  so index.css remaps hardcoded Tailwind blues → the skin accent. The blue `light`
-   *  default omits it. */
+  /** Opts a non-blue skin into the `np-accent-remap` marker class so index.css remaps
+   *  hardcoded Tailwind blues to the skin accent. Omitted by the blue `light` default. */
   remapBlue?: boolean;
 }
 
-// Display order (left→right in the Settings picker, and the sidebar cycle/popover): all
-// light skins first, then all dark skins, each running default → tinted → bank. `system`
-// is appended by consumers, so it always lands last.
+// Display order in the Settings picker and the sidebar cycle: all light skins first, then all
+// dark skins, each running from default to tinted to bank. Consumers append `system`, so it
+// always lands last.
 export const THEMES = [
   { id: 'light', base: 'light', labelKey: 'themeLight' },
   { id: 'light-grey', base: 'light', labelKey: 'themeLightGrey', remapBlue: true },

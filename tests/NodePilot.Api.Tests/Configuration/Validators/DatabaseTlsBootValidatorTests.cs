@@ -140,7 +140,8 @@ public sealed class DatabaseTlsBootValidatorTests
             ["Deployment:Mode"] = "Desktop",
             ["Database:Provider"] = "postgres",
             ["Database:AllowInsecureTls"] = "true",
-            // No ASPNETCORE_ENVIRONMENT → resolves to Production; Desktop still permits loopback.
+            // No ASPNETCORE_ENVIRONMENT set; resolves to Production. Desktop still permits
+            // loopback.
             ["ConnectionStrings:Postgres"] = "Host=127.0.0.1;Database=np",
         }).Should().ContainSingle(i => i.Severity == BootValidationSeverity.Warning);
 

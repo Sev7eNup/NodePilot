@@ -6,7 +6,7 @@ import { setupServer } from 'msw/node';
 import type { Node, Edge } from '@xyflow/react';
 import { WorkflowDiffModal } from '../../../components/designer/overlays/WorkflowDiffModal';
 
-// Store-driven confirm replaces the native confirm(); default-resolve true (user confirms).
+// The store-driven confirm replaces the native confirm(); the mock resolves true.
 vi.mock('../../../stores/confirmStore', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../../../stores/confirmStore')>();
   return { ...mod, confirmDialog: vi.fn().mockResolvedValue(true) };
@@ -83,7 +83,7 @@ describe('WorkflowDiffModal', () => {
 
     await waitFor(() => expect(screen.getByText('Version 2')).toBeInTheDocument());
     expect(screen.getByText('Version 1')).toBeInTheDocument();
-    // Version 3 is the current — must be hidden.
+    // Version 3 is the current one and must be hidden.
     expect(screen.queryByText('Version 3')).not.toBeInTheDocument();
   });
 
@@ -105,7 +105,7 @@ describe('WorkflowDiffModal', () => {
       ),
     );
 
-    // Current has nodeA (changed) + nodeB (added) — node from base "removed".
+    // The current definition changes node a and adds node b.
     renderModal(
       [
         node('a', 'NewA'), // changed: data differs
@@ -118,7 +118,7 @@ describe('WorkflowDiffModal', () => {
     fireEvent.click(screen.getByText('Version 1'));
 
     await waitFor(() => expect(screen.getByText('Added')).toBeInTheDocument());
-    // Stats: 1 added (b), 0 removed, 1 changed (a)
+    // Expected stats: 1 node added (b), 0 removed, 1 changed (a).
     expect(screen.getByText('Nodes added')).toBeInTheDocument();
     expect(screen.getByText('Nodes changed')).toBeInTheDocument();
   });
@@ -162,7 +162,7 @@ describe('WorkflowDiffModal', () => {
       ),
     );
 
-    // Current: same nodes but a different edge
+    // The current definition keeps the same nodes but uses a different edge.
     renderModal([node('a', 'A'), node('b', 'B')], [edge('e2', 'b', 'a')]);
 
     await waitFor(() => expect(screen.getByText('Version 1')).toBeInTheDocument());
@@ -206,7 +206,7 @@ describe('WorkflowDiffModal', () => {
   it('restoreButton_confirmsAndPostsRollbackWhenWritable', async () => {
     const onClose = vi.fn();
     const rollbackSeen = vi.fn();
-    // confirmDialog mock resolves true by default (user confirms).
+    // The confirmDialog mock resolves true, so the restore proceeds.
     server.use(
       http.get(`${BASE}/api/workflows/wf-1/versions`, () =>
         HttpResponse.json([

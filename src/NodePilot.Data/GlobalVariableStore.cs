@@ -23,9 +23,8 @@ public class GlobalVariableStore : IGlobalVariableStore
     /// <summary>
     /// Pluggable secret-protector constructor. Marked with
     /// <see cref="ActivatorUtilitiesConstructorAttribute"/> so DI picks this ctor
-    /// unambiguously — the previous IConfiguration-taking overload was removed because
-    /// it produced an <c>AmbiguousMatchException</c> at runtime when both ctors
-    /// resolved equally.
+    /// unambiguously; without it, multiple resolvable constructors produce an
+    /// <c>AmbiguousMatchException</c> at runtime.
     /// </summary>
     [ActivatorUtilitiesConstructor]
     public GlobalVariableStore(NodePilotDbContext db, ISecretProtector protector, ILogger<GlobalVariableStore>? logger = null)
@@ -59,15 +58,11 @@ public class GlobalVariableStore : IGlobalVariableStore
         foreach (var v in rows)
         {
             try { dict[v.Name] = Decode(v); }
-            // Per-row isolation: a single broken secret must not poison the whole map.
-            // Three failure classes we tolerate by skipping just the one entry:
-            //   - CryptographicException: scope mismatch, moved host, profile re-imaged,
-            //     wrong AES key, missing tag.
-            //   - FormatException: stored Value isn't valid Base64 (DB corruption / a
-            //     manual UPDATE that stomped the column).
-            //   - ArgumentException: AES-GCM ciphertext too short for header+nonce+tag.
-            // Anything else (DB I/O, OOM, ThreadAborted) propagates so we don't silently
-            // mask infrastructure problems as "secret unresolvable".
+            // A single broken secret must not poison the whole map: skip only that entry.
+            // Tolerated failures are CryptographicException (scope mismatch, moved host,
+            // wrong key), FormatException (stored Value isn't valid Base64), and
+            // ArgumentException (ciphertext too short for header/nonce/tag). Anything else
+            // propagates so infrastructure problems aren't masked as "unresolvable".
             catch (Exception ex) when (ex is CryptographicException || ex is FormatException || ex is ArgumentException)
             {
                 broken.Add(v.Name);
@@ -107,11 +102,10 @@ public class GlobalVariableStore : IGlobalVariableStore
         var v = await _db.GlobalVariables.FindAsync([id], ct)
             ?? throw new KeyNotFoundException($"GlobalVariable {id} not found");
 
-        // M-24: demoting a secret to non-secret without a new plaintext value would decrypt
-        // the stored ciphertext and persist it in the clear — effectively an unintentional
-        // secret leak into any future DB dump / audit export / UI read. Refuse the flip
-        // unless the caller explicitly provides a new plaintext value (at which point the
-        // old ciphertext is replaced rather than decrypted-into-cleartext).
+        // Demoting a secret to non-secret without a new plaintext value would decrypt the
+        // stored ciphertext and persist it in the clear — a secret leak into any future DB
+        // dump, audit export, or UI read. Refuse the flip unless the caller provides a new
+        // plaintext value; only then is the old ciphertext replaced instead of exposed.
         if (v.IsSecret && !isSecret && string.IsNullOrEmpty(value))
         {
             throw new InvalidOperationException(
@@ -121,16 +115,16 @@ public class GlobalVariableStore : IGlobalVariableStore
 
         v.Name = name;
         v.Description = description;
-        // null folderId = "leave the existing folder untouched" (mirrors the value:null convention),
-        // so a caller that doesn't echo a folderId — e.g. `np globals import --upsert` — does not
-        // silently relocate the variable to Root. To move, pass an explicit folder id.
+        // null folderId means "leave the existing folder untouched" (mirrors the value:null
+        // convention), so a caller that omits it — e.g. `np globals import --upsert` — does
+        // not silently relocate the variable to Root. Pass an explicit folder id to move it.
         if (folderId is not null) v.FolderId = folderId.Value;
         v.UpdatedAt = DateTime.UtcNow;
         v.UpdatedBy = updatedBy;
 
-        // Secret toggle requires a value change: flipping IsSecret=true without providing a
-        // fresh value would Base64-"encrypt" the old plaintext, which is clearly wrong.
-        // Flipping IsSecret=false without a value is blocked above by the M-24 guard.
+        // Secret toggle requires a value change: flipping IsSecret=true without a fresh value
+        // would Base64-"encrypt" the old plaintext, which is wrong. Flipping IsSecret=false
+        // without a value is blocked above by the demotion guard.
         if (value is not null)
         {
             v.Value = Encode(value, isSecret);
@@ -139,7 +133,7 @@ public class GlobalVariableStore : IGlobalVariableStore
         else if (v.IsSecret != isSecret)
         {
             // Only reachable for the isSecret=false -> true promotion path with no new value.
-            // Re-encode the CURRENT plaintext as ciphertext.
+            // Re-encode the current plaintext as ciphertext.
             var current = Decode(v);
             v.Value = Encode(current, isSecret);
             v.IsSecret = isSecret;
@@ -168,11 +162,10 @@ public class GlobalVariableStore : IGlobalVariableStore
 
     public async Task<ReencryptionSummary> ReencryptAllSecretsAsync(CancellationToken ct)
     {
-        // Decrypt with the active protector (which falls back to legacy when wrapped
-        // in MigratingSecretProtector) and re-encrypt with the same instance. Non-secret
-        // rows are skipped — they're stored plaintext anyway. Decrypt failures are
-        // recorded per-row and returned to the caller so the operator gets a complete
-        // accounting (succeed + skipped + reasons), not just a "rewritten N" tally.
+        // Decrypt with the active protector (falls back to legacy when wrapped in
+        // MigratingSecretProtector) and re-encrypt with the same instance. Non-secret rows
+        // are skipped since they're stored plaintext. Decrypt failures are recorded per row
+        // and returned to the caller for a complete accounting, not just a rewritten count.
         var rows = await _db.GlobalVariables.Where(v => v.IsSecret).ToListAsync(ct);
         var rewritten = 0;
         var skipped = new List<ReencryptionSkip>();

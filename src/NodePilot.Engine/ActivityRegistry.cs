@@ -11,7 +11,7 @@ namespace NodePilot.Engine;
 /// <list type="bullet">
 /// <item><b>Production singleton</b> via <see cref="ActivityRegistry(IServiceProvider)"/>:
 /// scans the registered executors once at startup, caches a <see cref="Dictionary{TKey,TValue}"/>
-/// of <c>activityType → Type</c>, then resolves a fresh executor instance from the per-step scope
+/// of <c>activityType to Type</c>, then resolves an executor from the per-step scope
 /// on every <see cref="GetExecutor(string, IServiceProvider)"/> call. No per-step dictionary
 /// rebuild, no enumeration of all registered executors per step.</item>
 ///
@@ -48,7 +48,7 @@ public class ActivityRegistry
     /// <summary>
     /// Production ctor — scans <see cref="IActivityExecutor"/> registrations once via a
     /// bootstrap scope to learn each executor's <see cref="IActivityExecutor.ActivityType"/>,
-    /// then caches the <c>activityType → Type</c> map. Subsequent
+    /// then caches the <c>activityType -> Type</c> map. Subsequent
     /// <see cref="GetExecutor(string, IServiceProvider)"/> calls resolve fresh instances from
     /// the supplied per-step scope, so no scoped state is shared between steps.
     /// </summary>
@@ -74,7 +74,8 @@ public class ActivityRegistry
         {
             if (_instances.TryGetValue(activityType, out var instance))
                 return instance;
-            // custom:<key> activities all map to the single sentinel-registered CustomActivityExecutor.
+            // custom:<key> activities all map to the single sentinel-registered
+            // CustomActivityExecutor.
             if (CustomActivityType.IsCustomType(activityType)
                 && _instances.TryGetValue(CustomActivityType.ExecutorSentinel, out var customInstance))
                 return customInstance;
@@ -103,7 +104,8 @@ public class ActivityRegistry
             if (!_typeMap.TryGetValue(activityType, out var executorType))
             {
                 // custom:<key> activities are not individually registered — route every one of them
-                // to the single CustomActivityExecutor (registered under the reserved sentinel type).
+                // to the single CustomActivityExecutor (registered under the reserved sentinel
+                // type).
                 if (CustomActivityType.IsCustomType(activityType)
                     && _typeMap.TryGetValue(CustomActivityType.ExecutorSentinel, out var customType))
                     return (IActivityExecutor)scopedProvider.GetRequiredService(customType);

@@ -4,9 +4,7 @@ namespace NodePilot.Engine.Options;
 /// HTTP-proxy settings for the outgoing <c>restApi</c> activity, bound from
 /// <c>RestApi:Proxy:*</c>. When <see cref="Enabled"/> is <c>false</c> (default), the named
 /// NodePilot HttpClient explicitly sets <c>UseProxy=false</c> so it does not silently pick
-/// up the Windows system proxy — that would route workflow traffic through whatever the
-/// user account happens to have configured, which surprised operators in an early lab
-/// deployment.
+/// up the Windows system proxy and route workflow traffic through it.
 /// </summary>
 /// <remarks>
 /// Per-step overrides (<c>proxyMode</c>, <c>proxyAddress</c>, <c>noProxy</c>) are resolved

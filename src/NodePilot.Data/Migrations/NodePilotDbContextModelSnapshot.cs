@@ -17,7 +17,7 @@ namespace NodePilot.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.5")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -404,6 +404,84 @@ namespace NodePilot.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("DirectoryMemberships");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.ExecutionDispatchOutboxItem", b =>
+                {
+                    b.Property<Guid>("ExecutionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("AvailableAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("BypassMaintenanceWindow")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("CallDepth")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("DebugEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LeaseExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LeaseOwner")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("MissingWorkflowMessage")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid?>("ParentExecutionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PreOwnershipFailurePrefix")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<byte[]>("ProtectedParameters")
+                        .HasColumnType("bytea");
+
+                    b.Property<bool>("RequireMaintenanceWindowCheck")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("RequireWorkflowEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("StartedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("TimeoutSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TriggeredBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("WorkflowId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ExecutionId");
+
+                    b.HasIndex("LeaseExpiresAt");
+
+                    b.HasIndex("AvailableAt", "Priority");
+
+                    b.ToTable("ExecutionDispatchOutbox");
                 });
 
             modelBuilder.Entity("NodePilot.Core.Models.ExternalIdentity", b =>
@@ -1765,6 +1843,17 @@ namespace NodePilot.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.ExecutionDispatchOutboxItem", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.WorkflowExecution", "Execution")
+                        .WithOne()
+                        .HasForeignKey("NodePilot.Core.Models.ExecutionDispatchOutboxItem", "ExecutionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Execution");
                 });
 
             modelBuilder.Entity("NodePilot.Core.Models.ExternalIdentity", b =>

@@ -6,7 +6,8 @@ using NodePilot.Data;
 namespace NodePilot.Scheduler.SystemAlerts.Sources;
 
 /// <summary>
-/// Global metric source: the count of QUEUED executions (Pending only — running work excluded, unlike
+/// Global metric source: the count of QUEUED executions (Pending only — running work excluded,
+/// unlike
 /// <see cref="BacklogSource"/>). One <c>pending</c> field on a constant-key observation.
 /// </summary>
 public sealed class PendingSource : ISystemAlertSource

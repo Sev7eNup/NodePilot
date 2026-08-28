@@ -4,19 +4,16 @@ namespace NodePilot.Engine.Execution;
 /// Flattens an exception chain into a single human-readable line.
 ///
 /// <para>
-/// Motivation (field finding 2026-08-02): a failing step persisted only
-/// <c>ex.Message</c>. For wrapper exceptions that is worthless — an
-/// <c>DbUpdateException</c> stores the literal 87-character string
-/// "An error occurred while saving the entity changes. See the inner exception for
-/// details.", and the actual cause (a primary-key violation) was only recoverable from
-/// the server log. The same happened with SMTP, where <c>SmtpException</c> contributes
-/// nothing beyond "Failure sending mail.". Both classes of error are diagnosable only
-/// through their inner exception, so the inner chain has to travel with the message.
+/// <c>ex.Message</c> alone is often useless for wrapper exceptions such as
+/// <c>DbUpdateException</c> or <c>SmtpException</c>, which describe only the wrapper
+/// and hide the real cause in <c>InnerException</c>. This renders the full chain so the
+/// cause travels with the message.
 /// </para>
 /// </summary>
 internal static class ExceptionDetail
 {
-    /// <summary>Maximum number of chain links rendered — enough for cause-of-cause, short of a stack dump.</summary>
+    /// <summary>Maximum number of chain links rendered — enough for cause-of-cause, short of a
+    /// stack dump.</summary>
     private const int MaxLinks = 4;
 
     /// <summary>

@@ -59,8 +59,8 @@ public sealed class BootstrapGateTests : IDisposable
     [Fact]
     public async Task EmptyDb_NonAdminLdap_Refused_NoUserCreated()
     {
-        // No GlobalRoleMappings → user resolves to Viewer. With an empty DB this attempt
-        // would close the bootstrap window if we let it through. Expect refusal.
+        // No GlobalRoleMappings, so the user resolves to Viewer. On an empty DB, letting this
+        // through would close the bootstrap window, so it must be refused.
         var mapper = NewMapper(new LdapOptions
         {
             Enabled = true, UpnSuffix = "firma.de", AllowedGroupSids = [AllowedGroup],

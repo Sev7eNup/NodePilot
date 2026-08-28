@@ -28,7 +28,7 @@ type SizingMode = { chosen: boolean; booted: boolean };
  * Performance tuning tab. The mode card on top decides whether the cards below apply at all:
  * with automatic sizing (the default) NodePilot derives the numbers from the detected CPU and
  * memory, and the configured values sit inert as a preset. Everything here is strict-startup —
- * the runspace pool and the dispatch queue are built once at boot — so a save shows the restart
+ * the runspace pool and dispatch worker pool are built once at boot — so a save shows the restart
  * banner. Threading alone re-applies live, but only while manual tuning is on.
  *
  * The mode form is held here rather than inside the mode card so the cards below react to the
@@ -118,9 +118,9 @@ function SizingModeNote({ mode }: Readonly<{ mode: SizingMode }>) {
 }
 
 /**
- * The plan only governs the fields while automatic sizing is *both* chosen and booted. With
- * manual tuning chosen the operator has to be able to type the values a restart will pick up,
- * and with manual tuning still booted the stored numbers are what the process runs on.
+ * The plan only governs the fields while automatic sizing is both chosen and booted. With
+ * manual tuning chosen, the operator must be able to type the values a restart will pick up;
+ * with manual tuning still booted, the stored numbers are what the process runs on.
  */
 const planGovernsFields = (mode: SizingMode) => !mode.chosen && !mode.booted;
 
@@ -164,11 +164,9 @@ function EngineCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: Effe
   });
   if (ui.loading) return <Card icon={Chip} title={t('perf.engineCardTitle')}><p className="text-sm">{t('loading')}</p></Card>;
   const { form, set, data, save, errors } = ui;
-  // Reuse the env-lock path to grey out the fields the sizing plan governs: same disabled
-  // styling, and under automatic sizing those values genuinely are not in force. Two fields are
-  // exempt because the plan does not cover them — the debug pause, and MaxConcurrentExecutions,
-  // which is a safety cap against trigger loops rather than a performance knob and therefore
-  // stays configuration-driven in both modes.
+  // Reuse the env-lock path to grey out fields the sizing plan governs: same disabled styling,
+  // and under automatic sizing those values are not in force. MaxConcurrentExecutions and the
+  // debug pause are exempt — they are safety/config knobs the plan does not cover.
   const planGoverns = (k: string) =>
     k.startsWith('Engine:Runspace:') || k === 'Engine:MaxConcurrentSteps';
   const isEnvLocked = (k: string) => ui.isEnvLocked(k) || (planGovernsFields(mode) && planGoverns(k));
@@ -221,7 +219,7 @@ function EngineCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: Effe
 
 function ExecutionDispatchCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: EffectiveSizing }>) {
   const { t } = useTranslation('adminSettings');
-  const ui = useSectionForm<{ capacity: number; workerCount: number }>('ExecutionDispatch', { capacity: 2048, workerCount: 600 });
+  const ui = useSectionForm<{ workerCount: number }>('ExecutionDispatch', { workerCount: 600 });
   if (ui.loading) return <Card icon={Layers} title={t('perf.executionDispatchCardTitle')}><p className="text-sm">{t('loading')}</p></Card>;
   const { form, set, data, save, errors } = ui;
   const isEnvLocked = (k: string) => ui.isEnvLocked(k) || planGovernsFields(mode);
@@ -229,16 +227,12 @@ function ExecutionDispatchCard({ mode, sizing }: Readonly<{ mode: SizingMode; si
     <Card icon={Layers} title={t('perf.executionDispatchCardTitle')}>
       <SizingModeNote mode={mode} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <NumberInput label={t('perf.queueCapacity')} value={form.capacity} min={1} max={100000}
-          onChange={(v) => set({ ...form, capacity: v })}
-          configKey="ExecutionDispatch:Capacity" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
-          hint={effectiveHint(sizing, 'ExecutionDispatch:Capacity', t)} />
         <NumberInput label={t('perf.workerCount')} value={form.workerCount} min={1} max={10000}
           onChange={(v) => set({ ...form, workerCount: v })}
           configKey="ExecutionDispatch:WorkerCount" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
           hint={effectiveHint(sizing, 'ExecutionDispatch:WorkerCount', t)} />
       </div>
-      <ErrorsAndSave errors={errors} onSave={() => save({ Capacity: form.capacity, WorkerCount: form.workerCount })} />
+      <ErrorsAndSave errors={errors} onSave={() => save({ WorkerCount: form.workerCount })} />
       {ui.dialog}
     </Card>
   );
@@ -253,7 +247,7 @@ function ThreadingCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: E
   return (
     <Card icon={Box} title={t('perf.threadingCardTitle')}>
       {/* The ThreadPool floor is the one sizing knob that can be re-applied without a restart —
-          but only while the process BOOTED into manual tuning: `ThreadPoolTuningService` follows
+          but only while the process booted into manual tuning: `ThreadPoolTuningService` follows
           the boot plan, so ticking the checkbox does not make a save take effect live. */}
       <HotReloadHint isHotReloadable={data.isHotReloadable && mode.booted} />
       <SizingModeNote mode={mode} />

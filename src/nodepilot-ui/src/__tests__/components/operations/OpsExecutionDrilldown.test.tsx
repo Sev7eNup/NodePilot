@@ -139,7 +139,7 @@ describe('OpsExecutionDrilldown', () => {
   });
 
   it('gates quarantine on folder-Edit, not on folder-Run', () => {
-    // The distinction that matters: disable needs Edit, cancel needs only Run.
+    // Disable requires Edit rights, while cancel requires only Run.
     const { onQuarantine } = renderDrilldown({ canRun: true, canEdit: true });
     fireEvent.click(screen.getByRole('button', { name: 'Quarantine' }));
     expect(onQuarantine).toHaveBeenCalled();

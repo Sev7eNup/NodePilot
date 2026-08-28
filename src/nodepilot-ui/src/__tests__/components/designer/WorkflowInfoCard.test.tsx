@@ -4,8 +4,8 @@ import { WorkflowInfoCard } from '../../../components/designer/WorkflowInfoCard'
 import { formatDuration } from '../../../lib/format';
 import type { Workflow } from '../../../types/api';
 
-// We never assert on formatRelative() output (it is "now"-relative and would be
-// time-dependent); only stable, deterministic fields are checked.
+// formatRelative() output is relative to the current time, so these tests assert only on
+// stable, deterministic fields.
 function makeWorkflow(overrides: Partial<Workflow> = {}): Workflow {
   return {
     id: 'wf-1',

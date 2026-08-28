@@ -44,7 +44,8 @@ public sealed class MaintenanceGetCommand : BaseCommand<MaintenanceIdSettings>
 }
 
 // Shared option surface for create/update. On update, only the provided options override the
-// current value (the command fetches the current window first). Not sealed — MaintenanceUpdateSettings
+// current value (the command fetches the current window first). Not sealed —
+// MaintenanceUpdateSettings
 // extends it to add the window-id argument.
 public class MaintenanceWriteSettings : GlobalSettings
 {
@@ -151,7 +152,8 @@ public sealed class MaintenanceUpdateCommand : BaseCommand<MaintenanceUpdateSett
         if (s.Start is not null && !MaintenanceCommandHelpers.TryParseTime(s.Start, out startMin, out var err1)) { writer.Error(err1); return ExitCodes.Error; }
         if (s.End is not null && !MaintenanceCommandHelpers.TryParseTime(s.End, out endMin, out var err2)) { writer.Error(err2); return ExitCodes.Error; }
 
-        // Targets: replace only when the caller passed new ones for the active scope; otherwise keep current.
+        // Targets: replace only when the caller passed new ones for the active scope; otherwise
+        // keep current.
         var targets = (s.Folders.Length > 0 || s.Workflows.Length > 0)
             ? MaintenanceCommandHelpers.BuildTargets(scope, s.Folders, s.Workflows)
             : current.Targets;

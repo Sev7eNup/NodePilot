@@ -8,10 +8,10 @@ namespace NodePilot.Api.Tests.Architecture;
 
 /// <summary>
 /// <c>BackupController.ParsePolicies</c> expands a bare conflict policy ("overwrite") across
-/// every section. It used to do so from a hand-written array that had fallen three sections
-/// behind <see cref="BackupSections"/>; <c>RestoreState.Policy</c> then answered
-/// <c>Skip</c> for the missing ones, so a DR restore reported success while leaving alerting
-/// rules, custom activities and global-variable folders untouched.
+/// every section, enumerating from <see cref="BackupSections.All"/>. A hand-written array here
+/// can drift behind <see cref="BackupSections"/>; <c>RestoreState.Policy</c> then answers
+/// <c>Skip</c> for the missing sections, so a DR restore can report success while leaving
+/// sections such as alerting rules, custom activities or global-variable folders untouched.
 ///
 /// <para>These tests bind the enumeration to reality from both ends: every section constant is
 /// listed in <see cref="BackupSections.All"/>, and every section the restore service actually
@@ -19,7 +19,8 @@ namespace NodePilot.Api.Tests.Architecture;
 /// </summary>
 public sealed class BackupSectionCoverageTests
 {
-    /// <summary>Section-name constants, excluding the schema/version strings next to them.</summary>
+    /// <summary>Section-name constants, excluding the schema/version strings next to
+    /// them.</summary>
     private static readonly string[] SectionConstants = typeof(BackupSections)
         .GetFields(BindingFlags.Public | BindingFlags.Static)
         .Where(f => f.IsLiteral && f.FieldType == typeof(string))
@@ -67,8 +68,8 @@ public sealed class BackupSectionCoverageTests
     }
 
     /// <summary>
-    /// The controller must not reintroduce a local copy of the section list — that is exactly
-    /// how the three sections went missing.
+    /// The controller must not reintroduce a local copy of the section list — a hand-written
+    /// copy can silently drift behind BackupSections.All.
     /// </summary>
     [Fact]
     public void ParsePolicies_EnumeratesFromBackupSectionsAll()

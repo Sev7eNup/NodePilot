@@ -2,26 +2,15 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 45 — Shared Folder Permissions Grant / Revoke (lines 3253-3276).
+ * E2ETests.md Part 45, shared folder permissions grant and revoke.
  *
+ * Folder RBAC is enforced server-side, so a single browser session cannot observe another user
+ * gaining access. The test asserts the round-trip the admin UI performs instead: list folders,
+ * list grants, POST a grant, DELETE a grant. The manage-permissions button renders only when
+ * folder.capabilities.canAdmin is true and opens the permissions modal.
+ * Modal labels are translated, so the assertions use the stable data-testid hooks
+ * (shared-folder-perms-*) rather than label text.
  * Hermetic: page.route() mocks only (predicate catch-all from fixtures/mockApi.ts).
- *
- * The grant/revoke API is server-side RBAC — we cannot observe "Operator B now sees the
- * folder" in a single browser session. What IS observable, and what the test asserts, is the
- * round-trip the Admin UI performs against the documented endpoints:
- *
- *   - GET  /api/shared-workflow-folders                     → folder list (canAdmin=true)
- *   - GET  /api/shared-workflow-folders/{id}/permissions    → existing grants
- *   - POST /api/shared-workflow-folders/{id}/permissions    → grant {principalType,principalKey,role}
- *   - DELETE /api/shared-workflow-folders/{id}/permissions/{permId} → revoke
- *
- * Flow (WorkflowsPage → SharedFolderTree → SharedFolderPermissionsModal):
- *   Admin selects a folder in the sidebar tree → a "manage permissions" button renders only
- *   when folder.capabilities.canAdmin is true → opens the modal → list/grant/revoke.
- *
- * The modal labels are translated (workflows:folder.perms.*), so Playwright — which renders
- * EN — sees "Grant"/"Remove". Every control also carries a stable data-testid hook
- * (shared-folder-perms-*); we lean on those test-ids rather than on label text.
  */
 
 const ADMIN = { id: MOCK_USER.id, username: 'e2e-admin', role: 'Admin' };
@@ -36,14 +25,14 @@ const GRANT_ID = '99999999-0000-0000-0000-000000000001';
 function folder(overrides: Record<string, unknown> = {}) {
   return {
     id: FOLDER_ID,
-    parentFolderId: '00000000-0000-0000-0000-000000000001', // child of Root → renders as a tree node
+    parentFolderId: '00000000-0000-0000-0000-000000000001', // child of Root, renders as a tree node
     name: 'Finance',
     path: FOLDER_PATH,
     depth: 1,
     createdAt: '2026-06-01T00:00:00.000Z',
     createdByUserId: null,
     workflowCount: 0,
-    capabilities: { canRead: true, canRun: true, canEdit: true, canAdmin: true },
+    capabilities: { canRead: true, canRun: true, canEdit: true, canDelete: true, canAdmin: true },
     ...overrides,
   };
 }
@@ -60,7 +49,7 @@ function folderList() {
       createdAt: '2026-06-01T00:00:00.000Z',
       createdByUserId: null,
       workflowCount: 0,
-      capabilities: { canRead: true, canRun: true, canEdit: true, canAdmin: true },
+      capabilities: { canRead: true, canRun: true, canEdit: true, canDelete: true, canAdmin: true },
     },
     folder(),
   ]);
@@ -92,7 +81,7 @@ async function asAdmin(page: Page) {
   );
 }
 
-/** Open the permissions modal: navigate, select the Finance folder, click "manage permissions". */
+/** Opens the permissions modal: navigate, select the Finance folder, click manage permissions. */
 async function openModal(page: Page) {
   await page.goto('/workflows');
   const folderRow = page.locator(`[data-testid="shared-folder-${FOLDER_ID}"]`);
@@ -133,8 +122,8 @@ test.describe('Shared Folder Permissions Grant/Revoke (Teil 45)', () => {
 
   test('45.1 — Grant: picking a user + role + "Vergeben" POSTs {principalType:User, principalKey, role}', async ({ page }) => {
     let grantBody: { principalType?: string; principalKey?: string; role?: string } | null = null;
-    // Flag (not a call-counter): React StrictMode double-invokes mount effects in dev, so the
-    // initial reload() can fire the GET twice — a counter would prematurely flip to "populated".
+    // A flag rather than a call counter: React StrictMode double-invokes mount effects in dev,
+    // so the initial reload() can fire the GET twice and a counter would flip too early.
     let granted = false;
     await page.route(`**/api/shared-workflow-folders/${FOLDER_ID}/permissions`, (route) => {
       const method = route.request().method();
@@ -198,8 +187,7 @@ test.describe('Shared Folder Permissions Grant/Revoke (Teil 45)', () => {
     // The grant is present.
     await expect(page.getByText(PICK_USER.username, { exact: false })).toBeVisible({ timeout: 10_000 });
 
-    // Click the revoke ("Entfernen" / Remove) action in the grant row, then confirm
-    // via the in-app ConfirmHost dialog (native confirm() was retired).
+    // Click the revoke action in the grant row, then confirm via the in-app ConfirmHost dialog.
     await page.getByRole('button', { name: /entfernen|remove|revoke/i }).first().click();
     await page.getByRole('button', { name: 'OK' }).click();
 

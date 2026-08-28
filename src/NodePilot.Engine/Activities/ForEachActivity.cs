@@ -11,41 +11,12 @@ using NodePilot.Engine.PowerShell;
 namespace NodePilot.Engine.Activities;
 
 /// <summary>
-/// Iterates over a collection and invokes a child workflow once per item —
-/// NodePilot's equivalent of a for-each / foreach-parallel loop. Each iteration
-/// gets its own full <see cref="WorkflowExecution"/> row, so per-item progress
-/// and return-data are visible in the UI / execution list / SignalR stream.
-///
-/// Config:
-///   items                : string, required. Template-resolved to either a JSON array
-///                          or a newline-separated list. <c>itemsFormat</c> controls parsing.
-///   itemsFormat          : "auto" | "json" | "lines". Default "auto" — tries JSON first,
-///                          falls back to line-split (trimmed, empty lines dropped).
-///   childWorkflowNameOrId: string, required. GUID or unique workflow name.
-///   itemParameterName    : string. Default "item". Name of the per-iteration param handed
-///                          to the child (available in child as {{manual.item}} etc.
-///                          via manual-trigger input parameters).
-///   indexParameterName   : string. Default "index". 0-based iteration index.
-///   parameters           : object, optional. Additional static params forwarded to every child
-///                          invocation (same shape as startWorkflow).
-///   maxParallelism       : int, default 1. Concurrency. &lt;=0 means "no per-foreach limit"
-///                          (still bounded by the engine-wide <see cref="ISubWorkflowGate"/>,
-///                          which is shared with <see cref="StartWorkflowActivity"/> so an
-///                          accidental thousand-item collection can't saturate the process).
-///   continueOnError      : bool, default false. If true, iteration continues after a child
-///                          failure; step succeeds iff every item succeeded.
-///   timeoutSecondsPerItem: int, default 3600. Per-child timeout.
-///
-/// Outputs (OutputParameters):
-///   total, succeeded, failed — counts
-///   firstError               — error message from the first failing item, if any
-///   results                  — JSON array of {index, item, status, executionId, error}
-///
-/// Guards:
-///   - self-invocation (child == current workflow) rejected.
-///   - call-depth tracked via __callDepth (shared with startWorkflow).
-///   - reserved "__"-prefix rejected for user-supplied parameter keys (incl. the custom
-///     itemParameterName/indexParameterName).
+/// Iterates over a collection and invokes a child workflow once per item — a for-each /
+/// foreach-parallel loop. Each iteration runs as its own <see cref="WorkflowExecution"/>, so
+/// per-item progress and return data are visible in the UI, execution list, and SignalR stream.
+/// Item parsing supports the <c>"auto"</c>, <c>"json"</c>, and <c>"lines"</c> formats.
+/// Supports configurable parallelism (capped by <see cref="ISubWorkflowGate"/>), per-item
+/// timeouts, and a continue-on-error mode that lets the loop finish after individual failures.
 /// </summary>
 public class ForEachActivity : IActivityExecutor
 {
@@ -114,12 +85,9 @@ public class ForEachActivity : IActivityExecutor
                 : Math.Min(parsed.MaxParallelism, MaxParallelismHardCap),
             StepId: context.StepId);
 
-        // Release the global step-gate slot for the duration of the iterations, exactly like
-        // StartWorkflowActivity does for a synchronous child. Both wait on child executions
-        // whose own steps draw from the same gate, so a parent that keeps its slot while
-        // waiting can starve the children it is waiting for — with enough concurrent forEach
-        // steps that is a hard deadlock, not just slow. See the deadlock note on
-        // WorkflowScheduler._stepSemaphore.
+        // Releases the global step-gate slot for the iterations, like StartWorkflowActivity does
+        // for a synchronous child: both wait on children drawing from the same gate, so holding
+        // the slot while waiting could deadlock a parent against the children it depends on.
         var results = await WorkflowScheduler.RunWithCurrentStepGateReleasedAsync(
             () => RunIterationsAsync(runCtx, ct), ct);
         return BuildAggregateResult(runCtx, results, sw);
@@ -170,10 +138,10 @@ public class ForEachActivity : IActivityExecutor
             ItemsFormat: config.GetStringOrNull("itemsFormat")?.ToLowerInvariant() ?? "auto",
             ItemParamName: itemParamName,
             IndexParamName: indexParamName,
-            // D8: clamp to a positive value before it reaches CancellationTokenSource(TimeSpan).
-            // A user-supplied 0 produces TimeSpan.Zero which cancels the CTS immediately, and
-            // a negative value throws ArgumentOutOfRangeException — neither is a useful per-item
-            // budget. Treat <=0 as "use default" (3600s), same as we do for MaxParallelism.
+            // Clamps to a positive value before it reaches CancellationTokenSource(TimeSpan): a
+            // user-supplied 0 produces TimeSpan.Zero (cancels immediately), and a negative value
+            // throws ArgumentOutOfRangeException. Non-positive values fall back to the 3600s
+            // default.
             TimeoutPerItem: config.TryGetProperty("timeoutSecondsPerItem", out var t) && t.TryGetInt32(out var ts) && ts > 0 ? ts : 3600,
             ContinueOnError: config.GetBool("continueOnError", false),
             MaxParallelism: config.TryGetProperty("maxParallelism", out var mp) && mp.TryGetInt32(out var mpv) ? mpv : 1);
@@ -191,10 +159,9 @@ public class ForEachActivity : IActivityExecutor
             return (null, $"forEach: failed to parse items ({format}): {ex.Message}");
         }
 
-        // M-9: hard cap on items. A misconfigured upstream step (e.g. `Get-ADUser -Filter *`)
-        // can produce a million-element array that detonates the engine — thousands of
-        // WorkflowExecution rows, unbounded DbContext growth, blocked sub-workflow gate.
-        // Caller is expected to filter / page upstream; we fail fast with a clear message.
+        // Hard cap on items: a misconfigured upstream step (e.g. Get-ADUser -Filter *) could
+        // otherwise produce a huge array, overwhelming the engine with WorkflowExecution rows
+        // and unbounded DbContext growth. Callers are expected to filter or page upstream.
         const int MaxItemCount = 10_000;
         if (list.Count > MaxItemCount)
         {
@@ -228,11 +195,9 @@ public class ForEachActivity : IActivityExecutor
         if (SubWorkflowInvocation.IsSelfInvocation(parentExec, childWorkflow))
             return (0, "forEach: self-invocation is not allowed (direct recursion)");
 
-        // RBAC sub-workflow runtime check — identical model to StartWorkflowActivity.
-        // Without this, an operator who lost folder access between Publish and Run could
-        // still iterate a forEach over a child workflow they no longer have permission to
-        // start. Defense in depth: PrePublishChecklist enforces the same check at save
-        // time, but folder permissions can be revoked or rotated mid-flight.
+        // RBAC check for the sub-workflow, matching StartWorkflowActivity. Folder permissions
+        // can change after a workflow is published, so PrePublishChecklist's save-time check
+        // is not enough on its own — this runtime check keeps a lost grant from being exploited.
         var blocked = await SubWorkflowInvocation.GetAuthorizationBlockAsync(
             _subWorkflowAuthz, parentExec, childWorkflow, ct);
         if (blocked is not null)
@@ -293,10 +258,9 @@ public class ForEachActivity : IActivityExecutor
 
             var item = rctx.Items[index];
 
-            // Engine-wide back-pressure: also bounded by ISubWorkflowGate so cross-forEach
-            // + startWorkflow contention can't blow past the engine cap. The fixed worker
-            // count is the local concurrency budget, so only this worker set can wait on
-            // the global gate instead of all items racing it simultaneously.
+            // Bounded by ISubWorkflowGate too, so cross-forEach and startWorkflow contention
+            // cannot exceed the engine-wide cap. The fixed worker count is the local budget,
+            // so only these workers wait on the global gate instead of every item racing it.
             var globalAcquired = false;
             try
             {
@@ -336,11 +300,9 @@ public class ForEachActivity : IActivityExecutor
     private async Task<(WorkflowExecution? ChildExec, string? Error)> ExecuteOneAsync(
         RunContext rctx, int index, string item, CancellationToken parentCt)
     {
-        // Merge per-iteration params on top of static. itemParamName/indexParamName
-        // are seeded LAST so they can't be shadowed by user-supplied static entries
-        // (the static loop already rejected __-prefix, so the only collision path is
-        // a user naming a static param "item" / "index" — in that case the iteration
-        // value wins, documented behavior).
+        // Merges per-iteration params on top of the static ones. itemParamName/indexParamName
+        // are set last so they cannot be shadowed by a user-supplied static entry with the same
+        // name — in that collision case the iteration value wins, by design.
         var childParams = new Dictionary<string, string>(rctx.StaticParams, StringComparer.OrdinalIgnoreCase)
         {
             [rctx.ItemParamName] = item,
@@ -376,7 +338,7 @@ public class ForEachActivity : IActivityExecutor
         var skippedCount = results.Count(r => r.Status == "Skipped");
         var firstError = results.FirstOrDefault(r => !string.IsNullOrEmpty(r.Error))?.Error;
 
-        // Serialize per-item results as JSON for downstream consumption via {{step.param.results}}.
+        // Serializes per-item results as JSON, exposed downstream as {{step.param.results}}.
         var resultsJson = JsonSerializer.Serialize(results.Select(r => new
         {
             index = r.Index,

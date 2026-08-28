@@ -103,7 +103,7 @@ public class RunScriptOutputParametersTests
             Script("Write-Output 'just some output'"),
             CancellationToken.None);
         result.Output.Should().Contain("just some output");
-        // No params marker → no user params; only the always-present exitCode remains.
+        // No params marker means no user params; only the always-present exitCode remains.
         result.OutputParameters.Keys.Should().BeEquivalentTo(new[] { "exitCode" });
     }
 

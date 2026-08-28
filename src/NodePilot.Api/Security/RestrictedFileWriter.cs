@@ -5,11 +5,8 @@ using System.Text;
 namespace NodePilot.Api.Security;
 
 /// <summary>
-/// Writes a secret file with owner-only permissions applied **before** the secret content
-/// hits disk. Closes a TOCTOU (time-of-check-to-time-of-use) race — security-audit finding
-/// H-3 — where the previous "write content first, then call SetAccessControl" pattern left
-/// the secret world-readable for the few milliseconds between File.WriteAllText returning
-/// and the ACL helper finishing.
+/// Writes a secret file with owner-only permissions applied before the content hits disk,
+/// so there is no window where the file is briefly world-readable.
 ///
 /// On Windows: create the file with a restrictive NTFS security descriptor (no inheritance,
 /// owner FullControl only) in the same operation that creates the file. On POSIX: create it
@@ -18,7 +15,7 @@ namespace NodePilot.Api.Security;
 /// On any failure, the freshly-created file is deleted so a retry cannot reuse a partially-
 /// secured artifact. The <c>failClosed</c> parameter on <see cref="WriteText"/> selects
 /// between hard-fail (rethrow) for long-lived secrets like the JWT signing key, and
-/// best-effort (return false) when a Development-only caller explicitly accepts that tradeoff.
+/// best-effort (return false) for callers that accept that tradeoff.
 /// </summary>
 internal static class RestrictedFileWriter
 {
@@ -53,10 +50,10 @@ internal static class RestrictedFileWriter
                     $"Secret file parent directory is insecure: {parentSecurity.Reason}");
             }
 
-            // FileMode.CreateNew → fail if path already exists. The two callers (JWT key,
+            // FileMode.CreateNew -> fail if path already exists. The two callers (JWT key,
             // bootstrap token) both check File.Exists first; using CreateNew here turns a
             // race in the caller into a hard error instead of silently overwriting. If
-            // CreateNew throws, we have NOT touched the filesystem — never delete somebody
+            // CreateNew throws, the filesystem was never touched — never delete somebody
             // else's pre-existing artifact in the catch block.
             stream = OperatingSystem.IsWindows()
                 ? CreateWindowsFileWithRestrictiveAcl(path)
@@ -79,7 +76,7 @@ internal static class RestrictedFileWriter
         catch (Exception)
         {
             // Whatever went wrong — ACL refused, write failed, antivirus quarantined — leave
-            // no partial file behind. We only delete files we actually created (createdFile
+            // no partial file behind. Only files actually created here are deleted (createdFile
             // is true), so a CreateNew failure on a pre-existing path leaves it untouched.
             try { stream?.Dispose(); } catch { /* best-effort: stream may already be disposed */ }
             stream = null;
@@ -350,12 +347,10 @@ internal static class RestrictedFileWriter
     /// Renders a SID for an operator: the account name where it still resolves, the raw SID
     /// otherwise — and both when they differ, because the SID is what <c>icacls</c> needs.
     ///
-    /// <para>Naming the principal is the whole point. "grants mutation rights to an untrusted
-    /// principal" is true and useless: the usual cause is a leftover ACE from an earlier
-    /// installation that ran under a different service identity, and without the name there is
-    /// nothing to search for. An orphaned SID — the account was deleted, which is exactly what a
-    /// decommissioned service account looks like — cannot be translated, and that failure is
-    /// itself the answer, so it must never turn into an exception on a boot path.</para>
+    /// <para>Naming the principal matters because the caller needs something to search for,
+    /// not just an "untrusted principal" label. An unresolvable SID usually means the account
+    /// was deleted; that failure is itself the answer and must never raise an exception on a
+    /// boot path.</para>
     /// </summary>
     private static string Describe(SecurityIdentifier? sid)
     {

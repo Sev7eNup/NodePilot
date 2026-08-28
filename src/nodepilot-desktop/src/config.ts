@@ -5,7 +5,7 @@ import { join } from 'node:path';
  * The non-secret handoff contract written by the installer/provisioner to
  * %ProgramData%\NodePilot\desktop.json. It tells the Electron shell which loopback origin to
  * load, which certificate fingerprint to pin, and which Windows service the "Restart backend"
- * action may control. It contains NO secrets.
+ * action may control. It contains no secrets.
  */
 export interface DesktopConfig {
   schemaVersion: 1;
@@ -26,8 +26,8 @@ export function desktopConfigPath(): string {
 
 /**
  * Loads and strictly validates desktop.json. Every field is checked because these values drive
- * security-sensitive behaviour (which origin loads, which cert is trusted, which service the
- * elevated restart touches). Any deviation throws rather than falling back to a permissive default.
+ * security-sensitive behaviour: which origin loads, which certificate is trusted, and which
+ * service the elevated restart touches. Any deviation throws instead of using a permissive default.
  */
 export function loadDesktopConfig(path: string = desktopConfigPath()): DesktopConfig {
   if (!existsSync(path)) {

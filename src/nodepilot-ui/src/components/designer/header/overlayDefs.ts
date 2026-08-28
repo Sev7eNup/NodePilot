@@ -4,11 +4,11 @@ import { useDesignStore } from '../../../stores/designStore';
 type DesignState = ReturnType<typeof useDesignStore.getState>;
 
 /**
- * The five canvas inspection overlays, defined once so both presentations stay in lock-step:
+ * The five canvas inspection overlays, defined once so both presentations stay in sync:
  * the compact {@link OverlaysMenu} (switch rows) and the classic inline toggle buttons
- * ({@link ClassicOverlayToggles}). Sharing the list keeps the five stable `data-testid`s,
- * i18n keys and store wiring identical across both toolbar layouts — no drift, no rolled-back
- * accessibility contract. Label + title keys live in the `editor` namespace.
+ * ({@link ClassicOverlayToggles}). Sharing the list keeps the `data-testid`s, i18n keys
+ * and store wiring identical across both toolbar layouts. Label + title keys live in the
+ * `editor` namespace.
  */
 export interface OverlayDef {
   key: string;

@@ -1,13 +1,11 @@
 namespace NodePilot.Core.Interfaces;
 
 /// <summary>
-/// Process-wide back-pressure for sub-workflow invocations (<c>startWorkflow</c> +
-/// <c>forEach</c>). Enforces a cap on simultaneously-running children so a fan-out
-/// can't starve the engine of DB connections, runspaces, or thread-pool slots.
-///
-/// Default implementation is a single in-process semaphore — fine for single-instance
-/// deployments. The interface exists so a future HA/multi-instance build can swap in
-/// a distributed gate (DB lease, Redis, etc.) without touching the activity code.
+/// Process-wide back-pressure for sub-workflow invocations (<c>startWorkflow</c> and
+/// <c>forEach</c>). Caps how many children run at once so a fan-out cannot starve the engine
+/// of DB connections, runspaces, or thread-pool slots. The default implementation is a single
+/// in-process semaphore; the interface allows a distributed gate (DB lease, Redis) for
+/// multi-instance deployments without changing the activity code.
 /// </summary>
 public interface ISubWorkflowGate
 {
@@ -17,8 +15,8 @@ public interface ISubWorkflowGate
     int Capacity { get; }
 
     /// <summary>
-    /// Currently-available slots. Used for tests and observability; do not gate
-    /// admission decisions on the value (race-prone).
+    /// Number of free slots. For tests and observability only; the value races, so do not
+    /// base admission decisions on it.
     /// </summary>
     int Available { get; }
 
@@ -36,8 +34,8 @@ public interface ISubWorkflowGate
     Task WaitAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// Releases one previously acquired slot. Caller is responsible for symmetry —
-    /// every successful Wait must be paired with exactly one Release.
+    /// Releases one acquired slot. Every successful Wait must be paired with
+    /// exactly one Release.
     /// </summary>
     void Release();
 }

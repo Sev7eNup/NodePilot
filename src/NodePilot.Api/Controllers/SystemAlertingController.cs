@@ -18,10 +18,13 @@ namespace NodePilot.Api.Controllers;
 
 /// <summary>
 /// System-alert policies built on the modular source catalog (ADR 0008): a policy binds a source, a
-/// descriptor-validated condition + parameters, a sustain window, scope, severity and routes. Read is
+/// descriptor-validated condition + parameters, a sustain window, scope, severity and routes. Read
+/// is
 /// Admin/Operator; create/update/delete/enable/disable/test-fire is Admin-only (mirrors
-/// <see cref="AlertingController"/>). This surface only ever touches <c>Kind=System</c> rows; the custom-rule
-/// endpoints under <c>/api/alerting/rules</c> only ever touch <c>Kind=Custom</c> — neither can mutate the other.
+/// <see cref="AlertingController"/>). This surface only ever touches <c>Kind=System</c> rows; the
+/// custom-rule
+/// endpoints under <c>/api/alerting/rules</c> only ever touch <c>Kind=Custom</c> — neither can
+/// mutate the other.
 /// </summary>
 [ApiController]
 [Route("api/alerting/system")]
@@ -58,7 +61,8 @@ public class SystemAlertingController : ControllerBase
 
     // ---- Catalog ----
 
-    /// <summary>The registered source descriptors plus a best-effort per-source availability flag.</summary>
+    /// <summary>The registered source descriptors plus a best-effort per-source availability
+    /// flag.</summary>
     [HttpGet("catalog")]
     public async Task<ActionResult<SystemAlertCatalogResponse>> GetCatalog(CancellationToken ct)
     {
@@ -156,7 +160,8 @@ public class SystemAlertingController : ControllerBase
     // ---- Preview (stateless) + test-fire (route delivery) ----
 
     /// <summary>
-    /// Stateless preview: sample the source now and report which current instances the condition matches.
+    /// Stateless preview: sample the source now and report which current instances the condition
+    /// matches.
     /// No policy state, no delivery attempts — purely a "what does this catch right now?" check.
     /// </summary>
     [HttpPost("preview")]
@@ -167,7 +172,8 @@ public class SystemAlertingController : ControllerBase
         if (source is null) return BadRequest(new { message = $"Unknown source '{request.SourceId}'." });
         var descriptor = source.Describe();
 
-        // A Security source samples the audit log, and a preview echoes the sampled rows (username, IP,
+        // A Security source samples the audit log, and a preview echoes the sampled rows (username,
+        // IP,
         // details) back to the caller. Reading the audit log is Admin-only everywhere else
         // (AuditController), so the preview must not become an Operator's side door into it — the
         // policy editor that drives this call is Admin-only in the UI anyway.
@@ -201,7 +207,8 @@ public class SystemAlertingController : ControllerBase
         return Ok(new SystemAlertPreviewResponse(true, matches));
     }
 
-    /// <summary>Sends a synthetic notification through every route of the policy so an operator can confirm the channel works.</summary>
+    /// <summary>Sends a synthetic notification through every route of the policy so an operator can
+    /// confirm the channel works.</summary>
     [HttpPost("policies/{id:guid}/test-fire")]
     [Authorize(Roles = "Admin")]
     [EnableRateLimiting("alerting-heavy")]
@@ -297,7 +304,8 @@ public class SystemAlertingController : ControllerBase
         return true;
     }
 
-    // Validates provided source parameters against the descriptor: only declared params, required present,
+    // Validates provided source parameters against the descriptor: only declared params, required
+    // present,
     // numeric within [Min,Max]. Returns the canonical JSON (declared keys only) to persist.
     private static bool TryBuildSourceParameters(
         NodePilot.Core.Models.SystemAlertSourceDescriptor descriptor,

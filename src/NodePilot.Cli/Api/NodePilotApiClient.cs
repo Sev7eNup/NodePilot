@@ -184,7 +184,8 @@ public sealed class NodePilotApiClient
         return await ParseAsync<BackupManifestResponse>(res, ct);
     }
 
-    /// <summary>Posts an export request and returns the raw <c>.npbackup</c> bytes + warning count.</summary>
+    /// <summary>Posts an export request and returns the raw <c>.npbackup</c> bytes + warning
+    /// count.</summary>
     public async Task<(byte[] Content, int Warnings)> ExportBackupAsync(
         List<string> sections, string passphrase, CancellationToken ct)
     {
@@ -273,9 +274,19 @@ public sealed class NodePilotApiClient
 
     public async Task<List<ExecutionResponse>> ListExecutionsAsync(Guid? workflowId, CancellationToken ct)
     {
-        var path = workflowId.HasValue ? $"api/executions?workflowId={workflowId}" : "api/executions";
-        using var res = await _http.GetAsync(path, ct);
-        return await ParseAsync<List<ExecutionResponse>>(res, ct);
+        var basePath = workflowId.HasValue
+            ? $"api/executions?workflowId={workflowId}"
+            : "api/executions";
+        var results = new List<ExecutionResponse>();
+        for (var page = 1; ; page++)
+        {
+            var separator = basePath.Contains('?') ? '&' : '?';
+            using var res = await _http.GetAsync(
+                $"{basePath}{separator}page={page}&pageSize=200", ct);
+            var response = await ParseAsync<PagedResponse<ExecutionResponse>>(res, ct);
+            results.AddRange(response.Items);
+            if (page >= response.TotalPages) return results;
+        }
     }
 
     public async Task<ExecutionResponse> GetExecutionAsync(Guid id, CancellationToken ct)
@@ -538,7 +549,7 @@ public sealed class NodePilotApiClient
         return await ParseAsync<List<NotificationDeliveryDto>>(res, ct);
     }
 
-    // ---- System-Alert Policies (ADR 0008 — configurable policies that replaced the old built-in gauge alerts) ----
+    // ---- System-Alert Policies (ADR 0008) ------------------------------------
 
     public async Task<SystemAlertCatalogResponse> GetSystemAlertCatalogAsync(CancellationToken ct)
     {
@@ -876,7 +887,8 @@ public sealed class NodePilotApiClient
     /// <summary>
     /// Triggers the bulk re-encrypt sweep. The endpoint returns 207 Multi-Status when
     /// some rows could not be migrated — that is NOT a transport-level failure, so we
-    /// accept it as success and let the caller branch on <see cref="ReencryptResult.PartialSuccess"/>.
+    /// accept it as success and let the caller branch on <see
+    /// cref="ReencryptResult.PartialSuccess"/>.
     /// </summary>
     public async Task<ReencryptResult> ReencryptSecretsAsync(CancellationToken ct)
     {

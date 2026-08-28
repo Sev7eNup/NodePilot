@@ -22,15 +22,9 @@ const CONFIRM_PHRASE = 'ALLOW WRITE';
 /**
  * Settings tab for the admin SQL query console (POST /api/dbadmin/query).
  *
- * `AllowWriteQueries` is the sharp edge: flipping it from false to true lets
- * any Admin run UPDATE/DELETE/DROP from the query pane, bypassing every
- * per-table guard the row-editor applies. We gate the enable transition
- * behind a typed-phrase confirmation dialog — same friction the QueryPane
- * itself enforces per write-statement, applied here once at config time.
- *
- * Disabling write queries needs no confirmation (you're removing a power,
- * not granting one), and the other two fields (timeout, row cap) are plain
- * tuning knobs without a security dimension.
+ * `AllowWriteQueries` lets any Admin run UPDATE/DELETE/DROP from the query pane, bypassing
+ * per-table guards, so enabling it requires a typed-phrase confirmation dialog. Disabling
+ * needs no confirmation. Timeout and row cap are plain tuning knobs with no security dimension.
  */
 export function DbAdminSection() {
   const { t } = useTranslation(['adminSettings']);

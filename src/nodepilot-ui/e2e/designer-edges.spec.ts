@@ -2,23 +2,21 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 4 — Edges (Verbindungen) & Bedingungen (lines 558-746).
+ * E2ETests.md part 4 - edges (connections) and conditions.
  *
- * Hermetic: page.route() mocks only. Workflow is locked-by-me → editable (State B), so the
- * edge-properties panel, the condition builder, the disable toggle and delete are all live.
+ * Hermetic: page.route() mocks only. The workflow is locked by the current user and therefore
+ * editable, so the edge-properties panel, the condition builder, the disable toggle and delete
+ * are all live.
  *
- * Creating an edge by DRAGGING from one node handle to another is React-Flow d3-drag and is
- * NOT synthesizable with Playwright (4.1 create-via-drag is skipped with a reason). Instead we
- * PRE-SEED edges in definitionJson and exercise selection / condition-editing / disable / delete
- * — which is where the actual logic + persistence lives.
+ * Creating an edge by dragging from one node handle to another is React Flow d3-drag and cannot
+ * be synthesized with Playwright, so edges are pre-seeded in definitionJson and the specs cover
+ * selection, condition editing, disable and delete, where the logic and persistence live.
  *
  * The condition editor (ConditionBuilder.tsx) renders comparison operators as <option> labels
- * via OP_LABELS: == "equals", != "not equals", < "less than", > "greater than", <= "≤",
- * >= "≥", contains, startsWith "starts with", endsWith "ends with", matches "matches regex",
- * isEmpty "is empty", isNotEmpty "is not empty", isTrue "is true", isFalse "is false".
- * Unary ops (isEmpty/isNotEmpty/isTrue/isFalse) hide the right-hand operand picker.
- * AND/OR group-operator buttons appear only when a group has >1 child; NOT renders for a
- * pre-seeded `not` node. The SPA renders ENGLISH under Playwright.
+ * from OP_LABELS; the full list is in ALL_OPERATOR_LABELS below. Unary ops
+ * (isEmpty/isNotEmpty/isTrue/isFalse) hide the right-hand operand picker, AND/OR group-operator
+ * buttons appear only when a group has more than one child, and NOT renders for a pre-seeded
+ * `not` node. The SPA renders English under Playwright.
  */
 
 const WF_ID = 'e4e4e4e4-4444-4444-4444-444444444444';
@@ -29,23 +27,21 @@ const EDGE_ID = 'edge-main';
 
 interface DefOverrides {
   edgeData?: Record<string, unknown>;
-  /** Adds an unconnected third node — the re-route target for the edge-detach case (4.6). */
+  /** Adds an unconnected third node, the re-route target for the edge-detach case (4.6). */
   withAltTarget?: boolean;
 }
 
 /**
- * Die Detach-Fixture (`withAltTarget`) stapelt alle drei Nodes in EINER Spalte statt sie
- * nebeneinander zu legen. Das ist nicht Geschmack, sondern folgt aus zwei Eigenheiten der
- * Canvas, die die Tests 4.6–4.9 sonst reihum treffen:
+ * The detach fixture (`withAltTarget`) stacks all three nodes in one column instead of placing
+ * them side by side, for two reasons:
  *
- *  - Der Rechtsklick klappt das Connection-Panel auf, die Canvas wird schmaler, und
- *    `onlyRenderVisibleElements` hängt die jetzt überstehende RECHTE Node-Spalte aus dem
- *    DOM — genau die Nodes, die die Tests danach anklicken. Bei gleicher x-Koordinate für
- *    alle Nodes kann horizontal nichts überstehen.
- *  - Über der Canvas schweben Bedienelemente an festen Bildschirmpositionen: der
- *    „New Workflow"-Button oben mittig und die MiniMap unten rechts. Beide schlucken Klicks.
- *    In einer vertikal gespreizten Spalte liegen die angeklickten Nodes in der Mitte und
- *    damit frei.
+ *  - A right-click opens the connection panel, which narrows the canvas, and
+ *    `onlyRenderVisibleElements` then removes the nodes that no longer fit from the DOM,
+ *    including the ones the tests click next. With one shared x coordinate nothing can
+ *    overflow horizontally.
+ *  - Controls float above the canvas at fixed screen positions: the New Workflow button at top
+ *    centre and the MiniMap at bottom right, both of which swallow clicks. In a vertically
+ *    spread column the clicked nodes sit in the middle and stay clear of them.
  */
 function definition({ edgeData, withAltTarget }: DefOverrides = {}) {
   const altNode = withAltTarget
@@ -120,7 +116,7 @@ async function pointOnEdge(page: Page): Promise<{ x: number; y: number }> {
     });
 }
 
-/** Click the seeded edge → opens the Connection (EdgePropertiesPanel).
+/** Click the seeded edge -> opens the Connection (EdgePropertiesPanel).
  *
  * A horizontal edge's interaction path has a zero-height bounding box, so a normal element
  * click degenerates to an unclickable point. We instead aim the mouse at the geometric
@@ -169,7 +165,7 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     await expect(page.locator(`.react-flow__edge[data-id="${EDGE_ID}"]`)).toBeVisible();
     await expect(page.getByText('On Success').first()).toBeVisible();
 
-    // Selectable → opens the Connection panel showing the producer → consumer endpoints.
+    // Selectable -> opens the Connection panel showing the producer -> consumer endpoints.
     await selectEdge(page);
     const panel = page.getByRole('heading', { name: /^connection$|^verbindung$/i }).locator('../..');
     await expect(panel.getByText('Producer')).toBeVisible();
@@ -191,7 +187,7 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     await waitForCanvas(page);
     await selectEdge(page);
 
-    // Switch the condition editor from "Simple" to "Expression" → ConditionBuilder mounts.
+    // Switch the condition editor from "Simple" to "Expression" -> ConditionBuilder mounts.
     await page.getByRole('button', { name: /^expression$/i }).click();
     // Add one comparison row (button label "Condition").
     await page.getByRole('button', { name: /^\s*condition\s*$/i }).first().click();
@@ -204,18 +200,19 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
         .toHaveCount(1);
     }
 
-    // Binary operator (default ==): two operand pickers (left + right) each expose Variable/Literal.
+    // Binary operator (default ==): two operand pickers (left + right) each expose
+    // Variable/Literal.
     await expect(page.getByRole('button', { name: /^literal$/i })).toHaveCount(2);
 
-    // Switch to a unary operator → right operand picker disappears.
+    // Switch to a unary operator -> right operand picker disappears.
     await opSelect.selectOption('isEmpty');
     await expect(page.getByRole('button', { name: /^literal$/i })).toHaveCount(1);
 
-    // Switch to a string operator → right operand returns.
+    // Switch to a string operator -> right operand returns.
     await opSelect.selectOption('contains');
     await expect(page.getByRole('button', { name: /^literal$/i })).toHaveCount(2);
 
-    // Editing the condition marks the workflow dirty → Save round-trips a conditionExpression.
+    // Editing the condition marks the workflow dirty -> Save round-trips a conditionExpression.
     await page.getByRole('button', { name: /save in place|zwischen.?speichern|speichern|^save/i }).first().click();
     await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
     const def = JSON.parse(putBody!.definitionJson as string) as { edges: { data?: { conditionExpression?: unknown } }[] };
@@ -244,11 +241,11 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     await waitForCanvas(page);
     await selectEdge(page);
     // A pre-seeded expression opens directly in Expression mode.
-    // Two children → AND / OR operator buttons are offered, AND active.
+    // Two children -> AND / OR operator buttons are offered, AND active.
     await expect(page.getByRole('button', { name: /^and$/i })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: /^or$/i })).toBeVisible();
 
-    // Two comparison rows → two operator selects + multiple literal pickers.
+    // Two comparison rows -> two operator selects + multiple literal pickers.
     await expect(page.locator('select').filter({ hasText: 'equals' })).toHaveCount(2);
 
     // Flip to OR and add a third condition — conditions can be added.
@@ -300,7 +297,8 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     await waitForCanvas(page);
     await selectEdge(page);
 
-    // Toggle is a single button that reads "Connection is active" → click → "Connection is disabled".
+    // Toggle is a single button that reads "Connection is active" to click to "Connection is
+    // disabled".
     const toggle = page.getByRole('button', { name: /connection is (active|disabled)/i });
     await expect(toggle).toHaveText(/connection is active/i);
     await toggle.click();
@@ -342,17 +340,14 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
   });
 
   /**
-   * Edge-Detach (Kontextmenü → „Ziel lösen" → Ziel-Node anklicken). Der Drag-Weg
-   * (React Flows `edgesReconnectable`) ist d3-drag und nicht synthetisierbar; der Klick-Weg
-   * ist es sehr wohl und trägt dieselbe Logik.
+   * Edge detachment uses the context menu followed by a target-node click. React Flow's d3-drag
+   * reconnection cannot be synthesized reliably, so these tests exercise the shared click path.
    *
-   * Zwei getrennte Tests statt eines Durchlaufs mit zwei Runden: der Rechtsklick muss eine
-   * UNSELEKTIERTE Edge treffen. Nach der ersten Runde ist sie selektiert, und dann liegen
-   * `+`-Insert-Button und Reshape-Griffe genau auf dem Pfad-Mittelpunkt und schlucken den
-   * Klick — die zweite Runde im selben Test lief zuverlässig in einen Timeout.
+   * Separate tests start with an unselected edge so insert and reshape controls do not intercept
+   * the path click.
    */
   async function openDetach(page: Page) {
-    await page.waitForTimeout(500); // fitView-Animation ausklingen lassen, bevor gemessen wird
+    await page.waitForTimeout(500); // Let the fitView animation finish before measuring.
     const pt = await pointOnEdge(page);
     await page.mouse.click(pt.x, pt.y, { button: 'right' });
     await page.getByText(/detach target|ziel lösen/i).click();
@@ -372,14 +367,8 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     await waitForCanvas(page, 3);
     await openDetach(page);
 
-    // Klickpunkt: horizontal auf dem Bottom-Handle, vertikal ein Stück DARUNTER. Drei Gründe,
-    // warum er so und nicht "irgendwo im Node" gewählt ist:
-    //  - horizontal mittig — an einer Ecke läge je nach Node-Proportion ein Seiten-Handle
-    //    näher, und der Test sähe `left` statt `bottom`, ohne dass etwas kaputt wäre.
-    //  - nicht auf dem Handle selbst: das sitzt mittig auf der Kante und ragt zur Hälfte
-    //    heraus; ein Treffer startet einen Verbindungs-Drag statt `onNodeClick`.
-    //  - die UNTERE Kante, nicht die obere: über dem Node schwebt der „New Workflow"-Button
-    //    der Canvas und schluckt Klicks dort.
+    // Click below the centered bottom handle. This selects the bottom port without starting a
+    // connection drag or hitting the canvas button above the node.
     const target = page.locator(`.react-flow__node[data-id="${NODE_C}"]`);
     const handle = (await target.locator('[data-handleid="bottom"]').boundingBox())!;
     await page.mouse.click(handle.x + handle.width / 2, handle.y + handle.height + 6);
@@ -391,10 +380,9 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
       edges: { source: string; target: string; targetHandle?: string; data?: { condition?: string; label?: string } }[];
     };
     expect(def.edges).toHaveLength(1);
-    expect(def.edges[0].source).toBe(NODE_A);   // Quelle bleibt, nur das Ziel zieht um
+    expect(def.edges[0].source).toBe(NODE_A);   // Only the target changes.
     expect(def.edges[0].target).toBe(NODE_C);
-    // Die eine Aussage, die kein Unit-Test treffen kann: Klickposition und persistierter
-    // Port passen zusammen. Unten geklickt → unten angedockt, nicht der alte 'left'-Port.
+    // The persisted port must match the click position rather than the prior left port.
     expect(def.edges[0].targetHandle).toBe('bottom');
     expect(def.edges[0].data?.condition).toBe(`${NODE_A}.success`);
     expect(def.edges[0].data?.label).toBe('On Success');
@@ -416,8 +404,7 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('edge-detach-hint')).toHaveCount(0);
 
-    // Die Edge zeigt unverändert auf Consumer — und der Abbruch hat den Workflow nicht
-    // dirty gemacht, es gibt also nichts zu speichern.
+    // Cancellation preserves the Consumer target and leaves the workflow clean.
     await selectEdge(page);
     const panel = page.getByRole('heading', { name: /^connection$|^verbindung$/i }).locator('../..');
     await expect(panel.getByText('Consumer')).toBeVisible();
@@ -437,16 +424,14 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     await waitForCanvas(page, 3);
     await openDetach(page);
 
-    // Bewusst ueber den Locator statt ueber Mauskoordinaten: Playwrights Actionability-Check
-    // stellt sicher, dass der Punkt wirklich die leere Pane trifft und nicht ein darueber
-    // liegendes Overlay (Edge-SVG, MiniMap, Controls) — sonst laeuft der Test still ins Leere.
+    // The locator actionability check ensures the click reaches the pane instead of an overlay.
     await page.locator('.react-flow__pane').click({ button: 'right' });
 
     await expect(page.getByTestId('edge-detach-hint')).toHaveCount(0);
-    // Der Rechtsklick ist vom Abbruch VERBRAUCHT — er darf kein Kontextmenue aufziehen.
+    // Detachment cancellation consumes the right-click without opening a context menu.
     await expect(page.getByText(/detach target|ziel lösen/i)).toHaveCount(0);
 
-    // Ursprungszustand: Edge unveraendert auf Consumer, nichts zu speichern.
+    // The original Consumer target remains and nothing needs saving.
     await selectEdge(page);
     const panel = page.getByRole('heading', { name: /^connection$|^verbindung$/i }).locator('../..');
     await expect(panel.getByText('Consumer')).toBeVisible();
@@ -454,9 +439,7 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
   });
 
   test('4.9 — re-attaching to the CURRENT target node just moves the port', async ({ page }) => {
-    // Der bisherige Ziel-Node ist ein gueltiges Detach-Ziel: nur so laesst sich die Port-Seite
-    // wechseln, ohne die Edge samt Bedingung zu loeschen und neu zu ziehen. Frueher galt der
-    // Klick dort als Abbruch und tat gar nichts.
+    // The current target remains valid so the port can change without recreating the edge.
     let putBody: { definitionJson?: string } | null = null;
     const body = workflowJson({ withAltTarget: true });
     await page.route(`**/api/workflows/${WF_ID}`, (route) => {
@@ -469,7 +452,7 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     await waitForCanvas(page, 3);
     await openDetach(page);
 
-    // Auf den UNVERAENDERTEN Ziel-Node klicken, aber unterhalb seines Bottom-Handles.
+    // Click below the bottom handle on the unchanged target node.
     const target = page.locator(`.react-flow__node[data-id="${NODE_B}"]`);
     const handle = (await target.locator('[data-handleid="bottom"]').boundingBox())!;
     await page.mouse.click(handle.x + handle.width / 2, handle.y + handle.height + 6);
@@ -482,17 +465,14 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     };
     expect(def.edges).toHaveLength(1);
     expect(def.edges[0].source).toBe(NODE_A);
-    expect(def.edges[0].target).toBe(NODE_B);        // Ziel-Node unveraendert …
-    expect(def.edges[0].targetHandle).toBe('bottom'); // … nur der Anschlusspunkt zieht um
+    expect(def.edges[0].target).toBe(NODE_B);        // Target node stays unchanged.
+    expect(def.edges[0].targetHandle).toBe('bottom'); // Only the port changes.
     expect(def.edges[0].data?.condition).toBe(`${NODE_A}.success`);
   });
 
   test('4.8 — undoing a re-route restores the old target AND leaves the edge clickable', async ({ page }) => {
-    // Regression: `useWorkflowHistory` snapshottet React Flows Store, also den PROJIZIERTEN
-    // Graphen. Der Detach-Marker `__detached` wanderte dadurch beim Undo in die rohen Edges
-    // und liess LabeledEdge sie dauerhaft mit `pointerEvents: 'none'` rendern — die Edge war
-    // bis zum Reload nicht mehr anklickbar. Genau das prueft dieser Test: nach dem Undo muss
-    // ein Klick auf die Edge wieder das Connection-Panel oeffnen.
+    // Undo must not copy the projected __detached marker into raw edges. Restored edges remain
+    // clickable and open the connection panel without a reload.
     const body = workflowJson({ withAltTarget: true });
     await page.route(`**/api/workflows/${WF_ID}`, (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body }),
@@ -510,7 +490,7 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
 
     await page.keyboard.press('Control+z');
 
-    // Die Edge zeigt wieder auf Consumer — und laesst sich anklicken, ohne Reload.
+    // The restored Consumer edge remains clickable without a reload.
     await selectEdge(page);
     const panel = page.getByRole('heading', { name: /^connection$|^verbindung$/i }).locator('../..');
     await expect(panel.getByText('Consumer')).toBeVisible();

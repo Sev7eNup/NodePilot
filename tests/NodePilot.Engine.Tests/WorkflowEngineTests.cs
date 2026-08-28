@@ -86,10 +86,8 @@ public class WorkflowEngineTests
     }
 
     /// <summary>
-    /// trigger -> step-1 (enabled) -> step-2 (disabled, with regular incoming edge) -> step-3 (enabled).
-    /// Regression for the disabled-target bug: previously only outgoing edges from disabled
-    /// nodes were dropped, so step-2 was scheduled as step-1's successor and executed. The
-    /// fix also drops edges whose target is disabled, making step-2 unreachable.
+    /// Verifies that disabled nodes are unreachable because the graph drops their incoming and
+    /// outgoing edges.
     /// </summary>
     private static string BuildDisabledTargetNodeWorkflow()
     {
@@ -119,7 +117,8 @@ public class WorkflowEngineTests
     }
 
     /// <summary>
-    /// The "test step with context" feature relies on this: when a step produces OutputParameters, the
+    /// The "test step with context" feature relies on this: when a step produces OutputParameters,
+    /// the
     /// engine must persist them as JSON so future test-context lookups can replay them.
     /// </summary>
     [Fact]
@@ -791,8 +790,10 @@ public class WorkflowEngineTests
     [Fact]
     public async Task ExecuteAsync_ManualCancelViaCancelAsync_AttributesCancelledByUser()
     {
-        // Reproduces the live manual-cancel path: the controller calls CancelAsync(id, "user"), which
-        // records the reason before tripping the token — the engine's OCE catch (on its own thread) then
+        // Reproduces the live manual-cancel path: the controller calls CancelAsync(id, "user"),
+        // which
+        // records the reason before tripping the token — the engine's OCE catch (on its own thread)
+        // then
         // stamps CancelledBy="user". This is the load-bearing wiring for the "manual cancel" alert.
         _mockExecutor.Setup(e => e.ExecuteAsync(
                 It.IsAny<StepExecutionContext>(),
@@ -926,8 +927,7 @@ public class WorkflowEngineTests
     /* ------------- Bug 1: cascade-skip must respect live paths ------------- */
 
     /// <summary>
-    /// When edge A→C has a failing condition, but C is also reachable via B (which succeeds),
-    /// C must still execute. Previously the over-eager MarkSubtreeSkipped also skipped C.
+    /// Executes C when any reachable predecessor condition passes, even if another path fails.
     /// </summary>
     [Fact]
     public async Task ExecuteAsync_FailedConditionToJunction_DoesNotSkipDownstreamReachableViaSibling()
@@ -946,9 +946,9 @@ public class WorkflowEngineTests
                     ? new ActivityResult { Success = false, ErrorOutput = "fail" }
                     : new ActivityResult { Success = true, Output = "OK" });
 
-        // Workflow: src → branchA (only on success — will be skipped)
-        //           src → branchB (always — will run)
-        //           both → finalStep (no junction, plain merge)
+        // Workflow: src -> branchA (only on success — will be skipped)
+        //           src -> branchB (always — will run)
+        //           both -> finalStep (no junction, plain merge)
         var def = """
         {
           "nodes":[
@@ -1002,7 +1002,8 @@ public class WorkflowEngineTests
                     ? new ActivityResult { Success = false, ErrorOutput = "fail" }
                     : new ActivityResult { Success = true, Output = "OK" });
 
-        // Both incoming edges to finalStep require src.success. src fails → both skipped → finalStep skipped.
+        // Both incoming edges to finalStep require src.success. src fails to both skipped to
+        // finalStep skipped.
         var def = """
         {
           "nodes":[
@@ -1036,8 +1037,7 @@ public class WorkflowEngineTests
     /* ------------- Bug 2: waitAny actually races (event-driven) ------------- */
 
     /// <summary>
-    /// waitAny junction must fire as soon as the FIRST branch completes, not wait for the
-    /// slowest sibling. Previously Task.WhenAll(batch) blocked the whole wave.
+    /// Verifies that a waitAny junction fires after the first branch without waiting for siblings.
     /// </summary>
     [Fact]
     public async Task ExecuteAsync_WaitAnyJunction_FiresAfterFirstBranchCompletes()
@@ -1333,14 +1333,12 @@ public class WorkflowEngineTests
     /* ------------- Bug: cycle-only graph must fail, not silently succeed ------------- */
 
     /// <summary>
-    /// A workflow where every node has an incoming edge (pure cycle, no root) must be
-    /// marked Failed with an actionable ErrorMessage. Previously the empty queue caused
-    /// the engine to exit the scheduling loop immediately and return Succeeded with 0 steps.
+    /// A pure cycle has no root and must fail with an actionable error message.
     /// </summary>
     [Fact]
     public async Task ExecuteAsync_CycleOnlyGraph_MarksExecutionFailed()
     {
-        // step-1 → step-2 → step-1: every node has an incoming edge, no roots.
+        // step-1 -> step-2 -> step-1: every node has an incoming edge, no roots.
         const string cycleDefinition = """
             {
               "nodes": [

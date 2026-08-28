@@ -6,10 +6,14 @@ using NodePilot.Data;
 namespace NodePilot.Scheduler.SystemAlerts.Sources;
 
 /// <summary>
-/// Per-workflow quality source reading the pre-aggregated <see cref="WorkflowStats"/> row (one indexed row
-/// per workflow, refreshed by the stats refresher). Exposes a rolling-window <c>failureRatePct</c> and
-/// <c>p95DurationMs</c> — enabling "workflow X fails &gt; 20%" or "p95 latency doubled" policies that no
-/// execution-level source can cheaply express. Only workflows with executions in the window are reported.
+/// Per-workflow quality source reading the pre-aggregated <see cref="WorkflowStats"/> row (one
+/// indexed row
+/// per workflow, refreshed by the stats refresher). Exposes a rolling-window <c>failureRatePct</c>
+/// and
+/// <c>p95DurationMs</c> — enabling "workflow X fails &gt; 20%" or "p95 latency doubled" policies
+/// that no
+/// execution-level source can cheaply express. Only workflows with executions in the window are
+/// reported.
 /// </summary>
 public sealed class WorkflowHealthSource : ISystemAlertSource
 {

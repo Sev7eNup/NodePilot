@@ -16,7 +16,7 @@ public sealed class FakeLlmClient : ILlmClient
 {
     /// <summary>
     /// Generation window every stubbed Done event reports. Fixed so a service test can assert
-    /// that a multi-round (tool-calling) run sums the windows: N rounds → N × this value.
+    /// that a multi-round (tool-calling) run sums the windows: N rounds -> N × this value.
     /// </summary>
     public const int FakeGenerationMs = 10;
 
@@ -46,21 +46,24 @@ public sealed class FakeLlmClient : ILlmClient
         return this;
     }
 
-    /// <summary>Enqueues a streaming response: each string becomes a content delta, followed by a Done event carrying token usage.</summary>
+    /// <summary>Enqueues a streaming response: each string becomes a content delta, followed by a
+    /// Done event carrying token usage.</summary>
     public FakeLlmClient EnqueueStream(params string[] chunks)
     {
         _streams.Enqueue(_ => ToStream(chunks));
         return this;
     }
 
-    /// <summary>Enqueues a stream that throws before emitting its first delta (simulates a failure before streaming even starts).</summary>
+    /// <summary>Enqueues a stream that throws before emitting its first delta (simulates a failure
+    /// before streaming even starts).</summary>
     public FakeLlmClient EnqueueStreamException(LlmException ex)
     {
         _streams.Enqueue(_ => ThrowingStream(ex));
         return this;
     }
 
-    /// <summary>Enqueues a streaming response that ends with <c>finish_reason=tool_calls</c> (for exercising the tool-calling loop).</summary>
+    /// <summary>Enqueues a streaming response that ends with <c>finish_reason=tool_calls</c> (for
+    /// exercising the tool-calling loop).</summary>
     public FakeLlmClient EnqueueToolCallStream(IReadOnlyList<LlmToolCall> toolCalls, params string[] chunks)
     {
         _streams.Enqueue(_ => ToolCallStream(chunks, toolCalls, "tool_calls"));
@@ -68,9 +71,12 @@ public sealed class FakeLlmClient : ILlmClient
     }
 
     /// <summary>
-    /// Like <see cref="EnqueueToolCallStream"/> but with a caller-chosen <paramref name="finishReason"/>.
-    /// Pass <c>"stop"</c>/<c>null</c> to simulate a local endpoint (LM Studio, llama.cpp) that reports a
-    /// non-canonical finish_reason while still emitting tool calls — the loop must execute them regardless.
+    /// Like <see cref="EnqueueToolCallStream"/> but with a caller-chosen <paramref
+    /// name="finishReason"/>.
+    /// Pass <c>"stop"</c>/<c>null</c> to simulate a local endpoint (LM Studio, llama.cpp) that
+    /// reports a
+    /// non-canonical finish_reason while still emitting tool calls — the loop must execute them
+    /// regardless.
     /// </summary>
     public FakeLlmClient EnqueueToolCallStreamWithFinish(IReadOnlyList<LlmToolCall> toolCalls, string? finishReason, params string[] chunks)
     {

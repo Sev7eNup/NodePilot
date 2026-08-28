@@ -27,19 +27,18 @@ internal sealed class StepRunner
     private readonly bool _stepDetailEnabled;
     private readonly int _stepDetailMaxChars;
 
-    // H-1 (security-audit finding): top-level config fields that must NOT be touched by the {{var}} resolver.
-    // The activity executor then enforces "no {{...}}" on the passthrough text so an
-    // upstream change to the field's contract still fails closed instead of leaking
-    // attacker-controlled substrings into a raw CommandText.
+    // Top-level config fields the {{var}} resolver must never touch. The activity executor
+    // then rejects "{{...}}" residue in the passthrough text, so an upstream contract change
+    // fails closed instead of leaking attacker-controlled substrings into a raw CommandText.
     private static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> FieldsNotToResolve =
         new Dictionary<string, IReadOnlySet<string>>(StringComparer.OrdinalIgnoreCase)
         {
             ["sql"] = new HashSet<string>(StringComparer.Ordinal) { "query" },
             ["databaseTrigger"] = new HashSet<string>(StringComparer.Ordinal) { "query" },
-            // waitForCondition embeds the raw `script` text into a PowerShell `[bool](...)`
-            // cast. A template-resolved value would land unquoted inside a PS expression,
-            // letting an upstream output close the cast and inject arbitrary PS. The
-            // activity rejects `{{...}}` residue itself — same model as sql.query.
+            // waitForCondition embeds the raw `script` text in a PowerShell `[bool](...)` cast.
+            // A resolved value would land unquoted there, letting upstream output close the cast
+            // and inject arbitrary PowerShell. The activity rejects `{{...}}` residue itself,
+            // the same protection used for sql.query.
             ["waitForCondition"] = new HashSet<string>(StringComparer.Ordinal) { "script" },
         };
 
@@ -85,8 +84,8 @@ internal sealed class StepRunner
         _debugCoordinator = new DebugCoordinator(redactor, notifier);
         _stepDetailEnabled = stepDetailEnabled;
         _stepDetailMaxChars = stepDetailMaxChars;
-        // GetService, not GetRequiredService: engine unit tests build minimal providers without the
-        // breaker, and the engine must keep working without one (null → no step-boundary gate).
+        // GetService, not GetRequiredService: engine unit tests build minimal providers without
+        // the breaker, and the engine must keep working without one (null disables the step gate).
         _availability = serviceProvider.GetService(typeof(NodePilot.Data.Availability.IDatabaseAvailability))
             as NodePilot.Data.Availability.IDatabaseAvailability;
     }
@@ -108,14 +107,15 @@ internal sealed class StepRunner
         CancellationToken ct,
         CancellationToken durabilityCancellation)
     {
-        // Step-boundary pause: while the database is known to be gone, no NEW activity starts. An
-        // already-running activity is never interrupted (its side effects are in flight), but starting
-        // the next one would execute real work — WinRM commands, file operations — whose step rows
-        // cannot be persisted, i.e. side effects with no audit trail. Waiting here means an in-flight
-        // execution parks at its next step edge and resumes by itself on recovery, which is exactly
-        // the contract the breaker gives everything else. The execution's own cancellation (timeout,
-        // user cancel, junction loss) still fires through ct: WaitUntilServableAsync returns false on
-        // cancellation, and the throw below routes into the existing cancellation handling.
+        // Step-boundary pause: while the database is known to be gone, no new activity starts.
+        // An already-running activity is never interrupted, since its side effects are already
+        // in flight, but starting the next one would run real work such as WinRM commands or
+        // file operations whose step rows cannot be persisted, meaning side effects with no
+        // audit trail. Waiting here lets an in-flight execution park at its next step boundary
+        // and resume by itself on recovery, matching the contract the breaker gives everything
+        // else. The execution's own cancellation (timeout, user cancel, junction loss) still
+        // fires through ct: WaitUntilServableAsync returns false on cancellation, and the throw
+        // below routes into the existing cancellation handling.
         if (_availability is not null && !await _availability.WaitUntilServableAsync(ct))
             ct.ThrowIfCancellationRequested();
 
@@ -169,7 +169,8 @@ internal sealed class StepRunner
 
         stepDb.StepExecutions.Add(stepExecution);
         // This is a durability barrier, not an optional live-view optimisation: no activity may
-        // produce an external side effect before its stable step id and Running state are committed.
+        // produce an external side effect before its stable step id and Running state are
+        // committed.
         // CancellationToken.None deliberately — see the note on the terminal write below.
         await PersistStepStateDurablyAsync(
             stepDb, stepExecution, "step.running", durabilityCancellation);
@@ -181,7 +182,8 @@ internal sealed class StepRunner
         // availability gate, before the Running row exists, and outside the try below. A failure
         // there escaped StepRunner entirely and failed the whole run WITHOUT ever writing a step
         // row - the exact inversion the barrier exists to prevent, one line too early. The Running
-        // row does not need it (it persists the resolved target STRING), so moving it costs nothing.
+        // row does not need it (it persists the resolved target STRING), so moving it costs
+        // nothing.
         var resolvedMachine = await MachineResolver.ResolveAsync(stepDb, resolvedTargetMachine, _logger, ct);
         var targetMachineId = resolvedMachine?.Id != Guid.Empty ? resolvedMachine?.Id : null;
         stepActivity?.SetTag(
@@ -276,7 +278,8 @@ internal sealed class StepRunner
                 ? TruncateForPersist(JsonSerializer.Serialize(op))
                 : null;
             // Reproducibility snapshot for custom-activity steps: which definition key/version/hash
-            // actually ran. Survives latest-wins edits + rollbacks of the live definition. Provenance
+            // actually ran. Survives latest-wins edits + rollbacks of the live definition.
+            // Provenance
             // carries no secrets, but it still flows through _redactor.Redact (which rebuilds the
             // result), so read it from `sanitized`.
             if (sanitized.CustomActivity is { } prov)
@@ -411,7 +414,8 @@ internal sealed class StepRunner
     /// Commits a step lifecycle state before control advances. Only a
     /// database-shaped failure accompanied by the process-wide open breaker is retried: this avoids
     /// hiding programming/model errors behind an outage wait. Recovery always uses a fresh context,
-    /// and the stable Guid is loaded before update so an unknown first-commit outcome is idempotent.
+    /// and the stable Guid is loaded before update so an unknown first-commit outcome is
+    /// idempotent.
     /// </summary>
     private async Task PersistStepStateDurablyAsync(
         NodePilotDbContext primaryDb,
@@ -469,13 +473,14 @@ internal sealed class StepRunner
             catch (DbUpdateException ex)
                 when (DbErrorClassifier.IsUniqueConstraintViolation(ex) && uniqueCollisionRetries++ == 0)
             {
-                // The first attempt may have committed and then lost its acknowledgement, or another
+                // The first attempt may have committed and then lost its acknowledgement, or
+                // another
                 // retry may have inserted the same stable Guid. A brand-new scope will now load it.
             }
             catch (Exception ex) when (IsConfirmedDatabaseOutage(ex))
             {
-                // The probe may have closed the breaker just before this attempt and the database
-                // disappeared again. Loop through the shared recovery gate; never spin on Armed.
+                // The database may fail again immediately after the probe closes the breaker.
+                // Loop through the shared recovery gate and never spin on Armed.
             }
         }
     }
@@ -628,7 +633,8 @@ internal sealed class StepRunner
     /// Deliberately NOT called for junction-race cancellations — those are expected
     /// behavior for waitAny branches and would flood the support log.
     ///
-    /// Format: <c>STEP_FAILED exec=&lt;short&gt; step=&lt;label&gt; activity=&lt;type&gt; reason=&lt;...&gt;</c>.
+    /// Format: <c>STEP_FAILED exec=&lt;short&gt; step=&lt;label&gt; activity=&lt;type&gt;
+    /// reason=&lt;...&gt;</c>.
     /// Reason is redacted (comes from _redactor.Redact output) and capped at 500 characters.
     /// </summary>
     private void LogStepFailedAsSupport(WorkflowExecution execution, WorkflowNode node, string? errorOutput)

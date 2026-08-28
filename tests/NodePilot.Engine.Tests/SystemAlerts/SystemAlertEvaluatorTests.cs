@@ -9,9 +9,12 @@ using Xunit;
 namespace NodePilot.Engine.Tests.SystemAlerts;
 
 /// <summary>
-/// Exercises the SystemAlertEvaluator state machine: sustain windows, per-episode idempotent EventKeys,
-/// silent recovery, the per-policy activation watermark, scope, severity override, and orphan pruning.
-/// Uses a stub source so observations are controlled precisely and time is injected via the `now` arg.
+/// Exercises the SystemAlertEvaluator state machine: sustain windows, per-episode idempotent
+/// EventKeys,
+/// silent recovery, the per-policy activation watermark, scope, severity override, and orphan
+/// pruning.
+/// Uses a stub source so observations are controlled precisely and time is injected via the `now`
+/// arg.
 /// </summary>
 public class SystemAlertEvaluatorTests
 {
@@ -97,7 +100,8 @@ public class SystemAlertEvaluatorTests
     [Fact]
     public async Task ConditionFalse_CreatesNoStateRow()
     {
-        // An event source like audit-event yields hundreds of non-matching observations per pass; a state
+        // An event source like audit-event yields hundreds of non-matching observations per pass; a
+        // state
         // row for each would sit in SystemAlertPolicyStates until the 90-day retention sweep.
         await using var db = TestDbFactory.Create();
         var (ev, src) = Build();
@@ -164,7 +168,8 @@ public class SystemAlertEvaluatorTests
     public async Task OpenEpisode_EventKey_SurvivesMicrosecondPrecisionRoundTrip()
     {
         // PostgreSQL stores timestamps at microsecond precision. Before the episode start was
-        // millisecond-aligned, pass 1 keyed the attempt on the in-memory 100-ns value and pass 2 on the
+        // millisecond-aligned, pass 1 keyed the attempt on the in-memory 100-ns value and pass 2 on
+        // the
         // rounded value read back from the row: two EventKeys, two deliveries, for one episode.
         await using var db = TestDbFactory.Create();
         var (ev, src) = Build();

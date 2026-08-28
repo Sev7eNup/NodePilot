@@ -14,13 +14,13 @@ function node(workflowId: string, name: string): OpsNode {
 
 const NODES = new Map([['w1', node('w1', 'Nightly Backup')], ['w2', node('w2', 'Report Gen')]]);
 
-// Module-level so their IDENTITY survives a rerender. The timeline re-anchors its settled layer
-// when `recent` changes reference, which is exactly what React Query's structural sharing gives it
-// in the browser: a poll that changed nothing keeps the array. Rebuilding these literals per render
-// would make every clock tick look like a fresh snapshot and quietly defeat the anchoring.
+// Kept at module level so their identity survives a rerender. The timeline re-anchors its settled
+// layer when `recent` changes reference, matching React Query's structural sharing, where a poll
+// that changed nothing keeps the same array. Rebuilding these literals per render would make every
+// clock tick look like a fresh snapshot and defeat the anchoring.
 const DEFAULT_RUNNING = [{ executionId: 'run-1', workflowId: 'w1', status: 'Running', startedAt: new Date(NOW - 4 * MIN).toISOString(), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null }];
-// Same reason as the arrays below: OperationsPage derives both of these with `useMemo` off
-// `scopedNodes`, so between polls they keep their identity. Rebuilding them per render here would
+// Same reason as the arrays below: OperationsPage derives both of these with `useMemo` from
+// `scopedNodes`, so they keep their identity between polls. Rebuilding them per render would
 // invalidate every downstream memo and make a tick look like a new snapshot.
 const DEFAULT_SCOPE = new Set(['w1', 'w2']);
 const NO_DENSITY: [] = [];
@@ -52,12 +52,12 @@ function renderTimeline(overrides: Partial<Parameters<typeof OpsTimeline>[0]> = 
     />
   );
   const { rerender } = render(el({}));
-  // Lets a test advance only the clock, which is the axis the anchored render path is built on.
+  // Advances only the clock, which is the axis the anchored render path is built on.
   const tick = (nowMs: number) => rerender(el({ nowMs }));
   return { onSelect, tick, rerender: (extra: Partial<Parameters<typeof OpsTimeline>[0]>) => rerender(el(extra)) };
 }
 
-/** px out of a `translateX(-12.5px)` transform. */
+/** Reads the pixel value out of a `translateX(-12.5px)` transform. */
 function translateXOf(el: HTMLElement): number {
   const m = /translateX\((-?[\d.]+)px\)/.exec(el.style.transform);
   return m ? parseFloat(m[1]) : NaN;
@@ -174,8 +174,8 @@ describe('OpsTimeline — overdue runs', () => {
     });
     const bar = screen.getByTitle(/Nightly Backup · Running/);
     expect(bar.className).toContain('np-ops-bar--overdue');
-    // The strip is the point: a 3-hour hang is clamped to the window edge and otherwise
-    // looks identical to a 21-minute run.
+    // A 3-hour hang is clamped to the window edge and otherwise looks like a 21-minute run,
+    // so the strip is what surfaces it.
     expect(screen.getByLabelText('Stuck / long-running')).toBeInTheDocument();
   });
 
@@ -204,9 +204,9 @@ describe('OpsTimeline — overdue runs', () => {
 });
 
 describe('OpsTimeline — density for the stretch bars cannot reach', () => {
-  // A capped 1 h window on a busy system: thousands of finished runs exist, the snapshot ships the
-  // newest slice as bars and the rest as counts. Before this, everything older than that slice
-  // was an empty hatched band and the window selector was decoration.
+  // A capped 1 h window on a busy system: thousands of finished runs exist, so the snapshot ships
+  // the newest slice as bars and the rest as bucket counts. Without those counts everything older
+  // than the slice would render as an empty hatched band.
   const DENSITY_ARGS = {
     running: [],
     recent: [{
@@ -245,10 +245,10 @@ describe('OpsTimeline — density for the stretch bars cannot reach', () => {
 
   it('states the window total and suppresses the "no history" band', () => {
     renderTimeline(DENSITY_ARGS);
-    // 12 + 20 counted, 3 of them failed — the answer to "what happened in this window?".
+    // 12 + 20 runs counted, 3 of them failed: the totals for the whole window.
     expect(screen.getByTestId('ops-density-notice').textContent).toContain('32 finished runs');
     expect(screen.getByTestId('ops-density-notice').textContent).toContain('3 failed');
-    // The band claims nothing came back for that stretch; density is the refutation.
+    // The band claims nothing finished in that stretch, so density replaces it.
     expect(screen.queryByTestId('ops-history-gap')).not.toBeInTheDocument();
   });
 
@@ -258,8 +258,8 @@ describe('OpsTimeline — density for the stretch bars cannot reach', () => {
   });
 
   it('gives a workflow with density but no bar a lane of its own', () => {
-    // Every run of w2 fell past the raw cap. Without a lane its history would have nowhere to
-    // draw and the workflow would read as idle — the exact misreading density exists to prevent.
+    // Every run of w2 fell past the raw cap. Without a lane its history has nowhere to draw and
+    // the workflow reads as idle, which is the misreading density exists to prevent.
     renderTimeline({
       ...DENSITY_ARGS,
       density: [{ workflowId: 'w2', buckets: [{ bucketIndex: 5, total: 7, failed: 0, cancelled: 0 }] }],
@@ -269,8 +269,8 @@ describe('OpsTimeline — density for the stretch bars cannot reach', () => {
   });
 
   it('drops density for out-of-scope workflows, notice included', () => {
-    // w2 stays visible (so the lane view still renders) but w1's density must not leak into a
-    // folder-filtered board — nor into the run total the notice states.
+    // w2 stays visible so the lane view still renders, but w1's density must not leak into a
+    // folder-filtered board, nor into the run total the notice states.
     renderTimeline({
       ...DENSITY_ARGS,
       scopedWorkflowIds: new Set(['w2']),
@@ -294,8 +294,8 @@ describe('OpsTimeline — density for the stretch bars cannot reach', () => {
   });
 
   it('encodes the run count as column height on a shared baseline', () => {
-    // The bar-chart property: 20 runs stands taller than 12, and both sit on the same floor. The
-    // predecessor drew every slice at full lane height, which is what fused them into a slab.
+    // The bar-chart property: 20 runs stands taller than 12, and both sit on the same baseline.
+    // Drawing every slice at full lane height would fuse them into one slab.
     renderTimeline(DENSITY_ARGS);
     const [twelve, twenty] = screen.getAllByTestId('ops-density-cell');
     const bottom = (el: HTMLElement) => parseFloat(el.style.top) + parseFloat(el.style.height);
@@ -304,8 +304,8 @@ describe('OpsTimeline — density for the stretch bars cannot reach', () => {
   });
 
   it('keeps every column too short to pass for a run bar', () => {
-    // An aggregate that reaches bar height is the defect, not a styling nit: at a 1 h window it
-    // read as one 40-minute successful run covering half the track.
+    // An aggregate that reaches bar height reads as a single long successful run covering half
+    // the track.
     renderTimeline(DENSITY_ARGS);
     for (const cell of screen.getAllByTestId('ops-density-cell')) {
       expect(parseFloat(cell.style.height)).toBeLessThanOrEqual(OPS_DENSITY_MAX_H);
@@ -314,8 +314,8 @@ describe('OpsTimeline — density for the stretch bars cannot reach', () => {
   });
 
   it('carries no status fill and no count-driven ink', () => {
-    // Guards both halves of the old encoding: a green fill made the aggregate look like a
-    // succeeded run, and the opacity ramp double-encoded a count that height already carries.
+    // A status fill would make the aggregate look like a succeeded run, and an opacity ramp
+    // would double-encode a count that height already carries.
     renderTimeline(DENSITY_ARGS);
     for (const cell of screen.getAllByTestId('ops-density-cell')) {
       expect(cell.style.background).toBe('');
@@ -324,8 +324,8 @@ describe('OpsTimeline — density for the stretch bars cannot reach', () => {
   });
 
   it('hangs a failure rug under the baseline where the column cannot show it', () => {
-    // 3 failures among 20 runs is 15 % — a proportional stack would render 2 px here and a third
-    // of a pixel at the ratios this view actually sees (65 of 2981). Presence, not proportion.
+    // A proportional stack would be only a pixel or two tall at the failure ratios this view
+    // sees, so the rug encodes presence rather than proportion.
     renderTimeline(DENSITY_ARGS);
     const rugs = screen.getAllByTestId('ops-density-rug');
     expect(rugs).toHaveLength(1);
@@ -359,9 +359,8 @@ describe('OpsTimeline — density for the stretch bars cannot reach', () => {
 });
 
 describe('OpsTimeline — duration stays comparable at wide windows', () => {
-  // Regression: the bar-width floor used to be 6 px. At 1 h a 2-minute run renders ~9 px and a
-  // 20-second one ~3 px, so the floor flattened both to the same length — every bar in the
-  // the 1 h view made short runs look identical and "which run took longer?" was unanswerable.
+  // At a 1 h window a 2-minute run and a 20-second run are both only a few pixels wide. A
+  // bar-width floor would flatten them to the same length and hide which run took longer.
   const wideRuns = {
     running: [],
     recent: [
@@ -376,7 +375,7 @@ describe('OpsTimeline — duration stays comparable at wide windows', () => {
 
   it('writes the duration beside bars too narrow to hold it', () => {
     renderTimeline({ ...wideRuns, windowMs: 60 * MIN });
-    // Both runs are too narrow at 1 h to carry an inside label — the text
+    // Both runs are too narrow at 1 h to carry an inside label, so the text
     // beside the bar is what keeps them distinguishable.
     expect(screen.getByText('2:00')).toBeInTheDocument();
     expect(screen.getByText('0:20')).toBeInTheDocument();
@@ -412,14 +411,14 @@ describe('OpsTimeline — a clock tick must not touch the settled bars', () => {
 
     tick(NOW + 60_000);
 
-    // The bar did not move in its own coordinate system — nothing rewrote its geometry.
+    // The bar did not move in its own coordinate system, so nothing rewrote its geometry.
     expect(settled.style.left).toBe(leftBefore);
-    // The layer did: one number, one property, for every settled bar at once.
+    // The layer did move: one property change covers every settled bar at once.
     expect(translateXOf(layer)).toBeLessThan(0);
   });
 
   it('lands the translated bar exactly where the live window would put it', () => {
-    // The saving is only legitimate if the anchored position plus the shift is the honest
+    // The shortcut is only valid if the anchored position plus the shift equals the live
     // position. Both windows share a span, so the difference is a pure translation.
     const { tick } = renderTimeline();
     const settled = screen.getByTitle(/Report Gen · Failed/);
@@ -455,17 +454,17 @@ describe('OpsTimeline — re-anchoring', () => {
     tick(NOW + 60_000);
     expect(translateXOf(screen.getByTestId('ops-shift-layer'))).toBeLessThan(0);
 
-    // Same content, new array identity — what a poll that changed something looks like.
+    // Same content, new array identity: what a poll that changed something looks like.
     rerender({ recent: [...DEFAULT_RECENT], nowMs: NOW + 60_000 });
     expect(translateXOf(screen.getByTestId('ops-shift-layer'))).toBeCloseTo(0, 5);
   });
 });
 
 describe('OpsTimeline — a clock tick must not touch the density either', () => {
-  // Density is frozen history, exactly like a settled bar, and it is the bulkier of the two: a busy
-  // board draws ~24 lanes × up to 48 buckets. It rode the live window until this
-  // was fixed, so every one of those cells was recomputed and re-rendered once a second while the
-  // bars beside them sat still — the reason the busy view still felt heavy after the bars were done.
+  // Density is frozen history, like a settled bar, and it is the bulkier of the two: a busy board
+  // draws about 24 lanes of up to 48 buckets each. It has to be anchored the same way, or every
+  // one of those cells is recomputed and re-rendered once a second while the bars beside them
+  // sit still.
   const ARGS = {
     running: [],
     recent: [{
@@ -510,8 +509,8 @@ describe('OpsTimeline — a clock tick must not touch the density either', () =>
   });
 
   it('lands a translated cell where the live window would put it', () => {
-    // Same honesty check the bars get: the saving only counts if anchored position plus shift is
-    // the position the live window would have drawn.
+    // Same check the bars get: the anchored position plus the shift must equal the position the
+    // live window would have drawn.
     const { tick } = renderTimeline(ARGS);
     const cell = screen.getAllByTestId('ops-density-cell')[0];
     const layer = screen.getByTestId('ops-shift-layer');
@@ -525,27 +524,26 @@ describe('OpsTimeline — a clock tick must not touch the density either', () =>
   });
 
   it('draws the no-history band in the anchored layer too', () => {
-    // Also a statement about history, so it belongs in the same coordinate system — it is just one
-    // element rather than a thousand. Only visible when there is no density to refute it.
+    // The band is also a statement about history, so it belongs in the same coordinate system.
+    // It only appears when there is no density to replace it.
     renderTimeline({ ...ARGS, density: [], densityBucketSeconds: 0 });
     expect(screen.getByTestId('ops-shift-layer')).toContainElement(screen.getByTestId('ops-history-gap'));
   });
 });
 
 describe('OpsTimeline — the anchored subtree is built per snapshot, not per tick', () => {
-  // Memoizing the GEOMETRY was only half of it: the layer's JSX used to live in the render body, so
-  // a clock tick still rebuilt every density element and re-ran densityTitle for each one — two
-  // toLocaleTimeString calls and up to three i18n lookups per cell, none of which can change between
-  // polls. On a busy board that was thousands of Intl formats a second. This measures the real
-  // thing rather than the intent.
+  // Memoizing the geometry is only half of it. If the layer's JSX lived in the render body, a
+  // clock tick would rebuild every density element and re-run densityTitle for each one: two
+  // toLocaleTimeString calls and up to three i18n lookups per cell, none of which can change
+  // between polls. These tests count the formatting calls rather than assert the intent.
 
   const DENSE = {
     running: [],
     recent: DEFAULT_RECENT,
     windowMs: 60 * MIN,
     recentSinceMs: NOW - 60 * MIN,
-    // Seam late enough that all 40 buckets (40 x 75 s = 50 min) sit left of it and actually render;
-    // anything past the seam is clipped away and would silently shrink what this measures.
+    // Seam late enough that all 40 buckets (40 x 75 s = 50 min) sit left of it and render.
+    // Anything past the seam is clipped away and would shrink what this measures.
     historyFromMs: NOW - 5 * MIN,
     densityBucketSeconds: 75,
     density: [{
@@ -573,13 +571,13 @@ describe('OpsTimeline — the anchored subtree is built per snapshot, not per ti
     const dense = clockFormats(DENSE);
     const quiet = clockFormats(QUIET);
 
-    // Sanity: the fixture really does render density, so the comparison below is not vacuous.
+    // Confirms the fixture really does render density, so the comparison below is not vacuous.
     // 40 buckets with two clock labels each is 80, less the one the no-history band would have
-    // formatted — density suppresses that band, so the honest delta is 79.
+    // formatted, since density suppresses that band. The expected delta is therefore 79.
     expect(dense.mount - quiet.mount).toBeGreaterThanOrEqual(79);
 
-    // The point: those 80 belong to the snapshot, not to the clock. Whatever the axis costs per
-    // tick, density must add nothing on top of it.
+    // Those formats belong to the snapshot, not to the clock. Whatever the axis costs per tick,
+    // density must add nothing on top of it.
     expect(dense.perTick).toBe(quiet.perTick);
   });
 });
@@ -602,8 +600,8 @@ describe('OpsTimeline — keyboard reach without a trap', () => {
   };
 
   // A busy board carries thousands of bars. One tab stop apiece would make the timeline a keyboard
-  // trap: the departure board below it is unreachable without thousands of presses. The track is a
-  // single tab stop and moves aria-activedescendant across the bars instead.
+  // trap, leaving the departure board below it unreachable. The track is a single tab stop and
+  // moves aria-activedescendant across the bars instead.
 
   it('keeps every bar out of the tab order', () => {
     renderTimeline();
@@ -638,7 +636,7 @@ describe('OpsTimeline — keyboard reach without a trap', () => {
 
   it('moves lane-wise with ArrowDown/ArrowUp instead of crawling through a lane', () => {
     // The two fixture bars sit in different lanes, so a vertical press has to land on the other
-    // one. Crawling bar-by-bar would be unusable on a board where one lane holds hundreds.
+    // one. Crawling bar by bar would be unusable on a board where one lane holds hundreds.
     renderTimeline();
     const track = screen.getByTestId('ops-track');
     const first = track.getAttribute('aria-activedescendant');
@@ -653,8 +651,8 @@ describe('OpsTimeline — keyboard reach without a trap', () => {
   });
 
   it('stays put when the neighbouring lane has no bars to land on', () => {
-    // The `first !== -1` guard. Without it a press past the last lane clears the roving pointer and
-    // the focus lands nowhere — the same branch covers a lane that renders from density alone.
+    // Covers the `first !== -1` guard. Without it a press past the last lane clears the roving
+    // pointer and focus lands nowhere. The same branch covers a lane built from density alone.
     renderTimeline();
     const track = screen.getByTestId('ops-track');
 
@@ -684,8 +682,8 @@ describe('OpsTimeline — keyboard reach without a trap', () => {
   });
 
   it('announces density columns instead of hiding them behind a title attribute', () => {
-    // A div with only a `title` does not reach a screen reader, and the column carries the one thing
-    // the density stretch has to say.
+    // A div with only a `title` does not reach a screen reader, and the column carries the run
+    // counts for the density stretch.
     renderTimeline(DENSITY_ARGS);
     const cell = screen.getAllByTestId('ops-density-cell')[0];
     expect(cell).toHaveAttribute('role', 'img');

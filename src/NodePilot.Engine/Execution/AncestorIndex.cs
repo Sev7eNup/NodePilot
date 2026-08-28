@@ -3,7 +3,8 @@ namespace NodePilot.Engine.Execution;
 /// <summary>
 /// Precomputed ancestor sets for every node of a compiled workflow graph.
 ///
-/// <para><see cref="NodePilot.Core.WorkflowDefinitions.WorkflowDefinitionDocument.FindAncestorNodeIds"/>
+/// <para><see
+/// cref="NodePilot.Core.WorkflowDefinitions.WorkflowDefinitionDocument.FindAncestorNodeIds"/>
 /// rebuilds its incoming-edge index on every call, so calling it per node would be quadratic in
 /// the edge count. This walks the already-compiled <c>ReverseAdjacency</c> once per node instead,
 /// and memoizes each node's set so a shared prefix of the graph is traversed once rather than
@@ -12,7 +13,7 @@ namespace NodePilot.Engine.Execution;
 internal static class AncestorIndex
 {
     /// <summary>
-    /// Maps node id → the ids of every node that can reach it along active edges (excluding the
+    /// Maps node id -> the ids of every node that can reach it along active edges (excluding the
     /// node itself). Cycles are tolerated: the visited set stops the walk.
     /// </summary>
     public static Dictionary<string, IReadOnlySet<string>> Build(

@@ -8,12 +8,11 @@ using Xunit;
 namespace NodePilot.Cli.Tests.Commands;
 
 /// <summary>
-/// End-to-end command tests for the CLI surface added to catch up with API endpoints that
-/// were introduced after the CLI's initial release (trigger / settings / contract / coverage /
-/// auth methods / secrets / shared-folder / observability query / step-test). The point of
-/// this file is **not** to re-test the HTTP client — that's covered by
-/// NodePilotApiClientNewSurfaceTests — but to exercise the actual Spectre command parsing,
-/// exit codes, and stdout shape that scripts depend on.
+/// End-to-end command tests for the CLI surface added to catch up with API endpoints
+/// introduced after the CLI's initial release (trigger, settings, contract, coverage,
+/// auth methods, secrets, shared-folder, observability query, step-test). This does not
+/// re-test the HTTP client, which NodePilotApiClientNewSurfaceTests covers; it exercises
+/// the actual Spectre command parsing, exit codes, and stdout shape that scripts depend on.
 /// </summary>
 [Collection(CommandTestCollection.Name)]
 public class CommandIntegrationNewSurfaceTests
@@ -41,9 +40,9 @@ public class CommandIntegrationNewSurfaceTests
     public void WorkflowTrigger_NoApiKey_FailsBeforeFiring()
     {
         using var h = new CommandTestHarness();
-        // No mapping set up — if the command tries to fire, it would 404. We expect it to
-        // fail BEFORE any HTTP call (validation error on stderr), so absence of a hit on
-        // /api/trigger is the second assertion.
+        // No mapping is set up here - if the command fired, it would 404. It must fail
+        // before any HTTP call, with a validation error on stderr, so the second assertion
+        // checks that /api/trigger was never hit.
         var result = h.Run("workflow", "trigger", "Deploy");
         result.ExitCode.Should().Be(ExitCodes.Error);
         result.StdErr.Should().Contain("API-Key");
@@ -73,11 +72,10 @@ public class CommandIntegrationNewSurfaceTests
     [Fact]
     public void WorkflowTrigger_WaitWithoutSession_FailsBeforeFiring()
     {
-        // Regression guard: --wait must NOT fire the workflow when there is no JWT session,
-        // because polling the execution status afterwards is impossible (the polling endpoint
-        // is auth-only). The mapping for /api/trigger is deliberately registered so that — if
-        // the pre-check were broken — the trigger would succeed with 202 and the test would
-        // (incorrectly) pass.
+        // Regression guard: --wait must not fire the workflow when there is no JWT session,
+        // because polling the execution status afterward is impossible (the polling endpoint
+        // is auth-only). The mapping for /api/trigger is registered anyway so that a broken
+        // pre-check would let the trigger succeed with 202 and the test would incorrectly pass.
         using var h = new CommandTestHarness(authenticated: false);
         h.Server.Given(Request.Create().WithPath("/api/trigger/Deploy").UsingPost())
             .RespondWith(Response.Create().WithStatusCode(202).WithBodyAsJson(new
@@ -89,8 +87,8 @@ public class CommandIntegrationNewSurfaceTests
 
         var result = h.Run("workflow", "trigger", "Deploy", "--api-key", "k", "--wait");
         result.ExitCode.Should().Be(ExitCodes.AuthRequired);
-        // The fire-before-pre-check bug would have left the trigger endpoint hit once;
-        // we assert it was NOT.
+        // Confirms the trigger endpoint was never hit, guarding against firing before
+        // the pre-check runs.
         h.Server.LogEntries.Should().NotContain(e =>
             e.RequestMessage!.AbsolutePath == "/api/trigger/Deploy");
     }
@@ -299,7 +297,7 @@ public class CommandIntegrationNewSurfaceTests
         File.WriteAllText(file, """{"host":"mail","port":25,"from":"a@b.c"}""");
         try
         {
-            // No --etag → command must fail without sending the request.
+            // No --etag -> command must fail without sending the request.
             var result = h.Run("settings", "put", "Smtp", "--file", file);
             result.ExitCode.Should().Be(ExitCodes.Error);
             result.StdErr.Should().Contain("--etag");

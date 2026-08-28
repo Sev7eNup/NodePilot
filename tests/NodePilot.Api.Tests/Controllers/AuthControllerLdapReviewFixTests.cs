@@ -24,7 +24,7 @@ using NodePilot.TestCommons;
 namespace NodePilot.Api.Tests.Controllers;
 
 /// <summary>
-/// Regression tests for the four review findings against the LDAP / Windows-SSO feature:
+/// Regression tests for four LDAP / Windows-SSO behaviors:
 /// <list type="number">
 /// <item>POST /auth/refresh must carry ClaimTypes.GroupSid claims for non-Local users.</item>
 /// <item>WindowsLogin must reject NTLM when AllowNtlmFallback=false.</item>
@@ -52,9 +52,9 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
         envMock.SetupGet(e => e.EnvironmentName).Returns("Test");
         _env = envMock.Object;
 
-        // Rollout phase PR10 added an empty-DB bootstrap gate; bypass it here so the
-        // post-bootstrap mainline runs. Bootstrap behaviour itself is covered by the
-        // dedicated PR10 regression tests below.
+        // Seed an existing admin so the empty-DB bootstrap gate does not trigger,
+        // letting the post-bootstrap login path run instead. Bootstrap behavior
+        // itself has its own dedicated tests.
         _db.Users.Add(new User
         {
             Id = Guid.NewGuid(),
@@ -135,7 +135,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
             new Claim(JwtRegisteredClaimNames.Jti, "old-jti-123"),
         }, "Bearer"));
         controller.ControllerContext = new ControllerContext { HttpContext = NewHttpContext(refreshClaims) };
-        // Bearer-header caller → the rotated token is returned in the body (CLI/API contract).
+        // A Bearer-header caller gets the rotated token back in the body (CLI/API contract).
         controller.Request.Headers.Authorization = "Bearer presented.token";
 
         var result = await controller.Refresh(default);
@@ -154,8 +154,8 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
     [Fact]
     public async Task Refresh_LocalUser_StampsNoGroupSidClaims()
     {
-        // Sanity: local users have no group claims. The fix must not regress local-user
-        // refresh by accidentally adding empty/garbage GroupSid claims.
+        // Local users have no group claims. Refresh must not add empty or garbage
+        // GroupSid claims for them.
         var user = new User
         {
             Id = Guid.NewGuid(),
@@ -268,8 +268,8 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
     [Fact]
     public async Task WindowsLogin_KerberosIdentity_AllowNtlmFalse_StillAccepted()
     {
-        // The fix must not regress the happy path: Kerberos with AllowNtlmFallback=false
-        // is the recommended production posture and must work.
+        // Kerberos with AllowNtlmFallback=false is the recommended production posture
+        // and must keep working.
         var cfg = NewConfig();
         var key = new TestJwtKeyProvider();
         var audit = new CapturingAuditWriter();
@@ -377,12 +377,12 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
     [InlineData("   ")]
     public async Task LdapLogin_EmptyPassword_Rejected_EvenIfDirectoryWouldAcceptBind(string password)
     {
-        // Auth-bypass regression: AD answers a simple-bind with a populated UPN + empty
-        // password as an *unauthenticated bind* (LDAP_SUCCESS), not error 49. The FakeLdapConnectionAdapter
-        // here is configured to RETURN SUCCESS for any bind — i.e. it simulates that
-        // vulnerable directory. The login must still be rejected because the empty/blank
-        // password is refused before the adapter is ever consulted, so no session is minted
-        // and no LDAP user is JIT-provisioned for the attacker-chosen username.
+        // AD answers a simple bind with a populated UPN and an empty password as an
+        // unauthenticated bind (LDAP_SUCCESS), not error 49. FakeLdapConnectionAdapter is
+        // configured to return success for any bind here, simulating that vulnerable
+        // directory. The login must still be rejected because an empty or blank password
+        // is refused before the adapter is ever consulted, so no session is minted and
+        // no LDAP user is JIT-provisioned for the attacker-chosen username.
         var cfg = NewConfig();
         var key = new TestJwtKeyProvider();
         var audit = new CapturingAuditWriter();
@@ -510,8 +510,8 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
             ControllerContext = new ControllerContext { HttpContext = NewHttpContext() },
         };
 
-        // Wrong local password — the local path returns 401, LDAP must NOT have been
-        // attempted and must NOT have promoted this row.
+        // Wrong local password: the local path returns 401, and LDAP must not have
+        // been attempted or promoted this row.
         var result = await controller.Login(new LoginRequest("alice@firma.de", "wrong"), default);
 
         result.Result.Should().BeOfType<UnauthorizedObjectResult>();

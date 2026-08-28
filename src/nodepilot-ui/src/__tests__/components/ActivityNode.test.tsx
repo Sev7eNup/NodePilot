@@ -5,16 +5,16 @@ import { ActivityNode } from '../../components/designer/nodes/ActivityNode';
 import { useDesignStore } from '../../stores/designStore';
 import { usePointerFlowPosition } from '../../stores/pointerFlowPositionStore';
 
-// Config summaries are only rendered in the 'card' node-style. Force it for these tests.
-// nodeIconStyle reset to 'shape' so a glyph-view test can't leak into later classic tests.
-// autoHidePorts reset + pointer store cleared so port-reveal tests don't leak across cases.
+// Config summaries render only in the 'card' node style, so force it for these tests.
+// Resetting nodeIconStyle and autoHidePorts and clearing the pointer store keeps glyph-view
+// and port-reveal cases from leaking into later ones.
 beforeEach(() => {
   useDesignStore.setState({ nodeStyle: 'card', nodeIconStyle: 'shape', autoHidePorts: true });
   usePointerFlowPosition.setState({ x: null, y: null });
 });
 
 function renderActivityNode(data: Record<string, unknown>, selected = false) {
-  // ActivityNode expects NodeProps but we only need data and selected
+  // ActivityNode expects NodeProps, but only data and selected matter here.
   const props = {
     id: 'test-node',
     data,
@@ -55,8 +55,8 @@ describe('ActivityNode', () => {
   });
 
   it('rendersFourPortHandles_allConnectableInBothDirections', () => {
-    // Die klassische 2-Port-Variante (nur rechts-Start / links-Ende) ist ersatzlos entfallen:
-    // sie gated nur die Maus, während sourceHandle/targetHandle im JSON immer frei waren.
+    // Every side handle is both a connection start and a connection end. The JSON puts no
+    // restriction on sourceHandle/targetHandle either.
     const { container } = renderActivityNode({ label: 'Ports', activityType: 'runScript', config: {} });
 
     expect(container.querySelectorAll('.react-flow__handle')).toHaveLength(4);
@@ -90,15 +90,15 @@ describe('ActivityNode', () => {
       activityType: 'restApi',
       config: { method: 'POST', url: 'https://api.example.com' },
     });
-    // The restApi card renders method in a badge span and url separately — test each piece
+    // The restApi card renders the method in a badge span and the url separately.
     expect(screen.getByText('POST')).toBeInTheDocument();
     expect(screen.getByText('https://api.example.com')).toBeInTheDocument();
   });
 
-  // Hover-Tooltip (mouse-over box): the summary may carry long unbreakable tokens
-  // (registry/file paths, URLs). Without a word-break utility they overflow the fixed-width
-  // box (see the WindowsUpdate registry-path screenshot). Assert the rendered tooltip summary
-  // both preserves formatting (whitespace-pre-wrap) AND breaks long words (break-words).
+  // The hover tooltip summary can carry long unbreakable tokens such as registry paths, file
+  // paths and URLs. Without a word-break utility they overflow the fixed-width box, so the
+  // rendered summary must preserve formatting (whitespace-pre-wrap) and break long words
+  // (break-words).
   describe('hover tooltip wrapping', () => {
     it('wraps a long unbreakable registry path inside the tooltip box', () => {
       vi.useFakeTimers();
@@ -128,9 +128,9 @@ describe('ActivityNode', () => {
     });
   });
 
-  // Shape system: triggers, control-flow nodes, and returnData each render through their own
-  // clip-path shape (rather than the plain square). These are regression guards that those
-  // paths mount without crashing and still show the node label.
+  // Triggers, control-flow nodes and returnData each render through their own clip-path shape
+  // instead of a plain square. These cases check that those paths mount without crashing and
+  // still show the node label.
   describe('shape rendering (Triggers / Control Flow / returnData)', () => {
     it('mounts a trigger node (pennant path) without crashing', () => {
       renderActivityNode({ label: 'Schedule', activityType: 'scheduleTrigger', config: { cronExpression: '0 0 * * * ? *' } });
@@ -195,9 +195,8 @@ describe('ActivityNode', () => {
       expect(container.querySelector('[data-testid="entry-badge"]')).not.toBeInTheDocument();
     });
 
-    // Per-activity action shapes: each action now renders via the clipped shaped path.
-    // Smoke-mount a representative spread (card + classic) so a broken polygon/registry entry
-    // surfaces here instead of only live.
+    // Each action renders through its own clipped shape. Mounting a representative spread
+    // (card and classic) surfaces a broken polygon or shape-registry entry here.
     it.each([
       ['sql', 'cylinder'],
       ['restApi', 'browser'],
@@ -215,9 +214,8 @@ describe('ActivityNode', () => {
       expect(screen.getByText('Query')).toBeInTheDocument();
     });
 
-    // Regression lock: a remote action (now a clipped shape) must still show its machine-colour
-    // indicator — the square branch rendered a left stripe; the shaped branch must render the
-    // clipped equivalent (data-testid="machine-stripe").
+    // A remote action drawn as a clipped shape must still show its machine-colour indicator
+    // (data-testid="machine-stripe").
     it('renders the machine-colour indicator on a remote action shape (classic)', () => {
       useDesignStore.setState({ nodeStyle: 'classic' });
       const { container } = renderActivityNode({
@@ -226,8 +224,8 @@ describe('ActivityNode', () => {
       expect(container.querySelector('[data-testid="machine-stripe"]')).toBeInTheDocument();
     });
 
-    // Control-group frame: control-flow nodes carry the shared indigo accent layer; bookends
-    // (returnData/trigger) and normal actions do NOT.
+    // Control-flow nodes carry the shared indigo accent layer; returnData, triggers and normal
+    // actions do not.
     it('renders the control-group frame on control-flow nodes but not on others (classic)', () => {
       useDesignStore.setState({ nodeStyle: 'classic' });
       for (const activityType of ['decision', 'junction', 'forEach', 'startWorkflow']) {
@@ -243,8 +241,8 @@ describe('ActivityNode', () => {
     });
   });
 
-  // Classic "icon view": the bare palette glyph replaces the clip-path silhouette. Toggle is
-  // classic-only; card mode keeps its header. Ports/entry-marker/badges survive the swap.
+  // In the classic icon view the bare palette glyph replaces the clip-path silhouette. The
+  // toggle is classic-only; card mode keeps its header, and ports, entry marker and badges stay.
   describe('classic icon view (bare glyph)', () => {
     it('renders the bare palette glyph and no clip-path silhouette', () => {
       useDesignStore.setState({ nodeStyle: 'classic', nodeIconStyle: 'glyph' });
@@ -274,13 +272,13 @@ describe('ActivityNode', () => {
     });
 
     it('renders the failure-heatmap glow behind the bare glyph in icon view', () => {
-      // Regression: the icon (glyph) view has no box/silhouette, so the failure heatmap
-      // used to render nothing at all — it was only visible in the shaped/card views.
+      // The glyph view has no box or silhouette, so the failure heatmap needs its own glow
+      // layer to be visible at all.
       useDesignStore.setState({ nodeStyle: 'classic', nodeIconStyle: 'glyph' });
       const { container } = renderActivityNode({ label: 'Hot', activityType: 'runScript', config: {}, __failureTint: 0.8 });
       const glow = container.querySelector('[data-testid="heatmap-glow"]') as HTMLElement | null;
       expect(glow).toBeInTheDocument();
-      // Rides the semantic error token (skin-stable) — never a raw hardcoded red.
+      // Uses the semantic error token so it stays correct across skins, never a hardcoded red.
       expect(glow?.style.backgroundColor).toContain('var(--color-error)');
     });
 
@@ -291,9 +289,9 @@ describe('ActivityNode', () => {
     });
   });
 
-  // Health sparkline: the last outcomes of this step as small dots. It is a second information
-  // layer next to the live-status colouring — a pinned run (which survives the SignalR TTL on
-  // purpose) must not hide it. Only the dry-run simulation suppresses it.
+  // The health sparkline shows the recent outcomes of this step as small dots. It is a second
+  // information layer next to the live-status colouring, so a pinned run must not hide it.
+  // Only a dry-run simulation suppresses it.
   describe('health sparkline', () => {
     const health = [{ status: 'Succeeded' }, { status: 'Failed' }, { status: 'Succeeded' }];
     const dots = (c: HTMLElement) => ({
@@ -328,9 +326,9 @@ describe('ActivityNode', () => {
     });
   });
 
-  // Auto-hide ports: with autoHidePorts on, the (active) port handles render at opacity 0 until the
-  // node is selected/hovered, the cursor is near (pointer store), or a connection is dragged toward it.
-  // The handles stay in the DOM + connectable — only opacity changes.
+  // With autoHidePorts on, the active port handles render at opacity 0 until the node is selected
+  // or hovered, the cursor is near it (pointer store), or a connection is dragged toward it. The
+  // handles stay in the DOM and connectable; only opacity changes.
   describe('port auto-hide (reveal on proximity/selection)', () => {
     const leftOpacity = (c: HTMLElement) =>
       (c.querySelector('[data-handleid="left"]') as HTMLElement | null)?.style.opacity;
@@ -346,7 +344,7 @@ describe('ActivityNode', () => {
     });
 
     it('reveals ports when the cursor is near the node (pointer store within radius)', () => {
-      // Node rect in the test is (0,0,200,100); a cursor at (50,50) is inside → within radius.
+      // The node rect here is (0,0,200,100), so a cursor at (50,50) sits inside the radius.
       usePointerFlowPosition.setState({ x: 50, y: 50 });
       const { container } = renderActivityNode({ label: 'Near', activityType: 'runScript', config: {} });
       expect(leftOpacity(container)).toBe('1');
@@ -372,7 +370,7 @@ describe('ActivityNode', () => {
         activityType: 'scheduleTrigger',
         config: { cronExpression: '0 0 * * * ? *' },
       });
-      // Card mode renders "Next: in Xm Ys"; relativeFromNow returns "in …" or "now".
+      // Card mode renders "Next: in Xm Ys"; relativeFromNow returns "in ..." or "now".
       const countdown = screen.queryByText(/Next: (in |now)/);
       expect(countdown).toBeTruthy();
       expect(screen.queryByText('Paused')).toBeNull();

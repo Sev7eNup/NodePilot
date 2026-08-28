@@ -135,8 +135,8 @@ public sealed class LogoutCommand : BaseCommand<GlobalSettings>
             var api = ClientFactory.Create(session);
             await api.LogoutAsync(ct);
         }
-        catch (ApiException) { /* server already invalidated → still wipe local */ }
-        catch (HttpRequestException) { /* server unreachable → still wipe local */ }
+        catch (ApiException) { /* server already invalidated; still wipe local */ }
+        catch (HttpRequestException) { /* server unreachable; still wipe local */ }
 
         _tokens.Delete(session.Profile);
         writer.Success($"Abgemeldet (Profil '{session.Profile}').");
@@ -148,7 +148,7 @@ public sealed class LogoutCommand : BaseCommand<GlobalSettings>
 /// Anonymous discovery — reports which login methods the server has enabled
 /// (Local always; LDAP and Windows-SSO opt-in via Authentication:* config).
 /// Bypasses the session-resolver because the endpoint is AllowAnonymous and
-/// the user typically runs this BEFORE picking a login method.
+/// the user typically runs this before picking a login method.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class AuthMethodsCommand : AsyncCommand<GlobalSettings>

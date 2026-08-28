@@ -3,13 +3,10 @@ import type { Node, Edge } from '@xyflow/react';
 import { autoLayout, autoLayoutTB, autoLayoutCompact } from '../../lib/autoLayout';
 
 /**
- * autoLayout wraps dagre. We don't re-test dagre's internals — we pin the
- * surface contract:
- *   - Returns an array with the same set of node ids.
- *   - All returned nodes have non-NaN integer positions.
- *   - LR layout: source x < target x along an edge.
- *   - TB layout: source y < target y.
- *   - Disabled edges don't constrain the layout (they're skipped at graph-build time).
+ * autoLayout wraps dagre. These tests pin the surface contract, not dagre internals: the
+ * same node ids come back, positions are finite integers, an LR edge places the source left
+ * of the target, a TB edge places it above, and disabled edges are skipped at graph-build
+ * time and therefore do not constrain the layout.
  */
 
 function node(id: string, extra: Partial<Node> = {}): Node {
@@ -64,16 +61,14 @@ describe('autoLayout (LR)', () => {
   });
 
   it('disabledEdges_doNotConstrainLayout', () => {
-    // A disabled edge in dagre would otherwise force a left-to-right ordering between
-    // its endpoints. The autoLayout filter skips disabled edges so the renderer
-    // doesn't waste horizontal space on dead wiring.
+    // dagre would order the endpoints of this edge left to right. autoLayout filters
+    // disabled edges out so inactive wiring takes up no horizontal space.
     const nodes = [node('a'), node('isolated')];
     const edges = [edge('e1', 'a', 'isolated', { data: { disabled: true } })];
 
     const out = autoLayout(nodes, edges);
 
-    // No constraint between a and isolated → both are roots → same x bucket. Pin
-    // that the disabled edge didn't push isolated to the right of a.
+    // Without a constraint between a and isolated, both stay roots in the same x bucket.
     expect(out).toHaveLength(2);
   });
 
@@ -82,8 +77,8 @@ describe('autoLayout (LR)', () => {
   });
 
   it('respectsMeasuredSize_whenPresent', () => {
-    // dagre receives the measured width — so wider nodes get more horizontal slack.
-    // Pinning the contract that node.measured is consumed.
+    // dagre receives the measured width, so wider nodes get more horizontal slack. This
+    // pins that node.measured is consumed.
     const nodes = [
       node('a', { measured: { width: 100, height: 50 } }),
       node('b', { measured: { width: 400, height: 50 } }),
@@ -95,7 +90,7 @@ describe('autoLayout (LR)', () => {
     expect(out).toHaveLength(2);
     const a = out.find((n) => n.id === 'a')!;
     const b = out.find((n) => n.id === 'b')!;
-    // b is wider — its centre is further right than a's right edge.
+    // b is wider, so its centre sits further right than a's right edge.
     expect(b.position.x).toBeGreaterThan(a.position.x + 100);
   });
 });
@@ -115,8 +110,8 @@ describe('autoLayoutTB', () => {
 
 describe('autoLayoutCompact', () => {
   it('producesValidLayoutWithTighterSpacing', () => {
-    // Compact uses smaller ranksep/nodesep — we don't pin exact pixel values
-    // (dagre internals can shift), only that the layout is finite and ordered.
+    // Compact uses smaller ranksep/nodesep. Exact pixel values are not pinned because
+    // dagre internals can shift; only ordering is checked.
     const nodes = [node('a'), node('b'), node('c')];
     const edges = [edge('e1', 'a', 'b'), edge('e2', 'b', 'c')];
 

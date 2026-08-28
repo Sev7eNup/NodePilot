@@ -4340,7 +4340,7 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 **Schritte:** System-Tab → Performance → Karte **Dimensionierung** → „Manuelles Tuning" an- und wieder abhaken (ohne zu speichern).
 
 **Prüfpunkte:**
-- [ ] Anhaken: die Felder in Engine-Parallelität / Dispatch-Queue / Threading werden **sofort** editierbar, der Hinweis wechselt auf „Manuelles Tuning ist gewählt, aber noch nicht in Kraft …".
+- [ ] Anhaken: die Felder in Engine-Parallelität / Dispatch-Worker / Threading werden **sofort** editierbar, der Hinweis wechselt auf „Manuelles Tuning ist gewählt, aber noch nicht in Kraft …".
 - [ ] Abhaken: Hinweis und Sperre kehren in den Ausgangszustand zurück (bei Boot-Modus „manuell": „Automatische Dimensionierung ist gewählt, aber noch nicht in Kraft …", Felder bleiben editierbar).
 - [ ] „Aktiv: N (…)" pro Feld ändert sich beim Umschalten **nicht** — es beschreibt den laufenden Prozess, nicht die Auswahl.
 - [ ] Der Hot-Reload-Hinweis auf der Threading-Karte erscheint nur, wenn der Prozess **im manuellen Modus gestartet** ist — Anhaken allein bringt ihn nicht zurück.

@@ -2,15 +2,12 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 57 (companion to execution-timeline.spec.ts) — the everyday
- * ExecutionsPage *list* interactions an operator performs to find a run: the search
- * box, the status quick-filter chips, the per-workflow dropdown, column sorting, the
- * summary chips, the Refresh button and the per-row "open workflow" action.
+ * Covers ExecutionsPage search, filters, sorting, summary, refresh, and row actions.
  *
- * Hermetic: page.route() mocks only (no backend), per fixtures/mockApi.ts conventions.
- * The preview build renders the UI in ENGLISH, so selectors use the EN strings /
- * bilingual regexes / stable title attributes. Desktop viewport (1440px) → the table
- * (not the mobile card list) renders, so row order is readable from the DOM.
+ * Hermetic: page.route() mocks only, per fixtures/mockApi.ts conventions. The preview
+ * build renders the UI in English, so selectors use the English strings and stable title
+ * attributes. The desktop viewport renders the table instead of the mobile card list, so
+ * row order is readable from the DOM.
  */
 
 const WF_BACKUP = 'aaaa1111-0000-0000-0000-000000000001';
@@ -30,12 +27,13 @@ function workflows() {
 }
 
 /**
- * One terminal run per workflow with deliberately distinct durations so a sort by the
- * Duration column reorders the rows unambiguously:
- *   Backup Job   — Succeeded, 2 s
- *   Nightly Report — Failed,   9 s (carries an errorMessage we can search for)
- *   Cleanup Task — Cancelled,  5 s
- * All start at the same instant so the default "Started desc" sort keeps the input order.
+ * One terminal run per workflow with distinct durations, so sorting by the Duration
+ * column reorders the rows unambiguously:
+ *   Backup Job:     Succeeded, 2 s
+ *   Nightly Report: Failed,    9 s (carries an errorMessage the search tests look for)
+ *   Cleanup Task:   Cancelled, 5 s
+ * All start at the same instant, so the default sort by Started descending keeps the
+ * input order.
  */
 function executions() {
   const base = {
@@ -70,7 +68,7 @@ async function mockExecutions(page: Page) {
 
 const tableEl = (page: Page) => page.getByRole('table');
 
-/** Workflow-name cell text per table row, top-to-bottom — reflects the active sort order. */
+/** Workflow-name cell text per table row, top to bottom, in the active sort order. */
 async function rowNames(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const rows = Array.from(document.querySelectorAll('div[role="row"]'))
@@ -97,7 +95,7 @@ test.describe('Executions list UI (Teil 57)', () => {
     await expect(table.getByText('Nightly Report')).toBeVisible();
     await expect(table.getByText('Cleanup Task')).toBeVisible();
 
-    // Summary chips: 1 succeeded + 1 failed → success rate 50% (cancelled excluded from the rate).
+    // Summary chips: 1 succeeded and 1 failed give a 50% success rate; cancelled runs are excluded.
     await expect(page.getByText('Success rate')).toBeVisible();
     await expect(page.getByText('50%')).toBeVisible();
     await expect(page.getByText('Ø Duration')).toBeVisible();
@@ -117,7 +115,7 @@ test.describe('Executions list UI (Teil 57)', () => {
     await search.fill('Nightly');
     await expect(table.getByText('Nightly Report')).toBeVisible();
     await expect(table.getByText('Backup Job')).toHaveCount(0);
-    // count=1 → i18n picks the singular ("…execution"); "execution" is a substring of both forms.
+    // With count=1 i18n picks the singular form; "execution" is a substring of both forms.
     await expect(page.getByText('1 of 3 execution')).toBeVisible();
 
     // A term that matches nothing surfaces the "no match" empty-state (not "no executions yet").
@@ -154,7 +152,7 @@ test.describe('Executions list UI (Teil 57)', () => {
     await expect(table.getByText('Nightly Report')).toBeVisible();
     await expect(table.getByText('Backup Job')).toHaveCount(0);
     await expect(table.getByText('Cleanup Task')).toHaveCount(0);
-    // count=1 → i18n picks the singular ("…execution"); "execution" is a substring of both forms.
+    // With count=1 i18n picks the singular form; "execution" is a substring of both forms.
     await expect(page.getByText('1 of 3 execution')).toBeVisible();
 
     await page.getByRole('button', { name: /^All$/ }).click();
@@ -184,14 +182,14 @@ test.describe('Executions list UI (Teil 57)', () => {
     await page.goto('/executions');
     await expect(tableEl(page).getByText('Backup Job')).toBeVisible({ timeout: 15_000 });
 
-    // Default sort is Started desc; all three share a start instant → stable input order.
+    // Default sort is Started descending; all three share a start instant, so input order holds.
     expect(await rowNames(page)).toEqual(['Backup Job', 'Nightly Report', 'Cleanup Task']);
 
-    // First Duration click → descending (longest first): Nightly 9s, Cleanup 5s, Backup 2s.
+    // The first Duration click sorts descending (longest first): Nightly 9s, Cleanup 5s, Backup 2s.
     await page.getByRole('button', { name: /^Duration$/ }).click();
     await expect.poll(() => rowNames(page)).toEqual(['Nightly Report', 'Cleanup Task', 'Backup Job']);
 
-    // Second click → ascending (shortest first).
+    // The second click sorts ascending (shortest first).
     await page.getByRole('button', { name: /^Duration$/ }).click();
     await expect.poll(() => rowNames(page)).toEqual(['Backup Job', 'Cleanup Task', 'Nightly Report']);
   });
@@ -208,7 +206,7 @@ test.describe('Executions list UI (Teil 57)', () => {
 
   test('the per-row "Open workflow" button navigates to that workflow', async ({ page }) => {
     await mockExecutions(page);
-    // The editor that the open-button targets must resolve so navigation lands cleanly.
+    // The editor the button navigates to must resolve, otherwise the navigation fails.
     await page.route(`**/api/workflows/${WF_BACKUP}`, (route) =>
       route.fulfill({
         status: 200, contentType: 'application/json',

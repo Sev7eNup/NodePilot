@@ -9,9 +9,9 @@ public class Credential
     public string? Domain { get; set; }
 
     /// <summary>
-    /// Optional account-expiry timestamp (UTC). Purely advisory — NodePilot cannot
-    /// rotate the underlying AD/Windows account; the CredentialExpiring gauge signal
-    /// warns ahead of this date so a 2 a.m. run doesn't fail auth unannounced.
+    /// Optional account-expiry timestamp (UTC). Advisory only: NodePilot cannot rotate the
+    /// underlying AD or Windows account. The CredentialExpiring gauge signal warns ahead of
+    /// this date so an unattended run does not fail authentication without notice.
     /// Null = no expiry tracking for this credential.
     /// </summary>
     public DateTime? ExpiresAt { get; set; }

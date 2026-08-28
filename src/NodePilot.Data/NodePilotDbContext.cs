@@ -10,6 +10,7 @@ public class NodePilotDbContext : DbContext
 
     public DbSet<Workflow> Workflows => Set<Workflow>();
     public DbSet<WorkflowExecution> WorkflowExecutions => Set<WorkflowExecution>();
+    public DbSet<ExecutionDispatchOutboxItem> ExecutionDispatchOutbox => Set<ExecutionDispatchOutboxItem>();
     public DbSet<StepExecution> StepExecutions => Set<StepExecution>();
     public DbSet<ManagedMachine> ManagedMachines => Set<ManagedMachine>();
     public DbSet<Credential> Credentials => Set<Credential>();
@@ -123,11 +124,9 @@ public class NodePilotDbContext : DbContext
                 .HasForeignKey(x => x.FolderId)
                 .OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => x.FolderId);
-            // Deliberately no index on IsEnabled: the column is low-cardinality (roughly 50/50)
-            // and the table is small (~50 workflows in a typical setup). Neither SQL
-            // Server nor Postgres would use the index — the optimizer picks a
-            // sequential scan anyway. An index here would only add insert overhead with no read
-            // benefit, so it was removed.
+            // Deliberately no index on IsEnabled: the column is low-cardinality and the table
+            // is small, so both providers would pick a sequential scan over the index anyway.
+            // An index here would only add insert overhead with no read benefit.
             // Sparse index for "show me every workflow user X has open for editing".
             // Most rows have a null lock — sparse keeps the index small.
             e.HasIndex(x => x.CheckedOutByUserId);
@@ -148,13 +147,10 @@ public class NodePilotDbContext : DbContext
             //      ORDER BY StartedAt DESC) for "last N executions per workflow".
             //   2) ExecutionsController.GetStepHealth/GetStepStats: filter by WorkflowId,
             //      newest-first, project Status + CompletedAt.
-            // Without IsDescending, SQL Server would have to do a backward scan for
-            // "ORDER BY StartedAt DESC" (no batch mode); INCLUDE avoids the extra key lookup
-            // back to the heap. INCLUDE columns are honored as a covering index on both SQL
-            // Server *and* Postgres v11+ (each provider reads its own annotation). We set them
-            // via a raw annotation instead of the `IncludeProperties()` API, because having
-            // both the SqlServer and Npgsql providers registered side by side makes that call
-            // ambiguous (compiler error CS0121).
+            // IsDescending avoids a backward scan for "ORDER BY StartedAt DESC"; INCLUDE avoids
+            // the extra key lookup back to the heap on both SQL Server and Postgres v11+. The
+            // annotations are set directly, not through `IncludeProperties()`, because that call
+            // is ambiguous (CS0121) once both the SqlServer and Npgsql providers are registered.
             e.HasIndex(x => new { x.WorkflowId, x.StartedAt })
                 .IsDescending(false, true)
                 .HasAnnotation("SqlServer:Include", new[]
@@ -168,10 +164,8 @@ public class NodePilotDbContext : DbContext
                     nameof(WorkflowExecution.CompletedAt),
                 });
             // Composite covering index for `GET /executions?activeOnly=true` (Status IN
-            // (Running,Pending,Paused) ORDER BY StartedAt DESC LIMIT 500). Without this
-            // index, SQL Server would do ~500 key lookups back to the heap every time the
-            // live view loads. The old status-only index was non-covering; this one is a
-            // prefix slice of the same idea, done properly.
+            // (Running,Pending,Paused) ORDER BY StartedAt DESC LIMIT 500). Without it, SQL
+            // Server would need a key lookup back to the heap for every row the live view loads.
             e.HasIndex(x => new { x.Status, x.StartedAt })
                 .IsDescending(false, true)
                 .HasAnnotation("SqlServer:Include", new[]
@@ -192,24 +186,34 @@ public class NodePilotDbContext : DbContext
             e.HasIndex(x => x.ParentExecutionId);
             // Composite (StartedAt, Status) covers the retention sweep directly —
             // ExecutionRetentionService filters `WHERE StartedAt < cutoff AND Status IN
-            // (Succeeded, Failed, Cancelled)` and sorts by StartedAt. The standalone
-            // StartedAt index was enough for the date range, but Status still had to be
-            // filtered after the index lookup. WorkflowStatsRefresher + the dashboard keep
-            // using the left prefix (StartedAt) exactly as before.
+            // (Succeeded, Failed, Cancelled)` and sorts by StartedAt, so the composite serves
+            // both the range and the status filter. WorkflowStatsRefresher and the dashboard
+            // still use the left prefix (StartedAt) for their own queries.
             e.HasIndex(x => new { x.StartedAt, x.Status });
-            // Keyset index for the notification event poller. ExecutionEventCollector runs every
-            // ~30s (leader-gated) with: WHERE CompletedAt <= cutoff AND Status IN (terminal) AND
-            // keyset(CompletedAt, Id) ORDER BY CompletedAt, Id. CompletedAt is only an INCLUDE on
-            // the two indexes above, so an INCLUDE column can't satisfy that ORDER BY / keyset seek
-            // — without this key index the poller does a full Sort over all terminal rows every
-            // pass. (CompletedAt, Id) serves the sort + keyset directly; Status is an INCLUDE so the
-            // terminal-status filter is covered without a heap lookup. Same dual-annotation pattern
-            // as the covering indexes above (both providers registered side by side → IncludeProperties
-            // would be CS0121-ambiguous; SQLite ignores the annotation and gets a plain index).
+            // Keyset index for the notification event poller: ExecutionEventCollector filters
+            // WHERE CompletedAt <= cutoff AND Status IN (terminal) and paginates by
+            // (CompletedAt, Id). The indexes above only carry CompletedAt as an INCLUDE column,
+            // which cannot serve that ORDER BY / keyset seek, so this index carries it as a key
+            // column; Status stays an INCLUDE for the terminal-status filter.
             e.HasIndex(x => new { x.CompletedAt, x.Id })
                 .HasAnnotation("SqlServer:Include", new[] { nameof(WorkflowExecution.Status) })
                 .HasAnnotation("Npgsql:IndexInclude", new[] { nameof(WorkflowExecution.Status) });
             e.HasMany(x => x.Steps).WithOne(x => x.WorkflowExecution).HasForeignKey(x => x.WorkflowExecutionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ExecutionDispatchOutboxItem>(e =>
+        {
+            e.HasKey(x => x.ExecutionId);
+            e.Property(x => x.TriggeredBy).HasMaxLength(100).IsRequired();
+            e.Property(x => x.MissingWorkflowMessage).HasMaxLength(2000).IsRequired();
+            e.Property(x => x.PreOwnershipFailurePrefix).HasMaxLength(1000).IsRequired();
+            e.Property(x => x.LeaseOwner).HasMaxLength(240);
+            e.HasIndex(x => new { x.AvailableAt, x.Priority });
+            e.HasIndex(x => x.LeaseExpiresAt);
+            e.HasOne(x => x.Execution)
+                .WithOne()
+                .HasForeignKey<ExecutionDispatchOutboxItem>(x => x.ExecutionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<StepExecution>(e =>
@@ -223,15 +227,13 @@ public class NodePilotDbContext : DbContext
             // provider picks its own unbounded type.
             e.Property(x => x.OutputParametersJson);
             // Composite (WorkflowExecutionId, StartedAt): primary read path is GetSteps —
-            // `WHERE WorkflowExecutionId = X ORDER BY StartedAt`. Single-column FK index
-            // forced an in-memory sort after the lookup; the composite delivers rows in
-            // index order. Prefix-scan on WorkflowExecutionId still serves the FK lookup.
+            // `WHERE WorkflowExecutionId = X ORDER BY StartedAt`. The composite delivers rows
+            // in index order and its WorkflowExecutionId prefix still serves the FK lookup.
             e.HasIndex(x => new { x.WorkflowExecutionId, x.StartedAt });
             // Composite (WorkflowExecutionId, Status) for the WorkflowEngine re-run path —
-            // `Where(s => s.WorkflowExecutionId == X && s.Status == Failed)`. The single-column
-            // (Status) index that used to exist here had 0 scans in the live DB (a
-            // low-selectivity filter with no leading FK filter is useless as an index);
-            // this composite actually covers the real queries.
+            // `Where(s => s.WorkflowExecutionId == X && s.Status == Failed)`. Status alone is
+            // low-selectivity and useless as an index without a leading FK filter, so the
+            // composite is what actually serves this query.
             e.HasIndex(x => new { x.WorkflowExecutionId, x.Status });
         });
 
@@ -276,7 +278,8 @@ public class NodePilotDbContext : DbContext
             // EventType filter (e.g. "only USER_LOG", "only EXECUTION_FAILED") — composite with
             // Timestamp DESC so the filtered path doesn't need a separate key-lookup sort.
             e.HasIndex(x => new { x.EventType, x.Timestamp }).IsDescending(false, true);
-            // Level filter ("WARN+" / "ERROR" — the top-of-funnel option in the UI filter dropdown).
+            // Level filter ("WARN+" / "ERROR" — the top-of-funnel option in the UI filter
+            // dropdown).
             e.HasIndex(x => new { x.Level, x.Timestamp }).IsDescending(false, true);
             // Per-execution lookup for "all events from this run" + trace drill-down.
             e.HasIndex(x => new { x.ExecutionId, x.Timestamp });
@@ -290,13 +293,12 @@ public class NodePilotDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.Action).HasMaxLength(100).IsRequired();
-            // Username is denormalized & frozen-at-write so the row stays interpretable
-            // even if the user is later renamed or deleted. Same reasoning the AuditWriter
-            // comments captured back when this lived in the Details JSON.
+            // Username is denormalized and frozen-at-write so the row stays interpretable
+            // even if the user is later renamed or deleted.
             e.Property(x => x.Username).HasMaxLength(200);
-            // IPv6 string form fits in 45 chars (max canonical length). Promoted out of the
-            // Details JSON blob so GDPR-anonymization can run as a single UPDATE and the
-            // "all activity from IP X" filter is an index seek.
+            // IPv6 string form fits in 45 chars (max canonical length). A dedicated column,
+            // not part of the Details JSON blob, so GDPR anonymization can run as a single
+            // UPDATE and the "all activity from IP X" filter is an index seek.
             e.Property(x => x.IpAddress).HasMaxLength(45);
             e.HasIndex(x => x.Timestamp);
             // Per-resource + per-actor filter paths are the two hot queries ("show me every
@@ -305,10 +307,9 @@ public class NodePilotDbContext : DbContext
             e.HasIndex(x => new { x.ResourceId, x.Timestamp });
             e.HasIndex(x => new { x.UserId, x.Timestamp });
             // Composite (Action, Timestamp DESC) for the admin filter path
-            // `GET /api/audit?action=X` with OrderByDescending(Timestamp). Replaces the
-            // old single-column Action index — that one was non-covering and forced a
-            // sort plus a key lookup per match. With DESC ordering baked into the index it
-            // now serves the newest-first order directly from the index.
+            // `GET /api/audit?action=X` with OrderByDescending(Timestamp). With DESC ordering
+            // baked into the index, it serves the newest-first order directly, with no
+            // separate sort or key lookup.
             e.HasIndex(x => new { x.Action, x.Timestamp }).IsDescending(false, true);
             // IP-filter path: "show me every action from this source IP". Composite with
             // Timestamp so the same index also serves the newest-first order without a
@@ -440,9 +441,9 @@ public class NodePilotDbContext : DbContext
             // namespace a variable ({{globals.NAME}} resolves by bare Name).
             e.HasIndex(x => x.Name).IsUnique();
             // Organizational folder membership. Restrict (no cascade): a folder can only be
-            // deleted once empty, enforced in the folder controller + at the schema level.
-            // DB-level default = Root: makes the AddColumn migration backfill pre-existing
-            // variables onto the seeded Root row (a bare Guid.Empty default would violate the FK).
+            // deleted once empty, enforced in the folder controller and at the schema level.
+            // The DB-level default of Root lets a migration backfill existing variables onto
+            // the seeded Root row (a bare Guid.Empty default would violate the FK).
             e.Property(x => x.FolderId).HasDefaultValue(GlobalVariableFolder.RootFolderId);
             e.HasOne<GlobalVariableFolder>()
                 .WithMany()
@@ -524,7 +525,8 @@ public class NodePilotDbContext : DbContext
             e.Property(x => x.ScopeKind).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.DedupKeyTemplate).HasMaxLength(300);
             e.Property(x => x.UpdatedBy).HasMaxLength(100);
-            // System-alert policy fields (ADR 0008). Kind defaults to Custom so existing rows backfill Custom.
+            // System-alert policy fields (ADR 0008). Kind defaults to Custom so existing rows
+            // backfill Custom.
             e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(20).HasDefaultValue(Core.Enums.NotificationRuleKind.Custom);
             e.Property(x => x.SystemSourceId).HasMaxLength(100);
             e.Property(x => x.SystemPresetId).HasMaxLength(100);
@@ -588,7 +590,8 @@ public class NodePilotDbContext : DbContext
             e.HasKey(x => x.Id);
             e.Property(x => x.SourceId).HasMaxLength(100).IsRequired();
             e.Property(x => x.InstanceKey).HasMaxLength(300).IsRequired();
-            // One row per (policy, source, instance) — the evaluator's transient match/episode state.
+            // One row per (policy, source, instance) — the evaluator's transient match/episode
+            // state.
             e.HasIndex(x => new { x.NotificationRuleId, x.SourceId, x.InstanceKey }).IsUnique();
             e.HasIndex(x => x.LastObservedAt); // stale-instance retention sweep
         });
@@ -661,10 +664,10 @@ public class NodePilotDbContext : DbContext
             e.Property(x => x.CreatedBy).HasMaxLength(100);
             e.Property(x => x.UpdatedBy).HasMaxLength(100);
             e.Property(x => x.ChangeNote).HasMaxLength(500);
-            // Key lookup. Uniqueness-among-LIVE (non-deleted) rows is enforced in the store's
-            // CreateAsync, NOT by a filtered unique index — a HasFilter literal would bake
-            // provider-specific SQL into the single shared migration set (Postgres vs SQL Server
-            // quote/boolean differ). Mirrors the SharedWorkflowFolder root-singleton approach.
+            // Key lookup. Uniqueness among live (non-deleted) rows is enforced in the store's
+            // CreateAsync rather than a filtered unique index, since a HasFilter literal would
+            // bake provider-specific SQL into the shared migration set (Postgres and SQL Server
+            // quote and represent booleans differently).
             e.HasIndex(x => x.Key);
             // Catalog/palette scan reads enabled, non-deleted rows.
             e.HasIndex(x => new { x.IsDeleted, x.IsEnabled });
@@ -684,7 +687,8 @@ public class NodePilotDbContext : DbContext
             e.Property(x => x.OutputParametersJson).IsRequired();
             e.Property(x => x.CreatedBy).HasMaxLength(100);
             e.Property(x => x.ChangeNote).HasMaxLength(500);
-            // A definition owns its history — tombstones keep rows, hard-delete (admin maintenance) cascades.
+            // A definition owns its history — tombstones keep rows, hard-delete (admin maintenance)
+            // cascades.
             e.HasOne(x => x.Definition)
                 .WithMany()
                 .HasForeignKey(x => x.DefinitionId)

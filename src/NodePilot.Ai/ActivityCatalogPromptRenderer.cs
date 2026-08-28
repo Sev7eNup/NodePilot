@@ -9,21 +9,19 @@ namespace NodePilot.Ai;
 /// (<see cref="ActivityCatalog"/>) plus the curated purpose/config data
 /// (<see cref="ActivityConfigReference"/>).
 ///
-/// <para>This used to be a hand-maintained Markdown block, which let activity types silently fall
-/// out of the prompt: <c>llmQuery</c> was invisible, so the model reached for <c>restApi</c> when a
-/// workflow needed an AI call. Generating the block means a newly registered activity cannot be
-/// forgotten — it appears the moment it is in the catalog, and
-/// <c>ActivityCatalogPromptRendererTests</c> fails if its config reference is missing.</para>
+/// <para>Generating the block keeps the prompt in sync with the catalog: a newly registered
+/// activity shows up automatically, and <c>ActivityCatalogPromptRendererTests</c> fails when its
+/// config reference is missing.</para>
 /// </summary>
 public static class ActivityCatalogPromptRenderer
 {
-    /// <summary>Placeholder in <c>activity-reference.md</c> that the rendered catalog replaces.</summary>
+    /// <summary>Placeholder in <c>activity-reference.md</c> replaced by the catalog.</summary>
     public const string PlaceholderToken = "<!--ACTIVITY_CATALOG-->";
 
     /// <summary>How many custom activities are listed before the block is truncated.</summary>
     private const int MaxCustomActivities = 40;
 
-    /// <summary>Character budget for the custom-activity block — it competes with a 40 KB few-shot example.</summary>
+    /// <summary>Character budget for the custom-activity block inside the prompt.</summary>
     private const int MaxCustomActivityChars = 10_000;
 
     /// <summary>
@@ -38,8 +36,8 @@ public static class ActivityCatalogPromptRenderer
 
         AppendGroup(sb, "Triggers", ActivityCatalog.All.Where(a => a.IsTrigger));
 
-        // runScript is the workhorse and the only hybrid one — call it out on its own so the
-        // local-vs-remote rule does not get lost inside the remote group.
+        // runScript is the only hybrid activity, so it gets its own group and the
+        // local-vs-remote rule stays visible instead of hiding in the remote group.
         AppendGroup(sb, "Run Script (local by default, remote when targeted)",
             ActivityCatalog.All.Where(a => a.Type == "runScript"));
 
@@ -131,7 +129,7 @@ public static class ActivityCatalogPromptRenderer
 
         if (entry is null)
         {
-            // Guarded by ActivityCatalogPromptRendererTests — but never emit a silently blank entry.
+            // ActivityCatalogPromptRendererTests guards this; emit a marker, not a blank entry.
             sb.Append(" — (no curated config reference; see the activity's config component)");
             return sb.ToString();
         }
@@ -163,9 +161,9 @@ public static class ActivityCatalogPromptRenderer
     }
 
     /// <summary>
-    /// Collapses operator-authored free text to a single line. Custom-activity names/descriptions
-    /// land in a SYSTEM prompt, so newlines, backticks and fences must not be able to break out of
-    /// the list item they belong to.
+    /// Collapses operator-authored free text to a single line. Custom-activity names and
+    /// descriptions land in a system prompt, so newlines, backticks and fences must not break out
+    /// of the list item they belong to.
     /// </summary>
     private static string Flatten(string? text)
     {

@@ -19,10 +19,10 @@ using Serilog;
 var bootstrapConfig = LoggingSetup.BuildBootstrapConfiguration();
 
 // Perf: the process-wide sizing decision, taken exactly once here and shared by every consumer
-// (ThreadPool floor, step cap, runspace pool, dispatch queue, engine capacity caps). With
+// (ThreadPool floor, step cap, runspace pool, dispatch workers, engine capacity caps). With
 // Performance:ManualTuning off — the default — the values are derived from the detected CPU and
 // memory; with it on, the operator's configured values win. Resolving once is what keeps the
-// boot-fixed consumers (runspace pool, dispatch queue) and the hot-reloadable ThreadPool from
+// boot-fixed consumers (runspace pool, dispatch workers) and the hot-reloadable ThreadPool from
 // drifting into different modes after a configuration reload.
 var performancePlan = NodePilot.Api.Configuration.PerformancePlanFactory.Create(bootstrapConfig);
 
@@ -93,8 +93,10 @@ builder.ConfigureKestrelFromWindowsCertStore();
 // OpenTelemetry (traces, metrics, bridged logs via built-in ILogger)
 builder.Services.AddNodePilotTelemetry(builder.Configuration, builder.Environment);
 
-// Run every pure configuration validator before materialising typed options. In particular this must
-// precede DatabaseAvailabilityOptions.FromConfiguration: GetValue<int> throws on the first malformed
+// Run every pure configuration validator before materialising typed options. In particular this
+// must
+// precede DatabaseAvailabilityOptions.FromConfiguration: GetValue<int> throws on the first
+// malformed
 // value, while the validator pipeline reports every invalid key in one startup failure.
 BootValidatorRunner.RunAll(
     builder.Configuration,
@@ -104,7 +106,8 @@ BootValidatorRunner.RunAll(
 // interceptors and retry strategy resolve it.
 //
 // The forwarding registrations are mandatory rather than stylistic: AddHostedService<T>() alongside
-// AddSingleton<IFace, T>() produces TWO instances, and the interceptors would then arm a probe that is
+// AddSingleton<IFace, T>() produces TWO instances, and the interceptors would then arm a probe that
+// is
 // not the one running. Same pattern as ClusterSetup.
 var databaseAvailabilityOptions = DatabaseAvailabilityOptions.FromConfiguration(builder.Configuration);
 builder.Services.AddSingleton(databaseAvailabilityOptions);
@@ -145,12 +148,13 @@ builder.Services.Configure<HostFilteringOptions>(options =>
 // ProblemDetails + global exception handler — in production, uncaught exceptions would
 // otherwise return raw stack traces (or worse, SQL error messages) to the client.
 builder.Services.AddProblemDetails();
-// Security-audit finding H-3: ExecutionCapacityException → 503 + Retry-After. Must be
+// Security-audit finding H-3: ExecutionCapacityException -> 503 + Retry-After. Must be
 // registered BEFORE the default handler, otherwise the generic ProblemDetails mapping
 // wins first and the client sees a 500 instead of the correct 503.
 builder.Services.AddExceptionHandler<NodePilot.Api.Hosting.CapacityExceptionHandler>();
 // Ordered before the timeout handler on purpose: while the breaker is open, a command timeout is a
-// symptom of the outage, and "the database is unreachable" is the more actionable answer than "it was
+// symptom of the outage, and "the database is unreachable" is the more actionable answer than "it
+// was
 // slow". Both handlers write the same body shape (DatabaseUnavailableResponse) so the SPA has one
 // branch, not two.
 builder.Services.AddExceptionHandler<NodePilot.Api.Hosting.DatabaseUnavailableExceptionHandler>();
@@ -164,8 +168,10 @@ builder.Services.AddExceptionHandler<NodePilot.Api.Hosting.DatabaseTimeoutExcept
 // stays green even when the DB is down so the orchestrator doesn't restart us, while
 // readiness flips red and traffic routes elsewhere.
 // DatabaseReadyHealthCheck rather than AddDbContextCheck: the latter calls CanConnectAsync with no
-// timeout of its own, so against a hung server readiness takes minutes and the load balancer hits its
-// own timeout instead of receiving a clean 503. This one answers from memory when the breaker is open
+// timeout of its own, so against a hung server readiness takes minutes and the load balancer hits
+// its
+// own timeout instead of receiving a clean 503. This one answers from memory when the breaker is
+// open
 // and otherwise runs a bounded SELECT 1.
 builder.Services.AddHealthChecks()
     .AddCheck<NodePilot.Api.HealthChecks.DatabaseReadyHealthCheck>("database", tags: new[] { "ready" })
@@ -191,14 +197,17 @@ builder.Services.AddScoped<ICredentialStore, CredentialStore>();
 builder.Services.AddScoped<IGlobalVariableStore, GlobalVariableStore>();
 builder.Services.AddScoped<IGlobalVariableFolderStore, GlobalVariableFolderStore>();
 builder.Services.AddScoped<ICustomActivityDefinitionStore, CustomActivityDefinitionStore>();
-// Execution-log tools for the AI chat assistant: read-only history, always redacted (see the reader's docs).
+// Execution-log tools for the AI chat assistant: read-only history, always redacted (see the
+// reader's docs).
 builder.Services.AddScoped<NodePilot.Core.Interfaces.IExecutionLogReader, NodePilot.Data.ExecutionLogReader>();
 // Instance-wide operational/workflow reader for the global "AI Chat" knowledge assistant:
 // RBAC-scoped, secret-redacted, read-only (see the reader's docs).
 builder.Services.AddScoped<NodePilot.Core.Interfaces.IOperationalKnowledgeReader, NodePilot.Data.OperationalKnowledgeReader>();
-// Secret-redacted admin-settings snapshot for the same assistant (read_settings tool, Admin/Operator).
+// Secret-redacted admin-settings snapshot for the same assistant (read_settings tool,
+// Admin/Operator).
 builder.Services.AddScoped<NodePilot.Core.Interfaces.ISettingsKnowledgeReader, NodePilot.Api.Ai.SettingsKnowledgeReader>();
-// Read-only, cell-redacted App-DB schema + query reader for the text2sql knowledge tools (global-Admin-only).
+// Read-only, cell-redacted App-DB schema + query reader for the text2sql knowledge tools
+// (global-Admin-only).
 builder.Services.AddScoped<NodePilot.Core.Interfaces.ISqlKnowledgeReader, NodePilot.Api.Ai.SqlKnowledgeReader>();
 builder.Services.AddScoped<IMaintenanceWindowStore, MaintenanceWindowStore>();
 builder.Services.AddScoped<INotificationRuleStore, NotificationRuleStore>();
@@ -208,16 +217,14 @@ builder.Services.AddSingleton<IMaintenanceWindowEvaluator, MaintenanceWindowEval
 // The boot plan is the single source of truth for sizing; every consumer resolves it from DI
 // rather than reading the raw keys, so none of them can disagree about the active mode.
 builder.Services.AddSingleton(performancePlan);
-// Dispatch queue/worker sizing comes from the plan, not straight from the section: under auto
+// Dispatch worker sizing comes from the plan, not straight from the section: under auto
 // tuning the configured numbers are inert and the plan carries the hardware-derived ones.
 builder.Services.Configure<NodePilot.Api.ExecutionDispatch.ExecutionDispatchOptions>(o =>
 {
     o.WorkerCount = performancePlan.DispatchWorkerCount.Value;
-    o.Capacity = performancePlan.DispatchCapacity.Value;
 });
-builder.Services.AddSingleton<NodePilot.Api.ExecutionDispatch.ExecutionDispatchQueue>();
-builder.Services.AddSingleton<NodePilot.Core.Interfaces.IExecutionDispatchQueue>(
-    sp => sp.GetRequiredService<NodePilot.Api.ExecutionDispatch.ExecutionDispatchQueue>());
+builder.Services.AddSingleton<NodePilot.Api.ExecutionDispatch.ExecutionDispatchSignal>();
+builder.Services.AddSingleton<NodePilot.Api.ExecutionDispatch.ExecutionDispatchCallbackRegistry>();
 builder.Services.AddScoped<NodePilot.Api.ExecutionDispatch.ExecutionDispatchService>();
 builder.Services.AddScoped<NodePilot.Core.ExecutionDispatch.IWorkflowExecutionDispatcher>(
     sp => sp.GetRequiredService<NodePilot.Api.ExecutionDispatch.ExecutionDispatchService>());
@@ -280,7 +287,8 @@ builder.Services.AddScoped<IStepTester, StepTester>();
 builder.Services.AddScoped<IStepTestContextProvider, StepTestContextProvider>();
 builder.Services.AddSingleton<NodePilot.Api.Services.IWorkflowContractDeriver, NodePilot.Api.Services.WorkflowContractDeriver>();
 // Host identity (machine name / FQDN / domain) for the SPA header. Resolved once from the
-// local OS network config and cached — see HostIdentityProvider. Surfaced via /api/system/host-info.
+// local OS network config and cached — see HostIdentityProvider. Surfaced via
+// /api/system/host-info.
 builder.Services.AddSingleton<NodePilot.Core.Interfaces.IHostIdentityProvider, NodePilot.Api.Services.HostIdentityProvider>();
 // Live-Ops call-graph cache. Singleton by design: it is keyed by workflow id + UpdatedAt and holds
 // only extracted child-workflow refs, so it is shared safely across users and requests — see
@@ -301,7 +309,8 @@ builder.Services.AddSingleton<NodePilot.Api.Services.WorkflowCallSiteCache>();
 // ships as application/octet-stream and is therefore outside ResponseCompressionDefaults.MimeTypes,
 // so it is never compressed regardless.
 //
-// Do NOT weaken this to "we have no secrets in response bodies" — that is a blanket claim over every
+// Do NOT weaken this to "we have no secrets in response bodies" — that is a blanket claim over
+// every
 // current and future endpoint and nobody has verified it. Revisit this line if an auth cookie ever
 // loses SameSite=Strict, or if a compressible response is built that puts a secret next to text the
 // caller controls.
@@ -311,7 +320,8 @@ builder.Services.AddResponseCompression(options =>
     options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProvider>();
     options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProvider>();
 });
-// Perf finding 1.4: ActivityRegistry is a singleton that holds an activityType → Type map. The map is
+// Perf finding 1.4: ActivityRegistry is a singleton that holds an activityType to Type map. The map
+// is
 // built once via a bootstrap scope; per-step lookups resolve fresh executor instances from
 // the per-step scope passed into GetExecutor(string, IServiceProvider). No more per-step
 // dictionary rebuild on the hot path.
@@ -347,7 +357,8 @@ builder.Services.Configure<NodePilot.Scheduler.Options.RetentionOptions>(
 
 // Named client for RestApiActivity / outgoing HTTP from workflows. AllowAutoRedirect is
 // disabled so NodePilot.Engine.Activities.RestApiActivity can re-run the SSRF guard on every
-// hop and strip Authorization-style headers when the origin changes (security-audit findings H6 and L2).
+// hop and strip Authorization-style headers when the origin changes (security-audit findings H6 and
+// L2).
 // Proxy/noProxy is driven from RestApi:Proxy:* via RestApiHttpClientProvider — Enabled=false
 // (default) explicitly sets UseProxy=false so the named client never silently picks up the
 // Windows system proxy. Pool + DNS TTL defaults are fine; we revalidate every hop explicitly
@@ -367,7 +378,8 @@ builder.Services.AddSingleton<NodePilot.Engine.Security.RestApiHttpClientProvide
 
 // AI assistant: dedicated named HttpClient + options + prompt catalog. Deliberately registered
 // AFTER the "NodePilot" client and with its own handler — otherwise the RestApi SSRF guard would
-// block local endpoints (e.g. Ollama at 127.0.0.1:11434). Master switch is Llm:Enabled (default false).
+// block local endpoints (e.g. Ollama at 127.0.0.1:11434). Master switch is Llm:Enabled (default
+// false).
 builder.Services.AddNodePilotAi(builder.Configuration);
 
 builder.Services.AddSingleton<NodePilot.Api.Hubs.DatabaseAvailabilityHubFilter>();
@@ -541,13 +553,18 @@ using (var scope = app.Services.CreateScope())
     NodePilot.Api.Security.AdminBootstrap.EnsureBootstrapTokenIfNeeded(
         app.Environment, usersExist, bootstrapLogger, builder.Configuration);
 
-    // Boot succeeded: the schema is migrated, recovery has run and the admin invariant holds. Only now
+    // Boot succeeded: the schema is migrated, recovery has run and the admin invariant holds. Only
+    // now
     // may the availability breaker start reacting to failures.
     //
-    // Until this point the interceptors are inert on purpose. DatabaseReadinessGate exists precisely
-    // because the database is routinely late at boot, and if its failed connection probes opened the
-    // breaker, the migration that follows would run with retries disabled — turning a slow start into
-    // a failed one. Everything above this line is also the reason the boot block is NOT deferred on an
+    // Until this point the interceptors are inert on purpose. DatabaseReadinessGate exists
+    // precisely
+    // because the database is routinely late at boot, and if its failed connection probes opened
+    // the
+    // breaker, the migration that follows would run with retries disabled — turning a slow start
+    // into
+    // a failed one. Everything above this line is also the reason the boot block is NOT deferred on
+    // an
     // outage: it carries StartupRecovery, the enterprise recovery invariant and the admin bootstrap
     // token, and re-running or skipping any of them is worse than failing to start.
     app.Services.GetRequiredService<NodePilot.Data.Availability.IDatabaseAvailability>().MarkBootComplete();
@@ -576,7 +593,7 @@ if (app.Environment.IsDevelopment())
     app.UseCors("DevCors");
 }
 
-// HTTP → HTTPS redirect only active when Kestrel was configured with a cert-store binding
+// HTTP -> HTTPS redirect only active when Kestrel was configured with a cert-store binding
 // and RedirectHttpToHttps is true. No-op in dev/test.
 app.UseNodePilotHttpsRedirection();
 
@@ -589,7 +606,8 @@ app.UseRateLimiter();
 // Seal /api, the entire hub HTTP surface, /signin-oidc and protected /metrics with 503 while the
 // database is gone, before anything downstream can touch it. Existing WebSockets do not re-enter
 // this pipeline; SSE/Long-Polling reconnect after recovery. Keep this after the rate limiter so a
-// reconnecting SPA's 503 storm stays throttled, but before UseAuthentication because OidcTicketStore
+// reconnecting SPA's 503 storm stays throttled, but before UseAuthentication because
+// OidcTicketStore
 // resolves a DbContext there and before TokenValidityMiddleware's bounded session/revocation reads.
 // Also before the leader fence: during a shared-database outage every node self-demotes, which is a
 // symptom that must not hide the actual dependency failure.
@@ -660,9 +678,12 @@ app.MapHealthChecks("/healthz/ready", new Microsoft.AspNetCore.Diagnostics.Healt
 // exactly when the database is not.
 //
 // Always 200, including during an outage: this is what the SPA polls, and a 503 here would be
-// indistinguishable from "the process is gone" — re-creating the misleading-indicator bug this feature
-// exists to fix (/healthz/live staying green while the product was dead). /healthz/ready keeps the 503
-// convention for load balancers; this endpoint reports rather than gates. Two conventions, on purpose.
+// indistinguishable from "the process is gone" — re-creating the misleading-indicator bug this
+// feature
+// exists to fix (/healthz/live staying green while the product was dead). /healthz/ready keeps the
+// 503
+// convention for load balancers; this endpoint reports rather than gates. Two conventions, on
+// purpose.
 app.MapGet("/healthz/database", (NodePilot.Data.Availability.IDatabaseAvailability availability) =>
     NodePilot.Api.Hosting.DatabaseHealthEndpoint.Compute(availability)).AllowAnonymous();
 
@@ -681,12 +702,8 @@ app.MapGet("/healthz/leader", (NodePilot.Core.Interfaces.IClusterStateProvider c
     ClusterSetup.ComputeLeaderHealth(cluster, TimeSpan.FromSeconds(clusterTtlSeconds), DateTime.UtcNow))
     .AllowAnonymous();
 
-// API 404s must stay API-shaped. The SPA fallback below matches anything no endpoint claimed,
-// which used to include unmatched /api paths: a typo, a removed endpoint, or a route parameter
-// that failed its type constraint all answered 200 text/html with the SPA bundle. Every client
-// then read a successful HTML page instead of an error — measured on a lab install, `np`, the
-// MCP server and the SPA itself all treated the bundle as a valid response body. This runs first
-// and is registered with a higher order so it wins over the catch-all for that prefix only.
+// Keep unmatched API paths out of the SPA fallback so clients receive a structured 404 response.
+// Register this fallback first and with higher priority than the catch-all route.
 app.MapFallback("/api/{**rest}", (HttpContext http) =>
         Results.Problem(
             title: "Not Found",

@@ -25,7 +25,8 @@ public sealed class LlmProfileSettingsDto
         ErrorMessage = "Profile id must be 1-32 chars of lowercase letters, digits or '-', starting with a letter or digit.")]
     public string Id { get; set; } = "";
 
-    /// <summary>Operator-facing label. Free text and renameable — the id is what persists.</summary>
+    /// <summary>Operator-facing label. Free text and renameable — the id is what
+    /// persists.</summary>
     [Required(AllowEmptyStrings = false)]
     [StringLength(64)]
     public string Name { get; set; } = "";
@@ -98,7 +99,8 @@ public sealed class LlmProfileProbeDto
     [StringLength(2048)]
     public string BaseUrl { get; set; } = "";
 
-    /// <summary>Plaintext key, or the <c>__unchanged__</c>/<c>"********"</c> marker to use the stored one.</summary>
+    /// <summary>Plaintext key, or the <c>__unchanged__</c>/<c>"********"</c> marker to use the
+    /// stored one.</summary>
     public string? ApiKey { get; set; }
 
     [Range(5, 3600)]
@@ -112,7 +114,8 @@ public sealed class LlmProfileProbeDto
 /// </summary>
 public sealed class LlmProxyDto : IValidatableObject
 {
-    /// <summary>Upper bound on bypass entries. Generous — the point is to stop runaway payloads.</summary>
+    /// <summary>Upper bound on bypass entries. Generous — the point is to stop runaway
+    /// payloads.</summary>
     public const int MaxBypassEntries = 128;
 
     /// <summary>
@@ -124,20 +127,24 @@ public sealed class LlmProxyDto : IValidatableObject
     [StringLength(16)]
     public string Mode { get; set; } = nameof(LlmProxyMode.Off).ToLowerInvariant();
 
-    /// <summary>Proxy URL. Required when <see cref="Mode"/> is <c>custom</c>, ignored otherwise.</summary>
+    /// <summary>Proxy URL. Required when <see cref="Mode"/> is <c>custom</c>, ignored
+    /// otherwise.</summary>
     [StringLength(2048)]
     public string Address { get; set; } = "";
 
-    /// <summary>Host patterns that skip the proxy (shell globs). Only used in <c>custom</c> mode.</summary>
+    /// <summary>Host patterns that skip the proxy (shell globs). Only used in <c>custom</c>
+    /// mode.</summary>
     public List<string> BypassList { get; set; } = new();
 
     [StringLength(255)]
     public string? Username { get; set; }
 
-    /// <summary>SecretField semantics — <c>"__unchanged__"</c> keeps, plaintext rotates, null/empty clears.</summary>
+    /// <summary>SecretField semantics — <c>"__unchanged__"</c> keeps, plaintext rotates, null/empty
+    /// clears.</summary>
     public string? Password { get; set; }
 
-    /// <summary>Authenticate against the proxy with the service account's Windows credentials.</summary>
+    /// <summary>Authenticate against the proxy with the service account's Windows
+    /// credentials.</summary>
     public bool UseDefaultCredentials { get; set; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
@@ -189,12 +196,14 @@ public sealed class LlmProxyDto : IValidatableObject
 /// </summary>
 public sealed class LlmSettingsDto : IValidatableObject
 {
-    /// <summary>Upper bound on stored profiles. Generous — the point is to stop runaway payloads.</summary>
+    /// <summary>Upper bound on stored profiles. Generous — the point is to stop runaway
+    /// payloads.</summary>
     public const int MaxProfiles = 20;
 
     public bool Enabled { get; set; }
 
-    /// <summary>Id of the profile every AI feature uses. Must name an entry in <see cref="Profiles"/>.</summary>
+    /// <summary>Id of the profile every AI feature uses. Must name an entry in <see
+    /// cref="Profiles"/>.</summary>
     public string ActiveProfileId { get; set; } = "";
 
     public List<LlmProfileSettingsDto> Profiles { get; set; } = new();
@@ -203,7 +212,8 @@ public sealed class LlmSettingsDto : IValidatableObject
     [Required] public LlmProxyDto Proxy { get; set; } = new();
 
     /// <summary>
-    /// <para><b>Why this exists:</b> <c>Validator.TryValidateObject</c> — which the generic settings
+    /// <para><b>Why this exists:</b> <c>Validator.TryValidateObject</c> — which the generic
+    /// settings
     /// adapter calls — does <i>not</i> recurse into collection elements. Without validating each
     /// profile explicitly here, every <c>[Url]</c>/<c>[Range]</c>/<c>[Required]</c> on
     /// <see cref="LlmProfileSettingsDto"/> would be dead metadata.</para>

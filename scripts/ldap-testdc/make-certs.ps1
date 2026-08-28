@@ -1,8 +1,8 @@
-# Erzeugt die Wegwerf-PKI fuer den LDAPS-Test-DC (30 Tage Gueltigkeit):
-# eigene CA + Server-Zertifikat mit SAN DNS:localhost + IP:127.0.0.1.
-# Die Dateien landen in scripts/ldap-testdc/certs/ (gitignored) und werden
-# beim `docker build` ins Image kopiert. ca.crt muss fuer den Test in den
-# Windows-Truststore (LocalMachine\Root, siehe README) — danach wieder entfernen!
+# Creates the throwaway PKI for the LDAPS test DC, valid for 30 days: an own CA plus a
+# server certificate with SAN DNS:localhost and IP:127.0.0.1.
+# The files land in scripts/ldap-testdc/certs/ (gitignored) and are copied into the image
+# by `docker build`. For the test, ca.crt has to go into the Windows trust store
+# (LocalMachine\Root, see README) and should be removed again afterwards.
 $ErrorActionPreference = 'Stop'
 
 $dir = Join-Path $PSScriptRoot 'certs'

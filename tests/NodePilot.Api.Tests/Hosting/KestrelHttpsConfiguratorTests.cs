@@ -11,15 +11,15 @@ public class KestrelHttpsConfiguratorTests
     [Theory]
     [InlineData("A1 B2 C3 D4 E5 F6 07 18 29 3A 4B 5C 6D 7E 8F 90 01 12 23 34", "A1B2C3D4E5F60718293A4B5C6D7E8F9001122334")]
     [InlineData("a1b2c3d4e5", "A1B2C3D4E5")]
-    [InlineData("‎A1B2C3", "A1B2C3")]   // Strips the LRM (an invisible left-to-right-mark character that Windows' certmgr.msc sometimes pastes in when you copy a thumbprint).
+    [InlineData("‎A1B2C3", "A1B2C3")]   // Strips the LRM certmgr.msc can paste into a thumbprint.
     [InlineData("   ", "")]
     [InlineData(null, "")]
     [InlineData("", "")]
     public void NormalizeThumbprint_StripsNonHexAndUppercases(string? input, string expected)
     {
-        // Note: the first Theory case is 40 chars after stripping spaces, the other cases
-        // are deliberately shorter — we only test the normalization mechanic here, the
-        // 40-char length check is the installer's concern.
+        // The first case is 40 chars after stripping spaces; the others are shorter because
+        // this only tests the normalization mechanic. The 40-char length check itself is
+        // the installer's concern.
         KestrelHttpsConfigurator.NormalizeThumbprint(input).Should().Be(expected);
     }
 
@@ -98,10 +98,9 @@ public class KestrelHttpsConfiguratorTests
             Enabled = true,
             CertificateThumbprint = null,
         };
-        // Access via reflection because LoadCertificate is internal — tests assembly sees
-        // internal members via InternalsVisibleTo? No — that's not set. Use the public
-        // flow instead: ConfigureKestrelFromWindowsCertStore calls LoadCertificate.
-        // Simpler: just assert that NormalizeThumbprint rejects it consistently.
+        // LoadCertificate is internal and not reachable from this test assembly, so this
+        // checks NormalizeThumbprint instead, the same rejection that the public
+        // ConfigureKestrelFromWindowsCertStore flow relies on when it calls LoadCertificate.
         KestrelHttpsConfigurator.NormalizeThumbprint(opts.CertificateThumbprint).Should().BeEmpty();
     }
 
@@ -112,7 +111,7 @@ public class KestrelHttpsConfiguratorTests
         bool windowsAuthEnabled, HttpProtocols expected)
     {
         // Negotiate/Kerberos is connection-oriented and unreliable over HTTP/2, so the direct
-        // Kestrel HTTPS listener must fall back to HTTP/1.1 when Windows SSO is on — but keep
+        // Kestrel HTTPS listener falls back to HTTP/1.1 when Windows SSO is on, and keeps
         // HTTP/2 for the common no-SSO deployment.
         KestrelHttpsConfigurator.ResolveHttpsProtocols(windowsAuthEnabled).Should().Be(expected);
     }

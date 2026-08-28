@@ -38,7 +38,7 @@ describe('OpsStuckStrip', () => {
     expect(screen.getByText('Stuck / long-running')).toBeInTheDocument();
     expect(screen.getByText('Nightly Backup')).toBeInTheDocument();
     expect(screen.getByText('running for 42:00')).toBeInTheDocument();
-    // The start time is the thing a clipped bar cannot convey on its own.
+    // A clipped bar cannot show the start time, so the strip prints it as text.
     expect(screen.getByText(/since \d{2}:\d{2}/)).toBeInTheDocument();
   });
 

@@ -21,13 +21,11 @@ public sealed class SmtpOptions
     public string From { get; set; } = "nodepilot@localhost";
 
     /// <summary>
-    /// H-2 (security audit 2026-05-15): enables explicit TLS / STARTTLS on the SMTP
-    /// connection. Default <c>true</c> so a fresh deployment that wires up Auth-SMTP
-    /// cannot silently send credentials in plaintext. Flip to <c>false</c> only for
-    /// lab/legacy setups (localhost-relay, internal MTA without TLS). When set to
-    /// <c>false</c> alongside a configured <see cref="Username"/>,
-    /// <c>SecurityHardeningWarnings</c> emits a boot warning because the LOGIN/PLAIN
-    /// auth-mechanism would then travel unencrypted.
+    /// Enables explicit TLS / STARTTLS on the SMTP connection. Default <c>true</c> so a fresh
+    /// deployment with Auth-SMTP does not send credentials in plaintext. Set to <c>false</c> only
+    /// for lab/legacy setups without TLS (localhost relay, internal MTA). Turning it off while
+    /// <see cref="Username"/> is set makes <c>SecurityHardeningWarnings</c> emit a boot warning,
+    /// since the LOGIN/PLAIN auth mechanism would then travel unencrypted.
     /// </summary>
     public bool EnableSsl { get; set; } = true;
 }

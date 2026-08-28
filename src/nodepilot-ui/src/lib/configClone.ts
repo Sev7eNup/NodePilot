@@ -1,16 +1,15 @@
 import { REMOTE_ACTIVITY_TYPES } from './activityCatalog.generated';
 
 /**
- * Generic clone keys: target machine, credential. Read directly off `node.data`.
- * Available for every Remote-Activity (REMOTE_ACTIVITY_TYPES). Cloning these alone
- * is the most common case — same target host, different action.
+ * Node-data keys that can be cloned between any two remote activities
+ * (REMOTE_ACTIVITY_TYPES): target machine and credential. Read directly off `node.data`.
  */
 export const SHARED_NODE_CLONE_KEYS = ['targetMachineId', 'credentialId'] as const;
 
 /**
- * Returns true if `targetMachineId` + `credentialId` are meaningful for this activity.
- * Used to decide whether the clone-picker should offer cross-type Remote-→-Remote
- * (e.g. clone target machine from a runScript onto a serviceManagement step).
+ * Returns true if `targetMachineId` and `credentialId` are meaningful for this activity.
+ * Decides whether the clone picker offers a cross-type clone between two remote activities,
+ * such as copying the target machine from a runScript onto a serviceManagement step.
  */
 export function isRemoteActivityType(activityType: string): boolean {
   return REMOTE_ACTIVITY_TYPES.has(activityType);
@@ -19,15 +18,13 @@ export function isRemoteActivityType(activityType: string): boolean {
 export type CloneScope = 'all' | 'remoteOnly';
 
 /**
- * Builds a delta of node-data fields to overwrite on the target. Caller merges the result
- * onto current node-data (typically via the existing `onUpdate` plumbing in PropertiesPanel).
+ * Builds a delta of node-data fields to overwrite on the target. The caller merges the result
+ * onto the current node data, usually through `onUpdate` in PropertiesPanel.
  *
- * `scope = 'remoteOnly'` is the cross-type case: only `targetMachineId` + `credentialId` are
- * copied. Useful when you want "every remote step on this graph hits the same host" without
- * dragging timeout/retry policy along.
- *
- * `scope = 'all'` requires identical activity types — copies the shared keys plus the
- * complete source config.
+ * `scope = 'remoteOnly'` is the cross-type case and copies only `targetMachineId` and
+ * `credentialId`, so several remote steps can point at one host without sharing timeout or
+ * retry settings. `scope = 'all'` requires identical activity types and copies the shared keys
+ * plus the complete source config.
  */
 export function buildClonedDataPatch(
   source: Record<string, unknown>,
@@ -48,7 +45,7 @@ export function buildClonedDataPatch(
     return patch;
   }
 
-  // scope === 'all' — same-type clone.
+  // scope === 'all': same-type clone.
   if (sourceActivityType !== targetActivityType) return patch;
 
   if (isRemoteActivityType(sourceActivityType)) {
@@ -57,9 +54,8 @@ export function buildClonedDataPatch(
     }
   }
 
-  // Take the entire source config (including the action payload — script bodies, queries,
-  // paths, URLs, etc.). Users explicitly want a full copy: "this new step should look
-  // exactly like that one, then I'll edit what I need."
+  // Take the entire source config, including the action payload (script bodies, queries,
+  // paths, URLs), because a clone is meant to be a full copy the user then edits.
   const sourceConfig = (source.config as Record<string, unknown> | undefined) ?? {};
   const configPatch: Record<string, unknown> = { ...sourceConfig };
   if (Object.keys(configPatch).length > 0) {
@@ -69,14 +65,12 @@ export function buildClonedDataPatch(
 }
 
 /**
- * Applies a patch produced by `buildClonedDataPatch` onto a target node-data object,
- * returning a new object. The `__configPatch` marker is unwrapped here so callers can
- * just pass the result to their `onUpdate(nodeId, data)` plumbing.
+ * Applies a patch produced by `buildClonedDataPatch` onto a target node-data object and
+ * returns a new object. The `__configPatch` marker is unwrapped here so callers can pass the
+ * result straight to `onUpdate(nodeId, data)`.
  *
- * Config replacement strategy: the patched config REPLACES the target's config rather than
- * merging. Otherwise, when cloning a runScript onto a step that already had `script: 'foo'`
- * but the source had no `script` at all, the old `foo` would survive — defeating the user's
- * intent. The clone is "make this step look like that one"; merging is the wrong default.
+ * The patched config replaces the target config instead of merging into it. A merge would keep
+ * target keys the source does not have, so the clone would not match the source.
  */
 export function applyClonedPatch(
   targetData: Record<string, unknown>,

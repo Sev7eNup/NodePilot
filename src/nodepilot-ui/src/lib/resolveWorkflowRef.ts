@@ -8,20 +8,14 @@ import {
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Resolves a `workflowNameOrId` reference (the same string a startWorkflow node carries) into
- * a Workflow object. Returns `null` on 404 — caller distinguishes "not found" from genuine
- * fetch errors so the preview modal can show a friendly fallback instead of a generic toast.
+ * Resolves a `workflowNameOrId` reference (the string a startWorkflow node carries) into a
+ * Workflow. A GUID goes to `GET /api/workflows/{id}`, any other string to the case-insensitive
+ * `GET /api/workflows/by-name/{name}`. Templated refs (`{{variable}}`) resolve only at runtime
+ * and return null without a request.
  *
- * - Looks like a GUID → `GET /api/workflows/{id}`.
- * - Otherwise         → `GET /api/workflows/by-name/{name}` (case-insensitive lookup).
- *
- * Templated refs (`{{variable}}`) are returned as null without hitting the network — they
- * resolve only at runtime, so a design-time preview can't follow them.
- *
- * Uses fetch directly (rather than the shared `api` client) because we need to inspect the
- * response status code: the shared client throws a generic Error on any non-2xx, so 404 vs
- * 500 would be indistinguishable upstream. Auth still works through the httpOnly cookie that
- * `credentials: 'include'` ships automatically.
+ * Returns `null` on 404 so callers can tell "not found" from a real fetch error. Uses `fetch`
+ * instead of the shared `api` client, which hides the status code behind a generic Error; auth
+ * rides on the httpOnly cookie sent by `credentials: 'include'`.
  */
 export async function resolveWorkflowRef(nameOrId: string): Promise<Workflow | null> {
   const trimmed = (nameOrId ?? '').trim();

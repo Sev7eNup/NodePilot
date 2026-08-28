@@ -25,11 +25,11 @@ export function formatRelative(iso: string): string {
 }
 
 /**
- * Formats a future timestamp relative to "now". Used by the dashboard's armed-trigger
- * panel to render "in 5m" / "in 2h 15m" / "tomorrow 03:00" / absolute date for >24h.
+ * Formats a future timestamp relative to now, as "in 5m", "in 2h 15m", or an absolute
+ * weekday and time beyond 24 hours.
  *
- * `now` is exposed so a parent component can drive re-rendering on a minute-tick
- * without each call recomputing its own clock — see useMinuteTick().
+ * `now` is a parameter so a parent component can drive re-rendering on a minute tick
+ * without each call recomputing its own clock; see useMinuteTick().
  */
 export function formatRelativeFuture(iso: string, now: number = Date.now()): string {
   const target = new Date(iso).getTime();
@@ -44,7 +44,7 @@ export function formatRelativeFuture(iso: string, now: number = Date.now()): str
       ? i18n.t('format:inHoursMinutes', { hours, minutes })
       : i18n.t('format:inHours', { count: hours });
   }
-  // ≥24h away → absolute weekday + time, e.g. "Wed 14:00".
+  // 24h or more away: absolute weekday and time, for example "Wed 14:00".
   return new Date(iso).toLocaleString(currentLocale(), {
     weekday: 'short',
     hour: '2-digit',
@@ -53,9 +53,9 @@ export function formatRelativeFuture(iso: string, now: number = Date.now()): str
 }
 
 /**
- * Accepted input for the date/time helpers: ISO string, epoch milliseconds, or an
- * already-constructed Date. Call sites deal in all three shapes; normalizing here keeps
- * them from re-wrapping values in `new Date(...)` just to satisfy the helper.
+ * Accepted input for the date/time helpers: ISO string, epoch milliseconds, or a Date.
+ * Call sites deal in all three shapes, so the helpers normalize instead of forcing callers
+ * to wrap values in `new Date(...)`.
  */
 export type DateInput = string | number | Date;
 
@@ -68,7 +68,7 @@ export function formatDateOnly(value: DateInput, opts?: Intl.DateTimeFormatOptio
 }
 
 /**
- * Time-only variant (clock labels on timelines, step timestamps, …). Components must use
+ * Time-only variant for clock labels on timelines and step timestamps. Components must use
  * this instead of calling toLocaleTimeString directly (lint-enforced): a bare or `[]`
  * locale argument falls back to the browser locale and ignores the UI language.
  */

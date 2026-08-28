@@ -5,61 +5,48 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
-// Both namespaces above carry an ILogger; the connect guard wants the abstraction the rest of the
-// stack injects, while the boot-time messages in this file stay on Serilog's static Log.
+// Both namespaces above define an ILogger: the connect guard uses the Microsoft abstraction, while
+// the boot-time messages in this file use Serilog's static Log.
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace NodePilot.Ai;
 
 /// <summary>
-/// L-4 (security audit 2026-05-15): the literal-host SSRF check in
-/// <see cref="LlmEndpointGuard.IsCloudMetadataEndpoint"/> only fires when the
-/// configured <c>Llm:BaseUrl</c> already names a metadata endpoint. It does nothing against
-/// a hostname that resolves to <c>169.254.169.254</c> at TCP-connect time (DNS rebinding,
-/// or simply a misconfigured DNS pointing internal-* names at metadata IPs). This callback
-/// re-applies the rule at connect time. Unlike the RestApi guard, we deliberately
-/// <i>allow</i> loopback/private IPs — local LLM endpoints (Ollama on 127.0.0.1:11434, LM
-/// Studio on 127.0.0.1:1234) are the common production case for this feature.
+/// SSRF guard applied at TCP-connect time. The literal-host check in
+/// <see cref="LlmEndpointGuard.IsCloudMetadataEndpoint"/> only catches a configured
+/// <c>Llm:BaseUrl</c> that already names a metadata endpoint, not a hostname that resolves to
+/// <c>169.254.169.254</c> at connect time. Loopback and private IPs stay allowed here, unlike in
+/// the RestApi guard, because local LLM endpoints are the common case for this feature.
 /// </summary>
 internal static class LlmConnectGuard
 {
     /// <summary>
-    /// Deadline for name resolution and the TCP connect together — the part of the handshake this
+    /// Deadline for name resolution and the TCP connect together, the part of the handshake this
     /// callback owns.
     ///
-    /// <para><b>Why a separate budget at all.</b> The per-call timeout (<c>TimeoutSeconds</c>) is
-    /// an <i>answer</i> budget: a local model chewing on a long prompt legitimately needs minutes,
-    /// which is why operators set it to 300+. Reaching the endpoint is not that kind of work. With
-    /// one shared budget, an endpoint that never completes its handshake burned the whole thing —
-    /// a profile at 360 s sat there for six minutes and then reported "did not respond", the same
-    /// sentence a slow model produces. Failing the reachability phase early, and separately, is
-    /// what lets the two be told apart at all.</para>
-    ///
-    /// <para>A constant rather than an operator knob: 15 s is far beyond any healthy DNS lookup or
-    /// TCP handshake (Windows gives up on an unanswered SYN after ~21 s on its own), so there is
-    /// nothing to tune here — a value that needs raising means the network is broken, and the
-    /// error now says so.</para>
+    /// <para>Kept separate from the per-call <c>TimeoutSeconds</c>, which is an answer budget that
+    /// operators set to minutes for slow local models: failing reachability on its own deadline is
+    /// what tells an unreachable endpoint apart from a slow one. A constant rather than a knob,
+    /// because 15 s is far beyond a healthy DNS lookup or TCP handshake.</para>
     /// </summary>
     internal static readonly TimeSpan ConnectPhaseTimeout = TimeSpan.FromSeconds(15);
 
     /// <summary>
     /// <see cref="SocketsHttpHandler.ConnectTimeout"/> for the LLM handler. Covers everything up to
-    /// a usable connection, which — unlike this callback — <b>includes the TLS handshake</b>: the
-    /// callback returns the raw transport stream and the handler negotiates TLS on top of it.
+    /// a usable connection, including the TLS handshake, which this callback cannot cover: it
+    /// returns the raw transport stream and the handler negotiates TLS on top of it.
     ///
-    /// <para>Larger than <see cref="ConnectPhaseTimeout"/> on purpose, so the two never race: DNS
-    /// and TCP always fail on their own, named deadline. Anything that trips <i>this</i> one has
-    /// therefore already connected at the TCP level and is stuck in the handshake — an endpoint
-    /// demanding a client certificate, an SNI mismatch, or a middlebox that accepts the connection
-    /// and never speaks TLS. <see cref="LlmHttpTransport"/> relies on that ordering to name the
-    /// stage.</para>
+    /// <para>Larger than <see cref="ConnectPhaseTimeout"/> so the two never race: DNS and TCP
+    /// always fail on their own deadline. Anything that trips this one has already connected at
+    /// the TCP level and is stuck in the handshake, and <see cref="LlmHttpTransport"/> relies on
+    /// that ordering to name the stage.</para>
     /// </summary>
     internal static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Log category for the connect diagnostics. Named rather than tied to a type so an operator
-    /// can raise just this one to Debug (<c>Serilog:MinimumLevel:Override</c>) when an endpoint is
-    /// unreachable, without turning on debug logging for the whole AI stack.
+    /// can raise just this one to Debug (<c>Serilog:MinimumLevel:Override</c>) without turning on
+    /// debug logging for the whole AI stack.
     /// </summary>
     internal const string LoggerCategory = "NodePilot.Ai.LlmConnect";
 
@@ -121,9 +108,8 @@ internal static class LlmConnectGuard
                 $"LLM SSRF guard rejected every resolved address for host '{host}': link-local addresses " +
                 "(169.254/16 incl. cloud-metadata, IPv6 fe80::/10) are not allowed for the LLM endpoint.");
 
-        // The resolved set is the single most useful thing to know when an endpoint "works from my
-        // machine" but not from the service: a stale AAAA record, or a name that resolves somewhere
-        // else entirely under the service account's DNS suffixes, both look identical from outside.
+        // Logging the resolved set separates a stale AAAA record from a name that resolves
+        // elsewhere under the service account's DNS suffixes; both look identical from outside.
         logger?.LogDebug(
             "LLM connect: {Host}:{Port} resolved to {Addresses} in {DnsMs} ms.",
             host, port, string.Join(", ", allowed), dnsElapsed);
@@ -179,9 +165,9 @@ internal static class LlmConnectGuard
 /// <summary>
 /// DI wiring for the AI assistant endpoints. Binds <see cref="LlmOptions"/> from the
 /// <c>Llm:*</c> configuration section and registers a dedicated named HttpClient
-/// (<see cref="LlmHttpClient.Name"/>) with its own fresh <see cref="SocketsHttpHandler"/> —
-/// deliberately NOT the shared <c>"NodePilot"</c> HTTP pipeline, because that one's RestApi SSRF
-/// guard would block localhost endpoints (e.g. Ollama on <c>127.0.0.1:11434</c>).
+/// (<see cref="LlmHttpClient.Name"/>) with its own <see cref="SocketsHttpHandler"/> instead of the
+/// shared <c>"NodePilot"</c> HTTP pipeline, whose RestApi SSRF guard would block localhost
+/// endpoints (e.g. Ollama on <c>127.0.0.1:11434</c>).
 /// </summary>
 public static class LlmServiceCollectionExtensions
 {
@@ -190,11 +176,9 @@ public static class LlmServiceCollectionExtensions
         services.Configure<LlmOptions>(configuration.GetSection(LlmOptions.SectionName));
         services.Configure<AiKnowledgeOptions>(configuration.GetSection(AiKnowledgeOptions.SectionName));
 
-        // Fail fast when a configured profile BaseUrl points at a known cloud-metadata IP.
-        // Only applies when Llm:Enabled=true — a default/unused config block must never block
-        // startup, otherwise operators who never touched the AI settings couldn't boot their
-        // instance at all. Same helper the settings boot-validator uses, so an accepted save can
-        // never produce a config that refuses to boot.
+        // Fail fast when a configured profile BaseUrl points at a known cloud-metadata IP. Only
+        // applies when Llm:Enabled=true, so an untouched AI config block never blocks startup.
+        // Uses the same helper as the settings boot-validator, so an accepted save always boots.
         var enabled = configuration.GetValue<bool>($"{LlmOptions.SectionName}:Enabled");
         var endpointIssues = LlmProfileValidation.ValidateProfileEndpoints(configuration)
             .Concat(LlmProfileValidation.ValidateProxy(configuration))
@@ -208,13 +192,10 @@ public static class LlmServiceCollectionExtensions
 
         services.AddHttpClient(LlmHttpClient.Name, client =>
             {
-                // The per-request timeout is enforced in OpenAiCompatibleLlmClient via a linked
-                // CTS (CancelAfter Llm:TimeoutSeconds). Without this line, HttpClient.Timeout
-                // would stay at the .NET default of 100s and would abort EVERY slower request
-                // first — surfacing as a misleading "LLM endpoint didn't respond within
-                // {TimeoutSeconds}s" even though the configured timeout (e.g. 3600s for slow
-                // local models) was never actually reached. Disabled here so only the CTS
-                // controls the timeout.
+                // Disabled so the per-request timeout comes only from the linked CTS in
+                // OpenAiCompatibleLlmClient (CancelAfter Llm:TimeoutSeconds). The .NET default of
+                // 100s would otherwise abort any slower request first and report it as the
+                // configured timeout expiring.
                 client.Timeout = Timeout.InfiniteTimeSpan;
             })
             .ConfigurePrimaryHttpMessageHandler(sp => new SocketsHttpHandler
@@ -223,45 +204,41 @@ public static class LlmServiceCollectionExtensions
                 // loopback. LlmEndpointGuard rejects HTTP everywhere else; HTTPS certificate
                 // validation is the unmodified SocketsHttpHandler default.
                 //
-                // Proxying is decided per request by LlmConfiguredProxy from Llm:Proxy:*, NOT
+                // Proxying is decided per request by LlmConfiguredProxy from Llm:Proxy:*, not
                 // here: this handler is built once per handler lifetime, so reading the config at
                 // this point would make the whole Llm settings section restart-required. The
-                // default (Llm:Proxy:Mode=Off) bypasses every destination, which is exactly the
-                // direct connection this client made before proxy support existed — no proxy
+                // default (Llm:Proxy:Mode=Off) bypasses every destination, so there is no proxy
                 // auto-discovery unless an operator opts in.
                 UseProxy = true,
                 Proxy = sp.GetRequiredService<LlmConfiguredProxy>(),
                 AllowAutoRedirect = false,
                 // Bounds establishing a connection, TLS handshake included — the one phase the
                 // ConnectCallback below cannot cover, because it hands back the raw transport
-                // stream and the handler negotiates TLS on top of it. Without it a handshake that
-                // stalls (client-certificate demand, SNI mismatch, a middlebox that accepts the
-                // socket and never speaks TLS) runs against the per-call answer budget instead,
-                // which operators legitimately set to minutes for slow local models.
+                // stream and the handler negotiates TLS on top of it. Without it a stalled
+                // handshake runs against the per-call answer budget instead.
                 ConnectTimeout = LlmConnectGuard.HandshakeTimeout,
-                // L-4: SSRF guard at TCP-connect time. Closes the DNS-rebinding window
-                // between IsCloudMetadataEndpoint (literal-host check at boot) and the
-                // actual outbound connect on every request. NB: with a proxy in the path this
-                // callback sees the proxy endpoint, not the LLM host — see LlmConfiguredProxy
-                // for why that trade-off is accepted here.
+                // SSRF guard at TCP-connect time. Closes the DNS-rebinding window between
+                // IsCloudMetadataEndpoint (literal-host check at boot) and the outbound connect
+                // of each request. With a proxy in the path this callback sees the proxy
+                // endpoint, not the LLM host; see LlmConfiguredProxy.
                 ConnectCallback = (ctx, ct) => LlmConnectGuard.ConnectAsync(
                     ctx, sp.GetRequiredService<ILoggerFactory>().CreateLogger(LlmConnectGuard.LoggerCategory), ct),
             });
 
         services.AddSingleton<PromptCatalog>();
         services.AddSingleton<IChatToolRegistry, WorkflowChatToolRegistry>(); // read-only, stateless
-        // Deliberately no scoped ILlmClient registration: Create() throws when no active profile
-        // is configured, and a container-level registration would resolve during controller
-        // construction — i.e. BEFORE the action's Enabled/active-profile gate, turning a clean 503
-        // into a DI failure. Every consumer injects the factory and calls Create() at use time.
+        // No scoped ILlmClient registration: Create() throws when no active profile is configured,
+        // and a container-level registration would resolve during controller construction, before
+        // the action's Enabled/active-profile gate, turning a clean 503 into a DI failure. Every
+        // consumer injects the factory and calls Create() at use time.
         services.AddSingleton<ILlmClientFactory, LlmClientFactory>();
         services.AddScoped<ScriptGenerationService>();
         services.AddScoped<WorkflowGenerationService>();
         services.AddScoped<WorkflowAssistantService>();
 
-        // Global "AI Chat" knowledge assistant: docs/source readers are singletons (pure file IO over
-        // the live AiKnowledgeOptions roots); the operational reader is DB-scoped and registered in the
-        // API host. The tool registry is a stateless singleton.
+        // Global "AI Chat" knowledge assistant: the docs and source readers are singletons (pure
+        // file IO over the live AiKnowledgeOptions roots) and the tool registry is a stateless
+        // singleton; the operational reader is DB-scoped and registered in the API host.
         services.AddSingleton<Knowledge.IDocsKnowledgeReader, Knowledge.DocsKnowledgeReader>();
         services.AddSingleton<Knowledge.ISourceCodeKnowledgeReader, Knowledge.SourceCodeKnowledgeReader>();
         services.AddSingleton<Knowledge.IKnowledgeToolRegistry, Knowledge.KnowledgeChatToolRegistry>();

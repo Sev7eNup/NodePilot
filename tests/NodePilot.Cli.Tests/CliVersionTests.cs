@@ -6,9 +6,8 @@ using Xunit;
 namespace NodePilot.Cli.Tests;
 
 /// <summary>
-/// `np --version` was a string literal in Program.cs. It still said 1.0.0 after the product
-/// version had moved on, so the CLI reported a release it was not. It now reads the assembly,
-/// and this test binds that back to the one place the version is declared.
+/// Confirms `np --version` matches the product version declared in Directory.Build.props,
+/// the single source of truth for the version number.
 /// </summary>
 public sealed class CliVersionTests
 {

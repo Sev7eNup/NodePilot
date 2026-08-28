@@ -8,15 +8,15 @@ namespace NodePilot.Api.Services.DbAdmin;
 ///
 /// <para>Two complementary layers, because neither alone is sufficient:</para>
 /// <list type="number">
-///   <item><b>Pre-execution rejection</b> (<see cref="ReferencesProtectedColumn"/>) — result-column
+///   <item>Pre-execution rejection (<see cref="ReferencesProtectedColumn"/>) — result-column
 ///   masking cannot recover lineage through an alias or expression
 ///   (<c>SELECT PasswordHash AS p</c>, <c>SELECT substr(PasswordHash,1,4)</c>), so any statement
 ///   that so much as names a hidden identifier is refused before it reaches the database.</item>
-///   <item><b>Result masking</b> (<see cref="BuildColumnMask"/>) — a wildcard select
+///   <item>Result masking (<see cref="BuildColumnMask"/>) — a wildcard select
 ///   (<c>SELECT * FROM Users</c>) names no secret identifier but still returns one, so every
 ///   result column whose name matches a protected column is replaced with <c>"***"</c>.</item>
-///   <item><b>Row-projection rejection</b> (<see cref="ReferencesProtectedRowProjection"/>) —
-///   both layers above are NAME-based, and a row serializer defeats both at once:
+///   <item>Row-projection rejection (<see cref="ReferencesProtectedRowProjection"/>) —
+///   both layers above are name-based, and a row serializer defeats both at once:
 ///   <c>SELECT to_json(u) FROM "Users" u</c> never mentions <c>PasswordHash</c> (so layer 1 stays
 ///   quiet) and returns it inside a column called <c>to_json</c> (so layer 2 finds nothing to
 ///   mask). Statements that combine a protected table with a whole-row serializer are therefore
@@ -34,7 +34,7 @@ public sealed class DbAdminSecretColumns
     /// <summary>
     /// GlobalVariable.Value is masked rather than hidden in <see cref="DbAdminPolicy"/> (operators
     /// need the row, not the secret). "Value" is a common, harmless column name elsewhere, so it is
-    /// only *blocked* when the statement also names the GlobalVariable table.
+    /// only blocked when the statement also names the GlobalVariable table.
     /// </summary>
     private static readonly HashSet<string> GlobalVariableTableIdentifiers =
         new(["GlobalVariable", "GlobalVariables"], StringComparer.OrdinalIgnoreCase);
@@ -42,7 +42,8 @@ public sealed class DbAdminSecretColumns
     private static readonly HashSet<string> GlobalVariableValueIdentifier =
         new(["Value"], StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Result-column names that get masked: every hidden column plus GlobalVariable.Value.</summary>
+    /// <summary>Result-column names that get masked: every hidden column plus
+    /// GlobalVariable.Value.</summary>
     private readonly HashSet<string> _maskedColumnNames;
 
     /// <summary>Identifiers whose mere mention in a statement makes it unexecutable.</summary>
@@ -50,8 +51,8 @@ public sealed class DbAdminSecretColumns
 
     /// <summary>
     /// Entity and DB-table names of every table that carries a masked column. Only these tables
-    /// need the row-projection guard, which keeps the (necessarily blunt) rejection away from the
-    /// ~34 tables that hold no secret at all.
+    /// need the row-projection guard, which keeps the (necessarily blunt) rejection away from
+    /// tables that hold no secret at all.
     /// </summary>
     private readonly HashSet<string> _protectedTableIdentifiers;
 
@@ -123,7 +124,8 @@ public sealed class DbAdminSecretColumns
         => DbAdminReadOnlySqlGuard.ReferencesWholeRowProjection(sql, _protectedTableIdentifiers);
 
     /// <summary>
-    /// Per-result-column flags: <c>true</c> where the cell must be replaced with <see cref="Mask"/>.
+    /// Per-result-column flags: <c>true</c> where the cell must be replaced with
+    /// <see cref="Mask"/>.
     /// </summary>
     public bool[] BuildColumnMask(IReadOnlyList<string> columnNames)
     {

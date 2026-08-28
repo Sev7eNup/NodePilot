@@ -26,7 +26,7 @@ internal static class LogFormatters
             _          => null
         };
 
-    // shared:true → lets concurrent readers (tail -f, grep, Get-Content -Wait) observe the
+    // shared:true -> lets concurrent readers (tail -f, grep, Get-Content -Wait) observe the
     // file without Serilog holding an exclusive write lock. flushToDiskInterval forces the
     // OS to sync dirty pages every second so directory size/mtime reflect reality within
     // ~1s — without it Windows leaves metadata stale for the lifetime of the write handle,

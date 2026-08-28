@@ -3,17 +3,17 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { GanttChart, type GanttRow } from '../../../../components/designer/timeline/GanttChart';
 
 /**
- * Unit tests for the shared GanttChart used by both History and Live tabs. Asserts the
- * core rendering contract — caller-normalized rows in, axis + bars out — plus the
- * optional scrub slider and click handler. Visual fidelity (exact bar pixel widths) is
- * left to manual smoke; we assert the bars exist and the structure scales with row count.
+ * Unit tests for the shared GanttChart used by both History and Live tabs. They cover the
+ * rendering contract (caller-normalized rows in, axis and bars out) plus the optional scrub
+ * slider and click handler. Exact bar pixel widths are not asserted, only that the bars exist
+ * and the structure scales with row count.
  */
 
 const T0 = new Date('2026-04-26T10:00:00Z').getTime();
 
 function row(over: Partial<GanttRow> = {}): GanttRow {
-  // Use `in` checks instead of `??` so callers can explicitly pass null/0 to override
-  // the defaults (the `null ?? default` bug returns default which silently masks null).
+  // Use `in` checks instead of `??` so callers can pass null or 0 to override the defaults;
+  // `??` would fall back to the default and mask the null.
   return {
     id: over.id ?? 'r1',
     name: over.name ?? 'Row 1',
@@ -36,7 +36,7 @@ describe('GanttChart', () => {
     expect(screen.getByTestId('gantt-chart')).toBeInTheDocument();
     expect(screen.getByText('Alpha')).toBeInTheDocument();
     expect(screen.getByText('Beta')).toBeInTheDocument();
-    // Each row's duration label (1.00s) is rendered
+    // Each row renders its duration label.
     expect(screen.getAllByText(/1\.00s/).length).toBeGreaterThanOrEqual(2);
   });
 
@@ -69,7 +69,7 @@ describe('GanttChart', () => {
     );
     const slider = document.querySelector('input[type="range"]') as HTMLInputElement;
     expect(slider).not.toBeNull();
-    // Firing a change event should propagate to onChange
+    // A change event on the slider propagates to onChange.
     fireEvent.change(slider, { target: { value: T0 + 500 } });
     expect(onChange).toHaveBeenCalled();
   });
@@ -80,7 +80,7 @@ describe('GanttChart', () => {
   });
 
   it('extendsAxis_whenNowMsBeyondLastEnd_forLiveRunningRow', () => {
-    // A running row with endMs=null + nowMs in the future should still render a bar
+    // A running row with endMs=null and nowMs in the future still renders a bar.
     const liveNow = T0 + 5000;
     render(
       <GanttChart
@@ -88,8 +88,8 @@ describe('GanttChart', () => {
         nowMs={liveNow}
       />
     );
-    // The duration label for the live row is computed from nowMs - startMs ⇒ 5.00s
-    // (formatMs renders 2 decimals when below 10s)
+    // The live row's duration label comes from nowMs - startMs; formatMs renders two
+    // decimals below 10s.
     expect(screen.getByText(/5\.00s/)).toBeInTheDocument();
   });
 });

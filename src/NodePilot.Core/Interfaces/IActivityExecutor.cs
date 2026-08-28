@@ -16,18 +16,18 @@ public class ActivityResult
     public Dictionary<string, string> OutputParameters { get; set; } = [];
 
     /// <summary>
-    /// Optional verbose execution log (PowerShell <c>Start-Transcript</c> capture, future
-    /// equivalents) emitted alongside <see cref="Output"/>. Populated by activities that
-    /// opt into per-step tracing — RunScript with <c>config.transcript: true</c> currently.
-    /// Persisted to <c>StepExecution.TraceOutput</c> and surfaced in the UI as a separate
-    /// "Transcript" tab so the regular Output stays clean for variable resolution.
+    /// Optional verbose execution log (PowerShell <c>Start-Transcript</c> capture) emitted
+    /// alongside <see cref="Output"/>. Set by activities that opt into per-step tracing, such as
+    /// RunScript with <c>config.transcript: true</c>. Persisted to
+    /// <c>StepExecution.TraceOutput</c> and shown in a separate UI tab so the regular output
+    /// stays clean for variable resolution.
     /// </summary>
     public string? TraceOutput { get; set; }
 
     /// <summary>
-    /// Set by <c>CustomActivityExecutor</c> only — identifies the exact custom-activity definition
-    /// version that ran, so the step stays reproducible after later edits/rollbacks. Persisted onto
-    /// <c>StepExecution</c>. NB: <c>OutputRedactor.Redact</c> rebuilds the result, so it must copy
+    /// Set by <c>CustomActivityExecutor</c> only. Identifies the exact custom-activity definition
+    /// version that ran, so the step stays reproducible after later edits or rollbacks. Persisted
+    /// onto <c>StepExecution</c>; <c>OutputRedactor.Redact</c> rebuilds the result and must copy
     /// this field through.
     /// </summary>
     public CustomActivityProvenance? CustomActivity { get; set; }
@@ -58,10 +58,9 @@ public class StepExecutionContext
     public ManagedMachine? ResolvedMachine { get; set; }
 
     /// <summary>
-    /// Completed upstream step results. Populated by the engine for activities that
-    /// need to evaluate condition expressions against prior step outputs (decision /
-    /// switch). Null for the StepTester / ad-hoc invocation paths — activities that
-    /// rely on this must guard for null.
+    /// Completed upstream step results. Populated by the engine for activities that evaluate
+    /// condition expressions against prior step outputs (decision / switch). Null on the
+    /// StepTester and ad-hoc invocation paths, so consumers must guard for null.
     /// </summary>
     public IReadOnlyDictionary<string, ActivityResult>? PreviousResults { get; set; }
 

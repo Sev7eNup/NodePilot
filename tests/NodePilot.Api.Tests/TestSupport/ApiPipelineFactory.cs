@@ -18,15 +18,11 @@ using NodePilot.Data;
 namespace NodePilot.Api.Tests.TestSupport;
 
 /// <summary>
-/// Shared <see cref="WebApplicationFactory{TEntryPoint}"/> for pipeline-level smoke tests —
-/// the tests that must exercise the REAL Program.cs middleware chain (authentication,
-/// authorization, CSRF, rate limiting, ProblemDetails normalization) instead of
-/// instantiating controllers directly. Boots the full host against an in-memory SQLite
-/// database with all background services removed, and offers helpers to seed local users
-/// and log them in through the genuine <c>/api/auth/login</c> endpoint.
-///
-/// Promoted out of <c>ApiProblemDetailsPipelineTests</c> so the auth-gating / role-matrix /
-/// CSRF smoke layers reuse one solved boot recipe rather than re-discovering its traps.
+/// Shared <see cref="WebApplicationFactory{TEntryPoint}"/> for pipeline-level smoke tests
+/// that exercise the real Program.cs middleware chain (authentication, authorization, CSRF,
+/// rate limiting, ProblemDetails normalization) instead of instantiating controllers
+/// directly. Boots the host against an in-memory SQLite database with background services
+/// removed, and seeds/logs in local users through the real <c>/api/auth/login</c> endpoint.
 /// </summary>
 public sealed class ApiPipelineFactory : WebApplicationFactory<Program>
 {
@@ -37,27 +33,16 @@ public sealed class ApiPipelineFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Development");
 
-        // Jwt:Key MUST come in via UseSetting, not ConfigureAppConfiguration. Program.cs
-        // resolves the signing key during AddNodePilotAuthentication — long before
-        // builder.Build() — but WebApplicationFactory replays ConfigureAppConfiguration
-        // delegates only inside Build(). An in-memory Jwt:Key is therefore invisible at that
-        // point, and JwtKeyResolver silently falls back to generating {ContentRoot}/
-        // jwt-secret.key. That passes locally (the gitignored file already exists, so the
-        // read path is taken) and fails on a fresh CI checkout, where the write path hits
-        // RestrictedFileWriter's parent-directory ACL check and the runner workspace grants
-        // write access to Users. UseSetting is surfaced to the entry point as a command-line
-        // arg, so it IS visible pre-Build — same visibility asymmetry that
-        // DatabaseTlsBootValidator documents for HostDefaults.EnvironmentKey.
+        // Jwt:Key must be set via UseSetting: AddNodePilotAuthentication resolves the signing
+        // key before builder.Build() runs, so ConfigureAppConfiguration values aren't visible
+        // yet. Skipping this makes JwtKeyResolver fall back to writing jwt-secret.key, which
+        // fails the ACL check on a fresh CI checkout.
         builder.UseSetting("Jwt:Key", "NodePilot-Test-Jwt-Key-For-Pipeline-Smoke-32-Bytes");
 
         // Same pre-Build visibility trap as Jwt:Key: AddNodePilotAuthentication captures
-        // ActiveAuthenticationConfiguration.From(configuration) at REGISTRATION time, so the
-        // LocalLoginMode the login path enforces is frozen before ConfigureAppConfiguration
-        // replays. appsettings.Development.json already relaxes the production BreakGlassOnly
-        // default to Enabled (and IS pre-Build visible, being file-based), but the smoke
-        // layer's seeded non-break-glass users must not silently start failing 401 if that
-        // dev override ever changes — pin it here, through the one channel that is
-        // guaranteed visible at registration time.
+        // ActiveAuthenticationConfiguration at registration time, so LocalLoginMode is frozen
+        // before ConfigureAppConfiguration replays. Pin it here so the smoke layer's seeded
+        // users keep logging in even if the appsettings.Development.json default changes.
         builder.UseSetting("Authentication:LocalLoginMode", "Enabled");
 
         builder.ConfigureAppConfiguration((_, config) =>
@@ -92,13 +77,11 @@ public sealed class ApiPipelineFactory : WebApplicationFactory<Program>
     }
 
     /// <summary>
-    /// Seeds a local user straight into the database, mirroring exactly what
-    /// <c>UsersController.Create</c> persists: a BCrypt hash produced by the same
-    /// <c>BCrypt.Net.BCrypt.HashPassword</c> call (production work factor included) that
-    /// <c>AuthController.Login</c> later verifies, plus the system-default Root-folder grant
-    /// every non-Admin receives (Operator → FolderEditor, Viewer → FolderViewer). Without
-    /// that grant the folder-RBAC gate would 404/403 an Operator's workflow mutations and
-    /// the role-matrix tests would pin RBAC noise instead of the [Authorize] role gates.
+    /// Seeds a local user directly into the database, mirroring what
+    /// <c>UsersController.Create</c> persists: the same BCrypt hash that
+    /// <c>AuthController.Login</c> verifies, plus the default Root-folder grant every
+    /// non-Admin receives (Operator gets FolderEditor, Viewer gets FolderViewer). Without it,
+    /// folder RBAC would block an Operator's workflow mutations in the role-matrix tests.
     /// </summary>
     public async Task<Guid> CreateUserAsync(string username, string password, UserRole role)
     {
@@ -145,11 +128,9 @@ public sealed class ApiPipelineFactory : WebApplicationFactory<Program>
     /// <summary>
     /// Logs in through the real <c>POST /api/auth/login</c> endpoint. The response sets the
     /// httpOnly <c>np_auth</c> JWT cookie plus the JS-readable <c>np_csrf</c> token cookie
-    /// (see AuthSessionIssuer.SetAuthCookies); the factory's default client handles cookies
-    /// (WebApplicationFactoryClientOptions.HandleCookies is true), so <paramref name="client"/>
-    /// is authenticated for all subsequent requests. The CSRF token is returned separately
-    /// because CsrfMiddleware requires it reflected in the <c>X-CSRF-Token</c> header on
-    /// every cookie-authenticated mutating request — exactly what the SPA does.
+    /// (see AuthSessionIssuer.SetAuthCookies), so <paramref name="client"/> stays authenticated
+    /// for later requests. The CSRF token is returned separately because CsrfMiddleware needs
+    /// it echoed back in the <c>X-CSRF-Token</c> header on every mutating request.
     /// </summary>
     public static async Task<AuthenticatedSession> LoginAsync(HttpClient client, string username, string password)
     {
@@ -160,10 +141,9 @@ public sealed class ApiPipelineFactory : WebApplicationFactory<Program>
             $"login for seeded user '{username}' must succeed — if this fails, the smoke " +
             "factory's LocalLoginMode/seeding contract with AuthController drifted");
 
-        // The CSRF token only travels as a Set-Cookie value. ResponseCookies.Append escapes
-        // the (Base64, so '+'/'/'/'=' bearing) value; Request.Cookies unescapes on the way
-        // back in, and CsrfMiddleware compares the header against that UNESCAPED value —
-        // so unescape here to obtain what the X-CSRF-Token header must carry.
+        // The CSRF token only travels as a Set-Cookie value, which ResponseCookies.Append
+        // escapes (it is Base64, so it can contain '+', '/', '='). CsrfMiddleware compares
+        // the header against the unescaped value, so unescape here to match.
         var setCookies = response.Headers.TryGetValues("Set-Cookie", out var values)
             ? values.ToList()
             : [];
@@ -181,7 +161,8 @@ public sealed class ApiPipelineFactory : WebApplicationFactory<Program>
             csrfToken);
     }
 
-    /// <summary>Result of <see cref="LoginAsync"/>: identity facts + the CSRF header value.</summary>
+    /// <summary>Result of <see cref="LoginAsync"/>: identity facts + the CSRF header
+    /// value.</summary>
     public sealed record AuthenticatedSession(Guid UserId, string Role, string CsrfToken);
 
     protected override void Dispose(bool disposing)

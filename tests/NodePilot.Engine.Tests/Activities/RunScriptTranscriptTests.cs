@@ -130,7 +130,7 @@ public class RunScriptTranscriptTests
     [Fact]
     public async Task ConfigTranscriptFalse_DoesNotInjectWrapper_OutputUnchanged()
     {
-        // Runspace engine + no transcript flag → the script runs as-is. The marker should
+        // Runspace engine + no transcript flag -> the script runs as-is. The marker should
         // never appear in the output stream because the wrapper isn't injected.
         var script = "Write-Output 'plain'";
         var config = JsonDocument.Parse($"{{\"script\": {JsonSerializer.Serialize(script)}, \"engine\": \"runspace\"}}").RootElement;
@@ -159,8 +159,10 @@ public class RunScriptTranscriptTests
 
         if (!result.Success)
         {
-            // Start-Transcript can fail on environments without console host (CI, restricted runspaces).
-            // The test infrastructure expectation is opt-in: skip rather than fail when the host can't
+            // Start-Transcript can fail on environments without console host (CI, restricted
+            // runspaces).
+            // The test infrastructure expectation is opt-in: skip rather than fail when the host
+            // can't
             // produce a transcript at all.
             return;
         }

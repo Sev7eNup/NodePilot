@@ -8,31 +8,44 @@ using NodePilot.Data;
 namespace NodePilot.Scheduler.SystemAlerts.Sources;
 
 /// <summary>
-/// Event source: audit-log entries (failed logins, lockouts, break-glass sign-ins, role changes, credential
-/// deletions, force-unlocks, …), one observation per row. Makes every <see cref="AuditActions"/> code
-/// alertable through the shared policy pipeline without a per-code event type — a policy's condition filters
-/// on <c>action</c>, <c>outcome</c>, <c>category</c>, <c>username</c>, <c>ipAddress</c>, <c>resourceType</c>
+/// Event source: audit-log entries (failed logins, lockouts, break-glass sign-ins, role changes,
+/// credential
+/// deletions, force-unlocks, …), one observation per row. Makes every <see cref="AuditActions"/>
+/// code
+/// alertable through the shared policy pipeline without a per-code event type — a policy's
+/// condition filters
+/// on <c>action</c>, <c>outcome</c>, <c>category</c>, <c>username</c>, <c>ipAddress</c>,
+/// <c>resourceType</c>
 /// or the (write-side redacted) <c>details</c> JSON.
 ///
-/// Like <see cref="ExecutionResultSource"/> it is a stateless lookback window: the source contract is
-/// read-only, so there is no persisted cursor — the evaluator's activation watermark and the delivery
-/// ledger's per-occurrence key keep a row from alerting twice. The <c>actions</c> parameter pre-filters
-/// server-side so non-matching rows never become observations, and <c>lookbackSeconds</c> is capped at a
-/// day so the scan stays bounded. There is deliberately no per-pass row cap: over a sliding window an
-/// oldest-first cap is not a load guard but a cliff — once rows arrive faster than the cap per dispatcher
+/// Like <see cref="ExecutionResultSource"/> it is a stateless lookback window: the source contract
+/// is
+/// read-only, so there is no persisted cursor — the evaluator's activation watermark and the
+/// delivery
+/// ledger's per-occurrence key keep a row from alerting twice. The <c>actions</c> parameter
+/// pre-filters
+/// server-side so non-matching rows never become observations, and <c>lookbackSeconds</c> is capped
+/// at a
+/// day so the scan stays bounded. There is deliberately no per-pass row cap: over a sliding window
+/// an
+/// oldest-first cap is not a load guard but a cliff — once rows arrive faster than the cap per
+/// dispatcher
 /// interval, a growing band of them ages past the prefix and out of the window without ever being
 /// observed, and an event row is observable exactly once.
 /// </summary>
 public sealed class AuditEventSource : ISystemAlertSource
 {
     private const int DefaultLookbackSeconds = 300;
-    /// <summary>Upper bound of the lookback window: bounds one sample to a day of audit rows, whatever the policy says.</summary>
+    /// <summary>Upper bound of the lookback window: bounds one sample to a day of audit rows,
+    /// whatever the policy says.</summary>
     public const int MaxLookbackSeconds = 86_400;
     private const int SummaryDetailsChars = 200;
 
     /// <summary>
-    /// Housekeeping codes skipped when <c>actions</c> is empty: <c>CREDENTIAL_DECRYPTED</c> is written for every
-    /// step that resolves a credential, <c>TOKEN_REFRESHED</c> for every session rotation — volume, not signal,
+    /// Housekeeping codes skipped when <c>actions</c> is empty: <c>CREDENTIAL_DECRYPTED</c> is
+    /// written for every
+    /// step that resolves a credential, <c>TOKEN_REFRESHED</c> for every session rotation — volume,
+    /// not signal,
     /// and either would crowd the cap. Naming one explicitly in <c>actions</c> includes it.
     /// </summary>
     public static readonly IReadOnlyList<string> DefaultExcludedActions =
@@ -44,15 +57,18 @@ public sealed class AuditEventSource : ISystemAlertSource
         SourceId, SystemAlertCategory.Security, SystemAlertScopeCapability.GlobalOnly, NotificationSeverity.Warning,
         Fields:
         [
-            // String rather than Enum: the codes live in AuditActions (guarded by AuditActionsCatalogTests);
-            // an EnumValues copy here would be a second list to forget. Text operators filter it fine.
+            // String rather than Enum: the codes live in AuditActions (guarded by
+            // AuditActionsCatalogTests);
+            // an EnumValues copy here would be a second list to forget. Text operators filter it
+            // fine.
             SystemAlertField.Of("action", SystemAlertFieldType.String),
             SystemAlertField.Of("outcome", SystemAlertFieldType.Enum, enumValues: ["success", "failure", "unknown"]),
             SystemAlertField.Of("category", SystemAlertFieldType.Enum, enumValues: ["iam", "process", "configuration"]),
             SystemAlertField.Of("username", SystemAlertFieldType.String),
             SystemAlertField.Of("ipAddress", SystemAlertFieldType.String),
             SystemAlertField.Of("resourceType", SystemAlertFieldType.String),
-            // The redacted details JSON as written — lets a policy match on what a code alone can't say,
+            // The redacted details JSON as written — lets a policy match on what a code alone can't
+            // say,
             // e.g. contains "\"source\":\"Ldap\"" or "\"breakGlass\":true".
             SystemAlertField.Of("details", SystemAlertFieldType.String),
         ],
@@ -61,13 +77,15 @@ public sealed class AuditEventSource : ISystemAlertSource
             new SystemAlertParameter("lookbackSeconds", SystemAlertFieldType.Duration,
                 Default: DefaultLookbackSeconds, Required: false, Unit: "seconds", Min: 1, Max: MaxLookbackSeconds),
             // Comma-separated AuditActions codes (case-insensitive). Empty = every code except
-            // DefaultExcludedActions. Applied in the query, not the condition, so it bounds the scan.
+            // DefaultExcludedActions. Applied in the query, not the condition, so it bounds the
+            // scan.
             new SystemAlertParameter("actions", SystemAlertFieldType.String, Default: null, Required: false),
         ],
         Presets:
         [
             // Presets ship a condition only, never an `actions` value: a pre-filter that silently
-            // contradicts a later-edited condition would be a policy that looks right and never fires.
+            // contradicts a later-edited condition would be a policy that looks right and never
+            // fires.
             new SystemAlertPreset("failed-login", NotificationSeverity.Warning, SustainForSeconds: 0,
                 ConditionJson: SystemAlertConditions.Compare("action", "==", AuditActions.LoginFailed)),
             new SystemAlertPreset("account-locked", NotificationSeverity.Critical, SustainForSeconds: 0,
@@ -105,10 +123,14 @@ public sealed class AuditEventSource : ISystemAlertSource
         {
             var outcome = AuditEventClassification.Outcome(a.Action, a.Details);
             var category = AuditEventClassification.Category(a.Action);
-            // For a sign-in event the account that matters is the one being signed into, which lives in
-            // Details.username; the actor column is whoever sent the request — empty for the usual anonymous
-            // LOGIN_FAILED, but an already-signed-in browser that fails a second login would put *its* name
-            // there and mislabel the alert. Every other code keeps the actor (USER_ROLE_CHANGED is "by admin",
+            // For a sign-in event the account that matters is the one being signed into, which
+            // lives in
+            // Details.username; the actor column is whoever sent the request — empty for the usual
+            // anonymous
+            // LOGIN_FAILED, but an already-signed-in browser that fails a second login would put
+            // *its* name
+            // there and mislabel the alert. Every other code keeps the actor (USER_ROLE_CHANGED is
+            // "by admin",
             // its Details.username is the changed account).
             var attempted = DetailsString(a.Details, "username");
             var username = (IsSignInAction(a.Action) ? attempted ?? a.Username : a.Username ?? attempted) ?? "";
@@ -120,7 +142,8 @@ public sealed class AuditEventSource : ISystemAlertSource
 
             return new SystemAlertObservation(
                 SourceId,
-                // The row id, not the username: InstanceKey becomes sourceKey and part of the event key that
+                // The row id, not the username: InstanceKey becomes sourceKey and part of the event
+                // key that
                 // travels in the X-NodePilot-Event-Key header of every outbound webhook.
                 InstanceKey: a.Id.ToString("N"),
                 SeveritySuggestion: outcome == "failure" ? NotificationSeverity.Warning : NotificationSeverity.Info,
@@ -148,7 +171,8 @@ public sealed class AuditEventSource : ISystemAlertSource
     private static bool IsSignInAction(string action)
         => action.StartsWith("LOGIN_", StringComparison.Ordinal) || action == AuditActions.BreakGlassLoginSuccess;
 
-    /// <summary>Splits the <c>actions</c> parameter into distinct, upper-cased codes; blanks are dropped.</summary>
+    /// <summary>Splits the <c>actions</c> parameter into distinct, upper-cased codes; blanks are
+    /// dropped.</summary>
     public static IReadOnlyList<string> ParseActions(string? raw)
         => string.IsNullOrWhiteSpace(raw)
             ? []

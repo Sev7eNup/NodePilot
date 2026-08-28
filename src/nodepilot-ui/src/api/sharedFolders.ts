@@ -13,6 +13,8 @@ export interface SharedFolderCapabilities {
   canRead: boolean;
   canRun: boolean;
   canEdit: boolean;
+  /** Recursive folder deletion also deletes Workflows and their history, so it is Admin-only. */
+  canDelete: boolean;
   canAdmin: boolean;
 }
 
@@ -39,7 +41,7 @@ export interface SharedFolderPermission {
   principalType: FolderPrincipalType;
   /** For User-grants this is the user's Guid as canonical lowercase string
    *  (`Guid.ToString("D")`); for Group-grants it is a provider-stable group key. Mirrors the
-   *  backend's `PrincipalKey` column after the PR0a rename. */
+   *  backend's `PrincipalKey` column. */
   principalKey: string;
   /** Exact group issuer namespace. Null for user grants. */
   principalAuthority?: string | null;
@@ -68,7 +70,7 @@ export const sharedFoldersApi = {
   deleteRecursive: (id: string) =>
     api.delete<RecursiveFolderDeleteResult>(`${base}/${id}?recursive=true`),
 
-  // Workflow → folder reassignment.
+  // Workflow to folder reassignment.
   moveWorkflowToFolder: (workflowId: string, targetFolderId: string) =>
     api.post<void>(`/workflows/${workflowId}/move-folder`, { targetFolderId }),
 

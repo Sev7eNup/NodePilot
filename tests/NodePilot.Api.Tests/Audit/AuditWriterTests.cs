@@ -73,10 +73,9 @@ public class AuditWriterTests
     [Fact]
     public async Task LogAsync_DoesNotEmbedUsername_OrIp_InDetailsJson()
     {
-        // The whole point of promoting Username/IpAddress to columns is so the Details blob
-        // doesn't have to be parsed for the common UI/SIEM filters. Re-embedding them would
-        // double the storage cost and re-introduce the "rename user → audit row is wrong"
-        // failure mode the columns are meant to prevent.
+        // Username/IpAddress are columns so the Details blob doesn't need parsing for the
+        // common UI/SIEM filters. Re-embedding them here would duplicate storage and bring
+        // back the failure mode where renaming a user makes old audit rows look wrong.
         var (writer, db) = Create(username: "alice", remoteIp: "10.0.0.1");
         await writer.LogAsync("LOGIN_SUCCESS", null, null,
             "{\"viaSso\":true}", CancellationToken.None);
@@ -141,10 +140,9 @@ public class AuditWriterTests
     }
 
     /// <summary>
-    /// S1 (a SIEM-integration finding) — the SIEM forward must carry the rich audit context
-    /// as structured properties, not just a 5-field message-template. The properties land in
-    /// a BeginScope so EcsJsonFormatter projects them into ECS root fields (event.action,
-    /// user.id, …).
+    /// The SIEM forward carries audit context as structured properties, not just a
+    /// text message. The properties land in a BeginScope so EcsJsonFormatter projects
+    /// them into ECS root fields (event.action, user.id, and others).
     /// </summary>
     [Fact]
     public async Task LogAsync_SiemForward_IncludesEcsRootFields()
@@ -224,11 +222,10 @@ public class AuditWriterTests
     }
 
     /// <summary>
-    /// The previous hardcoded <c>event.outcome=success</c> meant a SIEM rule
+    /// Pins the suffix-driven <c>event.outcome</c> mapping. A SIEM rule such as
     /// <c>event.action=LOGIN_FAILED AND event.outcome=failure</c> (the Sigma / Sentinel
-    /// standard for brute-force detection) never matched NodePilot. This test pins the
-    /// suffix-driven outcome mapping so a future refactor that goes back to "success"
-    /// for everything breaks loudly.
+    /// pattern for brute-force detection) only matches when failed actions report
+    /// <c>failure</c> instead of a hardcoded <c>success</c>.
     /// </summary>
     [Theory]
     [InlineData("LOGIN_FAILED", "failure")]
@@ -307,10 +304,10 @@ public class AuditWriterTests
     }
 
     /// <summary>
-    /// Outcome fallthrough: actions that are NOT on the whitelist but are classified with
-    /// <c>event.outcome=failure</c> must still be mirrored into the support log — otherwise
-    /// things like brute-force decryption attempts or trigger rejections would go missing
-    /// from the file.
+    /// Outcome fallthrough: actions that are not on the whitelist but are classified with
+    /// <c>event.outcome=failure</c> must still be mirrored into the support log, so events
+    /// like brute-force decryption attempts or trigger rejections do not go missing from
+    /// the file.
     /// </summary>
     [Theory]
     [InlineData("CREDENTIAL_DECRYPT_FAILED")]

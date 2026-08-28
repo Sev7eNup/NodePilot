@@ -564,8 +564,7 @@ public class CommandIntegrationResourcesTests
     [Fact]
     public void GlobalsFolderDelete_WithoutRecursive_SendsPlainDelete()
     {
-        // The non-recursive contract is unchanged: no flag needed, server refuses a non-empty
-        // folder itself.
+        // The non-recursive path needs no flag; the server itself refuses a non-empty folder.
         using var h = new CommandTestHarness();
         var id = Guid.NewGuid();
         h.Server.Given(Request.Create().WithPath($"/api/global-variable-folders/{id}").UsingDelete())
@@ -632,7 +631,7 @@ public class CommandIntegrationResourcesTests
         try
         {
             File.WriteAllText(tmp, """[{"name":"NEW_VAR","value":"hello","isSecret":false,"description":null}]""");
-            // List returns empty → all entries will be created
+            // List returns empty -> all entries will be created
             h.Server.Given(Request.Create().WithPath("/api/global-variables").UsingGet())
                 .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(Array.Empty<object>()));
             h.Server.Given(Request.Create().WithPath("/api/global-variables").UsingPost())
@@ -662,7 +661,7 @@ public class CommandIntegrationResourcesTests
                 {
                     new { id, name = "ENV", value = "stg", isSecret = false, description = (string?)null, createdAt = DateTime.UtcNow, updatedAt = DateTime.UtcNow, updatedBy = (string?)null },
                 }));
-            // PUT must NOT be called — no stub registered, WireMock would return 404 if hit
+            // PUT must not be called; no stub is registered, so WireMock would return 404 if hit
 
             var result = h.Run("globals", "import", "--file", tmp);
             result.ExitCode.Should().Be(ExitCodes.Success);

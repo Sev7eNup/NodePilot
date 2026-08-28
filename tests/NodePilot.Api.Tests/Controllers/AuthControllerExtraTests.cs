@@ -20,11 +20,9 @@ using Xunit;
 namespace NodePilot.Api.Tests.Controllers;
 
 /// <summary>
-/// Branch-coverage gap-fillers for AuthController. The original AuthControllerTests
-/// covers the common happy paths (bootstrap, login success, refresh) but skipped:
-/// account lockout (H-4), disabled-user 401, the FailedLoginCount-resets-on-success
-/// branch, the bootstrap pinned-username guard (H12), and the Logout token-revocation
-/// flow.
+/// Branch-coverage tests for AuthController: account lockout, disabled-user login,
+/// resetting the failed-login counter on success, the bootstrap pinned-username guard,
+/// and Logout token revocation. AuthControllerTests covers the main happy paths.
 /// </summary>
 public sealed class AuthControllerExtraTests : IDisposable
 {
@@ -118,8 +116,8 @@ public sealed class AuthControllerExtraTests : IDisposable
     public async Task Login_RepeatedFailures_TriggersLockout()
     {
         var db = CreateContext();
-        // Seed at threshold-1 so the next failure trips the lockout. The exact threshold
-        // is private; we drive 10 failed logins which is more than any reasonable threshold.
+        // The lockout threshold is private, so loop 10 failed logins, more than any
+        // reasonable threshold, to guarantee the account locks.
         var user = CreateUser();
         db.Users.Add(user);
         await db.SaveChangesAsync();
@@ -197,10 +195,9 @@ public sealed class AuthControllerExtraTests : IDisposable
             new LoginRequest(user.Username, "Password1"), CancellationToken.None);
 
         var unauth = result.Result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
-        // L-2 (security audit 2026-05-15): the public response is the generic
-        // "Invalid credentials" so a username-enumeration attacker cannot tell a disabled
-        // account apart from an unknown one. The audit row + metric still record the
-        // precise reason ("account_disabled") for operator visibility.
+        // The public response is the generic "Invalid credentials" message so a
+        // username-enumeration attacker cannot tell a disabled account from an unknown
+        // one. The audit row and metric still record the precise reason for operators.
         unauth.Value!.ToString().Should().Contain("Invalid credentials");
     }
 
@@ -208,7 +205,8 @@ public sealed class AuthControllerExtraTests : IDisposable
     public async Task Login_SuccessAfterFailures_ResetsCounterAndClearsLock()
     {
         var db = CreateContext();
-        // Lock that has already expired. Successful login must clear both counter and lock-stamp.
+        // The lock has already expired. A successful login must still clear both the
+        // counter and the lock timestamp.
         var user = CreateUser(failedCount: 3, lockedUntil: DateTime.UtcNow.AddMinutes(-1));
         db.Users.Add(user);
         await db.SaveChangesAsync();
@@ -225,8 +223,8 @@ public sealed class AuthControllerExtraTests : IDisposable
     [Fact]
     public async Task Login_BootstrapToken_PinnedUsernameMismatch_Rejected()
     {
-        // H12 guard: when the operator pins NodePilot:BootstrapAdminUsername, only that
-        // username may consume the setup token, even if the token itself is valid.
+        // When the operator pins NodePilot:BootstrapAdminUsername, only that username
+        // may consume the setup token, even if the token itself is valid.
         var db = CreateContext();
         File.WriteAllText(Path.Combine(_contentRoot, AdminBootstrap.TokenFileName), "tok");
         var cfg = CreateConfig(new() { ["NodePilot:BootstrapAdminUsername"] = "rightful-admin" });
@@ -278,8 +276,8 @@ public sealed class AuthControllerExtraTests : IDisposable
     [Fact]
     public async Task Logout_NoJtiClaim_StillReturnsNoContent_NoRevocationRow()
     {
-        // No-jti path: the token may have been minted before jti was added, or the caller
-        // may simply not have a token. Logout must scrub cookies and 204.
+        // No-jti path: the token may predate jti support, or the caller has no token at
+        // all. Logout must still clear cookies and return 204.
         var db = CreateContext();
         var principal = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {

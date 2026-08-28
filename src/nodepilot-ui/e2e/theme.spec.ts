@@ -2,23 +2,11 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Part 17 — Theme & UX Features.
- *
- * 17.1 Dark/Light/System theme toggle  → Settings page, themeStore persists to
- *      localStorage ('nodepilot.theme') and toggles `document.documentElement.classList.dark`.
- * 17.2 Mini-Map                          → React-Flow <MiniMap> in the editor (visible; the
- *      Controls fit-view button as the "show/hide / navigate" affordance). Pan/click-drag on
- *      the minimap relies on RF internal pointer handling that synthetic Playwright events do
- *      not drive reliably → those interaction checks are skipped, presence is asserted.
- * 17.3 Node Context-Menu                 → right-click a node (a `contextmenu` event, NOT a
- *      drag) opens NodeContextMenu with Duplicate / Enable-Disable / Breakpoint / Delete;
- *      closes on Escape and on outside-click.
- * 17.4 Drag-Drop from Activity-Sidebar   → the sidebar lists categorized activities; the
- *      actual drag-onto-canvas uses HTML5 DnD on the RF pane which synthetic events can't
- *      drive, so the drop is exercised via the equivalent click-to-add path and the drag
- *      check is skipped.
- *
- * Hermetic: page.route() mocks only (no backend). SPA renders EN under Playwright.
+ * E2ETests.md Part 17 — theme and UX features: the theme toggle (themeStore persists to
+ * localStorage under 'nodepilot.theme' and toggles the `dark` class on <html>), the React-Flow
+ * mini-map, the node context menu and the activity sidebar. Minimap panning and HTML5
+ * drag-and-drop onto the canvas need real pointer events, so those checks assert presence or
+ * use the equivalent click path. Hermetic: page.route() mocks only, SPA renders EN.
  */
 
 const WF_ID = 'e7e7e7e7-1717-1717-1717-171717171717';
@@ -30,7 +18,7 @@ function workflowWithNode() {
     name: 'Theme_E2E_WF',
     description: '',
     isEnabled: false,
-    checkedOutByUserId: MOCK_USER.id, // locked-by-me → canWrite (Admin + own lock)
+    checkedOutByUserId: MOCK_USER.id, // locked by the mock user, so canWrite is true
     checkedOutByUserName: MOCK_USER.username,
     checkedOutAt: '2026-06-01T00:00:00.000Z',
     definitionJson: JSON.stringify({
@@ -69,8 +57,8 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
   test('17.1 — Dark/Light/System toggle flips html.dark instantly and persists across reload', async ({ page }) => {
     await page.goto('/settings');
 
-    // Scope to the Settings "Appearance" card. The left sidebar also has theme controls
-    // (icon-only) and there is a "System" settings tab elsewhere — both collide otherwise.
+    // Scope to the Settings "Appearance" card: the sidebar carries icon-only theme controls
+    // and there is a separate "System" settings tab, both of which match the same names.
     const appearance = page.getByRole('heading', { name: /appearance/i }).locator('..');
     const dark = appearance.getByRole('button', { name: /^dark$/i });
     const light = appearance.getByRole('button', { name: /^light$/i });
@@ -79,18 +67,18 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     await expect(light).toBeVisible();
     await expect(system).toBeVisible();
 
-    // Choose Dark → <html> gains the `dark` class immediately (no reload).
+    // Choosing Dark adds the `dark` class to <html> immediately, without a reload.
     await dark.click();
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(true);
     // Persisted to localStorage under the themeStore key.
     await expect.poll(() => page.evaluate(() => localStorage.getItem('nodepilot.theme'))).toContain('"theme":"dark"');
 
-    // Choose Light → class removed.
+    // Choosing Light removes the class again.
     await light.click();
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(false);
     await expect.poll(() => page.evaluate(() => localStorage.getItem('nodepilot.theme'))).toContain('"theme":"light"');
 
-    // Back to Dark, then reload → preference survives (applied before first paint).
+    // Back to Dark, then reload: the preference survives and applies before first paint.
     await dark.click();
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(true);
     await page.reload();
@@ -102,8 +90,8 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
   test('17.8 — language toggle switches the UI between English and German', async ({ page }) => {
     await page.goto('/settings');
 
-    // The Appearance card holds both the theme and the language buttons. Its heading itself
-    // localizes (Appearance ↔ Darstellung), which is the cleanest signal that i18n flipped.
+    // The Appearance card holds both the theme and the language buttons. Its heading is itself
+    // localized (Appearance / Darstellung), which is a clear signal that i18n switched.
     const appearance = page.getByRole('heading', { name: /appearance|darstellung/i }).locator('..');
     await expect(appearance).toBeVisible({ timeout: 15_000 });
     const de = appearance.getByRole('button', { name: /^deutsch$/i });
@@ -111,11 +99,11 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     await expect(de).toBeVisible();
     await expect(en).toBeVisible();
 
-    // Switch to German → the card heading becomes "Darstellung".
+    // Switching to German renames the card heading to "Darstellung".
     await de.click();
     await expect(page.getByRole('heading', { name: /^darstellung$/i })).toBeVisible();
 
-    // Switch back to English → "Appearance" again.
+    // Switching back to English restores "Appearance".
     await en.click();
     await expect(page.getByRole('heading', { name: /^appearance$/i })).toBeVisible();
   });
@@ -130,8 +118,8 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     // The Controls cluster (zoom in/out + fit view) is the show/navigate affordance.
     await expect(page.locator('.react-flow__controls')).toBeVisible();
 
-    // Click-to-navigate / drag-to-pan on the minimap relies on RF internal pointer handling
-    // that synthetic Playwright events don't drive reliably.
+    // Click-to-navigate and drag-to-pan on the minimap rely on React-Flow internal pointer
+    // handling that synthetic Playwright events do not drive reliably.
     test.info().annotations.push({ type: 'skip-note', description: 'minimap click/drag-to-pan needs real pointer events' });
   });
 
@@ -159,8 +147,8 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
 
     const node = page.locator(`.react-flow__node[data-id="${NODE_ID}"]`);
 
-    // Outside-click close: open then click empty canvas. Click near the TOP of the pane —
-    // the editor's bottom output panel overlays the lower canvas region.
+    // Outside-click close: open the menu, then click empty canvas. Click near the top of the
+    // pane because the editor's bottom output panel overlays the lower canvas region.
     await node.click({ button: 'right' });
     await expect(page.getByRole('button', { name: /^duplicate$/i })).toBeVisible({ timeout: 10_000 });
     await page.locator('.react-flow__pane').click({ position: { x: 700, y: 90 } });
@@ -170,8 +158,8 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     await node.click();
     await expect(page.getByRole('button', { name: /^Active$/ })).toBeVisible({ timeout: 10_000 });
 
-    // Re-open the context menu and choose "Disable step" → the action runs and the node's
-    // state flips, observable in the properties panel pill ("Active" → "Disabled").
+    // Re-open the context menu and choose "Disable step": the action runs and the node state
+    // flips, visible in the properties panel pill, which changes from "Active" to "Disabled".
     await node.click({ button: 'right' });
     await page.getByRole('button', { name: /disable step/i }).click();
     await expect(page.getByRole('button', { name: /^Disabled$/ })).toBeVisible();
@@ -180,7 +168,7 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
   test('17.4 — activity sidebar lists categorized activities; click-add drops a node', async ({ page }) => {
     await openEditor(page);
 
-    // The sidebar defaults to the "Workflows" tab — switch to the "Nodes" (Node Library) tab.
+    // The sidebar defaults to the "Workflows" tab, so switch to the "Nodes" (Node Library) tab.
     // The expanded panel has no "Node Library" heading; its search box confirms it mounted.
     await page.getByRole('button', { name: /^nodes$/i }).click();
     await expect(page.getByPlaceholder(/search nodes/i)).toBeVisible({ timeout: 15_000 });
@@ -198,8 +186,8 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     const runScriptItem = page.getByRole('button', { name: /run script/i }).first();
     await expect(runScriptItem).toBeVisible();
 
-    // Drag-onto-canvas uses HTML5 DnD on the RF pane which synthetic events can't drive;
-    // exercise the equivalent click-to-add path instead (same addNode() handler).
+    // Dragging onto the canvas uses HTML5 drag-and-drop, which synthetic events cannot drive,
+    // so exercise the equivalent click-to-add path instead (same addNode() handler).
     await expect(page.locator('.react-flow__node')).toHaveCount(1);
     await runScriptItem.click();
     await expect(page.locator('.react-flow__node')).toHaveCount(2);
@@ -223,8 +211,8 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
       return { bg: cs.backgroundColor, bgImage: cs.backgroundImage, color: cs.color };
     });
     const [br, , bb] = btn.bg.match(/\d+/g)!.map(Number);
-    expect(bb).toBeGreaterThan(150); // azure = high blue …
-    expect(br).toBeLessThan(120);    // … and low red (the old orange was the reverse)
+    expect(bb).toBeGreaterThan(150); // azure has a high blue channel
+    expect(br).toBeLessThan(120);    // and a low red channel
     // The depth layer paints it as a two-stop gradient with a white label, so the
     // hardcoded `text-white` in the components stays above 4.5:1 over the whole height.
     expect(btn.bgImage).toContain('linear-gradient');
@@ -232,7 +220,7 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     const darkActiveNav = await page.locator('a.np-nav[aria-current="page"]').evaluate((el) => getComputedStyle(el).color);
     expect(darkActiveNav).not.toBe('rgb(255, 104, 117)'); // Bank Hell's coral remains skin-local
 
-    // `on-primary-fixed` (text on the subtle accent surface) is explicit here — without
+    // `on-primary-fixed` (text on the subtle accent surface) is set explicitly here; without
     // the override it would inherit the base html.dark #dae2ff.
     const shellTokens = await page.evaluate(() => {
       const cs = getComputedStyle(document.querySelector('.np-shell')!);
@@ -243,15 +231,15 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
       };
     });
     expect(shellTokens.onFixed).toBe('#cfe1ff');
-    // `-fixed-dim` is the hover surface for `-fixed`, so it must be DARKER. Guarding the
+    // `-fixed-dim` is the hover surface for `-fixed`, so it must be darker. Asserting the
     // relation rather than the literal keeps the intent pinned if the palette is retuned.
     const lum = (hex: string) => parseInt(hex.slice(1, 3), 16) + parseInt(hex.slice(3, 5), 16) + parseInt(hex.slice(5, 7), 16);
     expect(lum(shellTokens.fixedDim)).toBeLessThan(lum(shellTokens.fixed));
 
-    // Designer route (/workflows/:id): rendered OUTSIDE the shell (no `.np-shell`). The
-    // <html> base accent token stays at the historical blue — the other dark skins read it
-    // through the canvas shield. This skin, however, re-asserts its own accent INSIDE
-    // `.react-flow`, because its reach deliberately includes the canvas.
+    // Designer route (/workflows/:id): rendered outside the shell, so no `.np-shell`. The
+    // <html> base accent token stays blue and the other dark skins read it through the canvas
+    // shield. This skin re-asserts its own accent inside `.react-flow`, because it is meant
+    // to reach into the canvas.
     await openEditor(page);
     await expect(page.locator('.np-shell')).toHaveCount(0);
     const htmlPrimary = await page.evaluate(() =>
@@ -270,7 +258,7 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     });
     expect(designer.primary).toBe('#6da8ff'); // designer chrome accent = azure
     expect(designer.surface).toBe('#121419'); // canvas floor, just under the shell's surface-low
-    expect(designer.canvasPrimary).toBe('#6da8ff'); // the shield does NOT apply to this skin
+    expect(designer.canvasPrimary).toBe('#6da8ff'); // the shield does not apply to this skin
   });
 
   test('17.6 — dark-lila skin: applies data-skin + lilac accent and persists', async ({ page }) => {
@@ -281,11 +269,11 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     await page.goto('/workflows');
     await expect(page.locator('.np-shell')).toHaveCount(1, { timeout: 15_000 });
 
-    // Applied as a DARK base (so all html.dark tokens still resolve) + the skin marker.
+    // Applied as a dark base, so all html.dark tokens still resolve, plus the skin marker.
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(true);
     await expect.poll(() => page.evaluate(() => document.documentElement.dataset.skin)).toBe('dark-lila');
 
-    // Shell accent token is the Voxwright lilac — NOT the orange dark default.
+    // Shell accent token is the Voxwright lilac, not the orange dark default.
     const shellTokens = await page.evaluate(() => {
       const cs = getComputedStyle(document.querySelector('.np-shell')!);
       return {
@@ -297,13 +285,13 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     // `on-primary-fixed` is lilac-tinted, not the inherited base #dae2ff blue.
     expect(shellTokens.onFixed).toBe('#ece7ff');
 
-    // The sidebar rail uses a NEUTRAL grey gradient, not the dark-orange skin's warm
-    // brown (#241e18 → rgb(36,30,24)). #2a2a2a resolves to rgb(42, 42, 42).
+    // The sidebar rail uses a neutral grey gradient, not the dark-orange skin's warm brown
+    // (#241e18 is rgb(36,30,24)). #2a2a2a resolves to rgb(42, 42, 42).
     const asideBg = await page.locator('.np-shell aside').first().evaluate((el) => getComputedStyle(el).backgroundImage);
     expect(asideBg).toContain('42, 42, 42');
     expect(asideBg).not.toContain('36, 30, 24');
 
-    // Selectable from Settings → persists under the themeStore key.
+    // Selectable from Settings and persisted under the themeStore key.
     await page.goto('/settings');
     const appearance = page.getByRole('heading', { name: /appearance/i }).locator('..');
     await appearance.getByRole('button', { name: /dark lilac/i }).click();
@@ -317,13 +305,13 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     await page.goto('/workflows');
     await expect(page.locator('.np-shell')).toHaveCount(1, { timeout: 15_000 });
 
-    // Light base (no `.dark`) + the skin marker + the accent-remap marker.
+    // Light base (no `.dark`) plus the skin marker and the accent-remap marker.
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(false);
     await expect.poll(() => page.evaluate(() => document.documentElement.dataset.skin)).toBe('light-grey');
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('np-accent-remap'))).toBe(true);
 
-    // Shell accent token = lilac, and the hardcoded bg-blue-600 "New Workflow" button is
-    // remapped to the lilac fill (red channel ≈124, vs blue-600's ≈37 → proves the remap).
+    // The shell accent token is lilac, and the hardcoded bg-blue-600 "New Workflow" button is
+    // remapped to the lilac fill, whose red channel is far above the one of blue-600.
     const shellPrimary = await page.evaluate(() =>
       getComputedStyle(document.querySelector('.np-shell')!).getPropertyValue('--color-primary').trim().toLowerCase(),
     );
@@ -355,8 +343,8 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     await expect.poll(() => page.evaluate(() => document.documentElement.dataset.skin)).toBe('light-bank');
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('np-accent-remap'))).toBe(true);
 
-    // Bank Hell's semantic shell palette is intentionally explicit: neutral banking surfaces,
-    // the established readable red control scale, and light red fixed surfaces for selected states.
+    // Bank Hell's shell palette is explicit: neutral banking surfaces, a readable red control
+    // scale, and light red fixed surfaces for selected states.
     const shellTokens = await page.evaluate(() => {
       const shell = document.querySelector('.np-shell');
       if (!shell) throw new Error('Expected Bank Hell app shell');
@@ -385,9 +373,9 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
 
     await expect(page.locator('a.np-nav[href="/workflows"] .np-nav-badge')).toHaveText('24');
 
-    // Sidebar fidelity is intentionally independent from the higher-contrast content tokens.
+    // Sidebar styling is deliberately independent of the higher-contrast content tokens.
     // Assert the browser's computed result so selector order and later skin overrides cannot
-    // silently regress the template typography, coral active plate, badges, or dimensions.
+    // silently regress the typography, coral active plate, badges or dimensions.
     const sidebarFidelity = await page.evaluate(() => {
       const sidebar = document.querySelector<HTMLElement>('aside.np-sidebar');
       const active = document.querySelector<HTMLElement>('a.np-nav[aria-current="page"]');
@@ -427,14 +415,14 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     expect(sidebarFidelity.fontFamily).toContain('Segoe UI');
     expect(sidebarFidelity.activeBackground).toContain('242, 36, 53');
     expect(sidebarFidelity.activeBackground).toContain('0.15');
-    // Nav glyphs are Carbon icon <svg>s (the icon-font migration dropped the bootstrap
-    // `<i class="bi-…">` markup), so assert the active item's icon element renders.
+    // Nav glyphs are Carbon icon <svg> elements, not bootstrap `<i>` markup, so assert that
+    // the active item's icon element renders.
     await expect(page.locator('a.np-nav[aria-current="page"] .np-nav-icon > svg')).toBeVisible();
     await page.setViewportSize({ width: 1100, height: 900 });
     await expect(page.locator('aside.np-sidebar')).toHaveCSS('width', '264px');
 
-    // A hardcoded Tailwind blue CTA is remapped to the familiar bright Bank Hell red
-    // while retaining the original, flat compact-button treatment.
+    // A hardcoded Tailwind blue CTA is remapped to the bright Bank Hell red while keeping
+    // the flat compact-button treatment.
     const newBtn = page.getByRole('button', { name: /new workflow|neuer workflow/i });
     await expect(newBtn).toBeVisible();
     const cta = await newBtn.evaluate((el) => {
@@ -447,8 +435,8 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     expect(green).toBeLessThan(35);
     expect(blue).toBeLessThan(35);
 
-    // Choose the visible English translation from Settings (rather than relying on an
-    // internal id), then prove the explicit picker choice survives a full reload.
+    // Choose the visible English translation from Settings rather than relying on an internal
+    // id, then check that the explicit picker choice survives a full reload.
     await page.goto('/settings');
     const appearance = page.getByRole('heading', { name: /appearance/i }).locator('..');
     await appearance.getByRole('button', { name: /^light$/i }).click();
@@ -470,44 +458,43 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     await page.goto('/workflows');
     await expect(page.locator('.np-shell')).toHaveCount(1, { timeout: 15_000 });
 
-    // Applied as a DARK base (so all html.dark tokens still resolve) + the skin + remap markers.
+    // Applied as a dark base, so all html.dark tokens still resolve, plus skin and remap markers.
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(true);
     await expect.poll(() => page.evaluate(() => document.documentElement.dataset.skin)).toBe('dark-nebula');
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('np-accent-remap'))).toBe(true);
 
-    // Shell accent tokens are the electric cyan — NOT the orange dark default.
+    // Shell accent tokens are the electric cyan, not the orange dark default.
     const shellTokens = await page.evaluate(() => {
       const cs = getComputedStyle(document.querySelector('.np-shell')!);
       return {
         primary: cs.getPropertyValue('--color-primary').trim().toLowerCase(),
         onFixed: cs.getPropertyValue('--color-on-primary-fixed').trim().toLowerCase(),
         glow: cs.getPropertyValue('--np-nb-glow-color').trim().toLowerCase(),
-        // `--np-glow` is the toolbar-bloom INTENSITY scalar (0..1) written per frame by
-        // ToolbarGlow.tsx. Nebula used to declare a colour under that same name, which made
-        // `calc(var(--np-glow) * .6)` invalid-at-computed-value and pinned the bloom to full
-        // brightness. The colour now lives in its own namespace; assert the clash is gone.
+        // `--np-glow` is the toolbar-bloom intensity scalar (0..1) written per frame by
+        // ToolbarGlow.tsx. A colour declared under the same name would make
+        // `calc(var(--np-glow) * .6)` invalid, so the skin colour lives in its own namespace.
         bloomScalar: cs.getPropertyValue('--np-glow').trim(),
       };
     });
     expect(shellTokens.primary).toBe('#4de4f7');
     expect(shellTokens.onFixed).toBe('#b8f4ff'); // cyan-tinted, not the base #dae2ff blue
     expect(shellTokens.glow).toBe('#22d3ee');     // the depth-layer glow token is live
-    expect(shellTokens.bloomScalar).toBe('');     // no colour squatting on the scalar
+    expect(shellTokens.bloomScalar).toBe('');     // no colour declared on the scalar
 
-    // The sidebar rail uses the deep blue-black nebula gradient (#10192b → rgb(16, 25, 43)),
-    // not the dark-orange warm brown (#241e18 → 36, 30, 24) nor the lila grey (42, 42, 42).
+    // The sidebar rail uses the deep blue-black nebula gradient (#10192b is rgb(16, 25, 43)),
+    // not the dark-orange warm brown (36, 30, 24) nor the lila grey (42, 42, 42).
     const asideBg = await page.locator('.np-shell aside').first().evaluate((el) => getComputedStyle(el).backgroundImage);
     expect(asideBg).toContain('16, 25, 43');
     expect(asideBg).not.toContain('36, 30, 24');
 
-    // Selectable from Settings → persists under the themeStore key.
+    // Selectable from Settings and persisted under the themeStore key.
     await page.goto('/settings');
     const appearance = page.getByRole('heading', { name: /appearance/i }).locator('..');
     await appearance.getByRole('button', { name: /^nebula$/i }).click();
     await expect.poll(() => page.evaluate(() => localStorage.getItem('nodepilot.theme'))).toContain('"theme":"dark-nebula"');
 
-    // Designer route: chrome carries the cyan accent while the React-Flow canvas stays neutral
-    // (base dark blue) via the shared shield — nodes/edges untouched, matching the other skins.
+    // Designer route: the chrome carries the cyan accent while the React-Flow canvas stays
+    // neutral (base dark blue) through the shared shield, leaving nodes and edges untouched.
     await openEditor(page);
     await expect(page.locator('.np-shell')).toHaveCount(0);
     const htmlPrimary = await page.evaluate(() =>
@@ -521,18 +508,17 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
   });
 
   test('17.11 — IBM Plex Sans/Mono are self-hosted and actually applied', async ({ page }) => {
-    // Der Unit-Test daneben (fontTokens.test.ts) prüft die Deklarationen im Quelltext.
-    // Hier geht es um das, was er nicht sehen kann: ob die Dateien im Browser wirklich
-    // ankommen und ob die Tokens bis auf die Elemente durchschlagen. Ein zerschossener
-    // Import-Pfad oder eine CSP, die den Font blockt, sähe im Quelltext einwandfrei aus.
+    // The unit test next to this one (fontTokens.test.ts) checks the declarations in the
+    // source. This test covers what it cannot see: whether the font files really arrive in the
+    // browser and whether the tokens reach the elements. A broken import path or a CSP that
+    // blocks the font would still look correct in the source.
     await page.goto('/settings');
     await expect(page.getByRole('heading', { name: /appearance/i })).toBeVisible({ timeout: 15_000 });
 
     const typography = await page.evaluate(async () => {
       await document.fonts.ready;
-      // Mono wird über eine eingehängte Sonde gemessen statt über zufälligen
-      // Seiteninhalt — der Test soll die Token-Auflösung prüfen, nicht davon abhängen,
-      // dass /settings gerade irgendwo `font-mono` rendert.
+      // Measure mono on a dedicated probe element instead of arbitrary page content, so the
+      // test checks token resolution and does not depend on /settings rendering `font-mono`.
       const probe = document.createElement('span');
       probe.className = 'font-mono';
       probe.textContent = 'probe';
@@ -548,8 +534,8 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
 
     expect(typography.body).toContain('IBM Plex Sans Variable');
     expect(typography.mono).toContain('IBM Plex Mono');
-    // Schlägt fehl, wenn die woff2 nicht geladen wurde — dann greift zwar der
-    // Fallback im Stack, aber die Umstellung wäre faktisch wirkungslos.
+    // Fails if the woff2 did not load: the fallback in the stack would still render, but the
+    // self-hosted font would have no effect.
     expect(typography.sansLoaded).toBe(true);
   });
 

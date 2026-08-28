@@ -289,8 +289,9 @@ public class RunScriptVariableResolutionTests
             Ctx(),
             Script("$x = '{{unknown.output}}'"),
             CancellationToken.None);
-        // Script runs without substitution → $x equals the literal template string
-        // We don't assert Success because PS may or may not error; we assert the template was not resolved
+        // Script runs without substitution -> $x equals the literal template string
+        // We don't assert Success because PS may or may not error; we assert the template was not
+        // resolved
         result.Output.Should().NotContain("resolved");
     }
 

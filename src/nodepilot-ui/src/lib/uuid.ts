@@ -1,17 +1,11 @@
 /**
  * A random UUID v4 that also works outside a secure context.
  *
- * `crypto.randomUUID` is **secure-context-only**: it exists on `https://` and on
- * `http://localhost`, but is simply absent when the app is opened over a plain-HTTP LAN
- * address — e.g. a phone pointed at the dev server on `http://192.168.x.x:5173`. Every
- * unguarded call site then threw `crypto.randomUUID is not a function` and took the whole
- * route down (the AI chat page crashed on mount, the designer on the first node insert).
- *
- * `crypto.getRandomValues` carries no such gate, so the fallback stays CSPRNG-backed and
- * produces a spec-shaped v4. `Math.random` is the last resort for an environment without
- * WebCrypto at all. Everything generated here is a collision handle (node/edge/thread id),
- * never a credential — but there is also no reason to hand out weak ids when good ones are
- * one call away.
+ * `crypto.randomUUID` requires a secure context: it exists on `https://` and `http://localhost`,
+ * but is absent when the app is opened over a plain-HTTP LAN address. `crypto.getRandomValues`
+ * has no such gate, so the fallback stays CSPRNG-backed and produces a spec-shaped v4;
+ * `Math.random` is the last resort for an environment without WebCrypto at all. The ids
+ * generated here are collision handles (node, edge, thread), never credentials.
  */
 export function randomUuid(): string {
   const webCrypto = globalThis.crypto as Crypto | undefined;

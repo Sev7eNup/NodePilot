@@ -20,9 +20,8 @@ function Invoke-NodePilotJson {
 
   $params = @{ Method = $Method; Uri = "$BaseUrl$Path"; Headers = $Headers; ContentType = 'application/json; charset=utf-8' }
   if ($PSBoundParameters.ContainsKey('Body')) {
-    # Windows PowerShell 5.1 otherwise sends JSON strings through its ANSI code page.
-    # That silently changes names such as "Test <em dash> runScript" and breaks
-    # startWorkflow name resolution after an apparently successful publish.
+    # Windows PowerShell 5.1 sends JSON strings through its ANSI code page, which corrupts
+    # non-ASCII workflow names. Send explicit UTF-8 bytes so name resolution keeps working.
     $json = $Body | ConvertTo-Json -Depth 100 -Compress
     $params.Body = [Text.Encoding]::UTF8.GetBytes($json)
   }
@@ -33,7 +32,7 @@ if (-not (Test-Path -LiteralPath $DefinitionFile)) {
   throw "Workflow-Datei nicht gefunden: $DefinitionFile"
 }
 
-# The opt-in header is required because the API otherwise keeps the JWT in an httpOnly cookie.
+# Without this opt-in header the API returns the JWT only as an httpOnly cookie.
 $login = Invoke-NodePilotJson -Method POST -Path '/api/auth/login' -Body @{ username = $User; password = $Password } -Headers @{ 'X-Auth-Token-Response' = 'true' }
 if ([string]::IsNullOrWhiteSpace($login.token)) {
   throw 'Login war erfolgreich, hat aber kein Bearer-Token geliefert.'
@@ -79,8 +78,8 @@ foreach ($workflow in @($bundle.workflows)) {
     }
   }
   else {
-    # Existing workflows require an edit-lock. Publish saves the new definition, enables it,
-    # and releases the lock atomically, so a re-run does not leave a workflow half-updated.
+    # Existing workflows require an edit lock. Publish saves the definition, enables it and
+    # releases the lock in one step, so a re-run cannot leave a workflow half updated.
     Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($current.id)/lock" -Headers $headers | Out-Null
     $current = Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($current.id)/publish" -Body $body -Headers $headers
     Write-Host "Aktualisiert und aktiviert: $($workflow.name)"

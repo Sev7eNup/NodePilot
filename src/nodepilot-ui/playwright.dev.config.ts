@@ -1,8 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
-// Fast iteration config: runs the hermetic e2e specs against the already-running Vite dev
-// server (:5173), no build. The specs are backend-independent (page.route mocks + the
-// predicate catch-all in fixtures/mockApi.ts), so they behave identically here and under the
-// real preview-build config (playwright.config.ts) used by the nightly. THROWAWAY — not committed.
+// Fast iteration config: runs the hermetic e2e specs against an already-running Vite dev
+// server (:5173) with no build step. The specs need no backend (page.route mocks plus the
+// predicate catch-all in fixtures/mockApi.ts), so they behave the same here as under the
+// preview-build config (playwright.config.ts) used by the nightly run.
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,

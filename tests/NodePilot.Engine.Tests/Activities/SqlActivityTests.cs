@@ -40,7 +40,8 @@ public sealed class SqlActivityTests : IDisposable
         })
         .Build();
 
-    /// <summary>Opts into the strict mode that forces every workflow onto a named whitelist.</summary>
+    /// <summary>Opts into the strict mode that forces every workflow onto a named
+    /// whitelist.</summary>
     private IConfiguration RequireRefConfig() => new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -209,7 +210,8 @@ public sealed class SqlActivityTests : IDisposable
         }
         finally
         {
-            // The SQLite connection pool would otherwise keep the file open → Delete would fail on Windows.
+            // The SQLite connection pool would otherwise keep the file open to Delete would fail on
+            // Windows.
             SqliteConnection.ClearAllPools();
             if (File.Exists(path)) File.Delete(path);
         }

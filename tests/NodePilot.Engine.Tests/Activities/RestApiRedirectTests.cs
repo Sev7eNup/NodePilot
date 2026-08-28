@@ -161,7 +161,8 @@ public class RestApiRedirectTests
             ParseConfig("{\"url\": \"https://192.0.2.10/start\", \"method\": \"GET\"}"),
             CancellationToken.None);
 
-        // After 5 followed redirects the 6th redirect response is returned as-is (302 → Success=false)
+        // After 5 followed redirects the 6th redirect response is returned as-is (302,
+        // Success=false)
         result.Success.Should().BeFalse();
     }
 
@@ -186,7 +187,7 @@ public class RestApiRedirectTests
 
         // First request (to 192.0.2.10) should carry Authorization
         handler.Requests[0].Headers.Authorization.Should().NotBeNull();
-        // Second request (to 192.0.2.20) must NOT carry Authorization — cross-origin
+        // Second request (to 192.0.2.20) must not carry Authorization: cross-origin
         handler.Requests[1].Headers.Authorization.Should().BeNull();
     }
 
@@ -309,7 +310,7 @@ public class RestApiRedirectTests
 
         await activity.ExecuteAsync(CreateContext(), config, CancellationToken.None);
 
-        // 301 with POST → GET on redirect, no body
+        // 301 with POST switches to GET on redirect, no body
         handler.Requests[1].Method.Should().Be(HttpMethod.Get);
         handler.Requests[1].Content.Should().BeNull();
     }

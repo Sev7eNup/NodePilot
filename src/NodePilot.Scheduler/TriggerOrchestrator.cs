@@ -18,7 +18,8 @@ namespace NodePilot.Scheduler;
 /// Background service that keeps external-trigger subscriptions in sync with the
 /// workflow definitions in the database. On a fixed interval it:
 ///   1. Loads every enabled workflow
-///   2. Parses each for trigger nodes (scheduleTrigger / fileWatcherTrigger / databaseTrigger / eventLogTrigger)
+/// 2. Parses each for trigger nodes (scheduleTrigger / fileWatcherTrigger / databaseTrigger /
+/// eventLogTrigger)
 ///   3. Registers new ones, updates changed ones, disposes removed ones
 /// When a trigger fires, the orchestrator submits a Dispatch Intent; Execution Dispatch
 /// owns the Pending Execution row and queue handoff.
@@ -31,7 +32,7 @@ public class TriggerOrchestrator : BackgroundService
     private readonly ILogger<TriggerOrchestrator> _logger;
     private readonly IServiceProvider _rootServices;
 
-    // Key: $"{workflowId}:{nodeId}" → (source, configHash)
+    // Key: $"{workflowId}:{nodeId}" -> (source, configHash)
     private readonly ConcurrentDictionary<string, (ITriggerSource source, string configHash)> _active = new();
 
     // Triggers whose most recent start attempt failed. Key: same as _active. Value is the
@@ -115,20 +116,26 @@ public class TriggerOrchestrator : BackgroundService
             // is closed. The event wakes this loop; no database access is needed for disposal.
             await DisposeSourcesIfFollowerAsync();
 
-            // Availability gate, deliberately ABOVE any leadership consideration: during an outage no
-            // node can renew its cluster lease, so every node reads as a follower — gating on IsLeader
+            // Availability gate, deliberately ABOVE any leadership consideration: during an outage
+            // no
+            // node can renew its cluster lease, so every node reads as a follower — gating on
+            // IsLeader
             // first would park for the right reason and report the wrong one.
             //
-            // Returns false only on shutdown, and never throws: BackgroundServiceExceptionBehavior is
-            // left at its default StopHost, so an escaping OperationCanceledException here would take
+            // Returns false only on shutdown, and never throws: BackgroundServiceExceptionBehavior
+            // is
+            // left at its default StopHost, so an escaping OperationCanceledException here would
+            // take
             // the whole host down on every service stop.
             if (!await WaitUntilServableOrLeadershipChangeAsync(stoppingToken)) break;
 
             try { await SyncAsync(stoppingToken); }
             catch (Exception ex)
             {
-                // The breaker already logged the outage once, with a classified reason. Repeating it
-                // here every 5 seconds for the whole outage is what trained operators to ignore this
+                // The breaker already logged the outage once, with a classified reason. Repeating
+                // it
+                // here every 5 seconds for the whole outage is what trained operators to ignore
+                // this
                 // log in the first place.
                 if (_availability.IsServable) _logger.LogError(ex, "Trigger sync failed");
                 else _logger.LogDebug(ex, "Trigger sync failed while the database is unavailable");
@@ -261,9 +268,8 @@ public class TriggerOrchestrator : BackgroundService
 
     private async Task SyncInnerAsync(CancellationToken ct)
     {
-        // HA gate: a follower node must not run any trigger sources. If we used to be the
-        // leader and just lost it, dispose every active source so nothing fires while we
-        // wait. Idempotent — once _active is empty, subsequent ticks fall through cheaply.
+        // Followers dispose active trigger sources so only the current leader can fire them.
+        // Repeated follower ticks are cheap after the active set becomes empty.
         if (!_cluster.IsLeader)
         {
             if (!_active.IsEmpty)
@@ -481,12 +487,15 @@ public class TriggerOrchestrator : BackgroundService
     /// process lifetime: every source this loop ever created would stay referenced (growing with
     /// each trigger add/update and each backoff retry) and would be disposed a second time at
     /// shutdown. The orchestrator owns each source's lifetime and disposes it in
-    /// <see cref="SyncInnerAsync"/> / <see cref="ExecuteAsync"/>; the container must stay out of it.
+    /// <see cref="SyncInnerAsync"/> / <see cref="ExecuteAsync"/>; the container must stay out of
+    /// it.
     /// </summary>
     /// <summary>
-    /// Test-only seam. The orchestrator MUST build its own sources (see <see cref="CreateSource"/>);
+    /// Test-only seam. The orchestrator MUST build its own sources (see <see
+    /// cref="CreateSource"/>);
     /// this only lets a test substitute the factory to drive reconcile scenarios no real source can
-    /// produce on demand — chiefly "a registered source reports unhealthy". Production never assigns it.
+    /// produce on demand — chiefly "a registered source reports unhealthy". Production never
+    /// assigns it.
     /// </summary>
     internal Func<string, ITriggerSource?> SourceFactory { get; set; }
 
@@ -593,8 +602,6 @@ public class TriggerOrchestrator : BackgroundService
                     RequireWorkflowEnabled: true,
                     MissingWorkflowMessage: "Queued trigger dispatch was not executed because the workflow no longer exists or is disabled.",
                     PreOwnershipFailurePrefix: "Queued trigger dispatch failed before the engine could take ownership",
-                    EnqueueFailureMessage: "Queued trigger dispatch failed before enqueue.",
-                    EnqueueFailureStatus: ExecutionStatus.Failed,
                     OnDispatchSuppressedAsync: async (suppression, _) =>
                     {
                         await using var auditScope = _scopeFactory.CreateAsyncScope();
@@ -606,7 +613,7 @@ public class TriggerOrchestrator : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Trigger-started execution of {Wf} failed to enqueue", workflowId);
+            _logger.LogError(ex, "Trigger-started execution of {Wf} failed durable dispatch admission", workflowId);
             fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
             if (StillOwnsLease(leaseEpoch))
                 await AppendSuppressionAudit(db, workflowId, triggerType, "dispatch_exception");

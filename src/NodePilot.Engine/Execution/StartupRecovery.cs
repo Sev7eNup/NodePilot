@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
+using NodePilot.Core.Models;
 using NodePilot.Data;
 
 namespace NodePilot.Engine.Execution;
@@ -34,19 +35,22 @@ public static class StartupRecovery
                 db, logger, ourNodeId, expectedEpoch, ct);
         }
 
-        // Cluster-mode predicate: only rows whose owner is NOT us. NULL counts as "not us"
-        // (NULL != "anything" is true in EF/SQL), so legacy rows from before the cluster
-        // feature shipped also get recovered the first time.
-        // Single-node call (ourNodeId == null): recover everything non-terminal.
-        // Process in bounded batches so a crash with a large in-flight backlog never
-        // materializes every orphaned row (and its steps) into memory at once. Each batch
-        // re-queries the same non-terminal predicate and flips its rows to Cancelled, so the
-        // next Take(batchSize) naturally advances past the rows just recovered — no keyset
-        // bookkeeping needed. Batches commit independently, so partial progress survives a
-        // mid-recovery failure (startup recovery re-runs on the next boot regardless).
+        // Cluster mode recovers rows whose owner is not us (NULL counts as not-us, so rows
+        // with no owner recover too). Single-node mode recovers everything non-terminal.
+        // Bounded batches keep a large backlog out of memory: each batch re-queries the same
+        // predicate, so rows already flipped to Cancelled fall out of the next page on their
+        // own. Batches commit independently, so a crash mid-recovery leaves partial progress
+        // that the next startup run picks up.
         const int batchSize = 500;
         var totalExecutions = 0;
         var totalSteps = 0;
+        var totalReleasedReservations = 0;
+
+        // Pending rows with an outbox intent are accepted work, not orphans. Release any lease
+        // left by the dead process; the durable dispatcher will claim them after startup.
+        await db.ExecutionDispatchOutbox.ExecuteUpdateAsync(setters => setters
+            .SetProperty(item => item.LeaseOwner, (string?)null)
+            .SetProperty(item => item.LeaseExpiresAt, (DateTime?)null), ct);
 
         while (true)
         {
@@ -54,8 +58,9 @@ public static class StartupRecovery
 
             var batchQuery = db.WorkflowExecutions
                 .Where(e => e.Status == ExecutionStatus.Running
-                         || e.Status == ExecutionStatus.Pending
-                         || e.Status == ExecutionStatus.Paused);
+                         || e.Status == ExecutionStatus.Paused
+                         || (e.Status == ExecutionStatus.Pending
+                             && !db.ExecutionDispatchOutbox.Any(item => item.ExecutionId == e.Id)));
             if (ourNodeId is not null)
                 batchQuery = batchQuery.Where(e => e.OwnerNodeId != ourNodeId);
 
@@ -66,12 +71,19 @@ public static class StartupRecovery
             if (batch.Count == 0)
                 break;
 
+            var neverStartedIds = batch
+                .Where(execution => execution.Status == ExecutionStatus.Pending)
+                .Select(execution => execution.Id)
+                .ToHashSet();
+
             foreach (var e in batch)
             {
                 var wasPending = e.Status == ExecutionStatus.Pending;
                 var wasPaused = e.Status == ExecutionStatus.Paused;
                 e.Status = ExecutionStatus.Cancelled;
-                e.CancelledBy = ourNodeId is not null ? "failover" : "reconciler";
+                e.CancelledBy = wasPending
+                    ? ourNodeId is not null ? "failover-pending" : "reconciler-pending"
+                    : ourNodeId is not null ? "failover" : "reconciler";
                 e.CompletedAt = now;
                 e.ErrorMessage = ourNodeId is not null
                     ? $"Cluster failover recovery — original owner '{e.OwnerNodeId ?? "<null>"}', recovered by '{ourNodeId}', leaseEpoch={leaseEpoch?.ToString() ?? "?"}."
@@ -96,6 +108,17 @@ public static class StartupRecovery
                     : "Step orphaned by API restart.";
             }
 
+            // A Pending Execution has not crossed engine ownership, so releasing its external
+            // idempotency reservation is safe and lets the caller retry after this restart. Keep
+            // reservations for Running/Paused executions: their external side effects are
+            // ambiguous and replaying automatically could duplicate them.
+            List<IdempotencyKey> releasedReservations = neverStartedIds.Count == 0
+                ? []
+                : await db.IdempotencyKeys
+                    .Where(key => neverStartedIds.Contains(key.ExecutionId))
+                    .ToListAsync(ct);
+            db.IdempotencyKeys.RemoveRange(releasedReservations);
+
             await db.SaveChangesAsync(ct);
             // Detach the batch before the next round so the change tracker never accumulates
             // the whole backlog across iterations.
@@ -103,6 +126,7 @@ public static class StartupRecovery
 
             totalExecutions += batch.Count;
             totalSteps += stepOrphans.Count;
+            totalReleasedReservations += releasedReservations.Count;
 
             // A short batch means the backlog is drained — skip the extra empty round-trip.
             if (batch.Count < batchSize)
@@ -113,8 +137,8 @@ public static class StartupRecovery
             return 0;
 
         logger.LogWarning(
-            "Startup recovery: marked {ExecutionCount} orphaned execution(s) and {StepCount} orphaned step(s) as Cancelled. Mode={Mode}",
-            totalExecutions, totalSteps,
+            "Startup recovery: marked {ExecutionCount} orphaned execution(s) and {StepCount} orphaned step(s) as Cancelled; released {ReservationCount} never-started idempotency reservation(s). Mode={Mode}",
+            totalExecutions, totalSteps, totalReleasedReservations,
             ourNodeId is not null ? $"cluster-failover ourNodeId={ourNodeId}" : "single-node");
         return totalExecutions;
     }
@@ -163,11 +187,32 @@ public static class StartupRecovery
 
         var candidates = await db.WorkflowExecutions.AsNoTracking()
             .Where(execution => (execution.Status == ExecutionStatus.Running
-                                 || execution.Status == ExecutionStatus.Pending
-                                 || execution.Status == ExecutionStatus.Paused)
+                                 || execution.Status == ExecutionStatus.Paused
+                                 || (execution.Status == ExecutionStatus.Pending
+                                     && !db.ExecutionDispatchOutbox.Any(item => item.ExecutionId == execution.Id)))
                               && execution.OwnerNodeId != ourNodeId)
-            .Select(execution => new { execution.Id, execution.OwnerNodeId })
+            .Select(execution => new { execution.Id, execution.OwnerNodeId, execution.Status })
             .ToListAsync(ct);
+
+        var durablePendingIds = await db.WorkflowExecutions.AsNoTracking()
+            .Where(execution => execution.Status == ExecutionStatus.Pending
+                                && execution.OwnerNodeId != ourNodeId
+                                && db.ExecutionDispatchOutbox.Any(item => item.ExecutionId == execution.Id))
+            .Select(execution => execution.Id)
+            .ToListAsync(ct);
+        if (durablePendingIds.Count > 0)
+        {
+            await db.WorkflowExecutions
+                .Where(execution => durablePendingIds.Contains(execution.Id)
+                                    && execution.Status == ExecutionStatus.Pending)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(execution => execution.OwnerNodeId, ourNodeId), ct);
+            await db.ExecutionDispatchOutbox
+                .Where(item => durablePendingIds.Contains(item.ExecutionId))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.LeaseOwner, (string?)null)
+                    .SetProperty(item => item.LeaseExpiresAt, (DateTime?)null), ct);
+        }
         var candidateIds = candidates.Select(candidate => candidate.Id).ToList();
         if (candidateIds.Count == 0)
         {
@@ -191,7 +236,8 @@ public static class StartupRecovery
                                      && leader.ExpiresAt > DateTime.UtcNow))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(execution => execution.Status, ExecutionStatus.Cancelled)
-                    .SetProperty(execution => execution.CancelledBy, "failover")
+                    .SetProperty(execution => execution.CancelledBy, execution =>
+                        execution.Status == ExecutionStatus.Pending ? "failover-pending" : "failover")
                     .SetProperty(execution => execution.CompletedAt, now)
                     .SetProperty(execution => execution.ErrorMessage, execution =>
                         "Cluster failover recovery — original owner '"
@@ -201,7 +247,8 @@ public static class StartupRecovery
             recoveredIds.AddRange(await db.WorkflowExecutions.AsNoTracking()
                 .Where(execution => candidateIdBatch.Contains(execution.Id)
                                  && execution.Status == ExecutionStatus.Cancelled
-                                 && execution.CancelledBy == "failover"
+                                 && (execution.CancelledBy == "failover"
+                                     || execution.CancelledBy == "failover-pending")
                                  && execution.CompletedAt == now)
                 .Select(execution => execution.Id)
                 .ToListAsync(ct));
@@ -218,6 +265,19 @@ public static class StartupRecovery
                     .SetProperty(step => step.CompletedAt, now)
                     .SetProperty(step => step.ErrorOutput,
                         $"Step orphaned by cluster failover (recovered by '{ourNodeId}')."), ct);
+        }
+
+        var recoveredPendingIds = candidates
+            .Where(candidate => candidate.Status == ExecutionStatus.Pending
+                                && recoveredIds.Contains(candidate.Id))
+            .Select(candidate => candidate.Id)
+            .ToList();
+        var releasedReservations = 0;
+        foreach (var recoveredPendingIdBatch in recoveredPendingIds.Chunk(500))
+        {
+            releasedReservations += await db.IdempotencyKeys
+                .Where(key => recoveredPendingIdBatch.Contains(key.ExecutionId))
+                .ExecuteDeleteAsync(ct);
         }
 
         var ownerByExecutionId = candidates.ToDictionary(
@@ -242,8 +302,8 @@ public static class StartupRecovery
             AuditEventForwarder.ForwardCommitted(logger, entry);
         db.ChangeTracker.Clear();
         logger.LogWarning(
-            "Startup recovery: marked {ExecutionCount} orphaned execution(s) and {StepCount} orphaned step(s) as Cancelled. Mode={Mode}",
-            recoveredIds.Count, recoveredSteps,
+            "Startup recovery: marked {ExecutionCount} orphaned execution(s) and {StepCount} orphaned step(s) as Cancelled; released {ReservationCount} never-started idempotency reservation(s). Mode={Mode}",
+            recoveredIds.Count, recoveredSteps, releasedReservations,
             $"cluster-failover ourNodeId={ourNodeId} leaseEpoch={leaseEpoch}");
         return recoveredIds.Count;
     }

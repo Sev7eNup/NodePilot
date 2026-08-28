@@ -6,9 +6,12 @@ using NodePilot.Data;
 namespace NodePilot.Scheduler.SystemAlerts.Sources;
 
 /// <summary>
-/// Event source: terminal workflow executions (Succeeded / Failed / Cancelled), keyed by execution id and
-/// scoped to the run's workflow/folder. The <c>lookbackSeconds</c> parameter bounds how far back a raw
-/// sample reaches; the evaluator layers per-policy activation-watermark + episode dedup on top so history
+/// Event source: terminal workflow executions (Succeeded / Failed / Cancelled), keyed by execution
+/// id and
+/// scoped to the run's workflow/folder. The <c>lookbackSeconds</c> parameter bounds how far back a
+/// raw
+/// sample reaches; the evaluator layers per-policy activation-watermark + episode dedup on top so
+/// history
 /// is not back-alerted on first activation (ADR 0008).
 /// </summary>
 public sealed class ExecutionResultSource : ISystemAlertSource
@@ -29,7 +32,8 @@ public sealed class ExecutionResultSource : ISystemAlertSource
             SystemAlertField.Of("durationMs", SystemAlertFieldType.Number, unit: "milliseconds"),
             SystemAlertField.Of("triggeredBy", SystemAlertFieldType.String),
             SystemAlertField.Of("cancelledBy", SystemAlertFieldType.Enum,
-                enumValues: ["user", "cancelAll", "failover", "reconciler", "dispatch", "system"]),
+                enumValues: ["user", "cancelAll", "failover", "failover-pending",
+                    "reconciler", "reconciler-pending", "dispatch", "system"]),
             SystemAlertField.Of("isSubWorkflow", SystemAlertFieldType.Boolean),
         ],
         Parameters:

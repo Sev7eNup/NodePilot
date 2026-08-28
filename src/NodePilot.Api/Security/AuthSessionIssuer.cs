@@ -14,11 +14,8 @@ using NodePilot.Data;
 namespace NodePilot.Api.Security;
 
 /// <summary>
-/// Default <see cref="IAuthSessionIssuer"/>. Drop-in replacement for the previously
-/// private <c>AuthController.SetAuthCookies</c> / <c>AuthController.GenerateJwtToken</c>
-/// pair — same JWT shape, same cookie flags, same audit envelope — so that the
-/// existing local-login flow is unchanged and the new LDAP / Windows-Auth flows can
-/// reuse exactly this issuer instead of duplicating the mechanics.
+/// Default <see cref="IAuthSessionIssuer"/> shared by local, LDAP, and Windows authentication.
+/// Centralizes JWT, cookie, and audit behavior so all login paths apply the same policy.
 /// </summary>
 public sealed class AuthSessionIssuer : IAuthSessionIssuer
 {
@@ -48,12 +45,8 @@ public sealed class AuthSessionIssuer : IAuthSessionIssuer
         public DateTimeOffset CommittedExpiresAt { get; set; } = FallbackExpiresAt;
     }
 
-    // Optional IHostEnvironment is null-default so existing test sites (10 fixtures across
-    // AuthControllerLdap*Tests / AuthControllerWindowsTests / AuthControllerMethodsTests)
-    // keep their `new AuthSessionIssuer(cfg, key, audit)` shape. In real DI the container
-    // always resolves IHostEnvironment from the host, so production behavior is unchanged.
-    // The null fallback reproduces the legacy "Secure depends on Request.IsHttps"-path that
-    // tests rely on, while a non-Development env enforces Secure=true on the cookie pair.
+    // A null environment lets isolated tests derive cookie security from Request.IsHttps.
+    // Hosted environments enforce secure cookies outside development.
     public AuthSessionIssuer(
         IConfiguration config,
         IJwtKeyProvider keyProvider,
@@ -73,10 +66,8 @@ public sealed class AuthSessionIssuer : IAuthSessionIssuer
     public async Task<IssuedSession> IssueAsync(User user, AuthSource source, HttpContext httpContext, CancellationToken ct)
     {
         var session = await MintAndSetCookiesAsync(user, source, httpContext, isRefresh: false, ct);
-        // Audit-trail explicitly names the auth source. Local-password logins keep
-        // the old "LOGIN_SUCCESS" action so existing dashboards and SIEM rules don't
-        // need to change shape; we add the structured "source" field on top of the
-        // historical username + role details.
+        // Preserve the LOGIN_SUCCESS action consumed by dashboards and SIEM rules.
+        // The structured source field distinguishes authentication methods.
         var breakGlassLogin = source == AuthSource.Local && user.IsBreakGlass;
         await _audit.LogAsync(
             breakGlassLogin ? AuditActions.BreakGlassLoginSuccess : AuditActions.LoginSuccess,
@@ -165,9 +156,7 @@ public sealed class AuthSessionIssuer : IAuthSessionIssuer
         }
 
         var token = GenerateJwtToken(user, now, expiresAt, sessionId, tokenJti);
-        // Tests construct the controller without a ControllerContext when they only need
-        // to assert response shape — same behaviour as the legacy AuthController.SetAuthCookies
-        // which silently skipped cookies when HttpContext was null.
+        // A null context supports response-only unit tests that do not inspect cookies.
         if (httpContext is not null)
             SetAuthCookies(httpContext, token, expiresAt, _environment);
         return new IssuedSession(token, user.Id, expiresAt, tokenRotationCommitted);
@@ -328,12 +317,9 @@ public sealed class AuthSessionIssuer : IAuthSessionIssuer
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_keyProvider.Key));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
 
-        // Identical baseline claim shape to the legacy AuthController.GenerateJwtToken so
-        // existing tokens + middleware (TokenValidityMiddleware, RevokedTokens) stay
-        // compatible. np_iat_ms gives ms precision for the password-change race-guard
-        // (audit H13). Deliberately NO group claims: directory group SIDs stay server-side
-        // in DirectoryMemberships, and the group-aware ResourceAuthorizationService reads
-        // them per request — a token can therefore never carry stale group authorization.
+        // Keep the claim shape compatible with token middleware and revocation checks.
+        // np_iat_ms provides millisecond precision for the password-change race guard.
+        // Directory group SIDs remain server-side to prevent stale token authorization.
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),

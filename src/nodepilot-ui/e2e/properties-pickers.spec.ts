@@ -2,22 +2,17 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 65 — Credential- & Machine-Picker im Properties Panel (lines 3753-3768).
- *
- * Hermetic: page.route() mocks only. Workflow is locked-by-me → editable (State B).
+ * Covers section 65 of docs/testing/E2ETests.md: the credential and machine pickers in the
+ * properties panel. Hermetic: page.route() mocks only, and the workflow is locked by the
+ * current user so the editor is editable.
  *
  * A remote activity (runScript is `isRemote`) renders the "Execution Context" section with two
- * DynamicTargetfield rows — Target machine + Credential. Each row is a VariableInsertField
- * (accepts a GUID / {{var}} / literal) plus a "List N" OptionsPicker chip that opens a
- * searchable popover of the fetched machines / credentials. Picking an entry inserts its `id`
+ * DynamicTargetfield rows, one for the target machine and one for the credential. Each row is a
+ * VariableInsertField (GUID, {{var}} or literal) plus a "List N" OptionsPicker chip that opens a
+ * searchable popover of the fetched machines or credentials. Picking an entry inserts its `id`
  * and the row's green caption confirms the resolved friendly label.
  *
- *   65.1 — /api/machines is seeded; the machine "List" picker lists the machine and selecting
- *          it persists `targetMachineId` to the Save PUT.
- *   65.2 — /api/credentials is seeded; the credential "List" picker lists the credential and
- *          selecting it persists `credentialId` to the Save PUT.
- *
- * The SPA renders ENGLISH under Playwright.
+ * The SPA renders English under Playwright.
  */
 
 const WF_ID = 'c6c6c6c6-6565-6565-6565-656565656565';
@@ -106,7 +101,7 @@ test.describe('Credential- & Machine-Picker im Properties Panel (Teil 65)', () =
     const listPickers = page.getByRole('button', { name: /^list\b/i });
     await expect(listPickers).toHaveCount(2);
 
-    // First List picker (under Target machine) → opens popover listing WEB01.
+    // First List picker (under Target machine) -> opens popover listing WEB01.
     await listPickers.first().click();
     const machineOption = page.getByRole('button', { name: /WEB01/ });
     await expect(machineOption).toBeVisible({ timeout: 5_000 });
@@ -115,7 +110,7 @@ test.describe('Credential- & Machine-Picker im Properties Panel (Teil 65)', () =
     // Green resolved-label caption confirms the GUID maps to the machine.
     await expect(page.getByText(/web01\.corp\.local/i).first()).toBeVisible();
 
-    // Save → PUT carries targetMachineId.
+    // Save -> PUT carries targetMachineId.
     await page.getByRole('button', { name: /save in place|zwischen.?speichern|speichern|^save/i }).first().click();
     await expect.poll(() => {
       if (!cap.body) return null;
@@ -134,7 +129,7 @@ test.describe('Credential- & Machine-Picker im Properties Panel (Teil 65)', () =
 
     await expect(page.getByText(/execution context/i)).toBeVisible();
 
-    // Second List picker (under Credential) → opens popover listing svc-deploy.
+    // Second List picker (under Credential) -> opens popover listing svc-deploy.
     const listPickers = page.getByRole('button', { name: /^list\b/i });
     await expect(listPickers).toHaveCount(2);
     await listPickers.nth(1).click();
@@ -142,7 +137,7 @@ test.describe('Credential- & Machine-Picker im Properties Panel (Teil 65)', () =
     await expect(credOption).toBeVisible({ timeout: 5_000 });
     await credOption.click();
 
-    // Save → PUT carries credentialId.
+    // Save -> PUT carries credentialId.
     await page.getByRole('button', { name: /save in place|zwischen.?speichern|speichern|^save/i }).first().click();
     await expect.poll(() => {
       if (!cap.body) return null;

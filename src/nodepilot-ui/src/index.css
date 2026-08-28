@@ -1,19 +1,14 @@
 @import "tailwindcss";
-/* Dark variant is anchored explicitly to `html.dark` so it can NEVER bleed in
-   from a `.dark` class that any library (React Flow's `.react-flow.dark`,
-   third-party widgets, etc.) might apply to a non-root element. The theme
-   store toggles `.dark` only on `<html>` — so in light mode no descendant
-   selector can match, and `dark:` utilities are guaranteed to stay off. */
+/* The dark variant is anchored to `html.dark` so it cannot match a `.dark` class that a
+   library (React Flow's `.react-flow.dark`, third-party widgets) applies to a non-root
+   element. The theme store toggles `.dark` only on `<html>`, so in light mode no
+   descendant selector matches and `dark:` utilities stay off. */
 @custom-variant dark (html.dark &);
-/* Type-System: IBM Plex Sans (UI) + IBM Plex Mono (Code/Daten). Beide self-hosted
-   über fontsource — die Prod-CSP kennt kein `font-src` und fällt auf `default-src
-   'self'`, ein CDN-Font wäre also in Produktion hart geblockt.
-   Sans kommt als Variable-Font (eine Datei, wght 100–700). Mono gibt es NICHT als
-   Variable-Paket, daher zwei statische Schnitte: 400 trägt praktisch alles, 600
-   deckt die `font-mono`+`font-semibold`-Stellen ab (`font-medium`/`font-bold`
-   snappen per CSS-Matching auf den nächstgelegenen davon).
-   Alle Subsets werden importiert wie zuvor bei Inter — `unicode-range` sorgt dafür,
-   dass der Browser nur die tatsächlich benutzten Dateien lädt. */
+/* Type system: IBM Plex Sans for UI, IBM Plex Mono for code and data. Both are self-hosted
+   through fontsource because the production CSP declares no `font-src` and falls back to
+   `default-src 'self'`, which blocks CDN fonts. Sans ships as one variable font; Mono has no
+   variable package, so two static weights are loaded: 400 for body text and 600 for the
+   `font-mono` plus `font-semibold` sites. `unicode-range` limits what the browser downloads. */
 @import '@fontsource-variable/ibm-plex-sans';
 @import '@fontsource/ibm-plex-mono/400.css';
 @import '@fontsource/ibm-plex-mono/600.css';
@@ -62,32 +57,28 @@
   --color-outline: #737686;
   --color-outline-variant: #c3c6d7;
 
-  /* Fill for the designer node connection-handles (ports). Light mode reuses the
-     light outline-variant; html.dark lifts it to a clearly-visible light grey so
-     the dots read on the near-black node silhouettes across every dark skin. */
+  /* Fill for the designer node connection handles (ports). Light mode reuses the light
+     outline-variant; html.dark lifts it to a light grey so the dots stay visible on the
+     near-black node silhouettes of every dark skin. */
   --np-port-fill: var(--color-outline-variant);
 
-  /* Canvas dot grid. Dark skins declare their own further down; light had no token at
-     all and the component fell back to a hardcoded 42% black, which is what made the
-     canvas read grey and heavy under a light skin. Ink, not black, and much lighter:
-     the grid is an orientation aid, not a texture. */
+  /* Canvas dot grid for light skins; dark skins declare their own further down. Kept light
+     and ink-tinted rather than black: the grid is an orientation aid, not a texture. */
   --np-canvas-dot: rgba(23, 26, 31, 0.16);
 
-  /* MiniMap mask (the dimmed area outside the viewport). Same story as the dot grid: only
-     the dark skins declared it, so light carried two hardcoded rgba() literals in the TSX —
-     one of them the warm paper tint Atelier no longer uses. Both bases now answer here. */
+  /* MiniMap mask: the dimmed area outside the viewport. Declared for both light and dark
+     bases so the component never has to fall back to a hardcoded literal. */
   --np-minimap-mask:         rgba(23, 26, 31, 0.10);
   --np-minimap-mask-atelier: rgba(23, 26, 31, 0.12);
   --color-inverse-surface: #2e3132;
   --color-inverse-on-surface: #f0f1f3;
 
-  /* ── Semantische Status-Tokens ────────────────────────────────────────────
-     Einheitliche Quelle für success/warn/info/running/paused/skipped überall
-     im Designer (Edges, Node-Ringe, MiniMap, Gantt, Badges, Banner). Skins
-     überschreiben diese Tokens bewusst NICHT — Status bleibt skin-stabil.
-     „failed/danger" nutzt die bestehende M3 `--color-error`-Familie (kein
-     zweites Rot). Konsum via Utilities (bg-success, text-on-warning-container,
-     …) oder `var(--color-…)` in SVG/Canvas. */
+  /* ── Semantic status tokens ───────────────────────────────────────────────
+     One source for success/warn/info/running/paused/skipped everywhere in the designer
+     (edges, node rings, minimap, gantt, badges, banners). Skins deliberately do not
+     override them, so status colours stay the same in every skin. failed/danger reuses
+     the M3 `--color-error` family instead of adding a second red. Consumed through
+     utilities (bg-success, text-on-warning-container) or `var(--color-…)` in SVG/canvas. */
   --color-success: #16a34a;
   --color-success-container: #dcfce7;
   --color-on-success: #ffffff;
@@ -115,11 +106,10 @@
   --color-skipped-container: #f3f4f6;
   --color-on-skipped-container: #4b5563;
 
-  /* „Custom"-Edge-Condition (Expression / sonstige Bedingung): eigenes Orange.
-     Mentales Modell: Success = grün, Failure = rot, Custom-Condition = orange.
-     Eigene Familie statt `paused`/`warning` zweckzuentfremden; Skins über-
-     schreiben sie nicht (wie die übrigen Status-Tokens). Stroke, Pfeilspitze
-     und Label-Pill teilen sich diese eine Farbe. */
+  /* Custom edge condition (expression or any other condition) gets its own orange:
+     success is green, failure is red, a custom condition is orange. A separate family
+     rather than reusing `paused`/`warning`; skins do not override it. Stroke, arrow head
+     and label pill all share this colour. */
   --color-custom: #f97316;
   --color-custom-container: #ffedd5;
   --color-on-custom-container: #9a3412;
@@ -127,26 +117,24 @@
   --font-headline: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-body: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-label: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  /* Mono war bis hierher NIE deklariert — die ~750 `font-mono`-Stellen (Skripte,
-     GUIDs, Logs, JSON, DB-Viewer) fielen auf Tailwinds Default und damit auf das,
-     was das jeweilige OS gerade hergibt: Consolas auf Windows, SF Mono auf macOS,
-     DejaVu auf Linux. Ein expliziter Stack beendet diese Lotterie. Der Fallback
-     bleibt bewusst breit, damit Zeichen ausserhalb der geladenen Plex-Subsets
-     (Glyph-weises CSS-Fallback) weiterhin monospace rendern statt zu tofu-en. */
+  /* Explicit mono stack so the `font-mono` sites (scripts, GUIDs, logs, JSON, DB viewer)
+     do not depend on whatever monospace font the operating system supplies. The fallback
+     list stays broad so characters outside the loaded Plex subsets still render as
+     monospace instead of tofu boxes. */
   --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, 'SFMono-Regular', Menlo, monospace;
 
-  /* Slow ping for the simulation "revealing" badge (ActivityNode) — the class
-     `animate-ping-slow` was referenced but never defined before. */
+  /* Slow ping for the simulation "revealing" badge in ActivityNode, applied through the
+     `animate-ping-slow` class. */
   --animate-ping-slow: np-ping-slow 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
   @keyframes np-ping-slow {
     75%, 100% { transform: scale(1.6); opacity: 0; }
   }
 }
 
-/* ── Skalen-Tokens (Radius / Elevation / Motion / Z) ─────────────────────────
-   Verbindliche Stufen für den Designer-Refresh. Radien: Chip=xs, Input=sm,
-   Karte=md, Panel/Node-Card=lg, Modal=xl. Elevation ersetzt ad-hoc-Schatten;
-   dark bekommt tiefere Schatten + Inset-Hairline (wie die .np-shell-Remaps). */
+/* ── Scale tokens (radius / elevation / motion / z) ──────────────────────────
+   Binding steps for the designer. Radii: chip=xs, input=sm, card=md, panel and
+   node-card=lg, modal=xl. Elevation replaces ad-hoc shadows; dark gets deeper shadows
+   plus an inset hairline, matching the .np-shell remaps. */
 :root {
   --np-radius-xs: 4px;
   --np-radius-sm: 6px;
@@ -173,9 +161,9 @@
   --np-z-toast: 80;
 }
 
-/* ── Switch (checkbox-as-switch) ─────────────────────────────────────────────
-   Semantisch bleibt es ein natives Checkbox-Input (Fokus/Tastatur/Tests
-   unverändert); visuell Track + Knob. Konsumiert von SwitchField (shared.tsx). */
+/* ── Switch (checkbox styled as a switch) ────────────────────────────────────
+   Semantically still a native checkbox input, so focus, keyboard and tests are
+   unaffected; visually a track plus a knob. Used by SwitchField in shared.tsx. */
 input[type='checkbox'].np-switch {
   appearance: none;
   position: relative;
@@ -210,17 +198,16 @@ input[type='checkbox'].np-switch:focus-visible {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 40%, transparent);
 }
 
-/* Klassische Checkboxen (Mehrfach-Auswahl-Listen etc.) folgen dem Akzent-Token. */
+/* Plain checkboxes (multi-select lists and similar) follow the accent token. */
 .np-designer input[type='checkbox']:not(.np-switch) {
   accent-color: var(--color-primary);
 }
 
-/* Motion-Utilities für Overlays/Panels — Enter-Animationen, reduced-motion-gated.
-   WICHTIG: kein `both`/`forwards`-Fill — Chrome hält sonst nach Animationsende eine
-   Identity-Transform-Matrix auf dem Element, und JEDE Transform macht das Element zum
-   Containing Block für position:fixed-Nachfahren (hat den Fullscreen-Script-Editor im
-   Properties-Panel eingesperrt: Backdrop blurrte nur das Panel, Dialog unsichtbar).
-   `np-anim-panel` animiert deshalb NUR Opacity — Panels enthalten fixe Dialoge. */
+/* Motion utilities for overlays and panels: enter animations, gated by reduced motion.
+   No `both`/`forwards` fill, because Chrome then keeps an identity transform matrix on the
+   element after the animation, and any transform makes the element the containing block for
+   position:fixed descendants. `np-anim-panel` animates opacity only, since panels contain
+   fixed dialogs. */
 @keyframes np-fade-in   { from { opacity: 0; } }
 @keyframes np-scale-in  { from { opacity: 0; transform: scale(0.97); } }
 .np-anim-backdrop { animation: np-fade-in var(--np-dur-base) var(--np-ease-out); }
@@ -230,14 +217,12 @@ input[type='checkbox'].np-switch:focus-visible {
   .np-anim-backdrop, .np-anim-overlay, .np-anim-panel { animation: none; }
 }
 
-/* Tell the browser explicitly which color scheme is active. Without this,
-   Chrome/Edge "Auto Dark Mode for Web Contents" can re-tint our light-mode
-   page, which made banners/buttons look dark even when no `dark:` Tailwind
-   class was active. */
+/* State the active color scheme explicitly. Without it, the Chrome and Edge
+   "Auto Dark Mode for Web Contents" feature can re-tint the light-mode page. */
 :root { color-scheme: light; }
 html.dark { color-scheme: dark; }
 
-/* Dark mode — override every token under html.dark */
+/* Dark mode: override every token under html.dark. */
 html.dark {
   --color-surface: #1a1c20;
   --color-surface-dim: #131517;
@@ -283,25 +268,22 @@ html.dark {
   --color-outline-variant: #43474e;
   --color-inverse-surface: #e2e2e6;
 
-  /* Ports need to pop on the dark node silhouettes — the dark outline-variant
-     (#43474e) all but vanishes there. Lift to a light neutral grey (shared by
-     every dark skin, since they all cascade under html.dark). */
+  /* Ports have to stand out on the dark node silhouettes, where the dark outline-variant
+     is nearly invisible. A light neutral grey, shared by every dark skin because they all
+     cascade under html.dark. */
   --np-port-fill: #9aa0ac;
   --color-inverse-on-surface: #2f3033;
 
-  /* Canvas literals that used to live in TSX as `isDark ? '…' : '…'` ternaries.
-     They were gated on the light/dark BASE, not on the skin, so hardcoding a new
-     value for the default dark skin would silently repaint dark-lila,
-     dark-bank and dark-nebula too. As custom properties each skin can move
-     them independently; these are the historical shared-dark values.
-     Consumers: WorkflowEditorPage.tsx (<Background color>, <MiniMap maskColor>)
+  /* Canvas colours as custom properties, so each dark skin can move them independently
+     instead of every dark skin sharing one hardcoded value. These are the shared dark
+     defaults. Consumers: WorkflowEditorPage.tsx (<Background color>, <MiniMap maskColor>)
      and ActivityNode.tsx (premium node fill). */
   --np-canvas-dot:          rgba(255, 255, 255, 0.22);
   --np-minimap-mask:        rgba(17, 18, 20, 0.55);
   --np-minimap-mask-atelier: rgba(14, 16, 19, 0.62);
   --np-node-bg:             rgba(13, 17, 22, 0.92);
 
-  /* Status-Tokens — dark (Skins überschreiben nicht, s. @theme-Kommentar). */
+  /* Status tokens, dark. Skins do not override them; see the @theme comment above. */
   --color-success: #4ade80;
   --color-success-container: #14532d;
   --color-on-success: #052e16;
@@ -329,13 +311,13 @@ html.dark {
   --color-skipped-container: #374151;
   --color-on-skipped-container: #d1d5db;
 
-  /* Custom-Edge-Condition — dark: hellere Orange-Stufe, damit sie auf dunklem
-     Canvas trägt (analog success/failed dark). */
+  /* Custom edge condition, dark: a lighter orange so it carries on the dark canvas,
+     matching how success and failed behave in dark. */
   --color-custom: #fb923c;
   --color-custom-container: #7c2d12;
   --color-on-custom-container: #fed7aa;
 
-  /* Elevation — dark: tiefere Schatten + Inset-Hairline. */
+  /* Elevation, dark: deeper shadows plus an inset hairline. */
   --np-elev-1: 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
   --np-elev-2: 0 4px 10px -2px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
   --np-elev-3: 0 10px 24px -6px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.055);
@@ -343,30 +325,25 @@ html.dark {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   DEFAULT DARK SKIN "AZUR" — cool graphite ground + a single azure accent.
-   This is the skin `system` resolves to on a dark OS, i.e. what most first-time
-   users see. It is ALSO the base layer `dark-lila` / `dark-bank` /
-   `dark-nebula` inherit from — those three redeclare every token below in their
-   own `[data-skin]` blocks, and the handful they historically inherited from the
-   old warm-orange values are now pinned explicitly in their own blocks (search
-   "PIN:" below). Do not add a token here without checking those three.
+   DEFAULT DARK SKIN "AZUR": cool graphite ground plus a single azure accent. This is
+   the skin `system` resolves to on a dark OS, and the base that `dark-lila`,
+   `dark-bank` and `dark-nebula` inherit from; those three redeclare every token below
+   in their own `[data-skin]` blocks and pin the rest explicitly (search "PIN:"), so do
+   not add a token here without checking them.
 
-   Scoped to `.np-shell` (authenticated app shell + login screen). The designer
+   Scoped to `.np-shell`, which covers the app shell and the login screen. The designer
    route renders as a bare <Outlet/> with no `.np-shell` ancestor, so it needs the
-   duplicate `.np-designer` block further down. Everything here only redefines
-   custom properties on the scope — no component files needed.
+   duplicate `.np-designer` block further down. Everything here only redefines custom
+   properties on the scope; no component files are involved.
 
-   Ground: hue 220 at ~5% saturation. Not neutral grey and not blue — just enough
-   chroma that the near-blacks read as chosen rather than desaturated, which is
-   what separates a designed dark theme from a dimmed one. The azure accent sits
-   ~5° off the ground hue: same family, so it never clashes, but far more chromatic,
-   so it is the only vivid thing on screen.
+   The ground is hue 220 at roughly 5% saturation, so the near-blacks read as chosen
+   rather than desaturated. The accent sits a few degrees off that hue: same family,
+   far more chromatic, so it is the only vivid colour on screen.
    ──────────────────────────────────────────────────────────────────────────── */
 html.dark .np-shell {
-  /* Cool graphite ramp. Order preserved: lowest = darkest (wells) … highest =
-     lightest. Deliberately a step brighter than the old warm ramp (#0c0a08 →
-     #0e0f12) and with a wider spread, so the elevation steps are actually
-     legible instead of collapsing into one black. */
+  /* Cool graphite ramp: lowest is darkest (wells), highest is lightest. The spread is
+     wide enough that the elevation steps stay legible instead of collapsing into one
+     black. */
   --color-surface:          #111216;
   --color-surface-dim:      #08090b;
   --color-surface-bright:   #3c3f47;
@@ -377,27 +354,24 @@ html.dark .np-shell {
   --color-surface-highest:  #292c32;
   --color-surface-variant:  #35383f;
 
-  /* Accent → azure. `primary` is the readable accent (text/icon/active-nav text);
-     `primary-fixed` is the subtle accent surface (active nav bg, badges, avatar);
-     `primary-container` is the fill for bg-primary buttons.
-     Chosen deliberately more chromatic than the pale blues that already live on
-     the canvas (--act-runScript #93c5fd, --act-sql #7dd3fc, --np-controlflow-accent
-     #a5b4fc) so the accent reads as accent and not as another activity colour. */
+  /* Azure accent. `primary` is the readable accent (text, icons, active nav text),
+     `primary-fixed` the subtle accent surface (active nav background, badges, avatar),
+     `primary-container` the fill for bg-primary buttons. More chromatic than the pale
+     blues already on the canvas (--act-runScript, --act-sql, --np-controlflow-accent)
+     so it reads as the accent rather than as another activity colour. */
   --color-surface-tint:        #3372e0;
   --color-primary:             #6da8ff;  /* 7.06:1 on surface-container */
   --color-primary-container:   #2467d9;  /* carries #ffffff at 5.23:1 */
   --color-primary-fixed:       #15305c;
-  /* `-fixed-dim` is the HOVER surface for `-fixed` (DecisionConfig/ForEachConfig/
-     StartWorkflowConfig use `bg-primary-fixed hover:bg-primary-fixed-dim` while
-     keeping `text-primary`), so it must be DARKER, not lighter. The old warm value
-     was lighter and dropped that hover state to 3.5:1. */
+  /* `-fixed-dim` is the hover surface for `-fixed` (DecisionConfig, ForEachConfig and
+     StartWorkflowConfig use `bg-primary-fixed hover:bg-primary-fixed-dim` while keeping
+     `text-primary`), so it has to be darker, not lighter. */
   --color-primary-fixed-dim:   #0d2245;  /* primary on it: 6.53:1 */
   --color-on-primary:          #031430;  /* label on --color-primary: 7.59:1 */
-  /* Always paired with `bg-primary-container`. The old light value was already
-     failing at 3.42:1 on the orange fill; white on azure is 5.23:1. */
+  /* Always paired with `bg-primary-container`; white on the azure fill reaches 5.23:1. */
   --color-on-primary-container:#ffffff;
-  /* Text on the subtle accent surface (primary-fixed). Without this the base
-     html.dark value (#dae2ff) leaks through on selected folders/tags. */
+  /* Text on the subtle accent surface (primary-fixed). Without it the base html.dark
+     value leaks through on selected folders and tags. */
   --color-on-primary-fixed:    #cfe1ff;  /* 9.81:1 on primary-fixed */
   --color-inverse-primary:     #2467d9;
 
@@ -407,16 +381,16 @@ html.dark .np-shell {
   --color-on-secondary:        #14161a;
   --color-on-secondary-container: #dde0e6;
 
-  /* Cool off-white ink. `outline` is the floor of the whole design at 4.99:1 —
-     ScriptEditorDialog.readVar() pipes it straight into the Monaco comment/gutter
-     colour where it renders at body size, so it may not go below #838790. */
+  /* Cool off-white ink. `outline` is the contrast floor of the design:
+     ScriptEditorDialog.readVar() feeds it into the Monaco comment and gutter colour,
+     where it renders at body size, so it must not go below #838790. */
   --color-on-surface:          #e9ebef;  /* 15.19:1 on surface-low */
   --color-on-surface-variant:  #a6abb5;  /* 7.40:1 on surface-container */
   --color-on-background:       #e9ebef;
   --color-outline:             #878b94;  /* 4.99:1 on surface-container */
   --color-outline-variant:     #2e3138;
 
-  /* Helper vars for the hardcoded-Tailwind-blue remaps below. */
+  /* Helper vars read by the hardcoded-Tailwind-blue remaps below. */
   --np-accent:        #2467d9;  /* primary button fill */
   --np-accent-hover:  #1b52b4;  /* button hover */
   --np-accent-ring:   #6da8ff;  /* focus ring */
@@ -427,7 +401,7 @@ html.dark .np-shell {
 }
 
 /* Content backdrop: a faint accent depth-glow at the top instead of a flat fill.
-   Reads var(--np-accent), so every skin gets its own tint for free. */
+   Reads var(--np-accent), so every skin gets its own tint. */
 html.dark .np-shell main {
   background:
     radial-gradient(110% 70% at 50% -8%, color-mix(in srgb, var(--np-accent) 8%, transparent) 0%, transparent 55%),
@@ -441,10 +415,9 @@ html.dark .np-shell.np-login {
 }
 
 /* ── Login screen: atmospheric, skin-aware backdrop ──────────────────────────
-   The auth page is the product's first impression, so it earns a richer treatment
-   than the app shell: two slowly-drifting accent aurora blobs + a vignette-masked
-   grid behind a frosted-glass card. Everything keys on --color-primary /
-   --color-primary-container, so the whole scene recolors with the active skin. */
+   A richer treatment than the app shell: two slowly drifting accent aurora blobs and a
+   vignette-masked grid behind a frosted-glass card. Everything keys on --color-primary
+   and --color-primary-container, so the scene recolors with the active skin. */
 .np-login { position: relative; overflow: hidden; isolation: isolate; }
 
 .np-login-aurora { position: absolute; inset: 0; z-index: -2; pointer-events: none; }
@@ -464,18 +437,18 @@ html.dark .np-shell.np-login {
 }
 html:not(.dark) .np-login-aurora::before,
 html:not(.dark) .np-login-aurora::after { opacity: 0.2; }
-/* Dark skins: a colored glow reads brighter on a dark ground than on light, so pull the
-   blobs back a notch further than the light variant for a calmer corner haze. */
+/* A coloured glow reads brighter on a dark ground, so dark skins dim the blobs further
+   than the light variant for a calmer corner haze. */
 html.dark .np-login-aurora::before,
 html.dark .np-login-aurora::after { opacity: 0.1; }
 
 @keyframes npLoginDriftA {
   from { transform: translate3d(0, 0, 0) scale(1); }
-  to   { transform: translate3d(5rem, 3.5rem, 0) scale(1.14); }
+  to { transform: translate3d(5rem, 3.5rem, 0) scale(1.14); }
 }
 @keyframes npLoginDriftB {
   from { transform: translate3d(0, 0, 0) scale(1); }
-  to   { transform: translate3d(-4.5rem, -3rem, 0) scale(1.1); }
+  to { transform: translate3d(-4.5rem, -3rem, 0) scale(1.1); }
 }
 
 .np-login-grid {
@@ -488,7 +461,7 @@ html.dark .np-login-aurora::after { opacity: 0.1; }
           mask-image: radial-gradient(ellipse 58% 52% at 50% 44%, #000 0%, transparent 78%);
 }
 
-/* Frosted-glass auth card with an accent glow + a top hairline sheen. */
+/* Frosted-glass auth card with an accent glow and a top hairline sheen. */
 .np-login-card {
   position: relative;
   background: color-mix(in srgb, var(--color-surface-lowest) 80%, transparent);
@@ -501,7 +474,7 @@ html.dark .np-login-aurora::after { opacity: 0.1; }
     0 12px 34px -18px rgba(0, 0, 0, 0.45);
 }
 html:not(.dark) .np-login-card {
-  /* Light skins: a near-solid white card with a firmer border + accent-tinted lift,
+  /* Light skins: a near-solid white card with a firmer border and an accent-tinted lift,
      so the glass still reads as a distinct surface over the bright background. */
   background: color-mix(in srgb, var(--color-surface-lowest) 92%, transparent);
   border-color: color-mix(in srgb, var(--color-on-surface) 14%, transparent);
@@ -528,27 +501,24 @@ html:not(.dark) .np-login-card {
   .np-login-aurora::before, .np-login-aurora::after { animation: none; }
 }
 
-/* Sidebar rail: a vertical gradient plus a lit accent edge on its right side.
-   The edge is painted as a BACKGROUND LAYER, not a ::after pseudo-element. That is
-   deliberate — Sidebar.tsx puts `np-sidebar` and the mobile drawer's
-   `fixed inset-y-0 -translate-x-full` on the SAME <aside>, so giving this element
-   `position: relative` (which a positioned ::after would require) drops the
-   off-canvas drawer back into the document flow and breaks it on mobile.
-   A skin that overrides `background` here replaces the edge with it — intended. */
+/* Sidebar rail: a vertical gradient plus a lit accent edge on its right side. The edge is
+   a background layer rather than a positioned ::after, because Sidebar.tsx puts
+   `np-sidebar` and the mobile drawer's `fixed inset-y-0 -translate-x-full` on the same
+   <aside>; the `position: relative` a positioned ::after needs would drop the off-canvas
+   drawer back into the document flow. A skin that overrides `background` replaces the
+   edge along with it. */
 html.dark .np-shell aside {
   background:
     linear-gradient(180deg, transparent 6%, var(--np-accent) 50%, transparent 94%) right / 1px 100% no-repeat,
     linear-gradient(180deg, #171a1f 0%, #0b0c0e 100%);
 }
-/* dark-lila is neutral grey — override the rail with a grey gradient keyed to its
-   own surface ramp (top ≈ surface-low, bottom ≈ surface-dim). */
+/* dark-lila is neutral grey, so its rail uses a grey gradient keyed to its own surface
+   ramp: top near surface-low, bottom near surface-dim. */
 html.dark[data-skin="dark-lila"] .np-shell aside {
   background: linear-gradient(180deg, #2a2a2a 0%, #161616 100%);
 }
-/* PIN: dark-bank never declared its own rail and silently inherited the old
-   warm-brown one from the default dark skin. Kept byte-identical here so the Azur
-   rewrite above leaves that skin untouched. (Whether a brown rail belongs on a
-   red/grey bank skin is a separate question — not decided in this change.) */
+/* PIN: dark-bank's warm-brown rail, declared explicitly so changes to the default dark
+   skin above do not move it. */
 html.dark[data-skin="dark-bank"] .np-shell aside {
   background: linear-gradient(180deg, #241e18 0%, #16120e 100%);
 }
@@ -557,12 +527,12 @@ html.dark .np-shell aside img[alt="NodePilot logo"] {
   filter: drop-shadow(0 0 7px color-mix(in srgb, var(--np-accent) 35%, transparent));
 }
 
-/* ── Accent remap: hardcoded Tailwind blues → the skin accent ──
-   Scoped to the `np-accent-remap` marker class (set on <html> by applyTheme for every
-   skin whose accent isn't blue: dark/dark-lila/light-grey — NOT the blue `light`
-   default). The rules read the `--np-accent*` helper vars, which each skin redefines,
-   so one rule set serves every accent. These win over the layered Tailwind utilities
-   (unlayered custom CSS > @layer utilities), so no specificity gymnastics needed. */
+/* ── Accent remap: hardcoded Tailwind blues become the skin accent ──
+   Scoped to the `np-accent-remap` marker class, which applyTheme sets on <html> for every
+   skin whose accent is not blue (dark, dark-lila, light-grey, but not the blue `light`
+   default). The rules read the `--np-accent*` helper vars that each skin redefines, so one
+   rule set serves every accent. Unlayered custom CSS outranks @layer utilities, so these
+   win over the Tailwind classes without any specificity tricks. */
 html.np-accent-remap .np-shell .bg-blue-600,
 html.np-accent-remap .np-shell .hover\:bg-blue-600:hover { background-color: var(--np-accent); }
 html.np-accent-remap .np-shell .bg-blue-700,
@@ -588,12 +558,11 @@ html.np-accent-remap .np-shell .focus\:border-blue-600:focus { border-color: var
 html.np-accent-remap .np-shell .ring-blue-500,
 html.np-accent-remap .np-shell .focus\:ring-blue-500:focus { --tw-ring-color: var(--np-accent-ring); }
 
-/* Modifier / opacity blue variants the exact-class rules above don't catch — disabled
-   button fills, column/row resize-handle hover/active tints, and the translucent
-   status-pill fill (its text is already remapped above, so the bg must follow too).
-   color-mix preserves each utility's original opacity, so only the hue changes. */
-/* Muted accent (blended toward surface) so a disabled button still reads as inactive —
-   mirrors the original blue-400-vs-blue-600 tint gap, which a solid accent would erase. */
+/* Modifier and opacity blue variants that the exact-class rules above miss: disabled
+   button fills, column and row resize-handle hover and active tints, and the translucent
+   status-pill fill, whose text is already remapped above. color-mix keeps each utility's
+   original opacity, so only the hue changes. */
+/* Muted accent, blended toward the surface, so a disabled button still reads as inactive. */
 html.np-accent-remap .np-shell .disabled\:bg-blue-400:disabled { background-color: color-mix(in srgb, var(--np-accent) 42%, var(--color-surface-bright)); }
 html.np-accent-remap .np-shell .bg-blue-500\/15,
 html.np-accent-remap .np-shell .hover\:bg-blue-500\/15:hover { background-color: color-mix(in srgb, var(--np-toggle-on) 15%, transparent); }
@@ -603,36 +572,33 @@ html.np-accent-remap .np-shell .hover\:bg-blue-500\/60:hover { background-color:
 html.np-accent-remap .np-shell .hover\:bg-blue-500\/40:hover { background-color: color-mix(in srgb, var(--np-toggle-on) 40%, transparent); }
 html.np-accent-remap .np-shell .group:hover .group-hover\:bg-blue-600\/60 { background-color: color-mix(in srgb, var(--np-accent) 60%, transparent); }
 
-/* Primary buttons: a touch of depth + a soft orange bloom on hover — premium feel. */
+/* Primary buttons: slight depth plus a soft accent bloom on hover. */
 html.dark .np-shell .bg-blue-600 { box-shadow: 0 1px 2px rgba(0,0,0,0.45); transition: background-color .15s, box-shadow .15s; }
 html.dark .np-shell .bg-blue-600:hover { box-shadow: 0 4px 14px -4px color-mix(in srgb, var(--np-accent) 70%, transparent); }
 
-/* Cards/panels: stronger dark shadow + a faint top hairline so surfaces float. */
+/* Cards and panels: a stronger dark shadow plus a faint top hairline so surfaces float. */
 html.dark .np-shell .shadow    { box-shadow: 0 1px 2px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.045); }
 html.dark .np-shell .shadow-md { box-shadow: 0 4px 10px -2px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(255,255,255,0.05); }
 html.dark .np-shell .shadow-lg { box-shadow: 0 10px 24px -6px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.055); }
 html.dark .np-shell .shadow-xl { box-shadow: 0 18px 40px -10px rgba(0,0,0,0.65), inset 0 0 0 1px rgba(255,255,255,0.06); }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   DEFAULT DARK SKIN — DESIGNER SCOPE. The designer route renders as a bare
-   <Outlet/> with no `.np-shell` ancestor, so the whole token block has to be
-   repeated here. Values are identical to `.np-shell` above except the canvas
-   ground, which drops one step so nodes read as objects lying on a floor rather
-   than tiles set into a wall.
+   DEFAULT DARK SKIN, DESIGNER SCOPE. The designer route renders as a bare <Outlet/>
+   with no `.np-shell` ancestor, so the whole token block is repeated here. Values match
+   `.np-shell` above except the canvas ground, which drops one step so nodes read as
+   objects lying on a floor rather than tiles set into a wall.
 
-   CANVAS SHIELD: `.react-flow` below re-asserts an accent for the graph subtree
-   (nodes, edges, handles, selection rings, edge labels). It exists because the
-   other dark skins deliberately keep a neutral canvas while re-accenting their
-   chrome. This skin's accent IS the canvas accent, so it re-asserts its own
-   values there instead of the historical base blue — see the `[data-skin="dark"]`
-   rule after it. Leave the unqualified shield in place: dark-lila,
-   dark-bank and dark-nebula all depend on it.
+   Canvas shield: the `.react-flow` rule below re-asserts an accent for the graph subtree
+   (nodes, edges, handles, selection rings, edge labels), because the other dark skins
+   keep a neutral canvas while re-accenting their chrome. This skin's accent is also its
+   canvas accent, so the `[data-skin="dark"]` rule after it restores its own values.
+   Keep the unqualified shield: dark-lila, dark-bank and dark-nebula depend on it.
 
-   Dark-only by construction (scoped to `html.dark`) → light mode is byte-identical. */
+   Scoped to `html.dark`, so light mode is unaffected. */
 html.dark .np-designer {
-  /* Cool graphite surfaces (mirror `.np-shell`) so the designer AREA backgrounds —
-     canvas backdrop, exec/properties panels, sidebar, toolbar, minimap/controls —
-     match the skin. `--act-*` node colours are separate → untouched. */
+  /* Cool graphite surfaces mirroring `.np-shell`, so the designer area backgrounds
+     (canvas backdrop, execution and properties panels, sidebar, toolbar, minimap and
+     controls) match the skin. The `--act-*` node colours are separate and untouched. */
   --color-surface:          #121419;  /* canvas floor — sits just under the shell's surface-low */
   --color-surface-dim:      #08090b;
   --color-surface-bright:   #3c3f47;
@@ -659,13 +625,13 @@ html.dark .np-designer {
   --color-on-primary-container:#ffffff;
   --color-on-primary-fixed:    #cfe1ff;
   --color-inverse-primary:     #2467d9;
-  /* Controls accent (React-Flow zoom controls hover tint): a literal, so the
-     `.react-flow` shield below cannot reset it. */
+  /* Controls accent (hover tint of the React Flow zoom controls). A literal value, so
+     the `.react-flow` shield below cannot reset it. */
   --np-controls-accent:        #6da8ff;
 }
-/* Shield the graph canvas ACCENT only: restore the base dark (blue) accent so React
-   Flow selection rings / edge-select stay neutral. Surfaces are intentionally NOT
-   reset here → the canvas backdrop follows the skin surface above. */
+/* Shield the graph canvas accent only: restore the base dark blue accent so React Flow
+   selection rings and edge selection stay neutral. Surfaces are deliberately not reset
+   here, so the canvas backdrop keeps following the skin surfaces above. */
 html.dark .np-designer .react-flow {
   --color-surface-tint:        #4a7ef5;
   --color-primary:             #aac7ff;
@@ -676,12 +642,11 @@ html.dark .np-designer .react-flow {
   --color-on-primary-container:#dae2ff;
   --color-inverse-primary:     #004ac6;
 }
-/* The default dark skin does NOT want the canvas shielded — its accent is the
-   canvas accent. Re-assert Azur inside the graph so selection rings, handles and
-   edge-select match the rest of the product. (0,4,1) beats the shield's (0,3,1).
-   The idle-edge/grid colour is lifted here too: --color-outline-variant #2e3138 is
-   correct as a 1px divider on panels but disappears as a 2px polyline on the
-   canvas floor. */
+/* The default dark skin does not want the canvas shielded: its accent is the canvas
+   accent. Re-assert Azur inside the graph so selection rings, handles and edge selection
+   match the rest of the product; specificity (0,4,1) beats the shield's (0,3,1). The idle
+   edge and grid colour is lifted too, because the panel divider value disappears as a 2px
+   polyline on the canvas floor. */
 html.dark[data-skin="dark"] .np-designer .react-flow {
   --color-surface-tint:        #3372e0;
   --color-primary:             #6da8ff;
@@ -695,16 +660,16 @@ html.dark[data-skin="dark"] .np-designer .react-flow {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   SKIN: "dark lila" — neutral grey/black surfaces + a lilac accent (palette taken
-   from the Voxwright dark theme). Selected in Settings → writes `data-skin="dark-lila"`
-   on <html> (still a `dark` base, so all `html.dark` tokens + code-editor/React-Flow
-   theming keep working). These blocks only OVERRIDE the orange dark default, so the
-   light scheme and the orange dark scheme stay byte-identical.
+   SKIN "dark lila": neutral grey and black surfaces with a lilac accent, palette taken
+   from the Voxwright dark theme. Selecting it in Settings writes `data-skin="dark-lila"`
+   on <html>; the base stays `dark`, so all `html.dark` tokens and the code-editor and
+   React Flow theming keep working. These blocks only override the dark default, so the
+   light scheme is unaffected.
 
-   ▶ Adding another skin = mirror these two blocks with a new `[data-skin="<id>"]`
-   (plus a THEMES entry + i18n label). The base dark structure is reused for free. */
+   Adding another skin means mirroring these two blocks under a new `[data-skin="<id>"]`,
+   plus a THEMES entry and an i18n label; the base dark structure is reused. */
 html.dark[data-skin="dark-lila"] .np-shell {
-  /* Neutral grey ramp (Voxwright): no warm/cool tint. lowest = darkest … bright = lightest. */
+  /* Neutral grey ramp (Voxwright), no warm or cool tint: lowest darkest, bright lightest. */
   --color-surface:          #1e1e1e;
   --color-surface-dim:      #141414;
   --color-surface-bright:   #383838;
@@ -715,8 +680,9 @@ html.dark[data-skin="dark-lila"] .np-shell {
   --color-surface-highest:  #333333;
   --color-surface-variant:  #3a3a3a;
 
-  /* Lilac accent. `primary` = readable accent (text/icon/active); `primary-container`
-     = deep fill; `primary-fixed` = subtle accent surface (badges, active nav, tags). */
+  /* Lilac accent. `primary` is the readable accent (text, icons, active state),
+     `primary-container` the deep fill, `primary-fixed` the subtle accent surface used by
+     badges, active nav and tags. */
   --color-surface-tint:        #7c5cfc;
   --color-primary:             #9b7dff;
   --color-primary-container:   #7c5cfc;
@@ -724,16 +690,16 @@ html.dark[data-skin="dark-lila"] .np-shell {
   --color-primary-fixed-dim:   #3a316a;
   --color-on-primary:          #160a33;
   --color-on-primary-container:#ece7ff;
-  /* Text on the subtle accent surface (primary-fixed = deep lilac); else the base
-     html.dark #dae2ff (blue-tinted) leaks through. */
+  /* Text on the subtle accent surface (primary-fixed, a deep lilac). Without it the
+     blue-tinted base html.dark value leaks through. */
   --color-on-primary-fixed:    #ece7ff;
   --color-inverse-primary:     #7c5cfc;
 
   --color-secondary:           #a99fc0;
   --color-secondary-container: #322c50;
-  /* PIN: these three were never declared here and silently inherited the default
-     dark skin's values. Pinned so the Azur rewrite of that base leaves dark-lila
-     unchanged. (`-fixed` has no consumer today; kept for family coherence.) */
+  /* PIN: these three would otherwise inherit the default dark skin's values. Declared
+     here so changes to that base leave dark-lila unchanged. `-fixed` has no consumer
+     today and is kept only for family coherence. */
   --color-secondary-fixed:        #6a2b09;
   --color-on-secondary:           #15191d;
   --color-on-secondary-container: #dde2e7;
@@ -744,8 +710,8 @@ html.dark[data-skin="dark-lila"] .np-shell {
   --color-outline:             #6b6b6b;
   --color-outline-variant:     #3a3a3a;
 
-  /* Re-skin the blue→accent utility remap helpers (the remap RULES are unchanged —
-     they read these vars, so pointing them at lilac re-skins every hardcoded blue). */
+  /* Helpers for the blue-to-accent utility remap. The remap rules read these vars, so
+     pointing them at lilac re-skins every hardcoded blue. */
   --np-accent:        #7c5cfc;
   --np-accent-hover:  #6a48e8;
   --np-accent-ring:   #9b7dff;
@@ -756,9 +722,9 @@ html.dark[data-skin="dark-lila"] .np-shell {
   --np-toolbar-accent:        #9b7dff;
 }
 
-/* Designer: neutral-grey surfaces + lilac accent (override the orange `.np-designer`).
-   The shared `html.dark .np-designer .react-flow` shield keeps the canvas selection
-   accent neutral; surfaces cascade through so the backdrop follows the skin. */
+/* Designer: neutral grey surfaces and the lilac accent, overriding the default
+   `.np-designer`. The shared `html.dark .np-designer .react-flow` shield keeps the canvas
+   selection accent neutral; surfaces cascade through so the backdrop follows the skin. */
 html.dark[data-skin="dark-lila"] .np-designer {
   --color-surface:          #1e1e1e;
   --color-surface-dim:      #141414;
@@ -791,14 +757,13 @@ html.dark[data-skin="dark-lila"] .np-designer {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   SKIN: "dark-bank" — purer Rot-Akzent (#FF0002) auf einem neutralen
-   Near-Black-Grey-Ramp (kein Rotstich in den Surfaces). Dark base (wie dark-lila).
-   Palette-Quelle: palette/dark-mode-palette.json. Secondary-Tokens werden NUR
-   in .np-shell gesetzt — .np-designer setzt sie NICHT, damit
-   --color-secondary-container nicht in den React-Flow-Canvas leckt und
-   REST-Methoden-Badges (ActivityNode) neutral (base-dark grau-blau) bleiben. */
+   SKIN "dark-bank": a pure red accent (#FF0002) over a neutral near-black grey ramp with
+   no red tint in the surfaces. Dark base, like dark-lila. Palette source:
+   palette/dark-mode-palette.json. Secondary tokens are set in .np-shell only, not in
+   .np-designer, so --color-secondary-container does not leak into the React Flow canvas
+   and the REST method badges in ActivityNode stay the neutral base-dark grey-blue. */
 html.dark[data-skin="dark-bank"] .np-shell {
-  /* Neutraler Grey-Ramp (dunkel → hell), kein Rotstich. */
+  /* Neutral grey ramp from dark to light, with no red tint. */
   --color-surface:          #1f1f1f;
   --color-surface-dim:      #161616;
   --color-surface-bright:   #303030;
@@ -809,26 +774,26 @@ html.dark[data-skin="dark-bank"] .np-shell {
   --color-surface-highest:  #2a2a2a;
   --color-surface-variant:  #3a3a3a;
 
-  /* Purer Rot-Akzent. primary = #FF0002 (Gradient-Fill mit weißer Schrift);
-     primary-container = tiefer Fill (#cc0001); primary-fixed = subtile
-     Akzent-Surface (Badges, aktiver Nav). */
+  /* Pure red accent. primary is the gradient fill carrying white text,
+     primary-container the deeper fill, primary-fixed the subtle accent surface
+     used by badges and active nav. */
   --color-surface-tint:        #FF0002;
   --color-primary:             #FF0002;
   --color-primary-container:   #cc0001;
   --color-primary-fixed:       #5c0001;
   --color-primary-fixed-dim:   #7a0001;
-  --color-on-primary:          #ffffff;  /* Weiß auf purem Rot */
+  --color-on-primary:          #ffffff;  /* white on pure red */
   --color-on-primary-container:#ffe0e0;
   --color-on-primary-fixed:    #ffe0e0;
   --color-inverse-primary:     #cc0001;
 
-  /* Secondary neutral (Mute/Bg-glow abgeleitet) — bewusst NICHT rot. */
+  /* Secondary stays neutral, deliberately not red; it drives mutes and background glow. */
   --color-secondary:           #b8b8b8;
   --color-secondary-container: #2a2a2a;
   --color-on-secondary:        #1a1a1a;
   --color-on-secondary-container:#b8b8b8;
-  /* PIN: never declared here, silently inherited from the default dark skin.
-     Pinned so the Azur rewrite of that base leaves this skin unchanged. */
+  /* PIN: would otherwise inherit from the default dark skin. Declared here so changes
+     to that base leave this skin unchanged. */
   --color-secondary-fixed:     #6a2b09;
 
   --color-on-surface:          #ffffff;
@@ -837,7 +802,7 @@ html.dark[data-skin="dark-bank"] .np-shell {
   --color-outline:             #7a7a7a;
   --color-outline-variant:     #3a3a3a;
 
-  /* Accent-Remap-Helper für np-accent-remap (Blue→Red). */
+  /* Helpers for the np-accent-remap rules, mapping blue to red. */
   --np-accent:        #FF0002;
   --np-accent-hover:  #cc0001;
   --np-accent-ring:   #FF0002;
@@ -848,15 +813,12 @@ html.dark[data-skin="dark-bank"] .np-shell {
   --np-toolbar-accent:        #FF0002;
 }
 
-/* Designer: gleiche Surfaces + Accent. Die Secondary-Tokens sollen NICHT rot sein,
-   damit REST-Methoden-Badges im Canvas grau-blau bleiben statt rotbraun.
-   KORREKTUR: der frühere Kommentar behauptete, sie fielen auf das base-dark
-   `html.dark` durch — das stimmt nicht. `html.dark .np-designer` (0,2,1) schlägt
-   `html.dark` (0,1,1), also erbte dieser Skin faktisch die Werte des Default-Dark.
-   Sie sind deshalb jetzt hier explizit gepinnt (PIN), damit der Azur-Umbau des
-   Default-Skins diesen hier nicht verändert.
-   Der shared html.dark .np-designer .react-flow Shield übernimmt den
-   Primary-Token-Reset weiterhin automatisch. */
+/* Designer: the same surfaces and accent. The secondary tokens must not be red, so the
+   REST method badges on the canvas stay grey-blue instead of red-brown. They cannot fall
+   through to base-dark `html.dark`, because `html.dark .np-designer` (0,2,1) outranks
+   `html.dark` (0,1,1); they are pinned here so changes to the default dark skin do not
+   move them. The shared html.dark .np-designer .react-flow shield still resets the
+   primary tokens. */
 html.dark[data-skin="dark-bank"] .np-designer {
   --color-secondary:           #6f7781;  /* PIN */
   --color-secondary-container: #2b3037;  /* PIN */
@@ -888,14 +850,13 @@ html.dark[data-skin="dark-bank"] .np-designer {
   --np-toolbar-accent:                 #FF0002;
   --np-controls-accent:        #FF0002;
 }
-/* Edges im dark-bank Canvas: identischer Wert wie base-dark html.dark (Zeile 130),
-   damit die Edges dieselbe Farbe haben wie im Standard-Dark/Premium-Canvas-Modus. */
+/* Edges on the dark-bank canvas take the base-dark html.dark value, so they match the
+   standard dark and premium canvas modes. */
 html.dark[data-skin="dark-bank"] .np-designer .react-flow {
   --color-outline-variant:     #43474e;
 }
-/* Gezielte Aufhellung von Designer-Header und Execution-Panel — surface-lowest wäre
-   dort zu nah an Schwarz, alle anderen surface-lowest-Elemente (ActivityNodes, etc.)
-   bleiben unberührt. */
+/* Lift the designer header and execution panel only: surface-lowest sits too close to
+   black there. Every other surface-lowest element, such as ActivityNodes, is unaffected. */
 html.dark[data-skin="dark-bank"] .np-editor-header,
 html.dark[data-skin="dark-bank"] .np-execution-panel {
   --color-surface-lowest: #1a1a1a;
@@ -903,18 +864,17 @@ html.dark[data-skin="dark-bank"] .np-execution-panel {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   SKIN: "dark-nebula" — futuristic Deep-Space look: a COOL, blue-tinted near-black
-   surface ramp + an electric-cyan accent (#22d3ee) with a violet secondary glow.
-   Dark base (like dark-lila/dark-bank). Unlike the other dark skins this one
-   also carries an ENHANCED DEPTH LAYER further down (glass cards, cyan glow, mesh
-   backdrop) — modelled on the "BANK HELL" light-bank layer. Palette-Quelle:
-   palette/nebula-palette.json. These blocks only OVERRIDE the orange dark default,
-   so every other scheme stays byte-identical. */
+   SKIN "dark-nebula": a deep-space look built on a cool, blue-tinted near-black surface
+   ramp with an electric-cyan accent and a violet secondary glow. Dark base, like
+   dark-lila and dark-bank. Unlike the other dark skins it also carries an extra depth
+   layer further down (glass cards, cyan glow, mesh backdrop), modelled on the light-bank
+   layer. Palette source: palette/nebula-palette.json. These blocks only override the dark
+   default, so every other scheme is unaffected. */
 html.dark[data-skin="dark-nebula"] .np-shell {
-  /* PIN: never declared here, silently inherited from the default dark skin.
-     Pinned so the Azur rewrite of that base leaves Nebula unchanged. */
+  /* PIN: would otherwise inherit from the default dark skin. Declared here so changes
+     to that base leave Nebula unchanged. */
   --color-secondary-fixed:     #6a2b09;
-  /* Cool, faintly blue-tinted near-black ramp (dark → light). */
+  /* Cool, faintly blue-tinted near-black ramp from dark to light. */
   --color-surface:          #0c1220;
   --color-surface-dim:      #05080f;
   --color-surface-bright:   #2a3852;
@@ -925,8 +885,9 @@ html.dark[data-skin="dark-nebula"] .np-shell {
   --color-surface-highest:  #212c42;
   --color-surface-variant:  #33415e;
 
-  /* Electric-cyan accent. `primary` = readable accent (text/icon/active); `primary-
-     container` = deep fill; `primary-fixed` = subtle accent surface (badges, active nav). */
+  /* Electric-cyan accent. `primary` is the readable accent (text, icons, active state),
+     `primary-container` the deep fill, `primary-fixed` the subtle accent surface used by
+     badges and active nav. */
   --color-surface-tint:        #22d3ee;
   --color-primary:             #4de4f7;
   --color-primary-container:   #17b9d4;
@@ -934,12 +895,12 @@ html.dark[data-skin="dark-nebula"] .np-shell {
   --color-primary-fixed-dim:   #103a48;
   --color-on-primary:          #00232c;
   --color-on-primary-container:#d6fbff;
-  /* Text on the subtle accent surface (primary-fixed = deep teal); else the base
-     html.dark #dae2ff (blue-tinted) leaks through. */
+  /* Text on the subtle accent surface (primary-fixed, a deep teal). Without it the
+     blue-tinted base html.dark value leaks through. */
   --color-on-primary-fixed:    #b8f4ff;
   --color-inverse-primary:     #22d3ee;
 
-  /* Violet secondary — used only for glow/mute, never a flat fill. */
+  /* Violet secondary, used only for glow and mutes, never as a flat fill. */
   --color-secondary:           #a78bfa;
   --color-secondary-container: #241e3d;
   --color-on-secondary:        #12091f;
@@ -952,7 +913,7 @@ html.dark[data-skin="dark-nebula"] .np-shell {
   --color-outline:             #47506a;
   --color-outline-variant:     #202942;
 
-  /* Re-skin the blue→accent utility remap helpers (rules unchanged, they read these). */
+  /* Helpers for the blue-to-accent utility remap; the remap rules read these vars. */
   --np-accent:        #17b9d4;
   --np-accent-hover:  #0fa5c0;
   --np-accent-ring:   #4de4f7;
@@ -963,14 +924,12 @@ html.dark[data-skin="dark-nebula"] .np-shell {
   --np-toolbar-accent:        #4de4f7;
 }
 
-/* Designer: same cool surfaces + cyan accent (override the default `.np-designer`).
-   The secondary tokens must stay neutral so the violet never leaks into React-Flow
-   node/method badges. CORRECTION: the previous comment claimed they fell through to
-   base-dark `html.dark` — they did not. `html.dark .np-designer` (0,2,1) outranks
-   `html.dark` (0,1,1), so this skin actually inherited the default skin's values.
-   They are pinned explicitly now (PIN) so the Azur rewrite cannot move them.
-   The shared `.react-flow` shield still resets the canvas accent, and
-   `--np-controls-accent` (cyan literal) survives it. */
+/* Designer: the same cool surfaces and cyan accent, overriding the default
+   `.np-designer`. The secondary tokens stay neutral so the violet never leaks into the
+   React Flow node and method badges. They cannot fall through to base-dark `html.dark`,
+   because `html.dark .np-designer` (0,2,1) outranks `html.dark` (0,1,1); they are pinned
+   here so changes to the default skin cannot move them. The shared `.react-flow` shield
+   still resets the canvas accent, and the `--np-controls-accent` literal survives it. */
 html.dark[data-skin="dark-nebula"] .np-designer {
   --color-secondary:           #6f7781;  /* PIN */
   --color-secondary-container: #2b3037;  /* PIN */
@@ -1001,13 +960,13 @@ html.dark[data-skin="dark-nebula"] .np-designer {
   --np-toolbar-accent:                 #4de4f7;
   --np-controls-accent:        #4de4f7;
 }
-/* Edges in the nebula canvas: identical to base-dark html.dark, so edges match the
-   standard/premium canvas instead of picking up the skin outline. */
+/* Edges on the nebula canvas take the base-dark html.dark value, so they match the
+   standard and premium canvas instead of picking up the skin outline. */
 html.dark[data-skin="dark-nebula"] .np-designer .react-flow {
   --color-outline-variant:     #43474e;
 }
-/* Lift the designer header + execution panel off pure near-black (surface-lowest is
-   too close to black there); all other surface-lowest elements stay untouched. */
+/* Lift the designer header and execution panel off near-black, where surface-lowest sits
+   too close to black. All other surface-lowest elements are unaffected. */
 html.dark[data-skin="dark-nebula"] .np-editor-header,
 html.dark[data-skin="dark-nebula"] .np-execution-panel {
   --color-surface-lowest: #0f1626;
@@ -1015,22 +974,22 @@ html.dark[data-skin="dark-nebula"] .np-execution-panel {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   CLASSIC DESIGNER, LIGHT BASE — same ground/chrome relationship as the shell.
+   CLASSIC DESIGNER, LIGHT BASE: the same ground-to-chrome relationship as the shell.
 
    Atelier carries this in its own palette (`designer-atelier.css`), but the classic look
-   inherits the app tokens verbatim and the components pick `bg-surface` for the canvas and
-   `bg-surface-low` for the docks. In a light skin that inverts the app's reading: the canvas
-   ends up the BRIGHTEST surface and the chrome sits a step darker — grey boxes around a white
-   hole, where every other page is white plates on a grey ground.
+   inherits the app tokens verbatim, and its components pick `bg-surface` for the canvas and
+   `bg-surface-low` for the docks. Under a light skin that inverts the app's reading: the
+   canvas becomes the brightest surface with the chrome a step darker, where every other
+   page is white plates on a grey ground.
 
-   So the classic designer is re-pointed the same way, and only in light: the canvas drops to
-   the page ground, the floating chrome lifts to the plate. Dark is deliberately excluded —
-   there the chrome lifting off a deeper canvas floor is correct, and `--color-surface` in
-   `html.dark .np-designer` is already tuned one step below the shell for exactly that.
+   So the classic designer is re-pointed, in light only: the canvas drops to the page ground
+   and the floating chrome lifts to the plate. Dark is excluded, because there the chrome
+   lifting off a deeper canvas floor is correct and `--color-surface` in
+   `html.dark .np-designer` is already tuned one step below the shell.
 
-   Written as background-color on the chrome rather than a token override: `--color-surface-low`
-   also feeds hovers and table rows inside these panels, which must keep stepping off the plate
-   rather than turning white with it. ───────────────────────────────────────────────────── */
+   Written as background-color on the chrome rather than a token override, because
+   `--color-surface-low` also feeds hovers and table rows inside these panels, which must
+   keep stepping off the plate rather than turning white with it. ───────────────────────── */
 html:not(.dark) .np-designer:not(.wd-atelier),
 html:not(.dark) .np-designer:not(.wd-atelier) .np-canvas {
   background-color: var(--color-surface-low);
@@ -1041,13 +1000,13 @@ html:not(.dark) .np-designer:not(.wd-atelier) .np-anim-panel {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   SKIN: "light grey" — Voxwright LIGHT theme: warm cream surfaces + the same lilac
-   accent. A LIGHT base (no `.dark` class), so it overrides the default light `:root`
-   tokens via `html[data-skin="light-grey"]`. The blue→accent utility remap reaches it
-   through the shared `np-accent-remap` marker class (set because this skin's accent
-   isn't blue), re-pointed at the lilac `--np-accent*` helpers below. */
+   SKIN "light grey": the Voxwright light theme, warm cream surfaces with the same lilac
+   accent. A light base with no `.dark` class, so it overrides the default light `:root`
+   tokens through `html[data-skin="light-grey"]`. The blue-to-accent utility remap reaches
+   it through the shared `np-accent-remap` marker class, set because this skin's accent is
+   not blue, and points at the lilac `--np-accent*` helpers below. */
 html[data-skin="light-grey"] .np-shell {
-  /* Warm cream ramp (Voxwright): lightest (white cards) … dimmest (warm beige). */
+  /* Warm cream ramp (Voxwright): lightest is white cards, dimmest is warm beige. */
   --color-surface:          #faf8f5;
   --color-surface-dim:      #ded8d0;
   --color-surface-bright:   #ffffff;
@@ -1058,7 +1017,7 @@ html[data-skin="light-grey"] .np-shell {
   --color-surface-highest:  #e8e0d8;
   --color-surface-variant:  #ded8d0;
 
-  /* Lilac accent — `primary` is deepened for readable text/icons on cream. */
+  /* Lilac accent. `primary` is deepened so text and icons stay readable on cream. */
   --color-surface-tint:        #7c5cfc;
   --color-primary:             #7c3aed;
   --color-primary-container:   #7c5cfc;
@@ -1078,7 +1037,7 @@ html[data-skin="light-grey"] .np-shell {
   --color-outline:             #a89f93;
   --color-outline-variant:     #e0d9d0;
 
-  /* Blue→accent utility-remap helpers (lilac, light-mode variants). */
+  /* Helpers for the blue-to-accent utility remap: lilac, light-mode variants. */
   --np-accent:        #7c5cfc;
   --np-accent-hover:  #6d28d9;
   --np-accent-ring:   #7c3aed;
@@ -1089,8 +1048,9 @@ html[data-skin="light-grey"] .np-shell {
   --np-toolbar-accent:        #7c3aed;
 }
 
-/* Designer: warm cream surfaces + lilac accent. The canvas-accent shield below keeps
-   selection rings neutral (base light blue); surfaces cascade so the backdrop follows. */
+/* Designer: warm cream surfaces with the lilac accent. The canvas-accent shield below
+   keeps selection rings on the neutral base light blue; surfaces cascade through so the
+   backdrop follows the skin. */
 html[data-skin="light-grey"] .np-designer {
   --color-surface:          #faf8f5;
   --color-surface-dim:      #ded8d0;
@@ -1133,10 +1093,9 @@ html[data-skin="light-grey"] .np-designer .react-flow {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   SKIN: "light-bank" / "Bank Hell" — neutraler heller Banking-Look mit
-   rotem Aktionsakzent. Light base (kein .dark), override via
-   `html[data-skin="light-bank"]`. Secondary-Tokens bleiben in .np-shell,
-   damit Canvas-Badges neutral bleiben. */
+   SKIN "light-bank" / "Bank Hell": a neutral light banking look with a red action accent.
+   Light base with no `.dark` class, overriding through `html[data-skin="light-bank"]`.
+   The secondary tokens stay in .np-shell so the canvas badges remain neutral. */
 html[data-skin="light-bank"] .np-shell,
 html[data-skin="light-bank"] .np-designer {
   --np-bank-primary:        #ff0000;
@@ -1174,7 +1133,8 @@ html[data-skin="light-bank"] .np-shell {
   --color-surface-highest:  #e2e7ed;
   --color-surface-variant:  #e4e7ec;
 
-  /* Deep red is reserved for readable text/focus states; the vivid red fills CTA gradients. */
+  /* Deep red is reserved for readable text and focus states; the vivid red fills CTA
+     gradients. */
   --color-surface-tint:        #ff0000;
   --color-primary:             #c80000;
   --color-primary-container:   #ee0000;
@@ -1207,8 +1167,8 @@ html[data-skin="light-bank"] .np-shell {
   --np-toolbar-accent:        #c80000;
 }
 
-/* Designer chrome shares the Bank Hell surfaces and accent; React Flow keeps its
-   neutral base-light secondary tokens below. */
+/* Designer chrome shares the Bank Hell surfaces and accent; React Flow keeps the neutral
+   base-light secondary tokens set below. */
 html[data-skin="light-bank"] .np-designer {
   --color-surface:          var(--np-bank-bg);
   --color-surface-dim:      #e9edf2;
@@ -1248,18 +1208,18 @@ html[data-skin="light-bank"] .np-designer .react-flow {
   --color-on-primary:          #ffffff;
   --color-on-primary-container:#eeefff;
   --color-inverse-primary:     #b4c5ff;
-  /* Edges im light-bank Canvas: identischer Wert wie base-light :root (Zeile 71) +
-     np-arrow-default fill, damit Kanten dieselbe Farbe haben wie im Standard-Light/Premium-Canvas. */
+  /* Edges on the light-bank canvas take the base-light :root value used by the
+     np-arrow-default fill, so they match the standard light and premium canvas. */
   --color-outline-variant:     #c3c6d7;
 }
 
 /* ── Activity tooltip portal (designer) ──────────────────────────────────────
-   ActivityNode's hover tooltip is portaled to <body> (to escape the React-Flow
-   viewport transform), so it falls OUT of the `.np-designer` token scope and would
-   otherwise paint with the global base tokens. Re-assert the active skin's designer
-   surface tokens on the portal marker — only the four the tooltip consumes
-   (surface-lowest, on-surface, on-surface-variant, outline-variant). The default
-   light skin needs nothing: the portal already inherits the matching :root tokens. */
+   ActivityNode's hover tooltip is portaled to <body> to escape the React Flow viewport
+   transform, so it falls outside the `.np-designer` token scope and would otherwise paint
+   with the global base tokens. The portal marker re-asserts the active skin's designer
+   surface tokens, limited to the four the tooltip consumes: surface-lowest, on-surface,
+   on-surface-variant and outline-variant. The default light skin needs nothing, since the
+   portal already inherits the matching :root tokens. */
 html.dark .np-tooltip-portal {
   --color-surface-lowest:     #0e0f12;
   --color-on-surface:         #e9ebef;
@@ -1381,23 +1341,11 @@ body {
   font-family: var(--font-body);
   color: var(--color-on-surface);
   background: var(--color-surface);
-  /* Dichte-Ausgleich, EIN Knopf für die ganze App.
-     IBM Plex Sans hat eine kleinere x-Höhe als das zuvor genutzte Inter (~0.516
-     vs. ~0.545 vom em). Bei einer UI, die fast durchgehend auf `text-xs` (12px)
-     und `text-sm` (14px) steht, liest sich derselbe Text dadurch eine Stufe
-     kleiner und leichter. `font-size-adjust` normalisiert die x-Höhe auf Inters
-     früheren Wert, ohne einen einzigen Grössen- oder Line-Height-Token anzufassen:
-     die Zeilenboxen bleiben exakt wie vorher, nur die Glyphen wachsen auf die
-     gewohnte optische Grösse.
-     Wenn das irgendwo fixed-width-Chrome sprengt (Node-Labels, Badges, Tabellen-
-     köpfe), ist der Rückweg genau diese eine Zeile auf `none`. */
+  /* Match the prior body-font x-height without changing size or line-height tokens. */
   font-size-adjust: 0.545;
 }
 
-/* Code behält seine native Plex-Mono-Metrik: der x-Höhen-Ausgleich oben gilt für
-   Fliesstext, nicht für Monospace. Sonst würden Code-Blöcke, Log-Ausgaben und die
-   Editor-Gutter gegenüber heute wachsen und die Spaltenbündigkeit gegen die
-   Editoren verlieren, die ihre Zeichenbreite selbst ausmessen. */
+/* Keep native Plex Mono metrics so measured editor columns remain aligned. */
 code,
 kbd,
 pre,
@@ -1477,7 +1425,7 @@ html.dark { --np-toolbar-accent: #6da8ff; }
   position: relative;
   isolation: isolate;
 }
-/* The "Calls →" pills in the editor status strip draw their outline as an *inset* hairline on a
+/* The "Calls  to " pills in the editor status strip draw their outline as an *inset* hairline on a
    fixed even height — deliberately not as Tailwind's `ring-1`. An outset ring sits on the pill's
    outer edge, and that edge was fractional (11px text + `py-0.5` = a 20.5px box): its top and
    bottom lines then split across two device pixels at ~50% coverage each and, blended against the
@@ -1576,13 +1524,7 @@ html.dark .np-glow-bloom {
   display: none !important;
 }
 
-/* Edges UNTER Nodes rendern. Activities sollen immer vordergründig sichtbar sein — wenn
-   eine Bezier-Kurve geometrisch durch eine Node-Bbox läuft, wird sie dort vom Node verdeckt.
-   Trade-off: bei Fan-Out mit großem Y-Abstand kann die Kurve teilweise hinter Zwischen-
-   Nodes verschwinden; akzeptabel, weil Activities als Hauptobjekte visuell Priorität haben.
-   Werte explizit gesetzt, weil React Flow's `elevateEdgesOnSelect` (siehe WorkflowEditorPage)
-   einzelne Edge-Elemente per inline-style auf z-index 1000 hebt — ohne expliziten höheren
-   Wert auf der Node-Layer würden ausgewählte Edges sonst über den Nodes liegen. */
+/* Render edges below activity nodes. Explicit layers counter React Flow's selected-edge z-index. */
 .react-flow__edges {
   z-index: 1 !important;
 }
@@ -1593,22 +1535,13 @@ html.dark .np-glow-bloom {
   z-index: 4 !important;
 }
 
-/* Wenn der User eine Edge selektiert hat (Edit-Mode für genau diese Kante), darf weder
-   die Bezier-Linie noch das Label noch ein Reshape-Handle hinter einer Activity-Node
-   verschwinden — sonst sind die Handles nicht klickbar. :has() hebt beide Schichten
-   (Edges + EdgeLabels) über die Nodes-Schicht, sobald irgendeine Edge `.selected` trägt.
-   Trade-off: auch nicht-selektierte Edges rutschen kurz darüber — akzeptabel, weil
-   das nur während aktiver Edge-Selection passiert und die selektierte Kante via
-   elevateEdgesOnSelect (inline z:1000) weiterhin prominent über den anderen liegt.
-   :has() ist seit Firefox 121 (Dez 2023) Cross-Browser baseline. */
+/* Raise edge and label layers while editing so reshape handles remain clickable above nodes. */
 .react-flow:has(.react-flow__edge.selected) .react-flow__edges,
 .react-flow:has(.react-flow__edge.selected) .react-flow__edgelabel-renderer {
   z-index: 10 !important;
 }
 
-/* Scrollbars — schmal, transparenter Track, Thumb in den Outline-Tokens.
-   Greift in Light + Dark, weil die Variablen pro Theme überschrieben werden.
-   Firefox + Edge alt nutzen `scrollbar-width/color`, Chromium/Safari die ::-webkit-Pseudos. */
+/* Narrow token-based scrollbars for standard and WebKit implementations. */
 * {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--color-outline-variant) 70%, transparent) transparent;
@@ -1624,8 +1557,7 @@ html.dark .np-glow-bloom {
 ::-webkit-scrollbar-thumb {
   background-color: color-mix(in srgb, var(--color-outline-variant) 75%, transparent);
   border-radius: 8px;
-  /* 2px transparenter Border + background-clip: padding-box ergibt einen "schwebenden"
-     Thumb mit Luft zum Track-Rand — sieht bei schmalen Containern nicht so klobig aus. */
+  /* A transparent border separates the thumb from the track in narrow containers. */
   border: 2px solid transparent;
   background-clip: padding-box;
 }
@@ -1911,7 +1843,7 @@ html.dark .np-shell .np-btn-success { color: #4ade80; }
   --np-sb-control-hover: color-mix(in srgb, var(--color-on-surface) 9%, transparent);
   --np-sb-heading:       color-mix(in srgb, var(--color-on-surface-variant) 64%, transparent);
   --np-sb-muted:         color-mix(in srgb, var(--color-on-surface-variant) 74%, transparent);
-  /* Brighter "raised" fill for the search box + account card. Light bases → near-white
+  /* Brighter "raised" fill for the search box + account card. Light bases -> near-white
      (the mock has them ~white); dark bases override to a soft white overlay below. */
   --np-sb-raised:        color-mix(in srgb, #ffffff 82%, var(--color-surface));
   --np-sb-raised-soft:   color-mix(in srgb, #ffffff 64%, var(--color-surface));
@@ -2306,7 +2238,7 @@ html.dark .np-sidebar {
 /* Entrance: a subtle fade-up, staggered via inline animation-delay. */
 @keyframes npFadeUp {
   from { opacity: 0; transform: translateY(14px); }
-  to   { opacity: 1; transform: none; }
+  to { opacity: 1; transform: none; }
 }
 .np-fade-up { animation: npFadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
@@ -2507,7 +2439,8 @@ select:disabled {
   filter: drop-shadow(0 8px 18px rgba(0,0,0,.22));
 }
 
-/* Shaped nodes dark: double-glow trick — tight/bright inner + wide/soft outer = sharp edge, visible halo */
+/* Shaped nodes dark: double-glow trick — tight/bright inner + wide/soft outer = sharp edge,
+   visible halo */
 .dark .np-premium .np-shape-wrap {
   filter:
     drop-shadow(0 0 2px color-mix(in srgb, var(--np-act-color, currentColor) 80%, transparent))
@@ -2572,12 +2505,7 @@ select:disabled {
   .np-connection-dash { animation: none; }
 }
 
-/* ── Edge-Detach: Ziel-Ende hängt am Cursor, der nächste Node-Klick setzt es ──
-   Fadenkreuz signalisiert den Modus. Der Ring hängt bewusst NICHT an `:hover`,
-   sondern an `.np-dock-target` — die Klasse setzt useDisplayedGraph auf genau den
-   Node, an dem die Vorschau-Linie gerade andockt. Ein Hover-Ring hätte auch
-   Quell-Node, altes Ziel, Sticky-Notes und Duplikat-Ziele markiert und damit eine
-   Verbindung versprochen, die der Klick anschließend ablehnt. */
+/* Edge detachment follows the cursor. np-dock-target marks only targets accepted on click. */
 .np-canvas--detaching .react-flow__pane,
 .np-canvas--detaching .react-flow__node {
   cursor: crosshair;
@@ -2691,7 +2619,7 @@ html:not(.dark) .np-ops-bar--running {
 }
 @keyframes npOpsSheen {
   from { background-position: 220% 0, 0 0; }
-  to   { background-position: -120% 0, 0 0; }
+  to { background-position: -120% 0, 0 0; }
 }
 /* Overdue: a Running bar past Alerting:LongRunningSeconds. Declared AFTER --running so its
    animation shorthand wins — and it must re-list npOpsSheen, otherwise flagging a bar as
@@ -2705,7 +2633,7 @@ html:not(.dark) .np-ops-bar--running {
 }
 @keyframes npOpsOverdue {
   from { border-color: var(--color-warning); }
-  to   { border-color: color-mix(in srgb, var(--color-warning) 35%, transparent); }
+  to { border-color: color-mix(in srgb, var(--color-warning) 35%, transparent); }
 }
 /* Stalled: running, but no step has FINISHED for a while — sitting on one step. Distinct from
    --overdue (total age) on purpose; a long run that keeps completing steps is healthy. */
@@ -2885,7 +2813,7 @@ html:not(.dark) .np-ops-bar--running {
   background: color-mix(in srgb, var(--color-on-surface) 4%, transparent);
 }
 
-/* --- Call connectors: parent run → sub-workflow run ------------------------- */
+/* --- Call connectors: parent run -> sub-workflow run ------------------------- */
 .np-ops-connector path {
   fill: none;
   stroke: color-mix(in srgb, var(--color-primary) 75%, transparent);
@@ -2903,7 +2831,7 @@ html:not(.dark) .np-ops-bar--running {
 }
 @keyframes npOpsFlap {
   from { transform: rotateX(80deg); opacity: 0; }
-  to   { transform: rotateX(0); opacity: 1; }
+  to { transform: rotateX(0); opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3329,7 +3257,7 @@ html.dark[data-skin="dark-nebula"] .np-shell.np-login {
     radial-gradient(70% 60% at 100% 100%, color-mix(in srgb, var(--np-glow-violet) 2%, transparent) 0%, transparent 55%);
 }
 
-/* Elevation utilities → cool nebula ramp + a faint inner cyan sheen. */
+/* Elevation utilities -> cool nebula ramp + a faint inner cyan sheen. */
 html.dark[data-skin="dark-nebula"] .np-shell .shadow    { box-shadow: var(--np-nb-shadow-xs), inset 0 0 0 1px color-mix(in srgb, var(--np-nb-glow-color) 6%, transparent); }
 html.dark[data-skin="dark-nebula"] .np-shell .shadow-sm { box-shadow: var(--np-nb-shadow-sm), inset 0 0 0 1px color-mix(in srgb, var(--np-nb-glow-color) 7%, transparent); }
 html.dark[data-skin="dark-nebula"] .np-shell .shadow-md { box-shadow: var(--np-nb-shadow-md), inset 0 0 0 1px color-mix(in srgb, var(--np-nb-glow-color) 8%, transparent); }
@@ -3404,7 +3332,7 @@ html.dark[data-skin="dark-nebula"] .np-shell .bg-blue-600 {
   }
 }
 
-/* Sidebar: deep blue-black vertical gradient + a glowing cyan→violet right edge. */
+/* Sidebar: deep blue-black vertical gradient + a glowing cyan to violet right edge. */
 html.dark[data-skin="dark-nebula"] .np-shell aside {
   background: linear-gradient(180deg, #10192b 0%, #070b14 100%);
 }
@@ -3663,7 +3591,7 @@ html.dark[data-skin="dark"] {
    ──────────────────────────────────────────────────────────────────────────── */
 html:not(.dark)[data-skin="light"] .np-shell,
 html:not(.dark)[data-skin="light"] .np-designer {
-  /* Bevel: monotonically darker top → bottom. See the divergence note above. */
+  /* Bevel: monotonically darker top -> bottom. See the divergence note above. */
   --np-lt-rim-top:    rgba(23, 26, 31, 0.05);
   --np-lt-rim-side:   rgba(23, 26, 31, 0.10);
   --np-lt-rim-bottom: rgba(23, 26, 31, 0.17);

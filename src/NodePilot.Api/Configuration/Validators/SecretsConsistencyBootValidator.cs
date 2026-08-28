@@ -1,20 +1,16 @@
 namespace NodePilot.Api.Configuration.Validators;
 
 /// <summary>
-/// Pre-flight check for <c>Secrets:Provider</c> consistency. The
-/// <see cref="NodePilot.Data.Security.SecretProtectorBootstrapFactory"/> already
-/// throws on the same conditions during configuration load (it has to — the
-/// encrypting JSON provider needs the protector built before DI exists), but
-/// duplicating the rule here as an <see cref="IBootValidator"/> serves two
-/// distinct callers:
+/// Pre-flight check for <c>Secrets:Provider</c> consistency.
+/// <see cref="NodePilot.Data.Security.SecretProtectorBootstrapFactory"/> already enforces the
+/// same rule during configuration load, but this validator, as an <see cref="IBootValidator"/>,
+/// serves two other callers:
 ///
 /// <list type="bullet">
-///   <item><b>Save-side reuse:</b> The Admin Settings API runs every validator
-///   against the simulated post-save config so a write that would brick the next
-///   boot is rejected with 400 instead of silently persisted.</item>
-///   <item><b>Aggregated boot errors:</b> The factory fails on the first conflict;
-///   this validator collects all secrets-related issues so the operator can fix
-///   them in a single restart cycle.</item>
+///   <item><b>Save-side reuse:</b> the Admin Settings API runs it against the simulated
+///   post-save config and rejects a write that would break the next boot.</item>
+///   <item><b>Aggregated boot errors:</b> the factory stops at the first conflict; this
+///   validator collects every secrets issue so one restart fixes them all.</item>
 /// </list>
 /// </summary>
 public sealed class SecretsConsistencyBootValidator : IBootValidator

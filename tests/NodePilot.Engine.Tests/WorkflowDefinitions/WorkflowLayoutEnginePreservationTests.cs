@@ -10,7 +10,8 @@ namespace NodePilot.Engine.Tests.WorkflowDefinitions;
 /// geometry, not just the one export the SCOrch importer was measured against.
 ///
 /// <para>The tuning that matters — the assumed node footprint — comes from the designer's own size
-/// table (the default icon view at step <c>lg</c>, whose 108 px label column is the widest part of a
+/// table (the default icon view at step <c>lg</c>, whose 108 px label column is the widest part of
+/// a
 /// node), not from any particular runbook. The scale itself is derived per graph from its own
 /// tightest pair. These tests pin that: a source drawn on a fine grid must come out further apart
 /// than one drawn on a coarse grid, and neither may overlap.</para>
@@ -19,7 +20,8 @@ public class WorkflowLayoutEnginePreservationTests
 {
     private static readonly PreservedLayoutOptions Options = new();
 
-    /// <summary>Builds one node object; plain concatenation keeps the JSON braces unambiguous.</summary>
+    /// <summary>Builds one node object; plain concatenation keeps the JSON braces
+    /// unambiguous.</summary>
     private static string Node(string id, double x, double y)
     {
         var ci = System.Globalization.CultureInfo.InvariantCulture;
@@ -37,7 +39,8 @@ public class WorkflowLayoutEnginePreservationTests
             "{\"nodes\":[" + string.Join(",", nodes)
             + "],\"edges\":[" + string.Join(",", edges ?? []) + "]}");
 
-    /// <summary>A grid of nodes <paramref name="step"/> apart, optionally with odd rows offset.</summary>
+    /// <summary>A grid of nodes <paramref name="step"/> apart, optionally with odd rows
+    /// offset.</summary>
     private static JsonElement Grid(int columns, int rows, double step, double jitter = 0)
     {
         var nodes = new List<string>();
@@ -92,9 +95,11 @@ public class WorkflowLayoutEnginePreservationTests
 
     /// <summary>
     /// A source that is already roomy enough must not be blown up further — the scale is the
-    /// smallest one that fits, so a wide-drawn runbook keeps its size and is only moved to the origin.
+    /// smallest one that fits, so a wide-drawn runbook keeps its size and is only moved to the
+    /// origin.
     ///
-    /// <para>Edge-free on purpose, as is <see cref="TighterSources_AreScaledUpMoreThanRoomierOnes"/>:
+    /// <para>Edge-free on purpose, as is <see
+    /// cref="TighterSources_AreScaledUpMoreThanRoomierOnes"/>:
     /// both read spacing off the distinct x values, and the edge pass is allowed to push individual
     /// nodes right, which would turn "the spacing" into a set of different numbers.</para>
     /// </summary>
@@ -134,7 +139,8 @@ public class WorkflowLayoutEnginePreservationTests
         roomy.Should().Be(200);
     }
 
-    /// <summary>Irregular, non-grid sources are reproducible too — nothing assumes a lattice.</summary>
+    /// <summary>Irregular, non-grid sources are reproducible too — nothing assumes a
+    /// lattice.</summary>
     [Fact]
     public void IrregularlySpacedSource_IsReproducedWithoutOverlap()
     {
@@ -156,7 +162,8 @@ public class WorkflowLayoutEnginePreservationTests
     }
 
     /// <summary>
-    /// Two nodes on the same point are the one geometry no scale can fix, at any density. The caller
+    /// Two nodes on the same point are the one geometry no scale can fix, at any density. The
+    /// caller
     /// gets null and falls back to laying the graph out.
     /// </summary>
     [Fact]
@@ -303,7 +310,8 @@ public class WorkflowLayoutEnginePreservationTests
     ///
     /// <para>Compared against the source node rather than against the canvas: the finished graph is
     /// translated back to the margin, so if the pushed node was the leftmost one, every absolute x
-    /// shifts. What must hold is that nothing moves relative to anything else except the target.</para>
+    /// shifts. What must hold is that nothing moves relative to anything else except the
+    /// target.</para>
     /// </summary>
     [Fact]
     public void EdgePointingLeft_PushesOnlyItsTarget_OnlyRight_AndNeverVertically()
@@ -360,7 +368,8 @@ public class WorkflowLayoutEnginePreservationTests
 
     /// <summary>
     /// A cycle cannot have all of its edges pointing forward, so the pass exempts the edges that
-    /// close one — and must not spin trying to satisfy them. Both shapes matter: a cycle hanging off
+    /// close one — and must not spin trying to satisfy them. Both shapes matter: a cycle hanging
+    /// off
     /// the rest of the graph, and one with no path into it at all. The second is the one a
     /// roots-only traversal never colours, and it hangs rather than fails.
     /// </summary>
@@ -405,7 +414,8 @@ public class WorkflowLayoutEnginePreservationTests
     }
 
     /// <summary>
-    /// A disabled edge still gets drawn — dashed and faded, but drawn — so it is part of the picture
+    /// A disabled edge still gets drawn — dashed and faded, but drawn — so it is part of the
+    /// picture
     /// this pass exists to fix, and it constrains the layout like any other.
     /// </summary>
     [Fact]

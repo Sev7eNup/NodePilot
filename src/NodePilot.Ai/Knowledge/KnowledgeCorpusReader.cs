@@ -1,12 +1,11 @@
 namespace NodePilot.Ai.Knowledge;
 
 /// <summary>
-/// The corpus mechanics shared by <see cref="DocsKnowledgeReader"/> and
+/// Corpus mechanics shared by <see cref="DocsKnowledgeReader"/> and
 /// <see cref="SourceCodeKnowledgeReader"/>: root resolution (configured value, else
-/// <c>{AppBaseDir}/knowledge/&lt;folder&gt;</c>), availability, live keyword search, and the guarded
-/// read — traversal guard → the corpus' own eligibility gates → existence → size cap → IO.
-/// Every corpus supplies its own eligibility rules <b>and its own rejection wording</b>, so the
-/// message a caller sees stays corpus-specific; only the order of the gates is shared.
+/// <c>{AppBaseDir}/knowledge/&lt;folder&gt;</c>), availability, keyword search, and a guarded read
+/// (traversal guard, then corpus eligibility gates, existence, size cap, IO). Each corpus brings
+/// its own eligibility rules and rejection wording; only the order of the gates is shared.
 /// </summary>
 internal sealed class KnowledgeCorpusReader(
     Func<string?> configuredRoot,
@@ -16,7 +15,7 @@ internal sealed class KnowledgeCorpusReader(
     string notFoundError,
     string unreadableError)
 {
-    /// <summary>Traversal rejection — identical for every corpus, the guard is root-agnostic.</summary>
+    /// <summary>Traversal rejection message; the guard is root-agnostic, so it is shared.</summary>
     private const string InvalidPathError = "Ungültiger oder unerlaubter Pfad.";
 
     public string Root

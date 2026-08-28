@@ -16,8 +16,9 @@ public static class ServiceCollectionExtensions
     /// Abstract classes (e.g. <c>BaseRemoteActivity</c>) are skipped.
     ///
     /// Also registers the default <see cref="ISubWorkflowGate"/> (process-wide cap on
-    /// concurrent sub-workflows). Capacity defaults to <see cref="InMemorySubWorkflowGate.DefaultCapacity"/>
-    /// (128); override per-deployment by replacing the registration before this call.
+    /// concurrent sub-workflows). Capacity defaults to <see
+    /// cref="InMemorySubWorkflowGate.DefaultCapacity"/>
+    /// (128); override it with an earlier deployment-specific registration.
     /// </summary>
     public static IServiceCollection AddNodePilotActivities(this IServiceCollection services)
     {

@@ -46,8 +46,8 @@ describe('ConfirmHost', () => {
   });
 
   it('details_renderAsAList', async () => {
-    // Added for the folder delete: naming what goes lets the reader check the dialog against
-    // what they meant to select, which a bare count cannot.
+    // Listing the affected items by name lets the user check the dialog against what they
+    // selected; a bare count cannot.
     render(<ConfirmHost />);
     void confirmDialog({
       message: 'Delete these?',
@@ -60,7 +60,7 @@ describe('ConfirmHost', () => {
   });
 
   it('withoutDetails_rendersNoList', async () => {
-    // Every existing caller passes no details — they must not grow an empty box.
+    // Callers that pass no details must not get an empty list box.
     render(<ConfirmHost />);
     void confirmDialog('Just a question?');
     expect(await screen.findByText('Just a question?')).toBeInTheDocument();

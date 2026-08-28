@@ -67,11 +67,11 @@ public class MaintenanceWindowStore : IMaintenanceWindowStore
         existing.UpdatedAt = DateTime.UtcNow;
         existing.UpdatedBy = updatedBy;
 
-        // Replace the full target set — caller sends the desired state, not a diff. Remove the old
-        // rows and add the new ones through the DbSet directly (NOT via the navigation): targets
-        // carry a client-assigned Guid key, and adding them through a tracked parent's collection
-        // makes EF infer "Modified" rather than "Added", producing a phantom UPDATE that affects
-        // zero rows. Explicit Add/Remove pins the intended INSERT/DELETE state.
+        // Replace the full target set — caller sends the desired state, not a diff. Add and remove
+        // through the DbSet directly, not via the navigation: targets carry a client-assigned Guid
+        // key, and adding them through a tracked parent's collection makes EF infer "Modified"
+        // instead of "Added", producing a phantom UPDATE that affects zero rows. Explicit
+        // Add/Remove pins the intended INSERT/DELETE state.
         _db.MaintenanceWindowTargets.RemoveRange(existing.Targets);
         _db.MaintenanceWindowTargets.AddRange(NormalizeTargets(draft, existing.Id));
 

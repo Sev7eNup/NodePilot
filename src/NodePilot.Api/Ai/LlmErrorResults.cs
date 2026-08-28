@@ -4,21 +4,19 @@ using NodePilot.Ai;
 namespace NodePilot.Api.Ai;
 
 /// <summary>
-/// The single <see cref="LlmException"/> → HTTP mapping for the JSON (non-SSE) AI
+/// The single <see cref="LlmException"/> to HTTP mapping for the JSON (non-SSE) AI
 /// endpoints, plus the 503/502 result helpers the AI controllers share. Codes come
 /// from <see cref="LlmErrorCodes"/> so the JSON path and the SSE <c>error</c> events
-/// always report the same code. Previously each of the three AI controllers carried a
-/// verbatim private copy of all three methods (coherence audit 2026-08).
+/// always report the same code.
 /// </summary>
 internal static class LlmErrorResults
 {
     /// <summary>
     /// Maps by <see cref="LlmException.Kind"/>: infrastructure problems (unreachable,
-    /// timeout, auth, rate limit) → 503 so clients may retry after fixing config;
-    /// weaknesses in the upstream response (malformed body, invalid JSON) → 502.
+    /// timeout, auth, rate limit) become 503 so clients may retry after fixing config;
+    /// a bad upstream response (malformed body, invalid JSON) becomes 502.
     /// <see cref="LlmException.BodyExcerpt"/> is included for <c>UpstreamError</c> so the
-    /// user sees the real upstream error message (e.g. "context_length_exceeded") instead
-    /// of just "LLM endpoint returned HTTP 400".
+    /// user sees the real upstream error message instead of only the HTTP status.
     /// </summary>
     public static ActionResult MapLlmException(
         this ControllerBase controller, ILogger logger, LlmException ex, string logContext)
@@ -35,8 +33,8 @@ internal static class LlmErrorResults
                 "LLM endpoint rate-limited the request. Try again shortly."),
             LlmErrorKind.MalformedResponse => controller.LlmBadGateway(code, ex.Message, ex.BodyExcerpt),
             LlmErrorKind.UpstreamError => controller.LlmBadGateway(code,
-                // Not every upstream error is an HTTP status: the Responses API reports a failed
-                // run inside an HTTP 200 body, and "returned HTTP ." helps nobody.
+                // Not every upstream error carries an HTTP status: the Responses API reports a
+                // failed run inside an HTTP 200 body, so fall back to the exception message.
                 ex.HttpStatus is int status ? $"LLM endpoint returned HTTP {status}." : ex.Message,
                 ex.BodyExcerpt),
             _ => controller.StatusCode(StatusCodes.Status500InternalServerError,

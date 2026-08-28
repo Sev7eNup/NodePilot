@@ -15,7 +15,7 @@ export function useWorkflowSimulation(nodes: Node[], edges: Edge[]) {
   useEffect(() => {
     if (!simulation) { setRevealIndex(0); return; }
     if (revealIndex >= simulation.order.length) return;
-    // 180 ms/step — long enough to follow the flow, short enough not to annoy.
+    // Reveal one step every 180 ms so the flow stays readable.
     const t = globalThis.setTimeout(() => setRevealIndex((i) => i + 1), 180);
     return () => globalThis.clearTimeout(t);
   }, [simulation, revealIndex]);
@@ -38,9 +38,8 @@ export function useWorkflowSimulation(nodes: Node[], edges: Edge[]) {
       outgoing.get(e.source)!.push(e.target);
     }
     const disabledIds = new Set(liveNodes.filter((n) => (n.data as Record<string, unknown>)?.disabled).map((n) => n.id));
-    // Roots are trigger-only, exactly like the engine: a graph without an (enabled) trigger has no
-    // entry point, so the preview shows "nothing runs" instead of falsely promoting an inDegree-0
-    // activity to a start node.
+    // Roots are trigger nodes only, matching the engine. A graph without an enabled trigger has
+    // no entry point, so the preview reports that nothing runs.
     const queue: string[] = liveNodes
       .filter((n) => {
         const d = (n.data as Record<string, unknown>) ?? {};

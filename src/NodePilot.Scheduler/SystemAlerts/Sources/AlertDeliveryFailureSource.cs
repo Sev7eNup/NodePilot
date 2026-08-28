@@ -6,9 +6,12 @@ using NodePilot.Data;
 namespace NodePilot.Scheduler.SystemAlerts.Sources;
 
 /// <summary>
-/// Meta / self-monitoring source: how many alert deliveries have terminally failed in a trailing window
-/// (parameter <c>windowMinutes</c>, default 15). This is the only way to notice that the alerting pipeline
-/// itself is silently failing to deliver (SMTP down, webhook 5xx) — the alarm about the broken alarms.
+/// Meta / self-monitoring source: how many alert deliveries have terminally failed in a trailing
+/// window
+/// (parameter <c>windowMinutes</c>, default 15). This is the only way to notice that the alerting
+/// pipeline
+/// itself is silently failing to deliver (SMTP down, webhook 5xx) — the alarm about the broken
+/// alarms.
 /// Field <c>failures</c>.
 /// </summary>
 public sealed class AlertDeliveryFailureSource : ISystemAlertSource

@@ -42,8 +42,8 @@ describe('useWorkflowSimulation', () => {
   });
 
   it('runSimulation_disabledNode_isNeverReachable_andDownstreamSkipped', () => {
-    // Node-level disabled flag means the node is never reached, and edges out of it
-    // don't contribute. A solo downstream gets marked Skipped.
+    // A disabled node is never reached and its outgoing edges do not propagate, so a
+    // downstream node with no other parent is marked skipped.
     const nodes = [
       triggerNode('a'),
       activityNode('b', { disabled: true }),
@@ -56,13 +56,13 @@ describe('useWorkflowSimulation', () => {
 
     expect(result.current.simulation!.reachable.has('a')).toBe(true);
     expect(result.current.simulation!.reachable.has('b')).toBe(false);
-    // c has no other parent — once b is disabled, c becomes unreachable.
+    // c has no other parent, so it becomes unreachable once b is disabled.
     expect(result.current.simulation!.skipped.has('c')).toBe(true);
   });
 
   it('runSimulation_disabledEdge_doesNotPropagate', () => {
     const nodes = [triggerNode('a'), activityNode('b'), activityNode('c')];
-    // Two paths a→b: one direct, one disabled. Direct should still reach b. c disconnected.
+    // Two edges leave a: a live one to b and a disabled one to c, so only b is reached.
     const edges = [edge('e1', 'a', 'b'), edge('e2', 'a', 'c', { disabled: true })];
 
     const { result } = renderHook(() => useWorkflowSimulation(nodes, edges));
@@ -73,8 +73,8 @@ describe('useWorkflowSimulation', () => {
   });
 
   it('runSimulation_failedConditionEdge_doesNotPropagate', () => {
-    // The simulator filters edges whose condition ends in ".failed" — those represent
-    // error-handling paths that shouldn't be in the optimistic preview.
+    // The simulator drops edges whose condition ends in ".failed": they are error-handling
+    // paths and stay out of the optimistic preview.
     const nodes = [triggerNode('main'), activityNode('handler')];
     const edges = [edge('e', 'main', 'handler', { condition: 'main.failed' })];
 
@@ -82,14 +82,13 @@ describe('useWorkflowSimulation', () => {
     act(() => result.current.runSimulation());
 
     expect(result.current.simulation!.reachable.has('main')).toBe(true);
-    // A .failed-only edge into handler must NOT include it in the happy-path simulation.
+    // An edge into handler carrying only a .failed condition keeps it out of the preview.
     expect(result.current.simulation!.skipped.has('handler')).toBe(true);
   });
 
   it('runSimulation_noteNodes_excludedFromGraph', () => {
-    // Note/annotation nodes are layout decoration only — they must not show up in either
-    // reachable or skipped sets, otherwise the canvas highlight would visually mark
-    // sticky-note shapes as steps.
+    // Annotation nodes are layout decoration and belong in neither the reachable nor the
+    // skipped set, otherwise the canvas highlight would mark sticky notes as steps.
     const nodes = [activityNode('a'), noteNode('note1')];
     const edges: Edge[] = [];
 
@@ -101,9 +100,9 @@ describe('useWorkflowSimulation', () => {
   });
 
   it('runSimulation_branchingGraph_orderIsBfsLike', () => {
-    // Triangle: a→b, a→c, b→d, c→d. BFS-style traversal visits a first, then b/c at the
-    // same depth, then d. Pinning the order shape (not exact b-vs-c) so a refactor that
-    // switches to DFS would break the test.
+    // Diamond graph: a to b, a to c, b to d, c to d. Traversal is breadth-first, so a comes
+    // first, b and c follow at the same depth, then d. The assertions pin that shape rather
+    // than the exact position of b against c.
     const nodes = [triggerNode('a'), activityNode('b'), activityNode('c'), activityNode('d')];
     const edges = [edge('e1', 'a', 'b'), edge('e2', 'a', 'c'), edge('e3', 'b', 'd'), edge('e4', 'c', 'd')];
 
@@ -144,8 +143,7 @@ describe('useWorkflowSimulation', () => {
   });
 
   it('revealIndex_advancesOver180msIntervals', () => {
-    // The reveal animation steps once per 180ms. Pin the cadence so a refactor that
-    // changes the timing surfaces here.
+    // The reveal animation advances one node per 180ms.
     const nodes = [triggerNode('a'), activityNode('b'), activityNode('c')];
     const edges = [edge('e1', 'a', 'b'), edge('e2', 'b', 'c')];
     const { result } = renderHook(() => useWorkflowSimulation(nodes, edges));
@@ -153,13 +151,13 @@ describe('useWorkflowSimulation', () => {
     act(() => result.current.runSimulation());
     const totalNodes = result.current.simulation!.order.length;
 
-    // Initial: 0. After 180ms: 1. After 360ms: 2. ...
+    // The index starts at 0, reaches 1 after 180ms and 2 after 360ms.
     act(() => { vi.advanceTimersByTime(180); });
     expect(result.current.revealIndex).toBe(1);
     act(() => { vi.advanceTimersByTime(180); });
     expect(result.current.revealIndex).toBe(2);
 
-    // Run to completion — revealIndex stops once it reaches order.length.
+    // Run to completion: revealIndex stops once it reaches order.length.
     act(() => { vi.advanceTimersByTime(180 * (totalNodes + 5)); });
     expect(result.current.revealIndex).toBe(totalNodes);
   });

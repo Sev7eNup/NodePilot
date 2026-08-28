@@ -6,9 +6,8 @@ import { useVariableAutocomplete } from '../../../components/designer/properties
 import type { UpstreamVariable } from '../../../lib/upstreamVariables';
 
 /**
- * useVariableAutocomplete is the brain behind the `{{`-driven dropdown. We pin the
- * cursor-aware open/close logic, the filter behavior, the keyboard handling, and the
- * pick splice — these are easy to break in subtle ways.
+ * Tests for useVariableAutocomplete, the hook behind the `{{`-driven suggestion dropdown.
+ * Covers the cursor-aware open/close logic, filtering, keyboard handling, and the pick splice.
  */
 
 beforeEach(() => {
@@ -124,8 +123,8 @@ describe('useVariableAutocomplete', () => {
 
     act(() => result.current.api.refresh());
 
-    // Filter is "a" — both 'a.output' and labels containing 'a' may match. Pin that the
-    // filtered list is non-empty and contains the 'a.output' suggestion.
+    // Filter is "a", so both 'a.output' and labels containing 'a' may match. The filtered
+    // list must contain the 'a.output' suggestion.
     const expressions = result.current.api.filtered.map((s) => s.expression);
     expect(expressions).toContain('{{a.output}}');
   });
@@ -205,7 +204,7 @@ describe('useVariableAutocomplete', () => {
       } as unknown as React.KeyboardEvent<HTMLInputElement>)
     );
 
-    // The first suggestion (selectedIdx=0) is picked → the partial "{{" is replaced.
+    // The first suggestion (selectedIdx=0) is picked, so the partial "{{" is replaced.
     expect(getValue()).not.toBe(value);
     expect(getValue()).toMatch(/^\{\{/);
   });
@@ -231,7 +230,7 @@ describe('useVariableAutocomplete', () => {
       } as unknown as React.KeyboardEvent<HTMLInputElement>)
     );
 
-    // Closed dropdown → handler bails out before preventDefault.
+    // With the dropdown closed the handler returns before calling preventDefault.
     expect(preventDefault).not.toHaveBeenCalled();
   });
 });

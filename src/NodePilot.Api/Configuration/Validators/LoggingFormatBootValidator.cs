@@ -1,12 +1,10 @@
 namespace NodePilot.Api.Configuration.Validators;
 
 /// <summary>
-/// Catches the silent-fallback trap in <c>Logging:Format</c>. The formatter factory
-/// in <c>LogFormatters.Create</c> returns null for any unrecognised value, which the
-/// logging setup then treats as "fall back to plain text output template". On a
-/// production deployment expecting ECS-JSON, a typo like <c>"ecs-jsom"</c> would
-/// quietly downgrade the rolling file to plain text and break SIEM ingestion without
-/// any other signal. Validating the value at boot turns that into a loud error.
+/// Validates <c>Logging:Format</c> at boot. <c>LogFormatters.Create</c> returns null for any
+/// unrecognised value, and the logging setup silently falls back to plain text output. On a
+/// deployment expecting ECS-JSON, a typo would break SIEM ingestion with no other signal — this
+/// turns that into a loud boot error instead.
 /// </summary>
 public sealed class LoggingFormatBootValidator : IBootValidator
 {
@@ -27,7 +25,7 @@ public sealed class LoggingFormatBootValidator : IBootValidator
     public void Validate(IConfiguration configuration, IList<BootValidationIssue> issues)
     {
         var format = configuration["Logging:Format"];
-        if (string.IsNullOrWhiteSpace(format)) return;  // null/empty → plain text default, fine.
+        if (string.IsNullOrWhiteSpace(format)) return;  // null or empty is the plain text default, fine.
 
         var normalized = format.Trim().ToLowerInvariant();
         if (Array.Exists(KnownFormats, k => k == normalized)) return;

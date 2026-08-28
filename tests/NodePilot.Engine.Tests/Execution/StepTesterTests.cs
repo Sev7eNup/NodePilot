@@ -432,17 +432,14 @@ public class StepTesterTests
         // raw secret values must be replaced with "***" before the response leaves StepTester.
         result.Output.Should().NotContain("hunter2");
         result.Output.Should().Contain("***");
-        // JWT shape has no capture group → fully replaced with the placeholder.
+        // JWT shape has no capture group -> fully replaced with the placeholder.
         result.OutputParameters["leakedToken"].Should().Be(OutputRedactor.Placeholder);
     }
 
     /// <summary>
-    /// Step-test must assemble its variables through VariableResolver.BuildStepVariables —
-    /// the same path as the production StepRunner — so alias semantics and the M-23
-    /// short-name denylist match a real run: a mocked upstream param gets its unqualified
-    /// alias (`hostName`), an auth-bearing name (`Authorization`) does NOT, `.success`
-    /// derives automatically, and non-step-shaped mock keys (globals overrides) still land
-    /// verbatim. The dict was previously hand-built and skipped all of that.
+    /// Verifies that step tests use <c>VariableResolver.BuildStepVariables</c> for production
+    /// alias,
+    /// success, and sensitive-name semantics while preserving explicit mock-only keys.
     /// </summary>
     [Fact]
     public async Task TestStepAsync_MockStepParams_FollowProductionAliasAndDenylistSemantics()
@@ -507,8 +504,8 @@ public class StepTesterTests
     }
 
     /// <summary>
-    /// Activity that emits known token-shaped strings on stdout and as an output parameter.
-    /// Used to verify <see cref="OutputRedactor"/> is wired into the step-test return path.
+    /// Activity that emits known token-shaped strings to verify that
+    /// <see cref="OutputRedactor"/> protects the step-test return path.
     /// </summary>
     private sealed class LeakySecretActivity : IActivityExecutor
     {

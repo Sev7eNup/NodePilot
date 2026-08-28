@@ -7,9 +7,9 @@ using Xunit;
 namespace NodePilot.Api.Tests.Configuration.Validators;
 
 /// <summary>
-/// Migrated from the deleted ClusterConfigValidatorTests — same rules, expressed
-/// through the IBootValidator interface so the Save-side path (Settings API) can
-/// reuse the validator against a simulated post-save configuration.
+/// Exercises the cluster validation rules through the IBootValidator interface so the
+/// Save-side path (Settings API) can reuse the validator against a simulated
+/// post-save configuration.
 /// </summary>
 public class ClusterBootValidatorTests
 {

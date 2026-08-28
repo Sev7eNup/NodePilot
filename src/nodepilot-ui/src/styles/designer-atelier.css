@@ -36,10 +36,8 @@ html .np-designer.wd-atelier {
   /* Geometry & voice (universal — skins never touch these) */
   --wd-radius:       14px;
   --wd-gap:          10px;
-  /* Der Skin führt keinen eigenen Mono-Stack mehr: seit die App mit `--font-mono`
-     einen verbindlichen hat (IBM Plex Mono), wäre eine zweite Liste hier nur eine
-     Driftquelle. Das Token bleibt als Skin-Angelpunkt bestehen — die drei
-     Konsumenten unten (F. Typography, Microlabels) sprechen weiter `--wd-mono` an. */
+  /* Reuse the application mono stack so skin typography cannot drift from `--font-mono`.
+     Keep this token as the shared hook for the consumers below. */
   --wd-mono: var(--font-mono);
   --wd-shadow-panel: 0 1px 2px rgba(27, 30, 36, 0.05), 0 8px 24px -12px rgba(27, 30, 36, 0.18);
   --wd-shadow-float: 0 2px 6px -2px rgba(27, 30, 36, 0.10), 0 16px 40px -16px rgba(27, 30, 36, 0.25);
@@ -271,7 +269,7 @@ html[data-skin="light-bank"] .np-designer.wd-atelier {
   --wd-outline-variant: #e4e7ec;
 }
 
-/* ── D. Token mapping — palettes → the app's design tokens (declared ONCE;
+/* ── D. Token mapping — palettes -> the app's design tokens (declared ONCE;
        every skin flows through the vars). Ties with the per-skin `.np-designer`
        blocks in index.css → source order (this file loads last) wins. ───────── */
 html .np-designer.wd-atelier,
@@ -490,7 +488,7 @@ html.dark.wd-atelier-on .np-tooltip-portal {
     var(--wd-canvas);
 }
 
-/* Header → slim floating toolbar card */
+/* Header -> slim floating toolbar card */
 .np-designer.wd-atelier .np-editor-header {
   margin: var(--wd-gap) var(--wd-gap) 0;
   padding: 6px 14px;
@@ -622,7 +620,7 @@ html.dark .wd-atelier .np-premium .np-btn-node-inner svg {
   filter: none;
 }
 
-/* Edge condition glow (dark premium) → off; condition colour lives in the stroke */
+/* Edge condition glow (dark premium) -> off; condition colour lives in the stroke */
 html.dark .wd-atelier .np-premium .np-edge-g--success path.react-flow__edge-path,
 html.dark .wd-atelier .np-premium .np-edge-g--failed path.react-flow__edge-path,
 html.dark .wd-atelier .np-premium .np-edge-g--custom path.react-flow__edge-path {

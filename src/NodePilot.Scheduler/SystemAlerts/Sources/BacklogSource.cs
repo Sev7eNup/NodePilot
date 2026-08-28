@@ -8,7 +8,8 @@ namespace NodePilot.Scheduler.SystemAlerts.Sources;
 /// <summary>
 /// Global metric source: the count of in-flight executions (Pending + Running). Exposes a single
 /// <c>depth</c> field on one constant-key observation ("backlog") — a policy decides the threshold
-/// (<c>depth &gt; N</c>) and sustain window, replacing the old fixed <c>Alerting:Gauge:BacklogThreshold</c>.
+/// (<c>depth &gt; N</c>) and sustain window, replacing the old fixed
+/// <c>Alerting:Gauge:BacklogThreshold</c>.
 /// </summary>
 public sealed class BacklogSource : ISystemAlertSource
 {

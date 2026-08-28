@@ -94,7 +94,7 @@ public sealed class CommandTestHarness : IDisposable
             fullArgs.Add("--allow-insecure");
 
         // CommandAppTester captures Spectre's IAnsiConsole, but JSON/YAML output goes
-        // through Console.Out directly (no Markup). OutputWriter ALSO writes its log-style
+        // through Console.Out directly (no Markup). OutputWriter also writes its log-style
         // messages (.Info/.Warning/.Error/.Success) to a Spectre console that wraps
         // Console.Error. Capture both streams so tests can assert on either — exit codes
         // matter most, but command-side validation errors only show up on stderr.
@@ -130,6 +130,6 @@ public sealed class CommandTestHarness : IDisposable
 /// </summary>
 public sealed record RunResult(int ExitCode, string Output, string StdErr = "")
 {
-    /// <summary>Convenience for older tests: union of stdout + stderr.</summary>
+    /// <summary>Convenience accessor: union of stdout and stderr.</summary>
     public string AnyOutput => Output + StdErr;
 }

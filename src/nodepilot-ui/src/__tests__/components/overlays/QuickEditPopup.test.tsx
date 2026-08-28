@@ -4,14 +4,11 @@ import type { Node } from '@xyflow/react';
 import { QuickEditPopup } from '../../../components/designer/overlays/QuickEditPopup';
 
 /**
- * QuickEditPopup edits a single primary field of a node (script, url, query, …) without
- * opening the full PropertiesPanel. We pin:
- *   - Renders the right field type (input vs textarea) per activity type
- *   - Initial value reflects current config
- *   - Save calls onSave with a *partial* config patch (only the edited key) and closes
- *   - Cancel/Escape closes without saving
- *   - `seconds` field coerces to number
- *   - Unknown activity types render nothing
+ * QuickEditPopup edits a single primary field of a node (script, url, query) without opening
+ * the full PropertiesPanel. These tests cover the field type and initial value per activity
+ * type, Save passing a partial config patch that holds only the edited key, Cancel and Escape
+ * closing without saving, the seconds field coercing to a number, and unknown activity types
+ * rendering nothing.
  */
 
 function makeNode(activityType: string, configValues: Record<string, unknown> = {}): Node {
@@ -30,7 +27,6 @@ describe('QuickEditPopup', () => {
       <QuickEditPopup node={node} screenX={100} screenY={300} onSave={vi.fn()} onClose={vi.fn()} />
     );
 
-    // textarea with the script value
     const textarea = screen.getByDisplayValue('Get-Service');
     expect(textarea.tagName).toBe('TEXTAREA');
   });
@@ -95,8 +91,8 @@ describe('QuickEditPopup', () => {
     fireEvent.keyDown(screen.getByDisplayValue('https://x'), { key: 'Escape' });
 
     expect(onSave).not.toHaveBeenCalled();
-    // Escape fires both the input's onKeyDown and the global window keydown listener;
-    // both invoke onClose. We only care that close happens, not the count.
+    // Escape fires both the input's onKeyDown and the global window keydown listener, and
+    // both call onClose, so assert that it happened rather than how often.
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -126,7 +122,7 @@ describe('QuickEditPopup', () => {
     fireEvent.click(screen.getByText('Save'));
 
     expect(onSave).toHaveBeenCalledWith('step-1', { seconds: 42 });
-    // Critical: number, not string '42'.
+    // The saved value must be a number, not the string '42'.
     const arg = onSave.mock.calls[0][1] as { seconds: unknown };
     expect(typeof arg.seconds).toBe('number');
   });
@@ -151,13 +147,13 @@ describe('QuickEditPopup', () => {
 
   it('positionsLeftWithinViewport', () => {
     const node = makeNode('restApi', { url: 'x' });
-    // Place screenX way past the viewport — popup left should clamp to viewport - width - 16.
+    // screenX sits past the viewport, so the popup left edge clamps to viewport - width - 16.
     const { container } = render(
       <QuickEditPopup node={node} screenX={9999} screenY={500} onSave={vi.fn()} onClose={vi.fn()} />
     );
     const popup = container.firstChild as HTMLElement;
     const left = parseInt(popup.style.left, 10);
-    // Viewport in jsdom defaults to 1024 wide; popup width 360 + 16px gutter = clamps to 648.
+    // jsdom uses a 1024px viewport; a 360px popup plus a 16px gutter clamps left to 648.
     expect(left).toBeLessThan(9999);
   });
 });

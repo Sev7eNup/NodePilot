@@ -30,11 +30,10 @@ public sealed class EncryptingJsonConfigurationSource : JsonConfigurationSource
         // relies on internally — must be called before constructing the provider or any reload
         // attempt will throw a NullReferenceException on the FileProvider field.
         //
-        // The base implementation expects Path to be relative to the builder's FileProvider
-        // (which is rooted at ContentRoot). The runtime overrides path is typically absolute
-        // (e.g. C:\ProgramData\NodePilot\appsettings.runtime.json) — when that's the case we
-        // have to set up our own PhysicalFileProvider rooted at the file's directory and
-        // strip Path down to just the filename, otherwise the loader can't find the file.
+        // JsonConfigurationSource resolves Path relative to the builder's FileProvider, rooted
+        // at ContentRoot. The runtime overrides path is typically absolute (e.g.
+        // C:\ProgramData\NodePilot\appsettings.runtime.json), so point FileProvider at the
+        // file's own directory and reduce Path to just the filename, or the loader can't find it.
         if (FileProvider is null && !string.IsNullOrEmpty(Path) && System.IO.Path.IsPathRooted(Path))
         {
             var directory = System.IO.Path.GetDirectoryName(Path);

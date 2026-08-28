@@ -66,10 +66,8 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
 
   const setDeleteMode = (mode: DeleteMode) => {
     const patch: Record<string, unknown> = {};
-    // Clear the keys that don't belong to the new sub-mode so the activity-side validation
-    // sees exactly one of {lineNumber, lineRange, matchPattern}. Without this the user could
-    // toggle the segmented control and leave stale keys behind, which the C# validation would
-    // reject as "accepts only one of …".
+    // Clear the keys that don't belong to the new sub-mode so validation sees exactly one
+    // of {lineNumber, lineRange, matchPattern} instead of stale leftovers from a previous mode.
     if (mode !== 'line') patch.lineNumber = undefined;
     if (mode !== 'range') patch.lineRange = undefined;
     if (mode !== 'pattern') {

@@ -207,7 +207,7 @@ describe('ExecutionsPage', () => {
   it('shows the trigger label for an execution', async () => {
     mockList();
     renderPage();
-    // TriggerCell maps 'manual' → 'Manual'; unknown raw values (here 'schedule') pass through.
+    // TriggerCell maps 'manual' -> 'Manual'; unknown raw values (here 'schedule') pass through.
     await waitFor(() => expect(screen.getByText('Manual')).toBeInTheDocument());
     expect(screen.getByText('schedule')).toBeInTheDocument();
   });

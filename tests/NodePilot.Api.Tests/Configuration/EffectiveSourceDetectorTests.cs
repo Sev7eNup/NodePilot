@@ -112,10 +112,9 @@ public sealed class EffectiveSourceDetectorTests : IDisposable
             .AddJsonFile(basePath)
             .AddJsonFile(prodPath)
             .Build();
-        // Both sources have the key; the LATER one (production) wins lookup, so detector
-        // must report production — not appsettings. Otherwise the UI would label the
-        // field as appsettings-source and let the operator save without realising
-        // production.json is still overriding.
+        // Both files define the key; the later one (production) wins the lookup, so the
+        // detector must report production, not appsettings — otherwise the UI would let the
+        // operator save without noticing production.json still overrides the value.
         EffectiveSourceDetector.Detect(root, "X").Should().Be(EffectiveSourceDetector.SourceProduction);
     }
 
@@ -148,7 +147,7 @@ public sealed class EffectiveSourceDetectorTests : IDisposable
     [Fact]
     public void DetectNonRuntimeSource_OnlyInRuntimeFile_ReturnsNull()
     {
-        // The Settings UI fully owns this key ⇒ dropping it there actually removes it.
+        // The Settings UI fully owns this key, so removing it there deletes it entirely.
         var runtime = WriteJson("appsettings.runtime.json", "{\"Llm\":{\"Profiles\":{\"a\":{\"BaseUrl\":\"http://a/v1\"}}}}");
         var root = (IConfigurationRoot)new ConfigurationBuilder().AddJsonFile(runtime).Build();
 
@@ -159,9 +158,9 @@ public sealed class EffectiveSourceDetectorTests : IDisposable
     [Fact]
     public void DetectNonRuntimeSource_ShadowedByTheRuntimeFile_StillReportsTheBaseSource()
     {
-        // The whole point of this method: Detect() reports "runtime" here because the runtime file
-        // sits on top, but the appsettings.json entry would resurface the moment the runtime entry
-        // is dropped — so the profile must NOT be reported as deletable.
+        // Detect() reports "runtime" here because the runtime file sits on top, but the
+        // appsettings.json entry would resurface once the runtime entry is removed. The
+        // profile must not be reported as deletable.
         var basePath = WriteJson("appsettings.json", "{\"Llm\":{\"Profiles\":{\"a\":{\"BaseUrl\":\"http://base/v1\"}}}}");
         var runtime = WriteJson("appsettings.runtime.json", "{\"Llm\":{\"Profiles\":{\"a\":{\"BaseUrl\":\"http://override/v1\"}}}}");
         var root = (IConfigurationRoot)new ConfigurationBuilder()

@@ -9,14 +9,11 @@ import {
 } from '../../lib/folderSelection';
 
 /**
- * The pure logic behind the folder multi-select. Three things can go wrong here that are hard to
- * spot on a rendered tree:
- *
- *   - `flattenVisible` has to match the VISIBLE order, or a shift-range picks up collapsed
- *     folders — breaking the contract of `useBulkSelection`, whose prune effect reads this list.
- *   - `topMostFolders` keeps a second request from 404ing because the first already took the
- *     folder along recursively.
- *   - `subtreeImpact` must not count overlapping subtrees twice.
+ * Pure logic behind the folder multi-select. Three things can go wrong in ways a
+ * rendered tree will not show: `flattenVisible` must match the visible order, or a
+ * shift-range picks up collapsed folders and breaks `useBulkSelection`'s prune effect.
+ * `topMostFolders` avoids a second request 404ing when the first already removed the
+ * folder recursively. `subtreeImpact` must not count overlapping subtrees twice.
  */
 
 function folder(id: string, parentFolderId: string | null, workflowCount = 0): SharedFolder {
@@ -29,7 +26,7 @@ function folder(id: string, parentFolderId: string | null, workflowCount = 0): S
     createdAt: '2026-01-01T00:00:00Z',
     createdByUserId: null,
     workflowCount,
-    capabilities: { canRead: true, canRun: true, canEdit: true, canAdmin: false },
+    capabilities: { canRead: true, canRun: true, canEdit: true, canDelete: false, canAdmin: false },
   };
 }
 
@@ -94,7 +91,7 @@ describe('topMostFolders', () => {
   });
 
   it('folderWhoseParentIsNotVisible_countsAsTopMost', () => {
-    // No read permission on the parent → it is missing from `all`. Treating the folder as a
+    // No read permission on the parent -> it is missing from `all`. Treating the folder as a
     // descendant would silently drop it from the selection.
     const orphan = folder('orphan', 'hidden-parent');
     expect(topMostFolders([orphan], [orphan]).map((f) => f.id)).toEqual(['orphan']);

@@ -11,7 +11,7 @@ export interface BreadcrumbSegmentData {
   name: string;
   /** Cumulative folder path, e.g. "/Finance/Reports" — also the open-state key. */
   path: string;
-  /** Resolved folder, or null when the ancestor is not RBAC-visible (→ non-interactive). */
+  /** Resolved folder, or null when the ancestor is not RBAC-visible; then non-interactive. */
   folder: SharedFolder | null;
 }
 

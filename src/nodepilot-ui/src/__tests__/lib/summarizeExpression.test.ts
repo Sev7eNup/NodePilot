@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { summarizeExpression } from '../../lib/summarizeExpression';
 import type { ExprNode } from '../../components/designer/ConditionBuilder';
 
-const RESOLVE = (id: string) => id; // identity resolver — the stepId IS the label
+const RESOLVE = (id: string) => id; // identity resolver: the stepId is the label
 
 describe('summarizeExpression', () => {
   it('nullOrUndefinedExpression_returnsEmptyString', () => {
@@ -66,12 +66,12 @@ describe('summarizeExpression', () => {
       right: { kind: 'literal', value: '^[a-z]+@example.com$' },
     };
 
-    // Truncate threshold is 15 chars; ^[a-z]+@example is exactly 15 → keep + ellipsis.
+    // Truncate threshold is 15 chars; ^[a-z]+@example is exactly 15, so it keeps + ellipsis.
     expect(summarizeExpression(expr, RESOLVE)).toBe('s1.email ~ "^[a-z]+@example…"');
   });
 
   it('longLiteral_isTruncatedWithEllipsis', () => {
-    // 15+ chars → truncated. Keeps edge-label real-estate predictable on the canvas.
+    // 15+ chars get truncated, keeping edge-label real estate predictable on the canvas.
     const expr: ExprNode = {
       type: 'comparison',
       left: { kind: 'variable', stepId: 's1', field: 'output', paramName: '' },
@@ -155,8 +155,8 @@ describe('summarizeExpression', () => {
   });
 
   it('nestedGroup_isParenthesized', () => {
-    // Outer OR with two children, second child is a nested AND group → must render
-    // parens around the AND so reading order matches semantics.
+    // Outer OR with two children, second child is a nested AND group. Parens must render
+    // around the AND so reading order matches semantics.
     const expr: ExprNode = {
       type: 'group',
       op: 'OR',

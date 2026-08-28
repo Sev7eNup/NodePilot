@@ -14,7 +14,7 @@ public sealed class ScimOptions
     public string? PreviousBearerToken { get; set; }
 
     /// <summary>
-    /// Identity authority used to link provisioned SCIM externalId values to OIDC subjects.
+    /// Identity authority that links provisioned SCIM externalId values to OIDC subjects.
     /// Defaults to the configured OIDC issuer.
     /// </summary>
     public string? Authority { get; set; }

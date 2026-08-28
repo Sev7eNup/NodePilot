@@ -36,12 +36,12 @@ public class RegistryActivity : BaseRemoteActivity
         "String", "ExpandString", "Binary", "DWord", "MultiString", "QWord"
     };
 
-    // PowerShell's Test-Path / Get-Item / Remove-Item work on ANY PSDrive — filesystem,
+    // PowerShell's Test-Path / Get-Item / Remove-Item work on any PSDrive — filesystem,
     // registry, env, certs. Without a prefix guard a typo like `keyPath: "C:\Windows"`
-    // + `operation: "deleteKey"` would translate into `Remove-Item -Recurse -Force
-    // C:\Windows`. Restrict keyPath to recognised registry-provider prefixes only.
-    // Underscore-prefix support for HKEY_* spellings + the explicit `Registry::` PS
-    // provider notation; trailing colon variants of the drive aliases.
+    // with `operation: "deleteKey"` would translate into `Remove-Item -Recurse -Force
+    // C:\Windows`. Restrict keyPath to recognised registry-provider prefixes, including
+    // underscore HKEY_* spellings, the explicit `Registry::` PS provider notation, and
+    // trailing colon variants of the drive aliases.
     private static readonly string[] AllowedRegistryPrefixes =
     {
         "HKLM:", "HKCU:", "HKCR:", "HKU:", "HKCC:",
@@ -95,7 +95,7 @@ public class RegistryActivity : BaseRemoteActivity
         var qValue = PowerShellOperation.Literal(value);
 
         // valueType is checked against a whitelist and then inserted below as a bare
-        // PowerShell token in -Type — it is NOT quoted. Validation MUST happen here,
+        // PowerShell token in -Type — it is not quoted. Validation has to happen here;
         // otherwise a user-controlled string would land unescaped as a cmdlet argument.
         string typeToken = "String";
         if (canonicalOp == "write")

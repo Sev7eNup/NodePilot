@@ -26,8 +26,8 @@ describe('validateTemplateExpression', () => {
 
   it('accepts manual.* runtime references without warning', () => {
     // Trigger data and forEach child params ({{manual.item}}/{{manual.index}}) are
-    // runtime-injected — the publish-time lint tolerates them, so the inline field
-    // validator must too (this was a false-positive ERROR before).
+    // runtime-injected. The publish-time lint tolerates them, so the inline field
+    // validator must too.
     expect(validateTemplateExpression('{{manual.item}}', upstream).status).toBe('ok');
     expect(validateTemplateExpression('{{manual.index}} of {{manual.ticketId}}', upstream).status).toBe('ok');
   });

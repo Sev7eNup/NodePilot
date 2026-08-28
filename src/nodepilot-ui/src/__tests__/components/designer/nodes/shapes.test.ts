@@ -38,7 +38,7 @@ describe('getNodeShape — precedence', () => {
     for (const type of TRIGGER_ACTIVITY_TYPES) {
       expect(getNodeShape(type), `${type} → pennant`).toBe('pennant');
     }
-    // spot-check a couple of well-known trigger names too
+    // Spot-check a couple of well-known trigger names.
     expect(getNodeShape('manualTrigger')).toBe('pennant');
     expect(getNodeShape('scheduleTrigger')).toBe('pennant');
   });
@@ -59,7 +59,7 @@ describe('getNodeShape — precedence', () => {
     for (const [type, shape] of Object.entries(EXPECTED_ACTION)) {
       expect(getNodeShape(type), `${type} → ${shape}`).toBe(shape);
     }
-    // representative subset called out explicitly
+    // A representative subset, asserted explicitly.
     expect(getNodeShape('runScript')).toBe('hexPointy');
     expect(getNodeShape('sql')).toBe('cylinder');
     expect(getNodeShape('llmQuery')).toBe('speechBubble');
@@ -84,7 +84,7 @@ describe('isControlFlowShape', () => {
     for (const s of nonControl) {
       expect(isControlFlowShape(s), `${s} should not be control`).toBe(false);
     }
-    // explicit callouts from the task
+    // Bookends, the fallback square and two action shapes, asserted explicitly.
     for (const s of ['pennant', 'flag', 'square', 'hexPointy', 'cylinder'] as NodeShape[]) {
       expect(isControlFlowShape(s), s).toBe(false);
     }
@@ -115,7 +115,7 @@ describe('shape registry — consistency', () => {
       expect(getNodeShape(a.type), `${a.type} must not be square`).not.toBe('square');
       expect(getNodeShape(a.type), `${a.type} mapping`).toBe(EXPECTED_ACTION[a.type]);
     }
-    // catalog set and the expected table agree
+    // The catalog set and the expected table cover the same types.
     expect(shaped.map((a) => a.type).sort()).toEqual(Object.keys(EXPECTED_ACTION).sort());
   });
 

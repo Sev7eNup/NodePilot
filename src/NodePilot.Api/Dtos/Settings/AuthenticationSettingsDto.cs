@@ -202,10 +202,11 @@ public sealed class LdapAuthenticationDto
     [Range(1, 32)]
     public int DirectorySyncMaxConcurrency { get; set; } = 16;
 
-    /// <summary>AD-Group-SID → global UserRole mapping table.</summary>
+    /// <summary>AD-Group-SID -> global UserRole mapping table.</summary>
     public List<GlobalRoleMappingDto> GlobalRoleMappings { get; set; } = new();
 
-    /// <summary>Optional default folder grant for JIT-provisioned users. Null = no auto-grant.</summary>
+    /// <summary>Optional default folder grant for JIT-provisioned users. Null = no
+    /// auto-grant.</summary>
     public SharedFolderRole? JitUserDefaultRootRole { get; set; }
 }
 

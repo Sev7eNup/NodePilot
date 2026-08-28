@@ -9,12 +9,11 @@ namespace NodePilot.Engine.Execution;
 internal static class MachineResolver
 {
     // Process-wide cache of "this string resolves to no registered machine" — i.e. callers
-    // hit the ad-hoc fallback. Stress-test workloads with 500 workflows × dozens of steps
-    // all targeting the same handful of strings (e.g. "localhost") would otherwise pound
-    // the DB with thousands of identical lookups that always return nothing. TTL keeps the
-    // cache from going stale when an operator registers a new machine while traffic is
-    // hot. Hits for a *registered* machine are not cached, since EF tracking semantics
-    // require fresh per-context entities.
+    // hit the ad-hoc fallback. Repeated lookups for the same unregistered name (e.g.
+    // "localhost") skip the DB roundtrip instead of always returning nothing. TTL keeps the
+    // cache from going stale when an operator registers a new machine while traffic is hot.
+    // A registered machine is never cached, since EF tracking semantics require fresh
+    // per-context entities.
     private static readonly ConcurrentDictionary<string, DateTime> _adHocCache =
         new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan AdHocCacheTtl = TimeSpan.FromSeconds(30);

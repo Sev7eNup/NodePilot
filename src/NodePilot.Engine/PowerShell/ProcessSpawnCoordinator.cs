@@ -7,12 +7,15 @@ namespace NodePilot.Engine.PowerShell;
 ///
 /// <para>
 /// Why this exists: handle inheritance is a per-process, global property. When one launch has an
-/// inheritable pipe write-handle momentarily open (e.g. <see cref="IsolatedProcessLauncher"/> between
+/// inheritable pipe write-handle momentarily open (e.g. <see cref="IsolatedProcessLauncher"/>
+/// between
 /// creating the pipes and closing its local client-handle copy), <b>any other</b> concurrent
-/// <c>CreateProcess</c>/<c>Process.Start</c> with <c>bInheritHandles:true</c> that does NOT restrict
+/// <c>CreateProcess</c>/<c>Process.Start</c> with <c>bInheritHandles:true</c> that does NOT
+/// restrict
 /// inheritance via <c>PROC_THREAD_ATTRIBUTE_HANDLE_LIST</c> will inherit that write-handle. The
 /// unrelated child then holds the pipe write-end open, so the isolated reader never reaches EOF and
-/// <c>ReadToEndAsync</c> blocks forever — the step Task never completes and the whole execution hangs
+/// <c>ReadToEndAsync</c> blocks forever — the step Task never completes and the whole execution
+/// hangs
 /// in <c>Running</c>.
 /// </para>
 ///
@@ -20,7 +23,8 @@ namespace NodePilot.Engine.PowerShell;
 /// The isolated launcher's own <c>HANDLE_LIST</c> only controls what <i>its</i> child inherits; it
 /// cannot stop <i>other</i> spawns from inheriting <i>our</i> handles. Serializing every
 /// inheritable-handle spawn behind this single lock guarantees the inheritable window of one launch
-/// never overlaps another <c>CreateProcess</c>, so no cross-inheritance can occur between spawns this
+/// never overlaps another <c>CreateProcess</c>, so no cross-inheritance can occur between spawns
+/// this
 /// process controls. Process creation is sub-millisecond, so the lock costs negligible throughput.
 /// </para>
 ///

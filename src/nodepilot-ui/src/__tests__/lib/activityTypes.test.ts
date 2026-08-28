@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { ACTIVITY_TYPES, EXTERNAL_TRIGGER_TYPES } from '../../lib/activityTypes';
 
 /**
- * ACTIVITY_TYPES is a thin aliases map but the values are load-bearing — the C# executor
- * registry uses the same string literals as keys. Pin a few critical ones so a
- * "rename in TS" refactor can't silently break the engine binding.
+ * ACTIVITY_TYPES is a thin alias map, but its values are load-bearing: the C# executor
+ * registry uses the same string literals as keys. The critical ones are pinned here so a
+ * rename on the TypeScript side cannot break the engine binding unnoticed.
  */
 
 describe('ACTIVITY_TYPES', () => {
@@ -17,7 +17,7 @@ describe('ACTIVITY_TYPES', () => {
   });
 
   it('allValuesAreCamelCaseStrings', () => {
-    // The convention is camelCase; UPPER_SNAKE_CASE in the map → camelCase in the engine.
+    // Keys are UPPER_SNAKE_CASE in the map; the values the engine binds to are camelCase.
     for (const [k, v] of Object.entries(ACTIVITY_TYPES)) {
       expect(typeof v, `value of ${k}`).toBe('string');
       expect(v, `value of ${k} should be camelCase`).toMatch(/^[a-z][a-zA-Z0-9]*$/);
@@ -30,8 +30,7 @@ describe('ACTIVITY_TYPES', () => {
   });
 
   it('coversTheCoreActivityFamilies', () => {
-    // Sanity: the catalog must contain at least these five conceptual buckets so the
-    // designer doesn't render a half-empty palette.
+    // The map must cover these five conceptual buckets so the designer palette is complete.
     const values = new Set(Object.values(ACTIVITY_TYPES));
     expect(values.has('runScript')).toBe(true); // remote execution
     expect(values.has('restApi')).toBe(true);   // engine-local IO
@@ -53,9 +52,8 @@ describe('EXTERNAL_TRIGGER_TYPES', () => {
   });
 
   it('excludesManualTrigger', () => {
-    // manualTrigger is fired by the UI/API, not by the TriggerOrchestrator — it must
-    // never appear in this list, otherwise the orchestrator would try to spin up a
-    // never-firing source for it.
+    // manualTrigger is fired by the UI or API, not by the TriggerOrchestrator. Listing it
+    // here would make the orchestrator start a background source that never fires.
     expect(EXTERNAL_TRIGGER_TYPES).not.toContain('manualTrigger');
   });
 

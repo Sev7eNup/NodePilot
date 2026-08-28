@@ -73,7 +73,8 @@ public sealed class SharedWorkflowFoldersControllerTests : IDisposable
         return ctrl;
     }
 
-    /// <summary>/Finance/Reports with one workflow in each level. Returns (reportsId, financeWfId, reportsWfId).</summary>
+    /// <summary>/Finance/Reports with one workflow in each level. Returns (reportsId, financeWfId,
+    /// reportsWfId).</summary>
     private async Task<(Guid ReportsId, Guid FinanceWorkflowId, Guid ReportsWorkflowId)> SeedSubtreeAsync()
     {
         var reportsId = Guid.NewGuid();
@@ -139,10 +140,9 @@ public sealed class SharedWorkflowFoldersControllerTests : IDisposable
     [Fact]
     public async Task Create_AsStranger_OnRoot_MasksAs404()
     {
-        // Create now runs through the shared RBAC gate (ResourceAuthorizationGateExtensions),
-        // which masks folders the caller cannot even READ as 404 — the same 403/404
-        // differential rule every other folder endpoint follows. Previously this action
-        // hand-rolled an Edit-only check and answered 403, leaking that the parent exists.
+        // Create runs through the shared RBAC gate (ResourceAuthorizationGateExtensions), which
+        // masks folders the caller cannot even read as 404, matching the 403/404 differential
+        // rule every other folder endpoint follows. This avoids leaking that the parent exists.
         var ctrl = NewCtrl(_strangerId, "Operator");
         var result = await ctrl.Create(
             new CreateSharedFolderRequest(SharedWorkflowFolder.RootFolderId, "Stuff"),
@@ -161,12 +161,23 @@ public sealed class SharedWorkflowFoldersControllerTests : IDisposable
     [Fact]
     public async Task Delete_NonEmptyFolder_Returns409()
     {
-        // Add a workflow into Finance, then try to delete Finance â€” should fail.
+        // Add a workflow to Finance, then try to delete Finance; it should fail.
         _db.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "wf", DefinitionJson = "{}", FolderId = _financeId, Version = 1 });
         await _db.SaveChangesAsync();
         var ctrl = NewCtrl(_adminId, "Admin");
         var result = await ctrl.Delete(_financeId, CancellationToken.None);
         result.Should().BeOfType<ConflictObjectResult>();
+    }
+
+    [Fact]
+    public async Task Delete_EmptyFolder_OperatorWithEdit_RemainsAllowed()
+    {
+        var ctrl = NewCtrl(_financeEditorId, "Operator");
+
+        var result = await ctrl.Delete(_financeId, CancellationToken.None);
+
+        result.Should().BeOfType<NoContentResult>();
+        _db.SharedWorkflowFolders.Any(folder => folder.Id == _financeId).Should().BeFalse();
     }
 
     // ---- recursive delete ------------------------------------------------
@@ -235,33 +246,32 @@ public sealed class SharedWorkflowFoldersControllerTests : IDisposable
     }
 
     [Fact]
-    public async Task DeleteRecursive_InheritedEditOnDescendant_IsSufficient()
+    public async Task DeleteRecursive_OperatorWithInheritedEdit_IsForbidden()
     {
-        // Pins the assumption the recursive delete rests on: grants resolve along the ancestry
-        // chain, so Edit on /Finance covers /Finance/Reports even though Reports carries no grant
-        // of its own. If resolution ever stops inheriting downwards, this fails instead of
-        // silently deleting something the caller may no longer be entitled to.
+        // Folder Edit permits authoring and moving content, but recursive deletion also removes
+        // Workflow Executions and therefore stays a global-Admin operation like workflow DELETE.
         var (reportsId, _, _) = await SeedSubtreeAsync();
         _db.SharedFolderPermissions.Any(p => p.FolderId == reportsId).Should().BeFalse();
 
         var ctrl = NewCtrl(_financeEditorId, "Operator");
         var result = await ctrl.Delete(_financeId, CancellationToken.None, recursive: true);
 
-        result.Should().BeOfType<OkObjectResult>();
-        _db.SharedWorkflowFolders.Any(f => f.Id == reportsId).Should().BeFalse();
+        result.Should().BeOfType<ForbidResult>();
+        _db.SharedWorkflowFolders.Any(f => f.Id == reportsId).Should().BeTrue();
+        _db.Workflows.Count().Should().Be(2);
     }
 
     [Fact]
-    public async Task DeleteRecursive_AsStranger_Returns404()
+    public async Task DeleteRecursive_AsOperatorWithoutFolderAccess_Returns403()
     {
         await SeedSubtreeAsync();
         var ctrl = NewCtrl(_strangerId, "Operator");
         var result = await ctrl.Delete(_financeId, CancellationToken.None, recursive: true);
-        result.Should().BeOfType<NotFoundResult>();
+        result.Should().BeOfType<ForbidResult>();
     }
 
     /// <summary>
-    /// Reproduces the interleaving the guard exists for: a workflow lands in the subtree AFTER the
+    /// Reproduces the interleaving the guard exists for: a workflow lands in the subtree after the
     /// controller has taken its snapshot. The interceptor writes on the same connection and inside
     /// the controller's own transaction, which puts the database in exactly the state a concurrent
     /// writer would have produced by the time the delete runs.
@@ -279,10 +289,10 @@ public sealed class SharedWorkflowFoldersControllerTests : IDisposable
                 Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result,
                 CancellationToken cancellationToken = default)
         {
-            // Hooked on the DELETE, not on the snapshot SELECT: an interceptor fires *before* the
-            // command it wraps, so inserting at the SELECT would put the row INTO the snapshot —
-            // the opposite of what this test needs. Right before the delete is exactly the window
-            // a concurrent writer would use.
+            // Hooked on the DELETE statement, not the snapshot SELECT: an interceptor fires before
+            // the command it wraps, so inserting at the SELECT would put the row into the
+            // snapshot, the opposite of what this test needs. Right before the delete is exactly
+            // the window a concurrent writer would use.
             // Written through EF on a second context so the column set and the Guid mapping come
             // from the model rather than a hand-written INSERT that drifts with the schema.
             if (!_fired
@@ -332,11 +342,9 @@ public sealed class SharedWorkflowFoldersControllerTests : IDisposable
         interceptor.Fired.Should().BeTrue("the interceptor must fire inside the transaction, otherwise the test proves nothing");
         result.Should().BeOfType<ConflictObjectResult>("a row that appeared mid-run is a race, not a lock");
         _db.ChangeTracker.Clear();
-        // Note the limit of the simulation: the interceptor writes inside the controller's own
-        // transaction, so the latecomer disappears again with the rollback and cannot be asserted
-        // on afterwards. A real concurrent writer would sit in its own transaction and its row
-        // would survive. What this pins is what matters either way — the run is refused as a race
-        // rather than silently sweeping up a row it never snapshotted, and nothing else is lost.
+        // The interceptor writes inside the controller's own transaction, so the latecomer
+        // disappears with the rollback and can't be asserted on afterwards. What matters is that
+        // the run is refused as a race rather than silently sweeping up an unsnapshotted row.
         _db.Workflows.Count().Should().Be(2, "the two seeded workflows must survive the rollback");
         _db.Workflows.Any(w => w.Id == financeWf).Should().BeTrue();
         _db.Workflows.Any(w => w.Id == reportsWf).Should().BeTrue();
@@ -371,7 +379,7 @@ public sealed class SharedWorkflowFoldersControllerTests : IDisposable
         await _db.SaveChangesAsync();
 
         var ctrl = NewCtrl(_adminId, "Admin");
-        // Try to move /Finance INTO /Finance/Reports â€” cycle.
+        // Try to move /Finance INTO /Finance/Reports â€" cycle.
         var result = await ctrl.Move(_financeId, new MoveSharedFolderRequest(reportsId), CancellationToken.None);
         result.Should().BeOfType<BadRequestObjectResult>();
     }

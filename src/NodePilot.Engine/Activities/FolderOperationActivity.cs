@@ -7,16 +7,10 @@ namespace NodePilot.Engine.Activities;
 
 /// <summary>
 /// Folder-scoped operations: copy, move, delete, exists, list, create, rename. PowerShell-side
-/// link-local attribute checks require a non-reparse directory on destructive paths so a file
-/// or link accidentally typed into a folder activity fails fast. File-equivalent operations live in
-/// <see cref="FileOperationActivity"/>.
-///
-/// Output format: every operation emits a JSON result object between marker lines, which
-/// PostProcess projects into OutputParameters (param.operation, param.path, param.destination,
-/// param.newPath, param.exists, param.fullName, param.items, param.count — depending on the
-/// operation). This guarantees that <c>{{step.param.exists}}</c> is always "true"/"false" and
-/// <c>{{step.param.items}}</c> is always a JSON array. Validation, envelope and projection live
-/// in <see cref="FileSystemOperationActivityBase"/>; only <c>list</c> is folder-specific.
+/// attribute checks require a non-reparse directory on destructive paths, so a file or link
+/// typed in by mistake fails fast. File operations live in <see cref="FileOperationActivity"/>;
+/// validation, the result envelope, and OutputParameters projection live in
+/// <see cref="FileSystemOperationActivityBase"/>. Only <c>list</c> is folder-specific.
 /// </summary>
 public class FolderOperationActivity : FileSystemOperationActivityBase
 {
@@ -50,9 +44,9 @@ public class FolderOperationActivity : FileSystemOperationActivityBase
         _ => throw new InvalidOperationException($"Unknown folder operation: {operation}")
     };
 
-    // Container-Assertion: ensures the path is a folder before mutation, so a file typed
+    // Container assertion: confirms the path is a folder before mutation, so a file typed
     // here by mistake throws cleanly instead of being copied/moved/deleted as if it were
-    // a directory tree. Skipped for `create` (target must NOT exist yet).
+    // a directory tree. Skipped for `create`, where the target must not exist yet.
     private const string AssertContainer = """
             $__pathAttributes = Get-NodePilotPathAttributes -Path $__path
             if ($null -eq $__pathAttributes -or
@@ -186,15 +180,14 @@ public class FolderOperationActivity : FileSystemOperationActivityBase
             Remove-Item -LiteralPath $__path -Force -Recurse
         """;
 
-    // Returns true only when the path exists AND is a folder.
+    // Returns true only when the path exists and is a folder.
     private static string BuildExists() => """
             $__result.exists = [bool](Test-Path -LiteralPath $__path -PathType Container)
         """;
 
-    // Hard cap of 5000 listed entries per call — stops a list operation accidentally aimed at a
-    // huge root folder (\\, C:\, a network share) from bloating OutputParametersJson (each entry
-    // is ~80-150 bytes; 5000 entries = ~750 KB of JSON). count holds the true entry count (before
-    // truncation) so consumers can detect the overflow; truncated signals whether the cap kicked in.
+    // Hard cap on listed entries per call, so a list operation accidentally aimed at a huge
+    // root folder (\\, C:\, a network share) does not bloat OutputParametersJson. count holds
+    // the true entry count before truncation; truncated signals whether the cap kicked in.
     private const int ListMaxItems = 5000;
     private static string BuildList() => $$"""
         {{AssertContainer}}

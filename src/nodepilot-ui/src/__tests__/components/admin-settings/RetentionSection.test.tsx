@@ -68,13 +68,10 @@ describe('RetentionSection', () => {
   });
 
   it('env-overridden retention fields are read-only and badged', async () => {
-    // Regression guard for Finding 4: a v1 retention save with an EnvVar override
-    // would otherwise let the operator silently overwrite the env value in the file,
-    // misleading them into thinking "I saved it, it's done" while the env still wins.
-    //
-    // Don't use renderSection() — its embedded server.use would race the
-    // env-snapshot handler and the wrong one might win. Inline-set the handler,
-    // then render, so the very first GET resolves to the env-snapshot.
+    // Fields backed by an environment override stay read-only, so a save cannot write a file
+    // value that the environment keeps overriding.
+    // renderSection() is not used here: its embedded server.use races the env-snapshot handler.
+    // Register the handler inline first so the very first GET resolves to the env snapshot.
     const envSnapshot = {
       ...snapshot,
       effectiveSource: {
@@ -95,7 +92,7 @@ describe('RetentionSection', () => {
       expect(exec.disabled).toBe(true);
     });
     expect((screen.getByDisplayValue('365') as HTMLInputElement).disabled).toBe(true);
-    // WorkflowVersions has no env override → still editable.
+    // WorkflowVersions has no environment override, so it stays editable.
     expect((screen.getByDisplayValue('50') as HTMLInputElement).disabled).toBe(false);
   });
 

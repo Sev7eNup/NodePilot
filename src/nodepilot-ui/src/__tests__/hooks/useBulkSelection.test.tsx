@@ -50,7 +50,7 @@ describe('useBulkSelection', () => {
   it('shift-toggle works backwards and deselects a range', () => {
     const { result } = setup();
     act(() => result.current.toggleAll());
-    // Anchor on 'd', then shift-toggle back to 'b' — 'd' is selected, so the range clears.
+    // Anchor on 'd', then shift-toggle back to 'b'. 'd' is selected, so the range clears.
     act(() => result.current.toggle('d'));
     act(() => result.current.toggle('b', true));
     expect(result.current.selectedItems.map(key)).toEqual(['a']);
@@ -94,8 +94,8 @@ describe('useBulkSelection', () => {
     expect(result.current.selectedItems.map(key)).toEqual(['a']);
   });
 
-  // The prune is what keeps a bulk delete honest: the removed rows must leave the selection
-  // on their own, or the count and the next action would still include vanished workflows.
+  // Rows that leave the list must drop out of the selection, or the count and the next bulk
+  // action would still include items that no longer exist.
   it('prunes ids that disappear from the item list', () => {
     const { result, rerender } = setup();
     act(() => result.current.toggleAll());
@@ -121,16 +121,16 @@ describe('useBulkSelection', () => {
     expect(result.current.isSelected('b')).toBe(true);
   });
 
-  // The defect this pins: `selectedCount` used to be the raw id-set size while every bulk action
-  // takes `selectedItems`. A row that left the list still counted, so the bar stayed open on a
-  // selection the action could not see — the button then did nothing at all, silently.
+  // `selectedCount` must match `selectedItems`, which is what every bulk action receives. If it
+  // reported the raw id set instead, a row that left the list would keep the bar open on a
+  // selection the action cannot see.
   it('counts only rows that are still on screen', () => {
     const { result, rerender } = setup();
     act(() => result.current.toggle('a'));
     act(() => result.current.toggle('d'));
     expect(result.current.selectedCount).toBe(2);
 
-    // 'd' leaves the rendered list — a collapsed branch, a filter, a refetch.
+    // 'd' leaves the rendered list, for example through a collapsed branch, a filter or a refetch.
     rerender({ items: rows('a', 'b', 'c') });
 
     expect(result.current.selectedCount).toBe(1);

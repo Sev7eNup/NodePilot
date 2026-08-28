@@ -62,7 +62,7 @@ public class GlobalRoleResolverTests
     [Fact]
     public void Resolve_MultipleMatches_HighestWins()
     {
-        // User is in Domain Admins AND in Operators — Admin must win.
+        // The user belongs to both Domain Admins and Operators — Admin must win.
         var mappings = new[]
         {
             new GlobalRoleMapping { GroupSid = OperatorsSid, Role = UserRole.Operator },

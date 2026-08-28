@@ -15,9 +15,9 @@ using Xunit;
 namespace NodePilot.Api.Tests.Controllers;
 
 /// <summary>
-/// PR9 Fix 4 regression: PrincipalKey written by the grant endpoint MUST be in the same
-/// canonical form ResourceAuthorizationService compares against, otherwise on a
-/// case-sensitive provider (Postgres default) the grant silently has no effect.
+/// PrincipalKey written by the grant endpoint must be in the same canonical form
+/// ResourceAuthorizationService compares against, otherwise on a case-sensitive
+/// provider (Postgres default) the grant silently has no effect.
 /// </summary>
 public sealed class SharedFolderPermissionsControllerNormalisationTests : IDisposable
 {
@@ -84,7 +84,7 @@ public sealed class SharedFolderPermissionsControllerNormalisationTests : IDispo
         result.Result.Should().BeOfType<OkObjectResult>();
         var stored = await _db.SharedFolderPermissions.SingleAsync();
         stored.PrincipalKey.Should().Be(targetId.ToString("D"));   // canonical lowercase
-        stored.PrincipalKey.Should().NotBe(req.PrincipalKey);      // ie. NOT the raw uppercase
+        stored.PrincipalKey.Should().NotBe(req.PrincipalKey);      // i.e. not the raw uppercase
     }
 
     [Fact]

@@ -4,14 +4,12 @@ import { CodeField, FieldGrid } from '../panelChrome';
 
 type ConnectionMode = 'builder' | 'raw';
 
-/** Order used to decide which UI mode to show:
+/** Order for deciding which UI mode to show:
  *   1. an explicit `connectionMode` in the config blob wins,
- *   2. legacy fallback: a non-empty `connectionString` implies "raw" (auto-migrates old
- *      workflows that only ever had the connection-string mode),
- *   3. otherwise default to "builder" — fresh nodes show the server/database fields
- *      instead of an empty connection-string textarea.
- *  The backend only looks at which fields are present to decide how to connect — the
- *  `connectionMode` marker exists purely for UI state; the backend ignores it. */
+ *   2. legacy fallback: a non-empty `connectionString` implies "raw",
+ *   3. otherwise default to "builder" so fresh nodes show the server/database fields.
+ *  The backend decides how to connect from which fields are present; `connectionMode`
+ *  is UI state only and the backend ignores it. */
 function inferMode(config: Record<string, unknown>): ConnectionMode {
   if (config.connectionMode === 'raw') return 'raw';
   if (config.connectionMode === 'builder') return 'builder';
@@ -19,9 +17,8 @@ function inferMode(config: Record<string, unknown>): ConnectionMode {
   return 'builder';
 }
 
-/** Which fields belong to "builder" mode per provider — these get cleared when the mode
- *  switches, so a stale value can't confuse the backend's connection resolution
- *  (the backend flips to "builder" mode automatically as soon as its pivot field is non-empty). */
+/** Fields that belong to "builder" mode per provider. Cleared when the mode switches so a
+ *  stale value can't confuse the backend's connection resolution. */
 const BUILDER_KEYS_BY_PROVIDER: Record<string, string[]> = {
   sqlserver: ['server', 'database', 'authentication', 'username', 'password', 'encrypt', 'trustServerCertificate'],
   postgres: ['host', 'port', 'database', 'username', 'password', 'sslMode'],

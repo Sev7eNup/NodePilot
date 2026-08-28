@@ -59,7 +59,7 @@ public class WorkflowChatToolRegistryTests
         doc.RootElement.TryGetProperty("error", out _).Should().BeTrue();
     }
 
-    // ---- Execution-Log-Tools: Advertising ------------------------------------------
+    // ---- execution log tools: advertising ------------------------------------------
 
     [Fact]
     public void GetTools_WithExecutionLogReader_IncludesExecutionTools()
@@ -114,7 +114,8 @@ public class WorkflowChatToolRegistryTests
         run.GetProperty("durationMs").GetInt64().Should().Be(5000);
         var failed = run.GetProperty("failedSteps");
         failed.GetArrayLength().Should().Be(2);
-        failed[0].GetProperty("stepId").GetString().Should().Be("step-2"); // unlabeled step → falls back to a stable step ID
+        // unlabeled step falls back to a stable step ID
+        failed[0].GetProperty("stepId").GetString().Should().Be("step-2");
         failed[0].GetProperty("stepName").ValueKind.Should().Be(JsonValueKind.Null);
         failed[1].GetProperty("stepName").GetString().Should().Be("Cleanup");
     }
@@ -252,8 +253,8 @@ public class WorkflowChatToolRegistryTests
     [Fact]
     public async Task ExecuteAsync_GetFailureContext_PicksNewestFailedRun_NotAnOlderOne()
     {
-        // Reader contract: newest-first. With TWO Failed runs, the one listed first (most
-        // recent) must be picked — otherwise the tool would return stale failure context.
+        // Reader contract: newest-first. With two Failed runs, the one listed first (most
+        // recent) must be picked, otherwise the tool would return stale failure context.
         var fake = new FakeExecutionLogReader();
         var newerFailed = Guid.NewGuid();
         var olderFailed = Guid.NewGuid();
@@ -288,7 +289,7 @@ public class WorkflowChatToolRegistryTests
         using var doc = JsonDocument.Parse(result);
         var errorOutput = doc.RootElement.GetProperty("failingSteps")[0].GetProperty("errorOutput").GetString()!;
         errorOutput.Should().Contain("Zeichen abgeschnitten]");
-        errorOutput.Length.Should().BeGreaterThan(1_600); // NOT the 1500-char get_execution_steps cap
+        errorOutput.Length.Should().BeGreaterThan(1_600); // not get_execution_steps 1500-char cap
         errorOutput.Length.Should().BeLessThan(2_100);    // the 2000-char failure-context cap + marker
     }
 }

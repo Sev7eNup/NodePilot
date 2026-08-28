@@ -62,7 +62,8 @@ public class ParameterKeyValidatorTests
     public void IsValid_RejectsKnownInjectionPayloads(string payload)
     {
         // Regression catalogue for the "C-1" injection guard: each of these payloads would have
-        // broken out of the single-quoted literal and run arbitrary PowerShell before the guard existed.
+        // broken out of the single-quoted literal and run arbitrary PowerShell before the guard
+        // existed.
         ParameterKeyValidator.IsValid(payload).Should().BeFalse();
     }
 

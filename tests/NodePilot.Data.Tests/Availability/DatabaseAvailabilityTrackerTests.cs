@@ -87,7 +87,8 @@ public sealed class DatabaseAvailabilityTrackerTests
     [Fact]
     public async Task Arm_WakesTheProbe()
     {
-        // Arming is only useful if the adjudicator actually runs; otherwise Armed is a state nothing
+        // Arming is only useful if the adjudicator actually runs; otherwise Armed is a state
+        // nothing
         // ever leaves.
         var tracker = Booted();
         var waiting = tracker.WaitForProbeRequestAsync(TestContext.Current.CancellationToken);
@@ -101,9 +102,12 @@ public sealed class DatabaseAvailabilityTrackerTests
     [Fact]
     public async Task Arm_BeforeProbeStartsWaiting_IsNotLost()
     {
-        // Probe requests are level-triggered, not a pulse: an interceptor can arm while the probe is
-        // executing SELECT 1 and before it installs the next waiter. The subsequent wait must consume
-        // that already-published request immediately rather than sleeping for the full idle interval.
+        // Probe requests are level-triggered, not a pulse: an interceptor can arm while the probe
+        // is
+        // executing SELECT 1 and before it installs the next waiter. The subsequent wait must
+        // consume
+        // that already-published request immediately rather than sleeping for the full idle
+        // interval.
         var tracker = Booted();
 
         tracker.Arm();
@@ -161,7 +165,8 @@ public sealed class DatabaseAvailabilityTrackerTests
     [Fact]
     public void ReportProbeFailed_RejectedByServer_OpensAndKeepsTheReason()
     {
-        // A wrong password must never be presented as "reconnecting, please wait" - the reason is the
+        // A wrong password must never be presented as "reconnecting, please wait" - the reason is
+        // the
         // only thing that tells the operator to go and fix something.
         var tracker = Booted();
 
@@ -212,7 +217,8 @@ public sealed class DatabaseAvailabilityTrackerTests
     [Fact]
     public void ReportProbeSucceeded_SingleSuccess_StaysUnavailableUntilThreshold()
     {
-        // Anti-flap: a server that answers once while it is still restarting would otherwise take the
+        // Anti-flap: a server that answers once while it is still restarting would otherwise take
+        // the
         // whole installation back into a hammering loop.
         var tracker = Booted(successesToRecover: 2);
         tracker.ReportUnreachable(DatabaseOutageReason.Unreachable);
@@ -290,7 +296,7 @@ public sealed class DatabaseAvailabilityTrackerTests
     [Fact]
     public async Task WaitUntilServableAsync_TokenCancelled_ReturnsFalseAndDoesNotThrow()
     {
-        // All ~18 hosted-service gates are written as `if (!await ...) break;` and
+        // Every hosted-service gate is written as `if (!await ...) break;`, and
         // BackgroundServiceExceptionBehavior is left at its default StopHost, so an escaping
         // OperationCanceledException would take the host down on every shutdown.
         var tracker = Booted();
@@ -307,7 +313,8 @@ public sealed class DatabaseAvailabilityTrackerTests
     [Fact]
     public async Task WaitUntilServableAsync_WhileArmed_CompletesImmediately()
     {
-        // Armed is servable on purpose: parking every background service on a single slow query would
+        // Armed is servable on purpose: parking every background service on a single slow query
+        // would
         // be a self-inflicted outage.
         var tracker = Booted();
         tracker.Arm();
@@ -347,7 +354,8 @@ public sealed class DatabaseAvailabilityTrackerTests
     [Fact]
     public void MarkBootComplete_CalledTwice_DoesNotResurrectFromAnOutage()
     {
-        // Booting is terminal-in-reverse: nothing may ever re-enter it, and a stray second call must
+        // Booting is terminal-in-reverse: nothing may ever re-enter it, and a stray second call
+        // must
         // not hand an interceptor a way to publish Available.
         var tracker = Booted();
         tracker.ReportUnreachable(DatabaseOutageReason.Unreachable);

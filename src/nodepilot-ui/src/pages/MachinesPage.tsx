@@ -21,13 +21,10 @@ type DialogMode =
   | { kind: 'edit'; machine: ManagedMachine }
   | null;
 
-// ColKey covers all columns (sort uses it). ResizableColKey excludes `tags` —
-// tags is the auto-flex column (wraps chips, benefits from extra width) and
-// absorbs whatever's left over after the fixed columns claim their pixels.
-// Name and friends are short uniform identifiers, so making *them* the flex
-// column would just give us 800 px of whitespace. Picking the chip-list column
-// instead lets the table fill the viewport without any single cell looking
-// stretched.
+// ColKey covers all columns (sort uses it). ResizableColKey excludes `tags`,
+// which is the auto-flex column: it wraps chips and absorbs whatever horizontal
+// space is left after the fixed columns claim their pixels. The other columns
+// hold short uniform values, so flexing one of those would only add whitespace.
 type ColKey =
   | 'name' | 'status' | 'live' | 'workflows' | 'activity'
   | 'hostname' | 'credential' | 'tags' | 'lastCheck';
@@ -40,9 +37,9 @@ const DEFAULT_WIDTHS: Record<ResizableColKey, number> = {
   name: 220, status: 160, live: 110, workflows: 110, activity: 150,
   hostname: 200, credential: 180, lastCheck: 150,
 };
-// Per-column resize minimum. Status must hold the German worst-case "Fehlgeschlagen"
-// badge (text-xs), otherwise the nowrap pill clips once you shrink the column.
-// Everything else falls back to the global floor of 50.
+// Per-column resize minimum. Status must fit the longest translated badge label,
+// otherwise the nowrap pill clips when the column is shrunk.
+// Every other column falls back to the global floor of 50.
 const MIN_WIDTHS: Partial<Record<ResizableColKey, number>> = { status: 160 };
 const DEFAULT_PORT_HTTP = 5985;
 const DEFAULT_PORT_HTTPS = 5986;
@@ -65,11 +62,11 @@ export function MachinesPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [testState, setTestState] = useState<Record<string, TestState>>({});
 
-  // --- Column resizing (same pattern as WorkflowsPage). Tags is excluded —
-  // it's the auto-flex column, so it has no inline width and no drag-handle.
+  // --- Column resizing (same pattern as WorkflowsPage). Tags is excluded because
+  // it is the auto-flex column, so it has no inline width and no drag handle.
   const [colWidths, setColWidths] = useState(DEFAULT_WIDTHS);
-  // Minimum total table width — used to trigger horizontal scroll on narrow
-  // viewports before the flex Tags column gets squeezed below readability.
+  // Minimum total table width. Triggers horizontal scrolling on narrow viewports
+  // before the flexible Tags column is squeezed below a readable width.
   const tableMinWidth = useMemo(
     () => Object.values(colWidths).reduce((a, b) => a + b, 0) + ACTIONS_WIDTH + TAGS_MIN_WIDTH,
     [colWidths],
@@ -173,8 +170,8 @@ export function MachinesPage() {
         case 'live':       cmp = a.activeRunCount - b.activeRunCount; break;
         case 'workflows':  cmp = a.usedByWorkflowCount - b.usedByWorkflowCount; break;
         case 'activity': {
-          // Sort by success rate, but treat "no data" as worst so machines with
-          // actual usage rise above untouched ones when sorting desc.
+          // Sort by success rate and rank machines without data last, so machines
+          // with actual usage come first when sorting descending.
           const ra = a.recentStepCount > 0 ? (a.recentStepCount - a.recentFailedStepCount) / a.recentStepCount : -1;
           const rb = b.recentStepCount > 0 ? (b.recentStepCount - b.recentFailedStepCount) / b.recentStepCount : -1;
           cmp = ra - rb; break;
@@ -232,9 +229,9 @@ export function MachinesPage() {
         </div>
       </div>
 
-      {/* Toolbar: search + tag-filter chips. Same full-container width as the
-          table below — both surfaces stretch edge-to-edge like every other admin
-          view in the app. */}
+      {/* Toolbar: search plus tag-filter chips. Uses the same full-container width as
+          the table below, so both surfaces stretch edge to edge like the other admin
+          views. */}
       {totalCount > 0 && (
         <div className="np-card p-3 mb-3 flex flex-wrap items-center gap-3">
           <div className="relative w-full sm:flex-1 sm:min-w-[220px]">
@@ -400,19 +397,18 @@ export function MachinesPage() {
             style={{
               tableLayout: 'fixed',
               width: '100%',
-              // Floor for horizontal scroll: kicks in before Tags is squeezed
-              // below readability when the viewport is too narrow.
+              // Floor for horizontal scrolling: applies before Tags is squeezed
+              // below a readable width on a narrow viewport.
               minWidth: tableMinWidth,
             }}
           >
             <thead className="np-col-header text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
               <tr>
-                {/* Fixed-width sortable + resizable columns. Each declares its
-                    width inline; Tags (rendered after this loop) gets whatever's
-                    left over because it has no explicit width under fixed layout.
-                    Order groups the operational signals (status / live / workflows
-                    / activity) together right after the name so an operator scanning
-                    the list reads identity → health → usage in one left-to-right pass. */}
+                {/* Fixed-width sortable and resizable columns. Each declares its width
+                    inline; Tags (rendered after this loop) takes the remaining space
+                    because it has no explicit width under fixed layout. The operational
+                    signals (status, live, workflows, activity) sit right after the name
+                    so identity, health and usage read in one left-to-right pass. */}
                 {([
                   ['name', t('machines:tableHeaders.name')],
                   ['status', t('machines:tableHeaders.status')],
@@ -438,8 +434,8 @@ export function MachinesPage() {
                     />
                   </th>
                 ))}
-                {/* Tags = auto-flex. No explicit width, no resize handle — it
-                    absorbs whatever horizontal space the fixed columns leave. */}
+                {/* Tags is the auto-flex column: no explicit width and no resize
+                    handle, it absorbs the space the fixed columns leave. */}
                 <th style={{ minWidth: TAGS_MIN_WIDTH }} className="relative px-4 py-2 whitespace-nowrap overflow-hidden">
                   <button
                     onClick={() => handleSort('tags')}
@@ -624,9 +620,9 @@ export function MachinesPage() {
 }
 
 /**
- * Workflows-using-this-machine count. Mirrors the activity-count cell style on
- * WorkflowsPage so the two surfaces feel like siblings, and drops to a dash when
- * unused (less noisy than a 0 badge — orphan machines should fade, not glow).
+ * Number of workflows using this machine. Uses the same cell style as the activity
+ * count on WorkflowsPage, and renders a dash when the machine is unused so unused
+ * machines stay visually quiet.
  */
 function WorkflowsCell({
   count, t,
@@ -646,11 +642,9 @@ function WorkflowsCell({
 }
 
 /**
- * 7-day step throughput with success-rate bar. Same visual rhythm as
- * SuccessRateCell on WorkflowsPage — total count + a small progress bar where
- * the green portion = success ratio. A failure-rich row reads red at a glance,
- * a healthy host reads green; idle hosts (no recent runs) render as a dash so
- * they don't compete for attention.
+ * 7-day step throughput with a success-rate bar, styled like SuccessRateCell on
+ * WorkflowsPage: a total count plus a small bar whose filled portion is the success
+ * ratio, colored by rate. Hosts without recent runs render as a dash.
  */
 function ActivityCell({
   total, failed, t,
@@ -672,10 +666,9 @@ function ActivityCell({
 }
 
 /**
- * Currently-running step executions targeting this machine. Renders nothing
- * (just a dash) when idle so the column stays quiet — but lights up blue with
- * a spinning indicator the moment any workflow touches the host. That's the
- * "don't reboot this thing right now" signal during incident response.
+ * Step executions currently running against this machine. Renders a dash when idle
+ * and a blue badge while any workflow is using the host, which tells an operator the
+ * machine is in use before they take it down.
  */
 function LiveCell({
   count, t,
@@ -701,8 +694,8 @@ function StatusBadge({
   test: TestState | undefined;
   t: (k: string) => string;
 }>) {
-  // If a test just ran for this row, prefer that result over the cached
-  // IsReachable — the user just clicked Test and expects to see what happened.
+  // A test result for this row wins over the cached IsReachable value, so the badge
+  // shows the outcome of the test the user just started.
   if (test?.status === 'running') {
     return (
       <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/15 text-blue-600 dark:text-blue-400">
@@ -750,9 +743,9 @@ function StatusBadge({
 }
 
 /**
- * Combined create + edit dialog. When `machine` is provided we're editing —
- * the PUT endpoint replaces every field (no partial updates), so the form
- * mirrors that semantic by submitting all of them.
+ * Combined create and edit dialog. A `machine` prop switches it to edit mode. The PUT
+ * endpoint replaces every field instead of applying partial updates, so the form always
+ * submits all of them.
  */
 function MachineDialog({
   machine, credentials, onCancel, onSaved,
@@ -774,8 +767,8 @@ function MachineDialog({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  // QoL: flipping SSL bumps the default port (5985 ↔ 5986) only if the user
-  // hasn't typed a custom port — otherwise we'd clobber their explicit value.
+  // Toggling SSL switches the port between 5985 and 5986, but only while the port is
+  // still one of those defaults, so a custom port entered by the user is kept.
   const handleSslToggle = (next: boolean) => {
     setUseSsl(next);
     if (winRmPort === DEFAULT_PORT_HTTP && next) setWinRmPort(DEFAULT_PORT_HTTPS);

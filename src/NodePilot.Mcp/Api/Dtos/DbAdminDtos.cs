@@ -1,6 +1,7 @@
 namespace NodePilot.Mcp.Api.Dtos;
 
-// DTOs duplicated from src/NodePilot.Api/Services/DbAdmin/DbAdminDtos.cs (no ProjectReference to Api —
+// DTOs duplicated from src/NodePilot.Api/Services/DbAdmin/DbAdminDtos.cs (no ProjectReference to
+// Api —
 // same convention as the CLI). JSON is Web-default (camelCase, case-insensitive).
 
 // ---- DbAdmin (text2sql: schema discovery + read-only SQL execution) ----

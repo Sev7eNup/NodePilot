@@ -20,7 +20,8 @@ public record ExecutionResponse(
     // defaults (null/0) in place because a freshly created Pending row has no steps yet.
     // What each field means per row:
     //   StartedByUsername — the username behind StartedByUserId; null for trigger-initiated runs.
-    //   ParentExecutionId / ParentWorkflowName — marks this as a sub-workflow run; null for top-level runs.
+    // ParentExecutionId / ParentWorkflowName — marks this as a sub-workflow run; null for top-level
+    // runs.
     //   StepsTotal — count of all StepExecution rows for this run.
     //   StepsCompleted — StepsTotal minus Skipped (a skipped step is a control-flow branch that
     //     never actually ran, so it shouldn't count as "completed").

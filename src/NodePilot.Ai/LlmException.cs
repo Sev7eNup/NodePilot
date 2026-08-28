@@ -1,11 +1,10 @@
 namespace NodePilot.Ai;
 
 /// <summary>
-/// Classification of LLM call failures. The controller maps these kinds to HTTP status codes
-/// (<c>Unreachable</c>/<c>Timeout</c>/<c>RateLimited</c> → 503, <c>Unauthorized</c> → 503 with a
-/// clear code property, <c>UpstreamError</c>/<c>MalformedResponse</c> → 502) — without making the
-/// NodePilot API endpoint itself look like it's returning 5xx errors, since the NodePilot server
-/// itself is running fine; it's the upstream LLM that failed.
+/// Classification of LLM call failures. The controller maps these kinds to HTTP status codes:
+/// <c>Unreachable</c>, <c>Timeout</c>, <c>RateLimited</c> and <c>Unauthorized</c> become 503,
+/// <c>UpstreamError</c> and <c>MalformedResponse</c> become 502, so a failing upstream is not
+/// reported as a fault of the NodePilot API itself.
 /// </summary>
 public enum LlmErrorKind
 {

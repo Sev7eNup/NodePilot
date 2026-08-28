@@ -7,6 +7,7 @@ using NodePilot.Api.Hubs;
 using NodePilot.Api.Security;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
+using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -42,11 +43,11 @@ public class SharedWorkflowFoldersController : ControllerBase
     }
 
     /// <summary>
-    /// M-33: a move changes the folder a workflow's RBAC is derived from. The REST surface picks
-    /// that up on the next request, but two projections do not: SignalR group membership is
-    /// authorized once at join, and the notifier caches workflow → folder for the live-ops filter.
-    /// Both are corrected here so a listener who just lost Read stops receiving step output
-    /// instead of streaming until they happen to disconnect.
+    /// Moving a folder changes the folder a workflow's RBAC is derived from. The REST surface
+    /// picks that up on the next request, but two projections do not: SignalR group membership
+    /// is authorized once at join, and the notifier caches workflow to folder for the live-ops
+    /// filter. Both are corrected here so a listener who just lost Read stops receiving step
+    /// output instead of streaming until they happen to disconnect.
     /// </summary>
     private async Task RevokeLiveSubscriptionsAsync(IReadOnlyCollection<Guid> workflowIds, CancellationToken ct)
     {
@@ -97,7 +98,7 @@ public class SharedWorkflowFoldersController : ControllerBase
                 f.Id, f.ParentFolderId, f.Name, f.Path, f.Depth,
                 f.CreatedAt, f.CreatedByUserId,
                 counts.GetValueOrDefault(f.Id, 0),
-                new SharedFolderCapabilities(caps.CanRead, caps.CanRun, caps.CanEdit, caps.CanAdmin)));
+                new SharedFolderCapabilities(caps.CanRead, caps.CanRun, caps.CanEdit, caps.CanDelete, caps.CanAdmin)));
         }
         return Ok(results);
     }
@@ -110,10 +111,9 @@ public class SharedWorkflowFoldersController : ControllerBase
         if (req.Name.Length > 120)
             return BadRequest(new { message = "Name max length is 120 characters" });
 
-        // Parent defaults to Root. Caller needs FolderEditor on the parent (creating a
-        // child is a parent-edit). Root has the global Admin + bootstrap-default
-        // permissions; non-Admin users with FolderEditor on Root may create top-level
-        // folders.
+        // Parent defaults to Root. Caller needs FolderEditor on the parent, since creating
+        // a child is a parent-edit. Root carries the global Admin + bootstrap-default grants,
+        // so non-Admin users with FolderEditor on Root can create top-level folders too.
         var parentId = req.ParentFolderId ?? SharedWorkflowFolder.RootFolderId;
         var parent = await _db.SharedWorkflowFolders.AsNoTracking().FirstOrDefaultAsync(f => f.Id == parentId, ct);
         if (parent is null) return BadRequest(new { message = "Parent folder not found" });
@@ -154,7 +154,7 @@ public class SharedWorkflowFoldersController : ControllerBase
         return CreatedAtAction(nameof(GetAll), null,
             new SharedFolderResponse(folder.Id, folder.ParentFolderId, folder.Name, folder.Path,
                 folder.Depth, folder.CreatedAt, folder.CreatedByUserId, 0,
-                new SharedFolderCapabilities(caps.CanRead, caps.CanRun, caps.CanEdit, caps.CanAdmin)));
+                new SharedFolderCapabilities(caps.CanRead, caps.CanRun, caps.CanEdit, caps.CanDelete, caps.CanAdmin)));
     }
 
     [HttpPut("{id:guid}")]
@@ -215,10 +215,9 @@ public class SharedWorkflowFoldersController : ControllerBase
         if (newParent.Depth + 1 + DescendantMaxDepth(allFolders, folder.Id) > SharedWorkflowFolder.MaxDepth)
             return BadRequest(new { message = $"Move would exceed folder depth limit ({SharedWorkflowFolder.MaxDepth})" });
 
-        // Moving a subtree changes the inherited permissions of every workflow below it.
-        // Do not let a co-editor move an in-flight edit session out from under its owner.
-        // The caller's own locks are safe: Edit is required on both the source and the new
-        // parent, so the owner retains an authorised path after the move.
+        // Moving a subtree changes the inherited permissions of every workflow below it, so a
+        // co-editor must not move a workflow that another user has checked out from under them.
+        // The caller's own locks stay safe: Edit is required on both source and destination.
         var subtreeFolderIds = DescendantFolderIds(allFolders, folder.Id);
         var callerId = this.GetCurrentUserId();
         var containsForeignLock = await _db.Workflows.AsNoTracking()
@@ -245,8 +244,8 @@ public class SharedWorkflowFoldersController : ControllerBase
         await _db.SaveChangesAsync(ct);
         _authz.InvalidateAll();
 
-        // The subtree's inherited permissions just changed, so every workflow below it may have a
-        // different reader set now (M-33).
+        // The subtree's inherited permissions just changed, so every workflow below it may
+        // now have a different reader set.
         var subtreeWorkflowIds = await _db.Workflows.AsNoTracking()
             .Where(w => subtreeFolderIds.Contains(w.FolderId))
             .Select(w => w.Id)
@@ -260,14 +259,20 @@ public class SharedWorkflowFoldersController : ControllerBase
     }
 
     /// <summary>
-    /// Deletes a folder. Without <paramref name="recursive"/> the folder has to be empty —
-    /// unchanged behaviour, including the 409. With it, the whole subtree goes: every
-    /// descendant folder and every workflow in it, along with what cascades off a workflow
-    /// (executions, step executions, versions, stats).
+    /// Deletes a folder. Without <paramref name="recursive"/> the folder must be empty,
+    /// returning 409 otherwise. With it, the whole subtree goes: every descendant folder and
+    /// every workflow in it, along with what cascades off a workflow (executions, step
+    /// executions, versions, stats).
     /// </summary>
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct, [FromQuery] bool recursive = false)
     {
+        // Recursive deletion crosses the same destructive boundary as workflow DELETE: it removes
+        // every Workflow in the subtree plus its execution history. Folder Edit remains sufficient
+        // for deleting an empty folder, but must never be an indirect workflow-delete capability.
+        if (recursive && !User.IsInRole(nameof(UserRole.Admin)))
+            return Forbid();
+
         if (id == SharedWorkflowFolder.RootFolderId)
             return BadRequest(new { message = "Root folder cannot be deleted" });
 
@@ -295,16 +300,11 @@ public class SharedWorkflowFoldersController : ControllerBase
     }
 
     /// <summary>
-    /// Subtree delete. Edit on <paramref name="folder"/> is already established by the caller and
-    /// covers every descendant: grants resolve along the ancestry chain with highest-role-wins, so
-    /// a grant on an ancestor applies all the way down. `SharedFolderDelete_RecursiveInheritedEdit_*`
-    /// pins that — if the resolution ever changes, a hole opens exactly here.
-    ///
-    /// Concurrency is the reason this is not "check locks, then delete". Under ReadCommitted
-    /// somebody can check a workflow out between the two, and it would be deleted despite a
-    /// foreign lock. So the lock condition rides *inside* the delete — the same guarded
-    /// `ExecuteDeleteAsync` shape the single-workflow delete uses (M-3) — and a row count that
-    /// falls short of what we counted means somebody got in between: roll back, 423.
+    /// Subtree delete. Edit on <paramref name="folder"/>, already established by the caller,
+    /// covers every descendant because grants resolve along the ancestry chain with
+    /// highest-role-wins. The lock check happens inside the guarded <c>ExecuteDeleteAsync</c>,
+    /// not before it, because under ReadCommitted a workflow could be checked out in between;
+    /// a short row count means that happened, so the transaction rolls back with 423.
     /// </summary>
     private async Task<IActionResult> DeleteRecursiveAsync(SharedWorkflowFolder folder, CancellationToken ct)
     {
@@ -314,13 +314,13 @@ public class SharedWorkflowFoldersController : ControllerBase
 
         var doomedFolders = allFolders
             .Where(f => subtreeIds.Contains(f.Id))
-            .OrderByDescending(f => f.Depth)   // bottom-up: Folder→Folder is Restrict, not Cascade
+            .OrderByDescending(f => f.Depth)   // bottom-up: Folder-to-Folder is Restrict, not Cascade
             .ToList();
 
-        // Best-effort, and deliberately outside the transaction: revoking a subscription for a
-        // workflow that then survives a rollback only costs the viewer a re-join, whereas leaving
-        // one attached to a deleted execution is the leak M-33 closed. NOT the audit source — that
-        // snapshot is taken inside the transaction below.
+        // Best-effort and deliberately outside the transaction: revoking a subscription for a
+        // workflow that survives a rollback only costs the viewer a re-join, while leaving one
+        // attached to a deleted execution would leak it. Not the audit source, which is
+        // snapshotted inside the transaction below.
         var watchedWorkflowIds = await _db.Workflows.AsNoTracking()
             .Where(w => subtreeIds.Contains(w.FolderId))
             .Select(w => w.Id)
@@ -332,8 +332,8 @@ public class SharedWorkflowFoldersController : ControllerBase
         {
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
-            // The snapshot is taken INSIDE the transaction and the delete is keyed on its ids.
-            // Deleting by `FolderId` alone would also catch rows inserted after the snapshot —
+            // The snapshot is taken inside the transaction, and the delete is keyed on its ids.
+            // Deleting by `FolderId` alone would also catch rows inserted after the snapshot;
             // they would vanish without an audit row, and the reported count would be short.
             var snapshot = await _db.Workflows.AsNoTracking()
                 .Where(w => subtreeIds.Contains(w.FolderId))
@@ -364,10 +364,9 @@ public class SharedWorkflowFoldersController : ControllerBase
                     : new RecursiveDeleteOutcome(RecursiveDeleteStatus.Changed, []);
             }
 
-            // Anything that entered the subtree after the snapshot is still there — the delete was
-            // keyed on snapshot ids on purpose. Refusing here is an explicit check rather than a
-            // reliance on the Restrict FK firing, which is provider-dependent; the catch below
-            // stays as the backstop for the same race on sub-folders.
+            // Anything that entered the subtree after the snapshot is still there because the
+            // delete is keyed on snapshot ids on purpose. This explicit check does not rely on
+            // the Restrict FK firing, which is provider-dependent; the catch below is the backstop.
             var leftover = await _db.Workflows.CountAsync(w => subtreeIds.Contains(w.FolderId), ct);
             if (leftover > 0)
             {

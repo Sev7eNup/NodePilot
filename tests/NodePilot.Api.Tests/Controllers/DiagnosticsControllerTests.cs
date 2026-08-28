@@ -99,8 +99,7 @@ public sealed class DiagnosticsControllerTests : IDisposable
     [Fact]
     public void Tail_HugeLineRequest_CappedAt1000()
     {
-        // Anti-DoS guard: the response is capped at 1000 lines even if a UI bug asks for
-        // more. File has 2000 lines, request=99999 → response is still limited to 1000.
+        // Anti-DoS guard: the response is capped at 1000 lines even if a caller requests more.
         var file = Path.Combine(_tempDir, "support.log");
         File.WriteAllLines(file, Enumerable.Range(1, 2000).Select(i => $"l{i}"));
 

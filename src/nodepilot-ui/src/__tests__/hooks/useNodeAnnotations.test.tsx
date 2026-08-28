@@ -70,8 +70,8 @@ function setup({
     setNodes, setEdges,
     getCurrentNodes: () => currentNodes,
     getCurrentEdges: () => currentEdges,
-    // Simulates an external node rebuild (e.g. a workflow refetch after lock/unlock):
-    // replaces currentNodes with fresh references that don't carry our annotations.
+    // Simulates an external node rebuild (for example a workflow refetch after lock/unlock):
+    // replaces currentNodes with fresh references that carry no annotations.
     replaceNodes: (next: Node[]) => { currentNodes = next; },
   };
 }
@@ -310,9 +310,9 @@ describe('useNodeAnnotations', () => {
     });
 
     it('re-applies __health/__stats after a node rebuild, without refetching', async () => {
-      // Regression: after save/publish/lock the editor rebuilds `nodes` from definitionJson,
-      // which strips the annotations. Without `nodes` in the effect deps the sparkline stayed
-      // gone until the next 60 s refetch (__stats: 5 min).
+      // After save/publish/lock the editor rebuilds `nodes` from definitionJson, which strips
+      // the annotations. `nodes` must stay in the effect deps so they are re-applied at once
+      // instead of only on the next refetch.
       mockApiGet.mockImplementation((url: string) => {
         if (url.includes('/step-health')) return Promise.resolve({ 'step-a': [{ status: 'Failed', startedAt: '2026-04-26T12:00:00Z' }] });
         if (url.includes('/step-stats')) return Promise.resolve({ 'step-a': { totalRuns: 3, failedRuns: 1, failureRate: 0.33, avgDurationMs: 10, p95DurationMs: 20, lastDurationMs: 12 } });
@@ -337,7 +337,7 @@ describe('useNodeAnnotations', () => {
         expect(annotations().__health).toBeDefined();
         expect(annotations().__stats).toBeDefined();
       });
-      // Same node ids → same query key → served from cache, no extra request.
+      // Same node ids give the same query key, so the data is served from cache.
       expect(mockApiGet.mock.calls.length).toBe(requestsBefore);
     });
 
@@ -354,7 +354,7 @@ describe('useNodeAnnotations', () => {
       });
 
       // Re-render with unchanged inputs: the effects run again (nodes is in their deps) but must
-      // hand back the identical array, otherwise nodes → effect → setNodes → nodes loops forever.
+      // hand back the identical array, otherwise setNodes keeps re-triggering them forever.
       const settled = harness.getCurrentNodes();
       harness.rerender({ workflowIsEnabled: true, liveExecution: null });
       harness.rerender({ workflowIsEnabled: true, liveExecution: null });
@@ -384,12 +384,12 @@ describe('useNodeAnnotations', () => {
     });
 
     it('re-applies __workflowEnabled=false when nodes are externally rebuilt (lock-refetch flow)', () => {
-      // Initial render: workflow disabled → annotation gets set.
+      // Initial render: the workflow is disabled, so the annotation gets set.
       const a = makeNode('step-a');
       const harness = setup({ initialNodes: [a], workflowIsEnabled: false });
 
       // Simulate a workflow refetch: the editor rebuilds `nodes` from definitionJson,
-      // producing fresh node references without our __workflowEnabled annotation.
+      // producing fresh node references without the __workflowEnabled annotation.
       const aFresh = makeNode('step-a');
       harness.replaceNodes([aFresh]);
       // Re-render with the same workflowIsEnabled=false (locking doesn't flip enabled to true).

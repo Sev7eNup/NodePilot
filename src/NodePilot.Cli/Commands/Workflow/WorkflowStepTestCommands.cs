@@ -14,9 +14,9 @@ namespace NodePilot.Cli.Commands.Workflow;
 // `np workflow step-test` — POSTs /api/workflows/{id}/steps/{stepId}/test.
 //
 // Mock variables come in via repeatable --mock key=value (flat map like
-// "checkDisk.output=7"). ConfigOverride is a separate flag — `--config-file <PATH>` —
-// because operators iterating on a step are normally NOT going to type a JSON blob
-// onto the command line. The file form is the realistic ergonomy.
+// "checkDisk.output=7"). ConfigOverride is a separate flag, `--config-file <PATH>`,
+// because operators iterating on a step usually do not want to type a JSON blob
+// on the command line. The file form is more practical.
 
 public sealed class WorkflowStepTestSettings : GlobalSettings
 {

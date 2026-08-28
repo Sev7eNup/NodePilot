@@ -148,9 +148,8 @@ public sealed class GlobalsFolderDeleteCommand : BaseCommand<GlobalsFolderDelete
     public GlobalsFolderDeleteCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
     protected override async Task<int> RunAsync(CommandContext _, GlobalsFolderDeleteSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        // `--yes` is only demanded for the recursive variant. A plain delete refuses non-empty
-        // folders server-side, so it cannot destroy anything unattended — and scripts relying on
-        // that have run without a flag since the command existed.
+        // `--yes` is only required for the recursive variant. A plain delete refuses non-empty
+        // folders server-side, so it never destroys anything unattended without an explicit flag.
         if (settings.Recursive && !settings.Yes && Console.IsInputRedirected)
         {
             writer.Error("Rekursives Löschen ist destruktiv — in nicht-interaktiven Läufen mit --yes bestätigen.");
@@ -204,7 +203,8 @@ public sealed class GlobalsMoveVariableCommand : BaseCommand<GlobalsMoveVariable
     }
 }
 
-/// <summary>Fixed, well-known folder id(s) mirrored from the server (not randomly generated) — currently just Root = …0002.</summary>
+/// <summary>Fixed, well-known folder id(s) mirrored from the server (not randomly generated) —
+/// currently just Root = …0002.</summary>
 internal static class GlobalVariableFolderIds
 {
     public static readonly Guid Root = Guid.Parse("00000000-0000-0000-0000-000000000002");

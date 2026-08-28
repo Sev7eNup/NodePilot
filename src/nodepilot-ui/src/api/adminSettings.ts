@@ -49,9 +49,9 @@ export type SettingsStatus = {
   lastSavedBy: string | null;
 };
 
-// What the process is actually sized to. `manualTuning` is the mode it BOOTED in;
+// What the process is actually sized to. `manualTuning` is the mode it booted in;
 // `desiredManualTuning` is what is saved right now. They differ between a save and the restart
-// that puts it into effect — the runspace pool and dispatch queue are built once at boot.
+// that puts it into effect — the runspace pool and dispatch worker pool are built once at boot.
 export type EffectiveSizing = {
   manualTuning: boolean;
   desiredManualTuning: boolean;
@@ -101,10 +101,10 @@ export type SettingsErrorBody = SettingsValidationErrorResponse & {
 /**
  * Thrown for non-2xx responses from the admin settings API. Carries enough metadata for
  * the UI to disambiguate between the documented status codes:
- *  - 400 → validation problem; `body.errors` populated
- *  - 404 → unknown section
- *  - 412 → ETag mismatch; `body.current` carries the latest server snapshot
- *  - 428 → missing If-Match header; client bug
+ *  - 400: validation problem; `body.errors` populated
+ *  - 404: unknown section
+ *  - 412: ETag mismatch; `body.current` carries the latest server snapshot
+ *  - 428: missing If-Match header; client bug
  */
 export class SettingsApiError extends Error {
   public readonly status: number;
@@ -160,7 +160,7 @@ export const adminSettings = {
 
   // Write-payload is intentionally `unknown`-shaped: ASP.NET Core deserialises with
   // PropertyNameCaseInsensitive, so a UI-side camelCase mismatch wouldn't fail the
-  // server, but the strict TPayload constraint would block our PascalCase write
+  // server, but the strict TPayload constraint would block the PascalCase write
   // shape that matches the C# DTO 1:1. The Promise's TResponse still gives the
   // caller a typed Read-shape on success.
   async putSection<TResponse>(

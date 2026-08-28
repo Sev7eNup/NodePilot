@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks, MOCK_HOST } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 11 — Dashboard.
+ * Dashboard page.
  *
  * The dashboard reads a single aggregate endpoint: GET /api/stats/dashboard. Everything on the
  * page (KPI cards, the 24h bar chart, Top/Failing workflow panels, Currently-Running, Recent
@@ -10,8 +10,8 @@ import { installDefaultMocks, MOCK_HOST } from './fixtures/mockApi';
  *
  * Hermetic: page.route() mocks only (no backend), per fixtures/mockApi.ts. The catch-all returns
  * [] for unmocked /api/* calls (including /observability/config so the opt-in Telemetry section
- * stays hidden), so we only need to pin /stats/dashboard. SPA renders EN under Playwright →
- * bilingual / EN selectors.
+ * stays hidden), so only /stats/dashboard needs pinning. The SPA renders English under
+ * Playwright, so selectors stay bilingual.
  */
 
 const WF_TOP = 'a0000000-0000-0000-0000-0000000000aa';
@@ -20,7 +20,7 @@ const EXEC_RECENT = 'c0000000-0000-0000-0000-0000000000cc';
 const EXEC_RUNNING = 'd0000000-0000-0000-0000-0000000000dd';
 
 function hourBuckets() {
-  // 24 hourly buckets ending now; sprinkle a few with activity so bars render.
+  // 24 hourly buckets ending now; a few carry activity so the bars render.
   const out: Array<{ hourStart: string; succeeded: number; failed: number; cancelled: number }> = [];
   const base = Date.now() - 23 * 3600 * 1000;
   for (let i = 0; i < 24; i++) {
@@ -106,14 +106,14 @@ test.describe('Dashboard (Teil 11)', () => {
 
     await page.goto('/');
 
-    // Title + the loading placeholder must be gone (no hung loading state).
+    // The title renders and the loading placeholder is gone (no hung loading state).
     await expect(page.getByRole('heading', { name: /^dashboard$/i })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/^loading…?$|^lädt/i)).toHaveCount(0);
 
-    // KPI cards — assert label + value pairs (values come from the mock payload).
+    // KPI cards: label and value pairs, with the values coming from the mock payload.
     await expect(page.getByText(/^workflows$/i).first()).toBeVisible();
-    // Scope the KPI value to the main content: the sidebar's Workflows nav badge now also
-    // renders "12" (same /stats/dashboard payload), so an unscoped match is ambiguous.
+    // Scope the KPI value to the main content: the sidebar Workflows badge renders "12" from
+    // the same /stats/dashboard payload, so an unscoped match is ambiguous.
     await expect(page.getByRole('main').getByText('12', { exact: true })).toBeVisible(); // workflowsTotal
     await expect(page.getByText(/^machines$/i).first()).toBeVisible();
     await expect(page.getByText(/success rate/i).first()).toBeVisible();
@@ -123,22 +123,22 @@ test.describe('Dashboard (Teil 11)', () => {
     // Selected-window chart header renders.
     await expect(page.getByRole('heading', { name: /executions.*24h/i })).toBeVisible();
 
-    // Top Workflows list — sorted-by-activity entries.
+    // Top Workflows list, sorted by activity.
     await expect(page.getByRole('heading', { name: /^top workflows/i })).toBeVisible();
     await expect(page.getByText('Nightly Backup').first()).toBeVisible();
     await expect(page.getByText('Disk Cleanup').first()).toBeVisible();
 
-    // Top-Workflows: rank numbers + success rate percentages.
+    // Top Workflows: rank numbers and success rate percentages.
     await expect(page.getByText('#1').first()).toBeVisible();
     await expect(page.getByText('95%', { exact: true }).first()).toBeVisible(); // Nightly Backup: 19/20
 
-    // Failing + Currently Running panels.
+    // Failing and Currently Running panels.
     await expect(page.getByRole('heading', { name: /failing workflows/i })).toBeVisible();
     await expect(page.getByText('Flaky Deploy')).toBeVisible();
     await expect(page.getByText('30%', { exact: true }).first()).toBeVisible(); // Flaky Deploy: 3/10
     await expect(page.getByRole('heading', { name: /currently running/i })).toBeVisible();
 
-    // Recent Executions table — last row present with a status badge.
+    // Recent Executions table: the last row is present with a status badge.
     await expect(page.getByRole('heading', { name: /recent executions/i })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'Nightly Backup' })).toBeVisible();
     await expect(page.getByText(/^succeeded$/i).last()).toBeVisible();
@@ -148,7 +148,7 @@ test.describe('Dashboard (Teil 11)', () => {
     await page.route('**/api/stats/dashboard**', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(dashboardStats()) }),
     );
-    // Editor will try to load the workflow when we land there; give it something benign.
+    // The editor loads the workflow after navigation, so serve a minimal one.
     await page.route(`**/api/workflows/${WF_TOP}`, (route) =>
       route.fulfill({
         status: 200,
@@ -165,7 +165,7 @@ test.describe('Dashboard (Teil 11)', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: /^top workflows/i })).toBeVisible({ timeout: 15_000 });
 
-    // Scope to the Top-Workflows panel (the heading's parent card) — the Currently-Running
+    // Scope to the Top Workflows panel (the parent card of the heading). The Currently Running
     // panel also has a "Nightly Backup" role=button, so an unscoped match is ambiguous.
     const topPanel = page.getByRole('heading', { name: /top workflows/i }).locator('..');
     await topPanel.getByRole('button', { name: /Nightly Backup/ }).first().click();
@@ -197,17 +197,17 @@ test.describe('Dashboard (Teil 11)', () => {
     await page.goto('/');
 
     // The TopBar host chip renders a single identity field: the FQDN when it contains a dot
-    // (machine + domain in one), otherwise the bare machine name. MOCK_HOST.fqdn has a dot, so
-    // the chip shows the full FQDN — which carries the machine name and domain as substrings.
+    // (machine and domain in one), otherwise the bare machine name. MOCK_HOST.fqdn has a dot, so
+    // the chip shows the full FQDN, which carries the machine name and domain as substrings.
     await expect(page.getByText(MOCK_HOST.fqdn, { exact: true })).toBeVisible({ timeout: 15_000 });
-    // The "Host" label from the chip is present too (language-agnostic: it sits next to the value).
+    // The chip value also contains the domain part of the FQDN.
     await expect(page.getByText(MOCK_HOST.fqdn, { exact: true })).toContainText(MOCK_HOST.domain);
   });
 
   test('11.1c — many running executions stay in a fixed-height scroll box (no sibling distortion)', async ({ page }) => {
-    // At xl the hero row is gauge | KPI cluster | Currently-Running. The running box must stay
-    // pinned to the row height (driven by the gauge/KPI) and scroll internally — it must not grow
-    // and stretch its siblings. Needs a wide viewport so the xl:4-col layout is active.
+    // At the xl breakpoint the hero row holds the gauge, the KPI cluster and Currently Running.
+    // The running box keeps the row height set by the gauge and KPI cluster and scrolls inside
+    // instead of stretching its siblings. The wide viewport activates the xl four-column layout.
     await page.setViewportSize({ width: 1440, height: 900 });
 
     const manyRunning = Array.from({ length: 20 }, (_, i) => ({
@@ -234,7 +234,7 @@ test.describe('Dashboard (Teil 11)', () => {
     const gaugeCard = page.locator('.np-card-hero');
     const scroller = runningCard.locator('.overflow-y-auto');
 
-    // The running card is no taller than the gauge card — i.e. the long list did not blow out the row.
+    // The running card is no taller than the gauge card, so the long list did not stretch the row.
     const runningBox = await runningCard.boundingBox();
     const gaugeBox = await gaugeCard.boundingBox();
     expect(runningBox).not.toBeNull();
@@ -266,8 +266,8 @@ test.describe('Dashboard (Teil 11)', () => {
     await expect(page.getByRole('heading', { name: /^dashboard$/i })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/nothing running right now/i)).toBeVisible();
     await expect(page.getByText(/no executions in the last 7 days/i)).toBeVisible();
-    // "No executions yet" is the shared empty-state for several lists (top workflows, recent, chart),
-    // so it renders multiple times — assert at least one is visible.
+    // "No executions yet" is the shared empty state for several lists (top workflows, recent,
+    // chart), so it renders more than once and one visible match is enough.
     await expect(page.getByText(/no executions yet/i).first()).toBeVisible();
   });
 
@@ -312,10 +312,8 @@ test.describe('Dashboard (Teil 11)', () => {
     expect(secondaryGreen).toBeLessThan(45);
     expect(secondaryBlue).toBeLessThan(45);
 
-    // The Bank-Hell secondary button carries a red-accented but light border. The actual
-    // rendered colour is a dusty rose ≈ rgb(233, 189, 194): red clearly dominant, green/blue
-    // high enough to read as "light red" (a saturated/dark red would sit far below ~150).
-    // The earlier >200 floor was miscalibrated to this specific tint.
+    // The secondary button carries a red-accented but light border: red dominates while green
+    // and blue stay high enough for the border to read as a light red rather than a strong one.
     const [borderRed, borderGreen, borderBlue] = firstCssColorChannels(secondaryStyles.borderColor);
     expect(borderRed).toBeGreaterThan(borderGreen + 4);
     expect(borderRed).toBeGreaterThan(borderBlue + 4);

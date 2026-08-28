@@ -87,8 +87,10 @@ public class GlobalVariablesController : ControllerBase
             return BadRequest(new { message = "Name must match [A-Za-z0-9_-]{1,100}" });
 
         // null folderId = "keep the variable's current folder" (mirrors the value:null = unchanged
-        // convention). This prevents `np globals import --upsert` and any caller that doesn't echo a
-        // folderId from silently relocating the variable to Root. To move, pass an explicit folder id
+        // convention). This prevents `np globals import --upsert` and any caller that doesn't echo
+        // a
+        // folderId from silently relocating the variable to Root. To move, pass an explicit folder
+        // id
         // (or use POST /{id}/move-folder). Existence is only checked for an explicit (non-null) id.
         var folderId = request.FolderId;
         if (folderId is not null && !await _folders.ExistsAsync(folderId.Value, ct))
@@ -100,7 +102,7 @@ public class GlobalVariablesController : ControllerBase
                 folderId, this.GetCurrentUsername(), ct);
         }
         catch (KeyNotFoundException) { return NotFound(); }
-        // The "demotion" guard (security-audit finding M-24 — secret → non-secret without a new
+        // The "demotion" guard (security-audit finding M-24 — secret -> non-secret without a new
         // value) and other domain validations throw InvalidOperationException. That's a bad-input
         // error from the caller, not a server error — map it to 400 instead of letting it fall
         // through to the generic 500 handler.

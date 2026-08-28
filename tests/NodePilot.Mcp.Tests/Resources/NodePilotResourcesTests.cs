@@ -29,7 +29,8 @@ public sealed class NodePilotResourcesTests
     {
         // The document moved to NodePilot.Core so NodePilot.Ai can render the AI prompts from the
         // same data. The MCP contract (URI, body) must be unchanged by that move. Coverage and
-        // key-correctness are guarded in NodePilot.Engine.Tests/Activities/ActivityConfigReferenceTests.
+        // key-correctness are guarded in
+        // NodePilot.Engine.Tests/Activities/ActivityConfigReferenceTests.
         NodePilotResources.ActivityConfigReference()
             .Should().Be(NodePilot.Core.Activities.ActivityConfigReference.RawJson);
 

@@ -6,12 +6,11 @@ export interface ConfirmRequest {
   title?: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  /** Styles the confirm button as destructive (red) — use for deletes. */
+  /** Styles the confirm button as destructive (red). Use it for deletes. */
   danger?: boolean;
   /**
-   * Rendered as a list between the message and the buttons. For a delete that takes several
-   * things with it, naming them beats folding the count into one sentence — the reader can
-   * check the list against what they meant to select.
+   * Rendered as a list between the message and the buttons. Naming the affected items lets the
+   * reader check them against what they meant to select.
    */
   details?: readonly string[];
 }
@@ -29,8 +28,8 @@ interface ConfirmStore {
 export const useConfirmStore = create<ConfirmStore>()((set, get) => ({
   pending: null,
   open: (req) => {
-    // Single-flight: a second confirm while one is open cancels the stale one,
-    // matching how a second native confirm() would have replaced the first.
+    // Single-flight: a second confirm while one is open cancels the stale one, matching how a
+    // second native confirm() replaces the first.
     get().pending?.resolve(false);
     set({ pending: req });
   },

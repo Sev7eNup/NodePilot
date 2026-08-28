@@ -47,18 +47,15 @@ interface Props {
   availableVars?: AvailableVar[];
   /** Full `{{step.param.X}}`-style expressions for autocomplete + validation. */
   upstreamRefs?: UpstreamRef[];
-  /** Name of this step's outputVariable — shown as prefix in the Exposed panel (e.g. `collectInfo.param.hostName`). */
+  /** Name of this step's outputVariable, shown as prefix in the Exposed panel. */
   outputVariableName?: string;
   title?: string;
   /**
-   * When set: an AI-generate button is shown in the toolbar. Callers leave it unset when AI is
-   * unavailable — `useAiScriptStream` returns `undefined` when no LLM endpoint is usable or the
-   * user is a Viewer, which hides the button. The callback **streams** the generated script:
-   * `onToken` is called for each token; `signal` aborts the stream (cancel/stop). The prompt
-   * dialog closes immediately after "Generate"; generation happens directly in the editor
-   * (a waiting indicator, then code typing in live). Errors (both pre-token and mid-stream)
-   * appear as a banner in the editor. Default insert mode is "insert at cursor"; the user can
-   * switch to "replace the whole editor content" in the prompt dialog.
+   * When set, the toolbar shows an AI-generate button; leaving it unset hides the button
+   * (no usable LLM endpoint, or the user is a Viewer). The callback streams the generated
+   * script: `onToken` fires per token and `signal` aborts the stream. The prompt dialog
+   * closes right after submit and the code types into the editor; errors show as a banner
+   * there. Insert mode defaults to "insert at cursor" and can be switched to replace-all.
    */
   onAiGenerate?: (prompt: string, currentScript: string | null, onToken: (text: string) => void, signal: AbortSignal) => Promise<void>;
   /** Sanitized active LLM host shown beside the one-shot script-context consent. */
@@ -71,9 +68,8 @@ const MAX_FONT = 22;
 
 /**
  * Advances a 1-based {lineNumber, column} position (Monaco's convention) by the inserted text.
- * Used during AI streaming to move the next insert to the end of the chunk just written —
- * independent of `editor.getSelection()`, which is unreliable between fast programmatic edits
- * + readOnly toggling and would otherwise scramble the tokens.
+ * AI streaming uses it to place the next insert at the end of the chunk just written, without
+ * relying on `editor.getSelection()`, which is unreliable between fast programmatic edits.
  */
 export function advanceStreamPosition(
   pos: { lineNumber: number; column: number },
@@ -82,16 +78,16 @@ export function advanceStreamPosition(
   const lastNl = text.lastIndexOf('\n');
   if (lastNl < 0) return { lineNumber: pos.lineNumber, column: pos.column + text.length };
   const newlineCount = text.split('\n').length - 1;
-  return { lineNumber: pos.lineNumber + newlineCount, column: text.length - lastNl }; // column = characters after the last \n, plus 1
+  return { lineNumber: pos.lineNumber + newlineCount, column: text.length - lastNl }; // 1-based column after the last newline
 }
 
 const THEME_DARK = 'nodepilot-dark';
 const THEME_LIGHT = 'nodepilot-light';
 
 // --- Theme bridge --------------------------------------------------------------
-// Monaco themes are static — they can't read CSS vars. We resolve the relevant
-// vars from the live designer scope/root and feed them into defineTheme. Re-runs
-// on theme switch pick up the new values.
+// Monaco themes are static and cannot read CSS variables. The relevant variables are
+// resolved from the live designer scope or root and fed into defineTheme. A re-run on
+// theme switch picks up the new values.
 
 function readVar(name: string, fallback: string): string {
   if (typeof document === 'undefined') return fallback;
@@ -114,9 +110,9 @@ function defineNodePilotThemes() {
     primary: readVar('--color-primary', '#004ac6'),
     outline: readVar('--color-outline', '#737686'),
   };
-  // Dark reads the SAME runtime tokens as light (readVar resolves against the live
-  // scope, which under html.dark carries the dark values) — the previous hardcoded
-  // dark object ignored skins and token updates.
+  // Dark reads the same runtime tokens as light: readVar resolves against the live scope,
+  // which under html.dark already carries the dark values. Hardcoding them here would
+  // ignore skins and token updates.
   const darkColors = {
     surfaceLowest: readVar('--color-surface-lowest', '#111214'),
     surfaceLow: readVar('--color-surface-low', '#1e2024'),
@@ -175,8 +171,8 @@ function defineNodePilotThemes() {
 }
 
 // --- Exposed-variable parser ---------------------------------------------------
-// Matches `$foo = ...` on a line (ignores `$foo.bar = ...`, `$foo -eq ...`, etc.).
-// PowerShell is case-preserving but case-insensitive; we keep the original casing.
+// Matches `$foo = ...` on a line and ignores forms like `$foo.bar = ...` or `$foo -eq ...`.
+// PowerShell is case-insensitive but case-preserving, so the original casing is kept.
 const ASSIGN_RE = /^\s*\$([A-Za-z_]\w*)\s*=(?!=)/gm;
 
 function parseExposedVars(code: string): string[] {
@@ -215,15 +211,15 @@ export function ScriptEditorDialog({
   const aiAbortRef = useRef<AbortController | null>(null);
   const aiBusy = aiPhase !== 'idle';
 
-  // Window geometry — centered horizontally + a bit above vertical center, then the
-  // user can drag/resize freely.
+  // Initial window geometry: centered horizontally and slightly above vertical center.
+  // The user can drag and resize freely from there.
   const DEFAULT_W = 1280;
   const DEFAULT_H = 800;
   const MIN_W = 640;
   const MIN_H = 420;
   const [pos, setPos] = useState<{ x: number; y: number }>(() => ({
     x: typeof window !== 'undefined' ? Math.max(0, (globalThis.innerWidth - DEFAULT_W) / 2) : 0,
-    // Sit at ~32% of the free vertical gap (not 0.5) so the window reads a touch higher.
+    // Sit at 32% of the free vertical gap so the window reads a little higher than centered.
     y: typeof window !== 'undefined' ? Math.max(8, (globalThis.innerHeight - DEFAULT_H) * 0.32) : 8,
   }));
   const [size, setSize] = useState<{ w: number; h: number }>(() => ({
@@ -235,10 +231,10 @@ export function ScriptEditorDialog({
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
   useEffect(() => {
-    try { globalThis.localStorage.setItem(FONT_SIZE_KEY, String(fontSize)); } catch { /* quota / private */ }
+    try { globalThis.localStorage.setItem(FONT_SIZE_KEY, String(fontSize)); } catch { /* storage blocked */ }
   }, [fontSize]);
 
-  // Abort the AI stream on unmount (dialog closing / switching workflow).
+  // Abort the AI stream on unmount, for example when the dialog closes.
   useEffect(() => () => aiAbortRef.current?.abort(), []);
 
   // --- Drag (title bar) ---
@@ -337,35 +333,33 @@ export function ScriptEditorDialog({
   }, []);
 
   /**
-   * AI submit (streaming): closes the prompt dialog on the first token (so the editor becomes
-   * visible) and types the script live into Monaco. Tokens are batched per
-   * `requestAnimationFrame` (one `executeEdits` per frame), and the entire generation is ONE
-   * undo group (`pushUndoStop` before/after). The editor is read-only during the stream, so the
-   * user typing in parallel doesn't interleave with the AI output. ReplaceAll only clears the
-   * editor on the first token (so a pre-token error doesn't lose the old content). Cancelled via
-   * `signal` (Stop/Close).
+   * Streams an AI generation into Monaco. Tokens are batched per `requestAnimationFrame`, one
+   * `executeEdits` per frame, and the whole generation forms a single undo group. The editor
+   * stays read-only during the stream so parallel typing cannot interleave with the output.
+   * In replace-all mode the editor is cleared on the first token, so an error before any token
+   * leaves the old content intact. `signal` cancels the stream.
    */
   const handleAiSubmit = useCallback(async (prompt: string, replaceAll: boolean, includeCurrentScript: boolean) => {
     if (!onAiGenerate) return;
-    if (aiAbortRef.current) return; // a generation is already running → no second stream
+    if (aiAbortRef.current) return; // a generation is already running, so no second stream
     const editor = editorRef.current;
     const ac = new AbortController();
     aiAbortRef.current = ac;
     setAiError(null);
-    // Immediately: close the dialog, switch focus to the editor, show the waiting indicator.
+    // Close the dialog right away and show the waiting indicator in the editor.
     setAiDialogOpen(false);
     setAiPhase('waiting');
 
     let firstToken = true;
     let pending = '';
     let rafScheduled = false;
-    // An explicit, monotonically advancing insert position. Do NOT use
-    // `editor.getSelection()`: between the fast stream edits, the selection is unreliable after
-    // readOnly toggling/executeEdits/focus — otherwise the tokens would land scrambled.
+    // An explicit, monotonically advancing insert position. `editor.getSelection()` is not
+    // usable here: between the fast stream edits it is unreliable after readOnly toggling,
+    // executeEdits and focus changes, which would scramble the token order.
     let insertPos = { lineNumber: 1, column: 1 };
 
-    // executeEdits is a no-op on a read-only editor → lift readOnly only for the
-    // synchronous, programmatic write, and restore it via try/finally so it's guaranteed.
+    // executeEdits does nothing on a read-only editor, so readOnly is lifted only for the
+    // synchronous programmatic write and restored in a finally block.
     const withWritable = (fn: () => void) => {
       if (!editor) return;
       editor.updateOptions({ readOnly: false });
@@ -377,11 +371,11 @@ export function ScriptEditorDialog({
       if (!pending) return;
       const text = pending;
       pending = '';
-      if (!editor || !editor.getModel()) { setCode((prev) => prev + text); return; } // Fallback (no Monaco / in tests)
+      if (!editor || !editor.getModel()) { setCode((prev) => prev + text); return; } // fallback without Monaco
       const range = new monaco.Range(insertPos.lineNumber, insertPos.column, insertPos.lineNumber, insertPos.column);
       withWritable(() => editor.executeEdits('ai-stream', [{ range, text, forceMoveMarkers: true }]));
       insertPos = advanceStreamPosition(insertPos, text);
-      editor.setPosition(insertPos);                              // Cursor follows → auto-scroll
+      editor.setPosition(insertPos);                              // cursor follows, auto-scrolls
       editor.revealPositionInCenterIfOutsideViewport(insertPos);
     };
     const schedule = () => {
@@ -396,11 +390,10 @@ export function ScriptEditorDialog({
         setAiPhase('streaming');
         if (editor) {
           editor.updateOptions({ readOnly: true });
-          editor.pushUndoStop(); // Start of the undo block
+          editor.pushUndoStop(); // start of the undo block
           if (replaceAll) {
-            // Clear via executeEdits over the full range → stays in the SAME undo
-            // block as the inserts (setValue is model-level and would break the editor's undo
-            // grouping). Starts at {1,1}.
+            // Clear via executeEdits over the full range so it stays in the same undo block
+            // as the inserts. setValue is model-level and would break the undo grouping.
             withWritable(() => {
               const model = editor.getModel();
               if (model) editor.executeEdits('ai-clear', [{ range: model.getFullModelRange(), text: '' }]);
@@ -408,7 +401,7 @@ export function ScriptEditorDialog({
             setCode('');
             insertPos = { lineNumber: 1, column: 1 };
           } else {
-            // Insert mode: start once at the current cursor end-position, then only `advance`.
+            // Insert mode starts at the current cursor end position and advances from there.
             const sel = editor.getSelection();
             insertPos = sel
               ? { lineNumber: sel.endLineNumber, column: sel.endColumn }
@@ -426,7 +419,7 @@ export function ScriptEditorDialog({
       flush();
       if (editor) {
         editor.updateOptions({ readOnly: false });
-        editor.pushUndoStop(); // End of the undo block → the whole generation is a single undo step
+        editor.pushUndoStop(); // end of the undo block, so the generation undoes in one step
         editor.focus();
       }
       aiAbortRef.current = null;
@@ -441,8 +434,8 @@ export function ScriptEditorDialog({
     } catch (err: unknown) {
       const aborted = (err instanceof DOMException || err instanceof Error) && err.name === 'AbortError';
       cleanup();
-      // Dialog is already closed → both pre-token and mid-stream errors show up as an
-      // editor banner. A cancel (Stop/Cancel) is not an error — the partial content stays.
+      // The dialog is already closed, so errors before and during the stream show as an
+      // editor banner. A cancel is not an error and keeps the partial content.
       if (!aborted) setAiError(err instanceof Error ? err.message : String(err));
     }
   }, [onAiGenerate, code]);
@@ -453,14 +446,14 @@ export function ScriptEditorDialog({
   const isDark = resolveTheme(theme) === 'dark';
   const monacoTheme = isDark ? THEME_DARK : THEME_LIGHT;
 
-  // Re-define themes when the app theme switches so `editor.background` / `selectionBackground`
-  // pick up the freshly resolved CSS-var values (handles user-customised tokens).
+  // Redefine the themes when the app theme switches so `editor.background` and
+  // `selectionBackground` pick up the freshly resolved CSS variable values.
   useEffect(() => {
     defineNodePilotThemes();
   }, [isDark]);
 
-  // Variable-completion provider: triggers on `{{` and offers all upstream refs.
-  // Registered per-mount so each dialog session gets a fresh provider scoped to its own upstreamRefs closure.
+  // Variable completion provider: triggers on `{{` and offers all upstream refs. Registered
+  // per mount so each dialog session gets a provider scoped to its own upstreamRefs closure.
   useEffect(() => {
     const disposable = monaco.languages.registerCompletionItemProvider('powershell', {
       triggerCharacters: ['{'],
@@ -485,7 +478,7 @@ export function ScriptEditorDialog({
     return () => disposable.dispose();
   }, [upstreamRefs]);
 
-  // Linter: warn on `{{...}}` that doesn't match any known upstream expression or `{{globals.*}}`.
+  // Linter: warn on `{{...}}` that matches no known upstream expression and is not `{{globals.*}}`.
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -515,8 +508,8 @@ export function ScriptEditorDialog({
   const handleEditorMount: OnMount = useCallback((editor) => {
     editorRef.current = editor;
     defineNodePilotThemes();
-    // Ctrl+S → flush current buffer to onChange (no close — same semantics as the previous handler).
-    // We use editor.getValue() so the latest text is captured even if React state is mid-flush.
+    // Ctrl+S flushes the current buffer to onChange without closing the dialog.
+    // editor.getValue() captures the latest text even while React state is mid-flush.
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       onChange(editor.getValue());
     });
@@ -525,12 +518,11 @@ export function ScriptEditorDialog({
   const exposedVars = parseExposedVars(code);
   const exposedPrefix = outputVariableName?.trim() ? outputVariableName.trim() : '<step>';
 
-  // Portal auf document.body: der Dialog rendert sonst im Stacking-Kontext des
-  // Properties-Panels (Flex-Item mit z-10) — Header (z-45), Sidebar und die
-  // Canvas-Float-Pills (z-30/40) zeichnen dann ÜBER dem Backdrop, und ein
-  // transformierter/contain-ender Vorfahre könnte das fixed-Overlay einsperren.
-  // `.np-tooltip-portal` re-assertet die Skin-Tokens außerhalb von .np-designer
-  // (gleiches Muster wie der Node-Tooltip).
+  // Portal into document.body. Otherwise the dialog renders inside the properties panel's
+  // stacking context, so header, sidebar and canvas pills paint over the backdrop, and a
+  // transformed or contained ancestor can trap the fixed overlay.
+  // `.np-tooltip-portal` re-asserts the skin tokens outside of .np-designer, the same
+  // pattern the node tooltip uses.
   return createPortal(
     <div
       className="np-tooltip-portal fixed inset-0 z-50 bg-black/20 backdrop-blur-sm"
@@ -697,7 +689,7 @@ export function ScriptEditorDialog({
           {/* Code editor + result panel */}
           <div className="flex-1 flex flex-col overflow-hidden">
             <div className="relative flex-1 overflow-hidden min-h-0">
-              {/* Waiting indicator: from clicking Generate until the first token arrives. Covers the old content. */}
+              {/* Waiting indicator from submit until the first token arrives. */}
               {aiPhase === 'waiting' && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-surface/70 backdrop-blur-sm">
                   <div className="rounded-2xl bg-primary-fixed p-3 text-primary shadow-sm">
@@ -719,7 +711,7 @@ export function ScriptEditorDialog({
                   </button>
                 </div>
               )}
-              {/* Streaming: a subtle pill in the top-right so the incoming code stays readable. */}
+              {/* A small pill in the top right keeps the incoming code readable. */}
               {aiPhase === 'streaming' && (
                 <div className="absolute right-3 top-3 z-20 flex items-center gap-1.5 rounded-full bg-primary px-2.5 py-1 text-[11px] font-label font-semibold text-on-primary shadow-lg">
                   <CircleDash size={12} className="animate-spin" />
@@ -850,7 +842,7 @@ export function ScriptEditorDialog({
           </div>
         </div>
 
-        {/* Resize handle — bottom-right corner. Hidden in fullscreen. */}
+        {/* Resize handle in the bottom right corner. Hidden in fullscreen. */}
         {!isFullscreen && (
           <div
             onMouseDown={handleResizeMouseDown}
@@ -907,12 +899,11 @@ function ToolbarButton({
 }
 
 /**
- * Toolbar call-to-actions. All three share one geometry (h-7, same radius/type scale) so the
- * cluster reads as a row instead of three loose pills; only the *fill* carries the hierarchy:
- * `primary` (gradient — the house CTA style, exactly one per toolbar), `tonal` (secondary) and
- * `success` (the Run action). Colours come from tokens — `bg-green-600` was skin- and dark-blind.
- * Hover deepens the tonal fills via opacity, which reads correctly in light *and* dark (a
- * brightness filter would lighten one and darken the other).
+ * Toolbar call-to-actions. All three share one geometry so the cluster reads as a row rather
+ * than three loose pills; only the fill carries the hierarchy: `primary` is the gradient house
+ * style used once per toolbar, `tonal` is secondary and `success` marks the Run action. Colours
+ * come from design tokens. Hover deepens the tonal fills via opacity, which reads correctly in
+ * both light and dark, whereas a brightness filter would lighten one and darken the other.
  */
 const ACTION_VARIANTS = {
   primary:

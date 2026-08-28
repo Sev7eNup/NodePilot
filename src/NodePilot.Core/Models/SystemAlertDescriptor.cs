@@ -3,9 +3,10 @@ using NodePilot.Core.Enums;
 namespace NodePilot.Core.Models;
 
 /// <summary>
-/// Canonical operator sets per <see cref="SystemAlertFieldType"/>. These mirror the comparison operators the
-/// workflow-edge <c>ConditionEvaluator</c> understands, so a source's declared field operators, the strict
-/// alerting AST validator (added in a later phase), and the UI all agree on what is offered for a field.
+/// Canonical operator sets per <see cref="SystemAlertFieldType"/>. These mirror the comparison
+/// operators the workflow-edge <c>ConditionEvaluator</c> understands, so a source's declared
+/// field operators, the strict alerting AST validator, and the UI all agree on what is offered
+/// for a field.
 /// </summary>
 public static class SystemAlertOperators
 {
@@ -26,9 +27,9 @@ public static class SystemAlertOperators
 }
 
 /// <summary>
-/// One filterable/comparable field a system-alert source exposes on its observations. <see cref="Name"/> is
-/// the stable key a policy's condition AST references (<c>source:"event"</c> operand) and the UI i18n key
-/// suffix — never localized text.
+/// One filterable/comparable field a system-alert source exposes on its observations.
+/// <see cref="Name"/> is the stable key a policy's condition AST references
+/// (<c>source:"event"</c> operand) and the UI i18n key suffix — never localized text.
 /// </summary>
 public sealed record SystemAlertField(
     string Name,
@@ -37,15 +38,18 @@ public sealed record SystemAlertField(
     string? Unit = null,
     IReadOnlyList<string>? EnumValues = null)
 {
-    /// <summary>Convenience factory: a field whose operator set is the canonical set for its type.</summary>
+    /// <summary>
+    /// Convenience factory: a field whose operator set is the canonical set for its type.
+    /// </summary>
     public static SystemAlertField Of(string name, SystemAlertFieldType type, string? unit = null, IReadOnlyList<string>? enumValues = null)
         => new(name, type, SystemAlertOperators.For(type), unit, enumValues);
 }
 
 /// <summary>
-/// A source-specific query parameter (e.g. a cancel-rate lookback window). Persisted per policy in
-/// <c>SourceParametersJson</c> and descriptor-validated on save. Distinct from the condition filter: a
-/// parameter shapes *what the source measures*, the filter decides *whether the measurement alerts*.
+/// A source-specific query parameter (e.g. a cancel-rate lookback window). Persisted per
+/// policy in <c>SourceParametersJson</c> and descriptor-validated on save. Distinct from the
+/// condition filter: a parameter shapes what the source measures, the filter decides whether
+/// the measurement alerts.
 /// </summary>
 public sealed record SystemAlertParameter(
     string Name,
@@ -57,8 +61,8 @@ public sealed record SystemAlertParameter(
     double? Max = null);
 
 /// <summary>
-/// A named default policy shape a source ships as a starting point when an operator configures a policy.
-/// Never auto-activated — a preset only pre-fills the editor.
+/// A named default policy shape a source ships as a starting point when an operator
+/// configures a policy. Never auto-activated — a preset only pre-fills the editor.
 /// </summary>
 public sealed record SystemAlertPreset(
     string PresetId,
@@ -68,11 +72,11 @@ public sealed record SystemAlertPreset(
     IReadOnlyDictionary<string, object?>? Parameters = null);
 
 /// <summary>
-/// Pure metadata describing one system-alert source — the pluggable design from ADR 0008 that replaced the
-/// old hard-coded metric/gauge checks: its stable id, category, scope capability, default severity, the field
-/// schema its observations satisfy, its query parameters, and default presets. Carries no display text — the
-/// UI localizes via i18n keys derived from <see cref="SourceId"/> and field names, keeping DE/EN parity a
-/// frontend concern.
+/// Pure metadata describing one system-alert source, per the pluggable design from ADR 0008: its
+/// stable id, category, scope capability, default severity, the field schema its
+/// observations satisfy, its query parameters, and default presets. Carries no display text —
+/// the UI localizes via i18n keys derived from <see cref="SourceId"/> and field names, keeping
+/// translation a frontend concern.
 /// </summary>
 public sealed record SystemAlertSourceDescriptor(
     string SourceId,

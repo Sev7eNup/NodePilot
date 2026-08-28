@@ -10,19 +10,11 @@ import type { WorkflowExecution } from '../../../types/api';
 import { useDesignStore } from '../../../stores/designStore';
 
 /**
- * ExecutionPanel is a 1500-line bottom-of-editor panel with three tabs (Live / History /
- * Output), an auto-expand-on-simulation effect, and a paused-step inspector branch.
- *
- * Strategy: pin the user-visible branches, not every line. The huge sub-trees (StepTimeline,
- * EntryGroup, ActivityTypeIcon) are exercised indirectly via the parent's Tab-render paths.
- *
- * Mocks:
- *   - PausedVariablesInspector → marker element so we don't drag in its own deps.
- *   - useResizable hook is fine in jsdom (it's pure state) — no mock needed.
- *   - MSW for the 5+ /api endpoints the inner React Query hooks fan out to.
- *
- * We do NOT use vi.useFakeTimers — the initial useQuery resolution is enough for every
- * assertion; the 5s refetch interval doesn't fire within a test's lifetime.
+ * ExecutionPanel is the bottom-of-editor panel with three tabs (Live / History / Output), an
+ * auto-expand-on-simulation effect, and a paused-step inspector branch. These tests pin the
+ * user-visible branches; large sub-trees (StepTimeline, EntryGroup, ActivityTypeIcon) are
+ * covered indirectly through the parent's tab-render paths. PausedVariablesInspector is
+ * stubbed with a marker element, and MSW serves the /api endpoints the inner hooks call.
  */
 
 vi.mock('../../../components/designer/debug/PausedVariablesInspector', () => ({
@@ -125,7 +117,7 @@ describe('ExecutionPanel', () => {
     expect(screen.getByText('Live')).toBeInTheDocument();
     expect(screen.getByText('History')).toBeInTheDocument();
     expect(screen.getByText('Output')).toBeInTheDocument();
-    // Live-tab default → "No active execution" when liveExecution is null
+    // The Live tab defaults to "No active execution" when liveExecution is null.
     expect(screen.getByText(/No active execution/)).toBeInTheDocument();
   });
 
@@ -144,7 +136,8 @@ describe('ExecutionPanel', () => {
       }),
     });
 
-    // Step names appear both in the left list and the right-pane Live Gantt — assert at-least-one occurrence.
+    // Step names appear in the left list and in the right-pane Live Gantt, so one
+    // occurrence is enough.
     expect(screen.getByText('exec-1')).toBeInTheDocument();
     expect(screen.queryByText('First')).not.toBeInTheDocument();
 
@@ -244,7 +237,7 @@ describe('ExecutionPanel', () => {
       }),
     });
 
-    // Stats-Strip header — "Steps" label is unique to the strip
+    // The "Steps" label is unique to the stats strip header.
     fireEvent.click(screen.getByText('exec-1'));
 
     expect(screen.getByText('Steps')).toBeInTheDocument();
@@ -255,11 +248,8 @@ describe('ExecutionPanel', () => {
   });
 
   it('liveTab_overview_clickingTimelineBarShowsInspector_AND_keepsStatsStripAndTabsVisible', async () => {
-    // Regression test for Bug-3: clicking a timeline entry should SHOW the inspector
-    // without hiding the LiveOverview above it (StatsStrip + Timeline/Console tabs).
-    // Previously a ternary `selected ? <inspector> : <overview>` swapped the overview out
-    // entirely — the user had to click back and forth between History/Live to see the
-    // stats again.
+    // Clicking a timeline entry shows the inspector without hiding the LiveOverview above
+    // it (StatsStrip plus the Timeline/Console tabs).
     server.use(http.get(`${BASE}/api/executions`, () => HttpResponse.json([])));
     server.use(http.get(`${BASE}/api/workflows/wf-1`, () => HttpResponse.json({
       id: 'wf-1', name: 'WF', isEnabled: false, definitionJson: '{"nodes":[],"edges":[]}',
@@ -281,7 +271,7 @@ describe('ExecutionPanel', () => {
     const bar = document.querySelector('[data-testid="live-timeline-gantt"] button')!;
     fireEvent.click(bar);
 
-    // After the click: the inspector is shown (Started label) AND stats + tabs +
+    // After the click: the inspector is shown (Started label) and stats, tabs and
     // timeline are still visible.
     await waitFor(() => expect(screen.getByText(/Started /)).toBeInTheDocument());
     expect(screen.getByText('Steps')).toBeInTheDocument();
@@ -325,7 +315,7 @@ describe('ExecutionPanel', () => {
 
     fireEvent.click(screen.getByText('History'));
 
-    // Each row's ID button shows execution.id.slice(0, 8) → both render "exec-old".
+    // Each row's ID button shows execution.id.slice(0, 8), so both render "exec-old".
     await waitFor(() => expect(screen.getAllByText('exec-old').length).toBe(2));
   });
 
@@ -390,9 +380,9 @@ describe('ExecutionPanel', () => {
   });
 
   it('historyTab_triageColumns_renderUserStepsFailedStepAndParentBadge', async () => {
-    // Triage columns in the History view. A single failed sub-workflow run must render
-    // all four data points: username, steps progress, failed-step name, and the
-    // "↳ Sub-WF" badge naming the parent workflow.
+    // Triage columns in the History view. A failed sub-workflow run must render all four
+    // data points: username, steps progress, failed-step name, and the Sub-WF badge that
+    // names the parent workflow.
     const exec: WorkflowExecution = {
       ...makeExecution('exec-triage', 'Failed'),
       startedByUsername: 'alice',
@@ -416,8 +406,8 @@ describe('ExecutionPanel', () => {
 
   it('historyTab_failedStep_multipleFailedStepsRenderCommaJoined', async () => {
     // Parallel branches can fail at the same time. The server returns the list in
-    // chronological order — the grid joins the step names with commas, preserving that
-    // order. A step with no name falls back to showing its step ID.
+    // chronological order and the grid joins the step names with commas in that order.
+    // A step with no name falls back to showing its step ID.
     const exec: WorkflowExecution = {
       ...makeExecution('exec-multi-fail', 'Failed'),
       failedSteps: [
@@ -436,9 +426,8 @@ describe('ExecutionPanel', () => {
   });
 
   it('historyTab_triageColumns_emptyValuesShowDashes', async () => {
-    // A trigger-started run with no user, top-level (no parent), no steps, and no failed
-    // step: all three columns show "—". Guards against the grid flashing "undefined/0"
-    // or similar for trigger-started runs.
+    // A trigger-started run with no user, no parent, no steps and no failed step: all three
+    // columns show a dash instead of values like "undefined" or "0".
     const exec: WorkflowExecution = {
       ...makeExecution('exec-empty', 'Cancelled'),
       triggeredBy: 'schedule',
@@ -455,7 +444,7 @@ describe('ExecutionPanel', () => {
     fireEvent.click(screen.getByText('History'));
 
     await waitFor(() => expect(screen.getByText('exec-emp')).toBeInTheDocument());
-    // Three "—" cells (User, Steps, Failed Step) — the Error column is empty for Cancelled.
+    // Three dash cells (User, Steps, Failed Step); the Error column is empty for Cancelled.
     const dashes = screen.getAllByText('—');
     expect(dashes.length).toBeGreaterThanOrEqual(3);
     // No Sub-WF badge without a parentExecutionId.
@@ -522,11 +511,11 @@ describe('ExecutionPanel', () => {
       revealIndex: 1,
     };
 
-    // Start with no simulation, then click History tab → user is "elsewhere"
+    // Start with no simulation, then click the History tab so the user is on another tab.
     const { rerender } = renderPanel();
     fireEvent.click(screen.getByText('History'));
 
-    // Now provide simulation prop → effect should auto-jump back to Live
+    // Providing the simulation prop makes the effect jump back to the Live tab.
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     rerender(
       <QueryClientProvider client={qc}>
@@ -538,7 +527,7 @@ describe('ExecutionPanel', () => {
 
     // After auto-jump to Live, the SimulationTab should render the order count
     await waitFor(() => {
-      // SimulationTab renders something distinct — at minimum, no "No active execution" hint
+      // SimulationTab renders its own content, so the "No active execution" hint is gone.
       expect(screen.queryByText(/No active execution/)).not.toBeInTheDocument();
     });
   });
@@ -547,7 +536,7 @@ describe('ExecutionPanel', () => {
     server.use(http.get(`${BASE}/api/executions`, () => HttpResponse.json([])));
     renderPanel({ liveExecution: liveExec({ status: 'Running' }) });
 
-    // Header has a ChevronDown collapse button — locate it by its accessible label.
+    // The collapse button in the header is located by its accessible label.
     fireEvent.click(screen.getByLabelText('Collapse execution panel'));
 
     // After collapse: the "Running" pill appears in the collapsed bar
@@ -661,9 +650,8 @@ describe('ExecutionPanel', () => {
   });
 });
 
-// Characterization (pre-/post-refactor): the Live tab joins the per-execution SignalR
-// group when a run's accordion is expanded and leaves it on collapse. Pinned here because
-// the LiveExecutionPanel extraction moved this wiring out of ExecutionPanel.
+// The Live tab joins the per-execution SignalR group when a run's accordion is expanded and
+// leaves it on collapse. The wiring itself lives in LiveExecutionPanel.
 describe('LiveTab — execution join/leave (characterization)', () => {
   it('joins on expand and leaves on collapse', async () => {
     server.use(http.get(`${BASE}/api/executions`, () => HttpResponse.json([])));

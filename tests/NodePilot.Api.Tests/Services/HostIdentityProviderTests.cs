@@ -65,7 +65,8 @@ public class HostIdentityProviderTests
     [Fact]
     public void BuildIdentity_HostContainsDot_TreatedAsAlreadyQualified()
     {
-        // Host label already carries a dot (a different sub-domain) — don't append the domain again.
+        // Host label already carries a dot (a different sub-domain) — don't append the domain
+        // again.
         var id = HostIdentityProvider.BuildIdentity("NPSRV01", "npsrv01.other", "corp.example.local");
 
         id.Fqdn.Should().Be("npsrv01.other");

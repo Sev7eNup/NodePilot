@@ -6,11 +6,9 @@ import { useDesignStore } from '../../../stores/designStore';
 beforeEach(() => useDesignStore.setState({ designerMode: 'expert' }));
 
 /**
- * NodeContextMenu is the right-click pop-up on a canvas node. We pin:
- *   - All four actions render with correct labels (mode-dependent for disable/breakpoint)
- *   - Each action call invokes its handler AND closes the menu
- *   - Outside-click closes the menu
- *   - Escape closes the menu
+ * NodeContextMenu is the right-click pop-up on a canvas node. These tests cover the four
+ * actions and their mode-dependent labels, each action invoking its handler and closing the
+ * menu, and the menu closing on an outside click or Escape.
  */
 
 function defaultProps(over: Partial<Parameters<typeof NodeContextMenu>[0]> = {}) {
@@ -123,7 +121,7 @@ describe('NodeContextMenu', () => {
     const props = defaultProps();
     render(<NodeContextMenu {...props} />);
 
-    // Mousedown on the menu itself (not on a button) should not close.
+    // A mousedown inside the menu, not on a button, must not close it.
     fireEvent.mouseDown(screen.getByText('Duplicate'));
 
     expect(props.onClose).not.toHaveBeenCalled();

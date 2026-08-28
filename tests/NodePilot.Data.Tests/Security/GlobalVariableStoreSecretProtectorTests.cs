@@ -54,10 +54,9 @@ public class GlobalVariableStoreSecretProtectorTests
     [Fact]
     public async Task GetAllResolvedAsync_DecryptFailureOnOneEntry_DoesNotBreakOthers()
     {
-        // Mimic the operator failure mode: rows were encrypted under one provider, then
-        // the operator switched providers without running the migration. Decrypting
-        // those rows must fail gracefully (warning logged, entry skipped) without
-        // taking down every workflow that uses globals.
+        // Mimics an operator switching providers without running the migration: decrypting
+        // old rows must fail gracefully (warning logged, entry skipped) rather than taking
+        // down every workflow that uses globals.
         var providerA = new AesGcmSecretProtector(DeterministicKey());
         await using var db = TestDbFactory.Create();
         var storeA = new GlobalVariableStore(db, providerA, NullLogger<GlobalVariableStore>.Instance);

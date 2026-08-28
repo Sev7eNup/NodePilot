@@ -11,7 +11,7 @@ namespace NodePilot.Engine.Tests.Execution;
 public class StepTestContextProviderTests
 {
     /// <summary>
-    /// 3-node line graph: a → b → c. Step c's context must include a and b as upstream
+    /// 3-node line graph: a -> b -> c. Step c's context must include a and b as upstream
     /// ancestors plus the values their last execution produced.
     /// </summary>
     [Fact]
@@ -61,7 +61,7 @@ public class StepTestContextProviderTests
 
         ctx.ExecutionId.Should().Be(executionId);
         ctx.Status.Should().Be(nameof(ExecutionStatus.Succeeded));
-        // alias for step "a" → "checkDisk"; step "b" stays as its raw id.
+        // alias for step "a" -> "checkDisk"; step "b" stays as its raw id.
         var keys = ctx.Variables.Select(v => v.Key).ToArray();
         keys.Should().Contain("checkDisk.output");
         keys.Should().Contain("checkDisk.param.freeGb");

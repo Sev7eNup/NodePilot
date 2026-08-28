@@ -16,11 +16,12 @@ using NodePilot.Engine.Notifications;
 namespace NodePilot.Api.Controllers;
 
 /// <summary>
-/// Admin/Operator-managed alerting rules: "when an event of these types matches this filter, deliver
-/// via these routes". Read is Admin/Operator; create/update/delete + test-fire is Admin-only — mirrors
-/// <see cref="MaintenanceWindowsController"/>. Route secrets are write-or-keep (responses redact to the
-/// unchanged-sentinel, never the cipher). The dispatcher (<c>NotificationDispatcher</c>) picks up rule
-/// changes on its next pass — no inline snapshot needed (it reads enabled rules each pass).
+/// Admin/Operator-managed alerting rules: "when an event of these types matches this filter,
+/// deliver via these routes". Read is Admin/Operator; create/update/delete + test-fire is
+/// Admin-only — mirrors <see cref="MaintenanceWindowsController"/>. Route secrets are
+/// write-or-keep (responses redact to the unchanged-sentinel, never the cipher). The dispatcher
+/// (<c>NotificationDispatcher</c>) picks up rule changes on its next pass — no inline snapshot
+/// needed (it reads enabled rules each pass).
 /// </summary>
 [ApiController]
 [Route("api/alerting")]
@@ -29,8 +30,9 @@ public class AlertingController : ControllerBase
 {
     private static readonly IReadOnlyDictionary<string, ActivityResult> EmptyResults = new Dictionary<string, ActivityResult>();
 
-    // Upper bound on throttle windows (30 days). Kept well under the notification retention floor so a
-    // stale-suppression prune can never wipe an still-active cooldown row (see NotificationRetentionService).
+    // Upper bound on throttle windows (30 days). Kept well under the notification retention floor
+    // so a stale-suppression prune can never wipe a still-active cooldown row (see
+    // NotificationRetentionService).
     private const int MaxThrottleMinutes = 43_200;
 
     private readonly INotificationRuleStore _store;
@@ -54,7 +56,8 @@ public class AlertingController : ControllerBase
 
     [HttpGet("rules")]
     public async Task<ActionResult<List<NotificationRuleResponse>>> GetAll(CancellationToken ct)
-        // Custom rules only — system policies live under /api/alerting/system and must never surface here (ADR 0008).
+        // Custom rules only — system policies live under /api/alerting/system and must never
+        // surface here (ADR 0008).
         => Ok((await _store.GetAllByKindAsync(NotificationRuleKind.Custom, ct)).Select(Project).ToList());
 
     [HttpGet("catalog")]
@@ -78,7 +81,8 @@ public class AlertingController : ControllerBase
             new("triggeredBy", "execution", "string"),
             new("callDepth", "execution", "number"),
             new("isSubWorkflow", "execution", "boolean", ["true", "false"]),
-            new("cancelledBy", "execution", "enum", ["user", "cancelAll", "failover", "reconciler", "dispatch", "system"]),
+            new("cancelledBy", "execution", "enum", ["user", "cancelAll", "failover", "failover-pending",
+                "reconciler", "reconciler-pending", "dispatch", "system"]),
             new("sourceKey", "gauge", "string"),
             new("targetMachine", "gauge", "string"),
             new("signalValue", "gauge", "number"),
@@ -100,8 +104,9 @@ public class AlertingController : ControllerBase
     }
 
     /// <summary>
-    /// Read-only delivery ledger: recent <see cref="NotificationDeliveryAttempt"/> rows (newest first),
-    /// optionally filtered by rule and/or status. No secrets — only channel + target are surfaced.
+    /// Read-only delivery ledger: recent <see cref="NotificationDeliveryAttempt"/> rows (newest
+    /// first), optionally filtered by rule and/or status. No secrets — only channel + target are
+    /// surfaced.
     /// </summary>
     [HttpGet("deliveries")]
     public async Task<ActionResult<List<NotificationDeliveryDto>>> GetDeliveries(
@@ -121,7 +126,7 @@ public class AlertingController : ControllerBase
         var attempts = await query.OrderByDescending(a => a.CreatedAt).Take(take).ToListAsync(ct);
         if (attempts.Count == 0) return Ok(new List<NotificationDeliveryDto>());
 
-        // Resolve rule names + route channel/target via batched lookups (soft refs — no navigation).
+        // Resolve rule names + route channel/target via batched lookups (soft refs, no navigation).
         var ruleIds = attempts.Select(a => a.NotificationRuleId).Distinct().ToList();
         var routeIds = attempts.Select(a => a.NotificationRouteId).Distinct().ToList();
         var ruleNames = await _db.NotificationRules.AsNoTracking().Where(r => ruleIds.Contains(r.Id))
@@ -165,7 +170,7 @@ public class AlertingController : ControllerBase
                 request.OccurrenceWindowMinutes, request.Routes, request.Targets, request.DedupKeyTemplate, out var draft, out var error))
             return BadRequest(new { message = error });
 
-        // Custom endpoint: refuse to touch a system policy (treated as not-found for this surface).
+        // Custom endpoint: refuse to touch a system policy (treated as not found for this surface).
         if (await _store.GetByKindAsync(id, NotificationRuleKind.Custom, ct) is null) return NotFound();
 
         try { await _store.UpdateAsync(id, draft, this.GetCurrentUsername(), ct); }
@@ -242,12 +247,13 @@ public class AlertingController : ControllerBase
         return Ok(new TestFireResponse(results.All(r => r.Success), results));
     }
 
-    /// <summary>Stateless dry-run: does this filter expression match the supplied sample fields?</summary>
+    /// <summary>Stateless dry-run: does this filter expression match the supplied sample
+    /// fields?</summary>
     [HttpPost("preview-filter")]
     public ActionResult<PreviewFilterResponse> PreviewFilter(PreviewFilterRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.FilterExpressionJson))
-            return Ok(new PreviewFilterResponse(true, null)); // no filter → matches everything
+            return Ok(new PreviewFilterResponse(true, null)); // no filter -> matches everything
         try
         {
             using var doc = JsonDocument.Parse(request.FilterExpressionJson);
@@ -328,7 +334,8 @@ public class AlertingController : ControllerBase
         if (!Enum.TryParse<NotificationScopeKind>(scopeRaw, ignoreCase: true, out var scope))
             return Fail($"Invalid scopeKind '{scopeRaw}' (expected Global, Folders or Workflows)", out error);
 
-        // Gauge events aren't workflow-scoped — a folder/workflow-scoped gauge rule could never match.
+        // Gauge events aren't workflow-scoped — a folder/workflow-scoped gauge rule could never
+        // match.
         if (hasGaugeType && scope != NotificationScopeKind.Global)
             return Fail($"Gauge event types ({string.Join("/", NotificationRuleSemantics.GaugeEventTypes)}) support Global scope only", out error);
 
@@ -340,7 +347,8 @@ public class AlertingController : ControllerBase
         if (cooldownMinutes < 0 || occurrenceWindowMinutes < 0)
             return Fail("Cooldown and occurrence-window minutes must not be negative", out error);
         // Cap throttle windows well below the notification retention floor (default 90d) so the
-        // retention sweep's stale-suppression prune can never delete a row whose cooldown/flap window
+        // retention sweep's stale-suppression prune can never delete a row whose cooldown/flap
+        // window
         // is still active. 30 days is far beyond any realistic alert throttle.
         if (cooldownMinutes > MaxThrottleMinutes || occurrenceWindowMinutes > MaxThrottleMinutes)
             return Fail($"Cooldown and occurrence-window minutes must be {MaxThrottleMinutes} (30 days) or less", out error);

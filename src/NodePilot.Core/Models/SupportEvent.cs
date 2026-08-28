@@ -2,26 +2,27 @@ namespace NodePilot.Core.Models;
 
 /// <summary>
 /// Structured DB projection of a Serilog event logged with the <c>SupportLog=true</c> scope.
-/// Populated by the custom sink in <c>NodePilot.Api.Logging.SupportEventDbSink</c> via a
-/// bounded channel + background flush.
+/// Written by the custom sink in <c>NodePilot.Api.Logging.SupportEventDbSink</c> through a
+/// bounded channel and a background flush.
 ///
-/// <para>Design goal: make the same events that land in the plain-text support log also
-/// available as an indexable table for the enterprise viewer (filtering, sorting, cursor
-/// pagination, export) — without blocking the hot path and without requiring each log
-/// source to write to a second logging path.</para>
+/// <para>Makes the events of the plain-text support log queryable as a table (filtering,
+/// sorting, cursor pagination, export) without blocking the logging hot path and without a
+/// second logging path per log source.</para>
 ///
-/// <para>Not audit-grade: on a full channel or DB outage, events are dropped best-effort
-/// (drop-newest + an OTel counter). Forensic guarantees still live in <c>AuditLog</c>;
-/// the plain-text file sink is the fallback for when this DB column has gaps.</para>
+/// <para>Not audit-grade: events are dropped when the channel is full or the database is
+/// unavailable. The forensic record lives in <c>AuditLog</c>, and the plain-text file sink
+/// covers the gaps in this table.</para>
 /// </summary>
 public class SupportEvent
 {
     public Guid Id { get; set; }
 
-    /// <summary>UTC timestamp of the Serilog event itself (not when it was inserted into the DB).</summary>
+    /// <summary>UTC timestamp of the Serilog event itself (not when it was inserted into the
+    /// DB).</summary>
     public DateTime Timestamp { get; set; }
 
-    /// <summary>Serilog log level as an int (Verbose=0, Debug=1, Information=2, Warning=3, Error=4, Fatal=5).</summary>
+    /// <summary>Serilog log level as an int (Verbose=0, Debug=1, Information=2, Warning=3, Error=4,
+    /// Fatal=5).</summary>
     public int Level { get; set; }
 
     /// <summary>
@@ -36,12 +37,14 @@ public class SupportEvent
 
     public Guid? WorkflowId { get; set; }
 
-    /// <summary>Workflow name captured from the scope, frozen at write time — stays correct even if the workflow is renamed later.</summary>
+    /// <summary>Workflow name captured from the scope, frozen at write time — stays correct even if
+    /// the workflow is renamed later.</summary>
     public string? WorkflowName { get; set; }
 
     public Guid? ExecutionId { get; set; }
 
-    /// <summary>8-hex-character prefix of the ExecutionId, denormalized for human-readable grouping in the UI.</summary>
+    /// <summary>8-hex-character prefix of the ExecutionId, denormalized for human-readable grouping
+    /// in the UI.</summary>
     public string? ExecutionShort { get; set; }
 
     public string? StepId { get; set; }
@@ -50,7 +53,8 @@ public class SupportEvent
 
     public string? ActivityType { get; set; }
 
-    /// <summary>Username frozen at write time (e.g. for audit events) — stays interpretable after the user is renamed or deleted.</summary>
+    /// <summary>Username frozen at write time (e.g. for audit events) — stays interpretable after
+    /// the user is renamed or deleted.</summary>
     public string? UserName { get; set; }
 
     public Guid? UserId { get; set; }

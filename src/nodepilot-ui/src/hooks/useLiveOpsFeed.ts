@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { readCsrfToken } from '../api/csrf';
 import { connectPersistently } from '../lib/signalrConnect';
 
-// A LiveEventsBatch item is { Type|type, Event|evt }. We only care about ExecutionStatusChanged.
+// A LiveEventsBatch item is { Type|type, Event|evt }. Only ExecutionStatusChanged is handled.
 interface StatusEvt {
   executionId?: string; ExecutionId?: string;
   workflowId?: string; WorkflowId?: string;
@@ -31,14 +31,11 @@ function asStatus(item: unknown): { executionId: string; workflowId: string; sta
 }
 
 /**
- * Subscribes to the RBAC-scoped live-ops feed on the shared execution hub and debounce-
- * invalidates `queryKey` whenever a batch carried at least one ExecutionStatusChanged —
- * one refetch per burst instead of N. SignalR failures are swallowed; the consuming page
- * still works off its polled snapshot.
- *
- * `queryKey` and `onStatus` go into the effect deps, so both must be referentially stable
- * (a module-level constant / a zustand action) — an inline array would tear the connection
- * down and rebuild it on every render.
+ * Subscribes to the RBAC-scoped live-ops feed on the shared execution hub and
+ * debounce-invalidates `queryKey` when a batch contains an ExecutionStatusChanged event, so
+ * one burst costs one refetch. SignalR failures are ignored; the page still works off its
+ * polled snapshot. `queryKey` and `onStatus` are effect dependencies, so both must be
+ * referentially stable, otherwise the connection is rebuilt on every render.
  */
 export function useLiveOpsFeed({
   queryKey, debounceMs, onStatus,
@@ -79,9 +76,8 @@ export function useLiveOpsFeed({
     });
 
     const join = () => { connection.invoke('JoinOperationsFeed').catch(() => { /* RBAC reject / transient */ }); };
-    // connectPersistently retries forever with capped backoff: the bare onreconnected +
-    // one-shot start() gave up for good after ~40 s of outage (and never retried a failed
-    // FIRST start at all), silently degrading this feed to snapshot polling until a reload.
+    // connectPersistently retries forever with capped backoff, so neither a long outage nor a
+    // failed first start leaves the feed permanently degraded to snapshot polling.
     const persistent = connectPersistently(connection, () => { if (!disposed) join(); });
 
     return () => {

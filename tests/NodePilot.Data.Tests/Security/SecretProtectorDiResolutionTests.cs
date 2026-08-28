@@ -9,16 +9,13 @@ using Xunit;
 namespace NodePilot.Data.Tests.Security;
 
 /// <summary>
-/// Pin the DI shape that broke in the original Vault PR: <see cref="CredentialStore"/>
-/// and <see cref="GlobalVariableStore"/> had two public constructors that were both
-/// fully resolvable (one took <see cref="ISecretProtector"/>, the other took
-/// <see cref="IConfiguration"/>). .NET DI's activator threw <c>AmbiguousMatchException</c>
-/// on first resolve at runtime — a hard production crash that boot-tests didn't catch
-/// because the controller path went through Authorize() before activating the store.
+/// Pins the DI shape for <see cref="CredentialStore"/> and <see cref="GlobalVariableStore"/>:
+/// each must expose exactly one constructor that .NET DI can resolve, otherwise the
+/// activator throws <c>AmbiguousMatchException</c> at runtime instead of at boot.
 /// <para>
-/// These tests build a real <see cref="ServiceProvider"/>, register everything the
-/// production code registers, and call <c>GetRequiredService</c>. If anyone re-introduces
-/// an ambiguous overload, this fails loudly at CI time.
+/// Builds a real <see cref="ServiceProvider"/> with the same registrations as production
+/// and resolves via <c>GetRequiredService</c>, so a reintroduced ambiguous constructor
+/// fails at CI time.
 /// </para>
 /// </summary>
 public class SecretProtectorDiResolutionTests
@@ -89,9 +86,9 @@ public class SecretProtectorDiResolutionTests
         p1.Should().BeSameAs(p2, "ISecretProtector is registered as a singleton");
     }
 
-    /// <summary>Regression fix (tracked as "V2"): unknown provider values must hard-fail at startup, not
-    /// silently fall back to DPAPI. A typo like "AesGCMm" would otherwise produce a
-    /// machine-bound deployment that breaks on first failover.</summary>
+    /// <summary>Unknown provider values must hard-fail at startup, not silently fall back to
+    /// DPAPI. A typo like "AesGCMm" would otherwise produce a machine-bound deployment
+    /// that breaks on first failover.</summary>
     [Fact]
     public void Registry_UnknownProviderValue_ThrowsAtStartup()
     {
@@ -106,8 +103,8 @@ public class SecretProtectorDiResolutionTests
             .WithMessage("*unknown value 'AesGCMm'*");
     }
 
-    /// <summary>Regression fix (tracked as "V1"): Cluster:Enabled=true with DPAPI must hard-fail. DPAPI is
-    /// machine-bound; the standby node cannot decrypt what the leader wrote.</summary>
+    /// <summary>Cluster:Enabled=true with DPAPI must hard-fail: DPAPI is machine-bound, so the
+    /// standby node cannot decrypt what the leader wrote.</summary>
     [Fact]
     public void Registry_ClusteredAndDpapi_ThrowsAtStartup()
     {
@@ -126,7 +123,7 @@ public class SecretProtectorDiResolutionTests
     [Fact]
     public void Registry_ClusteredAndDpapi_DefaultProvider_AlsoThrows()
     {
-        // No explicit Secrets:Provider → defaults to DPAPI → must still fail when clustered.
+        // No explicit Secrets:Provider -> defaults to DPAPI -> must still fail when clustered.
         var services = new ServiceCollection();
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -140,10 +137,9 @@ public class SecretProtectorDiResolutionTests
     }
 
     /// <summary>
-    /// Regression fix (tracked as "VV3a"): Secrets:LegacyDpapiScope must hard-fail on typo, not silently fall to
-    /// CurrentUser. The same trap as Credentials:DpapiScope (already fixed): an
-    /// operator who intended LocalMachine but mis-typed gets CurrentUser silently,
-    /// and the legacy fallback then can't decrypt rows the leader actually wrote.
+    /// Secrets:LegacyDpapiScope must hard-fail on a typo instead of silently falling back to
+    /// CurrentUser: an operator who intended LocalMachine but mistyped the value would
+    /// otherwise get a legacy fallback that can't decrypt rows the leader actually wrote.
     /// </summary>
     [Fact]
     public void Registry_LegacyDpapiScope_Typo_ThrowsAtStartup()

@@ -28,10 +28,9 @@ public class CsrfMiddlewareTests
         if (authCookie is not null) cookies[AuthController.AuthCookieName] = authCookie;
         if (csrfCookie is not null) cookies[AuthController.CsrfCookieName] = csrfCookie;
         ctx.Request.Headers["Cookie"] = string.Join("; ", cookies.Select(kv => $"{kv.Key}={kv.Value}"));
-        // Force re-parse: HttpContext caches the Cookies collection, but DefaultHttpContext
-        // builds it lazily from the header on first access — assigning the header above is
-        // enough as long as no code has read .Cookies yet. Belt-and-suspenders: explicitly
-        // construct a CookieCollection too.
+        // DefaultHttpContext builds the Cookies collection lazily from the header, so setting
+        // the header above is enough as long as nothing has read .Cookies yet. Also build a
+        // CookieCollection explicitly so the test does not depend on that timing.
         var cookieFeature = new Microsoft.AspNetCore.Http.Features.RequestCookiesFeature(ctx.Features);
         ctx.Features.Set<Microsoft.AspNetCore.Http.Features.IRequestCookiesFeature>(cookieFeature);
 
@@ -66,9 +65,8 @@ public class CsrfMiddlewareTests
     [Fact]
     public async Task PostWithoutAuthCookie_Skipped()
     {
-        // No np_auth cookie → either unauthenticated (downstream 401s) or Bearer-auth
-        // (browser doesn't auto-attach Bearer headers, so CSRF doesn't apply). CSRF must
-        // not fire here.
+        // No np_auth cookie means either unauthenticated (downstream returns 401) or Bearer
+        // auth (browsers never auto-attach Bearer headers, so CSRF does not apply here).
         var ctx = NewCtx("POST", authCookie: null, csrfCookie: null, csrfHeader: null);
         var (mw, called) = Build();
 
@@ -96,10 +94,9 @@ public class CsrfMiddlewareTests
     [InlineData("Digest username=\"foo\"")]
     public async Task PostWithNonBearerAuthHeader_StillEnforcesCsrf(string authHeader)
     {
-        // Audit-Hardening: an attacker can attach an Authorization header of an unsupported
-        // scheme alongside a legitimate np_auth cookie. JwtBearer ignores the header but a
-        // blanket "Authorization present → skip CSRF" would let the cookie-driven request
-        // through unprotected. Only the Bearer scheme is allowed to skip CSRF.
+        // An attacker could attach an Authorization header of an unsupported scheme alongside
+        // a legitimate np_auth cookie. JwtBearer ignores the header, so skipping CSRF whenever
+        // any Authorization header is present would leave this request unprotected.
         var ctx = NewCtx("POST", authorizationHeader: authHeader, csrfHeader: null);
         var (mw, called) = Build();
 

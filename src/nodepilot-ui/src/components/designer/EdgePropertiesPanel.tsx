@@ -48,10 +48,9 @@ export function EdgePropertiesPanel({ edge, allNodes, allEdges, onUpdate, onDele
 
   const [mode, setMode] = useState<'simple' | 'expression'>(conditionExpression ? 'expression' : 'simple');
 
-  // Auto-label preview: identical to the fallback logic in LabeledEdge so the user
-  // can see what the label WOULD be if it weren't overridden. Useful when a custom
-  // label was set at authoring/import time and the user now edits the underlying
-  // condition — the custom label stays, which otherwise feels like "nothing changed".
+  // Preview of the auto-generated label, mirroring the fallback logic in LabeledEdge.
+  // Lets the user see what the label would be if it weren't overridden by a custom
+  // label set at authoring or import time.
   const resolveStepLabel = (stepId: string) =>
     ((allNodes.find((n) => n.id === stepId)?.data as Record<string, unknown> | undefined)?.label as string) || stepId;
   const autoLabel = conditionExpression
@@ -75,13 +74,10 @@ export function EdgePropertiesPanel({ edge, allNodes, allEdges, onUpdate, onDele
     });
   };
 
-  // In LabeledEdge the label wins over the condition-based fallback, so a previously set
-  // "On Success"/"On Failure" would stay stuck when the condition changes. If the current label is
-  // canonical (or empty), sync it to the new condition; a custom label is left alone.
-  //
-  // Returning '' clears the label, so LabeledEdge renders the expression summary or the condition
-  // text instead. An edge without a condition returns '' too: it runs always, and that is shown by
-  // having no label rather than by the word "Always".
+  // The label wins over the condition-based fallback in LabeledEdge, so a stale "On Success"
+  // or "On Failure" text would stick after the condition changes. Sync it here when the label
+  // is canonical or empty; leave a custom label alone. Returning '' clears the label so
+  // LabeledEdge shows the expression summary, condition text, or nothing for an always-on edge.
   const deriveLabel = (cond: string, hasExpr: boolean): string => {
     if (hasExpr) return '';
     if (!cond) return '';
@@ -118,13 +114,11 @@ export function EdgePropertiesPanel({ edge, allNodes, allEdges, onUpdate, onDele
         </button>
       </div>
       {/*
-        Layout note: the spacing utility lives on the <fieldset> (display:contents), NOT on the
-        scroll container. With display:contents the fieldset generates no box, so a `space-y-*` on
-        the outer div would only target the fieldset itself (its sole direct child) and never reach
-        the sections inside — that was the root cause of the previous cramped layout where every
-        control sat flush against the next. `space-y-3` here targets the fieldset's direct children
-        (the summary card + each Section) and gives them a consistent 12px gap. The @container +
-        container-type enable the same container-query reflow FieldGrid uses in PropertiesPanel.
+        space-y-3 sits on the <fieldset> (display:contents), not the scroll container: with
+        display:contents the fieldset has no box, so space-y-* on the outer div would only
+        reach the fieldset itself, skipping the sections inside. This gives the fieldset's
+        direct children (summary card + each Section) a consistent gap; @container +
+        container-type match the reflow FieldGrid uses in PropertiesPanel.
       */}
       <div className="flex-1 overflow-y-auto px-6 pb-6 pt-5 @container" style={{ containerType: 'inline-size' }}>
         <fieldset disabled={!canWrite} className="contents space-y-3">

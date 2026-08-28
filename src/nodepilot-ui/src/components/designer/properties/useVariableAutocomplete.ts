@@ -27,18 +27,18 @@ export interface VariableAutocompleteApi {
 }
 
 /**
- * Triggers a `{{`-driven suggestion dropdown for upstream + global variables. Shared by
- * VariableInsertField (PropertiesPanel-side input) and ExpressionTester (debug overlay).
+ * Drives a `{{`-triggered suggestion dropdown for upstream and global variables. Shared by
+ * VariableInsertField in the properties panel and ExpressionTester in the debug overlay.
  *
  * Behavior:
- *   - Watches the cursor: opens when the most recent unclosed `{{` precedes it and the
- *     text in between is identifier-like ([\w.-]). Closes otherwise.
- *   - Pick replaces `{{partial` (from openIdx through cursor) with the chosen expression.
- *   - Globals are loaded via React Query with a long staleTime so multiple inputs share
- *     one fetch.
+ *   - Watches the cursor: opens when the most recent unclosed `{{` precedes it and the text
+ *     in between is identifier-like ([\w.-]). Closes otherwise.
+ *   - Picking replaces `{{partial`, from openIdx through the cursor, with the chosen
+ *     expression.
+ *   - Globals load via React Query with a long staleTime so multiple inputs share one fetch.
  *
- * `enabled = false` keeps the hook installed but suppresses opening — used by the toggle
- * button in VariableInsertField.
+ * `enabled = false` keeps the hook installed but suppresses opening. The toggle button in
+ * VariableInsertField uses this.
  */
 export function useVariableAutocomplete({
   inputRef,
@@ -74,9 +74,8 @@ export function useVariableAutocomplete({
   const filtered = useMemo(() => {
     if (!open) return [];
     const q = filter.trim().toLowerCase();
-    // No hard cap — the dropdown renders via portal with `max-h-[70vh] overflow-y-auto`,
-    // so a long list is scrollable rather than truncated. Soft ceiling at 200 to keep
-    // very large workflows from rendering thousands of DOM nodes.
+    // The dropdown scrolls (`max-h-[70vh] overflow-y-auto`), so a long list is not truncated
+    // visually. The cap of 200 keeps very large workflows from rendering thousands of nodes.
     return allSuggestions
       .filter((s) => !q || s.expression.toLowerCase().includes(q) || s.label.toLowerCase().includes(q))
       .slice(0, 200);

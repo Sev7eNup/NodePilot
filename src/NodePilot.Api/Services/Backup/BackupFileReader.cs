@@ -9,9 +9,9 @@ namespace NodePilot.Api.Services.Backup;
 public sealed class BackupFormatException(string message) : Exception(message);
 
 /// <summary>
-/// Parses and validates a supported version of the NodePilot system-backup file (ADR 0001). Parsing is
-/// passphrase-free (so preview can run without one); unlocking the secrets and verifying the
-/// whole-file MAC requires the passphrase.
+/// Parses and validates a supported version of the NodePilot system-backup file (ADR 0001).
+/// Parsing is passphrase-free (so preview can run without one); unlocking the secrets and
+/// verifying the whole-file MAC requires the passphrase.
 /// </summary>
 public sealed class BackupFileReader
 {
@@ -109,7 +109,9 @@ public sealed class BackupFileReader
         return protector.VerifyPassphrase(_verifier) ? protector : null;
     }
 
-    /// <summary>Recomputes the whole-file MAC over the canonical envelope and compares it (K5).</summary>
+    /// <summary>
+    /// Recomputes the whole-file MAC over the canonical envelope and compares it (K5).
+    /// </summary>
     public bool VerifyMac(PassphraseSecretProtector protector)
     {
         var canonical = BackupCanonicalJson.Canonicalize(Envelope, excludeKey: "mac");

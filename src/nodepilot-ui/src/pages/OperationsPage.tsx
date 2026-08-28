@@ -22,30 +22,30 @@ import { OpsExecutionDrilldown } from '../components/operations/OpsExecutionDril
 import { EmptyState } from '../components/common/EmptyState';
 import { useIsMobile } from '../hooks/useMediaQuery';
 
-// Live-Ops Mission Control: the real-time execution timeline as the centerpiece (running +
-// recently-finished bars, drill-down + cancel) and the next-fires departure board at the
-// bottom. The snapshot poll (5 s) is the authoritative source; SignalR deltas make
-// everything feel instant in between.
+// Live operations view: a real-time execution timeline of running and recently finished bars
+// with drilldown and cancel, plus a departure board of the next trigger fires at the bottom.
+// The 5 s snapshot poll is the authoritative source; SignalR deltas update the view in
+// between polls.
 
 export function OperationsPage() {
   const { t } = useTranslation(['operations', 'executions', 'common']);
-  // Not a Tailwind branch: the two views are entirely different component trees, and rendering
-  // both would run two live derivations (and, for the timeline, its ResizeObserver) per tick.
+  // Branch in JS rather than with Tailwind: the two views are different component trees, and
+  // rendering both would run two live derivations, plus the timeline's ResizeObserver, per tick.
   const isMobile = useIsMobile();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
   const [folderFilter, setFolderFilter] = useState<string | null>(null);
-  // Window + freeze are view-local on purpose. A freeze that survived navigation would be a
-  // footgun: come back an hour later and stare at an hour-old board believing it is live.
+  // Window and freeze are view-local on purpose. A freeze that survived navigation would leave
+  // the user looking at a stale board and believing it is live.
   const [windowMinutes, setWindowMinutes] = useState<OpsWindowMinutes>(OPS_WINDOW_MINUTES[0]);
   const [frozen, setFrozen] = useState(false);
 
   const liveNowMs = useOpsClock(1000, frozen);
 
   const { data: liveData, isLoading, isError } = useQuery({
-    // Window is part of the key: switching creates a separate cache entry and the old query
-    // loses its only observer, so it stops polling on its own.
+    // The window is part of the key: switching it creates a separate cache entry, and the old
+    // query loses its only observer and stops polling by itself.
     queryKey: ['operations-graph', windowMinutes],
     queryFn: () => getOperationsGraph(windowMinutes),
     refetchInterval: frozen ? false : 5_000,
@@ -60,18 +60,18 @@ export function OperationsPage() {
     refetchOnWindowFocus: false,
   });
 
-  // NEVER conditional: the feed must keep writing terminal tombstones while frozen. Cutting it
-  // would open a reconcile gap — a refetch after unfreezing could resurrect runs that finished
-  // during the freeze, because the tombstone that prevents exactly that was never written.
+  // Never make this conditional: the feed must keep writing terminal tombstones while frozen.
+  // Without them a refetch after unfreezing could resurrect runs that finished during the
+  // freeze.
   useOperationsFeed();
   const seedRunning = useOperationsStore((s) => s.seedRunning);
   const runningMap = useOperationsStore((s) => s.runningExecsByWorkflow);
   const liveLocallySettled = useOperationsStore((s) => s.locallySettled);
 
   // ---- Display freeze ------------------------------------------------------------------------
-  // This freezes the RENDER INPUTS, not the data pipeline: the SignalR feed stays connected, the
+  // This freezes the render inputs, not the data pipeline: the SignalR feed stays connected, the
   // store keeps reconciling, and background invalidations may still fire requests. Only what the
-  // user looks at is held still — hence "view frozen", not "paused".
+  // user sees is held still, which is why it is called a view freeze rather than a pause.
   const [frozenView, setFrozenView] = useState<
     { data: typeof liveData; locallySettled: typeof liveLocallySettled; nowMs: number } | null
   >(null);
@@ -86,10 +86,10 @@ export function OperationsPage() {
   const locallySettled = frozen && frozenView ? frozenView.locallySettled : liveLocallySettled;
   const nowMs = frozen && frozenView ? frozenView.nowMs : liveNowMs;
 
-  // Seed the live store from the authoritative snapshot. `lastStatusByWf` drives the
-  // race-safe reconcile of the terminal overlay; recent ids supersede the locally-settled
-  // overlay entries (see operationsStore.seedRunning). Fed from liveData, never the frozen
-  // copy — the store must stay current even while the view is held.
+  // Seed the live store from the authoritative snapshot. `lastStatusByWf` drives the race-safe
+  // reconcile of the terminal overlay, and recent ids supersede the locally settled overlay
+  // entries (see operationsStore.seedRunning). This reads liveData, never the frozen copy, so
+  // the store stays current while the view is held.
   useEffect(() => {
     if (!liveData) return;
     const lastStatusByWf: Record<string, string | null> = {};
@@ -97,14 +97,15 @@ export function OperationsPage() {
     seedRunning(liveData.running, lastStatusByWf, new Set(liveData.recent.map((r) => r.executionId)));
   }, [liveData, seedRunning]);
 
-  // Folder options derived from the snapshot (unique folderId → folderPath).
+  // Folder options derived from the snapshot: one entry per folderId with its folderPath.
   const folderOptions = useMemo(() => {
     const map = new Map<string, string>();
     for (const n of data?.nodes ?? []) if (n.folderId) map.set(n.folderId, n.folderPath);
     return Array.from(map, ([folderId, folderPath]) => ({ folderId, folderPath }));
   }, [data]);
 
-  // Auto-reset the folder filter if the chosen folder vanished from the snapshot (RBAC/scope).
+  // Reset the folder filter when the chosen folder is no longer in the snapshot, for example
+  // after an RBAC or scope change.
   useEffect(() => {
     if (folderFilter && !folderOptions.some((f) => f.folderId === folderFilter)) setFolderFilter(null);
   }, [folderFilter, folderOptions]);
@@ -144,8 +145,8 @@ export function OperationsPage() {
   }, [scopedTriggers, nowMs]);
 
   // ---- Incident actions --------------------------------------------------------------------
-  // Cancel / Retry / Cancel-all / Quarantine. All four reuse existing endpoints; the gating
-  // comes from the per-node canRun/canEdit flags in the snapshot, never from the global role.
+  // Cancel, retry, cancel-all and quarantine. All four reuse existing endpoints, and access is
+  // gated by the per-node canRun/canEdit flags in the snapshot, not by the global role.
   const invalidateGraph = () => queryClient.invalidateQueries({ queryKey: ['operations-graph'] }); // prefix match: all windows
 
   const cancel = useMutation({
@@ -178,13 +179,13 @@ export function OperationsPage() {
     onSuccess: (outcome) => {
       invalidateGraph();
       // The departure board is fed by /stats/dashboard, whose armedTriggers filter on
-      // IsEnabled. Without this the board keeps promising a start for a workflow that was
-      // just quarantined — for a full 30 s poll cycle.
+      // IsEnabled. Without this invalidation the board keeps announcing a start for a
+      // workflow that was just quarantined until the next 30 s poll.
       queryClient.invalidateQueries({ queryKey: ['ops-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
       if (outcome.cancelled === null) {
-        // Partial: the workflow is safely off but its runs are still going. Its own message,
-        // because "failed" would be wrong and "done" would be a lie.
+        // Partial result: the workflow is disabled but its runs are still going, so it gets
+        // its own message instead of a success or failure toast.
         toast.error(t('operations:drilldown.quarantinePartial'));
       } else {
         toast.success(t('operations:drilldown.quarantined', { count: outcome.cancelled.total }));
@@ -199,8 +200,8 @@ export function OperationsPage() {
     : quarantine.isPending ? 'quarantine'
     : null;
 
-  // ---- Drilldown context: resolve the selected execution from live store > recent list. ----
-  // Deliberately not memoized: the page re-renders once per clock tick anyway and this is a
+  // ---- Drilldown context: resolve the selected execution, live store first, then recent. ----
+  // Not memoized on purpose: the page re-renders once per clock tick anyway and this is only a
   // handful of map lookups.
   const selectedContext = (() => {
     if (!selected) return null;
@@ -222,9 +223,9 @@ export function OperationsPage() {
     return null;
   })();
 
-  // Step activity of the selected run. Only the snapshot's `running` list carries it — the live
-  // store holds no step data — so a run that has already settled resolves to null, which is
-  // correct: activity is a live-run concept.
+  // Step activity of the selected run. Only the snapshot's `running` list carries it, since the
+  // live store holds no step data, so a run that has already settled resolves to null. Activity
+  // only exists for a running execution.
   const selectedActivity = useMemo(() => {
     if (!selected) return null;
     const row = (data?.running ?? []).find((r) => r.executionId === selected);
@@ -236,15 +237,15 @@ export function OperationsPage() {
     };
   }, [selected, data]);
 
-  // Close the drilldown when the selected execution leaves the current scope/window.
+  // Close the drilldown when the selected execution leaves the current scope or window.
   useEffect(() => {
     if (selected && !selectedContext) setSelected(null);
   }, [selected, selectedContext]);
 
   const selectedNode = selectedContext ? nodesById.get(selectedContext.workflowId) : undefined;
 
-  // Static call topology for the drilldown: what the selected workflow's definition calls.
-  // Resolved targets show their name; dynamic/unresolved refs show the raw reference string.
+  // Static call topology for the drilldown: which workflows the selected definition calls.
+  // Resolved targets show their name; dynamic or unresolved refs show the raw reference.
   const allNodesById = useMemo(
     () => new Map((data?.nodes ?? []).map((n) => [n.workflowId, n.name])),
     [data],
@@ -265,7 +266,7 @@ export function OperationsPage() {
   }, [data, selectedContext, allNodesById]);
 
   return (
-    // Only the desktop pins itself to the viewport so the timeline can own the space between
+    // Only the desktop layout is pinned to the viewport, so the timeline owns the space between
     // header and departure board. The phone list scrolls with the page like every other route.
     <div className="np-ops flex flex-col gap-3 lg:h-[calc(100dvh-6rem)]">
       <header className="flex flex-wrap items-center justify-between gap-3 px-1">
@@ -274,7 +275,7 @@ export function OperationsPage() {
           <p className="hidden text-sm text-on-surface-variant lg:block">{t('operations:subtitle')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          {/* A frozen board must never pass for a dead system — loud badge, not a subtle hint. */}
+          {/* Prominent badge so a frozen board is never mistaken for a stalled system. */}
           {frozen && (
             <span
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASS.warning}`}
@@ -421,10 +422,10 @@ export function OperationsPage() {
 }
 
 /**
- * On a desktop the drilldown is an overlay inside the timeline card — right where the bar the
- * operator clicked still is. A phone has no such card (the run list scrolls with the page), so
- * the same panel is hosted in a viewport-fixed layer with a dismissable backdrop. That turns it
- * into a sheet without the drilldown itself knowing anything about the two contexts.
+ * Hosts the drilldown panel in the layout that fits the screen. On desktop it is an overlay
+ * inside the timeline card, next to the bar that was clicked. A phone has no such card, so the
+ * same panel sits in a viewport-fixed layer with a dismissable backdrop, which makes it a sheet
+ * without the drilldown knowing about either context.
  */
 function DrilldownHost({
   isMobile, dismissLabel, onDismiss, children,

@@ -10,13 +10,11 @@ import type { Workflow } from '../../types/api';
 
 /**
  * FolderPathBreadcrumb renders the open workflow's folder path as a top-left canvas overlay.
- * Display is derived from `workflow.folderPath`; each segment is resolved against the
- * RBAC-visible `['shared-folders']` list and only resolved segments are interactive. The
- * per-segment popover lists that folder's sub-folders + workflows (from `['workflows']`,
- * with the current workflow merged in case the recent-500 cap excluded it) and lets the user
- * drill in and open workflows. We pin: chain rendering, hover/click open, drill-in, navigation
- * callback, RBAC-hidden ancestor → non-interactive, current-workflow merge, and Escape /
- * outside-pointerdown close.
+ * Segments come from `workflow.folderPath` and resolve against the RBAC-visible
+ * `['shared-folders']` list; only resolved segments are interactive. A segment popover lists
+ * that folder's sub-folders and workflows from `['workflows']`, with the current workflow
+ * merged in, and lets the user drill in or open one. These tests cover chain rendering,
+ * opening, drill-in, the open callback, the merge, and closing.
  */
 
 vi.mock('../../api/sharedFolders', async () => {
@@ -32,7 +30,7 @@ function makeFolder(over: Partial<SharedFolder>): SharedFolder {
   return {
     id: 'folder-id', parentFolderId: null, name: 'Folder', path: '/Folder', depth: 1,
     createdAt: '2024-01-01T00:00:00Z', createdByUserId: null, workflowCount: 0,
-    capabilities: { canRead: true, canRun: true, canEdit: false, canAdmin: false },
+    capabilities: { canRead: true, canRun: true, canEdit: false, canDelete: false, canAdmin: false },
     ...over,
   };
 }
@@ -78,14 +76,14 @@ describe('FolderPathBreadcrumb', () => {
 
     expect(await screen.findByRole('button', { name: /Finance/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Reports/ })).toBeInTheDocument();
-    // Root is a static home indicator, never a clickable/browsable segment.
+    // Root is a static home indicator, never a clickable or browsable segment.
     expect(screen.queryByRole('button', { name: 'Root' })).toBeNull();
   });
 
   it('renders nothing for a root-level workflow (empty folderPath)', async () => {
     const rootWf = makeWorkflow({ id: 'wf0', name: 'At Root', folderId: ROOT_FOLDER_ID, folderPath: '/' });
     const { container } = renderBreadcrumb(rootWf);
-    // No segments → component returns null.
+    // Without segments the component returns null.
     expect(container.querySelector('[data-testid="folder-path-breadcrumb"]')).toBeNull();
   });
 
@@ -104,7 +102,7 @@ describe('FolderPathBreadcrumb', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Finance/ }));
 
     const popover = await screen.findByTestId('folder-contents-browser');
-    // Finance contains sub-folder Reports + workflow Budget Plan.
+    // Finance contains the sub-folder Reports and the workflow Budget Plan.
     expect(within(popover).getByText('Reports')).toBeInTheDocument();
     expect(within(popover).getByText('Budget Plan')).toBeInTheDocument();
     // Workflows from other folders are not listed.
@@ -143,9 +141,9 @@ describe('FolderPathBreadcrumb', () => {
     getMock.mockResolvedValue([WF_CURRENT, WF_SIBLING]);
     renderBreadcrumb(WF_CURRENT);
 
-    // Reports resolves → interactive button.
+    // Reports resolves and renders as an interactive button.
     expect(await screen.findByRole('button', { name: /Reports/ })).toBeInTheDocument();
-    // Finance does not resolve → plain, non-interactive span.
+    // Finance does not resolve and renders as a plain, non-interactive span.
     const finance = screen.getByText('Finance');
     expect(finance.tagName).toBe('SPAN');
     expect(finance.closest('button')).toBeNull();

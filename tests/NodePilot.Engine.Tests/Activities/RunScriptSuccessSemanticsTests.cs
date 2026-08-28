@@ -56,7 +56,8 @@ public class RunScriptSuccessSemanticsTests
     [InlineData("powershell")]
     public async Task WriteError_UnderStop_Fails(string engine)
     {
-        // The wrapper sets $ErrorActionPreference='Stop', so Write-Error is terminating in both engines.
+        // The wrapper sets $ErrorActionPreference='Stop', so Write-Error is terminating in both
+        // engines.
         var result = await _activity.ExecuteAsync(Ctx(), Config("Write-Error 'nope'", engine), CancellationToken.None);
         result.Success.Should().BeFalse();
     }
@@ -95,7 +96,7 @@ public class RunScriptSuccessSemanticsTests
     [InlineData("powershell")]
     public async Task NativeCommandExitCode_CapturedConsistently(string engine)
     {
-        // $LASTEXITCODE of the last native command is captured by the wrapper → consistent across
+        // $LASTEXITCODE of the last native command is captured by the wrapper -> consistent across
         // engines. Disable PS7's native-command error preference so the non-zero native exit is a
         // value, not a terminating error (no-op on Windows PowerShell 5.1).
         var result = await _activity.ExecuteAsync(

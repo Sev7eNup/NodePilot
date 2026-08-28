@@ -5,9 +5,9 @@ using NodePilot.Core.Models;
 namespace NodePilot.Core.Activities;
 
 /// <summary>
-/// Computes the stable hash recorded in a step's <see cref="CustomActivityProvenance"/>. Covers the
-/// script template plus every option that changes execution behaviour, so two executions with the
-/// same hash provably ran the same code+config — independent of the version counter.
+/// Computes the stable hash recorded in a step's <see cref="CustomActivityProvenance"/>. It covers
+/// the script template plus every option that changes execution behaviour, so two executions with
+/// the same hash ran the same code and config, independent of the version counter.
 /// </summary>
 public static class CustomActivityHashing
 {

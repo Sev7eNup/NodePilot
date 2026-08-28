@@ -42,7 +42,7 @@ public class WorkflowEngine : IWorkflowEngine
     // Cancel attribution: a caller (e.g. the manual-cancel controller) records WHO cancelled here
     // BEFORE tripping the token, so the engine's single OperationCanceledException catch — which is
     // also reached by timeouts and host shutdown — can stamp the reason onto the execution row.
-    // Absent entry ⇒ "system" (timeout / shutdown / token cancel without an explicit reason).
+    // Absent entry -> "system" (timeout / shutdown / token cancel without an explicit reason).
     private static readonly ConcurrentDictionary<Guid, string> _cancelReasons = new();
     private static readonly object _capacityGate = new();
     private static int _reservedExecutionSlots;
@@ -182,7 +182,8 @@ public class WorkflowEngine : IWorkflowEngine
 
             // Interactive runs (user-clicked Test/Debug from the editor) are explicit, single-shot
             // actions gated by Admin/Operator role. They must not be blocked by the per-user cap,
-            // which exists to throttle automated bursts, but they still count toward the global cap.
+            // which exists to throttle automated bursts, but they still count toward the global
+            // cap.
             var perUserCounted = !interactiveRun
                 && callDepth == 0
                 && startedByUserId is { } uid && uid != Guid.Empty
@@ -432,18 +433,17 @@ public class WorkflowEngine : IWorkflowEngine
                     return existingExecution;
 
                 // Claim the queued row with a database-side compare-and-set. A tracked
-                // Pending entity may be stale when AD/SCIM/admin offboarding has already
-                // cancelled the row through another DbContext. Saving that stale entity
-                // used to overwrite Cancelled with Running and execute the workflow.
+                // Re-read the row because offboarding may have cancelled it through another
+                // DbContext.
+                // The conditional update prevents a stale Pending entity from starting the
+                // workflow.
                 var claimCandidates = _db.WorkflowExecutions
                     .Where(candidate => candidate.Id == executionId
                                      && candidate.WorkflowId == workflow.Id
                                      && candidate.Status == ExecutionStatus.Pending);
                 claimCandidates = ApplyExecutionWriteFence(
                     _db, claimCandidates, expectedOwnerNodeId, expectedLeaseEpoch);
-                var claimed = await claimCandidates
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(candidate => candidate.Status, ExecutionStatus.Running), ct);
+                var claimed = await ExecutionStateLifecycle.TryClaimPendingAsync(claimCandidates, ct);
                 await _db.Entry(existingExecution).ReloadAsync(ct);
                 if (claimed == 0)
                     return existingExecution;
@@ -496,7 +496,7 @@ public class WorkflowEngine : IWorkflowEngine
         var run = new ExecutionRun(workflow, execution, activity, executionStopwatch,
             workflowIdTag, workflowNameTag, callDepth, expectedOwnerNodeId, expectedLeaseEpoch, _hostStopping);
 
-        // Interactive runs need the Pending→Running transition to land in the DB immediately
+        // Interactive runs need the Pending to Running transition to land in the DB immediately
         // so dashboard/list views don't show "queued" while the engine is already executing.
         var persistExecutionStart = existingExecution is null || debugEnabled || interactiveRun;
         if (persistExecutionStart)
@@ -573,7 +573,7 @@ public class WorkflowEngine : IWorkflowEngine
             CallDepth = callDepth,
             // Cluster-failover bookkeeping: stamp the owning node so the recovery sweep
             // can distinguish our own in-flight runs from a dead leader's. Null in tests
-            // that wire no cluster provider — recovery still works (NULL != self → recovered).
+            // that wire no cluster provider — recovery still works (NULL != self -> recovered).
             OwnerNodeId = _cluster?.NodeId,
         };
 
@@ -673,11 +673,8 @@ public class WorkflowEngine : IWorkflowEngine
 
         var updated = await WorkflowDbWriteMetrics.ExecuteMeasuredAsync(
             operation,
-            () => candidates.ExecuteUpdateAsync(setters => setters
-                .SetProperty(candidate => candidate.Status, desiredStatus)
-                .SetProperty(candidate => candidate.CompletedAt, completedAt)
-                .SetProperty(candidate => candidate.ErrorMessage, errorMessage)
-                .SetProperty(candidate => candidate.CancelledBy, cancelledBy), ct));
+            () => ExecutionStateLifecycle.TrySetTerminalAsync(
+                candidates, desiredStatus, completedAt, errorMessage, cancelledBy, ct));
 
         // ExecuteUpdate bypasses the change tracker. Reload on both outcomes: on success it
         // makes the returned object reflect the committed values; on CAS loss it imports the
@@ -696,7 +693,8 @@ public class WorkflowEngine : IWorkflowEngine
     ///     retried on a FRESH DI scope + fresh <see cref="NodePilotDbContext"/>.
     ///  3) a confirmed outage waits and retries until probe recovery; only host shutdown releases
     ///     that wait. Non-outage failures propagate to the caller instead of silently leaving Running.
-    /// The single-node CAS predicate and cluster write-fence are preserved on every attempt, so this
+    /// The single-node CAS predicate and cluster write-fence are preserved on every attempt, so
+    /// this
     /// never clobbers a row a new leader legitimately owns.
     /// </summary>
     private async Task PersistTerminalStateResilientAsync(
@@ -708,7 +706,8 @@ public class WorkflowEngine : IWorkflowEngine
         try
         {
             await PersistTerminalStateAsync(run, desiredStatus, completedAt, errorMessage, cancelledBy, operation, CancellationToken.None);
-            // Committed, OR lost the CAS to an authoritative external terminal write (already terminal).
+            // Committed, OR lost the CAS to an authoritative external terminal write (already
+            // terminal).
             if (IsTerminalStatus(run.Execution.Status))
                 return;
         }
@@ -727,7 +726,8 @@ public class WorkflowEngine : IWorkflowEngine
 
         // Resilient path: a standalone CAS on a brand-new context, independent of _db's state.
         // Only the execution row is written here — Skipped-step rows are cosmetic UI state and are
-        // best-effort on the fast path; the invariant that matters is that the run reaches terminal.
+        // best-effort on the fast path; the invariant that matters is that the run reaches
+        // terminal.
         while (true)
         {
             try
@@ -756,7 +756,8 @@ public class WorkflowEngine : IWorkflowEngine
                 else
                 {
                     // 0 rows: the row is already terminal (a concurrent authoritative write won) or
-                    // the fence legitimately rejected us (another cluster owner). Import that state.
+                    // the fence legitimately rejected us (another cluster owner). Import that
+                    // state.
                     var current = await freshDb.WorkflowExecutions.AsNoTracking()
                         .FirstOrDefaultAsync(c => c.Id == run.Execution.Id, CancellationToken.None);
                     if (current is not null)
@@ -797,7 +798,8 @@ public class WorkflowEngine : IWorkflowEngine
     /// Reads the run's terminal verdict — how many steps failed, and the first of them — with the
     /// same confirmed-outage barrier the terminal WRITE uses.
     ///
-    /// <para>Returns <c>null</c> only when the host stopped before the answer could be obtained. The
+    /// <para>Returns <c>null</c> only when the host stopped before the answer could be obtained.
+    /// The
     /// caller must then leave the execution non-terminal: a verdict that cannot be read is not a
     /// verdict of success, and the startup reconciler exists for exactly this state.</para>
     ///
@@ -814,7 +816,8 @@ public class WorkflowEngine : IWorkflowEngine
                 await using var scope = _serviceProvider.CreateAsyncScope();
                 var freshDb = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
 
-                // Count instead of Any: same index seek on WorkflowExecutionId, but it also gives the
+                // Count instead of Any: same index seek on WorkflowExecutionId, but it also gives
+                // the
                 // exact failure count for the support log and the workflow-level summary.
                 var failedStepCount = await freshDb.StepExecutions
                     .AsNoTracking()
@@ -824,9 +827,11 @@ public class WorkflowEngine : IWorkflowEngine
 
                 if (failedStepCount == 0) return (0, null);
 
-                // ErrorOutput remains authoritative on StepExecution. WorkflowExecution.ErrorMessage
+                // ErrorOutput remains authoritative on StepExecution.
+                // WorkflowExecution.ErrorMessage
                 // carries only a compact triage summary for lists, notifications, and sub-workflow
-                // callers. StartedAt + Id makes the selected failure deterministic when branches fail
+                // callers. StartedAt + Id makes the selected failure deterministic when branches
+                // fail
                 // concurrently.
                 var firstFailure = await freshDb.StepExecutions
                     .AsNoTracking()
@@ -987,7 +992,7 @@ public class WorkflowEngine : IWorkflowEngine
         var compiledDefinition = WorkflowDefinitionCache.GetOrCompile(workflow);
         var nodes = compiledDefinition.Nodes;
 
-        // id → node lookup built ONCE per execution. Scheduling, variable resolution,
+        // id -> node lookup built ONCE per execution. Scheduling, variable resolution,
         // and edge-condition evaluation all need "give me the node with id X"; the
         // previous List.FirstOrDefault loop was O(nodes) per lookup and dominated the
         // CPU time of wide fan-outs. The dict is a single pass + dict allocation.
@@ -1070,11 +1075,8 @@ public class WorkflowEngine : IWorkflowEngine
             inputParameters);
 
         // The scheduler can return normally even when the run was cancelled (it lets in-flight
-        // steps observe the token and wind down rather than always throwing). Surface that cancel
-        // here so it routes to the Cancelled terminal handler instead of being aggregated as
-        // Succeeded/Failed. This was previously IMPLICIT — the verdict COUNT query below ran on
-        // cts.Token and threw on a cancelled token — but finalization is now cancellation-
-        // independent (None), so the cancel check must be explicit.
+        // steps may observe the token and stop without throwing). Check it explicitly so
+        // cancellation-independent finalization routes the execution to the Cancelled handler.
         cts.Token.ThrowIfCancellationRequested();
 
         // Anything that wasn't completed and isn't already in `skipped` is unreachable
@@ -1188,7 +1190,7 @@ public class WorkflowEngine : IWorkflowEngine
     {
         var execution = run.Execution;
         // Attribute the cancel: an explicit reason recorded by CancelAsync (e.g. "user") wins;
-        // otherwise this is a timeout / host-shutdown / bare-token cancel → "system".
+        // otherwise this is a timeout / host-shutdown / bare-token cancel -> "system".
         var cancelledBy = _cancelReasons.TryRemove(execution.Id, out var cancelReason) ? cancelReason : "system";
         await PersistTerminalStateResilientAsync(
             run,
@@ -1282,12 +1284,8 @@ public class WorkflowEngine : IWorkflowEngine
         // TryRemove, but they're already dead anyway because the parent try block has
         // aborted.
         _debugHandles.TryRemove(execution.Id, out _);
-        // H-3 (security-audit finding): roll the per-user counter back to its value
-        // before this run. With multiple parallel runs from the same user we count down;
-        // on the last run, the entry that reaches 0 is explicitly removed from the dict
-        // so it doesn't grow unbounded across many distinct users (TryRemove on the
-        // key/value pair is atomic against a concurrent increment that might have
-        // already bumped a 0-entry to 1).
+        // Decrement the per-user counter and remove its zero entry atomically with concurrent
+        // starts.
         ReleaseCapacitySlot(startedByUserId, perUserCounted);
 
         run.Stopwatch.Stop();
@@ -1301,9 +1299,9 @@ public class WorkflowEngine : IWorkflowEngine
     {
         if (!_runningExecutions.TryGetValue(executionId, out var cts))
             return Task.FromResult(false);
-        // Record attribution BEFORE cancelling so the engine's OCE catch (which runs on the engine
-        // thread, possibly before this method returns) sees it. Default "user": CancelAsync's only
-        // callers are explicit human/API cancels; timeouts trip the token directly (no reason set).
+        // Record attribution before cancellation so the engine thread sees it in the exception
+        // path.
+        // Explicit API cancellations default to "user"; timeouts cancel the token without a reason.
         _cancelReasons[executionId] = cancelledBy ?? "user";
         // If the execution is currently paused in a debug session: first resolve every
         // paused step's signal as Stop, otherwise the engine thread stays blocked in its
@@ -1395,21 +1393,15 @@ public class WorkflowEngine : IWorkflowEngine
     /// Fills the run's inputs with the defaults declared on its <c>manualTrigger</c> nodes, for
     /// every parameter the caller did not supply.
     ///
-    /// <para>A declared default used to reach only the trigger node's own <c>param.*</c> outputs:
-    /// <c>ManualTrigger</c> substitutes it when reading <c>manual.&lt;name&gt;</c> out of the
-    /// variables dict, but nothing ever wrote it back into that dict. So
-    /// <c>{{trg.param.ziel}}</c> returned the default while <c>{{manual.ziel}}</c> found nothing —
-    /// two documented spellings of the same value disagreeing. That was invisible until
-    /// <c>{{manual.X}}</c> started resolving at all: before, both the default case and the
-    /// genuinely-missing case rendered as the same literal placeholder.</para>
+    /// <para>Writes declared defaults into the input dictionary so <c>param.*</c> and
+    /// <c>manual.&lt;name&gt;</c> references resolve the same value.</para>
     ///
-    /// <para>Skipped for a parameter declared more than once with diverging defaults
-    /// (<see cref="WorkflowContractInputDefinition.HasConflict"/>): which default applies is
-    /// genuinely ambiguous, and the contract already reports the conflict. A declared parameter
-    /// with no default stays absent — "no value" is what it means.</para>
+    /// <para>Skips conflicting defaults reported by
+    /// <see cref="WorkflowContractInputDefinition.HasConflict"/> and leaves parameters without a
+    /// default absent.</para>
     ///
-    /// <para>The gate on the definition text keeps this off the hot path: deriving the contract
-    /// re-parses the whole definition JSON, and most runs have no manual trigger at all.</para>
+    /// <para>Checks the definition text first to avoid parsing workflows without a manual
+    /// trigger.</para>
     /// </summary>
     private static Dictionary<string, string>? ApplyDeclaredParameterDefaults(
         Workflow workflow, Dictionary<string, string>? inputParameters)

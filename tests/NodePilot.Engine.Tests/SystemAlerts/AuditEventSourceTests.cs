@@ -11,8 +11,10 @@ using Xunit;
 namespace NodePilot.Engine.Tests.SystemAlerts;
 
 /// <summary>
-/// The audit-log event source: one observation per audit row inside the lookback window, pre-filtered
-/// server-side by the <c>actions</c> parameter, capped per pass, keyed by row id, with the attempted
+/// The audit-log event source: one observation per audit row inside the lookback window,
+/// pre-filtered
+/// server-side by the <c>actions</c> parameter, capped per pass, keyed by row id, with the
+/// attempted
 /// username recovered from Details for anonymous login failures.
 /// </summary>
 public class AuditEventSourceTests
@@ -110,7 +112,8 @@ public class AuditEventSourceTests
     public async Task Observe_UsernameFallsBackToDetails_ForAnonymousLoginFailure()
     {
         // LOGIN_FAILED is written by an unauthenticated request: the actor column is null and the
-        // attempted name only exists in Details.username — exactly the field a failed-login policy needs.
+        // attempted name only exists in Details.username — exactly the field a failed-login policy
+        // needs.
         await using var db = TestDbFactory.Create();
         db.AuditLog.Add(Row(AuditActions.LoginFailed, username: null,
             details: "{\"username\":\"mallory\",\"reason\":\"invalid_password\"}", ip: "203.0.113.9"));
@@ -128,8 +131,10 @@ public class AuditEventSourceTests
     [Fact]
     public async Task Observe_SignInEvents_PreferAttemptedAccount_OverRequestActor()
     {
-        // Seen live: a browser still holding an admin session failed a login as "eve.intruder" — the audit
-        // actor column said "npadmin" and the alert read "LOGIN_FAILED: npadmin". For sign-in codes the
+        // Seen live: a browser still holding an admin session failed a login as "eve.intruder" —
+        // the audit
+        // actor column said "npadmin" and the alert read "LOGIN_FAILED: npadmin". For sign-in codes
+        // the
         // account being signed into is the one that matters; for everything else the actor stays.
         await using var db = TestDbFactory.Create();
         db.AuditLog.AddRange(
@@ -241,8 +246,10 @@ public class AuditEventSourceTests
     [Fact]
     public async Task Observe_HasNoRowCap_ReturnsEveryRowInWindow_OldestFirst()
     {
-        // An oldest-first cap over a sliding window is a cliff, not a load guard: rows arriving faster than
-        // the cap per dispatcher interval would age past the prefix and out of the window unobserved.
+        // An oldest-first cap over a sliding window is a cliff, not a load guard: rows arriving
+        // faster than
+        // the cap per dispatcher interval would age past the prefix and out of the window
+        // unobserved.
         await using var db = TestDbFactory.Create();
         var oldest = DateTime.UtcNow.AddSeconds(-250);
         for (var i = 0; i < 450; i++)

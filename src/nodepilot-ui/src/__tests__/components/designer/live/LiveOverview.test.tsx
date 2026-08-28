@@ -6,10 +6,9 @@ import { LiveOverview } from '../../../../components/designer/live/LiveOverview'
 import type { LiveExecution, StepUpdate } from '../../../../hooks/useSignalR';
 
 /**
- * Unit-tests for the live-overview right-pane components. We test the pure-DOM ones
- * (StatsStrip, LiveTimeline) directly, and exercise LiveOverview without rendering the
- * MiniMap (clicking the Map sub-tab is left to integration tests since ReactFlow needs
- * a real layout engine). The Map sub-tab visibility itself is asserted at the parent
+ * Unit tests for the live-overview right-pane components. The pure-DOM ones (StatsStrip,
+ * LiveTimeline) are tested directly; LiveOverview is exercised without rendering the MiniMap,
+ * since ReactFlow needs a real layout engine. Map sub-tab visibility is asserted at the parent
  * ExecutionPanel level.
  */
 
@@ -68,8 +67,8 @@ describe('StatsStrip', () => {
       />
     );
 
-    // Skipped is control-flow, not executed work — excluded from the Live counter.
-    // 2 of 3 executed steps are terminal (1 Succeeded + 1 Failed); 1 is still Running.
+    // Skipped is control flow, not executed work, so the Live counter leaves it out.
+    // Two of the three executed steps are terminal; the third is still running.
     expect(screen.getByText('2/3')).toBeInTheDocument();
     expect(screen.getByText('Steps')).toBeInTheDocument();
     expect(screen.getByText('Elapsed')).toBeInTheDocument();
@@ -132,7 +131,7 @@ describe('LiveTimeline', () => {
     );
     expect(screen.getByText('Alpha')).toBeInTheDocument();
     expect(screen.getByText('Beta')).toBeInTheDocument();
-    // Duration column shows formatted ms — 1.00s for the default 1-second run
+    // Duration column formats the step runtime; the default step runs for one second.
     expect(screen.getAllByText(/1\.00s/).length).toBeGreaterThan(0);
   });
 

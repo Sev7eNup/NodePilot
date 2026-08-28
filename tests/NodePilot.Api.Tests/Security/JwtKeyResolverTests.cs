@@ -69,7 +69,7 @@ public class JwtKeyResolverTests
     [Fact]
     public void Validate_BannedDefault_Throws()
     {
-        // The legacy default shipped in appsettings.json before 2026-04-18.
+        // A known insecure default key; Validate must always reject it.
         Action act = () => JwtKeyResolver.Validate("NodePilot-Default-Secret-Key-Change-In-Production-32chars!");
         act.Should().Throw<InvalidOperationException>().WithMessage("*default*");
     }
@@ -335,11 +335,9 @@ public class JwtKeyResolverTests
     {
         if (!OperatingSystem.IsWindows()) return;
 
-        // Regression guard: the Development escape hatch on the write path used to be dead code.
-        // Resolve checked `!env.IsDevelopment()` and then called WriteText with a hardcoded
-        // failClosed:true, which re-ran the same parent-directory check without any environment
-        // awareness and threw anyway. Any dev machine or CI runner whose workspace grants write
-        // access to a broad group could not boot.
+        // In Development, an insecure parent directory must not block startup: Resolve keeps
+        // the key in memory instead of writing it to disk. A dev machine or CI workspace that
+        // grants broad write access to the checkout must still be able to boot.
         var root = CreateSecureTestRoot();
         var path = Path.Combine(root, "jwt.key");
         try

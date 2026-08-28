@@ -141,7 +141,7 @@ public static class WorkflowTemplates
 
         string N(string name) => $"{name}-{uniqueSuffix}";
 
-        // Root → parallel branches of mixed activities → junction → returnData
+        // Root -> parallel branches of mixed activities -> junction -> returnData
         AddNode(N("root"), 50, 50, "Root", "delay", new { seconds = 0 });
 
         AddNode(N("script1"), 250, 50, "Script A", "runScript",

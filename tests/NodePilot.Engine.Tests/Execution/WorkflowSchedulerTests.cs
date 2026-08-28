@@ -14,11 +14,10 @@ using Xunit;
 namespace NodePilot.Engine.Tests.Execution;
 
 // WorkflowScheduler's step gate is a process-global static semaphore, and several tests here
-// call Configure(1) to shrink it to a single slot. Without this attribute the class runs in
-// parallel with every other collection in the assembly — including the WorkflowEngine tests that
-// drive RunAsync through that same gate (WorkflowEngineCapacityTests even runs a 10-way parallel
-// execution). They then contend for the one slot we installed, which skews the timing this file
-// depends on. Join the collection those engine tests already share so the gate has one owner.
+// call Configure(1) to shrink it to a single slot. Without this attribute the class would run
+// in parallel with other collections that drive the same gate, including the WorkflowEngine
+// tests, which would skew the timing these tests depend on. Join the collection those engine
+// tests share so the gate has one owner.
 [Collection("SerialEngineTests")]
 public class WorkflowSchedulerTests
 {
@@ -115,6 +114,94 @@ public class WorkflowSchedulerTests
     }
 
     [Fact]
+    public async Task RunAsync_WaitAnyJunction_WaitsPastACompletedEdgeWhoseConditionIsFalse()
+    {
+        var fast = Node("fast");
+        var slow = Node("slow");
+        var join = Node("join", "junction", """{"mode":"waitAny"}""");
+        var final = Node("final");
+        var nodes = new[] { fast, slow, join, final };
+        var edges = new[]
+        {
+            new WorkflowEdge { Id = "e1", Source = "fast", Target = "join", Condition = "fast.failed" },
+            new WorkflowEdge { Id = "e2", Source = "slow", Target = "join", Condition = "slow.success" },
+            new WorkflowEdge { Id = "e3", Source = "join", Target = "final" },
+        };
+        var adjacency = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var reverse = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var incoming = nodes.ToDictionary(n => n.Id, _ => new List<WorkflowEdge>());
+        var byEndpoints = new Dictionary<(string Source, string Target), WorkflowEdge>();
+        foreach (var edge in edges)
+        {
+            adjacency[edge.Source].Add(edge.Target);
+            reverse[edge.Target].Add(edge.Source);
+            incoming[edge.Target].Add(edge);
+            byEndpoints[(edge.Source, edge.Target)] = edge;
+        }
+
+        var results = new ConcurrentDictionary<string, ActivityResult>();
+        var completed = new HashSet<string>();
+        var skipped = new HashSet<string>();
+
+        await WorkflowScheduler.RunAsync(
+            [fast, slow], nodes.ToDictionary(n => n.Id), adjacency, reverse, incoming, byEndpoints,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            results, completed, skipped,
+            async (node, ct) =>
+            {
+                await Task.Delay(node.Id == "fast" ? 5 : node.Id == "slow" ? 50 : 1, ct);
+                return new ActivityResult { Success = true, Output = node.Id };
+            },
+            NullLogger.Instance, CancellationToken.None);
+
+        completed.Should().Contain(["join", "final"]);
+        skipped.Should().NotContain(["join", "final"]);
+    }
+
+    [Fact]
+    public async Task RunAsync_WaitAllJunction_DoesNotRunWhenOneCompletedInputConditionIsFalse()
+    {
+        var failed = Node("failed");
+        var successful = Node("successful");
+        var join = Node("join", "junction", """{"mode":"waitAll"}""");
+        var nodes = new[] { failed, successful, join };
+        var edges = new[]
+        {
+            new WorkflowEdge { Id = "e1", Source = "failed", Target = "join", Condition = "failed.success" },
+            new WorkflowEdge { Id = "e2", Source = "successful", Target = "join", Condition = "successful.success" },
+        };
+        var adjacency = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var reverse = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var incoming = nodes.ToDictionary(n => n.Id, _ => new List<WorkflowEdge>());
+        var byEndpoints = new Dictionary<(string Source, string Target), WorkflowEdge>();
+        foreach (var edge in edges)
+        {
+            adjacency[edge.Source].Add(edge.Target);
+            reverse[edge.Target].Add(edge.Source);
+            incoming[edge.Target].Add(edge);
+            byEndpoints[(edge.Source, edge.Target)] = edge;
+        }
+
+        var results = new ConcurrentDictionary<string, ActivityResult>();
+        var completed = new HashSet<string>();
+        var skipped = new HashSet<string>();
+
+        await WorkflowScheduler.RunAsync(
+            [failed, successful], nodes.ToDictionary(n => n.Id), adjacency, reverse, incoming, byEndpoints,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            results, completed, skipped,
+            async (node, ct) =>
+            {
+                await Task.Delay(node.Id == "failed" ? 5 : 50, ct);
+                return new ActivityResult { Success = node.Id != "failed", Output = node.Id };
+            },
+            NullLogger.Instance, CancellationToken.None);
+
+        completed.Should().NotContain("join");
+        skipped.Should().Contain("join");
+    }
+
+    [Fact]
     public async Task RunAsync_WaitAnyCancelsAndAwaitsRacingInFlightPredecessor()
     {
         var fast = Node("fast");
@@ -199,10 +286,10 @@ public class WorkflowSchedulerTests
     [Fact]
     public async Task RunAsync_WithGlobalStepCap_LimitsConcurrentInFlightSteps()
     {
-        // Per-process step concurrency gate — caps in-flight steps across ALL executions.
-        // Prevents 50 parallel workflows × ~10 fan-out = 500 concurrent step tasks from
-        // saturating ThreadPool / DbContext / regex passes. Ten sibling roots all kick
-        // off at once but only 2 may run concurrently when Configure(2) is set.
+        // Per-process step concurrency gate: caps in-flight steps across every execution
+        // running in this process, so large fan-outs cannot saturate the thread pool and
+        // DB connections. Ten sibling roots all start at once but only 2 may run
+        // concurrently when Configure(2) is set.
         WorkflowScheduler.ResetForTests();
         WorkflowScheduler.Configure(2);
         try
@@ -579,11 +666,8 @@ public class WorkflowSchedulerTests
     [Fact]
     public async Task RunAsync_FailedStep_LogsTheFailureWithoutTheRawErrorPayload()
     {
-        // M-31. StepRunner returns the RAW ActivityResult on purpose — the data bus has to resolve
-        // {{step.error}} to the real value — and redacts only on the way out to the DB, the UI,
-        // telemetry and the support log. The scheduler used to interpolate result.ErrorOutput into
-        // a LogWarning, which made the main log (and any SIEM shipping it) the single sink that saw
-        // unredacted stderr while the UI showed "***".
+        // StepRunner keeps raw errors for data-bus resolution. Every external sink, including the
+        // scheduler log, must redact that payload before emission.
         WorkflowScheduler.ResetForTests();
         const string secret = "Login failed for user 'sa' with password=Sup3rSecret!";
 

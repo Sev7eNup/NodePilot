@@ -2,21 +2,18 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Part 68 — Activity Palette & Node Context Menu (lines 3803-3840).
+ * E2ETests.md section 68 — Activity Palette and Node Context Menu.
  *
- * The "activity palette" in NodePilot is the left-sidebar Node Library (EditorSidebar →
- * buildActivityCategories): a categorized, searchable list of activities. Clicking an entry
- * calls `addNode` and drops a fresh node onto the canvas (the same code path the drag-drop
- * uses, minus the d3-drag which Playwright cannot synthesize). The ActivityPickerGrid
- * component itself is a centered/positioned variant used by EdgeInserter + QuickConnectPicker
- * (covered in quick-interactions.spec.ts) — the editor has no pane-right-click → picker, so
- * 68.1's "right-click on canvas" is exercised here as the sidebar palette + click-add.
+ * The activity palette is the left-sidebar Node Library (EditorSidebar plus
+ * buildActivityCategories): a categorized, searchable list of activities. Clicking an entry calls
+ * `addNode` and drops a fresh node onto the canvas, the same path drag-and-drop takes without the
+ * d3-drag Playwright cannot synthesize, so 68.1 covers the palette click-add instead of a drag.
  *
- * The node context menu (right-click an activity node → NodeContextMenu) carries
- * Duplicate / Enable-Disable / Add-Remove-Breakpoint / Delete. Outside-click + Escape close it.
+ * The node context menu on an activity node offers Duplicate, Enable/Disable, Add/Remove
+ * breakpoint and Delete, and closes on an outside click or Escape.
  *
- * Hermetic: page.route mocks only. Workflow is locked-by-me (State B) so the palette's
- * click-add and the context-menu actions are all live. SPA renders ENGLISH under Playwright.
+ * Hermetic: page.route mocks only. The workflow is checked out by the current user so click-add
+ * and the context-menu actions are live. The SPA renders English under Playwright.
  */
 
 const WF_ID = 'e6868686-6868-6868-6868-686868686868';
@@ -76,8 +73,8 @@ test.describe('Activity-Palette & Node-Kontext-Menü (Teil 68)', () => {
     // The expanded panel has no "Node Library" heading — its search box confirms it mounted.
     await expect(page.getByPlaceholder(/search nodes|nodes suchen/i)).toBeVisible();
 
-    // Categorized: category headers render. Some categories ("Actions") are collapsed by
-    // default, so we drive discovery via the search box, which force-expands matches.
+    // Category headers render. Some categories ("Actions") are collapsed by default, so
+    // discovery goes through the search box, which force-expands matching categories.
     await expect(page.getByRole('button').filter({ hasText: /Triggers|Auslöser/i }).first()).toBeVisible();
 
     // Search narrows the list: "log" surfaces the Log Message entry and hides Run Script.
@@ -86,7 +83,7 @@ test.describe('Activity-Palette & Node-Kontext-Menü (Teil 68)', () => {
     await expect(page.getByRole('button').filter({ hasText: /Log Message/ }).first()).toBeVisible();
     await expect(page.getByRole('button').filter({ hasText: /Run Script/ })).toHaveCount(0);
 
-    // Switch the search to "delay" → the Delay entry shows and Log Message is gone.
+    // Switching the search to "delay" shows the Delay entry and hides Log Message.
     await search.fill('delay');
     await expect(page.getByRole('button').filter({ hasText: /Delay/ }).first()).toBeVisible();
     await expect(page.getByRole('button').filter({ hasText: /Log Message/ })).toHaveCount(0);
@@ -96,7 +93,7 @@ test.describe('Activity-Palette & Node-Kontext-Menü (Teil 68)', () => {
     await expect(page.locator(`.react-flow__node[data-id^="step-"]:not([data-id="${NODE_A}"])`))
       .toHaveCount(1, { timeout: 10_000 });
 
-    // Save persists both nodes (canvas DOM is virtualized — the PUT body is the source of truth).
+    // Save persists both nodes. The canvas DOM is virtualized, so the PUT body is authoritative.
     await saveButton(page).click();
     await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
     const def = JSON.parse(putBody!.definitionJson as string) as { nodes: { activityType?: string; data?: { activityType?: string } }[] };
@@ -132,12 +129,12 @@ test.describe('Activity-Palette & Node-Kontext-Menü (Teil 68)', () => {
     await page.locator(`.react-flow__node[data-id="${NODE_A}"]`).click({ button: 'right', position: { x: 15, y: 15 } });
     await page.getByRole('button', { name: /Disable step/ }).click();
 
-    // Re-open the menu — the toggle now reads "Enable step", proving the disabled flag flipped.
+    // Re-open the menu: the toggle now reads "Enable step", so the disabled flag flipped.
     await page.locator(`.react-flow__node[data-id="${NODE_A}"]`).click({ button: 'right', position: { x: 15, y: 15 } });
     await expect(page.getByRole('button', { name: /Enable step/ })).toBeVisible({ timeout: 5_000 });
     await page.keyboard.press('Escape');
 
-    // Save → disabled:true persisted on the node.
+    // Save persists disabled:true on the node.
     await saveButton(page).click();
     await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
     const def = JSON.parse(putBody!.definitionJson as string) as { nodes: { data: { disabled?: boolean } }[] };

@@ -4,13 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Workflow } from '../../types/api';
 
 /**
- * Harness approach:
- * useWorkflowLock uses useMutation/useQueryClient, so renderHook is wrapped in a fresh
- * QueryClientProvider per test (matching the properties/useNodeAnnotations precedent). The api
- * client is mocked so an accidental mutation can never hit the network — but these tests only
- * assert the DERIVED lock state (isLocked/isLockedByMe/isLockedByOther/canWrite), which is
- * computed at render time and never fires a mutation. `canWrite` is the edit gate, so every
- * lock-owner × role combination is asserted.
+ * useWorkflowLock uses useMutation and useQueryClient, so renderHook is wrapped in a fresh
+ * QueryClientProvider per test and the api client is mocked so no mutation reaches the
+ * network. The tests only assert the derived lock state (isLocked, isLockedByMe,
+ * isLockedByOther, canWrite), computed at render time. `canWrite` is the edit gate, so
+ * every combination of lock owner and role is covered.
  */
 vi.mock('../../api/client', () => ({
   api: {

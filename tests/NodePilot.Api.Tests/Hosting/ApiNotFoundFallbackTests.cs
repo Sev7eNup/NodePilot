@@ -12,13 +12,10 @@ namespace NodePilot.Api.Tests.Hosting;
 /// <summary>
 /// An unmatched <c>/api</c> path must answer 404 ProblemDetails, not the SPA bundle.
 ///
-/// <para>The SPA fallback matches whatever no endpoint claimed, which used to include every
-/// unmatched /api path: a typo, an endpoint that moved, or a route parameter that failed its
-/// type constraint all returned <c>200 text/html</c> with index.html. Clients read that as
-/// success — measured against a lab install, a GET on <c>/api/triggers</c> and on
-/// <c>/api/global-variables/not-a-guid</c> both produced a 200 HTML page, and `np`, the MCP
-/// server and the SPA's own error handling all treated it as a valid response body. A missing
-/// endpoint is exactly the failure that must be loud.</para>
+/// <para>The SPA fallback matches whatever no endpoint claims. Without a dedicated /api guard,
+/// a typo, a moved endpoint, or a route parameter that fails its type constraint all return
+/// <c>200 text/html</c> with index.html — which `np`, the MCP server, and the SPA's own error
+/// handling would treat as a valid response. A missing endpoint must fail loudly instead.</para>
 /// </summary>
 [Collection(ApiPipelineCollection.Name)] // serialize full-host boots — see ApiPipelineCollection
 public sealed class ApiNotFoundFallbackTests
@@ -26,8 +23,7 @@ public sealed class ApiNotFoundFallbackTests
     [Theory]
     // Nothing has ever been mounted here.
     [InlineData("/api/there-is-no-such-endpoint")]
-    // A real controller prefix, but no action at that path — the shape that made this
-    // surface in the first place.
+    // A real controller prefix, but no action at that path.
     [InlineData("/api/workflows/00000000-0000-0000-0000-000000000001/not-an-action")]
     // Route parameter fails its :guid constraint, so no endpoint matches at all.
     [InlineData("/api/global-variables/not-a-guid")]

@@ -6,18 +6,19 @@ import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
  *
  * Hermetic: page.route() mocks only (predicate catch-all from fixtures/mockApi.ts). The
  * workflow is mocked locked-by-me (checkedOutByUserId === MOCK_USER.id, isEnabled:false) so
- * the editor opens in State B (editable) — the PropertiesPanel edit affordances are live.
- * The SPA renders ENGLISH under Playwright → language-agnostic selectors.
+ * the editor opens in State B (editable) and the PropertiesPanel edit affordances are live.
+ * The SPA renders English under Playwright, so selectors are language-agnostic.
  *
- * Scope: this suite does NOT execute any activity. For each activity type it
+ * Scope: this suite never executes an activity. For each activity type it
  *   1. seeds a single node of that type into the workflow definitionJson,
- *   2. selects the node (click → PropertiesPanel opens on the right),
- *   3. asserts the activity's *distinctive* config field(s) render in the panel,
+ *   2. selects the node (a click opens the PropertiesPanel on the right),
+ *   3. asserts the activity's distinctive config field(s) render in the panel,
  *   4. edits one field, saves in place (Ctrl+S / Save button), and
  *   5. asserts the PUT /api/workflows/<id> body's definitionJson carries the edit.
  *
- * React Flow canvas drag is NOT synthesizable → nodes are pre-seeded + clicked, never dragged.
- * Nodes are clustered top-left (React Flow virtualizes off-screen nodes out of the DOM).
+ * React Flow canvas drag cannot be synthesized, so nodes are pre-seeded and clicked, never
+ * dragged. They sit clustered top-left because React Flow virtualizes off-screen nodes out
+ * of the DOM.
  *
  * Covers Test 2.1 (delay), 2.2 (runScript), 2.3 (file/folderOperation), 2.4 (restApi),
  * 2.5 (sql), 2.6 (emailNotification), 2.7 (startWorkflow), 2.8 (junction), 2.9 (returnData),
@@ -73,7 +74,7 @@ function routeWorkflow(page: Page, definitionJson: string) {
   return state;
 }
 
-/** Open the editor, wait for the seeded node, select it → PropertiesPanel opens. */
+/** Open the editor, wait for the seeded node and select it so the PropertiesPanel opens. */
 async function openAndSelect(page: Page, expectActivityLabel: RegExp) {
   await page.goto(`/workflows/${WF_ID}`);
   await expect(node(page, NODE_ID)).toBeVisible({ timeout: 20_000 });
@@ -149,12 +150,12 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     await expect(cm.first()).toBeVisible();
     await expect(cm.first()).toContainText('Get-Date');
 
-    // Remote activity → the Execution-Context section offers a target-machine field; the seeded
-    // machine is selectable via the "Liste" options picker.
+    // Remote activity: the Execution-Context section offers a target-machine field, and the
+    // seeded machine is selectable through the options picker.
     await expect(page.getByText(/execution context/i)).toBeVisible();
 
-    // Persist via the Engine <select> (CodeMirror keystroke-replacement is editor-internal and
-    // not reliably synthesizable). Switch auto → PowerShell 7 and assert it round-trips.
+    // Persist via the Engine <select>: CodeMirror keystroke replacement is editor-internal and
+    // not reliably synthesizable. Switch from auto to PowerShell 7 and assert it round-trips.
     const engineSelect = page.getByRole('combobox').filter({ hasText: /auto/i }).first();
     await engineSelect.selectOption('pwsh');
     await saveInPlace(page);
@@ -172,14 +173,14 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     const state = routeWorkflow(page, definitionWith(seed));
     await openAndSelect(page, /run script/i);
 
-    // Process-isolation checkbox (EN preview → "Process isolation"); enabled because the
-    // step has no target machine (local execution).
+    // Process-isolation checkbox, enabled because the step has no target machine and
+    // therefore runs locally.
     const iso = page.getByRole('checkbox', { name: 'Process isolation' });
     await expect(iso).toBeVisible();
     await expect(iso).toBeEnabled();
 
-    // Toggling it on reveals the optional resource-cap fields (anchor on the exact labels so the
-    // "Memory limit makes …" hint paragraph doesn't also match).
+    // Toggling it on reveals the optional resource-cap fields. Anchor on the exact labels so
+    // the hint paragraph below them does not also match.
     await iso.check();
     await expect(page.getByText(/Memory limit \(MB\)/)).toBeVisible();
     await expect(page.getByText(/Max\. processes/)).toBeVisible();
@@ -205,7 +206,7 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     routeWorkflow(page, definitionWith(seed));
     await openAndSelect(page, /run script/i);
 
-    // Isolation runs on the NodePilot host only → disabled (greyed) for a remote step, with a hint.
+    // Isolation runs on the NodePilot host only, so a remote step shows it disabled plus a hint.
     const iso = page.getByRole('checkbox', { name: 'Process isolation' });
     await expect(iso).toBeVisible();
     await expect(iso).toBeDisabled();
@@ -221,19 +222,20 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     const state = routeWorkflow(page, definitionWith(seed));
     await openAndSelect(page, /file operation/i);
 
-    // Operation dropdown — fileOperation has exactly 6 options (copy/move/rename/delete/exists/create).
+    // Operation dropdown — fileOperation has exactly 6 options
+    // (copy/move/rename/delete/exists/create).
     const opSelect = page.getByRole('combobox').filter({ hasText: /copy/i }).first();
     await expect(opSelect).toBeVisible();
     await expect(opSelect.locator('option')).toHaveCount(6);
 
-    // copy → the "Copy to (Destination)" field is present (dynamic). Edit the File path
-    // (located by its stable placeholder — value-attribute selectors mis-parse backslashes).
+    // copy shows the "Copy to (Destination)" field. Edit the File path, located by its stable
+    // placeholder because value-attribute selectors mis-parse backslashes.
     await expect(page.getByText(/copy to \(destination\)/i)).toBeVisible();
     const pathInput = page.getByPlaceholder('C:\\Temp\\file.txt');
     await expect(pathInput).toBeVisible();
     await pathInput.fill('C:\\source\\input.txt');
 
-    // Switch operation to rename → the destination field disappears, "New name" appears.
+    // Switching the operation to rename hides the destination field and shows "New name".
     await opSelect.selectOption('rename');
     await expect(page.getByText(/new name/i)).toBeVisible();
     await expect(page.getByText(/copy to \(destination\)/i)).toHaveCount(0);
@@ -258,7 +260,7 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     await expect(opSelect.locator('option')).toHaveCount(7);
     await expect(opSelect.locator('option', { hasText: /list contents/i })).toHaveCount(1);
 
-    // list → only Folder path (no destination / new name).
+    // list offers only the Folder path, with no destination or new name.
     await expect(page.getByText(/copy to \(destination\)/i)).toHaveCount(0);
     await expect(page.getByText(/new name/i)).toHaveCount(0);
 
@@ -281,7 +283,7 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     await expect(methodSelect).toBeVisible();
     await expect(methodSelect.locator('option')).toHaveCount(6);
 
-    // GET → no Body editor. Switch to POST → the "Body (JSON)" field renders.
+    // GET has no Body editor; switching to POST renders the "Body (JSON)" field.
     await expect(page.getByText(/body \(json\)/i)).toHaveCount(0);
     await methodSelect.selectOption('POST');
     await expect(page.getByText(/body \(json\)/i)).toBeVisible();
@@ -313,7 +315,7 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     await expect(providerSelect).toBeVisible();
     await expect(providerSelect.locator('option')).toHaveCount(3);
 
-    // raw connection-string mode → the Connection String field is present, pre-filled.
+    // Raw connection-string mode shows the pre-filled Connection String field.
     await expect(page.getByText(/connection string/i).first()).toBeVisible();
 
     // The SQL Query CodeMirror holds the seeded query. Replace it.
@@ -359,9 +361,9 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
 
   // ---------- 2.7 — startWorkflow ----------
   test('2.7 — startWorkflow: workflow ref field + Wait-for-Completion toggle', async ({ page }) => {
-    // The config derives a calling-contract from /workflows/by-name/<name>/contract. Return 404
-    // so the hook falls back to its free-form ParameterTable (the natural "unknown child" state);
-    // without this the catch-all's [] would be mis-read as a contract object and crash the panel.
+    // The config derives a calling contract from /workflows/by-name/<name>/contract. Return 404
+    // so the hook falls back to its free-form ParameterTable, the natural "unknown child" state.
+    // Otherwise the catch-all's [] is read as a contract object and crashes the panel.
     await page.route('**/api/workflows/by-name/**/contract', (route) =>
       route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'Not Found' }) }),
     );
@@ -372,13 +374,13 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     const state = routeWorkflow(page, definitionWith(seed));
     await openAndSelect(page, /start workflow|sub.?workflow/i);
 
-    // Distinctive surfaces: the "Workflow (Name oder GUID)" field + the wait-for-completion checkbox.
+    // Distinctive surfaces: the workflow reference field and the wait-for-completion checkbox.
     const refInput = page.getByPlaceholder(/Rollback-Runbook/i);
     await expect(refInput).toBeVisible();
     await expect(refInput).toHaveValue('Child_WF');
     await expect(page.getByText(/auf abschluss warten|wait for completion/i)).toBeVisible();
 
-    // Toggle wait → fire-and-forget; edit the ref. Both should persist.
+    // Turn wait off (fire-and-forget) and edit the ref. Both should persist.
     await page.getByRole('checkbox').first().uncheck();
     await refInput.fill('Rollback_Runbook');
     await saveInPlace(page);
@@ -400,7 +402,7 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     await expect(modeSelect).toBeVisible();
     await expect(modeSelect.locator('option')).toHaveCount(3); // waitAll / waitAny / waitNofM
 
-    // waitAll/waitAny → no Required Count. Switch to waitNofM → the count field appears.
+    // waitAll and waitAny have no Required Count; switching to waitNofM shows the count field.
     await expect(page.getByText(/required count/i)).toHaveCount(0);
     await modeSelect.selectOption('waitNofM');
     await expect(page.getByText(/required count/i)).toBeVisible();
@@ -421,7 +423,7 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     const state = routeWorkflow(page, definitionWith(seed));
     await openAndSelect(page, /return data/i);
 
-    // Distinctive: the "Rückgabe-Felder" return-fields editor with the seeded "result" key input.
+    // Distinctive: the return-fields editor with the seeded "result" key input.
     await expect(page.getByText(/rückgabe-felder|return/i).first()).toBeVisible();
     const keyInput = page.locator('input[value="result"]');
     await expect(keyInput).toBeVisible();
@@ -517,15 +519,15 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
 
   // ---------- 2.13 — remote activities (data-driven) ----------
   // serviceManagement, registryOperation, wmiQuery, startProgram, powerManagement. Each is a
-  // remote activity → asserts the Execution-Context section renders, the activity's distinctive
-  // field is visible, and one edit round-trips through the Save PUT.
+  // remote activity, so every case asserts that the Execution-Context section renders, the
+  // activity's distinctive field is visible, and one edit round-trips through the Save PUT.
   const REMOTE_CASES: {
     activityType: string;
     labelRe: RegExp;
     seedConfig: Record<string, unknown>;
     fieldText: RegExp;
-    /** Stable placeholder of the field we edit (value-attr selectors mis-parse backslashes
-     *  and miss textareas / controlled React inputs). */
+    /** Stable placeholder of the field to edit; value-attribute selectors mis-parse backslashes
+     *  and miss textareas and controlled React inputs. */
     editPlaceholder: RegExp;
     editValue: string;
     configKey: string;
@@ -586,7 +588,7 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
       const state = routeWorkflow(page, definitionWith(seed));
       await openAndSelect(page, c.labelRe);
 
-      // Remote → the Execution-Context section (target machine / credential) renders.
+      // Remote activity: the Execution-Context section (target machine / credential) renders.
       await expect(page.getByText(/execution context/i)).toBeVisible();
       // Activity-specific config field is present.
       await expect(page.getByText(c.fieldText).first()).toBeVisible();

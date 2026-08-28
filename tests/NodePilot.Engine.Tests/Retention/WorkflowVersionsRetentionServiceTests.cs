@@ -82,7 +82,7 @@ public class WorkflowVersionsRetentionServiceTests
     [Fact]
     public async Task PurgeOnceAsync_UnderThreshold_DeletesNothing()
     {
-        // Workflow with N=3 versions and cap at 5 → nothing to delete.
+        // Workflow with N=3 versions and cap at 5 -> nothing to delete.
         var (db, factory, conn) = CreateEnvironment();
         try
         {

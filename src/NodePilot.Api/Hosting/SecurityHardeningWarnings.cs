@@ -73,7 +73,7 @@ public static class SecurityHardeningWarnings
                         "or a secrets manager to keep the password out of appsettings.json and backups.");
 
         // H-2 (security audit 2026-05-15): plaintext SMTP transport with credentials.
-        // Username configured but EnableSsl explicitly false → LOGIN/PLAIN auth and the
+        // Username configured but EnableSsl explicitly false -> LOGIN/PLAIN auth and the
         // whole message body travel in the clear. Default is EnableSsl=true (SmtpOptions),
         // so this only fires when an operator deliberately turned it off.
         if (!configuration.GetValue("Smtp:EnableSsl", true)

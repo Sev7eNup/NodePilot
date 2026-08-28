@@ -13,8 +13,8 @@ namespace NodePilot.Api.Security.Ldap;
 /// Two-stage flow per call:
 /// <list type="number">
 /// <item>Simple-bind as <c>upn + password</c> against the configured server. A bind failure
-/// with <c>LdapErrorCodes.InvalidCredentials</c> means "wrong password" → return null.
-/// Anything else (connect refused, TLS error, server-down) → throw
+/// with <c>LdapErrorCodes.InvalidCredentials</c> means "wrong password" -> return null.
+/// Anything else (connect refused, TLS error, server-down) -> throw
 /// <see cref="LdapInfrastructureException"/> so the caller can trip the circuit breaker.</item>
 /// <item>Subtree-search under <c>BaseDn</c> for the user via <c>userPrincipalName=&lt;upn&gt;</c>
 /// to recover <c>objectGUID</c>, <c>displayName</c>, <c>distinguishedName</c>; then a
@@ -386,11 +386,12 @@ internal sealed class SystemLdapConnectionAdapter : ILdapConnectionAdapter
 
     private LdapAuthResult? AuthenticateCore(string upn, string password, CancellationToken ct)
     {
-        // Security-audit finding H-17 (defense-in-depth): never issue a simple-bind with an empty or whitespace-only
+        // Security-audit finding H-17 (defense-in-depth): never issue a simple-bind with an empty
+        // or whitespace-only
         // password. A populated UPN + zero-length password is an RFC 4513 §5.1.2 *unauthenticated
         // bind* that AD answers with LDAP_SUCCESS, not error 49 — i.e. an auth bypass. The primary
         // guard lives in LdapAuthenticator, but the adapter is the component that actually calls
-        // Bind, so it refuses independently (clean invalid-credentials → null) in case it is ever
+        // Bind, so it refuses independently (clean invalid-credentials -> null) in case it is ever
         // reached by another caller.
         if (string.IsNullOrWhiteSpace(password))
             return null;

@@ -86,7 +86,7 @@ describe('OpsMobileView', () => {
     const stuck = screen.getByRole('region', { name: 'Stuck / long-running' });
     expect(within(stuck).getByText('running for 42:00')).toBeInTheDocument();
     expect(within(stuck).queryByText('Report Gen')).not.toBeInTheDocument();
-    // The counter still counts it among the running — it is one, it is just also overdue.
+    // An overdue run is still running, so the running counter includes it.
     expect(screen.getByText('2 running')).toBeInTheDocument();
     expect(screen.getByText('1 stuck')).toBeInTheDocument();
   });
@@ -121,8 +121,8 @@ describe('OpsMobileView', () => {
     expect(rows[1]).toContain('Report Gen');
   });
 
-  // The regression this section exists for: on a busy estate "just finished" is thousands long,
-  // so a failure never survived the cap and the counter pointed at something unreachable.
+  // On a busy estate the "just finished" list is thousands of rows long, so a failure would fall
+  // past the cap and the failure counter would point at a row nobody can reach.
   it('gives failures their own section so a busy success list cannot bury them', () => {
     renderView({
       recent: [
@@ -137,7 +137,7 @@ describe('OpsMobileView', () => {
     const failedSection = screen.getByRole('region', { name: 'Failed' });
     expect(within(failedSection).getByText('Nightly Backup')).toBeInTheDocument();
     expect(screen.getByText('1 failed')).toBeInTheDocument();
-    // ...and it is not repeated among the successes.
+    // The failed run is not repeated among the successes.
     const finished = screen.getByRole('region', { name: 'Just finished' });
     expect(within(finished).queryByText('Nightly Backup')).not.toBeInTheDocument();
   });
@@ -152,7 +152,8 @@ describe('OpsMobileView', () => {
 
     const failedSection = screen.getByRole('region', { name: 'Failed' });
     expect(within(failedSection).getByText('Nightly Backup')).toBeInTheDocument();
-    // A cancellation was somebody's decision, not an incident — it stays where it happened.
+    // A cancellation is a deliberate action rather than an incident, so it stays in the
+    // general list.
     const finished = screen.getByRole('region', { name: 'Just finished' });
     expect(within(finished).getByText('Report Gen')).toBeInTheDocument();
   });

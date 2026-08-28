@@ -2,17 +2,14 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 74 — Workflow-Snippets (NodeLibrary) (lines 3946-3956).
+ * E2ETests.md part 74 — workflow snippets in the Node Library.
  *
- * The Node Library tab has a "Snippets" section (SnippetsSection in NodeLibrary.tsx) listing
- * reusable mini-patterns (WORKFLOW_SNIPPETS: ForEach, HTTP retry, Parallel fan-out, Try-Catch).
- * Clicking a snippet calls `addSnippet` → insertSnippet() which appends the snippet's nodes +
- * edges with freshly-generated ids (no clash). Viewers see the snippets disabled.
+ * SnippetsSection lists reusable mini-patterns (WORKFLOW_SNIPPETS: ForEach, HTTP retry, Parallel
+ * fan-out, Try-Catch). Clicking one runs insertSnippet(), which appends its nodes and edges with
+ * freshly generated ids; a Viewer sees the buttons disabled. The tests click rather than drag,
+ * because d3-drag cannot be synthesized.
  *
- * Click-add is the real code path (the entries are also drag-sources, but d3-drag isn't
- * synthesizable). For a Viewer the section renders but each button is disabled.
- *
- * Hermetic: page.route mocks. SPA renders ENGLISH under Playwright.
+ * Hermetic: page.route mocks only. The SPA renders English under Playwright.
  */
 
 const WF_ID = 'e7474747-7474-7474-7474-747474747474';
@@ -72,7 +69,7 @@ test.describe('Workflow-Snippets (NodeLibrary) (Teil 74)', () => {
     // Insert the Try-Catch snippet (3 nodes + 3 edges) by clicking it.
     await page.getByRole('button').filter({ hasText: /Try-Catch around script/i }).click();
 
-    // Save → the PUT carries the original seed node + the snippet's 3 nodes / 3 edges.
+    // Save: the PUT carries the original seed node plus the snippet's 3 nodes and 3 edges.
     await saveButton(page).click();
     await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
     const def = JSON.parse(putBody!.definitionJson as string) as { nodes: { id: string }[]; edges: { id: string }[] };
@@ -85,8 +82,8 @@ test.describe('Workflow-Snippets (NodeLibrary) (Teil 74)', () => {
   });
 
   test('74.2 — a Viewer sees the snippet buttons disabled', async ({ page }) => {
-    // Viewer role + workflow not locked-by-me → canWrite is false; SnippetsSection renders the
-    // buttons disabled with a "not in edit mode" title.
+    // A Viewer on a workflow that is not locked by them has canWrite false, so SnippetsSection
+    // renders the buttons disabled with a "not in edit mode" title.
     await page.route('**/api/auth/me', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...MOCK_USER, role: 'Viewer' }) }),
     );

@@ -41,12 +41,11 @@ public class WebhooksControllerTests
         var config = configBuilder.Build();
 
         // Since the execution-dispatch redesign, WebhooksController routes through
-        // ExecutionDispatchService (persists a Pending row before enqueue). Tests exercise
-        // the same path with a NoOp dispatch queue so no engine work actually runs — only
-        // the persist + audit path is verified.
+        // ExecutionDispatchService (persists a Pending row and durable intent atomically). Tests exercise
+        // the same admission path without running a background worker, so only persistence
+        // and auditing are verified.
         var dispatchService = new ExecutionDispatchService(
             db,
-            new NoopExecutionDispatchQueue(),
             scopeFactory,
             new OutputRedactor(config),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
@@ -313,10 +312,8 @@ public class WebhooksControllerTests
     [Fact]
     public async Task Hit_NoSecretConfigured_DefaultPolicy_Returns403()
     {
-        // Phase-3 hardening: a missing Webhook:RequireSecret key now reads as "true" so a
-        // stripped-down deployment falls on the safe side. Webhook nodes saved without a
-        // secret are rejected by default — no upgrade-compatibility shim. Operators that
-        // need legacy behaviour set the flag to "false" explicitly.
+        // A missing Webhook:RequireSecret setting defaults to true. Operators must
+        // explicitly disable it to allow webhook nodes without a secret.
         var db = CreateContext();
         var wf = new Workflow { Id = Guid.NewGuid(), Name = "OpenWf", DefinitionJson = WebhookDefinitionNoSecret };
         db.Workflows.Add(wf);
@@ -332,9 +329,7 @@ public class WebhooksControllerTests
     [Fact]
     public async Task Hit_NoSecretConfigured_RequireSecretTrue_Returns403()
     {
-        // Strict mode: operators can opt into Webhook:RequireSecret=true to reject
-        // secret-less webhooks fleet-wide. Critical security-feature contract — must have
-        // a regression test even though the default policy now produces the same result.
+        // Explicit strict mode rejects secretless webhooks across the deployment.
         var db = CreateContext();
         var wf = new Workflow { Id = Guid.NewGuid(), Name = "OpenWf", DefinitionJson = WebhookDefinitionNoSecret };
         db.Workflows.Add(wf);

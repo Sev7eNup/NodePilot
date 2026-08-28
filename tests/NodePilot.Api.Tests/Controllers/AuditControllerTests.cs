@@ -155,7 +155,7 @@ public class AuditControllerTests
     public async Task GetAll_FullPageWithMoreBehind_ReturnsNextCursor()
     {
         var db = CreateContext();
-        // 5 rows, take=3 → page 1 returns 3 with more behind → cursor must be set.
+        // 5 rows, take=3: page 1 returns 3 with more rows behind, so the cursor must be set.
         for (int i = 0; i < 5; i++)
             db.AuditLog.Add(Entry("X", DateTime.UtcNow.AddMinutes(-i)));
         await db.SaveChangesAsync();
@@ -176,9 +176,8 @@ public class AuditControllerTests
     [Fact]
     public async Task GetAll_ExactlyFullPage_NoMoreBehind_DoesNotReturnPhantomCursor()
     {
-        // Regression: previously `rows.Count == take` set the cursor even when there were
-        // no more rows behind it, causing the UI to render a Load-More button that fetched
-        // an empty page. The take+1 probe must distinguish this from a genuinely full page.
+        // The take+1 probe distinguishes an exactly-full page from one with more rows behind,
+        // so a full page never returns a cursor that would make the UI fetch an empty next page.
         var db = CreateContext();
         for (int i = 0; i < 3; i++)
             db.AuditLog.Add(Entry("X", DateTime.UtcNow.AddMinutes(-i)));

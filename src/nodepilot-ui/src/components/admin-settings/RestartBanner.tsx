@@ -5,15 +5,10 @@ import { adminSettings } from '../../api/adminSettings';
 import { formatDate } from '../../lib/format';
 
 /**
- * Polls <c>/api/admin/settings/status</c> every 30s and renders an orange banner when
- * the backend reports a pending restart. The banner names every section whose save is
- * waiting on a service restart, so the operator can see at a glance whether a single
- * "save SMTP, restart, move on" is enough or whether multiple unsaved-pending sections
- * are piling up across browser sessions.
- *
- * <para>Polling cadence (30s) is a deliberate compromise: tight enough that a fresh
- * save lights up the banner within a window of the next tab focus, loose enough that
- * a dozen open Settings tabs don't flood the API.</para>
+ * Polls /api/admin/settings/status every 30s and shows an orange banner when the backend
+ * reports a pending restart, naming every section whose save is waiting on it. The 30s
+ * interval balances freshness (the banner updates within one tab focus) against load from
+ * many open Settings tabs.
  */
 export function RestartBanner() {
   const { t } = useTranslation(['adminSettings']);

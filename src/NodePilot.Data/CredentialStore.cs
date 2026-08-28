@@ -19,15 +19,12 @@ public class CredentialStore : ICredentialStore
     /// <summary>
     /// Pluggable secret-protector constructor. Marked with
     /// <see cref="ActivatorUtilitiesConstructorAttribute"/> so .NET's DI activator picks
-    /// this one unambiguously even if a future overload is added — the previous
-    /// IConfiguration-taking ctor was removed because both ctors had the same
-    /// "all-resolvable" signature shape and the activator threw
-    /// <c>AmbiguousMatchException</c> at runtime.
+    /// this one unambiguously even if a future overload is added; without it, multiple
+    /// resolvable constructors cause an <c>AmbiguousMatchException</c> at runtime.
     /// <para>
-    /// Tests that previously passed an <see cref="Microsoft.Extensions.Configuration.IConfiguration"/>
-    /// must now construct an <see cref="ISecretProtector"/> explicitly — typically
-    /// <c>new DpapiSecretProtector(DataProtectionScope.CurrentUser)</c> for the legacy
-    /// behaviour.
+    /// Tests must construct an <see cref="ISecretProtector"/> explicitly — typically
+    /// <c>new DpapiSecretProtector(DataProtectionScope.CurrentUser)</c> for the default
+    /// behavior.
     /// </para>
     /// </summary>
     [ActivatorUtilitiesConstructor]
@@ -90,8 +87,8 @@ public class CredentialStore : ICredentialStore
     }
 
     /// <summary>
-    /// Npgsql maps <c>DateTime?</c> to timestamptz and THROWS for Kind=Unspecified values —
-    /// which is exactly what a date-only ISO string ("2026-12-31") deserializes to at the
+    /// Npgsql maps <c>DateTime?</c> to timestamptz and throws for Kind=Unspecified values,
+    /// which is what a date-only ISO string like "2026-12-31" deserializes to at the
     /// API/MCP boundary. Expiry dates are calendar dates: pin Unspecified to UTC, convert
     /// genuinely offset-carrying (Local) values.
     /// </summary>
@@ -112,12 +109,10 @@ public class CredentialStore : ICredentialStore
 
     public async Task<ReencryptionSummary> ReencryptAllCredentialsAsync(CancellationToken ct)
     {
-        // Decrypt with the (potentially MigratingSecretProtector-wrapped) protector, then
-        // re-encrypt with the same instance — Protect always writes the active format, so
-        // every successfully decrypted row ends up converted regardless of what it was
-        // stored as. Rows that can't be decrypted are skipped (not thrown) so an admin
-        // who half-rotated a key still gets every recoverable row migrated; the leftovers
-        // come back in the response so the next admin step is concretely actionable.
+        // Decrypt with the active protector (which may be a MigratingSecretProtector wrapper),
+        // then re-encrypt with the same instance so every row ends up in the active format.
+        // Rows that fail to decrypt are skipped, not thrown, so a partial key rotation still
+        // migrates every recoverable row; skipped rows are returned so admins know what remains.
         var rows = await _db.Credentials.ToListAsync(ct);
         var rewritten = 0;
         var skipped = new List<ReencryptionSkip>();
@@ -179,30 +174,23 @@ public class CredentialStore : ICredentialStore
             throw;
         }
 
-        // Audit every decryption. Failure to append the audit row must not break the caller
-        // (a credential that was legitimately needed for a workflow step should still run)
-        // but should be loud so operators notice the misconfiguration.
+        // Audit every decryption; failing to append the row must not break the caller (a
+        // credential needed for a workflow step should still run) but should be loud so
+        // operators notice the misconfiguration.
         //
-        // Actor attribution (M11): the audit row used to just say "credential.decrypt at T"
-        // with no way to tell which user/workflow triggered it. Callers now provide an actor
-        // string (user id, "workflowExecution:{guid}", "scheduler", …) and optionally the
-        // execution id, both embedded in Details as structured JSON for later SIEM queries.
+        // Callers pass an actor string (user id, "workflowExecution:{guid}", "scheduler", …)
+        // and optionally the execution id, embedded in Details as structured JSON so SIEM
+        // queries can tell which user/workflow triggered the decrypt.
         //
-        // Scope isolation (M-6): CredentialStore is scoped (same DI-scope as WorkflowEngine's
-        // per-step scope). Calling _db.SaveChanges() here would flush every other tracked
-        // entity the engine has in flight (StepExecution rows, WorkflowExecution status
-        // transitions, etc.), which can introduce subtle ordering bugs and lost updates.
-        // Instead, persist the audit entry via an independent scope on a background task —
-        // best-effort, swallowed on failure, never interferes with the decrypt path.
+        // CredentialStore shares its DI scope with WorkflowEngine's per-step scope, so calling
+        // _db.SaveChanges() here would flush every other tracked entity the engine has in
+        // flight and risk ordering bugs. Persist the audit entry via an independent scope on
+        // a background task instead — best-effort, swallowed on failure.
         //
-        // Audit-stager flow (Phase 3): entry construction goes through IAuditStager so the
-        // 4 KiB cap + secret redaction apply uniformly — the previous direct AuditLog.Add
-        // bypassed both, meaning a careless protector that surfaced ciphertext in its
-        // ProviderName would have leaked unredacted.
+        // Entry construction goes through IAuditStager so the 4 KiB cap and secret redaction
+        // apply uniformly, even if a protector's ProviderName leaks ciphertext.
         var auditEntry = _auditStager.Build(
-            // Naming alignment: every other audit code follows UPPER_SNAKE_CASE verb-noun;
-            // this used to be "credential.decrypt" (dotted lowercase) which forced the UI
-            // and SIEM rules to special-case it. Renamed to CREDENTIAL_DECRYPTED so it
+            // Every other audit code follows UPPER_SNAKE_CASE verb-noun; CREDENTIAL_DECRYPTED
             // groups naturally with CREDENTIAL_CREATED/UPDATED/DELETED.
             action: AuditActions.CredentialDecrypted,
             actor: AuditActor.System,

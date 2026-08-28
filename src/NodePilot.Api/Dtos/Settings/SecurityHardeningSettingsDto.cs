@@ -120,7 +120,8 @@ public sealed class RestApiProxyDto
     [StringLength(255)]
     public string? Username { get; set; }
 
-    /// <summary>SecretField semantics — <c>"__unchanged__"</c> keeps, plaintext rotates, null/empty clears.</summary>
+    /// <summary>SecretField semantics — <c>"__unchanged__"</c> keeps, plaintext rotates, null/empty
+    /// clears.</summary>
     public string? Password { get; set; }
 }
 
@@ -128,7 +129,8 @@ public sealed class FileSystemOperationSettingsDto
 {
     public bool RejectTraversal { get; set; } = true;
 
-    /// <summary>Allowed root directories when RejectTraversal=true. Empty = all paths allowed under the
+    /// <summary>Allowed root directories when RejectTraversal=true. Empty = all paths allowed under
+    /// the
     /// no-traversal guard. Each entry must be an absolute path.</summary>
     public List<string> AllowedRoots { get; set; } = new();
 }

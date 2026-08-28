@@ -27,7 +27,8 @@ public sealed class NodePilotApiClient
 
     public HttpClient Http => _http;
 
-    /// <summary>Resolved connection context (server/profile/token state) for diagnostics + guards.</summary>
+    /// <summary>Resolved connection context (server/profile/token state) for diagnostics +
+    /// guards.</summary>
     public SessionContext? Session { get; init; }
 
     public string? BearerToken
@@ -252,9 +253,17 @@ public sealed class NodePilotApiClient
         if (workflowId is { } w) q.Add($"workflowId={w}");
         if (activeOnly == true) q.Add("activeOnly=true");
         if (terminalOnly == true) q.Add("terminalOnly=true");
-        var url = "api/executions" + (q.Count > 0 ? "?" + string.Join("&", q) : "");
-        using var res = await _http.GetAsync(url, ct);
-        return await ParseAsync<List<ExecutionResponse>>(res, ct);
+        var baseUrl = "api/executions" + (q.Count > 0 ? "?" + string.Join("&", q) : "");
+        var results = new List<ExecutionResponse>();
+        for (var page = 1; ; page++)
+        {
+            var separator = baseUrl.Contains('?') ? '&' : '?';
+            using var res = await _http.GetAsync(
+                $"{baseUrl}{separator}page={page}&pageSize=200", ct);
+            var response = await ParseAsync<PagedResponse<ExecutionResponse>>(res, ct);
+            results.AddRange(response.Items);
+            if (page >= response.TotalPages) return results;
+        }
     }
 
     public async Task<ExecutionResponse> GetExecutionAsync(Guid id, CancellationToken ct)
@@ -315,7 +324,8 @@ public sealed class NodePilotApiClient
         return await ParseAsync<CancelAllResponse>(res, ct);
     }
 
-    /// <summary>External trigger (X-Api-Key). Returns the execution and whether an Idempotency-Key replay occurred.</summary>
+    /// <summary>External trigger (X-Api-Key). Returns the execution and whether an Idempotency-Key
+    /// replay occurred.</summary>
     public async Task<(ExecutionResponse Execution, bool IdempotentReplayed)> TriggerExternalAsync(
         string workflowNameOrId, string apiKey, ExecuteWorkflowRequest req, string? idempotencyKey, CancellationToken ct)
     {
@@ -719,7 +729,8 @@ public sealed class NodePilotApiClient
     // ---- DbAdmin (read-only SQL / text2sql) ---------------------------------
 
     /// <summary>Schema catalog for every EF-tracked table. Admin-only server-side; hidden secret
-    /// columns (PasswordHash/EncryptedPassword/byte[]) are excluded by the API, GlobalVariable.Value
+    /// columns (PasswordHash/EncryptedPassword/byte[]) are excluded by the API,
+    /// GlobalVariable.Value
     /// arrives masked as "***".</summary>
     public async Task<List<DbAdminTableInfo>> ListDbTablesAsync(CancellationToken ct)
     {
@@ -728,7 +739,8 @@ public sealed class NodePilotApiClient
         return await ParseAsync<List<DbAdminTableInfo>>(res, ct);
     }
 
-    /// <summary>DB provider + read-query limits (maxRows, timeout) so an agent can respect them.</summary>
+    /// <summary>DB provider + read-query limits (maxRows, timeout) so an agent can respect
+    /// them.</summary>
     public async Task<DbAdminInfoResponse> GetDbInfoAsync(CancellationToken ct)
     {
         EnsureReady();
@@ -737,7 +749,8 @@ public sealed class NodePilotApiClient
     }
 
     /// <summary>Execute a single read-only SQL statement. <paramref name="mode"/> is forced to
-    /// "read" by the caller; the server additionally enforces a SELECT/WITH/EXPLAIN/SHOW/VALUES/TABLE
+    /// "read" by the caller; the server additionally enforces a
+    /// SELECT/WITH/EXPLAIN/SHOW/VALUES/TABLE
     /// keyword whitelist, single-statement, rollback-guarantee, row-cap and timeout.</summary>
     public async Task<DbAdminQueryResponse> ExecuteDbReadQueryAsync(string sql, CancellationToken ct)
     {

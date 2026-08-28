@@ -2,12 +2,10 @@ import { CronExpressionParser } from 'cron-parser';
 import i18n from '../i18n';
 
 /**
- * Normalizes a Quartz cron expression (7 fields) into a 6-field expression the cron-parser
- * library can consume. Quartz allows `?` as an "unspecified" placeholder on either
- * day-of-month OR day-of-week (whichever field isn't set); cron-parser requires every field
- * to hold an actual range, so we swap `?` for `*`. The seventh field (year) is dropped
- * entirely — it's almost never used, and cron-parser already projects future fire times
- * indefinitely without needing a year bound.
+ * Normalizes a Quartz cron expression (7 fields) into the 6-field form the cron-parser library
+ * accepts. Quartz uses `?` as an unspecified placeholder on day-of-month or day-of-week, while
+ * cron-parser needs a real range in every field, so `?` becomes `*`. The year field is dropped
+ * because cron-parser projects future fire times without a year bound.
  */
 export function normalizeQuartzCron(cron: string): string {
   const trimmed = cron.trim();
@@ -15,13 +13,13 @@ export function normalizeQuartzCron(cron: string): string {
   const parts = trimmed.split(/\s+/);
   // At most 7 fields (seconds+minutes+hours+dom+month+dow+year); drop the year field.
   const sixOrLess = parts.slice(0, 6);
-  // ? → * for day-of-month and day-of-week
+  // Replace ? with * for day-of-month and day-of-week.
   return sixOrLess.map((p) => p === '?' ? '*' : p).join(' ');
 }
 
 /**
- * Returns the next <paramref name="count"/> fire times for a Quartz cron expression.
- * Never throws — an invalid cron expression yields an empty array plus an error message.
+ * Returns the next `count` fire times for a Quartz cron expression. Never throws: an invalid
+ * expression yields an empty array and an error message.
  */
 export function previewSchedule(cron: string, count = 5): {
   fireTimes: Date[];
@@ -41,8 +39,8 @@ export function previewSchedule(cron: string, count = 5): {
   }
 }
 
-/** Relative time description ("in 3m 22s", "in 2 days"). Not locale-perfect, but good
- *  enough for this preview feature. */
+/** Relative time description such as "in 3m 22s" or "in 2 days". Approximate wording,
+ *  intended for the preview only. */
 export function relativeFromNow(date: Date): string {
   const diffMs = date.getTime() - Date.now();
   if (diffMs <= 0) return i18n.t('editor:cron.now');

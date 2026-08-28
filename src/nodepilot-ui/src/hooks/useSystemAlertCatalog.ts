@@ -2,10 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { systemAlertingApi } from '../api/systemAlerting';
 
 /**
- * Hydrates the server-owned system-alert source catalog (part of the system alert policies
- * feature, see ADR 0008 for the design background). The catalog is the single source of
- * truth for source fields/units/operators/parameters/presets/availability — the UI renders from this rather
- * than a hand-maintained TypeScript mirror. Refreshed on a 60s staleness like the custom-activity catalog.
+ * Loads the server-owned system-alert source catalog (ADR 0008). The catalog is the single
+ * source of truth for source fields, units, operators, parameters, presets and availability,
+ * so the UI renders from it instead of a hand-maintained TypeScript mirror.
  */
 export function useSystemAlertCatalog() {
   return useQuery({

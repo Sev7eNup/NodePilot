@@ -200,7 +200,8 @@ public sealed class ResourceAuthorizationService : IResourceAuthorizationService
         var grants = await GetAncestryGrantsAsync(folderId, userId.Value, directoryGroups, ct);
         if (grants.Count == 0) return null;
 
-        // Highest role wins. Enum is ordered FolderViewer < FolderOperator < FolderEditor < FolderAdmin.
+        // Highest role wins. Enum is ordered FolderViewer < FolderOperator < FolderEditor <
+        // FolderAdmin.
         return grants.Max(g => g.Role);
     }
 
@@ -219,7 +220,7 @@ public sealed class ResourceAuthorizationService : IResourceAuthorizationService
         var cacheKey = (userId, folderId);
         if (_ancestryGrantsCache.TryGetValue(cacheKey, out var cached)) return cached;
 
-        // Build the ancestor chain folderId → ... → Root.
+        // Build the ancestor chain folderId -> ... -> Root.
         var allFolders = await GetAllFoldersAsync(ct);
         var byId = allFolders.ToDictionary(f => f.Id);
         var chain = new List<Guid>();

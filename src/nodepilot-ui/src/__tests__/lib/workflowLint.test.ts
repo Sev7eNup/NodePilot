@@ -23,9 +23,8 @@ function edge(id: string, source: string, target: string): Edge {
 
 describe('lintWorkflow — edge-occluded', () => {
   it('flags an edge whose straight path cuts through another node', () => {
-    // Layout that reproduces the user-reported bug: one source fanning out to 3 targets stacked
-    // vertically on the same x-column. The edge from `src` to the bottom target runs straight
-    // through the middle target's bounding box.
+    // One source fans out to 3 targets stacked vertically on the same x-column. The edge
+    // from `src` to the bottom target runs straight through the middle target's bounding box.
     const nodes: Node[] = [
       node('src', 0, 500, { label: 'Source' }),              // source on the left
       node('mid', 400, 500, { label: 'Middle target' }),      // directly east of src, same y
@@ -160,9 +159,10 @@ describe('lintWorkflow — duplicate-edge', () => {
     const duplicate = result.errors.filter((e) => e.code === 'duplicate-edge');
     expect(duplicate).toHaveLength(1);
     expect(duplicate[0].edgeId).toBe('e2');
+    expect(result.errors.filter((e) => e.code === 'fan-in-requires-junction')).toHaveLength(0);
   });
 
-  it('allows different source nodes to connect into the same target', () => {
+  it('requires a junction when different source nodes connect into an ordinary target', () => {
     const nodes: Node[] = [node('a', 0, 0), node('b', 0, 180), node('target', 240, 80)];
     const edges: Edge[] = [
       edge('e1', 'a', 'target'),
@@ -170,7 +170,24 @@ describe('lintWorkflow — duplicate-edge', () => {
     ];
 
     const result = lintWorkflow(nodes, edges);
-    expect(result.errors.filter((e) => e.code === 'duplicate-edge')).toHaveLength(0);
+    expect(result.errors.filter((e) => e.code === 'fan-in-requires-junction')).toEqual([
+      expect.objectContaining({ nodeId: 'target' }),
+    ]);
+  });
+
+  it('allows different source nodes to connect into a junction', () => {
+    const nodes: Node[] = [
+      node('a', 0, 0),
+      node('b', 0, 180),
+      node('join', 240, 80, { activityType: 'junction', config: { mode: 'waitAll' } }),
+    ];
+    const edges: Edge[] = [
+      edge('e1', 'a', 'join'),
+      edge('e2', 'b', 'join'),
+    ];
+
+    const result = lintWorkflow(nodes, edges);
+    expect(result.errors.filter((e) => e.code === 'fan-in-requires-junction')).toHaveLength(0);
   });
 });
 
@@ -196,8 +213,8 @@ describe('lintWorkflow — orphan-root', () => {
   });
 
   it('emits a single no-trigger error (not orphan-root/unreachable) for a trigger-less workflow', () => {
-    // No trigger anywhere → roots are trigger-only, so the engine runs nothing. The lint surfaces
-    // ONE clear `no-trigger` error and does NOT spam orphan-root/unreachable per node.
+    // No trigger means roots are trigger-only, so the engine runs nothing. The lint surfaces
+    // a single `no-trigger` error and does not spam orphan-root/unreachable per node.
     const nodes: Node[] = [node('step-1', 0, 0), node('step-2', 200, 0)];
     const edges: Edge[] = [edge('e1', 'step-1', 'step-2')];
     const { errors, warnings } = lintWorkflow(nodes, edges);
@@ -331,10 +348,9 @@ describe('lintWorkflow - runScript execution target', () => {
 });
 
 describe('lintWorkflow — startjob-in-runspace', () => {
-  // Pinned behavior: for engine: "auto" or "runspace", the lint rule must warn on scripts
-  // using Get-WindowsUpdateLog / Start-Job / Invoke-Command -AsJob, because the in-process
-  // runspace has no co-located pwsh.exe it can spawn a child process from. For
-  // engine: "pwsh" / "powershell" that happens in an external process — no warning needed.
+  // For engine: "auto" or "runspace", the lint rule warns on scripts using
+  // Get-WindowsUpdateLog / Start-Job / Invoke-Command -AsJob, because the in-process runspace
+  // has no co-located pwsh.exe to spawn a child process from. External engines don't need this.
 
   it('warns when Get-WindowsUpdateLog runs in engine: auto', () => {
     const nodes: Node[] = [
@@ -503,8 +519,7 @@ describe('lintWorkflow — fileOperation required-config', () => {
 
   it('accepts every documented file op including create', () => {
     // Pin the full file-op set: copy/move/delete/exists/create/rename. If a refactor
-    // drops one (e.g. the newly-added create), this loop catches it before the UI
-    // silently rejects valid workflows.
+    // drops one, this loop catches it before the UI silently rejects valid workflows.
     for (const op of ['copy', 'move', 'delete', 'exists', 'create', 'rename']) {
       const nodes: Node[] = [
         fsNode('trig', 'manualTrigger', {}),
@@ -587,8 +602,7 @@ describe('lintWorkflow — folderOperation required-config', () => {
   });
 
   it('accepts every documented folder op', () => {
-    // Pin the full op-set: if a refactor accidentally drops one of the seven, this check
-    // breaks instead of the UI silently rejecting workflows that were previously valid.
+    // The complete documented operation set must remain valid in the UI.
     for (const op of ['copy', 'move', 'delete', 'exists', 'list', 'create', 'rename']) {
       const nodes: Node[] = [
         fsNode('trig', 'manualTrigger', {}),
@@ -693,7 +707,7 @@ describe('lintWorkflow — disabled node tolerance', () => {
   it('warns disabled-with-downstream when disabled node still has outgoing edges', () => {
     // Common case: the author disables a step in the middle of the workflow. The engine
     // cascade-skips everything after it — that should surface as a warning, but must
-    // NOT block publishing.
+    // not block publishing.
     const nodes: Node[] = [
       node('trig', 0, 0, { activityType: 'manualTrigger' }),
       disabledNode('off', 200, 0),
@@ -736,9 +750,8 @@ describe('lintWorkflow — disabled node tolerance', () => {
   it('does not raise isolated-node error for a node reachable only via a disabled edge', () => {
     // Scenario from the styleguide demo: a `disabled_log` node used as an edge-demo target.
     // The node itself isn't disabled, but its only incoming edge has data.disabled:true.
-    // This used to be flagged as an isolated-node error (because the active-edges filter
-    // drops disabled edges) — that blocked publishing and was semantically wrong: a
-    // disabled edge is a deliberate design choice, not a forgotten connection.
+    // A disabled edge is a deliberate design choice, not a forgotten connection, so this
+    // must not be reported as an isolated-node error.
     const nodes: Node[] = [
       node('trig', 0, 0, { activityType: 'manualTrigger' }),
       node('main', 200, 0),

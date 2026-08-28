@@ -1,18 +1,18 @@
-# Setzt (bzw. entfernt) die Browser-Policy, die den Negotiate-Handshake fuer die
-# NodePilot-Origin freigibt. AUSFUEHREN AUF: npcli01, elevated.
+# Sets (or removes) the browser policy that allows the Negotiate handshake for the
+# NodePilot origin. RUN ON: npcli01, elevated.
 #
-# Aufruf: powershell -NoProfile -ExecutionPolicy Bypass -File .\Set-BrowserSsoPolicy.ps1
-#         .\Set-BrowserSsoPolicy.ps1 -Remove
+# Usage: powershell -NoProfile -ExecutionPolicy Bypass -File .\Set-BrowserSsoPolicy.ps1
+#        .\Set-BrowserSsoPolicy.ps1 -Remove
 #
-# Im Produktivbetrieb kommt das per GPO. Hier direkt in die Policy-Hives, damit das Lab
-# ohne GPO-Refresh-Warterei testbar bleibt.
+# In production this comes from a GPO. Here the policy hives are written directly so the
+# lab stays testable without waiting for a GPO refresh.
 #
-# Bewusst NICHT gesetzt:
-#   * AuthNegotiateDelegateAllowlist -- Delegation ist fuer NodePilot weder noetig noch
-#     erwuenscht (kein Double-Hop im Auth-Pfad).
-#   * AuthSchemes -- der Browser ist der falsche Ort, um NTLM zu blocken; SPNEGO kann NTLM
-#     auch unter "negotiate" transportieren. Dafuer ist die Restrict-NTLM-GPO zustaendig
-#     (siehe README, Phase 2).
+# Deliberately not set:
+#   * AuthNegotiateDelegateAllowlist -- delegation is neither needed nor wanted for
+#     NodePilot (no double hop in the auth path).
+#   * AuthSchemes -- the browser is the wrong place to block NTLM; SPNEGO can carry NTLM
+#     under "negotiate" as well. The Restrict NTLM GPO covers that
+#     (see README, phase 2).
 param(
     [string]$ApiFqdn = 'npapi01.np.lab',
     [ValidateSet('http', 'https')]
@@ -26,8 +26,8 @@ $policyPaths = @(
     @{ Name = 'Chrome'; Path = 'HKLM:\SOFTWARE\Policies\Google\Chrome' }
 )
 
-# ZoneMap: 1 = Local Intranet. "Automatische Anmeldung nur in der Intranetzone" ist dort
-# der Default, deshalb reicht die Zonenzuordnung.
+# ZoneMap: 1 = Local Intranet. Automatic logon only in the intranet zone is the default
+# there, so the zone assignment is enough.
 $hostLabel, $domainLabel = $ApiFqdn.Split('.', 2)
 $zonePath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\Internet Settings\ZoneMap\Domains\$domainLabel\$hostLabel"
 
@@ -55,8 +55,8 @@ foreach ($p in $policyPaths) {
 
 if (-not (Test-Path $zonePath)) { New-Item -Path $zonePath -Force | Out-Null }
 New-ItemProperty -Path $zonePath -Name $Scheme -Value 1 -PropertyType DWord -Force | Out-Null
-# ${Scheme} muss geklammert werden -- "$Scheme://" liest PowerShell sonst als
-# scope-qualifizierte Variable ("$Scheme:" + Rest).
+# ${Scheme} needs the braces: PowerShell otherwise reads "$Scheme://" as a scope-qualified
+# variable ("$Scheme:" plus the rest).
 "ZoneMap: ${Scheme}://$ApiFqdn -> Zone 1 (Local Intranet)"
 
 ""

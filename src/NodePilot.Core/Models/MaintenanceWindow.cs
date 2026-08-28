@@ -3,28 +3,25 @@ using NodePilot.Core.Enums;
 namespace NodePilot.Core.Models;
 
 /// <summary>
-/// Admin-managed maintenance window: a time-scoped rule that controls whether the workflows
-/// it targets are allowed to start new runs. The modern equivalent of SCOrch "schedules used
-/// as gates" — centralised so a single window can blanket everything, a folder subtree, or an
-/// explicit list of workflows, instead of N drifting per-workflow copies.
+/// Admin-managed maintenance window: a time-scoped rule that controls whether the workflows it
+/// targets may start new runs. One window can cover everything, a folder subtree, or an explicit
+/// list of workflows.
 ///
-/// <para><b>Admission control, not a kill-switch.</b> A window is only evaluated when a run is
-/// <i>admitted</i> (manual execute, trigger fire, webhook, external trigger). It never cancels
-/// an in-flight run, and it never re-gates a resume, an internal step-retry, or a sub-workflow
-/// invocation — those have already been admitted. To drain running work, use
-/// disable + cancel-all.</para>
+/// <para>Admission control, not a kill-switch. A window is evaluated only when a run is admitted
+/// (manual execute, trigger fire, webhook, external trigger). It never cancels an in-flight run,
+/// and it never re-gates a resume, an internal step retry, or a sub-workflow invocation. Use
+/// disable + cancel-all to drain running work.</para>
 ///
-/// <para><b>Precedence (deny-wins).</b> Across all windows that target a workflow at a given
-/// instant: if ANY enabled <see cref="MaintenanceMode.Blackout"/> window is active → BLOCK.
-/// Otherwise, if ANY non-expired <see cref="MaintenanceMode.AllowOnly"/> window targets the
-/// workflow → allow ONLY while one of those allow-windows is active. Otherwise (no window
-/// targets it) → ALLOW. <see cref="IsEnabled"/>=false makes a window inert (blocks nothing).</para>
+/// <para>Precedence is deny-wins across all windows targeting a workflow at a given instant: an
+/// active enabled <see cref="MaintenanceMode.Blackout"/> window blocks; otherwise a non-expired
+/// <see cref="MaintenanceMode.AllowOnly"/> window targeting the workflow allows only while one of
+/// those windows is active; otherwise the run is allowed. <see cref="IsEnabled"/>=false makes a
+/// window inert, so it blocks nothing.</para>
 ///
-/// <para><b>Time + DST.</b> Weekly/Cron occurrences are resolved from <see cref="TimeZoneId"/>
-/// to half-open <c>[start, end)</c> UTC intervals at evaluation time, so node clock skew only
-/// nudges a window edge rather than flipping verdicts. On a DST spring-forward the start moves
-/// to the first valid instant; on fall-back a Blackout covers the ambiguous hour while an
-/// AllowOnly does not.</para>
+/// <para>Weekly and cron occurrences resolve from <see cref="TimeZoneId"/> to half-open
+/// <c>[start, end)</c> UTC intervals at evaluation time, so node clock skew only nudges a window
+/// edge rather than flipping verdicts. On a DST spring-forward the start moves to the first valid
+/// instant; on fall-back a Blackout covers the ambiguous hour and an AllowOnly does not.</para>
 /// </summary>
 public class MaintenanceWindow
 {
@@ -45,9 +42,11 @@ public class MaintenanceWindow
     public MaintenanceRecurrenceKind Recurrence { get; set; } = MaintenanceRecurrenceKind.Weekly;
 
     // --- OneTime ---
-    /// <summary>Absolute UTC start instant (inclusive) for <see cref="MaintenanceRecurrenceKind.OneTime"/>.</summary>
+    /// <summary>Absolute UTC start instant (inclusive) for <see
+    /// cref="MaintenanceRecurrenceKind.OneTime"/>.</summary>
     public DateTime? OneTimeStartUtc { get; set; }
-    /// <summary>Absolute UTC end instant (exclusive) for <see cref="MaintenanceRecurrenceKind.OneTime"/>.</summary>
+    /// <summary>Absolute UTC end instant (exclusive) for <see
+    /// cref="MaintenanceRecurrenceKind.OneTime"/>.</summary>
     public DateTime? OneTimeEndUtc { get; set; }
 
     // --- Weekly ---
@@ -56,7 +55,8 @@ public class MaintenanceWindow
     /// Evaluated against the day-of-week of the window's local time zone.
     /// </summary>
     public int WeeklyDaysMask { get; set; }
-    /// <summary>Local minute-of-day the window opens (0..1439), interpreted in <see cref="TimeZoneId"/>.</summary>
+    /// <summary>Local minute-of-day the window opens (0..1439), interpreted in <see
+    /// cref="TimeZoneId"/>.</summary>
     public int? WeeklyStartMinuteOfDay { get; set; }
     /// <summary>
     /// Local minute-of-day the window closes (0..1439). If less than
@@ -79,11 +79,12 @@ public class MaintenanceWindow
 
     /// <summary>
     /// IANA or Windows time-zone id the Weekly/Cron wall-clock fields are interpreted in.
-    /// Deliberately NOT the server-local zone (a deployment accident); defaults to UTC.
+    /// Not the server-local zone, which varies per deployment; defaults to UTC.
     /// </summary>
     public string TimeZoneId { get; set; } = "UTC";
 
-    /// <summary>Reserved for a future catch-up feature; v1 only honors <see cref="MaintenanceDeferralPolicy.Skip"/>.</summary>
+    /// <summary>Reserved for a future catch-up feature; only <see
+    /// cref="MaintenanceDeferralPolicy.Skip"/> is honored.</summary>
     public MaintenanceDeferralPolicy DeferralPolicy { get; set; } = MaintenanceDeferralPolicy.Skip;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

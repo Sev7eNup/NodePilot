@@ -5,20 +5,19 @@ namespace NodePilot.Ai.Knowledge;
 
 /// <summary>
 /// Builds the "current time" context block appended to the knowledge-chat system prompt each turn.
-/// The model otherwise has no clock: it cannot answer "what time is it" or reason about "the next
-/// run" without an anchor, and all stored/tool timestamps are UTC (see the global UTC value
-/// converter in <c>NodePilotDbContext</c>). This block gives it <b>now</b> in both UTC and the
-/// caller's local zone (supplied by the browser) and instructs it to present times locally with an
-/// explicit zone label — removing the "14:42 UTC vs 16:42 local" confusion at the source.
-/// Pure/static so it is unit-testable without touching the clock.
+/// The model has no clock of its own, and all stored and tool timestamps are UTC (global UTC value
+/// converter in <c>NodePilotDbContext</c>). The block supplies the current time in UTC and in the
+/// caller's local zone (sent by the browser) and instructs the model to present times locally with
+/// an explicit zone label. Static and pure, so it can be tested without touching the clock.
 /// </summary>
 public static class KnowledgeTimeContext
 {
     /// <summary>
-    /// Renders the German context block. <paramref name="timeZoneId"/> is the caller's zone — the
-    /// browser sends an IANA id (e.g. <c>Europe/Berlin</c>), the Windows form resolves too;
-    /// <paramref name="offsetMinutes"/> is its current UTC offset in minutes (browser fallback).
-    /// Resolution order: a resolvable zone id (honours DST) → the raw offset → UTC only.
+    /// Renders the German context block. <paramref name="timeZoneId"/> is the caller's zone; the
+    /// browser sends an IANA id such as <c>Europe/Berlin</c>, and the Windows form also resolves.
+    /// <paramref name="offsetMinutes"/> is that zone's current UTC offset in minutes, used as a
+    /// fallback. Resolution order: a resolvable zone id (honours DST), then the raw offset,
+    /// then UTC alone.
     /// </summary>
     public static string Build(DateTimeOffset nowUtc, string? timeZoneId, int? offsetMinutes)
     {

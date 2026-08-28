@@ -48,11 +48,11 @@ describe('TopBar', () => {
     expect(screen.getByText('Globals')).toBeInTheDocument();
   });
 
-  // The BackendStatus pill shows a compact "API" label + a colour-coded plug icon; the
-  // connection state lives in the accessible name (aria-label "API: <state>"), not as visible
-  // text — so assert via the accessible label. The pill no longer runs its own poll: it renders
-  // whatever the app-wide database-health probe (useDatabaseHealth, mounted once in App) wrote
-  // into the store — so the tests drive the store, which is the pill's actual input.
+  // The BackendStatus pill shows a compact "API" label and a colour-coded plug icon. The
+  // connection state lives only in the accessible name (aria-label "API: <state>"), so the
+  // tests assert against that label. The pill renders whatever the app-wide database-health
+  // probe (useDatabaseHealth, mounted once in App) wrote into the store, so the tests set the
+  // store directly.
   it('reports the backend as connected when the health probe says ok', async () => {
     useDbHealthStore.setState({ status: 'ok' });
     renderAt('/');
@@ -66,8 +66,8 @@ describe('TopBar', () => {
   });
 
   it('reports the database as unreachable distinctly from the process being down', async () => {
-    // The old pill probed /healthz/live, which stays 200 through a database outage — it showed
-    // green while every data query failed. This state is the fix for that misleading indicator.
+    // /healthz/live stays 200 through a database outage, so a separate state distinguishes a
+    // reachable process with an unreachable database from a fully healthy backend.
     useDbHealthStore.setState({ status: 'unavailable', reason: 'Unreachable' });
     renderAt('/');
     await waitFor(() => expect(screen.getByLabelText(/API:\s*database unreachable/i)).toBeInTheDocument());

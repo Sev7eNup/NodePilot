@@ -5,15 +5,13 @@ using Xunit;
 namespace NodePilot.Data.Tests.Availability;
 
 /// <summary>
-/// The connection-string surgery is small, but two of its facts were established the hard way and
-/// must not regress silently:
+/// The connection-string surgery is small, but two facts about it must not regress silently:
 ///
 /// 1. Npgsql's connect-timeout keyword is <c>Timeout</c> — <c>Connect Timeout</c> does not exist
-///    there (verified against the Npgsql 10.0.3 keyword table). Writing SQL Server's spelling into
-///    a PostgreSQL string throws at runtime.
-/// 2. The connect timeout sits on the critical path TWICE for every command timeout against a
-///    wedged server (measured: elapsed = CommandTimeout + 2 x ConnectTimeout, because the driver
-///    sends its cancel request over a fresh connection into the same wedge).
+///    there. Writing SQL Server's spelling into a PostgreSQL string throws at runtime.
+/// 2. The connect timeout sits on the critical path twice for every command timeout against a
+///    wedged server, because the driver sends its cancel request over a fresh connection into
+///    the same wedge.
 /// </summary>
 public sealed class DatabaseConnectionStringTests
 {

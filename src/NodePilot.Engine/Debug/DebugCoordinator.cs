@@ -16,11 +16,10 @@ namespace NodePilot.Engine.Debug;
 /// </summary>
 internal sealed class DebugCoordinator
 {
-    // Bound the persisted Variables snapshot. Without a cap, a step that built a 50 MB
-    // accumulator dict would write the whole thing into a NVARCHAR(MAX) on every pause
-    // — same DoS surface RedactAndCap closes for InputParametersJson / ReturnData.
-    // 64 KiB is enough for ~600 typical key/value pairs after redaction; truncated
-    // snapshots get a marker so the inspector UI can show "this was truncated".
+    // Cap the persisted Variables snapshot size to avoid writing a huge dictionary to
+    // the DB on every pause — the same DoS surface RedactAndCap closes for
+    // InputParametersJson / ReturnData. Truncated snapshots get a marker so the
+    // inspector UI can show they were cut.
     private const int MaxSnapshotChars = 64 * 1024;
 
     private readonly OutputRedactor _redactor;
@@ -33,7 +32,7 @@ internal sealed class DebugCoordinator
     }
 
     /// <summary>
-    /// Runs the full pause → await → resume cycle for a single step. Mutates
+    /// Runs the full pause, await, and resume cycle for a single step. Mutates
     /// <paramref name="variables"/> in place (by-reference) when the resume command
     /// carries overrides, and toggles <c>debug.StepOverArmed</c> to propagate step-over
     /// to the next step. Throws <see cref="OperationCanceledException"/> if the max-pause
@@ -87,7 +86,7 @@ internal sealed class DebugCoordinator
         }
         catch (OperationCanceledException)
         {
-            // Pause guard expired, or the execution was cancelled → terminate as Cancelled.
+            // Pause guard expired, or the execution was cancelled: terminate as Cancelled.
             // The Paused row stays in the DB as a trace; the exception handler further up
             // the call stack rewrites the status to Failed.
             EngineMetrics.DebugSessionsActive.Add(-1);
@@ -119,9 +118,8 @@ internal sealed class DebugCoordinator
         if (resume.Overrides is { Count: > 0 })
         {
             // Reject attempts to poison globals (read-only by design) or reserved engine
-            // keys (e.g. __callDepth for sub-workflow recursion) — a security-audit
-            // finding (C-2-b). Also cap the override size (finding L-2) to avoid a debug
-            // client blasting megabytes of overrides into the variable dict.
+            // keys (e.g. __callDepth for sub-workflow recursion), and cap the override
+            // size so a debug client can't blast megabytes of overrides into the dict.
             const int MaxOverrideEntries = 256;
             const int MaxOverrideValueBytes = 64 * 1024;
             if (resume.Overrides.Count > MaxOverrideEntries)
@@ -143,7 +141,7 @@ internal sealed class DebugCoordinator
             }
             foreach (var (k, v) in resume.Overrides)
                 variables[k] = v;
-            // Context.Variables points at this same dict (by reference) → overrides are
+            // Context.Variables points at this same dict (by reference), so overrides are
             // immediately visible to the executor too, no rebuild needed.
         }
 

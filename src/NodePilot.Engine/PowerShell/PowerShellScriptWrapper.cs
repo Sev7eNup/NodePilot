@@ -82,15 +82,18 @@ internal static class PowerShellScriptWrapper
         scriptContent.AppendLine("# === NODEPILOT OUTPUT CAPTURE ===");
         // Capture $LASTEXITCODE (last native command's exit code; null when none ran) before any
         // capture cmdlet — Get-Variable / ConvertTo-Json are cmdlets, not native, so they don't
-        // reset it. Surfaced as the reserved __npExitCode key → {{step.param.exitCode}}.
+        // reset it. Surfaced as the reserved __npExitCode key -> {{step.param.exitCode}}.
         scriptContent.AppendLine("$__npExit = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 0 }");
         scriptContent.AppendLine("$__npOut = @{}");
         if (outputCaptureAllowlist is not null)
         {
             // Custom-activity capture: ONLY the declared output names are surfaced. This excludes
-            // both the injected input variables and any helper locals the author created, fixing the
-            // leak that an unrestricted sweep would otherwise produce (injected $name vars are not in
-            // the pre-injection builtin snapshot). exitCode is still emitted by its own marker below.
+            // both the injected input variables and any helper locals the author created, fixing
+            // the
+            // leak that an unrestricted sweep would otherwise produce (injected $name vars are not
+            // in
+            // the pre-injection builtin snapshot). exitCode is still emitted by its own marker
+            // below.
             scriptContent.AppendLine("$__npOutAllow = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)");
             foreach (var name in outputCaptureAllowlist)
             {
@@ -119,7 +122,7 @@ internal static class PowerShellScriptWrapper
         // PARAMS block, so it never overrides a user-emitted marker nor forces an empty PARAMS).
         scriptContent.AppendLine($"Write-Output '{ExitCodeMarker}'");
         scriptContent.AppendLine("Write-Output ([string]$__npExit)");
-        // Close try → on a thrown terminating error, mark it on stdout and re-throw; then close
+        // Close try -> on a thrown terminating error, mark it on stdout and re-throw; then close
         // the & { ... } scope wrapper opened at the top.
         scriptContent.AppendLine("}");
         scriptContent.AppendLine("catch {");

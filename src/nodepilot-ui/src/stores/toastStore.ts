@@ -19,17 +19,14 @@ let nextId = 0;
 
 /**
  * Ephemeral (non-persisted) toast queue. Errors linger longer than success/info
- * so a failure toast can't slip by unnoticed while the user looks elsewhere.
+ * so a failure toast cannot slip by unnoticed while the user looks elsewhere.
  */
 /**
- * The api client formats every structured server error as `message (CODE)`, so the code is reliably
- * present in the display string — the only thing the ~50 mutation `onError` call sites hand to
- * `toast.error(...)`. Matching here, at the sink, suppresses them all without touching a call site.
- *
- * ONLY the outage code is suppressed, and only because the banner is on screen saying the same
- * thing. `DATABASE_TIMEOUT` deliberately still toasts: the breaker is closed for it, so no banner
- * exists, and swallowing it silently would reproduce the original defect — a busy database looking
- * exactly like an empty installation, with nothing on screen to act on.
+ * The api client formats every structured server error as `message (CODE)`, so matching the code
+ * here suppresses it for every mutation call site at once. Only the outage code is suppressed,
+ * because the outage banner already says the same thing. `DATABASE_TIMEOUT` still toasts: the
+ * breaker stays closed for it, so no banner is shown and a busy database would otherwise look
+ * like an empty installation.
  */
 function isDatabaseOutageMessage(message: string): boolean {
   return message.includes('DATABASE_UNAVAILABLE');
@@ -38,8 +35,8 @@ function isDatabaseOutageMessage(message: string): boolean {
 export const useToastStore = create<ToastStore>()((set) => ({
   toasts: [],
   push: (kind, message, timeoutMs) => {
-    // Contract note: a suppressed push returns -1, an id that never exists — dismiss(-1) is a
-    // harmless no-op. Only error toasts are filtered; an outage must not eat success messages.
+    // A suppressed push returns -1, an id that never exists, so dismiss(-1) is a no-op. Only
+    // error toasts are filtered; an outage must not swallow success messages.
     if (kind === 'error' && isDatabaseOutageMessage(message)) return -1;
 
     const id = ++nextId;
@@ -54,7 +51,7 @@ export const useToastStore = create<ToastStore>()((set) => ({
 }));
 
 /**
- * Imperative helper — works outside React (hooks, lib/ modules, command palette)
+ * Imperative helper that works outside React (hooks, lib/ modules, command palette)
  * via getState(), mirroring how App.tsx drives authStore/themeStore at bundle load.
  */
 export const toast = {

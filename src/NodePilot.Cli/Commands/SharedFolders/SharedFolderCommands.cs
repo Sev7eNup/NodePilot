@@ -139,9 +139,8 @@ public sealed class SharedFolderDeleteCommand : BaseCommand<SharedFolderDeleteSe
     public SharedFolderDeleteCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
     protected override async Task<int> RunAsync(CommandContext _, SharedFolderDeleteSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        // `--yes` is only demanded for the recursive variant. A plain delete refuses non-empty
-        // folders server-side, so it cannot destroy anything unattended — and scripts relying on
-        // that have run without a flag since the command existed.
+        // `--yes` is required only for the recursive variant. A plain delete refuses non-empty
+        // folders server-side, so it cannot destroy anything unattended without a flag.
         if (settings.Recursive && !settings.Yes && Console.IsInputRedirected)
         {
             writer.Error("Rekursives Löschen ist destruktiv — in nicht-interaktiven Läufen mit --yes bestätigen.");
@@ -217,6 +216,9 @@ public sealed class SharedFolderGrantSettings : GlobalSettings
     [CommandOption("--role <ROLE>")]
     [Description("FolderViewer | FolderOperator | FolderEditor | FolderAdmin.")]
     public string? Role { get; set; }
+    [CommandOption("--principal-authority <AUTHORITY>")]
+    [Description("Optional identity authority used to disambiguate the principal.")]
+    public string? PrincipalAuthority { get; set; }
 }
 
 [SupportedOSPlatform("windows")]
@@ -230,7 +232,11 @@ public sealed class SharedFolderGrantCommand : BaseCommand<SharedFolderGrantSett
         if (string.IsNullOrWhiteSpace(settings.Role)) { writer.Error("--role ist Pflicht (FolderViewer | FolderOperator | FolderEditor | FolderAdmin)."); return ExitCodes.Error; }
 
         var api = ClientFactory.Create(session);
-        var req = new GrantSharedFolderPermissionRequest(settings.PrincipalType, settings.PrincipalKey, settings.Role);
+        var req = new GrantSharedFolderPermissionRequest(
+            settings.PrincipalType, settings.PrincipalKey, settings.Role)
+        {
+            PrincipalAuthority = settings.PrincipalAuthority,
+        };
         var perm = await api.GrantSharedFolderPermissionAsync(settings.FolderId, req, ct);
         writer.Success($"Permission gesetzt: [bold]{Markup.Escape(perm.Role)}[/] für {Markup.Escape(perm.PrincipalKey)} (Id {perm.Id}).");
         return ExitCodes.Success;

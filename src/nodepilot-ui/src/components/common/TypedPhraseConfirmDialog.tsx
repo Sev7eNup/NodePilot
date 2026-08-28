@@ -2,11 +2,11 @@ import { Close, SecurityServices } from '@carbon/icons-react';
 import { useTranslation } from 'react-i18next';
 
 /**
- * Type-the-phrase confirmation for the two places that grant write access to the SQL console:
- * flipping `DbAdmin:AllowWriteQueries` on (admin settings) and running a write statement from
- * the query pane. Confirm stays disabled until the typed input matches `phrase` exactly.
- * All wording is passed in already translated — the two call sites live in different i18n
- * namespaces.
+ * Type-the-phrase confirmation dialog for the two actions that grant write access to
+ * the SQL console: enabling `DbAdmin:AllowWriteQueries` in admin settings, and running a
+ * write statement from the query pane. Confirm stays disabled until the typed input
+ * matches `phrase` exactly. Wording is passed in already translated, since the two call
+ * sites use different i18n namespaces.
  */
 export function TypedPhraseConfirmDialog({
   phrase, input, onInput, onCancel, onConfirm, title, body, prompt, confirmLabel,

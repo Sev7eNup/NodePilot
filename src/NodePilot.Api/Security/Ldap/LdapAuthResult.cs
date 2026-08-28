@@ -13,9 +13,8 @@ namespace NodePilot.Api.Security.Ldap;
 /// falls back to the UPN local part when the directory has neither set.</param>
 /// <param name="GroupSids">Transitive group SIDs from AD's <c>tokenGroups</c> attribute.
 /// Empty list when the user has no group memberships visible to the bind context.</param>
-/// <param name="LegacyExternalId">Previous provider-specific identifier. LDAP supplies
-/// objectGUID so an unambiguous pre-migration row can be upgraded in place. It is never
-/// used to merge two different users.</param>
+/// <param name="LegacyExternalId">Provider-specific identifier used only to upgrade an
+/// unambiguous pre-migration row. LDAP supplies objectGUID. It never merges users.</param>
 public sealed record LdapAuthResult(
     string ExternalId,
     string Upn,

@@ -1,11 +1,10 @@
 /**
- * Pure helpers behind the folder multi-select. They live here rather than in a tree component so
- * they can be tested without rendering a tree — the interesting cases (a collapsed branch, a
- * selection that contains both a parent and its child) are all shape, not markup.
+ * Pure helpers behind the folder multi-select, kept out of the tree components so they can be
+ * tested without rendering a tree.
  *
  * Generic over the folder type: the workflow tree and the global-variable tree have the same
- * shape but different payloads (`workflowCount` vs `variableCount`), so the helpers only require
- * what they actually read and take a count accessor where they need one.
+ * shape but different payloads (`workflowCount` vs `variableCount`), so the helpers require only
+ * what they read and take a count accessor where they need one.
  */
 
 /** The minimum a folder has to carry for these helpers: an identity and its parent. */
@@ -20,16 +19,11 @@ export interface FolderTreeNode<T extends FolderLike> {
 }
 
 /**
- * The folders that are actually on screen, in the order they are rendered.
+ * Returns the folders that are visible on screen, in render order.
  *
- * `useBulkSelection` derives its shift-range from the index inside `items`, and its prune effect
- * drops ids that are not in it — so `items` has to be exactly what the user sees. A plain preorder
- * walk would include the children of a collapsed node, and a shift-range could then quietly select
- * folders nobody can see.
- *
- * The flip side is deliberate: collapsing a branch takes its descendants out of the selection.
- * That costs nothing, because deleting the parent takes the whole subtree anyway — and it keeps
- * the rule simple: you can only select what is in front of you.
+ * `useBulkSelection` derives its shift-range from the index inside this list and prunes ids that
+ * are missing from it, so the list has to match what the user sees. Children of a collapsed node
+ * are left out, which also means collapsing a branch drops its descendants from the selection.
  */
 export function flattenVisible<T extends FolderLike>(
   nodes: readonly FolderTreeNode<T>[],
@@ -47,15 +41,14 @@ export function flattenVisible<T extends FolderLike>(
 }
 
 /**
- * Reduces a selection to the folders that are nobody else's descendant.
+ * Reduces a selection to the folders that are no other selected folder's descendant.
  *
- * Without this, selecting a parent *and* one of its children sends two requests: the first deletes
- * the child along with the subtree, the second finds nothing and 404s. Deleting the cover set alone
- * removes exactly the same folders.
+ * Deleting this cover set removes the same folders while avoiding a second request for a child
+ * that the parent's delete already took, which would 404.
  *
  * Ancestry is walked over `parentFolderId` rather than `path`, because `path` is a display string
- * that a rename rewrites asynchronously — and a folder whose parent is not in `all` (no read
- * permission) is treated as top-most, which is the safe reading.
+ * that a rename rewrites asynchronously. A folder whose parent is not in `all` (no read
+ * permission) is treated as top-most.
  */
 export function topMostFolders<T extends FolderLike>(
   selected: readonly T[],
@@ -79,14 +72,14 @@ export function topMostFolders<T extends FolderLike>(
 }
 
 /**
- * Is `folderId` inside one of the deleted subtrees?
+ * Reports whether `folderId` sits inside one of the deleted subtrees.
  *
- * The folder the list is filtered by does not have to be one that was asked for — a descendant
- * disappears with its parent without ever being named in a request. Ancestry is resolved against
- * the folder list as it was *before* the delete, which is the only place that mapping still exists.
+ * A descendant disappears with its parent without ever being named in a request, so ancestry is
+ * resolved against the folder list as it stood before the delete, the only place that mapping
+ * still exists.
  *
- * `deletedRootIds` must carry only the roots that actually succeeded: resetting the filter after a
- * failed request would send the user back to "all folders" while their folder is still there.
+ * `deletedRootIds` must carry only the roots that actually succeeded: otherwise a failed request
+ * would reset the filter to "all folders" while the folder is still there.
  */
 export function isInDeletedSubtree(
   folderId: string | null,
@@ -108,18 +101,18 @@ export function isInDeletedSubtree(
 }
 
 export interface SubtreeImpact {
-  /** Folders that go, including the selected ones themselves. */
+  /** Folders removed, including the selected ones themselves. */
   folders: number;
   /** Items (workflows / variables) in those folders, as far as the caller can see them. */
   items: number;
 }
 
 /**
- * What deleting `roots` would remove. An estimate by nature: folders the caller cannot read are
- * missing from `all`, so the server may delete more. The confirmation says so, and the toast
- * afterwards reports the server's own numbers.
+ * Estimates what deleting `roots` would remove. Folders the caller cannot read are missing from
+ * `all`, so the server may delete more; the confirmation says so and the toast afterwards reports
+ * the server's own numbers.
  *
- * Expects `roots` to already be a cover set — overlapping subtrees would otherwise be counted twice.
+ * `roots` must already be a cover set, otherwise overlapping subtrees are counted twice.
  */
 export function subtreeImpact<T extends FolderLike>(
   roots: readonly T[],

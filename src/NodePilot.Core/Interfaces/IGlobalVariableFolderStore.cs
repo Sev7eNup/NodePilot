@@ -3,22 +3,21 @@ using NodePilot.Core.Models;
 namespace NodePilot.Core.Interfaces;
 
 /// <summary>
-/// CRUD + tree operations for the organizational <see cref="GlobalVariableFolder"/> tree.
-/// Structurally mirrors the shared-workflow-folder logic (cycle-safe reparent, depth cap,
-/// sibling-name uniqueness, materialized path recompute) but carries <b>no</b> RBAC — global
-/// variables are Admin-gated wholesale, so folder access is not per-folder authorized.
+/// CRUD and tree operations for the <see cref="GlobalVariableFolder"/> tree: cycle-safe
+/// reparent, depth cap, sibling-name uniqueness, materialized path recompute. Carries no RBAC,
+/// because global variables are Admin-gated as a whole.
 ///
 /// <para>Validation failures surface as typed exceptions the controller maps to HTTP status:
-/// <see cref="KeyNotFoundException"/> → 404, <see cref="GlobalVariableFolderConflictException"/>
-/// → 409 (sibling-name clash, non-empty delete), <see cref="InvalidOperationException"/> /
-/// <see cref="ArgumentException"/> → 400 (depth cap, cycle, root-protected, bad parent).</para>
+/// <see cref="KeyNotFoundException"/> is 404, <see cref="GlobalVariableFolderConflictException"/>
+/// is 409, and both <see cref="InvalidOperationException"/> and <see cref="ArgumentException"/>
+/// are 400.</para>
 /// </summary>
 public interface IGlobalVariableFolderStore
 {
-    /// <summary>The full tree (Root first, then by depth+name), each with its direct variable count.</summary>
+    /// <summary>The full tree (Root first, then depth+name) with direct variable counts.</summary>
     Task<IReadOnlyList<GlobalVariableFolderWithCount>> GetAllAsync(CancellationToken ct);
 
-    /// <summary>True if a folder with this id exists — used to validate variable assignment.</summary>
+    /// <summary>True if a folder with this id exists. Used when assigning a variable.</summary>
     Task<bool> ExistsAsync(Guid id, CancellationToken ct);
 
     Task<GlobalVariableFolder> CreateAsync(Guid? parentFolderId, string name, Guid? createdByUserId, CancellationToken ct);
@@ -32,16 +31,16 @@ public interface IGlobalVariableFolderStore
     Task DeleteAsync(Guid id, CancellationToken ct);
 
     /// <summary>Deletes a folder with its whole subtree: every descendant folder and every
-    /// variable in them. Returns what was actually removed, so the caller can write one audit
-    /// row per object. Throws <see cref="GlobalVariableFolderConflictException"/> (409) if the
-    /// subtree changed while deleting — nothing is removed in that case.</summary>
+    /// variable in them. Returns what was removed, so the caller can write one audit row per
+    /// object. Throws <see cref="GlobalVariableFolderConflictException"/> (409) if the subtree
+    /// changed while deleting; nothing is removed in that case.</summary>
     Task<RecursiveGlobalFolderDeleteResult> DeleteRecursiveAsync(Guid id, CancellationToken ct);
 }
 
-/// <summary>A folder plus the count of variables directly inside it (descendants excluded).</summary>
+/// <summary>A folder plus the count of variables directly inside it (not descendants).</summary>
 public sealed record GlobalVariableFolderWithCount(GlobalVariableFolder Folder, int VariableCount);
 
-/// <summary>A deleted variable, identified for the audit trail. Carries the name only — a
+/// <summary>A deleted variable, identified for the audit trail. Carries the name only, because a
 /// global's <c>Value</c> is a secret and never leaves the store on a delete path.</summary>
 public sealed record DeletedGlobalVariable(Guid Id, string Name);
 

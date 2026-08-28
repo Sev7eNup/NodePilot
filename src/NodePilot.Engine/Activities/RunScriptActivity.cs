@@ -205,10 +205,10 @@ public class RunScriptActivity : IActivityExecutor
     /// Wraps the user script with a Start-Transcript/Stop-Transcript block. The transcript
     /// file lives in the executing host's <c>$env:TEMP</c>: the API host for local runs,
     /// or the WinRM target for remote runs. A pre-cleanup pass deletes orphan
-    /// NodePilot-Transcript-*.log files older than 24h - covers the case where Stop-Transcript
-    /// did not run (hard cancel mid-script). The finally-block reads the transcript content
-    /// and emits it between markers BEFORE any unhandled exception propagates, so even failing
-    /// scripts surface their command-by-command log.
+    /// NodePilot-Transcript-*.log files older than 24h, covering the case where
+    /// Stop-Transcript did not run (hard cancel mid-script). The finally block reads the
+    /// transcript content and emits it between markers before any unhandled exception
+    /// propagates, so even failing scripts surface their command-by-command log.
     /// </summary>
     internal static string WrapWithTranscript(string userScript)
     {

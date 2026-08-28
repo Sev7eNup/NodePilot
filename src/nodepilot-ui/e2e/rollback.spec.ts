@@ -2,20 +2,13 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 41 — Rollback mit Reason (lines 3171-3187).
+ * Covers E2ETests.md part 41: rollback with a reason.
  *
- * Backend contract: POST /api/workflows/{id}/rollback/{v} accepts an optional { reason } body
- * and writes it into the audit details (WORKFLOW_ROLLED_BACK). The ONLY frontend rollback path
- * is the WorkflowDiffModal (designer toolbar → "Diff against a previous version" → pick a
- * version → "Restore vN"), which always sends a non-empty reason:
- *     POST .../rollback/{v}  body: { reason: "Rolled back to v{v} via diff viewer" }
- *
- * This file asserts the REASON FIELD is present in the rollback POST body (Teil 41.1) and that
- * it is correctly versioned per the selected version.
- *
- * Hermetic: page.route() mocks only. canRestore = canWrite → workflow is locked-by-me. The
- * in-app ConfirmHost modal ("Restore workflow to version N?") is confirmed via its OK button.
- * SPA renders ENGLISH.
+ * POST /api/workflows/{id}/rollback/{v} takes an optional { reason } body that ends up in the
+ * audit details (WORKFLOW_ROLLED_BACK). The only frontend path to it is WorkflowDiffModal, which
+ * always sends a non-empty reason, so these tests assert the reason reaches the POST body and
+ * names the selected version. Hermetic mocks only; canRestore needs the workflow locked by the
+ * current user, and the ConfirmHost modal is confirmed through its OK button.
  */
 
 const WF_ID = 'd41d41d4-0000-0000-0000-00000000d41d';
@@ -43,7 +36,7 @@ function workflowJson() {
     name: 'WF-Rollback',
     description: 'rollback-reason e2e fixture',
     isEnabled: true,
-    checkedOutByUserId: MOCK_USER.id, // locked-by-me → canRestore=true
+    checkedOutByUserId: MOCK_USER.id, // locked by the current user, so canRestore is true
     checkedOutByUserName: MOCK_USER.username,
     checkedOutAt: '2026-06-01T00:00:00.000Z',
     definitionJson: JSON.stringify(CURRENT_DEF),
@@ -60,7 +53,7 @@ const VERSIONS = [
 async function openDiff(page: Page) {
   await seedExpertMode(page);
   await page.goto(`/workflows/${WF_ID}`);
-  // Diff now lives inside the "Werkzeuge" (Tools) menu — open it first, then click the row.
+  // Diff sits inside the Tools menu, so open that first, then click the version row.
   await page.getByTestId('tools-menu-trigger').click();
   const diffBtn = page.getByRole('menuitem', { name: /diff against a previous version/i });
   await expect(diffBtn).toBeVisible({ timeout: 20_000 });
@@ -105,7 +98,7 @@ test.describe('Rollback mit Reason (Teil 41)', () => {
     await page.getByRole('button', { name: 'OK' }).click();
 
     await expect.poll(() => hitVersion, { timeout: 10_000 }).toBe('2');
-    // Teil 41.1 core assertion: the rollback body carries a reason (audit-details source).
+    // Core assertion: the rollback body carries a reason, which becomes the audit detail.
     expect(rollbackBody).not.toBeNull();
     expect(typeof rollbackBody!.reason).toBe('string');
     expect(rollbackBody!.reason!.length).toBeGreaterThan(0);

@@ -2,9 +2,9 @@ namespace NodePilot.Core.Telemetry;
 
 /// <summary>
 /// Central registry of ActivitySource / Meter names and attribute keys used across NodePilot.
-/// Lives in Core (constants only, zero dependencies) so that EVERY project — including
-/// Remote and Data, which must not reference NodePilot.Telemetry — imports the same
-/// identifiers instead of maintaining "keep in sync" string literals.
+/// Lives in Core (constants only, no dependencies) so every project, including Remote and Data
+/// which must not reference NodePilot.Telemetry, imports the same identifiers instead of
+/// keeping duplicated string literals in sync.
 /// </summary>
 public static class TelemetryConstants
 {

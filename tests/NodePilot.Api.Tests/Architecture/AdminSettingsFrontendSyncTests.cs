@@ -6,15 +6,15 @@ using Xunit;
 namespace NodePilot.Api.Tests.Architecture;
 
 /// <summary>
-/// Keeps the admin-settings surface in lock-step across the backend↔frontend seam — the one
-/// risky mirror that lacked a drift guard while the activity/alerting catalogs and the Cli/Mcp
-/// DTOs all had one (a gap identified by a July 2026 codebase-consistency audit, low-priority
-/// finding "P3").
+/// Keeps the admin-settings surface in lock-step across the backend and frontend, matching the
+/// drift guards already in place for the activity/alerting catalogs and the Cli/Mcp DTOs.
 ///
 /// <para>The backend's authoritative section list is <see cref="SettingsSchema.Sections"/>
-/// (each <c>SectionPath</c> is what the controller routes GET/PUT <c>/api/admin/settings/{section}</c>
+/// (each <c>SectionPath</c> is what the controller routes GET/PUT
+/// <c>/api/admin/settings/{section}</c>
 /// on). The frontend requests those sections by string literal — either directly via
-/// <c>getSection('X')</c>/<c>putSection('X')</c> or through the shared <c>useSectionForm('X', …)</c>
+/// <c>getSection('X')</c>/<c>putSection('X')</c> or through the shared <c>useSectionForm('X',
+/// …)</c>
 /// hook. If the two sets drift (backend adds a section with no UI, or the frontend references a
 /// renamed/removed section) an operator silently loses the ability to view or edit that config —
 /// so fail CI instead.</para>
@@ -44,9 +44,11 @@ public class AdminSettingsFrontendSyncTests
         var dir = Path.Combine(FindRepoRoot(), "src", "nodepilot-ui", "src", "components", "admin-settings");
         Directory.Exists(dir).Should().BeTrue($"admin-settings component folder must exist at {dir}");
 
-        // getSection<...>('X') / putSection<...>('X') — dedicated-hook sections (Smtp/Llm/Retention/Authentication).
+        // getSection<...>('X') / putSection<...>('X') — dedicated-hook sections
+        // (Smtp/Llm/Retention/Authentication).
         // useSectionForm<...>('X', …)                — the shared generic-form sections (the other 15).
-        // [^(]* skips the generic type args up to the opening paren without tripping on '{ … }' unions.
+        // [^(]* skips the generic type args up to the opening paren without tripping on '{ … }'
+        // unions.
         var patterns = new[]
         {
             new Regex(@"(?:get|put)Section<[^(]*>\(\s*'([A-Za-z]+)'", RegexOptions.Compiled),

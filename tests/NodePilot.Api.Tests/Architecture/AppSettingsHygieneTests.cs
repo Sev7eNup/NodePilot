@@ -8,22 +8,23 @@ namespace NodePilot.Api.Tests.Architecture;
 
 /// <summary>
 /// Guards two properties of the shipped developer configuration that a stranger cloning this
-/// repository depends on, and that both regressed silently once already.
+/// repository depends on.
 ///
-/// <para><b>No machine-specific paths in tracked config.</b> <c>appsettings.Development.json</c>
-/// carried <c>"SourceCodeRootPath": "e:\\NodePilot"</c> — one developer's checkout, published to
-/// everyone. It never crashed: the source-knowledge reader just reports itself unavailable when
-/// the directory is missing, so the feature was quietly dead for every other clone. Machine paths
-/// belong in the gitignored <c>appsettings.runtime.json</c>, which is why that file is excluded
-/// here rather than scanned.</para>
+/// <para>No machine-specific paths in tracked config: <c>appsettings.Development.json</c> must
+/// not carry an absolute path like <c>"SourceCodeRootPath": "e:\\NodePilot"</c>, since that only
+/// works on one checkout. The source-knowledge reader fails silently when the directory is
+/// missing, so a stray absolute path leaves the feature quietly dead on every other clone.
+/// Machine paths belong in the gitignored <c>appsettings.runtime.json</c>, which is why that
+/// file is excluded here rather than scanned.</para>
 ///
-/// <para><b>One dev port.</b> <c>launchSettings.json</c> bound 5068 while every doc and the Vite
-/// dev-server proxy said 5000. A contributor who typed a bare <c>dotnet run</c> got a backend on
-/// a port the frontend never talks to, and every API call failed with no hint as to why.</para>
+/// <para>One dev port: <c>launchSettings.json</c> must bind the same port every doc and the
+/// Vite dev-server proxy expect. A mismatch sends a bare <c>dotnet run</c> to a port the
+/// frontend never talks to, and every API call fails with no visible cause.</para>
 /// </summary>
 public sealed class AppSettingsHygieneTests
 {
-    /// <summary>Drive-letter absolute paths inside JSON strings, e.g. "e:\\NodePilot" or "C:/foo".</summary>
+    /// <summary>Drive-letter absolute paths inside JSON strings, e.g. "e:\\NodePilot" or
+    /// "C:/foo".</summary>
     private static readonly Regex AbsoluteWindowsPath = new(@"""[A-Za-z]:(\\\\|/)", RegexOptions.Compiled);
 
     private static readonly Regex LocalhostPort = new(@"http://localhost:(\d+)", RegexOptions.Compiled);

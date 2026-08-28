@@ -66,8 +66,8 @@ export function WebhookTriggerConfig({ config, onUpdate, upstreamVars = [] }: Re
           value={signatureMode}
           onChange={(e) => {
             const mode = e.target.value;
-            // header mode has no use for the hmac sub-keys — drop them so the saved
-            // config doesn't carry dead fields.
+            // Header mode does not use the hmac sub-keys, so drop them and keep the saved
+            // config free of dead fields.
             onUpdate(mode === 'nodepilot-hmac-v2'
               ? { signatureMode: 'nodepilot-hmac-v2' }
               : { signatureMode: undefined, signatureHeader: undefined, signaturePrefix: undefined });

@@ -9,9 +9,9 @@ namespace NodePilot.Cli.Tests.Commands;
 
 /// <summary>
 /// End-to-end command tests for <c>np system-alert ...</c> — the built-in infra/signal alert
-/// policies introduced by ADR 0008 (replacing the old gauge-based alerting path). Covers
-/// Spectre parsing, exit codes, the catalog/list/get read paths, enable/disable, the
-/// non-interactive delete, and the create-from-file body translation.
+/// policies from ADR 0008. Covers Spectre parsing, exit codes, the catalog/list/get read
+/// paths, enable/disable, the non-interactive delete, and the create-from-file body
+/// translation.
 /// </summary>
 [Collection(CommandTestCollection.Name)]
 public class CommandIntegrationSystemAlertTests

@@ -2,25 +2,25 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 37 — Diagnostics / Support-Log (lines 3072-3100) and Teil 76.4 (the
- * SupportEventsTable viewer). The structured support-event projection is surfaced on its own
- * standalone, Admin-only page at `/support-log` (moved out of Settings → System so it's directly
- * reachable during an incident) via the SupportEventsTable (table view, default) plus a
+ * E2ETests.md part 37 — diagnostics and support log (lines 3072-3100) and part 76.4 (the
+ * SupportEventsTable viewer). The structured support-event projection lives on its own
+ * admin-only page at `/support-log`, rendered by SupportEventsTable in table view with a
  * plain-text file-tail toggle.
  *
  * These specs drive that UI:
- *  - 37.1 — rows render with eventType / workflowName / traceId / timestamp.
- *  - 37.2 — the EventType filter re-queries with `?eventType=…` and the table reflects it.
- *  - 76.4 — the Plain-Text toggle swaps to the raw file-tail view.
+ *  - 37.1 — rows render with eventType, workflowName, traceId and timestamp.
+ *  - 37.2 — the EventType filter re-queries with `?eventType=` and the table reflects it.
+ *  - 76.4 — the plain-text toggle swaps to the raw file-tail view.
  *
- * Role-gating for the `/support-log` route (AdminOnly redirect + hidden sidebar link) is
- * covered by `rbac.spec.ts` (Teil 26.5) alongside the other admin-only routes.
+ * Role gating for the `/support-log` route (admin-only redirect and hidden sidebar link) is
+ * covered by `rbac.spec.ts` (part 26.5) alongside the other admin-only routes.
  *
  * Hermetic: predicate catch-all from fixtures/mockApi.ts. The diagnostics endpoint is mocked
  * per test; query-string variants are matched with a trailing `**` so the filter round-trip
  * resolves.
  *
- * SPA renders ENGLISH under Playwright → bilingual /regex/i + role/attribute selectors.
+ * The SPA renders English under Playwright, so selectors stay bilingual (regex plus role or
+ * attribute).
  */
 
 function eventRow(overrides: Record<string, unknown> = {}) {
@@ -118,7 +118,7 @@ test.describe('Diagnostics / Support-Log (Teil 37)', () => {
     await expect(page.getByText('the started one')).toBeVisible({ timeout: 15_000 });
 
     // The first <select> in the filter bar is the EventType dropdown (option values are the
-    // raw codes). Select STEP_FAILED → the query string carries eventType=STEP_FAILED.
+    // raw codes). Select STEP_FAILED -> the query string carries eventType=STEP_FAILED.
     await page.getByRole('combobox').first().selectOption('STEP_FAILED');
 
     await expect.poll(() => seenEventTypeParams.includes('STEP_FAILED'), { timeout: 10_000 }).toBe(true);

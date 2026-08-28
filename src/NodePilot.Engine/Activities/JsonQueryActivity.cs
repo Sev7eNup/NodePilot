@@ -8,31 +8,12 @@ using NodePilot.Engine.Security;
 namespace NodePilot.Engine.Activities;
 
 /// <summary>
-/// Engine-local JSONPath query over a JSON payload. Source is either a file on the engine
-/// host (<c>source=file</c>, <c>path=…</c>) or an inline string (<c>source=inline</c>,
-/// <c>content=…</c> — typically fed by <c>{{prev.output}}</c>).
-///
-/// Config:
-///   source      "file" | "inline"            (default "inline")
-///   path        string                        (when source=file)
-///   content     string                        (when source=inline)
-///   jsonPath    string, required              (e.g. "$.items[0].name", "$..author",
-///                                               "$.items[?(@.price > 10)].name")
-///   resultMode  "single" | "all"             (default "single")
-///
-/// Result:
-///   Success → Output = token value (single) or JSON array of matches (all);
-///             OutputParameters["result"] = Output,
-///             OutputParameters["count"] = match count.
-///   Failure → ErrorOutput carries the exception message (invalid JSON, invalid JSONPath,
-///             file not found).
-///
-/// Hardening:
-///   - M-7: payload size capped to 8 MiB (file or inline) to prevent OOM on a malicious
-///     / runaway upstream. Parse depth capped to 64 to block stack-overflow on deeply
-///     nested input.
-///   - M-8: file-mode paths go through <see cref="PathGuard"/> so admins can opt into
-///     traversal-rejection / allow-listed roots (same config as <c>FileOperationActivity</c>).
+/// Engine-local JSONPath query over a JSON payload, read from a file on the engine host
+/// (<c>source=file</c>) or an inline string (<c>source=inline</c>, e.g. <c>{{prev.output}}</c>).
+/// <c>resultMode</c> "single" returns the first match, "all" returns a JSON array; both also
+/// land in <c>OutputParameters["result"]</c>/<c>["count"]</c>. Payload size is capped at 8 MiB
+/// and parse depth at 64 against untrusted input; file paths go through <see cref="PathGuard"/>
+/// for traversal protection, using the same config as <c>FileOperationActivity</c>.
 /// </summary>
 public class JsonQueryActivity : IActivityExecutor
 {

@@ -9,19 +9,15 @@ import { WebhookTriggerConfig } from '../../../components/designer/properties/tr
 import { ScheduleTriggerConfig } from '../../../components/designer/properties/triggers/ScheduleTriggerConfig';
 
 /**
- * Property-Config tests — each Config receives `config` (current values) and `onUpdate`
- * (patch handler) plus optional `upstreamVars`. We assert two contracts per config:
- *
- *   1. Initial render reflects the values in `config` (no crash on empty input).
- *   2. User input fires `onUpdate` with the right shape — partial patches, NOT replacements.
- *
- * Critical: configs are called repeatedly by PropertiesPanel during editing, so a regression
- * that replaces the entire config object on every keystroke would be invisible to existing
- * snapshot tests but break the auto-save merge logic.
+ * Property config tests. Each config component receives `config` (current values), `onUpdate`
+ * (patch handler) and optional `upstreamVars`. Two contracts are asserted per config: the
+ * initial render reflects `config` and survives an empty one, and user input calls `onUpdate`
+ * with a partial patch rather than a full replacement. PropertiesPanel re-renders these
+ * components while editing, so a full replacement per keystroke would break the auto-save merge.
  */
 
-// VariableInsertField → GlobalVariablePicker uses React Query for /global-variables. Stub
-// fetch so the picker doesn't fan out to a non-existent backend during render.
+// VariableInsertField renders GlobalVariablePicker, which queries /global-variables. fetch is
+// stubbed so the picker does not call a backend that is not running during the render.
 beforeEach(() => {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(
     new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } }),
@@ -29,7 +25,7 @@ beforeEach(() => {
 });
 
 function wrap(ui: React.ReactElement) {
-  // retry:false stops React Query from re-fetching on the inevitable miss in jsdom.
+  // retry:false stops React Query from re-fetching after a failed request in jsdom.
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }

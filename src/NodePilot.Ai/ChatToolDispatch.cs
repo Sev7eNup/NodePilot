@@ -6,19 +6,20 @@ namespace NodePilot.Ai;
 internal delegate Task<object> ChatToolHandler<TContext>(JsonElement args, TContext context, CancellationToken ct);
 
 /// <summary>
-/// The dispatch plumbing both chat tool registries share (<see cref="WorkflowChatToolRegistry"/>
-/// and <see cref="Knowledge.KnowledgeChatToolRegistry"/>): the <c>{ "error": … }</c> envelope, the
-/// tolerant argument parse — a blank or malformed argument blob is a model artefact and must never
-/// abort the tool loop — and the serialized result envelope. Tool sets, gating and serializer
-/// options stay with the registries.
+/// Dispatch plumbing shared by both chat tool registries (<see cref="WorkflowChatToolRegistry"/>
+/// and <see cref="Knowledge.KnowledgeChatToolRegistry"/>): the <c>{ "error": … }</c> envelope, a
+/// tolerant argument parse so a blank or malformed argument blob cannot abort the tool loop, and
+/// the serialized result envelope. Tool sets, gating and serializer options stay with the
+/// registries.
 /// </summary>
 internal static class ChatToolDispatch
 {
-    /// <summary>The error envelope a tool failure comes back as instead of aborting the loop.</summary>
+    /// <summary>The error envelope a tool failure comes back as instead of aborting the
+    /// loop.</summary>
     public static string Error(string message, JsonSerializerOptions json) =>
         JsonSerializer.Serialize(new { error = message }, json);
 
-    /// <summary>Answer for a tool name no registry entry matches (the model can hallucinate names).</summary>
+    /// <summary>Answer for a tool name that no registry entry matches.</summary>
     public static string UnknownTool(string name, JsonSerializerOptions json) =>
         Error($"Unbekanntes Tool: {name}", json);
 
@@ -30,9 +31,10 @@ internal static class ChatToolDispatch
     }
 
     /// <summary>
-    /// Runs one tool: tolerant argument parse (blank → <c>{}</c>, malformed → <paramref name="emptyArgs"/>),
-    /// handler, serialized result — optionally reshaped by <paramref name="shape"/> (token-budget
-    /// truncation). Cancellation propagates; every other exception becomes an error envelope.
+    /// Runs one tool: a tolerant argument parse (blank becomes <c>{}</c>, malformed falls back to
+    /// <paramref name="emptyArgs"/>), the handler, and the serialized result, optionally reshaped
+    /// by <paramref name="shape"/> for the token budget. Cancellation propagates; any other
+    /// exception becomes an error envelope.
     /// </summary>
     public static async Task<string> ExecuteAsync<TContext>(
         ChatToolHandler<TContext> handler,

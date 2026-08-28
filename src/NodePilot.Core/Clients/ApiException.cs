@@ -4,10 +4,9 @@ namespace NodePilot.Core.Clients;
 
 /// <summary>
 /// Thrown by the HTTP-only clients (the <c>np</c> CLI and the <c>nodepilot-mcp</c> server)
-/// on every non-2xx response. Captures both the HTTP status (so commands and tools can
-/// branch on 401/403/404/409/423) and the parsed <c>ProblemDetails</c> payload when the
-/// server returned one. Shared here for the same reason as
-/// <see cref="ClientSessionSecurity"/>: the two executables must not drift apart.
+/// on every non-2xx response. Carries the HTTP status, so commands and tools can branch on
+/// 401/403/404/409/423, plus the parsed <c>ProblemDetails</c> payload when the server sent
+/// one. Shared by both clients, like <see cref="ClientSessionSecurity"/>, to keep them in step.
 /// </summary>
 public sealed class ApiException : Exception
 {
@@ -33,18 +32,18 @@ public sealed class ApiException : Exception
         return $"{(int)status} {label}";
     }
 
-    /// <summary>True for 401 — caller must re-authenticate.</summary>
+    /// <summary>True for 401: the caller must re-authenticate.</summary>
     public bool IsUnauthorized => StatusCode == HttpStatusCode.Unauthorized;
 
-    /// <summary>True for 403 — caller authenticated but lacks the required role.</summary>
+    /// <summary>True for 403: the caller is authenticated but lacks the required role.</summary>
     public bool IsForbidden => StatusCode == HttpStatusCode.Forbidden;
 
-    /// <summary>True for 423 — workflow is checked out by another user.</summary>
+    /// <summary>True for 423: the workflow is checked out by another user.</summary>
     public bool IsLocked => (int)StatusCode == 423;
 
-    /// <summary>True for 409 — conflicting state (e.g. lock contention, idempotency).</summary>
+    /// <summary>True for 409: conflicting state, such as lock contention or idempotency.</summary>
     public bool IsConflict => StatusCode == HttpStatusCode.Conflict;
 
-    /// <summary>True for 404 — resource not found.</summary>
+    /// <summary>True for 404: the resource does not exist.</summary>
     public bool IsNotFound => StatusCode == HttpStatusCode.NotFound;
 }

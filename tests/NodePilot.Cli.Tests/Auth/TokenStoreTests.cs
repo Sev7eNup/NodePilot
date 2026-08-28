@@ -34,7 +34,7 @@ public sealed class TokenStoreTests : IDisposable
         };
         store.Save("default", session);
 
-        // File on disk must NOT contain the plaintext token.
+        // File on disk must not contain the plaintext token.
         var bytes = File.ReadAllBytes(store.PathFor("default"));
         var asString = System.Text.Encoding.UTF8.GetString(bytes);
         asString.Should().NotContain(session.Token);

@@ -21,7 +21,8 @@ namespace NodePilot.Engine.Tests.Activities;
 /// </summary>
 public class ActivityConfigReferenceTests
 {
-    /// <summary>Keys read by shared infrastructure rather than the activity's own source file.</summary>
+    /// <summary>Keys read by shared infrastructure rather than the activity's own source
+    /// file.</summary>
     private static readonly Dictionary<string, string[]> ReadElsewhere = new(StringComparer.Ordinal)
     {
         // WorkflowScheduler evaluates the junction mode, not JunctionActivity.
@@ -91,10 +92,13 @@ public class ActivityConfigReferenceTests
 
     /// <summary>
     /// The reference documents enum values as "a | b | c" prose. Nothing verified those against the
-    /// engine, and three drifted: <c>scheduledTask.action</c> listed run/query/delete/create when the
+    /// engine, and three drifted: <c>scheduledTask.action</c> listed run/query/delete/create when
+    /// the
     /// executor accepts get/start/stop/enable/disable/register/unregister, its <c>triggerType</c>
-    /// said onLogon/onStartup instead of atLogon/atStartup, and xml/jsonQuery <c>resultMode</c> said
-    /// "list" where the executors only honour "all". Each one renders into the AI prompt catalog and
+    /// said onLogon/onStartup instead of atLogon/atStartup, and xml/jsonQuery <c>resultMode</c>
+    /// said
+    /// "list" where the executors only honour "all". Each one renders into the AI prompt catalog
+    /// and
     /// the MCP config tools, so an agent authoring from them produces a node that throws "unknown
     /// action" or silently falls back to the default.
     /// </summary>
@@ -128,7 +132,8 @@ public class ActivityConfigReferenceTests
     /// <summary>
     /// Pulls the "a | b | c" alternatives out of a key description. The first alternative is
     /// preceded by prose ("Required for setStartType: Automatic | …"), so it contributes its LAST
-    /// word; every later alternative is followed by prose ("file — where the XML comes from"), so it
+    /// word; every later alternative is followed by prose ("file — where the XML comes from"), so
+    /// it
     /// contributes its FIRST word. Anything that is not identifier-shaped is dropped, which is how
     /// the trailing "…" in an open-ended list stays out.
     /// </summary>
@@ -194,7 +199,7 @@ public class ActivityConfigReferenceTests
     public void SchemaVersion_IsCurrent() => ActivityConfigReference.SchemaVersion.Should().Be(2);
 
     /// <summary>
-    /// Maps activity/trigger type → the source text that must read its keys. Two kinds of key
+    /// Maps activity/trigger type -> the source text that must read its keys. Two kinds of key
     /// reading happen outside the executor's own file, and both are followed here rather than
     /// exempted — an exemption would stop verifying the key at all:
     /// <list type="bullet">

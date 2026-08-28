@@ -100,7 +100,7 @@ public sealed class WorkflowEditToolsTests
         api.Server.Given(Request.Create().WithPath($"/api/workflows/{id}/publish").UsingPost())
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(Wf(id, "WF", current)));
 
-        // Edge to a non-existent node → structurally invalid.
+        // Edge to a non-existent node -> structurally invalid.
         var ops = """[{"op":"upsertEdge","edge":{"id":"e1","source":"n1","target":"ghost"}}]""";
         var tools = new WorkflowEditTools(api.Client());
 

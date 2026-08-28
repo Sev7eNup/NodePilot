@@ -2,12 +2,12 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, capsJson, mockCaps } from './fixtures/mockApi';
 
 /**
- * E2ETests.md — AI workflow assistant (explain + edit). The violet toolbar button
- * (next to the Standard/Expert toggle) opens a docked chat panel. Asking returns a Markdown
- * reply; a change request returns a proposal with an Apply button — gated on Admin/Operator.
+ * AI workflow assistant (explain and edit). The toolbar button next to the Standard/Expert
+ * toggle opens a docked chat panel. A question returns a Markdown reply; a change request
+ * returns a proposal whose Apply button is limited to Admin and Operator.
  *
- * Hermetic: all APIs via page.route, incl. POST /api/ai/chat. SPA renders ENGLISH under
- * Playwright. The chat mock echoes the request's baseDefinitionHash so the stale-guard passes.
+ * Hermetic: every API is mocked via page.route, including POST /api/ai/chat. The SPA renders
+ * English under Playwright. The chat mock echoes baseDefinitionHash so the stale guard passes.
  */
 
 const WF_ID = 'a1a1a1a1-b2b2-c3c3-d4d4-e5e5e5e5e5e5';
@@ -84,13 +84,13 @@ test.describe('KI-Workflow-Assistent', () => {
   });
 
   test('assistant button is hidden when no LLM endpoint is usable', async ({ page }) => {
-    // Overrides the suite default (llm: true) — without a usable LLM the toolbar button never
-    // renders; the 503-in-panel state is only reachable via a mid-session config flip.
+    // Overrides the suite default (llm: true). Without a usable LLM the toolbar button never
+    // renders; a 503 inside the panel is only reachable through a mid-session config change.
     await mockCaps(page, capsJson({ llm: false, enabled: false, docs: false, operational: false, sourceCode: false, db: false }));
     await openEditor(page);
 
     await expect(page.getByTestId('toggle-ai-assistant')).toHaveCount(0);
-    // The neighbouring designer-mode toggle proves the header itself rendered.
+    // The adjacent designer-mode toggle confirms the header itself rendered.
     await expect(page.getByRole('button', { name: 'Standard' })).toBeVisible();
   });
 
@@ -131,12 +131,12 @@ test.describe('KI-Workflow-Assistent', () => {
     const panel = page.getByRole('complementary', { name: /AI workflow assistant/i });
     await expect(panel).toBeVisible();
 
-    // Chat and properties share the right slot — selecting on the canvas wins it back.
+    // Chat and properties share the right slot; selecting a node on the canvas takes it back.
     await page.locator('.react-flow__node[data-id="step-b"]').click({ position: { x: 15, y: 15 } });
     await expect(panel).toHaveCount(0);
     await expect(page.getByText(/log message/i).first()).toBeVisible();
 
-    // …and reopening the assistant overlays the properties again.
+    // Reopening the assistant overlays the properties again.
     await page.getByTestId('toggle-ai-assistant').click();
     await expect(panel).toBeVisible();
   });

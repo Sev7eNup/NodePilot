@@ -14,9 +14,9 @@ export function ScheduleTriggerConfig({ config, onUpdate }: Readonly<ConfigProps
     { label: t('triggers:scheduleTrigger.presetMonFri8Am'), cron: '0 0 8 ? * MON-FRI' },
   ];
 
-  // Preview of the next 5 fire times. Computed client-side (cron-parser) so the user gets
-  // instant feedback without an API round-trip. On an invalid cron expression we show the
-  // parser's error message prominently — helps catch typos early.
+  // Preview of the next 5 fire times, computed client-side with cron-parser so the user gets
+  // immediate feedback without an API round-trip. An invalid expression shows the parser's
+  // error message instead.
   const cron = (config.cronExpression as string) || '';
   const preview = useMemo(() => previewSchedule(cron, 5), [cron]);
 
@@ -42,9 +42,9 @@ export function ScheduleTriggerConfig({ config, onUpdate }: Readonly<ConfigProps
           </button>
         ))}
       </div>
-      {/* Next-fire-times preview: visually verifies the cron syntax. If the user types an
-          invalid expression, they see the parser's error message immediately instead of only
-          discovering a trigger-sync failure in the log file after saving. */}
+      {/* Next-fire-times preview, so the cron syntax can be checked before saving. An invalid
+          expression surfaces the parser error here rather than as a trigger-sync failure in
+          the log. */}
       {cron.trim() && (
         <div className="rounded-md border border-outline-variant/30 bg-surface-high/50 p-2.5">
           <div className="flex items-center gap-1.5 mb-1.5">

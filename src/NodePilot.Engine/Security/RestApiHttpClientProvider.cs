@@ -65,7 +65,8 @@ public sealed class RestApiHttpClientProvider
 
     /// <summary>
     /// Build the primary message handler for the named "NodePilot" HttpClient from
-    /// <c>RestApi:Proxy:*</c>. Called once at startup via <c>ConfigurePrimaryHttpMessageHandler</c>.
+    /// <c>RestApi:Proxy:*</c>. Called once at startup via
+    /// <c>ConfigurePrimaryHttpMessageHandler</c>.
     /// The <paramref name="configuration"/> is captured by the SocketsHttpHandler's
     /// ConnectCallback so the SSRF policy is re-evaluated at TCP-connect time for direct
     /// and no-proxy-bypassed requests. A forward proxy hides destination DNS from the

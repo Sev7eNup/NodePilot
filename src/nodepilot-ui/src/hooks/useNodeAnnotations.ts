@@ -14,27 +14,28 @@ type LiveExecution = {
 
 type SelectedItem = { type: 'node' | 'edge'; id: string } | null;
 
-// Stable empty-set reference — returned by varFlowEdgeIds when no hover is active. Module-level
-// so the useMemo doesn't return a fresh Set() per render and retrigger the effect's deps.
+// Stable empty-set reference returned by varFlowEdgeIds when no hover is active. Module-level so
+// the useMemo does not hand out a fresh Set per render and retrigger the effect deps.
 const EMPTY_EDGE_SET = new Set<string>();
 
 export interface NodeAnnotationsApi {
-  /** [{id, name, colorIdx}] in stable color-assignment order — for the machine-coloring legend. */
+  /** [{id, name, colorIdx}] in stable color-assignment order, for the machine-coloring legend. */
   legendMachines: { id: string; name: string; colorIdx: number }[];
-  /** Pass to PropertiesPanel as `onVarHover` — hovers on a variable row light up its producer + path. */
+  /** Pass to PropertiesPanel as `onVarHover`; hovering a variable row highlights the producer
+   *  node and the path leading to it. */
   handleVarHover: (producerNodeId: string | null) => void;
 }
 
 /**
- * Bundles every "annotate the node graph for visual purposes" effect:
- *   - __liveStatus  ← SignalR live execution + scrubbable replay
- *   - __health      ← /step-health (last 8 outcomes per node, sparkline)
- *   - __stats       ← /step-stats (avg/p95/failureRate; backs perf annotations + heatmap)
- *   - __machineColorIdx ← stable color index per unique target machine
- *   - __varFlowRole on nodes + __varFlowHighlighted on edges ← producer/consumer hover highlight
+ * Bundles the effects that annotate the node graph for display:
+ *   - __liveStatus: from the SignalR live execution and scrubbable replay
+ *   - __health: from /step-health (last 8 outcomes per node, sparkline)
+ *   - __stats: from /step-stats (avg/p95/failureRate; backs perf annotations and heatmap)
+ *   - __machineColorIdx: stable color index per unique target machine
+ *   - __varFlowRole on nodes and __varFlowHighlighted on edges: producer/consumer hover highlight
  *
- * Kept in one hook because they all share the same `setNodes`/`setEdges` and react to overlapping
- * inputs — splitting would multiply prop-drilling and re-renders without a clarity win.
+ * They live in one hook because they share the same `setNodes`/`setEdges` and react to
+ * overlapping inputs.
  */
 export function useNodeAnnotations({
   workflowId,
@@ -120,10 +121,8 @@ export function useNodeAnnotations({
   });
 
   // `nodes` belongs in the deps: after save/publish/lock the editor rebuilds `nodes` from
-  // `definitionJson`, which drops __health — without re-running here the dots would stay gone
-  // until the next 60 s refetch. The stable-ref pattern (return the original array when nothing
-  // changed) is what keeps that from turning into a render loop. Same reasoning as the
-  // __workflowEnabled effect below; don't "clean up" the deps.
+  // `definitionJson`, which drops __health, and without a re-run the dots stay gone until the
+  // next refetch. Returning the original array when nothing changed keeps that from looping.
   useEffect(() => {
     if (!stepHealth) return;
     setNodes((nds: Node[]) => {
@@ -157,8 +156,8 @@ export function useNodeAnnotations({
     staleTime: 60_000,
   });
 
-  // `nodes` in the deps + stable-ref pattern, for the same reason as __health above (a node
-  // rebuild from `definitionJson` would otherwise strip __stats for up to 5 minutes).
+  // `nodes` in the deps plus the stable-ref pattern, for the same reason as __health above: a
+  // node rebuild from `definitionJson` would otherwise strip __stats until the next refetch.
   useEffect(() => {
     if (!stepStats) return;
     setNodes((nds: Node[]) => {
@@ -181,14 +180,11 @@ export function useNodeAnnotations({
     });
   }, [stepStats, nodes, setNodes]);
 
-  // ---- __workflowEnabled: false marks the workflow disabled — custom nodes pause their
-  // live-ticking indicators (e.g. the scheduleTrigger countdown) based on this flag. Enabled
-  // is the default, so we remove the annotation again on true instead of setting it everywhere.
-  //
-  // The deps array must include `nodes`: after `lock`/`unlock`/`publish`/`disable` the editor
-  // refetches the workflow definition and rebuilds `nodes` from `definitionJson`, which would
-  // otherwise wipe out the annotation. The stable-ref pattern (return the original array when
-  // nothing changed) avoids the render loop that would otherwise result. ----
+  // ---- __workflowEnabled: false marks the workflow disabled, so custom nodes pause their
+  // live-ticking indicators (e.g. the scheduleTrigger countdown). Enabled is the default, so the
+  // annotation is removed again on true instead of being set everywhere. `nodes` stays in the
+  // deps because lock/unlock/publish/disable rebuild `nodes` from `definitionJson` and would
+  // wipe the annotation; returning the original array when nothing changed avoids a loop. ----
   useEffect(() => {
     setNodes((nds: Node[]) => {
       let mutated = false;
@@ -211,10 +207,9 @@ export function useNodeAnnotations({
 
   // ---- __machineColorIdx: stable color index per unique target machine ----
   const machineColoringEnabled = useDesignStore((s) => s.machineColoringEnabled);
-  // Value-based cache key: recompute only when the assigned machines actually change, not on
-  // every new `nodes` array identity (which the designer produces on any drag). Hoisted into a
-  // local because the dependency list has to be a list of simple expressions
-  // (react-hooks/use-memo) — an inline `.map().join()` in the array is rejected.
+  // Value-based cache key: recompute only when the assigned machines change, not on every new
+  // `nodes` array identity (the designer produces one on any drag). Hoisted into a local because
+  // the dependency list must contain simple expressions (react-hooks/use-memo).
   const targetMachineIdKey = nodes
     .map((n) => (n.data as Record<string, unknown>).targetMachineId)
     .join(',');
@@ -225,8 +220,7 @@ export function useNodeAnnotations({
         .map((n) => (n.data as Record<string, unknown>).targetMachineId as string | null)
         .filter((id): id is string => !!id && !id.startsWith('{{'))
     )].sort((a, b) => a.localeCompare(b)),
-    // Intentionally keyed on the derived string rather than `nodes` — that is the point of the
-    // memo. Depending on `nodes` would defeat it entirely.
+    // Keyed on the derived string rather than `nodes`; depending on `nodes` would defeat the memo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [targetMachineIdKey],
   );
@@ -284,8 +278,8 @@ export function useNodeAnnotations({
     }));
   }, [varFlowProducerId, selected, setNodes]);
 
-  // Edge-topology key (source→target only): stable across data-only edge updates so the
-  // path memo doesn't recompute when __varFlowHighlighted itself flips.
+  // Edge-topology key (source and target only): stable across data-only edge updates, so the
+  // path memo does not recompute when __varFlowHighlighted flips.
   const edgeTopologyKey = useMemo(
     () => edges.map((e) => `${e.id}:${e.source}:${e.target}`).join('|'),
     [edges],
@@ -312,8 +306,8 @@ export function useNodeAnnotations({
         }
         return { ...e, data: { ...e.data, __varFlowHighlighted: true } };
       });
-      // Return original ref when nothing changed — prevents React Flow from emitting a new
-      // edges array, which would retrigger varFlowEdgeIds via the topology-key memo.
+      // Return the original ref when nothing changed, so React Flow does not emit a new edges
+      // array and retrigger varFlowEdgeIds through the topology-key memo.
       return anyChanged ? next : eds;
     });
   }, [varFlowEdgeIds, setEdges]);

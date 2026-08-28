@@ -107,7 +107,8 @@ public sealed class BackupRestoreServiceTests : IDisposable
 
         result.Sections.Should().Contain(r => r.Section == BackupSections.Workflows && r.Created == 1);
 
-        // Credential password rewrapped under the target's at-rest protector → decrypts to original.
+        // Credential password rewrapped under the target's at-rest protector to decrypts to
+        // original.
         var cred = dst.Credentials.Single(c => c.Name == "svc");
         _atRest.Unprotect(cred.EncryptedPassword).Should().Be("the-password");
         cred.Id.Should().Be(credId, "a fresh DB reuses the backup sourceId");
@@ -117,7 +118,8 @@ public sealed class BackupRestoreServiceTests : IDisposable
         // Machine.DefaultCredentialId remapped onto the restored credential (K3/K4).
         dst.ManagedMachines.Single(m => m.Name == "web01").DefaultCredentialId.Should().Be(cred.Id);
 
-        // Workflow definition: inline apiKey decrypted back to plaintext; GUID refs remapped (identity here, K13).
+        // Workflow definition: inline apiKey decrypted back to plaintext; GUID refs remapped
+        // (identity here, K13).
         var def = (JsonObject)JsonNode.Parse(dst.Workflows.Single(w => w.Name == "wf1").DefinitionJson)!;
         var data = def["nodes"]![0]!["data"]!;
         data["config"]!["apiKey"]!.GetValue<string>().Should().Be("super-secret-key");
@@ -372,7 +374,8 @@ public sealed class BackupRestoreServiceTests : IDisposable
     [Fact]
     public async Task Restore_WouldLeaveNoActiveAdmin_Aborts()
     {
-        // Source carries 'admin' as a Viewer; overwriting the target's only Admin would orphan the system.
+        // Source carries 'admin' as a Viewer; overwriting the target's only Admin would orphan the
+        // system.
         using var src = TestDbFactory.Create();
         var sharedUserId = Guid.NewGuid();
         src.Users.Add(new User { Id = sharedUserId, Username = "admin", Role = UserRole.Viewer, PasswordHash = "h", IsActive = true });
@@ -538,7 +541,8 @@ public sealed class BackupRestoreServiceTests : IDisposable
     public async Task Restore_UnresolvableWorkflowReference_Aborts()
     {
         using var src = TestDbFactory.Create();
-        // Workflow references a machine GUID that is not a real machine row → absent from the export.
+        // Workflow references a machine GUID that is not a real machine row to absent from the
+        // export.
         var bogus = Guid.NewGuid();
         var def = "{\"nodes\":[{\"id\":\"s1\",\"type\":\"activity\",\"data\":{\"activityType\":\"runScript\",\"targetMachineId\":\"" + bogus + "\",\"config\":{}}}],\"edges\":[]}";
         src.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "wf", DefinitionJson = def, FolderId = SharedWorkflowFolder.RootFolderId });
@@ -617,7 +621,8 @@ public sealed class BackupRestoreServiceTests : IDisposable
         var backup = await ExportAsync(src, [BackupSections.Folders]);
 
         using var dst = TestDbFactory.Create();
-        // Pre-existing /team forces the restored "team" to rename; the child "sub" must then derive its
+        // Pre-existing /team forces the restored "team" to rename; the child "sub" must then derive
+        // its
         // Path from the *renamed* parent, not the stale backup path "/team/sub".
         dst.SharedWorkflowFolders.Add(new SharedWorkflowFolder
         {
@@ -648,8 +653,10 @@ public sealed class BackupRestoreServiceTests : IDisposable
         var backup = await ExportAsync(src, [BackupSections.Users, BackupSections.GlobalVariableFolders, BackupSections.GlobalVariables]);
 
         using var dst = TestDbFactory.Create();
-        // Pre-existing /Environment forces the restored "Environment" to rename; the child "Prod" must
-        // then derive its Path from the renamed parent, and the variable must stay in the restored child.
+        // Pre-existing /Environment forces the restored "Environment" to rename; the child "Prod"
+        // must
+        // then derive its Path from the renamed parent, and the variable must stay in the restored
+        // child.
         dst.GlobalVariableFolders.Add(new GlobalVariableFolder
         {
             Id = Guid.NewGuid(), ParentFolderId = GlobalVariableFolder.RootFolderId, Name = "Environment", Path = "/Environment", Depth = 1,

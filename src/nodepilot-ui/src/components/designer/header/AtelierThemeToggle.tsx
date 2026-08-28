@@ -4,7 +4,7 @@ import { useDesignStore } from '../../../stores/designStore';
 
 /**
  * Switches the designer between the Atelier design language and the classic look.
- * Deliberately a `role="switch"` BUTTON, not a checkbox input — a global checkbox in the
+ * Deliberately a `role="switch"` button, not a checkbox input — a global checkbox in the
  * editor header would get caught by e2e specs using `getByRole('checkbox').first()`.
  * Rendered trailing in both header layouts; persisted in `designStore.designerTheme`.
  */

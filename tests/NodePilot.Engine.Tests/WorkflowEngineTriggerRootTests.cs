@@ -16,7 +16,7 @@ namespace NodePilot.Engine.Tests;
 /// Regression tests for the "deleted edge still runs downstream" bug. Roots are trigger-ONLY:
 /// only trigger nodes are entry points. Orphaned activities (inDegree 0 but not a trigger) are
 /// skipped, so a user-deleted incoming edge no longer silently promotes its target to an entry
-/// point. A workflow without any (enabled) trigger node has NO root → the execution fails.
+/// point. A workflow without any (enabled) trigger node has NO root -> the execution fails.
 /// </summary>
 [Collection("SerialEngineTests")]
 public class WorkflowEngineTriggerRootTests
@@ -175,7 +175,8 @@ public class WorkflowEngineTriggerRootTests
     public async Task ExecuteAsync_NonManualTriggerRoot_RunsTheWorkflow()
     {
         // Roots are EVERY trigger type — a scheduleTrigger is a valid entry point (the node just
-        // runs as a pass-through at execution time; the actual scheduling is the orchestrator's job).
+        // runs as a pass-through at execution time; the actual scheduling is the orchestrator's
+        // job).
         // This pins the rule that a workflow's root nodes are every trigger type, not just
         // manualTrigger.
         const string json = """
@@ -204,8 +205,8 @@ public class WorkflowEngineTriggerRootTests
     [Fact]
     public async Task ExecuteAsync_OnlyTriggerIsDisabled_FailsWithNoRootNodes()
     {
-        // The single trigger is disabled → it is NOT a root → the graph has no entry point →
-        // the execution fails (a disabled trigger must never silently promote downstream to a root).
+        // A disabled trigger is not a root, leaving the graph without an entry point. Downstream
+        // nodes must not be promoted to roots implicitly.
         const string json = """
         {
           "nodes": [
@@ -231,11 +232,8 @@ public class WorkflowEngineTriggerRootTests
     [Fact]
     public async Task ExecuteAsync_MultipleTriggers_AllFireAsRoots()
     {
-        // Two enabled triggers (manual + schedule), each feeding its own branch. Both are roots →
-        // both branches run. This reflects the current model, after an earlier proposal to
-        // restrict callable sub-workflows to manualTrigger-only was dropped: every trigger node
-        // is an entry point. (A child invoked via startWorkflow can therefore start from
-        // whatever trigger it has.)
+        // Each enabled trigger is an entry point, so the manual and schedule branches both run.
+        // The same rule applies when a child workflow is invoked through startWorkflow.
         const string json = """
         {
           "nodes": [

@@ -19,7 +19,8 @@ namespace NodePilot.Engine.Tests.Retention;
 /// operator types a smaller number, and a live Enabled=false has to park the sweep rather than
 /// require a restart. The heartbeat write is deliberately not asserted: SystemHealthWriter
 /// debounces through a process-static map keyed by service name, so whether a given pass
-/// writes depends on what other tests in the same run did — an order-dependent assertion. <see cref="AuditLogRetentionServiceTests"/> covers the archive writing.
+/// writes depends on what other tests in the same run did — an order-dependent assertion. <see
+/// cref="AuditLogRetentionServiceTests"/> covers the archive writing.
 /// </summary>
 public sealed class AuditLogRetentionIterationTests : IAsyncDisposable
 {

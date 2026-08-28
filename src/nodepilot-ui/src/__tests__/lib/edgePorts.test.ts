@@ -80,8 +80,8 @@ describe('withDefaultEdgePorts', () => {
     const edge = { id: 'e1', source: 'a', target: 'b', sourceHandle: 'diagonal', targetHandle: 'top' } as unknown as Edge;
     const result = withDefaultEdgePorts(edge);
     expect(result).not.toBe(edge);
-    expect(result.sourceHandle).toBe('right'); // invalid → default
-    expect(result.targetHandle).toBe('top');   // valid → kept
+    expect(result.sourceHandle).toBe('right'); // invalid, so the default applies
+    expect(result.targetHandle).toBe('top');   // valid, so it is kept
   });
 });
 
@@ -121,14 +121,13 @@ describe('getPortPoint', () => {
 });
 
 /**
- * `nearestPortPoint` entscheidet beim Edge-Detach, an welchem der vier Punkte die Edge
- * landet. Es nimmt EXPLIZITE Punkte statt einer Node-Größe — die Handles sitzen nicht
- * zwingend auf dem Rand des Node-Rechtecks (innerer Shape-Wrapper, Label darunter,
- * `handleInset`). Gepinnt: Auswahl je Richtung, Gleichstand-Regel, Zoom-Invarianz und der
- * Umgang mit unvollständigen Punktlisten.
+ * `nearestPortPoint` decides which of the four points an edge lands on during edge detach.
+ * It takes explicit points instead of a node size, because handles do not necessarily sit on
+ * the border of the node rectangle (inner shape wrapper, label below, `handleInset`). Covered
+ * here: the pick per direction, the tie rule, zoom invariance, and partial point lists.
  */
 describe('nearestPortPoint', () => {
-  // 200×80-Node bei (0,0): Ports auf den Kantenmitten.
+  // 200x80 node at (0,0): ports sit at the midpoints of the sides.
   const points: PortPoint[] = [
     { port: 'top', x: 100, y: 0 },
     { port: 'right', x: 200, y: 40 },
@@ -144,13 +143,13 @@ describe('nearestPortPoint', () => {
   });
 
   it('returnsTheFullPointNotJustTheSide', () => {
-    // Der Aufrufer braucht die Koordinate, um die Vorschau-Linie dort andocken zu lassen.
+    // The caller needs the coordinate to anchor the preview line at that point.
     expect(nearestPortPoint(points, 8, 42)).toEqual({ port: 'left', x: 0, y: 40 });
   });
 
   it('exactCentre_resolvesToHorizontal', () => {
-    // Alle vier Punkte sind hier NICHT gleich weit weg (200×80), aber bei einem quadratischen
-    // Node schon — dann muss die Horizontale gewinnen, passend zum Links-nach-rechts-Default.
+    // On a square node all four points are equally far away; the horizontal side wins then,
+    // matching the left-to-right default.
     const square: PortPoint[] = [
       { port: 'top', x: 50, y: 0 },
       { port: 'right', x: 100, y: 50 },
@@ -161,7 +160,7 @@ describe('nearestPortPoint', () => {
   });
 
   it('scaledCoordinates_pickTheSamePort', () => {
-    // Zoom skaliert alle Distanzen gleichförmig → der Gewinner darf sich nicht ändern.
+    // Zoom scales all distances uniformly, so the winner must not change.
     const zoomed = points.map((p) => ({ ...p, x: p.x * 2.5, y: p.y * 2.5 }));
     expect(nearestPortPoint(zoomed, 102 * 2.5, 4 * 2.5)?.port).toBe('top');
   });

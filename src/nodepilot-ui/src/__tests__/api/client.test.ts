@@ -24,8 +24,8 @@ beforeEach(() => {
   queryClient.clear();
   useAiChatStore.setState({ messagesByThread: {}, threadsByScope: {}, activeThreadByScope: {} });
   useAuthStore.setState({ userId: null, username: null, role: null, isAuthenticated: null });
-  // Clear cookies between tests. `document.cookie` accepts one entry at a time;
-  // walking the current string and expiring each entry is the jsdom idiom.
+  // Clear cookies between tests. `document.cookie` accepts one entry at a time,
+  // so walk the current string and expire each entry.
   if (typeof document !== 'undefined') {
     document.cookie.split(';').forEach((c) => {
       const name = c.split('=')[0].trim();
@@ -72,8 +72,8 @@ describe('API Client', () => {
   });
 
   it('get_sendsCredentialsInclude', async () => {
-    // Audit H-5: the browser now attaches the np_auth httpOnly cookie via
-    // `credentials: 'include'` instead of an Authorization header.
+    // The browser attaches the np_auth httpOnly cookie via `credentials: 'include'`
+    // instead of an Authorization header.
     let capturedCredentials: RequestCredentials | undefined;
     const originalFetch = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
@@ -94,8 +94,8 @@ describe('API Client', () => {
   });
 
   it('post_sendsCsrfHeaderFromCookie', async () => {
-    // Double-submit pattern: the mutating request must echo the np_csrf cookie
-    // value back in the X-CSRF-Token header. Plant the cookie before firing.
+    // Double-submit pattern: a mutating request must echo the np_csrf cookie value
+    // back in the X-CSRF-Token header, so set the cookie before sending.
     document.cookie = 'np_csrf=test-csrf-value; path=/';
 
     let capturedCsrf: string | null = null;
@@ -114,8 +114,8 @@ describe('API Client', () => {
   });
 
   it('get_doesNotSendCsrfHeader', async () => {
-    // Safe methods skip the CSRF header — the server would ignore it anyway but
-    // keeping reads clean avoids stamping every cached GET with a user-specific value.
+    // Safe methods skip the CSRF header. The server ignores it, and leaving it off keeps
+    // cached GETs free of a user-specific value.
     document.cookie = 'np_csrf=some-value; path=/';
 
     let capturedCsrf: string | null = null;
@@ -151,9 +151,9 @@ describe('API Client', () => {
   });
 
   it('get_401_redirectsToLogin', async () => {
-    // H-5 migration: no token lives in localStorage, so there's nothing to remove —
-    // the redirect alone signals an expired/revoked cookie, and the backend already
-    // scrubs the np_auth cookie from subsequent responses.
+    // No token lives in localStorage, so there is nothing to remove. The redirect alone
+    // signals an expired or revoked cookie, and the backend scrubs the np_auth cookie
+    // from subsequent responses.
     server.use(
       http.get(`${BASE}/api/protected`, () => {
         return new HttpResponse(null, { status: 401 });
@@ -338,7 +338,7 @@ describe('API Client', () => {
   it('post_401_onLoginPage_surfacesServerPayloadWithoutRedirect', async () => {
     // LoginPage needs the server's 401 payload to bubble up so it can tell a wrong
     // password from the SETUP_TOKEN_REQUIRED bootstrap gate. Redirecting from /login
-    // to /login would swallow the error and potentially infinite-loop.
+    // to /login would swallow the error and can loop.
     Object.defineProperty(window, 'location', {
       value: { href: '/login', pathname: '/login' },
       writable: true,
@@ -385,9 +385,8 @@ describe('API Client', () => {
   });
 
   it('get_503WithCode_throwsApiErrorCarryingStatusCodeAndRetryAfter', async () => {
-    // The whole outage UX branches on these fields instead of substring-matching prose - if they
-    // stop being carried, the banner, the login third-branch and the auth re-probe all regress
-    // to guessing from display strings.
+    // The outage UX branches on these fields instead of matching message text, so the banner,
+    // the login page and the auth re-probe all depend on them being carried.
     server.use(
       http.get(`${BASE}/api/workflows`, () => {
         return HttpResponse.json(
@@ -406,8 +405,7 @@ describe('API Client', () => {
     expect(apiErr.status).toBe(503);
     expect(apiErr.code).toBe('DATABASE_UNAVAILABLE');
     expect(apiErr.retryAfterSeconds).toBe(15);
-    // The display string keeps its established "message (CODE)" shape for everything that still
-    // renders err.message.
+    // The display string keeps the "message (CODE)" shape for callers that render err.message.
     expect(apiErr.message).toContain('DATABASE_UNAVAILABLE');
     expect(isDatabaseOutageError(apiErr)).toBe(true);
   });

@@ -41,9 +41,9 @@ type LlmProfileDto = {
   enableToolCalling: boolean;
   toolCallMaxDepth: number;
   /**
-   * Response-only. Non-null ⇒ the profile also exists in a configuration source below the runtime
-   * overrides file, so deleting it here wouldn't stick — the entry would resurface on the next
-   * reload. Editing still works (the override wins).
+   * Response-only. Non-null means the profile also exists in a configuration source below the
+   * runtime overrides file, so deleting it here wouldn't stick — the entry would resurface on
+   * the next reload. Editing still works (the override wins).
    */
   managedBy: string | null;
 };
@@ -594,18 +594,10 @@ function LlmCard() {
 }
 
 /**
- * Outbound proxy for every LLM call. Section-level rather than per profile, so it sits below the
- * profile list instead of inside {@link LlmProfileForm}: one connection pool, one setting.
- *
- * Rendered as a disclosure panel that borrows the profile editor's shell, for two reasons. It is
- * a peer of the profile block, not a trailing remark — on the bare card surface a lone select
- * under a heading read as something left behind. And `off` is the mode almost every installation
- * runs, so the panel collapses to a header plus the effective mode and stops spending vertical
- * space on a setting that is doing nothing.
- *
- * The address/credential fields only appear in `custom` mode — in `system` mode they would be
- * inert, and a visible-but-ignored address field is exactly the kind of thing that gets filled in
- * and then debugged for an hour.
+ * Outbound proxy for every LLM call, section-level rather than per profile: one connection
+ * pool, one setting for the whole feature. Rendered as a disclosure panel that collapses to
+ * just the effective mode when off (the common case), and only shows the address/credential
+ * fields in `custom` mode, since they would be inert in `system` mode.
  */
 function LlmProxyForm({
   proxy, secret, hasPersistedPassword, effectiveSource, isEnvLocked, onPatch, onSecretChange,

@@ -5,11 +5,11 @@ import { VariableSuggestionsDropdown } from '../../../components/designer/proper
 import type { VariableSuggestion } from '../../../components/designer/properties/useVariableAutocomplete';
 
 /**
- * VariableSuggestionsDropdown is a portalled list anchored under an input. Pin:
- *   - Hidden when open=false
- *   - Hidden when suggestions=[] even if open
- *   - Renders one button per suggestion with code+label
- *   - selectedIdx row gets the highlight class (bg-primary-fixed)
+ * VariableSuggestionsDropdown is a portalled list anchored under an input. Covered here:
+ *   - hidden when open=false
+ *   - hidden when suggestions=[] even if open
+ *   - renders one button per suggestion with code and label
+ *   - the selectedIdx row gets the highlight class (bg-primary-fixed)
  *   - onMouseDown on a row calls onPick with the suggestion's expression
  *   - showHelp toggles the bottom hint
  */
@@ -95,7 +95,7 @@ describe('VariableSuggestionsDropdown', () => {
 
   it('mouseDown_isPreventedToPreventBlur', () => {
     // The dropdown uses onMouseDown (not onClick) and calls e.preventDefault() so the
-    // anchored input doesn't lose focus before the pick fires. Pin this contract.
+    // anchored input does not lose focus before the pick fires.
     const onPick = vi.fn();
     render(
       <Harness

@@ -14,19 +14,18 @@ export interface TemplateValidationResult {
   issues: TemplateValidationIssue[];
 }
 
-// manual.* is runtime-injected (trigger data / forEach child params like {{manual.item}}) —
-// it must be tolerated like globals.*, matching workflowLint's runtimePrefixes; the previous
-// shape rejected it as an inline ERROR while the publish-time lint accepted it.
+// manual.* is injected at runtime (trigger data, forEach child params like {{manual.item}}) and
+// must be tolerated like globals.*, matching workflowLint's runtimePrefixes.
 const ENGINE_REFERENCE_RE = /^(globals\.[A-Za-z_][\w.-]*|manual\.[A-Za-z0-9_-][\w.-]*|[A-Za-z0-9_-]+\.(output|error|errorOutput|success|param\.[\w-]+))$/;
 
-// Namespaces resolved at runtime whose members cannot be enumerated at lint time —
-// never warn "not in upstream" for these.
+// Namespaces resolved at runtime whose members cannot be enumerated at lint time.
+// These never produce a "not in upstream" warning.
 const RUNTIME_HEADS = new Set(['globals', 'manual']);
 
 export function hasTemplatePlaceholder(value: string): boolean {
-  // Defensive: field values are typed `string`, but malformed/legacy node data can carry a
-  // non-string (e.g. a restApi `headers` object). A single bad field must never crash the whole
-  // properties panel — treat non-strings as "no placeholder".
+  // Field values are typed `string`, but malformed node data can carry a non-string (e.g. a
+  // restApi `headers` object). Treat non-strings as having no placeholder so one bad field
+  // cannot crash the properties panel.
   return typeof value === 'string' && (value.includes('{{') || value.includes('}}'));
 }
 
@@ -59,9 +58,9 @@ export function validateTemplateExpression(
     if (!token) {
       issues.push({ severity: 'error', message: i18n.t('properties:template.empty'), token: '{{}}' });
     } else if (token.includes('{{')) {
-      // Nested/dynamic construction ({{globals.{{x}}}} etc.) — the linear scan cannot
-      // tokenize this reliably, so skip rather than mis-flag it. Consume one closing
-      // '}}' per nested open so the leftovers don't read as "closing without opening".
+      // Nested construction ({{globals.{{x}}}} etc.) cannot be tokenized reliably by this
+      // linear scan, so skip it. Consume one closing '}}' per nested open so the leftovers
+      // are not reported as a closing without an opening.
       let extraOpens = (token.match(/\{\{/g) ?? []).length;
       let scan = close + 2;
       while (extraOpens > 0) {
@@ -81,8 +80,8 @@ export function validateTemplateExpression(
     } else if (!RUNTIME_HEADS.has(token.split('.')[0]) && upstreamVars.length > 0 && !knownRefs.has(token)) {
       const head = token.split('.')[0];
       const tail = token.slice(head.length + 1);
-      // .error/.success/.errorOutput exist on EVERY step but the picker only lists
-      // .output + params — a known producer with one of these tails is fine, not a warning.
+      // .error/.success/.errorOutput exist on every step, but the picker only lists .output
+      // and params, so a known producer with one of these tails is not a warning.
       const engineTailOnKnownHead = knownHeads.has(head)
         && (tail === 'error' || tail === 'success' || tail === 'errorOutput');
       if (!engineTailOnKnownHead) {

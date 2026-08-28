@@ -97,7 +97,7 @@ public class CommandIntegrationTests
     public void AuthLogout_ServerUnreachable_StillWipesLocalSession()
     {
         using var h = new CommandTestHarness();
-        // No mapping for /api/auth/logout → WireMock returns 404, command must still
+        // No mapping for /api/auth/logout -> WireMock returns 404, command must still
         // delete the local session so the user isn't stuck with a bad token.
         var result = h.Run("auth", "logout");
         result.ExitCode.Should().Be(ExitCodes.Success);
@@ -465,7 +465,10 @@ public class CommandIntegrationTests
     {
         using var h = new CommandTestHarness();
         h.Server.Given(Request.Create().WithPath("/api/executions").UsingGet())
-            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(Array.Empty<object>()));
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                items = Array.Empty<object>(), page = 1, pageSize = 200, total = 0, totalPages = 0,
+            }));
 
         var result = h.Run("exec", "list");
         result.ExitCode.Should().Be(ExitCodes.Success);
@@ -480,7 +483,10 @@ public class CommandIntegrationTests
             .RespondWith(Response.Create().WithStatusCode(200).WithBody(Single(workflowId, "Build")));
         h.Server.Given(Request.Create().WithPath("/api/executions").UsingGet()
                 .WithParam("workflowId", workflowId.ToString()))
-            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(Array.Empty<object>()));
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                items = Array.Empty<object>(), page = 1, pageSize = 200, total = 0, totalPages = 0,
+            }));
 
         var result = h.Run("exec", "list", "--workflow", workflowId.ToString(), "--limit", "5");
         result.ExitCode.Should().Be(ExitCodes.Success);
@@ -532,7 +538,7 @@ public class CommandIntegrationTests
     {
         using var h = new CommandTestHarness();
         var execId = Guid.NewGuid();
-        // First poll → Running, second → Succeeded.
+        // First poll -> Running, second -> Succeeded.
         var scenario = "watch-" + execId;
         h.Server.Given(Request.Create().WithPath($"/api/executions/{execId}").UsingGet())
             .InScenario(scenario).WillSetStateTo("step-1")

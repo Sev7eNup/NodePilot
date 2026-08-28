@@ -4,8 +4,10 @@ using NodePilot.Api.Configuration;
 namespace NodePilot.Api.Hosting;
 
 /// <summary>
-/// Strongly typed runtime limits for the application-database availability probe and readiness check.
-/// Every duration and threshold is strictly positive: zero has provider-specific "infinite" semantics
+/// Strongly typed runtime limits for the application-database availability probe and readiness
+/// check.
+/// Every duration and threshold is strictly positive: zero has provider-specific "infinite"
+/// semantics
 /// and is therefore never a safe value on the only path that can close the breaker.
 /// </summary>
 public sealed class DatabaseAvailabilityOptions
@@ -51,7 +53,8 @@ public sealed class DatabaseAvailabilityOptions
     }
 }
 
-/// <summary>Rejects non-positive availability limits before the host and its probe are built.</summary>
+/// <summary>Rejects non-positive availability limits before the host and its probe are
+/// built.</summary>
 public sealed class DatabaseAvailabilityOptionsBootValidator : IBootValidator
 {
     public string Name => "DatabaseAvailabilityOptions";

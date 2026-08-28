@@ -10,7 +10,8 @@ namespace NodePilot.Scheduler.Notifications;
 /// <summary>
 /// Shared body of the in-flight execution-age collectors (long-running, queued-long). Both scan
 /// executions that have been sitting in ONE non-terminal status longer than <see cref="Threshold"/>
-/// and emit one execution-scoped context per row; they differ only in the config key, the event type,
+/// and emit one execution-scoped context per row; they differ only in the config key, the event
+/// type,
 /// the scanned status and the EventKey prefix. Each flavour stays its own collector instance so its
 /// EventKey shape keeps exactly one owner across collection AND crash recovery.
 /// </summary>
@@ -61,7 +62,7 @@ internal abstract class ElapsedExecutionCollector : INotificationCollector
         var rules = enabledRules
             .Where(r => NotificationRuleSemantics.RuleWants(r, _eventType))
             .ToList();
-        if (rules.Count == 0) return null; // nothing to alert on → skip the scan entirely
+        if (rules.Count == 0) return null; // nothing to alert on -> skip the scan entirely
 
         var cutoff = now - Threshold;
         // Local copy: the query closure must capture a local, not this collector instance.
@@ -99,7 +100,8 @@ internal abstract class ElapsedExecutionCollector : INotificationCollector
         return new NotificationContext(
             EventType: _eventType,
             Severity: NotificationSeverity.Warning,
-            // No time/type segment → one occurrence per execution; the existence-check dedups across passes
+            // No time/type segment to one occurrence per execution; the existence-check dedups
+            // across passes
             // so a still-in-flight job never re-alerts every 30s.
             EventKey: $"{_eventKeyPrefix}:{row.Id:N}",
             WorkflowId: row.WorkflowId,

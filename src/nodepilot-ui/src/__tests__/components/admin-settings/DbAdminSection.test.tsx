@@ -39,7 +39,7 @@ describe('DbAdminSection', () => {
     renderSection();
     await waitFor(() => expect(screen.getByDisplayValue('30')).toBeInTheDocument());
     expect(screen.getByDisplayValue('10000')).toBeInTheDocument();
-    // Toggle is unchecked by default
+    // The toggle is unchecked by default.
     const toggle = screen.getByRole('checkbox') as HTMLInputElement;
     expect(toggle.checked).toBe(false);
   });
@@ -51,7 +51,7 @@ describe('DbAdminSection', () => {
     const toggle = screen.getByRole('checkbox') as HTMLInputElement;
     fireEvent.click(toggle);
 
-    // The dialog should appear; the underlying checkbox should NOT yet be checked.
+    // The dialog appears; the underlying checkbox is not checked yet.
     await waitFor(() => expect(screen.getByRole('heading', { name: /Enable write queries|Schreib-Queries aktivieren/ })).toBeInTheDocument());
     expect(toggle.checked).toBe(false);
   });
@@ -88,7 +88,7 @@ describe('DbAdminSection', () => {
     expect(toggle.checked).toBe(true);
     fireEvent.click(toggle);
 
-    // No confirmation gate on the "remove power" direction — the dialog stays absent.
+    // Turning the permission off needs no confirmation, so no dialog appears.
     expect(screen.queryByRole('heading', { name: /Enable write queries|Schreib-Queries aktivieren/ })).not.toBeInTheDocument();
     expect(toggle.checked).toBe(false);
   });

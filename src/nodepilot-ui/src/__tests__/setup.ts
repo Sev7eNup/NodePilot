@@ -4,35 +4,28 @@ import { vi, beforeEach } from 'vitest';
 import * as React from 'react';
 import i18n from '../i18n';
 
-// Raise the default async-utility timeout (`waitFor` / `findBy*`) from Testing Library's
-// 1000 ms default to 5000 ms. Under v8 coverage instrumentation on the 2-core CI runners,
-// MSW + React-Query mutation round-trips intermittently exceed 1000 ms, which flaked a
-// varying 4-5 of the ~89 tests in WorkflowEditorPage.test.tsx every run (main was red on
-// every push since 2026-07-02). This does NOT mask real failures — a condition that never
-// becomes true still fails, just after 5 s instead of 1 s. Paired with testTimeout=15000 in
+// Raise the async-utility timeout (`waitFor` / `findBy*`) from Testing Library's 1000 ms
+// default to 5000 ms. Coverage instrumentation slows MSW and React-Query round-trips enough
+// to flake tests at the default timeout. This does not mask real failures: a condition that
+// never becomes true still fails, just later. Paired with testTimeout=15000 in
 // vitest.config.ts so the enclosing test has headroom above the wait.
 configure({ asyncUtilTimeout: 5000 });
 
-// Force a deterministic language for the entire suite. Tests assert against UI text;
-// without this, the language detector picks navigator.language (usually 'en-US') in
-// jsdom, which would silently flip strings depending on the test runner host.
-//
-// Pinned to 'en': the component-test corpus was written asserting English UI strings.
-// This MUST be awaited — i18next.changeLanguage resolves on a later tick, so the old
-// un-awaited call left the language racing (early tests rendered the 'de' fallback, later
-// ones 'en'), which silently flipped strings by test order/load and made a handful of
-// tests flaky. The language switch itself is exercised by the dedicated i18n + Playwright
-// e2e tests.
+// Force a deterministic language for the whole suite; without this, jsdom falls back to
+// navigator.language and UI-text assertions become runner-dependent. Pinned to 'en' since
+// the tests assert English strings. The await matters: changeLanguage resolves on a later
+// tick, so skipping it lets language selection race across tests. Language switching itself
+// is covered by the i18n and Playwright e2e tests.
 beforeEach(async () => {
   if (i18n.language !== 'en') await i18n.changeLanguage('en');
 });
 
-// Pin the designer to the CLASSIC look for the whole unit suite. The component-test corpus
-// asserts DOM the classic rendering produces (canvas background variant, minimap chrome,
-// root scope class). The Atelier design (designStore default 'atelier') is exercised by its
-// own dedicated tests, which set the store state explicitly.
-// Some suites vi.mock() the designStore module with a bare hook — then there is no real
-// zustand store (and nothing to pin), so only touch setState when it actually exists.
+// Pin the designer to the 'classic' look for the whole unit suite. The component-test
+// corpus asserts DOM produced by the classic rendering (canvas background variant, minimap
+// chrome, root scope class). The Atelier design (designStore default 'atelier') has its own
+// dedicated tests that set the store state explicitly.
+// Some suites mock the designStore module with a bare hook, so there is no real zustand
+// store to pin; only call setState when the store actually exists.
 beforeEach(async () => {
   const { useDesignStore } = await import('../stores/designStore');
   if (typeof useDesignStore?.setState === 'function') {
@@ -58,9 +51,9 @@ vi.mock('@monaco-editor/react', () => {
 });
 
 vi.mock('../lib/monacoSetup', () => ({
-  // Reiner String ohne Monaco-Bezug, hier nur damit der Mock die gleiche Oberfläche
-  // hat wie das echte Modul. Der Drift-Guard gegen `--font-mono` liest die echte
-  // Datei als Quelltext (fontTokens.test.ts) und sieht diesen Wert bewusst nicht.
+  // Plain string, unrelated to Monaco — present only so the mock exposes the same shape
+  // as the real module. The `--font-mono` drift guard (fontTokens.test.ts) reads the real
+  // file as source text, so it never sees this value.
   MONO_FONT_STACK:
     "'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, 'SFMono-Regular', Menlo, monospace",
   monaco: {
@@ -135,8 +128,8 @@ Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
 const _origGetRect = HTMLElement.prototype.getBoundingClientRect;
 HTMLElement.prototype.getBoundingClientRect = function () {
   const rect = _origGetRect.call(this) as DOMRect;
-  // jsdom returns all-zero rects; only override when that's the case so individual
-  // tests that *do* set explicit dimensions keep their values.
+  // jsdom returns all-zero rects; only override when that's the case, so tests that
+  // set explicit dimensions keep their own values.
   if (rect.width === 0 && rect.height === 0) {
     return { x: 0, y: 0, width: 600, height: 800, top: 0, left: 0, right: 600, bottom: 800, toJSON() { return this; } } as DOMRect;
   }

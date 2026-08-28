@@ -43,10 +43,10 @@ namespace NodePilot.Api.Controllers;
 /// the prefix) or directly via the <c>manual.</c> namespace:
 ///   {{webhookTrigger.param.webhookBody}}   /  {{manual.webhookBody}}    raw request body
 ///   {{webhookTrigger.param.webhookMethod}} /  {{manual.webhookMethod}}  HTTP verb
-///   {{webhookTrigger.param.webhookPath}}   /  {{manual.webhookPath}}    suffix after the workflow id
+///   {{webhookTrigger.param.webhookPath}} / {{manual.webhookPath}} path suffix
 ///   {{webhookTrigger.param.webhookQuery_X}}  / {{manual.webhookQuery_X}}   per-query-string key
 ///   {{webhookTrigger.param.webhookHeader_X}} / {{manual.webhookHeader_X}}  per-request-header key
-///   {{webhookTrigger.param.&lt;name&gt;}}          / {{manual.&lt;name&gt;}}           per fieldMappings entry
+///   {{webhookTrigger.param.&lt;name&gt;}} / {{manual.&lt;name&gt;}} per fieldMappings entry
 /// (Non-letter/digit chars in query/header names collapse to <c>_</c>; capped count per kind.)
 /// </summary>
 [ApiController]
@@ -399,8 +399,7 @@ public class WebhooksController : ControllerBase
             StartedByUserId: workflow.PublishedByUserId,
             Priority: ExecutionDispatchPriority.Interactive,
             RequireWorkflowEnabled: true,
-            MissingWorkflowMessage: "Webhook-triggered workflow no longer exists or was disabled before dispatch.",
-            EnqueueFailureMessage: "Webhook dispatch was cancelled before enqueue completed.");
+            MissingWorkflowMessage: "Webhook-triggered workflow no longer exists or was disabled before dispatch.");
 
         WorkflowExecution pending;
         try
@@ -409,10 +408,10 @@ public class WebhooksController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Webhook-triggered workflow {Wf} failed to enqueue", workflow.Id);
+            _logger.LogError(ex, "Webhook-triggered workflow {Wf} failed durable dispatch admission", workflow.Id);
             // Pending row, if created, is terminally Cancelled by ExecutionDispatch. Surface 503.
             return StatusCode(StatusCodes.Status503ServiceUnavailable,
-                new { message = "Failed to enqueue webhook dispatch" });
+                new { message = "Failed to persist webhook dispatch" });
         }
 
         ApiMetrics.WebhookRequests.Add(1,
@@ -437,7 +436,7 @@ public class WebhooksController : ControllerBase
 
     private bool RequireSecretEnabled()
     {
-        // Default-on semantic: missing key → true. Matches the Phase-3 hardening contract
+        // Default-on semantic: missing key -> true. Matches the Phase-3 hardening contract
         // shared by RestApi:BlockPrivateNetworks, FileSystemOperation:RejectTraversal,
         // StartProgram:DisallowShellExecute, and Remote:RequireWinRmSsl.
         var raw = _config["Webhook:RequireSecret"];

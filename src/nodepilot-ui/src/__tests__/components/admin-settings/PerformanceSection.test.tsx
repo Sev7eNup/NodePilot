@@ -22,7 +22,7 @@ const engine = {
 };
 const dispatch = {
   sectionPath: 'ExecutionDispatch',
-  payload: { capacity: 2048, workerCount: 600 },
+  payload: { workerCount: 600 },
   etag: '"d-1"', isHotReloadable: false, effectiveSource: {},
 };
 const threading = {
@@ -47,7 +47,6 @@ const sizingValues = [
   { key: 'Threading:MinWorkerThreads', value: 200, bound: 'Cpu' },
   { key: 'Threading:MinIoCompletionThreads', value: 200, bound: 'Cpu' },
   { key: 'ExecutionDispatch:WorkerCount', value: 24, bound: 'Cpu' },
-  { key: 'ExecutionDispatch:Capacity', value: 192, bound: 'Cpu' },
   { key: 'Engine:MaxConcurrentExecutions:Global', value: 240, bound: 'Cpu' },
   { key: 'Engine:MaxConcurrentExecutions:PerUser', value: 96, bound: 'Cpu' },
 ];
@@ -60,7 +59,7 @@ function renderAll(sizing: Partial<{
   manualTuning: boolean; desiredManualTuning: boolean; usableMemoryBytes: number | null;
 }> = {}) {
   const manualTuning = sizing.manualTuning ?? true;
-  // The Performance section stores the DESIRED mode — that is what the checkbox shows, and it is
+  // The Performance section stores the desired mode — that is what the checkbox shows, and it is
   // `desiredManualTuning` in the sizing plan, not the mode the process booted in.
   const desiredManualTuning = sizing.desiredManualTuning ?? manualTuning;
   server.use(
@@ -89,7 +88,7 @@ describe('PerformanceSection', () => {
   it('renders Engine + Dispatch + Threading + Remote cards', async () => {
     renderAll();
     await waitFor(() => expect(screen.getByDisplayValue('5000')).toBeInTheDocument());
-    expect(screen.getByDisplayValue('2048')).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue('600')).toHaveLength(2);
     expect(screen.getByDisplayValue('300')).toBeInTheDocument();
     // Two NumberInputs with 768 (Threading) + one (Runspace MaxRunspaces) — at least two.
     expect(screen.getAllByDisplayValue('768').length).toBeGreaterThanOrEqual(2);
@@ -98,7 +97,8 @@ describe('PerformanceSection', () => {
   it('shows the hot-reload hint only on the Threading card', async () => {
     renderAll();
     await waitFor(() => expect(screen.getByDisplayValue('5000')).toBeInTheDocument());
-    // Engine / ExecutionDispatch / Remote need a service restart to take effect → only Threading carries the hint.
+    // Engine, ExecutionDispatch, and Remote need a service restart to take effect;
+    // only Threading carries the hint.
     expect(screen.getAllByText(/Changes apply immediately/i).length).toBe(1);
   });
 
@@ -109,7 +109,6 @@ describe('PerformanceSection', () => {
     // 600 is both MaxConcurrentSteps and the dispatch WorkerCount — the plan governs both.
     await waitFor(() => expect(screen.getAllByDisplayValue('600')).toHaveLength(2));
     for (const field of screen.getAllByDisplayValue('600')) expect(field).toBeDisabled();
-    expect(screen.getByDisplayValue('2048')).toBeDisabled(); // dispatch queue capacity
     expect(screen.getByDisplayValue('256')).toBeDisabled();  // MinRunspaces
   });
 
@@ -134,12 +133,12 @@ describe('PerformanceSection', () => {
   it('keeps the fields editable under manual tuning', async () => {
     renderAll({ manualTuning: true });
     await waitFor(() => expect(screen.getByDisplayValue('5000')).not.toBeDisabled());
-    expect(screen.getByDisplayValue('2048')).not.toBeDisabled();
+    for (const field of screen.getAllByDisplayValue('600')) expect(field).not.toBeDisabled();
   });
 
   it('flags a saved mode that has not taken effect yet', async () => {
     // Saved manual while the process still runs the automatic plan: runspace pool and dispatch
-    // queue are sized once at boot, so this needs a restart rather than a config reload.
+    // workers are sized once at boot, so this needs a restart rather than a config reload.
     renderAll({ manualTuning: false, desiredManualTuning: true });
     await waitFor(() => expect(
       screen.getByText(/gespeicherte Modus weicht|saved mode differs/i),
@@ -174,7 +173,8 @@ describe('PerformanceSection', () => {
     await waitFor(() => expect(
       screen.getAllByText(/Automatische Dimensionierung ist gewählt|Automatic sizing is selected/i).length,
     ).toBe(3));
-    // Still booted manual → the stored numbers are what the process runs on, so they stay editable.
+    // Still booted manual to the stored numbers are what the process runs on, so they stay
+    // editable.
     expect(screen.getByDisplayValue('256')).not.toBeDisabled();
   });
 

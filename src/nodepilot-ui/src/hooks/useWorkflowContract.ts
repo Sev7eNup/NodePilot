@@ -4,20 +4,19 @@ import { api, ApiError } from '../api/client';
 import type { WorkflowContractResponse } from '../types/api';
 
 /**
- * Fetches the calling-contract for a child workflow referenced by `workflowNameOrId`.
+ * Fetches the calling contract for a child workflow referenced by `workflowNameOrId`.
  *
  * Behavior:
- * - Empty / whitespace input → returns null contract, no fetch.
- * - Variable expression (`{{var}}` etc.) → returns null contract (resolves at runtime),
+ * - Empty / whitespace input: returns a null contract, no fetch.
+ * - Variable expression (`{{var}}` etc.): returns a null contract (it resolves at runtime),
  *   no fetch. The caller falls back to the free-form ParameterTable.
- * - GUID-shaped input → fetches `/workflows/{id}/contract`.
- * - Other strings → fetches `/workflows/by-name/{name}/contract`. Resolution mirrors the
+ * - GUID-shaped input: fetches `/workflows/{id}/contract`.
+ * - Other strings: fetches `/workflows/by-name/{name}/contract`. Resolution mirrors the
  *   engine (WorkflowNameResolver): exact-case wins, otherwise case-insensitive; an
  *   ambiguous name answers 409 server-side.
- * - 404 response → returns null contract (workflow doesn't exist), surfaced via `isNotFound`.
+ * - 404 response: returns a null contract (no such workflow), surfaced via `isNotFound`.
  *
- * Debounced 250ms so typing in the workflow-name field doesn't fire one request per
- * keystroke. The debounce window is short enough to feel instant on tab-out / paste.
+ * Debounced 250ms so typing in the workflow-name field does not fire one request per keystroke.
  */
 export function useWorkflowContract(workflowNameOrId: string) {
   const [debounced, setDebounced] = useState(workflowNameOrId);
@@ -43,9 +42,8 @@ export function useWorkflowContract(workflowNameOrId: string) {
           ? await api.get<WorkflowContractResponse>(`/workflows/${trimmed}/contract`)
           : await api.get<WorkflowContractResponse>(`/workflows/by-name/${encodeURIComponent(trimmed)}/contract`);
       } catch (err) {
-        // 404 → no contract is a normal state, not an error. Branch on the status the ApiError
-        // now carries instead of regex-matching the display string, which broke the moment the
-        // server phrased "not found" differently.
+        // A 404 means no contract, which is a normal state rather than an error. Branch on the
+        // status carried by ApiError instead of matching the message text.
         if (err instanceof ApiError && err.status === 404) return null;
         throw err;
       }

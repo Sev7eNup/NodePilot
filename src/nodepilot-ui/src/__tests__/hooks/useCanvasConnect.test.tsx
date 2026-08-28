@@ -71,7 +71,7 @@ describe('useCanvasConnect', () => {
       expect(harness.result.current.quickConnect).not.toBeNull();
       expect(harness.result.current.quickConnect!.fromNodeId).toBe('step-source');
       expect(harness.result.current.quickConnect!.fromHandleId).toBe('out');
-      // screenToFlowPosition is called with raw client coords; our stub halves them.
+      // screenToFlowPosition receives raw client coordinates; the stub halves them.
       expect(harness.result.current.quickConnect!.flowPosition).toEqual({ x: 100, y: 75 });
     });
 

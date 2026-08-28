@@ -4,7 +4,7 @@ import { useDesignStore } from '../../../stores/designStore';
 
 /**
  * Toggles the editor-header between the compact grouped toolbar and the classic inline-button
- * row. Rendered in BOTH layouts (always visible, even when the classic row wraps) so users can
+ * row. Rendered in both layouts (always visible, even when the classic row wraps) so users can
  * always switch back. The choice is persisted in `designStore.toolbarLayout`.
  */
 export function ToolbarLayoutToggle() {

@@ -2,7 +2,8 @@ using System.Text.Json;
 
 namespace NodePilot.Mcp.Api.Dtos;
 
-// DTOs duplicated from src/NodePilot.Api/Dtos (no ProjectReference to Api — same convention as the CLI).
+// DTOs duplicated from src/NodePilot.Api/Dtos (no ProjectReference to Api — same convention as the
+// CLI).
 // JSON is Web-default (camelCase, case-insensitive); see NodePilotApiClient.JsonOptions.
 
 // ---- Auth ----
@@ -38,9 +39,16 @@ public sealed record WorkflowResponse(
     double? AvgDurationMs,
     Guid? CheckedOutByUserId,
     string? CheckedOutByUserName,
-    DateTime? CheckedOutAt);
+    DateTime? CheckedOutAt,
+    Guid FolderId = default,
+    string? FolderPath = null,
+    WorkflowCapabilities? Capabilities = null);
 
-public sealed record CreateWorkflowRequest(string Name, string? Description, string DefinitionJson);
+public sealed record WorkflowCapabilities(
+    bool CanRead, bool CanRun, bool CanEdit, bool CanDelete, bool CanAdmin);
+
+public sealed record CreateWorkflowRequest(
+    string Name, string? Description, string DefinitionJson, Guid? FolderId = null);
 public sealed record UpdateWorkflowRequest(string Name, string? Description, string DefinitionJson);
 public sealed record PublishWorkflowRequest(string Name, string? Description, string DefinitionJson);
 public sealed record RollbackRequest(string? Reason);

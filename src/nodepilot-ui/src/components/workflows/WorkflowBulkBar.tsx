@@ -11,7 +11,7 @@ export interface WorkflowBulkBarProps {
   onClear: () => void;
   canDelete: (w: Workflow) => boolean;
   canEdit: (w: Workflow) => boolean;
-  /** Global Admin/Operator — the roles the export endpoint accepts. */
+  /** Global Admin or Operator, the roles the export endpoint accepts. */
   canExport: boolean;
 }
 
@@ -20,9 +20,8 @@ export interface WorkflowBulkBarProps {
  * `useWorkflowBulkActions`, because the drag-and-drop path needs the same move action without
  * going through a button here.
  *
- * Gating rule: a button is enabled only when the WHOLE selection qualifies. Acting on a subset
- * and silently skipping the rest reads as "it worked" when it half did; a disabled button whose
- * tooltip names the reason is the honest version.
+ * A button is enabled only when the entire selection qualifies; acting on a subset and skipping
+ * the rest would read as full success. A disabled button's tooltip names the reason instead.
  */
 export function WorkflowBulkBar({
   selected, actions, onClear, canDelete, canEdit, canExport,
@@ -35,8 +34,8 @@ export function WorkflowBulkBar({
 
   const allDeletable = count > 0 && selected.every(canDelete);
   const allEditable = count > 0 && selected.every(canEdit);
-  // POST /enable refuses ANY checked-out workflow with 423 — including one the caller locked
-  // themselves — so a locked row in the selection disables Enable rather than failing N times.
+  // POST /enable rejects any checked-out workflow with 423, including one the caller locked
+  // themselves, so a locked row in the selection disables Enable instead of failing per row.
   const lockedCount = selected.filter((w) => !!w.checkedOutByUserId).length;
 
   const btn = 'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed';

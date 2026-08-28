@@ -51,7 +51,8 @@ public static class SettingsSchema
             OptionsType: typeof(SmtpOptions),
             DtoType: typeof(SmtpSettingsDto),
             SecretFieldPaths: ImmutableArray.Create("Password"),
-            // Hot-reload: SmtpNotificationSink + EmailActivity read IOptionsMonitor<SmtpOptions>.CurrentValue
+            // Hot-reload: SmtpNotificationSink + EmailActivity read
+            // IOptionsMonitor<SmtpOptions>.CurrentValue
             // per send, so a Settings-UI save takes effect without a restart.
             IsHotReloadable: true,
             AuditCode: AuditActions.SettingsSmtpUpdated),
@@ -60,10 +61,13 @@ public static class SettingsSchema
             DisplayName: "LLM (KI)",
             OptionsType: typeof(LlmOptions),
             DtoType: typeof(LlmSettingsDto),
-            // '*' matches every profile id — the keys are operator-defined, so the path can't be literal.
+            // '*' matches every profile id — the keys are operator-defined, so the path can't be
+            // literal.
             SecretFieldPaths: ImmutableArray.Create("Profiles.*.ApiKey", "Proxy.Password"),
-            // Hot-reload: ILlmClientFactory + the controller gates read IOptionsMonitor<LlmOptions>.CurrentValue
-            // per use, so a Settings-UI save (incl. the Llm:Enabled kill-switch) takes effect without a restart.
+            // Hot-reload: ILlmClientFactory + the controller gates read
+            // IOptionsMonitor<LlmOptions>.CurrentValue
+            // per use, so a Settings-UI save (incl. the Llm:Enabled kill-switch) takes effect
+            // without a restart.
             // Llm:Proxy:* is live too — LlmConfiguredProxy resolves it per request rather than at
             // handler-construction time, which is precisely why this section stayed hot-reloadable
             // where RestApi (proxy bound into the handler at boot) could not.
@@ -86,8 +90,10 @@ public static class SettingsSchema
             OptionsType: typeof(RetentionOptions),
             DtoType: typeof(RetentionSettingsDto),
             SecretFieldPaths: ImmutableArray<string>.Empty,
-            // Hot-reload: the retention sweepers read IOptionsMonitor<RetentionOptions>.CurrentValue (or
-            // IConfiguration) per pass with sleep-and-continue, so a Settings-UI save takes effect without a
+            // Hot-reload: the retention sweepers read
+            // IOptionsMonitor<RetentionOptions>.CurrentValue (or
+            // IConfiguration) per pass with sleep-and-continue, so a Settings-UI save takes effect
+            // without a
             // restart. ArchivePath changes re-probe on the next pass.
             IsHotReloadable: true,
             AuditCode: AuditActions.SettingsRetentionUpdated),
@@ -116,7 +122,8 @@ public static class SettingsSchema
             OptionsType: typeof(object),  // Serilog reads from raw IConfiguration, no POCO binder
             DtoType: typeof(LoggingSettingsDto),
             SecretFieldPaths: ImmutableArray<string>.Empty,
-            // Restart-required: Serilog reads from raw IConfiguration once at boot; the logger pipeline
+            // Restart-required: Serilog reads from raw IConfiguration once at boot; the logger
+            // pipeline
             // (sinks/format/levels) is not re-built in-process. No live consumer.
             IsHotReloadable: false,
             AuditCode: AuditActions.SettingsLoggingUpdated),
@@ -129,7 +136,8 @@ public static class SettingsSchema
             DtoType: typeof(OpenTelemetrySettingsDto),
             SecretFieldPaths: ImmutableArray.Create(
                 "Otlp.Headers", "Prometheus.Password", "Prometheus.BearerToken"),
-            // Restart-required: the OTel SDK + exporters are built once at boot (NodePilot.Telemetry
+            // Restart-required: the OTel SDK + exporters are built once at boot
+            // (NodePilot.Telemetry
             // setup); no in-process rebuild of the exporter pipeline.
             IsHotReloadable: false,
             AuditCode: AuditActions.SettingsOpentelemetryUpdated),
@@ -139,7 +147,8 @@ public static class SettingsSchema
             OptionsType: typeof(object),
             DtoType: typeof(StatsSettingsDto),
             SecretFieldPaths: ImmutableArray<string>.Empty,
-            // Hot-reload: WorkflowStatsRefresher re-reads Stats:RefreshIntervalMinutes / WindowDays per pass
+            // Hot-reload: WorkflowStatsRefresher re-reads Stats:RefreshIntervalMinutes / WindowDays
+            // per pass
             // from IConfiguration, so a Settings-UI save takes effect without a restart.
             IsHotReloadable: true,
             AuditCode: AuditActions.SettingsStatsUpdated),
@@ -158,11 +167,14 @@ public static class SettingsSchema
         // Security hardening — seven small flat sections grouped under the UI's "Sicherheit" tab.
         new SettingsSectionDescriptor("RestApi", "REST API Outbound", typeof(NodePilot.Engine.Options.RestApiProxyOptions),
             typeof(RestApiSettingsDto), ImmutableArray.Create("Proxy.Password"),
-            // Restart-required (mixed section): RestApiActivity binds RestApiProxyOptions once at boot into the
-            // activity's outbound HTTP client config; the BlockPrivateNetworks hardening flag is live,
-            // but section-granularity can't split them → conservative restart.
+            // Restart-required (mixed section): RestApiActivity binds RestApiProxyOptions once at
+            // boot into the
+            // activity's outbound HTTP client config; the BlockPrivateNetworks hardening flag is
+            // live,
+            // but section-granularity can't split them -> conservative restart.
             false, AuditActions.SettingsRestApiUpdated),
-        // Hot-reload: PathGuard reads FileSystemOperation:RejectTraversal / AllowedRoots from the live
+        // Hot-reload: PathGuard reads FileSystemOperation:RejectTraversal / AllowedRoots from the
+        // live
         // IConfiguration indexer on every file-op validation call (FileOperation/FolderOperation/
         // TextFileEdit/Zip/FileHash/XmlQuery/JsonQuery/StartProgram), so a Settings-UI save takes
         // effect without a restart.
@@ -175,14 +187,16 @@ public static class SettingsSchema
         new SettingsSectionDescriptor("WaitForCondition", "Network Probe Allow-List", typeof(object),
             typeof(WaitForConditionSettingsDto), ImmutableArray<string>.Empty, true,
             AuditActions.SettingsWaitForConditionUpdated),
-        // Hot-reload: SqlActivity reads SqlActivity:RequireConnectionRef from the live IConfiguration
+        // Hot-reload: SqlActivity reads SqlActivity:RequireConnectionRef from the live
+        // IConfiguration
         // indexer on every execution (ResolveConnectionString), so a Settings-UI save takes effect
         // without a restart.
         new SettingsSectionDescriptor("SqlActivity", "SQL Activity", typeof(object),
             typeof(SqlActivitySettingsDto), ImmutableArray<string>.Empty, true,
             AuditActions.SettingsSqlActivityUpdated),
         // Hot-reload: StartProgramActivity reads StartProgram:DisallowShellExecute from the live
-        // IConfiguration indexer per execution, so a Settings-UI save takes effect without a restart.
+        // IConfiguration indexer per execution, so a Settings-UI save takes effect without a
+        // restart.
         new SettingsSectionDescriptor("StartProgram", "Start Program", typeof(object),
             typeof(StartProgramSettingsDto), ImmutableArray<string>.Empty, true,
             AuditActions.SettingsStartProgramUpdated),
@@ -199,7 +213,8 @@ public static class SettingsSchema
             AuditActions.SettingsExternalTriggerUpdated),
         new SettingsSectionDescriptor("Security", "Allowed Hosts", typeof(object),
             typeof(SecuritySettingsDto), ImmutableArray<string>.Empty,
-            // Restart-required: StrictAllowedHosts is read once at boot by the host middleware setup;
+            // Restart-required: StrictAllowedHosts is read once at boot by the host middleware
+            // setup;
             // the allowed-hosts list is not re-evaluated per request.
             false, AuditActions.SettingsSecurityUpdated),
         // Performance tuning. All strict-startup — values are cached at boot, save persists
@@ -207,7 +222,7 @@ public static class SettingsSchema
         // WinRm timeouts and the connection-pool tuning under one atomic save.
         new SettingsSectionDescriptor("Performance", "Performance Tuning Mode", typeof(object),
             typeof(PerformanceSettingsDto), ImmutableArray<string>.Empty,
-            // Restart-required: the switch decides how the runspace pool and the dispatch queue
+            // Restart-required: the switch decides how the runspace pool and dispatch workers
             // are sized, and both are constructed once at boot. Honouring a live toggle would
             // re-tune only the ThreadPool and leave the rest in the previous mode, so the whole
             // section is deliberately restart-gated rather than partially hot.
@@ -217,21 +232,25 @@ public static class SettingsSchema
             // Restart-required: WorkflowEngine concurrency caps are cached at boot; no in-process
             // re-tune of the engine's in-flight/queue bounds.
             false, AuditActions.SettingsEngineUpdated),
-        new SettingsSectionDescriptor("ExecutionDispatch", "Execution Dispatch Queue", typeof(object),
+        new SettingsSectionDescriptor("ExecutionDispatch", "Execution Dispatch Workers", typeof(object),
             typeof(ExecutionDispatchSettingsDto), ImmutableArray<string>.Empty,
-            // Restart-required: ExecutionDispatchWorker queue/channel sizing is constructed at boot.
+            // Restart-required: ExecutionDispatchWorker queue/channel sizing is constructed at
+            // boot.
             false, AuditActions.SettingsExecutionDispatchUpdated),
         new SettingsSectionDescriptor("Threading", "ThreadPool Pre-Warming", typeof(object),
             typeof(ThreadingSettingsDto), ImmutableArray<string>.Empty,
-            // Hot-reload: ThreadPoolTuningService re-applies Threading:MinWorkerThreads / MinIoCompletionThreads
-            // from the live IConfiguration on start + on every config reload (ChangeToken.OnChange), so a
+            // Hot-reload: ThreadPoolTuningService re-applies Threading:MinWorkerThreads /
+            // MinIoCompletionThreads
+            // from the live IConfiguration on start + on every config reload
+            // (ChangeToken.OnChange), so a
             // Settings-UI save re-tunes the pool without a restart.
             true, AuditActions.SettingsThreadingUpdated),
         new SettingsSectionDescriptor("Remote", "Remote (WinRM)", typeof(object),
             typeof(RemoteSettingsDto), ImmutableArray<string>.Empty,
-            // Restart-required (mixed section): Remote:Provider + RequireWinRmSsl + WinRm timeouts + the
+            // Restart-required (mixed section): Remote:Provider + RequireWinRmSsl + WinRm timeouts
+            // + the
             // connection-pool tuning are bound once at boot into the WinRM session factory; section
-            // granularity can't split live vs boot-fested keys → conservative restart.
+            // granularity can't split live vs boot-fested keys -> conservative restart.
             false, AuditActions.SettingsRemoteUpdated)
     );
 

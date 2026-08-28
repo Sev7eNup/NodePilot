@@ -233,7 +233,8 @@ public class PrometheusClientTests
         return resp;
     }
 
-    /// <summary>HttpMessageHandler that captures every request and returns a queued response.</summary>
+    /// <summary>HttpMessageHandler that captures every request and returns a queued
+    /// response.</summary>
     private sealed class RecordingHandler : HttpMessageHandler
     {
         public List<HttpRequestMessage> Requests { get; } = new();

@@ -24,7 +24,7 @@ using NodePilot.TestCommons;
 namespace NodePilot.Api.Tests.Controllers;
 
 /// <summary>
-/// PR4 surface tests — section GET/PUT with ETag, validation, audit, restart-marker.
+/// Section GET/PUT tests, covering ETag, validation, audit, and the restart-marker.
 /// The SMTP probe endpoint is covered separately (it talks to a real SmtpClient and
 /// would need a full TCP mock to test).
 /// </summary>
@@ -191,9 +191,9 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         var fileContent = File.ReadAllText(writer.OverridesPath);
         fileContent.Should().Contain("\"MaxAgeDays\": 7");
         fileContent.Should().Contain("\"MaxVersionsPerWorkflow\": 25");
-        // ArchivePath was the empty string → must be persisted as EXPLICIT JSON null
-        // (Finding 7), not dropped. Without the explicit null an appsettings.json
-        // ArchivePath value would silently re-activate after the next reload.
+        // ArchivePath was the empty string, so it must be persisted as an explicit JSON
+        // null, not dropped. Without the explicit null an appsettings.json ArchivePath
+        // value would silently re-activate after the next reload.
         var fileJson = JsonNode.Parse(fileContent)!.AsObject();
         var execs = fileJson["Retention"]!["Executions"]!.AsObject();
         execs.ContainsKey("ArchivePath").Should().BeTrue();
@@ -208,7 +208,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Retention");
 
         // MaxAgeDays=0 violates the [Range(1,3650)] guard; without it the sweeper would
-        // delete every row on its next tick. The 400 must surface this BEFORE writing.
+        // delete every row on its next tick. The 400 must surface this before writing.
         var body = JsonDocument.Parse(
             "{\"Executions\":{\"Enabled\":true,\"MaxAgeDays\":0,\"IntervalMinutes\":60,\"BatchSize\":500},"
             + "\"AuditLog\":{\"Enabled\":true,\"MaxAgeDays\":365,\"IntervalMinutes\":720,\"BatchSize\":1000},"
@@ -261,10 +261,10 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     [Fact]
     public async Task PutSection_Llm_CloudMetadataBaseUrl_Returns400_NoFileWrite()
     {
-        // Regression guard for Finding 2: without the LlmConfigBootValidator, this PUT
-        // would persist the override, the service would write `appsettings.runtime.json`,
-        // and the NEXT restart would fail with `SECURITY: Llm:BaseUrl …` — wedging the
-        // process and forcing the operator to hand-edit the file.
+        // Regression guard: without the LlmConfigBootValidator, this PUT would persist the
+        // override, the service would write `appsettings.runtime.json`, and the next
+        // restart would fail with `SECURITY: Llm:BaseUrl …` — wedging the process and
+        // forcing the operator to hand-edit the file.
         var (controller, writer, _, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
 
@@ -280,7 +280,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     public async Task PutSection_Llm_PersistsToolCallingFields()
     {
         // Without the wiring in SettingsSections, EnableToolCalling/ToolCallMaxDepth would be
-        // lost when saving the LLM section (bug found: tool-calling wasn't reachable from Admin Settings).
+        // lost when saving the LLM section.
         var (controller, writer, _, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
 
@@ -333,7 +333,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         var (controller, writer, _, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
 
-        // ToolCallMaxDepth 99 > [Range(1,10)] — and it sits on a NESTED profile object, which
+        // ToolCallMaxDepth 99 > [Range(1,10)] — and it sits on a nested profile object, which
         // Validator.TryValidateObject does not reach on its own (LlmSettingsDto.Validate does).
         var body = JsonDocument.Parse(LlmBody(enableToolCalling: true, toolCallMaxDepth: 99)).RootElement;
         var result = await controller.PutSection("Llm", body, CancellationToken.None);
@@ -537,7 +537,8 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     public async Task PutSection_Llm_ReorderedProfiles_DoNotSwapApiKeys()
     {
         // Regression guard for the reason profiles are keyed by id rather than by array index:
-        // with index matching, dropping/reordering an entry would hand a profile someone else's key.
+        // with index matching, dropping/reordering an entry would hand a profile someone else's
+        // key.
         var (controller, writer, _, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
         await controller.PutSection("Llm", JsonDocument.Parse("""
@@ -591,7 +592,8 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         result.Should().BeOfType<OkObjectResult>();
         var stored = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Profiles"]!["p1"]!["ApiKey"]!.GetValue<string>();
         stored.Should().Be(persistedKey);
-        // The passthrough protector would have produced "ENC:********" had the mask been treated as a value.
+        // The passthrough protector would have produced "ENC:********" had the mask been treated as
+        // a value.
         File.ReadAllText(writer.OverridesPath).Should().NotContain("ENC:********");
     }
 
@@ -639,8 +641,8 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     public async Task PutSection_Llm_DroppingABaseConfigProfile_Returns400_NotDeletable()
     {
         // The runtime overrides file is one configuration provider among several and the merge is
-        // additive: a profile defined in appsettings.json would reappear on the next reload. Saying
-        // so is the honest answer; silently accepting a delete that doesn't delete is not.
+        // additive: a profile defined in appsettings.json would reappear on the next reload, so the
+        // save must reject the delete instead of silently accepting one that doesn't delete.
         var (controller, writer, _, _) = NewController(initialLlm: LlmTestOptions.WithProfile(id: "baked"));
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
 
@@ -1021,7 +1023,8 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             "the redacted diff must use *** for secret fields, not the encrypted ciphertext (still sensitive in spirit)");
 
         // No restart marker — SMTP is hot-reloadable (SmtpNotificationSink + EmailActivity read
-        // IOptionsMonitor<SmtpOptions>.CurrentValue per send), so the save takes effect immediately.
+        // IOptionsMonitor<SmtpOptions>.CurrentValue per send), so the save takes effect
+        // immediately.
         var status = writer.ReadStatus();
         status.RestartRequired.Should().BeFalse();
         status.RestartRequiredFor.Should().NotContain("Smtp");
@@ -1031,17 +1034,17 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     public async Task PutSection_RestartRequiredSection_MarksRestart()
     {
         // Counterpart to the hot-reloadable case: a section whose consumers are boot-frozen
-        // (ExecutionDispatchWorker queue/channel sizing is built once at boot) must still write
+        // (the ExecutionDispatchWorker pool is built once at boot) must still write
         // the restart marker so the UI surfaces the orange banner.
         var (controller, writer, audit, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("ExecutionDispatch");
 
-        var body = JsonDocument.Parse("{\"capacity\":4096,\"workerCount\":128}").RootElement;
+        var body = JsonDocument.Parse("{\"workerCount\":128}").RootElement;
         var result = await controller.PutSection("ExecutionDispatch", body, CancellationToken.None);
 
         result.Should().BeOfType<OkObjectResult>();
         var fileContent = File.ReadAllText(writer.OverridesPath);
-        fileContent.Should().Contain("4096");
+        fileContent.Should().Contain("\"WorkerCount\": 128");
 
         audit.Calls.Should().ContainSingle()
             .Which.Action.Should().Be("SETTINGS_EXECUTIONDISPATCH_UPDATED");
@@ -1054,9 +1057,9 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     [Fact]
     public async Task PutSection_ClearPassword_PersistsExplicitJsonNull_ShadowsBaseProvider()
     {
-        // Finding 7: a UI Clear must shadow the lower configuration layers, not just
-        // remove the override row. Without this, an appsettings.json-defined password
-        // would silently become effective again on the next reload.
+        // A UI Clear must shadow the lower configuration layers, not just remove the
+        // override row. Without this, an appsettings.json-defined password would
+        // silently become effective again on the next reload.
         var (controller, writer, _, _) = NewController(
             initialSmtp: new SmtpOptions { Host = "h", Port = 25, From = "a@b.c", Password = "base-pass" });
 
@@ -1067,7 +1070,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         var result = await controller.PutSection("Smtp", body, CancellationToken.None);
         result.Should().BeOfType<OkObjectResult>();
 
-        // File must contain an explicit `"Password": null` — NOT a missing key.
+        // File must contain an explicit `"Password": null`, not a missing key.
         var fileJson = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!.AsObject();
         var smtpSection = fileJson["Smtp"]!.AsObject();
         smtpSection.ContainsKey("Password").Should().BeTrue(
@@ -1083,10 +1086,10 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     [Fact]
     public async Task PutSection_EnvLockedField_StrippedFromPersistedSection()
     {
-        // Finding 8: even if the UI submits a value for an env/cli-locked field
-        // (e.g. because the form re-sends the whole section payload), the server must
-        // drop that key before write. Otherwise the runtime file accumulates stale
-        // shadow values that re-activate if the env var is later unset.
+        // Even if the UI submits a value for an env/cli-locked field (e.g. because the
+        // form re-sends the whole section payload), the server must drop that key
+        // before write. Otherwise the runtime file accumulates stale shadow values
+        // that re-activate if the env var is later unset.
         var (_, writer, _, cfg) = NewController();
 
         // Layer an env-source provider over the in-memory config so the EffectiveSource
@@ -1117,7 +1120,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             ctrl.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
             ctrl.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Smtp");
 
-            // Operator submits a host value — env var should win at runtime AND the
+            // Operator submits a host value — env var should win at runtime and the
             // host field should be absent from the persisted file.
             var body = JsonDocument.Parse(
                 "{\"Host\":\"ui-shadow\",\"Port\":2525,\"From\":\"a@b.c\",\"Password\":null}"
@@ -1139,10 +1142,10 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // V2 sections (PR9-12): one regression test per section so a future change
-    // that breaks the DTO round-trip surfaces immediately. Validation edges +
-    // secret round-trips are covered by the dedicated tests above; these are the
-    // "did anyone break the happy path" guards.
+    // One regression test per section so a future change that breaks the DTO
+    // round-trip surfaces immediately. Validation edges and secret round-trips
+    // are covered by the dedicated tests above; these are the "did anyone break
+    // the happy path" guards.
     // ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -1328,8 +1331,9 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     public async Task PutSection_OpenTelemetry_EmptyGrafanaBaseUrl_IsAccepted()
     {
         // GrafanaBaseUrl is an optional drill-down link; empty is the canonical "not
-        // configured" value and the admin UI posts it on every save. A [Url] attribute here
-        // rejected the empty string and made the whole section unsavable on a fresh install.
+        // configured" value and the admin UI posts it on every save. The field must accept
+        // an empty string, not just a valid URL, or the section becomes unsavable on a
+        // fresh install.
         var (controller, writer, audit, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("OpenTelemetry");
 
@@ -1384,7 +1388,8 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     {
         var (controller, writer, _, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("DbAdmin");
-        // QueryTimeoutSeconds is constrained to [1, 600] via [Range(...)]; 9999 must fail validation.
+        // QueryTimeoutSeconds is constrained to [1, 600] via [Range(...)]; 9999 must fail
+        // validation.
         var body = JsonDocument.Parse(
             "{\"AllowWriteQueries\":false,\"QueryTimeoutSeconds\":9999,\"QueryMaxRows\":10000}").RootElement;
         var result = await controller.PutSection("DbAdmin", body, CancellationToken.None);
@@ -1599,10 +1604,10 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     {
         var (controller, writer, audit, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("ExecutionDispatch");
-        var body = JsonDocument.Parse("{\"Capacity\":4096,\"WorkerCount\":1200}").RootElement;
+        var body = JsonDocument.Parse("{\"WorkerCount\":1200}").RootElement;
         var result = await controller.PutSection("ExecutionDispatch", body, CancellationToken.None);
         result.Should().BeOfType<OkObjectResult>();
-        File.ReadAllText(writer.OverridesPath).Should().Contain("\"Capacity\": 4096");
+        File.ReadAllText(writer.OverridesPath).Should().Contain("\"WorkerCount\": 1200");
         audit.Calls.Should().ContainSingle(c => c.Action == "SETTINGS_EXECUTIONDISPATCH_UPDATED");
     }
 

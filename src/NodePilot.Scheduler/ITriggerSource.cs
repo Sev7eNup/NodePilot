@@ -27,7 +27,8 @@ public interface ITriggerSource : IAsyncDisposable
     /// </summary>
     TriggerHealth Health { get; }
 
-    /// <summary>Start listening. Must be idempotent — repeated calls with the same config no-op.</summary>
+    /// <summary>Start listening. Must be idempotent — repeated calls with the same config
+    /// no-op.</summary>
     Task StartAsync(TriggerContext context, CancellationToken ct);
 }
 

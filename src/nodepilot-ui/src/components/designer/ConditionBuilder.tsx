@@ -22,7 +22,7 @@ export type ExprOperand =
 /**
  * An event-field option for the alerting filter mode. When `eventFields` is passed to
  * <see cref="ConditionBuilder"/>, operands can reference `source: 'event'` fields from this
- * catalog instead of upstream step outputs. `name` MUST match a key from the backend
+ * catalog instead of upstream step outputs. `name` must match a key from the backend
  * NotificationContext.ToFieldMap(); `label` is the human-readable dropdown text.
  */
 export interface EventFieldOption {

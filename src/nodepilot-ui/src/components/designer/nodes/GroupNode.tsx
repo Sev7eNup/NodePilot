@@ -7,9 +7,9 @@ import { groupLabelFontSize } from '../../../lib/groupLabel';
 
 type GroupColor = 'blue' | 'green' | 'amber' | 'rose' | 'slate';
 
-// Soft-surface group chrome: a quiet solid hairline + faint color-wash fill and a
-// tinted header bar replace the old dashed rectangle. Colors stay user-picked data
-// (5 fixed hues), so they remain Tailwind palette classes rather than status tokens.
+// Group chrome: a solid hairline border, a faint color-wash fill, and a tinted header
+// bar. Colors are user-picked data (5 fixed hues), so they stay Tailwind palette
+// classes instead of status tokens.
 const COLOR_STYLES: Record<GroupColor, { border: string; bg: string; headerBg: string; text: string; swatch: string; ring: string; dropBg: string }> = {
   blue:  { border: 'border-blue-400/45',  bg: 'bg-blue-500/[0.05]',  headerBg: 'bg-blue-500/10',  text: 'text-blue-600 dark:text-blue-400',  swatch: 'bg-blue-500',  ring: 'ring-blue-400',  dropBg: 'bg-blue-100/25' },
   green: { border: 'border-green-400/45', bg: 'bg-green-500/[0.05]', headerBg: 'bg-green-500/10', text: 'text-green-600 dark:text-green-400', swatch: 'bg-green-500', ring: 'ring-green-400', dropBg: 'bg-green-100/25' },
@@ -124,7 +124,7 @@ export function GroupNode({ id, data, selected }: NodeProps) {
           isDropTarget ? `ring-2 ${styles.ring} ${styles.dropBg}` : styles.bg
         }`}
       >
-        {/* Header bar — eine getönte Leiste über dem Gruppen-Inhalt. */}
+        {/* Header bar — a tinted strip above the group's content. */}
         <div className={`nodrag absolute top-0 left-0 right-0 flex items-center gap-1.5 px-3 py-1.5 rounded-t-xl ${styles.headerBg} ${selected ? 'opacity-100' : 'opacity-90'}`}>
           {editing ? (
             <input

@@ -84,11 +84,9 @@ try {
         throw 'Extracted artifact tampering was not detected.'
     }
 
-    # Zip-slip. The extractor was swapped from Expand-Archive to ZipFile::ExtractToDirectory for
-    # speed (2.2 s against 25.8 s on the real artifact), and the whole reason that trade is
-    # acceptable is that .NET refuses an entry resolving outside the destination. Asserted here
-    # rather than assumed, because a future swap to a hand-rolled extraction loop would silently
-    # give it up: this is the one property the staging directory cannot recover from.
+    # Zip-slip. The extractor relies on ZipFile::ExtractToDirectory refusing an entry that resolves
+    # outside the destination. Asserted rather than assumed, because a hand-rolled extraction loop
+    # would give that property up without any other signal.
     $slipZip = Join-Path $testRoot 'zip-slip.zip'
     $slipSource = Join-Path $testRoot 'slip-src'
     New-Item -ItemType Directory -Path $slipSource -Force | Out-Null
@@ -147,10 +145,8 @@ try {
     }
 
     # --- signed artifact verification -----------------------------------------------------------
-    # Assert-NodePilotSignedArtifact had no behavioural test at all until the chain validation was
-    # dropped from it. That change is only safe if what the chain used to enforce on our behalf -
-    # the key usage and the validity window - is enforced explicitly now, so each of those has a
-    # case below that must be rejected.
+    # Assert-NodePilotSignedArtifact does not validate the certificate chain, so it has to enforce
+    # the key usage and the validity window itself. Each of those gets a rejection case below.
     #
     # Certificates are built in memory; this suite writes to no certificate store.
     Import-NodePilotPkcsTypes
@@ -179,7 +175,7 @@ try {
         $certificate = $request.CreateSelfSigned(
             [DateTimeOffset]::UtcNow.AddDays($ValidFromDays), [DateTimeOffset]::UtcNow.AddDays($ValidToDays))
         # Round-tripped through a PFX because CmsSigner on .NET Framework cannot use the ephemeral
-        # key CreateSelfSigned hands back. Still no certificate store involved - a PFX is bytes.
+        # key CreateSelfSigned returns. No certificate store is involved; a PFX is just bytes.
         $password = [Guid]::NewGuid().ToString('N')
         $pfx = $certificate.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx, $password)
         return [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
@@ -244,12 +240,11 @@ try {
     $good = New-TestSigningCertificate
     $goodArtifact = New-TestSignedArtifact -Certificate $good -Directory (Join-Path $signingRoot 'good')
 
-    # THE assertion this whole change rests on: a correctly signed artifact verifies although its
-    # publisher is in no trust store on this machine. Before, this threw "a certificate chain
-    # processed but terminated in a root certificate which is not trusted".
+    # The central assertion: a correctly signed artifact verifies even though its publisher is in
+    # no trust store on this machine.
     [void](Assert-NodePilotSignedArtifact -ArtifactPath $goodArtifact -TrustedSignerThumbprint $good.Thumbprint)
 
-    # ... and it is not merely permissive.
+    # The verification is not blanket-permissive.
     Assert-ArtifactRejected -Name 'a different signer than the pinned one is rejected' `
         -ArtifactPath $goodArtifact -Thumbprint ('A' * 40) -MessagePattern 'untrusted certificate'
 
@@ -275,7 +270,7 @@ try {
         -ArtifactPath (Join-Path $renamedDir 'NodePilot-8.8.8.zip') -Thumbprint $good.Thumbprint `
         -MessagePattern 'filename does not match'
 
-    # The two the certificate chain used to reject for us.
+    # The two validity-window cases a certificate chain check would otherwise cover.
     $expired = New-TestSigningCertificate -ValidFromDays -400 -ValidToDays -1
     $expiredArtifact = New-TestSignedArtifact -Certificate $expired -Directory (Join-Path $signingRoot 'expired')
     Assert-ArtifactRejected -Name 'an expired signer certificate is rejected' `
@@ -286,8 +281,8 @@ try {
     Assert-ArtifactRejected -Name 'a signer certificate that is not valid yet is rejected' `
         -ArtifactPath $notYetArtifact -Thumbprint $notYet.Thumbprint -MessagePattern 'not valid until'
 
-    # The EKU says what the certificate is FOR; KeyUsage says what the key MAY DO. Only both
-    # together answer "may this key sign code", and CheckSignature($true) asks neither.
+    # The EKU says what the certificate is for; KeyUsage says what the key may do. Only both
+    # together answer whether the key may sign code, and CheckSignature($true) checks neither.
     $noEku = New-TestSigningCertificate -WithoutCodeSigningEku
     $noEkuArtifact = New-TestSignedArtifact -Certificate $noEku -Directory (Join-Path $signingRoot 'no-eku')
     Assert-ArtifactRejected -Name 'a signer certificate without the code-signing purpose is rejected' `
@@ -301,8 +296,8 @@ try {
         -ArtifactPath $wrongUsageArtifact -Thumbprint $wrongUsage.Thumbprint `
         -MessagePattern 'neither DigitalSignature nor NonRepudiation'
 
-    # Stated as a contract in the function, so it gets a case. CheckSignature reaches it first and
-    # objects that it cannot find the signer at all - which is the same verdict by a shorter route.
+    # The function documents this case, so it gets a test. CheckSignature rejects it first because
+    # it cannot find the signer at all, which is the same verdict.
     $noCertArtifact = New-TestSignedArtifact -Certificate $good `
         -Directory (Join-Path $signingRoot 'no-signer-cert') -OmitSignerCertificate
     Assert-ArtifactRejected -Name 'a signature without the signer certificate is rejected' `

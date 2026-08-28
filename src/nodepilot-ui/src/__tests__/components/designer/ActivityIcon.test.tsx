@@ -7,11 +7,10 @@ import {
 } from '../../../lib/customActivities';
 
 /**
- * ActivityIcon is the palette/picker glyph. It used to carry its own 23-entry table of
- * Tailwind colour literals (`text-blue-600`, …) parallel to the generated `--act-*` design
- * tokens — incomplete and with no dark-mode variant. It now resolves icon AND colour through
- * getActivityVisual, the same resolver the canvas ActivityNode uses. These tests pin that:
- * the colour must arrive as a CSS variable on `style`, never as a Tailwind class.
+ * ActivityIcon is the palette and picker glyph. It resolves both icon and colour through
+ * getActivityVisual, the same resolver the canvas ActivityNode uses, so colours come from
+ * the generated `--act-*` design tokens and follow dark mode. These tests pin that the
+ * colour arrives as a CSS variable on `style` and never as a Tailwind class.
  */
 const customEntry = (over: Partial<CustomActivityCatalogEntry> = {}): CustomActivityCatalogEntry => ({
   id: 'id-1', key: 'disk_check', type: 'custom:disk_check', name: 'Disk Check', description: null,
@@ -35,7 +34,7 @@ describe('ActivityIcon', () => {
   });
 
   it('rendersBuiltInType_CarriesNoTailwindColorLiteral', () => {
-    // The whole point of the token switch: no `text-<hue>-<shade>` class may come back.
+    // The colour comes from a token, so no `text-<hue>-<shade>` class may appear.
     for (const type of ['runScript', 'manualTrigger', 'delay', 'decision', 'textFileEdit']) {
       const svg = renderIcon(type);
       expect(svg.getAttribute('class') ?? '').not.toMatch(/\btext-[a-z]+-\d{3}\b/);
@@ -44,8 +43,7 @@ describe('ActivityIcon', () => {
   });
 
   it('rendersTypesThatTheOldColorTableMissed', () => {
-    // These five were absent from the deleted `iconColors` map and fell through to the muted
-    // default; they now get their own token like every other catalog entry.
+    // Every catalog entry has its own token, so none of these fall back to a muted default.
     for (const type of ['textFileEdit', 'forEach', 'startWorkflow', 'returnData', 'llmQuery']) {
       expect(renderIcon(type).style.color).toBe(`var(--act-${type}-color)`);
     }
@@ -53,7 +51,7 @@ describe('ActivityIcon', () => {
 
   it('rendersCustomActivity_UsesRuntimeAccentColor', () => {
     useCustomActivityCatalogStore.getState().setCatalog([customEntry()]);
-    // jsdom may serialise a hex literal as rgb() — accept either spelling of the same colour.
+    // jsdom may serialise a hex literal as rgb(), so accept either spelling of the colour.
     expect(['#ff8800', 'rgb(255, 136, 0)']).toContain(renderIcon('custom:disk_check').style.color);
   });
 

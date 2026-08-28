@@ -10,19 +10,19 @@ import { defaultIcons, skinIconsForFavicons, type SkinIcons } from './skins';
  *  so the auth cookies set during first-run setup are available to the app. */
 const PARTITION = 'persist:nodepilot';
 
-/** Generated icon set — sits next to dist/ inside the asar (see scripts/generate-desktop-icons.ps1). */
+/** Generated icon set — sits next to dist/ inside the asar (see
+ * scripts/generate-desktop-icons.ps1). */
 const ASSETS_DIR = join(__dirname, '..', 'assets');
 
 /** Per-user handoff copy of the admin bootstrap token, written by the elevated installer into the
- *  INTERACTIVE user's profile — this process's user (the real token under ProgramData is
- *  SYSTEM-owned and unreadable here). The installer resolves that user explicitly rather than
- *  using its own profile, because it runs elevated and those are not always the same account. */
+ *  profile of the interactive user, which is the user this process runs as. The real token under
+ *  ProgramData is SYSTEM-owned and unreadable here. The installer resolves the interactive user
+ *  explicitly, because an elevated installer does not always run under that account. */
 const HANDOFF_PATH = join(process.env.LOCALAPPDATA ?? '', 'NodePilot', 'admin-setup.handoff');
 
-/** Must stay ABOVE the provisioner's own readiness budget (180 s in Provision-LocalDb.ps1).
- *  At the previous 120 s the shell gave up while the installer was still legitimately waiting for
- *  the first EF migration against a freshly initdb'd cluster, and reported a dead backend that was
- *  merely slow. */
+/** Must stay above the provisioner's own readiness budget (180 s in Provision-LocalDb.ps1), so a
+ *  backend that is still running the first EF migration against a fresh cluster is not reported
+ *  as dead. */
 const READY_TIMEOUT_MS = 240_000;
 
 let config: DesktopConfig;
@@ -88,7 +88,7 @@ async function bootstrap(): Promise<void> {
 
   createTray();
 
-  // First run: the installer left a bootstrap-token handoff → show the local setup page.
+  // First run: the installer left a bootstrap-token handoff -> show the local setup page.
   if (existsSync(HANDOFF_PATH)) {
     openSetupWindow();
   } else {

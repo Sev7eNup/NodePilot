@@ -14,7 +14,7 @@ namespace NodePilot.Scheduler;
 /// Shared frame of the leader-gated retention sweeps (executions, audit log, workflow versions,
 /// support events, notification ledger). It owns exactly the part that was identical in all five
 /// services: the cold-start warm-up, the started/stopped log pair, and the pass loop with its
-/// availability gate → leader gate → one iteration → interval delay.
+/// availability gate -> leader gate -> one iteration -> interval delay.
 ///
 /// <para>
 /// The sweep itself stays in the derived <see cref="RunIterationAsync"/>, deliberately: its broad
@@ -63,7 +63,8 @@ public abstract class LeaderGatedRetentionService : BackgroundService
     /// <summary>Lower bound (minutes) for the inter-pass delay.</summary>
     protected abstract int MinIntervalMinutes { get; }
 
-    /// <summary>Live <c>IntervalMinutes</c> of this sweep's options section — read per pass.</summary>
+    /// <summary>Live <c>IntervalMinutes</c> of this sweep's options section — read per
+    /// pass.</summary>
     protected abstract int ConfiguredIntervalMinutes { get; }
 
     /// <summary>Value of the <c>nodepilot.retention.service</c> metric tag.</summary>
@@ -121,7 +122,8 @@ public abstract class LeaderGatedRetentionService : BackgroundService
     /// </summary>
     internal abstract Task RunIterationAsync(CancellationToken ct);
 
-    /// <summary>Metric tags for this sweep: the single <c>nodepilot.retention.service</c> tag.</summary>
+    /// <summary>Metric tags for this sweep: the single <c>nodepilot.retention.service</c>
+    /// tag.</summary>
     protected TagList RetentionTags() => new TagList { new("nodepilot.retention.service", MetricServiceTag) };
 
     /// <summary>Liveness beat recorded under <see cref="ServiceName"/>.</summary>

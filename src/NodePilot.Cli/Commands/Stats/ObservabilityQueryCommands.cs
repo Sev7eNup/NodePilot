@@ -10,12 +10,11 @@ using Spectre.Console.Cli;
 
 namespace NodePilot.Cli.Commands.Stats;
 
-// `np observability query` / `query_range` — thin wrappers around the Prometheus
-// proxy endpoints. The server returns the raw Prometheus JSON (200 or upstream
-// status preserved); we forward it to the user as pretty-printed JSON. Table
-// rendering is intentional only for instant queries with a `vector` result — for
-// matrices we always fall back to JSON because that's the only sensible shape
-// for a CLI to display.
+// `np observability query` / `query_range` wrap the Prometheus proxy endpoints.
+// The server returns raw Prometheus JSON (200, or the preserved upstream status);
+// this command prints it as pretty JSON. Table rendering applies only to instant
+// queries with a `vector` result. Matrices always fall back to JSON, since that is
+// the only shape a CLI can show cleanly.
 
 public class ObservabilityQuerySettings : GlobalSettings
 {
@@ -85,7 +84,7 @@ public sealed class ObservabilityQueryCommand : BaseCommand<ObservabilityQuerySe
             return;
         }
 
-        // matrix / scalar / string → dump pretty JSON; table form would be misleading.
+        // matrix / scalar / string results: dump pretty JSON; a table would be misleading.
         Settings.JsonShapedPrint.Write(writer, doc);
     }
 

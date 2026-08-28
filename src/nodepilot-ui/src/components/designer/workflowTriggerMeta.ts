@@ -9,13 +9,12 @@ import {
 } from '@carbon/icons-react';
 
 /**
- * Shared metadata for the six primary trigger types: an icon, an accent colour and an
- * i18n key (designer namespace) for the human label. Lives in its own module so both the
- * WorkflowBrowser (trigger-grouped headers) and the WorkflowInfoCard can consume it
- * without importing each other — avoids a needless circular dependency.
+ * Shared metadata for the primary trigger types: an icon, an accent colour and an i18n key in
+ * the designer namespace for the label. It lives in its own module so WorkflowBrowser and
+ * WorkflowInfoCard can both use it without importing each other.
  *
- * `labelKey` reuses the already-localised `browser.trigger.*` strings; `browser.noTrigger`
- * is the fallback when a workflow has no recognised trigger.
+ * `labelKey` reuses the localised `browser.trigger.*` strings; `browser.noTrigger` is the
+ * fallback when a workflow has no recognised trigger.
  */
 export interface TriggerMeta {
   labelKey: string;

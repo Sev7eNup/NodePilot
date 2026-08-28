@@ -10,19 +10,11 @@ using Xunit;
 namespace NodePilot.Data.Tests.Security;
 
 /// <summary>
-/// End-to-end integration test for the DPAPI → AES-GCM migration scenario.
-/// Plays out the operator's actual switch path:
-///   1. Operator runs NodePilot with default DPAPI, creates credentials and secret globals.
-///   2. Cluster setup demands cross-host portable secrets, so the operator switches
-///      <c>Secrets:Provider</c> to <c>AesGcm</c> and provides a master key.
-///   3. Without re-encrypting the existing rows, every credential decrypt fails loudly.
-///   4. The operator either runs a migration script (TODO, V2) or re-enters the secrets manually.
-///
-/// These tests use a real <see cref="Data.NodePilotDbContext"/> (SQLite in-memory) and
-/// the real <see cref="CredentialStore"/> + <see cref="GlobalVariableStore"/> classes —
-/// so the whole encrypt → DB → decrypt path runs the same way it does in production.
-/// SQLite is used instead of Postgres only because tests must be CI-portable; the
-/// byte-wise wire format and the CryptographicException semantics are provider-agnostic.
+/// End-to-end test for the DPAPI to AES-GCM migration scenario: an operator switches
+/// <c>Secrets:Provider</c> from <c>Dpapi</c> to <c>AesGcm</c> after already storing
+/// credentials and secret globals. Uses a real <see cref="Data.NodePilotDbContext"/>
+/// (SQLite in-memory) with the real <see cref="CredentialStore"/> and
+/// <see cref="GlobalVariableStore"/> so the encrypt-to-decrypt path matches production.
 /// </summary>
 public class DpapiToAesGcmMigrationIntegrationTests
 {
@@ -109,9 +101,8 @@ public class DpapiToAesGcmMigrationIntegrationTests
     }
 
     /// <summary>
-    /// Bulk re-encrypt sweep: transitions every secret row from the legacy provider
-    /// to the active one in a single admin operation. After the sweep the legacy
-    /// fallback is no longer needed and can be removed from config.
+    /// Bulk re-encrypt sweep: moves every secret row from the legacy provider to the
+    /// active one in one admin operation, after which the legacy fallback can be removed.
     /// </summary>
     [Fact]
     public async Task ReencryptAll_MigratesEveryRowFromLegacyToActive()
@@ -131,7 +122,7 @@ public class DpapiToAesGcmMigrationIntegrationTests
         await dpapiGlobals.CreateAsync("ENV", "production", isSecret: false, null, GlobalVariableFolder.RootFolderId, null, CancellationToken.None);
 
         // Step 2: switch to a MigratingSecretProtector wrapping AES-GCM (active) +
-        // DPAPI (legacy). Bulk-rewrite via the new ReencryptAll* methods.
+        // DPAPI (legacy). Bulk-rewrite via the ReencryptAll* methods.
         var migrating = new MigratingSecretProtector(aesGcm, dpapi);
         var migCreds = new CredentialStore(db, migrating, NullLogger<CredentialStore>.Instance);
         var migGlobals = new GlobalVariableStore(db, migrating, NullLogger<GlobalVariableStore>.Instance);
@@ -183,10 +174,8 @@ public class DpapiToAesGcmMigrationIntegrationTests
     }
 
     /// <summary>
-    /// Regression test: when the sweep encounters a row whose ciphertext can't be decrypted
-    /// under any configured protector, the result must surface the row in SkippedDetails so
-    /// the operator sees it. The previous version silently logged + dropped the row,
-    /// leaving 200 OK with an inflated "everything fine" reading.
+    /// A row whose ciphertext can't be decrypted under any configured protector must show
+    /// up in SkippedDetails so the operator can see and fix it, not just vanish from the count.
     /// </summary>
     [Fact]
     public async Task ReencryptAll_BrokenRow_AppearsInSkippedDetails()

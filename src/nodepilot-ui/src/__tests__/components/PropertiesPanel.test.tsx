@@ -154,7 +154,7 @@ describe('PropertiesPanel — status pills', () => {
 
   it('shows the step-id as the placeholder in the Output-Var pill when no outputVariable is set', () => {
     renderPanel();
-    // Pill shows `→ step-1` when outputVariable is empty (using the node id).
+    // The pill falls back to the node id when outputVariable is empty.
     expect(screen.getByText('step-1')).toBeInTheDocument();
   });
 
@@ -174,9 +174,9 @@ describe('PropertiesPanel — status pills', () => {
 describe('PropertiesPanel — sections & gating', () => {
   it('renders the Test & Debug section + Run-test button only when a workflowId is provided and the node is not a trigger', () => {
     const { rerender } = renderPanel({ workflowId: 'wf-1' });
-    // Test & Debug section is collapsible defaultOpen=false — expand first.
+    // The Test & Debug section is collapsed by default (defaultOpen=false), so expand it first.
     fireEvent.click(screen.getByText('Test & Debug'));
-    // After the rework the button label is "Run test (<mode>)". Default mode = Empty.
+    // The button label is "Run test (<mode>)"; the default mode is Empty.
     expect(screen.getByRole('button', { name: /Run test/i })).toBeInTheDocument();
 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -194,7 +194,7 @@ describe('PropertiesPanel — sections & gating', () => {
         />
       </QueryClientProvider>
     );
-    // Manual trigger has no Test & Debug section at all.
+    // A manual trigger has no Test & Debug section.
     expect(screen.queryByText('Test & Debug')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Run test/i })).not.toBeInTheDocument();
   });
@@ -212,7 +212,7 @@ describe('PropertiesPanel — sections & gating', () => {
     // Engine selector and PowerShell Script label are rendered.
     expect(screen.getByText('Engine')).toBeInTheDocument();
     expect(screen.getByText('PowerShell Script')).toBeInTheDocument();
-    // Open Editor opens the fullscreen ScriptEditorDialog (still wired up).
+    // Open Editor opens the fullscreen ScriptEditorDialog.
     expect(screen.getByRole('button', { name: /Open Editor/i })).toBeInTheDocument();
   });
 

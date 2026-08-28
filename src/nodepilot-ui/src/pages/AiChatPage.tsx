@@ -30,20 +30,21 @@ import {
   trimHistory,
 } from '../lib/chatMessages';
 
-// A non-`__new__` sentinel workflowId so the store's `isPersistableScope` KEEPS this page's
-// threads across reloads (unlike an unsaved canvas). One shared scope per user.
+// A non-`__new__` sentinel workflowId so the store's `isPersistableScope` keeps this page's
+// threads across reloads, unlike an unsaved canvas. One shared scope per user.
 const GLOBAL_SCOPE = 'global';
-// Phones show the first four starter prompts; the rest come back at `lg`. Eight of them stack
-// into a column taller than the screen, so the composer is the only thing a thumb ever reaches.
+// Phones show the first four starter prompts; the rest come back at `lg`. The full set stacks
+// into a column taller than the screen and pushes the composer out of reach.
 const MOBILE_EXAMPLE_COUNT = 4;
 const EMPTY_THREAD: ChatMessage[] = [];
 const EMPTY_THREADS: ChatThreadMeta[] = [];
 
 /**
- * Global "AI Chat" — a read-only knowledge & operations assistant over NodePilot's docs,
- * installed workflows/operations, and (when enabled) source code. Feature-parity with the
- * workflow designer's in-canvas assistant (threads, regenerate, copy, usage footer, scroll-to-
- * bottom, streaming cursor) minus the canvas-only bits (proposals/apply/undo/mentions).
+ * Global AI Chat: a read-only knowledge and operations assistant over the docs, the installed
+ * workflows and operations, and source code when that source is enabled. It offers the same
+ * features as the designer's in-canvas assistant (threads, regenerate, copy, usage footer,
+ * scroll-to-bottom, streaming cursor) without the canvas-only proposals, apply, undo and
+ * mentions.
  */
 export function AiChatPage() {
   const { t } = useTranslation(['ai', 'common']);
@@ -88,7 +89,7 @@ export function AiChatPage() {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  // Auto-scroll only when already at the bottom (don't yank the user reading history).
+  // Auto-scroll only when already at the bottom, so reading history is not interrupted.
   useEffect(() => {
     const el = scrollRef.current;
     if (el && atBottomRef.current && typeof el.scrollTo === 'function') {
@@ -132,8 +133,8 @@ export function AiChatPage() {
           {
             question,
             history: trimHistory(history),
-            // Local zone + current offset so the assistant knows "now" and can present times
-            // in the user's zone (removes the "14:42 UTC vs 16:42 local" confusion).
+            // Local zone and current offset so the assistant knows the current time and can
+            // present timestamps in the user's zone rather than UTC.
             timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             utcOffsetMinutes: -new Date().getTimezoneOffset(),
           },
@@ -168,7 +169,7 @@ export function AiChatPage() {
     [sending, messages, setMessages, streamAssistant],
   );
 
-  // Regenerate / retry: re-answer the last user turn, discarding the old assistant answer.
+  // Re-answer the last user turn, discarding the previous assistant answer.
   const regenerate = useCallback(() => {
     if (sending) return;
     let lastUserIdx = -1;
@@ -184,7 +185,7 @@ export function AiChatPage() {
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); sendQuestion(input); return; }
-    // Up-arrow in an empty composer recalls the last question (shell-history style).
+    // Up-arrow in an empty composer recalls the last question, like a shell history.
     if (e.key === 'ArrowUp' && input.length === 0) {
       const lastUser = [...messages].reverse().find((m) => m.role === 'user');
       if (lastUser) { e.preventDefault(); setInput(lastUser.content); }
@@ -204,10 +205,10 @@ export function AiChatPage() {
     downloadTextFile(`nodepilot-ai-chat-${slug}-${date}.md`, md);
   }, [messages, threads, threadId, t]);
 
-  // Starter prompts follow the enabled sources: the ops set leans on the DB/text2sql tools, which
-  // are off by default AND global-Admin-only — offering "show me the last 10 failed runs" to someone
-  // without that source just produces "source not available". Hold both back until `caps` resolves,
-  // otherwise the lite set flashes for a beat before swapping.
+  // Starter prompts follow the enabled sources. The ops set relies on the DB and text2sql
+  // tools, which are off by default and global-Admin-only, so offering those prompts without
+  // the source only yields a "source not available" answer. Both sets are held back until
+  // `caps` resolves, otherwise the lite set flashes before swapping.
   const examples = useMemo(() => {
     if (!caps) return [];
     const key = caps.db ? 'ai:knowledge.examples' : 'ai:knowledge.examplesLite';
@@ -357,7 +358,7 @@ export function AiChatPage() {
   );
 }
 
-// Icons paired positionally to the ordered example prompts — one row per i18n array, same order.
+// Icons paired positionally with the ordered example prompts, one entry per i18n array item.
 // Falls back to Chat when more prompts than icons are configured.
 const EXAMPLE_ICONS_OPS: (typeof Document)[] = [
   WarningAlt,      // last 10 failed runs
@@ -391,19 +392,18 @@ function EmptyState({
 }>) {
   return (
     // `m-auto` instead of `justify-center`: both centre the block while it fits, but once the
-    // prompt list outgrows the scroll port — a phone in portrait — `justify-center` pushes the
-    // overflow out on BOTH sides, and the part above the scroll origin cannot be scrolled back
-    // into view. The icon, the heading and all but the last line of the hint were simply gone,
-    // leaving a dangling "…so nothing changes." at the top. An `auto` margin collapses to 0 when
-    // there is no free space, so the block falls back to top-aligned and stays reachable.
+    // prompt list outgrows the scroll port, such as on a phone in portrait, `justify-center`
+    // pushes the overflow out on both sides and the part above the scroll origin can no longer
+    // be scrolled into view. An `auto` margin collapses to 0 when there is no free space, so
+    // the block falls back to top-aligned and stays reachable.
     <div className="flex min-h-full flex-col px-2 py-8">
       <div data-testid="ai-chat-empty" className="m-auto flex w-full flex-col items-center text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-fixed/40 text-primary">
           <Chat size={28} />
         </div>
         <h2 className="mt-4 text-lg font-semibold text-on-surface">{t('ai:knowledge.emptyTitle')}</h2>
-        {/* Desktop-only, like the page subtitle: on a phone the heading alone says it, and the
-            three wrapped lines only push the prompts further down. */}
+        {/* Desktop only, like the page subtitle: on a phone the heading alone is enough, and
+            the wrapped lines push the prompts further down. */}
         <p className="mt-1 hidden max-w-md text-sm text-on-surface-variant lg:block">{t('ai:knowledge.emptyHint')}</p>
         {examples.length > 0 && (
           <div className="mt-6 grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">

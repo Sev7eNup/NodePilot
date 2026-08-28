@@ -3,11 +3,11 @@ using NodePilot.Api.Security.Ldap;
 namespace NodePilot.Api.Tests.TestSupport;
 
 /// <summary>
-/// Programmable <see cref="ILdapConnectionAdapter"/> so LDAP tests can script directory verdicts
-/// deterministically without a real domain controller. Union of the four private
-/// <c>FakeAdapter</c> copies the auth/LDAP test files used to carry: the authenticate side
-/// serves <see cref="Result"/> or throws per the <c>Throw*</c> switches, the lookup side
-/// (background directory sync) serves <see cref="Snapshot"/>/<see cref="Snapshots"/>.
+/// Programmable <see cref="ILdapConnectionAdapter"/> so LDAP tests can script directory
+/// verdicts deterministically without a real domain controller. Combines authenticate and
+/// lookup fakes in one type: the authenticate side serves <see cref="Result"/> or throws per
+/// the <c>Throw*</c> switches, the lookup side (background directory sync) serves
+/// <see cref="Snapshot"/>/<see cref="Snapshots"/>.
 /// </summary>
 public sealed class FakeLdapConnectionAdapter : ILdapConnectionAdapter
 {
@@ -16,7 +16,8 @@ public sealed class FakeLdapConnectionAdapter : ILdapConnectionAdapter
     /// <summary>Verdict returned on bind; null models a clean credential rejection.</summary>
     public LdapAuthResult? Result { get; set; }
 
-    /// <summary>Throw <see cref="LdapInfrastructureException"/> on authenticate (DC offline).</summary>
+    /// <summary>Throw <see cref="LdapInfrastructureException"/> on authenticate (DC
+    /// offline).</summary>
     public bool ThrowInfra { get; set; }
 
     /// <summary>Throw <see cref="LdapUserObjectNotFoundException"/> on authenticate.</summary>
@@ -25,7 +26,8 @@ public sealed class FakeLdapConnectionAdapter : ILdapConnectionAdapter
     /// <summary>Throw <see cref="OperationCanceledException"/> on authenticate.</summary>
     public bool ThrowCancellation { get; set; }
 
-    /// <summary>Arbitrary exception thrown on authenticate; takes precedence over the switches.</summary>
+    /// <summary>Arbitrary exception thrown on authenticate; takes precedence over the
+    /// switches.</summary>
     public Exception? ExceptionToThrow { get; set; }
 
     /// <summary>Number of authenticate attempts observed (lockout/breaker assertions).</summary>
@@ -48,10 +50,11 @@ public sealed class FakeLdapConnectionAdapter : ILdapConnectionAdapter
     /// <summary>Per-subject snapshots; falls back to <see cref="Snapshot"/> on a miss.</summary>
     public IReadOnlyDictionary<string, LdapDirectorySnapshot?>? Snapshots { get; set; }
 
-    /// <summary>Throw <see cref="LdapInfrastructureException"/> on lookup (sync-side outage).</summary>
+    /// <summary>Throw <see cref="LdapInfrastructureException"/> on lookup (sync-side
+    /// outage).</summary>
     public bool ThrowInfrastructureOnLookup { get; set; }
 
-    /// <summary>Hook invoked on every lookup — used to inject leadership changes mid-sync.</summary>
+    /// <summary>Hook invoked on every lookup to inject leadership changes mid-sync.</summary>
     public Action? OnLookup { get; set; }
 
     public Task<LdapAuthResult?> AuthenticateAsync(string upn, string password, CancellationToken ct)

@@ -7,14 +7,12 @@ using NodePilot.Core.Interfaces;
 namespace NodePilot.Engine.Activities;
 
 /// <summary>
-/// Engine-local activity that calls an OpenAI-compatible endpoint (prompt → text answer) — chat
-/// completions or OpenAI's Responses API, depending on the base URL's path (see
-/// <c>LlmEndpointGuard.ResolveEndpoint</c>).
-/// By default it uses the globally configured <c>Llm:*</c> endpoint; per-node config
-/// can override <c>baseUrl</c>/<c>model</c>/<c>apiKey</c> plus <c>maxTokens</c>/<c>temperature</c>/
-/// <c>timeoutSeconds</c>. Gated by the global <c>Llm:Enabled</c> master switch (single kill-switch
-/// for all LLM egress). Shares the exact transport + SSRF guard as the AI assistant via
-/// <see cref="ILlmClientFactory"/> — the only per-node override entry point.
+/// Engine-local activity that sends a prompt to an OpenAI-compatible endpoint and returns the
+/// text answer, using chat completions or OpenAI's Responses API depending on the base URL's
+/// path (see <c>LlmEndpointGuard.ResolveEndpoint</c>). Uses the global <c>Llm:*</c> endpoint by
+/// default; per-node config can override <c>baseUrl</c>/<c>model</c>/<c>apiKey</c>/
+/// <c>maxTokens</c>/<c>temperature</c>/<c>timeoutSeconds</c>. Gated by <c>Llm:Enabled</c> and
+/// shares transport and SSRF guarding with the AI assistant via <see cref="ILlmClientFactory"/>.
 /// </summary>
 public sealed class LlmQueryActivity : IActivityExecutor
 {
@@ -32,8 +30,8 @@ public sealed class LlmQueryActivity : IActivityExecutor
     public Task<ActivityResult> ExecuteAsync(StepExecutionContext context, JsonElement config, CancellationToken ct)
         => ActivityExecution.RunAsync(async () =>
         {
-            // Master switch: Llm:Enabled gates ALL LLM egress, even for a node with its own endpoint.
-            // Hot-reload: read the live value so toggling Llm:Enabled in Settings takes effect without a restart.
+            // Llm:Enabled gates all LLM egress, even for a node with its own endpoint. Reads the
+            // live value so toggling it in Settings takes effect without a restart.
             if (!_options.CurrentValue.Enabled)
                 return Fail("AI features are disabled (Llm:Enabled=false). Enable them in Settings → AI to use the LLM Query activity.");
 
@@ -41,14 +39,14 @@ public sealed class LlmQueryActivity : IActivityExecutor
             if (string.IsNullOrWhiteSpace(prompt))
                 return Fail("LLM Query: 'prompt' is required.");
 
-            // Empty systemPrompt → passthrough (no synthetic default); jsonMode only sets
-            // response_format — the activity does NOT parse/validate the answer as JSON.
+            // An empty systemPrompt passes through with no synthetic default. jsonMode only sets
+            // response_format; the activity does not parse or validate the answer as JSON.
             var systemPrompt = config.GetStringOrNull("systemPrompt") ?? string.Empty;
             var jsonMode = config.GetBool("jsonMode", false);
             var model = NullIfBlank(config.GetStringOrNull("model"));
             var apiKey = NullIfBlank(config.GetStringOrNull("apiKey"));
 
-            // Per-node overrides are validated against the RESOLVED values (StepRunner already
+            // Per-node overrides are validated against resolved values (StepRunner already
             // substituted any {{…}} templates). baseUrl is additionally guarded in the factory.
             var baseUrl = NullIfBlank(config.GetStringOrNull("baseUrl"));
             if (baseUrl is not null)
@@ -83,9 +81,11 @@ public sealed class LlmQueryActivity : IActivityExecutor
                 {
                     Success = true,
                     Output = response.Content,
-                    // Token/finishReason keys are ALWAYS present (empty when the server omitted usage)
-                    // so downstream {{step.param.totalTokens}} etc. never fail to resolve. The catalog
-                    // "number" type is a UI/databus hint only — runtime values are always strings.
+                    // Token/finishReason keys are always present (empty when the server omitted
+                    // usage)
+                    // so downstream {{step.param.totalTokens}} etc. never fail to resolve. The
+                    // catalog
+                    // "number" type is a UI/databus hint only; runtime values are always strings.
                     OutputParameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                     {
                         ["model"] = response.Model ?? string.Empty,

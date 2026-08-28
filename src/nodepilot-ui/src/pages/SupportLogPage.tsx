@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { SupportLogViewerSection } from '../components/admin-settings/SupportLogViewerSection';
 
 /**
- * Admin-only standalone page (moved out of Settings → System so it's directly reachable
+ * Admin-only standalone page (moved out of Settings -> System so it's directly reachable
  * during an incident instead of buried two tabs deep).
  */
 export function SupportLogPage() {

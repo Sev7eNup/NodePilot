@@ -8,13 +8,13 @@ using Microsoft.Win32.SafeHandles;
 namespace NodePilot.Engine.PowerShell;
 
 /// <summary>
-/// Launches a child process **race-free inside a Windows Job Object** and returns a handle for
+/// Launches a child process race-free inside a Windows Job Object and returns a handle for
 /// awaiting exit, reading stdout/stderr, and tearing the whole tree down.
 ///
 /// The job is assigned <b>at creation time</b> via <c>STARTUPINFOEX</c> +
 /// <c>PROC_THREAD_ATTRIBUTE_JOB_LIST</c>, so the child is contained before its first instruction
-/// runs — there is no <c>Process.Start()</c> → <c>AssignProcessToJobObject()</c> race. The job
-/// carries <c>KILL_ON_JOB_CLOSE</c> (host death / handle close ⇒ kernel reaps the whole tree, no
+/// runs — there is no <c>Process.Start()</c> -> <c>AssignProcessToJobObject()</c> race. The job
+/// carries <c>KILL_ON_JOB_CLOSE</c> (host death / handle close -> kernel reaps the whole tree, no
 /// orphans) + <c>DIE_ON_UNHANDLED_EXCEPTION</c> (a native crash fails fast instead of hanging on a
 /// WER dialog), plus optional aggregate <c>JOB_MEMORY</c> and <c>ACTIVE_PROCESS</c> caps.
 ///
@@ -23,11 +23,14 @@ namespace NodePilot.Engine.PowerShell;
 /// inheritable handles of the API host into the child (<b>inbound</b> protection — what this child
 /// inherits).
 ///
-/// <b>Outbound</b> protection — our own stdout/stderr pipe write-handles must not leak into <i>other</i>
-/// processes — is a separate concern the handle list does NOT cover: those client handles are created
+/// <b>Outbound</b> protection — our own stdout/stderr pipe write-handles must not leak into
+/// <i>other</i>
+/// processes — is a separate concern the handle list does NOT cover: those client handles are
+/// created
 /// inheritable and are briefly open in this process, so any concurrent <c>CreateProcess</c>/
 /// <c>Process.Start</c> elsewhere would inherit them and hold the pipe write-end open forever.
-/// <see cref="ProcessSpawnCoordinator"/> serializes every inheritable-handle spawn to prevent exactly that.
+/// <see cref="ProcessSpawnCoordinator"/> serializes every inheritable-handle spawn to prevent
+/// exactly that.
 ///
 /// Windows-only by construction (the orchestrator targets <c>net10.0-windows</c>); callers guard
 /// with <see cref="OperatingSystem.IsWindows"/>.
@@ -101,7 +104,7 @@ internal static partial class IsolatedProcessLauncher
         {
             job = CreateJob(limits);
 
-            // PipeDirection.In ⇒ the parent (server) reads; the child inherits the write end via
+            // PipeDirection.In -> the parent (server) reads; the child inherits the write end via
             // ClientSafePipeHandle. Inheritable so it survives into the child.
             outPipe = new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.Inheritable);
             errPipe = new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.Inheritable);
@@ -122,7 +125,8 @@ internal static partial class IsolatedProcessLauncher
             attrInitialized = true;
 
             // cbSize is the BYTE size of the value, not a count: one HANDLE for JOB_LIST,
-            // three for HANDLE_LIST. The value buffers must stay alive until DeleteProcThreadAttributeList.
+            // three for HANDLE_LIST. The value buffers must stay alive until
+            // DeleteProcThreadAttributeList.
             pJob = Marshal.AllocHGlobal(IntPtr.Size);
             Marshal.WriteIntPtr(pJob, job.DangerousGetHandle());
             if (!UpdateProcThreadAttribute(attrList, 0, PROC_THREAD_ATTRIBUTE_JOB_LIST, pJob, (nuint)IntPtr.Size, IntPtr.Zero, IntPtr.Zero))
@@ -143,7 +147,7 @@ internal static partial class IsolatedProcessLauncher
             startupInfo.StartupInfo.hStdError = hStdErr;
             startupInfo.lpAttributeList = attrList;
 
-            // lpApplicationName = null ⇒ CreateProcess parses argv[0] from the (quoted) command
+            // lpApplicationName = null -> CreateProcess parses argv[0] from the (quoted) command
             // line. The buffer must be writable (CreateProcessW may modify it in place), so we
             // hand it our own Unicode HGlobal, never a read-only managed string.
             var commandLine = "\"" + executable + "\" " + arguments;
@@ -403,7 +407,8 @@ internal static partial class IsolatedProcessLauncher
         public UIntPtr PeakJobMemoryUsed;
     }
 
-    /// <summary>Owns a job-object HANDLE; closing it triggers KILL_ON_JOB_CLOSE on the tree.</summary>
+    /// <summary>Owns a job-object HANDLE; closing it triggers KILL_ON_JOB_CLOSE on the
+    /// tree.</summary>
     internal sealed class SafeJobHandle : SafeHandleZeroOrMinusOneIsInvalid
     {
         public SafeJobHandle(IntPtr handle) : base(ownsHandle: true) => SetHandle(handle);
@@ -413,7 +418,8 @@ internal static partial class IsolatedProcessLauncher
 
 /// <summary>
 /// Handle to a process launched by <see cref="IsolatedProcessLauncher"/>. Owns the job, the process
-/// handle, and the stdout/stderr pipe readers. Disposing closes the job (KILL_ON_JOB_CLOSE reaps any
+/// handle, and the stdout/stderr pipe readers. Disposing closes the job (KILL_ON_JOB_CLOSE reaps
+/// any
 /// survivors), so the caller must read output and the exit code BEFORE disposing.
 /// </summary>
 [SupportedOSPlatform("windows")]
@@ -442,7 +448,8 @@ internal sealed class LaunchedIsolatedProcess : IDisposable
         StandardError = new StreamReader(errPipe, Encoding.UTF8);
     }
 
-    /// <summary>Completes when the root process exits, or throws OCE if <paramref name="ct"/> fires.</summary>
+    /// <summary>Completes when the root process exits, or throws OCE if <paramref name="ct"/>
+    /// fires.</summary>
     public async Task WaitForExitAsync(CancellationToken ct)
     {
         if (_process.IsInvalid) return;
@@ -469,7 +476,8 @@ internal sealed class LaunchedIsolatedProcess : IDisposable
         }
     }
 
-    /// <summary>Reads the root process exit code. Call only after <see cref="WaitForExitAsync"/>.</summary>
+    /// <summary>Reads the root process exit code. Call only after <see
+    /// cref="WaitForExitAsync"/>.</summary>
     public int GetExitCode()
     {
         if (!IsolatedProcessLauncher.GetExitCodeProcess(_process, out var code))
@@ -477,7 +485,8 @@ internal sealed class LaunchedIsolatedProcess : IDisposable
         return unchecked((int)code);
     }
 
-    /// <summary>Synchronously terminates the whole job tree (root + any surviving children).</summary>
+    /// <summary>Synchronously terminates the whole job tree (root + any surviving
+    /// children).</summary>
     public void Terminate()
     {
         if (!_job.IsInvalid && !_job.IsClosed)

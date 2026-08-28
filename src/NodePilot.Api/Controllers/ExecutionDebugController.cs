@@ -12,7 +12,8 @@ namespace NodePilot.Api.Controllers;
 
 /// <summary>
 /// Step-debugger surface: resume a paused execution, query which steps are currently paused.
-/// Read/lifecycle endpoints (GetById, Cancel, Retry, ...) live in <see cref="ExecutionsController"/>;
+/// Read/lifecycle endpoints (GetById, Cancel, Retry, ...) live in <see
+/// cref="ExecutionsController"/>;
 /// this controller only owns the debug semantics so the larger controller stays focused on
 /// the execution-history flow.
 /// </summary>
@@ -41,7 +42,8 @@ public class ExecutionDebugController : ControllerBase
     /// decides what happens next: "continue" runs until the next breakpoint or the end,
     /// "stepOver" always pauses again at the next step, and "stop" cancels the execution.
     /// The caller can optionally supply variable overrides — these are merged into the
-    /// variables dictionary BEFORE the executor runs the step, enabling "what-if" testing.</summary>
+    /// variables dictionary before the executor runs the step, enabling "what-if"
+    /// testing.</summary>
     [HttpPost("/api/executions/{id:guid}/resume")]
     [Authorize(Roles = "Admin,Operator")]
     public async Task<IActionResult> Resume(Guid id, [FromBody] ResumeDebugRequest req, CancellationToken ct)
@@ -51,17 +53,15 @@ public class ExecutionDebugController : ControllerBase
             .Include(e => e.Workflow)
             .FirstOrDefaultAsync(e => e.Id == id, ct);
         if (execution is null) return NotFound();
-        // RBAC: caller needs Run on the workflow's folder. The follow-up
-        // StartedByUserId-ownership check below is unchanged — both gates apply.
+        // RBAC: caller needs Run access on the workflow's folder. The StartedByUserId
+        // ownership check below is a separate, additional gate.
         if (await this.RequireWorkflowAccessAsync(_authz, execution.Workflow,
                 NodePilot.Core.Interfaces.ResourceOp.Run, ct) is { } runDenied) return runDenied;
 
-        // C-2: Debug-Session-Ownership. Only the user who started the debug run (or an
-        // Admin) may step/continue/stop it. Without this, any Operator could interfere
-        // with another Operator's debugging session, inspect their variable snapshots
-        // via SignalR, or inject Overrides that tamper with the run mid-flight.
-        // StartedByUserId is null for scheduler/trigger-driven runs — those aren't
-        // resumable anyway (no debug flag), so that branch is moot.
+        // Only the user who started this debug run (or an Admin) may step, continue, or
+        // stop it — otherwise one Operator could interfere with another's session or
+        // inject overrides mid-run. StartedByUserId is null for trigger-driven runs,
+        // which are never resumable anyway.
         var currentUserId = this.GetCurrentUserId();
         if (!User.IsAdmin()
             && execution.StartedByUserId is not null
@@ -75,10 +75,9 @@ public class ExecutionDebugController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.StepId))
             return BadRequest("stepId required");
 
-        // L-2: bound the Overrides dict. Without caps a caller could inject a dictionary
-        // large enough to OOM the engine's variable-resolution pass or produce multi-MB
-        // audit-log entries (the details JSON below serializes the count + keys).
-        // Limits chosen well above any legitimate debug-step use case.
+        // Bound the overrides dict: without a cap, a caller could send a dictionary large
+        // enough to exhaust memory during variable resolution, or bloat the audit log
+        // entry below, which serializes the count and keys.
         if (req.Overrides is { Count: > 256 })
             return BadRequest(new { error = "Too many overrides (max 256)" });
         if (req.Overrides is { Count: > 0 })

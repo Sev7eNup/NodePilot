@@ -12,9 +12,11 @@ using Xunit;
 namespace NodePilot.Engine.Tests.SystemAlerts;
 
 /// <summary>
-/// Guards the invariants of the system-alert catalog (the modular "system alert sources" architecture
+/// Guards the invariants of the system-alert catalog (the modular "system alert sources"
+/// architecture
 /// introduced by ADR-0008 for infra/signal alerts): unique/consistent source ids, well-formed
-/// descriptors (operators match field type, enum fields declare values), and preset conditions that parse
+/// descriptors (operators match field type, enum fields declare values), and preset conditions that
+/// parse
 /// against the same <see cref="ConditionEvaluator"/> the alerting filters run on.
 /// </summary>
 public class SystemAlertCatalogTests
@@ -91,6 +93,15 @@ public class SystemAlertCatalogTests
     }
 
     [Fact]
+    public void ExecutionResult_CancelledBy_DeclaresNeverStartedRecoveryMarkers()
+    {
+        var descriptor = new ExecutionResultSource().Describe();
+        var field = descriptor.Fields.Single(candidate => candidate.Name == "cancelledBy");
+
+        field.EnumValues.Should().Contain(["failover-pending", "reconciler-pending"]);
+    }
+
+    [Fact]
     public void EveryPresetCondition_ParsesAndEvaluatesAgainstTheConditionEvaluator()
     {
         var empty = new Dictionary<string, string>();
@@ -156,7 +167,8 @@ public class SystemAlertCatalogTests
     }
 
     // Collects every source:"event" operand name in an AST so a preset can't reference a field the
-    // descriptor doesn't declare (which the strict alerting validator will later reject at save time).
+    // descriptor doesn't declare (which the strict alerting validator will later reject at save
+    // time).
     private static IEnumerable<string> EventOperandNames(string json)
     {
         using var doc = JsonDocument.Parse(json);
@@ -179,7 +191,8 @@ public class SystemAlertCatalogTests
         }
     }
 
-    /// <summary>A source whose runtime SourceId disagrees with its descriptor — must fail catalog construction.</summary>
+    /// <summary>A source whose runtime SourceId disagrees with its descriptor — must fail catalog
+    /// construction.</summary>
     private sealed class MismatchedSource : ISystemAlertSource
     {
         public string SourceId => "runtime-id";

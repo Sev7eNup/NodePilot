@@ -4,9 +4,8 @@ namespace NodePilot.Cli;
 
 /// <summary>
 /// The product version, taken from the assembly the SDK stamped from
-/// <c>Directory.Build.props</c>. Exists so <c>np --version</c> cannot drift away from the
-/// version the release build ships — it used to be a literal in Program.cs and reported 1.0.0
-/// after the product had already moved on.
+/// <c>Directory.Build.props</c>. Exists so <c>np --version</c> stays in sync with the
+/// version the release build ships.
 /// </summary>
 public static class CliVersion
 {

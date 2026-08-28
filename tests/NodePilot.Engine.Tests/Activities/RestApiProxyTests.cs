@@ -21,10 +21,10 @@ public class RestApiProxyTests
     private static JsonElement ParseConfig(string json)
         => JsonDocument.Parse(json).RootElement;
 
-    /// <summary>Empty IConfiguration — flips the SSRF guard back into the default-on policy
-    /// (link-local always blocked, RFC1918 blocked because the missing key reads as "true").
-    /// Tests that exercise proxy/handler wiring don't hit the network so the policy never
-    /// fires, but the constructor and BuildDefaultHandler now require a non-null instance.</summary>
+    /// <summary>Empty IConfiguration keeps the SSRF guard on its default-on policy
+    /// (link-local and RFC1918 blocked, since a missing key reads as "true"). Proxy/handler
+    /// tests never touch the network, but the constructor and BuildDefaultHandler both
+    /// require a non-null config instance.</summary>
     private static IConfiguration EmptyConfig() =>
         new ConfigurationBuilder().Build();
 
@@ -126,11 +126,11 @@ public class RestApiProxyTests
         var handler = provider.ResolveOverrideHandler(stepConfig);
         var webProxy = (WebProxy)handler.Proxy!;
 
-        // Matching wildcard → bypassed (no proxy used)
+        // Matching wildcard: bypassed, no proxy used
         webProxy.IsBypassed(new Uri("https://api.internal/path")).Should().BeTrue();
-        // Literal match → bypassed
+        // Literal match: bypassed
         webProxy.IsBypassed(new Uri("http://localhost:5000")).Should().BeTrue();
-        // Non-matching → goes through proxy
+        // Non-matching: goes through proxy
         webProxy.IsBypassed(new Uri("https://api.public.com/path")).Should().BeFalse();
     }
 

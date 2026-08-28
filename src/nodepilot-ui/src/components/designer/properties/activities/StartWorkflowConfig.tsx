@@ -79,10 +79,10 @@ export function StartWorkflowConfig({ config, onUpdate, upstreamVars = [], onOpe
           </div>
         </label>
       </Field>
-      {/* Contract-aware mapping when we successfully derived one; free-form table
-          otherwise. The free-form fallback covers: empty input, variable-expression
-          ({{...}}) input, lookup-in-flight, and unknown-workflow (404). Loading
-          indicator above the fallback so the user sees we're trying. */}
+      {/* Contract-aware mapping when a contract was derived; free-form table otherwise.
+          The free-form fallback covers empty input, variable-expression ({{...}}) input,
+          lookup-in-flight, and unknown-workflow (404). The loading indicator sits above
+          the fallback. */}
       {isLoading && (
         <div className="flex items-center gap-1.5 text-[11px] text-on-surface-variant">
           <CircleDash size={11} className="animate-spin" />

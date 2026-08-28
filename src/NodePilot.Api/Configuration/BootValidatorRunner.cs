@@ -8,11 +8,9 @@ namespace NodePilot.Api.Configuration;
 /// constructor in the NodePilot.Api assembly, aggregates the results, and either
 /// throws (any error-severity findings) or logs (warnings only).
 ///
-/// <para>Reflection-based discovery is deliberate: we want adding a new validator
-/// to be "drop a class implementing the interface, done" — no DI registration,
-/// no manual list to keep in sync. The "parameterless constructor" requirement
-/// keeps boot-time validators side-effect-free (no DI, no I/O — pure config
-/// inspection) and side-steps the chicken-and-egg with the service provider.</para>
+/// <para>Discovery is reflection-based so a new validator needs no DI registration
+/// and no manual list to keep in sync. Requiring a parameterless constructor keeps
+/// validators free of DI and I/O, so they can run before the service provider exists.</para>
 /// </summary>
 public static class BootValidatorRunner
 {
@@ -31,8 +29,8 @@ public static class BootValidatorRunner
     }
 
     /// <summary>
-    /// Overload that takes an explicit validator list — used by tests so they can
-    /// exercise the runner without depending on the full validator catalog.
+    /// Overload that takes an explicit validator list. Tests use it to exercise the
+    /// runner without depending on the full validator catalog.
     /// </summary>
     public static IReadOnlyList<BootValidationIssue> RunAll(
         IConfiguration configuration,
@@ -74,7 +72,7 @@ public static class BootValidatorRunner
     }
 
     /// <summary>
-    /// Non-throwing variant — runs the auto-discovered validator catalog and returns
+    /// Non-throwing variant: runs the auto-discovered validator catalog and returns
     /// every issue (warnings and errors) without aborting. Used by the Admin Settings
     /// API to surface validation errors as HTTP 400 rather than 500.
     /// </summary>

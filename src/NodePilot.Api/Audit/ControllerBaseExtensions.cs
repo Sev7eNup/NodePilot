@@ -4,9 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace NodePilot.Api.Audit;
 
 /// <summary>
-/// Shared claim extractors. Controllers previously re-implemented
-/// <c>User.FindFirstValue(ClaimTypes.NameIdentifier)</c> in 4 places — consolidated here so
-/// a single upstream change to claim names doesn't require a grep-and-replace campaign.
+/// Shared claim extractors for controllers, so a change to the claim names is made in one place.
 /// </summary>
 public static class ControllerBaseExtensions
 {

@@ -32,7 +32,8 @@ public class WorkflowEngineUnpersistedFailureTests
         "{\"id\":\"trigger-1\",\"type\":\"activity\",\"data\":{\"activityType\":\"manualTrigger\",\"config\":{}}}";
 
     /// <summary>
-    /// Simulates a failure exactly at the terminal write. The Running insert is deliberately allowed
+    /// Simulates a failure exactly at the terminal write. The Running insert is deliberately
+    /// allowed
     /// through, then the first Failed update throws. A fresh context can commit after recovery.
     /// </summary>
     private sealed class FailOnceOnFailedStepSaveInterceptor : SaveChangesInterceptor
@@ -186,7 +187,8 @@ public class WorkflowEngineUnpersistedFailureTests
     }
 
     /// <summary>
-    /// Fails the terminal <b>verdict read</b> exactly once — the COUNT of failed steps — and nothing
+    /// Fails the terminal <b>verdict read</b> exactly once — the COUNT of failed steps — and
+    /// nothing
     /// else. Deliberately distinct from the CAS interceptors above: the writes were already
     /// barriered, the read was not, and that asymmetry is the defect under test.
     /// </summary>
@@ -791,10 +793,12 @@ public class WorkflowEngineUnpersistedFailureTests
     public async Task ExecuteAsync_DatabaseOutageAtTerminalVerdictRead_ParksInsteadOfInvertingTheVerdict()
     {
         // The regression this pins: the run's verdict is READ from the database (COUNT of Failed
-        // step rows) while every write around it was already barriered. Unguarded, a connection that
+        // step rows) while every write around it was already barriered. Unguarded, a connection
+        // that
         // dies right after the last step committed threw into the engine's generic catch, which
         // reliably persists Failed — turning a run in which EVERY step succeeded into a durable
-        // failure. Downstream that is not cosmetic: alerting fires, and a startWorkflow parent takes
+        // failure. Downstream that is not cosmetic: alerting fires, and a startWorkflow parent
+        // takes
         // its failure edge on a child that fully succeeded.
         using var connection = new SqliteConnection("DataSource=:memory:");
         connection.Open();

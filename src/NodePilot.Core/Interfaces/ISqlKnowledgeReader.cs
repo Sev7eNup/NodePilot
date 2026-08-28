@@ -1,20 +1,19 @@
 namespace NodePilot.Core.Interfaces;
 
 /// <summary>
-/// Read-only, secret-redacted view of the NodePilot App-DB schema + query results for the global
-/// "AI Chat" knowledge assistant (the <c>list_db_tables</c> / <c>get_db_table</c> /
-/// <c>execute_readonly_sql</c> tools). Text2sql: the LLM translates natural language to SQL, this
-/// reader only discovers the schema and runs a single read-only statement. Implementation lives in
-/// the API project (it reuses <c>DbAdminMetadataService</c> + <c>DbAdminQueryExecutor</c>), registered
-/// scoped — exactly the <see cref="ISettingsKnowledgeReader"/> pattern.
+/// Read-only, secret-redacted view of the app database schema and query results for the global
+/// AI Chat knowledge assistant (the <c>list_db_tables</c>, <c>get_db_table</c> and
+/// <c>execute_readonly_sql</c> tools). The LLM translates natural language to SQL; this reader
+/// only discovers the schema and runs a single read-only statement. The implementation lives in
+/// the API project, reusing <c>DbAdminMetadataService</c> and <c>DbAdminQueryExecutor</c>, and is
+/// registered scoped like <see cref="ISettingsKnowledgeReader"/>.
 ///
-/// <para><b>Redaction is the contract</b>: schema tools omit hidden secret columns
-/// (<c>PasswordHash</c>, <c>EncryptedPassword</c>, byte[] blobs) and entirely omit the four tables
-/// holding opaque Workflow Definitions or custom-activity implementations. Any SQL reference to
-/// those tables is refused; callers use dedicated, RBAC-aware tools instead. Result columns are
-/// masked by name as defence in depth and every other cell passes through the audit details
-/// redactor. Only <c>string?</c> leaves the reader — never raw <c>object?</c>. Restricted to global
-/// Admins at the tool layer.</para>
+/// <para>Redaction is part of the contract: the schema tools omit hidden secret columns
+/// (<c>PasswordHash</c>, <c>EncryptedPassword</c>, byte[] blobs) and the four tables holding
+/// workflow definitions or custom-activity implementations. SQL referencing those tables is
+/// refused; callers use the dedicated RBAC-aware tools instead. Result columns are masked by name
+/// and every other cell passes through the audit details redactor, and only <c>string?</c> leaves
+/// the reader. Restricted to global Admins at the tool layer.</para>
 /// </summary>
 public interface ISqlKnowledgeReader
 {
@@ -27,13 +26,14 @@ public interface ISqlKnowledgeReader
     /// <summary>One table's AI-safe columns with type/nullable/PK, or null if unknown.</summary>
     Task<DbTableKnowledgeDetail?> GetTableAsync(string name, CancellationToken ct);
 
-    /// <summary>Runs a single read-only SQL statement and returns redacted columns + rows. Never throws for
-    /// SQL errors — they surface as <see cref="SqlQueryKnowledgeResult.Error"/> so the LLM can correct the query.</summary>
+    /// <summary>Runs one read-only SQL statement and returns redacted columns and rows. SQL errors
+    /// do not throw; they surface as <see cref="SqlQueryKnowledgeResult.Error"/> so the LLM can
+    /// correct the query.</summary>
     Task<SqlQueryKnowledgeResult> ExecuteReadAsync(string sql, CancellationToken ct);
 }
 
-/// <summary>Compact schema entry for one table: its entity name, the real DB table name (pluralised —
-/// use this in SQL), primary keys, and the non-hidden column names.</summary>
+/// <summary>Compact schema entry for one table: entity name, the real DB table name to use in
+/// SQL, primary keys, and the non-hidden column names.</summary>
 public sealed record DbTableKnowledgeSummary(
     string Name,
     string DbTableName,
@@ -47,7 +47,8 @@ public sealed record DbColumnKnowledge(
     bool IsNullable,
     bool IsPrimaryKey);
 
-/// <summary>Full schema for one table: its entity name, the real DB table name, and its non-hidden columns.</summary>
+/// <summary>Full schema for one table: entity name, DB table name, non-hidden columns, and
+/// foreign keys.</summary>
 public sealed record DbTableKnowledgeDetail(
     string Name,
     string DbTableName,
@@ -61,9 +62,9 @@ public sealed record DbForeignKeyKnowledge(
     IReadOnlyList<string> PrincipalColumns);
 
 /// <summary>Redacted result of a read-only SQL statement. <see cref="Error"/> is non-null when the
-/// statement failed to execute (bad SQL, timeout, …) so the model can retry with a corrected query;
-/// on success <see cref="Columns"/> names the result columns and <see cref="Rows"/> holds the redacted
-/// cells (hidden/masked columns become <c>"***"</c>).</summary>
+/// statement failed (bad SQL, timeout) so the model can retry with a corrected query. On success
+/// <see cref="Columns"/> names the result columns and <see cref="Rows"/> holds the redacted cells;
+/// hidden or masked columns become <c>"***"</c>.</summary>
 public sealed record SqlQueryKnowledgeResult(
     IReadOnlyList<string> Columns,
     IReadOnlyList<IReadOnlyList<string?>> Rows,

@@ -24,20 +24,20 @@ public sealed class DbAdminMetadataService
         {
             // Skip owned types and shadow-only types that have no CLR class
             if (entityType.ClrType is null) continue;
-            // Skip junction tables owned/keyless entities that we'd rather not expose
+            // Skip junction, owned, and keyless entities that should not be exposed
             if (entityType.IsOwned()) continue;
 
             var name = entityType.ClrType.Name;
-            // The real DB-side table name (pluralised in our migrations: "Credentials"
-            // not "Credential"). Needed by the SQL query console so click-to-insert
-            // produces a name that Postgres can actually resolve. Falls back to the
-            // CLR name when GetTableName returns null (shadow/owned types we already
-            // skip above, but be defensive).
+            // The real DB-side table name (migrations pluralize it: "Credentials", not
+            // "Credential"). The SQL query console needs it so click-to-insert produces a
+            // name Postgres can resolve. Falls back to the CLR name when GetTableName
+            // returns null (owned/shadow types are already skipped above).
             var dbTableName = entityType.GetTableName() ?? name;
             var pkProps = entityType.FindPrimaryKey()?.Properties ?? Array.Empty<IProperty>().AsEnumerable();
             var pkNames = pkProps.Select(p => p.Name).ToList();
 
-            // Cascade delete targets: find entities whose FK to this entity has DeleteBehavior.Cascade
+            // Cascade delete targets: find entities whose FK to this entity has
+            // DeleteBehavior.Cascade
             var cascadeTo = db.Model.GetEntityTypes()
                 .SelectMany(e => e.GetForeignKeys())
                 .Where(fk => fk.PrincipalEntityType == entityType && fk.DeleteBehavior == DeleteBehavior.Cascade)

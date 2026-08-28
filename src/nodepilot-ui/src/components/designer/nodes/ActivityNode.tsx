@@ -28,12 +28,10 @@ export const SubWorkflowPreviewContext = createContext<{
 }>({ onPreviewSubWorkflow: () => {} });
 
 /**
- * Per-step colours for a pinned run's live path-highlight, riding the semantic status
- * tokens. The fill is a color-mix of the status hue onto surface-lowest: on white that
- * yields a bright pastel, on the near-black dark canvas a deep low-luminance fill — the
- * old hand-picked light/dark hex pairs, now derived from ONE formula per status. The
- * status signal is carried by the coloured border + the activity icon, not by a neon
- * fill. Running (amber) vs Paused (orange) stay distinguishable in both themes.
+ * Per-step colors for a pinned run's live path-highlight, riding the semantic status tokens.
+ * The fill mixes the status hue onto surface-lowest, giving a bright pastel on light themes and
+ * a deep low-luminance fill on dark ones, from one formula per status. The colored border and
+ * icon carry the status signal, not the fill; Running (amber) and Paused (orange) stay distinct.
  */
 const LIVE_STATUS_STYLE = {
   Running:   { bg: 'color-mix(in srgb, var(--color-running) 16%, var(--color-surface-lowest))', border: 'var(--color-running)', pulse: true },
@@ -105,7 +103,7 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   const iconOffsetY = getIconOffsetY(shape);
   const iconOffsetX = getIconOffsetX(shape);
   /** Builds the transform style for the activity icon from the per-shape X/Y offsets, scaled
-   *  to the relevant icon box (Classic: effectiveIconBox, Card: 26). Empty → no transform, so
+   *  to the relevant icon box (Classic: effectiveIconBox, Card: 26). Empty -> no transform, so
    *  shapes with zero offset render unchanged. */
   const iconTransformFor = (box: number): React.CSSProperties => {
     const tx = iconOffsetX ? Math.round(iconOffsetX * box) : 0;
@@ -117,43 +115,42 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   const badgePos = getBadgePositions(shape);
   const isShaped = shape !== 'square';
   // "Ring on a filled disc" shapes (power): the silhouette is a hollow outline drawn as an accent
-  // ON TOP of a solid backing body. When a backingClip exists, the body/border/fill/halo layers
-  // clip to the DISC (so the node is opaque + ports/halos hug the round body) and the outline is
-  // painted on top via `accentClip`. Every normal shape has no backing → shapeClipPath is the
-  // silhouette itself and accentClip is undefined (single-layer render, unchanged).
+  // on top of a solid backing body. When a backingClip exists, the body/border/fill/halo layers
+  // clip to the disc (so the node is opaque, and ports/halos hug the round body), and the outline
+  // is painted on top via `accentClip`. A normal shape has no backing, so shapeClipPath is the
+  // silhouette itself and accentClip is undefined.
   const backingClip = getBackingClip(shape);
   const shapeClipPath = backingClip ?? SHAPE_CLIP_PATHS[shape];
   const accentClip = backingClip ? SHAPE_CLIP_PATHS[shape] : undefined;
   // Classic "icon view": render the bare palette glyph (large, accent-coloured, no silhouette)
   // instead of the clip-path shape. Toggle lives in the toolbar; card mode is unaffected.
   const useGlyphIcon = nodeStyle === 'classic' && nodeIconStyle === 'glyph';
-  // Icon-view sizing: `glyphFs` is the rendered icon size AND the node footprint (the wrapper is
-  // sized to glyphFs). It is derived from the raw `iconBox` WITHOUT the per-shape `sizeMultiplier`
-  // so every bare-glyph node is the exact same size regardless of its silhouette form — optical
-  // equality across all activities in icon view. Carbon icons are SVGs centered in a square
-  // viewBox, so no ink measurement / centering translate is needed.
+  // Icon-view sizing: `glyphFs` is the rendered icon size and the node footprint (the wrapper is
+  // sized to glyphFs). It is derived from the raw `iconBox` without the per-shape `sizeMultiplier`,
+  // so every bare-glyph node is the same size regardless of its silhouette form, giving optical
+  // equality across activities in icon view. Carbon icons are SVGs centered in a square viewBox,
+  // so no ink measurement or centering translate is needed.
   const glyphFs = Math.round(scale.iconBox * 0.82);
   const IconComp = ACTIVITY_ICON_COMPONENTS[ac.icon] ?? FALLBACK_ACTIVITY_ICON;
-  // Shaped (silhouette) icon: `iconScale` is now the DIRECT size factor relative to `iconFont`
-  // (the same value the square path uses), so an `iconScale` of 1.0 renders the inside-icon at
-  // exactly the same px as a square node's icon — equal across all activities. Only the few
-  // sparse/pointed silhouettes that can't hold a full-size icon at a calm footprint keep an
-  // `iconScale < 1.0` (see SHAPE_DEFS). Positioned by the per-shape X/Y offset only (the SVG is
-  // already centered — no ink translate).
+  // Shaped (silhouette) icon: `iconScale` is a direct size factor relative to `iconFont` (the
+  // same value the square path uses), so an `iconScale` of 1.0 renders the inside-icon at the
+  // same px as a square node's icon, equal across all activities. Only sparse or pointed
+  // silhouettes that cannot hold a full-size icon at a calm footprint use `iconScale < 1.0`
+  // (see SHAPE_DEFS). Positioned by the per-shape X/Y offset only; the SVG is already centered.
   const shapedIconFs = Math.max(10, Math.round(scale.iconFont * iconScale));
   const shapedIconTx = Math.round(iconOffsetX * effectiveIconBox);
   const shapedIconTy = Math.round(iconOffsetY * effectiveIconBox);
   const shapedIconStyle: React.CSSProperties = {
     transform: (shapedIconTx || shapedIconTy) ? `translate(${shapedIconTx}px, ${shapedIconTy}px)` : undefined,
   };
-  // Bookend shapes (trigger pennant + returnData flag) keep their exact prior rendering; the
-  // per-activity overlays (critical-path glow) are gated off them. Control-flow shapes are NOT
-  // bookends — they now get the overlays and the shared control-group frame.
+  // Bookend shapes (trigger pennant, returnData flag) render without the per-activity overlays
+  // (critical-path glow). Control-flow shapes are not bookends, so they do get the overlays and
+  // the shared control-group frame.
   const isBookendShape = shape === 'pennant' || shape === 'flag';
   // Control-flow group: a shared indigo double-outline frame (an extra silhouette layer at the
-  // edge + the node's own border pushed inward) marks decision/junction/forEach/startWorkflow as a
-  // recognizable group, distinct from normal activities. Lives AT the edge, not in the outer-halo
-  // channel, so it composes with selection/live/sim rings. See --np-controlflow-accent.
+  // edge, plus the node's own border pushed inward) marks decision/junction/forEach/startWorkflow
+  // as a recognizable group, distinct from normal activities. It lives at the edge, not in the
+  // outer-halo channel, so it composes with selection/live/sim rings. See --np-controlflow-accent.
   const isControl = isControlFlowShape(shape);
   // Port handles anchor at the bbox edge-midpoints; for silhouettes whose vertex isn't at a
   // midpoint, `handleInset` (fraction of the box) pulls that side's handle inward onto the shape.
@@ -165,13 +162,11 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
     left: Math.round((handleInset.left ?? 0) * effectiveIconBox),
   };
 
-  // Schedule trigger inline preview — first upcoming fire as a relative + absolute string.
-  // Live, computed client-side via cron-parser. Re-renders on every node update so the value
-  // stays sane while the user types in the cron field. Slightly stale at idle (~1 minute);
-  // not worth adding a setInterval on every node when the editor canvas is already busy.
-  // When the workflow is disabled (__workflowEnabled === false), show "⏸ Paused" instead of
-  // the countdown — the Quartz job is actually deleted (see TriggerOrchestrator). The old
-  // "still running" display was just a client-side cron calculation with no real status check.
+  // Schedule trigger inline preview: first upcoming fire, computed client-side via cron-parser.
+  // Re-renders on every node update so it stays live while the user edits the cron field; it
+  // can be stale by up to about a minute at idle. When the workflow is disabled
+  // (__workflowEnabled === false) it shows "Paused" instead of the countdown, since the Quartz
+  // job is deleted (see TriggerOrchestrator).
   const workflowDisabled = (data as Record<string, unknown>).__workflowEnabled === false;
   const cronExpression = (config.cronExpression as string) || '';
   const schedulePreview: { paused: true } | { paused: false; relative: string; absolute: string } | null
@@ -185,10 +180,10 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
       return { paused: false as const, relative: relativeFromNow(next), absolute: formatDate(next, { hour12: false }) };
     }, [activityType, workflowDisabled, cronExpression]);
   // Author-disabled: the engine treats this node as "skipped" (see WorkflowEngine.ExecuteAsync
-  // → disabledNodeIds). We signal that visually with dimmed opacity, a dashed border, and an
+  // -> disabledNodeIds). We signal that visually with dimmed opacity, a dashed border, and an
   // EyeOff badge; the node stays selectable and editable so the author can re-enable it later.
   const isDisabled = (data.disabled as boolean) === true;
-  // Control-group frame thickness (px). 0 when not control or disabled → border/fill fall back to
+  // Control-group frame thickness (px). 0 when not control or disabled -> border/fill fall back to
   // the normal insets so a disabled control node doesn't leave a transparent frame gap.
   const controlFramePx = isControl && !isDisabled ? 2.5 : 0;
   const showEntryMarker = isEntryTrigger && !isDisabled;
@@ -255,8 +250,7 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   // Thicker border in dark mode: 1.5px renders "frayed" at zoom-out levels; 2px stays crisp.
   const baseBorderPx   = premiumCanvas && isDark && isIdle ? 2 : 1.5;
   const premiumRadius  = premiumCanvas ? Math.min(Math.round(scale.iconBox * 0.37), 16) : undefined;
-  // Skin-adjustable: `--np-node-bg` is declared per dark skin in index.css. It used to
-  // be a literal here, which meant a value tuned for one dark skin repainted all of them.
+  // Read `--np-node-bg` from each dark skin so every theme controls its own idle node color.
   const premiumBg      = premiumCanvas && isIdle && isDark ? 'var(--np-node-bg)' : undefined;
   const premiumBgImage = premiumCanvas && isIdle
     ? isDark
@@ -265,7 +259,8 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
     : undefined;
   const premiumShadow  = premiumCanvas && isIdle && !heatmapBorder && !showCriticalPath
     ? isDark
-      // Two-layer shadow: tight/opaque for crispness + medium/softer for depth. No large blur radii.
+      // Two-layer shadow: tight/opaque for crispness + medium/softer for depth. No large blur
+      // radii.
       ? '0 2px 5px rgba(0,0,0,.45), 0 8px 18px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.13), inset 0 -1px 0 rgba(0,0,0,.48)'
       : '0 1px 3px rgba(0,0,0,.10), 0 4px 12px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.9)'
     : undefined;
@@ -321,8 +316,9 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
 
   // Port reveal: with auto-hide on, ports show only when the cursor is near this node (radius),
   // or the node is selected/hovered. A connection-in-progress needs no extra branch — the editor's
-  // onPointerMove bubbles up during the drag too, so the same pointer-proximity covers dropping onto
-  // a target port. Boolean selector → the node re-renders only when the flag flips, not per move.
+  // onPointerMove bubbles up during the drag too, so the same pointer-proximity covers dropping
+  // onto
+  // a target port. Boolean selector -> the node re-renders only when the flag flips, not per move.
   const REVEAL_RADIUS = 48;
   const nearPointer = usePointerFlowPosition(useCallback((s) => {
     if (!autoHidePorts || s.x == null || s.y == null || width == null || height == null) return false;
@@ -620,7 +616,7 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
           </div>)
         ) : (
           // Square path: keep the handles in the icon-box wrapper so they hug the icon edge
-          // instead of the OUTER wrapper (whose width is dominated by the label → otherwise the
+          // instead of the OUTER wrapper (whose width is dominated by the label -> otherwise the
           // handles would sit far left/right of the icon in empty space).
           (<div className="relative np-btn-node-wrap" style={{ width: scale.iconBox, height: scale.iconBox, '--np-act-color': ac.color } as React.CSSProperties}>
             <ActivityPortHandles size={hs} connectable={isConnectable} revealed={portsRevealed} />
@@ -722,9 +718,9 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
 
   // Card style (Material Design 3).
   // Simulation styles take precedence over idle/selected rings, so the dry-run stays clearly
-  // visible. Revealing → pulsing amber ring + scale (the sequential reveal animation highlights
-  // the currently "active" step). Reachable → a quiet indigo ring (already revealed).
-  // Skipped → opacity 35% + dashed grey (only once the reveal animation has finished).
+  // visible. Revealing -> pulsing amber ring + scale (the sequential reveal animation highlights
+  // the currently "active" step). Reachable -> a quiet indigo ring (already revealed).
+  // Skipped -> opacity 35% + dashed grey (only once the reveal animation has finished).
   const simRingCls = isSimRevealing ? 'ring-4 ring-running shadow-[0_0_28px_rgba(251,191,36,0.6)] scale-[1.04]'
     : isSimReachable ? 'ring-4 ring-info/70 shadow-[0_0_20px_rgba(99,102,241,0.35)]'
     : isSimSkipped ? 'opacity-[0.35] [border:2px_dashed_var(--color-skipped)]'
@@ -884,9 +880,9 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
  * switch) or pan tick walked all 200 nodes.
  *
  * React Flow calls the node component with `data`/`selected`/`isConnectable` as props. Its
- * internal reducer creates a **new `data` reference** whenever `node.data` actually changed
+ * internal reducer creates a new `data` reference whenever `node.data` actually changed
  * (e.g. a live-status update, a config edit). Reference equality on `data` is therefore the
- * right cut-point: same reference → no content change → the re-render can be skipped.
+ * right cut-point: same reference -> no content change -> the re-render can be skipped.
  *
  * The component's own useDesignStore subscriptions (nodeStyle, autoHidePorts, etc.)
  * still trigger re-renders independently of this memo — that's intentional, otherwise style
@@ -905,14 +901,8 @@ export const ActivityNode = memo(ActivityNodeImpl, (prev, next) => {
 });
 
 /**
- * Alle vier Ports, in beide Richtungen verbindbar. Es gab bis 1.2.15 eine klassische
- * 2-Port-Variante (nur links=Eingang / rechts=Ausgang) hinter einem Schalter — die gated
- * aber nur die Maus: `sourceHandle`/`targetHandle` waren im JSON immer frei, und der
- * Workflow-Styleguide erlaubt Agenten ausdrücklich, alle vier Seiten zu setzen. Ein Flag
- * über einer ohnehin vorhandenen Fähigkeit, deshalb ersatzlos entfernt.
- *
- * Sichtbarkeit regelt weiterhin `revealed` (autoHidePorts): die Punkte erscheinen erst bei
- * Cursor-Nähe, die Handles bleiben aber immer im DOM und verbindbar.
+ * Renders four ports that accept connections in both directions. The handles remain in the DOM
+ * and connectable. `revealed` controls only their visibility when `autoHidePorts` is enabled.
  */
 function ActivityPortHandles({
   size,
@@ -1099,7 +1089,7 @@ function SimulationCornerBadge({ status, positionOverride }: Readonly<{ status: 
 
 function DisabledBadge({ iconBox, positionOverride }: Readonly<{ iconBox: number; positionOverride?: BadgePosition }>) {
   const { t } = useTranslation('designer');
-  // Scales with the node (smaller icons → smaller badge). Positioned top-right — the fan-in
+  // Scales with the node (smaller icons -> smaller badge). Positioned top-right — the fan-in
   // badge occupies top-middle, so there's no layout conflict.
   const size = Math.max(14, Math.round(iconBox * 0.34));
   const iconFont = Math.max(9, Math.round(size * 0.62));
@@ -1120,7 +1110,7 @@ function DisabledBadge({ iconBox, positionOverride }: Readonly<{ iconBox: number
   );
 }
 
-/* ---- Fan-in Badge (auto Junction indicator) ---- */
+/* ---- Fan-in Badge (Junction mode or invalid direct fan-in) ---- */
 
 function FanInBadge({ count, activityType, config, iconBox, positionOverride }: Readonly<{
   count: number;
@@ -1160,10 +1150,10 @@ function FanInBadge({ count, activityType, config, iconBox, positionOverride }: 
       textCls: 'text-white',
     },
     implicit: {
-      label: String(count),
+      label: `!${count}`,
       tip: t('nodes.fanIn.implicit', { count }),
-      bgCls: 'bg-slate-500',
-      textCls: 'text-slate-100',
+      bgCls: 'bg-red-600',
+      textCls: 'text-white',
     },
   };
 
@@ -1272,7 +1262,7 @@ function SubWorkflowPreviewLink({ nameOrId, summary }: Readonly<{ nameOrId: stri
 
 function HealthSparkline({ entries }: Readonly<{ entries: Array<{ status: string }> }>) {
   const { t } = useTranslation('designer');
-  const dots = [...entries].reverse(); // oldest first (left→right)
+  const dots = [...entries].reverse(); // oldest first (left to right)
   return (
     <div className="flex items-center gap-0.5 mt-0.5 justify-center" title={t('nodes.healthSparkline')}>
       {dots.map((e, i) => (
@@ -1321,7 +1311,7 @@ function Tooltip({
   const retryBackoff = retryConfig?.backoff as string | undefined;
   const showRetry = retryAttempts && retryAttempts > 1;
 
-  // Last 5 health dots oldest→newest
+  // Last 5 health dots oldest to newest
   const healthDots = health ? [...health].reverse().slice(0, 5) : [];
 
   const TooltipIcon = ACTIVITY_ICON_COMPONENTS[icon] ?? FALLBACK_ACTIVITY_ICON;

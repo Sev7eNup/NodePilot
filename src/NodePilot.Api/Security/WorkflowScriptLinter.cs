@@ -5,14 +5,14 @@ namespace NodePilot.Api.Security;
 
 /// <summary>
 /// Static checks for dangerous PowerShell patterns in workflow definitions. The engine's
-/// variable interpolation is safe as long as the value lands in a single-quoted literal,
-/// but <c>Invoke-Expression</c>, the call operator <c>&amp; ($cmd)</c>, and
-/// <c>$ExecutionContext.InvokeCommand</c> re-evaluate the resolved string as code — which
-/// turns any attacker-controlled variable into RCE.
+/// variable interpolation is safe as long as the value lands in a single-quoted literal, but
+/// <c>Invoke-Expression</c>, the call operator <c>&amp; ($cmd)</c>, and
+/// <c>$ExecutionContext.InvokeCommand</c> re-evaluate the resolved string as code, turning any
+/// attacker-controlled variable into RCE.
 ///
-/// This is a <i>linter</i>, not a compiler: it returns structured warnings that the API can
-/// surface on save. A workflow author who genuinely needs those constructs can add an
-/// acknowledgement flag in the workflow metadata (future work).
+/// This is a <i>linter</i>, not a compiler: it returns structured warnings the API can surface
+/// on save. A workflow author who needs those constructs can add an acknowledgement flag in
+/// the workflow metadata later.
 /// </summary>
 public static class WorkflowScriptLinter
 {
@@ -40,7 +40,8 @@ public static class WorkflowScriptLinter
     };
 
     /// <summary>
-    /// Lints a single PowerShell script (e.g. a custom activity's <c>ScriptTemplate</c>, which lives
+    /// Lints a single PowerShell script (e.g. a custom activity's <c>ScriptTemplate</c>, which
+    /// lives
     /// outside any workflow node and so is never reached by <see cref="Lint"/>). Runs the same RCE
     /// pattern rules. <paramref name="stepId"/> labels the warnings (use the activity key/id).
     /// </summary>

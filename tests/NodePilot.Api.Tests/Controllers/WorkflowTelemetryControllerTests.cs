@@ -11,9 +11,8 @@ using Xunit;
 namespace NodePilot.Api.Tests.Controllers;
 
 /// <summary>
-/// Tests for the read-only telemetry endpoints (step-health / coverage / step-stats).
-/// Moved from <c>ExecutionsControllerTests</c> when the endpoints were extracted into
-/// <see cref="WorkflowTelemetryController"/> (2026-07 coherence cleanup).
+/// Tests for the read-only telemetry endpoints (step-health / coverage / step-stats) exposed
+/// by <see cref="WorkflowTelemetryController"/>.
 /// </summary>
 public class WorkflowTelemetryControllerTests
 {
@@ -51,7 +50,7 @@ public class WorkflowTelemetryControllerTests
         }).ToList();
         db.WorkflowExecutions.AddRange(execs);
 
-        // step "a" → succeeded in execs[0] + execs[2], failed in execs[1]
+        // step "a" succeeds in execs[0] and execs[2], fails in execs[1]
         for (int i = 0; i < 3; i++)
         {
             db.StepExecutions.Add(new StepExecution

@@ -6,13 +6,11 @@ using NodePilot.Core.Interfaces;
 namespace NodePilot.Api.Services.Backup.Parts;
 
 /// <summary>
-/// Exports the runtime configuration overrides — and ONLY those (ADR 0001 K9): the raw contents of
-/// <c>appsettings.runtime.json</c>, never the effective merged <c>IConfiguration</c> (which would
-/// pull in host/env secrets). The transient <c>__meta</c> block (restart markers) is dropped. Any
-/// <c>enc:v1:</c>-encrypted value is decrypted with the active <see cref="ISecretProtector"/> and
-/// rewrapped under the backup passphrase so it stays portable. Registered legacy plaintext
-/// secret fields are wrapped directly, so an upgrade cannot leak them into a backup taken before
-/// the operator next saves that settings section.
+/// Exports the runtime configuration overrides only (ADR 0001 K9): the raw contents of
+/// <c>appsettings.runtime.json</c>, never the merged <c>IConfiguration</c>, which would pull in
+/// host/env secrets. The transient <c>__meta</c> block is dropped. Encrypted values are decrypted
+/// with <see cref="ISecretProtector"/> and rewrapped under the backup passphrase; legacy plaintext
+/// secret fields are wrapped the same way.
 /// </summary>
 public sealed class SettingsBackupPart(RuntimeOverridesWriter overrides, ISecretProtector atRest) : IBackupPart
 {

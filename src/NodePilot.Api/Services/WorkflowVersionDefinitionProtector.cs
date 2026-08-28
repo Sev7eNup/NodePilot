@@ -121,7 +121,8 @@ public sealed class WorkflowVersionDefinitionProtector(
     /// <summary>
     /// Reports whether an upgraded database still contains legacy plaintext history. The startup
     /// path is deliberately read-only: rewriting rows before the updater's health check would make
-    /// its binary rollback unsafe, and in HA a newly upgraded passive node must not mutate data that
+    /// its binary rollback unsafe, and in HA a newly upgraded passive node must not mutate data
+    /// that
     /// the still-active older binary cannot read. Administrators perform the cutover explicitly via
     /// <c>POST /api/secrets/reencrypt</c> after every node is on the new version.
     /// </summary>

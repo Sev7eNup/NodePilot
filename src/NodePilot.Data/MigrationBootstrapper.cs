@@ -19,19 +19,18 @@ public static class MigrationBootstrapper
         }
         catch (Exception ex) when (IsDatabaseUnreachable(db))
         {
-            // A stopped database is the single most common first-run failure, and the raw
-            // provider exception ("No connection could be made because the target machine
-            // actively refused it") reads as a crash rather than as "start Postgres first".
-            // Re-throw with the connection target spelled out. The predicate deliberately
-            // re-probes instead of matching exception types, so this stays provider-agnostic
-            // and never swallows a genuine migration error against a reachable database.
+            // A stopped database is the most common first-run failure, and the raw provider
+            // exception reads like a crash rather than "start the database first". Re-throw
+            // with the connection target spelled out. The predicate re-probes instead of
+            // matching exception types, so this stays provider-agnostic and never masks a
+            // genuine migration error against a reachable database.
             throw new DatabaseUnreachableException(BuildUnreachableMessage(db, ex), ex);
         }
         var applied = db.Database.GetAppliedMigrations().ToList();
         var providerName = db.Database.ProviderName ?? "unknown";
-        // SupportLog scope: the migration summary is one of the few system boot log lines a
-        // support engineer should see (typical question: "is the DB on the right schema
-        // version?"). The support-log sub-sink filter reads this property to decide what to route there.
+        // SupportLog scope: the migration summary is one of the few boot log lines a support
+        // engineer needs, to confirm the DB is on the right schema version. The support-log
+        // sub-sink filter reads this property to decide what to route there.
         using (logger.BeginScope(new Dictionary<string, object>
         {
             ["SupportLog"] = true,
@@ -132,17 +131,16 @@ public static class MigrationBootstrapper
         }
         catch (DbUpdateException ex)
         {
-            // Two nodes booting at once both passed the existence check above and both
-            // tried to INSERT. The DB would reject one with a PK / unique-constraint
-            // violation on Resource — that's the only DbUpdateException we want to swallow
-            // here. Permission errors, connection drops, schema drift, NOT NULL violations
-            // all also surface as DbUpdateException, and silently swallowing those would
-            // hide real problems behind a "lost the seed race" log line.
+            // Two nodes booting at once can both pass the existence check above and both try
+            // to INSERT. The DB rejects one with a unique-constraint violation on Resource —
+            // the only DbUpdateException to swallow here. Permission errors, connection
+            // drops, schema drift, and NOT NULL violations also surface as DbUpdateException,
+            // and swallowing those too would hide real problems behind a "lost the seed
+            // race" log line.
             //
-            // Disambiguation strategy: detach our pending insert, re-query the table for
-            // the canonical row. If it now exists, the other node really did win the race
-            // — log info and return. If it still doesn't exist, something else broke;
-            // rethrow so the boot fails loudly.
+            // Detach the pending insert and re-query for the canonical row. If it exists,
+            // the other node won the race — log and return. If it still doesn't exist,
+            // something else broke; rethrow so the boot fails loudly.
             db.ChangeTracker.Entries<ClusterLeader>()
                 .Where(e => e.Entity.Resource == "primary" && e.State == EntityState.Added)
                 .ToList()

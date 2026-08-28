@@ -26,14 +26,11 @@ interface MaintenanceWindow {
 }
 
 /**
- * Sticky top banner: cluster role + scheduler heartbeat + DB provider + AI-activation
- * flag (all from the dashboard payload, no extra round-trip) plus compact maintenance-
- * window and alert-delivery badges for Admin/Operator. Colour-coded green/amber/red so
- * a glance tells the operator whether anything needs attention. The maintenance "active"
- * check is exact for OneTime windows (start/end contains now); recurring windows surface
- * as "enabled" only — exact recurrence-active computation is a follow-up. The AI flag
- * mirrors the Llm:Enabled master switch (green "AI activated" vs muted "AI disabled"),
- * not whether a working endpoint is configured.
+ * Sticky top banner: cluster role, scheduler heartbeat, DB provider, and AI-activation
+ * flag (from the dashboard payload), plus maintenance-window and alert-delivery badges
+ * for Admin/Operator. Color-coded green/amber/red so a glance shows what needs attention.
+ * The maintenance "active" check is exact only for OneTime windows; recurring windows show
+ * as "enabled" only. The AI flag mirrors the `Llm:Enabled` switch, not endpoint health.
  */
 export function SystemHealthBanner({
   clusterRole, databaseProvider, heartbeats, llmEnabled,

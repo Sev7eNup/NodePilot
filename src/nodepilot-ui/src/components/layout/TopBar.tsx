@@ -9,10 +9,8 @@ import { useDbHealthStore } from '../../stores/dbHealthStore';
 import { resolveBreadcrumbs } from '../../lib/breadcrumbs';
 
 /**
- * App header strip (right of the sidebar). Shows a route-aware breadcrumb on the left
- * and a live backend-connectivity indicator on the right. The indicator polls the
- * backend's anonymous liveness endpoint (`/healthz/live`) on an interval; any non-2xx
- * response or network error flips it to "unreachable".
+ * App header strip to the right of the sidebar. Shows a route-aware breadcrumb on the left,
+ * and the host identity plus a backend connectivity indicator on the right.
  */
 export function TopBar({ onOpenMenu }: Readonly<{ onOpenMenu?: () => void }> = {}) {
   const { t } = useTranslation(['nav', 'common', 'adminSettings', 'alerts', 'backup', 'metrics']);
@@ -79,13 +77,12 @@ export function TopBar({ onOpenMenu }: Readonly<{ onOpenMenu?: () => void }> = {
 }
 
 /**
- * Inline host identity (machine name, FQDN, DNS domain) shown in the header so any signed-in
- * user can see at a glance which server answered — useful in active/passive HA where several
- * nodes may serve the SPA. All fields are visible at once, separated by thin dividers; hidden
- * below `md` so they never crowd the title on narrow viewports.
+ * Inline host identity shown in the header so any signed-in user can tell which server answered,
+ * which matters in active/passive HA where several nodes serve the SPA. Hidden below `md` so it
+ * does not crowd the title on narrow viewports.
  *
- * Degrades silently: while unauthenticated the query is disabled, and any non-object response
- * (e.g. the hermetic e2e catch-all answering `[]`) renders nothing rather than a broken row.
+ * Renders nothing while unauthenticated (the query is disabled) or when the response is not a
+ * well-shaped object, rather than showing a broken row.
  */
 function HostIdentityInfo() {
   const { t } = useTranslation(['common']);
@@ -94,13 +91,13 @@ function HostIdentityInfo() {
   const { data } = useQuery({
     queryKey: ['host-info'],
     queryFn: systemApi.getHostInfo,
-    // Host identity is fixed for a given backend — fetch once, never poll, don't retry.
+    // Host identity is fixed for a given backend: fetch once, never poll, never retry.
     enabled: isAuthenticated === true,
     staleTime: Infinity,
     retry: false,
   });
 
-  // Only render once we have a well-shaped object (guards against `[]` / undefined).
+  // Only render once the response is a well-shaped object (guards against `[]` and undefined).
   if (!data || typeof data.machineName !== 'string') return null;
 
   const fqdn = typeof data.fqdn === 'string' ? data.fqdn.trim() : '';
@@ -131,11 +128,10 @@ function Field({ label, value }: Readonly<{ label: string; value: string }>) {
 function BackendStatus() {
   const { t } = useTranslation(['common']);
 
-  // Fed by the single useDatabaseHealth poll mounted in App — no own query. The old pill probed
-  // /healthz/live, which by design stays 200 through a complete database outage: it showed green
-  // while every data query failed, the exact misleading indicator this feature removes.
-  // /healthz/database is strictly more information at the same cost: a network failure against it
-  // still means "process down" (offline), and it additionally distinguishes "database gone".
+  // Fed by the single useDatabaseHealth poll mounted in App; this component runs no query itself.
+  // That poll uses /healthz/database rather than /healthz/live, which by design stays 200 through
+  // a database outage. A network failure against it still means the process is down (offline),
+  // and it additionally distinguishes an unreachable database.
   const status = useDbHealthStore((s) => s.status);
 
   const state: 'checking' | 'online' | 'dbDown' | 'offline' =
@@ -144,13 +140,13 @@ function BackendStatus() {
         : status === 'unavailable' ? 'dbDown'
           : 'online';
 
-  // 'armed' deliberately renders as online: it means one query was slow, which is not a state the
-  // operator can act on, and a flickering pill trains people to ignore it.
+  // 'armed' renders as online: it only means one query was slow, which the operator cannot act
+  // on, and a flickering pill would train people to ignore the indicator.
   const meta = {
     checking: { icon: 'text-amber-500 animate-pulse', label: t('common:backend.checking') },
     online: { icon: 'text-green-500', label: t('common:backend.connected') },
-    // Orange, not amber: amber+pulse is the checking state. Distinct from red because the message
-    // is different — the process answers, its database does not.
+    // Orange rather than amber, because amber with a pulse is the checking state, and separate
+    // from red because here the process answers while its database does not.
     dbDown: { icon: 'text-orange-600 dark:text-orange-400', label: t('common:backend.databaseUnreachable') },
     offline: { icon: 'text-red-500 dark:text-red-400', label: t('common:backend.unreachable') },
   }[state];

@@ -8,15 +8,11 @@ import { ROOT_FOLDER_ID, sharedFoldersApi, type SharedFolder } from '../../api/s
 /**
  * Destination picker for the bulk "move to folder" action.
  *
- * Deliberately NOT a reuse of SharedFolderTree: there, `onFolderSelected(null)` means "clear the
- * filter / show all folders", and a move has no such destination — every move needs exactly one
- * concrete folder. A flat list ordered by `path` and indented by `depth` carries the same tree
- * information without that ambiguity, and it reuses the `['shared-folders']` query the page has
- * already loaded, so opening the dialog costs no round-trip.
- *
- * Folders the caller cannot edit are listed but disabled — hiding them would make the tree look
- * different from the one in the sidebar and leave the user hunting for a folder that is simply
- * out of reach.
+ * A flat list ordered by `path` and indented by `depth` rather than a SharedFolderTree: there
+ * `onFolderSelected(null)` means "no filter", while a move needs exactly one concrete folder. It
+ * reuses the `['shared-folders']` query the page has already loaded, so opening costs no request.
+ * Folders the caller cannot edit are listed but disabled, so the list matches the sidebar instead
+ * of hiding a folder that is out of reach.
  */
 export function BulkMoveFolderDialog({
   count,
@@ -36,15 +32,15 @@ export function BulkMoveFolderDialog({
     staleTime: 30_000,
   });
 
-  // Sort by path so parents precede their children and siblings stay alphabetical — the same
-  // reading order as the sidebar tree, without needing to rebuild the tree structure.
+  // Sort by path so parents precede their children and siblings stay alphabetical, giving the same
+  // reading order as the sidebar tree without rebuilding the tree structure.
   const ordered = useMemo(
     () => [...(folders ?? [])].sort((a, b) => a.path.localeCompare(b.path)),
     [folders],
   );
 
-  // Root has no user-facing name of its own; the sidebar tree renders it as a bare backslash,
-  // so this list does the same rather than inventing a second label for the same folder.
+  // Root has no user-facing name of its own. The sidebar tree renders it as a bare backslash, so
+  // this list does the same rather than inventing a second label for the same folder.
   const label = (f: SharedFolder) => (f.id === ROOT_FOLDER_ID ? '\\' : f.name);
 
   return (

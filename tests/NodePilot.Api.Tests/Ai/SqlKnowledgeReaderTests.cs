@@ -12,9 +12,11 @@ namespace NodePilot.Api.Tests.Ai;
 
 /// <summary>
 /// Direct coverage for the text2sql reader's redaction contract: secret columns named in the
-/// schema (<c>User.PasswordHash</c>, <c>Credential.EncryptedPassword</c>) are masked to <c>"***"</c>
+/// schema (<c>User.PasswordHash</c>, <c>Credential.EncryptedPassword</c>) are masked to
+/// <c>"***"</c>
 /// by result-column name, the masked-by-name <c>GlobalVariable.Value</c> too, every other cell runs
-/// through the redactor, rows are capped, and SQL errors surface as <c>Error</c> instead of throwing.
+/// through the redactor, rows are capped, and SQL errors surface as <c>Error</c> instead of
+/// throwing.
 /// Uses the same in-memory SQLite backend as <c>DbAdminQueryExecutorTests</c>.
 /// </summary>
 public class SqlKnowledgeReaderTests
@@ -112,10 +114,10 @@ public class SqlKnowledgeReaderTests
     }
 
     /// <summary>
-    /// Security audit 2026-07-26: both older layers key on NAMES, so a whole-row serializer slipped
-    /// past both at once — <c>to_json(u)</c> never mentions <c>PasswordHash</c> and returns it in a
-    /// column called <c>to_json</c>. Rejection happens before execution, which is what lets this
-    /// test assert the contract against SQLite (which has no <c>to_json</c> at all).
+    /// A whole-row serializer can bypass the name-based column guards at once — <c>to_json(u)</c>
+    /// never mentions <c>PasswordHash</c> and returns it in a column called <c>to_json</c>.
+    /// Rejection happens before execution, which is what lets this test assert the contract
+    /// against SQLite (which has no <c>to_json</c> at all).
     /// </summary>
     [Theory]
     [InlineData("SELECT to_json(u) FROM Users u")]
@@ -207,7 +209,8 @@ public class SqlKnowledgeReaderTests
     {
         using var db = TestDbFactory.Create();
         var reader = NewReader(db);
-        // The executor rejects multi-statement input — the reader turns that into Error, not an exception.
+        // The executor rejects multi-statement input — the reader turns that into Error, not an
+        // exception.
         var result = await reader.ExecuteReadAsync("SELECT 1; SELECT 2", CancellationToken.None);
         result.Error.Should().NotBeNullOrEmpty();
     }

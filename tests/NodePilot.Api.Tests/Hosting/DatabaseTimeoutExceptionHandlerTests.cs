@@ -10,14 +10,12 @@ using Xunit;
 namespace NodePilot.Api.Tests.Hosting;
 
 /// <summary>
-/// The handler that turns a database command timeout into 503 + DATABASE_TIMEOUT instead of an
-/// anonymous 500.
+/// Turns a database command timeout into 503 + DATABASE_TIMEOUT instead of an anonymous 500.
 ///
-/// <para>Exercised directly rather than through the HTTP pipeline on purpose:
-/// <c>UseExceptionHandler()</c> is only registered outside Development (see
-/// <c>SecurityPipelineSetup</c>), so a WebApplicationFactory test running as Development would hit
-/// the developer exception page and never reach this handler at all - a test that passes while
-/// proving nothing.</para>
+/// <para>Tested directly instead of through the HTTP pipeline: <c>UseExceptionHandler()</c> only
+/// registers outside Development (see <c>SecurityPipelineSetup</c>), so a WebApplicationFactory
+/// test running as Development would hit the developer exception page and never reach this
+/// handler.</para>
 /// </summary>
 public sealed class DatabaseTimeoutExceptionHandlerTests
 {

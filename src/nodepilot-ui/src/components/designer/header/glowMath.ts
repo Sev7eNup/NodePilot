@@ -38,7 +38,7 @@ export interface ActiveGlow {
 
 /**
  * Picks the single section the cursor is approaching and how strongly it should glow.
- * Returns null when the cursor is outside the toolbar's horizontal extent (→ nothing glows).
+ * Returns null when the cursor is outside the toolbar's horizontal extent ( to  nothing glows).
  *
  * Horizontal position selects WHICH section (nearest column); vertical distance sets HOW
  * MUCH (squared falloff over `reach`, so the near field ramps up softly).
@@ -57,7 +57,7 @@ export function activeSectionGlow(
     if (r.left < minLeft) minLeft = r.left;
     if (r.right > maxRight) maxRight = r.right;
   }
-  // Left of the first section / right of the last → don't light anything (logo / name area).
+  // Left of the first section / right of the last -> don't light anything (logo / name area).
   if (cx < minLeft || cx > maxRight) return null;
 
   // Horizontally nearest section — 0 distance when the cursor is inside its x-range, so in

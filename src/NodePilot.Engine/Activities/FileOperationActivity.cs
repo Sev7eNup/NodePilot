@@ -5,18 +5,11 @@ using NodePilot.Engine.PowerShell;
 namespace NodePilot.Engine.Activities;
 
 /// <summary>
-/// File-scoped operations: copy, move, delete, exists, create, rename. Operates on individual
-/// files; PowerShell-side link-local attribute checks require a non-reparse leaf on destructive
-/// paths so a folder or link accidentally typed into a file activity fails fast instead of
-/// being followed, deleted, or renamed. Folder-equivalent operations live in
-/// <see cref="FolderOperationActivity"/>.
-///
-/// Output format: every operation emits a JSON result object between marker lines, which
-/// PostProcess projects into OutputParameters (param.operation, param.path, param.destination,
-/// param.newPath, param.exists, param.fullName — depending on the operation). This guarantees
-/// that <c>{{step.param.exists}}</c> is always "true"/"false" and downstream steps can rely on
-/// a consistent set of keys. Validation, envelope and projection live in
-/// <see cref="FileSystemOperationActivityBase"/>.
+/// File-scoped operations: copy, move, delete, exists, create, rename. PowerShell-side
+/// attribute checks require a non-reparse leaf on destructive paths, so a folder or link
+/// typed in by mistake fails fast instead of being followed, deleted, or renamed. Folder
+/// operations live in <see cref="FolderOperationActivity"/>; validation, the result envelope,
+/// and OutputParameters projection live in <see cref="FileSystemOperationActivityBase"/>.
 /// </summary>
 public class FileOperationActivity : FileSystemOperationActivityBase
 {
@@ -49,7 +42,7 @@ public class FileOperationActivity : FileSystemOperationActivityBase
         _ => throw new InvalidOperationException($"Unknown file operation: {operation}")
     };
 
-    // Leaf-Assertion: ensures the path is a file before mutation, so a folder typed here
+    // Leaf assertion: confirms the path is a file before mutation, so a folder typed here
     // by mistake throws cleanly instead of being copied/moved/deleted as if it were a file.
     private const string AssertLeaf = """
             $__pathAttributes = Get-NodePilotPathAttributes -Path $__path
@@ -93,7 +86,7 @@ public class FileOperationActivity : FileSystemOperationActivityBase
             Remove-Item -LiteralPath $__path -Force
         """;
 
-    // Returns true only when the path exists AND is a file. Folders return false here —
+    // Returns true only when the path exists and is a file. Folders return false here —
     // use folderOperation/exists for the symmetric check.
     private static string BuildExists() => """
             $__result.exists = [bool](Test-Path -LiteralPath $__path -PathType Leaf)

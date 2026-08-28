@@ -7,15 +7,16 @@ import { AI_CAPABILITIES_QUERY_KEY } from '../../hooks/useAiCapabilities';
 import { useAiScriptStream } from '../../hooks/useAiScriptStream';
 import { useAuthStore } from '../../stores/authStore';
 
-// The hook returns the streaming callback only when the KI button may be shown: LLM endpoint
-// usable AND not a Viewer (POST /api/ai/generate-script is Admin/Operator-only). `undefined`
-// propagates to ScriptEditorDialog.onAiGenerate, whose absence hides the button.
+// The hook returns the streaming callback only when the AI button may be shown: the LLM
+// endpoint is usable and the caller is not a Viewer (POST /api/ai/generate-script is
+// Admin/Operator-only). `undefined` reaches ScriptEditorDialog.onAiGenerate, and the
+// missing callback hides the button.
 
 function caps(llm: boolean): KnowledgeCapabilities {
   return { enabled: false, llm, docs: false, operational: false, sourceCode: false, db: false, scriptContextTargetHost: 'llm.example.test' };
 }
 
-// Seeded fresh cache → the query never fetches; no MSW needed.
+// The cache is seeded up front, so the query never fetches and no MSW handler is needed.
 function renderStreamHook(role: 'Admin' | 'Operator' | 'Viewer', llm: boolean) {
   useAuthStore.setState({ isAuthenticated: true, username: 'tester', role });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

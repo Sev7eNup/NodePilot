@@ -25,8 +25,10 @@ public class OperationalKnowledgeReaderTests
 
     private static Workflow SeedWorkflow(NodePilotDbContext db, string name, Guid folderId, string def = "{}")
     {
-        // Workflow.FolderId has an FK to SharedWorkflowFolder — lazily seed the (non-root) folder so
-        // callers can just pass an arbitrary folder GUID. The Local check dedups within one SaveChanges.
+        // Workflow.FolderId has an FK to SharedWorkflowFolder — lazily seed the (non-root) folder
+        // so
+        // callers can just pass an arbitrary folder GUID. The Local check dedups within one
+        // SaveChanges.
         if (folderId != SharedWorkflowFolder.RootFolderId && db.SharedWorkflowFolders.Local.All(f => f.Id != folderId))
         {
             var tag = folderId.ToString()[..8];
@@ -50,8 +52,8 @@ public class OperationalKnowledgeReaderTests
     public async Task GetWorkflowDefinitionAsync_RedactsKeyBasedAndInlineSecrets()
     {
         await using var db = TestDbFactory.Create();
-        // "apiKey" is a secret config key → key-based masking; "hunter2" inside a runScript body is
-        // caught only by the pattern-based IAuditDetailsRedactor pass.
+        // "apiKey" is a secret config key, caught by key-based masking; "hunter2" inside a
+        // runScript body is caught only by the pattern-based IAuditDetailsRedactor pass.
         var def = """
             {"nodes":[{"id":"s1","data":{"activityType":"runScript","config":{"apiKey":"supersecret","script":"$p = 'hunter2'"}}}],"edges":[]}
             """;
@@ -128,7 +130,7 @@ public class OperationalKnowledgeReaderTests
         forecast.NextFiresUtc.Should().HaveCount(3);
         forecast.NextFiresUtc.Should().OnlyContain(f => f.Kind == DateTimeKind.Utc);
         forecast.NextFiresUtc.Should().BeInAscendingOrder();
-        // "0 0/2 …" fires on even minutes → consecutive fires are 2 minutes apart.
+        // "0 0/2 ..." fires on even minutes, so consecutive fires are 2 minutes apart.
         (forecast.NextFiresUtc[1] - forecast.NextFiresUtc[0]).Should().Be(TimeSpan.FromMinutes(2));
         forecast.NextFiresUtc[0].Should().BeAfter(DateTime.UtcNow.AddSeconds(-1));
     }

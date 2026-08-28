@@ -1,7 +1,7 @@
 <!doctype html>
-<!-- lang is the STATIC value crawlers and no-JS readers get; English is the site default
-     (see src/i18n/languages.ts DEFAULT_LANG). App.tsx overwrites it per navigation once the
-     bundle runs, so this attribute is about the first response, not the running app. -->
+<!-- Static lang value for crawlers and readers without JavaScript; English is the site
+     default (src/i18n/languages.ts DEFAULT_LANG). App.tsx overwrites it per navigation
+     once the bundle runs. -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -15,16 +15,11 @@
       content="NodePilot documentation: agentless workflow orchestration for Windows over WinRM — an open, modern replacement for Microsoft System Center Orchestrator."
     />
 
-    <!-- Link previews. ONE generic card for the whole site, on purpose: routes live in the
-         URL fragment (#/en/cli), which is never sent to the server, so every page returns this
-         same HTML. Per-page OG tags are therefore impossible — and a runtime hook that rewrites
-         them would be dead code, because facebookexternalhit/Twitterbot/Slackbot/LinkedInBot
-         do not execute JavaScript.
-         For the same reason there is no hreflang pair and no sitemap: search engines strip the
-         fragment, so #/en/… and #/de/… are one URL to them and both would be decoration.
-         og:url and canonical carry NO fragment — og:url is the object's permanent id.
-         og:image must be an ABSOLUTE https URL; a relative one silently yields no card image on
-         most platforms. public/ files are copied to the site root untouched by `base`. -->
+    <!-- One generic link-preview card for the whole site: routes live in the URL fragment
+         (#/en/cli), which never reaches the server, so every page returns this same HTML and
+         crawlers cannot see per-page tags. For the same reason there is no hreflang pair and
+         no sitemap. og:url and canonical carry no fragment. og:image must be an absolute
+         https URL; a relative one yields no card image on most platforms. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="NodePilot Docs" />
     <meta property="og:title" content="NodePilot Documentation" />
@@ -37,16 +32,16 @@
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="NodePilot — agentless Windows workflow orchestration" />
-    <!-- The only twitter:* tag worth having: title/description/image are inherited from og:*.
-         twitter:site/creator are omitted deliberately — they need a real handle. -->
+    <!-- twitter:card is the only twitter:* tag needed; title, description and image are
+         inherited from og:*. twitter:site and twitter:creator need a real handle, so they
+         are omitted. -->
     <meta name="twitter:card" content="summary_large_image" />
 
     <link rel="canonical" href="https://sev7enup.github.io/NodePilot/" />
     <meta name="robots" content="index, follow, max-image-preview:large" />
-    <!-- Resolve the theme BEFORE first paint, otherwise dark-mode users get a white flash.
-         Must stay a classic (non-module) inline script — a module would be deferred and
-         the flash would return. `useTheme` seeds its state from the class this sets, so
-         this is the single resolution point. -->
+    <!-- Resolve the theme before first paint, otherwise dark-mode users see a white flash.
+         Must stay a classic (non-module) inline script; a module would be deferred and the
+         flash returns. useTheme seeds its state from the class this sets. -->
     <script>
       try {
         var t =

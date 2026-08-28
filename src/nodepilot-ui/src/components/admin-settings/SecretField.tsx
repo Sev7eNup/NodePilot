@@ -37,18 +37,10 @@ type Props = {
 
 /**
  * Single source of truth for how the UI handles encrypted secret fields. The same
- * widget renders three states: a persisted-but-hidden value, a fresh value the user
- * is currently typing, and an intentionally-cleared field. The serialisation contract
- * for the parent's save handler is:
- *
- * <list type="bullet">
- *   <item><c>mode==='keep'</c>  → send the {@link UNCHANGED_SECRET_SENTINEL} string</item>
- *   <item><c>mode==='change'</c> → send the typed plaintext (server encrypts it)</item>
- *   <item><c>mode==='clear'</c>  → send <c>null</c> (server drops the field)</item>
- * </list>
- *
- * Defaults to <c>'keep'</c> on first render when the backend reports a persisted value,
- * so accidental edits to unrelated fields don't silently reset the secret.
+ * widget renders three states: persisted-but-hidden, a fresh value being typed, and
+ * an intentionally cleared field. Save sends {@link UNCHANGED_SECRET_SENTINEL} for
+ * 'keep', the typed plaintext for 'change', and <c>null</c> for 'clear'. Defaults to
+ * 'keep' when a persisted value exists, so unrelated edits don't reset the secret.
  */
 export function SecretField({
   label,
@@ -157,12 +149,10 @@ export function SecretField({
 }
 
 /**
- * Translate a {@link SecretFieldMode} + plaintext into the payload value the backend
- * expects. Single helper so every section's save handler ends up using the same shape.
- *
- * <para>Empty plaintext in "change" mode is treated as <c>null</c> — the operator
- * cleared the input and left it blank, which is semantically "no value", not "empty
- * string is the new password".</para>
+ * Translate a {@link SecretFieldMode} and plaintext into the payload value the backend
+ * expects. Every section's save handler uses this so the shape stays consistent.
+ * Empty plaintext in 'change' mode maps to <c>null</c>, since a blank input means no
+ * value, not an empty-string password.
  */
 export function serializeSecretField(mode: SecretFieldMode, value: string): string | null {
   if (mode === 'keep') return UNCHANGED_SECRET_SENTINEL;

@@ -14,6 +14,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { api } from '../api/client';
+import { getAllPages } from '../api/paging';
 import type { WorkflowExecution, StepExecution, Workflow } from '../types/api';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -34,7 +35,8 @@ import {
 type StatusFilter = 'all' | 'Succeeded' | 'Failed' | 'Cancelled';
 
 // ColKey covers every sortable column; ResizableColKey drops the auto-flex "workflow"
-// column (no explicit width / no drag-handle) — same pattern as WorkflowsPage / GlobalVariablesPage.
+// column (no explicit width / no drag-handle) — same pattern as WorkflowsPage /
+// GlobalVariablesPage.
 type ColKey = 'status' | 'workflow' | 'trigger' | 'startedBy' | 'steps' | 'duration' | 'started';
 type ResizableColKey = Exclude<ColKey, 'workflow'>;
 
@@ -85,7 +87,7 @@ export function ExecutionsPage() {
   // triggers a debounced refetch — no more 5s polling against a possibly idle server.
   const { data: executions, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['executions', 'terminalOnly'],
-    queryFn: () => api.get<WorkflowExecution[]>('/executions?terminalOnly=true'),
+    queryFn: () => getAllPages<WorkflowExecution>('/executions?terminalOnly=true'),
   });
 
   const { data: workflows } = useQuery({
@@ -223,7 +225,7 @@ export function ExecutionsPage() {
     getItemKey: (index) => filteredSorted[index].id,
     measureElement: (el) => el?.getBoundingClientRect().height ?? 52,
     scrollMargin,
-    // jsdom has no layout → initialRect prevents 0-item render in unit tests.
+    // jsdom has no layout -> initialRect prevents 0-item render in unit tests.
     initialRect: { width: 1200, height: 900 },
   });
 

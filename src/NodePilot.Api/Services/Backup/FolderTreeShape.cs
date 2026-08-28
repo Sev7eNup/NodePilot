@@ -6,10 +6,11 @@ namespace NodePilot.Api.Services.Backup;
 /// <summary>
 /// Accessors over the two structurally identical folder trees — <see cref="SharedWorkflowFolder"/>
 /// and <see cref="GlobalVariableFolder"/>. Both carry Id / ParentFolderId / Name / Path / Depth /
-/// CreatedByUserId with the same semantics (singleton Root, materialized Path, sibling-unique Name),
-/// but they share no interface in NodePilot.Core, so backup export and restore reach the fields
-/// through delegates. Core follow-up: give both entities one folder-node interface and delete this
-/// shim. <c>Apply</c> writes the mutable columns in one go: name, path, depth, parent id, creator.
+/// CreatedByUserId with the same semantics (singleton Root, materialized Path, sibling-unique
+/// Name), but they share no interface in NodePilot.Core, so backup export and restore reach the
+/// fields through delegates. Core follow-up: give both entities one folder-node interface and
+/// delete this shim. <c>Apply</c> writes the mutable columns in one go: name, path, depth, parent
+/// id, creator.
 /// </summary>
 internal sealed record FolderTreeShape<TFolder>(
     Func<TFolder, Guid> Id,

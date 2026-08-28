@@ -8,9 +8,12 @@ namespace NodePilot.Mcp.Config;
 /// Resolves how the headless MCP server connects to the NodePilot REST API. Precedence
 /// (env-first, since an MCP server launched from <c>.mcp.json</c> cannot prompt):
 /// <list type="bullet">
-///   <item>Server: <c>NODEPILOT_MCP_SERVER</c> &gt; <c>NODEPILOT_SERVER</c> &gt; CLI config.json profile.</item>
-///   <item>Profile: <c>NODEPILOT_MCP_PROFILE</c> &gt; <c>NODEPILOT_PROFILE</c> &gt; CLI default &gt; <c>"default"</c>.</item>
-///   <item>Token: <c>NODEPILOT_MCP_TOKEN</c> (raw bearer, CI/headless escape) &gt; DPAPI <see cref="TokenStore"/>.</item>
+/// <item>Server: <c>NODEPILOT_MCP_SERVER</c> &gt; <c>NODEPILOT_SERVER</c> &gt; CLI config.json
+/// profile.</item>
+/// <item>Profile: <c>NODEPILOT_MCP_PROFILE</c> &gt; <c>NODEPILOT_PROFILE</c> &gt; CLI default &gt;
+/// <c>"default"</c>.</item>
+/// <item>Token: <c>NODEPILOT_MCP_TOKEN</c> (raw bearer, CI/headless escape) &gt; DPAPI <see
+/// cref="TokenStore"/>.</item>
 /// </list>
 /// </summary>
 [SupportedOSPlatform("windows")]
@@ -25,10 +28,12 @@ public sealed class McpServerConfig
         _tokens = tokens;
     }
 
-    /// <summary>Destructive/admin tools (delete, force-unlock, cancel-all) are only registered when this is true.</summary>
+    /// <summary>Destructive/admin tools (delete, force-unlock, cancel-all) are only registered when
+    /// this is true.</summary>
     public bool AllowDestructive => IsDestructiveAllowed();
 
-    /// <summary>Static so Program.cs can decide registration without building the full DI graph.</summary>
+    /// <summary>Static so Program.cs can decide registration without building the full DI
+    /// graph.</summary>
     public static bool IsDestructiveAllowed()
         => IsTruthy(Environment.GetEnvironmentVariable("NODEPILOT_MCP_ALLOW_DESTRUCTIVE"));
 

@@ -46,7 +46,8 @@ public sealed class TokenStore
         }
         catch (CryptographicException)
         {
-            // File present but undecryptable (different user, machine reinstall, etc.) — treat as no session.
+            // File present but undecryptable (different user, machine reinstall, etc.) — treat as
+            // no session.
             return null;
         }
         catch (JsonException)
@@ -106,7 +107,8 @@ public sealed class TokenStore
         NodePilot.Core.Clients.ClientSessionFileCoordinator.WriteAllBytesAtomically(path, encrypted);
     }
 
-    // Constant entropy distinguishes our blob from anything else the same user has DPAPI-encrypted,
+    // Constant entropy distinguishes this blob from anything else the same user has
+    // DPAPI-encrypted,
     // so a stolen session file cannot be Unprotected by a sibling app on the same machine.
     // Shared with the MCP server via Core — both read/write the same session blob.
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes(NodePilot.Core.Clients.ClientSessionSecurity.DpapiSessionEntropy);

@@ -6,9 +6,9 @@ namespace NodePilot.Core.WorkflowDefinitions;
 
 public static class WorkflowDefinitionStructuralValidator
 {
-    // Visual-only node types — no executor, no entry in ActivityCatalog. The designer
-    // creates them for documentation/grouping, the engine ignores them during traversal.
-    // We still require id + data to be well-formed so they don't corrupt the JSON shape.
+    // Visual-only node types: no executor, no entry in ActivityCatalog. The designer creates
+    // them for documentation and grouping; the engine ignores them during traversal. Id and
+    // data must still be well-formed so they don't corrupt the JSON shape.
     private static readonly HashSet<string> _annotationNodeTypes =
         new(StringComparer.OrdinalIgnoreCase) { "stickyNote", "group" };
 
@@ -18,6 +18,7 @@ public static class WorkflowDefinitionStructuralValidator
             return WorkflowDefinitionValidationResult.Invalid("root must be a JSON object");
 
         var nodeIds = new HashSet<string>(StringComparer.Ordinal);
+        var activityTypeByNodeId = new Dictionary<string, string?>(StringComparer.Ordinal);
         if (definition.TryGetProperty("nodes", out var nodes))
         {
             if (nodes.ValueKind != JsonValueKind.Array)
@@ -27,7 +28,7 @@ public static class WorkflowDefinitionStructuralValidator
             foreach (var node in nodes.EnumerateArray())
             {
                 var path = $"nodes[{index}]";
-                var nodeResult = ValidateNode(node, path, nodeIds);
+                var nodeResult = ValidateNode(node, path, nodeIds, activityTypeByNodeId);
                 if (!nodeResult.IsValid) return nodeResult;
                 index++;
             }
@@ -39,12 +40,36 @@ public static class WorkflowDefinitionStructuralValidator
                 return WorkflowDefinitionValidationResult.Invalid("edges must be an array");
 
             var edgeIds = new HashSet<string>(StringComparer.Ordinal);
+            var edgeEndpoints = new HashSet<(string Source, string Target)>();
+            var incomingEdgeCount = new Dictionary<string, int>(StringComparer.Ordinal);
             var index = 0;
             foreach (var edge in edges.EnumerateArray())
             {
                 var path = $"edges[{index}]";
                 var edgeResult = ValidateEdge(edge, path, edgeIds, nodeIds);
                 if (!edgeResult.IsValid) return edgeResult;
+
+                var source = edge.GetProperty("source").GetString()!;
+                var target = edge.GetProperty("target").GetString()!;
+                if (!edgeEndpoints.Add((source, target)))
+                {
+                    return WorkflowDefinitionValidationResult.Invalid(
+                        $"connection '{source}' -> '{target}' already exists",
+                        "duplicate-edge",
+                        source);
+                }
+
+                var count = incomingEdgeCount.GetValueOrDefault(target) + 1;
+                incomingEdgeCount[target] = count;
+                if (count > 1
+                    && activityTypeByNodeId.TryGetValue(target, out var activityType)
+                    && !string.Equals(activityType, "junction", StringComparison.OrdinalIgnoreCase))
+                {
+                    return WorkflowDefinitionValidationResult.Invalid(
+                        $"node '{target}' has multiple incoming edges; insert a junction before it",
+                        "fan-in-requires-junction",
+                        target);
+                }
                 index++;
             }
         }
@@ -55,7 +80,8 @@ public static class WorkflowDefinitionStructuralValidator
     private static WorkflowDefinitionValidationResult ValidateNode(
         JsonElement node,
         string path,
-        HashSet<string> nodeIds)
+        HashSet<string> nodeIds,
+        Dictionary<string, string?> activityTypeByNodeId)
     {
         if (node.ValueKind != JsonValueKind.Object)
             return WorkflowDefinitionValidationResult.Invalid($"{path} must be an object");
@@ -72,6 +98,7 @@ public static class WorkflowDefinitionStructuralValidator
             && typeProp.ValueKind == JsonValueKind.String
             && _annotationNodeTypes.Contains(typeProp.GetString() ?? ""))
         {
+            activityTypeByNodeId[id] = null;
             if (!ValidateOptionalString(data, "label", $"{path}.data.label", allowNull: true, out var annotationError))
                 return WorkflowDefinitionValidationResult.Invalid(annotationError!);
             return WorkflowDefinitionValidationResult.Valid;
@@ -108,6 +135,8 @@ public static class WorkflowDefinitionStructuralValidator
             return WorkflowDefinitionValidationResult.Invalid(
                 $"{path}.data.activityType references unknown activity type '{activityType}'");
         }
+
+        activityTypeByNodeId[id] = activityType;
 
         if (!ValidateOptionalString(data, "label", $"{path}.data.label", allowNull: true, out var error)
             || !ValidateOptionalString(data, "outputVariable", $"{path}.data.outputVariable", allowNull: true, out error)

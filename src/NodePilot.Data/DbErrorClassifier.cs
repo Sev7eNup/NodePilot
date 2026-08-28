@@ -7,21 +7,22 @@ using Npgsql;
 namespace NodePilot.Data;
 
 /// <summary>
-/// The condition a failed database operation actually represents, in **precedence order**.
+/// The condition a failed database operation represents, in precedence order.
 ///
-/// <para>Declaration order is the precedence rule, and it is load-bearing rather than cosmetic: a
-/// single exception legitimately carries several of these signals at once, so "which one wins" cannot
-/// be left to the order in which a reader happens to write <c>if</c> statements. Lower value wins.</para>
+/// <para>One exception can carry several of these signals at once, so declaration order decides
+/// which one wins: the lower enum value is kept.</para>
 /// </summary>
 public enum DbFailureKind
 {
-    /// <summary>Not a database-availability signal at all (a unique violation, a bug, a cancelled caller).</summary>
+    /// <summary>Not a database-availability signal at all (a unique violation, a bug, a cancelled
+    /// caller).</summary>
     None = 0,
 
     /// <summary>
     /// The server is healthy and answering; it is out of some resource right now (connection slots,
     /// memory grants, a lock). First in precedence because these are simultaneously
-    /// connection-failure-shaped and *proof the server is alive* — misreading one as an outage would
+    /// connection-failure-shaped and *proof the server is alive* — misreading one as an outage
+    /// would
     /// take a whole installation down the moment it got busy.
     /// </summary>
     CapacityBackpressure,
@@ -33,7 +34,8 @@ public enum DbFailureKind
     /// </summary>
     ConnectionRejected,
 
-    /// <summary>The statement did not finish in time. The server is reachable and the SQL is valid.</summary>
+    /// <summary>The statement did not finish in time. The server is reachable and the SQL is
+    /// valid.</summary>
     CommandTimeout,
 
     /// <summary>Nothing is listening, or the transport died mid-conversation.</summary>
@@ -44,22 +46,13 @@ public enum DbFailureKind
 /// Maps provider-specific database exceptions onto the handful of conditions the application
 /// actually branches on.
 ///
-/// <para>The alternative — substring-matching the exception message — breaks in two directions
-/// that are both hard to notice: it depends on the server's message locale (a German SQL Server
-/// says "Verletzung der UNIQUE KEY-Einschränkung"), and a broad term like "duplicate" matches
-/// unrelated errors. Every provider reports these conditions as a stable, documented code, so
-/// that is what gets checked.</para>
+/// <para>Uses stable provider codes because localized messages and broad substrings are
+/// unreliable.</para>
 ///
-/// <para><b>Why one ordered classifier instead of four independent predicates.</b> Measured against
-/// Npgsql 10.0.3 on 2026-08-06: a *connect* timeout arrives as
-/// <c>NpgsqlException("The operation has timed out") → TimeoutException</c>, and a *command* timeout on
-/// an already-open pooled connection arrives as
-/// <c>NpgsqlException("Exception while reading from stream") → TimeoutException</c>. The two conditions
-/// are therefore **indistinguishable by exception shape** — no predicate reading only the exception can
-/// separate "the server is gone" from "this one query was slow". Independent predicates would each
-/// answer <c>true</c> and the caller's evaluation order would silently decide the outcome. Here the
-/// order is declared once, in <see cref="DbFailureKind"/>, and the ambiguity is resolved by *context*
-/// instead: see <see cref="ClassifyConnectionFailure"/>.</para>
+/// <para><b>Why one ordered classifier instead of four independent predicates.</b> Connection and
+/// command timeouts can share the same exception shape. <see cref="DbFailureKind"/> declares the
+/// precedence once, while <see cref="ClassifyConnectionFailure"/> resolves ambiguity by
+/// context.</para>
 /// </summary>
 public static class DbErrorClassifier
 {
@@ -120,13 +113,15 @@ public static class DbErrorClassifier
     /// Classifies a failure by walking the whole <see cref="Exception.InnerException"/> chain and
     /// keeping the highest-precedence signal found anywhere in it.
     ///
-    /// <para>The chain is walked rather than only inspected at the top because EF Core wraps provider
+    /// <para>The chain is walked rather than only inspected at the top because EF Core wraps
+    /// provider
     /// exceptions, and its retrying execution strategy wraps them again after the last attempt — a
     /// failure that started life as a <c>SocketException</c> can arrive three layers deep inside a
     /// <c>RetryLimitExceededException</c>.</para>
     ///
     /// <para>This is the classifier for the <b>command</b> path and for the exception handlers. The
-    /// connection path uses <see cref="ClassifyConnectionFailure"/>, which resolves the shape ambiguity
+    /// connection path uses <see cref="ClassifyConnectionFailure"/>, which resolves the shape
+    /// ambiguity
     /// documented on this class.</para>
     /// </summary>
     public static DbFailureKind Classify(Exception? exception)
@@ -141,7 +136,8 @@ public static class DbErrorClassifier
             // Lower enum value wins; see the DbFailureKind doc comment.
             if (best is DbFailureKind.None || kind < best) best = kind;
 
-            // Nothing outranks capacity backpressure, so the rest of the chain cannot change the answer.
+            // Nothing outranks capacity backpressure, so the rest of the chain cannot change the
+            // answer.
             if (best is DbFailureKind.CapacityBackpressure) break;
         }
 
@@ -149,14 +145,18 @@ public static class DbErrorClassifier
     }
 
     /// <summary>
-    /// Classifies a failure that EF reported through the <b>connection</b> interceptor hook — i.e. a
+    /// Classifies a failure that EF reported through the <b>connection</b> interceptor hook — i.e.
+    /// a
     /// physical open that did not succeed.
     ///
-    /// <para><b>Context beats shape.</b> A failed physical open is the one genuinely negative liveness
+    /// <para><b>Context beats shape.</b> A failed physical open is the one genuinely negative
+    /// liveness
     /// signal in the system, and it stays that even when the exception's shape says "timeout": a
     /// connect timeout means the server did not complete a handshake, which is a dead server, not a
-    /// slow query. Since Npgsql reports both conditions with an identical exception shape (measured;
-    /// see the class remarks), the hook the failure arrived on is the only information that can tell
+    /// slow query. Since Npgsql reports both conditions with an identical exception shape
+    /// (measured;
+    /// see the class remarks), the hook the failure arrived on is the only information that can
+    /// tell
     /// them apart — so it is what decides.</para>
     ///
     /// <para>The two answers that are *not* folded are the two that remain true regardless of which
@@ -169,8 +169,10 @@ public static class DbErrorClassifier
         DbFailureKind.ConnectionRejected => DbFailureKind.ConnectionRejected,
         DbFailureKind.CommandTimeout or DbFailureKind.ConnectionFailure => DbFailureKind.ConnectionFailure,
         // Provider-specific InvalidOperationException shapes are not proof that the server is gone.
-        // Leave an unknown open failure undecided so the connection interceptor can arm the dedicated
-        // SELECT-1 probe rather than taking the entire installation down on an unfamiliar client error.
+        // Leave an unknown open failure undecided so the connection interceptor can arm the
+        // dedicated
+        // SELECT-1 probe rather than taking the entire installation down on an unfamiliar client
+        // error.
         _ => DbFailureKind.None,
     };
 
@@ -188,8 +190,10 @@ public static class DbErrorClassifier
 
     private static DbFailureKind ClassifyOne(Exception exception)
     {
-        // Pool exhaustion is checked before anything else about the exception, because both providers
-        // report it with a type that would otherwise fall straight into ConnectionFailure — and it is
+        // Pool exhaustion is checked before anything else about the exception, because both
+        // providers
+        // report it with a type that would otherwise fall straight into ConnectionFailure — and it
+        // is
         // the one "connection could not be obtained" that proves the server is fine.
         if (IsPoolExhaustion(exception)) return DbFailureKind.CapacityBackpressure;
 
@@ -199,7 +203,8 @@ public static class DbErrorClassifier
                 return ClassifyBySqlState(pg.SqlState);
 
             // SQLite is a test backend only (see CLAUDE.md "Datenbank"). It deliberately has no
-            // availability branch: a SQLITE_BUSY from an in-memory test fixture must never be able to
+            // availability branch: a SQLITE_BUSY from an in-memory test fixture must never be able
+            // to
             // trip a production-shaped breaker.
             case SqliteException:
                 return DbFailureKind.None;
@@ -207,15 +212,18 @@ public static class DbErrorClassifier
             case TimeoutException:
                 return DbFailureKind.CommandTimeout;
 
-            // EndOfStreamException derives from IOException, so this covers "the peer closed the socket
+            // EndOfStreamException derives from IOException, so this covers "the peer closed the
+            // socket
             // mid-conversation" as well as a raw transport error.
             case SocketException:
             case IOException:
                 return DbFailureKind.ConnectionFailure;
 
             case NpgsqlException:
-                // A non-PostgresException NpgsqlException is a transport-level failure. When it wraps a
-                // TimeoutException the chain walk in Classify() promotes the result to CommandTimeout,
+                // A non-PostgresException NpgsqlException is a transport-level failure. When it
+                // wraps a
+                // TimeoutException the chain walk in Classify() promotes the result to
+                // CommandTimeout,
                 // because CommandTimeout outranks ConnectionFailure.
                 return DbFailureKind.ConnectionFailure;
         }
@@ -227,7 +235,8 @@ public static class DbErrorClassifier
     private static bool IsPoolExhaustion(Exception exception)
     {
         // Npgsql: NpgsqlException("The connection pool has been exhausted...").
-        // SqlClient: InvalidOperationException("Timeout expired. The timeout period elapsed prior to
+        // SqlClient: InvalidOperationException("Timeout expired. The timeout period elapsed prior
+        // to
         // obtaining a connection from the pool...") — note this one is NOT a SqlException, so it
         // carries no Number and cannot be table-matched.
         if (exception is not (NpgsqlException or InvalidOperationException)) return false;
@@ -237,7 +246,8 @@ public static class DbErrorClassifier
     }
 
     /// <summary>
-    /// PostgreSQL SQLSTATE table. Internal so the tests can drive it directly — <c>PostgresException</c>
+    /// PostgreSQL SQLSTATE table. Internal so the tests can drive it directly —
+    /// <c>PostgresException</c>
     /// is constructible but noisy, and the table is the part that carries the risk.
     /// </summary>
     internal static DbFailureKind ClassifyBySqlState(string? sqlState) => sqlState switch
@@ -246,19 +256,26 @@ public static class DbErrorClassifier
         "53000" or "53100" or "53200" or "53300" or "53400" or "55P03" => DbFailureKind.CapacityBackpressure,
 
         // The server spoke and said no in a way ONLY an operator can fix: authentication, pg_hba
-        // rejection, missing database. ConnectionRejected drives the probe's "configuration problem,
-        // retrying will not fix it" ERROR and the banner's escalation copy, so the bar for membership
+        // rejection, missing database. ConnectionRejected drives the probe's "configuration
+        // problem,
+        // retrying will not fix it" ERROR and the banner's escalation copy, so the bar for
+        // membership
         // is "waiting can never help" — a state the server leaves BY ITSELF does not qualify.
         "08004" or "28000" or "28P01" or "3D000" => DbFailureKind.ConnectionRejected,
 
         // query_canceled — what statement_timeout produces server-side.
         "57014" => DbFailureKind.CommandTimeout,
 
-        // Class 08 — connection exception, PLUS the class-57 shutdown/startup states: admin_shutdown,
-        // crash_shutdown, cannot_connect_now (a server in crash recovery answers exactly this while it
-        // replays WAL) and database_dropped. All of them clear on their own once the server is back,
-        // which is the definition of "unreachable, keep probing" — classifying them as rejections made
-        // the probe tell the operator "configuration problem, retrying will not fix it" during every
+        // Class 08 — connection exception, PLUS the class-57 shutdown/startup states:
+        // admin_shutdown,
+        // crash_shutdown, cannot_connect_now (a server in crash recovery answers exactly this while
+        // it
+        // replays WAL) and database_dropped. All of them clear on their own once the server is
+        // back,
+        // which is the definition of "unreachable, keep probing" — classifying them as rejections
+        // made
+        // the probe tell the operator "configuration problem, retrying will not fix it" during
+        // every
         // ROUTINE restart, which is the reverse of the truth.
         "08000" or "08001" or "08003" or "08006" or "08007" or "08P01"
             or "57P01" or "57P02" or "57P03" or "57P04" => DbFailureKind.ConnectionFailure,
@@ -273,8 +290,10 @@ public static class DbErrorClassifier
     };
 
     /// <summary>
-    /// SQL Server error-number table. Internal for the same reason as <see cref="ClassifyBySqlState"/>,
-    /// and additionally because <c>SqlException</c> has no public constructor — the table is testable
+    /// SQL Server error-number table. Internal for the same reason as <see
+    /// cref="ClassifyBySqlState"/>,
+    /// and additionally because <c>SqlException</c> has no public constructor — the table is
+    /// testable
     /// even though a synthetic <c>SqlException</c> is not.
     /// </summary>
     internal static DbFailureKind ClassifyBySqlServerNumber(int number) => number switch
@@ -288,15 +307,19 @@ public static class DbErrorClassifier
         // (session + Windows), suspect database. Same membership bar as the Postgres table above.
         926 or 4060 or 4064 or 18456 => DbFailureKind.ConnectionRejected,
 
-        // -2 is the client giving up: it covers both a command timeout and a connect timeout, which is
+        // -2 is the client giving up: it covers both a command timeout and a connect timeout, which
+        // is
         // exactly the ambiguity ClassifyConnectionFailure resolves by context.
         -2 => DbFailureKind.CommandTimeout,
 
         // Transport (general network error, server not found, reset/aborted/refused, pre-login
-        // handshake, semaphore timeout, host not found) PLUS the self-clearing server states: database
+        // handshake, semaphore timeout, host not found) PLUS the self-clearing server states:
+        // database
         // in recovery/restoring (927/941/945), server shutting down or in the middle of starting up
-        // (6005/6006), and the Azure transient pair 40197/40613, which Microsoft's own guidance says
-        // to retry. They land here rather than in ConnectionRejected so a routine restart or failover
+        // (6005/6006), and the Azure transient pair 40197/40613, which Microsoft's own guidance
+        // says
+        // to retry. They land here rather than in ConnectionRejected so a routine restart or
+        // failover
         // reads as "unreachable, keep probing" instead of "configuration problem".
         -1 or 2 or 20 or 53 or 64 or 121 or 233 or 258 or 10053 or 10054 or 10060 or 10061 or 11001
             or 927 or 941 or 945 or 6005 or 6006 or 18401 or 40197 or 40613

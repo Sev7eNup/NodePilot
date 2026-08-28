@@ -21,6 +21,8 @@ than rewriting it (amend in place only for small corrections, as ADR 0007 does).
 | [0010](0010-single-process-hosting.md) | Single-Process Hosting Topology | Accepted |
 | [0011](0011-database-availability-breaker.md) | Database Availability Breaker for Runtime Outages | Accepted |
 | [0012](0012-setup-answer-file-contract-and-artifact-trust.md) | Setup Answer-File Contract and Pinned-Signer Artifact Trust | Implemented |
+| [0013](0013-explicit-junction-fan-in.md) | Explicit Junction Fan-In | Implemented |
+| [0014](0014-durable-execution-dispatch.md) | Durable Execution Dispatch | Implemented |
 
 ## When does a decision warrant an ADR?
 

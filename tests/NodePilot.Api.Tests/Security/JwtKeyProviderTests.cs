@@ -12,8 +12,8 @@ namespace NodePilot.Api.Tests.Security;
 
 /// <summary>
 /// JwtKeyProvider resolves the signing key once on construction and caches it.
-/// AddJwtKeyProvider registers it as a singleton — these tests guard the audit M-2
-/// guarantee that misconfiguration fails fast at startup, not later under load.
+/// AddJwtKeyProvider registers it as a singleton, so a misconfigured key fails
+/// fast at startup instead of later under load.
 /// </summary>
 public class JwtKeyProviderTests
 {

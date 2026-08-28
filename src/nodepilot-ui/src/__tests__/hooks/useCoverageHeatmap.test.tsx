@@ -5,11 +5,11 @@ import type { Node } from '@xyflow/react';
 import { useCoverageHeatmap } from '../../hooks/useCoverageHeatmap';
 
 /**
- * Pin:
- * - When enabled, the hook stamps __coverage onto activity nodes with the right class.
- * - Trigger nodes (type !== 'activity') do not get __coverage attached.
- * - Toggle off clears __coverage so stale tints don't bleed.
- * - "Never executed" + "rare" + "common" classification follows the 25% threshold.
+ * Covers:
+ * - When enabled, the hook stamps __coverage onto activity nodes with the matching class.
+ * - Trigger nodes (type !== 'activity') never receive __coverage.
+ * - Disabling the hook clears __coverage so stale tints do not linger.
+ * - The never, rare and common classification follows the 25% threshold.
  */
 
 const fetchMock = vi.fn();
@@ -85,7 +85,7 @@ describe('useCoverageHeatmap', () => {
     expect((a.data.__coverage as { cls: string }).cls).toBe('common');
     expect((b.data.__coverage as { cls: string }).cls).toBe('rare');
     expect((c.data.__coverage as { cls: string }).cls).toBe('never');
-    // Non-activity node (trigger) MUST NOT receive coverage data.
+    // A trigger is not an activity node, so it receives no coverage data.
     expect(t.data.__coverage).toBeUndefined();
   });
 
@@ -112,7 +112,7 @@ describe('useCoverageHeatmap', () => {
     await waitFor(() => {
       expect(nodes.find((n) => n.id === 'a')?.data.__coverage).toBeUndefined();
     });
-    // Disabled hook must not fire any fetch.
+    // A disabled hook issues no fetch at all.
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

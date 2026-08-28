@@ -59,7 +59,7 @@ public class DashboardControllerTests
         stats.Last24h.Succeeded.Should().Be(0);
         stats.Last24h.Failed.Should().Be(0);
         stats.TopWorkflows.Should().BeEmpty();
-        // No LlmOptions monitor wired → defaults to disabled.
+        // No LlmOptions monitor wired -> defaults to disabled.
         stats.LlmEnabled.Should().BeFalse();
     }
 
@@ -68,13 +68,13 @@ public class DashboardControllerTests
     {
         var db = TestDbFactory.Create();
 
-        // Enabled monitor with a resolvable active profile → banner surfaces "AI activated".
+        // Enabled monitor with a resolvable active profile -> banner surfaces "AI activated".
         var enabled = new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile());
         var statsEnabled = (await NewController(db, llmOptions: enabled).Get(CancellationToken.None))
             .Result.As<OkObjectResult>().Value.As<DashboardStats>();
         statsEnabled.LlmEnabled.Should().BeTrue();
 
-        // Disabled monitor → "AI disabled".
+        // Disabled monitor -> "AI disabled".
         var disabled = new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile(enabled: false));
         var statsDisabled = (await NewController(db, llmOptions: disabled).Get(CancellationToken.None))
             .Result.As<OkObjectResult>().Value.As<DashboardStats>();
@@ -196,25 +196,25 @@ public class DashboardControllerTests
     {
         var db = TestDbFactory.Create();
 
-        // Enabled with scheduleTrigger → armed
+        // Enabled with scheduleTrigger -> armed
         db.Workflows.Add(new Workflow {
             Id = Guid.NewGuid(), Name = "Nightly Backup", IsEnabled = true, UpdatedAt = DateTime.UtcNow,
             DefinitionJson = """{"nodes":[{"id":"t","data":{"activityType":"scheduleTrigger"}}]}""",
             TriggerTypesJson = """["scheduleTrigger"]"""
         });
-        // Enabled with manualTrigger only → NOT armed
+        // Enabled with manualTrigger only -> NOT armed
         db.Workflows.Add(new Workflow {
             Id = Guid.NewGuid(), Name = "On-Demand", IsEnabled = true, UpdatedAt = DateTime.UtcNow,
             DefinitionJson = """{"nodes":[{"id":"t","data":{"activityType":"manualTrigger"}}]}""",
             TriggerTypesJson = """["manualTrigger"]"""
         });
-        // Disabled with scheduleTrigger → NOT armed (kill-switch)
+        // Disabled with scheduleTrigger -> NOT armed (kill-switch)
         db.Workflows.Add(new Workflow {
             Id = Guid.NewGuid(), Name = "Quarantined", IsEnabled = false, UpdatedAt = DateTime.UtcNow,
             DefinitionJson = """{"nodes":[{"id":"t","data":{"activityType":"scheduleTrigger"}}]}""",
             TriggerTypesJson = """["scheduleTrigger"]"""
         });
-        // Enabled with webhook + schedule → armed with both
+        // Enabled with webhook + schedule -> armed with both
         db.Workflows.Add(new Workflow {
             Id = Guid.NewGuid(), Name = "Alert Pipeline", IsEnabled = true, UpdatedAt = DateTime.UtcNow,
             DefinitionJson = """{"nodes":[{"id":"a","data":{"activityType":"webhookTrigger"}},{"id":"b","data":{"activityType":"scheduleTrigger"}}]}""",
@@ -346,13 +346,19 @@ public class DashboardControllerTests
     // TriggerOrchestrator evaluates, so a window active now but closed by the fire time must
     // NOT flag the row, and vice versa.
 
-    /// <summary>An always-armed workflow: hourly cron, so NextFireUtc is within the next hour.</summary>
+    /// <summary>An always-armed workflow: hourly cron, so NextFireUtc is within the next
+    /// hour.</summary>
     /// <summary>
-    /// A point in time strictly between "now" and the next firing of <see cref="ArmedCronWorkflow"/>'s
-    /// cron, which is the top of the coming hour. The two blackout tests below split their verdict on
-    /// this instant, so it must never land on or past the fire time — a fixed "now + 30 s" did exactly
-    /// that whenever the suite ran in the last half minute of an hour, silently inverting both of them
-    /// (observed in CI at 19:00:20Z). Anchoring on the actual boundary holds at every wall-clock moment.
+    /// A point in time strictly between "now" and the next firing of <see
+    /// cref="ArmedCronWorkflow"/>'s
+    /// cron, which is the top of the coming hour. The two blackout tests below split their verdict
+    /// on
+    /// this instant, so it must never land on or past the fire time — a fixed "now + 30 s" did
+    /// exactly
+    /// that whenever the suite ran in the last half minute of an hour, silently inverting both of
+    /// them
+    /// (observed in CI at 19:00:20Z). Anchoring on the actual boundary holds at every wall-clock
+    /// moment.
     /// </summary>
     private static DateTime CutoffBeforeNextHourlyFire()
     {
@@ -471,7 +477,7 @@ public class DashboardControllerTests
         var armed = stats.ArmedTriggers.Should().ContainSingle().Subject;
         armed.NextFireUtc.Should().BeNull();
         armed.BlockedByWindowName.Should().Be("Global Freeze");
-        // No prediction to aim at → the only honest question is "is it blocked right now".
+        // No prediction to aim at -> the only honest question is "is it blocked right now".
         evaluator.Calls.Should().ContainSingle().Which.NowUtc.Should().BeOnOrAfter(before);
     }
 

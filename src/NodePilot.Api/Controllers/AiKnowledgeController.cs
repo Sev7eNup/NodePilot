@@ -61,8 +61,10 @@ public sealed class AiKnowledgeController : ControllerBase
 
     /// <summary>
     /// Effective capabilities for the current user — which knowledge sources the chat can draw from
-    /// right now (both master switches on, per-source toggles, and the source-code role gate). Drives
-    /// the sidebar nav visibility and the page's source badges; the raw <c>llm</c> flag additionally
+    /// right now (both master switches on, per-source toggles, and the source-code role gate).
+    /// Drives
+    /// the sidebar nav visibility and the page's source badges; the raw <c>llm</c> flag
+    /// additionally
     /// gates the visibility of every AI entry point in the SPA. All roles.
     /// </summary>
     [HttpGet("knowledge/capabilities")]
@@ -97,7 +99,8 @@ public sealed class AiKnowledgeController : ControllerBase
         return uri.IsDefaultPort ? uri.IdnHost : $"{uri.IdnHost}:{uri.Port}";
     }
 
-    /// <summary>Streams one knowledge-chat turn as Server-Sent Events (delta/tool_call/tool_result/done/error).</summary>
+    /// <summary>Streams one knowledge-chat turn as Server-Sent Events
+    /// (delta/tool_call/tool_result/done/error).</summary>
     [HttpPost("knowledge/ask")]
     public async Task<IActionResult> Ask(KnowledgeAskRequest request, CancellationToken ct)
     {
@@ -127,7 +130,8 @@ public sealed class AiKnowledgeController : ControllerBase
             .StreamAskAsync(normalized, accessible, isPrivileged, isAdmin, ct)
             .GetAsyncEnumerator(ct);
 
-        // Peek the first event: an error before streaming starts comes back as a normal HTTP status.
+        // Peek the first event: an error before streaming starts comes back as a normal HTTP
+        // status.
         bool hasFirst;
         try
         {

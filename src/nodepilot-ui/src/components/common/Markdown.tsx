@@ -18,10 +18,10 @@ import markdown from 'highlight.js/lib/languages/markdown';
 import diff from 'highlight.js/lib/languages/diff';
 import { CopyButton } from './CopyButton';
 
-// Scoped highlight.js grammar set — the languages NodePilot answers actually use. Deliberately
-// registers powershell + csharp, which are NOT in rehype-highlight's default "common" set yet are
-// the primary languages here (runScript / source-code answers). Aliases (ts/js/sh/yml/…) let a
-// fenced block match either spelling. Keeping it scoped also keeps the lazy chunk lean.
+// Scoped highlight.js grammar set — the languages NodePilot answers actually use. Registers
+// powershell and csharp, which are not in rehype-highlight's default "common" set but are the
+// primary languages here (runScript / source-code answers). Aliases (ts/js/sh/yml/…) let a
+// fenced block match either spelling; keeping the set scoped also keeps the lazy chunk small.
 const highlightLanguages = {
   powershell, ps1: powershell,
   csharp, cs: csharp, 'c#': csharp,
@@ -38,7 +38,8 @@ const highlightLanguages = {
   diff,
 };
 
-/** Extracts the plain text from a (possibly nested) ReactNode — used for the "copy code block" button. */
+/** Extracts the plain text from a (possibly nested) ReactNode — used for the "copy code block"
+ * button. */
 function nodeText(node: ReactNode): string {
   if (typeof node === 'string') return node;
   if (typeof node === 'number') return String(node);
@@ -57,8 +58,8 @@ export type MarkdownSize = 'sm' | 'base';
  * Lightweight Markdown renderer for AI chat answers. The project doesn't include
  * `@tailwindcss/typography`, so block/inline elements are styled by hand with Tailwind
  * classes to match the rest of the UI (`on-surface` tones). `remark-gfm` adds GitHub-flavored
- * Markdown; `rehype-highlight` colors fenced code blocks. The `size` prop scales the type — the
- * default (`sm`) is byte-identical to the previous behavior, so existing callers are unaffected.
+ * Markdown; `rehype-highlight` colors fenced code blocks. The `size` prop scales the type,
+ * with `sm` as the default so existing callers keep their current appearance.
  */
 function makeComponents(size: MarkdownSize): Components {
   const base = size === 'base';
@@ -67,7 +68,7 @@ function makeComponents(size: MarkdownSize): Components {
   const hSize3 = base ? 'text-sm' : 'text-xs';
   // Vertical rhythm — `base` (full-page chat) is roomier for human readability (more space between
   // paragraphs, clear breathing room before headings, airier lists); `sm` (designer dock) stays
-  // compact and byte-identical to before.
+  // compact for the workflow designer's tighter layout.
   const pSpace = base ? 'my-3 leading-relaxed' : 'my-1.5 leading-snug';
   const hSpace12 = base ? 'mt-6 mb-2.5' : 'mt-2 mb-1';
   const hSpace3 = base ? 'mt-5 mb-2' : 'mt-2 mb-1';

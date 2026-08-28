@@ -13,6 +13,7 @@ import { useState, useRef, useMemo, memo, createElement } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api } from '../../api/client';
+import { getAllPages } from '../../api/paging';
 import type { Node, Edge } from '@xyflow/react';
 import type { ManagedMachine, Credential, WorkflowExecution, StepExecution } from '../../types/api';
 import { getUpstreamVariables } from '../../lib/upstreamVariables';
@@ -99,7 +100,7 @@ function PropertiesPanelImpl({
     staleTime: 10_000,
     queryFn: async () => {
       const authBoundaryGeneration = captureAuthBoundaryGeneration();
-      const executions = await api.get<WorkflowExecution[]>(`/executions?workflowId=${workflowId}`);
+      const executions = await getAllPages<WorkflowExecution>(`/executions?workflowId=${workflowId}`);
       assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       const last = executions.find((e) => ['Succeeded', 'Failed', 'Cancelled'].includes(e.status));
       if (!last) return null;
@@ -116,7 +117,8 @@ function PropertiesPanelImpl({
 
   const [showExprTester, setShowExprTester] = useState(false);
 
-  // Custom activities expose their remote/timeout facts via the runtime catalog (not the static sets).
+  // Custom activities expose their remote/timeout facts via the runtime catalog (not the static
+  // sets).
   const customFacts = isCustomActivityType(activityType) ? getCustomActivityFacts(activityType) : undefined;
   const showExecCtx = REMOTE_ACTIVITY_TYPES.has(activityType) || customFacts?.runsRemote === true;
   // startProgram / startWorkflow: timeout applies only in their "wait" mode — engine
@@ -125,8 +127,10 @@ function PropertiesPanelImpl({
     || isCustomActivityType(activityType) // custom activities always run a script
     || (activityType === ACTIVITY_TYPES.START_PROGRAM && config.waitForExit !== false)
     || (activityType === ACTIVITY_TYPES.START_WORKFLOW && config.waitForCompletion !== false);
-  // Stable module-level reference from ACTIVITY_CONFIG_COMPONENTS — rendered via createElement so the
-  // react-hooks/static-components rule doesn't misread the dynamic dispatch as a per-render component.
+  // Stable module-level reference from ACTIVITY_CONFIG_COMPONENTS — rendered via createElement so
+  // the
+  // react-hooks/static-components rule doesn't misread the dynamic dispatch as a per-render
+  // component.
   const configComponent = getActivityConfigComponent(activityType);
 
   const statusRow = (
@@ -334,16 +338,14 @@ function PropertiesPanelImpl({
 }
 
 /**
- * A memo with a targeted comparator: without it, PropertiesPanel would reconcile on every
+ * Memoized with a targeted comparator: without it, PropertiesPanel re-renders on every
  * `useDesignStore` tick in the WorkflowEditorPage parent (snap toggle, view-tier switch,
- * node-style change, lint refresh, dragging another node). At 583 lines including nested
- * `Section`s and `*Config` components, that's noticeable.
+ * lint refresh, dragging another node).
  *
- * The data props are compared (`node`, `allNodes`, `edges`, `machines`, `credentials`, `width`,
- * `workflowId`, `canWrite`). Inline closures from the editor (`onUpdate`, `onClose`,
- * `onOpenWorkflowPicker`, `onVarHover`) are deliberately excluded — they're semantically stable
- * (they only call state setters), but every page render creates new references. Comparing them
- * would effectively disable the memo.
+ * Only the data props are compared (node, allNodes, edges, machines, credentials, width,
+ * workflowId, canWrite). Inline closures (onUpdate, onClose, onOpenWorkflowPicker, onVarHover)
+ * are excluded because the parent creates new references on every render, which would
+ * effectively disable the memo.
  */
 export const PropertiesPanel = memo(PropertiesPanelImpl, (prev, next) => {
   return prev.node === next.node
@@ -363,7 +365,7 @@ export const PropertiesPanel = memo(PropertiesPanelImpl, (prev, next) => {
 function AvailableVariablesList({ upstreamVars, onVarHover, lastStepsByStepId }: Readonly<{
   upstreamVars: ReturnType<typeof getUpstreamVariables>;
   onVarHover?: (producerNodeId: string | null) => void;
-  /** Map of stepId → last terminal-run StepExecution. Powers the hover-preview tooltip. */
+  /** Map of stepId -> last terminal-run StepExecution. Powers the hover-preview tooltip. */
   lastStepsByStepId?: Map<string, StepExecution>;
 }>) {
   const { t } = useTranslation(['common', 'designer']);
@@ -500,9 +502,8 @@ function ExpressionTester({
   upstreamVars: ReturnType<typeof getUpstreamVariables>;
   /**
    * Per-step lookup of the last terminal StepExecution. The prefill heuristic uses this
-   * to resolve `{{head.field}}` against the producing step — pre-fix the tester only
-   * had the currently-selected step's lastStep and would happily prefill `{{webApi.output}}`
-   * with the Disk-Check stdout when that was the selected step.
+   * to resolve `{{head.field}}` against the step that produced it, not just the
+   * currently-selected step.
    */
   lastStepsByStepId: Map<string, StepExecution>;
 }>) {
@@ -517,7 +518,7 @@ function ExpressionTester({
     upstreamVars,
   });
 
-  // Variable-head → producing stepId. `upstreamVars[i].variable` looks like
+  // Variable-head -> producing stepId. `upstreamVars[i].variable` looks like
   // `diskCheck.output` or `diskCheck.param.host`; the head before the first dot is what
   // a `{{diskCheck.output}}` template references. Multiple entries can share the same
   // head — the first one wins (their stepId is identical anyway).

@@ -450,7 +450,7 @@ public sealed class FileOperationActivityTests : IDisposable
     [Fact]
     public async Task TraversalPath_OnDefault_Rejected()
     {
-        // No config → PathGuard now treats the missing key as "reject". Empty IConfiguration
+        // No config -> PathGuard now treats the missing key as "reject". Empty IConfiguration
         // is the worst-case "stripped down deployment" scenario; we want it on the safe side.
         var activity = CreateActivity();
         Func<Task> act = () => activity.ExecuteAsync(Ctx(),

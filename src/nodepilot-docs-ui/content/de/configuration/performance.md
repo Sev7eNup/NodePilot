@@ -6,13 +6,13 @@ NodePilot leitet seine Parallelitäts-Grenzen beim Start aus der erkannten Hardw
 |---|---|---|
 | `Performance:ManualTuning` | `false` | `false` = Werte aus erkannter CPU + RAM ableiten. `true` = `Engine:Runspace:*`, `Engine:MaxConcurrentSteps`, `Threading:*` und `ExecutionDispatch:*` unverändert aus der Config nehmen. **Restart-pflichtig.** |
 
-Der Schalter ist bewusst nicht hot-reloadbar: Runspace-Pool und Dispatch-Queue entstehen einmalig beim Boot. Der Plan wird deshalb genau einmal gebaut (`PerformancePlanFactory`) und von allen Consumern gelesen — sonst liefe der hot-reloadbare ThreadPool im einen Modus, während Pool und Queue noch im anderen stehen.
+Der Schalter ist bewusst nicht hot-reloadbar: Runspace-Pool und Dispatch-Worker-Pool entstehen einmalig beim Boot. Der Plan wird deshalb genau einmal gebaut (`PerformancePlanFactory`) und von allen Consumern gelesen — sonst liefe der hot-reloadbare ThreadPool im einen Modus, während boot-feste Consumer noch im anderen stehen.
 
 ## Was der Schalter umfasst — und was nicht
 
 Automatisch dimensioniert werden:
 
-`Engine:Runspace:MinRunspaces` · `Engine:Runspace:MaxRunspaces` · `Engine:MaxConcurrentSteps` · `Threading:MinWorkerThreads` · `Threading:MinIoCompletionThreads` · `ExecutionDispatch:WorkerCount` · `ExecutionDispatch:Capacity`
+`Engine:Runspace:MinRunspaces` · `Engine:Runspace:MaxRunspaces` · `Engine:MaxConcurrentSteps` · `Threading:MinWorkerThreads` · `Threading:MinIoCompletionThreads` · `ExecutionDispatch:WorkerCount`
 
 **Ausgenommen ist `Engine:MaxConcurrentExecutions:*`** (`Global` / `PerUser`). Das ist ein Sicherheits-Cap gegen pathologische Fälle — Trigger-Schleifen, Sub-Workflow-Kaskaden —, kein Durchsatz-Hebel. Wer einen Wert setzt, meint ihn; ihn aus der Hardware abzuleiten würde genau die Schranke entschärfen, die konfiguriert wurde. Der Cap gilt daher in **beiden** Modi.
 
@@ -42,9 +42,9 @@ Die Antwort nennt außerdem den gebooteten Modus **und** den gespeicherten. Weic
 
 ## Modell
 
-**CPU-Dimension.** `MaxRunspaces` = Cores × 4, `MaxConcurrentSteps` = Cores × 32, `Threading:*` = max(200, Cores × 16), `ExecutionDispatch:WorkerCount` = Cores × 3, `Capacity` = WorkerCount × 8.
+**CPU-Dimension.** `MaxRunspaces` = Cores × 4, `MaxConcurrentSteps` = Cores × 32, `Threading:*` = max(200, Cores × 16), `ExecutionDispatch:WorkerCount` = Cores × 3.
 
-**Speicher-Dimension.** Vom erkannten Speicher wird ein fixer Grundbedarf von 512 MB abgezogen (Runtime, EF-Modell, Caches, Telemetry — gemessener Idle-Footprint 383–444 MB, aufgerundet). Vom Rest beansprucht NodePilot **60 %** im Server-Modus und **25 %** bei `Deployment:Mode=Desktop`, weil das Desktop-Paket sich die Maschine mit Postgres, der Electron-Shell und den Anwendungen des Nutzers teilt. Dieses App-Budget wird als **ein Haushalt** aufgeteilt — Runspaces 50 %, Steps 25 %, Queue 5 %, der Rest ist bewusste Reserve für GC-Spitzen. Jeden Wert einzeln gegen das volle Budget zu rechnen würde denselben Speicher mehrfach ausgeben.
+**Speicher-Dimension.** Vom erkannten Speicher wird ein fixer Grundbedarf von 512 MB abgezogen (Runtime, EF-Modell, Caches, Telemetry — gemessener Idle-Footprint 383–444 MB, aufgerundet). Vom Rest beansprucht NodePilot **60 %** im Server-Modus und **25 %** bei `Deployment:Mode=Desktop`, weil das Desktop-Paket sich die Maschine mit Postgres, der Electron-Shell und den Anwendungen des Nutzers teilt. Dieses App-Budget wird als **ein Haushalt** aufgeteilt — Runspaces 50 %, Steps 25 %, der Rest ist bewusste Reserve für GC-Spitzen. Jeden Wert einzeln gegen das volle Budget zu rechnen würde denselben Speicher mehrfach ausgeben. Wartender Dispatch liegt in der Datenbank-Outbox und hat deshalb keine In-Memory-Queue-Kapazität mehr.
 
 Der **kleinere** der beiden Kandidaten gewinnt, danach greifen Floor und Ceiling. Die Speicher-Dimension kann einen Plan damit nur verkleinern, nie vergrößern.
 
@@ -59,7 +59,6 @@ Der **kleinere** der beiden Kandidaten gewinnt, danach greifen Floor und Ceiling
 | `MaxConcurrentSteps` | 32 | 600 |
 | `Threading:*` | 64 | 768 |
 | `ExecutionDispatch:WorkerCount` | 20 | 200 |
-| `ExecutionDispatch:Capacity` | 128 | 2048 |
 
 `MinRunspaces` bleibt im Automatik-Modus immer **1**: `RunspacePool.Open()` materialisiert das Minimum sofort, und eifriges Vorwärmen ist ein gemessener Anti-Pattern (28 % Regression). Der Pool wächst unter echter Last ohnehin.
 

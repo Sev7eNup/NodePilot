@@ -4,14 +4,10 @@ import { CommandPalette, type PaletteCommand } from '../../../components/designe
 import { filterCommandsForDesignerMode } from '../../../lib/editorCommandPalette';
 
 /**
- * CommandPalette is the Cmd-K-style fuzzy command picker. We pin the user-visible
- * contracts:
- *   - Empty query lists everything, grouped.
- *   - Typing filters results by fuzzy match against title/subtitle/group.
- *   - ArrowUp/Down + Enter invoke the highlighted command and close the palette.
- *   - Escape closes without invoking.
- *   - Disabled commands are visible but never invoked.
- *   - Click on the backdrop closes; click on a row invokes.
+ * CommandPalette is the Cmd-K style fuzzy command picker. These tests cover its user-visible
+ * behaviour: grouped listing on an empty query, fuzzy filtering against title, subtitle and
+ * group, arrow keys plus Enter to invoke and close, Escape and backdrop click to close without
+ * invoking, and disabled commands that render but never run.
  */
 
 function makeCmd(id: string, title: string, extra: Partial<PaletteCommand> = {}): PaletteCommand {
@@ -97,7 +93,7 @@ describe('CommandPalette', () => {
     fireEvent.click(screen.getByText('Save'));
 
     expect(run).not.toHaveBeenCalled();
-    // The button itself is disabled, so clicking shouldn't fire any handlers.
+    // The button is disabled, so clicking it fires no handlers.
   });
 
   it('enterKeyInvokesHighlightedCommand', () => {
@@ -176,7 +172,7 @@ describe('CommandPalette', () => {
   });
 
   it('substringMatchOutranksSubsequenceMatch', () => {
-    // Pin the fuzzyScore contract: a substring "save" beats a subseq "s..a..v..e".
+    // The fuzzyScore contract: a substring match on "save" outranks a scattered subsequence.
     const runDirect = vi.fn();
     const runFuzzy = vi.fn();
     const cmds = [

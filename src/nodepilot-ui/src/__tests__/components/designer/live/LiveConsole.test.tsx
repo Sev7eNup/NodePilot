@@ -4,15 +4,11 @@ import { LiveConsole } from '../../../../components/designer/live/LiveConsole';
 import type { LiveExecution, StepUpdate } from '../../../../hooks/useSignalR';
 
 /**
- * Tests for the Live Console — the line-stream right-pane sub-tab. Asserts:
- *  - per-step output is split into one DOM line per text line
- *  - errors render in error tone (kept implicit via class match) AND show in counter
- *  - filter input narrows visible lines
- *  - errors-only toggle isolates stderr lines
- *  - clicking a line invokes onSelectStep with the originating step's id
- *  - the MAX_LINES cap collapses excess into a "hidden" notice
- *
- * jsdom doesn't actually scroll, so the auto-scroll behavior is exercised but not asserted.
+ * Tests for the Live Console, the line-stream sub-tab of the right pane: per-step output splits
+ * into one DOM line per text line, errors raise the counter, filter input and errors-only toggle
+ * narrow the visible lines, clicking a line selects the originating step, and the MAX_LINES cap
+ * collapses the excess into a hidden-lines notice.
+ * jsdom does not scroll, so auto-scroll is exercised but not asserted.
  */
 
 const T0 = '2026-04-26T10:00:00Z';

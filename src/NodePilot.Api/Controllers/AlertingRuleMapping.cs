@@ -8,8 +8,10 @@ using NodePilot.Engine.Notifications;
 namespace NodePilot.Api.Controllers;
 
 /// <summary>
-/// The parts <see cref="AlertingController"/> (custom rules) and <see cref="SystemAlertingController"/>
-/// (system policies) run identically over the same <see cref="NotificationRule"/> graph: route mapping,
+/// The parts <see cref="AlertingController"/> (custom rules) and <see
+/// cref="SystemAlertingController"/>
+/// (system policies) run identically over the same <see cref="NotificationRule"/> graph: route
+/// mapping,
 /// scope-target mapping and the test-fire delivery loop. Only the noun inside two target-validation
 /// messages differs between the surfaces ("rules" vs "policies"), so it is a parameter; every other
 /// message, the route order and the ledger rows stay byte-identical.
@@ -17,7 +19,8 @@ namespace NodePilot.Api.Controllers;
 internal static class AlertingRuleMapping
 {
     /// <summary>
-    /// Validates and maps request routes onto <see cref="NotificationRoute"/> entities. Returns false
+    /// Validates and maps request routes onto <see cref="NotificationRoute"/> entities. Returns
+    /// false
     /// with <paramref name="error"/> set on the first problem; the caller wraps that in its own 400
     /// shape. An absent/empty route list maps to an empty result — whether that is legal is the
     /// caller's rule (custom rules always need one, a disabled system policy does not).
@@ -68,7 +71,8 @@ internal static class AlertingRuleMapping
 
     /// <summary>
     /// Maps the scope targets. Global scope carries none. <paramref name="noun"/> is the plural the
-    /// caller's surface uses in its validation messages ("rules" / "policies") — the wording is part
+    /// caller's surface uses in its validation messages ("rules" / "policies") — the wording is
+    /// part
     /// of the API contract, so it must not converge.
     /// </summary>
     public static bool TryMapScopeTargets(
@@ -113,8 +117,10 @@ internal static class AlertingRuleMapping
     }
 
     /// <summary>
-    /// Sends the synthetic notification through every route of <paramref name="rule"/> and stages one
-    /// <c>IsTest</c> delivery-ledger row per route. The caller keeps SaveChanges and the audit entry —
+    /// Sends the synthetic notification through every route of <paramref name="rule"/> and stages
+    /// one
+    /// <c>IsTest</c> delivery-ledger row per route. The caller keeps SaveChanges and the audit
+    /// entry —
     /// those are the only parts that differ between the two test-fire endpoints.
     /// </summary>
     public static async Task<List<TestFireRouteResult>> DeliverTestFireAsync(

@@ -15,7 +15,7 @@ public sealed class DeploymentModeTests
     [InlineData("Server", false)]
     [InlineData("", false)]
     [InlineData(null, false)]
-    [InlineData("nonsense", false)] // fail safe: unknown → Server posture, never throws
+    [InlineData("nonsense", false)] // fail-safe: unknown values fall back to Server posture, never throw
     public void IsDesktop_ResolvesValue(string? value, bool expected)
         => DeploymentModeReader.IsDesktop(Build(value)).Should().Be(expected);
 

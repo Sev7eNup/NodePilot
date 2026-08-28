@@ -8,14 +8,14 @@ namespace NodePilot.Api.Configuration;
 
 /// <summary>
 /// Wires <c>appsettings.runtime.json</c> into the configuration pipeline at the right
-/// place — after <c>appsettings.{Env}.json</c> (Installer-Bootstrap) but before
-/// EnvVars/CLI (Deployment-Policy). The host doesn't insert this source itself; we
-/// have to splice it into <see cref="WebApplicationBuilder.Configuration"/> manually.
+/// place — after <c>appsettings.{Env}.json</c> (installer bootstrap) but before
+/// EnvVars/CLI (deployment policy). The host does not insert this source itself, so it is
+/// spliced into <see cref="WebApplicationBuilder.Configuration"/> manually.
 ///
-/// <para>Splicing is needed instead of <c>AddJsonFile()</c>-after-the-fact because
-/// the default builder appends to the end (after EnvVars), which would let UI saves
-/// override Env-injected secrets — that breaks Container/K8s deployments where the
-/// override-file pattern is "Env wins". We want the opposite priority.</para>
+/// <para>Splicing is needed instead of adding the file after the fact, because the default
+/// builder appends new sources to the end (after EnvVars), which would let UI saves override
+/// Env-injected secrets. That breaks Container/K8s deployments where the override-file pattern
+/// expects Env to win, so this source needs the opposite priority.</para>
 /// </summary>
 public static class RuntimeOverridesSetup
 {
@@ -29,25 +29,22 @@ public static class RuntimeOverridesSetup
     /// resolved path and the bootstrap-built <see cref="ISecretProtector"/> so callers
     /// can register both in DI alongside the writer.
     ///
-    /// <para>The protector is constructed from a temporary configuration snapshot that
-    /// includes everything EXCEPT the override file itself — the file is what the
-    /// protector will then decrypt during the host's full configuration load. This
-    /// breaks the chicken-and-egg between "which protector?" and "decrypted values".</para>
+    /// <para>The protector is built from a temporary configuration snapshot that includes
+    /// everything except the override file itself, since that file is what the protector
+    /// then decrypts during the host's full configuration load. This avoids needing the
+    /// decrypted values to determine which protector to use.</para>
     /// </summary>
     public static (string OverridesPath, ISecretProtector Protector, int MigratedFiles) AddRuntimeOverridesJson(
         this WebApplicationBuilder builder)
     {
         var resolved = ResolveOverridesPath(builder.Configuration, builder.Environment.ContentRootPath);
 
-        // Build a snapshot identical to the host's eventual configuration EXCEPT for the
+        // Build a snapshot identical to the host's eventual configuration except for the
         // override file. The protector reads Secrets:* / Credentials:DpapiScope /
-        // Cluster:Enabled from this snapshot — all of those keys must be addressable
-        // via EnvVars OR CLI args (operators routinely pass Secrets:MasterKey via
-        // --Secrets:MasterKey=... on the dotnet command line in tests / one-shot
-        // recoveries), so the snapshot must include both. Without CLI args the
-        // override-file decrypt path could start with the wrong protector when the
-        // CLI overrides Secrets:Provider — this was caught during a security review
-        // (tracked there as Finding 5).
+        // Cluster:Enabled from this snapshot, so it must include both EnvVars and CLI args:
+        // operators pass Secrets:MasterKey via --Secrets:MasterKey=... on the command line for
+        // tests and one-shot recoveries. Without CLI args, the override-file decrypt path could
+        // start with the wrong protector when the CLI overrides Secrets:Provider.
         var commandLineArgs = Environment.GetCommandLineArgs();
         // Skip [0] which is the executable path; the rest are the actual switches.
         var cliArgs = commandLineArgs.Length > 1
@@ -62,10 +59,10 @@ public static class RuntimeOverridesSetup
             .Build();
         var protector = SecretProtectorBootstrapFactory.FromConfigSnapshot(bootstrapSnapshot);
 
-        // `Otlp.Headers` only became a registered secret after the 2026 security audit. Encrypt
-        // legacy plaintext in both the active file and its rollback copies before the active
-        // provider ever loads it. A later Settings PUT also performs this upgrade, but startup is
-        // the only deterministic migration point for installations that never revisit the UI.
+        // `Otlp.Headers` is a registered secret. Encrypt legacy plaintext in both the active file
+        // and its rollback copies before the active provider ever loads it. A later Settings PUT
+        // also performs this upgrade, but startup is the only deterministic migration point for
+        // installations that never revisit the UI.
         var migratedFiles = MigrateLegacyPlaintextSecrets(resolved, protector);
 
         var sources = builder.Configuration.Sources;
@@ -263,8 +260,8 @@ public static class RuntimeOverridesSetup
 
     /// <summary>
     /// Register the writer with the absolute override-file path. Save-side encryption
-    /// in later PRs will resolve <see cref="ISecretProtector"/> from DI (which includes
-    /// the migrating-fallback wrapper when a key rotation is in progress) — the
+    /// resolves <see cref="ISecretProtector"/> from DI (which includes the
+    /// migrating-fallback wrapper when a key rotation is in progress) — the
     /// bootstrap protector wired into the JSON source for decrypt is intentionally
     /// kept out of DI to avoid mistaking it for the regular runtime protector.
     /// </summary>

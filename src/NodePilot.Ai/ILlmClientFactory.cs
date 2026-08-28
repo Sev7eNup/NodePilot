@@ -7,27 +7,25 @@ namespace NodePilot.Ai;
 /// Creates an <see cref="ILlmClient"/> bound to an effective connection: the active
 /// <see cref="LlmProfileOptions"/> with optional per-call <see cref="LlmConnection"/> overrides
 /// applied. The single entry point for per-node endpoint/model/apiKey overrides (the
-/// <c>llmQuery</c> activity). Every LLM call — assistant, script/workflow-gen, and the activity —
-/// resolves through here and through the same guarded named HttpClient +
-/// <see cref="LlmEndpointGuard"/>.
+/// <c>llmQuery</c> activity). Every LLM call resolves through here and through the same guarded
+/// named HttpClient plus <see cref="LlmEndpointGuard"/>.
 ///
-/// <para><b>Callers must resolve lazily.</b> <see cref="Create"/> throws when no active profile is
-/// configured, so it belongs inside the call, never in a constructor: services take this factory
-/// (not a pre-built <see cref="ILlmClient"/>) so a half-configured instance fails as a clean 503
-/// from the endpoint gate instead of blowing up during DI construction.</para>
+/// <para>Callers resolve lazily. <see cref="Create"/> throws when no active profile is configured,
+/// so it belongs inside the call, not in a constructor: services take this factory rather than a
+/// pre-built <see cref="ILlmClient"/>, so a half-configured instance surfaces as a 503 from the
+/// endpoint gate instead of failing during DI construction.</para>
 /// </summary>
 public interface ILlmClientFactory
 {
     /// <summary>
     /// Builds a client for the effective connection: the active profile, with any non-null
-    /// <paramref name="overrides"/> field taking precedence. Which implementation comes back
-    /// depends on the wire dialect <see cref="LlmEndpointGuard.ResolveEndpoint"/> derives from the
-    /// effective BaseUrl — chat completions by default, OpenAI's Responses API for a
-    /// <c>/responses</c> endpoint.
+    /// <paramref name="overrides"/> field taking precedence. The implementation follows the wire
+    /// dialect <see cref="LlmEndpointGuard.ResolveEndpoint"/> derives from the effective BaseUrl:
+    /// chat completions by default, the OpenAI Responses API for a <c>/responses</c> endpoint.
     /// </summary>
     /// <exception cref="LlmException">
-    /// No profile is configured or <c>Llm:ActiveProfileId</c> doesn't name one, or the effective
-    /// BaseUrl fails <see cref="LlmEndpointGuard.ResolveEndpoint"/>.
+    /// No profile is configured, <c>Llm:ActiveProfileId</c> names none, or the effective BaseUrl
+    /// fails <see cref="LlmEndpointGuard.ResolveEndpoint"/>.
     /// </exception>
     ILlmClient Create(LlmConnection? overrides = null);
 }
@@ -51,9 +49,8 @@ public sealed class LlmClientFactory : ILlmClientFactory
 
     public ILlmClient Create(LlmConnection? overrides = null)
     {
-        // Hot-reload: read the live LlmOptions per Create() so a config edit (Admin-Settings-UI
-        // save or appsettings.runtime.json) takes effect without a restart. The factory is
-        // singleton — IOptionsMonitor is the correct live source.
+        // Read the live LlmOptions per Create() so a config edit takes effect without a restart.
+        // The factory is a singleton, so IOptionsMonitor is the correct live source.
         if (!_options.CurrentValue.TryResolveActiveProfile(out var profile))
         {
             throw new LlmException(LlmErrorKind.Unreachable,
@@ -61,8 +58,8 @@ public sealed class LlmClientFactory : ILlmClientFactory
                 + "Integrations → LLM and select it as the active profile.");
         }
 
-        // Validate the effective BaseUrl and resolve its wire dialect HERE — the factory is the
-        // central override entry point and must never trust callers to have pre-checked it.
+        // Validate the effective BaseUrl and resolve its wire dialect here: the factory is the
+        // central override entry point and cannot assume callers have pre-checked it.
         var endpoint = LlmEndpointGuard.ResolveEndpoint(overrides?.BaseUrl ?? profile.BaseUrl);
 
         var config = new LlmClientConfig(

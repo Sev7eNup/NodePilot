@@ -2,21 +2,11 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Part 6 — Workflow Execution & Debugging.
- *
- * Hermetic constraints (see fixtures/mockApi.ts + the team playbook):
- *   - SignalR is mocked to 404, so live PROGRESS (Running→Completed, step pulses, the green
- *     "Test-Verlauf" banner, the live Cancel button) never arrives in the browser. Execution
- *     scenarios therefore assert the UI-observable side: the /execute request fires with the
- *     right body (parameters / debug flag) and the editor enters the submitted state.
- *   - React Flow canvas drag is not synthesizable — every node/edge is pre-seeded via
- *     definitionJson, never dropped from the library.
- *
- * The Test button (Play icon, aria-label "Test run") fires handleRunClick(false) → POST
- * /execute {debug:false}. The Debug button (Bug icon, "Debug run …") fires handleRunClick(true)
- * → {debug:true}. A manualTrigger WITH parameters opens RunWorkflowDialog first; the dialog's
- * "Run" submit posts {parameters, debug}. handleRunClick early-returns with an alert() when the
- * workflow is disabled, so every executable fixture sets isEnabled:true.
+ * E2ETests.md section "Part 6": workflow execution and debugging. SignalR is mocked to 404, so
+ * live progress never reaches the browser and these tests assert only that /execute fires with
+ * the expected body. The Test button posts {debug:false}, the Debug button {debug:true}, and a
+ * manualTrigger with parameters opens RunWorkflowDialog first. handleRunClick bails out on a
+ * disabled workflow, so every executable fixture sets isEnabled:true.
  */
 
 const WF_ID = 'e6e6e6e6-0000-0000-0000-000000000006';
@@ -40,7 +30,7 @@ function workflowJson(overrides: Record<string, unknown> = {}) {
   };
 }
 
-// log → delay → log, no trigger, no parameters → Test runs directly (no dialog).
+// log -> delay -> log, no trigger, no parameters -> Test runs directly (no dialog).
 const SIMPLE_DEF = JSON.stringify({
   nodes: [
     { id: 'n1', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'Start', activityType: 'log', config: { message: 'Starting' } } },
@@ -53,7 +43,7 @@ const SIMPLE_DEF = JSON.stringify({
   ],
 });
 
-// manualTrigger with two parameters → Test opens RunWorkflowDialog.
+// manualTrigger with two parameters -> Test opens RunWorkflowDialog.
 const PARAM_DEF = JSON.stringify({
   nodes: [
     {
@@ -74,7 +64,7 @@ const PARAM_DEF = JSON.stringify({
   edges: [{ id: 'e1', source: 'trg', target: 'log', type: 'labeled', data: {} }],
 });
 
-// manualTrigger with a single `result` parameter → fans out to three log branches by condition.
+// manualTrigger with a single `result` parameter -> fans out to three log branches by condition.
 const BRANCH_DEF = JSON.stringify({
   nodes: [
     { id: 'trg', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'Manual', activityType: 'manualTrigger', config: { title: 'Branch Test', parameters: [{ name: 'result', type: 'string', required: true, default: 'success' }] } } },
@@ -91,7 +81,7 @@ const BRANCH_DEF = JSON.stringify({
   ],
 });
 
-// log → delay (breakpoint candidate) → log.
+// log -> delay (breakpoint candidate) -> log.
 const DEBUG_DEF = JSON.stringify({
   nodes: [
     { id: 's1', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'Step 1', activityType: 'log', config: { message: 'Step 1' } } },
@@ -149,7 +139,8 @@ test.describe('Workflow-Ausführung & Debugging (Teil 6)', () => {
 
     await page.getByRole('button', { name: /test run/i }).click();
 
-    // RunWorkflowDialog (role="dialog") shows a field per declared parameter, prefilled with defaults.
+    // RunWorkflowDialog (role="dialog") shows a field per declared parameter, prefilled with
+    // defaults.
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible({ timeout: 10_000 });
     const env = dialog.getByRole('textbox').first();

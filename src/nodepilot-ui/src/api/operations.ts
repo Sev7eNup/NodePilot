@@ -70,7 +70,7 @@ export function getExecution(executionId: string) {
   return api.get<WorkflowExecution>(`/executions/${executionId}`);
 }
 
-/** Rerun a terminal execution with the original input parameters. Creates a NEW execution. */
+/** Rerun a terminal execution with the original input parameters. Creates a new execution. */
 export function retryExecution(executionId: string) {
   return api.post<WorkflowExecution>(`/executions/${executionId}/retry`);
 }
@@ -121,8 +121,8 @@ export async function quarantineWorkflow(workflowId: string): Promise<Quarantine
     assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
     return { disabled: true, cancelled };
   } catch (err) {
-    // Never reinterpret an identity switch as the documented same-user partial outcome; doing so
-    // would also permit the cancel step to start under a replacement user's cookie.
+    // Never reinterpret an identity switch as the same-user partial outcome documented above;
+    // that would let the cancel step run under a replacement user's cookie.
     if (err instanceof AuthBoundaryChangedError) throw err;
     assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
     return { disabled: true, cancelled: null };

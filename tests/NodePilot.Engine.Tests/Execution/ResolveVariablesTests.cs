@@ -104,7 +104,8 @@ public class ResolveVariablesTests
 
         var resolved = VariableResolver.ResolveVariables(config, results, nodes);
 
-        // The resolved JSON should be valid and the string value should contain the original special chars
+        // The resolved JSON should be valid and the string value should contain the original
+        // special chars
         resolved.GetProperty("val").GetString().Should().Be("line1\nline2\ttab \"quoted\" back\\");
     }
 
@@ -124,12 +125,8 @@ public class ResolveVariablesTests
     }
 
     /// <summary>
-    /// Regression test for a JsonDocument pool-leak fix: Parse is wrapped in `using var doc` and
-    /// the method returns `doc.RootElement.Clone()`. Without Clone(), the returned JsonElement
-    /// would point into a disposed document and any access would throw ObjectDisposedException.
-    /// This test explicitly stores the result, lets the resolver-method's local doc go
-    /// out of scope, then accesses nested properties to prove the cloned element is
-    /// self-contained — the leak fix is correct.
+    /// Verifies that the returned JsonElement remains valid after the resolver releases its
+    /// internal JsonDocument. The cloned element must own its data independently.
     /// </summary>
     [Fact]
     public void ResolveVariables_ResultElement_IsDetachedFromInternalDocument()
@@ -143,13 +140,12 @@ public class ResolveVariablesTests
 
         var resolved = VariableResolver.ResolveVariables(config, results, nodes);
 
-        // Drop our reference to any locals that might be holding the parse buffer.
+        // Encourage collection of any temporary parse buffers held by the resolver.
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
 
-        // Nested access after GC must still work — the returned element is a deep-copy
-        // (Clone) and lives independently of any pooled buffer the resolver borrowed.
+        // Nested access after collection confirms that the returned element owns its data.
         var act = () =>
         {
             var outer = resolved.GetProperty("outer");
@@ -160,10 +156,7 @@ public class ResolveVariablesTests
     }
 
     /// <summary>
-    /// Smoke test that exercises the resolver tightly so the JsonDocument dispose-and-clone
-    /// path (see the pool-leak fix above) is hit thousands of times without functional
-    /// regression. Pre-fix, this would have leaked an ArrayPool buffer per call; post-fix,
-    /// every loop iteration returns its buffer and the test runs flat in memory.
+    /// Exercises the JsonDocument dispose-and-clone path repeatedly while checking the result.
     /// </summary>
     [Fact]
     public void ResolveVariables_ManyIterations_StaysFunctionallyCorrect()
@@ -273,12 +266,7 @@ public class ResolveVariablesTests
         resolved.GetProperty("msg").GetString().Should().Be("hi");
     }
 
-    // ---- .success property tail (fixture-audit fallout 2026-05-17) ----
-    // Before this commit, {{step.success}} was silently passed through as literal
-    // because the regex didn't match it. Authors typing {{init.success}} in
-    // returnData got the string "{{init.success}}" persisted to OutputParameters
-    // — the resolver never touched it, so the "unresolved variable" diagnostic (T-7.1)
-    // never caught it either. These tests pin the new contract.
+    // The .success property resolves for completed steps and remains literal for unknown steps.
 
     [Fact]
     public void ResolveVariables_SuccessPlaceholder_TrueWhenStepSucceeded()
@@ -329,8 +317,7 @@ public class ResolveVariablesTests
     [Fact]
     public void ResolveStringValue_SuccessPlaceholder_TrueWhenStepSucceeded()
     {
-        // The single-string resolver feeds non-JSON fields (target-machine, credential).
-        // Same .success contract must hold there to avoid mode-specific drift.
+        // Non-JSON fields follow the same .success contract as JSON configuration.
         var results = new Dictionary<string, ActivityResult>
         {
             ["step1"] = new() { Success = true }
@@ -359,10 +346,7 @@ public class ResolveVariablesTests
     [Fact]
     public void ResolveVariables_SuccessPlaceholder_LeavesUnknownStepUnresolved()
     {
-        // .success on a step that hasn't run / doesn't exist must still leave the
-        // placeholder literally so the "unresolved variable" diagnostic (T-7.1) can catch it
-        // downstream — the WHOLE point of adding .success to the regex was to bring it under
-        // that diagnostic's coverage.
+        // Unknown steps remain literal so downstream unresolved-variable diagnostics catch them.
         var config = Parse("""{ "ok": "{{missing.success}}" }""");
         var resolved = VariableResolver.ResolveVariables(
             config,
@@ -375,10 +359,7 @@ public class ResolveVariablesTests
     [Fact]
     public void BuildStepVariables_PopulatesSuccessKey_ForRunScriptResolver()
     {
-        // runScript inlines its own resolver against the flat variables dict produced by
-        // BuildStepVariables. If we forget to seed `.success`, scripts that write
-        // `if ({{prev.success}}) { ... }` would silently keep the literal text — same
-        // ghost-resolution bug we're fixing for the JSON-config path.
+        // BuildStepVariables supplies .success values to the runScript resolver.
         var prev = new Dictionary<string, ActivityResult>
         {
             ["step-1"] = new() { Success = true },

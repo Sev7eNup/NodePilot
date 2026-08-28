@@ -97,7 +97,8 @@ public static class FileWatcherPathGuard
     }
 
     /// <summary>
-    /// Enumerates a manual FileWatcher scan without asking <see cref="Directory.GetFiles(string, string, SearchOption)"/>
+    /// Enumerates a manual FileWatcher scan without asking <see cref="Directory.GetFiles(string,
+    /// string, SearchOption)"/>
     /// to recurse through the tree. Each directory is inspected link-locally before it is
     /// enumerated, and reparse points are rejected rather than followed.
     /// </summary>

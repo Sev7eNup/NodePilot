@@ -5,12 +5,11 @@ import { usePopover, OverlaySwitchRow } from './menuPrimitives';
 import { OVERLAY_DEFS } from './overlayDefs';
 
 /**
- * "Overlays" menu — its own toolbar button (Eye) holding the five inspection overlays
- * (machine-coloring / failure-heatmap / data-flow / coverage / critical-path) as switch
- * rows. Kept as a standalone button (not merged into the display/tools menus) per product
- * preference. An active-count badge on the trigger surfaces how many overlays are on. The
- * overlay list is shared with the classic inline layout via {@link OVERLAY_DEFS}, so the
- * `view-overlays-trigger` + per-overlay `toggle-*` testids stay identical across both layouts.
+ * "Overlays" menu — a standalone toolbar button (Eye) holding the five inspection overlays
+ * (machine-coloring / failure-heatmap / data-flow / coverage / critical-path) as switch rows,
+ * kept separate from the display/tools menus by product preference. An active-count badge on
+ * the trigger shows how many overlays are on. The list is shared with the classic inline layout
+ * via {@link OVERLAY_DEFS}, so testids stay identical across both layouts.
  */
 export function OverlaysMenu() {
   const { t } = useTranslation('editor');

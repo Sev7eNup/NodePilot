@@ -11,7 +11,8 @@ namespace NodePilot.Engine.Notifications;
 
 /// <summary>
 /// E-mail delivery sink. Reuses the configured <see cref="SmtpOptions"/> + the same hardening as
-/// <see cref="Activities.EmailActivity"/> (default-on TLS, single recipient, header-injection guard,
+/// <see cref="Activities.EmailActivity"/> (default-on TLS, single recipient, header-injection
+/// guard,
 /// bounded send timeout). Self-isolating: any failure is returned as a failed result, never thrown,
 /// so one bad route can't break the dispatch pass.
 /// </summary>
@@ -39,7 +40,8 @@ public sealed class SmtpNotificationSink : INotificationSink
         {
             // Hot-reload: read SmtpOptions per send so a live config edit (appsettings.runtime.json
             // or Admin-Settings-UI save) takes effect without a service restart. The sink is a
-            // singleton — IOptionsMonitor is the correct live source (IOptionsSnapshot would throw).
+            // singleton — IOptionsMonitor is the correct live source (IOptionsSnapshot would
+            // throw).
             var o = _smtp.CurrentValue;
             using var client = SmtpTransport.CreateClient(o);
             using var message = new MailMessage(o.From, target, subject, NotificationRenderer.EmailBody(ctx));

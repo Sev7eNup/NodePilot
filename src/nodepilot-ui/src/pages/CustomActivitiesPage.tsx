@@ -36,38 +36,26 @@ import {
 } from '../security/authBoundary';
 
 /**
- * Admin/Operator management surface for custom activities ("Custom Nodes"). A definition is created
- * disabled (Draft); Admin+Operator may edit/delete while disabled, but once an Admin enables it only
- * an Admin can modify it (the server enforces this — the UI mirrors it). Secrets must come via
- * {{globals.X}}, never as inputs (there is no secret input type).
+ * Admin and Operator management surface for custom activities ("Custom Nodes"). A definition starts
+ * disabled (Draft); Admin and Operator may edit or delete it while disabled, but once an Admin
+ * enables it only an Admin can modify it. The server enforces this and the UI mirrors it. Secrets
+ * come from {{globals.X}}, never from inputs, as there is no secret input type.
  */
 
 /**
- * Field chrome for this page's dialogs — the outline style every other admin page dialog uses
- * (GlobalVariablesPage, MachinesPage, UsersPage, …), so a Custom Node dialog reads identically to
- * a Globals dialog in every skin.
- *
- * Deliberately NOT the shared `.input-field` class. That one is the *recessed* designer-panel
- * style: it paints itself darker than its container and needs a raised surface to sink into.
- * `ModalShell` only gets that lift in dark skins (`html.dark … .np-modal-panel` in index.css), so
- * on the light skins — `light-grey` most visibly — the field rendered as a flat beige box on a
- * white panel and went *lighter* than the panel on focus, losing its outline exactly while in use.
- *
- * `focus:ring-blue-500` is not a hardcoded palette literal here: index.css remaps the blue ring
- * utilities onto `--np-accent-ring` for every non-blue skin, so the ring follows the accent.
- *
- * Both constants carry NO width — each call site adds `w-full` or an explicit `w-28`/`w-32`. Two
- * conflicting utilities from the same Tailwind layer are resolved by their order in the generated
- * stylesheet, not by the order in the class attribute, so baking a width in here and overriding it
- * per field would be a coin flip.
+ * Field chrome for this page's dialogs: the outline style the other admin dialogs use, so they
+ * all look alike in every skin. Not the shared `.input-field` class, which is the recessed
+ * designer style and needs a raised surface that `ModalShell` only has in dark skins.
+ * `focus:ring-blue-500` is remapped onto `--np-accent-ring` in non-blue skins by index.css.
+ * Width is left to the call site, since same-layer Tailwind utilities resolve by stylesheet order.
  */
 const FIELD =
   'px-3 py-2 border border-outline-variant rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
 
 /**
- * Compact sibling for the ParamEditor rows, which must stay side by side. Under `.input-field` the
- * per-field `w-28`/`w-32`/`text-xs` were dead: unlayered CSS beats Tailwind's `@layer utilities`,
- * so its `width:100%` won and every parameter row wrapped onto a line of its own.
+ * Compact variant for the ParamEditor rows, which have to stay side by side. `.input-field` is
+ * unlayered CSS and beats Tailwind's `@layer utilities`, so its `width:100%` would override the
+ * per-field widths and wrap every parameter row onto its own line.
  */
 const FIELD_COMPACT =
   'px-2 py-1 border border-outline-variant rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-blue-500';
@@ -94,7 +82,8 @@ interface FullDef extends CatalogEntry {
   defaultTimeoutSeconds: number | null; successExitCodes: string | null;
   concurrencyToken: string; updatedAt: string; updatedBy: string | null;
 }
-/** One historical snapshot from GET /custom-activities/{id}/versions (only the fields the modal shows). */
+/** One historical snapshot from GET /custom-activities/{id}/versions (only the fields the modal
+ * shows). */
 interface VersionEntry {
   version: number; name: string; description: string | null;
   engine: string; runsRemote: boolean;
@@ -209,13 +198,14 @@ export function CustomActivitiesPage() {
       a.href = url; a.download = 'custom-nodes.npca.json'; a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      // A stale export is intentionally silent; retain the existing behavior for real failures.
+      // An export that completes after the auth boundary changed is dropped silently;
+      // real failures still propagate.
       if (!(err instanceof AuthBoundaryChangedError)) throw err;
     }
   };
-  // File-picker import (same pattern as WorkflowsPage): hidden <input type="file">,
-  // read the .npca/.json envelope client-side, POST it as-is. Imported nodes land
-  // disabled server-side and need an Admin review + enable.
+  // File-picker import, same pattern as WorkflowsPage: a hidden <input type="file"> reads the
+  // .npca/.json envelope client-side and posts it unchanged. Imported nodes arrive disabled
+  // and need an Admin to review and enable them.
   const importMutation = useMutation({
     mutationFn: async ({ file, authBoundaryGeneration }: {
       file: File;
@@ -522,9 +512,8 @@ export function CustomActivitiesPage() {
 
 const POWERSHELL_LANGUAGE = StreamLanguage.define(powerShell);
 
-// Compact CodeMirror theme reading the app's CSS variables — trimmed-down sibling of
-// panelChrome's compactEditorTheme (which is coupled to designer upstream-vars, so we
-// keep a small local editor here instead of reusing CodeField).
+// Compact CodeMirror theme built from the app's CSS variables. Kept local rather than reusing
+// CodeField, whose compactEditorTheme depends on designer-specific variables.
 const SCRIPT_EDITOR_THEME = EditorView.theme({
   '&': { backgroundColor: 'var(--color-surface-lowest)', color: 'var(--color-on-surface)', fontSize: '12px' },
   '.cm-content': { padding: '6px 0' },
@@ -533,7 +522,7 @@ const SCRIPT_EDITOR_THEME = EditorView.theme({
 });
 const SCRIPT_EDITOR_EXTENSIONS = [POWERSHELL_LANGUAGE, EditorView.lineWrapping, SCRIPT_EDITOR_THEME];
 
-/** PowerShell-highlighted CodeMirror editor for the script template, sized like the old 10-row textarea. */
+/** PowerShell-highlighted CodeMirror editor for the script template. */
 function ScriptTemplateEditor({ value, onChange }: Readonly<{ value: string; onChange: (v: string) => void }>) {
   const theme = useThemeStore((s) => s.theme);
   const isDark = resolveTheme(theme) === 'dark';
@@ -557,10 +546,10 @@ function ScriptTemplateEditor({ value, onChange }: Readonly<{ value: string; onC
 }
 
 /**
- * Version-history dialog: lists the stored snapshots (newest first) with a per-row rollback.
- * The snapshot table only holds PREVIOUS versions — the live definition (entry.version) is
- * shown in the header, so every listed row is a valid rollback target. Rollback itself
- * creates a new version (the current state is snapshotted first, server-side).
+ * Version-history dialog: lists the stored snapshots newest first with a per-row rollback.
+ * The snapshot table holds only previous versions, and the live definition (entry.version) is
+ * shown in the header, so every listed row is a valid rollback target. A rollback creates a new
+ * version; the server snapshots the current state first.
  */
 function VersionsModal({ entry, canRollback, onClose }: Readonly<{
   entry: CatalogEntry;
@@ -576,8 +565,8 @@ function VersionsModal({ entry, canRollback, onClose }: Readonly<{
   const rollbackMutation = useMutation({
     mutationFn: (version: number) => api.post(`/custom-activities/${entry.id}/rollback/${version}`, {}),
     onSuccess: (_res, version) => {
-      // Prefix-invalidation refreshes the page list, the designer palette catalog AND
-      // this modal's versions query (the rollback snapshot appears as a new row).
+      // Prefix invalidation refreshes the page list, the designer palette catalog and this
+      // modal's versions query, where the rollback snapshot appears as a new row.
       qc.invalidateQueries({ queryKey: ['custom-activities'] });
       toast.success(t('customActivities:rollbackDone', { version }));
     },

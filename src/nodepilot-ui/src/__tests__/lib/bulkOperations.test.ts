@@ -38,7 +38,7 @@ describe('runBulkOperation', () => {
     expect(events).toEqual(['start-a', 'end-a', 'start-b', 'end-b']);
   });
 
-  // The whole point of the batch: one bad workflow must not cost the user the other 29.
+  // A single failing item must not cost the user the rest of the batch.
   it('a failing item does not stop the run', async () => {
     const result = await runBulkOperation(items('a', 'b', 'c'), async (i) => {
       if (i.id === 'b') throw new Error('423 Locked');
@@ -91,8 +91,8 @@ describe('runBulkOperation', () => {
     expect(result).toEqual({ succeeded: [], skipped: [], failed: [], aborted: false });
   });
 
-  // Continuing the loop after a user switch would run the rest of User A's batch under User B's
-  // cookie — that has to throw out of the whole run, not land in `failed`.
+  // Continuing after a user switch would run the rest of the batch under the new user's
+  // cookie, so the whole run throws instead of recording a failure.
   it('throws when the auth boundary moves mid-run instead of recording a failure', async () => {
     const seen: string[] = [];
     await expect(runBulkOperation(items('a', 'b', 'c'), async (i) => {

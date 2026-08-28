@@ -1,14 +1,15 @@
 <#
 .SYNOPSIS
-  Seeds 14 useful, DISABLED-by-default system-alert policies (ADR 0008) into a running NodePilot instance.
+  Seeds 14 system-alert policies (ADR 0008), all disabled, into a running NodePilot instance.
 
 .DESCRIPTION
-  System-alert policies are catalog entries until configured; these are created disabled and route-less, so
-  nothing fires until an operator adds a route and enables them. They deliberately exercise the new
-  capabilities: several sources carry TWO policies (a Warning threshold and a Critical one), per-policy
-  sustain windows, severity overrides, and a source parameter (cancel-rate window).
+  System-alert policies are catalog entries until configured. These are created disabled and without
+  routes, so nothing fires until an operator adds a route and enables them. Together they cover the
+  available options: several sources carry two policies (a Warning and a Critical threshold),
+  per-policy sustain windows, severity overrides, and a source parameter (cancel-rate window).
 
-  Run against a local dev instance (localhost bypass grants in-process admin, so no token is needed):
+  Run against a local dev instance, where the localhost bypass grants in-process admin and no
+  token is needed:
       pg_ctl start ... ; dotnet run --project src/NodePilot.Api --urls http://localhost:5000
       powershell -File scripts/seed-system-alert-policies.ps1
 #>

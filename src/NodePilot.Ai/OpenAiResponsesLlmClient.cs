@@ -8,10 +8,10 @@ using static NodePilot.Ai.LlmJson;
 namespace NodePilot.Ai;
 
 /// <summary>
-/// HTTP client for OpenAI's <b>Responses</b> API (<c>POST /v1/responses</c>) — a second wire
-/// dialect next to chat completions, selected by <see cref="LlmEndpointGuard.ResolveEndpoint"/>
-/// when the configured BaseUrl ends in <c>/responses</c>. Newer OpenAI models are served only
-/// there, so this is not a stylistic choice: without it those models are unreachable.
+/// HTTP client for the OpenAI Responses API (<c>POST /v1/responses</c>), a second wire dialect
+/// next to chat completions. <see cref="LlmEndpointGuard.ResolveEndpoint"/> selects it when the
+/// configured BaseUrl ends in <c>/responses</c>, which is the only way to reach models that are
+/// served exclusively by that API.
 ///
 /// <para>Differences to <see cref="OpenAiCompatibleLlmClient"/> that matter downstream: the prompt
 /// travels as <c>input</c> (not <c>messages</c>), the cap is <c>max_output_tokens</c>, JSON mode is
@@ -19,11 +19,10 @@ namespace NodePilot.Ai;
 /// their results are top-level <c>function_call</c>/<c>function_call_output</c> items, and the
 /// stream is a sequence of typed events instead of choice deltas.</para>
 ///
-/// <para><b>No compatibility fallbacks.</b> The four quirk retries in the chat-completions client
-/// are all Chat-Completions-only: <c>max_tokens</c>→<c>max_completion_tokens</c> and
-/// <c>stream_options</c> cannot occur here (those fields don't exist in this dialect), and
-/// <c>text.format</c>/<c>strict</c> are not optional extras to degrade away from. A Responses
-/// endpoint that rejects them fails loudly rather than silently sending something else.</para>
+/// <para>No compatibility fallbacks. The quirk retries of the chat-completions client apply to
+/// that dialect only: <c>max_tokens</c> and <c>stream_options</c> do not exist here, and
+/// <c>text.format</c> and <c>strict</c> are not optional extras that can be dropped. An endpoint
+/// that rejects them fails instead of sending something else.</para>
 /// </summary>
 public sealed class OpenAiResponsesLlmClient : ILlmClient
 {
@@ -113,9 +112,8 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
                         break;
 
                     case "response.output_item.done":
-                        // Backfill: servers that never emitted argument deltas still deliver the
-                        // finished item here. Against OpenAI this can't misfire — the accumulated
-                        // arguments are already non-empty by then.
+                        // Backfill for servers that emit no argument deltas: the finished item
+                        // arrives here and is used only when nothing was accumulated yet.
                         if (root.TryGetProperty("item", out var done) && done.ValueKind == JsonValueKind.Object
                             && ReadString(done, "type") == "function_call")
                         {
@@ -170,8 +168,9 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
             GenerationMs: generationMs);
     }
 
-    /// <summary>Builds the Responses request body. Deliberately no <c>max_tokens</c>, no
-    /// <c>response_format</c>, no <c>stream_options</c> — those belong to the other dialect.</summary>
+    /// <summary>Builds the Responses request body. It carries no <c>max_tokens</c>,
+    /// <c>response_format</c> or <c>stream_options</c>: those belong to the other
+    /// dialect.</summary>
     private Dictionary<string, object?> BuildBody(LlmRequest request, bool stream)
     {
         var body = new Dictionary<string, object?>
@@ -179,10 +178,9 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
             ["model"] = _config.Model,
             ["max_output_tokens"] = _config.MaxTokens,
             ["input"] = BuildInput(request),
-            // The Responses API defaults to store: true, which parks every prompt (workflow
-            // definitions, DB schemas, source excerpts) in the org's OpenAI dashboard for 30 days.
-            // Chat completions store nothing by default, so this only keeps the two dialects at
-            // par — switching the endpoint must not silently change where NodePilot's data lands.
+            // The Responses API defaults to store: true, which retains every prompt server-side.
+            // Chat completions store nothing by default, so this keeps both dialects at par:
+            // switching the endpoint must not change where prompt data ends up.
             ["store"] = false,
         };
         if (_config.Temperature is double temperature)
@@ -197,9 +195,9 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
 
     /// <summary>
     /// Builds the <c>input</c> array: <c>[system, ...Conversation]</c> or <c>[system, user]</c>.
-    /// Unlike the chat-completions <c>messages</c> array this is not a 1:1 mapping — an assistant
-    /// turn that requested tools expands into its optional text message <i>plus</i> one
-    /// <c>function_call</c> item per call, so this flattens rather than projects.
+    /// Unlike the chat-completions <c>messages</c> array this is not a 1:1 mapping: an assistant
+    /// turn that requested tools expands into its optional text message plus one
+    /// <c>function_call</c> item per call, so turns are flattened rather than projected.
     /// </summary>
     private static List<object> BuildInput(LlmRequest request)
     {
@@ -235,7 +233,8 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
         input.Add(new { role = turn.Role, content = turn.Content });
     }
 
-    /// <summary>Appends the flat Responses tool schema — no nested <c>function</c> object, unlike chat completions.</summary>
+    /// <summary>Appends the flat Responses tool schema: no nested <c>function</c> object, unlike
+    /// chat completions.</summary>
     private static void AppendTools(Dictionary<string, object?> body, LlmRequest request)
     {
         if (request.Tools is not { Count: > 0 } tools) return;
@@ -254,12 +253,14 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
         body["tool_choice"] = request.ToolChoice ?? "auto";
     }
 
-    /// <summary>Parses a non-streaming Responses body: text from <c>output[].message</c>, calls from
-    /// <c>output[].function_call</c>, usage from <c>usage.{input,output,total}_tokens</c>.</summary>
+    /// <summary>Parses a non-streaming Responses body: text from <c>output[].message</c>, calls
+    /// from
+    /// <c>output[].function_call</c>, usage from
+    /// <c>usage.{input,output,total}_tokens</c>.</summary>
     private LlmResponse ParseResponse(JsonElement root)
     {
-        // A failed run can still come back as HTTP 200 with status: "failed" — surface it as an
-        // upstream error rather than as an empty answer.
+        // A failed run can arrive as HTTP 200 with status: "failed". Surface it as an upstream
+        // error rather than as an empty answer.
         if (ReadString(root, "status") == "failed")
             throw BuildFailure(root, isEnvelope: true);
 
@@ -292,7 +293,7 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
                             ReadString(item, "call_id") ?? "", name, ReadString(item, "arguments") ?? ""));
                     break;
 
-                // "reasoning" and any future item type carry no answer text — ignored on purpose.
+                // "reasoning" and other item types carry no answer text and are ignored.
             }
         }
 
@@ -316,8 +317,8 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
 
     /// <summary>
     /// Maps the Responses <c>status</c> onto the chat-completions <c>finish_reason</c> vocabulary
-    /// the rest of NodePilot already speaks. Diagnostic only — the chat assistant branches on the
-    /// presence of tool calls, not on this string.
+    /// used elsewhere in NodePilot. Diagnostic only: callers branch on the presence of tool calls,
+    /// not on this string.
     /// </summary>
     private static string? MapFinishReason(string? status, string? incompleteReason, bool hasToolCalls) => (status, hasToolCalls) switch
     {

@@ -5,26 +5,18 @@ namespace NodePilot.Api.Configuration;
 
 /// <summary>
 /// JSON configuration provider that transparently decrypts values written with the
-/// <c>enc:v1:&lt;base64&gt;</c> prefix using the source's <see cref="ISecretProtector"/>.
-/// Everything else is delegated to <see cref="JsonConfigurationProvider"/> — non-prefixed
-/// values are passed through unchanged.
+/// <c>enc:v1:&lt;base64&gt;</c> prefix, using the source's <see cref="ISecretProtector"/>.
+/// Everything else passes through unchanged via <see cref="JsonConfigurationProvider"/>.
 ///
-/// <para><b>Why this exists:</b> The Admin Settings API persists user-edited values
-/// (LDAP password, SMTP password, LLM API key, …) into <c>appsettings.runtime.json</c>.
-/// Storing them in plaintext would let anyone with FS-read access on the host harvest
-/// every secret in one shot; storing them in a sidecar file fragments the data and
-/// complicates HA-cluster file synchronisation. Encrypting in-place keeps the override
-/// file a single coherent unit while ensuring an unauthorised reader sees only base64
-/// blobs.</para>
+/// <para>The Admin Settings API persists user-edited secrets (LDAP password, SMTP password,
+/// LLM API key, etc.) into <c>appsettings.runtime.json</c>. Encrypting them in place avoids
+/// storing plaintext secrets on disk while keeping the override file a single unit, so an
+/// unauthorized reader sees only base64 blobs.</para>
 ///
-/// <para><b>Why hard-fail on decryption errors:</b> A bad decrypt almost always means
-/// "the protector changed under the file" — e.g. AES-GCM master key rotated without
-/// re-encrypting the override file, or DPAPI scope flipped between CurrentUser/
-/// LocalMachine. Silently letting <c>enc:v1:...</c> through as the configuration
-/// value would make every consumer see ciphertext garbage instead of the secret,
-/// almost always producing later-stage 500s with no obvious source. Failing the
-/// configuration load gives the operator a clear, actionable startup error pointing
-/// at the offending key.</para>
+/// <para>A decryption failure means the protector no longer matches how the value was
+/// encrypted — for example a rotated AES-GCM master key or a changed DPAPI scope. Failing
+/// the configuration load gives the operator a clear startup error instead of letting
+/// consumers see ciphertext in place of the secret.</para>
 /// </summary>
 public sealed class EncryptingJsonConfigurationProvider : JsonConfigurationProvider
 {

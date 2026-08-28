@@ -21,7 +21,7 @@ function pageDefaultTo(path: string): string {
   return path;
 }
 
-/** Resolve the visible route hierarchy without duplicating the sidebar's page/group mapping. */
+/** Resolves the visible route hierarchy without duplicating the sidebar page and group map. */
 export function resolveBreadcrumbs(
   pathname: string,
   search: string,

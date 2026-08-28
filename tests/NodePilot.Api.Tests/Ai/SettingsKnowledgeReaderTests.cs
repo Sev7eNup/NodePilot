@@ -10,7 +10,8 @@ namespace NodePilot.Api.Tests.Ai;
 
 public class SettingsKnowledgeReaderTests
 {
-    // Minimal adapter: the reader only touches Descriptor + BuildCurrentPayload; the rest is unused.
+    // Minimal adapter: the reader only touches Descriptor + BuildCurrentPayload; the rest is
+    // unused.
     private sealed class StubAdapter(SettingsSectionDescriptor descriptor, object payload) : ISettingsSectionAdapter
     {
         public SettingsSectionDescriptor Descriptor => descriptor;
@@ -36,7 +37,8 @@ public class SettingsKnowledgeReaderTests
         var engine = SettingsSchema.Find("Engine")!;
         var reader = new SettingsKnowledgeReader(new StubRegistry(new ISettingsSectionAdapter[]
         {
-            // BuildCurrentPayload already masks secrets to "********" (see SettingsSections.BuildSmtpDto).
+            // BuildCurrentPayload already masks secrets to "********" (see
+            // SettingsSections.BuildSmtpDto).
             new StubAdapter(smtp, new { host = "localhost", port = 25, password = "********" }),
             new StubAdapter(engine, new { maxConcurrentSteps = 600 }),
         }));

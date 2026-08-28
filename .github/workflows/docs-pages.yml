@@ -3,17 +3,17 @@ name: Docs site
 # Publishes the documentation SPA (src/nodepilot-docs-ui) to GitHub Pages at
 # https://sev7enup.github.io/NodePilot/.
 #
-# ONE-TIME MANUAL STEP: Settings -> Pages -> Build and deployment -> Source -> "GitHub Actions".
-# Nothing here can do it for you. actions/configure-pages does expose an `enablement` input, but
-# its own description rules out the default token ("requires a token other than GITHUB_TOKEN" —
-# a PAT with repo scope, or a GitHub App with administration:write). Until a human flips that
-# switch, deploy-pages fails with a 404 that names the settings URL.
+# One-time manual step: in Settings, under Pages, set Build and deployment Source to
+# "GitHub Actions". No workflow can do it: actions/configure-pages has an `enablement` input,
+# but it needs a token other than GITHUB_TOKEN (a PAT with repo scope, or a GitHub App with
+# administration:write). Until that switch is set, deploy-pages fails with a 404 naming the
+# settings URL.
 #
-# configure-pages is deliberately NOT used. Its only other job is injecting a base path into a
-# known SSG, and it recognises exactly nuxt/next/gatsby/sveltekit — Vite is not among them. The
-# docs site already builds location-independent: `base: './'` emits relative asset URLs, and the
-# app uses HashRouter, so every route lives in the fragment and the server only ever serves
-# /NodePilot/index.html. That also means no 404.html SPA fallback is needed.
+# configure-pages is deliberately not used. Its only other job is injecting a base path for a
+# known SSG, and it recognises nuxt, next, gatsby and sveltekit only, not Vite. The docs site
+# builds location-independent: `base: './'` emits relative asset URLs and the app uses
+# HashRouter, so every route lives in the fragment and the server only serves
+# /NodePilot/index.html. No 404.html SPA fallback is needed either.
 on:
   push:
     branches: [main]
@@ -26,15 +26,15 @@ on:
   # whose cause was fixed outside this repository.
   workflow_dispatch:
 
-# The repository's default workflow token is read-only, so nothing here is inherited —
-# every permission a Pages deployment needs has to be named.
+# The repository's default workflow token is read-only, so every permission a Pages
+# deployment needs has to be named here.
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# A single global queue for Pages, and NOT cancel-in-progress: a deployment already writing
-# to the live site should be allowed to finish rather than be killed halfway by a newer push.
+# A single global queue for Pages. cancel-in-progress stays false so a deployment already
+# writing to the live site finishes instead of being killed halfway by a newer push.
 concurrency:
   group: 'pages'
   cancel-in-progress: false
@@ -62,9 +62,8 @@ jobs:
       - name: Install
         run: npm ci
 
-      # Lint and the de/en corpus parity guard already gate every PR in ci.yml; this job runs
-      # after the merge, on a tree that has passed them. It re-runs the tests anyway — they take
-      # ~2s and are the only thing standing between a bad merge and the live site.
+      # ci.yml already gates every PR with lint and the de/en corpus parity guard. The tests
+      # run again here because this job is the last check before the live site is updated.
       - name: Tests
         run: npm run test:run
 

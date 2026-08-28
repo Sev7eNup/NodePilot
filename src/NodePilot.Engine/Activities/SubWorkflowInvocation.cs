@@ -8,13 +8,11 @@ using NodePilot.Engine.PowerShell;
 namespace NodePilot.Engine.Activities;
 
 /// <summary>
-/// The guards every child-workflow-spawning activity runs before it hands work to the engine —
-/// shared by <see cref="StartWorkflowActivity"/> and <see cref="ForEachActivity"/>: child
-/// resolution, self-invocation, runtime RBAC, call depth and the user-parameter ingest.
-///
-/// Only the mechanics live here. Each activity formats its OWN error strings (their wording is
-/// part of the step's observable output) and keeps its own instrumentation — startWorkflow, for
-/// instance, counts and tags a depth violation before returning.
+/// Guards that <see cref="StartWorkflowActivity"/> and <see cref="ForEachActivity"/> run before
+/// handing work to the engine: child resolution, self-invocation, runtime RBAC, call depth and
+/// user-parameter ingest. Only the mechanics live here. Each activity formats its own error
+/// strings, because their wording is part of the step's observable output, and keeps its own
+/// instrumentation.
 /// </summary>
 internal static class SubWorkflowInvocation
 {
@@ -27,9 +25,9 @@ internal static class SubWorkflowInvocation
     }
 
     /// <summary>
-    /// Locates the child workflow: GUID first, then by name (exact-case wins, then
-    /// case-insensitive). Ambiguous names, a missing workflow and a disabled workflow are
-    /// reported as outcomes — the caller turns them into its own error message.
+    /// Locates the child workflow: GUID first, then by name (exact case wins, then
+    /// case-insensitive). Ambiguous, missing and disabled workflows come back as outcomes so
+    /// the caller can word its own error message.
     /// </summary>
     public static async Task<(ChildOutcome Outcome, Workflow? Workflow)> ResolveChildWorkflowAsync(
         NodePilotDbContext db,
@@ -55,8 +53,8 @@ internal static class SubWorkflowInvocation
     }
 
     /// <summary>
-    /// The parent execution row behind the current step. Needed for the self-invocation guard and
-    /// the RBAC re-check; the parent workflow id is not on the step context directly.
+    /// Loads the parent execution row behind the current step. The self-invocation guard and the
+    /// RBAC re-check need the parent workflow id, which is not on the step context.
     /// </summary>
     public static Task<WorkflowExecution?> LoadParentExecutionAsync(
         NodePilotDbContext db,
@@ -66,13 +64,13 @@ internal static class SubWorkflowInvocation
             .AsNoTracking()
             .FirstOrDefaultAsync(e => e.Id == workflowExecutionId, ct);
 
-    /// <summary>True when the step would start the workflow it is running in (direct recursion).</summary>
+    /// <summary>True when the step starts the workflow it runs in (direct recursion).</summary>
     public static bool IsSelfInvocation(WorkflowExecution? parentExec, Workflow childWorkflow)
         => parentExec is not null && parentExec.WorkflowId == childWorkflow.Id;
 
     /// <summary>
-    /// Runtime RBAC re-check (Defense-in-Depth — folder permissions can be revoked between Publish
-    /// and Run). Returns the block reason WITHOUT an activity prefix, or null when allowed.
+    /// Runtime RBAC re-check, because folder permissions can be revoked between publish and run.
+    /// Returns the block reason without an activity prefix, or null when the call is allowed.
     /// </summary>
     public static async Task<string?> GetAuthorizationBlockAsync(
         ISubWorkflowAuthorizationResolver? subWorkflowAuthz,
@@ -86,8 +84,8 @@ internal static class SubWorkflowInvocation
 
     /// <summary>
     /// Current call depth, read from the reserved variable the engine places into
-    /// <c>context.Variables</c> ("manual.__callDepth" when passed via inputParameters). Missing or
-    /// unparsable means depth 0.
+    /// <c>context.Variables</c> ("manual.__callDepth" when passed via inputParameters). A missing
+    /// or unparsable value counts as depth 0.
     /// </summary>
     public static int CurrentCallDepth(StepExecutionContext context)
         => context.Variables.TryGetValue($"manual.{WorkflowRecursion.CallDepthKey}", out var depthStr)
@@ -96,11 +94,11 @@ internal static class SubWorkflowInvocation
             : 0;
 
     /// <summary>
-    /// Reads the optional <c>parameters</c> object into a case-insensitive dictionary — the same
+    /// Reads the optional <c>parameters</c> object into a case-insensitive dictionary, the same
     /// comparer the template resolver and PowerShell use, so <c>Foo</c> and <c>foo</c> collide.
     /// Stops at the first "__"-prefixed key and reports it via <paramref name="reservedKey"/>:
-    /// that namespace belongs to engine bookkeeping (see <c>__callDepth</c>) and letting a user
-    /// steer it would bypass the recursion guard.
+    /// that namespace belongs to engine bookkeeping such as <c>__callDepth</c>, and user control
+    /// over it would bypass the recursion guard.
     /// </summary>
     public static Dictionary<string, string> CollectParameters(JsonElement config, out string? reservedKey)
     {

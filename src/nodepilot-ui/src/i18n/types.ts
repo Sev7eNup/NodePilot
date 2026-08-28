@@ -4,10 +4,10 @@ declare module 'i18next' {
   interface CustomTypeOptions {
     defaultNS: 'common';
     /**
-     * Strict-resource type augmentation is intentionally disabled. With ~20 namespaces and
-     * many dynamic key constructions (`activities:labels.${type}`, `nav:${key}`), enforcing
-     * a literal-union for `t()` arguments forces every call-site through a runtime cast.
-     * We rely on missing-key warnings at runtime + tests instead.
+     * Strict resource typing is left off on purpose. With many namespaces and dynamic keys
+     * (`activities:labels.${type}`, `nav:${key}`), a literal union for `t()` arguments would
+     * force every call site through a runtime cast. Missing keys are caught by runtime
+     * warnings and tests instead.
      */
     returnNull: false;
   }

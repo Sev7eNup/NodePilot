@@ -3,13 +3,10 @@ import { resolveVariablePreview, PREVIEW_MAX_CHARS } from '../../lib/variablePre
 import type { StepExecution } from '../../types/api';
 
 /**
- * resolveVariablePreview is the plumbing behind the hover-preview tooltip. We pin:
- *   - `.output` reads step.output, `.error` / `.errorOutput` reads step.errorOutput
- *   - `.param.X` extracts via $-form or colon-form; falls back to full stdout when neither matches
- *   - bare alias (no suffix) treated as `.output`
- *   - returns null when the channel is empty (no run, or empty stdout/stderr)
- *   - returns null when step is undefined
- *   - long values are truncated to PREVIEW_MAX_CHARS with the truncated flag set
+ * resolveVariablePreview backs the hover-preview tooltip. `.output`/`.error`/`.errorOutput`
+ * read the matching step field; `.param.X` extracts via $-form or colon-form and falls back
+ * to full stdout; a bare alias is treated as `.output`. Returns null when the channel is
+ * empty or step is undefined. Long values are truncated to PREVIEW_MAX_CHARS.
  */
 
 function step(over: Partial<StepExecution> = {}): StepExecution {
@@ -59,10 +56,9 @@ describe('resolveVariablePreview', () => {
   });
 
   it('paramSuffix_outputParametersJsonTakesPrecedenceOverStdoutScan', () => {
-    // Regression: pre-fix the tooltip only scanned stdout for "$x = value" patterns even though
-    // the API surfaces structured outputParametersJson. Now the structured snapshot is the
-    // primary source — exact values, no heuristic ambiguity. stdout-scan stays as fallback for
-    // rows that pre-date the column being populated (or never had params).
+    // The structured outputParametersJson snapshot is the primary source for param values: it
+    // gives exact values with no heuristic ambiguity. stdout-scan remains a fallback for rows
+    // where that column was never populated.
     const json = JSON.stringify({ host: 'web01', freeGb: '42' });
     const result = resolveVariablePreview(
       step({ output: '$host = OTHER', outputParametersJson: json }),
@@ -74,8 +70,8 @@ describe('resolveVariablePreview', () => {
   });
 
   it('paramSuffix_malformedOutputParametersJsonFallsBackToStdoutScan', () => {
-    // Hover-preview must never throw. A corrupted row should silently degrade to the legacy
-    // heuristic, not blank the tooltip.
+    // Hover-preview must never throw. A corrupted row should silently fall back to the
+    // stdout-scan heuristic instead of blanking the tooltip.
     const result = resolveVariablePreview(
       step({ output: '$host = SERVER01', outputParametersJson: '{broken json' }),
       '{{step.param.host}}',

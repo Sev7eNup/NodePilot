@@ -1,35 +1,34 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 export interface BulkSelection<T> {
-  /** The raw id set — pass to `isSelected` rather than reading it directly in render paths. */
+  /** The raw id set. Use `isSelected` instead of reading it directly in render paths. */
   selectedIds: ReadonlySet<string>;
-  /** How many selected rows are actually on screen — i.e. `selectedItems.length`. Gate bulk
-   *  controls on this, never on `selectedIds.size`: only these rows reach a bulk action. */
+  /** How many selected rows are on screen, that is `selectedItems.length`. Gate bulk controls
+   *  on this, never on `selectedIds.size`: only these rows reach a bulk action. */
   selectedCount: number;
   isSelected: (id: string) => boolean;
   /** The currently selected items, in the order of the `items` array handed to the hook. */
   selectedItems: T[];
-  /** Toggles one row. With `shiftKey` the range from the previous click's anchor is set to the
-   *  toggled row's new state — the standard file-manager gesture. */
+  /** Toggles one row. With `shiftKey` the range from the previous click's anchor takes the
+   *  toggled row's new state, the standard file-manager gesture. */
   toggle: (id: string, shiftKey?: boolean) => void;
   /** Selects every visible item, or clears the selection when everything is already selected. */
   toggleAll: () => void;
   clear: () => void;
-  /** Narrows the selection to the given ids (used to keep only the rows a bulk run failed on). */
+/** Narrows the selection to the given ids, retaining rows where a bulk run failed. */
   retain: (ids: readonly string[]) => void;
   allSelected: boolean;
   someSelected: boolean;
 }
 
 /**
- * Row multi-select for list pages: a `Set<string>` of ids plus the select-all / shift-range
+ * Row multi-select for list pages: a `Set<string>` of ids plus the select-all and shift-range
  * gestures a table is expected to have.
  *
  * `items` must be the list as rendered (already filtered and sorted). Two behaviours depend on
  * that: shift-range uses the rendered order, and the effect below prunes ids that are no longer
- * in the list. The prune is what keeps the selection honest across a folder switch, a refetch,
- * and — most importantly — a bulk delete, after which the removed ids must not linger in the
- * count or in a follow-up action.
+ * in the list. The prune keeps the selection honest across a folder switch, a refetch and a
+ * bulk delete, after which the removed ids must not linger in the count or a follow-up action.
  */
 export function useBulkSelection<T>(items: T[], getId: (item: T) => string): BulkSelection<T> {
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set<string>());
@@ -104,10 +103,9 @@ export function useBulkSelection<T>(items: T[], getId: (item: T) => string): Bul
 
   const allSelected = ids.length > 0 && selectedIds.size >= ids.length && ids.every((id) => selectedIds.has(id));
 
-  // Counted from `selectedItems`, not from the raw id set. The two differ whenever an id is
-  // selected but no longer rendered — the prune effect runs after render, and a collapsed branch
-  // or a refetch opens that window. A bar reading the raw size would then offer to act on rows
-  // the action itself (which takes `selectedItems`) cannot see, and the click would do nothing.
+  // Counted from `selectedItems`, not from the raw id set: the two differ while an id is
+  // selected but no longer rendered, because the prune effect runs after render. A count taken
+  // from the raw set would offer actions on rows the action itself cannot see.
   const selectedCount = selectedItems.length;
 
   return {

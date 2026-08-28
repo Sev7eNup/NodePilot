@@ -2,20 +2,19 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 62 — Designer Status-Banner (lines 3690-3705).
+ * E2ETests.md part 62 — designer status banner.
  *
- * Hermetic: page.route() mocks only. The banner is rendered by EditorStatusBanners.tsx, which
- * picks exactly one variant from (roleCanWrite × isLockedByMe × isLockedByOther × isEnabled):
+ * EditorStatusBanners.tsx picks exactly one variant from roleCanWrite, isLockedByMe,
+ * isLockedByOther and isEnabled:
  *
- *   62.1 — A disabled workflow that is NOT locked by anyone shows the yellow "Workflow is
- *          disabled" banner (productive vs disabled is chosen on workflow.isEnabled). The
- *          toolbar offers an "Edit" affordance (lock-by-me path → enable later).
+ *   62.1 — A disabled workflow that nobody has locked shows the yellow "Workflow is disabled"
+ *          banner, and the toolbar offers the "Edit" affordance that takes the lock.
  *
- *   62.2 — A workflow locked by ANOTHER user (checkedOutByUserId != MOCK_USER.id) shows the
- *          amber "Editing in progress — by <user>" read-only banner. As an Admin, the
- *          "Force unlock" button is present and goes through the in-app ConfirmHost modal.
+ *   62.2 — A workflow locked by another user (checkedOutByUserId != MOCK_USER.id) shows the
+ *          amber read-only "Editing in progress — by <user>" banner. An Admin also gets the
+ *          "Force unlock" button, which goes through the in-app ConfirmHost modal.
  *
- * The SPA renders ENGLISH under Playwright. MOCK_USER.role = Admin (see fixtures/mockApi).
+ * Hermetic: page.route() mocks only. The SPA renders English, and MOCK_USER.role is Admin.
  */
 
 const WF_ID = 'b6b6b6b6-6262-6262-6262-626262626262';
@@ -46,7 +45,7 @@ test.describe('Designer Status-Banner (Teil 62)', () => {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: workflowJson({ isEnabled: false }), // unlocked + disabled → yellow disabled banner
+        body: workflowJson({ isEnabled: false }), // unlocked and disabled: yellow disabled banner
       }),
     );
 
@@ -54,9 +53,9 @@ test.describe('Designer Status-Banner (Teil 62)', () => {
 
     // EditorStatusBanners "disabledTitle" copy.
     await expect(page.getByText(/workflow is disabled/i).first()).toBeVisible({ timeout: 15_000 });
-    // The disabled banner is NOT the productive one.
+    // The disabled banner replaces the productive one.
     await expect(page.getByText(/running productive/i)).toHaveCount(0);
-    // Toolbar exposes the lock-entry "Edit" button (Admin → roleCanWrite, unlocked → can take lock).
+    // The toolbar exposes the "Edit" button: an Admin has roleCanWrite and the lock is free.
     await expect(page.getByRole('button', { name: /bearbeiten|^edit$/i }).first()).toBeVisible();
   });
 

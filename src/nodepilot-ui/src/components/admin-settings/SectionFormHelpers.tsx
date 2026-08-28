@@ -158,14 +158,12 @@ export function Card({ icon: Icon, title, children }: Readonly<{ icon: React.Com
 }
 
 /**
- * The tighter card five sections had each declared for themselves: `p-4`, no rule under the
- * heading, bare icon. It is NOT the same shape as {@link Card} above — that one is roomier and
- * separates its heading — so the two are kept apart rather than merged, which would silently
- * restyle those five pages.
+ * Compact card variant: tighter padding, no heading rule, bare icon. Kept separate from
+ * {@link Card} above rather than merged, since that one is roomier with a separated heading
+ * and merging would silently restyle every page using this variant.
  *
- * `headingMargin` and `bodyClassName` exist only to preserve what each call site renders today
- * (three used `mb-3`, two `mb-4`; SystemInfo wraps its rows in `space-y-1.5`). Pass complete
- * class literals — Tailwind's scanner has to see them in the source.
+ * `headingMargin` and `bodyClassName` let each call site match its own heading spacing and
+ * body layout. Pass full class literals so Tailwind's scanner can see them in the source.
  */
 export function CompactCard({
   icon: Icon, title, headingMargin = 'mb-3', bodyClassName, children,
@@ -189,21 +187,16 @@ export function CompactCard({
 /**
  * Sub-group heading inside a settings card.
  *
- * Long cards (AI knowledge, logging, performance) are really three or four unrelated blocks
- * stacked on top of each other, and previously nothing but a 16 px margin said so. The
- * heading therefore carries its own separation — a rule above plus real breathing room — and
- * a quiet micro-label look that can't be confused with the card title one level up.
- * `first:` drops both for a group that opens a card, so no card starts with a stray rule.
+ * Long cards (AI knowledge, logging, performance) hold three or four unrelated blocks
+ * stacked together, so the heading carries its own separation: a rule above plus room,
+ * and a quiet micro-label look distinct from the card title one level up. `first:` drops
+ * both for a group that opens a card, so no card starts with a stray rule.
  */
 /**
- * Collapsible sub-block inside a settings card. Wears the same shell as the editors it sits next
- * to (bordered, one step up from the card surface) so it reads as a peer block rather than as
- * something appended after the form ended — a naked heading plus one control on the bare card
- * surface reads as a leftover.
- *
- * `summary` is what the header shows while collapsed and is the whole point of collapsing: the
- * setting stays legible without being unfolded. Open/closed is owned by the caller, because the
- * useful default is usually "open iff this block is doing something".
+ * Collapsible sub-block inside a settings card, using the same bordered shell as nearby
+ * editors so it reads as a peer block rather than something tacked on after the form.
+ * `summary` shows in the header while collapsed; open/closed state is owned by the caller,
+ * since the natural default is whether the block is currently active.
  */
 export function DisclosurePanel({
   title, summary, open, onToggle, bodyId, children,
@@ -281,9 +274,8 @@ export function HotReloadHint({ isHotReloadable }: Readonly<{ isHotReloadable: b
 
 /**
  * Checkbox row. `hint` and `children` (e.g. a {@link WarningNote} that only shows while the
- * toggle is on) render *indented under the label*, aligned past the checkbox — so the text
- * visibly belongs to this switch instead of floating between two of them, which is what the
- * old `-mt-1` hints at the call sites did.
+ * toggle is on) render indented under the label, aligned past the checkbox, so the text
+ * visibly belongs to this switch instead of floating between two of them.
  */
 export function Toggle({
   label, checked, onChange, configKey, effectiveSource, isEnvLocked, hint, children,

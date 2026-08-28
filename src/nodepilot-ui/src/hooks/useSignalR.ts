@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback, useDeferredValue } f
 import * as signalR from '@microsoft/signalr';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { getAllPages } from '../api/paging';
 import { readCsrfToken } from '../api/csrf';
 import {
   applyLiveEvents,
@@ -37,8 +38,8 @@ import {
   type StepUpdate,
 } from './signalrTypes';
 
-// Re-exports kept for callers that import the public surface from this hook module
-// directly (the established import path predating the types/reducer split).
+// Re-exported here so callers can keep importing the public surface from this hook
+// module directly.
 export type { StepUpdate, DatabusEntry, ExecutionUpdate, LiveExecution } from './signalrTypes';
 export { COMPLETED_EXECUTION_TTL_MS, MAX_ACTIVE_DISPLAYED, MAX_AUTO_HYDRATE } from './signalrTypes';
 
@@ -51,12 +52,8 @@ export { COMPLETED_EXECUTION_TTL_MS, MAX_ACTIVE_DISPLAYED, MAX_AUTO_HYDRATE } fr
 
 /**
  * Module-scoped semaphore that caps how many step-list backfill fetches the live view
- * can have in flight at once. Without this, starting 100 workflows in parallel produced
- * a thundering herd: 100 SignalR StepStarted events arrive within a few hundred ms,
- * each triggers a GET /executions/{id}/steps, the browser's per-origin connection cap
- * (~6) queues the rest, and the API server is already saturated by the dispatcher.
- * Result: F5 navigation hangs because /api/auth/me + /api/workflows/{id} can't get a
- * connection. Cap chosen to leave headroom for user-initiated requests.
+ * can have in flight at once. Prevents a fetch storm when many workflows start at once
+ * from saturating the browser's per-origin connection cap and the API server.
  */
 const MAX_HYDRATION_CONCURRENCY = 4;
 let activeHydrationFetches = 0;
@@ -98,18 +95,16 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const evictionTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const queryClient = useQueryClient();
-  // Debounce token for SignalR-driven query invalidation: on a 200-event burst we want
-  // exactly one refetch per cache key, not 200. Without this, the refetch storm would
-  // undo the whole point of replacing polling with SignalR.
+  // Debounce token for SignalR-driven query invalidation: coalesces a burst of events
+  // into a single refetch per cache key instead of one refetch per event.
   const queryInvalidateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingInvalidateWorkflowsRef = useRef<Set<string>>(new Set());
   const QUERY_INVALIDATE_DEBOUNCE_MS = 500;
 
   /**
    * Collects invalidation requests per workflow ID and, after the debounce window,
-   * fires one refetch per affected list. Called from the ExecutionStatusChanged
-   * handler — a terminal status change is the only kind of event that actually changes
-   * what the list endpoints return (GET /executions, /executions?workflowId=…).
+   * fires one refetch per affected list. A terminal status change is the only kind
+   * of event that changes what the list endpoints return.
    */
   const scheduleQueryInvalidate = useCallback((wfId: string) => {
     pendingInvalidateWorkflowsRef.current.add(wfId);
@@ -132,11 +127,11 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
   // hit GET /steps once. Cleared on workflow switch.
   const hydratedExecsRef = useRef<Set<string>>(new Set());
   // Tracks executions shown with listing-only data (status badge, no steps).
-  // Prevents the 10s periodic refresh from re-fetching step lists for the ~97 runs that
+  // Prevents the periodic refresh from re-fetching step lists for runs that
   // weren't auto-hydrated on initial load. Cleared on workflow switch.
   const listedExecsRef = useRef<Set<string>>(new Set());
-  // Effect lifetime guard. We replaced the inner `let mounted` so cross-effect callbacks
-  // (lazy hydration triggered from event handlers) can also bail after unmount.
+  // Effect lifetime guard shared across callbacks (e.g. lazy hydration triggered from
+  // event handlers) so they can also bail out after unmount.
   const mountedRef = useRef<boolean>(true);
   const [liveExecutionsById, setLiveExecutionsById] = useState<LiveExecutionsById>({});
   const [connected, setConnected] = useState(false);
@@ -182,17 +177,11 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
   const liveExecution = liveExecutions[0] ?? null;
 
   /**
-   * Fetches the full step list for one execution and merges it into live state. Idempotent
-   * via `hydratedExecsRef`: concurrent or repeated calls for the same executionId hit the
-   * API at most once until either the workflow is switched or a bulk refresh re-permits.
-   *
-   * Called from two paths:
-   *   1. Lazy: first SignalR event for an execution we don't have in state (post-F5
-   *      backfill so earlier completed steps appear, not just the currently-running one).
-   *   2. Terminal: when ExecutionStatusChanged hits Succeeded/Failed/Cancelled, to recover
-   *      from any StepCompleted events the bounded SignalR channel dropped.
-   *
-   * On HTTP failure the dedup mark is removed so the next event burst can retry.
+   * Fetches the full step list for one execution and merges it into live state.
+   * Idempotent per executionId via `hydratedExecsRef` until the workflow switches.
+   * Runs on the first SignalR event for an unseen execution, and again when an
+   * execution reaches a terminal status to recover any step events the SignalR
+   * channel dropped. On failure the dedup mark is cleared so a later event retries.
    */
   const hydrateStepsForExecution = useCallback(async (executionId: string, execWorkflowId: string) => {
     const authBoundaryGeneration = captureAuthBoundaryGeneration();
@@ -236,10 +225,9 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
         for (const [stepId, step] of existing) {
           if (!merged.some((s) => s.stepId === stepId)) merged.push(step);
         }
-        // Rebuild databus entries from the REST snapshot so post-refresh views match the
-        // engine's variable shape: `{stepId}.output/.error/.param.*` plus alias-keyed
-        // mirrors. SignalR-already-applied entries (the existing exec.databus) win on
-        // collision — they may be fresher than what's persisted yet.
+        // Rebuild databus entries from the REST snapshot to match the engine's variable
+        // shape (`{stepId}.output/.error/.param.*` plus alias-keyed mirrors). Entries
+        // already applied from SignalR win on collision since they may be fresher.
         const hydratedDatabus = buildDatabusFromHydratedSteps(steps);
         if (exec) {
           return {
@@ -279,14 +267,11 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
   }, []);
 
   /**
-   * Schedules deferred removal of an execution from the live state. Idempotent —
-   * a second call for the same execution while a timer is already pending is a no-op.
-   *
-   * `delayMs` defaults to the full TTL but accepts a custom value so callers that
-   * encounter an already-completed execution (e.g. hydration after the user
-   * navigated away and back) can adjust for elapsed time: a run that finished 25 s
-   * ago should disappear in 5 s, not 30 s. `Math.max(0, ...)` makes >TTL-old runs
-   * evict on the next event-loop tick instead of breaking setTimeout semantics.
+   * Schedules deferred removal of an execution from the live state. Idempotent: a
+   * second call for the same execution while a timer is pending is a no-op.
+   * `delayMs` defaults to the full TTL but accepts a smaller value so callers can
+   * account for elapsed time on an already-completed execution. Clamped to 0 so
+   * overdue runs still evict on the next tick.
    */
   const scheduleEviction = useCallback((executionId: string, delayMs: number = COMPLETED_EXECUTION_TTL_MS) => {
     if (evictionTimersRef.current.has(executionId)) return;
@@ -307,33 +292,20 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
   }, []);
 
   /**
-   * Bulk refresh of currently-relevant executions for the active workflow. Runs:
-   *   - On initial connect (post-F5 backfill of all running runs) — mode='initial'
-   *   - On SignalR auto-reconnect (catch up after a transport blip) — mode='initial'
-   *   - Every LIVE_REFRESH_INTERVAL_MS as a safety net for new runs the SignalR
-   *     subscription may have missed entirely — mode='periodic'
-   *
-   * `mode='periodic'` skips execs that were already hydrated, so a 100-run burst
-   * doesn't trigger a 100-fetch refresh storm every 10 seconds. The terminal-event
-   * fetch in the LiveEventsBatch handler is what catches dropped step events for
-   * runs we already know about — periodic stays in its lane and only discovers new
-   * ones.
-   *
-   * No execution cap — the server's GET /executions Take(100) is the natural ceiling.
-   * The previous 30-execution cap meant runs 31..N never got their step history backfilled,
-   * which is exactly the failure the user observes when many runs fire in parallel.
-   *
-   * After merging the result, terminal runs (Succeeded/Failed/Cancelled) get an
-   * eviction timer scheduled with TTL adjusted for time since completion. Without
-   * this, runs hydrated after navigation away-and-back stay pinned in the Live tab
-   * forever — there's no SignalR ExecutionStatusChanged event to trigger eviction
-   * because the run finished while we weren't subscribed.
+   * Bulk refresh of currently-relevant executions for the active workflow. Runs on
+   * initial connect, on SignalR auto-reconnect, and periodically as a safety net for
+   * runs the SignalR subscription might have missed. `mode='periodic'` only picks up
+   * runs not yet known at all, since dropped step events for already-known runs are
+   * recovered by the terminal-event handler in the LiveEventsBatch listener. No
+   * execution cap here — the server's GET /executions Take(100) is the ceiling.
+   * Terminal runs get an eviction timer sized for elapsed time, so a run hydrated
+   * after navigating away and back does not stay pinned in the Live tab.
    */
   const hydrateActive = useCallback(async (wfid: string, mode: 'initial' | 'periodic' = 'initial') => {
     const authBoundaryGeneration = captureAuthBoundaryGeneration();
     let all: ApiExecutionItem[];
     try {
-      all = await api.get<ApiExecutionItem[]>(`/executions?workflowId=${wfid}&activeOnly=true`);
+      all = await getAllPages<ApiExecutionItem>(`/executions?workflowId=${wfid}&activeOnly=true`);
       assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
     } catch (err) {
       if (!(err instanceof AuthBoundaryChangedError)) {
@@ -376,10 +348,8 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
 
     // Auto-hydrate step details for the top MAX_AUTO_HYDRATE most recent active runs.
     // The rest stay as status badges until the user expands them via joinExecution.
-    // Both initial and periodic mode apply the same cap — periodic mode previously used
-    // toAutoHydrate = relevant (all newly-discovered runs) which caused 200 GET /steps
-    // fetches on the first 10-second tick during mass-parallel stress tests, making every
-    // run show full step details instead of the intended listing-only status badge.
+    // Both initial and periodic mode apply the same cap, so a burst of newly-discovered
+    // runs cannot force every run into full step detail instead of a status badge.
     const toAutoHydrate = relevant
       .filter((e) => e.status === 'Running' || e.status === 'Pending')
       .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
@@ -449,12 +419,11 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
     if (event.evt.workflowId !== workflowIdRef.current) return;
 
     // Lazy backfill on first step event for a joined execution. Step events (StepStarted/
-    // StepCompleted/StepPaused/StepResumed) only arrive when the client has called
-    // JoinExecution, which already triggers hydrateStepsForExecution. This backfill handles
-    // the narrow race where a step event arrives before that hydration fetch completes.
-    // ExecutionStatusChanged is excluded: it now reaches all workflow-group subscribers
-    // (including listing-only runs), and we must not trigger step fetches for runs the
-    // user hasn't expanded — that's the entire point of the listing-only optimisation.
+    // StepCompleted/StepPaused/StepResumed) only arrive after JoinExecution, which already
+    // triggers hydrateStepsForExecution; this handles the narrow race where a step event
+    // arrives before that fetch completes. ExecutionStatusChanged is excluded because it
+    // reaches all workflow-group subscribers, including listing-only runs that must not
+    // trigger a step fetch until the user expands them.
     if (
       event.type !== 'ExecutionStatusChanged' &&
       !hydratedExecsRef.current.has(event.evt.executionId)
@@ -471,7 +440,7 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
       // A status change is the only kind of event that actually changes what the list
       // endpoints return (counts, "recent runs" tables). Invalidate the relevant React
       // Query caches here instead of relying on refetchInterval polling — debounced so
-      // a 200-event burst still produces just one refetch per cache key.
+      // a burst of events still produces just one refetch per cache key.
       scheduleQueryInvalidate(evtWid);
     }
     if (flushTimerRef.current !== null) return;
@@ -498,10 +467,9 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
 
   /**
    * Joins the per-execution SignalR group and hydrates step details on demand.
-   * Called when the user expands a run in the Live tab. Listing-only runs (status badge
-   * only) become fully hydrated — the join ensures step events start arriving from the
-   * backend, and the fetch fills in any steps that happened before the join.
-   * Idempotent: if the execution is already fully hydrated the HTTP call is skipped.
+   * Called when the user expands a run in the Live tab: the join makes step events
+   * start arriving from the backend, and the fetch fills in steps that happened
+   * before the join. Idempotent — a call for an already-hydrated execution is a no-op.
    */
   const joinExecution = useCallback(async (executionId: string, execWorkflowId: string) => {
     const authBoundaryGeneration = captureAuthBoundaryGeneration();
@@ -509,11 +477,8 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
     if (!await invokeSafely('JoinExecution', executionId)) return;
     if (!mountedRef.current
       || !isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
-    // Always refetch on explicit expand — the auto-hydration snapshot (taken at mount)
-    // only captured steps that existed at that moment. Steps that started between mount
-    // and this expand arrived on the execution-only SignalR group, which the frontend
-    // hadn't joined yet, so they were never received. Clearing the dedup mark forces a
-    // fresh fetch that covers the gap.
+    // Explicit expansion refetches steps that started outside the execution-specific group.
+    // Clearing the dedup mark forces a fresh fetch that covers the gap.
     hydratedExecsRef.current.delete(executionId);
     await hydrateStepsForExecution(executionId, execWorkflowId);
   }, [hydrateStepsForExecution, invokeSafely]);
@@ -561,8 +526,7 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
     if (!workflowId) return;
     mountedRef.current = true;
 
-    // Audit H-6: the JWT is no longer passed in the ?access_token query string. The
-    // httpOnly np_auth cookie travels on the negotiate POST and the WebSocket upgrade
+    // The httpOnly np_auth cookie travels on the negotiate POST and the WebSocket upgrade
     // automatically (same-origin, `withCredentials` default for SignalR browser transport).
     const connection = new signalR.HubConnectionBuilder()
       .withUrl('/hubs/execution', {
@@ -592,8 +556,8 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
         if (event.type === 'ExecutionStatusChanged') {
           const { status, executionId, workflowId: evtWid } = event.evt;
           if (status === 'Succeeded' || status === 'Failed' || status === 'Cancelled') {
-            // Only re-fetch steps if the execution was previously fully hydrated (i.e. the
-            // user had it joined/expanded). This recovers StepCompleted events dropped by
+            // Re-fetch only an execution that the user fully hydrated by joining or expanding it.
+            // This recovers StepCompleted events dropped by
             // the bounded SignalR channel under burst load. Listing-only runs (never joined)
             // had no step events to drop, so a re-fetch would be pure waste.
             if (hydratedExecsRef.current.has(executionId)) {
@@ -605,11 +569,10 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
       }
     });
 
-    // One body for BOTH fresh connects and automatic reconnects, run by connectPersistently.
-    // Merging the two previous handlers is a behaviour change on purpose: after a full close +
-    // start(), onreconnected never fires and hub group memberships are gone, so the re-join,
-    // hydration AND the cache invalidation must all happen on every kind of (re)connect - and
-    // the green dot must flip on every one of them, not only on the first.
+    // One body for both fresh connects and automatic reconnects, run by connectPersistently.
+    // After a full close + start(), onreconnected never fires and hub group memberships are
+    // gone, so the re-join, hydration, and cache invalidation must all happen on every kind
+    // of (re)connect, and the connection indicator must update on every one of them too.
     const persistent = connectPersistently(
       connection,
       async () => {
@@ -618,9 +581,8 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
         await reconcileSubscriptions(workflowId);
       },
       () => {
-        // The automatic-reconnect policy gave up - the dot must stop claiming "connected".
-        // Before this, `connected` was only ever set false on unmount, so the indicator stayed
-        // green through a dropped connection indefinitely.
+        // The automatic-reconnect policy gave up, so the indicator must stop claiming
+        // the app is connected.
         if (mountedRef.current) setConnected(false);
       },
       // The WebSocket may survive a DB outage. Replay groups on unavailable -> ok even without a

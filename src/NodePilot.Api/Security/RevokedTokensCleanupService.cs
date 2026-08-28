@@ -8,11 +8,11 @@ namespace NodePilot.Api.Security;
 
 /// <summary>
 /// Periodically deletes <c>RevokedTokens</c> rows whose <c>ExpiresAt</c> has passed. Without
-/// this the table grows linearly with logouts + refreshes forever, and since every
+/// this the table grows without bound as users log out and refresh tokens, and since every
 /// authenticated request hits <c>TokenValidityMiddleware</c> (which does an <c>AnyAsync</c>
-/// on the table), latency would creep up over months.
+/// on the table), that growth would raise request latency over time.
 ///
-/// A row is safe to delete once its <c>ExpiresAt</c> is in the past because JWT expiry is
+/// A row is safe to delete after <c>ExpiresAt</c> because JWT expiry is
 /// also enforced by <c>JwtBearer</c> — a token past its exp fails validation before the
 /// middleware even looks at the revocation list.
 /// </summary>
@@ -50,9 +50,9 @@ public class RevokedTokensCleanupService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            // Availability gate, deliberately ABOVE the leader check: during a database outage no
-            // node can renew its cluster lease, so every node reads as a follower - gating on
-            // IsLeader first would park for the right reason and log the wrong one.
+            // Availability gate sits above the leader check: during a database outage no node
+            // can renew its cluster lease, so every node reads as a follower. Checking IsLeader
+            // first would park for the right reason but log the wrong one.
             if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
 
             // HA gate: leader-only — both nodes deleting the same expired rows is just wasted IO.
@@ -88,7 +88,7 @@ public class RevokedTokensCleanupService : BackgroundService
 
     /// <summary>
     /// Performs a single sweep: deletes every <c>RevokedTokens</c> row whose
-    /// <c>ExpiresAt</c> is in the past. Returns the number of rows deleted. Exposed
+    /// <c>ExpiresAt</c> has elapsed. Returns the number of rows deleted. Exposed
     /// internally so tests can verify the deletion semantics without spinning up the
     /// background loop and waiting through the startup delay.
     /// </summary>

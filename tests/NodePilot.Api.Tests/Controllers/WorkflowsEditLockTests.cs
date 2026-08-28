@@ -31,7 +31,8 @@ public class WorkflowsEditLockTests
         IResourceAuthorizationService? authz = null)
         => WorkflowControllerHarnessFactory.Build(db, audit, role, userId ?? OwnerId, authz);
 
-    /// <summary>Persists a User row so lock-owner-name resolution returns a real value in tests.</summary>
+    /// <summary>Persists a User row so lock-owner-name resolution returns a real value in
+    /// tests.</summary>
     private static async Task SeedUserAsync(NodePilotDbContext db, Guid userId, string username)
     {
         if (await db.Users.AnyAsync(u => u.Id == userId)) return;
@@ -343,9 +344,8 @@ public class WorkflowsEditLockTests
         var result = await h.Editing.Unlock(w.Id, CancellationToken.None);
 
         result.Result.Should().BeOfType<OkObjectResult>();
-        // Unlock now clears the lock via an atomic ExecuteUpdate (security-audit finding M-3,
-        // a fix for a lock-check/lock-clear race), which bypasses the change tracker —
-        // reload to read the persisted row rather than the stale tracked instance.
+        // Unlock clears the lock via an atomic ExecuteUpdate, which bypasses the change
+        // tracker — reload to read the persisted row rather than the stale tracked instance.
         await db.Entry(w).ReloadAsync();
         w.CheckedOutByUserId.Should().BeNull();
         w.CheckedOutAt.Should().BeNull();
@@ -543,7 +543,7 @@ public class WorkflowsEditLockTests
         audit.Calls.Should().NotContain(c => c.Action == "WORKFLOW_FORCE_UNLOCKED");
     }
 
-    // --- Security-hardening regressions: M-3 (atomic delete / rollback) + L-6 (duplicate) ---
+    // --- Atomic delete / rollback and duplicate-safety regressions -----------------------
 
     [Fact]
     public async Task Delete_AsLockOwner_Succeeds()

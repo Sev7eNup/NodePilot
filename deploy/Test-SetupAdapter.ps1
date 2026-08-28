@@ -4,13 +4,12 @@
 .SYNOPSIS
     Behavioural self-test of the setup answer-file contract.
 .DESCRIPTION
-    Runs without admin rights, without a database, and without touching the machine - the same
-    posture as Test-ArtifactSecurity.ps1, so CI can run it under both Windows PowerShell 5.1 and
-    PowerShell 7.
+    Runs without admin rights, without a database, and without touching the machine, so CI can run
+    it under both Windows PowerShell 5.1 and PowerShell 7.
 
-    Static text checks cannot cover this surface. A silent mis-splat - a Postgres key leaking into
-    a SQL Server install, a password that fails to round-trip, an unknown key accepted instead of
-    rejected - would look identical in the source and only surface during a real installation.
+    Static text checks cannot cover this surface: a key splatted into the wrong provider, a
+    password that fails to round-trip, or an unknown key that is accepted look identical in the
+    source and only show up during a real installation.
 .PARAMETER SetupContractPath
     The contract under test. Defaults to deploy/SetupContract.ps1.
 .PARAMETER PreflightPath
@@ -44,8 +43,7 @@ if ([string]::IsNullOrWhiteSpace($SetupAdapterPath)) {
     $SetupAdapterPath = Join-Path $scriptDirectory 'Invoke-NodePilotSetup.ps1'
 }
 # Loaded because the adapter loads it: the CSPRNG behind the generated bootstrap password and the
-# ACL-protected credential writer both live there. Testing the contract without it would test a
-# composition that does not exist in production.
+# ACL-protected credential writer both live there.
 if ([string]::IsNullOrWhiteSpace($ArtifactSecurityPath)) {
     $ArtifactSecurityPath = Join-Path $scriptDirectory 'ArtifactSecurity.ps1'
 }
@@ -60,8 +58,8 @@ foreach ($path in @($SetupContractPath, $PreflightPath, $ServiceControlPath, $Se
 . $ServiceControlPath
 . $ArtifactSecurityPath
 
-# ServiceControl.ps1 logs through the host script's writers. The real callers define these; the
-# harness has to stand in for them or the -Force path throws on its first warning.
+# ServiceControl.ps1 logs through the host script's writers. The harness has to define them or the
+# -Force path throws on its first warning.
 function Write-Info { param([string]$Text) Write-Verbose $Text }
 function Write-Warn { param([string]$Text) Write-Verbose $Text }
 
@@ -75,8 +73,8 @@ function Assert-True {
 
 function Assert-Throws {
     <#
-      Asserts both that it throws AND that the message names the offending key. "It failed" is not
-      good enough for an unattended answer file: the operator needs to be told which key.
+      Asserts both that the action throws and that the message names the offending key, so an
+      unattended answer file tells the operator which key is wrong.
     #>
     param(
         [Parameter(Mandatory)][string]$Name,
@@ -106,8 +104,8 @@ function New-AnswerFile {
 try {
     # --- torture round-trip -------------------------------------------------------------------
     # UNC paths, embedded quotes, umlauts, dollar signs and template braces all appear in real
-    # answers, and every one of them is a plausible way for the Pascal-side JSON writer to be
-    # wrong. A 200-character password covers the SecureString path at length.
+    # answers and each one can break the Pascal-side JSON writer. The long password exercises the
+    # SecureString path at length.
     $password = ('A1!"$%&' + ('x' * 190) + '{{end}}')
     $torture = @{
         schemaVersion = 1
@@ -171,10 +169,8 @@ try {
         } | ConvertTo-Json -Depth 6))
     }
 
-    # THE regression: the wizard writes what the TLS page holds, and leaving that page's field
-    # empty is how an operator says "I have no certificate yet". Requiring a value here killed the
-    # probe run before the prerequisite page - which is the page that offers to create one - was
-    # ever reached. The key still has to be present; only its value may be blank.
+    # The wizard writes whatever the TLS page holds, and an empty field is how an operator says
+    # "I have no certificate yet". The key still has to be present; only its value may be blank.
     $blankCert = Read-NodePilotAnswerFile -Path (New-AnswerFile -Name 'blank-cert.json' -Json (@{
         schemaVersion = 1; mode = 'install'; installPath = 'C:\np'; dataPath = 'C:\npdata'
         serviceName = 'NodePilot'; identity = @{ type = 'localSystem' }
@@ -185,8 +181,7 @@ try {
     Assert-True -Name 'an empty certificate thumbprint is accepted' `
         -Condition ([string]$blankCert['certificate.thumbprint'] -eq '')
 
-    # Scoped to that one key. An empty serviceName is a mistake in every reading, and the blanket
-    # rule that used to catch it must keep catching it.
+    # The blank exception is scoped to the thumbprint alone: an empty serviceName stays a rejection.
     Assert-Throws -Name 'another required key left blank is still rejected' `
         -MessagePattern "missing required key 'serviceName'" -Action {
         Read-NodePilotAnswerFile -Path (New-AnswerFile -Name 'blank-service.json' -Json (@{
@@ -198,9 +193,8 @@ try {
         } | ConvertTo-Json -Depth 6))
     }
 
-    # Empty is a statement, a typo is not. Unchecked, it reached Kestrel's configuration and came
-    # back as "the certificate is not in the store" - the same symptom as a certificate that really
-    # is missing, several minutes later.
+    # An empty thumbprint is a deliberate answer, a truncated one is a typo. Unchecked it reaches
+    # Kestrel's configuration and returns the same message as a certificate that is really missing.
     Assert-Throws -Name 'a thumbprint that is neither empty nor 40 characters is rejected' `
         -MessagePattern "40 hexadecimal characters, or empty" -Action {
         Read-NodePilotAnswerFile -Path (New-AnswerFile -Name 'short-cert.json' -Json (@{
@@ -221,11 +215,9 @@ try {
     }
 
     # --- byte-order mark ----------------------------------------------------------------------
-    # The wizard writes its answer file with Inno's SaveStringsToUTF8File, which emits a BOM, and
-    # an operator hand-writing one in Notepad gets the same. UTF8.GetString turns those three bytes
-    # into U+FEFF, which is neither whitespace nor a JSON token, so the whole document is rejected
-    # with "Invalid JSON primitive: ." - and that is exactly how the first interactive run of the
-    # wizard died. The unattended path never caught it because it copies a supplied file.
+    # The wizard writes its answer file with Inno's SaveStringsToUTF8File, which emits a BOM, and a
+    # hand-written file from Notepad has one too. UTF8.GetString turns those three bytes into
+    # U+FEFF, which is neither whitespace nor a JSON token, so the reader has to strip it.
     $bomPath = Join-Path $workingDirectory 'bom.json'
     $bomJson = @{
         schemaVersion = 1; mode = 'install'; installPath = 'C:\np'; dataPath = 'C:\npdata'
@@ -243,10 +235,8 @@ try {
         -Condition ([int][char]([string]$bomAnswers['mode'])[0] -eq [int][char]'i')
 
     # --- the document the WIZARD actually produces ---------------------------------------------
-    # Verbatim capture from a real interactive run, BOM and Pascal's own formatting included. The
-    # unattended path copies an operator-supplied file and therefore never exercises the wizard's
-    # JSON writer at all - which is precisely how a BOM reached production untested. Reproducing
-    # the shape by hand would only test my idea of it; this is the bytes it really wrote.
+    # Verbatim capture from an interactive run, BOM and Pascal formatting included. The unattended
+    # path copies an operator-supplied file, so nothing else exercises the wizard's JSON writer.
     $wizardJson = @'
 {
   "schemaVersion": 1,
@@ -311,8 +301,8 @@ try {
     }
 
     # --- splat mapping ------------------------------------------------------------------------
-    # The single place provider bleed can happen. Passing -PostgresHost alongside -DbProvider
-    # sqlserver binds without complaint and then fails confusingly much later.
+    # The single place where one provider's keys can bleed into the other. Passing -PostgresHost
+    # alongside -DbProvider sqlserver binds without complaint and fails much later.
     $postgresSplat = ConvertTo-NodePilotInstallParameters -Answers $answers
     Assert-True -Name 'a Postgres install passes no SQL Server parameters' `
         -Condition (-not ($postgresSplat.Keys | Where-Object { $_ -like 'Sql*' }))
@@ -353,7 +343,7 @@ try {
     $doomed = New-AnswerFile -Name 'doomed.json' -Json '{"schemaVersion":1,"mode":"update","installPath":"C:\\np","serviceName":"NodePilot"}'
     Remove-NodePilotAnswerFile -Path $doomed
     Assert-True -Name 'the answer file is gone after shredding' -Condition (-not (Test-Path -LiteralPath $doomed))
-    Remove-NodePilotAnswerFile -Path $doomed  # must be idempotent; the finally block may run twice
+    Remove-NodePilotAnswerFile -Path $doomed  # must be idempotent: the finally block may run twice
     Assert-True -Name 'shredding a missing answer file is a no-op' -Condition ($true)
 
     # --- INI result buffer --------------------------------------------------------------------
@@ -370,8 +360,8 @@ try {
         -Condition ($ini -contains '[check.database]')
 
     # --- certificate picker lines -------------------------------------------------------------
-    # Four fields, thumbprint first, and the wizard splits on '|' with no way to notice if a field
-    # moved. Everything below is a way that has actually bitten someone in a DN or a locale.
+    # Four fields, thumbprint first. The wizard splits on '|' and cannot detect a shifted field, so
+    # the cases below pin the format against odd distinguished names and locales.
     function New-FakeCertificate {
         param([string]$Subject = 'CN=np.contoso.local', [bool]$HasKey = $true, [string]$NotAfter = '2027-03-01')
         return [pscustomobject]@{
@@ -387,16 +377,14 @@ try {
                     (('A' * 40) + '|CN=np.contoso.local|1|2027-03-01'))
     Assert-True -Name 'a certificate without a private key is flagged, not dropped' `
         -Condition ((Format-NodePilotCertificateLine -Certificate (New-FakeCertificate -HasKey $false)) -like '*|0|*')
-    # A pipe is legal inside an X.500 attribute value, and one would shift every field behind it -
-    # turning the key flag into a date and the expiry into nothing.
+    # A pipe is legal inside an X.500 attribute value and would shift every field behind it.
     Assert-True -Name 'a pipe inside the subject cannot shift the remaining fields' `
         -Condition ((Format-NodePilotCertificateLine -Certificate (New-FakeCertificate -Subject 'CN=a|b, O=c')).Split('|').Count -eq 4)
     Assert-True -Name 'a certificate with no subject still yields four fields' `
         -Condition ((Format-NodePilotCertificateLine -Certificate (New-FakeCertificate -Subject '')).Split('|').Count -eq 4)
 
-    # 'yyyy' resolves against the culture's default calendar. Under ar-SA that is Umm al-Qura, and
-    # the same call returns 1448 instead of 2027 - a date the operator cannot compare against
-    # anything. Pinned here because the wizard runs on whatever locale the server was installed in.
+    # 'yyyy' resolves against the culture's default calendar; under ar-SA that is Umm al-Qura and
+    # the year comes out as 1448. The wizard runs on whatever locale the server was installed in.
     $originalCulture = [Threading.Thread]::CurrentThread.CurrentCulture
     try {
         [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::GetCultureInfo('ar-SA')
@@ -408,10 +396,9 @@ try {
     }
 
     # --- the Certificates mode, as a process --------------------------------------------------
-    # Run for real rather than by dot-sourcing: the adapter takes a mandatory -Mode and ends in
-    # `exit`, so the only honest way to prove the wizard's call works is to make it. Needs no
-    # answer file, no session directory and no elevation - reading the machine store's metadata is
-    # allowed to anyone, which is exactly why the picker can run before anything else exists.
+    # Run as a process rather than dot-sourced: the adapter takes a mandatory -Mode and ends in
+    # `exit`. It needs no answer file, no session directory and no elevation, because reading the
+    # machine store's metadata is open to anyone.
     $certificateIni = Join-Path $workingDirectory 'certificates.ini'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $SetupAdapterPath `
         -Mode Certificates -OutFile $certificateIni `
@@ -425,7 +412,7 @@ try {
     Assert-True -Name 'the count is always written, including as zero' -Condition ($countLine.Count -eq 1)
 
     # The wizard reads count first and sizes its array from it, so a count that does not match the
-    # entries would leave it indexing past the end of the list.
+    # entries makes it index past the end of the list.
     $certificateCount = [int]($countLine[0] -replace '^count=', '')
     $certificateLines = @($certificateIniLines |
         Where-Object { $_ -match '^\d+=' } |
@@ -433,8 +420,8 @@ try {
     Assert-True -Name 'the count matches the number of entries' `
         -Condition ($certificateLines.Count -eq $certificateCount)
 
-    # This machine's store may legitimately be empty - a fresh Windows install has no personal
-    # machine certificates at all - so the shape assertions run only over what is actually there.
+    # The machine store may legitimately be empty, so the shape assertions run only over the
+    # entries that are actually present.
     $malformed = @($certificateLines | Where-Object {
         $fields = $_.Split('|')
         ($fields.Count -ne 4) -or
@@ -446,15 +433,15 @@ try {
         -Condition ($malformed.Count -eq 0)
 
     # Newest expiry first: a renewal sits in the store beside the certificate it replaces under the
-    # same subject, and that date is the only thing telling them apart in the picker.
+    # same subject, and the expiry date is the only thing that tells them apart in the picker.
     $expiryDates = @($certificateLines | ForEach-Object { $_.Split('|')[3] })
     Assert-True -Name 'certificates are offered newest expiry first' `
         -Condition (($expiryDates -join ',') -eq ((@($expiryDates) | Sort-Object -Descending) -join ','))
 
     # --- first-admin bootstrap --------------------------------------------------------------
     # An unattended rollout has nobody to type a setup token, so the setup spends it itself and
-    # writes down what it created. The password is random per machine: a fixed default would be
-    # found by scanning rather than guessing, on a product that runs PowerShell everywhere.
+    # records what it created. The password is random per machine so it cannot be guessed from
+    # a known default.
     $bootstrapAnswers = Read-NodePilotAnswerFile -Path (New-AnswerFile -Name 'bootstrap.json' -Json (@{
         schemaVersion = 1; mode = 'install'; installPath = 'C:\np'; dataPath = 'C:\npdata'
         serviceName = 'NodePilot'; identity = @{ type = 'localSystem' }
@@ -465,14 +452,13 @@ try {
     } | ConvertTo-Json -Depth 6))
     Assert-True -Name 'the bootstrap group parses' `
         -Condition ($bootstrapAnswers['bootstrap.adminUsername'] -eq 'npadmin')
-    # Without this the token could be spent on a name of an interceptor's choosing.
+    # Pinning the name stops the setup token being spent on an account someone else chose.
     Assert-True -Name 'the bootstrap username is pinned in the installer configuration' `
         -Condition ((ConvertTo-NodePilotInstallParameters -Answers $bootstrapAnswers)['BootstrapAdminUsername'] -eq 'npadmin')
     Assert-True -Name 'no bootstrap group means no pinned username' `
         -Condition (-not (ConvertTo-NodePilotInstallParameters -Answers $sqlAnswers).Contains('BootstrapAdminUsername'))
-    # Casing is deliberately not the test: the key table is compared case-insensitively, like every
-    # other PowerShell hashtable lookup here, so 'adminUserName' is a legitimate spelling. A key
-    # that simply does not exist is what has to be caught, and named.
+    # Casing is not the test: the key table is compared case-insensitively, so 'adminUserName' is a
+    # legitimate spelling. What must be caught and named is a key that does not exist at all.
     Assert-Throws -Name 'a mistyped bootstrap key is rejected by name' -MessagePattern "unknown key 'bootstrap\.adminUser'" -Action {
         Read-NodePilotAnswerFile -Path (New-AnswerFile -Name 'bootstrap-typo.json' -Json (@{
             schemaVersion = 1; mode = 'install'; installPath = 'C:\np'; dataPath = 'C:\npdata'
@@ -484,15 +470,15 @@ try {
         } | ConvertTo-Json -Depth 6))
     }
 
-    # Default location, because a silent installation has nowhere else the caller can predict.
+    # A silent installation needs a location the caller can predict without being told.
     Assert-True -Name 'the credential file defaults into the data directory' `
         -Condition ((Get-NodePilotBootstrapCredentialPath -Answers $bootstrapAnswers) -eq 'C:\npdata\bootstrap-admin.json')
     Assert-True -Name 'an explicit credential path wins' `
         -Condition ((Get-NodePilotBootstrapCredentialPath -Answers @{
             'dataPath' = 'C:\npdata'; 'bootstrap.credentialOutputPath' = 'D:\out\np.json' }) -eq 'D:\out\np.json')
 
-    # Property test rather than one sample: the server rejects anything outside 8..72 bytes, and a
-    # generator that occasionally strays would fail one machine in a rollout, not the lab run.
+    # Many draws rather than one sample: the server rejects anything outside 8..72 bytes, and a
+    # generator that only occasionally strays would fail on single machines in a rollout.
     $weakDraws = 0
     for ($draw = 0; $draw -lt 200; $draw++) {
         $candidate = New-NodePilotBootstrapPassword
@@ -515,16 +501,15 @@ try {
     $seedSplat = ConvertTo-NodePilotInstallParameters -Answers $seedAnswers
     Assert-True -Name 'the seed path reaches the installer' `
         -Condition ($seedSplat['SeedBackupPath'] -eq '\\share\golden.npbackup')
-    # Same reason -PostgresPassword is one: it cannot cross a powershell.exe -File boundary any
-    # other way, and it unlocks every credential the reference machine had.
+    # Same reason as -PostgresPassword: it unlocks every credential in the reference backup and
+    # must not cross a powershell.exe -File boundary as plain text.
     Assert-True -Name 'the seed passphrase travels as a SecureString' `
         -Condition ($seedSplat['SeedBackupPassphrase'] -is [System.Security.SecureString])
     Assert-True -Name 'no seed group means neither seed parameter' `
         -Condition (-not $sqlSplat.Contains('SeedBackupPath') -and -not $sqlSplat.Contains('SeedBackupPassphrase'))
 
-    # The credential file is the whole point of the silent path: nobody is watching, so the
-    # generated password has to be written somewhere the automation can collect it - and nowhere
-    # else can read it.
+    # On the silent path nobody is watching, so the generated password is written where the
+    # automation can collect it and nothing else can read it.
     $credentialFile = Join-Path $workingDirectory 'bootstrap-admin.json'
     Write-NodePilotBootstrapCredentialFile -Path $credentialFile `
         -Username 'npadmin' -Password 'a-generated-secret' -Url 'https://host:8443/'
@@ -536,12 +521,12 @@ try {
         -Condition ($credential.note -match 'rotate')
 
     # Not $IsWindows: that variable does not exist in Windows PowerShell 5.1, and Set-StrictMode
-    # turns reading it into a terminating error rather than a false.
+    # turns reading it into a terminating error instead of a false.
     if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) {
         $credentialAcl = Get-Acl -LiteralPath $credentialFile
         Assert-True -Name 'the credential file does not inherit' `
             -Condition ($credentialAcl.AreAccessRulesProtected)
-        # Anything beyond SYSTEM and Administrators would hand a live admin password to a wider
+        # Anything beyond SYSTEM and Administrators exposes a live admin password to a wider
         # audience than the machine's own operators.
         $untrusted = @($credentialAcl.Access | Where-Object {
             $sid = $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
@@ -558,10 +543,9 @@ try {
         -Condition (((Get-Content -LiteralPath $credentialFile -Raw | ConvertFrom-Json).username) -eq 'npadmin2')
 
     # --- bootstrap token ------------------------------------------------------------------------
-    # The finish page is the only place this token is ever shown, and it was blank on every real
-    # installation: the service writes the file with a single ACE for its own identity, so the
-    # installing admin is denied a plain read. Test-Path still says true, because Administrators own
-    # the directory - which is why the naive version looked correct and produced nothing.
+    # The finish page is the only place this token is shown. The service writes the file with a
+    # single ACE for its own identity, so a plain read by the installing admin is denied even
+    # though Test-Path succeeds, because Administrators own the directory.
     $tokenData = Join-Path $workingDirectory 'tokendata'
     $tokenStage = Join-Path $workingDirectory 'tokenstage'
     New-Item -ItemType Directory -Path $tokenData, $tokenStage -Force | Out-Null
@@ -572,35 +556,32 @@ try {
     [IO.File]::WriteAllText((Join-Path $tokenData 'admin-setup.token'), "  a-token-value`r`n")
     Assert-True -Name 'a readable token is returned trimmed' `
         -Condition ((Get-NodePilotBootstrapToken -DataPath $tokenData -StagingDirectory $tokenStage) -eq 'a-token-value')
-    # A readable file never reaches the robocopy fallback, so there is nothing here to assert about
-    # its cleanup - the staging directory stays empty because it was never used. That the fallback
-    # shreds its copy is pinned as a contract in Test-DeploymentTemplates.ps1 instead; asserting it
-    # here would only look like coverage.
+    # A readable file never reaches the robocopy fallback, so staging stays empty. That the
+    # fallback shreds its copy is covered in Test-DeploymentTemplates.ps1.
     Assert-True -Name 'a readable token needs no staging copy at all' `
         -Condition (@(Get-ChildItem -LiteralPath $tokenStage -Recurse -Force -ErrorAction SilentlyContinue).Count -eq 0)
 
     # --- installation progress ------------------------------------------------------------------
-    # Drives the wizard's bar. The installer is not touched for it: its own phase headings are
-    # translated on the way past, which is why "does this line mean a phase" has to be exact.
+    # Drives the wizard's progress bar by translating the installer's own phase headings as they
+    # stream past, so deciding whether a line is a phase heading has to be exact.
     $phase = Get-NodePilotPhaseProgress -Line '[install] Extracting artifact'
     Assert-True -Name 'a phase heading yields a position and a caption' `
         -Condition ($null -ne $phase -and $phase.Percent -gt 0 -and $phase.Text)
-    # Write-Info emits its detail lines under the same [install] prefix. Matching loosely would let
-    # "  Service acct : ..." register as a phase and drag the bar somewhere arbitrary.
+    # Write-Info emits detail lines under the same [install] prefix. Loose matching would let an
+    # indented detail register as a phase and move the bar to an arbitrary position.
     Assert-True -Name 'an indented detail line is not a phase' `
         -Condition ($null -eq (Get-NodePilotPhaseProgress -Line '[install]   Service acct  : CORP\svc$'))
     Assert-True -Name 'an unrelated line is not a phase' `
         -Condition ($null -eq (Get-NodePilotPhaseProgress -Line 'random output'))
-    # Several headings interpolate a value into themselves. An exact comparison cannot express
-    # those at all, which is how three of them went unrecognised and the bar stood still through
-    # half of an update.
+    # Several headings interpolate a value, so an exact string comparison cannot match them and
+    # the bar would stand still for those phases.
     $updatePhase = Get-NodePilotPhaseProgress -Line "[update] Stopping service 'NodePilot'"
     Assert-True -Name 'an updater heading with an interpolated name still matches' `
         -Condition ($null -ne $updatePhase -and $updatePhase.Percent -gt 0)
     Assert-True -Name 'an installer heading with an interpolated account still matches' `
         -Condition ($null -ne (Get-NodePilotPhaseProgress -Line "[install] Granting 'Log on as a service' to CORP\svc`$"))
-    # Every phase either script announces has to be recognised - the reverse of the drift guard,
-    # checked here against the real tables rather than against the scripts.
+    # Every phase either script announces has to be recognised, checked against the real phase
+    # tables rather than against the scripts.
     foreach ($sample in @(
         '[update] Extracting artifact',
         '[update] Backing up current install',
@@ -610,11 +591,9 @@ try {
         Assert-True -Name "the updater phase in '$sample' is recognised" `
             -Condition ($null -ne (Get-NodePilotPhaseProgress -Line $sample))
     }
-    # Extraction has to come FIRST, and it has to exist at all. It is the longest part of an
-    # update - ~2900 files expanded to staging, then hashed one by one against the signed manifest
-    # - and it used to run with no phase of its own, so the dialog sat on its start caption for
-    # minutes while an operator reasonably concluded the upgrade had hung. A future edit that
-    # renames the heading or reorders the table past the backup brings that back.
+    # Extraction must exist as its own phase and come before the backup. It is the longest part of
+    # an update, so without a phase the dialog sits on the start caption for minutes and looks
+    # hung. Renaming the heading or reordering the table past the backup would restore that.
     $extractPhase = Get-NodePilotPhaseProgress -Line '[update] Extracting artifact'
     $backupPhase  = Get-NodePilotPhaseProgress -Line '[update] Backing up current install'
     Assert-True -Name 'the updater announces extraction before the backup' `
@@ -622,8 +601,8 @@ try {
                     [int]$extractPhase.Percent -lt [int]$backupPhase.Percent)
     Assert-True -Name 'an updater detail line is not a phase' `
         -Condition ($null -eq (Get-NodePilotPhaseProgress -Line '[update]   Backup: C:\x'))
-    # Ascending percentages are what let the wizard refuse to ever move the bar backwards without
-    # tracking state per phase.
+    # Ascending percentages let the wizard keep the bar from moving backwards without tracking
+    # state per phase.
     foreach ($table in @(
         @{ Name = 'install'; Percents = @(Get-NodePilotInstallPhases | ForEach-Object { [int]$_.Percent }) },
         @{ Name = 'update';  Percents = @(Get-NodePilotUpdatePhases  | ForEach-Object { [int]$_.Percent }) })) {
@@ -632,20 +611,19 @@ try {
             -Condition (($percents -join ',') -eq ((@($percents) | Sort-Object) -join ',') -and
                         (@($percents | Select-Object -Unique).Count -eq $percents.Count))
     }
-    # Progress is cosmetic. It runs inside the pipe that carries the installer's output, so an
-    # exception here would take the installation with it.
+    # Progress is cosmetic but runs inside the pipe that carries the installer's output, so an
+    # exception here would take the installation down with it.
     Assert-True -Name 'an empty line is handled rather than thrown on' `
         -Condition ($null -eq (Get-NodePilotPhaseProgress -Line ''))
 
     # --- the .NET runtime row -----------------------------------------------------------------
-    # The field failure: the readiness page was green and the service still would not start. The row
-    # asked "is there a dotnet reporting Microsoft.AspNetCore.App 10.x" and never asked which
-    # architecture answered - while NodePilot publishes --runtime win-x64 and installs an apphost
-    # that a 32-bit runtime cannot host. Both directions of that blindness are covered here.
+    # The row has to check which architecture answered, not only whether some dotnet reports
+    # Microsoft.AspNetCore.App 10.x: NodePilot publishes --runtime win-x64 and installs an apphost
+    # that a 32-bit runtime cannot host.
     #
-    # Architecture is read out of the PE header rather than parsed from 'dotnet --info', whose labels
-    # are localised. Tested against real binaries: every 64-bit Windows carries a 64-bit cmd.exe in
-    # System32 and a 32-bit one in SysWOW64, so this needs no fixture and no store.
+    # Architecture is read from the PE header rather than parsed from 'dotnet --info', whose labels
+    # are localised. Every 64-bit Windows carries a 64-bit cmd.exe in System32 and a 32-bit one in
+    # SysWOW64, so these cases need no fixture.
     $system32Cmd = Join-Path $env:WINDIR 'System32\cmd.exe'
     if (Test-Path -LiteralPath $system32Cmd -PathType Leaf) {
         Assert-True -Name 'a 64-bit image is recognised as x64' `
@@ -656,16 +634,16 @@ try {
         Assert-True -Name 'a 32-bit image is recognised as x86' `
             -Condition ((Get-NodePilotPeArchitecture -Path $wow64Cmd) -eq 'x86')
     }
-    # Anything that is not a PE image must answer "no idea" rather than throw: the classifier runs
-    # over whatever happens to sit at a dotnet.exe path, and a throw here would take the whole
-    # readiness page with it. One fixture per guard, because a single short junk file would satisfy
-    # all three assertions on the length check alone and prove nothing about the other two.
+    # Anything that is not a PE image must return null rather than throw: the classifier runs over
+    # whatever sits at a dotnet.exe path, and a throw would take the readiness page down. One
+    # fixture per guard, so each guard is exercised instead of only the length check.
     $truncated = Join-Path $workingDirectory 'truncated-image.bin'
     [IO.File]::WriteAllBytes($truncated, [byte[]](1, 2, 3, 4, 5, 6, 7, 8))
     Assert-True -Name 'a file too short to hold a PE header classifies as unknown' `
         -Condition ($null -eq (Get-NodePilotPeArchitecture -Path $truncated))
 
-    # 512 bytes of 0x41: the header offset at 0x3C reads as 0x41414141, far past the end of the file.
+    # 512 bytes of 0x41: the header offset at 0x3C reads as 0x41414141, far past the end of the
+    # file.
     $outOfBounds = Join-Path $workingDirectory 'out-of-bounds-image.bin'
     [IO.File]::WriteAllBytes($outOfBounds, ([byte[]](, 0x41 * 512)))
     Assert-True -Name 'a PE header offset pointing past the file classifies as unknown' `
@@ -683,8 +661,8 @@ try {
     Assert-True -Name 'a path that does not exist classifies as unknown rather than throwing' `
         -Condition ($null -eq (Get-NodePilotPeArchitecture -Path (Join-Path $workingDirectory 'no-such-host.exe')))
 
-    # The verdict is a pure function of the discovered state, which is what makes these four rows
-    # assertable on any machine regardless of what it happens to have installed.
+    # The verdict is a pure function of the discovered state, so these four rows are assertable on
+    # any machine regardless of what it has installed.
     $x64WithPatchedTen = [pscustomobject]@{
         X64Path           = 'C:\Program Files\dotnet\dotnet.exe'
         Runtimes          = @('Microsoft.NETCore.App 10.0.11 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]',
@@ -694,7 +672,7 @@ try {
     }
     $green = Test-NodePilotDotNetRuntime -State $x64WithPatchedTen
     Assert-True -Name 'a 64-bit host carrying patched ASP.NET Core 10.0.11 passes' -Condition ($green.Status -eq 'Pass')
-    # Which host answered is the one fact that makes a disputed row resolvable from a screenshot.
+    # Naming the host that answered makes a disputed row resolvable from a screenshot alone.
     Assert-True -Name 'the passing row names the host it asked' `
         -Condition ($green.Detail -match 'Program Files\\dotnet' -and $green.Detail -match 'x64')
 
@@ -722,7 +700,7 @@ try {
     Assert-True -Name 'a missing 10.x runtime is offered for installation' `
         -Condition ($oldOnly.CanAutoFix -and $oldOnly.AutoFixLabel -match 'bundled ASP.NET Core 10 runtime')
 
-    # THE case this change exists for. It used to be green.
+    # A 32-bit-only .NET installation: the runtime is present but cannot host the x64 apphost.
     $x86Only = [pscustomobject]@{
         X64Path           = $null
         Runtimes          = @()
@@ -734,15 +712,15 @@ try {
         -Condition ($wrongBitness.Status -eq 'Fail' -and $wrongBitness.Required)
     Assert-True -Name 'the bundled x64 runtime is offered as the fix for wrong bitness' `
         -Condition ($wrongBitness.CanAutoFix -and $wrongBitness.AutoFixLabel -match 'bundled ASP.NET Core 10 runtime')
-    # "not found on PATH" in front of an operator who can see dotnet on PATH is the misdiagnosis this
-    # replaces, so the wording is part of the contract, not decoration.
+    # The wording is part of the contract: saying "not found on PATH" to an operator who can see
+    # dotnet on PATH points at the wrong problem.
     Assert-True -Name 'the wrong-bitness row says what was found and why it does not count' `
         -Condition ($wrongBitness.Detail -match '32-bit' -and
                     $wrongBitness.Detail -match '64-bit application' -and
                     $wrongBitness.Detail -match 'Program Files \(x86\)')
     Assert-True -Name 'the wrong-bitness row must not claim nothing was found' `
         -Condition ($wrongBitness.Detail -notmatch 'not found' -and $wrongBitness.AbortMessage -notmatch 'not found on PATH')
-    # An unattended install renders no page, so the same distinction has to survive into the abort.
+    # An unattended install renders no page, so the same distinction has to reach the abort message.
     Assert-True -Name 'an unattended install aborts on wrong bitness with the same reason' `
         -Condition ($wrongBitness.AbortMessage -match '32-bit' -and $wrongBitness.AbortMessage -match '64-bit ASP.NET Core 10')
 
@@ -754,10 +732,9 @@ try {
         -Condition ($absent.Detail -match 'not found' -and $absent.Detail -notmatch '32-bit')
 
     # --- listen ports -------------------------------------------------------------------------
-    # The defect this covers cost three minutes of silence on the lab host: Kestrel could not bind
-    # port 80 - reserved by HTTP.SYS because IIS runs there - so the service crashed on startup,
-    # the installer waited out its 180-second health probe, rolled everything back, and reported
-    # "did not report /healthz/ready". Nothing on screen mentioned a port.
+    # Without this check a port Kestrel cannot bind, such as one reserved by HTTP.SYS, surfaces as
+    # a service that crashes on startup and a health probe that times out, with nothing on screen
+    # mentioning a port.
     $freeProbe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
     $freeProbe.Start()
     $freePort = ([System.Net.IPEndPoint]$freeProbe.LocalEndpoint).Port
@@ -777,32 +754,31 @@ try {
         $busyResult = Test-NodePilotListenPorts -HttpsPort $busyPort -HttpPort 0
         Assert-True -Name 'an occupied port is reported as a required failure' `
             -Condition ($busyResult.Status -eq 'Fail' -and $busyResult.Required)
-        # "Port in use" without a name sends the operator to netstat. The check already knows.
+        # The check already knows the owning process, so it names it instead of sending the
+        # operator to netstat.
         Assert-True -Name 'the process holding the port is named' `
             -Condition ($busyResult.Detail -match 'already in use by')
         Assert-True -Name 'a blocked port carries an abort message naming the socket error' `
             -Condition ($busyResult.AbortMessage -match '10013 or 10048')
         Assert-True -Name 'a blocked port explains where Windows reservations are listed' `
             -Condition ($busyResult.Remediation -match 'excludedportrange')
-        # The unattended path never renders a readiness page - /ANSWERFILE skips every wizard page,
-        # so nothing calls the probe. A silent install is stopped by this assert inside
-        # Install-NodePilot.ps1 instead, and only because the port result is Required.
+        # /ANSWERFILE skips every wizard page, so nothing calls the probe. A silent install is
+        # stopped by this assert inside Install-NodePilot.ps1, because the port result is Required.
         Assert-Throws -Name 'a blocked port aborts an unattended install' -MessagePattern 'Kestrel cannot bind' -Action {
             Assert-NodePilotPreflight -Results @($busyResult) | Out-Null
         }
     }
     finally { $busyProbe.Stop() }
 
-    # Probing must leave nothing behind - it runs again on every click of "Check again".
+    # Probing must leave nothing bound: it runs again on every click of "Check again".
     $reprobe = Test-NodePilotListenPorts -HttpsPort $freePort -HttpPort 0
     Assert-True -Name 're-checking a free port does not leave it bound' `
         -Condition ($reprobe.Status -eq 'Pass')
 
     # --- the two-layer pre-flight split -------------------------------------------------------
-    # The point of the whole split: collecting must report, only asserting may abort. .invalid is
-    # reserved by RFC 2606, so DNS fails immediately instead of burning the connect timeout.
-    # Ports passed explicitly rather than left to the 443 default: whether this machine happens to
-    # have 443 free is not what this assertion is about.
+    # Collecting must report, only asserting may abort. .invalid is reserved by RFC 2606, so DNS
+    # fails immediately instead of burning the connect timeout. Ports are passed explicitly so the
+    # result does not depend on whether this machine has 443 free.
     $checks = @(Invoke-NodePilotPreflight `
         -CertificateThumbprint ('0' * 40) `
         -DbProvider 'sqlserver' `
@@ -825,9 +801,9 @@ try {
     }
 
     # --- certificate name matching ------------------------------------------------------------
-    # The store lookup needs a certificate store; the comparison does not, which is why it is its
-    # own function. Wildcards are the part worth having tests for - "it ends with the right thing"
-    # accepts a.b.corp.example for *.corp.example, which is precisely what RFC 6125 forbids.
+    # The comparison is its own function because it needs no certificate store. Wildcards are the
+    # part worth testing: a plain suffix match accepts a.b.corp.example for *.corp.example, which
+    # RFC 6125 forbids.
     Assert-True -Name 'an exact SAN entry matches' `
         -Condition (Test-NodePilotCertificateNameMatch -Names @('np.corp.example') -PublicHostname 'np.corp.example')
     Assert-True -Name 'the comparison ignores case' `
@@ -864,8 +840,8 @@ try {
         -Condition ((Get-NodePilotCertificateNames -Certificate $cnOnlyCert) -eq 'legacy.corp.example')
 
     # --- certificate validity -----------------------------------------------------------------
-    # -Now is injected so both ends of the validity window are reachable here. The store lookup
-    # is not: this suite installs nothing on the machine it runs on.
+    # -Now is injected so both ends of the validity window are reachable. The store lookup is not
+    # exercised, because this suite installs nothing on the machine it runs on.
     function New-FakeStoreCertificate {
         param([string]$Name = 'np.corp.example', [int]$ValidFromDays = -30, [int]$ValidToDays = 365)
         $reference = [datetime]::new(2026, 8, 5, 12, 0, 0, [DateTimeKind]::Local)
@@ -887,15 +863,15 @@ try {
     $goodCert = & $verdict (New-FakeStoreCertificate)
     Assert-True -Name 'a valid, matching certificate passes' -Condition ($goodCert.Status -eq 'Pass')
 
-    # THE case this was written for: it used to pass, the date was printed into the green line,
-    # and the first person to see the problem was a user with a browser warning.
+    # An expired certificate has to block the install; otherwise the first sign of trouble is a
+    # browser warning after the service is running.
     $expired = & $verdict (New-FakeStoreCertificate -ValidToDays -1)
     Assert-True -Name 'an expired certificate stops the installation' `
         -Condition ($expired.Status -eq 'Fail' -and $expired.Required)
     Assert-True -Name 'the expiry date is in the message, not just the fact' `
         -Condition ($expired.Detail -match '2026-08-04' -and $expired.AbortMessage -match '2026-08-04')
-    # Answering "your PKI certificate expired" with "have a lab certificate" would be worse than
-    # stopping, so this failure carries no auto-fix even though the generator exists.
+    # This failure carries no auto-fix even though the generator exists: replacing an expired PKI
+    # certificate with a self-signed one is worse than stopping.
     Assert-True -Name 'an expired certificate is not silently replaced by a self-signed one' `
         -Condition (-not $expired.CanAutoFix)
 
@@ -903,7 +879,7 @@ try {
     Assert-True -Name 'a certificate that is not valid yet stops the installation too' `
         -Condition ($notYet.Status -eq 'Fail' -and $notYet.Required)
 
-    # Still valid, but not for much longer: worth saying, not worth stopping for.
+    # Still valid but close to expiry: worth reporting, not worth stopping for.
     $soon = & $verdict (New-FakeStoreCertificate -ValidToDays 10)
     Assert-True -Name 'a certificate expiring soon still passes, with the date' `
         -Condition ($soon.Status -eq 'Pass' -and $soon.Detail -match 'Expires 2026-08-15')
@@ -912,45 +888,43 @@ try {
     Assert-True -Name 'a name mismatch warns rather than blocking' -Condition ($mismatch.Status -eq 'Warn')
     Assert-True -Name 'the mismatch names both sides' `
         -Condition ($mismatch.Detail -match 'other\.corp\.example' -and $mismatch.Detail -match 'np\.corp\.example')
-    # Reverse proxies and host aliases are legitimate, so this must never abort an install.
+    # Reverse proxies and host aliases are legitimate, so a name mismatch never aborts an install.
     Assert-True -Name 'a name mismatch never carries an abort message' `
         -Condition ([string]::IsNullOrEmpty($mismatch.AbortMessage))
     Assert-True -Name 'a wildcard certificate passes for a host it covers' `
         -Condition ((& $verdict (New-FakeStoreCertificate -Name '*.corp.example')).Status -eq 'Pass')
-    # Expiry is checked before the name: an expired certificate with the right name is still the
-    # more urgent finding, and reporting the name instead would bury it.
+    # Expiry is checked before the name, because expiry is the blocking finding and reporting the
+    # name mismatch instead would hide it behind a warning.
     $expiredAndMismatched = & $verdict (New-FakeStoreCertificate -Name 'other.corp.example' -ValidToDays -1)
     Assert-True -Name 'an expired certificate reports expiry, not the name' `
         -Condition ($expiredAndMismatched.Status -eq 'Fail' -and $expiredAndMismatched.Detail -match 'expired')
 
-    # A fresh host has no thumbprint to give, and the wizard's TLS page now accepts an empty field
-    # for exactly that case - so this branch is what the operator sees next. It answers before the
-    # certificate store is read, which is also why it is assertable here: this suite installs
-    # nothing and reads no store.
+    # A fresh host has no thumbprint to give and the TLS page accepts an empty field for that case,
+    # so this branch is what the operator sees next. It answers before the certificate store is
+    # read, which is why it is assertable without a store.
     $noneGiven = Test-NodePilotTlsCertificate -Thumbprint '' -PublicHostname 'np.corp.example'
     Assert-True -Name 'no certificate at all is a blocking failure' `
         -Condition ($noneGiven.Status -eq 'Fail' -and $noneGiven.Required)
     Assert-True -Name 'the generator is offered when no certificate was named' `
         -Condition ($noneGiven.CanAutoFix -and $noneGiven.AutoFixLabel -match 'self-signed')
-    # Offered, not pre-ticked. Minting a lab certificate is a decision, and a rollout that meant to
-    # use its PKI certificate must not acquire a self-signed one by pressing Next.
+    # Offered, not pre-ticked: a rollout that means to use its PKI certificate must not end up with
+    # a self-signed one by pressing Next.
     Assert-True -Name 'generating a lab certificate is never the default tick' `
         -Condition (-not $noneGiven.AutoFixDefault)
-    # It used to read "Certificate  is not present in Cert:\LocalMachine\My" - the gap in that
-    # sentence was the empty thumbprint being rendered as though it were one.
+    # An empty thumbprint must not be rendered as if it were a real one in the message.
     Assert-True -Name 'the message says none was selected instead of naming an empty one' `
         -Condition ($noneGiven.Detail -match 'No certificate selected' -and $noneGiven.Detail -notmatch 'is not present')
 
     # --- the publisher of the artifact the setup carries --------------------------------------
-    # The installation no longer requires the publisher to be trusted here: it verifies the CMS
-    # signature and compares the signer against a pinned thumbprint. So "not trusted" is a note.
+    # The installation does not require the publisher to be trusted here: it verifies the CMS
+    # signature and compares the signer against a pinned thumbprint, so "not trusted" is a note.
     #
-    # What it still rejects - expired, not yet valid, not permitted to sign code - must NOT be
-    # reported as an optional yellow line, or this row would promise an installation that then
-    # fails. That is the whole point of the ordering below, and these assertions are what hold it.
+    # What the installation still rejects - expired, not yet valid, not permitted to sign code -
+    # must be reported as blocking, or the row would promise an installation that then fails. The
+    # ordering below is what keeps those apart.
     #
-    # Certificates are built in memory rather than with New-SelfSignedCertificate: this suite writes
-    # to no certificate store on the machine it runs on.
+    # Certificates are built in memory rather than with New-SelfSignedCertificate, so this suite
+    # writes to no certificate store on the machine it runs on.
     function New-TestPublisherCertificateFile {
         param(
             [Parameter(Mandatory)][string]$FileName,
@@ -979,9 +953,9 @@ try {
                     (New-Object System.Security.Cryptography.X509Certificates.X509KeyUsageExtension $KeyUsage, $true))
             }
             if ($WithUnknownCriticalExtension) {
-                # Gives X509Chain something to object to that importing the certificate would not
-                # fix: it reports HasNotSupportedCriticalExtension and InvalidExtension alongside
-                # UntrustedRoot. That is the only way to reach the "not only trust" branch.
+                # Gives X509Chain a defect that importing the certificate would not fix: it reports
+                # HasNotSupportedCriticalExtension and InvalidExtension alongside UntrustedRoot,
+                # which is what reaches the branch for failures beyond missing trust.
                 $request.CertificateExtensions.Add(
                     (New-Object System.Security.Cryptography.X509Certificates.X509Extension `
                         '1.3.6.1.4.1.99999.1', ([byte[]](4, 2, 1, 2)), $true))
@@ -1013,8 +987,8 @@ try {
     $untrusted = New-TestPublisherCertificateFile -FileName 'untrusted-publisher.cer'
     $verdict = Test-NodePilotArtifactSignerTrust `
         -CertificatePath $untrusted.Path -ExpectedThumbprint $untrusted.Thumbprint
-    # THE change: an untrusted publisher is a note, not a gate. The signature is verified against the
-    # pinned thumbprint either way.
+    # An untrusted publisher is a note, not a gate: the signature is verified against the pinned
+    # thumbprint either way.
     Assert-True -Name 'an untrusted publisher no longer blocks the install' `
         -Condition ($verdict.Status -eq 'Warn' -and -not $verdict.Required)
     Assert-True -Name 'an untrusted publisher is still offered for trusting' `
@@ -1070,9 +1044,7 @@ try {
     Assert-True -Name 'a publisher certificate without the code-signing purpose blocks the install' `
         -Condition ($noEkuVerdict.Status -eq 'Fail' -and $noEkuVerdict.Required)
 
-    # The one the chain used to catch for us: the EKU says what the certificate is FOR, KeyUsage
-    # says what the key MAY DO. Code-signing EKU with a KeyUsage that forbids signing is a
-    # certificate that may not sign code, and CheckSignature($true) will not notice.
+    # EKU states certificate purpose; KeyUsage must also permit signing.
     $wrongUsage = New-TestPublisherCertificateFile -FileName 'wrong-usage-publisher.cer' `
         -KeyUsage ([System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyEncipherment)
     $wrongUsageVerdict = Test-NodePilotArtifactSignerTrust `
@@ -1237,11 +1209,8 @@ try {
     Assert-True -Name 'the passing row says the login was actually tried' `
         -Condition ($pgOk.Detail -match 'can log in')
 
-    # What is missing comes from pg_roles and pg_database, NOT from psql's message. That message is
-    # localised: the de-DE cluster this was built against answers "Rolle »nodepilot« existiert
-    # nicht" and "Passwort-Authentifizierung ... fehlgeschlagen", so an English-only matcher
-    # classifies correctly on one host and calls everything "refused" on the next. The German
-    # strings below are the real ones, kept as the regression they are.
+    # Determine missing roles and databases from the catalog because psql messages are localized.
+    # These fixtures confirm that localized errors do not affect classification.
     $germanNoRole = 'psql: Fehler: FATAL: Rolle »nodepilot« existiert nicht'
     $germanBadPassword = 'psql: Fehler: FATAL: Passwort-Authentifizierung für Benutzer »nodepilot« fehlgeschlagen'
 

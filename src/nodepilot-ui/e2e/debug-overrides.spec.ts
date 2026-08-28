@@ -2,29 +2,16 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 39 — Debug: Variable Overrides (lines 3136-3157).
+ * E2ETests.md part 39 - debug variable overrides.
  *
- * What the feature does:
- *   - A debug run (POST /execute with { debug: true }) lets the engine honour breakpoints.
- *   - When a step pauses, the engine emits a SignalR `StepPaused` event carrying the (redacted)
- *     variable snapshot. The editor renders PausedVariablesInspector with editable variable rows
- *     + Continue / Step Over / Stop buttons.
- *   - Continue/Step Over/Stop POST /api/executions/{id}/resume with
- *     { stepId, mode, overrides }, where `overrides` = the variables the user edited.
+ * A debug run (POST /execute with { debug: true }) makes the engine honour breakpoints. On a
+ * pause, SignalR delivers `StepPaused` with the redacted variable snapshot, the editor renders
+ * PausedVariablesInspector, and Continue / Step Over / Stop POST /api/executions/{id}/resume
+ * with { stepId, mode, overrides }.
  *
- * HERMETIC LIMITATION (documented per playbook):
- *   The pause state AND the override variable VALUES arrive exclusively over SignalR
- *   (`StepPaused.variables`). SignalR is mocked to 404 in this harness, so a live pause never
- *   reaches the client through the normal path. The REST hydration fallback
- *   (useSignalR.hydrateActive → GET /executions/{id}/steps) maps step rows but DROPS the
- *   `pausedVariables`/`pausedAt`/`pausedReason` fields (they are not part of ApiStepItem) — so
- *   even a REST-seeded Paused step renders the inspector with ZERO editable variables, leaving
- *   nothing to override. The resume-with-overrides BODY is therefore not reachable hermetically.
- *
- * So this file asserts what IS observable:
- *   39.entry — the Debug-run button (the override flow's entry point) POSTs /execute with
- *              debug:true. This is the documented contract that turns on breakpoint pausing.
- *   39.1 (resume body w/ overrides) — SKIPPED with the reason above; it needs SignalR.
+ * SignalR is mocked to 404 in this harness and the REST hydration fallback drops
+ * `pausedVariables`, so the inspector never gets editable variables. Only the debug-run entry
+ * point is asserted here; the resume body carrying overrides is skipped.
  */
 
 const WF_ID = 'c39c39c3-0000-0000-0000-00000000c39c';
@@ -49,7 +36,7 @@ function node(page: Page, id: string) {
   return page.locator(`.react-flow__node[data-id="${id}"]`);
 }
 
-// A 2-step workflow with a breakpoint on step B (data.breakpoint:true), matching Teil 39's setup.
+// Two-step workflow with a breakpoint on step B (data.breakpoint:true), as in part 39's setup.
 const DEF = JSON.stringify({
   nodes: [
     { id: 'stepA', type: 'activity', position: { x: 40, y: 40 }, data: { label: 'Produce', activityType: 'runScript', outputVariable: 'stepA', config: { script: "Write-Output 'real'" } } },
@@ -87,16 +74,14 @@ test.describe('Debug — Variable Overrides (Teil 39)', () => {
     await debugBtn.click();
 
     await expect.poll(() => sink.body, { timeout: 10_000 }).not.toBeNull();
-    // No manualTrigger parameters → runs directly with debug:true (no run dialog).
+    // Without manualTrigger parameters the run starts directly with debug:true (no run dialog).
     expect(sink.body).toMatchObject({ debug: true });
   });
 
-  // The override-send contract (resume body { mode, overrides:{...} }) is SignalR-gated.
-  // SignalR is mocked 404 here and REST hydration drops `pausedVariables`, so the inspector
-  // can never present editable variables to override. Covered by NodePilot.Engine.Tests /
-  // NodePilot.Api.Tests (resume + override semantics) + the StepTestPanel/ExecutionPanel vitest
-  // suites instead. See file header for the full mechanism.
+  // The override-send contract (resume body { mode, overrides:{...} }) needs SignalR, which is
+  // mocked 404 here, so the inspector never presents editable variables. Covered by the Engine
+  // and Api backend tests and by the StepTestPanel/ExecutionPanel vitest suites instead.
   test.skip('39.1 — resume sends { mode:"continue", overrides:{ "stepA.output":"mocked" } }', () => {
-    // Intentionally empty — see skip reason above (SignalR-driven pause + override values).
+    // Intentionally empty; the skip reason is above.
   });
 });

@@ -13,7 +13,8 @@ namespace NodePilot.Scheduler.SystemAlerts.Sources;
 /// sees it: <c>schedule-missed</c> only walks cron triggers and needs an expected fire time, which
 /// an event-driven trigger has none of; <c>service-stale</c> only measures heartbeat age, and the
 /// orchestrator keeps beating because its sync pass succeeds even while every trigger it manages
-/// is broken. A policy like <c>unhealthySeconds &gt; 60</c> pages once retries stop being transient.
+/// is broken. A policy like <c>unhealthySeconds &gt; 60</c> pages once retries stop being
+/// transient.
 ///
 /// The only source reading process memory rather than the database — see
 /// <see cref="TriggerHealthRegistry"/> for why, including the HA caveat.

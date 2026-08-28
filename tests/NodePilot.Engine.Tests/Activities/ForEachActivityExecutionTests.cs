@@ -274,7 +274,8 @@ public sealed class ForEachActivityExecutionTests : IDisposable
 
         public List<(Workflow Workflow, Dictionary<string, string>? Parameters)> Calls { get; } = [];
 
-        /// <summary>Index from which every child execution reports Failed. Null = all succeed.</summary>
+        /// <summary>Index from which every child execution reports Failed. Null = all
+        /// succeed.</summary>
         public int? FailFrom { get; init; }
 
         public Exception? Throw { get; init; }

@@ -4,9 +4,9 @@ import { ModalShell } from '../../../components/common/ModalShell';
 
 describe('ModalShell', () => {
   it('marks the default panel with np-modal-panel', () => {
-    // The class is the hook the dark-mode lift hangs on (index.css): a dialog is a raised
-    // surface, so the recessed `.input-field` inside it has something to sink into. Without
-    // it the fields paint themselves the panel's own colour and disappear.
+    // The class is the hook for the dark-mode lift in index.css: it makes the dialog a raised
+    // surface so the recessed `.input-field` inside it has something to sink into. Without the
+    // class the fields take the panel's own colour and become invisible.
     render(<ModalShell><p>body</p></ModalShell>);
     const panel = screen.getByText('body').parentElement!;
     expect(panel).toHaveClass('np-modal-panel');

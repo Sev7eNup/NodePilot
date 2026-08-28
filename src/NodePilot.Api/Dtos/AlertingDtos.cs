@@ -4,7 +4,8 @@ namespace NodePilot.Api.Dtos;
 
 /// <summary>
 /// One delivery route of a rule. <see cref="Secret"/> is write-or-keep: responses return the
-/// unchanged-sentinel when a secret is stored (never the cipher), and a request echoing the sentinel
+/// unchanged-sentinel when a secret is stored (never the cipher), and a request echoing the
+/// sentinel
 /// keeps the stored secret. <see cref="Id"/> round-trips so an edit preserves the route's stored
 /// secret without the client re-sending it.
 /// </summary>
@@ -63,7 +64,8 @@ public record TestFireRouteResult(string Channel, string Target, bool Success, s
 
 public record TestFireResponse(bool AllSucceeded, IReadOnlyList<TestFireRouteResult> Results);
 
-/// <summary>One row of the delivery ledger (read-only). No secrets — only channel + target.</summary>
+/// <summary>One row of the delivery ledger (read-only). No secrets — only channel +
+/// target.</summary>
 public record NotificationDeliveryDto(
     Guid Id,
     Guid RuleId,

@@ -12,7 +12,7 @@ namespace NodePilot.Engine.Tests.Retention;
 
 /// <summary>
 /// Coverage for the lone interesting path in IdempotencyKeyCleanupService — the
-/// "delete rows whose ExpiresAt is in the past" sweep, driven through the internal
+/// expired-row sweep, driven through the internal
 /// <c>PurgeOnceAsync</c> seam (no 30-second warm-up / lifecycle teardown needed).
 /// </summary>
 public class IdempotencyKeyCleanupServiceTests

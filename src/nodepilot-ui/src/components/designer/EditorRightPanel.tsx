@@ -31,10 +31,10 @@ interface EditorRightPanelProps {
 
 /**
  * Selects which right-side panel to show based on the current selection:
- *   - ≥2 nodes selected → BulkEditPanel
- *   - exactly 1 node selected → PropertiesPanel
- *   - exactly 1 edge selected → EdgePropertiesPanel
- *   - nothing → nothing
+ *   - ≥2 nodes selected -> BulkEditPanel
+ *   - exactly 1 node selected -> PropertiesPanel
+ *   - exactly 1 edge selected -> EdgePropertiesPanel
+ *   - nothing -> nothing
  *
  * Hidden entirely in fullscreen mode.
  */

@@ -10,8 +10,8 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:5000',
       // Backend health endpoints (/healthz/live, /healthz/ready) live outside /api.
-      // Proxy them so the in-app backend-status indicator works in dev exactly as in
-      // prod (where the backend serves the SPA same-origin).
+      // Proxying them keeps the in-app backend-status indicator working in dev, where
+      // the SPA is not served by the backend on the same origin.
       '/healthz': 'http://localhost:5000',
       '/hubs': {
         target: 'http://localhost:5000',

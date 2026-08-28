@@ -9,7 +9,8 @@ namespace NodePilot.Data.Tests;
 
 /// <summary>
 /// <see cref="ExecutionLogReader"/> — the data source behind the AI chat's execution-log
-/// tools. SQLite in-memory; redaction runs through the deterministic <see cref="StubAuditDetailsRedactor"/>.
+/// tools. SQLite in-memory; redaction runs through the deterministic <see
+/// cref="StubAuditDetailsRedactor"/>.
 /// </summary>
 public class ExecutionLogReaderTests
 {
@@ -124,7 +125,8 @@ public class ExecutionLogReaderTests
     public async Task GetRecentExecutionsAsync_RedactsErrorMessage()
     {
         // Sentinel for the list path: without this test, the Redact(e.ErrorMessage) call in
-        // GetRecentExecutionsAsync could be deleted unnoticed (the steps path has its own separate sentinel test).
+        // GetRecentExecutionsAsync could be deleted unnoticed (the steps path has its own separate
+        // sentinel test).
         await using var db = TestDbFactory.Create();
         var wf = SeedWorkflow(db);
         SeedExecution(db, wf.Id, ExecutionStatus.Failed, errorMessage: "password hunter2 leaked");

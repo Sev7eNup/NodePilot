@@ -14,8 +14,8 @@ namespace NodePilot.Data.Tests;
 /// <summary>
 /// MigrationBootstrapper.Bootstrap is a thin wrapper around
 /// <c>db.Database.Migrate()</c>. The interesting contract:
-///   * Empty DB → applies the full migration set, all schema is created.
-///   * Already-migrated DB → no-op, no errors.
+///   * Empty DB -> applies the full migration set, all schema is created.
+///   * Already-migrated DB -> no-op, no errors.
 ///   * Logs the applied count + provider name (operator visibility).
 ///
 /// Tests use a real on-disk SQLite file (rather than :memory:) because EF's migration
@@ -73,11 +73,9 @@ public sealed class MigrationBootstrapperTests : IDisposable
     }
 
     /// <summary>
-    /// A stopped database is the most common first-run failure, and it used to surface as a raw
-    /// provider exception plus stack trace, which reads as a crash rather than as "start Postgres
-    /// first". The wrapper must name the connection target — and must never echo the password,
-    /// which is why the message is built from DataSource/Database rather than the connection
-    /// string.
+    /// A stopped database must produce an actionable startup error that names the connection target
+    /// without exposing credentials. The message uses DataSource and Database instead of the full
+    /// connection string.
     ///
     /// <para>The complementary case (reachable database, migration succeeds) is covered by
     /// <see cref="Bootstrap_FreshDatabase_AppliesAllMigrationsAndCreatesSchema"/>: it would fail
@@ -87,7 +85,8 @@ public sealed class MigrationBootstrapperTests : IDisposable
     public void Bootstrap_UnreachableDatabase_ThrowsWithTheConnectionTargetAndWithoutThePassword()
     {
         const string password = "super-secret-must-never-be-logged";
-        // Port 1 has no listener, so the connect fails immediately rather than waiting out a timeout.
+        // Port 1 has no listener, so the connect fails immediately rather than waiting out a
+        // timeout.
         var options = new DbContextOptionsBuilder<NodePilotDbContext>()
             .UseNpgsql($"Host=127.0.0.1;Port=1;Database=nodepilot_unreachable;Username=np;Password={password};Timeout=1;Command Timeout=1")
             .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning))
@@ -255,10 +254,8 @@ public sealed class MigrationBootstrapperTests : IDisposable
     [Fact]
     public void Bootstrap_SeedClusterLeader_DbUpdateException_WithRowAbsent_IsRethrown()
     {
-        // The narrow case the new logic specifically protects: SaveChanges fails with a
-        // DbUpdateException AND the row does not exist afterward. Previously the catch
-        // swallowed the exception unconditionally and the boot continued — masking real
-        // permission/constraint problems behind a "lost the seed race" log message.
+        // Rethrow SaveChanges failures when the row is still absent because they indicate a real
+        // permission or constraint problem rather than a concurrent seed race.
         //
         // We exercise this by constructing a ClusterLeader with a value that violates
         // the schema (e.g. NULL where NOT NULL is required) and then invoking the seed

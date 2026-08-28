@@ -464,7 +464,8 @@ public class DbAdminControllerTests
             new User { Id = otherAdminId, Username = "other", PasswordHash = "h", Role = UserRole.Admin, IsActive = true, CreatedAt = DateTime.UtcNow, PasswordChangedAt = DateTime.UtcNow, SecurityStamp = 7 });
         await db.SaveChangesAsync();
 
-        // Demote other admin when caller is also admin — this is allowed (2 admins, losing 1 leaves 1)
+        // Demote other admin when caller is also admin — this is allowed (2 admins, losing 1 leaves
+        // 1)
         var result = await ctrl.PatchRow(
             "User", [otherAdminId.ToString()],
             new DbAdminPatchRequest("Role", JsonVal("Operator")),
@@ -486,7 +487,7 @@ public class DbAdminControllerTests
             new User { Id = otherId, Username = "admin2", PasswordHash = "h", Role = UserRole.Admin, IsActive = true, CreatedAt = DateTime.UtcNow, PasswordChangedAt = DateTime.UtcNow });
         await db.SaveChangesAsync();
 
-        // Admin demoting themselves, even when another admin exists → blocked
+        // Admin demoting themselves, even when another admin exists -> blocked
         var result = await ctrl.PatchRow(
             "User", [adminId.ToString()],
             new DbAdminPatchRequest("Role", JsonVal("Operator")),

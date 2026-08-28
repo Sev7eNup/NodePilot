@@ -46,36 +46,23 @@ public class OperationsController : ControllerBase
         => Math.Max(1, _configuration?.GetValue("Alerting:LongRunningSeconds", 600) ?? 600);
 
     /// <summary>
-    /// Selectable timeline windows, in minutes. Anything else clamps to <see cref="DefaultWindowMinutes"/>.
-    /// Mirrored by <c>OPS_WINDOW_MINUTES</c> in the SPA's lib/opsTimeline.ts and named in the CLI and
+    /// Selectable timeline windows, in minutes. Anything else clamps to <see
+    /// cref="DefaultWindowMinutes"/>.
+    /// Mirrored by <c>OPS_WINDOW_MINUTES</c> in the SPA's lib/opsTimeline.ts and named in the CLI
+    /// and
     /// MCP option help — changing this list means changing all four.
     /// </summary>
     private static readonly int[] AllowedWindowMinutes = [30, 60];
 
-    /// <summary>Window a caller gets when it names none, or names one that is not selectable.</summary>
+    /// <summary>Window a caller gets when it names none, or names one that is not
+    /// selectable.</summary>
     internal const int DefaultWindowMinutes = 30;
 
     /// <summary>
-    /// Cap on returned settled runs. This is a RENDER budget, not a window budget — the same
-    /// number at every window, because what it bounds is how many bars the console holds, and that
-    /// does not care how far back the caller looked. Coverage beyond it is not this cap's job:
-    /// whatever it cannot reach comes back aggregated in <see cref="OpsDensityLane"/>, so widening
-    /// the window can no longer punch a hole that reads as "nothing ran".
-    ///
-    /// The number is the point where bars stop being individually readable, not an arbitrary
-    /// round figure. A bar needs roughly 8 px of lane to be countable; a ~1500 px track therefore
-    /// holds ~185 per lane, and a busy board runs ~24 lanes — about 4400 bars before the view is
-    /// lying either way.
-    ///
-    /// Sitting just under that is what makes the widest offered window whole: on a measured 2980
-    /// finished-runs-per-hour system the 1 h view fits inside the cap with headroom, where the
-    /// previous 1000 covered only its newest ~20 minutes and handed the rest to the aggregate. That
-    /// is the entire reason this number moved — lowering it back re-creates the original complaint
-    /// on the first busy hour.
-    ///
-    /// Affordable only because settled bars no longer animate — see .np-ops-bar in index.css. The
-    /// per-tick cost that the old cap was really guarding was a `left`/`width` CSS transition on
-    /// every bar, which is a layout animation, not a compositor one.
+    /// Cap on returned settled runs. This is a render budget, not a window budget: it bounds how
+    /// many bars the console can draw, independent of how far back the caller looked. Runs beyond
+    /// the cap are not dropped; they are reflected in the aggregated <see cref="OpsDensityLane"/>
+    /// instead. Affordable because settled bars no longer animate — see .np-ops-bar in index.css.
     /// </summary>
     internal const int RecentCap = 4000;
 
@@ -88,11 +75,10 @@ public class OperationsController : ControllerBase
 
     /// <summary>
     /// Row ceiling for the density scan. The aggregate is computed in memory rather than in SQL
-    /// deliberately: portable date-part bucketing across Postgres, SQL Server AND the SQLite test
-    /// backend is a translation minefield, and 20 000 narrow rows is a cheap indexed range read.
-    /// At the 1 h window this is ~333 finished runs per minute sustained — well past the busiest
-    /// real load — and if it is ever hit, <c>Meta.DensityCapped</c> says so instead of quietly
-    /// under-counting.
+    /// because portable date-part bucketing across Postgres, SQL Server and the SQLite test
+    /// backend is impractical, and this many narrow rows is still a cheap indexed range read. If
+    /// the cap is ever hit, <c>Meta.DensityCapped</c> reports it instead of under-counting
+    /// silently.
     /// </summary>
     private const int DensityScanCap = 20_000;
 
@@ -103,7 +89,8 @@ public class OperationsController : ControllerBase
     /// </summary>
     private const int ProgressEnrichmentCap = 300;
 
-    /// <summary>Observed step activity of one live run. See <see cref="OpsRunningExecution"/>.</summary>
+    /// <summary>Observed step activity of one live run. See <see
+    /// cref="OpsRunningExecution"/>.</summary>
     private readonly record struct StepActivity(
         int Finished, int Active, DateTime? LastProgressAt, string? LastStepName);
 
@@ -124,18 +111,17 @@ public class OperationsController : ControllerBase
         if (workflowQuery is null || execQuery is null)
             return Ok(new OperationsGraphDto([], [], [], [], [], emptyMeta));
 
-        // Deliberately WITHOUT DefinitionJson. Definitions are unbounded text including every
-        // inline script (21-42 KB apiece in the repo's example set) and the only thing this endpoint
-        // wants from them is the child-workflow call graph, which changes when a workflow is saved
-        // and not when somebody polls. UpdatedAt rides along as the revision marker that lets
-        // WorkflowCallSiteCache decide whose definition actually has to be read — steady state is
-        // none of them. See the cache's remarks for the measured cost this removes.
+        // Deliberately without DefinitionJson: definitions are unbounded text including every
+        // inline script, and this endpoint only needs the child-workflow call graph, which changes
+        // when a workflow is saved, not when somebody polls. UpdatedAt is the revision marker
+        // WorkflowCallSiteCache uses to decide which definitions still need to be read.
         var workflows = await workflowQuery
             .Select(w => new { w.Id, w.Name, w.FolderId, w.IsEnabled, w.UpdatedAt })
             .ToListAsync(ct);
 
         // Request-local and authoritative for THIS response. Deliberately not a second read of the
-        // shared cache after storing: two polls racing across a save could otherwise interleave into
+        // shared cache after storing: two polls racing across a save could otherwise interleave
+        // into
         // a mixed answer, and an eviction landing mid-request would silently drop the edges of
         // workflows this very request had already extracted.
         var callSitesByWorkflow = new Dictionary<Guid, IReadOnlyList<WorkflowCallSite>>(workflows.Count);
@@ -167,15 +153,11 @@ public class OperationsController : ControllerBase
             .Select(f => new { f.Id, f.Path })
             .ToDictionaryAsync(f => f.Id, f => f.Path, ct);
 
-        // Per-folder capabilities, resolved once per DISTINCT folder and reused for every node
-        // in it. GetWorkflowCapabilitiesAsync short-circuits for global Admin (zero queries) and
-        // is per-request cached by (folderId, userId), so this costs at most one lookup per
-        // folder even on a large snapshot.
-        //
-        // Deliberately per-node rather than one snapshot-wide flag: cancel/retry need
-        // ResourceOp.Run, disable needs ResourceOp.Edit, and both are folder-scoped. A global
-        // Operator holding only folder-Viewer rights must see disabled buttons here rather than
-        // click one and collect a 403 from the endpoint.
+        // Capabilities are resolved once per distinct folder and reused for every node in it
+        // (GetWorkflowCapabilitiesAsync short-circuits for global Admin and is per-request
+        // cached). Kept per-node rather than as one snapshot-wide flag because cancel/retry need
+        // ResourceOp.Run and disable needs ResourceOp.Edit, both folder-scoped — a folder-Viewer
+        // must see disabled buttons here instead of hitting a 403 from the endpoint.
         var capsByFolder = new Dictionary<Guid, ResourceCapabilities>(folderIds.Count);
         foreach (var folderId in folderIds)
             capsByFolder[folderId] = await _authz.GetWorkflowCapabilitiesAsync(User, folderId, ct);
@@ -190,11 +172,9 @@ public class OperationsController : ControllerBase
             .GroupBy(r => r.WorkflowId)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        // Step activity for the live bars. Bounded three ways: skipped entirely on an idle system
-        // (the common case), capped at the OLDEST N running runs (those are the ones an operator
-        // cares about), and driven off the (WorkflowExecutionId, StartedAt) index — never an
-        // unbounded StepExecutions scan. Reads only; the documented-rejected "batch-write step
-        // rows" idea stays rejected.
+        // Step activity for the live bars, bounded three ways: skipped entirely on an idle system,
+        // capped at the oldest N running runs (the ones an operator cares about), and driven off
+        // the (WorkflowExecutionId, StartedAt) index rather than an unbounded StepExecutions scan.
         var activityByExec = new Dictionary<Guid, StepActivity>();
         if (runningRows.Count > 0)
         {
@@ -214,7 +194,7 @@ public class OperationsController : ControllerBase
                     Finished = g.Count(s => s.Status != ExecutionStatus.Running
                                          && s.Status != ExecutionStatus.Pending
                                          && s.Status != ExecutionStatus.Paused),
-                    // Progress means work that actually RAN. A Skipped row is a control-flow
+                    // Progress means work that actually ran. A Skipped row is a control-flow
                     // branch that never executed; letting it set "last progress" would reset
                     // the stagnation clock without anything having happened.
                     LastProgressAt = g
@@ -260,9 +240,12 @@ public class OperationsController : ControllerBase
                      && e.Status != ExecutionStatus.Pending
                      && e.Status != ExecutionStatus.Paused);
 
-        // ThenByDescending(Id) is part of the contract, not a nicety: without a tiebreaker, which row
-        // is the 4000th at a shared CompletedAt is up to the provider, so the cap boundary and with it
-        // OldestReturnedCompletedAt -- the seam the console draws density up to -- could differ between
+        // ThenByDescending(Id) is part of the contract, not a nicety: without a tiebreaker, which
+        // row
+        // is the 4000th at a shared CompletedAt is up to the provider, so the cap boundary and with
+        // it
+        // OldestReturnedCompletedAt -- the seam the console draws density up to -- could differ
+        // between
         // two polls of unchanged data and make bars flicker in and out. The (CompletedAt, Id) index
         // serves this sort directly.
         var recentFetched = await settledQuery
@@ -351,7 +334,7 @@ public class OperationsController : ControllerBase
         var running = runningRows
             .Select(r =>
             {
-                // Not-enriched → all-null, deliberately. Zero would read as "this run has done
+                // Not-enriched -> all-null, deliberately. Zero would read as "this run has done
                 // nothing", which is a different (and wrong) claim from "we did not look".
                 var has = activityByExec.TryGetValue(r.Id, out var a);
                 return new OpsRunningExecution(

@@ -31,9 +31,10 @@ internal static class QueryPayloadSource
             if (string.IsNullOrWhiteSpace(path))
                 return (null, fail("'path' is required when source=file"));
 
-            // M-8: apply PathGuard unconditionally. AllowedRoots remain optional, but the
-            // link-local reparse check is not: a local-looking JSON/XML path may be a junction
-            // to an attacker-controlled UNC share even when no IConfiguration was injected.
+            // Apply PathGuard unconditionally. AllowedRoots remain optional, but the
+            // link-local reparse check is not: a local-looking JSON/XML path may be a
+            // junction to an attacker-controlled UNC share even when no IConfiguration
+            // was injected.
             try
             {
                 PathGuard.Validate(pathGuardConfig ?? EmptyPathGuardConfiguration, path);
@@ -46,7 +47,7 @@ internal static class QueryPayloadSource
             if (!File.Exists(path))
                 return (null, fail($"file not found: {path}"));
 
-            // M-7: check size before reading so a 10 GiB file doesn't pin the managed heap.
+            // Check size before reading so a 10 GiB file doesn't pin the managed heap.
             var fileInfo = new FileInfo(path);
             if (fileInfo.Length > maxBytes)
                 return (null, fail(oversizeMessage(path, fileInfo.Length)));

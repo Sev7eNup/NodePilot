@@ -17,7 +17,8 @@ using Xunit;
 namespace NodePilot.Api.Tests.Rbac;
 
 /// <summary>
-/// Verifies that <see cref="WorkflowsController.GetAll"/> + <see cref="WorkflowsController.GetById"/>
+/// Verifies that <see cref="WorkflowsController.GetAll"/> + <see
+/// cref="WorkflowsController.GetById"/>
 /// ship per-row <see cref="WorkflowCapabilities"/> in the DTO so the UI doesn't have to
 /// infer them from the global role.
 /// </summary>
@@ -220,8 +221,8 @@ public sealed class WorkflowResponseCapabilitiesTests : IDisposable
     [Fact]
     public async Task GetAll_PerRow_CapabilitiesReflectFolderRole()
     {
-        // Add a Sales workflow + Sales folder where editor has no grant â€” list response
-        // should NOT contain Sales for the editor.
+        // Add a Sales workflow and Sales folder where the editor has no grant; the list
+        // response should not include Sales for the editor.
         var salesId = Guid.NewGuid();
         _db.SharedWorkflowFolders.Add(new SharedWorkflowFolder
         {

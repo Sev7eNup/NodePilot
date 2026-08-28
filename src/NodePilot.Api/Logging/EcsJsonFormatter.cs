@@ -102,7 +102,7 @@ public sealed class EcsJsonFormatter : ITextFormatter
             {
                 writer.WriteStartObject(ns);
                 // Edge case: NormalizeKey can map two different source names to the same target
-                // (e.g. WorkflowId and workflow_id both → workflow_id). Last-wins via
+                // (e.g. WorkflowId and workflow_id both -> workflow_id). Last-wins via
                 // dictionary. Without this, Utf8JsonWriter writes both keys and several
                 // SIEM ingest pipelines reject duplicates outright; others silently
                 // last-wins. Pinning the behavior explicitly keeps every SIEM consistent.
@@ -127,7 +127,7 @@ public sealed class EcsJsonFormatter : ITextFormatter
             writer.WriteEndObject();
         }
 
-        // Serilog's text writer takes the whole line + newline. Decode utf8 → string just
+        // Serilog's text writer takes the whole line + newline. Decode utf8 -> string just
         // once at the end; the inner writer is bytes-only so the JSON encoding stays correct
         // for non-ASCII payloads (workflow names with umlauts, German error messages, etc.).
         output.Write(System.Text.Encoding.UTF8.GetString(ms.ToArray()));
@@ -176,7 +176,7 @@ public sealed class EcsJsonFormatter : ITextFormatter
     }
 
     /// <summary>
-    /// PascalCase → snake_case-ish: split on capital letters, lowercase. Stable across
+    /// PascalCase -> snake_case-ish: split on capital letters, lowercase. Stable across
     /// SIEM ingest pipelines and matches the ECS field-naming convention. <c>WorkflowId</c>
     /// becomes <c>workflow_id</c>; <c>StepStartedAt</c> becomes <c>step_started_at</c>.
     /// </summary>

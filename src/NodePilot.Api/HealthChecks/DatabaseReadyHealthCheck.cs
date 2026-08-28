@@ -9,13 +9,17 @@ namespace NodePilot.Api.HealthChecks;
 /// <summary>
 /// Readiness, answered fast.
 ///
-/// <para>Replaces <c>AddDbContextCheck</c>, which had two problems that only show up in the situation
-/// the probe is meant to cover. It calls <c>CanConnectAsync</c>, which merely creates a connection and
-/// therefore passes against a hung-but-listening server; and it carries no timeout of its own, so it
+/// <para>Replaces <c>AddDbContextCheck</c>, which had two problems that only show up in the
+/// situation
+/// the probe is meant to cover. It calls <c>CanConnectAsync</c>, which merely creates a connection
+/// and
+/// therefore passes against a hung-but-listening server; and it carries no timeout of its own, so
+/// it
 /// inherits the 120 s command timeout and the retry strategy — readiness then takes minutes and the
 /// load balancer hits its own timeout instead of receiving a clean 503.</para>
 ///
-/// <para>Answering from memory while the breaker is open is the point: readiness must be the fastest
+/// <para>Answering from memory while the breaker is open is the point: readiness must be the
+/// fastest
 /// question in the process, not the slowest.</para>
 /// </summary>
 public sealed class DatabaseReadyHealthCheck(

@@ -8,7 +8,7 @@ import {
   parseLocation,
 } from './languages'
 
-/** Minimal `window` stand-in — `detectLang` only ever touches these two members. */
+/** Minimal `window` stand-in: `detectLang` touches only these two members. */
 function stubWindow(options: { stored?: string | null; languages?: string[] }) {
   vi.stubGlobal('window', {
     localStorage: {
@@ -42,7 +42,7 @@ describe('parseLocation', () => {
   })
 
   it('reports a bare language as the language with no page', () => {
-    // `/de` is what the "back to start" link produces; App fills in the home page.
+    // `/de` is what the back-to-start link produces; App fills in the home page.
     expect(parseLocation('/de')).toEqual({ lang: 'de', current: '' })
   })
 
@@ -52,9 +52,8 @@ describe('parseLocation', () => {
   })
 
   it('keeps the page of a language-less deep link', () => {
-    // Links shared before the site became bilingual must survive: the page is preserved
-    // and only the language is filled in. Losing `current` here would silently dump every
-    // old link on the start page.
+    // A link without a language keeps its page; only the language is filled in. Losing
+    // `current` here would send every such link to the start page.
     expect(parseLocation('/security/hardening')).toEqual({
       lang: null,
       current: 'security/hardening',
@@ -62,8 +61,8 @@ describe('parseLocation', () => {
   })
 
   it('does not mistake a content segment for a language', () => {
-    // Guards the ordering bug: a page whose first segment merely *looks* short must not be
-    // eaten. None of the real top-level segments collide today — this pins that.
+    // A short first segment must not be taken for a language code. No real top-level
+    // segment collides with one, and this pins that.
     expect(parseLocation('/enterprise/folder-rbac')).toEqual({
       lang: null,
       current: 'enterprise/folder-rbac',

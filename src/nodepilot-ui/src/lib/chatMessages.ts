@@ -1,17 +1,18 @@
 import type { AiChatTurn } from '../api/ai';
 import type { ChatMessage } from '../stores/aiChatStore';
 
-// The backend caps history at 20 turns / 50k characters (AiChatController, AiKnowledgeController)
-// → trim hard here, otherwise long threads get a 400 HISTORY_TOO_LONG response.
+// The backend caps history at 20 turns and 50k characters (AiChatController,
+// AiKnowledgeController). Staying below those caps here keeps long threads from getting a
+// 400 HISTORY_TOO_LONG response.
 const MAX_HISTORY_TURNS = 19;
 const MAX_HISTORY_CHARS = 48_000;
 
-/** True for a user-initiated stream abort — the partial bubble stays and no error is shown. */
+/** True for a user-initiated stream abort: the partial bubble stays and no error is shown. */
 export function isAbort(err: unknown): boolean {
   return (err instanceof DOMException || err instanceof Error) && err.name === 'AbortError';
 }
 
-/** Trims the history sent to the backend down to its caps (most recent turns, ≤ character limit). */
+/** Trims the history to the backend caps: the most recent turns within the character limit. */
 export function trimHistory(history: AiChatTurn[]): AiChatTurn[] {
   let turns = history.slice(-MAX_HISTORY_TURNS);
   let total = turns.reduce((s, m) => s + m.content.length, 0);
@@ -65,9 +66,8 @@ export function markToolDoneOnLast(prev: ChatMessage[], toolId: string): ChatMes
 }
 
 /**
- * Marks all assistant messages as done (streaming/building=false). `building` only ever gets set
- * by the designer panel (proposal buffering); for chats that never set it the extra clear is inert
- * — and the store strips both flags before persisting anyway.
+ * Clears the streaming and building flags on every assistant message. Only the designer panel
+ * sets `building` (proposal buffering), so clearing it elsewhere is inert.
  */
 export function finalizeStreaming(prev: ChatMessage[]): ChatMessage[] {
   return prev.map((m) => (m.streaming || m.building ? { ...m, streaming: false, building: false } : m));

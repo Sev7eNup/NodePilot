@@ -6,21 +6,21 @@ namespace NodePilot.Api.Security;
 internal static class SecretComparer
 {
     /// <summary>
-    /// Constant-time string compare. Hardening beyond the stock FixedTimeEquals (Audit L-1):
+    /// Constant-time string compare, hardened beyond the stock FixedTimeEquals:
     ///
-    ///  * Caller-controlled string is capped at 4× the expected length. An attacker who
-    ///    posts a many-megabyte header should not be able to burn CPU in UTF-8 encoding
-    ///    plus the subsequent dummy compare — we short-circuit before allocating.
-    ///  * Length mismatch still runs a fixed-time dummy compare against a zeroed buffer
+    ///  * The caller-controlled string is capped at 4× the expected length, so an attacker
+    ///    posting a many-megabyte header cannot burn CPU on UTF-8 encoding plus the
+    ///    subsequent dummy compare — the check short-circuits before allocating.
+    ///  * A length mismatch still runs a fixed-time dummy compare against a zeroed buffer
     ///    of the correct length so the observable timing does not leak "wrong length"
     ///    vs. "wrong value".
     /// </summary>
     public static bool FixedTimeEquals(string? presented, string? expected)
     {
         if (presented is null || expected is null) return false;
-        // Bound the work an attacker can trigger. expected.Length is bounded by our own
+        // Bound the work an attacker can trigger. expected.Length is bounded by the
         // token generation (base64 of 32 bytes = 44 chars), so the cap is comfortably
-        // above legitimate input while killing DoS-by-giant-header.
+        // above legitimate input while blocking a giant-header DoS.
         if (expected.Length > 0 && presented.Length > expected.Length * 4) return false;
 
         var a = Encoding.UTF8.GetBytes(presented);

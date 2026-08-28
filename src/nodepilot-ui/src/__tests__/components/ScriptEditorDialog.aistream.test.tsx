@@ -1,23 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-// Regression test for the streaming write path, using a REAL (mocked) editor instead of the
-// bare-bones one from the global test setup.
-// The global setup.ts mock is a <textarea> with NO onMount handler → editorRef stays null → the
-// setCode fallback kicks in and would silently hide both streaming bugs this test is guarding
-// against.
-//
-// So here we supply, via onMount, a fake editor backed by a mini text model that tracks real
-// line/column positions:
-//  - executeEdits is a no-op while the editor is read-only, matching real Monaco behavior (this
-//    is what Bug 1 was about),
-//  - executeEdits resolves the edit `range` from line/column into a string offset and replaces
-//    that slice (Bug 2 was about NOT blindly appending text — with a wrong position that would
-//    actually scramble the output),
-//  - executeEdits does NOT move the cursor (this matches real Monaco, which is unreliable here);
-//    only `setPosition` does. That's what makes the old "read cursor via getSelection on every
-//    flush" approach fail here, while the new "track an insert position ourselves" approach
-//    passes.
+// Tests the AI streaming write path against a fake editor supplied through onMount. The global
+// setup.ts mock has no onMount handler, so editorRef stays null and the setCode fallback runs
+// instead of the streaming path. The fake below tracks line/column positions: executeEdits is a
+// no-op while the editor is read-only and otherwise resolves its range to a string offset, and
+// only setPosition moves the cursor. Both match real Monaco.
 const h = vi.hoisted(() => {
   let value = '';
   let readOnly = false;
@@ -96,11 +84,11 @@ vi.mock('@monaco-editor/react', async () => {
   return { default: MockEditor, loader: { config: () => {}, init: () => Promise.resolve({}) } };
 });
 
-// This Range mock must actually STORE its coordinates (the global setup.ts mock discards them) —
-// otherwise the position-tracking fake model above has nothing to resolve the insert location from.
+// This Range mock stores its coordinates, unlike the global setup.ts mock, because the
+// position-tracking fake model above resolves the insert location from them.
 vi.mock('../../lib/monacoSetup', () => ({
-  // Muss mit dem echten Modul mitwachsen: ScriptEditorDialog importiert die Konstante,
-  // und ein fehlender Export im Mock ist in ESM ein harter Fehler, kein `undefined`.
+  // Must stay in sync with the real module: ScriptEditorDialog imports this constant, and a
+  // missing export in the mock is a hard ESM error, not `undefined`.
   MONO_FONT_STACK:
     "'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, 'SFMono-Regular', Menlo, monospace",
   monaco: {
@@ -131,9 +119,8 @@ import { ScriptEditorDialog, advanceStreamPosition } from '../../components/desi
 
 beforeEach(() => h.reset());
 
-// Wait more than one animation frame (~16ms) so the requestAnimationFrame-batched flush runs
-// BETWEEN tokens, producing multiple flushes — that's the multi-flush code path where the
-// scrambling bug used to occur.
+// Wait longer than one animation frame (~16 ms) so the requestAnimationFrame-batched flush runs
+// between tokens, which exercises the multi-flush path.
 const tick = () => new Promise<void>((r) => setTimeout(r, 30));
 
 function startGenerate(replaceAll: boolean) {
@@ -156,7 +143,7 @@ describe('ScriptEditorDialog — AI streaming order into a real (read-only) edit
 
     await waitFor(() => {
       const ed = screen.getByTestId('monaco-editor-mock') as HTMLTextAreaElement;
-      expect(ed.value).toBe('$now = Get-Date\nWrite-Host "Zeit: $now"'); // in Reihenfolge, alter Inhalt weg
+      expect(ed.value).toBe('$now = Get-Date\nWrite-Host "Zeit: $now"'); // in order, old content gone
     });
   });
 

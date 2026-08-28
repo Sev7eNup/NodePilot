@@ -84,10 +84,9 @@ describe('buildTimelineBars', () => {
   });
 
   it('takes no window, so a clock tick cannot change its result', () => {
-    // Load-bearing for the render path: bar building and lane allocation sit on this, and both
-    // used to re-run every second only because the window they took had moved. The server already
-    // windows `recent`; a bar that ages past the left edge between two polls is clamped by
-    // placeBar, not dropped here. Feeding an ancient run through proves the filter is really gone.
+    // Bar building and lane allocation depend on this function taking no window argument, so a
+    // clock tick alone cannot change its result. The server already windows `recent`; a bar
+    // that ages past the left edge between polls is clamped by placeBar, not dropped here.
     const bars = buildTimelineBars(
       [],
       [{ executionId: 'old', workflowId: 'w1', status: 'Succeeded', startedAt: iso(NOW - 60 * MIN), completedAt: iso(NOW - 40 * MIN), parentExecutionId: null }],
@@ -130,7 +129,7 @@ describe('assignLanes', () => {
   it('overlapping executions in a lane stack into sub-rows; sequential ones share sub-row 0', () => {
     const { lanes, placed } = assignLanes([
       bar('a', 'w1', 15, 10),  // -15..-10
-      bar('b', 'w1', 12, 5),   // -12..-5 overlaps a â†’ sub-row 1
+      bar('b', 'w1', 12, 5),   // -12..-5 overlaps a, so it lands in sub-row 1
       bar('c', 'w1', 9, 7),    // -9..-7 fits after a in sub-row 0
     ], nodes);
     expect(lanes[0].subRowCount).toBe(2);
@@ -143,7 +142,7 @@ describe('assignLanes', () => {
   it('a running bar blocks its sub-row indefinitely', () => {
     const { lanes, placed } = assignLanes([
       bar('a', 'w1', 10, null),  // running since -10m
-      bar('b', 'w1', 5, 3),      // would fit after a if a had ended â€” it hasn't
+      bar('b', 'w1', 5, 3),      // would fit after a if a had ended, but it hasn't
     ], nodes);
     expect(lanes[0].subRowCount).toBe(2);
     expect(placed.find((p) => p.executionId === 'b')!.subRow).toBe(1);
@@ -197,8 +196,8 @@ describe('assignLanes', () => {
 });
 
 describe('buildDensityCells', () => {
-  // A synthetic, no-longer-selectable 4 h window keeps the pure geometry honest for wider callers:
-  // 5-minute buckets, with the bar/aggregate seam 30 min before NOW.
+  // A synthetic 4 h window, not offered as a UI choice, keeps the geometry math testable for
+  // wider callers: 5-minute buckets, with the bar/aggregate seam 30 min before NOW.
   const WIDE = windowFor(NOW, 240 * MIN, 1000);
   const SINCE = NOW - 240 * MIN;
   const SEAM = NOW - 30 * MIN;
@@ -215,13 +214,13 @@ describe('buildDensityCells', () => {
     expect(cell.fromMs).toBe(SINCE + 2 * BUCKET_S * 1000);
     expect(cell.toMs).toBe(SINCE + 3 * BUCKET_S * 1000);
     expect(cell.leftPx).toBeCloseTo(timeToX(cell.fromMs, WIDE), 5);
-    // The DRAWN width is deliberately one pixel short of the time range — see the gap test below.
+    // The drawn width is one pixel short of the time range; see the gap test below.
     expect(cell.widthPx).toBeCloseTo(timeToX(cell.toMs, WIDE) - cell.leftPx - OPS_DENSITY_CELL_GAP_PX, 5);
   });
 
   it('leaves a gap between neighbouring buckets so the slices stay countable', () => {
-    // Abutting cells were half the original defect: to(i) === from(i + 1) exactly, so 48 buckets
-    // fused into one uninterrupted rectangle that read as a single long run.
+    // Cells must not abut: to(i) === from(i + 1) exactly would fuse 48 buckets into one
+    // uninterrupted rectangle that reads as a single long run.
     const [first, second] = cells([{ bucketIndex: 2, total: 5 }, { bucketIndex: 3, total: 5 }]);
     expect(second.leftPx - (first.leftPx + first.widthPx)).toBeCloseTo(OPS_DENSITY_CELL_GAP_PX, 5);
   });
@@ -270,8 +269,8 @@ describe('buildDensityCells', () => {
 
 describe('densityColumnHeight', () => {
   it('is load-bearing that a column can never be as tall as a run bar', () => {
-    // The whole defect: a density slice drawn at (and above) bar height reads as one long run,
-    // which is the misreading the aggregate exists to prevent. Height alone must disambiguate.
+    // A density slice drawn at or above bar height would read as one long run, which is the
+    // misreading this aggregate exists to prevent. Height alone must disambiguate the two.
     expect(OPS_DENSITY_MAX_H).toBeLessThan(OPS_BAR_H);
   });
 
@@ -280,8 +279,8 @@ describe('densityColumnHeight', () => {
   });
 
   it('never lets a hot lane erase a quiet one', () => {
-    // Scaled against the busiest slice on the whole board, a single run beside a 500-run peak
-    // rounds to zero px — and a missing column says "nothing ran here", which is a lie.
+    // Scaled against the busiest slice on the board, a single run beside a 500-run peak would
+    // round to zero px, and a missing column would misleadingly say "nothing ran here".
     expect(densityColumnHeight(1, 500)).toBe(OPS_DENSITY_MIN_H);
   });
 
@@ -415,7 +414,8 @@ describe('tickStepFor', () => {
 
   it('switches step at the boundary, not inside it', () => {
     expect(tickStepFor(30 * MIN + 1)).toBe(15 * MIN);
-    // Wider windows are no longer selectable; the last branch is the floor for anything handed in.
+    // Windows wider than this are not offered in the UI; the last branch is the floor for
+    // anything handed in.
     expect(tickStepFor(240 * MIN)).toBe(15 * MIN);
   });
 });
@@ -483,16 +483,16 @@ describe('assignLanes — sub-row ceiling', () => {
     }));
 
   it('stops stacking at the ceiling instead of growing a lane without bound', () => {
-    // Unbounded, a lane is a function of a workflow's concurrency: the bar cap's worth of overlapping
-    // runs would be ~152 000 px tall, and the anchored layer promotes that into one composited surface.
+    // Without a ceiling, a lane's height grows with a workflow's concurrency, and the anchored
+    // layer would composite that whole tall surface. The ceiling keeps it bounded.
     const { lanes } = assignLanes(overlapping(500), nodes);
     expect(lanes[0].subRowCount).toBe(OPS_MAX_SUB_ROWS);
     expect(lanes[0].subRowsCapped).toBe(true);
   });
 
   it('never drops a bar to stay under the ceiling', () => {
-    // Overlapping is crowded; losing a run would be a lie. Every input must come back placed, and
-    // inside the ceiling.
+    // Every input must come back placed, even when the lane is crowded; the ceiling limits
+    // stacking height, not which runs appear.
     const { placed } = assignLanes(overlapping(500), nodes);
     expect(placed).toHaveLength(500);
     expect(new Set(placed.map((p) => p.executionId)).size).toBe(500);

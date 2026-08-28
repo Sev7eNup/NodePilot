@@ -21,13 +21,11 @@ import { captureAuthBoundaryGeneration } from '../security/authBoundary';
 /**
  * Admin-managed constants available to every workflow via `{{globals.NAME}}` templates.
  * Secrets are stored DPAPI-encrypted on the server and never returned (masked as `"***"`);
- * non-secrets are shown and editable inline. Think SCOrch Variables.
+ * non-secrets are shown and editable inline.
  *
- * Variables are organized into a folder tree (left sidebar) purely for navigation — a folder
- * never changes how a variable resolves (names stay globally unique). Selecting a folder scopes
- * the list to that folder and its descendants; Root shows everything.
- *
- * Access: Admin/Operator can list; only Admin can mutate.
+ * The folder tree in the left sidebar is navigation only: names stay globally unique, so a folder
+ * never changes how a variable resolves. Selecting a folder scopes the list to that folder and its
+ * descendants; Root shows everything. Admin and Operator can list, only Admin can mutate.
  */
 type GlobalVariable = {
   id: string;
@@ -55,9 +53,9 @@ const emptyForm = (folderId: string): FormState => ({
   id: null, name: '', value: '', isSecret: false, description: '', folderId, valueTouched: false,
 });
 
-// Mirrors MachinesPage: ColKey covers every sortable column; ResizableColKey
-// drops the auto-flex column (description) which has no explicit width and no
-// drag-handle. Value is sortable-excluded — masked "***" strings sort to noise.
+// Mirrors MachinesPage: ColKey covers every sortable column, ResizableColKey drops the
+// auto-flex description column, which has no explicit width and no drag handle. Value is not
+// sortable because masked "***" strings sort to noise.
 type ColKey = 'name' | 'type' | 'value' | 'description' | 'updated';
 type ResizableColKey = Exclude<ColKey, 'description'>;
 
@@ -76,7 +74,7 @@ export function GlobalVariablesPage() {
   const queryClient = useQueryClient();
   const { canAdmin } = useRole();
   const isMobile = useIsMobile();
-  // Selected folder scopes the list (descendant-inclusive). Default = Root → shows everything.
+  // Selected folder scopes the list (descendant-inclusive). Default = Root -> shows everything.
   const [selectedFolderId, setSelectedFolderId] = useState<string>(ROOT_FOLDER_ID);
   const [form, setForm] = useState<FormState>(() => emptyForm(ROOT_FOLDER_ID));
   const [showDialog, setShowDialog] = useState(false);
@@ -204,7 +202,7 @@ export function GlobalVariablesPage() {
     setShowDialog(true);
   };
 
-  // Descendant-inclusive set of the selected folder (+ itself). Root → every folder id, so all
+  // Descendant-inclusive set of the selected folder (+ itself). Root -> every folder id, so all
   // variables show. Falls back to just the selected id until the folder list has loaded.
   const scopedFolderIds = useMemo(() => {
     const list = folders ?? [];

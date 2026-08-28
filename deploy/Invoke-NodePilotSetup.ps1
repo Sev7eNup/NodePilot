@@ -5,29 +5,28 @@
     Adapter between the GUI setup wizard and the existing NodePilot deployment scripts.
 .DESCRIPTION
     The wizard collects answers, writes them into an ACL-protected JSON answer file, and calls
-    this script. Nothing here reimplements installation logic: every mode ends in a splat into
+    this script. No installation logic is reimplemented here: every mode ends in a splat into
     Install-NodePilot.ps1, Update-NodePilot.ps1 or one of the provisioning helpers. The answer
-    file contract itself lives in SetupContract.ps1 so it can be tested.
+    file contract lives in SetupContract.ps1 so it can be tested.
 
-    Three reasons the answer file exists rather than a command line:
+    The answer file is used instead of a command line because:
 
       * -PostgresPassword on Install-NodePilot.ps1 is a [SecureString] and cannot cross a
-        `powershell.exe -File` boundary at all.
-      * `Setup.exe /SILENT /ANSWERFILE=prod.json` gives unattended SCCM/GPO deployment for free.
-      * Inno Setup's Pascal script has no unit-test story. Keeping the logic here keeps it
-        testable - see Test-SetupAdapter.ps1.
+        `powershell.exe -File` boundary.
+      * `Setup.exe /SILENT /ANSWERFILE=prod.json` gives unattended SCCM/GPO deployment.
+      * Inno Setup's Pascal script cannot be unit-tested; the logic here can, via
+        Test-SetupAdapter.ps1.
 .PARAMETER Mode
     InitSession - create the ACL-protected session directory and report its path.
     Probe       - run the readiness checks and report them. Never mutates anything.
-    Certificates- list Cert:\LocalMachine\My for the wizard's picker. Reads nothing else, needs
-                  no answer file, and never blocks: the thumbprint can still be typed by hand.
+    Certificates- list Cert:\LocalMachine\My for the wizard's picker. Reads nothing else and
+                  needs no answer file; the thumbprint can still be typed by hand.
     Provision   - carry out the opt-in fixes the operator ticked on the readiness page.
     Apply       - install or upgrade, whichever the answer file declares.
     Cleanup     - shred the answer file and remove the session directory.
 
-    There is deliberately no separate Install and Update mode. The answer file already declares
-    its own mode, and a second way to say the same thing is a second way for the two to disagree -
-    which matters most on the unattended path, where nobody is watching.
+    There is no separate Install and Update mode: the answer file declares its own mode, and a
+    second source for the same fact could disagree with it.
 .PARAMETER SessionPath
     The session directory from InitSession. Required for Cleanup.
 .PARAMETER HandoffPath
@@ -44,7 +43,7 @@
     Transcript destination. Defaults to %TEMP%\nodepilot-server-setup.log.
 .PARAMETER ProgressFile
     Appended one 'step|text' line per phase so the wizard can show live progress instead of
-    freezing for the duration of a 180-second health probe.
+    appearing frozen during a long phase.
 .NOTES
     Exit codes, which the wizard reads:
       0 success (Probe: every required check passed)
@@ -74,16 +73,14 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 3.0
 
 # Windows PowerShell 5.1 evaluates parameter defaults before $PSScriptRoot exists when a script
-# is launched with -File, so paths are resolved after binding. Same trap as in
-# Test-DeploymentTemplates.ps1.
+# is launched with -File, so paths are resolved after binding.
 $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 if ([string]::IsNullOrWhiteSpace($LogPath)) {
     $LogPath = Join-Path $env:TEMP 'nodepilot-server-setup.log'
 }
 # The wizard runs this script from a temporary extraction directory, because the readiness page
-# fires before any file has been installed. The runtime installer and the publisher certificate
-# live under the installed payload instead, so their location is passed in rather than guessed
-# relative to this script.
+# runs before anything is installed. The runtime installer and the publisher certificate live in
+# the payload, so their location is passed in rather than derived from this script's path.
 if ([string]::IsNullOrWhiteSpace($PayloadRoot)) {
     $PayloadRoot = Split-Path -Parent $scriptDirectory
 }
@@ -104,10 +101,9 @@ function Write-NodePilotProgress {
 
 function Write-NodePilotPhaseProgress {
     <#
-      Turns the installer's own output into progress the wizard can draw. Neither
-      Install-NodePilot.ps1 nor Update-NodePilot.ps1 is touched for this: both already announce
-      every phase they enter, and those lines already travel through this process on their way to
-      the log.
+      Turns the installer's own output into progress the wizard can draw. Install-NodePilot.ps1
+      and Update-NodePilot.ps1 announce every phase they enter, and those lines pass through this
+      process on their way to the log.
     #>
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Line)
 
@@ -135,17 +131,15 @@ function Add-NodePilotCheckResults {
 
 function Invoke-NodePilotFirstLogin {
     <#
-      Spends the one-shot setup token on a first admin account, so an unattended installation ends
-      with something to log in with instead of a token nobody is there to type.
+      Redeems the one-shot setup token for a first admin account, so an unattended installation
+      ends with usable credentials instead of a token nobody is there to type.
 
-      Deliberately against localhost: the loopback listener is up by the time the installer has
-      finished its own health probe, and it keeps the call off the network entirely.
+      Called against localhost: the loopback listener is up once the installer's health probe has
+      passed, and the request never leaves the machine.
     #>
-    # PSAvoidUsingPlainTextForPassword is suppressed rather than satisfied. A SecureString here
-    # would be ceremony: this value is generated moments earlier, has to be serialised into a JSON
-    # request body, and is then written to a file in the clear so the automation can read it. There
-    # is no point in the chain where it is not plaintext, and pretending otherwise would only hide
-    # that from the next reader.
+    # PSAvoidUsingPlainTextForPassword is suppressed: the value is generated here, serialised into
+    # a JSON request body and written to a credential file, so it is plaintext at every step and a
+    # SecureString would only hide that.
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
         'PSAvoidUsingPlainTextForPassword', 'Password',
         Justification = 'Sent as a JSON body and written to the credential file; plaintext throughout by design.')]
@@ -160,9 +154,9 @@ function Invoke-NodePilotFirstLogin {
     $body = @{ username = $Username; password = $Password } | ConvertTo-Json -Compress
     $headers = @{ 'X-Setup-Token' = $Token }
 
-    # The certificate on a loopback call is the machine's own, and its name is the public hostname
-    # rather than "localhost". Same relaxation the installer already applies for its readiness
-    # probe, and restored in the finally so nothing else in this process inherits it.
+    # The certificate on a loopback call names the public hostname, not localhost, so validation
+    # is relaxed for this request. The previous policy is restored in the finally block so nothing
+    # else in this process inherits it.
     $previousPolicy = $null
     $policyChanged = $false
     try {
@@ -189,8 +183,8 @@ public class TrustAllCertsBootstrap : ICertificatePolicy {
         return [pscustomobject]@{ Status = 'Created'; Detail = "HTTP $($response.StatusCode)" }
     }
     catch {
-        # The server's own words, verbatim. A password-policy rejection or a pinned-username
-        # mismatch is actionable; "the first login failed" is not.
+        # Report the server's own message: a password-policy rejection or a username mismatch is
+        # actionable, a generic failure is not.
         $detail = $_.Exception.Message
         try {
             $errorResponse = $_.Exception.Response
@@ -209,15 +203,13 @@ public class TrustAllCertsBootstrap : ICertificatePolicy {
 
 function Get-NodePilotServiceCrashReason {
     <#
-      The one sentence worth putting on screen when the service was installed and never reported
-      ready. Install-NodePilot.ps1 writes a full diagnostics block into its transcript, but the
-      wizard shows only the message it gets back - and "did not report /healthz/ready within 180s"
-      names a symptom the operator can do nothing with. The cause sits in the Application log:
+      Returns one sentence explaining why the service was installed but never reported ready. The
+      wizard shows only the message it gets back, and a health-probe timeout names a symptom
+      rather than a cause; the cause sits in the Application log, for example:
 
           SocketException (10013): An attempt was made to access a socket in a way forbidden ...
 
-      Best-effort by construction. A diagnostic that throws would turn a failed installation into
-      a crashed adapter and lose the original error along with it.
+      Best effort: a diagnostic that throws would replace the original failure with its own.
     #>
     # Untyped on purpose: a [datetime] parameter turns an unset caller value into 01-01-0001 rather
     # than staying empty, and Get-WinEvent then scans the whole log.
@@ -235,8 +227,8 @@ function Get-NodePilotServiceCrashReason {
         $info = @($crash.Message -split "`r?`n" |
             Where-Object { $_ -like 'Exception Info:*' }) | Select-Object -First 1
         if (-not $info) { return '' }
-        # One line only: the caller folds this into a message box, and a stack trace there would
-        # bury the sentence that matters.
+        # One line only: the caller shows this in a message box, where a stack trace would bury
+        # the message.
         return ($info -replace '^Exception Info:\s*', '').Trim()
     }
     catch { return '' }
@@ -244,9 +236,9 @@ function Get-NodePilotServiceCrashReason {
 
 function Add-NodePilotCertificateInventory {
     <#
-      Publishes the machine's certificate store for the wizard's picker. Both the probe and the
-      standalone Certificates mode call this one emitter, so the two cannot drift into different
-      field orders behind a Pascal reader that has no way to tell.
+      Publishes the machine's certificate store for the wizard's picker. Probe and the standalone
+      Certificates mode share this one emitter, so both produce the same field order for the
+      Pascal reader.
     #>
     param([Parameter(Mandatory)][System.Collections.IDictionary]$Buffer)
 
@@ -256,8 +248,8 @@ function Add-NodePilotCertificateInventory {
             -Value (Format-NodePilotCertificateLine -Certificate $certificate)
         $index++
     }
-    # Always written, including as 0. The wizard reads the count first and decides between "pick
-    # one" and "there are none" on it; an absent key would make an unreadable store look empty.
+    # Always written, including as 0: the wizard reads the count to decide what to show, and an
+    # absent key would make an unreadable store look empty.
     Set-NodePilotResult -Buffer $Buffer -Section 'certificates' -Name 'count' -Value $index
 }
 
@@ -265,9 +257,9 @@ function Get-NodePilotPsqlPath {
     <#
       The bundled PostgreSQL client, or empty when this build carries none.
 
-      -PgBinariesPath is optional on the build script, so both cases are real and neither is a
-      fault: without it the Postgres row reports reachability the way it always did and says that
-      the login is untested, instead of offering a fix that cannot run.
+      -PgBinariesPath is optional on the build script, so both cases are normal: without the
+      client the Postgres check reports reachability only and marks the login as untested,
+      instead of offering a fix that cannot run.
     #>
     $candidate = Join-Path $PayloadRoot 'psql.exe'
     if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
@@ -286,15 +278,15 @@ function ConvertTo-NodePilotPreflightParameters {
         ServiceName           = [string]$Answers['serviceName']
         # Only the certificate check reads this, to say "issued for X, you are installing Y".
         PublicHostname        = [string]$Answers['network.publicHostname']
-        # Carried into the probe so the readiness page can say "this port cannot be bound" before
-        # the installer finds out the hard way, 180 seconds into a health probe it will lose.
+        # Carried into the probe so the readiness page can report a port that cannot be bound
+        # before the installer fails on it during its health probe.
         HttpsPort             = [int]$Answers['network.httpsPort']
         HttpPort              = [int]$Answers['network.httpPort']
     }
 
-    # The publisher of the artifact this setup carries. Only the setup can answer this - it holds
-    # both the certificate and the thumbprint it was built against - and it is the one requirement
-    # whose failure used to arrive AFTER the readiness page, as a rolled-back installation.
+    # The publisher of the artifact this setup carries. Only the setup knows it, because it holds
+    # both the certificate and the thumbprint it was built against, so the check belongs on the
+    # readiness page rather than in the installation itself.
     if ($PayloadRoot) {
         $splat['ArtifactSignerCertificatePath'] = Get-NodePilotSignerCertificatePath
         $splat['ExpectedSignerThumbprint'] = [string]$TrustedArtifactSignerThumbprint
@@ -328,16 +320,16 @@ function ConvertTo-NodePilotPreflightParameters {
         if ($Answers.Contains('database.postgresPort') -and $Answers['database.postgresPort']) {
             $splat['PostgresPort'] = [int]$Answers['database.postgresPort']
         }
-        # Everything the row needs to answer "can the SERVICE log in" rather than "did the port
-        # answer". Without the client the check falls back to the TCP probe on its own.
+        # Lets the check test whether the service can log in rather than only whether the port
+        # answers. Without the client it falls back to the TCP probe on its own.
         if ($Answers.Contains('database.postgresPassword')) {
             $splat['PostgresPassword'] = ConvertTo-NodePilotSecureString `
                 -PlainText ([string]$Answers['database.postgresPassword'])
         }
         $splat['PostgresRootCertificate'] = [string]$Answers['database.postgresRootCertificate']
         $splat['PsqlPath'] = Get-NodePilotPsqlPath
-        # The superuser is what lets the check ask the catalogue what is missing instead of reading
-        # a localised error message, and what lets it offer to create it.
+        # The superuser lets the check query the catalogue for what is missing and offer to create
+        # it, instead of parsing a localised error message.
         if ($Answers.Contains('provisioning.postgresSuperUser')) {
             $splat['PostgresSuperUser'] = [string]$Answers['provisioning.postgresSuperUser']
         }
@@ -360,10 +352,10 @@ function ConvertTo-NodePilotPreflightParameters {
 }
 
 function Invoke-ProvisionRuntime {
-    # NodePilotServer.iss extracts every dontcopy payload file flat into {tmp}, and passes that
-    # directory as PayloadRoot. Resolve the runtime from that exact contract; a historical
-    # `runtime\` lookup made the offered auto-fix impossible. Refuse ambiguity instead of choosing
-    # an arbitrary installer if a malformed/tampered payload ever contains more than one.
+    # NodePilotServer.iss extracts every dontcopy payload file flat into {tmp} and passes that
+    # directory as PayloadRoot, so the runtime installer sits directly in it. More than one match
+    # is refused rather than resolved arbitrarily, in case the payload is malformed or tampered
+    # with.
     $installers = @(
         Get-ChildItem -LiteralPath $PayloadRoot -Filter 'aspnetcore-runtime-*.exe' -File `
             -ErrorAction SilentlyContinue
@@ -393,12 +385,10 @@ function Invoke-ProvisionRuntime {
 
 function Get-NodePilotSignerCertificatePath {
     <#
-      One definition, because there are now two readers: the readiness check that reports whether
-      this machine trusts the publisher, and the fix that makes it. They drifted once already -
-      this function used to look under 'signer\', a folder the build never creates. Every payload
-      file is extracted flat into {tmp} ([Files] uses dontcopy without recursesubdirs), so the
-      certificate sits directly in PayloadRoot, and the fix reported "no publisher certificate
-      found in the payload" for a file that was right there.
+      Single definition shared by two readers: the readiness check that reports whether this
+      machine trusts the publisher, and the fix that imports it. Every payload file is extracted
+      flat into {tmp} ([Files] uses dontcopy without recursesubdirs), so the certificate sits
+      directly in PayloadRoot.
     #>
     if (-not $PayloadRoot) { return '' }
     return (Join-Path $PayloadRoot 'nodepilot-release-signing.cer')
@@ -438,19 +428,17 @@ function Invoke-NodePilotSetupMode {
     switch ($Mode) {
         'InitSession' {
             . (Join-Path $scriptDirectory 'ArtifactSecurity.ps1')
-            # Under ProgramData rather than the user's TEMP, and not only because an elevated
-            # machine-wide installer belongs there: Inno Setup's LoadStringFromFile hands back an
-            # AnsiString, so the path has to survive a Unicode-to-ANSI round trip. %TEMP% contains
-            # the account name and breaks that for an admin called e.g. "Mueller" spelled with an
-            # umlaut; %ProgramData% is ASCII on every system.
+            # Under ProgramData rather than the user's TEMP: Inno Setup's LoadStringFromFile
+            # returns an AnsiString, so the path has to survive a Unicode-to-ANSI round trip.
+            # %TEMP% contains the account name and can hold non-ASCII characters, while
+            # %ProgramData% is ASCII on every system.
             $session = New-NodePilotRestrictedStagingDirectory `
                 -ParentPath $env:ProgramData -Prefix 'nodepilot-setup-'
             # Everything the wizard drops in here inherits the directory's DACL, which is why the
             # Pascal side performs no ACL work of its own.
-            # WriteAllText with a BOM-less encoder, NOT Set-Content -Encoding UTF8: on Windows
+            # WriteAllText with a BOM-less encoder, not Set-Content -Encoding UTF8: on Windows
             # PowerShell 5.1 that writes a byte-order mark, and Inno Setup reads this file as raw
-            # bytes. The BOM then becomes three leading characters of the path - which looks
-            # correct in a log and resolves to nothing.
+            # bytes, so the BOM would become three leading characters of the path.
             if ($HandoffPath) {
                 [IO.File]::WriteAllText($HandoffPath, $session, [Text.UTF8Encoding]::new($false))
             }
@@ -479,8 +467,8 @@ function Invoke-NodePilotSetupMode {
             $checks = @(Invoke-NodePilotPreflight @preflightSplat)
             Add-NodePilotCheckResults -Results $checks
 
-            # Republished here so a re-check picks up a certificate imported while the wizard was
-            # open, without the operator having to walk back to the TLS page to refresh it.
+            # Republished so a re-check picks up a certificate that was imported while the wizard
+            # was open, without a detour to the TLS page.
             Add-NodePilotCertificateInventory -Buffer $result
 
             $failed = @($checks | Where-Object { $_.Status -eq 'Fail' -and $_.Required })
@@ -489,11 +477,10 @@ function Invoke-NodePilotSetupMode {
         }
 
         'Certificates' {
-            # The certificate list on its own, for the TLS page - which the operator reaches long
-            # before the probe has run, and which is where the thumbprint is actually typed.
-            # Deliberately not a slice of Probe: Probe opens a database connection and can sit on a
-            # network timeout for seconds, and nothing here needs an answer file, a session
-            # directory or elevation. It reads the machine's own certificate store and stops.
+            # The certificate list on its own, for the TLS page, which the operator reaches before
+            # the probe has run. Kept separate from Probe: Probe opens a database connection and
+            # can block on a network timeout, while this mode needs no answer file, no session
+            # directory and no elevation. It reads the machine's certificate store and stops.
             . (Join-Path $scriptDirectory 'Preflight.ps1')
             Add-NodePilotCertificateInventory -Buffer $result
             return 0
@@ -520,9 +507,9 @@ function Invoke-NodePilotSetupMode {
                 $performed++
             }
 
-            # One key, both providers. It means "create whatever database objects the chosen
-            # provider needs"; which script that is follows from database.provider, not from a
-            # second answer-file flag that could disagree with the first.
+            # One key for both providers: create whatever database objects the chosen provider
+            # needs. Which script runs follows from database.provider, not from a second
+            # answer-file flag that could disagree with it.
             if ($answers.Contains('provisioning.createDatabaseAndLogin') -and [bool]$answers['provisioning.createDatabaseAndLogin']) {
                 $outcome = $null
                 if ([string]$answers['database.provider'] -eq 'postgres') {
@@ -530,9 +517,9 @@ function Invoke-NodePilotSetupMode {
                     $psql = Get-NodePilotPsqlPath
                     $superUser = [string]$answers['provisioning.postgresSuperUser']
                     if ([string]::IsNullOrWhiteSpace($superUser)) {
-                        # Not an error: the operator asked for provisioning without giving the
-                        # credentials it needs, which on the wizard path cannot happen and on the
-                        # unattended path is a fixable omission in their answer file.
+                        # Not an error: provisioning was requested without the credentials it
+                        # needs, which the wizard prevents and which is a fixable omission in an
+                        # unattended answer file.
                         $outcome = [pscustomobject]@{
                             Status = 'Skipped'
                             Detail = ('No PostgreSQL superuser was given (provisioning.postgresSuperUser), ' +
@@ -559,13 +546,11 @@ function Invoke-NodePilotSetupMode {
                         "$env:USERDOMAIN\$env:COMPUTERNAME`$"
                     }
                     else { [string]$answers['identity.account'] }
-                    # The certificate host name travels with the server name or the connection is
-                    # rejected before any DDL runs. The runtime connection string carries it as
-                    # HostNameInCertificate and Invoke-NodePilotPreflight is handed it too; leaving
-                    # it off here meant provisioning derived it from -Server instead, so the very
-                    # normal 'localhost' against a server whose TLS certificate names the FQDN died
-                    # with "The target principal name is incorrect" and no database was created.
-                    # An absent key is fine - the script derives the same fallback itself.
+                    # The certificate host name has to travel with the server name, or TLS
+                    # validation rejects the connection before any DDL runs. The runtime
+                    # connection string carries it as HostNameInCertificate and
+                    # Invoke-NodePilotPreflight is handed it too. An absent key is fine: the
+                    # script derives the same fallback itself.
                     $certificateHostName = if ($answers.Contains('database.sqlCertificateHostName')) {
                         [string]$answers['database.sqlCertificateHostName']
                     } else { '' }
@@ -592,8 +577,8 @@ function Invoke-NodePilotSetupMode {
         }
 
         'Apply' {
-            # Stamped before anything runs so the crash lookup below cannot pick up an exception
-            # from an earlier attempt and report it as this one's cause.
+            # Stamped before anything runs so the crash lookup cannot pick up an exception from
+            # an earlier attempt and report it as this run's cause.
             $script:ApplyStartedAt = Get-Date
             # The answer file is authoritative about which of the two this is.
             $declared = [string](Read-NodePilotAnswerFile -Path $AnswerFile)['mode']
@@ -609,17 +594,12 @@ function Invoke-SetupInstall {
 
     $splat = ConvertTo-NodePilotInstallParameters -Answers $answers
 
-    # A certificate created by an earlier Provision in this same session has a thumbprint the
-    # answer file cannot possibly contain. The wizard learns it from provision.ini and writes it
-    # back onto its own TLS page; the unattended path has no page to write to, so the value is
-    # picked up here instead. Without this, a silent run that asks for a self-signed certificate
-    # creates one, orphans it in LocalMachine\My, and installs against whatever thumbprint the
-    # answer file happened to carry.
+    # A certificate created by an earlier Provision in this session has a thumbprint the answer
+    # file cannot contain. The wizard reads it from provision.ini and writes it back onto its TLS
+    # page; the unattended path has no page to write to, so the value is picked up here instead.
     #
-    # Only when the answer file names no certificate of its own. Leaving that field empty is how
-    # an answer file says "generate one"; a file that names a thumbprint has made a choice, and
-    # the wizard reaching this same code after the operator generated one and then typed a
-    # different thumbprint must not have that choice overwritten behind it.
+    # Only when the answer file names no certificate of its own: an empty field means generate
+    # one, while a named thumbprint is an explicit choice that must not be overwritten.
     if ($splat['CertThumbprint'] -notmatch '^[0-9A-Fa-f]{40}$') {
         $provisionIni = Join-Path (Split-Path -Parent $AnswerFile) 'provision.ini'
         if (Test-Path -LiteralPath $provisionIni -PathType Leaf) {
@@ -631,10 +611,9 @@ function Invoke-SetupInstall {
         }
     }
 
-    # Still nothing: an answer file that left the field empty and asked for no certificate to be
-    # created. Said here, where both halves of the choice can be named. Left alone it binds an
-    # empty string to a mandatory parameter, and the operator gets PowerShell's wording about
-    # argument binding for a decision they made three pages earlier.
+    # Still nothing: the answer file left the field empty and asked for no certificate to be
+    # created. Failing here can name both halves of the choice, whereas the empty string would
+    # otherwise reach a mandatory parameter and produce a parameter-binding error.
     if ($splat['CertThumbprint'] -notmatch '^[0-9A-Fa-f]{40}$') {
         throw ('No TLS certificate to install with. Either name one in certificate.thumbprint, or ' +
                'set provisioning.generateSelfSignedCertificate to have a self-signed one created ' +
@@ -643,20 +622,18 @@ function Invoke-SetupInstall {
 
     $splat['ArtifactPath'] = $ArtifactPath
     $splat['TrustedArtifactSignerThumbprint'] = $TrustedArtifactSignerThumbprint
-    # Generated here, not left to the installer: it prints the key exactly once, to a console that
-    # does not exist under a hidden Exec, and install-report.txt omits it by design. This is the
-    # only way the wizard can show it to the operator.
+    # Generated here, not by the installer: the installer prints the key once to a console that
+    # does not exist under a hidden Exec, and install-report.txt omits it. This is the only way
+    # the wizard can show it to the operator.
     $splat['ExternalTriggerApiKey'] = New-NodePilotRandomBase64 -ByteCount 48
 
     Write-NodePilotProgress -Step '0' -Text 'Installing NodePilot'
     # 6>&1 because every operator-visible line in the installer is Write-Host, i.e. the
-    # information stream. The same pass that logs a line also translates it into progress - the
-    # installer announces each phase it enters, so nothing there had to change.
+    # information stream. The same pass that reads a line translates it into progress.
     #
-    # The line is NOT written out again here. Write-Host reaches the host - and therefore the
-    # transcript - whether or not the information stream is redirected, so re-emitting it wrote
-    # every line into nodepilot-server-setup.log twice. Reading a doubled log is worse than
-    # reading a short one: it invites the question of whether the installer did the thing twice.
+    # The line is not written out again: Write-Host reaches the host, and therefore the
+    # transcript, whether or not the information stream is redirected, so re-emitting it would
+    # duplicate every line of the log.
     & (Join-Path $scriptDirectory 'Install-NodePilot.ps1') @splat 6>&1 |
         ForEach-Object { Write-NodePilotPhaseProgress -Line $_ }
 
@@ -671,23 +648,20 @@ function Invoke-SetupInstall {
     # Read the bootstrap token here rather than scraping console text for a secret.
     #
     # Through Get-NodePilotBootstrapToken, not Get-Content: the service writes that file with a
-    # single ACE for its own identity, so an elevated installing admin is denied a plain read
-    # whenever the two differ - which is always. Test-Path still says true, because Administrators
-    # own the directory, so the naive version failed silently and the finish page simply had no
-    # token on it. The operator then went hunting for the file, granted themselves access on the
-    # folder, and that ACE is what makes the server reject every setup token afterwards.
+    # single ACE for its own identity, so a plain read from the installing admin is denied even
+    # though Test-Path succeeds, because Administrators own the directory. Widening the ACL by
+    # hand makes the server reject every setup token afterwards.
     $dataPath = [string]$answers['dataPath']
     # Existence and readability are different failures and must not be reported as one. The API
-    # writes no token at all when the Users table is already populated - which is exactly what a
-    # seeded installation looks like - and deletes any stale one. An absent file is therefore good
-    # news, while a present-but-unreadable file is a problem worth naming.
+    # writes no token when the Users table is already populated and deletes any stale one, so an
+    # absent file is normal while a present but unreadable one is a problem worth naming.
     $tokenExists = Test-Path -LiteralPath (Join-Path $dataPath 'admin-setup.token') -PathType Leaf
     $token = if ($tokenExists) {
         Get-NodePilotBootstrapToken -DataPath $dataPath -StagingDirectory (Split-Path -Parent $OutFile)
     } else { '' }
 
     if (-not $tokenExists) {
-        # Users already exist. Nothing to redeem, nothing to write down, nothing to look up.
+        # Users already exist, so there is no token to redeem or report.
         Set-NodePilotResult -Buffer $result -Section 'bootstrap' -Name 'status' -Value 'AlreadyProvisioned'
         Set-NodePilotResult -Buffer $result -Section 'bootstrap' -Name 'detail' `
             -Value 'The instance already has users, so no bootstrap token was issued.'
@@ -722,7 +696,7 @@ function Invoke-SetupInstall {
         }
     }
     else {
-        # No bootstrap requested: the token goes to the finish page as before.
+        # No bootstrap requested: the token goes to the finish page.
         Set-NodePilotResult -Buffer $result -Section 'result' -Name 'adminSetupToken' -Value $token
         Set-NodePilotResult -Buffer $result -Section 'bootstrap' -Name 'status' -Value 'TokenIssued'
     }
@@ -732,9 +706,9 @@ function Invoke-SetupInstall {
 function Invoke-SetupUpdate {
     $answers = Read-NodePilotAnswerFile -Path $AnswerFile
     Write-NodePilotProgress -Step '0' -Text 'Updating NodePilot'
-    # Deliberately no HTTPS port here. Update-NodePilot.ps1 derives the probe port from the
-    # installed Kestrel configuration precisely because passing the 443 default rolled back a
-    # healthy 8443 installation in the lab.
+    # No HTTPS port here: Update-NodePilot.ps1 derives the probe port from the installed Kestrel
+    # configuration, so passing a default would probe the wrong port and roll back a healthy
+    # installation.
     $splat = @{
         ArtifactPath                    = $ArtifactPath
         TrustedArtifactSignerThumbprint = $TrustedArtifactSignerThumbprint

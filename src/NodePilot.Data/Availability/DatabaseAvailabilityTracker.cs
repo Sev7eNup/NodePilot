@@ -4,13 +4,13 @@ namespace NodePilot.Data.Availability;
 
 /// <summary>
 /// The single shared instance of <see cref="IDatabaseAvailability"/>. Registered as a singleton and
-/// written from several threads at once (every pooled DbContext's interceptors, plus the probe), so
-/// every transition happens under one lock and every published field is read from a snapshot taken
+/// written from several threads at once (pooled DbContext interceptors plus the probe), so every
+/// transition happens under one lock and every published field is read from a snapshot taken
 /// inside it.
 ///
-/// <para>Thresholds are resolved once in the constructor rather than per report: they are boot config
-/// (see <c>Database:Probe:*</c>), and reading configuration inside the lock would put I/O on the path
-/// that every failing query takes.</para>
+/// <para>Thresholds are resolved once in the constructor because they are boot config
+/// (<c>Database:Probe:*</c>); reading configuration inside the lock would put I/O on the path that
+/// every failing query takes.</para>
 /// </summary>
 public sealed class DatabaseAvailabilityTracker : IDatabaseAvailability
 {
@@ -27,7 +27,8 @@ public sealed class DatabaseAvailabilityTracker : IDatabaseAvailability
     private int _consecutiveProbeSuccesses;
     private long _outageEpisodeId;
 
-    // Completed while servable; replaced with a fresh incomplete source the moment the breaker opens.
+    // Completed while servable; replaced with a fresh incomplete source the moment the breaker
+    // opens.
     private TaskCompletionSource _servable =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -112,8 +113,10 @@ public sealed class DatabaseAvailabilityTracker : IDatabaseAvailability
 
         lock (_gate)
         {
-            // Inert while booting. DatabaseReadinessGate exists precisely because the database is often
-            // late at boot; letting its failed probes open the breaker would switch off retries for the
+            // Inert while booting. DatabaseReadinessGate exists precisely because the database is
+            // often
+            // late at boot; letting its failed probes open the breaker would switch off retries for
+            // the
             // migration that follows.
             if (_state is DatabaseAvailabilityState.Booting) return;
 
@@ -179,9 +182,11 @@ public sealed class DatabaseAvailabilityTracker : IDatabaseAvailability
 
         lock (_gate)
         {
-            // The probe captured its snapshot after SELECT 1. If an interceptor opened a newer outage
+            // The probe captured its snapshot after SELECT 1. If an interceptor opened a newer
+            // outage
             // between that observation and this publication, the success says nothing about the new
-            // episode and must not consume its recovery threshold (especially when the threshold is 1).
+            // episode and must not consume its recovery threshold (especially when the threshold is
+            // 1).
             if (_state is DatabaseAvailabilityState.Unavailable
                 && observedOutageEpisodeId >= 0
                 && observedOutageEpisodeId != _outageEpisodeId)
@@ -238,8 +243,10 @@ public sealed class DatabaseAvailabilityTracker : IDatabaseAvailability
             }
             else
             {
-                // A connection-class or rejection answer is unambiguous: the probe holds its own dedicated
-                // connection, so there is no pool handout to misread and no second opinion to wait for.
+                // A connection-class or rejection answer is unambiguous: the probe holds its own
+                // dedicated
+                // connection, so there is no pool handout to misread and no second opinion to wait
+                // for.
                 // Open on the first observation. Only the ambiguous answer — the server accepted a
                 // connection but did not finish the statement — waits for the threshold.
                 shouldOpen = reason is not DatabaseOutageReason.Wedged
@@ -250,7 +257,8 @@ public sealed class DatabaseAvailabilityTracker : IDatabaseAvailability
         if (reasonChanged)
             _logger.LogWarning("Database still unavailable; probe changed the cause to {Reason}.", reason);
 
-        // Outside the lock on purpose: ReportUnreachable takes it again, and it logs while holding it
+        // Outside the lock on purpose: ReportUnreachable takes it again, and it logs while holding
+        // it
         // is the one thing this class must never do on the path of a failing query.
         if (shouldOpen) ReportUnreachable(reason);
     }
@@ -284,11 +292,15 @@ public sealed class DatabaseAvailabilityTracker : IDatabaseAvailability
 
             if (cancellationToken.IsCancellationRequested) return false;
 
-            // WaitAsync rather than WhenAny + an infinite Task.Delay: the WhenAny loser kept a timer
+            // WaitAsync rather than WhenAny + an infinite Task.Delay: the WhenAny loser kept a
+            // timer
             // and a token registration alive until the token fired — with process-lifetime stopping
-            // tokens, that is one leaked pair per waiter per outage. WaitAsync tears its registration
-            // down on either outcome. The catch keeps the interface promise: this method never throws,
-            // because every hosted-service gate is written as `if (!await …) break;` and an escaping
+            // tokens, that is one leaked pair per waiter per outage. WaitAsync tears its
+            // registration
+            // down on either outcome. The catch keeps the interface promise: this method never
+            // throws,
+            // because every hosted-service gate is written as `if (!await …) break;` and an
+            // escaping
             // OperationCanceledException would stop the host.
             try
             {
@@ -337,7 +349,8 @@ public sealed class DatabaseAvailabilityTracker : IDatabaseAvailability
         }
         catch (Exception ex)
         {
-            // A subscriber must never be able to break the breaker: this runs on the thread of whatever
+            // A subscriber must never be able to break the breaker: this runs on the thread of
+            // whatever
             // query just failed, which may be a hosted-service loop with StopHost semantics.
             _logger.LogWarning(ex, "A database-availability subscriber threw; ignoring.");
         }

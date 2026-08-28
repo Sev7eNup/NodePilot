@@ -65,8 +65,9 @@ export function buildActivityCategories(): ActivityCategory[] {
       ]
     },
     {
-      // User-authored custom activities. Built from the runtime catalog (NOT the static generated
-      // catalog), so they appear below the built-in categories. Empty → EditorSidebar drops it.
+      // User-authored custom activities, built from the runtime catalog rather than the static
+      // generated catalog, so they appear below the built-in categories. An empty list means
+      // EditorSidebar drops this category.
       key: 'customNodes',
       name: i18n.t('activities:categories.customNodes'),
       items: sortByLabel(

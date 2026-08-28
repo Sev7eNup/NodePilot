@@ -252,8 +252,8 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
       if (op === 'replace') {
         if (!hasValueOrTemplate(config.matchPattern))
           return "Operation 'replace' benötigt 'matchPattern'.";
-        // `replace: ""` is legal — empty replacement = delete the matches in-place.
-        // We require the key to exist (hasOwnProperty), not the value to be non-empty.
+        // An empty replacement is legal and deletes the matches, so only the key has to be
+        // present; its value may be an empty string.
         if (config.replace === undefined || config.replace === null)
           return "Operation 'replace' benötigt 'replace' (leerer String ist erlaubt = Löschen).";
       }
@@ -288,8 +288,8 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
     summarize: (config) => i18n.t('activities:summaries.delayWait', { seconds: (config.seconds as number) || 5 }),
   },
   [ACTIVITY_TYPES.GENERATE_TEXT]: {
-    // Pre-publish guard so an empty custom charset is caught in the UI rather than only at
-    // runtime (backend TryBuildCharset). For every other mode the charset is implicit.
+    // Catches an empty custom charset in the UI instead of at runtime in TryBuildCharset.
+    // Every other mode has an implicit charset.
     requiredConfig: (config) =>
       config.mode === 'custom' && !hasValueOrTemplate(config.customCharset)
         ? 'Eigener Zeichensatz (customCharset) ist erforderlich.'
@@ -302,8 +302,8 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
   [ACTIVITY_TYPES.LLM_QUERY]: {
     requiredConfig: (config) => {
       if (!hasValueOrTemplate(config.prompt)) return 'Prompt ist erforderlich.';
-      // baseUrl is optional; when a literal is given it must be an absolute http/https URL.
-      // Templates ({{globals.LLM_BASE_URL}}) are resolved by the StepRunner before the activity.
+      // baseUrl is optional; a literal value must be an absolute http/https URL.
+      // Templates such as {{globals.LLM_BASE_URL}} are resolved by the StepRunner first.
       const baseUrl = config.baseUrl;
       if (hasValue(baseUrl) && !isTemplate(baseUrl) && !/^https?:\/\//i.test(String(baseUrl)))
         return 'Endpunkt (baseUrl) muss eine absolute http/https-URL sein.';
@@ -392,9 +392,8 @@ export function getActivitySmartDefaults(
   return ACTIVITY_CONFIG_FACTS[activityType]?.smartDefaults?.({ lastData, lastConfig }) ?? {};
 }
 
-/** Snapshot of which activity types have facts-entries registered. Used by the
- *  registry-drift test to detect orphan entries (a key here that no longer exists in
- *  ACTIVITY_CATALOG) — typically a leftover after renaming or removing an activity. */
+/** Lists the activity types that have a facts entry. The registry drift test uses this to
+ *  find orphan entries, meaning a key here that no longer exists in ACTIVITY_CATALOG. */
 export function getRegisteredActivityFactTypes(): readonly string[] {
   return Object.keys(ACTIVITY_CONFIG_FACTS);
 }

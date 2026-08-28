@@ -15,9 +15,11 @@ namespace NodePilot.Api.ExecutionDispatch;
 public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
 {
     private readonly NodePilotDbContext _db;
-    private readonly IExecutionDispatchQueue _dispatchQueue;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly OutputRedactor _redactor;
+    private readonly ISecretProtector _protector;
+    private readonly ExecutionDispatchSignal _signal;
+    private readonly ExecutionDispatchCallbackRegistry _callbacks;
     private readonly IClusterStateProvider _cluster;
     private readonly IMaintenanceWindowEvaluator _maintenance;
     private readonly ILogger<ExecutionDispatchService> _logger;
@@ -25,18 +27,23 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
 
     public ExecutionDispatchService(
         NodePilotDbContext db,
-        IExecutionDispatchQueue dispatchQueue,
         IServiceScopeFactory scopeFactory,
         OutputRedactor redactor,
         IClusterStateProvider cluster,
         IMaintenanceWindowEvaluator maintenance,
         ILogger<ExecutionDispatchService> logger,
-        IDatabaseAvailability? availability = null)
+        IDatabaseAvailability? availability = null,
+        ISecretProtector? protector = null,
+        ExecutionDispatchSignal? signal = null,
+        ExecutionDispatchCallbackRegistry? callbacks = null)
     {
         _db = db;
-        _dispatchQueue = dispatchQueue;
         _scopeFactory = scopeFactory;
         _redactor = redactor;
+        _protector = protector ?? new NodePilot.Data.Security.DpapiSecretProtector(
+            System.Security.Cryptography.DataProtectionScope.CurrentUser);
+        _signal = signal ?? new ExecutionDispatchSignal();
+        _callbacks = callbacks ?? new ExecutionDispatchCallbackRegistry();
         _cluster = cluster;
         _maintenance = maintenance;
         _logger = logger;
@@ -49,15 +56,52 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
         // transaction; creation still lives here so redaction and owner stamping stay local.
         var execution = BuildPendingExecution(intent);
         _db.WorkflowExecutions.Add(execution);
+        _db.ExecutionDispatchOutbox.Add(BuildOutboxItem(execution.Id, intent));
+        _callbacks.Register(execution.Id, intent.OnDispatchSuppressedAsync);
         return execution;
     }
 
     public async Task<WorkflowExecution> DispatchAsync(WorkflowDispatchIntent intent, CancellationToken ct)
     {
         var pending = AddPendingExecution(intent);
-        await _db.SaveChangesAsync(ct);
-        await EnqueueAsync(pending, intent, ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            _callbacks.Remove(pending.Id);
+            throw;
+        }
+        _signal.Pulse();
         return pending;
+    }
+
+    private ExecutionDispatchOutboxItem BuildOutboxItem(Guid executionId, WorkflowDispatchIntent intent)
+    {
+        var parameterJson = intent.Parameters is null
+            ? null
+            : JsonSerializer.Serialize(intent.Parameters);
+        return new ExecutionDispatchOutboxItem
+        {
+            ExecutionId = executionId,
+            WorkflowId = intent.WorkflowId,
+            TriggeredBy = intent.TriggeredBy,
+            ProtectedParameters = parameterJson is null ? null : _protector.Protect(parameterJson),
+            TimeoutSeconds = intent.TimeoutSeconds,
+            DebugEnabled = intent.DebugEnabled,
+            StartedByUserId = intent.StartedByUserId,
+            ParentExecutionId = intent.ParentExecutionId,
+            CallDepth = intent.CallDepth,
+            RequireWorkflowEnabled = intent.RequireWorkflowEnabled,
+            MissingWorkflowMessage = intent.MissingWorkflowMessage,
+            PreOwnershipFailurePrefix = intent.PreOwnershipFailurePrefix,
+            Priority = intent.Priority,
+            RequireMaintenanceWindowCheck = intent.RequireMaintenanceWindowCheck,
+            BypassMaintenanceWindow = intent.BypassMaintenanceWindow,
+            CreatedAt = DateTime.UtcNow,
+            AvailableAt = DateTime.UtcNow,
+        };
     }
 
     private WorkflowExecution BuildPendingExecution(WorkflowDispatchIntent intent)
@@ -78,50 +122,76 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
         };
     }
 
-    public async Task EnqueueAsync(
-        WorkflowExecution pending,
-        WorkflowDispatchIntent request,
-        CancellationToken ct)
+    /// <summary>Wakes a worker after an externally owned admission transaction commits.</summary>
+    public void NotifyCommitted() => _signal.Pulse();
+
+    internal async Task<ExecutionDispatchOutcome> ProcessOutboxAsync(Guid executionId, CancellationToken workerCt)
     {
+        var outbox = await _db.ExecutionDispatchOutbox
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.ExecutionId == executionId, workerCt);
+        if (outbox is null) return ExecutionDispatchOutcome.Completed;
+
+        var pending = await _db.WorkflowExecutions
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == executionId, workerCt);
+        if (pending is null || pending.Status != ExecutionStatus.Pending)
+        {
+            await RemoveOutboxAsync(executionId);
+            return ExecutionDispatchOutcome.Completed;
+        }
+
+        WorkflowDispatchIntent intent;
         try
         {
-            // Once the Pending execution is persisted, dispatch ownership must no longer
-            // depend on the HTTP request lifetime. Under load the bounded queue can wait
-            // for capacity; a client timeout here must not cancel the already-created job.
-            _ = ct;
-            // Interactive runs stay latency-preferred via the queue's priority lane, but
-            // still consume the bounded worker pool. Otherwise manual/webhook bursts create
-            // one unbounded Task per request and bypass WorkerCount entirely.
-            // Worker awaits the execution to completion: WorkerCount is the real
-            // concurrency limit, the queue (Capacity) is the spike buffer. Anything
-            // beyond WorkerCount waits in the queue until a slot frees up. The engine's
-            // MaxConcurrentExecutions caps are a sanity upper-bound for pathological
-            // cases (sub-workflow cascades, trigger loops) and are sized well above
-            // WorkerCount so they never trip in normal operation.
-            if (_dispatchQueue is ExecutionDispatchQueue outcomeQueue)
+            Dictionary<string, string>? parameters = null;
+            if (outbox.ProtectedParameters is not null)
             {
-                await outcomeQueue.EnqueueOutcomeAsync(
-                    workerCt => RunDispatchedExecutionAsync(pending, request, workerCt),
-                    CancellationToken.None,
-                    request.Priority);
+                var json = _protector.Unprotect(outbox.ProtectedParameters);
+                parameters = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
             }
-            else
-            {
-                // Compatibility adapter for alternate queue implementations. Production uses the
-                // concrete queue above so RetryBeforeStart remains an explicit worker outcome.
-                await _dispatchQueue.EnqueueAsync(
-                    async workerCt => _ = await RunDispatchedExecutionAsync(pending, request, workerCt),
-                    CancellationToken.None,
-                    request.Priority);
-            }
+
+            _callbacks.TryGet(executionId, out var callback);
+            intent = new WorkflowDispatchIntent(
+                outbox.WorkflowId,
+                outbox.TriggeredBy,
+                parameters,
+                outbox.TimeoutSeconds,
+                outbox.DebugEnabled,
+                outbox.StartedByUserId,
+                outbox.RequireWorkflowEnabled,
+                outbox.MissingWorkflowMessage,
+                outbox.PreOwnershipFailurePrefix,
+                Priority: outbox.Priority,
+                OnDispatchSuppressedAsync: callback,
+                RequireMaintenanceWindowCheck: outbox.RequireMaintenanceWindowCheck,
+                BypassMaintenanceWindow: outbox.BypassMaintenanceWindow,
+                ParentExecutionId: outbox.ParentExecutionId,
+                CallDepth: outbox.CallDepth);
         }
-        catch
+        catch (Exception ex)
         {
-            await MarkPendingExecutionTerminalAsync(_db, pending.Id, request.EnqueueFailureStatus,
-                request.EnqueueFailureMessage,
+            _logger.LogError(ex, "Dispatch intent for execution {ExecutionId} could not be decrypted.", executionId);
+            await MarkPendingExecutionTerminalAsync(
+                _db, executionId, ExecutionStatus.Failed,
+                "Queued execution could not be dispatched because its protected intent is unreadable.",
                 CancellationToken.None);
-            throw;
+            await RemoveOutboxAsync(executionId);
+            return ExecutionDispatchOutcome.Completed;
         }
+
+        var outcome = await RunDispatchedExecutionAsync(pending, intent, workerCt);
+        if (outcome == ExecutionDispatchOutcome.Completed)
+            await RemoveOutboxAsync(executionId);
+        return outcome;
+    }
+
+    private async Task RemoveOutboxAsync(Guid executionId)
+    {
+        await _db.ExecutionDispatchOutbox
+            .Where(item => item.ExecutionId == executionId)
+            .ExecuteDeleteAsync(CancellationToken.None);
+        _callbacks.Remove(executionId);
     }
 
     /// <summary>
@@ -161,7 +231,8 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
                 // Authoritative maintenance-window gate. Catches every admission path and closes
                 // the TOCTOU where a window opens between a caller's early check and worker
                 // pickup. Recovery operations (manual retry) and resume/sub-workflow bypass this
-                // via RequireMaintenanceWindowCheck=false; an Admin force-run sets BypassMaintenanceWindow.
+                // via RequireMaintenanceWindowCheck=false; an Admin force-run sets
+                // BypassMaintenanceWindow.
                 if (request.RequireMaintenanceWindowCheck && !request.BypassMaintenanceWindow)
                 {
                     var verdict = _maintenance.Evaluate(workflow.Id, workflow.FolderId, DateTime.UtcNow);
@@ -177,7 +248,8 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
                         // Race fix: the window opened between the caller's early check and this
                         // worker pickup, so an external-trigger idempotency key may already be
                         // committed pointing at this now-Cancelled row. Drop it, otherwise the same
-                        // key would replay the Cancelled ghost for its 24h TTL even after the window
+                        // key would replay the Cancelled ghost for its 24h TTL even after the
+                        // window
                         // closes. A legitimate retry then runs instead.
                         await db.IdempotencyKeys
                             .Where(k => k.ExecutionId == pending.Id)
@@ -197,10 +269,11 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
                     return ExecutionDispatchOutcome.Completed;
                 }
 
-                // Crossing this line transfers ownership to the engine. Any exception afterwards has
+                // Crossing this line transfers ownership to the engine. Any exception afterwards
+                // has
                 // unknown side effects/claim state and must never cause an automatic second start.
                 engineStarted = true;
-                await engine.ExecuteAsync(
+                var executed = await engine.ExecuteAsync(
                     workflow,
                     request.TriggeredBy,
                     workerCt,
@@ -208,14 +281,26 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
                     request.TimeoutSeconds,
                     request.DebugEnabled,
                     request.StartedByUserId,
+                    request.ParentExecutionId,
+                    request.CallDepth,
                     executionIdOverride: pending.Id,
                     interactiveRun: request.Priority == ExecutionDispatchPriority.Interactive);
+                if (executed.Status == ExecutionStatus.Pending)
+                {
+                    // The engine's database claim was fenced (typically leadership changed
+                    // between outbox lease and engine ownership). No activity ran; preserve the
+                    // durable intent for the current leader instead of deleting accepted work.
+                    return ExecutionDispatchOutcome.RetryBeforeStart;
+                }
                 return ExecutionDispatchOutcome.Completed;
             }
             catch (OperationCanceledException) when (workerCt.IsCancellationRequested)
             {
-                // Host shutdown — engine has its own finally that marks the row as Cancelled.
-                return ExecutionDispatchOutcome.Completed;
+                // Cancellation can win before the engine's Pending -> Running claim. Preserve
+                // the intent only when the database proves ownership never transferred.
+                return await IsPendingExecutionAsync(db, pending.Id, CancellationToken.None)
+                    ? ExecutionDispatchOutcome.RetryBeforeStart
+                    : ExecutionDispatchOutcome.Completed;
             }
             catch (Exception ex)
             {
@@ -240,18 +325,22 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
         }
         catch (Exception fatal)
         {
-            if (!engineStarted && IsConfirmedDatabaseOutage(fatal))
+            if (!engineStarted)
             {
-                _logger.LogWarning(fatal,
-                    "Dispatch scope for execution {ExecutionId} failed before engine start; requeueing for database recovery.",
+                // No engine call means no activity can have produced side effects. Keep the
+                // durable intent even when the failure could not be classified (for example,
+                // scope creation failed or terminalizing a rejected dispatch also failed).
+                // Dropping the outbox here would turn an accepted Pending execution into lost
+                // work. A worker retry or startup recovery can safely make progress later.
+                _logger.LogError(fatal,
+                    "Dispatch for execution {ExecutionId} failed before engine ownership; preserving the durable intent for retry.",
                     pending.Id);
                 return ExecutionDispatchOutcome.RetryBeforeStart;
             }
 
-            // Last-resort: scope creation itself threw, or MarkPendingExecutionTerminalAsync
-            // failed. The pending row stays Pending until the startup reconciler sweeps it.
+            // Once engine invocation began, retrying could duplicate external side effects.
             _logger.LogError(fatal,
-                "Unrecoverable dispatch failure for execution {ExecutionId}; row may stay Pending until reconciler runs.",
+                "Unrecoverable dispatch failure for execution {ExecutionId} after engine invocation; automatic retry is suppressed.",
                 pending.Id);
             return ExecutionDispatchOutcome.Completed;
         }
@@ -375,22 +464,17 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
         string message,
         CancellationToken ct)
     {
-        var execution = await db.WorkflowExecutions.FindAsync([executionId], ct);
-        // A database-side Pending->Running claim can succeed before the engine reaches
-        // graph ownership. If setup/capacity then throws, the dispatch catch must still
-        // terminalize that claimed row. Cancelled/succeeded/failed rows remain immutable.
-        if (execution is null
-            || execution.Status is not (ExecutionStatus.Pending or ExecutionStatus.Running))
-            return;
-
-        execution.Status = status;
-        // Attribute a pre-ownership terminal cancel (workflow deleted/disabled, maintenance-window
-        // block) so alerting can tell it apart from a manual user cancel.
-        if (status == ExecutionStatus.Cancelled) execution.CancelledBy = "dispatch";
-        execution.CompletedAt = DateTime.UtcNow;
-        execution.ErrorMessage = message.Length > 32 * 1024
+        var cappedMessage = message.Length > 32 * 1024
             ? message[..(32 * 1024)] + "... [truncated]"
             : message;
-        await db.SaveChangesAsync(ct);
+        await ExecutionStateLifecycle.TrySetTerminalAsync(
+            db.WorkflowExecutions.Where(execution => execution.Id == executionId
+                && (execution.Status == ExecutionStatus.Pending
+                    || execution.Status == ExecutionStatus.Running)),
+            status,
+            DateTime.UtcNow,
+            cappedMessage,
+            status == ExecutionStatus.Cancelled ? "dispatch" : null,
+            ct);
     }
 }

@@ -228,7 +228,7 @@ export function edgeArrowPath(arrow: EdgeArrowGeometry): string {
   // proportional to the arrow's length, so the shape stays identical as the head scales
   // with the edge width.
   const { tipX, tipY, baseX, baseY, angle, width } = arrow;
-  const ax = Math.cos(angle);            // unit axis, base → tip
+  const ax = Math.cos(angle);            // unit axis, base -> tip
   const ay = Math.sin(angle);
   const px = -ay;                        // unit perpendicular
   const py = ax;
@@ -248,7 +248,7 @@ export function edgeArrowPath(arrow: EdgeArrowGeometry): string {
   const leftY = bY + py * halfWidth;
   const rightX = bX - px * halfWidth;
   const rightY = bY - py * halfWidth;
-  // Concave back: the base centre pulled ~25% toward the tip → gently swept barbs (solid,
+  // Concave back: the base centre pulled ~25% toward the tip -> gently swept barbs (solid,
   // not deeply forked — matches the reference).
   const notchX = bX + ax * coreLength * 0.25;
   const notchY = bY + ay * coreLength * 0.25;
@@ -259,7 +259,7 @@ export function edgeArrowPath(arrow: EdgeArrowGeometry): string {
 /**
  * Default control points when an edge has no user-defined shape, projected outward
  * from each port direction so Top/Bottom-port flows get plausible defaults too.
- * For Right→Left edges this is identical to the trivial 0.25*dx offset.
+ * For Right to Left edges this is identical to the trivial 0.25*dx offset.
  */
 export function defaultControlPoints({
   sourceX, sourceY, sourcePosition,

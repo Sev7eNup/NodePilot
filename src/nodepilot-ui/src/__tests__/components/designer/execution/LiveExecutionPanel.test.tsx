@@ -7,8 +7,8 @@ type JoinFn = (executionId: string, workflowId: string) => Promise<void>;
 type LeaveFn = (executionId: string) => Promise<void>;
 
 // The Live list is virtualized; under jsdom's zero-height layout @tanstack/react-virtual
-// renders 0 rows, so the accordion button (our only way to populate expandedIds) never
-// mounts. Stub the virtualizer to project every row so the toggle is clickable.
+// renders 0 rows, so the accordion button that populates expandedIds never mounts. The
+// virtualizer is stubbed to project every row, which keeps the toggle clickable.
 vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: (opts: { count: number; getItemKey?: (i: number) => string }) => ({
     getTotalSize: () => opts.count * 30,
@@ -22,7 +22,7 @@ vi.mock('@tanstack/react-virtual', () => ({
 }));
 
 // The expanded detail pane (StatsStrip/LiveTimeline/LiveConsole) is irrelevant to the
-// join/leave lifecycle and pulls in heavy children — stub it so expanding is cheap.
+// join/leave lifecycle and pulls in heavy children, so it is stubbed to keep expanding cheap.
 vi.mock('../../../../components/designer/live/LiveOverview', () => ({
   LiveOverview: () => <div data-testid="live-overview-stub" />,
 }));
@@ -77,7 +77,7 @@ describe('LiveTab SignalR group lifecycle', () => {
     fireEvent.click(screen.getByRole('button'));
     expect(onJoin).toHaveBeenCalledTimes(1);
 
-    // Every live run evicted at once — the panel must still leave what was expanded.
+    // Every live run is evicted at once; the panel must still leave what was expanded.
     rerender(liveTabEl({ executionsLive: [], onJoinExecution: onJoin, onLeaveExecution: onLeave }));
     expect(onLeave).toHaveBeenCalledWith('exec-1');
   });

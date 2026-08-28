@@ -6,11 +6,8 @@ using Xunit;
 namespace NodePilot.Engine.Tests.PowerShell;
 
 /// <summary>
-/// Guards the 2026-07-30 WinPSCompat leak fix. The in-process pool runs on the PowerShell SDK,
-/// which ships only the core modules; anything found in the Windows PowerShell 5.1 module path
-/// used to be loaded through implicit WinCompat — one `powershell.exe -Version 5.1 -s` child and
-/// one never-closed "WinPSCompatSession" per pool runspace. The fix is two-part and each part has
-/// its own test here:
+/// Verifies that the in-process PowerShell SDK does not create implicit WinPSCompat sessions.
+/// The required behavior has two parts:
 ///   1. Microsoft.PowerShell.Archive is bundled (PSModules\) and imported eagerly, so
 ///      Compress-Archive runs natively in-process.
 ///   2. powershell.config.json next to the SDK assembly sets DisableImplicitWinCompat, so

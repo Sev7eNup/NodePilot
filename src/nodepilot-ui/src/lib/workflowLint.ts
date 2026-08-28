@@ -3,19 +3,16 @@ import { edgeSourcePort, edgeTargetPort, getPortPoint } from './edgePorts';
 import { REMOTE_ACTIVITY_TYPES, TRIGGER_ACTIVITY_TYPES } from './activityCatalog.generated';
 import { checkRequiredActivityConfig } from './activityConfigFacts';
 
-// Hybrid activities: without a target machine they run locally in the API process (see
-// RunScriptActivity / WaitForConditionActivity). They stay listed in REMOTE_ACTIVITY_TYPES
-// so the UI still shows the machine/credential fields — lint just doesn't require them.
+// Hybrid activities: without a target machine they run locally in the API process
+// (RunScriptActivity / WaitForConditionActivity). They stay listed in REMOTE_ACTIVITY_TYPES
+// so the UI still shows the machine and credential fields; lint does not require them.
 const HYBRID_LOCAL_ACTIVITY_TYPES = new Set(['runScript', 'waitForCondition']);
 
-// Cmdlets/patterns that internally spawn `Start-Job` or another background-job worker.
-// NodePilot's in-process runspace (engine: "auto" / "runspace") has no co-located
-// pwsh.exe, so Start-Job blows up with "The pwsh executable cannot be found at
-// …\runtimes\win\lib\net10.0\pwsh.exe". We warn the author here instead of letting the
-// step fail red only at runtime. Kept deliberately small — only patterns we've actually
-// seen in practice (Get-WindowsUpdateLog, direct Start-Job calls, Invoke-Command -AsJob).
-// `Wait-Job`/`Receive-Job` without a preceding Start-Job are legitimate operations on job
-// objects from other sources, so they're not listed here.
+// Cmdlets and patterns that internally spawn `Start-Job` or another background-job worker.
+// The in-process runspace (engine: "auto" / "runspace") has no co-located pwsh.exe, so
+// Start-Job fails there. Lint warns the author instead of letting the step fail at runtime.
+// `Wait-Job` and `Receive-Job` are not listed: without a preceding Start-Job they are valid
+// operations on job objects from other sources.
 const STARTJOB_HOSTED_INCOMPATIBLE: Array<{ pattern: RegExp; cmdletName: string }> = [
   { pattern: /(^|[\s|;&])Start-Job\b/i, cmdletName: 'Start-Job' },
   { pattern: /\bGet-WindowsUpdateLog\b/i, cmdletName: 'Get-WindowsUpdateLog (nutzt intern Start-Job)' },
@@ -29,7 +26,7 @@ export interface LintIssue {
   nodeId?: string;
   edgeId?: string;
   message: string;
-  /** Stable code so future UI can group/filter ("unreachable-node", "dup-output", …). */
+  /** Stable code the UI can group and filter by ("unreachable-node", "dup-output"). */
   code: string;
 }
 
@@ -39,18 +36,18 @@ export interface LintResult {
 }
 
 /**
- * Static workflow validation that runs BEFORE save. Purpose: warn the user about problems
- * that would otherwise only show up at runtime (a template referencing a non-existent
- * upstream variable, two nodes sharing the same `outputVariable`, …). Deliberately NOT a
- * replica of the engine's own logic — the backend remains the source of truth for "is this
- * actually allowed to run".
+ * Static workflow validation that runs before save. It warns about problems that would
+ * otherwise only surface at runtime, such as a template referencing a missing upstream
+ * variable or two nodes sharing the same `outputVariable`. It is not a replica of the
+ * engine's own logic; the backend stays the source of truth for what is allowed to run.
  *
  * Rules:
  *   error:   Isolated node (no incoming or outgoing edge, and not a trigger)
+ *   error:   Multiple incoming edges on a non-junction activity
  *   error:   Duplicate outputVariable in the workflow (downstream references would resolve
- *            to whichever of the two happens to win)
+ *            to whichever of the two wins)
  *   warning: Orphan root (a non-trigger node with no incoming edges but some outgoing ones,
- *            in a graph that does have triggers — the engine skips it, so its downstream
+ *            in a graph that does have triggers; the engine skips it, so its downstream
  *            branch never runs)
  *   warning: Unreachable node (has incoming edges, but no path exists from any trigger/root)
  *   warning: A template `{{var.field}}` references a variable that no upstream node exposes
@@ -65,13 +62,13 @@ export function lintWorkflow(
   const errors: LintIssue[] = [];
   const warnings: LintIssue[] = [];
 
-  // Note and group nodes are pure annotations — not linted, since they don't affect the graph.
+  // Note and group nodes are annotations only; they do not affect the graph, so skip them.
   const liveNodes = nodes.filter((n) => {
     const at = (n.data as Record<string, unknown>)?.activityType as string | undefined;
     return at !== 'note' && at !== 'group' && n.type !== 'group';
   });
 
-  // ---- Adjazenz + Roots ----------------------------------------------------
+  // ---- Adjacency + roots ---------------------------------------------------
   const outgoing = new Map<string, string[]>();
   const incoming = new Map<string, string[]>();
   for (const n of liveNodes) {
@@ -107,22 +104,37 @@ export function lintWorkflow(
     incoming.get(e.target)?.push(e.source);
   }
 
-  // Raw degree count (all edges, including disabled ones). Used only for isolation detection:
-  // a node that's connected exclusively via a disabled edge is intentionally cut off — not a
-  // bug, just a documented "dead branch". Reachability/BFS logic stays strictly on activeEdges,
-  // otherwise disabled edges would feed downstream paths that shouldn't actually run.
+  // Raw degree count over all edges, including disabled ones. Used only for isolation
+  // detection: a node connected exclusively through a disabled edge is deliberately cut off,
+  // not broken. Reachability stays on activeEdges so disabled edges never feed a live path.
   const rawIn = new Map<string, number>();
   const rawOut = new Map<string, number>();
+  const incomingSources = new Map<string, Set<string>>();
   for (const n of liveNodes) { rawIn.set(n.id, 0); rawOut.set(n.id, 0); }
   for (const e of edges) {
     if (!liveNodeIds.has(e.source) || !liveNodeIds.has(e.target)) continue;
     rawOut.set(e.source, (rawOut.get(e.source) ?? 0) + 1);
     rawIn.set(e.target, (rawIn.get(e.target) ?? 0) + 1);
+    const sources = incomingSources.get(e.target) ?? new Set<string>();
+    sources.add(e.source);
+    incomingSources.set(e.target, sources);
   }
 
-  // Roots are EXCLUSIVELY (non-disabled) trigger nodes — exactly matching the engine. There is
-  // no inDegree-0 fallback anymore: a graph without a trigger has no entry point, so the engine
-  // runs nothing. A disabled trigger doesn't count (it's not a root).
+  for (const n of liveNodes) {
+    const activityType = (n.data as Record<string, unknown>)?.activityType as string | undefined;
+    if ((incomingSources.get(n.id)?.size ?? 0) > 1 && activityType?.toLowerCase() !== 'junction') {
+      errors.push({
+        severity: 'error',
+        nodeId: n.id,
+        code: 'fan-in-requires-junction',
+        message: `"${getLabel(n)}" hat mehrere eingehende Verbindungen. Füge davor eine Junction ein.`,
+      });
+    }
+  }
+
+  // Roots are only non-disabled trigger nodes, matching the engine. There is no inDegree-0
+  // fallback: a graph without a trigger has no entry point, so the engine runs nothing.
+  // A disabled trigger is not a root.
   const isLiveTrigger = (n: Node) => {
     const d = (n.data as Record<string, unknown>) ?? {};
     return d.disabled !== true && TRIGGER_ACTIVITY_TYPES.has((d.activityType as string) ?? '');
@@ -133,9 +145,9 @@ export function lintWorkflow(
     if (isLiveTrigger(n)) rootIds.add(n.id);
   }
 
-  // No (active) trigger, but at least one regular (non-disabled) activity → the workflow has
-  // no entry point and can never run. Report this as a single clear error (blocks publish via
-  // errors.length); the per-node "unreachable" flood below is suppressed in this case.
+  // No active trigger but at least one enabled activity: the workflow has no entry point and
+  // can never run. Reported as a single error, which blocks publish; the per-node
+  // "unreachable" warnings below are suppressed in this case.
   const hasLiveActivity = liveNodes.some((n) => {
     const d = (n.data as Record<string, unknown>) ?? {};
     return d.disabled !== true && !TRIGGER_ACTIVITY_TYPES.has((d.activityType as string) ?? '');
@@ -157,16 +169,16 @@ export function lintWorkflow(
     const type = d.activityType as string | undefined;
     const isTrigger = TRIGGER_ACTIVITY_TYPES.has(type ?? '');
 
-    // Disabled nodes: a disabled step is a deliberate "temporarily off" marker from the user,
-    // not a broken workflow. We don't raise isolation or orphan-root errors for it and leave
-    // the publish gate open — the block below only warns if it still has a downstream branch.
+    // A disabled step is a deliberate switch-off by the user, not a broken workflow. No
+    // isolation or orphan-root error is raised for it, so publish stays open; the block below
+    // only warns if it still has a downstream branch.
     if (isDisabled) continue;
 
     const rawInCount = rawIn.get(n.id) ?? 0;
     const rawOutCount = rawOut.get(n.id) ?? 0;
 
     if (rawInCount === 0 && rawOutCount === 0 && !isTrigger) {
-      // Truly isolated: not a single edge points at or away from this node.
+      // Isolated: no edge points at or away from this node.
       errors.push({
         severity: 'error',
         nodeId: n.id,
@@ -174,10 +186,9 @@ export function lintWorkflow(
         message: `"${getLabel(n)}" ist nicht mit dem Graph verbunden — weder eingehende noch ausgehende Kanten.`,
       });
     } else if (hasTriggerNode && !isTrigger && inCount === 0 && outCount > 0) {
-      // Orphan root: not a trigger, no incoming edge, but has successors. Typically happens
-      // when the user deletes an edge and the downstream branch is left dangling. The engine
-      // will NOT start this node as an entry point (only triggers are roots), so the whole
-      // path gets skipped.
+      // Orphan root: not a trigger, no incoming edge, but has successors. Common after
+      // deleting an edge and leaving the downstream branch dangling. Only triggers are roots,
+      // so the engine never starts here and the whole path is skipped.
       warnings.push({
         severity: 'warning',
         nodeId: n.id,
@@ -187,10 +198,9 @@ export function lintWorkflow(
     }
   }
 
-  // BFS from all roots, marking reachable nodes. Only meaningful when roots actually exist —
-  // without an (active) trigger EVERY connected node would read as "unreachable", drowning
-  // the single `no-trigger` error in a flood of warnings. In that case the one no-trigger
-  // error is sufficient on its own.
+  // BFS from all roots, marking reachable nodes. Only meaningful when roots exist: without an
+  // active trigger every connected node would read as unreachable and bury the single
+  // `no-trigger` error under warnings, so that error stands on its own instead.
   if (rootIds.size > 0) {
     const reachable = new Set<string>();
     const queue = [...rootIds];
@@ -203,7 +213,7 @@ export function lintWorkflow(
     for (const n of liveNodes) {
       if (reachable.has(n.id)) continue;
       const inCount = incoming.get(n.id)?.length ?? 0;
-      if (inCount === 0) continue; // isolated — already reported as an error above
+      if (inCount === 0) continue; // isolated, already reported as an error above
       warnings.push({
         severity: 'warning',
         nodeId: n.id,
@@ -214,10 +224,10 @@ export function lintWorkflow(
   }
 
   // ---- Duplicate outputVariable -------------------------------------------
-  const seenOutputVar = new Map<string, string>(); // outputVar → first-seen nodeId
+  const seenOutputVar = new Map<string, string>(); // outputVar to the first node id using it
   for (const n of liveNodes) {
     const d = (n.data as Record<string, unknown>) ?? {};
-    if (d.disabled === true) continue; // disabled steps emit no output, so no conflict is possible
+    if (d.disabled === true) continue; // disabled steps emit no output, so they cannot conflict
     const ov = (d.outputVariable as string) || '';
     if (!ov) continue;
     if (seenOutputVar.has(ov)) {
@@ -233,10 +243,10 @@ export function lintWorkflow(
   }
 
   // ---- Template reference to an unknown variable --------------------------
-  // We collect every variable name that could be exposed: each outputVariable + each node id
-  // (the fallback when no outputVariable is set) + `globals.*` (we can't enumerate those here,
-  // so we simply allow them) + `manual.*`. There's no `trigger.*` / `webhook.*` runtime
-  // namespace — trigger data lands under `manual.*`, or as `param.*` on the trigger node.
+  // Collect every variable name that can be exposed: each outputVariable, each node id (the
+  // fallback when no outputVariable is set), `globals.*` (not enumerable here, so allowed) and
+  // `manual.*`. There is no `trigger.*` or `webhook.*` namespace: trigger data arrives under
+  // `manual.*`, or as `param.*` on the trigger node.
   const knownVars = new Set<string>();
   for (const n of liveNodes) {
     knownVars.add(n.id);
@@ -262,7 +272,7 @@ export function lintWorkflow(
         code: 'unknown-template-ref',
         message: `"${getLabel(n)}" referenziert {{${head}.…}} — dieser Step existiert nicht (oder heißt anders). Typo oder outputVariable umbenannt?`,
       });
-      // Only report the first bad reference per node, otherwise one broken node spams the list.
+      // Report only the first bad reference per node, so one broken node cannot flood the list.
       break;
     }
   }
@@ -279,8 +289,8 @@ export function lintWorkflow(
       errors.push({ severity: 'error', nodeId: n.id, code: 'missing-required-config', message: `"${getLabel(n)}": ${msg}` });
     }
 
-    // runScript and waitForCondition are hybrid: without a target machine they run locally
-    // in the API process (see the RunScriptActivity / WaitForConditionActivity localhost bypass).
+    // runScript and waitForCondition are hybrid: without a target machine they run locally in
+    // the API process through the RunScriptActivity / WaitForConditionActivity localhost bypass.
     if (REMOTE_ACTIVITY_TYPES.has(at) && !HYBRID_LOCAL_ACTIVITY_TYPES.has(at)) {
       const machine = (d.targetMachineId as string) || '';
       if (!machine) {
@@ -290,15 +300,11 @@ export function lintWorkflow(
   }
 
   // ---- runScript: Start-Job / background jobs in the in-process engine -------
-  // The in-process runspace (engine: "auto" → RunspaceExecutionEngine, or explicitly
-  // "runspace") runs in the same process as the NodePilot API and hosts no co-located
-  // pwsh.exe. Any cmdlet that internally calls `Start-Job` fails with "The pwsh executable
-  // cannot be found at …\runtimes\win\lib\net10.0\pwsh.exe" — Microsoft documents this as
-  // "by design" for hosted PowerShell. `-EA SilentlyContinue` only hides the error while
-  // transcript wrapping is off; once auto-logging is on the step fails red, because
-  // Start-Transcript bypasses the error-stream interception. Fix for the script author:
-  // set engine: "pwsh" (an external PowerShell 7 process, where Start-Job can spawn its
-  // child pwsh normally) or replace the cmdlet with a job-free alternative.
+  // The in-process runspace (engine: "auto" or "runspace") runs inside the API process and has
+  // no co-located pwsh.exe, so any cmdlet that internally calls `Start-Job` fails. This is by
+  // design for hosted PowerShell. `-EA SilentlyContinue` hides the error only while transcript
+  // wrapping is off, because Start-Transcript bypasses the error-stream interception. The
+  // author either sets engine: "pwsh" or uses a job-free alternative.
   for (const n of liveNodes) {
     const d = (n.data as Record<string, unknown>) ?? {};
     if ((d.disabled as boolean) === true) continue;
@@ -346,10 +352,9 @@ export function lintWorkflow(
       .filter((n) => (n.data as Record<string, unknown>)?.disabled === true)
       .map((n) => n.id),
   );
-  // Per disabled node: report a single hint if it still has downstream steps attached.
-  // The engine cascades the skip to those steps too (see WorkflowEngine.ExecuteAsync) —
-  // without this warning, the author would be puzzled why "just disabling one step"
-  // silently took out an entire downstream branch.
+  // One hint per disabled node that still has downstream steps attached. The engine cascades
+  // the skip to those steps (WorkflowEngine.ExecuteAsync), so disabling a single step can take
+  // out a whole downstream branch.
   const disabledWithDownstreamReported = new Set<string>();
   for (const e of edges) {
     if ((e.data as Record<string, unknown>)?.disabled) continue;
@@ -375,14 +380,11 @@ export function lintWorkflow(
   }
 
   // ---- Edge occlusion: a connection line runs through an unrelated node ---------------------
-  // React Flow renders each node's background color ON TOP of the edge/SVG layer. When an
-  // edge's geometric path happens to cross another node's bounding box, the user sees what
-  // looks like a "cut off" connection — the workflow still runs fine (the engine reads the
-  // JSON directly), but the UI visually suggests "not connected". Typical trigger: 4+ fan-out
-  // edges from one source node to vertically stacked targets, where the outermost edges cut
-  // diagonally through the targets in between. Fix: Auto-Layout (Tidy) repositions nodes to
-  // avoid the overlap. We flag this statically so the user notices before they start
-  // debugging a step that looks "phantom-disconnected".
+  // React Flow paints node backgrounds on top of the edge layer, so an edge whose path crosses
+  // another node's bounding box looks cut off even though the engine reads the JSON and runs
+  // it. Common with fan-out from one source to vertically stacked targets, where the outermost
+  // edges cut diagonally through the targets in between. Auto-Layout (Tidy) repositions the
+  // nodes; flagging it here keeps the author from debugging a step that only looks unwired.
   const nodeBounds = new Map<string, { x: number; y: number; w: number; h: number }>();
   for (const n of liveNodes) {
     const m = (n as { measured?: { width?: number; height?: number } }).measured;
@@ -397,7 +399,7 @@ export function lintWorkflow(
     const sb = nodeBounds.get(e.source);
     const tb = nodeBounds.get(e.target);
     if (!sb || !tb) continue;
-    // Handle-aware: edges without explicit ports fall back to the classic right -> left path.
+    // Handle-aware: edges without explicit ports fall back to the right -> left path.
     const sourcePort = edgeSourcePort(e);
     const sourcePoint = getPortPoint(sb, sourcePort);
     const targetPoint = getPortPoint(tb, edgeTargetPort(e));
@@ -431,9 +433,8 @@ export function lintWorkflow(
         message: `Kante läuft geometrisch durch ${describeNodes(occludedBy)} — optisch wirkt sie "unverbunden", Engine führt sie aber aus. Auto-Layout (Tidy) anwenden, um das Layout zu bereinigen.`,
       });
     } else if (crowdedBy.length >= 2) {
-      // Being near a single node is fine (neighbouring nodes are normal). The rule only
-      // fires once 2+ neighbours sit along the same edge path — that's the "fan-out running
-      // through a whole row" case that originally prompted this check.
+      // Passing close to a single node is normal. The rule fires only once two or more
+      // neighbours sit along the same edge path, which is the fan-out-through-a-row case.
       warnings.push({
         severity: 'warning',
         edgeId: e.id,
@@ -452,17 +453,15 @@ function describeNodes(labels: string[]): string {
   return `${labels.length} Nodes (${head}${labels.length > 2 ? ', …' : ''})`;
 }
 
-/** Sampled points of a cubic Bezier curve, right→left (or bottom→top for vertical flow).
- *  The control-point offset matches React Flow's `getBezierPath` with curvature=0.25 — see
- *  getControlWithCurvature → calculateControlOffset(distance, 0.25): for a positive distance
- *  it's 0.5 * distance, otherwise it's curvature-scaled sqrt(-distance). We only cover the
- *  forward case (dx>0 or dy>0) because backward edges are routed around in a loop by
- *  SmartEdgePath anyway, where this lint check wouldn't be reliable. */
+/** Sampled points of a cubic Bezier curve, left to right (or top to bottom for vertical flow).
+ *  The control-point offset matches React Flow's `getBezierPath` with curvature=0.25, where
+ *  calculateControlOffset uses 0.5 * distance for a positive distance. Only the forward case
+ *  (dx>0 or dy>0) is covered, since SmartEdgePath routes backward edges around in a loop that
+ *  this check cannot approximate reliably. */
 function sampleBezier(x1: number, y1: number, x2: number, y2: number, vertical: boolean): Array<[number, number]> {
   const d = vertical ? y2 - y1 : x2 - x1;
-  // Backward: too complex to approximate accurately (it loops around in a U-shape below),
-  // so skip precise analysis and fall back to straight-line samples instead — the strict
-  // occlusion check still catches it if the direct path happens to cross a node.
+  // Backward edges loop around in a U-shape that is hard to approximate, so fall back to
+  // straight-line samples. The strict occlusion check still catches a direct path over a node.
   if (d < 0) return sampleLine(x1, y1, x2, y2);
   const offset = Math.max(0.5 * Math.abs(d), 30);
   const cp1 = vertical ? [x1, y1 + offset] : [x1 + offset, y1];

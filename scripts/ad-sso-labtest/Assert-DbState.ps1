@@ -1,13 +1,13 @@
-# DB-Belege fuer den Windows-SSO-Feldtest. Read-only -- das Skript schreibt nichts.
+# Database evidence for the Windows SSO field test. Read-only: the script writes nothing.
 #
-# AUSFUEHREN AUF: dem Host mit Postgres-Zugriff (npapi01) bzw. mit passendem -DbHost.
+# RUN ON: the host with Postgres access (npapi01), or any host with a matching -DbHost.
 #
-# Aufruf:
-#   .\Assert-DbState.ps1 -DbPassword '<pw>'                    # alle Szenarien
-#   .\Assert-DbState.ps1 -DbPassword '<pw>' -Scenario Ntlm     # nur ein Szenario
+# Usage:
+#   .\Assert-DbState.ps1 -DbPassword '<pw>'                    # all scenarios
+#   .\Assert-DbState.ps1 -DbPassword '<pw>' -Scenario Ntlm     # a single scenario
 #
-# psql IMMER mit -w aufrufen: ohne das haengt der Konsolen-Passwortprompt das Skript
-# in nicht-interaktiven Shells auf.
+# Always call psql with -w: without it the console password prompt blocks the script in
+# non-interactive shells.
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', '',
     Justification = 'Wegwerf-Lab-Credentials einer Testdatenbank. SecureString wuerde PGPASSWORD nicht sicherer machen (psql liest die Env-Var im Klartext) und den Copy-Paste-Ablauf des READMEs brechen.')]
 param(
@@ -28,14 +28,13 @@ $AdAuthority = 'urn:nodepilot:identity:active-directory'
 function Invoke-Psql([string]$sql, [switch]$Table) {
     $env:PGPASSWORD = $DbPassword
     try {
-        # NICHT $args nennen -- das ist eine automatische Variable.
+        # Do not name this $args: that is an automatic PowerShell variable.
         $psqlArgs = @('-w', '-h', $DbHost, '-U', $DbUser, '-d', $DbName)
         if (-not $Table) { $psqlArgs += @('-A', '-t') }
-        # SQL ueber stdin (-f -), NICHT ueber -c: PowerShell verschluckt beim Aufruf einer
-        # nativen exe die doppelten Anfuehrungszeichen im Argument. Aus "Users" wuerde
-        # Users, Postgres faltet das auf lowercase und antwortet
-        # 'relation "users" does not exist'. Fuer die PascalCase-Tabellen von EF sind die
-        # Quotes zwingend, stdin umgeht das Argument-Quoting vollstaendig.
+        # Pass the SQL on stdin (-f -) instead of -c: PowerShell strips double quotes from
+        # arguments to a native exe, so Postgres folds the unquoted identifier to lowercase
+        # and reports that the relation does not exist. EF's PascalCase table names need the
+        # quotes, and stdin bypasses argument quoting entirely.
         $sql | & $PsqlPath @psqlArgs -f -
     } finally { $env:PGPASSWORD = $null }
 }
@@ -48,9 +47,9 @@ function Add-Check([string]$name, [bool]$ok, [string]$detail) {
 
 $run = { param($s) $Scenario -eq 'All' -or $Scenario -eq $s }
 
-# ---------- Identitaet: LDAP und Windows teilen einen Subject ----------
-# Die Authority ist fuer beide Pfade der kanonische AD-Namensraum, der Subject die SID.
-# Zwei Zeilen fuer denselben Menschen hiessen: die Pfade haben getrennte Konten angelegt.
+# ---------- Identity: LDAP and Windows share one subject ----------
+# For both paths the authority is the canonical AD namespace and the subject is the SID.
+# Two rows for the same person would mean the two paths created separate accounts.
 if (& $run 'Identity') {
     "--- Identitaeten (Authority/Subject je User) ---"
     Invoke-Psql @"
@@ -70,7 +69,7 @@ SELECT COUNT(*) FROM (
     $alice = Get-Scalar "SELECT COUNT(*) FROM ""Users"" WHERE ""Username"" ILIKE 'np.alice%';"
     Add-Check 'W9. Genau ein alice-User (LDAP + SSO)' ($alice -eq '1') "COUNT=$alice"
 
-    # Gruppen leben serverseitig, nicht im Token. alice erbt die Admission transitiv.
+    # Groups live server-side, not in the token. alice inherits admission transitively.
     "--- DirectoryMemberships alice ---"
     Invoke-Psql @"
 SELECT m."Authority", m."GroupKey" FROM "DirectoryMemberships" m
@@ -78,9 +77,9 @@ JOIN "Users" u ON u."Id" = m."UserId" WHERE u."Username" ILIKE 'np.alice%';
 "@ -Table
 }
 
-# ---------- Gate: bob darf keinen JIT-Row erzeugen ----------
-# Die Admission ist fail-closed: ohne Treffer in AllowedGroupSids entsteht KEIN Konto.
-# Ein angelegter, aber rollenloser User waere eine stille Regression.
+# ---------- Gate: bob must not produce a JIT row ----------
+# Admission is fail-closed: without a match in AllowedGroupSids no account is created.
+# A created but role-less user would be a silent regression.
 if (& $run 'Gate') {
     $bobUsers = Get-Scalar "SELECT COUNT(*) FROM ""Users"" WHERE ""Username"" ILIKE 'np.bob%';"
     Add-Check 'W12. Kein User-Row fuer bob' ($bobUsers -eq '0') "COUNT=$bobUsers"
@@ -96,7 +95,7 @@ WHERE "Action" = 'USER_DIRECTORY_ACCESS_REFUSED' AND "Timestamp" > NOW() - INTER
     Add-Check 'W12. Audit USER_DIRECTORY_ACCESS_REFUSED vorhanden' ([int]$refused -gt 0) "COUNT=$refused"
 }
 
-# ---------- Race: parallele Erst-Logins ----------
+# ---------- Race: parallel first logins ----------
 if (& $run 'Race') {
     $daveUsers = Get-Scalar "SELECT COUNT(*) FROM ""Users"" WHERE ""Username"" ILIKE 'np.dave%';"
     Add-Check 'W18. Genau ein User fuer dave' ($daveUsers -eq '1') "COUNT=$daveUsers"
@@ -105,8 +104,8 @@ SELECT COUNT(*) FROM "ExternalIdentities" e
 JOIN "Users" u ON u."Id" = e."UserId" WHERE u."Username" ILIKE 'np.dave%';
 "@
     Add-Check 'W18. Genau eine Identity fuer dave' ($daveIds -eq '1') "COUNT=$daveIds"
-    # Genau EIN JIT_CREATED beweist, dass die Unique-Index-Race korrekt aufgeloest wurde
-    # (die Verlierer laufen in den Update-Pfad, nicht in einen zweiten Insert).
+    # Exactly one JIT_CREATED shows the unique-index race resolved correctly: the losing
+    # callers take the update path instead of a second insert.
     $created = Get-Scalar @"
 SELECT COUNT(*) FROM "AuditLog"
 WHERE "Action" = 'USER_WINDOWS_JIT_CREATED' AND "Username" ILIKE 'np.dave%';
@@ -114,7 +113,7 @@ WHERE "Action" = 'USER_WINDOWS_JIT_CREATED' AND "Username" ILIKE 'np.dave%';
     Add-Check 'W18. Genau ein USER_WINDOWS_JIT_CREATED fuer dave' ($created -eq '1') "COUNT=$created"
 }
 
-# ---------- Revocation: Gruppenentzug / Account-Disable ----------
+# ---------- Revocation: group removal / account disable ----------
 if (& $run 'Revocation') {
     "--- erin: Status + Sessions ---"
     Invoke-Psql @"
@@ -134,15 +133,15 @@ WHERE "Action" = 'USER_DIRECTORY_DEPROVISIONED' AND "Timestamp" > NOW() - INTERV
 "@
     Add-Check 'W15. Audit USER_DIRECTORY_DEPROVISIONED vorhanden' ([int]$deprov -gt 0) "COUNT=$deprov"
 
-    # Gegenprobe zu W17: der Sync darf NIE die ganze Mandantschaft tombstonen.
+    # Counter-check for W17: the sync must never tombstone the whole user base.
     $tomb = Get-Scalar "SELECT COUNT(*) FROM ""Users"" WHERE ""IsTombstoned"" = true;"
     Add-Check 'W17. Kein Massen-Tombstoning' ([int]$tomb -le 1) "tombstoned=$tomb"
 }
 
-# ---------- NTLM-Ablehnung ----------
-# Nur im GPO-Auditmodus (W19) vorhanden. Bei "Deny all accounts" (W20) lehnt SSPI vor dem
-# Controller ab -- dann ist das Fehlen dieser Zeile korrekt und der Beleg kommt aus dem
-# NTLM-Operational-Eventlog (Event 4004).
+# ---------- NTLM refusal ----------
+# Present only in GPO audit mode (W19). Under "Deny all accounts" (W20) SSPI refuses before
+# the controller runs, so a missing row is correct there and the evidence comes from the
+# NTLM operational event log (event 4004).
 if (& $run 'Ntlm') {
     "--- NTLM-Ablehnungen (letzte 2 h) ---"
     Invoke-Psql @"
@@ -163,7 +162,7 @@ WHERE s."AuthenticationMethod" = 'Windows' AND s."CreatedAt" > NOW() - INTERVAL 
     Add-Check 'W19. Keine frische Windows-Session durch NTLM' ($sessions -eq '0') "COUNT=$sessions"
 }
 
-# ---------- Audit-Gesamtbild ----------
+# ---------- Audit overview ----------
 if (& $run 'Audit') {
     "--- Auth-Audit der letzten 2 Stunden ---"
     Invoke-Psql @"
@@ -174,9 +173,8 @@ WHERE "Timestamp" > NOW() - INTERVAL '2 hours'
 GROUP BY "Action" ORDER BY "Action";
 "@ -Table
 
-    # Kollisionen/Identitaetskonflikte schreiben KEIN LOGIN_FAILED, nur USER_WINDOWS_REFUSED_*.
-    # SIEM-Regeln, die nur auf LOGIN_* filtern, verlieren diese Faelle -- deshalb hier
-    # separat sichtbar machen.
+    # Collisions and identity conflicts write no LOGIN_FAILED, only USER_WINDOWS_REFUSED_*.
+    # SIEM rules that filter on LOGIN_* alone miss these cases, so list them separately here.
     "--- Refusals ohne LOGIN_FAILED-Gegenstueck ---"
     Invoke-Psql @"
 SELECT "Timestamp", "Action", "Username" FROM "AuditLog"

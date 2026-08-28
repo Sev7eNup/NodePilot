@@ -2,21 +2,11 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 49 — Execution Retry & Cancel-All.
- *
- * 49.1's full API contract (HTTP status, new executionId, trigger "retry:<id>", EXECUTION_RETRIED
- * audit code) is asserted server-side in NodePilot.Api.Tests / NodePilot.Cli.Tests. What the SPA
- * CAN drive is the retry affordance on ExecutionsPage (added in the executions-page overhaul): the
- * per-row Retry button POSTs /executions/{id}/retry. 49.5 covers that UI path; the deeper contract
- * checks below stay API-only skips:
- *   49.1  POST /api/executions/{id}/retry           → 202, new executionId, trigger "retry:<id>"
- *   49.2  POST /api/executions/{id}/retry (Running) → 400 naming the status
- *   49.3  POST /api/workflows/{id}/cancel-all       → 200, cancelledCount ≥ 1, all → Cancelled
- *   49.4  POST /api/workflows/{id}/cancel-all (idle)→ 200, cancelledCount: 0
- *
- * /workflows/{id}/cancel-all still has no frontend surface (np CLI `np workflow cancel-all` + REST
- * only). The status-guard (49.2) and zero-count (49.4) paths are server-side. They stay explicit
- * skips so the Teil-49 rows remain visible in the e2e report rather than silently absent.
+ * E2ETests.md section "Teil 49": execution retry and cancel-all. The only part the SPA can drive
+ * is the per-row Retry button on ExecutionsPage, which posts to /executions/{id}/retry, covered by
+ * 49.5. The full retry contract (status code, new executionId, "retry:<id>" trigger, audit code),
+ * the status guard, and /workflows/{id}/cancel-all are server-side and stay explicit skips so the
+ * Teil 49 rows remain visible in the e2e report.
  */
 
 const RETRY_WF_ID = '49494949-0000-0000-0000-000000000049';
@@ -37,7 +27,7 @@ test.describe('Execution Retry & Cancel-All (Teil 49)', () => {
         }]),
       }),
     );
-    // A single terminal (Failed) run — retry is offered on terminal rows.
+    // A single failed run: retry is only offered on rows in a terminal state.
     await page.route('**/api/executions**', (route) => {
       if (route.request().url().includes('/steps')) return route.fallback();
       return route.fulfill({
@@ -66,7 +56,7 @@ test.describe('Execution Retry & Cancel-All (Teil 49)', () => {
     const retryBtn = page.getByRole('button', { name: /Retry execution/i });
     await expect(retryBtn).toBeVisible({ timeout: 15_000 });
     await retryBtn.click();
-    // Confirm via the in-app ConfirmHost dialog (native confirm() was retired).
+    // Confirm via the in-app ConfirmHost dialog.
     await page.getByRole('button', { name: 'OK' }).click();
 
     await expect.poll(() => retriedId, { timeout: 10_000 }).toBe(RETRY_EXEC_ID);

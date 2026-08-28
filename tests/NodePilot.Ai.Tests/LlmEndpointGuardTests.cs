@@ -67,9 +67,8 @@ public sealed class LlmEndpointGuardTests
     }
 
     // ---- Dialect resolution ---------------------------------------------------------
-    // The BaseUrl path is the only signal for which wire dialect an endpoint speaks, and it also
-    // decides whether the endpoint suffix still has to be appended. Pasting the full endpoint URL
-    // used to produce a double-append (POST /v1/responses/chat/completions → HTTP 404).
+    // BaseUrl selects the wire dialect and determines whether an endpoint suffix is required.
+    // Full endpoint URLs must not receive a duplicate suffix.
 
     [Fact]
     public void ResolveEndpoint_ResponsesPath_PostsVerbatimAndStripsSuffixForRoot()

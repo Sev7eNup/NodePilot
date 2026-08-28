@@ -7,7 +7,7 @@ namespace NodePilot.Api.Hosting;
 /// <summary>
 /// Hot-reload companion to the cold-start <c>ThreadPool.SetMinThreads</c> prewarm in
 /// <c>Program.cs</c>. The boot call tunes the pool once from the bootstrap config so burst
-/// workloads don't stall before this service even runs; this hosted service additionally
+/// workloads do not stall during hosted-service startup; this service additionally
 /// re-applies <c>Threading:MinWorkerThreads</c> / <c>Threading:MinIoCompletionThreads</c>
 /// from the <em>live</em> app configuration on start and whenever the config reloads (an
 /// Admin-Settings-UI save writes <c>appsettings.runtime.json</c> with
@@ -63,7 +63,7 @@ internal sealed class ThreadPoolTuningService : IHostedService, IDisposable
     {
         // Follow the mode the process actually BOOTED in, not whatever the live configuration
         // says right now. Switching Performance:ManualTuning only takes effect on restart because
-        // the runspace pool and the dispatch queue are built once at startup; honouring a live
+        // the runspace pool and dispatch worker pool are built once at startup; honouring a live
         // toggle here would re-tune the ThreadPool for a mode the rest of the process is not in.
         // The Settings UI surfaces that difference as a restart hint instead.
         var minWorkers = _plan.MinWorkerThreads.Value;

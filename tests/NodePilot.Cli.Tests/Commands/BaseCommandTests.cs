@@ -12,9 +12,9 @@ using NodePilot.Core.Clients;
 namespace NodePilot.Cli.Tests.Commands;
 
 /// <summary>
-/// BaseCommand owns the catch-block that turns API exceptions into the right exit
-/// code. We exercise that mapping with a stub command that throws what we want
-/// rather than spinning up a WireMock server per case.
+/// BaseCommand owns the catch block that maps API exceptions to exit codes. This exercises
+/// that mapping with a stub command that throws on demand, instead of spinning up a
+/// WireMock server per case.
 /// </summary>
 public sealed class BaseCommandTests : IDisposable
 {
@@ -109,9 +109,9 @@ public sealed class BaseCommandTests : IDisposable
         protected override Task<int> RunAsync(CommandContext context, GlobalSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
             => _body();
 
-        // Spectre made AsyncCommand.ExecuteAsync protected in 0.55; re-expose it so these
-        // tests can drive BaseCommand's catch-block mapping directly instead of standing up
-        // a whole CommandApp just to observe an exit code.
+        // AsyncCommand.ExecuteAsync is protected; re-expose it so these tests can drive
+        // BaseCommand's catch-block mapping directly instead of standing up a whole
+        // CommandApp just to observe an exit code.
         public Task<int> InvokeAsync(CommandContext context, GlobalSettings settings, CancellationToken ct)
             => ExecuteAsync(context, settings, ct);
     }

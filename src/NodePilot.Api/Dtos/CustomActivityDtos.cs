@@ -3,7 +3,8 @@ using NodePilot.Core.Activities;
 using System.Text.Json.Serialization;
 namespace NodePilot.Api.Dtos;
 
-/// <summary>Full custom-activity detail incl. the script — returned to authors (Admin/Operator) for editing.</summary>
+/// <summary>Full custom-activity detail incl. the script — returned to authors (Admin/Operator) for
+/// editing.</summary>
 public sealed record CustomActivityResponse(
     Guid Id, string Key, string Type, string Name, string? Description, string Icon, string? Color,
     string ScriptTemplate, string Engine, bool RunsRemote, bool Isolated, int? MemoryLimitMb,
@@ -14,7 +15,8 @@ public sealed record CustomActivityResponse(
 
 /// <summary>
 /// Lightweight palette/catalog entry — NO script (fetched by every role to drive the designer).
-/// <see cref="Timeout"/> is "always" since custom activities always run a script (UI timeout gating).
+/// <see cref="Timeout"/> is "always" since custom activities always run a script (UI timeout
+/// gating).
 /// </summary>
 public sealed record CustomActivityCatalogEntry(
     Guid Id, string Key, string Type, string Name, string? Description, string Icon, string? Color,
@@ -44,7 +46,8 @@ public sealed record CustomActivityVersionResponse(
 
 public sealed record CustomActivityLintWarning(string Rule, string Message);
 
-/// <summary>Create/Update response — carries the saved definition plus any non-blocking script lint warnings.</summary>
+/// <summary>Create/Update response — carries the saved definition plus any non-blocking script lint
+/// warnings.</summary>
 public sealed record CustomActivitySaveResponse(
     CustomActivityResponse Definition, IReadOnlyList<CustomActivityLintWarning> Warnings);
 

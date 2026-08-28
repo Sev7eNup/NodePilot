@@ -48,11 +48,12 @@ public class WorkflowExecution
     public string? ReturnData { get; set; }
 
     /// <summary>
-    /// JSON-serialized snapshot of the input parameters the execution was started with
+    /// Redacted and size-capped JSON observability snapshot of the input parameters the execution
+    /// was started with
     /// (<c>ExecuteWorkflowRequest.Parameters</c> for manual runs, trigger-injected params
     /// for scheduled/webhook/db/eventlog/file triggers, sub-workflow params for
-    /// <c>startWorkflow</c> calls). Enables post-mortem reproduction of a run.
-    /// Null if no parameters were provided.
+    /// <c>startWorkflow</c> calls). Null if no parameters were provided. This is not a durable
+    /// replay source: Retry must reject snapshots containing redaction or truncation markers.
     /// </summary>
     public string? InputParametersJson { get; set; }
 
@@ -73,10 +74,12 @@ public class WorkflowExecution
     /// For a <see cref="ExecutionStatus.Cancelled"/> execution: who/what initiated the cancel.
     /// One of "user" (a single manual <c>POST /executions/{id}/cancel</c>), "cancelAll"
     /// (workflow cancel-all / quarantine), "failover" (cluster leader-change recovery),
-    /// "reconciler" (single-node startup recovery of a hung run), "dispatch" (terminal write
-    /// from the pre-ownership dispatch path), or "system" (engine cancel without an explicit
-    /// reason — e.g. execution timeout or host shutdown). Null for non-cancelled executions.
-    /// Surfaced to alerting as the <c>cancelledBy</c> event field so a rule can target manual
+    /// "reconciler" (single-node startup recovery of a hung run), "reconciler-pending"
+    /// (single-node recovery before engine ownership), "failover-pending" (the equivalent HA
+    /// case), "dispatch" (terminal write from the pre-ownership dispatch path), or "system"
+    /// (engine cancel without an explicit reason — e.g. execution timeout or host shutdown).
+    /// Null for non-cancelled executions. Surfaced to alerting as the <c>cancelledBy</c> event
+    /// field so a rule can target manual
     /// cancels only (<c>cancelledBy == "user"</c>).
     /// </summary>
     public string? CancelledBy { get; set; }

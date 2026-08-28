@@ -110,9 +110,8 @@ describe('configClone — buildClonedDataPatch (scope=all)', () => {
   });
 
   it('emits a config patch even when source has only the action payload', () => {
-    // Previous behaviour silently dropped the patch when "no cloneable keys" matched. New
-    // behaviour: action payload is part of the clone, so a script-only source still produces
-    // a patch.
+    // The action payload is part of the clone, so a source carrying only a script still
+    // produces a config patch.
     const sparse = {
       activityType: 'runScript',
       targetMachineId: 'machine-A',
@@ -152,9 +151,8 @@ describe('configClone — buildClonedDataPatch (scope=remoteOnly)', () => {
 
 describe('configClone — applyClonedPatch', () => {
   it('REPLACES config (does not merge) so old fields from the target do not survive', () => {
-    // Crucial: if a user clones FROM a source that has no `script` ONTO a target that has
-    // `script: 'foo'`, the merge approach would keep `foo` and surprise the user. The clone
-    // is "make this step look like that one" — full replacement is the right default.
+    // Cloning replaces the config instead of merging it, so config keys the source does not
+    // carry cannot survive on the target.
     const target = {
       activityType: 'runScript',
       label: 'Ziel-Step',

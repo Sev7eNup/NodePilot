@@ -31,9 +31,9 @@ public class TokenValidityMiddlewareTests
     {
         var ctx = new DefaultHttpContext();
         ctx.Response.Body = new System.IO.MemoryStream();
-        // Default to the protected API surface: outside /api and /hubs the middleware
-        // deliberately anonymizes instead of rejecting (SPA-shell navigations must never
-        // be answered with the 401 JSON — see the path check in the middleware).
+        // Default to the protected API surface. Outside /api and /hubs the middleware
+        // anonymizes instead of rejecting, because SPA-shell navigations must never get
+        // the 401 JSON response. See the path check in the middleware.
         ctx.Request.Path = "/api/test";
 
         if (!authenticated) return ctx;
@@ -95,8 +95,8 @@ public class TokenValidityMiddlewareTests
             SecurityStamp = securityStamp
         };
 
-    // Fresh cache per test: the middleware caches revocation/user-state lookups for 30 s
-    // and sharing a static instance between tests would leak state across them.
+    // Fresh cache per test. The middleware caches revocation and user-state lookups for
+    // 30 seconds; sharing one cache across tests would leak state between them.
     private static IMemoryCache NewCache() => new MemoryCache(new MemoryCacheOptions());
 
     private static TokenValidityMiddleware CreateMiddleware(RequestDelegate next) =>
@@ -119,8 +119,9 @@ public class TokenValidityMiddlewareTests
         ctx.Request.Path = "/workflows/any-client-route";
         ctx.Request.Headers.Cookie = "np_auth=still-signature-valid";
 
-        // A disposed context is an observable tripwire: touching RevokedTokens, AuthSessions or Users
-        // throws. During an open breaker an SPA navigation must be anonymized before any of them run.
+        // A disposed context is a tripwire: touching RevokedTokens, AuthSessions, or Users
+        // throws. While the breaker is open, an SPA navigation must be anonymized before
+        // any of those run.
         db.Dispose();
 
         var tracker = new DatabaseAvailabilityTracker(
@@ -195,10 +196,10 @@ public class TokenValidityMiddlewareTests
     [Fact]
     public async Task Invoke_InvalidTokenOnSpaRoute_AnonymizesAndServesPage()
     {
-        // A browser holding an expired/revoked np_auth cookie navigates to /login (served by
-        // the SPA fallback endpoint, which carries no [AllowAnonymous] metadata). The page —
-        // including the login page itself — must render; rejecting here bricks the app until
-        // the user manually clears cookies (lab regression 2026-08-01).
+        // A browser holding an expired or revoked np_auth cookie navigates to /login,
+        // served by the SPA fallback endpoint (no [AllowAnonymous] metadata). The page,
+        // including the login page itself, must still render; rejecting here would lock
+        // the user out until they manually clear cookies.
         var db = TestDbFactory.Create();
         var userId = Guid.NewGuid();
         db.Users.Add(MakeUser(userId));
@@ -226,7 +227,7 @@ public class TokenValidityMiddlewareTests
     [Fact]
     public async Task Invoke_InvalidTokenOnHubPath_StillRejects()
     {
-        // SignalR hubs are part of the protected surface — the SPA-shell exemption must not
+        // SignalR hubs are part of the protected surface. The SPA-shell exemption must not
         // open them to revoked sessions.
         var db = TestDbFactory.Create();
         var userId = Guid.NewGuid();
@@ -356,7 +357,7 @@ public class TokenValidityMiddlewareTests
     [Fact]
     public async Task Invoke_NoJtiClaim_Returns401()
     {
-        // No jti claim → jti revocation is skipped, but user check still runs
+        // No jti claim: jti revocation is skipped, but the user check still runs.
         var db = TestDbFactory.Create();
         var userId = Guid.NewGuid();
         db.Users.Add(MakeUser(userId, isActive: true));
@@ -398,7 +399,7 @@ public class TokenValidityMiddlewareTests
         db.Users.Add(MakeUser(userId, isActive: true, passwordChangedAt: passwordChangedAt));
         await db.SaveChangesAsync();
 
-        // Token issued 10 minutes before password change → stale
+        // Token issued 10 minutes before the password change: stale.
         var tokenIssuedAt = passwordChangedAt.AddMinutes(-10);
         var iatMs = new DateTimeOffset(tokenIssuedAt).ToUnixTimeMilliseconds();
         var ctx = MakeContext(jti: Guid.NewGuid().ToString(), userId: userId, iatMs: iatMs, db: db);
@@ -421,7 +422,7 @@ public class TokenValidityMiddlewareTests
         db.Users.Add(MakeUser(userId, isActive: true, passwordChangedAt: passwordChangedAt));
         await db.SaveChangesAsync();
 
-        // Token issued 5 minutes after password change → valid
+        // Token issued 5 minutes after the password change: valid.
         var tokenIssuedAt = passwordChangedAt.AddMinutes(5);
         var iatMs = new DateTimeOffset(tokenIssuedAt).ToUnixTimeMilliseconds();
         var ctx = MakeContext(jti: Guid.NewGuid().ToString(), userId: userId, iatMs: iatMs, db: db);
@@ -464,10 +465,9 @@ public class TokenValidityMiddlewareTests
     [Fact]
     public async Task Invoke_StampMismatch_Returns401()
     {
-        // H-1 (a finding from the security audit): SecurityStamp on the row is ahead of
-        // the token's np_secstamp claim. Models the "demoted-but-token-still-alive" scenario:
-        // an admin demoted to Viewer holds a token minted when their stamp was N-1; the
-        // row has been bumped to N; the middleware must reject the stale token.
+        // SecurityStamp on the row is ahead of the token's np_secstamp claim. Models an
+        // admin demoted to Viewer holding a token minted at stamp N-1 while the row is now
+        // at N; the middleware must reject the stale token.
         var db = TestDbFactory.Create();
         var userId = Guid.NewGuid();
         db.Users.Add(MakeUser(userId, isActive: true, securityStamp: 5));
@@ -558,11 +558,9 @@ public class TokenValidityMiddlewareTests
     [Fact]
     public async Task Invoke_NoStampClaim_Returns401()
     {
-        // Tokens minted before the H-1 fix (and the existing test fixtures that mint
-        // without a stamp claim) are parsed as stamp=0 and only succeed against a row whose
-        // SecurityStamp is also 0 — which is the default value the migration used for the
-        // new column, so existing accounts on a freshly-migrated DB stay logged in until
-        // the first stamp bump.
+        // A token minted without a stamp claim is parsed as stamp=0 and only matches a row
+        // whose SecurityStamp is also 0, the default for the column. This keeps existing
+        // accounts on a freshly-migrated DB logged in until the first stamp bump.
         var db = TestDbFactory.Create();
         var userId = Guid.NewGuid();
         db.Users.Add(MakeUser(userId, isActive: true, securityStamp: 0));

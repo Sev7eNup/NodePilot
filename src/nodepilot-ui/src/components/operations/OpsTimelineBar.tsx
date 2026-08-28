@@ -5,11 +5,10 @@ import { formatTime } from '../../lib/format';
 
 // One execution bar on the live timeline. Absolutely positioned by the parent-provided geometry.
 //
-// Which coordinate system that geometry is in depends on the bar: a SETTLED bar is placed once per
-// snapshot and lives inside `.np-ops-shift`, the layer that slides as a whole between polls, so its
-// props are constant across clock ticks and `memo` keeps it out of the render entirely. A RUNNING
-// bar is placed against the live window every tick — it grows toward NOW, which a layer translation
-// cannot express — and carries the CSS transition that smooths that growth (see .np-ops-bar--running).
+// A settled bar is placed once per snapshot inside `.np-ops-shift`, the layer that slides as a
+// whole between polls, so its props stay constant across clock ticks and `memo` keeps it out of
+// the render. A running bar is placed against the live window every tick because it grows toward
+// now, and carries the CSS transition that smooths that growth (see .np-ops-bar--running).
 
 const BAR_H = 22;
 const ROW_H = 38;
@@ -17,15 +16,13 @@ const ROW_H = 38;
 /**
  * Floor on the rendered bar width so a very short run stays visible and clickable.
  *
- * Kept small on purpose: the floor destroys proportionality, and it does so worst exactly where
- * the window is widest. Even at the selectable 1 h window, short runs compress to only a few
- * pixels, so a generous floor makes them the same length and hides which run took longer.
- * Below the floor, `OpsTimeline` writes the duration next to the bar instead — see
- * OPS_INSIDE_LABEL_PX.
+ * Kept small because the floor destroys proportionality: on a wide window a generous floor would
+ * render every short run at the same length and hide which one took longer. Below the floor,
+ * `OpsTimeline` writes the duration next to the bar instead — see OPS_INSIDE_LABEL_PX.
  */
 export const OPS_MIN_BAR_PX = 4;
 
-/** Narrower than this and the duration no longer fits INSIDE the bar. */
+/** Below this width the duration label no longer fits inside the bar. */
 export const OPS_INSIDE_LABEL_PX = 64;
 
 /** Terminal glyph shown inside settled bars that are wide enough. */
@@ -43,10 +40,8 @@ export const OpsTimelineBar = memo(function OpsTimelineBar({ bar, topPx, duratio
   bar: PlacedBar;
   topPx: number;
   /**
-   * How long the run has taken, in ms — precomputed by the parent rather than derived here from a
-   * clock. Deliberate: this used to take `nowMs`, which a settled bar never reads but which changed
-   * every second, so `memo` saw a new prop and re-rendered thousands of frozen bars once a second
-   * for nothing. A settled bar's duration is constant, so the memo now actually holds.
+   * How long the run has taken, in ms. Precomputed by the parent instead of derived from a clock
+   * here, so a settled bar keeps constant props and `memo` holds across clock ticks.
    */
   durationMs: number;
   selected: boolean;
@@ -62,9 +57,8 @@ export const OpsTimelineBar = memo(function OpsTimelineBar({ bar, topPx, duratio
   const color = STATUS_COLOR_VAR[npStatusFromExecution(bar.status)];
   const showLabel = bar.widthPx >= OPS_INSIDE_LABEL_PX;
   const glyph = active ? null : settledGlyph(bar.status);
-  // A bar that started before the window is clamped to x=0, so a 3-hour hang looks exactly
-  // like a 21-minute one. The only other cue is a mask-image fade, which is easy to miss —
-  // state the actual start time instead.
+  // A bar that started before the window is clamped to x=0, so a long run looks like a short one.
+  // The mask-image fade is the only other cue and is easy to miss, so state the actual start time.
   const startedBefore = bar.clippedLeft
     ? formatTime(bar.startedAtMs, { hour: '2-digit', minute: '2-digit' })
     : null;
@@ -72,16 +66,15 @@ export const OpsTimelineBar = memo(function OpsTimelineBar({ bar, topPx, duratio
   return (
     <button
       type="button"
-      // Not a tab stop of its own. A busy board carries thousands of these, and one tab stop apiece
-      // turns the timeline into a keyboard trap: nothing below it is reachable without thousands of
-      // presses. The track itself is the single tab stop and moves an aria-activedescendant across
-      // these ids instead — see OpsTimeline's key handling.
+      // Not a tab stop of its own: a busy board carries thousands of bars, and one tab stop apiece
+      // would leave everything below the timeline unreachable by keyboard. The track is the single
+      // tab stop and moves an aria-activedescendant across these ids; see OpsTimeline key input.
       id={`ops-bar-${bar.executionId}`}
       tabIndex={-1}
       onClick={() => onSelect(bar.executionId)}
       title={[
         `${label} · ${formatDuration(durationMs)}`,
-        // Steps FINISHED, never "x of y": under DeferRunningStateWrite no honest total exists.
+        // Finished steps only, never "x of y": DeferRunningStateWrite leaves no reliable total.
         bar.stepsFinished !== null ? `${bar.stepsFinished} steps done` : null,
         bar.lastCompletedStepName,
       ].filter(Boolean).join(' · ')}
@@ -117,7 +110,6 @@ export const OPS_ROW_H = ROW_H;
 
 /**
  * Rendered height of a run bar. Exported so the density histogram can be pinned strictly below it
- * — see OPS_DENSITY_MAX_H. An aggregate column that reaches bar height reads as a single run, which
- * is exactly the defect the histogram replaced.
+ * — see OPS_DENSITY_MAX_H. An aggregate column that reaches bar height reads as a single run.
  */
 export const OPS_BAR_H = BAR_H;

@@ -12,7 +12,7 @@ export interface NodeOperationsApi {
   addNode: (type: string, label: string) => void;
   /** Insert a multi-node snippet centered in the viewport. */
   addSnippet: (snippetId: string) => void;
-  /** Clone an existing node — same data, slight position offset, selected. */
+  /** Clone an existing node: same data, slightly offset position, selected. */
   duplicateNode: (nodeId: string) => void;
   /** Remove a node and any edges touching it. Clears selection if the deleted node was selected. */
   deleteNodeById: (nodeId: string) => void;
@@ -21,9 +21,9 @@ export interface NodeOperationsApi {
 }
 
 /**
- * Hosts the five "create / clone / delete / group" operations the editor exposes via
- * toolbar, context menu and shortcuts. All operations commit history before mutating so
- * Ctrl+Z reverts the entire action.
+ * Hosts the create, clone, delete and group operations the editor exposes through toolbar,
+ * context menu and shortcuts. Every operation commits history before mutating, so Ctrl+Z
+ * reverts the whole action.
  */
 export function useNodeOperations({
   nodes,
@@ -54,17 +54,16 @@ export function useNodeOperations({
       const jitter = (nodes.length % 6) * 24;
       position = { x: base.x + jitter, y: base.y + jitter };
     }
-    // Sticky notes get their own node type (own styling, no connection handles) and are
-    // covered by the engine's skip path via data.disabled=true — even if a later JSON
-    // import attaches an edge to one.
+    // Sticky notes use their own node type (own styling, no connection handles) and the engine
+    // skips them via data.disabled=true, even if an imported JSON attaches an edge to one.
     const isNote = type === 'note';
-    // Smart Defaults: copy machine + credential from the last sibling of the same type
-    // (or base URL for restApi, provider+connectionRef for sql, isHtml for emailNotification).
-    // Empty object when no sibling exists — first node of its type still gets full defaults.
+    // Copies machine and credential from the last sibling of the same type (or base URL for
+    // restApi, provider and connectionRef for sql, isHtml for emailNotification). Empty when no
+    // sibling exists, so the first node of a type still gets full defaults.
     const smart = isNote ? {} : getSmartDefaults(type, nodes);
-    // Custom activities (custom:<key>) need their definition reference baked into the node config:
-    // __customDefinitionId is the authoritative link the executor loads; __customKey is the drift
-    // cross-check. Declared input defaults are seeded so the node is runnable out of the box.
+    // Custom activities (custom:<key>) carry their definition reference in the node config:
+    // __customDefinitionId is the authoritative link the executor loads, __customKey is the drift
+    // cross-check. Declared input defaults are seeded so the node is runnable right away.
     const customFacts = isNote ? undefined : getCustomActivityFacts(type);
     const activityConfig: Record<string, unknown> = { ...(smart.config ?? {}) };
     if (customFacts) {
@@ -79,9 +78,8 @@ export function useNodeOperations({
           id: `note-${randomUuid()}`,
           type: 'stickyNote',
           position,
-          // Default dimensions so NodeResizer has a concrete frame from the start — a new
-          // note can be dragged/resized from its corners/edges right away, without us first
-          // having to migrate internally from a content-derived size.
+          // Default dimensions give NodeResizer a concrete frame from the start, so a new note
+          // can be dragged and resized from its corners and edges right away.
           style: { width: 220, height: 120 },
           data: { label: 'Note', activityType: 'note', text: 'Double-click to edit…', disabled: true },
         }
@@ -102,8 +100,8 @@ export function useNodeOperations({
     setSelected({ type: 'node', id: newNode.id });
   }, [canvasRef, screenToFlowPosition, nodes, commitHistory, setNodes, setSelected]);
 
-  /** Origin = viewport center (minus a half-snippet width) so the pattern doesn't get glued
-   *  to the top-left. New nodes land selected so the user can immediately drag the group. */
+  /** Origin is the viewport center minus half a snippet width, so the pattern is not glued to
+   *  the top-left. New nodes land selected so the group can be dragged straight away. */
   const addSnippet = useCallback((snippetId: string) => {
     const snippet = WORKFLOW_SNIPPETS.find((s) => s.id === snippetId);
     if (!snippet) return;
@@ -144,8 +142,8 @@ export function useNodeOperations({
     if (selected?.id === nodeId) setSelected(null);
   }, [commitHistory, setNodes, setEdges, selected, setSelected]);
 
-  /** Group nodes go FIRST in the array — React Flow renders in array order, group must be
-   *  beneath its children (first = bottom layer). */
+  /** The group node goes first in the array: React Flow renders in array order, so the group
+   *  ends up beneath its children. */
   const groupSelection = useCallback(() => {
     const sel = nodes.filter((n) => n.selected && n.type !== 'group');
     if (sel.length === 0) return;

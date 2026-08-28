@@ -84,12 +84,14 @@ public class WorkflowAnalyzerTests
         var r = Analyze("""
             {"nodes":[
               {"id":"t1","type":"activity","data":{"activityType":"scheduleTrigger","config":{}}},
+              {"id":"join","type":"activity","data":{"activityType":"junction","config":{"mode":"waitAll"}}},
               {"id":"a","type":"activity","data":{"activityType":"log","config":{}}},
               {"id":"b","type":"activity","data":{"activityType":"log","config":{}}}
             ],"edges":[
-              {"id":"e1","source":"t1","target":"a","type":"labeled","data":{}},
-              {"id":"e2","source":"a","target":"b","type":"labeled","data":{}},
-              {"id":"e3","source":"b","target":"a","type":"labeled","data":{}}
+              {"id":"e1","source":"t1","target":"join","type":"labeled","data":{}},
+              {"id":"e2","source":"join","target":"a","type":"labeled","data":{}},
+              {"id":"e3","source":"a","target":"b","type":"labeled","data":{}},
+              {"id":"e4","source":"b","target":"join","type":"labeled","data":{}}
             ]}
             """);
 
@@ -179,7 +181,27 @@ public class WorkflowAnalyzerTests
         r.Ok.Should().BeFalse();
     }
 
-    /// <summary>An empty workflow runs through with 0 steps and Succeeds — "no trigger" would lie.</summary>
+    [Fact]
+    public void Analyze_DirectFanIn_ReportsDedicatedJunctionFinding()
+    {
+        var r = Analyze("""
+            {"nodes":[
+              {"id":"t1","type":"activity","data":{"activityType":"manualTrigger","config":{}}},
+              {"id":"a","type":"activity","data":{"activityType":"log","config":{}}},
+              {"id":"target","type":"activity","data":{"activityType":"log","config":{}}}
+            ],"edges":[
+              {"id":"e1","source":"t1","target":"target","type":"labeled","data":{}},
+              {"id":"e2","source":"a","target":"target","type":"labeled","data":{}}
+            ]}
+            """);
+
+        r.Ok.Should().BeFalse();
+        r.Findings.Should().ContainSingle().Which.Code.Should().Be("fan-in-requires-junction");
+    }
+
+    /// <summary>
+    /// An empty workflow succeeds with zero steps; reporting "no trigger" would be incorrect.
+    /// </summary>
     [Fact]
     public void Analyze_EmptyWorkflow_ReportsNothing()
     {

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 /**
  * Inline copyable id chip: renders `(<short>)` with an 8-char prefix of `id` and copies the
- * FULL id to the clipboard on click. Matches the Executions-page convention (short prefix
+ * full id to the clipboard on click. Matches the Executions-page convention (short prefix
  * visible, full id in the tooltip via `executions:copyId`, click copies the full id). A
  * checkmark flashes for ~1.5s as feedback. Clipboard errors (insecure context, jsdom) are
  * swallowed silently — no crash, just no checkmark.

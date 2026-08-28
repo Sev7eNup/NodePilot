@@ -34,10 +34,10 @@ public static class EngineMetrics
     public static readonly Counter<long> Cancellations = Meter.CreateCounter<long>(
         "nodepilot.execution.cancellations", unit: "1", description: "Workflow executions that ended via cancellation.");
 
-    // H-3 (security-audit finding): capacity-cap rejections. Spikes here indicate
-    // resource-exhaustion pressure (a legitimate burst of triggers, a compromised
-    // account, or a runaway webhook). Tagged by reason (global_cap / per_user_cap) so
-    // the operator can see which limit actually kicked in.
+    // Capacity-cap rejections. Spikes here indicate resource-exhaustion pressure (a
+    // legitimate burst of triggers, a compromised account, or a runaway webhook).
+    // Tagged by reason (global_cap / per_user_cap) so the operator can see which
+    // limit actually kicked in.
     public static readonly Counter<long> ExecutionsRejected = Meter.CreateCounter<long>(
         "nodepilot.executions.rejected", unit: "1",
         description: "Workflow executions rejected by the engine capacity caps, tagged by reason.");

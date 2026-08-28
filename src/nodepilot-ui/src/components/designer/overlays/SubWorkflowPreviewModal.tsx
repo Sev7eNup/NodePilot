@@ -26,13 +26,11 @@ const edgeTypes = { labeled: LabeledEdge };
 
 /**
  * Read-only inline preview of a sub-workflow referenced by a `startWorkflow` node. Mounts
- * its own ReactFlow instance behind a `ReactFlowProvider` so it doesn't fight the parent
- * editor's store (each Provider has its own internal state). Pan and zoom are enabled, but
- * editing is locked: no drag, no connect, no selection.
+ * its own ReactFlow instance behind a `ReactFlowProvider` so it doesn't share state with the
+ * parent editor. Pan and zoom work; drag, connect, and selection are disabled.
  *
- * Only one level deep — if the previewed workflow itself contains startWorkflow nodes, we
- * render them as normal but the user has to click through manually. This matches how the
- * runtime engine treats nested calls (max depth 10) and prevents accidental render-blow-up.
+ * Only renders one level deep — nested startWorkflow nodes show as normal nodes the user
+ * can click through, rather than expanding automatically.
  */
 export function SubWorkflowPreviewModal({ workflowNameOrId, onClose, onOpenInEditor }: Props) {
   const { t } = useTranslation(['editor', 'common']);
@@ -50,10 +48,9 @@ export function SubWorkflowPreviewModal({ workflowNameOrId, onClose, onOpenInEdi
     return () => globalThis.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  // Read into a local first: the guarded `workflow.definitionJson` access inside the body made
-  // the compiler infer the whole `workflow` object as the dependency while the source listed
-  // only the one property, which cost this component its auto-memoization
-  // (react-hooks/preserve-manual-memoization).
+  // Read into a local first: accessing `workflow.definitionJson` directly inside the memo
+  // body makes the compiler treat the whole `workflow` object as a dependency instead of
+  // just this property, breaking auto-memoization (react-hooks/preserve-manual-memoization).
   const definitionJson = workflow?.definitionJson;
   const definition = useMemo(() => {
     if (!definitionJson) return null;
@@ -65,16 +62,10 @@ export function SubWorkflowPreviewModal({ workflowNameOrId, onClose, onOpenInEdi
     }
   }, [definitionJson]);
 
-  // Mark every node as non-selectable + non-draggable up front so the rendered ActivityNodes
-  // visually match the read-only intent. Without this, reactFlow defaults still allow click
-  // selection which would highlight a node the user can't actually edit.
-  //
-  // CRITICAL: `connectable: true` must be set EXPLICITLY here. ActivityNode's internal
-  // `ActivityPortHandles` derives `isConnectableEnd` from `isConnectable`, and React Flow
-  // refuses to wire a pre-existing edge to a handle whose host node isn't connectable
-  // ("Couldn't create edge for target handle id: 'left'"). Stripping `connectable: false`
-  // alone isn't enough if a stale `false` was persisted into the definition JSON. New
-  // user-initiated connections get blocked separately via `isValidConnection` on the root.
+  // Every node is set non-selectable, non-draggable, and connectable: true. The first two
+  // keep the preview read-only. `connectable: true` is required despite that: React Flow
+  // refuses to wire a saved edge to a node that isn't connectable, so leaving this false
+  // (or a stale `false` persisted in the definition) breaks rendering of existing edges.
   const previewNodes = useMemo(() => {
     if (!definition) return [];
     return definition.nodes.map((n) => ({
@@ -85,23 +76,18 @@ export function SubWorkflowPreviewModal({ workflowNameOrId, onClose, onOpenInEdi
     }));
   }, [definition]);
 
-  // Activity nodes expose four named handles (top/right/bottom/left). Edges saved without an
-  // explicit sourceHandle/targetHandle would resolve to id "null" and React Flow refuses to
-  // render them ("Couldn't create edge for target handle id: 'null'"). The main editor patches
-  // this via `withDefaultEdgePorts` in displayedEdges; mirror it here so the preview shows the
-  // same connections the runtime would see.
+  // Edges saved without an explicit sourceHandle/targetHandle resolve to handle id "null",
+  // which React Flow refuses to render. Apply the same `withDefaultEdgePorts` fix the main
+  // editor uses so the preview shows the same connections the runtime would see.
   const previewEdges = useMemo(
     () => (definition?.edges ?? []).map((e) => withDefaultEdgePorts(e)),
     [definition],
   );
   const isResolvable = !workflowNameOrId.trim().startsWith('{{') && workflowNameOrId.trim().length > 0;
 
-  // Render via portal to document.body. Otherwise the modal would live inside the parent
-  // editor's <ReactFlowProvider>, and the inner ReactFlow's `useStore` calls (LabeledEdge,
-  // node bookkeeping, edge resolution) collide with the outer store. Symptom: edges are in
-  // the JSX tree but React Flow refuses to wire them ("Couldn't create edge for target
-  // handle id"). Portaling the modal out of the React tree puts our nested ReactFlowProvider
-  // alone in its subtree.
+  // Rendered via a portal to document.body. Otherwise the modal would sit inside the parent
+  // editor's <ReactFlowProvider>, and the inner ReactFlow's `useStore` calls would collide
+  // with the outer store, so React Flow would refuse to wire the edges.
   return createPortal(
     <div
       className="np-anim-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/40"

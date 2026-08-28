@@ -4,25 +4,20 @@ using System.Text;
 namespace NodePilot.Ai;
 
 /// <summary>
-/// The ONE bounded tool-calling loop behind both chat assistants
-/// (<see cref="WorkflowAssistantService"/> and <c>Knowledge.KnowledgeAssistantService</c>) —
-/// previously each carried a near-verbatim private copy, so every quirk fix had to be made
-/// twice (coherence audit 2026-08).
+/// The bounded tool-calling loop shared by both chat assistants
+/// (<see cref="WorkflowAssistantService"/> and <c>Knowledge.KnowledgeAssistantService</c>).
 ///
-/// <para>Loop contract, kept exactly as both copies implemented it:</para>
+/// <para>Loop contract:</para>
 /// <list type="bullet">
-/// <item>On the LAST allowed round, offer no tools at all: this guarantees the model returns
-/// a text answer instead of emitting yet more tool_calls at the depth cap (which the loop
-/// would then discard → an empty final answer). Deliberately NOT <c>tool_choice:"none"</c> —
-/// some local endpoints (llama.cpp/vLLM) reject that literal with HTTP 400; omitting tools
-/// entirely avoids the problem. The tool results are already in the conversation history.</item>
-/// <item>Execute on the PRESENCE of tool_calls, not the finish_reason string: OpenAI sets
-/// finish_reason "tool_calls", but local endpoints (LM Studio, llama.cpp) frequently report
-/// "stop"/null on a round that still carries tool_calls — an exact-string gate silently
-/// dropped those calls and capped local models at a single tool call.</item>
-/// <item>Token counts and the generation window ADD UP across rounds (never overwrite) —
-/// otherwise the usage footer would only count the last LLM round. They stay null when the
-/// server never reports usage.</item>
+/// <item>On the last allowed round, offer no tools at all, so the model returns a text answer
+/// instead of emitting tool_calls that the loop would have to discard. Tools are omitted rather
+/// than sending <c>tool_choice:"none"</c>, which some local endpoints (llama.cpp/vLLM) reject
+/// with HTTP 400. The tool results are already in the conversation history.</item>
+/// <item>Execute on the presence of tool_calls, not on the finish_reason string: OpenAI sets
+/// finish_reason "tool_calls", but local endpoints (LM Studio, llama.cpp) often report
+/// "stop"/null on a round that still carries tool_calls.</item>
+/// <item>Token counts and the generation window add up across rounds instead of overwriting, so
+/// the usage footer covers every LLM round. They stay null when the server reports no usage.</item>
 /// </list>
 /// </summary>
 internal sealed class AgenticToolLoop
@@ -34,14 +29,11 @@ internal sealed class AgenticToolLoop
     public int? GenerationMs { get; private set; }
 
     /// <summary>
-    /// Runs the loop. <paramref name="onDelta"/> is the caller's per-delta translation into
-    /// outward stream events (the plain chat emits one Delta; the workflow chat buffers
-    /// prose/definition and may emit Delta/Building) — the assistant-turn accumulation for
-    /// the conversation history happens here regardless. <paramref name="suppressToolCalls"/>
-    /// is an extra per-round veto evaluated after streaming (the workflow chat drops
-    /// tool_calls once the definition started — the definition wins, no further round trip).
-    /// <paramref name="executeTool"/> is only invoked when <paramref name="tools"/> was
-    /// non-null, so callers may capture a context that is null in the no-tools case.
+    /// Runs the loop. <paramref name="onDelta"/> turns each delta into outward stream events; the
+    /// assistant turn is accumulated for the conversation history either way.
+    /// <paramref name="suppressToolCalls"/> is a per-round veto evaluated after streaming, used by
+    /// the workflow chat once the definition started. <paramref name="executeTool"/> is invoked
+    /// only when <paramref name="tools"/> is non-null, so a null tool context is safe for callers.
     /// </summary>
     public async IAsyncEnumerable<ChatStreamEvent> RunAsync(
         ILlmClient llm,
@@ -61,7 +53,7 @@ internal sealed class AgenticToolLoop
             var llmRequest = new LlmRequest(systemPrompt, UserPrompt: string.Empty, JsonMode: false,
                 Conversation: conversation, Tools: roundTools, ToolChoice: roundTools is not null ? "auto" : null);
 
-            var assistantText = new StringBuilder(); // prose from THIS round (for the conversation turn)
+            var assistantText = new StringBuilder(); // prose from this round, for the conversation turn
             IReadOnlyList<LlmToolCall>? toolCalls = null;
 
             await foreach (var evt in llm.StreamAsync(llmRequest, ct))

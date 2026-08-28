@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Node } from '@xyflow/react';
 import { reparentDraggedNodes, findDropTargetGroupId } from '../../lib/groupReparenting';
 
-// Minimal node factory. Groups size via `style`, activities via `measured` — matching the designer.
+// Minimal node factory. Groups size via `style`, activities via `measured`, as in the designer.
 function mk(id: string, type: string, pos: { x: number; y: number }, opts: Partial<Node> = {}): Node {
   return { id, type, position: pos, data: {}, ...opts } as Node;
 }
@@ -15,7 +15,7 @@ const byId = (nodes: Node[] | null) => new Map((nodes ?? []).map((n) => [n.id, n
 
 describe('reparentDraggedNodes', () => {
   it('adoptsTopLevelNodeWhoseCenterEntersGroup', () => {
-    // Group rect [100..400]x[100..300]; node at (150,150) → center (260,180) is inside.
+    // Group rect [100..400]x[100..300]; the node at (150,150) has center (260,180) inside it.
     const nodes = [group('g', 100, 100, 300, 200), activity('a', 150, 150)];
     const out = reparentDraggedNodes(nodes, ['a']);
     expect(out).not.toBeNull();
@@ -26,7 +26,7 @@ describe('reparentDraggedNodes', () => {
   });
 
   it('detachesChildDraggedOutOfItsGroup', () => {
-    // Child relative (350,50) → abs (450,150), center (560,180) is past the group's right edge (400).
+    // Child relative (350,50) is abs (450,150); center (560,180) is past the right edge (400).
     const nodes = [
       group('g', 100, 100, 300, 200),
       activity('a', 350, 50, { parentId: 'g' }),
@@ -43,7 +43,7 @@ describe('reparentDraggedNodes', () => {
     const nodes = [
       group('g1', 100, 100, 200, 200), // [100..300]
       group('g2', 500, 100, 200, 200), // [500..700]
-      activity('a', 420, 20, { parentId: 'g1' }), // abs (520,120), center (630,150) → inside g2
+      activity('a', 420, 20, { parentId: 'g1' }), // abs (520,120), center (630,150) inside g2
     ];
     const out = reparentDraggedNodes(nodes, ['a']);
     const a = byId(out).get('a')!;
@@ -67,7 +67,7 @@ describe('reparentDraggedNodes', () => {
   });
 
   it('ignoresPartialOverlapWhenCenterIsOutside', () => {
-    // Node abs (380,150), center (490,180) — overlaps the group edge but its center is past x=400.
+    // Node abs (380,150), center (490,180); overlaps the group edge but its center is past x=400.
     const nodes = [group('g', 100, 100, 300, 200), activity('a', 380, 150)];
     expect(reparentDraggedNodes(nodes, ['a'])).toBeNull();
   });
@@ -81,7 +81,7 @@ describe('reparentDraggedNodes', () => {
   });
 
   it('keepsGroupsFirstInTheReturnedArray', () => {
-    // Group listed AFTER the activity; result must reorder so the group precedes its new child.
+    // Group listed after the activity; the result reorders so the group precedes its new child.
     const nodes = [activity('a', 150, 150), group('g', 100, 100, 300, 200)];
     const out = reparentDraggedNodes(nodes, ['a'])!;
     expect(out[0].id).toBe('g');
@@ -101,10 +101,10 @@ describe('reparentDraggedNodes', () => {
   });
 
   it('picksTheTopmostGroupWhenTwoOverlap', () => {
-    // Both groups cover the node's center; the LAST in array order renders on top → wins.
+    // Both groups cover the node center; the last one in array order renders on top and wins.
     const nodes = [
       group('back', 0, 0, 500, 500),
-      group('front', 100, 100, 300, 300), // [100..400]; rendered after → on top
+      group('front', 100, 100, 300, 300), // [100..400]; rendered after, so on top
       activity('a', 150, 150), // center (260,180) inside both
     ];
     const out = reparentDraggedNodes(nodes, ['a'])!;
@@ -127,7 +127,7 @@ describe('findDropTargetGroupId', () => {
     // A child with a live (in-flight) relative position whose absolute center moved into g2.
     const g1 = group('g1', 100, 100, 200, 200);
     const g2 = group('g2', 500, 100, 200, 200);
-    const dragged = activity('a', 420, 20, { parentId: 'g1' }); // abs (520,120) → center inside g2
+    const dragged = activity('a', 420, 20, { parentId: 'g1' }); // abs (520,120) -> center inside g2
     expect(findDropTargetGroupId([g1, g2, dragged], dragged)).toBe('g2');
   });
 

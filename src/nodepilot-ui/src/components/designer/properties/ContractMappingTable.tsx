@@ -11,24 +11,17 @@ interface Props {
   values: Record<string, string>;
   onChange: (next: Record<string, string>) => void;
   upstreamVars: UpstreamVariable[];
-  /** The parent step's outputVariable (or step-id fallback). Used to render the
+/** The parent step's outputVariable (or step-id fallback). Renders the
    *  "available downstream as `{{<step>.param.x}}`" hint in the outputs section. */
   parentStepHandle: string;
 }
 
 /**
- * Typed mapping table for sub-workflow parameter wiring. Replaces the free-form
- * ParameterTable when the child workflow exposes a derivable contract.
- *
- * Behaviors aligned with the engine:
- * - Setting a value to "" REMOVES the key from the parameters dict (so the child's
- *   declared default kicks in). The engine treats `{ foo: "" }` as "user provided
- *   empty string, override the default" — typically not what the author intended.
- * - Required + missing is a validation error ONLY when there's no declared default.
- *   Required + has-default is fine: the child uses the default.
- * - Stale keys (in `values` but not in `contract.inputs`) are still rendered with a
- *   warning so the author can see "this is being sent but the child doesn't expect
- *   it". They are NOT auto-pruned — that would be a destructive surprise.
+ * Typed mapping table for sub-workflow parameter wiring, used instead of the free-form
+ * ParameterTable when the child workflow exposes a derivable contract. Clearing a value drops
+ * the key so the child's declared default applies, a required input counts as missing only
+ * when it has no default, and keys the child does not declare stay visible with a warning
+ * instead of being pruned automatically.
  */
 export function ContractMappingTable({ contract, values, onChange, upstreamVars, parentStepHandle }: Readonly<Props>) {
   const { t } = useTranslation('properties');
@@ -47,7 +40,7 @@ export function ContractMappingTable({ contract, values, onChange, upstreamVars,
   const updateValue = (name: string, val: string) => {
     const next = { ...values };
     if (val === '') {
-      // Empty out → drop the key so the child's declared default takes effect.
+      // Empty value: drop the key so the child's declared default takes effect.
       delete next[name];
     } else {
       next[name] = val;
@@ -61,10 +54,8 @@ export function ContractMappingTable({ contract, values, onChange, upstreamVars,
     onChange(next);
   };
 
-  // No declared inputs (workflow has no manualTrigger or manualTrigger has no params).
-  // Author can still call the workflow, but they'd need to use the free-form
-  // ParameterTable — render an info banner here. The free-form fallback lives in
-  // the parent component (StartWorkflowConfig), not here.
+  // Without a manualTrigger the child declares no inputs, so show an info banner here. The
+  // free-form ParameterTable fallback lives in the parent component (StartWorkflowConfig).
   if (!contract.hasManualTrigger) {
     return (
       <div className="rounded-md border border-primary/30 bg-primary/10 p-3 space-y-1.5">
@@ -108,7 +99,7 @@ export function ContractMappingTable({ contract, values, onChange, upstreamVars,
           })}
         </div>
       </div>
-      {/* Stale-keys section — params author sends but child doesn't expect */}
+      {/* Stale keys: parameters that are sent but not declared by the child */}
       {staleKeys.length > 0 && (
         <div className="rounded-md border border-orange-200 bg-orange-50 p-2 space-y-1.5">
           <div className="flex items-center gap-1.5 text-[11px] font-label font-semibold text-orange-800">

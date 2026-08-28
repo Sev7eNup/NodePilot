@@ -2,23 +2,18 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * Teil 21 — Global Variables (E2ETests.md ~2073-2114).
+ * Part 21 — Global Variables (E2ETests.md).
  *
- * Admin-managed constants exposed to workflows via `{{globals.NAME}}`. Page lives at
- * /global-variables (GlobalVariablesPage). Admin can list + mutate; Operator/Viewer are
- * read-only (no create/edit/delete buttons). Secrets render as `***` and are never
- * returned (value === null over the wire).
+ * Admin-managed constants exposed to workflows via `{{globals.NAME}}`. The page lives at
+ * /global-variables (GlobalVariablesPage). Admin can list and mutate, Operator and Viewer are
+ * read-only. Secret values render as `***` and are never sent to the client.
  *
- * No real backend — per-test page.route mocks over the hermetic catch-all. Locale-agnostic
- * (bilingual) selectors throughout. The create/edit dialog is role="presentation"; scope by
- * its heading's parent panel.
- *
- * Test 21.1 — create a plain variable (round-trip with body assertion) + Operator read-only.
- * Test 21.2 — create a secret variable; UI masks the value as `***`; secret value never
- *             returned to the client.
+ * There is no backend: every call is mocked per test with page.route over the hermetic
+ * catch-all, and selectors are bilingual. The create/edit dialog is role="presentation", so
+ * scope to the parent element of its heading.
  */
 
-// Root folder sentinel — mirrors GlobalVariableFolder.RootFolderId (…0002).
+// Root folder sentinel, mirrors GlobalVariableFolder.RootFolderId.
 const ROOT_FOLDER = '00000000-0000-0000-0000-000000000002';
 
 function variableJson(overrides: Record<string, unknown> = {}) {
@@ -59,8 +54,8 @@ function dialogPanel(page: Page) {
 test.describe('Teil 21 — Global Variables', () => {
   test.beforeEach(async ({ page }) => {
     await installDefaultMocks(page);
-    // The page queries the folder tree on mount and filters the list by folder — always mock it
-    // (default: just Root, so every variable in Root shows). Tests needing subfolders override.
+    // The page queries the folder tree on mount and filters the list by folder, so always mock it.
+    // The default is Root alone; tests that need subfolders override this route.
     await page.route('**/api/global-variable-folders', (route) => {
       if (route.request().method() !== 'GET') return route.fallback();
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([folderJson()]) });
@@ -74,7 +69,7 @@ test.describe('Teil 21 — Global Variables', () => {
         contentType: 'application/json',
         body: JSON.stringify([
           variableJson({ id: 'g-plain', name: 'API_BASE_URL', value: 'https://api.example.com', isSecret: false }),
-          // Secret: server returns value masked as "***" (never the cleartext).
+          // The server returns a secret value masked as "***", never the cleartext.
           variableJson({ id: 'g-secret', name: 'API_KEY', value: '***', isSecret: true }),
         ]),
       }),
@@ -85,8 +80,7 @@ test.describe('Teil 21 — Global Variables', () => {
     await expect(page.getByText('API_BASE_URL')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('https://api.example.com')).toBeVisible();
     await expect(page.getByText('API_KEY')).toBeVisible();
-    // Type badges (bilingual) — Secret vs Plain. The badge span wraps an icon + text,
-    // so match the text as a substring (not anchored).
+    // The type badge wraps an icon and the label text, so match the text as a substring.
     await expect(page.getByText(/secret|geheim/i).first()).toBeVisible();
     await expect(page.getByText(/plain|klartext/i).first()).toBeVisible();
     // Secret value is masked.
@@ -118,9 +112,9 @@ test.describe('Teil 21 — Global Variables', () => {
 
     const panel = dialogPanel(page);
     await expect(panel).toBeVisible();
-    // Name input has placeholder "MY_CONSTANT"; value/textbox second; checkbox = secret.
+    // The name input carries the placeholder "MY_CONSTANT".
     await panel.getByPlaceholder('MY_CONSTANT').fill('API_BASE_URL');
-    // The value field is a plain text input (not secret) — second textbox in the panel.
+    // For a non-secret variable the value field is a plain text input, the second in the panel.
     await panel.getByRole('textbox').nth(1).fill('https://api.example.com');
     await panel.getByRole('button', { name: /^create$|^anlegen$/i }).click();
 
@@ -154,9 +148,9 @@ test.describe('Teil 21 — Global Variables', () => {
 
     await page.goto('/global-variables');
 
-    // Operator CAN read the list (used in workflows) ...
+    // An Operator can read the list, because workflows reference these values.
     await expect(page.getByText('READ_ONLY_VAR')).toBeVisible({ timeout: 15_000 });
-    // ... but cannot mutate via the UI (canAdmin gates all write controls).
+    // Mutation is blocked in the UI: canAdmin gates every write control.
     await expect(page.getByRole('button', { name: /new variable|neue variable/i })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^edit$|^bearbeiten$/i })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^delete$|^löschen$/i })).toHaveCount(0);
@@ -170,7 +164,7 @@ test.describe('Teil 21 — Global Variables', () => {
       const req = route.request();
       if (req.method() === 'POST') {
         postedBody = req.postDataJSON();
-        // Server stores the secret DPAPI-encrypted and returns it masked — value === "***".
+        // The server stores the secret DPAPI-encrypted and returns it masked as "***".
         const created = variableJson({
           id: 'secret-1',
           name: (postedBody as { name: string }).name,
@@ -193,10 +187,9 @@ test.describe('Teil 21 — Global Variables', () => {
     const panel = dialogPanel(page);
     await expect(panel).toBeVisible();
     await panel.getByPlaceholder('MY_CONSTANT').fill('API_KEY');
-    // Toggle the secret checkbox FIRST — this flips the value input to type=password.
+    // Toggle the secret checkbox first: it flips the value input to type=password.
     await panel.getByRole('checkbox').check();
-    // After flipping to secret, the value field is a password input (no textbox role) —
-    // select it by type within the panel.
+    // A password input has no textbox role, so select the value field by its type.
     await panel.locator('input[type="password"]').fill('sk-secret-xyz');
     await panel.getByRole('button', { name: /^create$|^anlegen$/i }).click();
 
@@ -241,7 +234,7 @@ test.describe('Teil 21 — Global Variables', () => {
     await panel.getByRole('button', { name: /^update$|^aktualisieren$/i }).click();
 
     await expect.poll(() => putBody).not.toBeNull();
-    // Untouched secret value -> server told to keep ciphertext (value === null).
+    // An untouched secret sends value === null, which tells the server to keep the ciphertext.
     expect(putBody).toMatchObject({ name: 'API_KEY', isSecret: true, value: null });
   });
 
@@ -268,7 +261,7 @@ test.describe('Teil 21 — Global Variables', () => {
     await page.getByRole('button', { name: /^edit$|^bearbeiten$/i }).click();
     const panel = dialogPanel(page);
     await expect(panel).toBeVisible();
-    // Plain variable → the value field is the second textbox, prefilled from the row.
+    // For a plain variable the value field is the second textbox, prefilled from the row.
     const valueInput = panel.getByRole('textbox').nth(1);
     await expect(valueInput).toHaveValue('https://old.example.com');
     await valueInput.fill('https://new.example.com');
@@ -299,7 +292,7 @@ test.describe('Teil 21 — Global Variables', () => {
     await expect(page.getByText('OBSOLETE_FLAG')).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole('button', { name: /^delete$|^löschen$/i }).click();
-    // Confirm via the in-app ConfirmHost dialog (native confirm() was retired).
+    // Confirmation runs through the in-app ConfirmHost dialog, not a native confirm().
     await page.getByRole('button', { name: 'OK' }).click();
     await expect.poll(() => deleteHit, { timeout: 10_000 }).toBe(true);
     await expect(page.getByText('OBSOLETE_FLAG')).toHaveCount(0);
@@ -329,7 +322,7 @@ test.describe('Teil 21 — Global Variables', () => {
   });
 
   test('21.6 — selecting a subfolder scopes the list to that folder', async ({ page }) => {
-    // Root + one subfolder; a variable in each. Root (default selection) is descendant-inclusive.
+    // Root plus one subfolder, with a variable in each. Root is the default selection.
     await page.route('**/api/global-variable-folders', (route) => {
       if (route.request().method() !== 'GET') return route.fallback();
       return route.fulfill({
@@ -351,11 +344,11 @@ test.describe('Teil 21 — Global Variables', () => {
     );
 
     await page.goto('/global-variables');
-    // Root selected → both rows visible (descendant-inclusive).
+    // With Root selected both rows are visible, because the selection includes descendants.
     await expect(page.getByText('ROOT_VAR')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('DB_VAR')).toBeVisible();
 
-    // Click the "Databases" subfolder → list scopes to it.
+    // Clicking the "Databases" subfolder scopes the list to that folder.
     await page.getByTestId('global-folder-f-db').click();
     await expect(page.getByText('ROOT_VAR')).toHaveCount(0);
     await expect(page.getByText('DB_VAR')).toBeVisible();
@@ -363,8 +356,8 @@ test.describe('Teil 21 — Global Variables', () => {
 
   test('21.7 — Admin creates a folder via the tree (POST body assertion)', async ({ page }) => {
     let postedBody: Record<string, unknown> | null = null;
-    // Seed an existing subfolder so the panel is a few rows tall — otherwise the corner
-    // resize-handle (absolute bottom-right) overlaps the Root row's "+" in a one-row panel.
+    // Seed an existing subfolder so the panel is a few rows tall. In a one-row panel the corner
+    // resize handle sits over the "+" button on the Root row.
     const existingFolders = [
       folderJson({ variableCount: 0 }),
       folderJson({ id: 'f-existing', parentFolderId: ROOT_FOLDER, name: 'Existing', path: '/Existing', depth: 1 }),
@@ -397,8 +390,8 @@ test.describe('Teil 21 — Global Variables', () => {
     expect(postedBody).toMatchObject({ name: 'Databases', parentFolderId: ROOT_FOLDER });
   });
   test('21.8 - deleting a non-empty folder removes it with its contents', async ({ page }) => {
-    // "Delete only when empty" was the limitation this replaced. The confirmation naming the
-    // blast radius is what makes it safe, so that is what is asserted.
+    // Deleting a non-empty folder is safe only because the confirmation names what it removes,
+    // so that is what this test asserts.
     await page.route('**/api/global-variable-folders', (route) => {
       if (route.request().method() !== 'GET') return route.fallback();
       return route.fulfill({
@@ -469,12 +462,12 @@ test.describe('Teil 21 — Global Variables', () => {
     await expect(page.getByTestId('folder-bulk-bar')).toBeVisible();
 
     await page.getByTestId('folder-bulk-delete').click();
-    // Scoped to the dialog: the bulk bar carries a "Delete" button of its own, and ModalShell
-    // has no dialog role to select on.
+    // Scope to the dialog: the bulk bar has a "Delete" button of its own, and ModalShell
+    // exposes no dialog role to select on.
     const dialog = page.getByTestId('confirm-details').locator('..');
     await dialog.getByRole('button', { name: /^(OK|Delete|Löschen)/ }).click();
 
-    // Siblings, so both are top-most: one DELETE each, and only one dialog for the run.
+    // Both folders are siblings and therefore top-most: one DELETE each, and a single dialog.
     await expect.poll(() => deleted.length, { timeout: 10_000 }).toBe(2);
     expect(deleted).toEqual(expect.arrayContaining(['f-db', 'f-keys']));
   });
@@ -505,7 +498,7 @@ test.describe('Teil 21 — Global Variables', () => {
     await expect(page.getByTestId('variable-bulk-bar')).toBeVisible();
 
     await page.getByTestId('variable-bulk-delete').click();
-    // The confirmation names them — with secrets on the list a bare count is not checkable.
+    // The confirmation names the variables; a bare count would not be checkable.
     await expect(page.getByTestId('confirm-details')).toContainText('ALPHA');
     const dialog = page.getByTestId('confirm-details').locator('..');
     await dialog.getByRole('button', { name: /^(OK|Delete|Löschen)/ }).click();

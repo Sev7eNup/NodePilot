@@ -117,7 +117,7 @@ public sealed class WorkflowDefinitionPatcherTests
     [Fact]
     public void Apply_UpsertNode_WithoutNode_Throws()
     {
-        // op string present, but no 'node' object → RequireItem throws.
+        // op string present, but no 'node' object -> RequireItem throws.
         var ops = WorkflowDefinitionPatcher.ParseOps(E("""[{"op":"upsertNode","id":"x"}]"""));
 
         var act = () => WorkflowDefinitionPatcher.Apply(E("""{"nodes":[],"edges":[]}"""), ops);

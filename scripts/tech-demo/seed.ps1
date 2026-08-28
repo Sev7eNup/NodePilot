@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-    Seeds the "NodePilot Tech-Demo -Full Showcase" (plus its child workflow) into a
-    running NodePilot instance via POST /api/workflows. Does NOT use the import endpoint.
+    Seeds the "NodePilot Tech-Demo -Full Showcase" workflow and its child workflow into a
+    running NodePilot instance via POST /api/workflows, not via the import endpoint.
 
 .DESCRIPTION
     Handles both first-time admin bootstrap (via X-Setup-Token header) and normal login.

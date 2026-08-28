@@ -7,7 +7,7 @@ import { useThemeStore } from '../../../stores/themeStore';
  * Pure annotation node — documents the workflow inline (why does this branch exist, what does
  * the following RunScript do, TODO notes). Never executed by the engine:
  *
- *   - No source/target handles → it isn't an edge endpoint, so it can't be part of the graph
+ *   - No source/target handles -> it isn't an edge endpoint, so it can't be part of the graph
  *     traversal.
  *   - `data.disabled = true` is set on creation, so even if an export later wires edges to this
  *     node, the engine sorts it into `disabledNodeIds` and skips it (see
@@ -29,7 +29,7 @@ const DEFAULT_FONT_SIZE = 13;
 
 // Minimum on-screen font size (px) guaranteed on hover. If the canvas is zoomed out far enough
 // that `fontSize * zoom` falls below this, the note scales up on hover just enough to reach
-// this threshold again. At a zoom near 1 (or zoomed in), the computed factor is ≤ 1 → we clamp
+// this threshold again. At a zoom near 1 (or zoomed in), the computed factor is ≤ 1 -> we clamp
 // to 1, so the note stays unchanged.
 const HOVER_READABLE_PX = 14;
 

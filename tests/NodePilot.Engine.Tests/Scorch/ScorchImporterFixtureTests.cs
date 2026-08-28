@@ -157,7 +157,8 @@ public class ScorchImporterFixtureTests
     // ---------- mappings verified against the real export's type and property names ----------
 
     /// <summary>
-    /// SCOrch writes "Invoke Runbook" as <c>Trigger Policy</c>. The old table matched the designer's
+    /// SCOrch writes "Invoke Runbook" as <c>Trigger Policy</c>. The old table matched the
+    /// designer's
     /// name, so the single most common activity in a real estate — a runbook calling another one —
     /// imported as a placeholder, and its arguments were dropped with it.
     /// </summary>
@@ -202,7 +203,8 @@ public class ScorchImporterFixtureTests
     }
 
     /// <summary>
-    /// SCOrch's age filter has no fileOperation counterpart. Importing it as an unconditional delete
+    /// SCOrch's age filter has no fileOperation counterpart. Importing it as an unconditional
+    /// delete
     /// would delete more than the runbook ever did, so it degrades to a placeholder instead.
     /// </summary>
     [Fact]
@@ -244,10 +246,8 @@ public class ScorchImporterFixtureTests
     }
 
     /// <summary>
-    /// Both Run Program activities import as program calls, whatever their Program field holds — the
-    /// export says they are external calls and that is what decides the node type. The second is the
-    /// shape a real export uses in command-line mode: "cmd /C | attrib …", where the bar separates
-    /// program from arguments. Read as a pipe it used to degrade the activity to a script node.
+    /// Imports Run Program activities as program calls based on their exported type. A bar in the
+    /// command-line form separates the program from its arguments and is not a script pipe.
     /// </summary>
     [Fact]
     public void Parse_RunProgram_ImportsBothShapesAsProgramCalls()
@@ -268,7 +268,8 @@ public class ScorchImporterFixtureTests
     }
 
     /// <summary>
-    /// A remote activity with no target machine does not fall back to the engine host — it fails the
+    /// A remote activity with no target machine does not fall back to the engine host — it fails
+    /// the
     /// step. The SCOrch computer name is copied verbatim because MachineResolver accepts a name or
     /// hostname and synthesizes an ad-hoc WinRM target when it is not registered.
     /// </summary>
@@ -320,7 +321,8 @@ public class ScorchImporterFixtureTests
             e.GetProperty("source").GetString() == sourceId && e.GetProperty("target").GetString() == targetId);
 
     /// <summary>
-    /// SCOrch's "on success" link carries a bare {GUID} in Data and the outcome in Value. The parser
+    /// SCOrch's "on success" link carries a bare {GUID} in Data and the outcome in Value. The
+    /// parser
     /// required {GUID}.field, so it reported every one as unparseable and dropped it — turning the
     /// most common conditional link in any runbook into an unconditional edge.
     /// </summary>
@@ -391,10 +393,13 @@ public class ScorchImporterFixtureTests
     }
 
     /// <summary>
-    /// SCOrch's Compare Values evaluates one comparison and its outgoing links branch on the result.
-    /// Imported as a `log` it kept the node visible but killed every branch behind it, because a log
+    /// SCOrch's Compare Values evaluates one comparison and its outgoing links branch on the
+    /// result.
+    /// Imported as a `log` it kept the node visible but killed every branch behind it, because a
+    /// log
     /// publishes nothing for the links to read. As a `decision` whose single case is named "true"
-    /// with defaultCaseName "false", <c>param.case</c> carries exactly the values the SCOrch filters
+    /// with defaultCaseName "false", <c>param.case</c> carries exactly the values the SCOrch
+    /// filters
     /// already compare against — so the whole remap is the field name.
     /// </summary>
     [Fact]
@@ -462,7 +467,8 @@ public class ScorchImporterFixtureTests
     /// <summary>
     /// A runScript's real outputs are the variables its script assigns — the static catalog knows
     /// only <c>exitCode</c>. Checking against the catalog alone flagged six perfectly good
-    /// references in the reference runbook; a report that tells an operator to fix working wiring is
+    /// references in the reference runbook; a report that tells an operator to fix working wiring
+    /// is
     /// worse than no report at all.
     /// </summary>
     [Fact]
@@ -470,14 +476,14 @@ public class ScorchImporterFixtureTests
     {
         var result = ParseFixture();
 
-        // 'Check Package Contents' assigns $hasPayload, and the link out of it filters on that value.
+        // 'Check Package Contents' assigns $hasPayload, and the link out of it filters on that
+        // value.
         result.Warnings.Should().NotContain(w => w.Contains("param.hasPayload"));
     }
 
     /// <summary>
-    /// The same check applied to link conditions, which read the bus exactly like a node config
-    /// does. A filter reading a value its source never publishes makes the edge silently never
-    /// match — harder to notice than a broken step, and previously not examined at all.
+    /// Applies output validation to link conditions because they read the same data bus as node
+    /// configuration. Reports filters that reference values their source never publishes.
     /// </summary>
     [Fact]
     public void Parse_LinkConditionReadingAValueTheSourceDoesNotPublish_IsReported()
@@ -506,7 +512,8 @@ public class ScorchImporterFixtureTests
 
     /// <summary>
     /// The import report reuses the workflow analyzer, so it says the same thing about a workflow
-    /// that the canvas and the MCP tools do. The fixture's disabled placeholder cuts a branch loose,
+    /// that the canvas and the MCP tools do. The fixture's disabled placeholder cuts a branch
+    /// loose,
     /// which is precisely the finding an operator needs to see.
     /// </summary>
     [Fact]

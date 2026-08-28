@@ -1,10 +1,9 @@
 import type { Edge } from '@xyflow/react';
 
 /**
- * Pure helpers for the workflow-editor page. Lifted out of `WorkflowEditorPage.tsx`
- * so the page itself stays focused on JSX + state wiring rather than carrying its own
- * graph-walking utilities. None of these read/write component state — every input is
- * passed in explicitly.
+ * Pure helpers for the workflow-editor page, kept out of `WorkflowEditorPage.tsx` so the page
+ * stays focused on JSX and state wiring. None of these read or write component state; every
+ * input is passed in explicitly.
  */
 
 /** BFS the outgoing edges from <c>startId</c> and return every reachable downstream node id. */

@@ -1,16 +1,11 @@
 name: CodeQL
 
 # Static security analysis for the two languages that carry the attack surface: the C#
-# backend (auth, crypto, remote execution, raw SQL) and the TypeScript frontend. The CI
-# workflow only audits *dependencies* (dotnet list --vulnerable / npm audit); nothing looked
-# at first-party code until now, which is a gap worth closing on a public repository.
-# `paths-ignore` is safe here in a way it would not be in ci.yml: this workflow analyses C# and
-# TypeScript source and nothing else, so a change that touches only markdown or a screenshot has
-# no first-party code for it to look at. Contrast the test suites, where markdown IS an input —
-# several of them assert on README.md, CLAUDE.md and the doc site.
-#
-# The weekly schedule keeps running regardless, so an unchanged main branch still meets newly
-# published queries.
+# backend (auth, crypto, remote execution, raw SQL) and the TypeScript frontend. ci.yml only
+# audits dependencies (dotnet list --vulnerable, npm audit), so first-party code is covered here.
+# `paths-ignore` is safe in this workflow because it analyses C# and TypeScript source only: a
+# change that touches just markdown or a screenshot leaves it nothing to look at. In ci.yml the
+# same filter would be wrong, because markdown is an input to several test suites.
 on:
   push:
     branches: [main, master]

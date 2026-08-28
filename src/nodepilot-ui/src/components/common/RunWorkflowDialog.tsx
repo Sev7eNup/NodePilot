@@ -14,7 +14,7 @@ interface Props {
   triggerTitle: string;
   triggerDescription: string | null;
   parameters: ManualParameter[];
-  /** Values from the most recent execution — used to prefill the form. Overrides defaults. */
+/** Values from the most recent execution that prefill the form and override defaults. */
   lastRunParams?: Record<string, string>;
   onExecute: (params: Record<string, string>) => void;
   onCancel: () => void;
@@ -194,7 +194,8 @@ export function extractManualTriggerConfig(definitionJson: string): {
     const config = (data.config as Record<string, unknown>) || {};
 
     return {
-      // Empty title makes RunWorkflowDialog fall back to the localized t('triggers:runDialog.title').
+      // Empty title makes RunWorkflowDialog fall back to the localized
+      // t('triggers:runDialog.title').
       title: (config.title as string) || '',
       description: (config.description as string) || null,
       parameters: ((config.parameters as ManualParameter[]) || []).map((p) => ({

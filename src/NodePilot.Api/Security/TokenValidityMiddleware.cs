@@ -18,14 +18,12 @@ namespace NodePilot.Api.Security;
 ///   1. the token's <c>jti</c> claim is not in the <c>RevokedTokens</c> table, and
 ///   2. the user identified by the token is still <c>IsActive = true</c>.
 ///
-/// A failure converts the authenticated principal into a 401 with a terse body — we never leak
-/// which of the two checks failed so attackers can't use the response to distinguish
-/// "this token is revoked" from "this user is disabled".
+/// A failure converts the authenticated principal into a 401 with a terse body so a caller
+/// cannot tell "this token is revoked" from "this user is disabled" from the response alone.
 ///
-/// Performance: user-state lookups are cached in <see cref="IMemoryCache"/> for a short TTL (30 s).
-/// Without the cache every authenticated request ran two DB round-trips — under heavy dashboard
-/// polling that dominated the hot path. Revocation lookups only cache positive hits so logout
-/// and refresh rotation take effect immediately after the revocation row is written.
+/// User-state lookups are cached in <see cref="IMemoryCache"/> for a short TTL (30 s) to avoid
+/// a database round-trip on every authenticated request. Revocation lookups cache only positive
+/// hits, so logout and refresh rotation take effect as soon as the revocation row is written.
 /// </summary>
 public class TokenValidityMiddleware
 {
@@ -33,8 +31,10 @@ public class TokenValidityMiddleware
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Named rather than anonymous so the query can sit inside its own command-budget block while the
-    /// result stays usable in the enclosing scope — an anonymous type cannot be declared ahead of the
+    /// Named rather than anonymous so the query can sit inside its own command-budget block while
+    /// the
+    /// result stays usable in the enclosing scope — an anonymous type cannot be declared ahead of
+    /// the
     /// block that produces it.
     /// </summary>
     private sealed record ActiveSessionProjection(
@@ -58,11 +58,10 @@ public class TokenValidityMiddleware
         IOptions<AuthenticationPolicyOptions>? authenticationPolicy = null,
         ExternalAuthorizationEvaluator? externalAuthorization = null)
     {
-        // The health endpoints are the one surface that must answer while the database is in trouble -
-        // /healthz/database is what the SPA polls to learn an outage is happening. Running the two
-        // uncached reads below first would make the outage banner's own probe pay a full auth budget
-        // per tick, which is the chicken-and-egg that endpoint exists to break. No health endpoint
-        // reads ctx.User.
+        // Health endpoints must answer even while the database is in trouble -
+        // /healthz/database is what the SPA polls to learn an outage is happening. Running the
+        // two uncached reads below first would make that probe pay a full auth budget per tick,
+        // which is the failure this endpoint exists to avoid. No health endpoint reads ctx.User.
         if (ctx.Request.Path.StartsWithSegments("/healthz"))
         {
             await _next(ctx);
@@ -70,9 +69,12 @@ public class TokenValidityMiddleware
         }
 
         // DatabaseAvailabilityMiddleware runs before authentication and marks an authenticated
-        // browser navigation while the breaker is open. Authentication has populated ctx.User by the
-        // time we get here, so strip it and serve the static SPA shell without touching RevokedTokens,
-        // AuthSessions or Users. API, OIDC, metrics and the entire hub HTTP surface are sealed by the
+        // browser navigation while the breaker is open. Authentication has populated ctx.User by
+        // the
+        // time we get here, so strip it and serve the static SPA shell without touching
+        // RevokedTokens,
+        // AuthSessions or Users. API, OIDC, metrics and the entire hub HTTP surface are sealed by
+        // the
         // outer middleware and can never reach this branch.
         if (ctx.Items.ContainsKey(
                 Hosting.DatabaseAvailabilityMiddleware.AnonymizeSpaPrincipalItem))
@@ -84,24 +86,22 @@ public class TokenValidityMiddleware
             return;
         }
 
-        // Why this exists at all: these reads run on EVERY authenticated request, before any
-        // controller. At the 120 s context default, a hung database parks each of them for
-        // 120 s + 2 x connect timeout - so the interactive budgets controllers set for themselves are
-        // never even reached. A short budget here is what makes a command timeout - and therefore the
-        // probe arming - happen in seconds instead of minutes. It comes from the same immutable,
-        // startup-validated DatabaseAvailabilityOptions snapshot as every other breaker budget.
+        // These reads run on every authenticated request, before any controller. At the 120 s
+        // context default, a hung database would park each one for 120 s plus twice the connect
+        // timeout, so a short budget here is what makes the failure surface in seconds instead
+        // of minutes. It comes from the same immutable, startup-validated
+        // DatabaseAvailabilityOptions snapshot as every other breaker budget.
 
         var endpoint = ctx.GetEndpoint();
         // Anonymize instead of reject on everything that is not the protected API surface.
         // The SPA fallback endpoint (index.html for /login, /workflows, …) carries no
         // [AllowAnonymous] metadata, so a browser holding an expired/revoked np_auth cookie
         // otherwise gets this middleware's raw 401 JSON instead of the page — including on
-        // /login itself, leaving no way back in short of manually clearing cookies
-        // (lab 2026-08-01: SessionAbsoluteLifetimeHours elapsed overnight → site "bricked").
-        // Dev never sees this because Vite serves the shell and only proxies /api. Stripping
-        // the stale identity is safe here: static files and the SPA shell never consume it,
-        // and the SPA's own /auth/me probe lands on the API surface below, where invalid
-        // tokens still hard-fail.
+        // /login itself, leaving no way back short of manually clearing cookies. Dev never
+        // sees this because Vite serves the shell and only proxies /api. Stripping the stale
+        // identity is safe here: static files and the SPA shell never consume it, and the
+        // SPA's own /auth/me probe lands on the API surface below, where invalid tokens
+        // still hard-fail.
         var allowAnonymous = endpoint?.Metadata.GetMetadata<IAllowAnonymous>() is not null
             || !(ctx.Request.Path.StartsWithSegments("/api")
                  || ctx.Request.Path.StartsWithSegments("/hubs"));
@@ -142,21 +142,20 @@ public class TokenValidityMiddleware
                     && cachedRevoked;
                 if (!revoked)
                 {
-                    // Scoped per call rather than around the whole branch: RejectOrAnonymizeAsync calls
-                    // _next on its anonymize path, and a budget that spanned it would silently run the
-                    // entire downstream pipeline at 3 seconds. The context is pooled, so a leaked
-                    // override would outlive the request and poison an unrelated one later.
+                    // Scoped per call, not the whole branch: RejectOrAnonymizeAsync calls _next
+                    // on its anonymize path, and a wider budget would apply to the entire
+                    // downstream pipeline. The context is pooled, so a leaked override would
+                    // outlive this request and affect an unrelated one later.
                     //
-                    // The catch below (and its two siblings further down) closes a hole the outage
-                    // banner depends on: `/`, `/login` and every other SPA route are allowAnonymous
-                    // here, but an authenticated browser still triggers these reads — and an
-                    // unhandled database failure would hand the DOCUMENT request to the exception
-                    // handler, which answers 503 JSON. The user reloading during an outage then saw
-                    // raw JSON instead of the app shell, and the banner that explains the outage
-                    // could never render. Anonymize-and-continue serves the shell; the API surface
-                    // (allowAnonymous == false) deliberately keeps propagating so the handlers can
-                    // answer with the DATABASE_UNAVAILABLE contract. Narrow catches on purpose: a
-                    // catch spanning RejectOrAnonymizeAsync would swallow downstream pipeline
+                    // This catch (and its two siblings further down) covers `/`, `/login` and
+                    // every other SPA route: they are allowAnonymous, but an authenticated
+                    // browser still triggers these reads, and an unhandled database failure
+                    // here would hand the document request to the exception handler, which
+                    // answers 503 JSON instead of the app shell. Anonymize-and-continue serves
+                    // the shell instead; the API surface (allowAnonymous == false) deliberately
+                    // keeps propagating so its handlers can answer with the
+                    // DATABASE_UNAVAILABLE contract. The catch stays narrow on purpose: one
+                    // spanning RejectOrAnonymizeAsync would swallow downstream pipeline
                     // exceptions and run _next twice.
                     try
                     {
@@ -187,8 +186,10 @@ public class TokenValidityMiddleware
                 {
                     var now = DateTime.UtcNow;
                     // Block-scoped, NOT `using var`: the enclosing block contains the
-                    // RejectOrAnonymizeAsync calls below, which invoke _next on their anonymize path.
-                    // A `using var` here would run the whole downstream pipeline at the auth budget.
+                    // RejectOrAnonymizeAsync calls below, which invoke _next on their anonymize
+                    // path.
+                    // A `using var` here would run the whole downstream pipeline at the auth
+                    // budget.
                     ActiveSessionProjection? activeSession;
                     try
                     {
@@ -284,7 +285,7 @@ public class TokenValidityMiddleware
                     && DbErrorClassifier.Classify(ex) is not DbFailureKind.None)
                 {
                     // Third sibling of the revocation-read catch: the user lookup inside the cache
-                    // factory surfaces its database failure from THIS await.
+                    // factory surfaces its database failure from this await.
                     await RejectOrAnonymizeAsync(ctx, allowAnonymous: true);
                     return;
                 }
@@ -302,11 +303,11 @@ public class TokenValidityMiddleware
                     return;
                 }
 
-                // H-1 (security audit 2026-05-15): SecurityStamp comparison. The JWT carries
-                // the stamp it was minted with; if the row has since been bumped (role change,
-                // active toggle), the token is stale and must be rejected — otherwise a
-                // demoted Admin keeps their Admin claim until the 12h token expires.
-                // np_secstamp is mandatory for NodePilot sessions; legacy tokens fail closed.
+                // SecurityStamp comparison. The JWT carries the stamp it was minted with; if
+                // the row has since been bumped (role change, active toggle), the token is
+                // stale and must be rejected — otherwise a demoted Admin keeps their Admin
+                // claim until the token expires. np_secstamp is mandatory for NodePilot
+                // sessions; legacy tokens fail closed.
                 if (requiredStamp != userState.SecurityStamp)
                 {
                     await RejectOrAnonymizeAsync(ctx, allowAnonymous);
@@ -324,19 +325,16 @@ public class TokenValidityMiddleware
                     return;
                 }
 
-                // Password-change invalidation (security-audit finding H-3): if the token
-                // was issued before the user's current password was set, reject it.
-                // Admin-reset of a compromised user's password therefore kicks every
-                // existing session for that user without having to enumerate and revoke
-                // individual jtis.
+                // Password-change invalidation: if the token was issued before the user's
+                // current password was set, reject it. Admin-reset of a compromised user's
+                // password therefore kicks every existing session for that user without
+                // having to enumerate and revoke individual jtis.
                 //
-                // Precision handling (security-audit finding H13): prefer the
-                // NodePilot-specific np_iat_ms claim (millisecond precision) over the
-                // RFC-standard iat (second precision). With
-                // ms precision we can compare directly against PasswordChangedAt without a
-                // cushion — previously an attacker racing /auth/refresh during an admin
-                // password reset could land in the same wall-clock second as the reset and
-                // the 1-second cushion would incorrectly let the new token through.
+                // Precision handling: prefer the NodePilot-specific np_iat_ms claim
+                // (millisecond precision) over the RFC-standard iat (second precision), so
+                // the comparison against PasswordChangedAt needs no cushion — a coarser
+                // comparison could let a token minted in the same wall-clock second as an
+                // admin password reset slip through.
                 DateTime? iatUtc = null;
                 var iatMsStr = ctx.User.FindFirstValue("np_iat_ms");
                 if (long.TryParse(iatMsStr, out var iatMs))

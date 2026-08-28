@@ -47,9 +47,9 @@ public class SupportEventRetentionServiceTests
         var (db, factory, conn) = CreateEnv();
         try
         {
-            AddEvent(db, DateTime.UtcNow.AddDays(-100)); // old → delete
-            AddEvent(db, DateTime.UtcNow.AddDays(-91));  // old → delete
-            AddEvent(db, DateTime.UtcNow.AddDays(-1));   // recent → keep
+            AddEvent(db, DateTime.UtcNow.AddDays(-100)); // old -> delete
+            AddEvent(db, DateTime.UtcNow.AddDays(-91));  // old -> delete
+            AddEvent(db, DateTime.UtcNow.AddDays(-1));   // recent -> keep
             await db.SaveChangesAsync();
 
             var deleted = await Service(factory).PurgeOnceAsync(maxAgeDays: 90, CancellationToken.None);

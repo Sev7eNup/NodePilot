@@ -10,11 +10,12 @@ Conventions for hand-laid-out workflow JSON (`nodes`/`edges`) that renders in th
 
 There is **no prescribed flow direction**. LTR, TTB, radial, two parallel columns, a mix of several sub-topologies — whatever makes the workflow clearest to a human reader is right. Every node exposes all four ports (section 7.1), so an edge can freely pick a side of its source and target instead of being forced into a layout corset.
 
-Three hard rules everything else hangs on:
+Four hard rules everything else hangs on:
 
 1. **No overlaps** — not node on node, not edges cutting through nodes, not labels over labels. When in conflict: leave more room. A workflow that is too large on the canvas beats one that is too tight to read.
 2. **Edge labels must be readable without zooming** — short, semantic conditions. If a label grows too long, split the logic across two sequential edges, condense it into a sub-pattern phrase, or move the operator spell-out into the following node label.
 3. **Flow direction is consistent within a region** — if a section flows LTR, it flows LTR throughout; you do not switch mid-way without a semantic reason. Loop-backs, retry paths and "jumps back to phase X on failure" are legitimate exceptions — those *should* stand out visually.
+4. **Fan-in is explicit** — an ordinary Activity has at most one incoming edge. Two or more branches must converge on a `junction`; only the Junction connects to the downstream Activity. Choose `waitAll`, `waitAny`, or `waitNofM` deliberately.
 
 Every further section is a **convention for the most common case (LTR with a clear main lane)**. If you pick a different topology, translate the spacing figures accordingly (for TTB: swap x↔y; for radial layouts: think in slot angles).
 
@@ -114,6 +115,7 @@ A grouping that works well (from [test-master-all-activities.json](../scripts/te
 | **Data-bus visibility** | A step only reads results of its **graph ancestors**. Anything referencing `{{X.output}}` needs a path from `X` to the reading node | A reference into a **parallel branch** always fails — even if that branch finishes first. With `runScript` this used to survive as a literal in the script and the step went **green with a placeholder** |
 | **Trigger parameters** | `{{<triggerNodeId>.param.<name>}}` — e.g. `{{trg.param.filePath}}`, or alternatively `{{manual.<name>}}` | `{{trigger.doctorEmail}}` without `param.` — not a valid tail, stays a literal, and ends up in the config as (for example) an email address |
 | **Orphan nodes** | Every non-trigger node needs at least **one active incoming edge** | Without one the node never runs (`Skipped`) — and a `waitAll` junction waiting on it skips too, along with everything behind it. The run still reports **`Succeeded`**, because skipped is not a failure |
+| **Fan-in** | Route every converging branch into a `junction`, then connect the Junction to the next Activity | Multiple incoming edges on an ordinary Activity are structurally invalid and Save/Publish rejects them |
 
 ## 7 — JSON schema extensions since the initial version
 
@@ -224,6 +226,7 @@ Before you push a hand-built workflow via `POST /api/workflows/import` or `POST 
 - [ ] Fan-out/fan-in with ≥ 5 branches has a +340 px x-gap to the next node
 - [ ] Trigger params (if `manualTrigger`) are all `type: "string"` with string defaults
 - [ ] `waitNofM` junctions use `requiredCount`, not `n`
+- [ ] Every node with multiple incoming edges is a `junction`
 - [ ] No edge references a non-existent source or target (dangling check)
 - [ ] **Every `{{X.…}}` points at an ancestor** of the reading node (a path from `X` to it) — references across parallel branches fail
 - [ ] **No non-trigger node without an active incoming edge** — it would never run, and would block a waiting `waitAll` junction with it

@@ -7,19 +7,9 @@ namespace NodePilot.Api.Tests.Architecture;
 /// <summary>
 /// Both production providers enable <c>EnableRetryOnFailure</c> (see
 /// <c>Hosting/DbContextSetup.cs</c>). A retrying execution strategy refuses user-initiated
-/// transactions: EF throws <see cref="InvalidOperationException"/> ("does not support
-/// user-initiated transactions") unless the whole unit runs inside
-/// <c>strategy.ExecuteAsync</c>.
-///
-/// <para>This is invisible to the rest of the suite: every DB test runs on SQLite, whose
-/// strategy never retries, so an unwrapped transaction passes locally and fails only against
-/// Postgres/SQL Server. That is exactly how <c>ExternalTriggerController</c> shipped a keyed
-/// external trigger that always returned 500 — the surrounding <c>catch (DbUpdateException)</c>
-/// does not absorb an <see cref="InvalidOperationException"/> either.</para>
-///
-/// <para>The scan is textual on purpose: it is the only way to assert the pairing without a
-/// live retrying provider. It looks at the enclosing method body of each
-/// <c>BeginTransactionAsync</c> call.</para>
+/// transactions unless the whole unit runs inside <c>strategy.ExecuteAsync</c>; EF throws
+/// <see cref="InvalidOperationException"/> otherwise. SQLite never retries, so this scans
+/// production source text for the enclosing method around each <c>BeginTransactionAsync</c>.
 /// </summary>
 public sealed class ExecutionStrategyTransactionTests
 {

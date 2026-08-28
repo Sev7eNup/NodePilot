@@ -52,7 +52,7 @@ export function RunControls({ variant, roleCanWrite, liveExecution, handleRunCli
                 <span>{t('runButtonLabel')}</span>
               </button>)
             ) : (
-              // Classic: the pre-redesign icon-only Play square (no green CTA).
+              // Classic layout: icon-only Play square, no green CTA.
               (<button
                 type="button"
                 onClick={() => handleRunClick(false)}

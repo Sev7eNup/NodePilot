@@ -3,18 +3,16 @@ using NodePilot.Core.Models;
 namespace NodePilot.Core.Audit;
 
 /// <summary>
-/// Default <see cref="IAuditStager"/>. Applies redaction (via the registered
-/// <see cref="IAuditDetailsRedactor"/>) and the 4 KiB cap on Details, then returns the
-/// entry — never touches a DbContext. The companion <c>AuditWriter</c> in
-/// <c>NodePilot.Api</c> wraps this with HttpContext-derived actor resolution and
-/// SaveChangesAsync persistence; non-HTTP callers (CredentialStore, TriggerOrchestrator,
-/// DbAdminController) inject this directly and persist on their own.
+/// Default <see cref="IAuditStager"/>. Applies redaction through the registered
+/// <see cref="IAuditDetailsRedactor"/> and the size cap on Details, then returns the entry
+/// without touching a DbContext. The companion <c>AuditWriter</c> in <c>NodePilot.Api</c> adds
+/// HttpContext-derived actor resolution and SaveChangesAsync persistence; non-HTTP callers
+/// such as CredentialStore, TriggerOrchestrator and DbAdminController persist on their own.
 /// </summary>
 public sealed class AuditStager : IAuditStager
 {
-    // 4 KiB is plenty for a structured delta describing a single mutation; larger payloads
-    // almost always mean "somebody dumped a whole workflow definition" which belongs in
-    // WorkflowVersions, not AuditLog.
+    // 4 KiB holds a structured delta for a single mutation. Larger payloads usually mean a
+    // whole workflow definition, which belongs in WorkflowVersions rather than AuditLog.
     public const int MaxDetailsChars = 4096;
     public const string TruncationMarker = "...[truncated]";
 

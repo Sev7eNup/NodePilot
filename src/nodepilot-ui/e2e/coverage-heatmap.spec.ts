@@ -2,24 +2,19 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 30 — Coverage Heatmap, plus Teil 42 — Coverage Heatmap Erweiterte Parameter.
+ * Coverage heatmap in the workflow editor, including responses with a non-default window.
  *
  * Hermetic: page.route() mocks only (no backend), per fixtures/mockApi.ts conventions.
- * The preview build resolves i18n from the browser locale (renders EN under Playwright), so
- * selectors stay language-agnostic / bilingual.
+ * The preview build resolves i18n from the browser locale (English under Playwright), so
+ * selectors stay bilingual.
  *
- * The heatmap lives inside the workflow editor (designer). The toolbar carries a Target-icon
- * toggle (`data-testid="toggle-coverage-heatmap"`). When on, `useCoverageHeatmap` fetches
- * `/api/workflows/{id}/coverage?windowDays=N` and stamps `__coverage` onto each activity node,
- * which ActivityNode.tsx renders as:
- *   - `never`  → wrapper gets `opacity-40 grayscale`
- *   - `rare`   → wrapper gets `opacity-80`
- *   - `common` → no tint
- * and a `title="Coverage (Nd): executed/total runs reached this step"` on the node.
+ * The toolbar toggle (`data-testid="toggle-coverage-heatmap"`) makes `useCoverageHeatmap` fetch
+ * `/api/workflows/{id}/coverage?windowDays=N` and stamp `__coverage` onto each activity node.
+ * ActivityNode.tsx renders `never` as `opacity-40 grayscale`, `rare` as `opacity-80` and
+ * `common` untinted, plus a `title="Coverage (Nd): executed/total runs reached this step"`.
  *
- * To make the editor open in an editable (non-read-only) state we mark the workflow as
- * locked-by-me (`checkedOutByUserId === MOCK_USER.id`) and give it a definitionJson whose node
- * ids match the coverage response stepIds.
+ * The workflow fixture is locked-by-me (`checkedOutByUserId === MOCK_USER.id`) so the editor
+ * opens editable, and its node ids match the stepIds of the coverage response.
  */
 
 const WF_ID = 'cccccccc-0030-0030-0030-coverage00030';
@@ -46,7 +41,7 @@ function workflowJson(overrides: Record<string, unknown> = {}) {
     name: 'WF-Coverage',
     description: 'coverage heatmap e2e fixture',
     isEnabled: false,
-    checkedOutByUserId: MOCK_USER.id, // locked-by-me → editable State B so the toolbar is fully live
+    checkedOutByUserId: MOCK_USER.id, // locked by me, so the editor opens editable
     checkedOutByUserName: MOCK_USER.username,
     checkedOutAt: '2026-06-01T00:00:00.000Z',
     definitionJson: DEFINITION,
@@ -81,13 +76,13 @@ function coverageResponse(windowDays: number, overrides: Record<string, unknown>
 async function openEditor(page: import('@playwright/test').Page) {
   await seedExpertMode(page); // heatmap toggle lives in the expert-mode toolbar (default is standard)
   await page.goto(`/workflows/${WF_ID}`);
-  // Editor mounted once the React Flow canvas + our three nodes are present.
+  // The editor is mounted once the React Flow canvas and all three nodes are present.
   await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('.react-flow__node')).toHaveCount(3, { timeout: 15_000 });
 }
 
-/** The coverage toggle lives inside the "Ansicht" (view-overlays) popover since the
- *  toolbar redesign — open the popover first if the switch row isn't mounted yet. */
+/** The coverage toggle lives inside the view-overlays popover, so open that popover first
+ *  when the switch row is not mounted yet. */
 async function coverageToggle(page: import('@playwright/test').Page) {
   const toggle = page.getByTestId('toggle-coverage-heatmap');
   if (!(await toggle.isVisible().catch(() => false))) {
@@ -121,15 +116,15 @@ test.describe('Coverage Heatmap (Teil 30)', () => {
 
     await toggle.click();
 
-    // The API was queried, and the never-run node grabbed the grayscale dim treatment.
+    // The API was queried and the never-run node received the grayscale dim treatment.
     await expect.poll(() => coverageCalls, { timeout: 10_000 }).toBeGreaterThan(0);
-    // `never` → opacity-40 + grayscale applied to the node wrapper.
+    // `never` applies opacity-40 and grayscale to the node wrapper.
     await expect(page.locator('.react-flow__node:has-text("Never Step") .grayscale')).toHaveCount(1, { timeout: 10_000 });
     // Three coverage tooltips now present (one per activity node), and the common one reads 80/100.
     await expect(page.locator('[title^="Coverage ("]')).toHaveCount(3);
     await expect(page.locator('[title*="80/100 runs reached this step"]').first()).toBeVisible();
 
-    // Toggle off → tint + tooltips disappear.
+    // Toggling off removes the tint and the tooltips.
     await toggle.click();
     await expect(page.locator('[title^="Coverage ("]')).toHaveCount(0, { timeout: 10_000 });
     await expect(page.locator('.react-flow__node:has-text("Never Step") .grayscale')).toHaveCount(0);
@@ -174,9 +169,9 @@ test.describe('Coverage Heatmap — Erweiterte Parameter (Teil 42)', () => {
   });
 
   test('42.1 — windowDays=365 response renders with oldestExecutionInWindow populated', async ({ page }) => {
-    // The client always requests windowDays=30 (no UI to change it), but the server may cap/clamp
-    // and echo back a different window. We assert the UI faithfully renders whatever windowDays +
-    // counts the response carries — here a 365-day window with a year-old oldest execution.
+    // The client always requests windowDays=30 (there is no UI to change it), but the server may
+    // clamp the window and echo back a different one. The UI has to render whatever windowDays
+    // and counts the response carries; here a 365-day window with a year-old oldest execution.
     await page.route('**/api/workflows/*/coverage**', (route) =>
       route.fulfill({
         status: 200,
@@ -188,13 +183,13 @@ test.describe('Coverage Heatmap — Erweiterte Parameter (Teil 42)', () => {
     await openEditor(page);
     await (await coverageToggle(page)).click();
 
-    // The node tooltips reflect the response's windowDays (365d), proving the value round-trips.
+    // The node tooltips reflect the windowDays of the response (365d), so the value round-trips.
     await expect(page.locator('[title="Coverage (365d): 80/100 runs reached this step"]')).toHaveCount(1, { timeout: 10_000 });
     await expect(page.locator('[title="Coverage (365d): 0/100 runs reached this step"]')).toHaveCount(1);
   });
 
   test('42.2 — windowDays=0 (empty window) renders every step as never-run', async ({ page }) => {
-    // Degenerate window: no executions at all → totalExecutions 0, every node "never".
+    // Degenerate window: no executions at all, so totalExecutions is 0 and every node is never-run.
     await page.route('**/api/workflows/*/coverage**', (route) =>
       route.fulfill({
         status: 200,
@@ -216,7 +211,7 @@ test.describe('Coverage Heatmap — Erweiterte Parameter (Teil 42)', () => {
     await openEditor(page);
     await (await coverageToggle(page)).click();
 
-    // All three nodes never ran → all grayscale-dimmed, all tooltips show 0/0.
+    // No node ever ran, so all three are grayscale-dimmed and every tooltip shows 0/0.
     await expect(page.locator('.react-flow__node .grayscale')).toHaveCount(3, { timeout: 10_000 });
     await expect(page.locator('[title="Coverage (7d): 0/0 runs reached this step"]')).toHaveCount(3);
   });

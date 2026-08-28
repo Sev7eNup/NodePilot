@@ -9,10 +9,12 @@ namespace NodePilot.Api.Diagnostics;
 /// </summary>
 public interface ISupportLogFileResolver
 {
-    /// <summary>Today's daily file (e.g. <c>nodepilot-support-20260515.log</c>) — may be missing if nothing has been logged yet today.</summary>
+    /// <summary>Today's daily file (e.g. <c>nodepilot-support-20260515.log</c>) — may be missing if
+    /// nothing has been logged yet today.</summary>
     string? GetCurrentDayFile();
 
-    /// <summary>Path to the daily file for a given date. Exists once the file has rolled over.</summary>
+    /// <summary>Path to the daily file for a given date. Exists once the file has rolled
+    /// over.</summary>
     string? GetFileForDate(DateOnly date);
 
     /// <summary>Directory that holds the Support Log files.</summary>

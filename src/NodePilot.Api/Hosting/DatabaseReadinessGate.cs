@@ -8,11 +8,8 @@ namespace NodePilot.Api.Hosting;
 /// the API waits for the database instead of crashing on it when <c>MigrationBootstrapper</c>
 /// runs <c>Database.Migrate()</c>.
 /// <para>
-/// Runs in <b>both</b> deployment modes, because both race the same way at boot: Desktop against
-/// the bundled Postgres Windows service, Server against a remote SQL Server or PostgreSQL that
-/// is still recovering. The server installer used to substitute a fixed delayed-auto start for
-/// this wait, which is wrong at both ends — it idles for two minutes when the database was ready
-/// in eight seconds, and it still starts too early when the database needs longer than the delay.
+/// Runs in <b>both</b> deployment modes. Desktop can start before its bundled PostgreSQL service;
+/// Server can start while a remote SQL Server or PostgreSQL instance is still recovering.
 /// </para>
 /// <para>
 /// Only <b>connectivity</b> is retried. A schema or migration failure is a deterministic bug,
@@ -36,9 +33,9 @@ public static class DatabaseReadinessGate
     public static readonly TimeSpan MaxStartupWait = TimeSpan.FromMinutes(10);
 
     /// <summary>
-    /// Reads <see cref="StartupWaitSecondsKey"/>. Absent, empty or unparseable →
-    /// <see cref="DefaultStartupWait"/>; zero or negative → <see cref="TimeSpan.Zero"/> (probe
-    /// once, then proceed, which is the documented opt-out); anything above
+    /// Reads <see cref="StartupWaitSecondsKey"/>. Absent, empty, or unparseable values use
+    /// <see cref="DefaultStartupWait"/>; zero or negative values return <see cref="TimeSpan.Zero"/>
+    /// (probe once, then proceed, which is the documented opt-out); anything above
     /// <see cref="MaxStartupWait"/> is clamped to it. Never throws.
     /// </summary>
     public static TimeSpan ResolveStartupWait(IConfiguration configuration)

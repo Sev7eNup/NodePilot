@@ -66,7 +66,7 @@ public sealed class RuntimeOverridesWriterTests : IDisposable
         var backups = Directory.GetFiles(_tempDir, "*.bak.*");
         backups.Should().HaveCount(1, "the second write rotates the v1 file into a .bak");
 
-        // The backup must contain the OLD value, the live file the NEW value.
+        // The backup must contain the old value; the live file must contain the new value.
         var backupContent = File.ReadAllText(backups[0]);
         backupContent.Should().Contain("v1").And.NotContain("v2");
 
@@ -78,7 +78,7 @@ public sealed class RuntimeOverridesWriterTests : IDisposable
     public void MutateAndWrite_BackupRotation_KeepsOnlyLastTen()
     {
         var writer = NewWriter();
-        // 12 writes -> 11 backups generated, oldest one should be pruned to keep 10.
+        // 12 writes produce 11 backups; the oldest one should be pruned to keep 10.
         for (var i = 0; i < 12; i++)
         {
             writer.MutateAndWrite(root => root["Counter"] = i);
@@ -149,7 +149,8 @@ public sealed class RuntimeOverridesWriterTests : IDisposable
         var status = writer.ReadStatus();
         status.RestartRequired.Should().BeTrue();
         status.RestartRequiredFor.Should().BeEquivalentTo(new[] { "Llm", "Smtp" });
-        // restartRequiredSince should preserve the OLDEST timestamp (not be overwritten by later marks).
+        // restartRequiredSince should keep the oldest timestamp, not get overwritten by later
+        // marks.
         status.RestartRequiredSince!.Value.Should().BeCloseTo(t0, TimeSpan.FromSeconds(1));
     }
 
@@ -211,7 +212,7 @@ public sealed class RuntimeOverridesWriterTests : IDisposable
             root["Llm"]  = new JsonObject { ["Model"] = "gpt" };
         });
 
-        // A targeted edit on Smtp must not collateral-damage the Llm section.
+        // A targeted edit on Smtp must not affect the Llm section.
         writer.MutateAndWrite(root => (root["Smtp"]!.AsObject())["Host"] = "smtp2");
 
         var roundtrip = writer.ReadOrEmpty();
@@ -284,10 +285,9 @@ public sealed class RuntimeOverridesWriterTests : IDisposable
     [Fact]
     public async Task TryUpdateSectionAtomic_TwoConcurrentSavesWithSameEtag_OnlyFirstSucceeds()
     {
-        // The whole reason this method exists: an outer ETag check + a later write would
-        // let both racers pass the check and the second clobber the first. The atomic
-        // variant must serialise them so exactly one wins and the other reports the
-        // mismatch with the freshly-written ETag.
+        // An outer ETag check followed by a separate write would let both racers pass the check
+        // and let the second overwrite the first. The atomic variant serializes them so exactly
+        // one wins and the other sees the mismatch against the freshly written ETag.
         var writer = NewWriter();
         writer.MutateAndWrite(root => root["Smtp"] = new JsonObject { ["Host"] = "v0" });
         var sharedEtag = writer.ComputeSectionEtag("Smtp");

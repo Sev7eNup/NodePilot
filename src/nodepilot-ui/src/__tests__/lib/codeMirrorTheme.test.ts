@@ -19,9 +19,8 @@ describe('nodePilotHighlightStyle', () => {
   const rules = nodePilotHighlightStyle.module?.getRules() ?? '';
 
   it('drawsSyntaxColoursFromTheSharedNpCodeTokens', () => {
-    // The point of the change: the editors and the AI-chat `.hljs-*` blocks read
-    // the SAME custom properties, so a colour is declared once in index.css and
-    // both surfaces follow every skin switch without a probe.
+    // The editors and the AI-chat `.hljs-*` blocks read the same custom properties, so a
+    // colour is declared once in index.css and both surfaces follow every skin switch.
     expect(rules).not.toBe('');
     for (const token of [
       '--np-code-comment',

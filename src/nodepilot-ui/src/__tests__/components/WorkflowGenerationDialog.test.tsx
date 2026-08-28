@@ -72,7 +72,7 @@ describe('WorkflowGenerationDialog', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  // ---- Generate → Preview transition ---------------------------------------------
+  // ---- Generate to preview transition --------------------------------------------
 
   it('successful generate transitions to preview stage with suggested name + description', async () => {
     generateSpy.mockResolvedValue(SAMPLE_RESPONSE);
@@ -97,7 +97,7 @@ describe('WorkflowGenerationDialog', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('LLM unreachable');
     expect(screen.queryByText(/Generierten Workflow überprüfen/i)).not.toBeInTheDocument();
-    // Textarea should still be there
+    // The prompt textarea stays mounted so the user can retry.
     expect(screen.getByLabelText('Workflow prompt')).toBeInTheDocument();
   });
 
@@ -139,7 +139,7 @@ describe('WorkflowGenerationDialog', () => {
     await screen.findByText(/Generierten Workflow überprüfen/i);
     expect(screen.getByText('Nodes')).toBeInTheDocument();
     expect(screen.getByText('Edges')).toBeInTheDocument();
-    // 2× runScript dominates the activity-type histogram
+    // The histogram counts every activity type in the generated definition.
     expect(screen.getByText(/2× runScript/)).toBeInTheDocument();
     expect(screen.getByText(/1× manualTrigger/)).toBeInTheDocument();
     expect(screen.getByText(/1× log/)).toBeInTheDocument();

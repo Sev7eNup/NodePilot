@@ -2,21 +2,13 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 48 — Output-Redaction, Viewer-Perspektive (lines 3328-3344).
+ * Covers E2ETests.md part 48: output redaction seen from a read-only account.
  *
- * Hermetic: page.route() mocks only. The OutputRedactor masks secrets SERVER-SIDE before the
- * payload ever leaves the API (see CLAUDE.md "Output-Redaction"). So the mock returns the
- * ALREADY-MASKED text — the browser never sees the cleartext. What this E2E proves is the
- * UI-observable contract:
- *   - the masked output (***) is faithfully displayed, and
- *   - the cleartext secret (hunter2) is NOWHERE in the rendered DOM (no client-side un-masking).
- *
- * Redaction is role-independent (the server masks for everyone), so 48.1 also overrides /me to
- * a Viewer to prove a read-only user sees the same masked output — the lowest-privilege view.
- *
- * The global ExecutionsPage (/executions) loads `/executions?terminalOnly=true`, then lazily
- * fetches `/executions/{id}/steps` when a row is expanded. SignalR (48.2) is mocked 404 here, so
- * the StepCompleted WS event can't be asserted in-browser — covered server-side; see skip note.
+ * Hermetic page.route() mocks only. OutputRedactor masks secrets on the server before the payload
+ * leaves the API, so the mocks return already-masked text and the browser never receives the
+ * cleartext. The assertions cover the UI contract: the mask (***) is displayed verbatim and the
+ * cleartext secret appears nowhere in the DOM. Masking does not depend on the role, so 48.1 also
+ * overrides /me to a Viewer. SignalR is mocked 404, so 48.2 cannot be exercised in the browser.
  */
 
 const VIEWER = { id: '00000000-0000-0000-0000-0000000000c0', username: 'viewer-bob', role: 'Viewer' };
@@ -61,7 +53,7 @@ function execution() {
   };
 }
 
-// Server already masked the secret: `password=hunter2` → `password=***`.
+// The server already masked the secret, so the fixture carries password=*** not the cleartext.
 function steps() {
   return JSON.stringify([
     {
@@ -113,13 +105,13 @@ test.describe('Output-Redaction Viewer-Perspektive (Teil 48)', () => {
     await expect(row).toBeVisible({ timeout: 15_000 });
     await row.click();
 
-    // The masked output renders; the cleartext secret does NOT (no client-side un-masking).
+    // The masked output renders; the cleartext secret does not (no client-side unmasking).
     const output = page.locator('pre', { hasText: /password=/ });
     await expect(output).toBeVisible({ timeout: 10_000 });
     await expect(output).toContainText(MASK);
     await expect(output).not.toContainText(SECRET);
 
-    // Belt-and-braces: the cleartext secret is absent from the ENTIRE page body, not just the pre.
+    // The cleartext secret is absent from the whole page body, not only from the pre element.
     await expect(page.locator('body')).not.toContainText(SECRET);
   });
 

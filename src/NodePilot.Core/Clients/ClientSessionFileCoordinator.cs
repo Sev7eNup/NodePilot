@@ -4,12 +4,12 @@ using System.Text;
 namespace NodePilot.Core.Clients;
 
 /// <summary>
-/// Coordinates the DPAPI session file shared by the CLI and MCP processes. Refresh uses an
+/// Coordinates the DPAPI session file shared by the CLI and MCP processes. Refresh takes an
 /// origin-bound cross-process lock because the API rotates a bearer token exactly once; file
-/// mutations use a shorter path-bound lock and same-directory atomic replacement so readers
-/// observe either the old complete blob or the new complete blob, never a truncated generation.
-/// Lock files intentionally remain on disk. Ownership is the open <see cref="FileStream"/> with
-/// <see cref="FileShare.None"/>; Windows releases that handle automatically when a process exits.
+/// mutations take a shorter path-bound lock and replace the file atomically in place, so a
+/// reader sees either the old or the new complete blob, never a truncated one. Lock files stay
+/// on disk by design: ownership is the open <see cref="FileStream"/> with
+/// <see cref="FileShare.None"/>, a handle Windows releases when the process exits.
 /// </summary>
 public static class ClientSessionFileCoordinator
 {
@@ -18,8 +18,8 @@ public static class ClientSessionFileCoordinator
 
     /// <summary>
     /// Acquires the refresh lease shared by every process using the same canonical session file
-    /// and server origin. Waiting is cancellable and does not have the thread-affinity problem of
-    /// holding a named <see cref="Mutex"/> across asynchronous HTTP work.
+    /// and server origin. Waiting is cancellable and avoids the thread affinity of holding a
+    /// named <see cref="Mutex"/> across asynchronous HTTP work.
     /// </summary>
     public static Task<IDisposable> AcquireRefreshLockAsync(
         string sessionPath,
@@ -33,7 +33,7 @@ public static class ClientSessionFileCoordinator
         CancellationToken cancellationToken = default)
         => Acquire(MutationLockPath(sessionPath), cancellationToken);
 
-    /// <summary>Reads a complete generation, retrying transient Windows sharing violations.</summary>
+    /// <summary>Reads a complete generation, retrying transient sharing violations.</summary>
     public static byte[]? ReadAllBytesIfExists(string path)
     {
         var canonicalPath = CanonicalPath(path);
@@ -59,8 +59,8 @@ public static class ClientSessionFileCoordinator
     }
 
     /// <summary>
-    /// Writes to a unique file beside the destination, flushes it, then atomically replaces or
-    /// moves it on the same volume. The caller should hold <see cref="AcquireMutationLock"/>.
+    /// Writes a unique file beside the destination, flushes it, then replaces or moves it on the
+    /// same volume. The caller should hold <see cref="AcquireMutationLock"/>.
     /// </summary>
     public static void WriteAllBytesAtomically(string path, ReadOnlySpan<byte> contents)
     {
@@ -98,9 +98,9 @@ public static class ClientSessionFileCoordinator
                 }
                 catch (IOException) when (attempt < IoRetryCount)
                 {
-                    // A reader may hold the previous generation without FileShare.Delete for a
-                    // few microseconds, or the destination may have appeared/disappeared between
-                    // Exists and Move/Replace. Retry the same complete same-volume temp file.
+                    // A reader may still hold the previous generation without FileShare.Delete,
+                    // or the destination may have appeared or disappeared between Exists and
+                    // Move/Replace. Retry with the same complete temp file on the same volume.
                     Thread.Sleep(RetryDelayMilliseconds);
                 }
             }
@@ -113,8 +113,8 @@ public static class ClientSessionFileCoordinator
             }
             catch (IOException)
             {
-                // The destination was never exposed partially. A crash-style orphaned temp is
-                // harmless and its unique name prevents it from blocking a later session save.
+                // The destination was never partially exposed. An orphaned temp file is harmless
+                // and its unique name keeps it from blocking a later session save.
             }
         }
     }

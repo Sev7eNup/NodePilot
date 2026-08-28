@@ -7,14 +7,14 @@ import { formatDuration } from '../../lib/opsTimeline';
 import { formatTime } from '../../lib/format';
 import { CopyButton } from '../common/CopyButton';
 
-// Slide-over drilldown for a single execution (timeline bar / ticker click). Fetches the
-// detail row for error message, triggeredBy and the parent link; live context (status,
-// elapsed) comes from the props so it stays in sync with the store between refetches.
+// Slide-over drilldown for a single execution, opened from a timeline bar or ticker entry.
+// Fetches the detail row for error message, triggeredBy and the parent link; live context
+// (status, elapsed) comes from props so it stays in sync with the store between refetches.
 
 const ACTIVE = new Set(['Running', 'Pending', 'Paused']);
 
-// Retry mirrors the server's own guard (ExecutionsController.Retry): only these three terminal
-// states are accepted. TimedOut is deliberately absent — the endpoint 400s on it.
+// Terminal states the retry endpoint accepts, mirroring the guard in ExecutionsController.Retry.
+// TimedOut is excluded because the endpoint rejects it with 400.
 const RETRYABLE = new Set(['Succeeded', 'Failed', 'Cancelled']);
 
 export function OpsExecutionDrilldown({ executionId, workflowName, folderPath, callees, status, startedAtMs, completedAtMs, nowMs, canRun, canEdit, workflowEnabled, runningCount, activity, pendingAction, onCancel, onRetry, onCancelAll, onQuarantine, onOpenEditor, onSelectExecution, onClose }: Readonly<{
@@ -30,13 +30,13 @@ export function OpsExecutionDrilldown({ executionId, workflowName, folderPath, c
   nowMs: number;
   /** Per-workflow folder-Run right (cancel / retry / cancel-all). */
   canRun: boolean;
-  /** Per-workflow folder-Edit right (disable / quarantine) — stricter than canRun. */
+  /** Per-workflow folder-Edit right (disable / quarantine); stricter than canRun. */
   canEdit: boolean;
   workflowEnabled: boolean;
   runningCount: number;
   /**
-   * Observed step activity for a LIVE run (null for settled runs or when not enriched).
-   * Never rendered as a percentage — see OpsRunningExecution for why no honest total exists.
+   * Observed step activity for a live run; null for settled runs or when not enriched.
+   * Never rendered as a percentage, because no reliable step total exists mid-run.
    */
   activity: { stepsFinished: number | null; lastCompletedStepName: string | null; lastProgressAtMs: number | null } | null;
   /** Which action is in flight, so only that button shows a pending state. */
@@ -112,8 +112,8 @@ export function OpsExecutionDrilldown({ executionId, workflowName, folderPath, c
               <dd className="tabular-nums text-on-surface">{formatDuration(durationMs)}</dd>
             </div>
           )}
-          {/* Live run: steps FINISHED plus when the last one finished. No "n of m" and no
-              percentage — DeferRunningStateWrite means no honest total exists mid-run. */}
+          {/* Live run: steps finished plus when the last one finished. No "n of m" and no
+              percentage, because DeferRunningStateWrite leaves no reliable total mid-run. */}
           {active && activity?.stepsFinished !== null && activity !== null && (
             <div className="flex items-center justify-between gap-2">
               <dt className="text-on-surface-variant">{t('operations:drilldown.stepsFinished')}</dt>
@@ -174,7 +174,7 @@ export function OpsExecutionDrilldown({ executionId, workflowName, folderPath, c
           </div>
         )}
 
-        {/* Which step actually broke — the error message alone rarely says. Ordered by
+        {/* Which step broke, which the error message alone rarely says. Ordered by
             (StartedAt, Id) server-side; parallel branches can contribute several entries. */}
         {(detail?.failedSteps?.length ?? 0) > 0 && (
           <div>
@@ -216,8 +216,8 @@ export function OpsExecutionDrilldown({ executionId, workflowName, folderPath, c
           </button>
         )}
 
-        {/* Retry stays visible but disabled on a quarantined workflow — the endpoint 400s
-            there, and an explained disabled button beats a button that vanishes. */}
+        {/* Retry stays visible but disabled on a quarantined workflow: the endpoint returns
+            400 there, and a disabled button with a reason is clearer than a missing one. */}
         {canRun && RETRYABLE.has(status) && (
           <button
             onClick={() => onRetry(executionId)}
@@ -239,8 +239,8 @@ export function OpsExecutionDrilldown({ executionId, workflowName, folderPath, c
           </button>
         )}
 
-        {/* The biggest hammer on the page: disable + cancel-all. Separated visually and
-            gated on folder-Edit, which disable requires and cancel does not. */}
+        {/* Quarantine combines disable and cancel-all. Separated visually and gated on
+            folder-Edit, which disable requires and cancel does not. */}
         {canEdit && (workflowEnabled || runningCount > 0) && (
           <button
             onClick={onQuarantine}

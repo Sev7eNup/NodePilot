@@ -2,7 +2,8 @@ using Microsoft.Extensions.Options;
 
 namespace NodePilot.Ai.Knowledge;
 
-/// <summary>Live keyword search + read over the repository source tree (Admin/Operator only, gated at the tool layer).</summary>
+/// <summary>Keyword search and file read over the repository source tree. Admin and Operator
+/// only, gated at the tool layer.</summary>
 public interface ISourceCodeKnowledgeReader
 {
     /// <summary>True when the configured source root exists on disk.</summary>
@@ -12,12 +13,12 @@ public interface ISourceCodeKnowledgeReader
 }
 
 /// <summary>
-/// Reads the git-tracked source snapshot live from <see cref="AiKnowledgeOptions.SourceCodeRootPath"/>
-/// (default <c>{AppBaseDir}/knowledge/source</c>, shipped by Build-Artifact.ps1). Four safety layers
-/// apply at BOTH search and read, independent of the root: a traversal guard, a secret-file DENY
-/// list (evaluated first), an extension allowlist (<c>.json</c> deliberately excluded to keep
-/// appsettings out), and size/result caps. Every call re-reads the tree, so code changes flow in
-/// automatically.
+/// Reads the git-tracked source snapshot from <see cref="AiKnowledgeOptions.SourceCodeRootPath"/>
+/// (default <c>{AppBaseDir}/knowledge/source</c>, shipped by Build-Artifact.ps1). Four safety
+/// layers
+/// apply to both search and read, independent of the root: a traversal guard, a secret-file deny
+/// list (evaluated first), an extension allowlist (<c>.json</c> is excluded to keep appsettings
+/// out), and size and result caps. Every call re-reads the tree, so code changes are picked up.
 /// </summary>
 public sealed class SourceCodeKnowledgeReader(IOptionsMonitor<AiKnowledgeOptions> options) : ISourceCodeKnowledgeReader
 {
@@ -26,7 +27,7 @@ public sealed class SourceCodeKnowledgeReader(IOptionsMonitor<AiKnowledgeOptions
         ".cs", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".md", ".ps1", ".psm1",
         ".csproj", ".props", ".targets", ".sln", ".slnx", ".css", ".scss", ".html",
         ".sql", ".yml", ".yaml", ".razor", ".cshtml", ".sh",
-        // .json is deliberately excluded — it would expose appsettings*.json.
+        // .json is excluded because it would expose appsettings*.json.
     };
 
     private static readonly string[] DeniedNameFragments =
@@ -49,7 +50,8 @@ public sealed class SourceCodeKnowledgeReader(IOptionsMonitor<AiKnowledgeOptions
 
     public bool IsAvailable() => _corpus.IsAvailable();
 
-    /// <summary>DENY first (belt-and-suspenders on top of the git-tracked-only snapshot), then extension allowlist.</summary>
+    /// <summary>Applies the deny list first, then the extension allowlist, as a second layer on
+    /// top of the git-tracked-only snapshot.</summary>
     internal static bool IsEligible(string path) => !IsDenied(path) && AllowedExtensions.Contains(Path.GetExtension(path));
 
     internal static bool IsDenied(string path)
@@ -65,7 +67,8 @@ public sealed class SourceCodeKnowledgeReader(IOptionsMonitor<AiKnowledgeOptions
             || normalized.Contains("/.git/", StringComparison.Ordinal);
     }
 
-    /// <summary>Read gates in the same DENY-before-allowlist order as <see cref="IsEligible"/>; null = readable.</summary>
+    /// <summary>Read gates in the same deny-before-allowlist order as <see cref="IsEligible"/>.
+    /// Returns null when the file may be read.</summary>
     private static string? RejectionFor(string path)
     {
         if (IsDenied(path)) return "Diese Datei ist gesperrt (Secret-/Konfigurationsdatei).";

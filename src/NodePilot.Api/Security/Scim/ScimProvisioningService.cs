@@ -876,9 +876,9 @@ public sealed partial class ScimProvisioningService(
 
         try
         {
-            // Shared ECS shape (category/outcome/support-log allowlist) — a hand-rolled copy here
-            // had SCIM_GROUP_* events landing in a different event.category than the same action
-            // forwarded by any other writer.
+            // Uses the shared ECS shape (category/outcome/support-log allowlist) so SCIM_GROUP_*
+            // events land in the same event.category as the same action forwarded by any
+            // other writer.
             AuditEventForwarder.ForwardCommitted(logger, entry);
         }
         catch (Exception ex)

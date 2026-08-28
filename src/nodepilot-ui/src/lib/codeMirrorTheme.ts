@@ -5,21 +5,11 @@ import { tags } from '@lezer/highlight';
 /**
  * NodePilot's CodeMirror look, built from the app's own design tokens.
  *
- * The three inline editors (properties panel, DB viewer, custom activities) used
- * to pass `theme={isDark ? 'dark' : 'light'}`, i.e. the stock @uiw themes. Those
- * carry their own fixed blue-grey, which fights whichever skin is active and does
- * not move when the user switches skins.
- *
- * CodeMirror compiles theme objects into real stylesheets, so `var(--…)` resolves
- * at paint time like any other CSS. That means this needs no token probe and no
- * MutationObserver: switching skin or light/dark repaints the editor for free. The
- * only thing that must be passed in is `isDark`, because CodeMirror uses that flag
- * for its own internal decisions (selection blending, `color-scheme`), not for
- * colour lookup.
- *
- * Syntax colours come from the shared `--np-code-*` set in index.css — the same
- * one the `.hljs-*` rules use for AI-chat code blocks, so a highlighted snippet in
- * chat and the same snippet in an editor agree.
+ * CodeMirror compiles theme objects into real stylesheets, so `var(--…)` resolves at paint
+ * time and the editor follows skin and light/dark changes without a token probe or a
+ * MutationObserver. `isDark` is still passed in because CodeMirror uses it for selection
+ * blending and `color-scheme`, not for colour lookup. Syntax colours come from the shared
+ * `--np-code-*` set in index.css, the same set the `.hljs-*` rules use for AI-chat code blocks.
  */
 
 function chrome(isDark: boolean) {
@@ -29,10 +19,8 @@ function chrome(isDark: boolean) {
         backgroundColor: 'var(--color-surface-lowest)',
         color: 'var(--color-on-surface)',
       },
-      // Ohne das lief CodeMirror auf seinem eingebauten `monospace`, also auf der
-      // Default-Monospace des jeweiligen Browsers — der einzige Ort in der App, an
-      // dem Code nicht in der App-Schrift stand. Wie die Farben oben löst auch das
-      // hier zur Paint-Zeit auf und folgt damit Skin- und Theme-Wechseln von selbst.
+      // Without this CodeMirror falls back to its built-in `monospace`, so code would render
+      // in the browser default font instead of the app font.
       '.cm-content': { caretColor: 'var(--color-primary)', fontFamily: 'var(--font-mono)' },
       '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--color-primary)' },
       '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
@@ -42,8 +30,8 @@ function chrome(isDark: boolean) {
         backgroundColor: 'var(--color-surface-lowest)',
         color: 'var(--color-on-surface-variant)',
         borderRight: '1px solid var(--color-outline-variant)',
-        // Die Gutter erben nicht von `.cm-content` — ohne das würden Zeilennummern
-        // in einer anderen Schrift stehen als der Code daneben.
+        // Gutters do not inherit from `.cm-content`, so line numbers would otherwise use a
+        // different font than the code beside them.
         fontFamily: 'var(--font-mono)',
       },
       '.cm-activeLineGutter': { backgroundColor: 'transparent' },
@@ -81,8 +69,8 @@ function chrome(isDark: boolean) {
   );
 }
 
-/** Maps Lezer tags onto the shared `--np-code-*` palette. Exported so the token
- *  wiring is assertable without booting an editor. */
+/** Maps Lezer tags onto the shared `--np-code-*` palette. Exported so the token wiring can
+ *  be asserted without booting an editor. */
 export const nodePilotHighlightStyle = HighlightStyle.define([
   { tag: [tags.comment, tags.lineComment, tags.blockComment, tags.quote], color: 'var(--np-code-comment)', fontStyle: 'italic' },
   { tag: [tags.keyword, tags.controlKeyword, tags.operatorKeyword, tags.modifier, tags.self, tags.null], color: 'var(--np-code-keyword)' },
@@ -103,12 +91,10 @@ export const nodePilotHighlightStyle = HighlightStyle.define([
 ]);
 
 /**
- * The editor theme for the given base. Pass the result straight to
- * `<CodeMirror theme={…}>`.
+ * The editor theme for the given base. Pass the result straight to `<CodeMirror theme={…}>`.
  *
- * Memoised per base so the two possible extension arrays are created once — a new
- * array identity on every render would make CodeMirror reconfigure the editor on
- * each keystroke.
+ * Memoised per base so each extension array is created once; a new array identity on every
+ * render would make CodeMirror reconfigure the editor on each keystroke.
  */
 function build(isDark: boolean) {
   return [chrome(isDark), syntaxHighlighting(nodePilotHighlightStyle)];

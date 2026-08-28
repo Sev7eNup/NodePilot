@@ -7,7 +7,9 @@ namespace NodePilot.Cli.Api.Dtos;
 
 // ---- Auth methods ------------------------------------------------------------
 
-public sealed record AuthMethodsResponse(bool Local, bool Ldap, bool Windows, string? WindowsEndpoint);
+public sealed record AuthMethodsResponse(
+    bool Local, bool Ldap, bool Windows, string? WindowsEndpoint,
+    bool Oidc = false, string? OidcEndpoint = null, string? OidcDisplayName = null);
 
 // ---- Workflow Contract ------------------------------------------------------
 
@@ -62,7 +64,12 @@ public sealed record ReencryptResult(
 
 // ---- Shared workflow folders (RBAC) -----------------------------------------
 
-public sealed record SharedFolderCapabilities(bool CanRead, bool CanRun, bool CanEdit, bool CanAdmin);
+public sealed record SharedFolderCapabilities(
+    bool CanRead,
+    bool CanRun,
+    bool CanEdit,
+    bool CanDelete,
+    bool CanAdmin);
 
 public sealed record SharedFolderResponse(
     Guid Id,
@@ -90,12 +97,18 @@ public sealed record SharedFolderPermissionResponse(
     string? PrincipalDisplayName,
     string Role,
     DateTime GrantedAt,
-    Guid? GrantedByUserId);
+    Guid? GrantedByUserId)
+{
+    public string? PrincipalAuthority { get; init; }
+}
 
 public sealed record GrantSharedFolderPermissionRequest(
     string PrincipalType,
     string PrincipalKey,
-    string Role);
+    string Role)
+{
+    public string? PrincipalAuthority { get; init; }
+}
 
 // ---- Admin Settings ---------------------------------------------------------
 
@@ -131,7 +144,8 @@ public sealed record EffectiveSizingResponse(
     bool IsDesktop,
     IReadOnlyList<SizedValueResponse> Values);
 
-/// <summary>One resolved knob: configuration key, value in force, and the constraint that produced it.</summary>
+/// <summary>One resolved knob: configuration key, value in force, and the constraint that produced
+/// it.</summary>
 public sealed record SizedValueResponse(string Key, int Value, string Bound);
 
 public sealed record SettingsTestProbeResult(
@@ -140,11 +154,9 @@ public sealed record SettingsTestProbeResult(
     double DurationMs,
     string? ErrorKind);
 
-// Test-probe wrappers carry the section DTO + extras. The CLI does not parse the
-// inner DTO — it forwards raw JSON from the user — so we model these as JsonElement
-// envelopes to mirror the SmtpTestProbeRequest(SmtpSettingsDto Settings, string? ToAddress)
-// + LlmTestProbeRequest(string? ProfileId, LlmProfileProbeDto Settings) shapes without
-// duplicating every SmtpSettingsDto/LlmProfileProbeDto field.
+// Test-probe wrappers carry the section DTO + extras. The CLI forwards raw JSON without
+// parsing it, so these use JsonElement to mirror SmtpTestProbeRequest and
+// LlmTestProbeRequest without duplicating every settings field.
 public sealed record SmtpTestProbeRequest(JsonElement Settings, string? ToAddress);
 
 // ProfileId is only needed when Settings.apiKey is the "__unchanged__" marker — it names the

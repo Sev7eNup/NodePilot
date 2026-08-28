@@ -20,7 +20,7 @@ public sealed class CanvasAssistantToolsTests
     };
     private static string J(object o) => JsonSerializer.Serialize(o, Web);
 
-    // manualTrigger n0 → runScript n1 → remote fileOperation n2 (no machine); n9 disconnected.
+    // manualTrigger n0 -> runScript n1 -> remote fileOperation n2 (no machine); n9 disconnected.
     private const string Master = """
     {
       "nodes": [
@@ -71,12 +71,14 @@ public sealed class CanvasAssistantToolsTests
         var cyclic = """
         {"nodes":[
           {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"t","config":{}}},
+          {"id":"join","type":"activity","data":{"activityType":"junction","label":"join","config":{"mode":"waitAll"}}},
           {"id":"a","type":"activity","data":{"activityType":"log","label":"a","config":{}}},
           {"id":"b","type":"activity","data":{"activityType":"log","label":"b","config":{}}}],
          "edges":[
-          {"id":"e0","source":"t","target":"a"},
-          {"id":"e1","source":"a","target":"b"},
-          {"id":"e2","source":"b","target":"a"}]}
+          {"id":"e0","source":"t","target":"join"},
+          {"id":"e1","source":"join","target":"a"},
+          {"id":"e2","source":"a","target":"b"},
+          {"id":"e3","source":"b","target":"join"}]}
         """;
         var json = J(Tools(api).AnalyzeWorkflow(E(cyclic)));
         json.Should().Contain("Cycle detected");
@@ -101,7 +103,7 @@ public sealed class CanvasAssistantToolsTests
     public async Task GetAvailableVariables_ListsUpstreamOutputsParamsAndManual()
     {
         using var api = new TestApi();
-        // globals endpoint left unstubbed → best-effort fetch fails gracefully.
+        // globals endpoint left unstubbed -> best-effort fetch fails gracefully.
         var json = J(await Tools(api).GetAvailableVariables(E(Master), "n2"));
 
         json.Should().Contain("{{n1.output}}");
@@ -173,7 +175,7 @@ public sealed class CanvasAssistantToolsTests
     public void AnalyzeWorkflow_HybridRunScriptWithoutMachine_IsNotWarned()
     {
         using var api = new TestApi();
-        // runScript without a machine is HYBRID (runs locally) → must NOT be flagged.
+        // runScript without a machine is HYBRID (runs locally) -> must NOT be flagged.
         var def = """
         {"nodes":[
           {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"t","config":{}}},
@@ -189,7 +191,7 @@ public sealed class CanvasAssistantToolsTests
     public void SuggestLayout_CyclicGraph_Terminates()
     {
         using var api = new TestApi();
-        // t → a → b → a (cycle reachable from a trigger). Must not hang.
+        // t -> a -> b -> a (cycle reachable from a trigger). Must not hang.
         var cyclic = """
         {"nodes":[
           {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"t","config":{}}},
@@ -208,7 +210,8 @@ public sealed class CanvasAssistantToolsTests
     public async Task GetAvailableVariables_IncludesTriggerReturnDataAndRegistry()
     {
         using var api = new TestApi();
-        // webhookTrigger (static outputs) → registryOperation read (dynamic) → returnData → target.
+        // webhookTrigger (static outputs) to registryOperation read (dynamic) to returnData to
+        // target.
         var def = """
         {"nodes":[
           {"id":"hook","type":"activity","data":{"activityType":"webhookTrigger","label":"h","config":{}}},
@@ -230,7 +233,7 @@ public sealed class CanvasAssistantToolsTests
     public void ValidateActivityConfig_RestApi_NowCoveredByReference()
     {
         using var api = new TestApi();
-        // restApi is now in the curated reference → url is required.
+        // restApi is now in the curated reference -> url is required.
         var json = J(Tools(api).ValidateActivityConfig("restApi", E("""{"method":"GET"}""")));
         json.Should().Contain("\"hasConfigReference\":true");
         json.Should().Contain("url"); // missingRequired
@@ -264,10 +267,14 @@ public sealed class CanvasAssistantToolsTests
         var exec = Guid.NewGuid();
         using var api = new TestApi();
         api.Server.Given(Request.Create().WithPath("/api/executions").UsingGet())
-            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new[]
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
             {
-                new { id = exec, workflowId = wf, status = "Failed", startedAt = DateTime.UtcNow,
-                      completedAt = (DateTime?)DateTime.UtcNow, triggeredBy = "manual", errorMessage = "boom" },
+                items = new[]
+                {
+                    new { id = exec, workflowId = wf, status = "Failed", startedAt = DateTime.UtcNow,
+                          completedAt = (DateTime?)DateTime.UtcNow, triggeredBy = "manual", errorMessage = "boom" },
+                },
+                page = 1, pageSize = 200, total = 1, totalPages = 1,
             }));
         api.Server.Given(Request.Create().WithPath($"/api/executions/{exec}/steps").UsingGet())
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new[]

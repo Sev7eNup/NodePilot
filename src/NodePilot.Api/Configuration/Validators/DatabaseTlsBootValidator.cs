@@ -116,9 +116,9 @@ public sealed class DatabaseTlsBootValidator : IBootValidator
                           ?? "Production";
         var isDevelopment = string.Equals(environment, Environments.Development, StringComparison.OrdinalIgnoreCase);
         // Deployment:Mode=Desktop is the single-machine package: a bundled Postgres on 127.0.0.1
-        // with no PKI. A loopback connection that never leaves the host has no meaningful TLS
-        // identity to verify, so we accept the same escape hatch the Development environment gets
-        // — but ONLY for loopback hosts, and the rest of the production hardening stays on.
+        // without PKI. A loopback connection never leaves the host, so there is no TLS identity
+        // worth verifying and the same escape hatch as in Development applies. It covers loopback
+        // hosts only; the remaining production hardening stays active.
         var isDesktop = DeploymentModeReader.IsDesktop(configuration);
 
         if (!loopbackOnly || (!isDevelopment && !isDesktop))

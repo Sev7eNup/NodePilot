@@ -4,8 +4,8 @@
     Generates the Electron desktop shell's icon set from the SPA's tracked brand assets.
 
 .DESCRIPTION
-    Writes into src\nodepilot-desktop\assets (gitignored - the SOURCES are versioned, so a clean
-    clone can always rebuild them):
+    Writes into src\nodepilot-desktop\assets (gitignored - the source art is versioned, so a
+    clean clone can always rebuild them):
 
       icon.ico              multi-resolution 16/32/48/256 - exe, installer, Start-Menu, Explorer
       icon.png              256px window icon shown until the SPA reports its skin
@@ -13,10 +13,10 @@
       skins\<id>.png        256px window icon per SPA color skin
       skins\<id>-tray.png   32px tray icon per SPA color skin
 
-    The static default set is deliberately BLUE: it is rendered from appicon-<DefaultSkin>.png,
-    NOT from the untinted orange source art appicon.png. At runtime the shell swaps to
-    skins\<id>.* the moment the SPA reports its favicon (see src\nodepilot-desktop\src\skins.ts),
-    so window and tray icon follow the skin the user picked.
+    The static default set is rendered from appicon-<DefaultSkin>.png (blue), not from the
+    untinted source art appicon.png. At runtime the shell swaps to skins\<id>.* as soon as the
+    SPA reports its favicon (see src\nodepilot-desktop\src\skins.ts), so window and tray icon
+    follow the skin the user picked.
 
     The per-skin set is discovered from public\appicon-*.png instead of a hardcoded list, so a new
     UI skin needs no change here - regenerate its brand asset with scripts\generate-logo-skins.py

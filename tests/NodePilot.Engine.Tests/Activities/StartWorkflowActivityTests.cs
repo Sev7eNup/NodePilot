@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
 using NodePilot.Core.Enums;
+using NodePilot.Core.ExecutionDispatch;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -27,13 +28,23 @@ namespace NodePilot.Engine.Tests.Activities;
 /// </summary>
 public sealed class StartWorkflowActivityWaitModeTests : IDisposable
 {
-    private sealed class ImmediateExecutionDispatchQueue : IExecutionDispatchQueue
+    private sealed class CapturingExecutionDispatcher : IWorkflowExecutionDispatcher
     {
-        public async ValueTask EnqueueAsync(
-            Func<CancellationToken, Task> workItem,
-            CancellationToken ct,
-            ExecutionDispatchPriority priority = ExecutionDispatchPriority.Normal)
-            => await workItem(ct);
+        public WorkflowDispatchIntent? Intent { get; private set; }
+        public Exception? Error { get; init; }
+
+        public Task<WorkflowExecution> DispatchAsync(WorkflowDispatchIntent intent, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (Error is not null) throw Error;
+            Intent = intent;
+            return Task.FromResult(new WorkflowExecution
+            {
+                Id = Guid.NewGuid(),
+                WorkflowId = intent.WorkflowId,
+                Status = ExecutionStatus.Pending,
+            });
+        }
     }
 
     private readonly SqliteConnection _connection;
@@ -65,10 +76,10 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
         _connection.Dispose();
     }
 
-    private StartWorkflowActivity CreateActivity(IExecutionDispatchQueue? dispatchQueue = null) =>
-        dispatchQueue is null
+    private StartWorkflowActivity CreateActivity(IWorkflowExecutionDispatcher? dispatcher = null) =>
+        dispatcher is null
             ? new StartWorkflowActivity(_scopeServices.GetRequiredService<IServiceScopeFactory>(), _db, new InMemorySubWorkflowGate())
-            : new StartWorkflowActivity(_scopeServices.GetRequiredService<IServiceScopeFactory>(), _db, new InMemorySubWorkflowGate(), dispatchQueue);
+            : new StartWorkflowActivity(_scopeServices.GetRequiredService<IServiceScopeFactory>(), _db, new InMemorySubWorkflowGate(), dispatcher);
 
     private async Task<Workflow> InsertWorkflowAsync(string name)
     {
@@ -136,7 +147,7 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
         var parent = await InsertWorkflowAsync("parent");
         var parentExec = await InsertExecutionAsync(parent.Id);
         var child = await InsertWorkflowAsync("Child-Job");
-        child.IsEnabled = false; // resolution happens before the enabled check → "disabled"
+        child.IsEnabled = false; // resolution happens before the enabled check -> "disabled"
         await _db.SaveChangesAsync(); // proves the CI lookup FOUND it (vs "not found")
 
         var result = await CreateActivity().ExecuteAsync(
@@ -181,7 +192,8 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
             Cfg("""{"workflowNameOrId":"Daily"}"""),
             CancellationToken.None);
 
-        // The exact-case row ("Daily", disabled) must win over the CI duplicate — no ambiguity error.
+        // The exact-case row ("Daily", disabled) must win over the CI duplicate — no ambiguity
+        // error.
         result.Success.Should().BeFalse();
         result.ErrorOutput.Should().Contain("'Daily' is disabled");
     }
@@ -193,7 +205,8 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
         var parentExec = await InsertExecutionAsync(parent.Id);
         var child = await InsertWorkflowAsync("child");
 
-        // Pre-create the child execution row that the activity will look up after engine.ExecuteAsync.
+        // Pre-create the child execution row that the activity will look up after
+        // engine.ExecuteAsync.
         var childExecId = Guid.NewGuid();
         _db.WorkflowExecutions.Add(new WorkflowExecution
         {
@@ -258,15 +271,9 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
         var parentExec = await InsertExecutionAsync(parent.Id);
         var child = await InsertWorkflowAsync("child");
 
-        // The fire-and-forget path doesn't await the engine call - the return parameters tell us
-        // what was scheduled. The mock can resolve immediately or never; either is fine.
-        _engineMock.Setup(e => e.ExecuteAsync(
-                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
-                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
-                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>()))
-            .ReturnsAsync(new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = child.Id });
+        var dispatcher = new CapturingExecutionDispatcher();
 
-        var result = await CreateActivity().ExecuteAsync(
+        var result = await CreateActivity(dispatcher).ExecuteAsync(
             MakeContext(parentExec.Id),
             Cfg("""{"workflowNameOrId":"child","waitForCompletion":false}"""),
             CancellationToken.None);
@@ -274,47 +281,30 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
         result.Success.Should().BeTrue();
         result.OutputParameters.Should().ContainKey("workflowId").WhoseValue.Should().Be(child.Id.ToString());
         result.OutputParameters.Should().ContainKey("workflowName").WhoseValue.Should().Be("child");
+        result.OutputParameters.Should().ContainKey("executionId");
         result.OutputParameters.Should().ContainKey("waited").WhoseValue.Should().Be("false");
+        dispatcher.Intent!.ParentExecutionId.Should().Be(parentExec.Id);
     }
 
     [Fact]
-    public async Task ExecuteAsync_FireAndForget_WithDispatchQueue_InvokesChildExecution()
+    public async Task ExecuteAsync_FireAndForget_UsesDurableDispatcherWithChildLineage()
     {
         var parent = await InsertWorkflowAsync("parent");
         var parentExec = await InsertExecutionAsync(parent.Id);
         var child = await InsertWorkflowAsync("child");
-        var queue = new ImmediateExecutionDispatchQueue();
+        var dispatcher = new CapturingExecutionDispatcher();
 
-        _engineMock.Setup(e => e.ExecuteAsync(
-                It.IsAny<Workflow>(),
-                It.IsAny<string>(),
-                It.IsAny<CancellationToken>(),
-                It.IsAny<Dictionary<string, string>?>(),
-                It.IsAny<int?>(),
-                It.IsAny<bool>(),
-                It.IsAny<Guid?>(),
-                It.IsAny<Guid?>(),
-                It.IsAny<int>(),
-                It.IsAny<Guid?>()))
-            .ReturnsAsync(new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = child.Id });
-
-        var result = await CreateActivity(queue).ExecuteAsync(
+        var result = await CreateActivity(dispatcher).ExecuteAsync(
             MakeContext(parentExec.Id),
             Cfg("""{"workflowNameOrId":"child","waitForCompletion":false}"""),
             CancellationToken.None);
 
         result.Success.Should().BeTrue();
-        _engineMock.Verify(e => e.ExecuteAsync(
-            It.Is<Workflow>(w => w.Id == child.Id),
-            It.Is<string>(s => s == "startWorkflow:parent-step"),
-            It.IsAny<CancellationToken>(),
-            It.IsAny<Dictionary<string, string>?>(),
-            It.IsAny<int?>(),
-            It.IsAny<bool>(),
-            It.IsAny<Guid?>(),
-            parentExec.Id,
-            1,
-            It.IsAny<Guid?>()), Times.Once);
+        dispatcher.Intent.Should().NotBeNull();
+        dispatcher.Intent!.WorkflowId.Should().Be(child.Id);
+        dispatcher.Intent.TriggeredBy.Should().Be("startWorkflow:parent-step");
+        dispatcher.Intent.ParentExecutionId.Should().Be(parentExec.Id);
+        dispatcher.Intent.CallDepth.Should().Be(1);
     }
 
     [Fact]
@@ -326,38 +316,35 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
         var parent = await InsertWorkflowAsync("parent");
         var parentExec = await InsertExecutionAsync(parent.Id);
         await InsertWorkflowAsync("child");
-        int? capturedTimeout = 42;
-        SetupEngineCapture((_, timeout) => capturedTimeout = timeout);
+        var dispatcher = new CapturingExecutionDispatcher();
 
-        await CreateActivity(new ImmediateExecutionDispatchQueue()).ExecuteAsync(
+        await CreateActivity(dispatcher).ExecuteAsync(
             MakeContext(parentExec.Id),
             Cfg("""{"workflowNameOrId":"child","waitForCompletion":false}"""),
             CancellationToken.None);
 
-        capturedTimeout.Should().BeNull("an unset timeoutSeconds must not impose a ceiling on a detached child");
+        dispatcher.Intent!.TimeoutSeconds.Should().BeNull("an unset timeoutSeconds must not impose a ceiling on a detached child");
     }
 
     [Fact]
     public async Task ExecuteAsync_FireAndForget_ExplicitTimeout_IsHonoredOnDetachedChild()
     {
-        // Previously the detached path ignored timeoutSeconds entirely — a node author who set
-        // one got no ceiling. It must now be forwarded to the child engine run.
+        // Detached child runs must receive the configured timeout ceiling.
         var parent = await InsertWorkflowAsync("parent");
         var parentExec = await InsertExecutionAsync(parent.Id);
         await InsertWorkflowAsync("child");
-        int? capturedTimeout = null;
-        SetupEngineCapture((_, timeout) => capturedTimeout = timeout);
+        var dispatcher = new CapturingExecutionDispatcher();
 
-        await CreateActivity(new ImmediateExecutionDispatchQueue()).ExecuteAsync(
+        await CreateActivity(dispatcher).ExecuteAsync(
             MakeContext(parentExec.Id),
             Cfg("""{"workflowNameOrId":"child","waitForCompletion":false,"timeoutSeconds":5}"""),
             CancellationToken.None);
 
-        capturedTimeout.Should().Be(5);
+        dispatcher.Intent!.TimeoutSeconds.Should().Be(5);
     }
 
     [Fact]
-    public async Task ExecuteAsync_FireAndForget_EngineThrowsOutsideFinalization_IsLoggedNotSwallowed()
+    public async Task ExecuteAsync_FireAndForget_DispatchFailurePropagatesToStepRunner()
     {
         // The child finalizes its own terminal state inside the engine; reaching the detached
         // catch means the engine threw OUTSIDE finalization. That must be surfaced (logged),
@@ -365,39 +352,16 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
         var parent = await InsertWorkflowAsync("parent");
         var parentExec = await InsertExecutionAsync(parent.Id);
         await InsertWorkflowAsync("child");
-        _engineMock.Setup(e => e.ExecuteAsync(
-                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
-                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
-                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>()))
-            .ThrowsAsync(new InvalidOperationException("engine boom outside finalization"));
+        var activity = CreateActivity(new CapturingExecutionDispatcher
+        {
+            Error = new InvalidOperationException("dispatch failed"),
+        });
 
-        var logger = new CapturingLogger<StartWorkflowActivity>();
-        var activity = new StartWorkflowActivity(
-            _scopeServices.GetRequiredService<IServiceScopeFactory>(), _db,
-            new InMemorySubWorkflowGate(), new ImmediateExecutionDispatchQueue(), null, logger);
-
-        var result = await activity.ExecuteAsync(
+        var act = () => activity.ExecuteAsync(
             MakeContext(parentExec.Id),
             Cfg("""{"workflowNameOrId":"child","waitForCompletion":false}"""),
             CancellationToken.None);
 
-        // Parent step still reports the fire-and-forget dispatch as successful...
-        result.Success.Should().BeTrue();
-        // ...but the child engine fault was LOGGED, not swallowed.
-        logger.Entries.Should().Contain(e => e.Level == LogLevel.Error && e.Exception is InvalidOperationException);
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("dispatch failed");
     }
-
-    /// <summary>Captures the <c>timeoutSeconds</c> (5th positional arg) the detached child engine run is invoked with.
-    /// IWorkflowEngine.ExecuteAsync has 11 params (the trailing one is <c>interactiveRun</c>), so both the
-    /// callback and the return factory must be 11-arity for Moq.</summary>
-    private void SetupEngineCapture(Action<Workflow, int?> capture) =>
-        _engineMock.Setup(e => e.ExecuteAsync(
-                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
-                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
-                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(), It.IsAny<bool>()))
-            .Callback((Workflow wf, string _, CancellationToken _, Dictionary<string, string>? _,
-                       int? timeout, bool _, Guid? _, Guid? _, int _, Guid? _, bool _) => capture(wf, timeout))
-            .ReturnsAsync((Workflow wf, string _, CancellationToken _, Dictionary<string, string>? _,
-                           int? _, bool _, Guid? _, Guid? _, int _, Guid? _, bool _) =>
-                new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = wf.Id, Status = ExecutionStatus.Succeeded });
 }

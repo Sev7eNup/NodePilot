@@ -5,12 +5,9 @@ import { LintPanel } from '../../../components/designer/overlays/LintPanel';
 import type { LintIssue } from '../../../lib/workflowLint';
 
 /**
- * LintPanel renders a list of lint issues with click-to-jump on each row. We pin:
- *   - error/warning counter in the header
- *   - clicking an issue calls onJump(nodeId) for node issues
- *   - clicking an issue calls onJumpEdge(edgeId) for edge issues
- *   - issues without a nodeId or edgeId render but are non-clickable (button disabled)
- *   - close button calls onClose
+ * LintPanel renders a list of lint issues, each row jumping to its node or edge on click.
+ * These tests cover the header counters, onJump for node issues, onJumpEdge for edge issues,
+ * issues without a target rendering as a disabled button, and the close button.
  */
 
 function err(code: string, message: string, nodeId?: string, edgeId?: string): LintIssue {
@@ -113,7 +110,7 @@ describe('LintPanel', () => {
     const { container } = render(
       <LintPanel result={result} nodes={[]} edges={[]} onJump={vi.fn()} onClose={vi.fn()} />
     );
-    // The header AlertTriangle icon switches to text-error class when errors > 0.
+    // The header AlertTriangle icon switches to the text-error class when errors are present.
     expect(container.querySelector('.text-error')).not.toBeNull();
   });
 });

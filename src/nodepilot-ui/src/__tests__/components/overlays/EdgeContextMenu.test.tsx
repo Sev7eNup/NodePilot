@@ -6,17 +6,12 @@ import { useDesignStore } from '../../../stores/designStore';
 beforeEach(() => useDesignStore.setState({ designerMode: 'expert' }));
 
 /**
- * EdgeContextMenu mirrors NodeContextMenu's interaction model. We pin:
- *   - All four actions render (Disable-or-Enable / Detach target / Swap / Delete)
- *   - isDisabled flips the toggle label from "Disable" to "Enable"
- *   - Each action call invokes its handler AND closes the menu
- *   - Outside-click + Escape close the menu
- *   - Mounting position respects x/y props (so it docks at the right-click coordinate)
- *   - "Detach target" shows in STANDARD mode too, unlike swap/reset-shape
- *
- * "Edit condition" is intentionally absent: right-clicking an edge already auto-selects it,
- * which surfaces the EdgePropertiesPanel where conditions are edited. A duplicate menu item
- * would do nothing extra.
+ * EdgeContextMenu mirrors NodeContextMenu's interaction model. These tests cover the rendered
+ * actions and their labels, that each action invokes its handler and closes the menu, that
+ * outside click and Escape close it, that it docks at the x/y coordinate, and that
+ * "Detach target" stays visible in standard mode while swap and reset-shape do not.
+ * "Edit condition" is absent because a right click already selects the edge and opens the
+ * EdgePropertiesPanel, where conditions are edited.
  */
 
 function defaultProps(over: Partial<Parameters<typeof EdgeContextMenu>[0]> = {}) {
@@ -46,8 +41,8 @@ describe('EdgeContextMenu', () => {
   });
 
   it('doesNotRenderEditConditionItem', () => {
-    // Pinning the omission: right-click already auto-selects + opens EdgePropertiesPanel,
-    // so a duplicate menu entry would be redundant. If someone re-adds it, this fails.
+    // A right click already selects the edge and opens EdgePropertiesPanel, so a menu entry
+    // for conditions would be redundant.
     render(<EdgeContextMenu {...defaultProps()} />);
     expect(screen.queryByText(/edit condition/i)).not.toBeInTheDocument();
   });
@@ -79,8 +74,8 @@ describe('EdgeContextMenu', () => {
   });
 
   it('detachTargetItem_visibleInStandardMode', () => {
-    // Re-routing an edge is a primary editing operation, not a power-user affordance —
-    // unlike swap/reset-shape it must NOT disappear outside expert mode.
+    // Re-routing an edge is a primary editing operation, so unlike swap and reset-shape it
+    // stays available outside expert mode.
     useDesignStore.setState({ designerMode: 'standard' });
     render(<EdgeContextMenu {...defaultProps({ hasCustomShape: true })} />);
 

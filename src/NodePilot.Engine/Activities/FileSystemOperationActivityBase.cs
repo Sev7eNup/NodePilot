@@ -7,12 +7,11 @@ using NodePilot.Engine.Security;
 namespace NodePilot.Engine.Activities;
 
 /// <summary>
-/// Shared skeleton of the two path-scoped activities — <see cref="FileOperationActivity"/> and
+/// Shared base for the two path-scoped activities: <see cref="FileOperationActivity"/> and
 /// <see cref="FolderOperationActivity"/>. Both validate the same config surface (operation, path,
-/// destination, newName), emit the same JSON result envelope and project it into the same
-/// OutputParameters; only the PowerShell bodies, the wording of the user-facing strings and the
-/// extra <c>list</c> operation of the folder variant differ. Everything user-visible is therefore
-/// supplied by the subclass — label, operation list, envelope depth, marker token.
+/// destination, newName) and emit the same JSON result envelope, projected into the same
+/// OutputParameters. Subclasses supply only what differs: PowerShell bodies, wording, envelope
+/// depth, marker token, and (for folders) the <c>list</c> operation.
 /// </summary>
 public abstract class FileSystemOperationActivityBase : BaseRemoteActivity
 {
@@ -32,7 +31,8 @@ public abstract class FileSystemOperationActivityBase : BaseRemoteActivity
         _resultMarkers = PowerShellOperation.Markers(markerToken);
     }
 
-    /// <summary>Prefix of every user-facing message — "File Operation" / "Folder Operation".</summary>
+    /// <summary>Prefix of every user-facing message — "File Operation" / "Folder
+    /// Operation".</summary>
     protected abstract string OperationLabel { get; }
 
     /// <summary>Operations named in the "'operation' is required" message, in UI order.</summary>
@@ -81,7 +81,7 @@ public abstract class FileSystemOperationActivityBase : BaseRemoteActivity
 
         var opBody = BuildOperationBody(operation);
 
-        // operation is whitelisted (any other variant throws above), so direct interpolation is safe.
+        // operation is validated above (any other value throws), so interpolating it is safe.
         return $$"""
             $ErrorActionPreference = 'Stop'
             $__path = {{qPath}}

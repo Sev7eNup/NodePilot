@@ -14,16 +14,15 @@ using Xunit;
 namespace NodePilot.Api.Tests.Hosting;
 
 /// <summary>
-/// Pipeline-level authentication gate: every endpoint the host ACTUALLY maps (discovered at
+/// Pipeline-level authentication gate: every endpoint the host actually maps (discovered at
 /// runtime via ApiExplorer, not by source scanning) must reject an unauthenticated request
-/// before its action runs. This is the smoke layer the 2,275 direct-controller tests cannot
-/// provide — they bypass routing, [Authorize] metadata, and the middleware chain entirely,
-/// so a deleted [Authorize] attribute never turned CI red before this test existed.
+/// before its action runs. Direct-controller tests bypass routing, [Authorize] metadata, and
+/// the middleware chain entirely, so they cannot catch a deleted [Authorize] attribute.
 ///
-/// Why the uniform expectation is exactly 401 — middleware order in Program.cs is
-/// UseRateLimiter → DatabaseAvailability → UseAuthentication → TokenValidity →
-/// CsrfMiddleware → UseAuthorization → MapControllers, and on the unauthenticated path
-/// nothing before authorization can answer first:
+/// The expected status is always 401. Middleware order in Program.cs is UseRateLimiter,
+/// DatabaseAvailability, UseAuthentication, TokenValidity, CsrfMiddleware, UseAuthorization,
+/// MapControllers (in that order), and nothing before authorization can answer first on an
+/// unauthenticated request:
 /// <list type="bullet">
 ///   <item>CsrfMiddleware.ShouldEnforce bails out when the request carries no np_auth
 ///     cookie, so an anonymous mutating request is never swallowed by the CSRF 403 — it
@@ -32,11 +31,11 @@ namespace NodePilot.Api.Tests.Hosting;
 ///   <item>The rate-limit policies (login/refresh/webhook/trigger/ai-generate/audit/backup/
 ///     alerting-heavy) are per-IP windows with limits of at least 10/min; this test sends
 ///     exactly one request per endpoint, so a 429 cannot mask a missing gate.</item>
-///   <item>TokenValidityMiddleware only re-validates ALREADY authenticated principals; it
+///   <item>TokenValidityMiddleware only re-validates already authenticated principals; it
 ///     passes anonymous requests straight through.</item>
 /// </list>
 ///
-/// SCIM endpoints (ScimUsers/ScimGroups/ScimDiscovery) are deliberately NOT skipped: they
+/// SCIM endpoints (ScimUsers/ScimGroups/ScimDiscovery) are deliberately not skipped: they
 /// carry no [Authorize] at all — their gate is the [ScimAuthorize] MVC authorization filter
 /// (ScimAuthorizationFilter), which answers 401 application/scim+json whenever no valid
 /// SCIM bearer token is presented (and always, while SCIM is unconfigured as in this host).
@@ -52,7 +51,7 @@ public sealed class AuthGatingSmokeTests
 
     /// <summary>
     /// Endpoints that provably never reach their action unauthenticated but cannot answer a
-    /// clean 401 in THIS host. Keep this list small and every entry justified — an
+    /// clean 401 in this host. Keep this list small and every entry justified — an
     /// unexplained addition here is how a real auth hole gets waved through.
     /// Keys are "METHOD relative/path" (case-insensitive). Allowlisted endpoints are still
     /// asserted non-2xx: the invariant that the action never runs holds regardless.
@@ -86,7 +85,7 @@ public sealed class AuthGatingSmokeTests
 
         // Scanner meta-check (repo pattern: guards verify themselves): if an ApiExplorer or
         // conventions regression empties the discovery, this test must fail loudly instead
-        // of green-lighting a zero-endpoint sweep. The API maps ~185 controller actions.
+        // of green-lighting a zero-endpoint sweep.
         endpoints.Count.Should().BeGreaterThan(150,
             "runtime endpoint discovery via IApiDescriptionGroupCollectionProvider collapsed — " +
             "the auth-gating sweep would be meaningless on this few endpoints");
@@ -116,7 +115,7 @@ public sealed class AuthGatingSmokeTests
             }
             catch (Exception ex)
             {
-                if (allowlistedReason is not null) continue; // exception ⇒ action never ran
+                if (allowlistedReason is not null) continue; // exception means action never ran
                 violations.Add($"{key} → request threw {ex.GetType().Name}: {ex.Message}");
                 continue;
             }
@@ -180,7 +179,8 @@ public sealed class AuthGatingSmokeTests
                 parameter.Type == typeof(Guid) || parameter.Type == typeof(Guid?) ? Guid.NewGuid().ToString()
                 : parameter.Type == typeof(int) || parameter.Type == typeof(long) ? "1"
                 : "x";
-            // Tolerates every token spelling: {name}, {name?}, {name:constraint}, {*name}, {**name}.
+            // Tolerates every token spelling: {name}, {name?}, {name:constraint}, {*name},
+            // {**name}.
             path = Regex.Replace(
                 path,
                 $@"\{{\*{{0,2}}{Regex.Escape(parameter.Name)}(:[^}}]*)?\??\}}",
@@ -192,7 +192,7 @@ public sealed class AuthGatingSmokeTests
 
     /// <summary>
     /// Body whose content type matches the endpoint's [Consumes] constraint. Necessary
-    /// because ConsumesMatcherPolicy answers 415 during ROUTING — before authentication —
+    /// because ConsumesMatcherPolicy answers 415 during routing, before authentication,
     /// when the content type matches no candidate, which would mask the auth verdict for
     /// the multipart backup endpoints and the XML SCOrch import.
     /// </summary>

@@ -4,11 +4,11 @@ using System.Text.Json;
 namespace NodePilot.Api.Ai;
 
 /// <summary>
-/// Writes Server-Sent-Events directly to the <see cref="HttpResponse.Body"/> (same pattern as
-/// the CSV/NDJSON exports in <c>AuditController</c>). Shared by the streaming AI endpoints
-/// (chat + script generation). Sets the SSE headers in <see cref="Begin"/> — once that happens
-/// the response headers are committed, so the controller peeks at the first event
-/// <b>beforehand</b> in order to still return pre-stream errors as a normal HTTP status.
+/// Writes Server-Sent Events directly to the <see cref="HttpResponse.Body"/>, the same pattern as
+/// the CSV/NDJSON exports in <c>AuditController</c>. Shared by the streaming AI endpoints
+/// (chat + script generation). <see cref="Begin"/> sets the SSE headers, which commits the
+/// response headers, so the controller peeks at the first event
+/// <b>beforehand</b> to still return pre-stream errors as a normal HTTP status.
 /// </summary>
 internal sealed class SseResponseWriter : IAsyncDisposable
 {
@@ -26,7 +26,8 @@ internal sealed class SseResponseWriter : IAsyncDisposable
         return new SseResponseWriter(writer);
     }
 
-    /// <summary>Writes one event as <c>event: name\ndata: &lt;json&gt;\n\n</c> and flushes immediately.</summary>
+    /// <summary>Writes one event as <c>event: name\ndata: &lt;json&gt;\n\n</c> and flushes
+    /// immediately.</summary>
     public async Task WriteAsync(string eventName, object payload, CancellationToken ct)
     {
         var json = JsonSerializer.Serialize(payload, JsonOpts);
@@ -37,6 +38,6 @@ internal sealed class SseResponseWriter : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         try { await _writer.DisposeAsync(); }
-        catch { /* the client may have disconnected mid-flush — Dispose must never throw */ }
+        catch { /* the client may have disconnected mid-flush; Dispose must never throw */ }
     }
 }

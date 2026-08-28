@@ -56,16 +56,16 @@ describe('operationsStore', () => {
     expect(useOperationsStore.getState().liveStatusByWorkflow.w1).toBe('Failed');
   });
 
-  // --- race-safe reconciliation (R2/R3 Codex findings) ---
+  // --- race-safe reconciliation ---
 
   it('seedRunning skips tombstoned execution ids so a stale snapshot cannot resurrect a run', () => {
     const { applyStatus, seedRunning } = useOperationsStore.getState();
-    // Run e1 terminates via SignalR â†’ tombstoned + removed from running.
+    // Run e1 terminates via SignalR: tombstoned and removed from the running list.
     applyStatus('e1', 'w1', 'Running');
     applyStatus('e1', 'w1', 'Failed');
     expect(runningCount('w1')).toBe(0);
 
-    // A stale snapshot still lists e1 as running. seedRunning must NOT resurrect it.
+    // A stale snapshot still lists e1 as running; seedRunning must not resurrect it.
     seedRunning(
       [{ executionId: 'e1', workflowId: 'w1', status: 'Running', parentExecutionId: null, startedAt: '' , stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null}],
       { w1: 'Failed' },
@@ -78,7 +78,7 @@ describe('operationsStore', () => {
     const { applyStatus } = useOperationsStore.getState();
     applyStatus('e1', 'w1', 'Running');
     applyStatus('e1', 'w1', 'Succeeded');
-    // A delayed Running event arrives after the terminal â€” must be ignored.
+    // A delayed Running event arrives after the terminal state and must be ignored.
     applyStatus('e1', 'w1', 'Running');
     expect(runningCount('w1')).toBe(0);
   });
@@ -102,7 +102,8 @@ describe('operationsStore', () => {
     applyStatus('a', 'w1', 'Succeeded'); // previous run succeeded (overlay)
     applyStatus('b', 'w1', 'Running');   // current run active
     seedRunning([{ executionId: 'b', workflowId: 'w1', status: 'Running', parentExecutionId: null, startedAt: '' , stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null}], { w1: 'Succeeded' }, NO_RECENT);
-    // Active â†’ overlay preserved (effectiveStatus reports Running anyway); lastStatus not forced.
+    // While active, the overlay is preserved (effectiveStatus reports Running anyway);
+    // lastStatus is not forced.
     expect(useOperationsStore.getState().liveStatusByWorkflow.w1).toBe('Succeeded');
     expect(runningCount('w1')).toBe(1);
   });
@@ -111,7 +112,7 @@ describe('operationsStore', () => {
     const { applyStatus, seedRunning } = useOperationsStore.getState();
     applyStatus('a', 'w1', 'Running');
     applyStatus('a', 'w1', 'Failed');
-    // w1 no longer accessible (RBAC change) â€” not in the snapshot at all.
+    // w1 is no longer accessible (RBAC change) and is absent from the snapshot.
     seedRunning([], {}, NO_RECENT);
     expect(useOperationsStore.getState().liveStatusByWorkflow.w1).toBeUndefined();
   });
@@ -146,7 +147,7 @@ describe('operationsStore', () => {
     applyStatus('e2', 'w1', 'Failed');
     expect(Object.keys(useOperationsStore.getState().locallySettled)).toHaveLength(2);
 
-    // Snapshot now carries e1 in recent[] â€” its local overlay is superseded; e2 stays.
+    // The snapshot now carries e1 in recent[]; its local overlay is superseded, e2 stays.
     seedRunning([], { w1: 'Failed' }, new Set(['e1']));
     const settled = useOperationsStore.getState().locallySettled;
     expect(settled.e1).toBeUndefined();

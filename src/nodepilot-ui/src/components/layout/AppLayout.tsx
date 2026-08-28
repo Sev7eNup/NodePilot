@@ -5,8 +5,8 @@ import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 
-// Lazy so @xyflow stays out of the main bundle — only loaded when a phone user opens a
-// workflow. The full editor route keeps rendering for desktop via <Outlet/>.
+// Lazy so @xyflow stays out of the main bundle and loads only when a phone user opens a
+// workflow. Desktop keeps rendering the full editor route through <Outlet/>.
 const MobileWorkflowView = lazy(() =>
   import('../../pages/MobileWorkflowView').then((m) => ({ default: m.MobileWorkflowView })),
 );
@@ -15,8 +15,8 @@ export function AppLayout() {
   const location = useLocation();
   const { t } = useTranslation(['nav']);
   const isMobile = useIsMobile();
-  // Transient: the mobile nav drawer. Deliberately not persisted — it must start closed
-  // on every load and auto-close on navigation (effect below) and on backdrop click.
+  // Open state of the mobile nav drawer. Not persisted: it starts closed on every load and
+  // closes again on navigation (effect below) and on backdrop click.
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Close the mobile drawer whenever the route changes (tapping a nav link navigates).
@@ -30,7 +30,7 @@ export function AppLayout() {
     return (
       <>
         {isMobile ? (
-          // Phones get a read-only, pannable graph with live status; editing is desktop-only.
+          // Phones get a read-only, pannable graph with live status. Editing is desktop only.
           <Suspense fallback={null}>
             <MobileWorkflowView workflowId={editorMatch[1]} />
           </Suspense>

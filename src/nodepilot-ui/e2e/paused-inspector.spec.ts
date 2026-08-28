@@ -2,33 +2,17 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 59 — PausedVariablesInspector (lines 3632-3649).
+ * Covers section 59 of docs/testing/E2ETests.md.
  *
- * The PausedVariablesInspector (debug/PausedVariablesInspector.tsx) replaces the live
- * execution detail when a step is at a breakpoint. It is rendered by ExecutionPanel only when
- * the live state holds an execution with a step whose `status === 'Paused'`.
+ * PausedVariablesInspector (debug/PausedVariablesInspector.tsx) replaces the live execution
+ * detail while a step sits at a breakpoint. SignalR is mocked to 404 here, so the tests rely on
+ * the HTTP polling fallback in useWorkflowSignalR: it lists active runs and hydrates their
+ * steps, and a Running execution with a `Paused` step is enough to bring the inspector up.
  *
- * Live state is normally SignalR-driven, and our SignalR negotiate is mocked to 404. BUT
- * useWorkflowSignalR also has a pure-HTTP polling fallback (`hydrateActive(..., 'periodic')`,
- * every LIVE_REFRESH_INTERVAL_MS = 10 s) that fetches
- *   GET /executions?workflowId=<id>&activeOnly=true
- * and hydrates each active run's steps via GET /executions/<id>/steps. By returning a Running
- * execution whose step list contains a `Paused` step, we drive the inspector into view purely
- * over HTTP — no SignalR required.
+ * 59.2 is skipped because the editable variable rows need `pausedVariables`, which only the
+ * SignalR `StepPaused` event delivers; the HTTP path carries no paused-variable snapshots.
  *
- *   59.1 — VERIFIED: after the polling tick discovers the paused run and the user expands it in
- *          the Live tab, the inspector shows the "Paused at <step>" header + the
- *          Continue / Step Over / Stop resume controls; clicking Continue POSTs
- *          /executions/<id>/resume with mode=continue.
- *
- *   59.2 — SKIPPED: the editable variable rows + the override-send contract require
- *          `pausedVariables`, which is ONLY delivered by the SignalR `StepPaused` event
- *          (signalrReducer maps evt.variables → step.pausedVariables). The HTTP step-hydration
- *          path does NOT carry paused-variable snapshots, so the override surface is unreachable
- *          here. (Known finding: the variable override is sent on Resume but not propagated to
- *          downstream steps server-side — that is a backend concern, not assertable in the UI.)
- *
- * The SPA renders ENGLISH under Playwright.
+ * The SPA renders English under Playwright.
  */
 
 const WF_ID = 'e6e6e6e6-5959-5959-5959-595959595959';
@@ -62,8 +46,8 @@ test.describe('PausedVariablesInspector (Teil 59)', () => {
   test('59.1 — a paused run surfaces the inspector with resume controls; Continue POSTs /resume', async ({ page }) => {
     let resumeBody: { stepId?: string; mode?: string; overrides?: unknown } | null = null;
 
-    // Active-run listing (the periodic HTTP hydration fallback hits this). Must match the
-    // activeOnly query variant — register a predicate route so it beats the empty catch-all.
+    // Active-run listing that the periodic HTTP hydration fallback hits. A predicate route
+    // matches the activeOnly query variant so it wins over the empty catch-all.
     await page.route(
       (url) => url.pathname === '/api/executions' && url.search.includes('activeOnly'),
       (route) =>
@@ -77,8 +61,8 @@ test.describe('PausedVariablesInspector (Teil 59)', () => {
         }),
     );
 
-    // Step hydration for the active run → one Paused step. (pausedVariables aren't carried by
-    // this path; the inspector still renders with the resume controls.)
+    // Step hydration for the active run returns one Paused step. This path carries no
+    // pausedVariables, but the inspector still renders with its resume controls.
     await page.route(`**/api/executions/${EXEC_ID}/steps`, (route) =>
       route.fulfill({
         status: 200,
@@ -91,7 +75,7 @@ test.describe('PausedVariablesInspector (Teil 59)', () => {
       }),
     );
 
-    // Resume endpoint — capture the POST body.
+    // Resume endpoint: capture the POST body.
     await page.route(`**/api/executions/${EXEC_ID}/resume`, (route) => {
       resumeBody = route.request().postDataJSON();
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
@@ -100,14 +84,14 @@ test.describe('PausedVariablesInspector (Teil 59)', () => {
     await page.goto(`/workflows/${WF_ID}`);
     await expect(page.locator('.react-flow__node[data-id="step-a"]')).toBeVisible({ timeout: 15_000 });
 
-    // The periodic hydration tick runs every 10 s. Once it discovers the paused run, the panel
-    // auto-expands + switches to the Live tab (anyStepPaused effect). The accordion header shows
-    // a "Paused" badge — wait for it (allow >1 poll interval).
+    // The periodic hydration tick runs every 10 s. Once it finds the paused run the panel
+    // auto-expands and switches to the Live tab (anyStepPaused effect), showing a Paused badge
+    // in the accordion header. The timeout allows more than one poll interval.
     const pausedBadge = page.getByText('Paused', { exact: true }).first();
     await expect(pausedBadge).toBeVisible({ timeout: 25_000 });
 
-    // Expand the accordion item → LiveExecutionDetail mounts, and because a Paused step exists it
-    // renders the PausedVariablesInspector instead of the normal detail view.
+    // Expanding the accordion item mounts LiveExecutionDetail, which renders the
+    // PausedVariablesInspector instead of the normal detail view because a Paused step exists.
     await pausedBadge.click();
 
     // Inspector header + resume controls.
@@ -117,7 +101,7 @@ test.describe('PausedVariablesInspector (Teil 59)', () => {
     await expect(page.getByRole('button', { name: /step over/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /^stop$/i })).toBeVisible();
 
-    // Continue → resume POST with mode=continue (no overrides, none editable in this path).
+    // Continue sends a resume POST with mode=continue; no overrides, none are editable here.
     await continueBtn.click();
     await expect.poll(() => resumeBody, { timeout: 10_000 }).not.toBeNull();
     expect(resumeBody!.mode).toBe('continue');

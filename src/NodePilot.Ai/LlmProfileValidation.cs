@@ -4,20 +4,20 @@ using Microsoft.Extensions.Configuration;
 namespace NodePilot.Ai;
 
 /// <summary>
-/// The single place that decides whether a <c>Llm:*</c> configuration block is acceptable. Both
-/// entry points share it so a save can never be accepted that would block the next boot:
-/// <see cref="LlmServiceCollectionExtensions.AddNodePilotAi"/> runs it at startup, and the API's
-/// <c>LlmConfigBootValidator</c> runs it against the simulated merged config on every settings PUT.
+/// Single place that decides whether a <c>Llm:*</c> configuration block is acceptable.
+/// <see cref="LlmServiceCollectionExtensions.AddNodePilotAi"/> runs it at startup and the API's
+/// <c>LlmConfigBootValidator</c> runs it on every settings PUT, so an accepted save can never
+/// produce a config that refuses to boot.
 ///
-/// <para><b>Scope rule for the endpoint check:</b> when <c>Llm:Enabled=true</c>, <i>every</i>
-/// profile's BaseUrl must pass — not just the active one. Switching the active profile is a plain
-/// settings save with no restart, so a parked profile pointing at a metadata endpoint would be a
-/// loaded gun that only fires on the switch. With <c>Enabled=false</c> nothing is checked, so an
-/// untouched default block can never keep an instance from booting.</para>
+/// <para>When <c>Llm:Enabled=true</c> every profile's BaseUrl must pass, not just the active one:
+/// switching the active profile is a plain settings save with no restart. With
+/// <c>Enabled=false</c> nothing is checked, so an untouched default block never blocks a
+/// boot.</para>
 /// </summary>
 public static class LlmProfileValidation
 {
-    /// <summary>A rejected profile endpoint: the offending configuration key plus a ready-to-show message.</summary>
+    /// <summary>A rejected profile endpoint: the offending configuration key plus a ready-to-show
+    /// message.</summary>
     public sealed record ProfileIssue(string ConfigKey, string Message);
 
     /// <summary>Configuration path of the profile dictionary (<c>Llm:Profiles</c>).</summary>
@@ -61,8 +61,7 @@ public static class LlmProfileValidation
     /// instance from booting.
     ///
     /// <para>Checked here rather than only where the proxy is built, so a bad value is rejected by
-    /// the settings PUT instead of detonating on the next restart — the failure mode
-    /// <c>RestApi:Proxy</c> still has.</para>
+    /// the settings PUT instead of failing on the next restart.</para>
     /// </summary>
     public static IReadOnlyList<ProfileIssue> ValidateProxy(IConfiguration configuration)
     {
@@ -117,8 +116,8 @@ public static class LlmProfileValidation
     }
 
     /// <summary>
-    /// First rule for a <c>Custom</c> proxy address: it has to be there. <paramref name="address"/>
-    /// is the trimmed value both callers go on to use.
+    /// True when a <c>Custom</c> proxy address is set. <paramref name="address"/> is the trimmed
+    /// value both callers go on to use.
     /// </summary>
     public static bool HasProxyAddress(string? rawAddress, out string address)
     {
@@ -127,9 +126,9 @@ public static class LlmProfileValidation
     }
 
     /// <summary>
-    /// Second rule: an absolute http(s) URL. Shared with <see cref="LlmConfiguredProxy"/>, which
-    /// builds the live proxy from the same value — the two must not disagree on what "valid" means,
-    /// while each keeps its own wording for the rejection.
+    /// True when the address is an absolute http(s) URL. Shared with
+    /// <see cref="LlmConfiguredProxy"/>, which builds the live proxy from the same value, so
+    /// validation and construction cannot disagree on what counts as valid.
     /// </summary>
     public static bool IsHttpProxyUrl(string address, [NotNullWhen(true)] out Uri? url) =>
         Uri.TryCreate(address, UriKind.Absolute, out url)

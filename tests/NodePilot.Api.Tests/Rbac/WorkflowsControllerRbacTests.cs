@@ -17,11 +17,9 @@ namespace NodePilot.Api.Tests.Rbac;
 /// <summary>
 /// End-to-end RBAC-denial tests for <see cref="WorkflowsController"/>. Built on the real
 /// <see cref="ResourceAuthorizationService"/> (not a mock) so the inheritance walk runs
-/// the same code as production. Folder tree:
-///   Root
-///   â”œâ”€â”€ Finance         (op-finance has FolderEditor)
-///   â”‚    â””â”€â”€ Reports
-///   â””â”€â”€ Sales           (no per-test grant â€” used for sibling-isolation checks)
+/// the same code as production. Folder tree: Root contains Finance (op-finance has
+/// FolderEditor there) with a Reports subfolder, and Sales, which has no per-test grant
+/// and is used for sibling-isolation checks.
 /// </summary>
 public sealed class WorkflowsControllerRbacTests : IDisposable
 {
@@ -141,7 +139,7 @@ public sealed class WorkflowsControllerRbacTests : IDisposable
     [Fact]
     public async Task GetAll_AsViewerEverywhere_ReturnsAllWorkflows()
     {
-        // Viewer has FolderViewer on Root â†’ inherited Read on every folder.
+        // Viewer has FolderViewer on Root, which grants inherited Read on every folder.
         var ctrl = NewController(_viewerEverywhereUserId, "Viewer");
         var result = await ctrl.GetAll(CancellationToken.None);
         var ok = result.Result as OkObjectResult;
@@ -175,7 +173,7 @@ public sealed class WorkflowsControllerRbacTests : IDisposable
     [Fact]
     public async Task GetAll_AsAdmin_ReturnsAllWorkflows_BypassesFolderFilter()
     {
-        // Admin has no explicit grants â€” global role bypasses every folder check.
+        // Admin has no explicit grants; the global role bypasses every folder check.
         var adminId = Guid.NewGuid();
         var ctrl = NewController(adminId, "Admin");
         var result = await ctrl.GetAll(CancellationToken.None);
@@ -187,8 +185,8 @@ public sealed class WorkflowsControllerRbacTests : IDisposable
     [Fact]
     public async Task Delete_AsViewerEverywhere_OnFinanceWorkflow_Returns403()
     {
-        // Viewer has Read but not Edit on any folder â€” Delete must be 403, NOT 404
-        // (the user CAN see the workflow via Read).
+        // Viewer has Read but not Edit on any folder, so Delete must return 403, not 404
+        // (the user can see the workflow via Read).
         var ctrl = NewController(_viewerEverywhereUserId, "Operator");
         var result = await ctrl.Delete(_financeWorkflow.Id, CancellationToken.None);
         var obj = result as ObjectResult;
@@ -206,9 +204,8 @@ public sealed class WorkflowsControllerRbacTests : IDisposable
     }
 
     /// <summary>
-    /// Regression test for a fixed folder-permission gap (internally tracked as "F2") — Create
-    /// must check Edit permission on the target folder. A stranger with no grant on Root cannot
-    /// drop a workflow into Root just by hitting POST /api/workflows.
+    /// Create must check Edit permission on the target folder. A stranger with no grant on
+    /// Root cannot drop a workflow into Root just by hitting POST /api/workflows.
     /// </summary>
     [Fact]
     public async Task Create_AsStranger_TargetingRoot_Returns404_BecauseStrangerCannotEvenSeeRoot()
@@ -238,7 +235,7 @@ public sealed class WorkflowsControllerRbacTests : IDisposable
     [Fact]
     public async Task Create_AsViewer_TargetingFinance_Returns403()
     {
-        // viewerEverywhere has FolderViewer on Root â†’ inherits Read on /Finance but NOT Edit.
+        // viewerEverywhere has FolderViewer on Root, which inherits Read on /Finance but not Edit.
         // Targeting /Finance with Create must yield 403.
         var ctrl = NewController(_viewerEverywhereUserId, "Operator");
         var req = new NodePilot.Api.Dtos.CreateWorkflowRequest(
@@ -267,9 +264,8 @@ public sealed class WorkflowsControllerRbacTests : IDisposable
     [Fact]
     public async Task Create_NullFolderId_DefaultsToRoot()
     {
-        // _opFinanceUserId has no Root grant — null should default to Root and then be denied
-        // by the Edit check on Root, mirroring how a "default to root" bug would slip past the
-        // folder-permission check added for the "F2" fix above.
+        // _opFinanceUserId has no Root grant. Null should default to Root and then be denied
+        // by the Edit check on Root, so a missing folder id can never bypass folder permissions.
         var ctrl = NewController(_opFinanceUserId, "Operator");
         var req = new NodePilot.Api.Dtos.CreateWorkflowRequest(
             "should-not-land", null, "{\"nodes\":[],\"edges\":[]}", FolderId: null);

@@ -2,12 +2,10 @@ name: CI
 
 on:
   # main is gated unconditionally: every commit that lands on the default branch gets a full CI
-  # run, no matter how it got there. A merge commit does re-test the tree its PR run already
-  # covered (~35 job-minutes per change, both runs drawing on the same runner pool) — that
-  # duplication is accepted deliberately, because the alternative leaves direct pushes and
-  # release cuts resting on a `workflow_dispatch` nobody is forced to trigger. The local nightly
-  # suite is not a substitute: it runs against its currently checked-out tree and never pulls,
-  # so it is not an origin/main status check.
+  # run, no matter how it got there. A merge commit re-tests the tree its PR run already covered;
+  # that duplication is accepted so direct pushes and release cuts do not depend on someone
+  # triggering `workflow_dispatch`. The local nightly suite is no substitute: it runs against its
+  # checked-out tree, never pulls, and is not an origin/main status check.
   #   - CodeQL keeps its own `push: [main]` trigger: only a run on the default branch
   #     updates the repository's code-scanning dashboard.
   pull_request:
@@ -17,19 +15,18 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Decides whether the code-only jobs have anything to do. A pull request that moves
-  # documentation around used to spend ~40 job-minutes proving that nothing changed.
+  # Decides whether the code-only jobs have anything to do, so a documentation-only pull
+  # request does not spend job-minutes proving that nothing changed.
   #
   # Deliberately narrow. Only jobs that provably cannot read documentation are gated:
-  # frontend, desktop and e2e. **Backend and docs-ui always run**, because markdown is an
-  # input to them — DocumentationCountsTests reads README.md, CLAUDE.md, docs/mcp-server.md
-  # and six pages of the doc site; MonitoringDeploymentSecurityTests reads README.md and
+  # frontend, desktop and e2e. Backend and docs-ui always run, because markdown is an input
+  # to them: DocumentationCountsTests reads README.md, CLAUDE.md, docs/mcp-server.md and six
+  # pages of the doc site; MonitoringDeploymentSecurityTests reads README.md and
   # grafana/README.md; the doc-site parity guard reads content/{de,en}. A blanket
-  # `paths-ignore: ['**/*.md']` would have waved through exactly the README breakages this
-  # CI caught while the README was being cut down.
+  # `paths-ignore: ['**/*.md']` would wave through the README breakages those tests catch.
   #
-  # Pull requests only. A push to main — a merge, a direct commit, a release cut — always
-  # gets the full suite, because that is the branch everything else is measured against.
+  # Pull requests only. A push to main, whether a merge, a direct commit or a release cut,
+  # always gets the full suite, because that is the branch everything else is measured against.
   changes:
     name: Detect what changed
     runs-on: ubuntu-latest
@@ -44,10 +41,9 @@ jobs:
         id: filter
         shell: bash
         run: |
-          # Deliberately NOT `set -e`. A gated job is skipped when this one fails, so an error
-          # in the detection would silently remove coverage — the one outcome worth engineering
-          # out. Every failure path below therefore ends at code=true: if we cannot prove the
-          # change is documentation-only, we run everything.
+          # Deliberately not `set -e`. A gated job is skipped when this one fails, so an error
+          # in the detection would silently remove coverage. Every failure path below therefore
+          # ends at code=true: if the change cannot be proven documentation-only, run everything.
           set -uo pipefail
 
           decide() { echo "code=$1" >> "$GITHUB_OUTPUT"; echo "=> $2"; exit 0; }
@@ -153,37 +149,31 @@ jobs:
         run: dotnet tool restore
 
       - name: Test with coverage
-        # --settings applies coverage.runsettings (excludes EF migrations and
-        # [ExcludeFromCodeCoverage]-attributed code from the denominator) — the same filter
-        # the local measurement uses. Previously CI measured without it, so the enforced
-        # number and the documented measurement procedure disagreed.
-        # The trx logger gets no LogFileName on purpose: every test project in the solution wrote
-        # the same test_results.trx into the shared results directory, so each one overwrote its
-        # predecessor and the uploaded artifact held a single project's results. VSTest's default
-        # name is per-run unique, which keeps all of them.
+        # --settings applies coverage.runsettings, which excludes EF migrations and
+        # [ExcludeFromCodeCoverage]-attributed code from the denominator. It is the same filter
+        # the documented local measurement uses, so both report the same number.
+        # The trx logger gets no LogFileName on purpose: a fixed name makes every test project
+        # write the same file into the shared results directory, leaving only the last one in
+        # the uploaded artifact. VSTest's default name is per-run unique and keeps all of them.
         run: dotnet test --configuration Release --no-build --settings coverage.runsettings --logger trx --collect:"XPlat Code Coverage" --results-directory TestResults
 
       - name: Generate coverage report
         if: always()
-        # -assemblyfilters mirrors the documented local measurement exactly. Without it the test
-        # scaffolding itself (NodePilot.TestCommons, NodePilot.LoadTests) counted as production
-        # code, so the gated number and the procedure in docs/claude-reference.md disagreed.
-        # The two +np / +nodepilot-mcp entries are not optional: the CLI assembly is named `np`
-        # and the MCP server `nodepilot-mcp`, so a plain NodePilot.* filter drops both.
+        # -assemblyfilters mirrors the local measurement documented in
+        # docs/claude-reference.md. Without it the test scaffolding (NodePilot.TestCommons,
+        # NodePilot.LoadTests) counts as production code. The +np and +nodepilot-mcp entries
+        # are required: the CLI assembly is named `np` and the MCP server `nodepilot-mcp`, so
+        # a plain NodePilot.* filter drops both.
         run: dotnet reportgenerator -reports:"TestResults/**/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:"Html;Cobertura;TextSummary" "-assemblyfilters:+NodePilot.*;+np;+nodepilot-mcp;-NodePilot.*.Tests;-NodePilot.TestCommons;-NodePilot.LoadTests"
 
       - name: Enforce minimum coverage
         shell: pwsh
         run: |
-          # Floors sit ~5pp below the values measured on 2026-07-27 (line 89.0%, branch 74.1%)
-          # so the gate tolerates normal churn but fails on a step-change regression. Raise
-          # them as the suite grows; do not lower without a written reason.
-          #
-          # The line floor was 45 until 2026-07-27 — the 2026-04-26 baseline, by then 44pp
-          # below reality. At that distance the gate could not fail on anything short of
-          # deleting most of the suite, which is the one thing it exists to catch.
-          # Branch coverage is gated too: it is the more informative of the two, and a
-          # regression usually shows there first.
+          # The floors sit a few points below the coverage the suite currently reaches, so the
+          # gate tolerates normal churn but fails on a step-change regression. Raise them as
+          # the suite grows; do not lower them without a written reason. Branch coverage is
+          # gated as well: it is the more informative of the two, and a regression usually
+          # shows up there first.
           $minLineCoverage = 85
           $minBranchCoverage = 70
           [xml]$cov = Get-Content coverage-report/Cobertura.xml
@@ -220,7 +210,7 @@ jobs:
 
   frontend:
     name: Frontend build + tests
-    # Its tests read CSS, TypeScript and package.json — never markdown. Verified, not assumed.
+    # Its tests read CSS, TypeScript and package.json, never markdown.
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
@@ -244,21 +234,19 @@ jobs:
         run: npm audit --audit-level=moderate
 
       - name: Lint
-        # Ratchet: errors always fail; warnings are capped at the current floor (13 —
-        # 5 react-compiler "incompatible library" skips + 8 legacy exhaustive-deps) so any
-        # NEW warning fails the run. Drive the cap toward 0 as the residual deps are cleaned.
-        # Was 11 until the eslint 9→10 bump (needed to clear the brace-expansion advisory,
-        # which forced eslint-plugin-react-hooks 7.0→7.1): the newer compiler pass recognises
-        # two more TanStack useVirtualizer call sites as unmemoizable. Same library, same
-        # diagnostic — no new code, so the floor moved rather than the ratchet breaking.
+        # Ratchet: errors always fail, and warnings are capped at the current count (react-
+        # compiler "incompatible library" skips plus legacy exhaustive-deps), so any new
+        # warning fails the run. Drive the cap toward 0 as the residual warnings are cleaned
+        # up. A compiler or plugin upgrade can raise the count without new code being added;
+        # in that case the cap moves rather than the ratchet being removed.
         run: npm run lint:ci
 
       - name: Type check + build
         run: npm run build
 
       - name: Tests with coverage
-        # Coverage thresholds live in vitest.config.ts; this fails the run if the line/
-        # statement/branch/function rate drops below the floor configured there.
+        # Coverage thresholds live in vitest.config.ts; this fails the run if the line,
+        # statement, branch or function rate drops below the floor configured there.
         run: npm run test:coverage
 
       - name: Upload coverage report
@@ -292,12 +280,12 @@ jobs:
         run: npm audit --audit-level=moderate
 
       - name: Lint
-        # docs-ui is warning-clean today — capped at 0 so any new warning fails the run.
+        # docs-ui is warning-clean, so the cap is 0 and any new warning fails the run.
         run: npm run lint:ci
 
       - name: Tests
         # Language routing plus the de/en corpus parity guard: a page or nav title added in
-        # one language only fails here rather than 404-ing for half the readers.
+        # only one language fails here instead of returning 404 for half the readers.
         run: npm run test:run
 
       - name: Type check + build
@@ -334,13 +322,13 @@ jobs:
 
       - name: Tests
         # Pure-logic units only (desktop.json handoff validation, certificate pinning,
-        # navigation containment). No Electron runtime — hence ubuntu, not windows.
+        # navigation containment). No Electron runtime is needed, hence ubuntu, not windows.
         run: npm run test:run
 
   e2e:
     name: Frontend E2E (Playwright)
     # Hermetic specs against the built SPA with every API mocked; nothing here reads a
-    # documentation file. The single longest job in the workflow, so the one worth gating.
+    # documentation file. It is the longest job in the workflow, so the one worth gating.
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
@@ -361,9 +349,9 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        # ~200 MB download on every run — there is deliberately NO browser cache step here
-        # (setup-node's npm cache does not cover ~/.cache/ms-playwright). Add actions/cache
-        # keyed on the playwright version if this ever becomes the bottleneck.
+        # The browser is downloaded on every run: there is no cache step, because setup-node's
+        # npm cache does not cover ~/.cache/ms-playwright. Add actions/cache keyed on the
+        # playwright version if this ever becomes the bottleneck.
         run: npx playwright install --with-deps chromium
 
       - name: Run E2E tests

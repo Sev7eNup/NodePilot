@@ -9,14 +9,15 @@ namespace NodePilot.Mcp.Tools;
 
 /// <summary>
 /// Read-only text2sql surface: exposes the NodePilot App-DB schema and runs single read-only SQL
-/// statements against it. The agent does the natural-language → SQL translation; these tools only
+/// statements against it. The agent translates natural language to SQL; these tools only
 /// provide schema discovery + safe read execution. All endpoints are Admin-only server-side.
 ///
 /// Security stance:
 /// - No write tool. The API's /api/dbadmin/query rejects anything outside the read keyword
 ///   whitelist (SELECT/WITH/EXPLAIN/SHOW/VALUES/TABLE), enforces single-statement, rolls back the
 ///   (read-only) transaction, and caps rows + timeout.
-/// - Hidden secret columns (PasswordHash, EncryptedPassword, byte[]) never appear in list_db_tables;
+/// - Hidden secret columns (PasswordHash, EncryptedPassword, byte[]) never appear in
+/// list_db_tables;
 ///   GlobalVariable.Value is masked as "***".
 /// - Raw SQL cannot reach them either: /api/dbadmin/query rejects a read statement that names a
 ///   protected column, masks protected result columns of a wildcard select as "***", and rejects a
@@ -31,7 +32,8 @@ public sealed class DbAdminMcpTools
 
     public DbAdminMcpTools(NodePilotApiClient api) => _api = api;
 
-    /// <summary>Max rows + bytes surfaced from run_readonly_sql to keep tool output inside MCP caps.</summary>
+    /// <summary>Max rows + bytes surfaced from run_readonly_sql to keep tool output inside MCP
+    /// caps.</summary>
     private const int MaxResultRows = 200;
 
     private const int MaxResultChars = 4000;

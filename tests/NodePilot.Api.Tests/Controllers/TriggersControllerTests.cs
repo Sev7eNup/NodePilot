@@ -102,7 +102,7 @@ public class TriggersControllerTests
     public void GetNextFires_DailyCron_FiresAreOneDayApart()
     {
         // Sanity check that the cron actually drives the fire schedule rather than the
-        // controller doing something clever. Daily-at-noon → consecutive fires are 24h apart.
+        // controller doing something clever. Daily-at-noon cron: consecutive fires are 24h apart.
         var controller = new TriggersController();
 
         var result = controller.GetNextFires(cron: "0 0 12 * * ?", count: 3);

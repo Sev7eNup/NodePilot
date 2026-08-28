@@ -13,8 +13,7 @@ interface State {
   setInfoCardHeight: (h: number) => void;
 }
 
-// A touch taller than the original 200px so the info card's last row isn't clipped;
-// still drag-resizable from there.
+// Tall enough that the info card's last row is not clipped; the user can drag from there.
 const DEFAULT_INFO_CARD_HEIGHT = 320;
 
 export const useWorkflowBrowserStore = create<State>()(
@@ -36,9 +35,8 @@ export const useWorkflowBrowserStore = create<State>()(
     {
       name: 'nodepilot-workflow-browser',
       version: 7,
-      // The info-card default has been tuned across versions; realign older persisted heights
-      // to the current default so everyone gets the intended out-of-box size. Later user
-      // drags still persist (until the next default change).
+      // Realign persisted heights to the current default so every profile starts at the
+      // intended size. Later user drags still persist, until the default changes again.
       migrate: (persisted, version) => {
         const state = (persisted ?? {}) as Partial<State>;
         if (version < 7) return { ...state, infoCardHeight: DEFAULT_INFO_CARD_HEIGHT } as State;

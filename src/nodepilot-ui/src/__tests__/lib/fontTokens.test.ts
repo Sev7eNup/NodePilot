@@ -4,18 +4,12 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 /**
- * Drift-Guard für das Type-System der App: IBM Plex Sans (UI) + IBM Plex Mono (Code).
+ * Drift guard for the app type system: IBM Plex Sans (UI) and IBM Plex Mono (code).
  *
- * Warum es diesen Test gibt: `--font-mono` war vor der Umstellung schlicht NIE
- * deklariert. Tailwind fällt in dem Fall still auf seinen eigenen Default zurück,
- * es gibt keine Fehlermeldung und im Browser sieht alles plausibel aus — nur eben
- * je nach Betriebssystem in einer anderen Schrift. Genau solche stillen Lücken
- * fängt dieser Test, gebaut nach dem Muster von `activityCssPalette.test.ts`:
- * die CSS-/TS-Quellen werden als Text gelesen, nicht importiert.
- *
- * Der Quelltext-Ansatz ist bei `monacoSetup.ts` sogar zwingend — das Modul ist in
- * `__tests__/setup.ts` global gemockt, ein Import würde den Mock-Wert prüfen und
- * damit exakt nichts aussagen.
+ * An undeclared `--font-mono` makes Tailwind fall back to its own default silently, so the
+ * font differs per operating system with no error at all. The CSS and TS sources are read
+ * as text rather than imported: `__tests__/setup.ts` mocks `monacoSetup.ts` globally, so
+ * importing it would assert against the mock value.
  */
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -27,10 +21,9 @@ const monacoSetup = readFileSync(join(uiSrc, 'lib', 'monacoSetup.ts'), 'utf8');
 const packageJson = JSON.parse(readFileSync(join(uiSrc, '..', 'package.json'), 'utf8'));
 
 /**
- * Liest den Wert einer Custom-Property-DEKLARATION (`--foo: bar;`).
- * Aufrufstellen (`var(--foo)`) und Erwähnungen in Kommentaren haben keinen
- * Doppelpunkt direkt hinter dem Namen und matchen deshalb nicht — sonst würde ein
- * Kommentar vortäuschen, das Token sei definiert.
+ * Reads the value of a custom property declaration (`--foo: bar;`).
+ * Usages (`var(--foo)`) and mentions in comments have no colon directly after the name,
+ * so they do not match and cannot make a token look declared.
  */
 function declaredValue(css: string, varName: string): string | null {
   const match = new RegExp(`${varName}\\s*:\\s*([^;]+);`).exec(css);
@@ -43,8 +36,8 @@ describe('font tokens', () => {
       const value = declaredValue(indexCss, token);
       expect(value, `${token} must be declared in index.css`).not.toBeNull();
       expect(value).toContain("'IBM Plex Sans Variable'");
-      // Generischer Fallback am Ende — ohne ihn hat der Browser bei fehlender
-      // Schrift keinen definierten Rückweg (css:S4649).
+      // Generic fallback at the end, so the browser has a defined choice when the font
+      // is missing (css:S4649).
       expect(value).toMatch(/sans-serif$/);
     }
   });
@@ -57,9 +50,9 @@ describe('font tokens', () => {
   });
 
   it('keeps the Monaco constant in sync with --font-mono', () => {
-    // Monaco misst Zeichenbreiten selbst in JS und sanitisiert den fontFamily-String,
-    // kann also keine CSS-Variable verwerten. Der Stack steht deshalb ein zweites Mal
-    // als TS-Konstante da — diese Assertion ist der Preis dafür.
+    // Monaco measures character widths in JS and sanitizes the fontFamily string, so it
+    // cannot resolve a CSS variable. The stack is therefore duplicated as a TS constant,
+    // and this assertion keeps both copies equal.
     const match = /export const MONO_FONT_STACK\s*=\s*"([^"]+)"/.exec(monacoSetup);
     expect(match, 'MONO_FONT_STACK must be exported from lib/monacoSetup.ts').not.toBeNull();
     expect(match![1]).toBe(declaredValue(indexCss, '--font-mono'));
@@ -70,8 +63,8 @@ describe('font tokens', () => {
   });
 
   it('self-hosts both families and drops the previous ones', () => {
-    // Die Prod-CSP (SecurityPipelineSetup.cs) kennt kein `font-src` und fällt auf
-    // `default-src 'self'` — ein CDN-Import wäre in Produktion hart geblockt.
+    // The production CSP (SecurityPipelineSetup.cs) declares no `font-src` and falls back
+    // to `default-src 'self'`, so a CDN import would be blocked in production.
     expect(indexCss).toContain("@import '@fontsource-variable/ibm-plex-sans';");
     expect(indexCss).toContain("@import '@fontsource/ibm-plex-mono/400.css';");
     expect(indexCss).toContain("@import '@fontsource/ibm-plex-mono/600.css';");
@@ -82,15 +75,14 @@ describe('font tokens', () => {
     expect(deps).toHaveProperty('@fontsource-variable/ibm-plex-sans');
     expect(deps).toHaveProperty('@fontsource/ibm-plex-mono');
     expect(deps).not.toHaveProperty('@fontsource-variable/inter');
-    // Geist war schon vor der Umstellung eine Leiche: deklariert, nie importiert.
-    // Nur die Docs-Site nutzt es, und die bringt ihre eigene Dependency mit.
+    // Geist is declared but never imported here. Only the docs site uses it, and it
+    // carries its own dependency.
     expect(deps).not.toHaveProperty('@fontsource-variable/geist');
   });
 
   it('compensates the smaller x-height on body but not on monospace', () => {
-    // Plex Sans hat eine kleinere x-Höhe als das zuvor genutzte Inter. In einer UI,
-    // die fast durchgehend auf text-xs/text-sm steht, ist das sichtbar — deshalb der
-    // Ausgleich. Code bleibt davon ausgenommen, damit die Spaltenbündigkeit hält.
+    // Plex Sans has a small x-height, which shows in a UI built almost entirely on
+    // text-xs/text-sm, so body text compensates. Code is excluded to keep columns aligned.
     expect(/font-size-adjust:\s*0?\.\d+/.test(indexCss)).toBe(true);
     expect(indexCss).toMatch(/\.font-mono\s*\{\s*\n?\s*font-size-adjust:\s*none;/);
   });

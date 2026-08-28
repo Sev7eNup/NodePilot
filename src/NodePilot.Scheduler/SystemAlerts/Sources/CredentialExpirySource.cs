@@ -6,8 +6,10 @@ using NodePilot.Data;
 namespace NodePilot.Scheduler.SystemAlerts.Sources;
 
 /// <summary>
-/// Per-credential source: one observation per credential that has an <c>ExpiresAt</c>, keyed by credential id.
-/// Exposes <c>daysLeft</c> (negative once expired) and <c>expired</c> — the policy picks the warn window
+/// Per-credential source: one observation per credential that has an <c>ExpiresAt</c>, keyed by
+/// credential id.
+/// Exposes <c>daysLeft</c> (negative once expired) and <c>expired</c> — the policy picks the warn
+/// window
 /// (e.g. <c>daysLeft &lt;= 14</c>). Available only when at least one credential tracks expiry.
 /// </summary>
 public sealed class CredentialExpirySource : ISystemAlertSource

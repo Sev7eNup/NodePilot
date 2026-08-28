@@ -58,7 +58,7 @@ export function LifecycleControls({
           <Locked size={15} />
         </span>
       )}
-      {/* Save — only canWrite (= lock-by-me); an intermediate save only makes sense while editing. */}
+      {/* Save is available only when canWrite (lock-by-me) — saving only helps while editing. */}
       {canWrite && (
         <button
           type="button"
@@ -70,11 +70,11 @@ export function LifecycleControls({
           {isDirty && <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-warning ring-1 ring-surface-high" />}
         </button>
       )}
-      {/* Publish/Disable toggle — four states, one button slot:
-            - Productive (isEnabled)         → "Disable" (red)      → /disable
-            - Disabled + lock-by-me          → "Publish" (primary)  → /publish (atomic)
-            - Disabled + unlocked            → "Publish" (primary)  → /enable (live only)
-            - Disabled + lock-by-other       → "Publish" disabled, tooltip explains why */}
+      {/* Publish/Disable toggle covers four states in one button slot:
+            - enabled: shows "Disable" (red), calls /disable.
+            - disabled, locked by me: shows "Publish" (primary), calls /publish (atomic).
+            - disabled, unlocked: shows "Publish" (primary), calls /enable (live only).
+            - disabled, locked by other: shows "Publish" disabled; tooltip explains why. */}
       {(() => {
         if (workflow?.isEnabled) {
           return (

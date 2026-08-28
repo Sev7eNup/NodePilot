@@ -1,25 +1,34 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using NodePilot.Api.Telemetry;
+using NodePilot.Core.Interfaces;
+using NodePilot.Data;
+using NodePilot.Data.Availability;
 
 namespace NodePilot.Api.ExecutionDispatch;
 
 public sealed class ExecutionDispatchWorker : BackgroundService
 {
-    private readonly ExecutionDispatchQueue _queue;
-    private readonly NodePilot.Core.Interfaces.IClusterStateProvider _cluster;
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan LeaseDuration = TimeSpan.FromMinutes(1);
+
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ExecutionDispatchSignal _signal;
+    private readonly IClusterStateProvider _cluster;
     private readonly ILogger<ExecutionDispatchWorker> _logger;
+    private readonly IDatabaseAvailability _availability;
     private readonly int _workerCount;
 
-    private readonly NodePilot.Data.Availability.IDatabaseAvailability _availability;
-
     public ExecutionDispatchWorker(
-        ExecutionDispatchQueue queue,
+        IServiceScopeFactory scopeFactory,
+        ExecutionDispatchSignal signal,
         IOptions<ExecutionDispatchOptions> options,
-        NodePilot.Core.Interfaces.IClusterStateProvider cluster,
+        IClusterStateProvider cluster,
         ILogger<ExecutionDispatchWorker> logger,
-        NodePilot.Data.Availability.IDatabaseAvailability availability)
+        IDatabaseAvailability availability)
     {
-        _queue = queue;
+        _scopeFactory = scopeFactory;
+        _signal = signal;
         _cluster = cluster;
         _logger = logger;
         _availability = availability;
@@ -29,68 +38,62 @@ public sealed class ExecutionDispatchWorker : BackgroundService
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation(
-            "Starting execution dispatch worker pool with {WorkerCount} workers.",
+            "Starting durable execution dispatch worker pool with {WorkerCount} workers.",
             _workerCount);
 
-        var workers = Enumerable.Range(0, _workerCount)
-            .Select(index => RunWorkerAsync(index + 1, stoppingToken));
-        return Task.WhenAll(workers);
+        return Task.WhenAll(Enumerable.Range(1, _workerCount)
+            .Select(workerId => RunWorkerAsync(workerId, stoppingToken)));
     }
 
     private async Task RunWorkerAsync(int workerId, CancellationToken stoppingToken)
     {
+        var leaseOwner = $"{_cluster.NodeId}:{workerId}:{Guid.NewGuid():N}";
         try
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                // HA gate: a follower MUST NOT pull work items off the dispatch queue.
-                // If we did, an interactive /execute or webhook persisted by the active
-                // leader (its row reads OwnerNodeId=leader) could be picked up here and
-                // run twice. Dequeue is gated, not the queue itself — TryEnqueue still
-                // works on followers (e.g. for HTTP requests that race the LB) but the
-                // item just sits there until leadership flips.
                 if (!_cluster.IsLeader)
                 {
-                    try { await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken); }
-                    catch (OperationCanceledException) { break; }
+                    await _signal.WaitAsync(PollInterval, stoppingToken);
                     continue;
                 }
 
-                // Availability gate BEFORE the dequeue: a work item pulled while the database is gone
-                // would burn its one chance against a dead server and leave its execution row stuck in
-                // Pending until the next process restart. Parked items simply wait; TryEnqueue keeps
-                // working (POST /execute is already 503-sealed by the middleware anyway).
                 if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
 
-                var workItem = await _queue.DequeueWorkItemAsync(stoppingToken);
-
-                // Recovery race: the breaker can open between the gate above and this point (the
-                // dequeue itself can suspend). Put the item back instead of running it — before it has
-                // run, requeueing is trivially safe. Deliberately NOT done for an item that already
-                // STARTED and then failed: its side effects are unknown, and double-starting an
-                // execution is worse than a stuck-Pending row. The queue item retains its original
-                // priority, so an interactive dispatch stays interactive across this race.
-                if (!_availability.IsServable)
+                Guid? executionId;
+                try
                 {
-                    await _queue.RequeueAsync(workItem, stoppingToken);
+                    executionId = await TryClaimAsync(leaseOwner, stoppingToken);
+                }
+                catch (Exception ex) when (DbErrorClassifier.Classify(ex) is not DbFailureKind.None)
+                {
+                    _logger.LogWarning(ex, "Durable dispatch worker {WorkerId} could not poll the outbox.", workerId);
+                    await _signal.WaitAsync(PollInterval, stoppingToken);
+                    continue;
+                }
+
+                if (executionId is null)
+                {
+                    await _signal.WaitAsync(PollInterval, stoppingToken);
                     continue;
                 }
 
                 try
                 {
-                    var outcome = await workItem.ExecuteAsync(stoppingToken);
+                    await using var scope = _scopeFactory.CreateAsyncScope();
+                    var dispatcher = scope.ServiceProvider.GetRequiredService<ExecutionDispatchService>();
+                    var outcome = await dispatcher.ProcessOutboxAsync(executionId.Value, stoppingToken);
                     if (outcome == ExecutionDispatchOutcome.RetryBeforeStart)
                     {
-                        await _queue.RequeueAsync(workItem, stoppingToken);
+                        await ReleaseForRetryAsync(executionId.Value, leaseOwner, stoppingToken);
                         ApiMetrics.DispatchItemsProcessed.Add(1,
                             new KeyValuePair<string, object?>("result", "retry_before_start"));
-                        continue;
                     }
-
-                    // Explicitly typed KeyValuePair — a bare `new(...)` here is ambiguous
-                    // between the `Counter<T>.Add(T, KVP)` and `Counter<T>.Add(T, params KVP[])` overloads.
-                    ApiMetrics.DispatchItemsProcessed.Add(1,
-                        new KeyValuePair<string, object?>("result", "success"));
+                    else
+                    {
+                        ApiMetrics.DispatchItemsProcessed.Add(1,
+                            new KeyValuePair<string, object?>("result", "success"));
+                    }
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -100,16 +103,60 @@ public sealed class ExecutionDispatchWorker : BackgroundService
                 {
                     ApiMetrics.DispatchItemsProcessed.Add(1,
                         new KeyValuePair<string, object?>("result", "failure"));
-                    _logger.LogError(
-                        ex,
-                        "Execution dispatch worker {WorkerId} failed processing queued work item.",
-                        workerId);
+                    _logger.LogError(ex,
+                        "Execution dispatch worker {WorkerId} failed processing outbox execution {ExecutionId}.",
+                        workerId, executionId);
+                    await ReleaseForRetryAsync(executionId.Value, leaseOwner, CancellationToken.None);
                 }
+
+                _signal.Pulse();
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             // Host shutdown.
         }
+    }
+
+    private async Task<Guid?> TryClaimAsync(string leaseOwner, CancellationToken ct)
+    {
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+        var now = DateTime.UtcNow;
+        var candidates = await db.ExecutionDispatchOutbox.AsNoTracking()
+            .Where(item => item.AvailableAt <= now
+                           && (item.LeaseExpiresAt == null || item.LeaseExpiresAt <= now))
+            .OrderByDescending(item => item.Priority)
+            .ThenBy(item => item.CreatedAt)
+            .Select(item => item.ExecutionId)
+            .Take(Math.Max(4, _workerCount))
+            .ToListAsync(ct);
+
+        foreach (var executionId in candidates)
+        {
+            var claimed = await db.ExecutionDispatchOutbox
+                .Where(item => item.ExecutionId == executionId
+                               && item.AvailableAt <= now
+                               && (item.LeaseExpiresAt == null || item.LeaseExpiresAt <= now))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.LeaseOwner, leaseOwner)
+                    .SetProperty(item => item.LeaseExpiresAt, now.Add(LeaseDuration))
+                    .SetProperty(item => item.AttemptCount, item => item.AttemptCount + 1), ct);
+            if (claimed == 1) return executionId;
+        }
+
+        return null;
+    }
+
+    private async Task ReleaseForRetryAsync(Guid executionId, string leaseOwner, CancellationToken ct)
+    {
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+        await db.ExecutionDispatchOutbox
+            .Where(item => item.ExecutionId == executionId && item.LeaseOwner == leaseOwner)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.LeaseOwner, (string?)null)
+                .SetProperty(item => item.LeaseExpiresAt, (DateTime?)null)
+                .SetProperty(item => item.AvailableAt, DateTime.UtcNow.AddSeconds(1)), ct);
     }
 }

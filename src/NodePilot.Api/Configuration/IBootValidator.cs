@@ -3,22 +3,16 @@ namespace NodePilot.Api.Configuration;
 /// <summary>
 /// A pre-flight check that runs against the final <see cref="IConfiguration"/> right
 /// before <c>app.Build()</c>. Each validator inspects a slice of the configuration
-/// and adds <see cref="BootValidationIssue"/>s for any inconsistencies — the
+/// and adds <see cref="BootValidationIssue"/>s for any inconsistencies; the
 /// <see cref="BootValidatorRunner"/> aggregates them and decides whether to throw.
 ///
-/// <para><b>Why this exists:</b> Boot-time validation used to live as imperative
-/// throws scattered through <c>Program.cs</c> and the <c>Hosting/</c> folder
-/// (<c>ClusterConfigValidator.Validate</c>, <c>SecretProtectorRegistry</c>-internal
-/// checks, etc.). Two problems with that model:</para>
+/// <para>The shared abstraction serves two purposes:</para>
 ///
 /// <list type="number">
-///   <item>The Admin Settings API needs the SAME checks during a Save — validate that
-///   the merged config (existing + new section override) would still let the service
-///   boot. Without a reusable abstraction we'd duplicate the rules and inevitably
-///   drift between "what Save accepts" and "what Boot accepts".</item>
-///   <item>Aggregation: a single boot today fails on the FIRST imperative throw, so
-///   the operator fixes one key, restarts, fails on the next, fixes that, restarts,
-///   etc. Validators that all run in one pass surface every fix needed up front.</item>
+///   <item>The Admin Settings API runs the same checks when saving a section override,
+///   so the rules for what a save accepts and what a boot accepts cannot drift apart.</item>
+///   <item>All validators run in one pass, so a single boot reports every configuration
+///   fix the operator needs instead of only the first one.</item>
 /// </list>
 /// </summary>
 public interface IBootValidator
@@ -28,9 +22,9 @@ public interface IBootValidator
 
     /// <summary>
     /// Inspect <paramref name="configuration"/> and append any problems to
-    /// <paramref name="issues"/>. Must NOT throw on validation problems — throwing is
-    /// reserved for the validator itself being broken (NRE, etc.) and is treated as a
-    /// bug, not as a configuration problem.
+    /// <paramref name="issues"/>. Must not throw for validation problems. An exception
+    /// here means the validator itself is broken and is treated as a bug, not as a
+    /// configuration problem.
     /// </summary>
     void Validate(IConfiguration configuration, IList<BootValidationIssue> issues);
 }
@@ -38,12 +32,13 @@ public interface IBootValidator
 /// <summary>
 /// A single validation finding. Errors fail the boot; warnings are logged but don't
 /// stop the host from starting. <see cref="ConfigKey"/> is optional but should be set
-/// whenever the finding maps to a specific configuration key — it lets the Settings
-/// UI surface the error inline on the right input field.
+/// whenever the finding maps to a specific configuration key, so the Settings UI can
+/// surface the error inline on the matching input field.
 /// </summary>
 /// <param name="ValidatorName">Which validator raised this finding.</param>
-/// <param name="Severity">Error → boot fails / save rejected; Warning → logged only.</param>
-/// <param name="ConfigKey">Optional configuration key (e.g. <c>"Cluster:NodeId"</c>) the issue is about.</param>
+/// <param name="Severity">Error fails the boot or rejects the save; Warning is logged only.</param>
+/// <param name="ConfigKey">Optional configuration key (e.g. <c>"Cluster:NodeId"</c>) the issue is
+/// about.</param>
 /// <param name="Message">Human-readable description, including how to fix the issue.</param>
 public sealed record BootValidationIssue(
     string ValidatorName,

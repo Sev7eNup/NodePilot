@@ -251,9 +251,9 @@
     "disabledTooltip": "Step is disabled — skipped during execution",
     "fanIn": {
       "waitAll": "Junction · waitAll — fires only after ALL {{count}} incoming branches complete",
-      "waitAny": "Junction · waitAny — fires as soon as the FIRST of {{count}} incoming branches completes",
+      "waitAny": "Junction · waitAny — fires as soon as the FIRST matching branch succeeds",
       "waitNofM": "Junction · waitNofM — fires when {{n}} of {{count}} incoming branches succeed",
-      "implicit": "{{count}} incoming branches converge here (implicit waitAll)"
+      "implicit": "Invalid fan-in: insert a Junction before this node"
     },
     "lint": {
       "errors_one": "{{count}} config error — check Properties panel",

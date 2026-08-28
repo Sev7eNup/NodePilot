@@ -3,12 +3,11 @@ import { renderHook, act } from '@testing-library/react';
 import type { Node, Edge } from '@xyflow/react';
 
 /**
- * useWorkflowClipboard reads/writes the React Flow store via `useReactFlow()`. The
- * provider alone (without an actual <ReactFlow> mount) does not wire up getNodes/setNodes,
- * so we mock @xyflow/react and back the four functions with a small in-test store.
- * That keeps the tests focused on the hook's clipboard semantics — selection rules,
- * in-memory lifetime, paste-offset cadence, group/parent re-mapping — without
- * depending on a real canvas mount.
+ * useWorkflowClipboard reads and writes the React Flow store via `useReactFlow()`.
+ * The provider alone does not wire up getNodes/setNodes without a mounted <ReactFlow>,
+ * so @xyflow/react is mocked and backed by a small in-test store. This keeps the tests
+ * on the hook's clipboard semantics: selection rules, in-memory lifetime, paste offsets
+ * and group/parent re-mapping.
  */
 
 const store: { nodes: Node[]; edges: Edge[] } = { nodes: [], edges: [] };
@@ -46,8 +45,7 @@ function makeEdge(id: string, source: string, target: string): Edge {
 function setup(initialNodes: Node[], initialEdges: Edge[]) {
   store.nodes = initialNodes;
   store.edges = initialEdges;
-  // crypto.randomUUID is reasonably stable in jsdom but not guaranteed — stub for
-  // deterministic id assertions on pasted nodes/edges.
+  // Stub crypto.randomUUID so ids of pasted nodes and edges are deterministic.
   let idCounter = 0;
   vi.spyOn(globalThis.crypto, 'randomUUID').mockImplementation(() => {
     idCounter += 1;
@@ -86,8 +84,8 @@ describe('useWorkflowClipboard', () => {
   });
 
   it('copySelection_dropsEdgesWithEndpointsOutsideSelection', () => {
-    // The "edges only when both endpoints selected" rule prevents a paste from creating
-    // a dangling edge that points at a node outside the cloned subgraph.
+    // An edge is copied only when both endpoints are selected, so a paste cannot create
+    // a dangling edge pointing at a node outside the cloned subgraph.
     const a = makeNode('a');
     const b = makeNode('b');
     const c = makeNode('c');
@@ -135,8 +133,7 @@ describe('useWorkflowClipboard', () => {
   });
 
   it('pasteBuffer_repeatedPaste_offsetsEachCloneFurther', () => {
-    // Paste #1 is offset 40px, paste #2 offset 80px. Pin the cumulative-offset semantics
-    // so a refactor that resets the counter on every paste doesn't silently change UX.
+    // Paste offsets accumulate: the first paste shifts by 40px, the second by 80px.
     const a = makeNode('a', 'activity');
     a.position = { x: 0, y: 0 };
     const { result } = setup([a], []);
@@ -197,9 +194,8 @@ describe('useWorkflowClipboard', () => {
   });
 
   it('pasteBuffer_groupNode_idMapPropagatesToChildParentId', () => {
-    // Group + child: the child's parentId references the group. After paste, the child's
-    // parentId must point at the NEW group id, not the original. The hook sorts groups
-    // first so the id-map is populated before children are mapped.
+    // The child's parentId references the group, so after a paste it must point at the
+    // new group id. The hook sorts groups first so the id map is filled before children.
     const group = makeNode('group-1', 'group');
     const child = makeNode('child-1', 'activity', { parentId: 'group-1' });
     const { result } = setup([group, child], []);
@@ -217,8 +213,7 @@ describe('useWorkflowClipboard', () => {
   });
 
   it('resetPasteCount_makesNextPasteUseFreshOffset', () => {
-    // The exposed resetPasteCount() lets the editor clear the offset chain when a new
-    // workflow is loaded. Pin the side-effect.
+    // resetPasteCount() lets the editor clear the offset chain when a new workflow loads.
     const a = makeNode('a', 'activity');
     a.position = { x: 0, y: 0 };
     const { result } = setup([a], []);

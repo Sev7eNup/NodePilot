@@ -7,10 +7,13 @@ using NodePilot.Data;
 namespace NodePilot.Api.Services.Backup.Parts;
 
 /// <summary>
-/// Exports alerting rules — both custom rules and system policies (every <c>NotificationRule</c>) — with their
+/// Exports alerting rules — both custom rules and system policies (every <c>NotificationRule</c>) —
+/// with their
 /// routes and scope targets (ADR 0008, schema v2). Route secrets are decrypted with the active
-/// <see cref="ISecretProtector"/> and re-wrapped under the backup passphrase, exactly like credentials. The
-/// delivery ledger, suppression, signal and policy-state tables are transient and deliberately excluded.
+/// <see cref="ISecretProtector"/> and re-wrapped under the backup passphrase, exactly like
+/// credentials. The
+/// delivery ledger, suppression, signal and policy-state tables are transient and deliberately
+/// excluded.
 /// DependsOn Folders + Workflows so scope targets remap on restore.
 /// </summary>
 public sealed class AlertingBackupPart(NodePilotDbContext db, ISecretProtector atRest) : IBackupPart

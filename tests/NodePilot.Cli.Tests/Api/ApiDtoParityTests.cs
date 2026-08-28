@@ -7,9 +7,8 @@ namespace NodePilot.Cli.Tests.Api;
 /// <summary>
 /// The CLI and the MCP server are HTTP-only clients that keep their own copies of the API's
 /// response/request records — <c>NodePilot.Mcp/Api/NodePilotApiClient.cs</c> says so in its own
-/// header ("Copied/adapted from the CLI's client"). 97 record names are shared between the API
-/// and the CLI, 62 between the API and the MCP server, and until now exactly two of them were
-/// guarded by hand, so the copies could drift silently.
+/// header ("Copied/adapted from the CLI's client"). These tests guard against the copies
+/// drifting silently out of sync with the API.
 ///
 /// <para>These tests discover the shared names instead of listing them. The invariant is
 /// one-directional on purpose: a client may carry <em>extra</em> fields (harmless — they stay
@@ -28,26 +27,9 @@ public sealed class ApiDtoParityTests
     /// documents what that costs. Entries must be removed as the gaps get closed —
     /// <see cref="KnownGaps_AreAllStillReal"/> fails on a stale entry, so the list cannot rot.
     /// </summary>
-    private static readonly Dictionary<string, string> KnownCliGaps = new(StringComparer.Ordinal)
-    {
-        ["ArmedTriggerInfo"] = "np does not render next-fire prediction / poll interval",
-        ["AuthMethodsResponse"] = "np auth cannot discover the OIDC login path",
-        ["CreateUserRequest"] = "np user create cannot mark an account break-glass",
-        ["CreateWorkflowRequest"] = "np workflow create cannot target a folder (RBAC folders)",
-        ["DashboardStats"] = "np dashboard shows the pre-mission-control subset of the widgets",
-        ["GrantSharedFolderPermissionRequest"] = "np cannot scope a grant by principal authority",
-        ["SharedFolderPermissionResponse"] = "np does not render the principal authority",
-        ["TopWorkflow"] = "np dashboard omits avg/p95 duration per workflow",
-        ["UpdateUserRequest"] = "np user update cannot change the break-glass flag",
-        ["UserResponse"] = "np user list omits provider/authority/break-glass/tombstone state",
-        ["WorkflowResponse"] = "np does not render folder placement or per-row RBAC capabilities",
-    };
+    private static readonly Dictionary<string, string> KnownCliGaps = new(StringComparer.Ordinal);
 
-    private static readonly Dictionary<string, string> KnownMcpGaps = new(StringComparer.Ordinal)
-    {
-        ["CreateWorkflowRequest"] = "create_workflow cannot target a folder (RBAC folders)",
-        ["WorkflowResponse"] = "workflow tools do not surface folder placement or RBAC capabilities",
-    };
+    private static readonly Dictionary<string, string> KnownMcpGaps = new(StringComparer.Ordinal);
 
     public static TheoryData<string> ClientProjects() => new("Cli", "Mcp");
 
@@ -150,7 +132,7 @@ public sealed class ApiDtoParityTests
 
     /// <summary>
     /// Parses every positional record under <paramref name="relativeFolder"/> into
-    /// name → field names (positional parameters plus <c>{ get; init; }</c> body properties).
+    /// name -> field names (positional parameters plus <c>{ get; init; }</c> body properties).
     /// First declaration wins on a duplicate name, matching how the compiler would resolve it
     /// within one namespace.
     /// </summary>

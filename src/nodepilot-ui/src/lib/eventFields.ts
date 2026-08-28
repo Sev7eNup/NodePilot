@@ -1,12 +1,12 @@
 /**
- * Catalog of event fields that an alerting rule filter can reference as `source: 'event'`
- * operands in the ConditionBuilder. The `name` values MUST stay in sync with the keys produced
- * by the backend NotificationContext.ToFieldMap() (src/NodePilot.Core/Models/NotificationContext.cs)
- * — that map is what the engine's ConditionEvaluator matches against at dispatch time.
+ * Catalog of event fields an alerting rule filter can reference as `source: 'event'` operands
+ * in the ConditionBuilder. The `name` values must match the keys produced by the backend
+ * NotificationContext.ToFieldMap() (src/NodePilot.Core/Models/NotificationContext.cs), which
+ * the engine's ConditionEvaluator matches against at dispatch time.
  *
  * `labelKey` resolves through the `alerts` i18n namespace (alerts:eventFields.<name>).
- * `applies` is informational only: it records which context populates the field (execution vs.
- * signal/gauge). Custom rules now filter over the full field set regardless of `applies`.
+ * `applies` is informational only: it records which context populates the field (execution or
+ * signal/gauge). Custom rules filter over the full field set regardless of `applies`.
  */
 export interface EventFieldCatalogEntry {
   name: string;
@@ -27,14 +27,14 @@ export const EVENT_FIELD_CATALOG: readonly EventFieldCatalogEntry[] = [
   { name: 'isSubWorkflow', labelKey: 'eventFields.isSubWorkflow', applies: 'execution' },
   { name: 'cancelledBy', labelKey: 'eventFields.cancelledBy', applies: 'execution' },
   { name: 'sourceKey', labelKey: 'eventFields.sourceKey', applies: 'gauge' },
-  // Populated for gauge signals (machine name of the signal source) AND for terminal
-  // execution events (resolved machine name of the last-failing step) since the
-  // dispatcher joins StepExecution.TargetMachine into the execution context.
+  // Populated for gauge signals (machine name of the signal source) and for terminal
+  // execution events (machine name of the last failing step), because the dispatcher
+  // joins StepExecution.TargetMachine into the execution context.
   { name: 'targetMachine', labelKey: 'eventFields.targetMachine', applies: 'both' },
   { name: 'signalValue', labelKey: 'eventFields.signalValue', applies: 'gauge' },
 ];
 
-/** Notification event types the rule's coarse pre-filter can react to (mirror of NotificationEventType). */
+/** Notification event types the rule pre-filter can react to (mirror of NotificationEventType). */
 export const NOTIFICATION_EVENT_TYPES = [
   'ExecutionFailed',
   'ExecutionSucceeded',
@@ -50,23 +50,23 @@ export const NOTIFICATION_EVENT_TYPES = [
   'WorkflowNoRecentSuccess',
   'CredentialFailure',
   'CredentialExpiring',
-  // Built-in infra/signal alerts (e.g. machine unreachable, backlog high) now live in their
-  // own "system alert policy" system rather than as custom rules (see design doc ADR 0008).
-  // This entry mirrors the backend enum for completeness; the custom-rule editor actually
-  // sources its selectable types from the server catalog, which excludes SystemAlert.
+  // Built-in infra and signal alerts (machine unreachable, backlog high) belong to the
+  // separate system-alert-policy feature (ADR 0008), not to custom rules. This entry mirrors
+  // the backend enum for completeness; the custom-rule editor sources its selectable types
+  // from the server catalog, which excludes SystemAlert.
   'SystemAlert',
 ] as const;
 export type NotificationEventType = (typeof NOTIFICATION_EVENT_TYPES)[number];
 
 /**
- * Filter fields offered to a custom alerting rule. Custom rules can only match execution-scoped
- * event types (the infra/signal gauge types were moved into the separate system-alert-policy
- * feature, design doc ADR 0008), so the editor exposes the entire execution+shared field catalog.
+ * Filter fields offered to a custom alerting rule. Custom rules match only execution-scoped
+ * event types (infra and signal gauge types belong to the system-alert-policy feature,
+ * ADR 0008), so the editor exposes the whole execution and shared field catalog.
  */
 export function customEventFields(): readonly EventFieldCatalogEntry[] {
   return EVENT_FIELD_CATALOG;
 }
 
-/** Delivery channels available in v1a (mirror of NotificationChannel; Teams/Slack/PagerDuty/Opsgenie land in v1b). */
+/** Delivery channels the alerting UI offers (mirror of NotificationChannel). */
 export const NOTIFICATION_CHANNELS = ['Email', 'GenericWebhook'] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];

@@ -8,7 +8,7 @@ using Xunit;
 namespace NodePilot.Api.Tests.Telemetry;
 
 /// <summary>
-/// Covers the Serilog → OpenTelemetry sink bridge. This wiring feeds the ECS/SIEM log
+/// Covers the Serilog-to-OpenTelemetry sink bridge. This wiring feeds the ECS/SIEM log
 /// pipeline, so a mistake here (wrong protocol switch, header parsing that throws on a
 /// malformed pair) silently drops production logs. Exercise every branch: the disabled
 /// no-op, the gRPC/HTTP protocol split, and the comma-separated header parser including a
@@ -125,7 +125,7 @@ public class SerilogTelemetryBridgeTests
                 ["OpenTelemetry:Exporters:Logs"] = "true",
                 ["OpenTelemetry:ServiceName"] = "nodepilot-test",
                 ["OpenTelemetry:Environment"] = "staging",
-                // no protocol → grpc default, no endpoint → localhost:4317 default
+                // no protocol set, so grpc default; no endpoint set, so localhost:4317 default
             }),
             Env());
 

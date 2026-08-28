@@ -27,7 +27,7 @@ vi.mock('../../api/sharedFolders', async () => {
   };
 });
 
-// Store-driven confirm replaces the native confirm(); default-resolve true (user confirms).
+// The store-driven confirm replaces the native confirm(); it resolves true by default.
 vi.mock('../../stores/confirmStore', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../../stores/confirmStore')>();
   return { ...mod, confirmDialog: vi.fn().mockResolvedValue(true) };
@@ -81,16 +81,16 @@ describe('SharedFolderPermissionsModal', () => {
       />,
     );
 
-    // Two grants → two rows in the existing-permissions table.
+    // Two grants produce two rows in the existing-permissions table.
     await waitFor(() =>
       expect(screen.queryAllByText(/alice/).length).toBeGreaterThanOrEqual(1),
     );
     expect(screen.queryAllByText(/bob/).length).toBeGreaterThanOrEqual(1);
-    // Row + select narrative is fine; both names appear in the table cells.
+    // Both names appear in the table cells.
   });
 
   it('only shows users without grants in the picker', async () => {
-    // alice already has a grant — she should NOT be in the unassigned-picker dropdown.
+    // alice already has a grant, so she must not appear in the unassigned-user picker.
     mockApi.listPermissions.mockResolvedValue([
       makePermission({ id: 'p1', principalKey: 'user-1', principalDisplayName: 'alice' }),
     ]);

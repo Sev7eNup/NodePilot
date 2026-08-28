@@ -5,9 +5,10 @@ namespace NodePilot.Core.Triggers;
 
 /// <summary>
 /// Entry types an <c>eventLogTrigger</c> can filter on. Mirrors
-/// <c>System.Diagnostics.EventLogEntryType</c> by NAME so both runtimes round-trip through
-/// <see cref="Enum.TryParse{TEnum}(string, bool, out TEnum)"/> — Core deliberately does not take a
-/// dependency on the Windows-only System.Diagnostics.EventLog package just to name five constants.
+/// <c>System.Diagnostics.EventLogEntryType</c> by name so both runtimes round-trip through
+/// <see cref="Enum.TryParse{TEnum}(string, bool, out TEnum)"/> — Core deliberately does not
+/// take a dependency on the Windows-only System.Diagnostics.EventLog package just to name five
+/// constants.
 /// </summary>
 public enum EventLogEntryTypeFilter
 {
@@ -31,21 +32,17 @@ public enum EventLogMatch
 }
 
 /// <summary>
-/// The parsed, validated config of an <c>eventLogTrigger</c> node — the single vocabulary shared by
-/// both runtimes that read it: <c>NodePilot.Engine.Triggers.EventLogTrigger</c> (the node executor,
-/// i.e. the manual sample run) and <c>NodePilot.Scheduler.Sources.EventLogTriggerSource</c> (the
-/// live EntryWritten listener).
+/// The parsed, validated config of an <c>eventLogTrigger</c> node — the single vocabulary shared
+/// by both runtimes that read it: <c>NodePilot.Engine.Triggers.EventLogTrigger</c> (the node
+/// executor, i.e. the manual sample run) and
+/// <c>NodePilot.Scheduler.Sources.EventLogTriggerSource</c> (the live EntryWritten listener).
+/// Parsing and matching live here so a key is never honoured on one path and dropped on the
+/// other.
 ///
-/// <para>Both used to parse the node config themselves and had drifted: the listener never read
-/// <c>eventId</c> or the <c>level</c> alias (so a UI-set event-id filter was silently ignored and
-/// the workflow fired on every event of the log), while <c>messagePattern</c> existed only on the
-/// listener and appeared in no documentation. Parsing and matching live here so a key cannot be
-/// honoured by one path and dropped by the other.</para>
-///
-/// <para><see cref="LookbackMinutes"/> is the one deliberately asymmetric key: it bounds the manual
-/// run's backwards scan and has no meaning for a live subscription. It is NOT a startup replay —
-/// the orchestrator rebuilds a source on every config change and after any health fault, so a
-/// replay-on-start would re-fire the same historical events each time.</para>
+/// <para><see cref="LookbackMinutes"/> is the one asymmetric key: it bounds the manual run's
+/// backwards scan and has no meaning for a live subscription. It is not a startup replay — the
+/// orchestrator rebuilds a source on every config change and after any health fault, so replaying
+/// on start would re-fire the same historical events each time.</para>
 /// </summary>
 public sealed class EventLogTriggerSettings
 {
@@ -59,9 +56,9 @@ public sealed class EventLogTriggerSettings
     public static readonly TimeSpan MessageRegexTimeout = TimeSpan.FromMilliseconds(500);
 
     /// <summary>
-    /// Logs any workflow author may subscribe to. <c>Security</c> is excluded on purpose: reading it
-    /// needs elevation and would expose logon events and audit trails to every workflow author. An
-    /// admin can add it under <c>Trigger:EventLog:AllowedLogs</c>.
+    /// Logs any workflow author may subscribe to. <c>Security</c> is excluded on purpose: reading
+    /// it needs elevation and would expose logon events and audit trails to every workflow author.
+    /// An admin can add it under <c>Trigger:EventLog:AllowedLogs</c>.
     /// </summary>
     public static readonly IReadOnlyList<string> DefaultAllowedLogs = ["Application", "System"];
 
@@ -141,8 +138,8 @@ public sealed class EventLogTriggerSettings
     }
 
     /// <summary>
-    /// Whether <paramref name="logName"/> may be opened. <paramref name="additionalAllowed"/> is the
-    /// admin's <c>Trigger:EventLog:AllowedLogs</c> list — it EXTENDS
+    /// Whether <paramref name="logName"/> may be opened. <paramref name="additionalAllowed"/> is
+    /// the admin's <c>Trigger:EventLog:AllowedLogs</c> list — it extends
     /// <see cref="DefaultAllowedLogs"/> rather than replacing it, so configuring one extra log
     /// cannot silently lock workflows out of Application and System.
     /// </summary>
@@ -153,7 +150,9 @@ public sealed class EventLogTriggerSettings
             .Any(a => string.Equals(a, logName, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>Operator-facing message for a rejected log name — identical on both runtimes.</summary>
+    /// <summary>
+    /// Operator-facing message for a rejected log name — identical on both runtimes.
+    /// </summary>
     public static string DescribeRejectedLog(string? logName, IEnumerable<string>? additionalAllowed) =>
         $"EventLogTrigger: log '{logName}' is not allowed. Allowed: "
         + $"{string.Join(", ", AllowedLogs(additionalAllowed))}. "
@@ -165,7 +164,7 @@ public sealed class EventLogTriggerSettings
 
     /// <summary>
     /// Maps the documented entry-type vocabulary onto the filter enum. Accepts the canonical
-    /// EventLogEntryType names plus the shorthand aliases the designer used to emit
+    /// EventLogEntryType names plus shorthand aliases accepted from the designer
     /// (info/critical/success/failure). An unrecognised value means "no entry-type filter" rather
     /// than an error — the same tolerance the node executor always had.
     /// </summary>

@@ -10,16 +10,14 @@ namespace NodePilot.Data;
 
 /// <summary>
 /// Default <see cref="IOperationalKnowledgeReader"/> for the global "AI Chat" knowledge assistant.
-/// Lives next to <see cref="ExecutionLogReader"/> — same decoupling: it takes a pre-resolved
-/// <see cref="AccessibleFolderSet"/> (never a <c>ClaimsPrincipal</c>) and never runs an unfiltered
-/// query. Workflow definitions are redacted twice before leaving: key-based
-/// (<see cref="WorkflowSecretRedactor"/>) plus a pattern-based pass over the serialized text
-/// (<see cref="IAuditDetailsRedactor"/>) that also catches secrets hard-coded inside runScript
-/// bodies — deliberately stricter than the role gradient in <c>ExecutionsController</c>, because
-/// results go to an external LLM. Scope is the slice the database tools cannot provide: a
-/// workflow's redacted definition, structural analysis input, and computed scheduled-fire
-/// forecasts. Listing workflows/executions/machines is left to the <c>execute_readonly_sql</c>
-/// text2sql tools against the app database.
+/// Takes a pre-resolved <see cref="AccessibleFolderSet"/>, never a <c>ClaimsPrincipal</c>, and
+/// never
+/// runs an unfiltered query. Definitions are redacted twice, by <see
+/// cref="WorkflowSecretRedactor"/>
+/// then <see cref="IAuditDetailsRedactor"/>, since results go to an external LLM. Covers
+/// definitions,
+/// analysis, and scheduled-fire forecasts; listings go through the <c>execute_readonly_sql</c>
+/// tool.
 /// </summary>
 public sealed class OperationalKnowledgeReader(NodePilotDbContext db, IAuditDetailsRedactor redactor)
     : IOperationalKnowledgeReader
@@ -119,7 +117,7 @@ public sealed class OperationalKnowledgeReader(NodePilotDbContext db, IAuditDeta
         if (Guid.TryParse(idOrName, out var id))
             return await q.FirstOrDefaultAsync(w => w.Id == id, ct);
 
-        // exact-case wins; a unique case-insensitive match is the fallback; ambiguous → null.
+        // exact-case wins; a unique case-insensitive match is the fallback; ambiguous returns null.
         var exact = await q.Where(w => w.Name == idOrName).Take(2).ToListAsync(ct);
         if (exact.Count == 1) return exact[0];
         if (exact.Count > 1) return null;

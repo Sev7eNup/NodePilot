@@ -6,11 +6,10 @@ using Xunit;
 namespace NodePilot.Api.Tests.Security;
 
 /// <summary>
-/// Behaviour parity with <see cref="SecretProtectorRegistry"/> — the bootstrap factory
-/// has to apply identical validation (no silent fall-through on typos, no DPAPI in
-/// cluster mode) because it's invoked before DI exists and an operator-error would
-/// otherwise produce a configuration provider that silently de-/re-encrypts under the
-/// wrong key.
+/// Tests that the bootstrap factory applies the same validation as
+/// <see cref="SecretProtectorRegistry"/> (no silent fall-through on typos, no DPAPI in
+/// cluster mode). It runs before DI exists, so an operator error here would otherwise
+/// produce a provider that silently encrypts under the wrong key.
 /// </summary>
 public class SecretProtectorBootstrapFactoryTests
 {

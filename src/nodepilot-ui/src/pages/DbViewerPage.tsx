@@ -14,9 +14,8 @@ type View =
 export function DbViewerPage() {
   const { t } = useTranslation(['database', 'common']);
   const [view, setView] = useState<View>({ kind: 'browse', tableName: null });
-  // Increment a nonce alongside the table-name so QueryPane fires its insert effect
-  // even when the same table is clicked twice in a row (effect would otherwise skip
-  // the second click because the value didn't change).
+  // A nonce next to the table name makes QueryPane run its insert effect again when the
+  // same table is clicked twice in a row, which an unchanged value alone would not trigger.
   const [insertSignal, setInsertSignal] = useState<{ value: string; nonce: number } | undefined>(undefined);
 
   const { data: tables = [], isLoading, error } = useQuery({

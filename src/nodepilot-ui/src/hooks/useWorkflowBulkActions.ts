@@ -16,7 +16,7 @@ import {
   isAuthBoundaryGenerationCurrent,
 } from '../security/authBoundary';
 
-/** Minimal view of a v1 export envelope — only the fields the bulk export re-packs. */
+/** Minimal view of a v1 export envelope: only the fields the bulk export re-packs. */
 export type WorkflowExportEnvelope = {
   schema: string;
   exportVersion: number;
@@ -37,14 +37,12 @@ export interface WorkflowBulkActions {
 }
 
 /**
- * The four bulk actions of the workflow list, as a hook rather than as part of the action bar —
- * the drag-and-drop path needs `moveWorkflows` too, and it fires from the folder tree's drop
- * handler in WorkflowsPage, not from a button in the bar.
+ * The four bulk actions of the workflow list. It is a hook rather than part of the action bar
+ * because the folder tree's drop handler in WorkflowsPage also needs `moveWorkflows`.
  *
- * Every action is a sequential loop over the SAME single-workflow endpoints the per-row buttons
- * use. There is no bulk endpoint, deliberately: each iteration keeps its own RBAC check, its own
- * edit-lock check and its own audit row, so a bulk run can never become a way around a permission
- * that the single action would have refused.
+ * Every action loops sequentially over the same single-workflow endpoints the per-row buttons
+ * use. There is no bulk endpoint by design: each iteration keeps its own RBAC check, edit-lock
+ * check and audit row, so a bulk run cannot bypass a permission the single action would refuse.
  */
 export function useWorkflowBulkActions(
   onRetain: (failedIds: string[]) => void,
@@ -53,8 +51,8 @@ export function useWorkflowBulkActions(
   const queryClient = useQueryClient();
   const [progress, setProgress] = useState<BulkProgress | null>(null);
   const [abortRequested, setAbortRequested] = useState(false);
-  // The running loop closed over this ref when it started; React state would be a stale snapshot
-  // inside it, so Cancel could never reach the loop it is meant to stop.
+  // The running loop closes over this ref; React state would be a stale snapshot inside it,
+  // so Cancel could not reach the loop it is meant to stop.
   const abortRef = useRef(false);
 
   const report = useCallback((
@@ -77,7 +75,7 @@ export function useWorkflowBulkActions(
     if (result.failed.length > 0) {
       lines.push('', t('workflows:bulk.failedHeader', { count: result.failed.length }));
       for (const f of result.failed) lines.push(`✗ ${f.item.name}: ${f.message}`);
-      // Failure reports must not vanish after the default 8s — the user needs to read the names.
+      // Failure reports stay up longer than a default toast so the user can read the names.
       toast.error(lines.join('\n'), 30_000);
     } else {
       toast.success(lines.join('\n'));
@@ -107,7 +105,7 @@ export function useWorkflowBulkActions(
       });
       report(result, items.length, successKey, invalidateFolders);
     } catch (err) {
-      // An auth-boundary abort belongs to User A's session, which is gone — say nothing.
+      // An auth-boundary abort belongs to the previous session, which is gone; report nothing.
       if (!(err instanceof AuthBoundaryChangedError) && isAuthBoundaryGenerationCurrent(gen)) {
         toast.error(t('workflows:bulk.runFailed', { message: (err as Error).message }));
       }
@@ -131,7 +129,7 @@ export function useWorkflowBulkActions(
     await run(
       items,
       async (w) => {
-        // Skip a no-op move — saves a round-trip and keeps the audit log clean.
+        // Skip a no-op move: it saves a round-trip and keeps the audit log clean.
         if ((w.folderId ?? ROOT_FOLDER_ID) === targetFolderId) throw new BulkSkippedError();
         await sharedFoldersApi.moveWorkflowToFolder(w.id, targetFolderId);
       },
@@ -191,8 +189,8 @@ export function useWorkflowBulkActions(
           'application/json',
         );
       }
-      // Export mutates nothing — reporting only, no cache invalidation needed, but the shared
-      // reporter keeps the failure formatting identical to the other three actions.
+      // Export mutates nothing, so no cache invalidation is needed; the shared reporter keeps
+      // the failure formatting identical to the other three actions.
       report(result, items.length, 'workflows:bulk.exported', false);
     } catch (err) {
       if (!(err instanceof AuthBoundaryChangedError) && isAuthBoundaryGenerationCurrent(gen)) {

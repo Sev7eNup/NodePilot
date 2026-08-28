@@ -17,10 +17,8 @@ const loggingSnapshot = {
     logLevel: { default: 'Warning', aspNetCore: 'Warning', efCoreCommand: 'Warning', efCoreConnection: 'Warning', efCoreInfrastructure: 'Warning' },
     stepDetail: { enabled: false, maxOutputChars: 10000 },
     file: { retainedFileCountLimit: 7, fileSizeLimitBytes: 100 * 1024 * 1024, async: true },
-    // SupportLog was added to the Logging section in a later change. The component reads
-    // form.supportLog.{enabled,dbProjectionEnabled,path} unconditionally, so this fixture
-    // must include that shape — otherwise React throws a "Cannot read properties of
-    // undefined" exception when rendering.
+    // The component reads form.supportLog.{enabled,dbProjectionEnabled,path} unconditionally,
+    // so the fixture must carry that shape or rendering throws on an undefined property.
     supportLog: { enabled: true, dbProjectionEnabled: true, path: '', retainedFileCountLimit: 30, fileSizeLimitBytes: 50 * 1024 * 1024 },
     redaction: { enabled: true },
   },
@@ -67,9 +65,9 @@ describe('LoggingTelemetrySection', () => {
     await waitFor(() => expect(screen.getByDisplayValue('cmtrace')).toBeInTheDocument());
     expect(screen.getByDisplayValue('nodepilot-api')).toBeInTheDocument();
     expect(screen.getByDisplayValue('http://localhost:4317')).toBeInTheDocument();
-    // Multiple inputs share '7' (Logging.File.RetainedFileCountLimit + Stats.WindowDays)
-    // and '5' (Stats.RefreshIntervalMinutes + Logging.LogLevels) — assert by min/max
-    // attributes instead. Stats.WindowDays has max=365, no other "7" input does.
+    // Several inputs share the value '7' (Logging.File.RetainedFileCountLimit and
+    // Stats.WindowDays) or '5' (Stats.RefreshIntervalMinutes and Logging.LogLevels), so those
+    // are matched by their min/max attributes instead: only Stats.WindowDays has max=365.
     expect(screen.getByDisplayValue('Tempo')).toBeInTheDocument();
     expect(screen.getByDisplayValue('dev')).toBeInTheDocument();
   });
@@ -82,7 +80,7 @@ describe('LoggingTelemetrySection', () => {
     }));
     renderAll();
     await waitFor(() => expect(screen.getByDisplayValue('5')).toBeInTheDocument());
-    // Three save buttons (one per card) — the last one belongs to Stats.
+    // There is one save button per card; the last one belongs to Stats.
     const saves = screen.getAllByRole('button', { name: /speichern|save/i });
     fireEvent.click(saves[saves.length - 1]);
     await waitFor(() => {

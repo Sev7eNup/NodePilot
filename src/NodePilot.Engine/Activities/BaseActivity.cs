@@ -63,30 +63,23 @@ public abstract class BaseRemoteActivity : IActivityExecutor
         // When targeting localhost without explicit credentials, run the script directly via the
         // local PowerShell engine — same path that RunScriptActivity uses for local scripts.
         //
-        // This is a *product feature*, not a bug: NodePilot doubles as a self-service
-        // orchestrator for the host it runs on, so localhost targets must always work. The
-        // security review flagged the blast radius (in-process PowerShell as the service
-        // account can read jwt-secret.key and decrypt DPAPI credentials) — that is an
-        // acknowledged, intentional trade-off. Do not re-introduce a guard here: the product
-        // owner has explicitly decided localhost execution stays on in every environment.
+        // Localhost execution is intentional: NodePilot also acts as a self-service
+        // orchestrator for the host it runs on, so localhost targets must always work, even
+        // though in-process PowerShell then runs as the service account and can read local
+        // secrets. Do not add a guard here.
         //
-        // The DETECTION is hardened though (H14): the old string compare missed "127.0.0.01",
-        // "127.1", "2130706433", trailing whitespace, and IPv6 zone-ids. Those all resolve to
-        // loopback at the OS layer, so a machine registered with a creative hostname was
-        // shipping scripts over WinRM with the service-account Kerberos ticket instead of
-        // in-process — defeating the exact guarantee the bypass was there to provide.
+        // Detection covers every loopback address and hostname form, including DNS names that
+        // resolve to loopback and IPv6 zone-ids, so a creatively named machine cannot bypass
+        // this check and run over real WinRM with the service-account Kerberos ticket instead.
         var isLocalhost = credential is null && IsLoopbackHostname(machine.Hostname);
 
         if (isLocalhost)
         {
-            // Cluster-mode warning: a localhost step runs in-process on whichever node
-            // happens to be the leader at fire time. After failover the step lands on a
-            // different physical host with a potentially different filesystem, env vars,
-            // installed software, etc. Operators who rely on cluster-equivalence learn
-            // about this here rather than from a confusing post-failover bug report.
-            // Emitted via the engine's ActivitySource so it surfaces in OpenTelemetry
-            // tracing without requiring an ILogger reference inside NodePilot.Core
-            // (which is zero-deps by convention, see CLAUDE.md).
+            // Cluster-mode warning: a localhost step runs in-process on whichever node is
+            // leader at fire time, so after failover it can land on a different host with a
+            // different filesystem, env vars, or installed software. Emitted via the engine's
+            // ActivitySource so it reaches OpenTelemetry without needing an ILogger reference
+            // inside NodePilot.Core (which is zero-deps by convention, see CLAUDE.md).
             if (_configuration.GetValue<bool>("Cluster:Enabled"))
             {
                 var nodeId = _configuration["Cluster:NodeId"] ?? Environment.MachineName;
@@ -107,9 +100,9 @@ public abstract class BaseRemoteActivity : IActivityExecutor
             var psResult = await localEngine.ExecuteAsync(psRequest, ct);
             // Both local engines wrap the script via PowerShellScriptWrapper, so stdout ends with
             // the ###NODEPILOT_*### marker block (exit code, params, error). The WinRM path has no
-            // markers — strip them so PostProcess implementations that parse Output (e.g.
-            // serviceManagement status → JSON) see identical input on both paths. The wrapper's
-            // captured params are dropped for the same parity reason.
+            // markers, so strip them here to keep the input identical for PostProcess
+            // implementations that parse Output (e.g. serviceManagement status as JSON). The
+            // wrapper's captured params are dropped for the same reason.
             var (cleanOutput, _, _) = PowerShellActivitySupport.ExtractMarkers(
                 psResult.Output, context.StepId, NullLogger.Instance);
             return PostProcess(new ActivityResult
@@ -139,15 +132,11 @@ public abstract class BaseRemoteActivity : IActivityExecutor
     protected abstract string BuildScript(JsonElement config, StepExecutionContext context);
 
     /// <summary>
-    /// Returns true when the given hostname points at the local machine — covers all the
-    /// IPv4/IPv6 spellings (127.0.0.1, 127.0.0.01, 127.1, 2130706433, ::1, [::1], …), DNS
-    /// names whose A/AAAA records resolve to a loopback address (e.g. "localhost.corp.lan"
-    /// mapped to 127.0.0.1 in hosts-file) and punctuation-trimmed variants with trailing
-    /// dots or whitespace. The previous string-compare check missed most of these and
-    /// silently routed "loopback" traffic through the real WinRM stack.
-    ///
-    /// Failed DNS lookups return false — we don't want to hit the network for every step,
-    /// and if resolution fails here the WinRM path will emit a cleaner error anyway.
+    /// Returns true when the given hostname points at the local machine. Covers IPv4/IPv6
+    /// spellings (127.0.0.1, 127.0.0.01, 127.1, 2130706433, ::1, [::1], …), DNS names whose
+    /// records resolve to a loopback address, and variants with trailing dots or whitespace.
+    /// Failed DNS lookups return false: this avoids a network call on every step, and the
+    /// WinRM path reports a clearer error if resolution fails there instead.
     /// </summary>
     internal static bool IsLoopbackHostname(string? hostname)
     {
@@ -161,9 +150,9 @@ public abstract class BaseRemoteActivity : IActivityExecutor
         if (IPAddress.TryParse(trimmed, out var direct))
             return IPAddress.IsLoopback(direct);
 
-        // DNS fallback: if the name resolves to an all-loopback answer, treat as localhost.
-        // Wrapped in try/catch because DNS can fail for many reasons (offline host, no such
-        // name) and a failure here must fall back to the normal remote path — NOT crash the
+        // DNS fallback: if the name resolves to an all-loopback answer, treat it as localhost.
+        // Wrapped in try/catch because DNS can fail for many reasons (offline host, unknown
+        // name); a failure here falls back to the normal remote path instead of crashing the
         // step.
         try
         {
