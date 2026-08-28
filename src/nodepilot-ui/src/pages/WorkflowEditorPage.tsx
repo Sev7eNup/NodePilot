@@ -1550,7 +1550,7 @@ function WorkflowEditorInner() {
                 id="np-bg-dots"
                 variant={BackgroundVariant.Dots}
                 gap={24}
-                size={1.6}
+                size={1.9}
                 color="var(--np-canvas-dot)"
               />
             )}
