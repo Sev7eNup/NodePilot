@@ -4,26 +4,18 @@ version: 2
 # Central Package Management, so every bump lands in Directory.Packages.props rather than
 # in individual csproj files.
 #
-# EDITING THIS FILE IMMEDIATELY RE-RUNS EVERY BLOCK. Dependabot does not wait for the
-# Monday schedule after a config change: it re-evaluates all five blocks within minutes of
-# the merge, opening new collective PRs and superseding open singles. Batch config edits into
-# one change instead of merging them one after another — on 2026-08-07 two consecutive
-# taming attempts each set off another wave, and on 2026-08-09 two separate Spectre fixes did
-# it again. The waves were the config edits, not a Dependabot malfunction.
+# Editing this file re-runs every block right away, independent of the Monday schedule, and
+# opens new collective PRs within minutes. Batch config edits into one change instead of
+# merging them one after another.
 #
-# PR-budget policy (see CLAUDE.md): every block bundles its minor+patch updates into ONE
-# collective PR and carries open-pull-requests-limit: 1. That bounds the COLLECTIVE PRs at
-# five — one per block — but it is NOT a cap of five overall: the groups below declare
-# update-types [minor, patch] only, so every pending MAJOR falls outside them and arrives as
-# its own PR. The realistic steady state is "up to five collective PRs plus one per pending
-# major" (measured 2026-08-09: four collective + four majors = eight open).
+# PR-budget policy (see CLAUDE.md): every block bundles its minor and patch updates into one
+# collective PR and carries open-pull-requests-limit: 1. That bounds the collective PRs at
+# five, one per block, but it is not a cap of five overall: the groups below declare
+# update-types [minor, patch] only, so every pending major falls outside them and arrives as
+# its own PR.
 #
-# Majors are deliberately left ungrouped. Bundling them would make the number smaller and the
-# review worse: the 2026-08-09 grouped NuGet PR carried a Spectre.Console split past a fully
-# green CI, and it was only caught by reading the diff. A major deserves its own PR.
-#
-# The first live run in 2026-08 opened 21 individual PRs at once; that noise level is
-# deliberately not allowed to repeat.
+# Majors stay ungrouped on purpose. Bundling them lowers the PR count but makes the review
+# worse, because a breaking change inside a bundle can pass CI unnoticed.
 updates:
   - package-ecosystem: nuget
     directory: "/"
@@ -31,22 +23,16 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 1
-    # Known-incompatible upgrades, each verified against this codebase — do not re-offer:
-    # Microsoft.OpenApi 3.x breaks the OpenAPI pipeline. Spectre.Console must move as a
-    # FAMILY: Spectre.Console.Cli's stable line stops at 0.55.0 and pins Spectre.Console to
-    # its own version, so any bump of the other packages pairs a newer core with a CLI built
-    # against 0.55 — on a 0.x library that is a real risk (see the comment in
-    # Directory.Packages.props). The wildcard and the 0.56.0 floor are both deliberate: the
-    # previous rule named only Spectre.Console and Spectre.Console.Json at >=0.57.0, which
-    # let a grouped run bump the core to 0.56.0 and Spectre.Console.Testing to 0.57.2 while
-    # the CLI stayed at 0.55.0. Lift this when Spectre.Console.Cli 1.0 ships.
+    # Known-incompatible upgrades, each verified against this codebase; do not re-offer.
+    # Microsoft.OpenApi 3.x breaks the OpenAPI pipeline. Spectre.Console has to move as a
+    # family: Spectre.Console.Cli's stable line stops at 0.55.0 and pins Spectre.Console to
+    # that version, so bumping the other packages pairs a newer core with a CLI built against
+    # 0.55 (see the comment in Directory.Packages.props). Lift this when Spectre.Console.Cli
+    # 1.0 ships.
     #
-    # The floor is >0.55.0, not >=0.56.0, because the split starts one patch earlier than it
-    # looks (measured against nuget.org 2026-08-09): Spectre.Console, .Json and .Testing all
-    # publish 0.55.1 and 0.55.2, while Spectre.Console.Cli and .Cli.Testing have exactly one
-    # stable release ever - 0.55.0. A >=0.56.0 floor therefore still let a grouped run offer
-    # 0.55.2 for three of the five packages and leave the two CLI ones behind, which is the
-    # same family split in patch clothing.
+    # The floor is >0.55.0 rather than >=0.56.0 because Spectre.Console, .Json and .Testing
+    # publish 0.55.1 and 0.55.2 while Spectre.Console.Cli and .Cli.Testing stop at 0.55.0;
+    # a >=0.56.0 floor would still allow the same family split inside the patch range.
     ignore:
       - dependency-name: "Microsoft.OpenApi"
         versions: [">=3.0.0"]
@@ -66,8 +52,8 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 1
-    # TypeScript 7 is a verified-incompatible major (typescript-eslint peer range caps at
-    # the previous major; ERESOLVE on npm ci). Same rule on all three npm roots.
+    # TypeScript 7 is a verified-incompatible major: the typescript-eslint peer range caps at
+    # the previous major, so npm ci fails with ERESOLVE. Same rule on all three npm roots.
     ignore:
       - dependency-name: "typescript"
         versions: [">=7.0.0"]
@@ -120,8 +106,8 @@ updates:
     schedule:
       interval: monthly
     open-pull-requests-limit: 1
-    # Actions bump majors routinely (checkout v4→v7 etc.) — bundle EVERYTHING into one PR;
-    # the SHA-pinned usages make the diff reviewable regardless of semver jump size.
+    # Actions bump majors routinely, so everything is bundled into one PR; the SHA-pinned
+    # usages keep the diff reviewable regardless of the size of the version jump.
     groups:
       actions-all:
         patterns:

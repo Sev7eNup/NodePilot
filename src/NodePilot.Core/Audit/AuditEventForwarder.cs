@@ -11,24 +11,20 @@ namespace NodePilot.Core.Audit;
 public static class AuditEventForwarder
 {
     /// <summary>
-    /// Allowlist of audit actions that are additionally mirrored into the support log —
-    /// the SINGLE copy for both the HTTP AuditWriter and every background/atomic forwarder
-    /// call site (coherence audit 2026-08: this set and the AuditWriter previously carried
-    /// two diverging literal copies). Extended by an "outcome=failure" fallthrough rule —
-    /// every failed audit entry lands in the support log regardless of the allowlist.
-    /// Deliberately left out: <c>CREDENTIAL_DECRYPTED</c> (fires N times per workflow run;
-    /// only its failures arrive via the outcome fallthrough), <c>TOKEN_REFRESHED</c> (fires
-    /// every 12h per user), <c>WORKFLOW_CREATED/UPDATED/DUPLICATED/LOCKED/UNLOCKED/MOVED</c>
-    /// (routine editor activity), <c>EXECUTION_*</c> (reported separately by the
-    /// WorkflowEngine lifecycle helper with duration + step counts).
-    /// Membership references the <see cref="AuditActions"/> catalog — never a raw literal.
+    /// Allowlist of audit actions that are additionally mirrored into the support log, shared
+    /// by the HTTP AuditWriter and every background or atomic forwarder call site. A failure
+    /// outcome mirrors an entry as well, regardless of this list. Left out on purpose because
+    /// they are high volume or routine: <c>CREDENTIAL_DECRYPTED</c>, <c>TOKEN_REFRESHED</c>,
+    /// <c>WORKFLOW_CREATED/UPDATED/DUPLICATED/LOCKED/UNLOCKED/MOVED</c>, and <c>EXECUTION_*</c>,
+    /// which the WorkflowEngine lifecycle helper reports separately.
+    /// Membership references the <see cref="AuditActions"/> catalog, never a raw literal.
     /// </summary>
     private static readonly HashSet<string> SupportLogActions = new(StringComparer.Ordinal)
     {
         // Auth
         AuditActions.LoginSuccess, AuditActions.BreakGlassLoginSuccess,
         AuditActions.LoginFailed, AuditActions.LoginLocked, AuditActions.Logout,
-        // User-Mgmt
+        // User management
         AuditActions.UserCreated, AuditActions.UserCreatedBootstrap, AuditActions.UserDeleted,
         AuditActions.UserRoleChanged, AuditActions.UserBreakGlassChanged,
         AuditActions.UserPasswordReset, AuditActions.UserActivated, AuditActions.UserDeactivated,
@@ -36,7 +32,7 @@ public static class AuditEventForwarder
         AuditActions.UserScimProvisioned, AuditActions.UserScimUpdated, AuditActions.UserScimDeprovisioned,
         AuditActions.ScimGroupProvisioned, AuditActions.ScimGroupUpdated,
         AuditActions.ScimGroupDeprovisioned, AuditActions.ScimGroupReactivated,
-        // Workflow productive events
+        // Workflow lifecycle events
         AuditActions.WorkflowPublished, AuditActions.WorkflowDeleted, AuditActions.WorkflowForceUnlocked,
         // Trigger events
         AuditActions.ExternalTriggerFired, AuditActions.WebhookTriggered, AuditActions.TriggerFireSuppressed,

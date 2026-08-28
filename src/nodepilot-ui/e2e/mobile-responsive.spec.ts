@@ -4,10 +4,9 @@ import { installDefaultMocks, capsJson, mockCaps } from './fixtures/mockApi';
 /**
  * Mobile / smartphone responsiveness.
  *
- * Covers the responsive refactor: the app shell collapses its sidebar into an off-canvas
- * drawer (hamburger in the TopBar) below Tailwind's `lg` breakpoint, and the wide list-page
- * tables become stacked cards. The core regression these guard against is forced horizontal
- * scrolling on a ~390px phone screen.
+ * Below Tailwind's `lg` breakpoint the app shell collapses its sidebar into an off-canvas
+ * drawer (hamburger in the TopBar) and the wide list-page tables become stacked cards.
+ * These tests guard against forced horizontal scrolling on a phone-sized screen.
  *
  * Hermetic: page.route() mocks only (no backend). SPA renders EN under Playwright.
  */
@@ -101,9 +100,9 @@ test.describe('Mobile responsiveness', () => {
   });
 
   test('global variables: cards with no horizontal overflow on a phone', async ({ page }) => {
-    // folderId = Root sentinel (…0002): the real API always returns a non-null FolderId
-    // (default RootFolderId); the page scopes variables to the selected folder, so omitting
-    // it leaves undefined which never matches Root → the card list renders empty.
+    // folderId is the Root sentinel: the real API always returns a non-null FolderId and the
+    // page scopes variables to the selected folder. Omitting it leaves undefined, which never
+    // matches Root, so the card list would render empty.
     await page.route('**/api/global-variables', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify([{ id: 'g1', name: 'API_BASE', value: 'https://x', isSecret: false, description: 'base url', folderId: '00000000-0000-0000-0000-000000000002', createdAt: '2026-06-01T00:00:00Z', updatedAt: '2026-06-01T00:00:00Z', updatedBy: 'admin' }]),
@@ -190,9 +189,9 @@ test.describe('Mobile responsiveness', () => {
     const main = page.locator('#np-main-scroll');
     await expect(main.getByRole('heading', { name: /^AI Chat$/i })).toBeVisible({ timeout: 20_000 });
 
-    // Everything here still exists in the DOM (`hidden lg:*`) and just must not take space on a
-    // phone: subtitle, source badges and the empty-state hint together cost ~8 lines above the
-    // fold, which is most of the screen. The heading alone carries the message.
+    // These all stay in the DOM (`hidden lg:*`) but must not take space on a phone: subtitle,
+    // source badges and the empty-state hint would fill most of the screen above the fold.
+    // The heading alone carries the message.
     await expect(main.getByText(/^Ask NodePilot — docs/i)).toBeHidden();
     await expect(main.getByText(/^Sources:$/i)).toBeHidden();
     await expect(main.getByText(/^Docs$/i)).toBeHidden();
@@ -214,19 +213,18 @@ test.describe('Mobile responsiveness', () => {
 
   test('ai chat: the empty state stays fully scrollable when it outgrows the screen', async ({ page }) => {
     await mockCaps(page, capsJson());
-    // Deliberately SHORT, not PHONE: the trimmed mobile empty state (heading + four prompts) fits
-    // a 844px-tall phone with room to spare, so only a short screen — a landscape phone, a small
-    // split view — still reproduces the overflow this guards.
+    // A short viewport, not PHONE: the trimmed mobile empty state (heading + four prompts) fits
+    // a full-height phone with room to spare, so only a short screen — a landscape phone, a
+    // small split view — reproduces the overflow this guards.
     await page.setViewportSize({ width: 390, height: 520 });
     await page.goto('/ai-chat');
 
     await expect(page.getByRole('heading', { name: /Ask NodePilot anything/i })).toBeVisible({ timeout: 20_000 });
 
-    // A centred flex block that outgrows its scroll port overflows on BOTH sides, and everything
-    // above the scroll origin is unreachable by scrolling — the icon, the heading and all but the
-    // last line of the hint were cut off, leaving a dangling "…so nothing changes." at the top
-    // (measured: block top 73px above the port). So: the block must start at or below the top of
-    // its scroll port, and the port must genuinely be overflowing for that to mean anything.
+    // A centred flex block that outgrows its scroll port overflows on both sides, and anything
+    // above the scroll origin cannot be reached by scrolling. The block must therefore start at
+    // or below the top of its scroll port, and the port must genuinely overflow for that check
+    // to mean anything.
     const port = await page.getByTestId('ai-chat-scroll').boundingBox();
     const block = await page.getByTestId('ai-chat-empty').boundingBox();
     expect(block!.height).toBeGreaterThan(port!.height);
@@ -263,8 +261,8 @@ test.describe('Mobile responsiveness', () => {
     await page.setViewportSize(PHONE);
     await page.goto('/operations');
 
-    // The Gantt timeline is gone, not shrunk: at 390px its track is ~190px wide, which renders a
-    // typical run as a 4px sliver next to a name truncated to nothing.
+    // The Gantt timeline is dropped rather than shrunk: at phone width its track is too narrow
+    // to show a run as more than a sliver next to a name truncated to nothing.
     const list = page.getByTestId('ops-mobile');
     await expect(list).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('ops-time-axis')).toHaveCount(0);
@@ -299,8 +297,8 @@ test.describe('Mobile responsiveness', () => {
             { id: 'step-1', type: 'activity', position: { x: 80, y: 80 }, data: { label: 'Check Disk', activityType: 'runScript', config: { script: 'Get-PSDrive C' } } },
             { id: 'step-2', type: 'activity', position: { x: 360, y: 80 }, data: { label: 'Email Result', activityType: 'emailNotification', config: {} } },
           ],
-          // Handle-less edge, exactly like real workflow JSON — must still render a line
-          // (regression guard: requires withDefaultEdgePorts + connectable nodes).
+          // Handle-less edge, exactly like real workflow JSON. Rendering a line for it requires
+          // withDefaultEdgePorts plus connectable nodes.
           edges: [{ id: 'e1', source: 'step-1', target: 'step-2', type: 'labeled', data: { label: 'On Success' } }],
         }),
       }),
@@ -311,9 +309,9 @@ test.describe('Mobile responsiveness', () => {
     // Read-only graph: hint + the reused nodes render, but no editor library tabs.
     await expect(page.getByText(/read-only view/i)).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('.react-flow__node[data-id="step-1"]')).toBeVisible({ timeout: 20_000 });
-    // The edge must be created in the DOM — handle-less edges were silently DROPPED by
-    // React Flow before the fix (unresolvable ports), so it wasn't in the tree at all.
-    // (toBeAttached, not toBeVisible: Playwright reports SVG <g> groups as "hidden".)
+    // The edge must exist in the DOM: React Flow silently drops edges whose ports it cannot
+    // resolve, which leaves them out of the tree entirely.
+    // toBeAttached, not toBeVisible: Playwright reports SVG <g> groups as hidden.
     await expect(page.locator('.react-flow__edge[data-id="e1"]')).toBeAttached({ timeout: 20_000 });
     await expect(page.locator('.react-flow__edge[data-id="e1"] .react-flow__edge-path')).toBeAttached();
     await expect(page.getByRole('tab', { name: /nodes/i })).toHaveCount(0);

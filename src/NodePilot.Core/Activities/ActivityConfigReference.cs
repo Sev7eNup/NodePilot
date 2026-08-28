@@ -12,10 +12,9 @@ public sealed record ActivityConfigKeyDescriptor(
     string Description);
 
 /// <summary>
-/// Purpose + config-key schema for one activity type. <see cref="Description"/> is the one-line
-/// purpose (what the MCP tools surface); <see cref="PromptNotes"/> carries the extra semantics the
-/// AI prompt needs — success rules, per-operation key matrices, "use X not Y" steering — that would
-/// bloat the one-liner.
+/// Purpose and config-key schema for one activity type. <see cref="Description"/> is the one-line
+/// purpose the MCP tools surface; <see cref="PromptNotes"/> holds the extra semantics the AI prompt
+/// needs, such as success rules and per-operation key matrices.
 /// </summary>
 public sealed record ActivityConfigEntry(
     string Description,
@@ -25,16 +24,15 @@ public sealed record ActivityConfigEntry(
 /// <summary>
 /// The curated per-activity config reference, parsed once from the embedded JSON.
 ///
-/// <para><see cref="ActivityCatalog"/> deliberately carries only cross-cutting facts (category,
-/// remote flag, stable OUTPUT params) — not CONFIG keys. This type fills that gap and is the single
-/// source for both consumers: <c>NodePilot.Mcp</c> serves it as a resource/tool, and
-/// <c>NodePilot.Ai</c> renders the AI prompts' activity-catalog section from it. It lives in Core so
-/// neither has to depend on the other.</para>
+/// <para><see cref="ActivityCatalog"/> holds only cross-cutting facts (category, remote flag,
+/// stable output params), not config keys. This type covers the config keys for both consumers:
+/// <c>NodePilot.Mcp</c> serves it as a resource and tool, and <c>NodePilot.Ai</c> renders the
+/// activity-catalog section of the AI prompts from it. It lives in Core so neither project has to
+/// depend on the other.</para>
 ///
-/// <para>The keys are authoritative against <c>NodePilot.Engine/Activities/*.cs</c> and
-/// <c>Triggers/*.cs</c>. A wrong key here is not cosmetic: an agent authoring a node from it sets a
-/// key the engine never reads, so the node looks right and silently does nothing.
-/// <c>ActivityConfigReferenceTests</c> guards coverage and shape.</para>
+/// <para>The keys must match <c>NodePilot.Engine/Activities/*.cs</c> and <c>Triggers/*.cs</c>. A
+/// wrong key makes an agent author a node that sets a key the engine never reads, so the node looks
+/// correct and does nothing. <c>ActivityConfigReferenceTests</c> guards coverage and shape.</para>
 /// </summary>
 public static class ActivityConfigReference
 {
@@ -42,7 +40,7 @@ public static class ActivityConfigReference
 
     private static readonly JsonSerializerOptions ReadOptions = new(JsonSerializerDefaults.Web);
 
-    /// <summary>The raw embedded JSON, verbatim — served as the MCP resource body.</summary>
+    /// <summary>The raw embedded JSON, served verbatim as the MCP resource body.</summary>
     public static string RawJson { get; }
 
     /// <summary>Parsed entries keyed by activity type.</summary>

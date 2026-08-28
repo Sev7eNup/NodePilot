@@ -2,30 +2,28 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 28 — Step-Test mit Kontext (lines 2516-2589).
+ * E2ETests.md part 28 — step test with context.
  *
- * The StepTestPanel (components/designer/properties/StepTestPanel.tsx) is mounted inside the
- * PropertiesPanel's collapsible "Test & Debug" section for any non-trigger activity when a
- * workflowId is present. It:
- *   - POSTs /api/workflows/{id}/steps/{stepId}/test with { mockVariables, configOverride }
- *     (configOverride = the LIVE editor config, so unsaved edits are tested),
- *   - has four modes (Empty / Last run / Pick a run / Manual mocks); lastRun/pickRun pull from
- *     GET .../test-context (+ /test-context/runs for the run picker),
+ * StepTestPanel (components/designer/properties/StepTestPanel.tsx) is mounted inside the
+ * PropertiesPanel's collapsible "Test & Debug" section for any non-trigger activity that has a
+ * workflowId. It:
+ *   - POSTs /api/workflows/{id}/steps/{stepId}/test with { mockVariables, configOverride }, where
+ *     configOverride is the live editor config so unsaved edits are tested,
+ *   - has four modes (Empty / Last run / Pick a run / Manual mocks); lastRun and pickRun pull from
+ *     GET .../test-context and /test-context/runs,
  *   - renders the result block with output, error output, and structured params.
  *
- * Backend redaction: OutputRedactor masks secrets server-side BEFORE the /test response is
- * returned — the panel renders the response verbatim. We simulate that by returning an already
- * masked ("***") output and asserting it surfaces (the UI must not un-mask).
+ * OutputRedactor masks secrets server-side before the /test response is returned, and the panel
+ * renders that response verbatim. The tests simulate this with an already masked ("***") output.
  *
- * Hermetic: page.route() mocks only. SPA renders ENGLISH. Run button hidden for Viewers (canRun).
+ * Hermetic: page.route() mocks only. The SPA renders English.
  *
  * Covers:
- *   28.1 — Empty mode runs the step + shows live output (no execution row created — observed as
- *          /test being the only POST, never /execute).
+ *   28.1 — Empty mode runs the step and shows live output; /test is the only POST, never /execute.
  *   28.1b — redacted output ("***") surfaces in the result block.
  *   28.2 — Manual mocks: key=value lines are parsed into mockVariables on the /test POST.
- *   28.3 — configOverride carries the LIVE editor config (unsaved), not the DB-saved config.
- *   28.6 — Viewer: Run button hidden (canRun=false) — API also 403s but the UI gate is observable.
+ *   28.3 — configOverride carries the live editor config, not the config saved in the database.
+ *   28.6 — Viewer: the Run button is hidden (canRun=false); the API rejects the call as well.
  */
 
 const WF_ID = 'b28b28b2-0000-0000-0000-00000000b28b';
@@ -68,7 +66,7 @@ async function openStepTest(page: Page, scriptConfig: Record<string, unknown>) {
   await node(page, 'step-probe').click({ position: { x: 15, y: 15 } });
   await expect(page.getByText(/run script/i).first()).toBeVisible({ timeout: 10_000 });
 
-  // The "Test & Debug" section is collapsible + closed by default → click its header to expand.
+  // The "Test & Debug" section is collapsed by default, so click its header to expand it.
   const section = page.getByRole('button', { name: /test & debug/i }).first();
   await expect(section).toBeVisible({ timeout: 10_000 });
   await section.click();
@@ -90,7 +88,7 @@ test.describe('Step-Test mit Kontext (Teil 28)', () => {
         body: JSON.stringify({ success: true, output: 'PSDrive C OK', errorOutput: null, outputParameters: {}, durationMs: 18, errorMessage: null }),
       });
     });
-    // A step-test must NOT create a WorkflowExecution — guard by flagging any /execute hit.
+    // A step test must not create a WorkflowExecution, so flag any /execute hit.
     await page.route(`**/api/workflows/${WF_ID}/execute`, (route) => {
       calls.executeHit = true;
       return route.fulfill({ status: 202, contentType: 'application/json', body: '{}' });

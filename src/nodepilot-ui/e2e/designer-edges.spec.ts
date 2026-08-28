@@ -2,23 +2,21 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 4 — Edges (Verbindungen) & Bedingungen (lines 558-746).
+ * E2ETests.md part 4 - edges (connections) and conditions.
  *
- * Hermetic: page.route() mocks only. Workflow is locked-by-me → editable (State B), so the
- * edge-properties panel, the condition builder, the disable toggle and delete are all live.
+ * Hermetic: page.route() mocks only. The workflow is locked by the current user and therefore
+ * editable, so the edge-properties panel, the condition builder, the disable toggle and delete
+ * are all live.
  *
- * Creating an edge by DRAGGING from one node handle to another is React-Flow d3-drag and is
- * NOT synthesizable with Playwright (4.1 create-via-drag is skipped with a reason). Instead we
- * PRE-SEED edges in definitionJson and exercise selection / condition-editing / disable / delete
- * — which is where the actual logic + persistence lives.
+ * Creating an edge by dragging from one node handle to another is React Flow d3-drag and cannot
+ * be synthesized with Playwright, so edges are pre-seeded in definitionJson and the specs cover
+ * selection, condition editing, disable and delete, where the logic and persistence live.
  *
  * The condition editor (ConditionBuilder.tsx) renders comparison operators as <option> labels
- * via OP_LABELS: == "equals", != "not equals", < "less than", > "greater than", <= "≤",
- * >= "≥", contains, startsWith "starts with", endsWith "ends with", matches "matches regex",
- * isEmpty "is empty", isNotEmpty "is not empty", isTrue "is true", isFalse "is false".
- * Unary ops (isEmpty/isNotEmpty/isTrue/isFalse) hide the right-hand operand picker.
- * AND/OR group-operator buttons appear only when a group has >1 child; NOT renders for a
- * pre-seeded `not` node. The SPA renders ENGLISH under Playwright.
+ * from OP_LABELS; the full list is in ALL_OPERATOR_LABELS below. Unary ops
+ * (isEmpty/isNotEmpty/isTrue/isFalse) hide the right-hand operand picker, AND/OR group-operator
+ * buttons appear only when a group has more than one child, and NOT renders for a pre-seeded
+ * `not` node. The SPA renders English under Playwright.
  */
 
 const WF_ID = 'e4e4e4e4-4444-4444-4444-444444444444';
@@ -29,23 +27,21 @@ const EDGE_ID = 'edge-main';
 
 interface DefOverrides {
   edgeData?: Record<string, unknown>;
-  /** Adds an unconnected third node — the re-route target for the edge-detach case (4.6). */
+  /** Adds an unconnected third node, the re-route target for the edge-detach case (4.6). */
   withAltTarget?: boolean;
 }
 
 /**
- * Die Detach-Fixture (`withAltTarget`) stapelt alle drei Nodes in EINER Spalte statt sie
- * nebeneinander zu legen. Das ist nicht Geschmack, sondern folgt aus zwei Eigenheiten der
- * Canvas, die die Tests 4.6–4.9 sonst reihum treffen:
+ * The detach fixture (`withAltTarget`) stacks all three nodes in one column instead of placing
+ * them side by side, for two reasons:
  *
- *  - Der Rechtsklick klappt das Connection-Panel auf, die Canvas wird schmaler, und
- *    `onlyRenderVisibleElements` hängt die jetzt überstehende RECHTE Node-Spalte aus dem
- *    DOM — genau die Nodes, die die Tests danach anklicken. Bei gleicher x-Koordinate für
- *    alle Nodes kann horizontal nichts überstehen.
- *  - Über der Canvas schweben Bedienelemente an festen Bildschirmpositionen: der
- *    „New Workflow"-Button oben mittig und die MiniMap unten rechts. Beide schlucken Klicks.
- *    In einer vertikal gespreizten Spalte liegen die angeklickten Nodes in der Mitte und
- *    damit frei.
+ *  - A right-click opens the connection panel, which narrows the canvas, and
+ *    `onlyRenderVisibleElements` then removes the nodes that no longer fit from the DOM,
+ *    including the ones the tests click next. With one shared x coordinate nothing can
+ *    overflow horizontally.
+ *  - Controls float above the canvas at fixed screen positions: the New Workflow button at top
+ *    centre and the MiniMap at bottom right, both of which swallow clicks. In a vertically
+ *    spread column the clicked nodes sit in the middle and stay clear of them.
  */
 function definition({ edgeData, withAltTarget }: DefOverrides = {}) {
   const altNode = withAltTarget

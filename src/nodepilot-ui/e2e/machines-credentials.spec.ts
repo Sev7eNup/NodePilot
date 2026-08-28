@@ -2,21 +2,18 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * Part 20 — Machines & Credentials (E2ETests.md ~2008-2072).
+ * Part 20 — Machines and Credentials (E2ETests.md).
  *
- * Machines live on /machines (MachinesPage); Credentials are managed inline on the
- * /settings page (PersonalSettings section). No real backend — every /api call is a
- * per-test page.route mock layered over the hermetic catch-all in fixtures/mockApi.ts.
+ * Machines live on /machines (MachinesPage); credentials are managed inline on the /settings
+ * page in the PersonalSettings section. There is no backend: every /api call is a per-test
+ * page.route mock layered over the hermetic catch-all in fixtures/mockApi.ts.
  *
- * Locale: the SPA renders EN under Playwright but may render DE on other machines, so
- * every visible-text selector is bilingual. Credential/machine dialogs use
- * role="presentation" (not role="dialog"), so we scope by the dialog heading's parent.
+ * The SPA renders English under Playwright but German elsewhere, so every visible-text selector
+ * is bilingual. Machine and credential dialogs use role="presentation" rather than role="dialog",
+ * so they are scoped by the parent of the dialog heading.
  *
- * Test 20.1 — create a machine + Test-Connection (mocked WinRM result, success & failure).
- * Test 20.2 — create a credential, UI masks the password (never echoed back).
- * Test 20.3 — delete a credential (confirm). The dependency-warning / force-delete flow
- *             described in E2ETests.md is NOT implemented in the UI, so only the plain
- *             confirm+DELETE round-trip is covered (see PARTIAL note in the report).
+ * The dependency-warning and force-delete flow for credentials is not implemented in the UI, so
+ * credential deletion is covered only as a confirm plus DELETE round-trip.
  */
 
 const CRED_ID = 'cccccccc-0000-0000-0000-000000000001';

@@ -30,9 +30,8 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     environment:
-      # Deliberately use a NodePilot-specific input name. Legacy .env files used the
-      # Grafana variable directly and may still contain the former documented default;
-      # they must fail closed until an operator supplies a newly generated credential.
+      # Read from a NodePilot-specific variable so an .env without it fails closed
+      # instead of starting Grafana with a known default password.
       GF_SECURITY_ADMIN_PASSWORD: "${NODEPILOT_GRAFANA_ADMIN_PASSWORD:?NODEPILOT_GRAFANA_ADMIN_PASSWORD must be set in .env}"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"

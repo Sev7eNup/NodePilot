@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
-// The two providers put their retrying strategy in different places: SQL Server's is in the root
-// Microsoft.EntityFrameworkCore namespace, Npgsql's in its own root namespace. Both are public and
-// both are the documented base for customising retry behaviour.
+// The two providers keep their retrying strategy in different namespaces: SQL Server in the root
+// Microsoft.EntityFrameworkCore namespace, Npgsql in its own. Both are the documented base for
+// customising retry behaviour.
 using Npgsql.EntityFrameworkCore.PostgreSQL;
 
 namespace NodePilot.Data.Availability;

@@ -98,7 +98,7 @@ export function useDisplayedGraph({
     });
   }, [edges, edgesAnimated, nodes, hiddenActivityTypes, flowingVarsPerEdge, dataFlowOverlayEnabled, detachedEdgeId]);
 
-  // Compute in-degree per node for the fan-in badge (automatic Junction indicator)
+  // Compute in-degree per node for Junction mode and invalid direct fan-in badges.
   const nodesWithDegree = useMemo(() => {
     const inDegree = new Map<string, number>();
     for (const e of edges) {

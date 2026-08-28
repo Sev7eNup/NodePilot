@@ -1,19 +1,19 @@
-# Erzwingt einen NTLM-Request gegen POST /api/auth/windows und prueft, dass NodePilot ihn
-# ablehnt (W19, App-Ebene). AUSFUEHREN AUF: npcli01.
+# Forces an NTLM request against POST /api/auth/windows and checks that NodePilot rejects
+# it (W19, application level). RUN ON: npcli01.
 #
-# Aufruf: powershell -NoProfile -ExecutionPolicy Bypass -File .\Invoke-NtlmProbe.ps1
-#         .\Invoke-NtlmProbe.ps1 -Mode Alias      # ueber den SPN-freien DNS-Alias
+# Usage: powershell -NoProfile -ExecutionPolicy Bypass -File .\Invoke-NtlmProbe.ps1
+#        .\Invoke-NtlmProbe.ps1 -Mode Alias      # via the SPN-less DNS alias
 #
-# WICHTIG -- Reihenfolge im Feldtest:
-#   W19 laeuft im GPO-AUDITMODUS (NTLM noch erlaubt). Nur dann erreicht der Request
-#   ueberhaupt den Applikationszweig in AuthController.WindowsLogin, der
-#   Identity.AuthenticationType == "NTLM" ablehnt und den Audit-Reason
-#   'windows_ntlm_disabled' schreibt.
-#   Sobald die GPO auf "Deny all accounts" steht (W20), weist bereits SSPI ab -- der
-#   Client sieht dann ein nacktes 401 aus dem Negotiate-Handler OHNE Applikations-Audit.
-#   Beide Paesse zusammen belegen Punkt 4 der Feldtest-Matrix; einer allein nicht.
+# Order in the field test:
+#   W19 runs in GPO audit mode (NTLM still allowed). Only then does the request reach the
+#   application branch in AuthController.WindowsLogin that rejects
+#   Identity.AuthenticationType == "NTLM" and writes the audit reason
+#   'windows_ntlm_disabled'.
+#   Once the GPO is set to "Deny all accounts" (W20), SSPI rejects first and the client
+#   sees a bare 401 from the Negotiate handler without an application audit entry.
+#   Both passes together prove point 4 of the field test matrix; one alone does not.
 #
-# klist purge allein reicht NICHT: der Client holt sofort ein neues TGT.
+# klist purge alone is not enough: the client fetches a new TGT right away.
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', '',
     Justification = 'Wegwerf-Lab-Credentials. Der Probe-Zweck verlangt ein NetworkCredential mit explizitem Paketnamen NTLM -- das nimmt ohnehin Klartext entgegen.')]
 param(
@@ -28,9 +28,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-# Beim Alias-Modus zeigt der Name auf dieselbe IP, traegt aber keinen HTTP/-SPN. Der KDC
-# antwortet mit KDC_ERR_S_PRINCIPAL_UNKNOWN, SPNEGO faellt auf NTLM zurueck. Die zweite
-# SAN im Kestrel-Zertifikat verhindert dabei ein TLS-Interstitial.
+# In alias mode the name points at the same IP but carries no HTTP/ SPN. The KDC answers
+# KDC_ERR_S_PRINCIPAL_UNKNOWN and SPNEGO falls back to NTLM. The second SAN in the Kestrel
+# certificate prevents a TLS interstitial.
 $targetBase = if ($Mode -eq 'Alias') { ([Uri]$Base).Scheme + '://' + $NtlmAliasFqdn } else { $Base }
 $url = "$targetBase/api/auth/windows"
 
@@ -41,8 +41,8 @@ $handler.AllowAutoRedirect = $false
 $handler.UseCookies = $true
 
 if ($Mode -eq 'CredentialCache') {
-    # CredentialCache mit explizitem Paketnamen "NTLM" bindet das Auth-Paket hart --
-    # deterministischer als der Umweg ueber einen fehlenden SPN.
+    # A CredentialCache with the explicit package name "NTLM" pins the auth package, which
+    # is more deterministic than going through a missing SPN.
     $cache = New-Object System.Net.CredentialCache
     $cache.Add([Uri]$targetBase, 'NTLM',
         (New-Object System.Net.NetworkCredential($SamAccountName, $Password, $NetbiosDomain)))
@@ -64,11 +64,9 @@ try {
     $status = [int]$resp.StatusCode
     $body = $resp.Content.ReadAsStringAsync().Result
 
-    # Contains + GetValues statt TryGetValues([ref]): der out-Parameter erwartet
-    # IEnumerable<string>, eine PowerShell-[ref] auf @() ist Object[] und die Konvertierung
-    # wirft. Frueher landete dieser Wurf im catch, ueberschrieb den Body und liess
-    # $setAuthCookie auf $false stehen -- die Probe meldete dann PASS ("keine Session"),
-    # obwohl die Cookie-Pruefung nie gelaufen war. Ein gruener Test ohne Messung.
+    # Contains + GetValues instead of TryGetValues([ref]): the out parameter expects
+    # IEnumerable<string>, and a PowerShell [ref] on @() is Object[], so the conversion
+    # throws. Such a throw would be caught below and the cookie check would never run.
     if ($resp.Headers.Contains('Set-Cookie')) {
         $cookies = @($resp.Headers.GetValues('Set-Cookie'))
         $setAuthCookie = @($cookies | Where-Object { $_ -like 'np_auth=*' -and $_ -notlike 'np_auth=;*' }).Count -gt 0
@@ -81,16 +79,14 @@ try {
     $handler.Dispose()
 }
 
-# Entscheidend: ein nacktes 401 beweist NICHTS.
+# A bare 401 proves nothing.
 #
-# Der Negotiate-Handler challenged mit "WWW-Authenticate: Negotiate". Ein CredentialCache,
-# der nur fuer das Paket "NTLM" registriert ist, findet dafuer keinen Eintrag und schickt
-# ueberhaupt keinen Authorization-Header -- der Server sieht nie einen NTLM-Versuch und
-# antwortet mit einem leeren 401. Genau das ist am 2026-08-02 im Lab passiert: die Probe
-# meldete PASS, im Audit stand aber keine einzige windows_ntlm_disabled-Zeile.
+# The Negotiate handler challenges with "WWW-Authenticate: Negotiate". A CredentialCache
+# registered only for the package "NTLM" finds no entry for that and sends no Authorization
+# header at all, so the server never sees an NTLM attempt and answers with an empty 401.
 #
-# Belegend ist deshalb nur die Meldung aus AuthController.WindowsLogin. Ein 401 ohne
-# diesen Text ist UNSCHLUESSIG und wird als Fehlschlag gewertet, nicht als Erfolg.
+# Only the message from AuthController.WindowsLogin is proof. A 401 without that text is
+# inconclusive and counts as a failure, not a success.
 $appRejected = $body -match 'NTLM fallback is disabled'
 
 $result = [pscustomobject]@{
@@ -99,10 +95,10 @@ $result = [pscustomobject]@{
     Status        = $status
     Body          = ($body -replace '\s+', ' ').Trim()
     SetAuthCookie = $setAuthCookie
-    # Ohne dieses Flag waere ein Absturz mitten in der Messung von einem echten
-    # "kein Cookie gesetzt" nicht zu unterscheiden.
+    # Without this flag a crash during the measurement would be indistinguishable from a
+    # genuine "no cookie set".
     ProbeFailed   = $probeFailed
-    # True nur, wenn die Anwendung den NTLM-Versuch aktiv abgelehnt hat.
+    # True only when the application actively rejected the NTLM attempt.
     AppRejected   = $appRejected
 }
 

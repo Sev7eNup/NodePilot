@@ -2,12 +2,12 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
 /**
- * Auth-Lifecycle E2E. Mock-driven so the suite stays deterministic and CI doesn't
- * need a Postgres backend to assert the SPA's login + logout + cookie behaviour.
+ * Auth lifecycle E2E. Mock-driven so the suite stays deterministic and needs no
+ * Postgres backend to assert the SPA login, logout and cookie behaviour.
  *
  * Maps to scenarios in [E2ETests.md](../../../docs/testing/E2ETests.md):
  *   - Test 25.1 (Bootstrap-Token-Flow)
- *   - Test 25.4 (HttpOnly-Cookie inspection — partial; the `Secure` flag isn't
+ *   - Test 25.4 (HttpOnly cookie inspection, partial: the `Secure` flag is not
  *     observable in jsdom-style mocks but the HttpOnly side is)
  *   - Test 25.7 (disabling a user invalidates its session)
  *   - Test 26.1 (viewer cannot write)
@@ -27,9 +27,9 @@ test.describe('Auth lifecycle', () => {
       }),
     );
 
-    // Login endpoint flips the flag and reflects a successful login. This mock plays a
-    // server whose bootstrap window is already closed (users exist), so plain
-    // username/password succeeds — the setup-token gate has its own test (25.1b).
+    // The login route flips the flag and returns a successful login. The mock plays a
+    // server whose bootstrap window is already closed (users exist), so username and
+    // password alone succeed. The setup-token gate has its own test (25.1b).
     await page.route('**/api/auth/login', async (route) => {
       const body = route.request().postDataJSON?.() ?? {};
       if (typeof body === 'object' && body.username === 'admin' && body.password) {
@@ -38,9 +38,9 @@ test.describe('Auth lifecycle', () => {
           status: 200,
           contentType: 'application/json',
           headers: {
-            // Mock both auth and CSRF cookies. HttpOnly prevents JS access — verified
-            // separately because Playwright doesn't surface the flag from a Set-Cookie
-            // mock the same way DevTools does in a real flow.
+            // Mock both auth and CSRF cookies. HttpOnly blocks JS access; it is checked
+            // separately because Playwright does not surface the flag from a mocked
+            // Set-Cookie the way DevTools does in a real flow.
             'Set-Cookie': [
               'np_auth=mock-jwt; HttpOnly; SameSite=Lax; Path=/',
               'np_csrf=mock-csrf; SameSite=Lax; Path=/',
@@ -54,9 +54,9 @@ test.describe('Auth lifecycle', () => {
 
     await page.goto('/login');
 
-    // The login form's <label>s aren't programmatically associated with their inputs,
-    // so target by stable, language-agnostic attributes (autocomplete / input type)
-    // instead of getByLabel — keeps the test green under the DE-default i18n.
+    // The login form <label>s are not associated with their inputs, so target stable,
+    // language-agnostic attributes (autocomplete, input type) instead of getByLabel.
+    // That keeps the test working under the German default locale.
     await page.locator('input[autocomplete="username"]').fill('admin');
     await page.locator('input[type="password"]').fill('Admin#2025!');
     await page.getByRole('button', { name: /anmelden|sign\s?in|login/i }).click();
@@ -66,7 +66,7 @@ test.describe('Auth lifecycle', () => {
   });
 
   test('25.1b — bootstrap gate reveals the setup-token field and retries with X-Setup-Token', async ({ page }) => {
-    // Fresh-install flow: the server's AdminBootstrap gate answers the first login with
+    // Fresh-install flow: the AdminBootstrap gate answers the first login with
     // 401 SETUP_TOKEN_REQUIRED. The SPA must reveal its setup-token field and resend the
     // same credentials with the X-Setup-Token header.
     let loggedIn = false;
@@ -86,7 +86,7 @@ test.describe('Auth lifecycle', () => {
     await page.route('**/api/auth/login', async (route) => {
       const token = route.request().headers()['x-setup-token'];
       if (!token) {
-        // Same payload shape as AuthController's bootstrap gate.
+        // Same payload shape as the AuthController bootstrap gate.
         return route.fulfill({
           status: 401,
           contentType: 'application/json',
@@ -131,13 +131,13 @@ test.describe('Auth lifecycle', () => {
     await page.goto('/');
     await expect(page.getByText(/e2e-admin/i)).toBeVisible({ timeout: 15_000 });
 
-    // Now flip /me to 401 — simulates the Admin disabling this user mid-session.
+    // Flip /me to 401 to simulate an Admin disabling this user mid-session.
     await page.route('**/api/auth/me', (route) =>
       route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"disabled"}' }),
     );
 
-    // Trigger a navigation that re-checks auth. The router/auth guard should catch
-    // the 401 and redirect to /login.
+    // Trigger a navigation that re-checks auth. The auth guard should catch the 401
+    // and redirect to /login.
     await page.goto('/workflows');
 
     await expect(page).toHaveURL(/\/login/);
@@ -173,7 +173,7 @@ test.describe('Auth lifecycle', () => {
     await page.route('**/api/auth/methods', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ local: true, ldap: false, windows: false, windowsEndpoint: null }) }),
     );
-    // Every login attempt is rejected → the store's login() rejects → setError().
+    // Every login attempt is rejected, so the store login() rejects and calls setError().
     await page.route('**/api/auth/login', (route) =>
       route.fulfill({ status: 401, contentType: 'application/json', body: '{"error":"invalid"}' }),
     );
@@ -183,7 +183,7 @@ test.describe('Auth lifecycle', () => {
     await page.locator('input[type="password"]').fill('definitely-wrong');
     await page.getByRole('button', { name: /sign\s?in|anmelden|login/i }).click();
 
-    // Inline error banner appears; we never leave the login page; the button re-enables for a retry.
+    // The inline error banner appears, the page stays on /login, and the button re-enables.
     await expect(page.getByText(/invalid credentials|ungültige anmeldedaten/i)).toBeVisible({ timeout: 10_000 });
     await expect(page).toHaveURL(/\/login/);
     await expect(page.getByRole('button', { name: /sign\s?in|anmelden|login/i })).toBeEnabled();
@@ -201,7 +201,7 @@ test.describe('Auth lifecycle', () => {
           : '{"error":"unauthenticated"}',
       }),
     );
-    // Server advertises Windows-Negotiate as an available auth method.
+    // The server advertises Windows Negotiate as an available auth method.
     await page.route('**/api/auth/methods', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ local: true, ldap: false, windows: true, windowsEndpoint: '/api/auth/windows' }) }),
     );
@@ -221,7 +221,7 @@ test.describe('Auth lifecycle', () => {
     await winButton.click();
 
     await expect.poll(() => windowsHit, { timeout: 10_000 }).toBe(true);
-    // The SSO handler sets the store + navigates to the dashboard — the login card unmounts.
+    // The SSO handler sets the store and navigates to the dashboard, unmounting the login card.
     await expect(page).not.toHaveURL(/\/login/);
     await expect(winButton).toHaveCount(0);
   });

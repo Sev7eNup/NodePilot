@@ -4,15 +4,14 @@ namespace NodePilot.Core.Audit;
 
 /// <summary>
 /// Builds the compact JSON detail strings passed to <see cref="IAuditWriter.LogAsync"/>.
-/// Replaces the inline <c>$"{{\"foo\":{JsonSerializer.Serialize(x)}, ...}}"</c> pattern that
-/// was repeated across every controller — easier to read, harder to typo, and a single place
-/// to add invariants if the audit-row schema ever changes.
+/// Keeps detail serialization in one place instead of hand-written JSON at every call site,
+/// so invariants of the audit-row schema can be applied centrally.
 /// </summary>
 public static class AuditDetails
 {
     /// <summary>
     /// Serializes the supplied key/value pairs as a single-line JSON object. Insertion order
-    /// is preserved so the resulting JSON matches what callers used to build by hand.
+    /// of the fields is preserved.
     /// </summary>
     public static string Json(params (string Key, object? Value)[] fields)
     {

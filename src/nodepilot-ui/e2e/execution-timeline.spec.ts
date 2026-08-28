@@ -2,22 +2,11 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 57 — Gantt-Chart & Execution-Timeline (lines 3592-3611).
- *
- * Hermetic: page.route() mocks only. Both timeline surfaces are driven by REST
- * (/executions + /executions/{id}/steps), NOT SignalR, so they ARE reachable here:
- *
- *   57.2 — ExecutionsPage (/executions): clicking a terminal run row expands it in-place and
- *          renders the step list (status + output). Clicking is the deep-link; the step table
- *          shows each step's status badge and output/error.
- *
- *   57.1 — Designer ExecutionPanel → History tab → expand a run → StepTimeline → "Gantt" view.
- *          The shared GanttChart (timeline/GanttChart.tsx, data-testid="gantt-chart") renders
- *          one horizontal bar per step proportional to its runtime. We assert the chart mounts
- *          with the seeded steps and that switching List↔Gantt works.
- *
- * LIVE Gantt growth + "click bar selects node on canvas" round-trip needs SignalR (mocked 404),
- * so the live-grow assertion is skipped; the static (terminal-run) Gantt fully covers the bars.
+ * E2ETests.md section "Teil 57": Gantt chart and execution timeline. Hermetic: page.route()
+ * mocks only. Both timeline surfaces read REST (/executions and /executions/{id}/steps) rather
+ * than SignalR, so they are reachable here: 57.2 expands a run row on ExecutionsPage into its
+ * step list, and 57.1 opens the designer History tab and switches the StepTimeline to the shared
+ * GanttChart. Live-growing bars need the SignalR stream and are skipped.
  */
 
 const WF_ID = '57575757-0000-0000-0000-000000000057';
@@ -29,7 +18,7 @@ function workflow(overrides: Record<string, unknown> = {}) {
     name: 'Timeline_WF',
     description: '',
     isEnabled: true,
-    checkedOutByUserId: MOCK_USER.id, // lock-by-me so the editor mounts fully (ExecutionPanel present)
+    checkedOutByUserId: MOCK_USER.id, // locked by the current user so the ExecutionPanel mounts
     checkedOutByUserName: MOCK_USER.username,
     checkedOutAt: '2026-06-01T00:00:00.000Z',
     definitionJson: JSON.stringify({
@@ -70,7 +59,7 @@ function execution() {
   };
 }
 
-// Three steps with distinct, increasing durations → bars of clearly different widths.
+// Three steps with distinct, increasing durations, so the bars have clearly different widths.
 function steps() {
   return JSON.stringify([
     {
@@ -104,7 +93,7 @@ async function mockTimeline(page: Page) {
   );
   // Both /executions and /executions?workflowId=...&terminalOnly=true land here.
   await page.route('**/api/executions**', (route) => {
-    // Don't shadow the /steps sub-route (registered after this wins anyway, but be explicit).
+    // Let the /steps sub-route handle its own requests instead of shadowing it.
     if (route.request().url().includes('/steps')) return route.fallback();
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([execution()]) });
   });
@@ -143,15 +132,14 @@ test.describe('Gantt-Chart & Execution-Timeline (Teil 57)', () => {
 
     await page.goto(`/workflows/${WF_ID}`);
 
-    // The bottom ExecutionPanel mounts with the editor. Switch from the default Live tab to History.
-    // The tab's accessible name is its text "History" (+ optional count badge) — no anchors so the
-    // badge digit doesn't break the match.
+    // The bottom ExecutionPanel mounts with the editor; switch from the default Live tab to History.
+    // Its accessible name is "History" plus an optional count badge, so the match is unanchored.
     const historyTab = page.getByRole('button', { name: /history/i });
     await expect(historyTab).toBeVisible({ timeout: 15_000 });
     await historyTab.click();
 
-    // The terminal run appears in the History grid. The clickable toggle is the row div
-    // (role="row", data-row-id=<execId>) — NOT the inner copy-id button, which stops propagation.
+    // The run appears in the History grid. The clickable toggle is the row div (data-row-id),
+    // not the inner copy-id button, which stops propagation.
     const runRow = page.locator(`[data-row-id="${EXEC_ID}"]`);
     await expect(runRow).toBeVisible({ timeout: 10_000 });
     await runRow.click();
@@ -164,8 +152,8 @@ test.describe('Gantt-Chart & Execution-Timeline (Teil 57)', () => {
     const gantt = page.getByTestId('gantt-chart');
     await expect(gantt).toBeVisible({ timeout: 10_000 });
 
-    // Bars are the absolutely-positioned colored divs inside each row's track. Three steps
-    // with non-null start+end → at least the succeeded/failed bars are present and have width.
+    // Bars are the absolutely positioned colored divs inside each row's track. All three steps
+    // have a start and an end, so at least two bars are rendered with a width.
     const bars = gantt.locator('div[style*="width"]');
     await expect.poll(async () => bars.count(), { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
 

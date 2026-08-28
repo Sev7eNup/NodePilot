@@ -3,11 +3,11 @@ using System.Text.Json;
 namespace NodePilot.Core.Clients;
 
 /// <summary>
-/// Reads the plain-JSON config under <c>%APPDATA%\NodePilot\config.json</c> that both
-/// HTTP-only clients share: the <c>np</c> CLI owns it (its <c>ConfigStore</c> adds the write
-/// side), the <c>nodepilot-mcp</c> server only reads it to fall back to a CLI-configured
-/// profile server. Non-secret connection settings only — tokens live in the DPAPI session
-/// store so a config backup never carries a usable session.
+/// Reads the plain-JSON config at <c>%APPDATA%\NodePilot\config.json</c> that both HTTP-only
+/// clients share: the <c>np</c> CLI owns it (its <c>ConfigStore</c> adds the write side), the
+/// <c>nodepilot-mcp</c> server only reads it to fall back to a CLI-configured profile server.
+/// Non-secret connection settings only; tokens live in the DPAPI session store, so a config
+/// backup never carries a usable session.
 /// </summary>
 public class ClientConfigStore
 {
@@ -41,8 +41,8 @@ public class ClientConfigStore
         }
         catch (JsonException)
         {
-            // Corrupt config → treat as empty rather than blocking the user. They can
-            // always `np config set server …` to repair, and `np auth login` re-creates.
+            // A corrupt config reads as empty rather than blocking the user: `np config set
+            // server ...` repairs it and `np auth login` re-creates it.
             return new CliConfig();
         }
     }

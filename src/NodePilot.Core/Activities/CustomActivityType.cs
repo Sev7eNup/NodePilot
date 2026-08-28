@@ -3,11 +3,11 @@ using System.Text.RegularExpressions;
 namespace NodePilot.Core.Activities;
 
 /// <summary>
-/// Single source of truth for the <c>custom:&lt;key&gt;</c> activity-type convention. Lives in Core
-/// (DB-free) so every layer agrees: the structural validator, the engine dispatch, the MCP analyzer
-/// and the frontend's mirror all key off the same prefix/grammar instead of scattering one-off
-/// checks. <see cref="ExecutorSentinel"/> is the fixed <c>IActivityExecutor.ActivityType</c> of the
-/// single executor that serves every custom activity; real nodes never use it bare.
+/// Single source of truth for the <c>custom:&lt;key&gt;</c> activity-type convention. It lives in
+/// Core (DB-free) so the structural validator, the engine dispatch, the MCP analyzer and the
+/// frontend mirror all use the same prefix and grammar. <see cref="ExecutorSentinel"/> is the fixed
+/// <c>IActivityExecutor.ActivityType</c> of the single executor that serves every custom activity;
+/// real nodes never use it bare.
 /// </summary>
 public static partial class CustomActivityType
 {

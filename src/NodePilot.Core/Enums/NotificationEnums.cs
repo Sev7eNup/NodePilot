@@ -1,11 +1,11 @@
 namespace NodePilot.Core.Enums;
 
 /// <summary>What happened that a notification rule can react to. Execution-* come from terminal
-/// workflow executions; global signal events (ServiceStale/MachineUnreachable/BacklogHigh/PendingHigh/
-/// CancelRateHigh) come from health/infra signals and fire per unhealthy episode.
-/// ExecutionRunningLong/ExecutionQueuedLong are execution-scoped but detected by polling live executions.
-/// ScheduleMissed/WorkflowNoRecentSuccess are signal-collected but workflow-scoped. Values are append-only — the names are the persisted contract
-/// (stored in NotificationRule.EventTypes and NotificationDeliveryAttempt.EventKey).</summary>
+/// workflow executions; ExecutionRunningLong and ExecutionQueuedLong are detected by polling live
+/// executions. ServiceStale, MachineUnreachable, BacklogHigh, PendingHigh and CancelRateHigh come
+/// from health signals and fire per unhealthy episode; ScheduleMissed and WorkflowNoRecentSuccess
+/// are signal-collected but workflow-scoped. Append-only: the names are the persisted contract in
+/// NotificationRule.EventTypes and NotificationDeliveryAttempt.EventKey.</summary>
 public enum NotificationEventType
 {
     ExecutionFailed = 0,
@@ -21,23 +21,24 @@ public enum NotificationEventType
     ScheduleMissed = 10,
     WorkflowNoRecentSuccess = 11,
     CredentialFailure = 12,
-    /// <summary>Gauge: a credential's ExpiresAt lies inside the warn window (or is already past).</summary>
+    /// <summary>A credential's ExpiresAt is inside the warn window or already past.</summary>
     CredentialExpiring = 13,
     /// <summary>
-    /// A modular system-alert policy episode — the pluggable alert-source design from ADR 0008. The concrete
-    /// producer is identified by <c>NotificationContext.SourceId</c>, not by a per-source enum value — this
-    /// single family carries every <c>ISystemAlertSource</c>. Deliberately NOT in
-    /// <c>NotificationRuleSemantics.SupportedEventTypes</c>, so the custom-rule API/editor never offers it;
-    /// only the system-policy surface emits it.
+    /// A modular system-alert policy episode (ADR 0008). The producer is identified by
+    /// <c>NotificationContext.SourceId</c> rather than a per-source enum value, so this one family
+    /// carries every <c>ISystemAlertSource</c>. It is absent from
+    /// <c>NotificationRuleSemantics.SupportedEventTypes</c>, so the custom-rule API and editor never
+    /// offer it; only the system-policy surface emits it.
     /// </summary>
     SystemAlert = 14,
 }
 
 /// <summary>
-/// Which alerting generation owns a <c>NotificationRule</c> row. <see cref="Custom"/> = the free-filter
-/// rules managed under <c>/api/alerting/rules</c>. <see cref="System"/> = a policy bound to a modular
-/// <c>ISystemAlertSource</c> (ADR 0008), managed under <c>/api/alerting/system</c>. Append-only; the value
-/// is the persisted contract and the discriminator the two management surfaces filter on.
+/// Which alerting generation owns a <c>NotificationRule</c> row. <see cref="Custom"/> = the
+/// free-filter rules managed under <c>/api/alerting/rules</c>. <see cref="System"/> = a policy
+/// bound to a modular <c>ISystemAlertSource</c> (ADR 0008), managed under
+/// <c>/api/alerting/system</c>. Append-only; the value is the persisted contract and the
+/// discriminator the two management surfaces filter on.
 /// </summary>
 public enum NotificationRuleKind
 {
@@ -79,7 +80,10 @@ public enum NotificationDeliveryStatus
     Failed = 2,
 }
 
-/// <summary>What a <see cref="NotificationRuleTarget"/> points at when the rule is folder/workflow scoped.</summary>
+/// <summary>
+/// What a <see cref="NotificationRuleTarget"/> points at when the rule is folder- or
+/// workflow-scoped.
+/// </summary>
 public enum NotificationTargetKind
 {
     Folder = 0,

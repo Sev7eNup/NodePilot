@@ -1,34 +1,33 @@
 import type { Page, Route } from '@playwright/test';
 
 /**
- * API mocks shared across E2E tests. Built on `page.route()` so every test gets
- * its own deterministic backend without spinning up the real ASP.NET Core host.
+ * API mocks shared across E2E tests. Built on `page.route()` so every test gets its own
+ * deterministic backend without starting the real ASP.NET Core host.
  *
- * Add new mocks by composing the helpers below — each one matches a specific
- * URL pattern and returns canned JSON. Tests that need to override a default
- * (e.g. simulate a 500) call `page.route()` AFTER `installDefaultMocks()` so
- * Playwright's last-installed-wins routing replaces only that endpoint.
+ * Add new mocks by composing the helpers below; each matches a URL pattern and returns
+ * canned JSON. To override a default (for example to simulate a 500), call `page.route()`
+ * after `installDefaultMocks()`: Playwright resolves the most recently added route first.
  */
 
 export const MOCK_USER = {
-  // `id` is what authStore.initialize() reads (`me.id`) to populate userId — the field
-  // the edit-lock UI compares against Workflow.checkedOutByUserId.
+  // authStore.initialize() reads `me.id` into userId, the field the edit-lock UI compares
+  // against Workflow.checkedOutByUserId.
   id: '00000000-0000-0000-0000-000000000099',
   username: 'e2e-admin',
   role: 'Admin',
 };
 
-// Host identity surfaced by the TopBar chip (GET /api/system/host-info). Exported so specs
-// can assert against the same values they're mocked with.
+// Host identity shown by the TopBar chip (GET /api/system/host-info). Exported so specs can
+// assert against the same values they are mocked with.
 export const MOCK_HOST = {
   machineName: 'NPSRV01',
   fqdn: 'npsrv01.corp.example.local',
   domain: 'corp.example.local',
 };
 
-/** Frontend mirror of GET /api/ai/knowledge/capabilities (kept inline to avoid importing src/).
- *  `llm` is the raw "LLM endpoint usable" flag that gates every AI button's visibility;
- *  `enabled` additionally requires the AiKnowledge master switch and gates the AI-Chat nav. */
+/** Frontend mirror of GET /api/ai/knowledge/capabilities, inline to avoid importing src/.
+ *  `llm` reports that the LLM endpoint is usable and gates every AI button's visibility;
+ *  `enabled` also requires the AiKnowledge master switch and gates the AI-Chat nav entry. */
 export interface KnowledgeCapabilities {
   enabled: boolean;
   llm: boolean;
@@ -38,13 +37,13 @@ export interface KnowledgeCapabilities {
   db: boolean;
 }
 
-/** Default caps: everything on (global-Admin view of a fully enabled install). */
+/** Default caps: everything on, the global-admin view of a fully enabled install. */
 export function capsJson(overrides: Partial<KnowledgeCapabilities> = {}): KnowledgeCapabilities {
   return { enabled: true, llm: true, docs: true, operational: true, sourceCode: true, db: true, ...overrides };
 }
 
-/** Mocks GET /api/ai/knowledge/capabilities with a JSON object — overrides the suite default
- *  from `installDefaultMocks` (Playwright resolves the most-recently-added route first). */
+/** Mocks GET /api/ai/knowledge/capabilities with a JSON object, overriding the suite default
+ *  from `installDefaultMocks`: Playwright resolves the most recently added route first. */
 export async function mockCaps(page: Page, caps: KnowledgeCapabilities) {
   await page.route('**/api/ai/knowledge/capabilities**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(caps) }),
@@ -52,26 +51,20 @@ export async function mockCaps(page: Page, caps: KnowledgeCapabilities) {
 }
 
 export async function installDefaultMocks(page: Page) {
-  // Pin the designer to the CLASSIC look AND the small node scale for the whole hermetic suite.
-  // Both are geometry knobs the canvas assertions in these specs were written against:
-  //  - designerTheme (default 'atelier') re-tokenises colors/geometry; the classic look must stay
-  //    byte-identical, so the entire existing suite keeps running against it. Atelier gets its own
-  //    dedicated specs (designer-atelier.spec.ts) that seed 'atelier' explicitly.
-  //  - nodeScaleIndex (default 3 = `lg` since the v2 store bump) changes how much room a node
-  //    occupies, and `fitView` turns that into a different pan/zoom for the same seeded positions.
-  //    At `lg`, ai-assistant's step-b slid under the bottom-right minimap, which then swallowed the
-  //    click (the hazard e2e/README.md already warns about). Pin `sm` so a future size tweak can
-  //    never reshuffle unrelated specs' canvas coordinates; the scale itself is covered by unit
-  //    tests (designStore.test.ts, CanvasSettings.test.tsx).
-  // `version: 3` matches the store's current persist version so the seed is taken as-is — at
-  // version 1 the store's own migration would read this pinned `sm` as "still on the old default"
-  // and lift it straight back to `lg`.
+  // Pin the designer to the classic look and the small node scale for the whole hermetic suite.
+  // Both are geometry knobs the canvas assertions rely on:
+  //  - designerTheme re-tokenises colors and geometry; the Atelier look has its own specs
+  //    (designer-atelier.spec.ts) that seed 'atelier' explicitly.
+  //  - nodeScaleIndex changes how much room a node occupies, and `fitView` turns that into a
+  //    different pan/zoom for the same seeded positions, which can move nodes under the minimap.
+  //    The scale itself is covered by unit tests (designStore.test.ts, CanvasSettings.test.tsx).
+  // `version: 3` matches the store's current persist version, so the seed is taken as-is
+  // instead of being migrated back to the current default.
   //
-  // Init scripts re-run on EVERY navigation (including page.reload) — an unconditional
-  // setItem would stomp state the app itself persisted mid-test (e.g. after clicking the
-  // Atelier toggle) and make persistence untestable. An app write always contains the full
-  // designStore state (nodeStyle & friends); seeds only carry a few keys — use that to only
-  // seed fresh contexts.
+  // Init scripts re-run on every navigation, page.reload included, so an unconditional setItem
+  // would stomp state the app itself persisted mid-test and make persistence untestable. An app
+  // write always contains the full designStore state (nodeStyle and friends) while a seed
+  // carries only a few keys; use that to seed fresh contexts only.
   await page.addInitScript(() => {
     const raw = localStorage.getItem('nodepilot-design');
     let appWritten = false;
@@ -82,28 +75,24 @@ export async function installDefaultMocks(page: Page) {
       }));
     }
   });
-  // Hermetic catch-all for any REST endpoint a test doesn't explicitly mock: return an
-  // empty 200 array instead of falling through to the real backend, where the cookie-less
-  // Playwright context gets a 401 → the client's interceptor redirects to /login and the
-  // page under test never mounts.
+  // Catch-all for any REST endpoint a test does not mock explicitly: return an empty 200
+  // array instead of falling through to the real backend, where the cookie-less Playwright
+  // context gets a 401 and the client's interceptor redirects to /login.
   //
-  // Match on `pathname.startsWith('/api/')` via a predicate — NOT the glob '**/api/**'.
-  // The glob also matches Vite's own source modules served at '/src/api/*.ts' in dev, so it
-  // would answer those JS module requests with `application/json`, triggering a strict-MIME
-  // "Failed to load module script" error that white-screens every lazy-loaded page chunk.
-  // `[]` (not 204) keeps list consumers' `.map` working; object consumers see harmless
-  // `undefined`. Registered FIRST so every specific mock below — and every per-test
-  // `page.route` — wins (Playwright resolves the most-recently-added matching route first).
+  // The match is a `pathname.startsWith('/api/')` predicate, not the glob '**/api/**': that
+  // glob also matches Vite's own source modules served at '/src/api/*.ts' in dev and would
+  // answer them as `application/json`, which fails the strict MIME check and white-screens
+  // every lazy-loaded page chunk. `[]` rather than 204 keeps list consumers' `.map` working.
+  // Registered first, so every specific mock below and every per-test `page.route` wins.
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
     (route) => emptyArray(route),
   );
 
-  // Database health — polled app-wide by useDatabaseHealth (mounted once in App). It lives
-  // under /healthz, NOT /api, so the predicate catch-all never answers it; without this mock
-  // the vite preview serves index.html (200, text/html) for the path, the probe's
-  // content-type guard reads that as "process unreachable", and the whole suite renders the
-  // TopBar pill red. Outage specs override this route after install (last-registered wins).
+  // Database health, polled app-wide by useDatabaseHealth. The path sits under /healthz, not
+  // /api, so the predicate catch-all never answers it. Unmocked, the vite preview serves
+  // index.html for it and the probe's content-type guard reads that as unreachable, turning
+  // the TopBar pill red suite-wide. Outage specs override this route after install.
   await page.route('**/healthz/database', (route) =>
     route.fulfill({
       status: 200, contentType: 'application/json',
@@ -111,24 +100,22 @@ export async function installDefaultMocks(page: Page) {
     }),
   );
 
-  // Auth — mimic a logged-in admin via the cookie-based H-5 flow.
+  // Auth: mimic a logged-in admin through the cookie-based login flow.
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_USER) }),
   );
 
-  // Host identity for the TopBar chip — every authenticated page renders it. Without an
-  // explicit object the catch-all returns `[]` and the chip (correctly) hides itself.
+  // Host identity for the TopBar chip, which every authenticated page renders. Without an
+  // explicit object the catch-all returns `[]` and the chip hides itself.
   await page.route('**/api/system/host-info', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_HOST) }),
   );
 
-  // AI capabilities — an OBJECT endpoint the catch-all would answer with `[]`. The default is
-  // deliberately `llm: true, enabled: false`: `llm` gates the designer KI-Assistent, the
-  // script-editor KI button and "New AI Workflow" (all unconditionally visible before the
-  // gating existed → this keeps every spec's DOM unchanged), while `enabled` gates the AI-Chat
-  // nav entry, which the catch-all's `[]` always kept hidden. Do NOT "improve" this to
-  // all-true — the AI-Chat nav entry would appear suite-wide and break sidebar assertions.
-  // Override per test with `mockCaps(page, capsJson({...}))`.
+  // AI capabilities: an object endpoint the catch-all would answer with `[]`. The default is
+  // `llm: true, enabled: false`. `llm` gates the designer AI assistant, the script-editor AI
+  // button and "New AI Workflow"; `enabled` gates the AI-Chat nav entry, which has to stay
+  // hidden here or sidebar assertions across the suite fail. Override per test with
+  // `mockCaps(page, capsJson({...}))`.
   await page.route('**/api/ai/knowledge/capabilities**', (route) =>
     route.fulfill({
       status: 200, contentType: 'application/json',
@@ -136,29 +123,28 @@ export async function installDefaultMocks(page: Page) {
     }),
   );
 
-  // Workflows list — empty by default; tests that need a specific workflow
+  // Workflows list, empty by default; tests that need a specific workflow
   // override this with `page.route('**/api/workflows', ...)` after install.
   await page.route('**/api/workflows', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
   );
 
-  // Machines / credentials / globals — empty fleet so dropdowns render but
-  // don't surprise the test with stale data.
+  // Machines, credentials and globals: an empty fleet, so dropdowns render
+  // without pulling in unrelated data.
   await page.route('**/api/machines', (route) => emptyArray(route));
   await page.route('**/api/credentials', (route) => emptyArray(route));
   await page.route('**/api/global-variables', (route) => emptyArray(route));
 
-  // Audit / executions also empty by default. (The catch-all already covers query-string
-  // variants like /executions?workflowId=… — these explicit entries just document intent.)
+  // Audit and executions are empty by default. The catch-all already covers query-string
+  // variants such as /executions?workflowId=x; these explicit entries document intent.
   await page.route('**/api/executions', (route) => emptyArray(route));
   await page.route('**/api/audit', (route) => emptyArray(route));
 
-  // Dashboard aggregate — the ONE endpoint the landing page ('/') is built from, and the source
-  // of the sidebar nav badges. It must be an object: the catch-all's `[]` is truthy, so the page
-  // gets past its `!stats` guard and then dies on `stats.last24h.total` inside the router's error
-  // boundary. Any spec that merely passes through '/' was racing that crash and only stayed green
-  // by asserting fast enough. Empty-but-valid, like the list mocks above; specs wanting real
-  // numbers override this after install (Playwright resolves the most-recently-added route first).
+  // Dashboard aggregate: the single endpoint the landing page ('/') is built from and the
+  // source of the sidebar nav badges. It must be an object, because the catch-all's `[]` is
+  // truthy, so the page passes its `!stats` guard and then fails on `stats.last24h.total`.
+  // Empty but valid, like the list mocks above; specs that need real numbers override this
+  // after install.
   await page.route('**/api/stats/dashboard**', (route) =>
     route.fulfill({
       status: 200,
@@ -175,9 +161,9 @@ export async function installDefaultMocks(page: Page) {
     }),
   );
 
-  // SignalR negotiation — return a 404 so the client falls back to long-polling
-  // and immediately gives up. Without this the editor sits in a perpetual
-  // "connecting..." state and breaks the redirect-after-mount expectations.
+  // SignalR negotiation: a 404 makes the client fall back to long-polling and give up at
+  // once. Without it the editor stays in a connecting state, which breaks the
+  // redirect-after-mount expectations.
   await page.route('**/hubs/**', (route) =>
     route.fulfill({ status: 404, body: 'mocked: SignalR disabled' }),
   );

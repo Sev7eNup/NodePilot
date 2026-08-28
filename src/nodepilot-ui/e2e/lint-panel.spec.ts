@@ -2,25 +2,24 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 70 — Lint Panel (lines 3866-3884).
+ * E2ETests.md Part 70 — lint panel.
  *
- * lintWorkflow() runs on every graph change; its count surfaces as the toolbar "lint pill"
- * (accessible name = the count, title = "{n} errors, {m} warnings"). Clicking the pill opens
- * the LintPanel ("Workflow validation") which lists each issue; clicking an issue jumps to the
- * node; X closes the panel. With zero issues the pill is not rendered at all (EditorHeader
- * only renders it when lintCount > 0) — so "no issues" is asserted as the absence of the pill.
+ * lintWorkflow runs on every graph change and its count surfaces as the toolbar lint pill, whose
+ * title reads "{n} errors, {m} warnings". Clicking the pill opens the LintPanel listing each
+ * issue, clicking an issue jumps to the node, and the X closes the panel. EditorHeader renders
+ * the pill only when lintCount is above zero, so a clean workflow is asserted as no pill.
  *
- * Seeded lint issue: an isolated node (no in/out edges, not a trigger) → error `isolated-node`.
- *
- * Hermetic: page.route mocks. Workflow locked-by-me. SPA renders ENGLISH under Playwright.
+ * The seeded issue is an isolated node with no edges, which lints as `isolated-node`.
+ * Hermetic: page.route mocks, the workflow is locked by the mock user, and the SPA renders
+ * English under Playwright.
  */
 
 const WF_ID = 'e7070707-7070-7070-7070-707070707070';
 
 function definition(withIssue: boolean) {
   const nodes = [
-    // Roots are trigger-only — the workflow must start at a trigger, otherwise lintWorkflow would
-    // (correctly) emit a `no-trigger` error and break the "clean = no pill" assertion (70.2).
+    // Only triggers are roots, so the workflow must start at one. Without a trigger lintWorkflow
+    // emits a `no-trigger` error, which would defeat the clean-workflow assertion.
     { id: 'step-trigger', type: 'activity', position: { x: 40, y: -140 },
       data: { label: 'Start', activityType: 'manualTrigger', config: {} } },
     { id: 'step-a', type: 'activity', position: { x: 40, y: 40 },
@@ -29,7 +28,7 @@ function definition(withIssue: boolean) {
       data: { label: 'Consumer', activityType: 'log', config: { message: 'hi' } } },
   ];
   if (withIssue) {
-    // Isolated node: connected by nothing → lintWorkflow reports an `isolated-node` error.
+    // A node with no edges at all makes lintWorkflow report an `isolated-node` error.
     nodes.push({ id: 'step-orphan', type: 'activity', position: { x: 40, y: 400 },
       data: { label: 'Lonely Step', activityType: 'log', config: { message: 'nobody calls me' } } });
   }
@@ -75,15 +74,15 @@ test.describe('Lint Panel (Teil 70)', () => {
 
     await pill.click();
 
-    // Panel opens with its header + the seeded isolated-node issue.
+    // The panel opens with its header and the seeded isolated-node issue.
     const panelHeading = page.getByRole('heading', { name: /workflow validation|workflow-validierung/i });
     await expect(panelHeading).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText(/Lonely Step|nicht mit dem Graph|not connected/i).first()).toBeVisible();
     // The issue code chip is rendered uppercased.
     await expect(page.getByText('ISOLATED-NODE', { exact: false }).first()).toBeVisible();
 
-    // Close via the panel's X button. The LintPanel root is the floating container that holds
-    // the heading; its close button carries aria-label "Close".
+    // The LintPanel root is the floating container holding the heading, and its close button
+    // carries the aria-label "Close".
     const panel = panelHeading.locator('xpath=ancestor::div[contains(@class,"absolute")][1]');
     await panel.getByRole('button', { name: /close|schließen/i }).first().click();
     await expect(panelHeading).toHaveCount(0, { timeout: 10_000 });
@@ -100,16 +99,16 @@ test.describe('Lint Panel (Teil 70)', () => {
     await expect(issueRow).toBeVisible({ timeout: 10_000 });
     await issueRow.click();
 
-    // Jumping to the node must not crash the editor (no React render error).
+    // Jumping to the node must not crash the editor with a React render error.
     expect(consoleErrors.join('\n')).not.toMatch(/Cannot read|is not a function|Maximum update depth/i);
   });
 
   test('70.2 — a clean workflow shows no lint pill at all', async ({ page }) => {
     await openEditor(page, false);
 
-    // With no lint issues, EditorHeader renders no pill (lintCount === 0 → button omitted).
+    // EditorHeader omits the pill button entirely when lintCount is zero.
     await expect(page.getByTitle(/\d+ errors,\s*\d+ warnings/i)).toHaveCount(0);
-    // And the panel cannot be open.
+    // Without the pill there is no way to open the panel.
     await expect(page.getByRole('heading', { name: /workflow validation|workflow-validierung/i })).toHaveCount(0);
   });
 });

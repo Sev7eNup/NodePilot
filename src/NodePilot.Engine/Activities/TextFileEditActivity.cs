@@ -7,49 +7,36 @@ using NodePilot.Engine.Security;
 namespace NodePilot.Engine.Activities;
 
 /// <summary>
-/// Line-oriented text-file editing on a remote (or local) target: append, prepend, insert,
-/// delete, replace, replaceLine. Replaces the recurring "write a runScript that calls
-/// Get-Content / Set-Content / -replace" pattern with a single-config activity that handles
-/// the awkward parts — BOM-aware encoding round-trip, line-ending preservation, atomic write,
-/// optional backup, dry-run.
+/// Line-oriented text-file editing on a remote or local target: append, prepend, insert,
+/// delete, replace, replaceLine. The edit runs as a PowerShell script, so one code path covers
+/// WinRM targets and the in-process engine, and the emitted script is visible in step details.
 ///
-/// The PowerShell side does all the work (consistent with FileOperationActivity etc.) so the
-/// same code path covers WinRM-targeted remote files and the localhost-bypass in-process
-/// PowerShell engine. Operator can inspect the emitted script in step details and reproduce
-/// it manually if a step misbehaves.
+/// Encoding is taken from the BOM (UTF-8, UTF-16-LE, UTF-16-BE), falling back to UTF-8 without
+/// BOM, and reused on write so the file keeps its shape; the encoding config key overrides
+/// detection. Line endings follow the first <c>\r\n</c> or <c>\n</c> in the source unless
+/// <c>lineEnding</c> forces <c>crlf</c> or <c>lf</c>.
 ///
-/// Encoding semantics: BOM-sniff (UTF-8, UTF-16-LE, UTF-16-BE). Without BOM the read falls
-/// back to UTF-8 no-BOM. Writes use the detected encoding by default so a file's existing
-/// shape survives the round-trip. The encoding key in config overrides detection.
+/// The whole file is read into memory, so <c>maxFileSizeMB</c> (default 50, configurable via
+/// <c>FileSystemOperation:TextEdit:MaxFileSizeMB</c>) caps the size this activity accepts.
 ///
-/// Line-ending semantics: the first <c>\r\n</c> vs <c>\n</c> in the source decides
-/// "preserve". <c>lineEnding</c> can force <c>crlf</c> or <c>lf</c>.
-///
-/// Size cap: PowerShell loads the whole file into memory (the cost of a clean
-/// detect-and-rewrite flow). <c>maxFileSizeMB</c> (default 50, configurable via
-/// <c>FileSystemOperation:TextEdit:MaxFileSizeMB</c>) prevents accidentally aiming this at
-/// multi-GB log files — for those use cases the workflow author should pipe Get-Content
-/// or sed/awk through runScript directly.
-///
-/// Atomic write: every mutation goes to <c>&lt;path&gt;.nodepilot-tmp-&lt;guid&gt;</c> and
-/// then <c>Move-Item -Force</c> over the original. A failed write leaves the original
-/// untouched. <c>backupSuffix</c> creates a sibling copy <i>before</i> the mutation, so the
-/// user gets back the *pre-edit* content even if the edit itself succeeded.
+/// Every mutation is written to <c>&lt;path&gt;.nodepilot-tmp-&lt;guid&gt;</c> and then
+/// <c>Move-Item -Force</c>d over the original, so a failed write leaves the original untouched.
+/// <c>backupSuffix</c> copies the file to a sibling <i>before</i> the mutation, which keeps the
+/// pre-edit content available even after a successful edit.
 /// </summary>
 public class TextFileEditActivity : BaseRemoteActivity
 {
     public override string ActivityType => "textFileEdit";
 
-    // Marker token is short — keeps the wrapping output noise small for tooling that
-    // streams step-output incrementally (SignalR). PostProcess looks for these exact strings.
+    // A short marker token keeps the wrapper noise small for tooling that streams step output
+    // incrementally (SignalR). PostProcess looks for these exact strings.
     private static readonly PowerShellOperationMarkers ResultMarkers = PowerShellOperation.Markers("TEXTEDIT");
 
     private readonly IConfiguration _config;
 
-    // Canonical (lowercase) operation tokens. The HashSet is case-insensitive so config
-    // authors can spell the value "replaceLine" or "REPLACELINE"; downstream the operation
-    // is normalized to lowercase before validation and emission to PowerShell, so the
-    // C#-side switch and the PS-side switch both compare against the lowercase form.
+    // Canonical lowercase operation tokens. The set is case-insensitive so config authors can
+    // write "replaceLine" or "REPLACELINE"; the value is lowercased before validation and before
+    // it reaches PowerShell, so both switches compare against the lowercase form.
     private static readonly HashSet<string> KnownOperations = new(StringComparer.OrdinalIgnoreCase)
     {
         "append", "prepend", "insert", "delete", "replace", "replaceline",
@@ -109,9 +96,8 @@ public class TextFileEditActivity : BaseRemoteActivity
         var maxFileSizeMb = config.GetOptionalPositiveInt("maxFileSizeMB")
             ?? ResolveDefaultMaxFileSizeMb(_config);
 
-        // Op-specific validation. The PowerShell side validates again for file-state
-        // preconditions (existence, line-number-in-range); this fence catches config errors
-        // before any session is opened.
+        // Per-operation config validation, so config errors surface before a session is opened.
+        // The PowerShell side checks file state (existence, line number in range) separately.
         var op = operation!.ToLowerInvariant();
         ValidateOpRequirements(op, config);
 
@@ -264,10 +250,10 @@ public class TextFileEditActivity : BaseRemoteActivity
     }
 
     /// <summary>
-    /// Builds a leaf name suitable for <see cref="PathGuard.ValidateLeafName"/> from a path
-    /// plus the backup suffix. We only need a representative name so the validator can refuse
-    /// suffixes that would slip in a separator, traversal segment, or reserved Windows device
-    /// name. The actual sibling-path resolution happens on the PowerShell side.
+    /// Builds a representative leaf name from a path plus the backup suffix so
+    /// <see cref="PathGuard.ValidateLeafName"/> can refuse a suffix that slips in a separator,
+    /// a traversal segment, or a reserved Windows device name. The real sibling path is
+    /// resolved on the PowerShell side.
     /// </summary>
     private static string SyntheticLeafName(string path, string backupSuffix)
     {
@@ -322,10 +308,9 @@ public class TextFileEditActivity : BaseRemoteActivity
         }
     }
 
-    // PowerShell body that runs inside the try { } block in BuildScript. Kept as a constant so
-    // it doesn't accidentally pick up curly braces from string interpolation — the {{ }} in
-    // raw string literals would otherwise eat any `${...}` we'd want to splice. Variables that
-    // need to vary per-call are bound to $__-prefixed PowerShell variables in the wrapper.
+    // PowerShell body spliced into the try { } block in BuildScript. It is a plain constant so
+    // the interpolated raw string in BuildScript cannot consume its curly braces. Per-call
+    // values are bound to the $__-prefixed PowerShell variables in the wrapper.
     private const string TextEditPowerShellBody = """
         function Read-NpFile {
             param([string]$Path, [string]$EncodingMode, [long]$MaxBytes)

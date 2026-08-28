@@ -6,10 +6,10 @@ namespace NodePilot.Core.Models;
 /// One target of a <see cref="MaintenanceWindow"/> whose <c>ScopeKind</c> is
 /// <see cref="MaintenanceScopeKind.Folders"/> or <see cref="MaintenanceScopeKind.Workflows"/>.
 ///
-/// <para><see cref="TargetId"/> is a <b>soft</b> reference (no hard FK) to either a
+/// <para><see cref="TargetId"/> is a soft reference (no hard FK) to either a
 /// <see cref="SharedWorkflowFolder"/> or a <see cref="Workflow"/>, depending on
-/// <see cref="TargetKind"/>. The evaluator tolerates dangling ids — deleting the referenced
-/// folder/workflow simply makes this row a no-op. The only real FK is to the owning window,
+/// <see cref="TargetKind"/>. The evaluator tolerates dangling ids: deleting the referenced
+/// folder or workflow makes this row a no-op. The only real FK is to the owning window,
 /// and it cascades on delete so deleting a window cleans up its targets.</para>
 /// </summary>
 public class MaintenanceWindowTarget

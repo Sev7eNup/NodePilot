@@ -23,11 +23,11 @@ public sealed record WorkflowDispatchIntent(
     ExecutionStatus EnqueueFailureStatus = ExecutionStatus.Cancelled,
     ExecutionDispatchPriority Priority = ExecutionDispatchPriority.Normal,
     Func<WorkflowDispatchSuppression, CancellationToken, Task>? OnDispatchSuppressedAsync = null,
-    // Maintenance-window admission control. Fresh fires (manual/trigger/webhook/external) leave
+    // Maintenance-window admission control. Fresh fires (manual, trigger, webhook, external) leave
     // this true so the dispatch choke point re-checks the window even if it opened after the
-    // caller's early check (closes the TOCTOU). Recovery operations that re-run an already-known
-    // intent (manual retry) set it false. Resume and sub-workflow invocations bypass dispatch
-    // entirely, so they never reach this gate.
+    // caller's early check, closing the race. Recovery operations that re-run a known intent
+    // (manual retry) set it false. Resume and sub-workflow calls bypass dispatch and never reach
+    // this gate.
     bool RequireMaintenanceWindowCheck = true,
     // Set when an Admin force-runs through an active blackout (audited). Suppresses the gate.
     bool BypassMaintenanceWindow = false);

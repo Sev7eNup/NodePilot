@@ -12,15 +12,15 @@ export function filterCommandsForDesignerMode(
 }
 
 /**
- * Aggregates every designer action with a stable handle into a flat list for the Command
- * Palette. Kept as a pure builder so the palette overlay stays decoupled from the editor's
- * state shape. Disabled-states surface as muted rows rather than missing entries —
- * discoverability over noise. The intent is "everything the toolbar / keyboard can do".
+ * Input for the command-palette builder: every designer action that has a stable handle, so the
+ * palette covers what the toolbar and the keyboard can do. Kept as a pure builder so the palette
+ * overlay stays decoupled from the editor's state shape. Disabled actions appear as muted rows
+ * rather than disappearing, which keeps them discoverable.
  */
 export interface CommandPaletteContext {
   // Role + lock state
   roleCanWrite: boolean;
-  canWrite: boolean;            // role-can-write AND lock-by-me
+  canWrite: boolean;            // role can write and the lock is held by me
   isAdmin: boolean;
   isLockedByMe: boolean;
   isLockedByOther: boolean;

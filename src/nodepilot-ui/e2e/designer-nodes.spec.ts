@@ -2,20 +2,15 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 3 — Node-Operationen & Designer-Interaktionen (lines 465-557).
+ * E2ETests.md part 3 — node operations and designer interactions (lines 465-557).
  *
- * Hermetic: page.route() mocks only (predicate catch-all from fixtures/mockApi.ts).
- * The workflow is mocked locked-by-me (checkedOutByUserId === MOCK_USER.id) so the editor
- * opens in State B (editable) — context menus, palette add, delete-key, Save all live.
+ * Hermetic: page.route() mocks only (predicate catch-all from fixtures/mockApi.ts). The workflow
+ * is mocked as checked out by the current user, so the editor opens editable.
  *
- * React-Flow canvas drag (d3-drag) is NOT synthesizable with Playwright mouse events, so:
- *   - 3.3 (drag a node to a new position) → covered via keyboard nudge (ArrowKeys), which the
- *     editor binds to `nudgeSelectedNodes`; the literal mouse-drag is skipped with a reason.
- *   - 3.5 (marquee/drag-box select) → covered via Ctrl+A select-all → BulkEditPanel; the
- *     literal marquee drag is skipped with a reason.
- *
- * The SPA renders ENGLISH under Playwright → language-agnostic selectors (role + bilingual
- * regex / attribute) only.
+ * React-Flow canvas drag (d3-drag) cannot be synthesized with Playwright mouse events, so 3.3
+ * covers node movement with the keyboard nudge and 3.5 covers multi-select with Ctrl+A; the
+ * literal drags are skipped with a reason. The SPA renders English under Playwright, so
+ * selectors stay language-agnostic (role plus bilingual regex or attribute).
  */
 
 const WF_ID = 'd3d3d3d3-3333-3333-3333-333333333333';
@@ -23,7 +18,7 @@ const WF_ID = 'd3d3d3d3-3333-3333-3333-333333333333';
 const NODE_A = 'step-aaaaaaaa';
 const NODE_B = 'step-bbbbbbbb';
 
-/** Two activity nodes + one edge between them, so delete/edge-cleanup is observable. */
+/** Two activity nodes and one edge between them, so delete and edge cleanup are observable. */
 function definition() {
   return JSON.stringify({
     nodes: [
@@ -76,8 +71,8 @@ function node(page: Page, id: string) {
   return page.locator(`.react-flow__node[data-id="${id}"]`);
 }
 
-// Click near a node's top-left corner — keeps the click point clear of the bottom-right
-// MiniMap / bottom-left Controls overlays that otherwise intercept a centered click.
+// Click near a node's top-left corner to keep the click point clear of the bottom-right
+// MiniMap and bottom-left Controls overlays, which otherwise intercept a centered click.
 const TL = { position: { x: 15, y: 15 } } as const;
 
 test.describe('Designer Node-Operationen (Teil 3)', () => {
@@ -95,7 +90,7 @@ test.describe('Designer Node-Operationen (Teil 3)', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson() });
     });
 
-    await seedExpertMode(page); // context-menu / bulk-select tooling lives in the expert-mode toolbar (default is standard)
+    await seedExpertMode(page); // context menu and bulk select live in the expert-mode toolbar
     await page.goto(`/workflows/${WF_ID}`);
     await waitForCanvas(page);
 
@@ -108,9 +103,9 @@ test.describe('Designer Node-Operationen (Teil 3)', () => {
     await expect(page.locator(`.react-flow__node[data-id^="step-"]:not([data-id="${NODE_A}"]):not([data-id="${NODE_B}"])`))
       .toHaveCount(1, { timeout: 10_000 });
 
-    // Save persists. The PUT body is the source of truth for the graph (the canvas DOM is
-    // virtualized via onlyRenderVisibleElements). It must carry the original three nodes:
-    // two "First Script" (original + copy) with distinct ids, plus the Delay.
+    // The PUT body is the source of truth for the graph, because the canvas DOM is virtualized
+    // via onlyRenderVisibleElements. It must carry three nodes: two "First Script" ones with
+    // distinct ids, plus the Delay.
     await page.getByRole('button', { name: /save in place|zwischen.?speichern|speichern|^save/i }).first().click();
     await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
     const def = JSON.parse(putBody!.definitionJson as string) as { nodes: { id: string; data: { label: string } }[] };
@@ -135,7 +130,7 @@ test.describe('Designer Node-Operationen (Teil 3)', () => {
     const consoleErrors: string[] = [];
     page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
 
-    await seedExpertMode(page); // context-menu / bulk-select tooling lives in the expert-mode toolbar (default is standard)
+    await seedExpertMode(page); // context menu and bulk select live in the expert-mode toolbar
     await page.goto(`/workflows/${WF_ID}`);
     await waitForCanvas(page);
     await expect(page.locator('.react-flow__edge')).toHaveCount(1);
@@ -145,7 +140,7 @@ test.describe('Designer Node-Operationen (Teil 3)', () => {
     await expect(menu).toBeVisible({ timeout: 5_000 });
     await menu.getByRole('button', { name: /^(delete|löschen)$/i }).click();
 
-    // Node A gone → one node left; the edge that touched A is gone too.
+    // Node A is gone, leaving one node, and the edge that touched A is gone with it.
     await expect(page.locator('.react-flow__node')).toHaveCount(1, { timeout: 10_000 });
     await expect(page.locator('.react-flow__edge')).toHaveCount(0);
     await expect(node(page, NODE_B)).toBeVisible();
@@ -161,8 +156,8 @@ test.describe('Designer Node-Operationen (Teil 3)', () => {
   });
 
   test('3.3 — node position is saved (keyboard nudge; literal mouse-drag skipped)', async ({ page }) => {
-    // Deliberate scope note (NOT a skip): mouse-drag move is not synthesizable in React
-    // Flow; the keyboard nudge covers persistence.
+    // Scope note: a mouse-drag move cannot be synthesized in React Flow, so the keyboard
+    // nudge covers position persistence.
     let putBody: { definitionJson?: string } | null = null;
     await page.route(`**/api/workflows/${WF_ID}`, (route) => {
       if (route.request().method() === 'PUT') {
@@ -172,13 +167,13 @@ test.describe('Designer Node-Operationen (Teil 3)', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson() });
     });
 
-    await seedExpertMode(page); // context-menu / bulk-select tooling lives in the expert-mode toolbar (default is standard)
+    await seedExpertMode(page); // context menu and bulk select live in the expert-mode toolbar
     await page.goto(`/workflows/${WF_ID}`);
     await waitForCanvas(page);
 
-    // Select node A (leftmost → its center is clear of the bottom-right MiniMap), then nudge it
-    // with arrow keys. The editor binds arrows → nudgeSelectedNodes (≥1px/step). This is the
-    // synthesizable equivalent of "drag the node to a new position".
+    // Select node A, the leftmost one, so its center stays clear of the bottom-right MiniMap.
+    // The editor binds the arrow keys to nudgeSelectedNodes, which is the synthesizable
+    // equivalent of dragging the node to a new position.
     await node(page, NODE_A).click();
     await expect(node(page, NODE_A)).toHaveClass(/selected/, { timeout: 5_000 });
     for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
@@ -188,7 +183,7 @@ test.describe('Designer Node-Operationen (Teil 3)', () => {
     await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
     const def = JSON.parse(putBody!.definitionJson as string) as { nodes: { id: string; position: { x: number; y: number } }[] };
     const moved = def.nodes.find((n) => n.id === NODE_A)!;
-    // Started at x:60,y:60 — the ArrowRight presses + one ArrowDown moved it right and down.
+    // The node starts at x:60,y:60; the arrow presses move it right and down.
     expect(moved.position.x).toBeGreaterThan(60);
     expect(moved.position.y).toBeGreaterThan(60);
   });
@@ -198,16 +193,16 @@ test.describe('Designer Node-Operationen (Teil 3)', () => {
       route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson() }),
     );
 
-    await seedExpertMode(page); // context-menu / bulk-select tooling lives in the expert-mode toolbar (default is standard)
+    await seedExpertMode(page); // context menu and bulk select live in the expert-mode toolbar
     await page.goto(`/workflows/${WF_ID}`);
     await waitForCanvas(page);
 
     const viewport = page.locator('.react-flow__viewport');
     const transformBefore = await viewport.getAttribute('style');
 
-    // The Controls cluster renders zoom-in / zoom-out buttons. Zoom OUT first: after the
-    // load-time fitView a small 2-node graph can already sit near max zoom (zoom-in disabled),
-    // but zoom-out is reliably available.
+    // The Controls cluster renders zoom-in and zoom-out buttons. Zoom out first: after the
+    // load-time fitView a small two-node graph can already sit near max zoom, which disables
+    // zoom-in, while zoom-out is always available.
     const zoomIn = page.locator('.react-flow__controls-zoomin');
     const zoomOut = page.locator('.react-flow__controls-zoomout');
     await expect(zoomIn).toBeVisible();
@@ -217,32 +212,32 @@ test.describe('Designer Node-Operationen (Teil 3)', () => {
     await zoomOut.click();
     await expect.poll(async () => viewport.getAttribute('style'), { timeout: 5_000 }).not.toBe(transformBefore);
 
-    // UI stays responsive — nodes still present after zooming back in.
+    // The UI stays responsive: the nodes are still present after zooming back in.
     await expect(page.locator('.react-flow__node')).toHaveCount(2);
     await zoomIn.click();
     await expect(page.locator('.react-flow__node')).toHaveCount(2);
   });
 
   test('3.5 — multi-select via Ctrl+A opens the bulk-edit panel (marquee drag skipped)', async ({ page }) => {
-    // Deliberate scope note (NOT a skip): marquee drag-box is not synthesizable in React
-    // Flow; Ctrl+A covers multi-select.
+    // Scope note: a marquee drag-box cannot be synthesized in React Flow, so Ctrl+A covers
+    // multi-select.
     await page.route(`**/api/workflows/${WF_ID}`, (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson() }),
     );
 
-    await seedExpertMode(page); // context-menu / bulk-select tooling lives in the expert-mode toolbar (default is standard)
+    await seedExpertMode(page); // context menu and bulk select live in the expert-mode toolbar
     await page.goto(`/workflows/${WF_ID}`);
     await waitForCanvas(page);
 
-    // Select a node first so the canvas (not an input) has focus, then Ctrl+A → select all.
+    // Select a node first so the canvas, not an input, has focus; then Ctrl+A selects all.
     await node(page, NODE_A).click(TL);
     await expect(node(page, NODE_A)).toHaveClass(/selected/, { timeout: 5_000 });
     await page.keyboard.press('Control+a');
 
-    // 2+ selected → the editor swaps the right panel to the BulkEditPanel. That panel is the
-    // authoritative multi-select signal. (We don't assert the second node's `selected` class:
-    // the panel narrows the canvas and onlyRenderVisibleElements can virtualize the rightmost
-    // node out of the DOM — a render optimization, not a selection failure.)
+    // With two or more nodes selected the editor swaps the right panel to the BulkEditPanel,
+    // which is the authoritative multi-select signal. The second node's `selected` class is not
+    // asserted: the panel narrows the canvas and onlyRenderVisibleElements can virtualize the
+    // rightmost node out of the DOM.
     await expect(page.getByRole('heading', { name: /bulk edit|mehrfach/i })).toBeVisible({ timeout: 5_000 });
     await expect(page.getByText(/2\s+activit(y|ies)/i).first()).toBeVisible();
     // Bulk actions are available (each field has its own Apply button).

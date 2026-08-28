@@ -2,10 +2,10 @@
 #requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Provisions the local NodePilot desktop runtime: a loopback-only PostgreSQL cluster + service,
-    the self-signed loopback TLS certificate, the rendered Production config, both Windows
-    services (Postgres + API), the ACL-restricted DB connection string, and the installer->Electron
-    handoff file (desktop.json).
+    Provisions the local NodePilot desktop runtime: a loopback-only PostgreSQL cluster and service,
+    the self-signed loopback TLS certificate, the rendered Production config, both Windows services
+    (Postgres and API), the ACL-restricted DB connection string, and the handoff file the Electron
+    shell reads (desktop.json).
 
 .DESCRIPTION
     Invoked once by the Inno Setup installer's [Run] step (elevated). Idempotent: re-running
@@ -15,13 +15,13 @@
     Security model (see deploy/README.md and CLAUDE.md "Desktop"):
       - API service runs as LocalSystem (zero-config; local activities therefore run as SYSTEM).
       - Postgres service runs as NetworkService, bound to 127.0.0.1 only.
-      - The DB password lives ONLY in the ACL-restricted ConnectionStrings__Postgres service
-        environment value - never in appsettings JSON.
-      - The loopback certificate is trusted by the Electron shell via SHA-256 pinning
-        (desktop.json), NOT by installing a system root CA.
+      - The DB password lives only in the ACL-restricted ConnectionStrings__Postgres service
+        environment value, never in appsettings JSON.
+      - The Electron shell trusts the loopback certificate through SHA-256 pinning (desktop.json),
+        not by installing a system root CA.
 
 .NOTES
-    Reuses the restricted-file / registry-ACL patterns from deploy/Install-NodePilot.ps1.
+    Reuses the restricted-file and registry-ACL patterns from deploy/Install-NodePilot.ps1.
     Not executed by Claude. Requires on-VM validation (see the Testplan in the desktop docs).
 #>
 [CmdletBinding()]
@@ -34,7 +34,7 @@ param(
     [string] $DbServiceName  = 'NodePilotDb',
     [string] $ApiServiceDisplayName = 'NodePilot',
     [string] $DbServiceDisplayName  = 'NodePilot Database',
-    # Fixed, offline-safe port pools (see plan A5). Free ports are chosen and persisted.
+    # Fixed, offline-safe port pools. A free port is picked from each range and persisted.
     [int]    $HttpsPortRangeStart = 47000,
     [int]    $HttpsPortRangeEnd   = 47049,
     [int]    $PgPortRangeStart    = 47100,
@@ -42,18 +42,16 @@ param(
     [string] $DbName = 'nodepilot',
     [string] $DbRole = 'nodepilot',
     # Where the first-run handoff is written. Normally resolved from the interactive (console)
-    # user, because THAT is who Inno launches the Electron shell as ([Run] runasoriginaluser) and
-    # therefore whose %LOCALAPPDATA% the shell reads. Only override this for the dev loop or a
-    # test; see Set-AdminSetupHandoff for why the elevated process's own profile is the wrong
-    # answer whenever the installer was elevated with someone else's credentials.
+    # user, because Inno launches the Electron shell as that user ([Run] runasoriginaluser) and
+    # the shell reads their %LOCALAPPDATA%. Override only for a dev loop or a test.
     [string] $HandoffUserProfile
 )
 
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
-# Self-diagnosing: capture the full run (including the failing step + error) to a log so a failed
-# provisioning during an otherwise-hidden installer run can be inspected without re-running it.
+# Capture the full run, including any failing step and its error, to a log so a provisioning
+# failure inside an otherwise hidden installer run can be inspected without re-running it.
 $TranscriptPath = Join-Path $env:TEMP 'nodepilot-provision.log'
 try { Start-Transcript -Path $TranscriptPath -Force | Out-Null } catch { }
 
@@ -95,19 +93,11 @@ function New-RandomSecret([int] $bytes = 32) {
 
 # The interactive (console) user, as SID + %LOCALAPPDATA%, or $null when there is none.
 #
-# This exists because "the user running this script" and "the user the Electron shell will run as"
-# are NOT the same principal. Inno runs the whole installer elevated (PrivilegesRequired=admin)
-# but launches the shell with `runasoriginaluser`, i.e. as whoever is sitting at the machine. When
-# a standard user starts the installer and types a *different* administrator's credentials at the
-# UAC prompt - the normal case on a managed Windows box, and common on home machines with a
-# separate admin account - this script runs as that administrator while the shell runs as the
-# standard user. Writing the handoff into $env:LOCALAPPDATA then puts it in the administrator's
-# profile, the shell never finds it, and the user is stranded on a login form for an account that
-# does not exist yet. Inno's own {localappdata} is no help: it expands in the elevated context too.
-#
-# Win32_ComputerSystem.UserName is the console session's user, which is exactly the principal
-# `runasoriginaluser` targets. The profile path comes from the ProfileList registry rather than a
-# string built out of the user name, so redirected or renamed profiles still resolve.
+# Inno runs the installer elevated but launches the shell with `runasoriginaluser`, so the account
+# running this script is not necessarily the account the shell runs as. The handoff must land in
+# the console user's profile, otherwise the shell never finds it. Win32_ComputerSystem.UserName
+# names that user; the profile path comes from the ProfileList registry rather than a string built
+# from the user name, so redirected or renamed profiles still resolve.
 function Get-InteractiveUserProfile {
     try {
         $userName = (Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).UserName
@@ -174,11 +164,11 @@ function Set-RestrictedAcl([string] $path, [string[]] $extraReadPrincipals = @()
     } else { [System.Security.AccessControl.InheritanceFlags]::None }
     $prop = [System.Security.AccessControl.PropagationFlags]::None
     $allow = [System.Security.AccessControl.AccessControlType]::Allow
-    # SYSTEM + Administrators always. The installing user is added too (unless -NoCurrentUser),
-    # because PostgreSQL's initdb/postgres, when started by an admin on Windows, re-exec under a
-    # restricted token that DROPS the Administrators group -- only the user SID survives it, so PG
-    # needs that grant on pgdata/pwfile. -NoCurrentUser is used for the JWT / data-protection key
-    # parent (DataPath): the backend fail-closes the boot if an untrusted principal can mutate it.
+    # SYSTEM + Administrators always. The installing user is added too (unless -NoCurrentUser):
+    # initdb and postgres re-exec under a restricted token that drops the Administrators group, so
+    # only the user SID survives and needs the grant on pgdata/pwfile. -NoCurrentUser covers the
+    # JWT / data-protection key parent (DataPath), whose boot check fails closed if any other
+    # principal can mutate it.
     $fullSids = [System.Collections.ArrayList]@('S-1-5-18', 'S-1-5-32-544')
     if (-not $NoCurrentUser) { [void]$fullSids.Add(([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value) }
     foreach ($sid in $fullSids) {
@@ -232,25 +222,22 @@ function Protect-RestrictedTree([string] $path) {
 }
 
 function Move-DesktopRuntimeOverridesToSecrets {
-    # Releases before 1.2.5 wrote runtime settings and their rollback copies directly below
-    # DataPath or beside the installed application. DataPath was the active configured source in
-    # affected releases; if a protected primary already exists, preserve it and keep every legacy
-    # copy as a collision-safe backup. Lock the target first, move every possible settings
-    # artefact, then replace the DACL explicitly: a same-volume Move-Item preserves the source ACL
-    # instead of inheriting the destination directory ACL.
+    # Moves runtime settings and their rollback copies out of the legacy locations (directly below
+    # DataPath, or beside the installed application) into the protected secrets directory. An
+    # existing protected primary is kept, and colliding legacy copies are retained as backups.
+    # Lock the target first, then reset each DACL explicitly: a same-volume Move-Item preserves
+    # the source ACL instead of inheriting the destination directory ACL.
     Set-RestrictedAcl -path $SecretsDir -NoCurrentUser
 
-    # DataPath was the authoritative configured source in affected releases; process it first so
-    # the active override remains the primary protected file. The install-root copy is retained as
-    # a collision-safe legacy backup.
+    # DataPath holds the authoritative override, so process it first and let the install-root copy
+    # land as a collision-safe backup.
     foreach ($legacyRoot in @($DataPath, $AppPath)) {
         $legacyFiles = @(Get-ChildItem -LiteralPath $legacyRoot -Filter 'appsettings.runtime.json*' -File)
         foreach ($legacy in $legacyFiles) {
             $destination = Join-Path $SecretsDir $legacy.Name
             if (Test-Path -LiteralPath $destination) {
-                # Keep both copies on an interrupted/repeated upgrade without replacing a
-                # protected primary. The runtime writer recognises the primary collision as a
-                # normal backup and can age it out after successful future writes.
+                # Keep both copies instead of replacing a protected primary. The runtime writer
+                # treats the extra file as a normal backup and ages it out on later writes.
                 $suffix = [Guid]::NewGuid().ToString('N')
                 $destinationName = if ($legacy.Name -ieq 'appsettings.runtime.json') {
                     "appsettings.runtime.json.bak.legacy.$suffix"
@@ -261,9 +248,8 @@ function Move-DesktopRuntimeOverridesToSecrets {
             }
 
             Move-Item -LiteralPath $legacy.FullName -Destination $destination
-            # A same-volume move preserves the former broad DACL. Restrict this copy before
-            # touching the next file so a later collision/I/O failure cannot strand an exposed
-            # migrated file.
+            # A same-volume move preserves the source DACL. Restrict this copy before handling
+            # the next file, so a later failure cannot leave a migrated file exposed.
             Set-RestrictedAcl -path $destination -NoCurrentUser
         }
     }
@@ -305,8 +291,8 @@ function Reset-CompromisedDataProtectionKeyRing {
         return
     }
 
-    # LocalMachine-DPAPI keys were readable by local users on affected installs. Preserve the
-    # old ring only as an admin/SYSTEM quarantine for forensic rollback, then force fresh keys.
+    # The LocalMachine-DPAPI keys here are readable by local users. Quarantine the ring for
+    # SYSTEM and Administrators only, so a rollback still has it, then force a fresh key ring.
     $quarantine = Join-Path $SecretsDir ('data-protection-keys.compromised.' + [Guid]::NewGuid().ToString('N'))
     Move-Item -LiteralPath $KeyRingDir -Destination $quarantine
     Protect-RestrictedTree -path $quarantine
@@ -326,8 +312,9 @@ function Invoke-Native([string] $exe, [string[]] $arguments, [hashtable] $env = 
 }
 
 # --- 0. idempotency: remove any prior NodePilot services -------------------------------------
-# A re-run/upgrade must not collide with a running postmaster on the reused data directory, and
-# must free the old binaries. Stop + delete both services up front (no-op on a clean install).
+# A re-run or upgrade must not collide with a running postmaster on the reused data directory,
+# and must free the old binaries. Stopping and deleting both services is a no-op on a clean
+# install.
 Write-Step 'Removing any prior NodePilot services'
 foreach ($svc in @($ApiServiceName, $DbServiceName)) {
     if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
@@ -341,8 +328,8 @@ foreach ($svc in @($ApiServiceName, $DbServiceName)) {
 Write-Step 'Securing runtime overrides and backups'
 Move-DesktopRuntimeOverridesToSecrets
 Reset-CompromisedDataProtectionKeyRing
-# Development configuration is never part of a production installation. Remove stale copies
-# left by older installers after the service has stopped, before the new API can start.
+# Development configuration has no place in a production installation. Remove any copy after the
+# service has stopped and before the new API starts.
 $legacyDevelopmentSettings = Join-Path $AppPath 'appsettings.Development.json'
 if (Test-Path -LiteralPath $legacyDevelopmentSettings -PathType Leaf) {
     Remove-Item -LiteralPath $legacyDevelopmentSettings -Force
@@ -361,10 +348,10 @@ $roleSecretFile  = Join-Path $SecretsDir 'pg-nodepilot.secret'
 $clusterInitialized = Test-Path -LiteralPath (Join-Path $PgData 'PG_VERSION')
 if (-not $clusterInitialized) {
     Write-Step 'Initializing PostgreSQL cluster (initdb)'
-    # Grant the installing user (+ SYSTEM/Admins) FullControl on the still-empty data dir BEFORE
-    # initdb runs. PostgreSQL re-execs under a restricted token that drops Administrators, so it
-    # writes the cluster as the bare user SID and must own this directory. (NetworkService, needed
-    # by the runtime service, is added after init below.)
+    # Grant the installing user (plus SYSTEM and Administrators) FullControl on the still-empty
+    # data directory before initdb runs: PostgreSQL re-execs under a restricted token that drops
+    # Administrators, so it writes the cluster as the bare user SID and must own this directory.
+    # NetworkService, which the runtime service needs, is added after init below.
     Set-RestrictedAcl -path $PgData
     $superPw = New-RandomSecret
     $pwFile = Join-Path $SecretsDir 'initdb.pw'
@@ -432,8 +419,8 @@ $dbSecret = if (Test-Path -LiteralPath $roleSecretFile) {
 }
 
 Invoke-Native $pg_ctl @('-D', $PgData, '-o', "-p $PgPort -c listen_addresses=127.0.0.1", '-w', 'start')
-# PGPASSWORD for the whole block so EVERY psql call authenticates non-interactively; every psql
-# also gets -w (--no-password) so it fails fast instead of ever prompting on a console.
+# PGPASSWORD covers the whole block so every psql call authenticates non-interactively; -w
+# (--no-password) makes psql fail fast instead of prompting on a console.
 $prevPgPassword = $env:PGPASSWORD
 $env:PGPASSWORD = $superPw
 try {
@@ -479,9 +466,9 @@ $cert = if ($existing) { $existing } else {
         -NotAfter (Get-Date).AddYears(10)
 }
 $certThumbprint = $cert.Thumbprint
-# SHA-256 over the DER cert, uppercase hex without separators (matches Node's fingerprint256 after
-# stripping colons, which the Electron shell pins against). Computed manually so we do not depend on
-# the GetCertHashString(HashAlgorithmName) overload that only exists on .NET Framework 4.8+.
+# SHA-256 over the DER certificate, uppercase hex without separators. That matches Node's
+# fingerprint256 with the colons stripped, which is what the Electron shell pins against.
+# Computed by hand because GetCertHashString(HashAlgorithmName) needs .NET Framework 4.8+.
 $sha = [System.Security.Cryptography.SHA256]::Create()
 try { $certSha256 = (($sha.ComputeHash($cert.RawData)) | ForEach-Object { $_.ToString('X2') }) -join '' }
 finally { $sha.Dispose() }
@@ -514,11 +501,10 @@ if (Get-Service -Name $ApiServiceName -ErrorAction SilentlyContinue) {
     & sc.exe delete $ApiServiceName | Out-Null
     Start-Sleep -Seconds 2
 }
-# New-Service (NOT sc.exe create): the .NET SCM API stores the quoted binary path + args verbatim
-# in ImagePath, so an install path under "C:\Program Files\..." (with spaces) is handled correctly.
-# sc.exe's `binPath= <value>` breaks through PowerShell native-argument quoting when the path
-# contains spaces -- the create silently fails and the following registry step then throws.
-# New-Service runs as LocalSystem by default and throws loudly on failure.
+# New-Service rather than sc.exe create: the .NET SCM API stores the quoted binary path and its
+# arguments verbatim in ImagePath, so an install path containing spaces is handled correctly.
+# sc.exe's `binPath= <value>` loses that quoting through PowerShell native-argument handling and
+# fails silently. New-Service runs as LocalSystem by default and throws on failure.
 $binPath = "`"$ApiExe`" --contentRoot `"$AppPath`""
 New-Service -Name $ApiServiceName -BinaryPathName $binPath -DisplayName $ApiServiceDisplayName `
     -Description 'NodePilot workflow orchestrator (desktop, loopback).' `
@@ -561,12 +547,13 @@ $handoff = [ordered]@{
 [System.IO.File]::WriteAllText($DesktopJson, ($handoff | ConvertTo-Json -Depth 4), (New-Object System.Text.UTF8Encoding($false)))
 Set-RestrictedAcl -path $DesktopJson -extraReadPrincipals @('S-1-5-32-545') -NoCurrentUser
 
-# Lock DataPath (the JWT / data-protection key parent) BEFORE the API starts: SYSTEM + Admins only,
-# plus a non-inheriting Users traverse grant so the Electron shell can reach desktop.json. NO installing-user
-# mutation -- otherwise the backend's key-directory security check fail-closes the boot.
+# Lock DataPath (the JWT / data-protection key parent) before the API starts: SYSTEM and
+# Administrators only, plus a non-inheriting Users traverse grant so the Electron shell can reach
+# desktop.json. The installing user gets no write access, or the backend's key-directory security
+# check fails the boot closed.
 Set-RestrictedAcl -path $SecretsDir -NoCurrentUser
-# The data root is a traverse-only boundary for standard users; only desktop.json receives
-# an explicit read ACE above.  Do not inherit Users access into logs, key material or archives.
+# The data root is a traverse-only boundary for standard users; only desktop.json receives an
+# explicit read ACE above. Users access must not inherit into logs, key material or archives.
 Set-RestrictedAcl -path $DataPath -extraReadPrincipals @('S-1-5-32-545') -NoCurrentUser -ExtraReadNoInheritance
 foreach ($protectedDir in @($KeyRingDir, $LogsDir, $ArchiveDir)) {
     Protect-RestrictedTree -path $protectedDir
@@ -601,28 +588,26 @@ for ($i = 0; $i -lt 90; $i++) {
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
 
 # --- 10. admin bootstrap handoff (first run only) --------------------------------------------
-# NOTE: this runs even when the readiness probe failed. The handoff is what lets the Electron
-# shell show the first-run "create administrator" page; skipping it strands the user on the normal
-# login form, which cannot send the required X-Setup-Token header.
-# The API wrote a SYSTEM-owned one-shot setup token under DataPath during first boot. Copy it
-# into the INTERACTIVE user's profile - the one Inno starts the shell as - so the user-context
-# Electron shell can read it and drive first-run admin creation. ACL-restricted to that user +
-# SYSTEM. No-op on re-install (token absent once users exist).
+# NOTE: this runs even when the readiness probe failed. Without the handoff the Electron shell
+# cannot show the first-run "create administrator" page, and the normal login form cannot send
+# the required X-Setup-Token header.
+# The API writes a SYSTEM-owned one-shot setup token under DataPath on first boot. Copy it into
+# the interactive user's profile, the one Inno starts the shell as, restricted to that user and
+# SYSTEM. No-op on re-install, where the token is absent once users exist.
 Write-Step 'Writing admin setup handoff'
 $tokenPath = Join-Path $DataPath 'admin-setup.token'
 if (Test-Path -LiteralPath $tokenPath) {
-    # The API (LocalSystem) creates the token with an owner-only ACL: an elevated Administrator can
-    # neither read it nor change its DACL. Take ownership for BUILTIN\Administrators (takeown /a),
-    # then grant that group read. Both the new owner and every remaining ACE stay inside the
-    # backend's trusted set (RestrictedFileWriter.BuildTrustedSids = SYSTEM, Administrators,
-    # TrustedInstaller, CreatorOwner) and the ACL stays protected, so the token still passes
-    # AdminBootstrap.Validate afterwards.
+    # The API (LocalSystem) creates the token with an owner-only ACL, so an elevated Administrator
+    # can neither read it nor change its DACL. Take ownership for BUILTIN\Administrators, then
+    # grant that group read. The new owner and every remaining ACE stay inside the backend's
+    # trusted set (RestrictedFileWriter.BuildTrustedSids) and the ACL stays protected, so the
+    # token still passes AdminBootstrap.Validate.
     & takeown.exe /f $tokenPath /a | Out-Null
     & icacls.exe $tokenPath /grant '*S-1-5-32-544:(R)' | Out-Null
 
-    # Resolve WHOSE profile the handoff belongs in, and which SID may read it. Explicit parameter
-    # wins (dev loop / test), then the interactive user, and only then this process - the last of
-    # which is correct exactly when the installing user elevated their own session.
+    # Resolve which profile the handoff belongs in and which SID may read it: the explicit
+    # parameter wins, then the interactive user, then this process - the last being correct only
+    # when the installing user elevated their own session.
     $handoffOwnerSid = $null
     if (-not [string]::IsNullOrWhiteSpace($HandoffUserProfile)) {
         $handoffBase = $HandoffUserProfile
@@ -648,8 +633,8 @@ if (Test-Path -LiteralPath $tokenPath) {
     New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
     $handoffPath = Join-Path $handoffDir 'admin-setup.handoff'
     $tokenValue = [System.IO.File]::ReadAllText($tokenPath)
-    # Never leave an empty handoff behind: the shell would show the setup page and then fail with
-    # "setup token is empty" instead of falling back to the normal login.
+    # Never leave an empty handoff behind: the shell would show the setup page and then fail on
+    # an empty setup token instead of falling back to the normal login.
     if ([string]::IsNullOrWhiteSpace($tokenValue)) {
         throw "Bootstrap token at $tokenPath could not be read (empty). First-run setup cannot be prepared."
     }

@@ -7,11 +7,10 @@ using Npgsql;
 namespace NodePilot.Data;
 
 /// <summary>
-/// The condition a failed database operation actually represents, in **precedence order**.
+/// The condition a failed database operation represents, in precedence order.
 ///
-/// <para>Declaration order is the precedence rule, and it is load-bearing rather than cosmetic: a
-/// single exception legitimately carries several of these signals at once, so "which one wins" cannot
-/// be left to the order in which a reader happens to write <c>if</c> statements. Lower value wins.</para>
+/// <para>One exception can carry several of these signals at once, so declaration order decides
+/// which one wins: the lower enum value is kept.</para>
 /// </summary>
 public enum DbFailureKind
 {

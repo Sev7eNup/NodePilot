@@ -234,23 +234,23 @@
           <!-- Data + Remote -->
           <rect x="120" y="312" width="340" height="56" rx="10" fill="#1b1b1e" stroke="#34343b"/><text x="290" y="336" fill="#ece9ff" text-anchor="middle" font-size="13" font-weight="600">Data — EF Core</text><text x="290" y="354" fill="#a6a6b0" text-anchor="middle" font-size="10" font-family="JetBrains Mono">PostgreSQL / SQL Server · DPAPI</text>
           <rect x="540" y="312" width="300" height="56" rx="10" fill="#1b1b1e" stroke="#34343b"/><text x="690" y="336" fill="#ece9ff" text-anchor="middle" font-size="13" font-weight="600">Remote — WinRM</text><text x="690" y="354" fill="#a6a6b0" text-anchor="middle" font-size="10" font-family="JetBrains Mono">Session Factory · agentless</text>
-          <!-- Zielmaschinen -->
+          <!-- Target machines -->
           <rect x="540" y="414" width="300" height="48" rx="10" fill="#101011" stroke="#9b7dff" stroke-width="1.5"/><text x="690" y="436" fill="#9b7dff" text-anchor="middle" font-size="12.5" font-weight="600">Zielmaschinen (Windows)</text><text x="690" y="452" fill="#a6a6b0" text-anchor="middle" font-size="9.5" font-family="JetBrains Mono">WinRM-Service</text>
         </g>
         <g stroke="#7c5cfc" stroke-width="1.6" fill="none" marker-end="url(#bp-arrow)" opacity=".7">
-          <!-- Clients -> API -->
+          <!-- Clients to API -->
           <path class="flow-line" d="M210,64 C210,86 300,92 300,108"/>
           <path class="flow-line" d="M460,64 L460,108"/>
           <path class="flow-line" d="M720,64 C720,86 660,92 660,108"/>
-          <!-- API -> Engine / Scheduler -->
+          <!-- API to Engine and Scheduler -->
           <path class="flow-line" d="M300,172 C300,192 290,196 290,210"/>
           <path class="flow-line" d="M690,172 C690,192 690,196 690,210"/>
-          <!-- Scheduler -> Engine (trigger) -->
+          <!-- Scheduler to Engine: a trigger fires -->
           <path d="M540,239 L462,239"/>
-          <!-- Engine -> Data / Remote -->
+          <!-- Engine to Data and Remote -->
           <path class="flow-line" d="M290,268 L290,312"/>
           <path class="flow-line" d="M400,268 C400,290 690,295 690,312"/>
-          <!-- Remote -> Zielmaschinen -->
+          <!-- Remote to the target machines -->
           <path class="flow-line" d="M690,368 L690,414"/>
         </g>
         <text x="500" y="232" fill="#a99fc0" font-size="9.5" font-family="JetBrains Mono">trigger</text>
@@ -262,7 +262,7 @@
   </div>
 </section>
 
-<!-- 03 — WAS IST NODEPILOT -->
+<!-- 03 — WHAT IS NODEPILOT -->
 <section class="slide w-full h-full flex-col justify-center">
   <div class="stage">
     <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">02</span><h2 class="text-6xl font-bold mt-2">Was ist NodePilot?</h2></div>
@@ -281,7 +281,7 @@
   </div>
 </section>
 
-<!-- 04 — POSITIONIERUNG -->
+<!-- 04 — POSITIONING -->
 <section class="slide w-full h-full flex-col justify-center">
   <div class="stage">
     <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">03</span><h2 class="text-6xl font-bold mt-2">Von SCOrch zu NodePilot</h2></div>
@@ -310,7 +310,7 @@
   </div>
 </section>
 
-<!-- 05 — LÖSUNGSSTRUKTUR -->
+<!-- 05 — SOLUTION STRUCTURE -->
 <section class="slide w-full h-full flex-col justify-center">
   <div class="stage">
     <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">04</span><h2 class="text-6xl font-bold mt-2">Lösungsstruktur</h2></div>
@@ -360,23 +360,23 @@
           <text x="460" y="348" fill="#9b7dff" text-anchor="middle">Core</text>
         </g>
         <g stroke="#7c5cfc" stroke-width="1.6" fill="none" marker-end="url(#arrow)" opacity=".7">
-          <!-- Api -> Ai / Engine / Scheduler -->
+          <!-- Api to Ai, Engine and Scheduler -->
           <path class="flow-line" d="M420,58 C380,80 280,82 240,100"/>
           <path class="flow-line" d="M460,58 L460,100"/>
           <path class="flow-line" d="M500,58 C540,80 640,82 680,100"/>
-          <!-- Engine -> Ai (same row) -->
+          <!-- Engine to Ai, same row -->
           <path d="M390,122 L314,122"/>
-          <!-- Engine -> Data / Remote / Telemetry (fächern auseinander) -->
+          <!-- Engine to Data, Remote and Telemetry, fanning out -->
           <path class="flow-line" d="M410,144 C410,172 110,172 110,210"/>
           <path class="flow-line" d="M450,144 C450,178 310,178 310,210"/>
           <path class="flow-line" d="M500,144 C500,178 510,178 510,210"/>
-          <!-- Ai -> Core (einzige Ai-Kante, läuft unter Engine nach Core) -->
+          <!-- Ai to Core: the only Ai edge, routed below Engine -->
           <path class="flow-line" d="M240,144 C240,250 460,290 460,320"/>
-          <!-- Data / Remote / Telemetry -> Core (Fan-in) -->
+          <!-- Data, Remote and Telemetry into Core: fan-in -->
           <path class="flow-line" d="M110,254 C110,290 380,300 420,320"/>
           <path class="flow-line" d="M310,254 C310,290 450,300 460,320"/>
           <path class="flow-line" d="M510,254 C510,290 500,300 480,320"/>
-          <!-- Cli/Mcp -> Api (HTTP-Laufzeit, gestrichelt) -->
+          <!-- Cli/Mcp to Api: HTTP at runtime, drawn dashed -->
           <path d="M770,210 C770,80 620,42 530,30" stroke-dasharray="4 4"/>
         </g>
       </svg>
@@ -425,7 +425,7 @@
   </div>
 </section>
 
-<!-- 09 — DATENBANK -->
+<!-- 09 — DATABASE -->
 <section class="slide w-full h-full flex-col justify-center">
   <div class="stage">
     <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">08</span><h2 class="text-6xl font-bold mt-2">Datenbank</h2></div>
@@ -566,11 +566,11 @@
             <rect x="176" y="18" width="68" height="24" rx="12" fill="#11261c" stroke="#34d399" stroke-width="1.4"/>
             <text x="210" y="30" fill="#34d399" text-anchor="middle" dominant-baseline="central" font-size="10.5" font-weight="600" font-family="Inter, sans-serif">Engine</text>
           </g>
-          <!-- Engine -> Hub feed -->
+          <!-- Feed from Engine to Hub -->
           <line x1="210" y1="44" x2="210" y2="138" stroke="#34d399" stroke-width="2" class="flow-line" marker-end="url(#emit)" opacity=".85"/>
           <text x="222" y="96" fill="#a6a6b0" font-size="8" font-family="JetBrains Mono, monospace">emit</text>
 
-          <!-- Curved Bézier data streams: hub -> clients (flowing) -->
+          <!-- Curved Bézier data streams flowing from hub to clients -->
           <g stroke="url(#s10stream)" stroke-width="1.7" class="flow-line" opacity=".5" fill="none">
             <path d="M210,172 Q100,105 84,100" marker-end="url(#push)"/>
             <path d="M210,172 Q320,105 336,100" marker-end="url(#push)"/>
@@ -679,7 +679,7 @@
   </div>
 </section>
 
-<!-- 12 — AUTH & ROLLEN -->
+<!-- 12 — AUTH & ROLES -->
 <section class="slide w-full h-full flex-col justify-center">
   <div class="stage">
     <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">11</span><h2 class="text-6xl font-bold mt-2">Authentifizierung & Rollen</h2></div>
@@ -778,7 +778,7 @@
   </div>
 </section>
 
-<!-- 14 — LOGGING & OBS -->
+<!-- 14 — LOGGING & OBSERVABILITY -->
 <section class="slide w-full h-full flex-col justify-center">
   <div class="stage">
     <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">14</span><h2 class="text-6xl font-bold mt-2">Logging & Observability</h2></div>
@@ -894,7 +894,7 @@
   </div>
 </section>
 
-<!-- 16 — ACTIVITY-TYPEN -->
+<!-- 16 — ACTIVITY TYPES -->
 <section class="slide w-full h-full flex-col justify-center">
   <div class="stage">
     <div class="anim-fade-up d-1 mb-3"><span class="text-np-lilac font-mono text-base">18</span><h2 class="text-6xl font-bold mt-2">Activity-Typen</h2></div>
@@ -1061,7 +1061,7 @@
   </div>
 </section>
 
-<!-- 21 — ENGINE MODELL -->
+<!-- 21 — ENGINE MODEL -->
 <section class="slide w-full h-full flex-col justify-center">
   <div class="stage">
     <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">23</span><h2 class="text-6xl font-bold mt-2">WorkflowEngine — Execution-Modell</h2></div>
@@ -1242,7 +1242,7 @@
   </div>
 </section>
 
-<!-- 26 — KI FEATURES -->
+<!-- 26 — AI FEATURES -->
 <section class="slide w-full h-full flex-col justify-center">
   <div class="stage">
     <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">28</span><h2 class="text-6xl font-bold mt-2">KI-Features</h2></div>
@@ -1308,7 +1308,7 @@
   </div>
 </section>
 
-<!-- 28 — WORKFLOW BAUEN 1 -->
+<!-- 28 — BUILDING A WORKFLOW 1 -->
 <section class="slide w-full h-full flex-col justify-center">
   <div class="stage">
     <div class="anim-fade-up d-1 mb-3"><span class="text-np-lilac font-mono text-base">30</span><h2 class="text-6xl font-bold mt-2">Workflows bauen — Schritt&nbsp;1</h2></div>
@@ -1325,7 +1325,7 @@
   </div>
 </section>
 
-<!-- 29 — WORKFLOW BAUEN 2 -->
+<!-- 29 — BUILDING A WORKFLOW 2 -->
 <section class="slide w-full h-full flex-col justify-center">
   <div class="stage">
     <div class="anim-fade-up d-1 mb-3"><span class="text-np-lilac font-mono text-base">31</span><h2 class="text-6xl font-bold mt-2">Workflows bauen — Schritt&nbsp;2</h2></div>
@@ -1380,7 +1380,7 @@
   </div>
 </section>
 
-<!-- 30 — WORKFLOW BAUEN 3 -->
+<!-- 30 — BUILDING A WORKFLOW 3 -->
 <section class="slide w-full h-full flex-col justify-center">
   <div class="stage">
     <div class="anim-fade-up d-1 mb-3"><span class="text-np-lilac font-mono text-base">32</span><h2 class="text-6xl font-bold mt-2">Workflows bauen — Schritt&nbsp;3</h2></div>
@@ -1482,7 +1482,7 @@
   </div>
 </section>
 
-<!-- 34 — ZUSAMMENFASSUNG -->
+<!-- 34 — SUMMARY -->
 <section class="slide w-full h-full flex-col justify-center">
   <div class="stage">
     <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">36</span><h2 class="text-6xl font-bold mt-2">Zusammenfassung</h2></div>

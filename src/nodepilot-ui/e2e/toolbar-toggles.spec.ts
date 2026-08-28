@@ -2,20 +2,19 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 69 — Editor-Toolbar View-Toggles (lines 3841-3865).
+ * E2ETests.md Part 69 — editor toolbar view toggles (lines 3841-3865).
  *
  * The editor toolbar carries the canvas-display settings (CanvasSettingsPanel, opened from the
  * "Display" popover) plus the inspect-overlay toggles (OverlaysMenu in EditorHeader.tsx). Each
- * control drives a designStore flag. Since the redesign the display controls are labeled rows —
- * a switch (role="switch"/aria-checked), a segmented control (role="radio") or a stepper — so we
- * assert on ARIA state / testids rather than on `title` strings. SPA renders ENGLISH under
- * Playwright.
+ * control drives a designStore flag and renders as a labeled row: a switch (role="switch" with
+ * aria-checked), a segmented control (role="radio") or a stepper. The assertions therefore use
+ * ARIA state and testids rather than `title` strings. The SPA renders English under Playwright.
  *
- * The canvas-display controls live inside the "Display" (canvas-settings) dialog; the inspection
- * overlays live inside their own "Overlays" popover. Open the relevant menu before asserting.
+ * Open the "Display" (canvas-settings) dialog before asserting on canvas-display controls, and
+ * the "Overlays" popover before asserting on the inspection overlays.
  *
- * Hermetic: page.route mocks. Workflow locked-by-me so the full toolbar (incl. canWrite-gated
- * Layout cluster) renders, though the view toggles themselves are visible for any role.
+ * Hermetic: page.route mocks. The workflow is locked by the mock user so the full toolbar,
+ * including the canWrite-gated Layout cluster, renders. The view toggles are visible to any role.
  */
 
 const WF_ID = 'e6969696-6969-6969-6969-696969696969';
@@ -45,7 +44,7 @@ function workflowJson() {
 }
 
 async function openEditor(page: Page) {
-  await seedExpertMode(page); // view-toggles live in the expert-mode toolbar (default is standard)
+  await seedExpertMode(page); // view toggles live in the expert-mode toolbar (default: standard)
   await page.route(`**/api/workflows/${WF_ID}`, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson() }),
   );
@@ -53,8 +52,8 @@ async function openEditor(page: Page) {
   await expect(page.locator('.react-flow__node[data-id="step-a"]')).toBeVisible({ timeout: 20_000 });
 }
 
-// The canvas-display controls (edge animation, node-style, ports, node-scale, …) now live
-// inside the "Display" settings dialog. Open it before asserting on any of them.
+// The canvas-display controls (edge animation, node style, ports, node scale) live inside the
+// "Display" settings dialog. Open it before asserting on any of them.
 async function openCanvasSettings(page: Page) {
   await page.getByTestId('canvas-settings-trigger').click();
   await expect(page.getByRole('dialog')).toBeVisible();
@@ -74,7 +73,7 @@ test.describe('Editor-Toolbar View-Toggles (Teil 69)', () => {
     const before = await animate.getAttribute('aria-checked');
     await animate.click();
     await expect(animate).not.toHaveAttribute('aria-checked', before!);
-    // Click again restores the original state — the switch is reversible.
+    // Clicking again restores the original state; the switch is reversible.
     await animate.click();
     await expect(animate).toHaveAttribute('aria-checked', before!);
   });
@@ -114,7 +113,7 @@ test.describe('Editor-Toolbar View-Toggles (Teil 69)', () => {
     await openEditor(page);
     await openCanvasSettings(page);
 
-    // The classic-only node-scale stepper shows XS/S/M/L/… between − (Smaller) and + (Larger).
+    // The classic-only node-scale stepper shows the size label between Smaller and Larger.
     const stepper = page.getByTestId('canvas-setting-node-scale');
     // designStore is persisted; if a prior session left Card view, flip back so the stepper shows.
     if (!(await stepper.isVisible())) {

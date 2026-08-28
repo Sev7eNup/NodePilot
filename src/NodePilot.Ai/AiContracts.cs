@@ -3,13 +3,13 @@ namespace NodePilot.Ai;
 /// <summary>
 /// A single upstream variable available to the step currently being edited. The frontend already
 /// has this for display in the editor; the AI endpoint forwards it as-is into the user prompt so
-/// the LLM knows which <c>{{var}}</c> references are valid to use in the script. Deliberately
-/// carries NO values (privacy + prompt-injection surface).
+/// the LLM knows which <c>{{var}}</c> references are valid in the script. It carries no values,
+/// which keeps data out of the prompt and limits the prompt-injection surface.
 /// </summary>
 /// <param name="StepId">ID of the source step.</param>
 /// <param name="Label">Display label ("Collect Info → $hostname").</param>
 /// <param name="Variable">Variable path ("collectInfo.param.hostname").</param>
-/// <param name="Expression">Fully-qualified template form ("{{collectInfo.param.hostname}}").</param>
+/// <param name="Expression">Template form ("{{collectInfo.param.hostname}}").</param>
 /// <param name="Type">Type hint ("string"/"number"/"boolean"/"object"/"array"/"unknown").</param>
 public sealed record UpstreamVariableDto(
     string StepId,
@@ -20,13 +20,10 @@ public sealed record UpstreamVariableDto(
 
 /// <summary>
 /// Request body for <c>POST /api/ai/generate-script</c>. The frontend caps the list to
-/// <see cref="LlmOptions.MaxUpstreamVariables"/> in BFS order (direct predecessors first); the
-/// server re-trims it for safety as well.
-/// <paramref name="CurrentScript"/> is the current editor content — it gives requests like
-/// "refactor this script" / "fix the error" something to work from (otherwise the LLM would have
-/// to hallucinate from the variable list alone). It is forwarded as-is inside an untrusted context
-/// block only when <paramref name="IncludeCurrentScript"/> is explicitly true. The flag defaults
-/// to false so merely supplying <paramref name="CurrentScript"/> cannot disclose it.
+/// <see cref="LlmOptions.MaxUpstreamVariables"/> in BFS order (direct predecessors first) and the
+/// server re-trims it. <paramref name="CurrentScript"/> carries the current editor content for
+/// requests like "refactor this script". It reaches the LLM in an untrusted context block only
+/// when <paramref name="IncludeCurrentScript"/> is true; that flag defaults to false.
 /// </summary>
 public sealed record GenerateScriptRequest(
     string Prompt,
@@ -70,10 +67,10 @@ public sealed record AiChatTurnDto(string Role, string Content);
 /// <summary>
 /// Request body for <c>POST /api/ai/chat</c>. Multi-turn assistant for the workflow currently open
 /// in the editor. <c>WorkflowJson</c> is the current canvas definition (already cleaned up by the
-/// frontend's <c>stripRuntimeDefinition</c>); it gets secret-redacted server-side <b>before</b> the
-/// LLM call. <c>BaseDefinitionHash</c> hashes that same canvas snapshot and is echoed back in the
-/// response — the frontend refuses to apply a proposal if the canvas has changed in the meantime
-/// (stale-proposal protection).
+/// frontend's <c>stripRuntimeDefinition</c>); it is secret-redacted server-side before the LLM
+/// call. <c>BaseDefinitionHash</c> hashes that same canvas snapshot and is echoed back in the
+/// response, so the frontend can refuse to apply a proposal when the canvas changed in the
+/// meantime.
 /// </summary>
 public sealed record WorkflowChatRequest(
     string Question,
@@ -85,8 +82,8 @@ public sealed record WorkflowChatRequest(
 /// <summary>
 /// A workflow change proposed by the assistant (sent in the SSE <c>proposal</c> event).
 /// <c>DefinitionJson</c> has already been merged back onto the original server-side (preserving
-/// layout, secrets, and other fields) and structurally validated — the frontend shows it as a diff
-/// and can apply it onto the canvas.
+/// layout, secrets, and other fields) and structurally validated, so the frontend can show it as
+/// a diff and apply it onto the canvas.
 /// </summary>
 public sealed record WorkflowChatProposalDto(
     string DefinitionJson,

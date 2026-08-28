@@ -2,15 +2,14 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 13 — Spezielle Node-Types (Sticky Note + Group).
+ * E2ETests.md part 13 — special node types (sticky note and group).
  *
- * Hermetic: page.route() mocks only (no backend). SPA renders EN under Playwright.
- * The workflow is locked-by-me so `canWrite` is true and double-click-to-edit + grouping work.
+ * Both node types are pre-seeded via definitionJson and render as .react-flow__node, so editing,
+ * collapsing and grouping are driven through their DOM. Drag-add from the palette uses HTML5
+ * drag-and-drop, which Playwright cannot synthesize, so Ctrl+G covers group creation instead.
  *
- * Sticky-note and group nodes are pre-seeded via `definitionJson` (type 'stickyNote' / 'group')
- * — they render as `.react-flow__node` and editing/collapse is driven through their DOM, which
- * is fully synthesizable. (Drag-add from the palette uses HTML5 drag-and-drop, which Playwright
- * cannot synthesize against the canvas; the group-create-via-Ctrl+G path is exercised here too.)
+ * Hermetic: page.route() mocks only. The SPA renders English, and the workflow is locked by the
+ * current user so canWrite is true.
  */
 
 const WF_ID = 'dddddddd-1313-1313-1313-131313131313';
@@ -21,7 +20,7 @@ function workflowJson(definition: { nodes: unknown[]; edges: unknown[] }) {
     name: 'SpecialNodes_E2E_WF',
     description: '',
     isEnabled: false,
-    checkedOutByUserId: MOCK_USER.id, // locked-by-me → canWrite
+    checkedOutByUserId: MOCK_USER.id, // locked by the current user, so canWrite is true
     checkedOutByUserName: MOCK_USER.username,
     checkedOutAt: '2026-06-01T00:00:00.000Z',
     definitionJson: JSON.stringify(definition),
@@ -85,7 +84,7 @@ test.describe('Special Node-Types (Teil 13)', () => {
 
     const note = page.locator(`.react-flow__node[data-id="${NOTE_ID}"]`);
     await expect(note).toBeVisible({ timeout: 20_000 });
-    // No source/target handles → it can never be an edge endpoint.
+    // No source or target handles, so it can never be an edge endpoint.
     await expect(note.locator('.react-flow__handle')).toHaveCount(0);
   });
 
@@ -105,7 +104,7 @@ test.describe('Special Node-Types (Teil 13)', () => {
     // The child node mounts inside the group.
     await expect(page.locator('.react-flow__node[data-id="step-child111"]')).toBeVisible();
 
-    // Label is editable: double-click the label → input → rename.
+    // Label is editable: double-click turns it into an input for renaming.
     await group.getByTitle(/double-click to rename/i).dblclick();
     const labelInput = group.locator('input');
     await expect(labelInput).toBeVisible({ timeout: 10_000 });

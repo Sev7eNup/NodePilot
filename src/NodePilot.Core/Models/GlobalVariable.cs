@@ -1,26 +1,21 @@
 namespace NodePilot.Core.Models;
 
 /// <summary>
-/// Admin-managed key/value pair accessible from every workflow via the
-/// <c>{{globals.NAME}}</c> template. Conceptually equivalent to SCOrch "Variables":
-/// a shared pool of constants (database connection strings, API endpoints,
-/// environment tags, credentials-for-third-party-APIs) that keeps hard-coded values
-/// out of individual workflow definitions.
+/// Admin-managed key/value pair readable from every workflow via the <c>{{globals.NAME}}</c>
+/// template. It holds a shared pool of constants (connection strings, API endpoints,
+/// environment tags) so those values are not hard-coded in individual workflow definitions.
 ///
 /// <para>
-/// When <see cref="IsSecret"/> is true, <see cref="Value"/> is stored DPAPI-encrypted
-/// (scope configurable via <c>Credentials:DpapiScope</c>) and never returned through
-/// <c>GET /api/global-variables</c> — callers see <c>"***"</c> instead. Non-secret
-/// values are stored plaintext and returned verbatim.
+/// When <see cref="IsSecret"/> is true, <see cref="Value"/> is stored DPAPI-encrypted (scope
+/// from <c>Credentials:DpapiScope</c>) and <c>GET /api/global-variables</c> returns
+/// <c>"***"</c> instead. Non-secret values are stored and returned as plaintext.
 /// </para>
 ///
 /// <para>
-/// The engine resolves <c>{{globals.NAME}}</c> by looking up the row and (for
-/// secrets) decrypting at step-execution time. The resolved value flows into the
-/// same <c>Variables</c> dict the step-output templates use, so downstream activities
-/// receive the plaintext just as they would for an upstream <c>runScript</c> output.
-/// The <c>OutputRedactor</c> masks the final value before persisting Output/ErrorOutput
-/// so decrypted secrets never leak into the audit-readable step log.
+/// The engine resolves <c>{{globals.NAME}}</c> from the row, decrypting secrets at
+/// step-execution time, and puts the value into the same <c>Variables</c> dictionary that
+/// step-output templates use. <c>OutputRedactor</c> masks it again before Output/ErrorOutput
+/// are persisted, so decrypted secrets do not reach the step log.
 /// </para>
 /// </summary>
 public class GlobalVariable
@@ -28,10 +23,9 @@ public class GlobalVariable
     public Guid Id { get; set; }
 
     /// <summary>
-    /// Case-sensitive identifier. Convention: <c>SCREAMING_SNAKE_CASE</c>. Restricted
-    /// to <c>[A-Za-z0-9_\-]</c> by the controller so templates stay unambiguous
-    /// (a hyphen in the name doesn't collide with anything else in the
-    /// <c>{{globals.NAME}}</c> grammar).
+    /// Case-sensitive identifier, by convention <c>SCREAMING_SNAKE_CASE</c>. The controller
+    /// restricts it to <c>[A-Za-z0-9_\-]</c> so the name stays unambiguous inside the
+    /// <c>{{globals.NAME}}</c> grammar.
     /// </summary>
     public string Name { get; set; } = string.Empty;
 
@@ -46,10 +40,10 @@ public class GlobalVariable
     public string? Description { get; set; }
 
     /// <summary>
-    /// Organizational folder membership. Every variable belongs to exactly one
+    /// Folder membership for the UI. Every variable belongs to exactly one
     /// <see cref="GlobalVariableFolder"/>, defaulting to the singleton Root
-    /// (<see cref="GlobalVariableFolder.RootFolderId"/>). Purely cosmetic — the folder never
-    /// affects how <c>{{globals.NAME}}</c> resolves (lookup is by the globally unique Name).
+    /// (<see cref="GlobalVariableFolder.RootFolderId"/>). The folder never affects how
+    /// <c>{{globals.NAME}}</c> resolves; lookup is by the globally unique Name.
     /// </summary>
     public Guid FolderId { get; set; } = GlobalVariableFolder.RootFolderId;
 

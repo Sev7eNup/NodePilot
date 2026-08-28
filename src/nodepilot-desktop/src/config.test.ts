@@ -70,7 +70,7 @@ describe('loadDesktopConfig', () => {
       .toThrow(/schemaVersion/);
   });
 
-  // ── origin: the shell must never be pointed at anything but the local backend ──
+  // origin: the shell must never be pointed at anything but the local backend.
 
   it.each([
     ['http instead of https', 'http://localhost:5001'],
@@ -89,7 +89,7 @@ describe('loadDesktopConfig', () => {
     expect(() => loadDesktopConfig(write(cfg))).toThrow(/origin/);
   });
 
-  // ── certificate fingerprint: wrong shape means no meaningful pin ──
+  // certificate fingerprint: the wrong shape means there is no meaningful pin.
 
   it.each([
     ['too short', 'A'.repeat(63)],
@@ -102,8 +102,8 @@ describe('loadDesktopConfig', () => {
       .toThrow(/certificateSha256/);
   });
 
-  // ── serviceName: this string reaches an elevated PowerShell restart, so the charset
-  //    restriction is the injection barrier ──
+  // serviceName: this string reaches an elevated PowerShell restart, so the charset
+  //    restriction is the injection barrier.
 
   it.each([
     ['a space', 'NodePilot Api'],

@@ -1,7 +1,7 @@
 import { test, type Page, type Route } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
-// Throwaway: capture every mobile page with realistic data. Run:
+// Screenshot helper: captures every mobile page with realistic data. Run:
 //   npx playwright test _all-screens --config=playwright.dev.config.ts
 const PHONE = { width: 390, height: 844 };
 const DIR = 'e2e/__screens__';
@@ -53,10 +53,9 @@ async function mockAll(page: Page) {
     { id: 'u2', username: 'ops-team', role: 'Operator', isActive: true, createdAt: '2026-03-01T00:00:00Z' },
     { id: 'u3', username: 'auditor', role: 'Viewer', isActive: false, createdAt: '2026-04-01T00:00:00Z' },
   ]));
-  // folderId must be the Root sentinel (…0002): the real API returns a non-null FolderId
-  // (default RootFolderId) for every variable, and the page scopes the list to the selected
-  // folder — omitting it here leaves undefined, which never matches the Root folder → the
-  // list renders empty.
+  // folderId must be the Root sentinel GUID. The real API returns a non-null FolderId for every
+  // variable and the page scopes the list to the selected folder, so an undefined folderId
+  // never matches Root and the list renders empty.
   await page.route('**/api/global-variables', (r) => json(r, [
     { id: 'g1', name: 'API_BASE_URL', value: 'https://api.corp.local', isSecret: false, description: 'Base URL for REST calls', folderId: '00000000-0000-0000-0000-000000000002', createdAt: '2026-05-01T00:00:00Z', updatedAt: '2026-06-01T00:00:00Z', updatedBy: 'admin' },
     { id: 'g2', name: 'DEPLOY_TOKEN', value: null, isSecret: true, description: 'CI deploy token', folderId: '00000000-0000-0000-0000-000000000002', createdAt: '2026-05-01T00:00:00Z', updatedAt: '2026-06-01T00:00:00Z', updatedBy: 'admin' },

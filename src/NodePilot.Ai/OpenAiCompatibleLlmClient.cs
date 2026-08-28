@@ -9,10 +9,10 @@ using static NodePilot.Ai.LlmJson;
 namespace NodePilot.Ai;
 
 /// <summary>
-/// HTTP client for an OpenAI-compatible <b>chat-completions</b> endpoint. Works against OpenAI
-/// Cloud, Ollama, LM Studio, vLLM, LocalAI, and llama.cpp servers — they all implement the same
-/// wire format. The URL to POST to comes from <see cref="LlmEndpointTarget.PostUrl"/>; OpenAI's
-/// separate <c>/responses</c> dialect is served by <see cref="OpenAiResponsesLlmClient"/> instead.
+/// HTTP client for an OpenAI-compatible chat-completions endpoint. Works against OpenAI Cloud,
+/// Ollama, LM Studio, vLLM, LocalAI, and llama.cpp, which share the same wire format. The URL to
+/// POST to comes from <see cref="LlmEndpointTarget.PostUrl"/>; OpenAI's separate <c>/responses</c>
+/// dialect is served by <see cref="OpenAiResponsesLlmClient"/> instead.
 /// </summary>
 public sealed class OpenAiCompatibleLlmClient : ILlmClient
 {
@@ -35,11 +35,8 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
 
     public async Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct)
     {
-        // Outer fallback: newer OpenAI models (o-series / GPT-5 era) reject `max_tokens` with
-        // HTTP 400 and require `max_completion_tokens` instead. We detect exactly this quirk (the
-        // response body mentions `max_completion_tokens`) and retry once with the new key. Local
-        // and older endpoints keep receiving `max_tokens` as before. Same fallback idiom as the
-        // response_format/stream_options fallbacks below.
+        // Some models reject `max_tokens` with HTTP 400 and require `max_completion_tokens`.
+        // Detect that response and retry once with the new key; other endpoints keep `max_tokens`.
         var effectiveRequest = request;
         var useMaxCompletionTokens = PrefersMaxCompletionTokens();
         for (var attempt = 0; ; attempt++)
@@ -72,13 +69,10 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
     private async Task<LlmResponse> CompleteWithJsonFallbackAsync(
         LlmRequest request, bool useMaxCompletionTokens, CancellationToken ct)
     {
-        // First attempt: with (or without, depending on the request) `response_format:
-        // json_object`. If the upstream rejects that with HTTP 400 — typical for local models
-        // without JSON-mode support (e.g. LM Studio running gemma) — we fall back exactly once to
-        // a call without that field. The existing "reply with ONLY JSON" hint in the
-        // workflow-generation prompt, plus the caller-side JSON-parse retry, are tolerant enough
-        // to parse the result cleanly either way. The max_tokens quirk is deliberately NOT caught
-        // here, so the outer CompleteAsync catch handles it instead.
+        // Sends `response_format: json_object` when the request asks for JSON mode. Endpoints
+        // without JSON-mode support answer HTTP 400, so retry once without that field; the prompt
+        // and the caller-side parse retry still yield parsable JSON. The max_tokens quirk is not
+        // caught here, so the outer CompleteAsync loop handles it.
         try
         {
             return await SendOnceAsync(request, includeJsonResponseFormat: request.JsonMode, useMaxCompletionTokens, ct);
@@ -97,10 +91,10 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
     }
 
     /// <summary>
-    /// Detects the OpenAI quirk "<c>max_tokens</c> is not supported with this model. Use
+    /// Detects the upstream error "<c>max_tokens</c> is not supported with this model. Use
     /// <c>max_completion_tokens</c> instead." (HTTP 400, code <c>unsupported_parameter</c>).
-    /// Discriminated by the body substring <c>max_completion_tokens</c> — that string never
-    /// appears as a substring of <c>max_tokens</c>, so there's no false-positive risk.
+    /// Matched on the body substring <c>max_completion_tokens</c>, which cannot occur inside
+    /// <c>max_tokens</c> and therefore cannot match the plain parameter name.
     /// </summary>
     private static bool IsMaxTokensUnsupported(LlmException ex) =>
         ex.Kind == LlmErrorKind.UpstreamError
@@ -170,7 +164,7 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                 "LLM-Antwort enthielt kein 'choices[0].message'-Objekt.");
         }
 
-        // Tool-call responses often have content: null plus tool_calls — accept both cases.
+        // Tool-call responses can carry content: null together with tool_calls, so accept both.
         var contentStr = ReadString(message, "content") ?? string.Empty;
         var toolCalls = ParseToolCalls(message);
         var finishReason = ReadString(first, "finish_reason");
@@ -200,9 +194,8 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         using var timeoutCts = _transport.CreateTimeoutScope(ct);
         var token = timeoutCts.Token;
 
-        // Sends the request, including the stream_options and max_completion_tokens fallbacks.
-        // yield isn't allowed inside try/catch, hence these are separate methods. The outer catch
-        // here handles the max_tokens quirk (see CompleteAsync).
+        // Sends the request with the stream_options and max_completion_tokens fallbacks. yield is
+        // not allowed inside try/catch, so the sending itself lives in separate methods.
         HttpResponseMessage resp;
         var effectiveRequest = request;
         var useMaxCompletionTokens = PrefersMaxCompletionTokens();
@@ -240,12 +233,9 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
             int? promptTokens = null, completionTokens = null;
             var toolAcc = new Dictionary<int, ToolCallAccumulator>();
             var toolAutoIndex = 0; // slot counter for the index-less streaming path (see AccumulateToolCallDeltas)
-            // Marks when the server started emitting output, so the Done event can report a decode
-            // throughput instead of a wall-clock rate. Everything before this stamp — connect, and
-            // above all prompt prefill — is not generation: a 3k-token prompt can take seconds while
-            // the answer itself decodes in milliseconds. Strictly the window spans n-1 decode
-            // intervals for n tokens, so very short answers read slightly high; irrelevant at
-            // realistic answer lengths.
+            // Timestamp of the first output token, so the Done event reports decode throughput
+            // instead of a wall-clock rate. Connect time and prompt prefill are not generation and
+            // stay outside the window.
             long? firstOutputTs = null;
 
             await foreach (var data in _transport.ReadSseDataAsync(resp, token, ct))
@@ -284,8 +274,8 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                     delta = null; // skip this one malformed chunk and keep going
                 }
 
-                // An empty content string doesn't count: OpenAI opens every stream with a role-only
-                // chunk carrying `content: ""`, which would start the clock before the first token.
+                // An empty content string does not count: a stream opens with a role-only chunk
+                // carrying `content: ""`, which would start the clock before the first token.
                 if (!string.IsNullOrEmpty(delta) || sawToolDelta)
                     firstOutputTs ??= Stopwatch.GetTimestamp();
 
@@ -307,10 +297,9 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
     }
 
     /// <summary>
-    /// Sends the streaming request and, on a <c>stream_options</c>-related HTTP 400, retries
-    /// exactly once without that field (some local servers don't know it — the response then
-    /// simply has no token usage). The max_tokens quirk is deliberately NOT caught here, so the
-    /// outer StreamAsync catch handles it instead.
+    /// Sends the streaming request and, on an HTTP 400 caused by <c>stream_options</c>, retries
+    /// once without that field; endpoints that do not support it then report no token usage. The
+    /// max_tokens quirk is not caught here, so the outer StreamAsync loop handles it.
     /// </summary>
     private async Task<HttpResponseMessage> SendStreamingWithStreamOptionsFallbackAsync(
         LlmRequest request, bool useMaxCompletionTokens, CancellationToken token, CancellationToken ct)
@@ -426,14 +415,11 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
     }
 
     /// <summary>
-    /// Akkumuliert die inkrementellen <c>delta.tool_calls</c> eines Streaming-Chunks (id/name einmal,
-    /// arguments konkateniert). Schlüssel ist bevorzugt das OpenAI-<c>index</c>-Feld. Fehlt es (manche
-    /// lokale Runtimes wie LM Studio senden keins), wird ein <b>neuer</b> Slot angelegt, sobald ein
-    /// Fragment eine nicht-leere <c>id</c> ODER <c>function.name</c> trägt (= Beginn eines neuen Calls);
-    /// reine Argument-Fortsetzungen hängen an den zuletzt geöffneten Slot. Damit kollabieren mehrere
-    /// index-lose parallele Tool-Calls nicht mehr in einen einzigen (überschriebene id/name, konkatenierte
-    /// Argumente). <paramref name="autoIndex"/> ist der Zähler für den index-losen Pfad und muss über die
-    /// Chunks eines Streams hinweg gehalten werden.
+    /// Accumulates the incremental <c>delta.tool_calls</c> of a streaming chunk: id and name are
+    /// set once, arguments are concatenated. Slots are keyed by the <c>index</c> field; if a
+    /// runtime omits it, a fragment with a non-empty <c>id</c> or <c>function.name</c> opens a new
+    /// slot and argument-only fragments append to the last one, so parallel calls stay separate.
+    /// <paramref name="autoIndex"/> counts those slots and must survive across chunks of a stream.
     /// </summary>
     private static void AccumulateToolCallDeltas(JsonElement toolCallsArray, Dictionary<int, ToolCallAccumulator> acc, ref int autoIndex)
     {
@@ -447,11 +433,11 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
 
             int index;
             if (ReadInt(tc, "index") is { } wireIndex)
-                index = wireIndex;                   // canonical OpenAI incremental stream
+                index = wireIndex;                   // canonical incremental stream
             else if (startsNewCall || acc.Count == 0)
                 index = autoIndex++;                 // index-less runtime: a new call opens a fresh slot
             else
-                index = Math.Max(0, autoIndex - 1);  // index-less arguments continuation → current slot
+                index = Math.Max(0, autoIndex - 1);  // index-less arguments continuation: current slot
 
             var slot = ToolCallAccumulator.Slot(acc, index);
             if (hasId)

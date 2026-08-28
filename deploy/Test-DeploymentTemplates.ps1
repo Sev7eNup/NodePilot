@@ -113,9 +113,7 @@ if ($null -eq $ChecksumDocPaths -or $ChecksumDocPaths.Count -eq 0) {
         (Join-Path $scriptDirectory '..\docs\deployment-guide.md')
         (Join-Path $scriptDirectory 'README.md')
         (Join-Path $scriptDirectory 'desktop\README.md')
-        # The doc site is bilingual: the checksum/trust wording is a contract in BOTH
-        # translations, so both are asserted. A German reader following the German page must
-        # get the same verification steps as an English one.
+        # The doc site is bilingual, so the checksum wording is asserted in both translations.
         (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\content\en\deployment\production.md')
         (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\content\en\deployment\desktop.md')
         (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\content\en\getting-started\installation.md')

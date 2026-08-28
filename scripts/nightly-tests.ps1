@@ -4,19 +4,19 @@
   units (vitest), E2E (Playwright).
 
 .DESCRIPTION
-  Runs all four automated suites against the *currently checked-out* working tree and writes
+  Runs all four automated suites against the currently checked-out working tree and writes
   a timestamped report plus per-suite logs. Exits non-zero if any suite fails, so the Windows
   Task Scheduler "Last Run Result" reflects the outcome.
 
-  All four suites are HERMETIC — they need no running NodePilot stack:
+  All four suites are hermetic and need no running NodePilot stack:
     - dotnet test       : in-memory SQLite + mocked WinRM
     - npm run test:run  : vitest under jsdom (nodepilot-ui) / node (nodepilot-desktop)
     - npm run test:e2e  : builds the SPA, serves it via `vite preview`, mocks every /api call
                           with page.route(); no backend, no Postgres.
-  So this script does NOT start Postgres / the API / the dev server.
+  The script therefore does not start Postgres, the API or the dev server.
 
-  It does NOT run `git pull` — it tests whatever is checked out, which is what you want for
-  catching regressions in work-in-progress. Pull first yourself if you want to test origin/main.
+  It also does not run `git pull`; it tests whatever is checked out, which catches regressions
+  in work in progress. Pull first to test origin/main.
 
 .PARAMETER RepoRoot
   Repository root. Defaults to E:\NodePilot.
@@ -47,9 +47,8 @@ function Get-Count([string]$text, [string]$pattern) {
 }
 
 # Runs one suite, tees output to a log, captures the native exit code, returns a result object.
-# On failure it retries once (Retries=1): these suites contain a few timing-sensitive
-# concurrency tests that can flake on a loaded host. A genuine failure fails both attempts;
-# a flake passes on retry. The result is flagged Retried=$true when a second attempt ran.
+# Retries once on failure to absorb timing-sensitive tests that flake on a loaded host; a real
+# failure fails both attempts. The result carries Retried=$true when a second attempt ran.
 function Invoke-Suite {
   param([string]$Name, [string]$WorkDir, [scriptblock]$Action, [int]$Retries = 1)
   $start = Get-Date
@@ -85,13 +84,12 @@ function Invoke-Suite {
 Write-Host "NodePilot nightly run $stamp -> $runDir"
 $results = @()
 
-# `dotnet test` rebuilds the whole solution; that build fails with MSB3027 ("being used by
-# another process" → test projects silently don't run) whenever a build output is locked by:
-#   (a) a running NodePilot.Api dev host on port 5000  -> locks Engine/Scheduler *.pdb
-#   (b) an orphaned testhost/vstest.console from a prior `dotnet test` -> locks np.dll etc.
-# Clear both before each backend attempt. Safe for a test run: the suites are hermetic and
-# don't need the API (restart it afterwards with `dotnet run` if you had one up), and
-# testhost/vstest.console are throwaway test runners.
+# `dotnet test` rebuilds the whole solution, and that build fails with MSB3027 when a build
+# output is locked, which happens in two cases:
+#   (a) a running NodePilot.Api dev host on port 5000, locking Engine/Scheduler *.pdb
+#   (b) an orphaned testhost/vstest.console from an earlier `dotnet test`, locking np.dll etc.
+# Both are cleared before each backend attempt. The suites are hermetic, so nothing here needs
+# the API, and testhost/vstest.console are throwaway test runners.
 function Clear-BuildLocks {
   Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty OwningProcess -Unique |
@@ -102,8 +100,8 @@ function Clear-BuildLocks {
 }
 Clear-BuildLocks
 
-# 1) Backend — dotnet test (whole solution). Re-clear locks at the start of each attempt so
-# the retry isn't sabotaged by the first attempt's own lingering testhost.
+# 1) Backend — dotnet test over the whole solution. Locks are cleared again at the start of
+# each attempt so a retry is not blocked by the previous attempt's own testhost.
 $results += Invoke-Suite -Name 'backend-dotnet' -WorkDir $RepoRoot -Action {
   Clear-BuildLocks
   dotnet test --nologo
@@ -120,10 +118,10 @@ $results += Invoke-Suite -Name 'desktop-vitest' -WorkDir $desktopDir -Action {
   npm run test:run
 }
 
-# 4) E2E — Playwright. CI=true forces a fresh build + vite preview (reuseExistingServer off);
-#    --reporter=line avoids the HTML/GitHub reporters (the HTML one trips EPERM writing
-#    playwright-report\ on this box, and the GitHub reporter is for Actions only).
-#    Free port 4173 first in case a previous preview lingered.
+# 4) E2E — Playwright. CI=true forces a fresh build plus vite preview (reuseExistingServer off);
+#    --reporter=line avoids the HTML reporter (it trips EPERM when writing playwright-report\)
+#    and the GitHub reporter (Actions only).
+#    Port 4173 is freed first in case a previous preview is still listening.
 $results += Invoke-Suite -Name 'frontend-e2e' -WorkDir $uiDir -Action {
   Get-NetTCPConnection -LocalPort 4173 -State Listen -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty OwningProcess -Unique |

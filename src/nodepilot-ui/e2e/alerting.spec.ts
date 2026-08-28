@@ -2,27 +2,28 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 // Mirrors `NotificationRuleStore.UnchangedSecret` on the backend (src/api/alerting.ts exports
-// the same `'__unchanged__'`). Inlined here rather than imported from src/ so the spec doesn't
-// pull the app module graph (api/client → auth/fetch wrappers) into the Playwright Node runtime
-// — no other e2e spec imports from src/, and this keeps the test hermetic to /api mocks.
+// the same `'__unchanged__'`). Inlined rather than imported from src/ so the spec does not pull
+// the app module graph (api/client plus the auth/fetch wrappers) into the Playwright Node
+// runtime, which keeps the test hermetic to the /api mocks.
 const UNCHANGED_SECRET = '__unchanged__';
 
 /**
- * Teil 78 — Alerting (Custom rules + System policies).
+ * Part 78 — Alerting (custom rules and system policies).
  *
  * Hermetic Playwright spec for the /alerts page. Every /api call is a per-test `page.route`
- * mock layered over the predicate catch-all in fixtures/mockApi.ts — no backend, no Postgres,
+ * mock layered over the predicate catch-all in fixtures/mockApi.ts: no backend, no Postgres,
  * no SignalR (delivery status comes from REST). The preview build renders the UI in English
- * (i18n falls back to EN); visible-text selectors are bilingual regex anchored on the EN
- * strings in src/i18n/locales/en/alerts.json + common.json, so a German render still matches.
+ * (i18n falls back to EN); visible-text selectors are bilingual regexes anchored on the EN
+ * strings in src/i18n/locales/en/alerts.json and common.json, so a German render still matches.
  *
- * RBAC mirror of the AlertingController: read = Admin/Operator, mutate = Admin-only. The UI
- * gates every write affordance on `useRole().canAdmin` (Admin-only), so Viewer and Operator
- * both see the list + deliveries but no New/Power/Edit/Trash controls.
+ * RBAC mirrors the AlertingController: read = Admin/Operator, mutate = Admin-only. The UI
+ * gates every write affordance on `useRole().canAdmin`, so Viewer and Operator both see the
+ * list and the deliveries but no New/Power/Edit/Trash controls.
  *
- * Icon-only row buttons (Power/Edit/Trash) carry `title={t(...)}` → `getByTitle(regex)`.
- * The confirm dialog (ConfirmHost) renders an "OK" button → `getByRole('button', { name: /^ok$/i })`.
- * Editor modals use ModalShell (role="presentation"); scope to the heading's parent panel.
+ * Icon-only row buttons (Power/Edit/Trash) carry `title={t(...)}`, so they are located with
+ * `getByTitle(regex)`. The confirm dialog (ConfirmHost) renders an "OK" button, located with
+ * `getByRole('button', { name: /^ok$/i })`. Editor modals use ModalShell (role="presentation");
+ * scope to the heading's parent panel.
  */
 
 // ---- mock-factory helpers ---------------------------------------------------------------
@@ -167,11 +168,11 @@ test.describe('Teil 78 — Alerting', () => {
     await page.route('**/api/alerting/system/catalog', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(systemCatalogJson()) }),
     );
-    // Shared folders tree — empty (the scope Folders/Workflows pickers query this).
+    // Shared folders tree, empty; the scope Folders/Workflows pickers query this.
     await page.route('**/api/shared-workflow-folders', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
     );
-    // System policies list — empty by default; the CRUD test overrides this.
+    // System policies list, empty by default; the CRUD test overrides this route.
     await page.route('**/api/alerting/system/policies', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
     );
@@ -190,12 +191,12 @@ test.describe('Teil 78 — Alerting', () => {
     // System subtitle is shown only on the system tab.
     await expect(page.getByText(/catalog-driven|kataloggesteuerte/i)).toBeVisible();
 
-    // Switch to Custom rules → URL carries ?tab=custom, empty state renders.
+    // Switching to Custom rules puts ?tab=custom in the URL and renders the empty state.
     await page.getByRole('button', { name: /custom rules|benutzerdefinierte regeln/i }).click();
     await expect(page).toHaveURL(/tab=custom/);
     await expect(page.getByText(/no alerting rules yet|noch keine alerting-regeln/i)).toBeVisible();
 
-    // Switch back to System alerts → URL carries ?tab=system.
+    // Switching back to System alerts puts ?tab=system in the URL.
     await page.getByRole('button', { name: /system alerts|system-alarme/i }).click();
     await expect(page).toHaveURL(/tab=system/);
     await expect(page.getByText(/catalog-driven|kataloggesteuerte/i)).toBeVisible();
@@ -243,15 +244,15 @@ test.describe('Teil 78 — Alerting', () => {
     await page.goto('/alerts?tab=custom');
     await expect(page.getByText(/no alerting rules yet|noch keine alerting-regeln/i)).toBeVisible({ timeout: 15_000 });
 
-    // "New rule" button is gated canAdmin && tab===custom.
+    // The "New rule" button is gated on canAdmin && tab === 'custom'.
     await page.getByRole('button', { name: /new rule|neue regel/i }).click();
     const panel = editorPanel(page, /create alerting rule|alerting-regel erstellen/i);
     await expect(panel).toBeVisible();
 
     // Name field is the first text input in the editor; description is the second.
     await panel.locator('input[type="text"]').first().fill('Disk Full');
-    // Default event type is ExecutionFailed (pre-selected); leave it.
-    // Route target — the email placeholder identifies the route row input.
+    // The default event type ExecutionFailed is pre-selected, so leave it.
+    // Route target: the email placeholder identifies the route row input.
     await panel.getByPlaceholder(/ops@example.com/i).fill('ops@example.com');
 
     await panel.getByRole('button', { name: /^create$|^anlegen$/i }).click();
@@ -295,7 +296,7 @@ test.describe('Teil 78 — Alerting', () => {
     await page.goto('/alerts?tab=custom');
     await expect(page.getByText('EDIT-ME')).toBeVisible({ timeout: 15_000 });
 
-    // Edit — pencil icon, title "Edit".
+    // Edit: pencil icon with title "Edit".
     await page.locator('tr', { hasText: 'EDIT-ME' }).getByTitle(/^edit$|^bearbeiten$/i).click();
     const panel = editorPanel(page, /edit alerting rule|alerting-regel bearbeiten/i);
     await expect(panel).toBeVisible();
@@ -308,7 +309,7 @@ test.describe('Teil 78 — Alerting', () => {
     await expect(panel).toHaveCount(0);
     await expect(page.getByText('EDITED')).toBeVisible();
 
-    // Delete — trash icon, title "Delete"; confirm via in-app OK.
+    // Delete: trash icon with title "Delete", confirmed through the in-app OK button.
     await page.locator('tr', { hasText: 'EDITED' }).getByTitle(/^delete$|^löschen$/i).click();
     await page.getByRole('button', { name: /^ok$/i }).click();
     await expect.poll(() => deleteHit, { timeout: 10_000 }).toBe(true);
@@ -333,7 +334,7 @@ test.describe('Teil 78 — Alerting', () => {
     await page.goto('/alerts?tab=custom');
     await expect(page.getByText('TOGGLE-ME')).toBeVisible({ timeout: 15_000 });
 
-    // Disabled rule → power icon title is "Enable".
+    // On a disabled rule the power icon carries the title "Enable".
     await page.locator('tr', { hasText: 'TOGGLE-ME' }).getByTitle(/^enable$|^aktivieren$/i).click();
     await expect.poll(() => enableHit, { timeout: 10_000 }).toBe(true);
   });
@@ -360,7 +361,7 @@ test.describe('Teil 78 — Alerting', () => {
     await expect(panel).toBeVisible();
 
     await panel.getByRole('button', { name: /test notification|testbenachrichtigung/i }).click();
-    // Partial-result header. (DE locale uses "Kanaele" — ae substitution, no umlaut.)
+    // Partial-result header. The German locale writes "Kanaele", with ae instead of the umlaut.
     await expect(panel.getByText(/some channels failed:|einige kanaele fehlgeschlagen:/i)).toBeVisible();
     // Route line echoes the error text.
     await expect(panel.getByText(/SMTP timeout/)).toBeVisible();
@@ -420,10 +421,10 @@ test.describe('Teil 78 — Alerting', () => {
 
     // Open the deliveries modal from the header button (title "Delivery history").
     await page.getByTitle(/delivery history|zustell-verlauf/i).click();
-    // DeliveriesModal wraps its <h3> in an extra flex-header bar (h3 + status <select>), unlike the
-    // rule editor where the heading sits directly in the panel — so editorPanel's parent scope
-    // would stop at the header bar and miss the table. Scope to the grandparent = the ModalShell
-    // panel that contains both the header bar and the deliveries table.
+    // DeliveriesModal wraps its <h3> in an extra flex-header bar (h3 plus a status <select>),
+    // unlike the rule editor where the heading sits directly in the panel, so editorPanel's
+    // parent scope would stop at the header bar and miss the table. The grandparent is the
+    // ModalShell panel that holds both the header bar and the deliveries table.
     const modal = page.getByRole('heading', { name: /delivery history|zustell-verlauf/i }).locator('xpath=../..');
     await expect(modal).toBeVisible();
 
@@ -431,7 +432,7 @@ test.describe('Teil 78 — Alerting', () => {
     await expect(modal.getByText('ops@example.com')).toBeVisible();
     await expect(modal.getByText('alert@example.com')).toBeVisible();
 
-    // Select "Failed" in the status combobox → re-query with ?status=Failed.
+    // Selecting "Failed" in the status combobox re-queries with ?status=Failed.
     await modal.locator('select').selectOption('Failed');
     await expect.poll(() => deliveriesUrl, { timeout: 10_000 }).toContain('status=Failed');
     // Only the failed row remains; the sent row is gone.
@@ -502,12 +503,12 @@ test.describe('Teil 78 — Alerting', () => {
     await page.goto('/alerts?tab=custom');
     await expect(page.getByText('RO-RULE')).toBeVisible({ timeout: 15_000 });
 
-    // No New / Power / Edit / Trash affordances.
+    // None of the New / Power / Edit / Trash affordances are rendered.
     await expect(page.getByRole('button', { name: /new rule|neue regel/i })).toHaveCount(0);
     await expect(page.getByTitle(/^enable$|^disable$|^aktivieren$|^deaktivieren$/i)).toHaveCount(0);
     await expect(page.getByTitle(/^edit$|^bearbeiten$/i)).toHaveCount(0);
     await expect(page.getByTitle(/^delete$|^löschen$/i)).toHaveCount(0);
-    // Deliveries button is not canAdmin-gated.
+    // The deliveries button is not gated on canAdmin.
     await expect(page.getByTitle(/delivery history|zustell-verlauf/i)).toBeVisible();
   });
 

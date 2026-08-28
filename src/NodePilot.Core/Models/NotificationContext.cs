@@ -29,25 +29,27 @@ public sealed record NotificationContext(
     string? Title,
     string? Summary,
     string? DeepLinkPath,
-    // Numeric measurement behind a gauge event (backlog depth, stale-age seconds, …). Null for
-    // execution events. Exposed as the `signalValue` filter field so a rule can refine, e.g.
-    // signalValue > 500. Optional + last so existing (named-arg) call sites are unaffected.
+    // Numeric measurement behind a gauge event, such as backlog depth or stale-age seconds. Null
+    // for execution events. Exposed as the `signalValue` filter field so a rule can refine
+    // further, for example signalValue > 500.
     long? SignalValue = null,
     // Who initiated a cancellation, for ExecutionCancelled events: "user" (manual single cancel),
-    // "cancelAll", "failover", "reconciler", "dispatch", or "system". Empty for non-cancel events.
+    // "cancelAll", "failover"/"failover-pending", "reconciler"/"reconciler-pending",
+    // "dispatch", or "system". Empty for non-cancel events.
     // Exposed as the `cancelledBy` filter field so a rule can target manual cancels only.
     string? CancelledBy = null,
     // For SystemAlert events (ADR 0008): the emitting source's stable id (e.g. "backlog"). Exposed as
     // the `sourceId` filter field. Null for custom-rule events.
     string? SourceId = null,
-    // For SystemAlert events: the source observation's own field values (e.g. depth=520, reachable=false),
-    // merged into ToFieldMap so a policy condition and its route filters can address source-specific fields
-    // by name — the fixed keys below only cover the custom-rule field catalog. Null for custom-rule events.
+    // For SystemAlert events: the source observation's own field values, such as depth or reachable,
+    // merged into ToFieldMap so a policy condition and its route filters can address source-specific
+    // fields by name. The fixed keys below only cover the custom-rule field catalog. Null for
+    // custom-rule events.
     IReadOnlyDictionary<string, string>? ExtraFields = null)
 {
     /// <summary>
     /// Flattens the event into the string map the condition evaluator matches against (operands of
-    /// <c>source: "event"</c>). The fixed keys MUST stay in sync with the frontend EVENT_FIELD_CATALOG;
+    /// <c>source: "event"</c>). The fixed keys must stay in sync with the frontend EVENT_FIELD_CATALOG;
     /// <see cref="ExtraFields"/> (system-alert source fields) are merged on top and win on key collision.
     /// </summary>
     public IReadOnlyDictionary<string, string> ToFieldMap()
@@ -70,8 +72,8 @@ public sealed record NotificationContext(
             ["signalValue"] = SignalValue?.ToString(inv) ?? "",
             ["cancelledBy"] = CancelledBy ?? "",
         };
-        // System-alert source fields (incl. sourceId) arrive via ExtraFields — kept OUT of the fixed key set
-        // so the custom-rule field catalog (and its frontend parity guard) stays at exactly these keys.
+        // System-alert source fields (including sourceId) arrive via ExtraFields, kept out of the fixed key
+        // set so the custom-rule field catalog and its frontend parity guard stay at exactly these keys.
         if (ExtraFields is not null)
             foreach (var (k, v) in ExtraFields) map[k] = v;
         return map;

@@ -2,17 +2,16 @@ namespace NodePilot.Core.Models;
 
 /// <summary>
 /// Structured DB projection of a Serilog event logged with the <c>SupportLog=true</c> scope.
-/// Populated by the custom sink in <c>NodePilot.Api.Logging.SupportEventDbSink</c> via a
-/// bounded channel + background flush.
+/// Written by the custom sink in <c>NodePilot.Api.Logging.SupportEventDbSink</c> through a
+/// bounded channel and a background flush.
 ///
-/// <para>Design goal: make the same events that land in the plain-text support log also
-/// available as an indexable table for the enterprise viewer (filtering, sorting, cursor
-/// pagination, export) — without blocking the hot path and without requiring each log
-/// source to write to a second logging path.</para>
+/// <para>Makes the events of the plain-text support log queryable as a table (filtering,
+/// sorting, cursor pagination, export) without blocking the logging hot path and without a
+/// second logging path per log source.</para>
 ///
-/// <para>Not audit-grade: on a full channel or DB outage, events are dropped best-effort
-/// (drop-newest + an OTel counter). Forensic guarantees still live in <c>AuditLog</c>;
-/// the plain-text file sink is the fallback for when this DB column has gaps.</para>
+/// <para>Not audit-grade: events are dropped when the channel is full or the database is
+/// unavailable. The forensic record lives in <c>AuditLog</c>, and the plain-text file sink
+/// covers the gaps in this table.</para>
 /// </summary>
 public class SupportEvent
 {

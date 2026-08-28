@@ -2,12 +2,11 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 1 — Workflow-Management (create / save / rename / list round-trip).
+ * E2ETests.md part 1: workflow management (create, save, rename, list round-trip).
  *
- * Hermetic: page.route() mocks only (no backend), per fixtures/mockApi.ts conventions.
- * The preview build resolves i18n from the browser locale (renders EN here), so selectors
- * use bilingual regexes. A freshly created workflow is auto-checked-out by its creator, so
- * the editor opens in State B (locked-by-me) with the name field + Save/Publish visible.
+ * Hermetic: page.route mocks only. The preview build resolves i18n from the browser locale and
+ * renders EN here, so selectors use bilingual regexes. A new workflow is checked out by its
+ * creator, so the editor opens editable with the name field and Save/Publish visible.
  */
 
 const NEW_ID = 'c1c1c1c1-1111-1111-1111-111111111111';
@@ -18,7 +17,7 @@ function workflowJson(overrides: Record<string, unknown> = {}) {
     name: 'E2E_Basic_Test',
     description: '',
     isEnabled: false,
-    checkedOutByUserId: MOCK_USER.id, // locked-by-me → State B (editable)
+    checkedOutByUserId: MOCK_USER.id, // locked by the current user, so the editor is editable
     checkedOutByUserName: MOCK_USER.username,
     checkedOutAt: '2026-06-01T00:00:00.000Z',
     definitionJson: '{"nodes":[],"edges":[]}',

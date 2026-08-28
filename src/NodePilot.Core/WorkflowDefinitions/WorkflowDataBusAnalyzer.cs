@@ -7,13 +7,13 @@ namespace NodePilot.Core.WorkflowDefinitions;
 
 /// <summary>
 /// Data-bus reasoning over a definition: which <c>{{…}}</c> references are available at a node,
-/// and which references in the workflow won't resolve under the contract guarantee (only the
+/// and which references in the workflow will not resolve under the contract guarantee (only the
 /// <c>output</c>/<c>error</c>/<c>success</c>/<c>param.X</c> tails plus <c>globals.*</c>/<c>manual.*</c>
 /// resolve; anything else stays a literal).
 ///
-/// <para>Static analysis over an unsaved definition — deliberately NOT
-/// <c>NodePilot.Engine.VariableResolver</c>, which substitutes values during a real run. The name
-/// differs so a file that needs both never has to disambiguate.</para>
+/// <para>Static analysis over an unsaved definition. It is not
+/// <c>NodePilot.Engine.VariableResolver</c>, which substitutes values during a real run; the
+/// distinct name keeps the two apart in files that use both.</para>
 /// </summary>
 public static class WorkflowDataBusAnalyzer
 {

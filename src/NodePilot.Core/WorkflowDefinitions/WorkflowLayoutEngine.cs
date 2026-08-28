@@ -10,15 +10,13 @@ namespace NodePilot.Core.WorkflowDefinitions;
 /// <param name="RowHeight">Vertical distance between two nodes in the same layer.</param>
 /// <param name="Margin">Offset of the first column/row from the origin.</param>
 /// <param name="TriggerHeadroom">
-/// Extra horizontal gap after the first column. Trigger nodes render as octagons at 1.55x their
-/// bounding box, so the styleguide asks for more room right after them than between two ordinary
-/// steps.
+/// Extra horizontal gap after the first column. Trigger nodes render as octagons larger than their
+/// bounding box and need more room after them than an ordinary step.
 /// </param>
 /// <param name="GridSnap">Round every coordinate to a multiple of this. 0 disables snapping.</param>
 /// <param name="OrderRowsByExistingY">
-/// Order the nodes within a layer by the y they already have, instead of by their order in the
-/// document. This is what lets an imported graph keep the author's vertical arrangement while
-/// getting NodePilot's spacing.
+/// Order the nodes within a layer by the y they already have instead of by document order. This
+/// lets an imported graph keep its vertical arrangement while getting NodePilot's spacing.
 /// </param>
 public sealed record WorkflowLayoutOptions(
     double ColumnWidth,

@@ -1,20 +1,18 @@
 namespace NodePilot.Core.Time;
 
 /// <summary>
-/// Resolves a time-zone id that may be in EITHER IANA (<c>Europe/Berlin</c>) or Windows
-/// (<c>W. Europe Standard Time</c>) form, regardless of the host OS. The browser's
-/// <c>Intl.DateTimeFormat().resolvedOptions().timeZone</c> always yields an IANA id, while a
-/// Windows host's <see cref="TimeZoneInfo.FindSystemTimeZoneById"/> historically only knew
-/// Windows ids — so a stored IANA id could fail to evaluate, and a UI default could be rejected
-/// as "unknown". This resolver bridges both directions so the UI↔backend contract holds on any
-/// platform without forcing the user to know which naming scheme their server uses.
+/// Resolves a time-zone id given in either IANA (<c>Europe/Berlin</c>) or Windows
+/// (<c>W. Europe Standard Time</c>) form, regardless of the host OS. The browser reports IANA ids
+/// via <c>Intl.DateTimeFormat().resolvedOptions().timeZone</c>, while a Windows host may only
+/// know Windows ids. Converting in both directions keeps the UI and backend agreeing on any
+/// platform, without the user needing to know which naming scheme the server uses.
 /// </summary>
 public static class TimeZoneResolver
 {
     /// <summary>
     /// Tries to resolve <paramref name="id"/> to a <see cref="TimeZoneInfo"/>: first a direct
-    /// lookup, then via IANA→Windows and Windows→IANA conversion. Returns false (and leaves
-    /// <paramref name="timeZone"/> as <see cref="TimeZoneInfo.Utc"/>) if nothing matches.
+    /// lookup, then by converting IANA to Windows and Windows to IANA. Returns false and leaves
+    /// <paramref name="timeZone"/> as <see cref="TimeZoneInfo.Utc"/> if nothing matches.
     /// </summary>
     public static bool TryResolve(string? id, out TimeZoneInfo timeZone)
     {

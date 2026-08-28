@@ -3,20 +3,17 @@
 <#
   The answer-file contract between the setup wizard and the deployment scripts.
 
-  Split out of Invoke-NodePilotSetup.ps1 so Test-SetupAdapter.ps1 can load it without triggering
-  the adapter's entry point - the same reason ArtifactSecurity.ps1 and Preflight.ps1 are separate
-  dot-sourceable units. Static text checks cannot cover answer-file behaviour, and a silent
-  mis-splat is exactly the kind of defect that would otherwise reach a production install.
+  Split out of Invoke-NodePilotSetup.ps1 so Test-SetupAdapter.ps1 can dot-source it without
+  running the adapter's entry point, like ArtifactSecurity.ps1 and Preflight.ps1.
 
   Contains no top-level executable code.
 #>
 
 Set-StrictMode -Version 3.0
 
-# Dotted paths, so a nested typo is named precisely instead of silently ignored. Deliberately
-# stricter than PowerShell's own parameter binding: an unattended SCCM answer file with a
-# misspelled key would otherwise fail in the middle of an installation rather than before it
-# starts.
+# Dotted paths, so a nested typo is named precisely instead of ignored. Stricter than PowerShell's
+# own parameter binding: an unattended answer file with a misspelled key is rejected before the
+# installation starts rather than in the middle of it.
 $script:NodePilotAnswerFileKeys = @{
     install = @{
         Required = @(
@@ -36,8 +33,8 @@ $script:NodePilotAnswerFileKeys = @{
             'provisioning.installDotnetRuntime', 'provisioning.createDatabaseAndLogin',
             'provisioning.generateSelfSignedCertificate', 'provisioning.trustArtifactSigner',
             # PostgreSQL has no equivalent of Trusted_Connection, so createDatabaseAndLogin needs
-            # credentials there that the SQL Server path gets for free from the installing admin's
-            # own Windows identity. Provisioning-only: the service never sees them.
+            # explicit credentials there, while the SQL Server path uses the installing admin's
+            # Windows identity. Provisioning only: the service never sees them.
             'provisioning.postgresSuperUser', 'provisioning.postgresSuperPassword',
             'bootstrap.adminUsername', 'bootstrap.credentialOutputPath',
             'seed.backupPath', 'seed.passphrase',
@@ -92,11 +89,9 @@ function Read-NodePilotAnswerFile {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw "Answer file not found: $Path"
     }
-    # The leading byte-order mark has to go before ConvertFrom-Json sees it. UTF8.GetString turns
-    # EF BB BF into U+FEFF, which is not whitespace and not a JSON token, so the parser rejects the
-    # whole document with "Invalid JSON primitive: ." - the dot being how it renders that
-    # unprintable character. Two realistic producers write one: Inno Setup's SaveStringsToUTF8File,
-    # which the wizard uses, and Notepad, which an operator hand-writing an answer file uses.
+    # Strip the byte-order mark before ConvertFrom-Json sees it. UTF8.GetString turns EF BB BF into
+    # U+FEFF, which is neither whitespace nor a JSON token, so the parser rejects the whole
+    # document. Inno Setup's SaveStringsToUTF8File and Notepad both write one.
     $text = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($Path))
     $text = $text.TrimStart([char]0xFEFF, [char]0xFFFE)
     try { $parsed = $text | ConvertFrom-Json }
@@ -121,11 +116,9 @@ function Read-NodePilotAnswerFile {
             throw "Answer file contains unknown key '$key' for mode '$answerMode'."
         }
     }
-    # Required means the key has to be there. For one of them it does NOT mean the value has to be
-    # non-empty: an empty certificate.thumbprint is how a file says "I have no certificate yet,
-    # offer to create one", and the prerequisite page acts on exactly that. Lumping it in with the
-    # rest made that state unexpressible - and it did: leaving the wizard's TLS field blank died
-    # here, on the probe run, with "missing required key 'certificate.thumbprint'".
+    # Required means the key has to be present, not that its value has to be non-empty. An empty
+    # certificate.thumbprint states that there is no certificate yet and the wizard should offer to
+    # create one; the prerequisite page acts on that.
     $mayBeEmpty = @('certificate.thumbprint')
     foreach ($key in $keys.Required) {
         $absent = -not $map.Contains($key) -or $null -eq $map[$key]
@@ -147,9 +140,8 @@ function Read-NodePilotAnswerFile {
         if ($identityType -eq 'gmsa' -and -not $map.Contains('identity.account')) {
             throw "Answer file needs 'identity.account' when 'identity.type' is 'gmsa'."
         }
-        # Empty is a statement; anything else has to be a thumbprint. Without this the value went
-        # unchecked all the way into Kestrel's configuration, where "the certificate is not in the
-        # store" is the only symptom a typo ever produces.
+        # Empty is a valid answer; anything else has to be a thumbprint. Unchecked, a typo reaches
+        # Kestrel's configuration and only shows up there as a certificate missing from the store.
         $thumbprint = [string]$map['certificate.thumbprint']
         if (-not [string]::IsNullOrWhiteSpace($thumbprint) -and $thumbprint -notmatch '^[0-9A-Fa-f]{40}$') {
             throw ("Answer file 'certificate.thumbprint' must be 40 hexadecimal characters, or empty to " +
@@ -178,9 +170,9 @@ function Read-NodePilotAnswerFile {
 
 function ConvertTo-NodePilotSecureString {
     <#
-      The whole reason the answer file exists: -PostgresPassword is a [SecureString] and cannot
-      cross a `powershell.exe -File` boundary. Built character by character and the source array
-      is zeroed afterwards.
+      Builds a SecureString character by character and zeroes the source array afterwards.
+      -PostgresPassword is a [SecureString] and cannot cross a `powershell.exe -File` boundary as
+      one, so the answer file carries it as text and it is converted here.
     #>
     param([Parameter(Mandatory)][AllowEmptyString()][string]$PlainText)
 
@@ -199,8 +191,8 @@ function ConvertTo-NodePilotSecureString {
 function ConvertTo-NodePilotInstallParameters {
     <#
       The single place that decides which parameters Install-NodePilot.ps1 receives. Provider-
-      specific keys are only ever added for the active provider: passing -PostgresHost alongside
-      -DbProvider sqlserver binds fine and then produces a confusing failure much later.
+      specific keys are added only for the active provider: passing -PostgresHost alongside
+      -DbProvider sqlserver binds fine and then fails confusingly much later.
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][System.Collections.IDictionary]$Answers)
@@ -256,16 +248,14 @@ function ConvertTo-NodePilotInstallParameters {
     if ([bool](& $optional 'skips.databaseCheck' $false)) { $splat['SkipSqlConnectivityCheck'] = $true }
     if ([bool](& $optional 'skips.gmsaCheck' $false)) { $splat['SkipGmsaCheck'] = $true }
 
-    # Pins which username may consume the one-shot setup token. The guard has existed in
-    # AuthController since H12 and nothing has ever set it; an unattended install is the first
-    # caller that knows the answer in advance, so a token intercepted between service start and
-    # the adapter's login can no longer be spent on a name of the interceptor's choosing.
+    # Pins which username may consume the one-shot setup token. An unattended install knows the
+    # name in advance, so a token intercepted between service start and the adapter's login cannot
+    # be spent on an account of the interceptor's choosing.
     $bootstrapAdmin = & $optional 'bootstrap.adminUsername'
     if ($bootstrapAdmin) { $splat['BootstrapAdminUsername'] = [string]$bootstrapAdmin }
 
-    # A configuration backup to restore on first start. The passphrase travels as a SecureString for
-    # the same reason -PostgresPassword does: it cannot cross a powershell.exe -File boundary any
-    # other way, and it unlocks a file holding every credential the reference machine had.
+    # A configuration backup to restore on first start. The passphrase travels as a SecureString
+    # like -PostgresPassword; it unlocks a file holding every credential of the reference machine.
     $seedPath = & $optional 'seed.backupPath'
     if ($seedPath) {
         $splat['SeedBackupPath'] = [string]$seedPath
@@ -278,16 +268,11 @@ function ConvertTo-NodePilotInstallParameters {
 
 function New-NodePilotBootstrapPassword {
     <#
-      The first admin's password, random per machine.
+      The first admin's password, random per machine, so no installation ships a known default.
 
-      A fixed default would be the one thing worth avoiding: NodePilot runs PowerShell on every
-      machine it manages, Kestrel binds all interfaces in Server mode, and a known value is found
-      by scanning rather than guessing. Random costs the same to automate and has none of that.
-
-      24 bytes of CSPRNG - 32 base64 characters. The server's policy is length-only
-      (MinPasswordLength 8, MaxPasswordBytes 72, no complexity rule), so this clears it with room
-      at both ends; the upper bound exists because BCrypt silently truncates past 72 bytes, which
-      would make the extra characters decorative.
+      24 bytes of CSPRNG, which is 32 base64 characters. The server's password policy is
+      length-only (MinPasswordLength 8, MaxPasswordBytes 72), so this fits between both bounds.
+      The upper bound exists because BCrypt truncates anything past 72 bytes.
     #>
     return New-NodePilotRandomBase64 -ByteCount 24
 }
@@ -295,9 +280,8 @@ function New-NodePilotBootstrapPassword {
 function Get-NodePilotBootstrapCredentialPath {
     <#
       Where the generated credentials are left for the automation to collect. Inside DataPath by
-      default, because that is the one directory the installer has already locked down to SYSTEM
-      and Administrators - and because a silent installation has nowhere else to put it that the
-      caller can predict.
+      default: the installer has already restricted that directory to SYSTEM and Administrators,
+      and it is a location the caller of a silent installation can predict.
     #>
     param(
         [Parameter(Mandatory)][System.Collections.IDictionary]$Answers
@@ -309,9 +293,8 @@ function Get-NodePilotBootstrapCredentialPath {
 
 function Remove-NodePilotAnswerFile {
     <#
-      Overwrite before delete. A local Administrator can read the file while the install runs -
-      the same reader set that can read the secret's permanent home in the service registry key,
-      so this introduces no new attacker class - but there is no reason for it to survive the run.
+      Overwrites the file before deleting it. It carries secrets that have no reason to survive
+      the installation run.
     #>
     param([string]$Path)
     if ([string]::IsNullOrWhiteSpace($Path)) { return }
@@ -327,7 +310,7 @@ function Remove-NodePilotAnswerFile {
         finally { $stream.Dispose() }
     }
     catch {
-        # Fall through to the delete: a file we could not overwrite still must not be left behind.
+        # Fall through to the delete: a file that could not be overwritten must still not remain.
     }
     Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
 }
@@ -335,8 +318,8 @@ function Remove-NodePilotAnswerFile {
 # ---------------------------------------------------------------------------
 # Result file (INI)
 # ---------------------------------------------------------------------------
-# INI rather than JSON because Inno Setup has GetIniString built in and no JSON support at all;
-# parsing JSON in Pascal would add roughly 120 lines that no test can reach.
+# INI rather than JSON because Inno Setup has GetIniString built in and no JSON support, and a
+# Pascal JSON parser would be untested code.
 
 function ConvertTo-NodePilotIniValue {
     # INI values cannot span lines; the wizard expands the escapes again before display.
@@ -345,14 +328,12 @@ function ConvertTo-NodePilotIniValue {
     return ([string]$Value) -replace "`r`n", '\n' -replace "`n", '\n' -replace "`r", '\n'
 }
 
-# The installer's own phases, in the order it prints them, with the percentage each one STARTS at.
-# Mirrors the Write-Step calls in Install-NodePilot.ps1 - Test-DeploymentTemplates.ps1 pins that
-# every entry here still exists there, because a renamed step would silently produce a bar that
-# never moves past the phase before it.
+# The installer's phases in the order it prints them, with the percentage each one starts at.
+# Mirrors the Write-Step calls in Install-NodePilot.ps1; Test-DeploymentTemplates.ps1 checks that
+# every entry here still exists there, because a renamed step stalls the progress bar.
 #
-# The percentages are not equal slices. Extracting the artifact and starting the service are where
-# the wall-clock goes (the service start alone waits up to 180 s on the health probe), so they get
-# the room. A bar that races to 90% and then sits there for two minutes is worse than no bar.
+# The percentages are not equal slices: extracting the artifact and starting the service take the
+# most wall-clock time, so they get the widest ranges.
 $script:NodePilotInstallPhases = @(
     [pscustomobject]@{ Step = 'NodePilot installer';                     Percent = 2;  Text = 'Starting the installer' }
     [pscustomobject]@{ Step = 'Pre-flight checks';                       Percent = 8;  Text = 'Checking prerequisites' }
@@ -366,12 +347,11 @@ $script:NodePilotInstallPhases = @(
     [pscustomobject]@{ Step = 'Starting service';                        Percent = 80; Text = 'Starting the service - this can take up to three minutes' }
 )
 
-# The updater's five phases. The probe here waits 60 s, not the installer's 180, so the last
-# caption promises less.
+# The updater's five phases. Its health probe has a shorter timeout than the installer's, so the
+# last caption promises less.
 $script:NodePilotUpdatePhases = @(
-    # Ahead of the backup on purpose: expanding ~2900 files to staging and hashing every one of
-    # them against the signed manifest is the longest part of an update, and it used to happen
-    # with no phase of its own - the dialog stood on its start caption until the backup began.
+    # Ahead of the backup on purpose: expanding the files to staging and hashing each one against
+    # the signed manifest is the longest part of an update, so it gets a phase of its own.
     [pscustomobject]@{ Step = 'Extracting artifact';          Percent = 10; Text = 'Extracting and verifying the signed artifact - this can take a few minutes' }
     [pscustomobject]@{ Step = 'Backing up current install';   Percent = 20; Text = 'Backing up the current installation' }
     [pscustomobject]@{ Step = 'Stopping service';             Percent = 40; Text = 'Stopping the service' }
@@ -393,17 +373,12 @@ function Get-NodePilotPhaseProgress {
       Translates one line of installer or updater output into a progress position, or $null when
       the line is not a phase heading.
 
-      Matched on a prefix, because several headings interpolate a value into themselves
-      ("Stopping service 'NodePilot'", "Granting 'Log on as a service' to CORP\svc$"). An exact
-      comparison cannot express those at all - which is how three of them went unrecognised, and
-      why the bar stood still through half of an update.
+      Matching is by prefix, because several headings interpolate a value into themselves
+      ("Stopping service 'NodePilot'"), which an exact comparison cannot express. A prefix is
+      unambiguous because Write-Step prints its heading flush while Write-Info indents every
+      detail line, so a detail line can never be the prefix of a phase name.
 
-      A prefix is safe here for a reason worth stating: Write-Step prints its heading flush, while
-      Write-Info indents every detail line underneath it. A detail line therefore begins with
-      whitespace and cannot be the prefix of any phase name.
-
-      Returning $null for everything else is the behaviour that matters most: an unrecognised line
-      has to leave the bar where it is rather than reset it.
+      Returning $null for every other line leaves the bar where it is instead of resetting it.
     #>
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Line)
 
@@ -422,8 +397,7 @@ function Find-NodePilotPhase {
         [Parameter(Mandatory)][object[]]$Phases
     )
     # StartsWith, not -clike: the wildcard operator would read '[', ']' and '*' in a phase name as
-    # pattern syntax and stop matching without saying so - the same silent class of failure this
-    # whole table exists to avoid.
+    # pattern syntax and stop matching without reporting anything.
     foreach ($phase in $Phases) {
         if ($Text.StartsWith($phase.Step, [System.StringComparison]::Ordinal)) {
             return [pscustomobject]@{ Percent = $phase.Percent; Text = $phase.Text }
@@ -436,16 +410,12 @@ function Get-NodePilotBootstrapToken {
     <#
       Reads admin-setup.token for display on the wizard's finish page.
 
-      The service writes that file with a single ACE for its own identity, so an elevated
-      installing admin is DENIED a plain read whenever the service runs as someone else - which is
-      always, for both LocalSystem and a gMSA. Test-Path still returns true, because Administrators
-      own the directory, so the naive version looked like it worked and silently produced nothing:
-      the finish page showed no token, the operator went looking for the file by hand, and granting
-      themselves access on the folder is what then broke the bootstrap outright.
+      The service writes that file with a single ACE for its own identity, so the installing admin
+      is denied a plain read whenever the service runs as LocalSystem or a gMSA. Test-Path still
+      returns true, because Administrators own the directory.
 
-      robocopy /B copies through the backup semantics an elevated administrator already holds - the
-      same mechanism the installer prints as a hint for the scripted path. The copy lands in the
-      caller's ACL-protected session directory and is shredded immediately after reading.
+      robocopy /B reads through the backup semantics an elevated administrator already holds. The
+      copy lands in the caller's ACL-protected session directory and is shredded after reading.
     #>
     param(
         [Parameter(Mandatory)][string]$DataPath,
@@ -462,7 +432,7 @@ function Get-NodePilotBootstrapToken {
     $scratch = Join-Path $StagingDirectory ([Guid]::NewGuid().ToString('N'))
     try {
         [void](New-Item -ItemType Directory -Path $scratch -ErrorAction Stop)
-        # /B is the whole point; /NJH /NJS /NP keep robocopy's banner out of the transcript.
+        # /B uses backup semantics; /NJH /NJS /NP keep robocopy's banner out of the transcript.
         & robocopy.exe $DataPath $scratch 'admin-setup.token' /B /NJH /NJS /NP | Out-Null
         $copy = Join-Path $scratch 'admin-setup.token'
         if (-not (Test-Path -LiteralPath $copy)) { return '' }
@@ -486,15 +456,12 @@ function Format-NodePilotCertificateLine {
 
           <thumbprint>|<subject>|<hasPrivateKey>|<yyyy-MM-dd>
 
-      The thumbprint comes first and unpadded because it is the only field the wizard puts to
-      work - everything after it is label text for the operator. A pipe inside the subject would
-      shift the remaining fields, so it is folded to a slash here rather than assumed not to
-      occur: an X.500 attribute value may legally contain one.
+      The thumbprint comes first because it is the only field the wizard uses; the rest is label
+      text for the operator. An X.500 attribute value may legally contain a pipe, which would
+      shift the remaining fields, so pipes in the subject are folded to a slash.
 
-      The date is formatted against the invariant culture, not the machine's. 'yyyy' resolves
-      against the culture's default CALENDAR, so on a server set to Arabic (Saudi Arabia) the same
-      call returns a Hijri year - a date in the picker that matches nothing the operator can
-      compare it against.
+      The date is formatted against the invariant culture: 'yyyy' resolves against the culture's
+      default calendar, so a machine set to a Hijri locale would otherwise report a Hijri year.
     #>
     param([Parameter(Mandatory)]$Certificate)
 

@@ -7,24 +7,21 @@
     Build-time helper. The installer is never committed to the repository; it is downloaded,
     verified, cached, and staged into the payload.
 
-    Which installer: the STANDALONE ASP.NET Core runtime, never dotnet-hosting-*.exe. The
-    Hosting Bundle rewires IIS and restarts W3SVC, which is unwanted on shared hosts such as an
-    SCCM site server - deploy/README.md tells operators exactly that, and an installer bundling
-    the wrong one would contradict its own documentation.
+    Which installer: the standalone ASP.NET Core runtime, never dotnet-hosting-*.exe. The Hosting
+    Bundle rewires IIS and restarts W3SVC, which is unwanted on shared hosts such as an SCCM site
+    server.
 
     Three independent checks before anything is staged:
 
-      1. The SHA512 published in Microsoft's release metadata. SHA512, not SHA256, because that
-         is the digest the metadata actually carries - checking a digest the vendor does not
-         publish would mean computing both sides ourselves and proving nothing.
+      1. The SHA512 published in Microsoft's release metadata, which is the digest that metadata
+         carries.
       2. A pin in runtime-payload.lock.json, so the payload is reproducible and any change to it
          shows up in a diff and has to be reviewed. The first run for a version writes the pin;
          later runs must match it.
       3. An Authenticode signature that is Valid and issued to Microsoft.
 
-    The lock file exists because a hash taken from the same vendor over the same TLS channel as
-    the download is not, on its own, a pin - it just proves the download matches what that
-    request was told to expect. Committing it turns it into one.
+    The committed pin is what makes the vendor hash a pin at all: on its own that hash only proves
+    the download matches what the same request was told to expect.
 .PARAMETER Version
     Exact patched runtime version, e.g. '10.0.11'. Versions below 10.0.11 are rejected. Defaults
     to the latest 10.0.x in the release metadata.

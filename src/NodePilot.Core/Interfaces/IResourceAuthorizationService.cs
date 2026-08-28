@@ -5,14 +5,13 @@ using NodePilot.Core.Models;
 namespace NodePilot.Core.Interfaces;
 
 /// <summary>
-/// Operations a user might want to perform on a workflow-shaped resource. Used by
-/// <see cref="IResourceAuthorizationService.CanAccessAsync"/> as the requested-permission
-/// argument so callers do not have to think about which <see cref="SharedFolderRole"/>
-/// implies which operation — the mapping lives inside the service.
+/// Operations a user can request on a workflow-shaped resource. Passed to
+/// <see cref="IResourceAuthorizationService.CanAccessAsync"/> as the requested permission; the
+/// mapping from <see cref="SharedFolderRole"/> to operation lives inside the service.
 /// </summary>
 public enum ResourceOp
 {
-    /// <summary>List + GET workflow / folder. Lowest bar.</summary>
+    /// <summary>List and read a workflow or folder. The lowest level.</summary>
     Read = 0,
     /// <summary>Execute / cancel / retry / resume executions.</summary>
     Run = 1,
@@ -23,14 +22,13 @@ public enum ResourceOp
 }
 
 /// <summary>
-/// What a specific user can do with a specific workflow or folder, encoded as boolean
-/// flags so DTOs can ship the answer to the UI in one round-trip. The UI no longer
-/// infers capabilities from the global role — it reads what the backend says.
+/// What a user can do with one workflow or folder, as boolean flags, so DTOs can ship the
+/// answer to the UI in one round-trip instead of the UI deriving it from the global role.
 /// <para>
-/// <b>CanDelete</b> is its own flag because workflow-DELETE is gated on global Admin
-/// role at the controller (<c>[Authorize(Roles = "Admin")]</c>), independently of the
-/// folder-RBAC <c>CanEdit</c>. A folder-Editor Operator has <c>CanEdit=true</c> but
-/// <c>CanDelete=false</c>; the UI must hide the Delete button accordingly.
+/// <c>CanDelete</c> is a separate flag because workflow DELETE and recursive folder DELETE are
+/// gated on the global Admin role independently of folder-RBAC <c>CanEdit</c>. A folder-Editor
+/// Operator has <c>CanEdit=true</c> but <c>CanDelete=false</c>, so the UI hides destructive
+/// subtree deletion for them.
 /// </para>
 /// </summary>
 public record ResourceCapabilities(bool CanRead, bool CanRun, bool CanEdit, bool CanDelete, bool CanAdmin)
@@ -41,46 +39,43 @@ public record ResourceCapabilities(bool CanRead, bool CanRun, bool CanEdit, bool
 
 /// <summary>
 /// Authoritative permission gate for workflow-shaped resources. Every API endpoint that
-/// touches a workflow or folder must consult this service after the DB lookup — the
-/// service combines (a) the global <see cref="UserRole"/>, (b) inherited
-/// <see cref="SharedFolderPermission"/> grants on the folder ancestry, and (c) — once a
-/// planned follow-up phase (internally tracked as "PR2 Stage B") ships — explicit
-/// per-resource shares.
+/// touches a workflow or folder consults this service after the DB lookup; it combines the
+/// global <see cref="UserRole"/> with inherited <see cref="SharedFolderPermission"/> grants
+/// along the folder ancestry.
 /// <para>
-/// Implementations are expected to be scoped per request and to cache lookups for the
-/// duration of that request: a list endpoint with 1000 workflows resolves the user's
-/// accessible folder set once, then does only set-membership tests per row.
+/// Implementations are scoped per request and cache lookups for that request: a list endpoint
+/// resolves the accessible folder set once and then only tests set membership per row.
 /// </para>
 /// </summary>
 public interface IResourceAuthorizationService
 {
     /// <summary>
-    /// Returns true when the given principal may perform <paramref name="op"/> on a
-    /// workflow that lives in <paramref name="folderId"/>. Encapsulates the global-Admin
-    /// bypass and the role-implies-role-implies-... ladder.
+    /// Returns true when the principal may perform <paramref name="op"/> on a workflow that
+    /// lives in <paramref name="folderId"/>. Covers the global-Admin bypass and the ladder of
+    /// roles that imply weaker operations.
     /// </summary>
     Task<bool> CanAccessWorkflowAsync(ClaimsPrincipal user, Guid folderId, ResourceOp op, CancellationToken ct = default);
 
     /// <summary>
-    /// Same shape, but for a folder-typed resource (used by the folder CRUD + permission
-    /// endpoints). Folder-Read = list-children/get-folder; Folder-Edit = create/rename/
-    /// move/delete the folder; Folder-Admin = grant/revoke permissions on it. Folder-Run
-    /// is not meaningful and is always treated as <see cref="ResourceOp.Edit"/> here.
+    /// Same shape for a folder-typed resource, used by the folder CRUD and permission endpoints.
+    /// Folder-Read lists children and gets the folder; Folder-Edit creates, renames, moves or
+    /// deletes an empty folder; Folder-Admin grants and revokes permissions on it. Recursive
+    /// deletion has an additional global-Admin gate. Folder-Run has no meaning and is always
+    /// treated as <see cref="ResourceOp.Edit"/>.
     /// </summary>
     Task<bool> CanAccessFolderAsync(ClaimsPrincipal user, Guid folderId, ResourceOp op, CancellationToken ct = default);
 
     /// <summary>
-    /// All folder ids the principal can at least read, including inherited grants.
-    /// Returned as a set so list endpoints can do <c>WHERE FolderId IN (...)</c> filtering
-    /// efficiently. Returns "all folders" for global-Admin (the caller must not enumerate
-    /// the set as a literal IN-clause for that case — instead bypass the filter).
+    /// All folder ids the principal can at least read, including inherited grants. Returned as a
+    /// set so list endpoints can filter with <c>WHERE FolderId IN (...)</c>. For global-Admin the
+    /// result is unrestricted: callers bypass the filter instead of emitting an empty IN clause.
     /// </summary>
     Task<AccessibleFolderSet> GetAccessibleFolderIdsAsync(ClaimsPrincipal user, CancellationToken ct = default);
 
     /// <summary>
-    /// Computes the four capability flags for a workflow at <paramref name="folderId"/>.
-    /// Used by DTO builders so list/detail responses can ship per-row capabilities to
-    /// the UI without a separate roundtrip.
+    /// Computes the capability flags for a workflow in <paramref name="folderId"/>, so DTO
+    /// builders can ship per-row capabilities with list and detail responses instead of
+    /// requiring a second round-trip.
     /// </summary>
     Task<ResourceCapabilities> GetWorkflowCapabilitiesAsync(ClaimsPrincipal user, Guid folderId, CancellationToken ct = default);
 
@@ -88,27 +83,26 @@ public interface IResourceAuthorizationService
     Task<ResourceCapabilities> GetFolderCapabilitiesAsync(ClaimsPrincipal user, Guid folderId, CancellationToken ct = default);
 
     /// <summary>
-    /// Resolves the highest <see cref="SharedFolderRole"/> the principal holds on the
-    /// folder via direct grant or ancestor inheritance. Returns null when the user has
-    /// no grant on the chain. Global-Admin returns <see cref="SharedFolderRole.FolderAdmin"/>.
+    /// Resolves the highest <see cref="SharedFolderRole"/> the principal holds on the folder,
+    /// by direct grant or ancestor inheritance. Null when there is no grant on the chain;
+    /// global-Admin returns <see cref="SharedFolderRole.FolderAdmin"/>.
     /// </summary>
     Task<SharedFolderRole?> GetEffectiveFolderRoleAsync(ClaimsPrincipal user, Guid folderId, CancellationToken ct = default);
 
     /// <summary>
-    /// Drops every per-request cache entry. Mutating endpoints (folder create/move/delete,
-    /// grant/revoke) call this after the mutation lands so any subsequent capability lookup
-    /// in the same request reflects the new state — without it, the response DTO ships
-    /// pre-mutation capabilities that don't match what the user just did.
+    /// Drops every per-request cache entry. Mutating endpoints (folder create, move, delete,
+    /// grant, revoke) call this after the mutation so later capability lookups in the same
+    /// request reflect the new state instead of pre-mutation values.
     /// </summary>
     void InvalidateAll();
 }
 
 /// <summary>
-/// Result of <see cref="IResourceAuthorizationService.GetAccessibleFolderIdsAsync"/>.
-/// When <see cref="IsUnrestricted"/> is true (global-Admin), <see cref="FolderIds"/>
-/// is empty and callers must skip the filter rather than pass it as an empty IN-clause
-/// (which would return zero rows). Distinct from "user has no folder access" where
-/// <see cref="IsUnrestricted"/> is false and <see cref="FolderIds"/> is empty.
+/// Result of <see cref="IResourceAuthorizationService.GetAccessibleFolderIdsAsync"/>. When
+/// <see cref="IsUnrestricted"/> is true (global-Admin), <see cref="FolderIds"/> is empty and
+/// callers skip the filter instead of passing an empty IN clause, which would return no rows.
+/// A user without any folder access has <see cref="IsUnrestricted"/> false and the same empty
+/// <see cref="FolderIds"/>.
 /// </summary>
 public sealed class AccessibleFolderSet
 {

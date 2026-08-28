@@ -3,17 +3,11 @@
 .SYNOPSIS
     Pure PATH-string helpers shared by install, update and uninstall.
 .DESCRIPTION
-    Install-NodePilot.ps1 puts <install>\tools\np on the machine PATH so operators can type
-    `np` instead of knowing where setup landed. Update-NodePilot.ps1 has to add it too, because
-    an installation predating the shipped clients never had a directory to register, and
-    Uninstall-NodePilot.ps1 has to take it away again before deleting the directory it points at.
-
-    Three copies of the same string surgery is how one of them ends up subtly different, so the
-    decision lives here as two pure functions: they take the current PATH and return the new one,
-    touching no environment. That also makes the awkward parts testable without a machine-wide
-    side effect - idempotence (a re-install must not grow PATH, which has a real length limit),
-    trailing-backslash and case differences (C:\NP\tools\np\ and c:\np\TOOLS\np are the same
-    directory to Windows), and empty segments from a PATH that ends in ';'.
+    Install, update and uninstall all add or remove <install>\tools\np on the machine PATH so
+    operators can call `np` from anywhere. The string surgery lives here as pure functions that
+    take the current PATH and return the new one without touching the environment, which keeps
+    the awkward cases testable: idempotent re-adds, trailing backslashes, case-insensitive
+    directory names, and empty segments from a PATH that ends in ';'.
 #>
 
 Set-StrictMode -Version 3.0
@@ -23,8 +17,8 @@ function Split-NodePilotPathEntries {
     param([string]$PathValue)
 
     if ([string]::IsNullOrEmpty($PathValue)) { return @() }
-    # Empty segments are dropped rather than preserved: they are no-ops for the loader, and
-    # keeping them would make the "did anything change" comparison below meaningless.
+    # Empty segments are dropped: the loader ignores them, and keeping them would blur the
+    # comparison that decides whether PATH changed.
     return @(($PathValue -split ';') | Where-Object { $_ -and $_.Trim() })
 }
 
@@ -51,10 +45,8 @@ function Add-NodePilotPathEntry {
         [string]$PathValue,
         [Parameter(Mandatory)][string]$Directory)
 
-    # A typed list, not "$array + $item": PowerShell unwraps a single-element array on return,
-    # so a PATH with exactly one entry comes back as a bare string and '+' then concatenates
-    # STRINGS instead of appending to a collection - producing "C:\WindowsC:\...\tools\np", one
-    # unusable entry with no separator. Caught by Test-MachinePath.ps1's empty-segment case.
+    # A typed list, not "$array + $item": PowerShell unwraps a single-element array, so '+' would
+    # concatenate strings and yield one unusable entry without a separator.
     $entries = [System.Collections.Generic.List[string]]::new()
     foreach ($entry in (Split-NodePilotPathEntries -PathValue $PathValue)) { $entries.Add($entry) }
     if (-not (Test-NodePilotPathContains -PathValue $PathValue -Directory $Directory)) {

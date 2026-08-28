@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Kill -> Build -> Start  (NodePilot dev reset)
+    NodePilot dev reset: kill, build, start.
     Kills all running backend/frontend processes, builds both, then starts
     backend (http://localhost:5000) and frontend (http://localhost:5173).
     Tests are not run here -- use scripts/nightly-tests.ps1 or a scoped

@@ -4,13 +4,13 @@ namespace NodePilot.Data.Availability;
 
 /// <summary>
 /// The single shared instance of <see cref="IDatabaseAvailability"/>. Registered as a singleton and
-/// written from several threads at once (every pooled DbContext's interceptors, plus the probe), so
-/// every transition happens under one lock and every published field is read from a snapshot taken
+/// written from several threads at once (pooled DbContext interceptors plus the probe), so every
+/// transition happens under one lock and every published field is read from a snapshot taken
 /// inside it.
 ///
-/// <para>Thresholds are resolved once in the constructor rather than per report: they are boot config
-/// (see <c>Database:Probe:*</c>), and reading configuration inside the lock would put I/O on the path
-/// that every failing query takes.</para>
+/// <para>Thresholds are resolved once in the constructor because they are boot config
+/// (<c>Database:Probe:*</c>); reading configuration inside the lock would put I/O on the path that
+/// every failing query takes.</para>
 /// </summary>
 public sealed class DatabaseAvailabilityTracker : IDatabaseAvailability
 {

@@ -15,21 +15,18 @@ public interface IGlobalVariableStore
     Task<string?> GetValueAsync(string name, CancellationToken ct);
 
     /// <summary>
-    /// Returns every global resolved to plaintext — called once per workflow execution so
-    /// the engine can inject <c>globals.NAME</c> into every step's <c>Variables</c> dict
-    /// without N+1 DB lookups. Broken secrets are silently skipped — callers that need to
-    /// distinguish "missing" from "exists but undecryptable" use
-    /// <see cref="GetAllResolvedDetailedAsync"/>.
+    /// Returns every global resolved to plaintext. Called once per workflow execution so the
+    /// engine can inject <c>globals.NAME</c> into every step's <c>Variables</c> dict with a
+    /// single query. Secrets that fail to decrypt are skipped; callers that must distinguish
+    /// "missing" from "exists but undecryptable" use <see cref="GetAllResolvedDetailedAsync"/>.
     /// </summary>
     Task<IReadOnlyDictionary<string, string>> GetAllResolvedAsync(CancellationToken ct);
 
     /// <summary>
-    /// Like <see cref="GetAllResolvedAsync"/> but returns *both* the resolved values and
-    /// the set of variable names that exist in the DB but could not be decrypted on this
-    /// host (DPAPI scope mismatch, AES key changed, ciphertext corruption). The engine
-    /// uses the unresolvable set to fail-loudly when a workflow step *references* such a
-    /// variable, rather than silently substituting an empty string and letting the step
-    /// run with a broken downstream call.
+    /// Like <see cref="GetAllResolvedAsync"/>, but also returns the names that exist in the DB
+    /// yet could not be decrypted on this host (DPAPI scope mismatch, changed AES key, corrupt
+    /// ciphertext). The engine uses that set to fail a step which references such a variable,
+    /// instead of substituting an empty string and letting a broken call go through.
     /// </summary>
     Task<GlobalVariableResolutionResult> GetAllResolvedDetailedAsync(CancellationToken ct);
 
@@ -37,12 +34,11 @@ public interface IGlobalVariableStore
         Guid folderId, string? updatedBy, CancellationToken ct);
 
     /// <summary>
-    /// Null <paramref name="value"/> means "leave the existing value untouched" — so a
-    /// caller can rename / retype a secret variable without having to know the old plaintext.
-    /// Null <paramref name="folderId"/> means "leave the existing folder untouched" — so an
-    /// update that only touches name/value/isSecret/description does not silently relocate the
-    /// variable to Root. To move a variable, pass an explicit folder id (or use
-    /// <see cref="MoveToFolderAsync"/>).
+    /// Null <paramref name="value"/> means "leave the existing value untouched", so a caller can
+    /// rename or retype a secret variable without knowing the old plaintext. Null
+    /// <paramref name="folderId"/> means "leave the existing folder untouched", so an update that
+    /// only touches name/value/isSecret/description does not relocate the variable to Root. To
+    /// move a variable, pass an explicit folder id or use <see cref="MoveToFolderAsync"/>.
     /// </summary>
     Task UpdateAsync(Guid id, string name, string? value, bool isSecret, string? description,
         Guid? folderId, string? updatedBy, CancellationToken ct);
@@ -57,25 +53,20 @@ public interface IGlobalVariableStore
     Task DeleteAsync(Guid id, CancellationToken ct);
 
     /// <summary>
-    /// Re-encrypts every secret global variable with the currently active
-    /// <c>ISecretProtector</c>. Used by the post-provider-rotation admin command:
-    /// after switching <c>Secrets:Provider</c>, ciphertexts written by the old
-    /// provider would only be re-encrypted lazily on first read. This command does
-    /// the sweep proactively so a deployment with many rarely-read secrets doesn't carry
-    /// a long tail of old-provider rows. Rows whose ciphertext can't be decrypted
-    /// under any configured protector are skipped and listed in the result so the
-    /// operator can re-enter them by hand — see <see cref="ReencryptionSummary"/>.
+    /// Re-encrypts every secret global variable with the currently active <c>ISecretProtector</c>.
+    /// Run after switching <c>Secrets:Provider</c> so rows written by the old provider are
+    /// converted in one sweep instead of lazily on first read. Rows that no configured protector
+    /// can decrypt are skipped and listed in the <see cref="ReencryptionSummary"/> for manual
+    /// re-entry.
     /// </summary>
     Task<ReencryptionSummary> ReencryptAllSecretsAsync(CancellationToken ct);
 }
 
 /// <summary>
-/// Tri-state result of bulk global-variable resolution. <see cref="Resolved"/> contains
-/// every name that decoded cleanly to a plaintext value. <see cref="Unresolvable"/>
-/// contains names that exist in the DB but failed to decrypt — referencing one in a
-/// workflow template should fail the step loudly rather than substituting nothing.
-/// Names that don't exist at all are absent from both — the engine treats those as
-/// user typos and leaves the <c>{{globals.X}}</c> literal in place (existing behavior).
+/// Result of bulk global-variable resolution. <see cref="Resolved"/> holds every name that
+/// decoded to a plaintext value. <see cref="Unresolvable"/> holds names that exist in the DB but
+/// failed to decrypt; referencing one in a workflow template fails the step. Names absent from
+/// both do not exist, and the engine leaves the <c>{{globals.X}}</c> literal in place.
 /// </summary>
 public sealed record GlobalVariableResolutionResult(
     IReadOnlyDictionary<string, string> Resolved,

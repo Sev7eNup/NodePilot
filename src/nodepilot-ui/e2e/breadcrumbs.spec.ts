@@ -4,16 +4,16 @@ import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 /**
  * E2ETests.md Teil 72 — WorkflowBreadcrumbs (Calls → Navigation) (lines 3910-3927).
  *
- * WorkflowBreadcrumbs renders a "Calls →" strip under the editor header for every static
- * outgoing workflow reference (`startWorkflow.config.workflowNameOrId` /
- * `forEach.config.childWorkflowNameOrId`). A resolvable ref → a clickable pill linking to the
- * child editor. An unresolvable ref → an amber ⚠ pill (not a link) with a "not found" tooltip.
- * Dynamic `{{…}}` refs are skipped entirely.
+ * WorkflowBreadcrumbs renders a "Calls" strip under the editor header for every static
+ * outgoing workflow reference (`startWorkflow.config.workflowNameOrId` and
+ * `forEach.config.childWorkflowNameOrId`). A resolvable ref becomes a clickable pill linking
+ * to the child editor, an unresolvable one an amber warning pill with a "not found" tooltip
+ * and no link. Dynamic `{{…}}` refs are skipped entirely.
  *
- * Resolution reads GET /api/workflows (the full list) — we mock it to include (or omit) the
+ * Resolution reads the full list from GET /api/workflows, mocked to include or omit the
  * referenced child so both branches are deterministic.
  *
- * Hermetic: page.route mocks. SPA renders ENGLISH under Playwright.
+ * Hermetic: page.route mocks. The SPA renders English under Playwright.
  */
 
 const PARENT_ID = 'e7272727-7272-7272-7272-727272727272';
@@ -70,7 +70,7 @@ test.describe('WorkflowBreadcrumbs (Teil 72)', () => {
   test('72.1 — resolvable child renders a "Calls →" pill that links to the child editor', async ({ page }) => {
     await openEditor(page, CHILD_NAME, true);
 
-    // The "Calls →" strip is present.
+    // The "Calls" strip is present.
     await expect(page.getByText(/Calls/i).first()).toBeVisible({ timeout: 10_000 });
 
     // The pill is a Link to /workflows/<childId> carrying the child name.
@@ -88,9 +88,9 @@ test.describe('WorkflowBreadcrumbs (Teil 72)', () => {
 
     await expect(page.getByText(/Calls/i).first()).toBeVisible({ timeout: 10_000 });
 
-    // Broken ref → warning pill carrying the ref name, with a "not found" title; it is NOT a
-    // link. The pill renders a Carbon WarningAltFilled <svg> icon (the icon-font migration
-    // dropped the lucide markup), so match on the ref text + the icon, and assert the title.
+    // A broken ref renders a warning pill with the ref name and a "not found" title, and is
+    // not a link. The pill carries a Carbon WarningAltFilled <svg>, so match on the ref text
+    // plus the icon and assert the title.
     const broken = page.getByText('Ghost Workflow', { exact: false }).filter({ has: page.locator('svg') });
     await expect(broken).toBeVisible();
     await expect(broken).toHaveAttribute('title', /not found|broken/i);
@@ -98,8 +98,8 @@ test.describe('WorkflowBreadcrumbs (Teil 72)', () => {
   });
 
   test('72.3 — dynamic {{…}} reference does not appear as a breadcrumb', async ({ page }) => {
-    // A template-valued ref resolves at runtime → WorkflowBreadcrumbs skips it. With only a
-    // dynamic ref the strip has nothing to show and is not rendered at all.
+    // A template-valued ref only resolves at runtime, so WorkflowBreadcrumbs skips it. With
+    // only a dynamic ref the strip has nothing to show and is not rendered at all.
     await openEditor(page, '{{globals.TARGET_WF}}', true);
 
     await expect(page.locator('.react-flow__node[data-id="step-call"]')).toBeVisible();

@@ -6,25 +6,17 @@ namespace NodePilot.Ai;
 
 /// <summary>
 /// The <see cref="IWebProxy"/> the LLM transport's <c>SocketsHttpHandler</c> is built with. It
-/// resolves <c>Llm:Proxy:*</c> on <b>every</b> request instead of at handler-construction time,
-/// which is the whole point: <c>SocketsHttpHandler</c> owns the connection pool and is created
-/// once per handler lifetime, so reading the proxy there would have made the <c>Llm</c> settings
-/// section restart-required — the way <c>RestApi</c> is. Going through a live
-/// <see cref="IOptionsMonitor{TOptions}"/> keeps the section hot-reloadable, kill-switch and all.
+/// resolves <c>Llm:Proxy:*</c> through a live <see cref="IOptionsMonitor{TOptions}"/> on every
+/// request instead of at handler-construction time, which keeps the <c>Llm</c> settings section
+/// hot-reloadable. In <see cref="LlmProxyMode.Off"/>, <see cref="IsBypassed"/> is true for every
+/// destination, so the handler connects directly and <c>LlmConnectGuard</c> sees the real LLM host.
 ///
-/// <para><b><see cref="LlmProxyMode.Off"/> is indistinguishable from the old
-/// <c>UseProxy = false</c>:</b> <see cref="IsBypassed"/> answers <c>true</c> for every
-/// destination, so the handler connects directly and <c>LlmConnectGuard</c> still sees the real
-/// LLM host. That is what makes "no proxy configured" a genuine no-op rather than a new code
-/// path.</para>
-///
-/// <para><b>Security trade-off in the two proxy modes.</b> Once a proxy carries the request, the
-/// handler's <c>ConnectCallback</c> is invoked for the <i>proxy</i> endpoint — destination DNS is
-/// resolved by the proxy, out of NodePilot's reach. The connect-time link-local/cloud-metadata
-/// guard therefore stops covering the destination, which is left to the literal <c>BaseUrl</c>
-/// check that <see cref="LlmProfileValidation"/> runs on every settings save and at boot.
-/// Deliberately not countered with a mandatory allow-list the way <c>restApi</c> does it: the LLM
-/// BaseUrl is one Admin-only value, not a per-step URL assembled from trigger payloads.</para>
+/// <para>Security trade-off: when a proxy carries the request, <c>ConnectCallback</c> runs against
+/// the proxy endpoint and destination DNS is resolved by the proxy, so the connect-time link-local
+/// and cloud-metadata guard no longer covers the destination. The literal <c>BaseUrl</c> check in
+/// <see cref="LlmProfileValidation"/>, run on every settings save and at boot, covers it instead.
+/// There is no mandatory allow-list as in <c>restApi</c>, because the LLM BaseUrl is a single
+/// Admin-only value, not a per-step URL assembled from trigger payloads.</para>
 /// </summary>
 public sealed class LlmConfiguredProxy : IWebProxy
 {
@@ -37,8 +29,8 @@ public sealed class LlmConfiguredProxy : IWebProxy
 
     /// <summary>
     /// Credentials the handler presents when the proxy answers 407. Resolved live, like everything
-    /// else here. <see cref="LlmProxyOptions.UseDefaultCredentials"/> wins over an explicit
-    /// username because a domain-integrated proxy is the case operators reach for it.
+    /// else here. <see cref="LlmProxyOptions.UseDefaultCredentials"/> takes precedence over an
+    /// explicit username, since a domain-integrated proxy is the usual reason to set it.
     /// </summary>
     public ICredentials? Credentials
     {
@@ -56,21 +48,22 @@ public sealed class LlmConfiguredProxy : IWebProxy
             };
         }
 
-        // The interface demands a setter; nothing in the HTTP stack assigns it (SocketsHttpHandler
-        // only reads). Throwing beats a silent no-op that would make a caller believe it had
-        // overridden the configured credentials.
+        // The interface requires a setter, but nothing in the HTTP stack assigns it. Throwing
+        // avoids a silent no-op that would let a caller believe it had overridden the
+        // configured credentials.
         set => throw new NotSupportedException(
             "LLM proxy credentials come from Llm:Proxy:* and cannot be assigned at runtime.");
     }
 
-    /// <summary>Proxy to use for <paramref name="destination"/>, or <c>null</c> for a direct connection.</summary>
+    /// <summary>Proxy to use for <paramref name="destination"/>, or <c>null</c> for a direct
+    /// connection.</summary>
     public Uri? GetProxy(Uri destination)
     {
         ArgumentNullException.ThrowIfNull(destination);
 
-        // A plaintext LLM endpoint is accepted only because it is physically on this host. Never
-        // hand such a request to a proxy: "localhost" would then refer to the proxy machine and
-        // the unencrypted prompt/key would leave the loopback boundary the endpoint guard promised.
+        // A plaintext LLM endpoint is accepted only because it is on this host. Sending such a
+        // request through a proxy would make "localhost" refer to the proxy machine and let the
+        // unencrypted prompt and API key leave the loopback boundary.
         if (MustStayOnLoopback(destination))
             return null;
 
@@ -95,7 +88,7 @@ public sealed class LlmConfiguredProxy : IWebProxy
         var proxy = CurrentOptions;
         return proxy.Mode switch
         {
-            // Every destination bypasses → byte-for-byte the old UseProxy=false behaviour.
+            // Every destination bypasses the proxy, so the handler connects directly.
             LlmProxyMode.Off => true,
             LlmProxyMode.System => HttpClient.DefaultProxy.IsBypassed(destination),
             LlmProxyMode.Custom => ResolveCustomProxy(proxy).IsBypassed(destination),
@@ -117,18 +110,18 @@ public sealed class LlmConfiguredProxy : IWebProxy
     }
 
     /// <summary>
-    /// Builds the <see cref="WebProxy"/> for the current settings on every call. No caching: the
-    /// LLM endpoints are rate-limited to 20 requests/minute, so an allocation plus a handful of
-    /// bypass regexes per request is not worth an invalidation mechanism of its own.
+    /// Builds the <see cref="WebProxy"/> from the current settings on every call. The result is
+    /// not cached: LLM requests are rate-limited, so one allocation and a few bypass regexes per
+    /// request are cheaper than a cache invalidation mechanism.
     /// </summary>
     private static WebProxy ResolveCustomProxy(LlmProxyOptions proxy)
     {
-        // Same two rules the settings validation applies, from the same place — see LlmProfileValidation.
+        // The same two rules the settings validation applies, taken from LlmProfileValidation.
         if (!LlmProfileValidation.HasProxyAddress(proxy.Address, out var address))
         {
-            // Rejected by LlmProfileValidation on every save and at boot, so this only fires for a
-            // hand-edited config picked up by hot-reload. Failing loudly beats silently going
-            // direct when the operator asked for a proxy.
+            // LlmProfileValidation rejects this on every save and at boot, so it is only reachable
+            // through a hand-edited config picked up by hot-reload. Fail loudly instead of
+            // silently connecting directly when a proxy was requested.
             throw new InvalidOperationException(
                 $"{LlmProxyOptions.SectionName}:Mode is 'Custom' but {LlmProxyOptions.SectionName}:Address is empty. "
                 + "Set a proxy URL (e.g. http://proxy.corp.local:8080) or switch the mode to 'Off' or 'System'.");

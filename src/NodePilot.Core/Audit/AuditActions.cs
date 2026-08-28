@@ -2,13 +2,12 @@ namespace NodePilot.Core.Audit;
 
 /// <summary>
 /// The single authoritative registry of audit-event action codes (the <c>VERB_NOMEN</c> string
-/// stored in <c>AuditLog.Action</c>). Previously these were free-form string literals scattered
-/// across ~21 controllers with the full list existing only as prose in docs/claude-reference.md.
+/// stored in <c>AuditLog.Action</c>).
 ///
-/// <para>New audit calls MUST reference a constant here rather than a raw literal — the guard test
-/// <c>AuditActionsCatalogTests</c> (Api.Tests) fails CI if any <c>LogAsync("LITERAL")</c> remains
-/// at a call site, or if a code is emitted that isn't registered here, or if a registered code is
-/// never used. Codes are grouped by resource; values are the exact strings persisted + audited.</para>
+/// <para>Audit calls reference a constant here instead of a raw literal. The guard test
+/// <c>AuditActionsCatalogTests</c> (Api.Tests) fails CI if a <c>LogAsync("LITERAL")</c> remains at
+/// a call site, if a code is emitted that is not registered here, or if a registered code is never
+/// used. Codes are grouped by resource; the values are the exact strings persisted.</para>
 /// </summary>
 public static class AuditActions
 {

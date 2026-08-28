@@ -2,22 +2,21 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 14 — Alle Trigger-Typen (lines 1536-1662).
+ * E2ETests.md part 14 — all trigger types.
  *
- * Scope: this tests the CONFIG UI of each trigger-type's PropertiesPanel, NOT live firing
- * (firing is engine/TriggerOrchestrator behaviour, owned by the backend test suites). For
- * every trigger we seed a node into a locked-by-me (State B) workflow, click it open, and
- * assert the trigger's distinctive config field renders + round-trips through onUpdate→Save.
+ * Scope: the config UI of each trigger type's PropertiesPanel, not live firing (firing is
+ * engine/TriggerOrchestrator behaviour, covered by the backend test suites). Each test seeds
+ * a trigger node into a locked-by-me (State B) workflow, opens it, and asserts that the
+ * trigger's distinctive config field renders and round-trips through onUpdate and Save.
  *
- * Hermetic: page.route() mocks only (fixtures/mockApi.ts conventions). SPA renders ENGLISH.
+ * Hermetic: page.route() mocks only (fixtures/mockApi.ts conventions). The SPA renders English.
  *
- * Notes from reading the components:
- *   - The config-panel routing lives in activityConfigMap.ts: activityType → *TriggerConfig.
- *   - The PanelHeader shows getActivityLabel(activityType): Schedule / Webhook / File Watcher /
- *     Database Trigger / Event Log — used to confirm the right panel mounted.
- *   - scheduleTrigger's "Next fire times" preview is computed CLIENT-SIDE via cron-parser
- *     (lib/cronPreview.ts), it does NOT call /api/triggers/schedule/next-fires (that endpoint is
- *     consumed by the dashboard/CLI, not the designer). So 14.1 asserts the real rendered preview.
+ * Component details the tests rely on:
+ *   - Config-panel routing lives in activityConfigMap.ts, keyed by activityType.
+ *   - PanelHeader shows getActivityLabel(activityType): Schedule / Webhook / File Watcher /
+ *     Database Trigger / Event Log, which confirms the right panel mounted.
+ *   - The scheduleTrigger "Next fire times" preview is computed client-side via cron-parser
+ *     (lib/cronPreview.ts), so 14.1 asserts the rendered preview rather than an API response.
  */
 
 const WF_ID = 'a14a14a1-0000-0000-0000-00000000a14a';
@@ -28,7 +27,7 @@ function workflowJson(definitionJson: string, overrides: Record<string, unknown>
     name: 'WF-Triggers',
     description: '',
     isEnabled: false,
-    // locked-by-me → State B → all PropertiesPanel edit affordances live (canWrite=true).
+    // Locked by the mock user (State B), so every PropertiesPanel edit affordance is live.
     checkedOutByUserId: MOCK_USER.id,
     checkedOutByUserName: MOCK_USER.username,
     checkedOutAt: '2026-06-01T00:00:00.000Z',
@@ -42,7 +41,7 @@ function node(page: Page, id: string) {
   return page.locator(`.react-flow__node[data-id="${id}"]`);
 }
 
-/** Seed a single trigger node clustered top-left, mock the workflow GET, and capture PUT bodies. */
+/** Seeds one trigger node, mocks the workflow GET, and captures the bodies of PUT requests. */
 async function seedTrigger(
   page: Page,
   activityType: string,
@@ -65,7 +64,7 @@ async function seedTrigger(
   });
 }
 
-/** Click a node → opens its PropertiesPanel; wait for the activity-type label to confirm mount. */
+/** Opens a node's PropertiesPanel and waits for the activity-type label to confirm the mount. */
 async function openTrigger(page: Page, expectLabel: RegExp) {
   await page.goto(`/workflows/${WF_ID}`);
   await expect(node(page, 'trg')).toBeVisible({ timeout: 15_000 });
@@ -83,9 +82,9 @@ test.describe('Alle Trigger-Typen — Config UI (Teil 14)', () => {
 
   test('14.1 — scheduleTrigger: cron field + client-side "Next fire times" preview', async ({ page }) => {
     const putSink: { body: { definitionJson?: string } | null } = { body: null };
-    // Every-5-min cron → cron-parser yields 5 concrete future times in the preview list.
+    // An every-five-minutes cron makes cron-parser yield concrete future times in the preview.
     await seedTrigger(page, 'scheduleTrigger', { cronExpression: '0 */5 * * * ?' }, putSink);
-    // Harmless: the designer doesn't call this, but install it to prove the preview is local.
+    // The designer never calls this endpoint; mocking it proves the preview is computed locally.
     await page.route('**/api/triggers/schedule/next-fires**', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ fires: [], summary: '' }) }),
     );
@@ -128,9 +127,9 @@ test.describe('Alle Trigger-Typen — Config UI (Teil 14)', () => {
 
     // Distinctive field: the webhook Path holds the seeded value (VariableInsertField input).
     await expect(page.locator('input[value="my-webhook-test"]')).toBeVisible({ timeout: 10_000 });
-    // The HTTP method <select> defaults to / reflects POST.
+    // The HTTP method <select> reflects the seeded POST.
     await expect(page.locator('select').filter({ hasText: 'POST' }).first()).toBeVisible();
-    // Secret is a password input (present, value hidden) — assert it exists.
+    // The secret is a password input with a hidden value, so only its presence is asserted.
     await expect(page.locator('input[type="password"]')).toBeVisible();
 
     // Round-trip the path through Save.
@@ -149,9 +148,9 @@ test.describe('Alle Trigger-Typen — Config UI (Teil 14)', () => {
 
     await openTrigger(page, /file watcher/i);
 
-    // Distinctive field: the watched Directory holds the seeded path. Located by its
-    // placeholder (CSS attribute selectors choke on the backslashes in a Windows path);
-    // toHaveValue compares the literal string, no CSS escaping needed.
+    // Distinctive field: the watched Directory holds the seeded path. Located by placeholder
+    // because CSS attribute selectors cannot handle the backslashes of a Windows path;
+    // toHaveValue compares the literal string and needs no CSS escaping.
     const dirInput = page.getByPlaceholder('C:\\Data\\Incoming');
     await expect(dirInput).toBeVisible({ timeout: 10_000 });
     await expect(dirInput).toHaveValue('C:\\temp\\watch');

@@ -8,18 +8,18 @@ namespace NodePilot.Core.Models;
 ///
 /// <para>Matching has two layers: a cheap coarse pre-filter on event type (<see cref="EventTypes"/>),
 /// then a composable AND/OR/NOT filter tree over the event fields (the same condition AST the
-/// designer uses for edge conditions, stored as a JSON string here). Throttling (cooldown + dedup
-/// + flap suppression) keeps an incident from fanning out hundreds of alerts.</para>
+/// designer uses for edge conditions, stored as a JSON string here). Throttling (cooldown, dedup
+/// and flap suppression) keeps a single incident from fanning out into many alerts.</para>
 /// </summary>
 public class NotificationRule
 {
     public Guid Id { get; set; }
 
     /// <summary>
-    /// Which alerting generation owns this row (ADR 0008). <see cref="NotificationRuleKind.Custom"/> =
-    /// free-filter rule (the default; existing rows backfill to Custom). <see cref="NotificationRuleKind.System"/>
-    /// = a policy bound to an <c>ISystemAlertSource</c> via <see cref="SystemSourceId"/>. The custom and
-    /// system management surfaces each filter on this so neither mutates the other's rows.
+    /// Which alerting kind owns this row (ADR 0008). <see cref="NotificationRuleKind.Custom"/> is a
+    /// free-filter rule and the default; <see cref="NotificationRuleKind.System"/> is a policy bound to
+    /// an <c>ISystemAlertSource</c> via <see cref="SystemSourceId"/>. The custom and system management
+    /// surfaces each filter on this so neither mutates the other's rows.
     /// </summary>
     public NotificationRuleKind Kind { get; set; } = NotificationRuleKind.Custom;
 
@@ -38,21 +38,21 @@ public class NotificationRule
 
     /// <summary>
     /// For System policies: the condition must hold continuously for this many seconds before an episode
-    /// opens (debounce). 0 = fire on the first matching observation. Ignored for Custom rules. Resolution is
-    /// bounded by the dispatcher pass interval.
+    /// opens (debounce). 0 fires on the first matching observation. Ignored for Custom rules. Resolution
+    /// is bounded by the dispatcher pass interval.
     /// </summary>
     public int SustainForSeconds { get; set; }
 
     /// <summary>
-    /// Optional per-policy severity override applied to the delivered notification, replacing the source's
-    /// observation-suggested severity. Null = use the observation's severity.
+    /// Optional per-policy severity override applied to the delivered notification, replacing the severity
+    /// suggested by the source observation. Null keeps the observation's severity.
     /// </summary>
     public NotificationSeverity? SeverityOverride { get; set; }
 
     /// <summary>
     /// For System policies: the UTC instant the policy was (re-)activated. Event sources only alert on
-    /// observations at/after this instant, so a policy enabled later never back-alerts history that a sibling
-    /// policy already advanced the shared source cursor past (ADR 0008). Null for Custom or never-activated.
+    /// observations at or after this instant, so a policy enabled later never alerts on history that a
+    /// sibling policy already moved the shared source cursor past. Null for Custom or never activated.
     /// </summary>
     public DateTime? ActivatedAt { get; set; }
 
@@ -61,7 +61,7 @@ public class NotificationRule
 
     public string? Description { get; set; }
 
-    /// <summary>Master switch — a disabled rule never fires.</summary>
+    /// <summary>Master switch: a disabled rule never fires.</summary>
     public bool IsEnabled { get; set; } = true;
 
     /// <summary>
@@ -72,27 +72,27 @@ public class NotificationRule
     public string EventTypes { get; set; } = string.Empty;
 
     /// <summary>
-    /// Composable AND/OR/NOT filter over the event fields — the SAME structured condition AST the
-    /// designer uses for edge conditions, with operands of <c>source: "event"</c>. Stored as a
-    /// JSON string (provider-agnostic; avoids EF <c>JsonElement</c> mapping pitfalls). Null/empty
-    /// means "no extra filter" (match every event of the configured types in scope).
+    /// Composable AND/OR/NOT filter over the event fields, using the same structured condition AST
+    /// the designer uses for edge conditions, with operands of <c>source: "event"</c>. Stored as a
+    /// JSON string to stay provider-agnostic and avoid EF <c>JsonElement</c> mapping pitfalls. Null
+    /// or empty means no extra filter, matching every event of the configured types in scope.
     /// </summary>
     public string? FilterExpressionJson { get; set; }
 
     public NotificationScopeKind ScopeKind { get; set; } = NotificationScopeKind.Global;
 
     // --- Throttle ---
-    /// <summary>Minimum minutes between alerts for the same dedup key. 0 = no cooldown.</summary>
+    /// <summary>Minimum minutes between alerts for the same dedup key. 0 disables the cooldown.</summary>
     public int CooldownMinutes { get; set; }
 
     /// <summary>
-    /// Optional template for the dedup key. Null → default <c>ruleId + workflowId + eventType</c>.
-    /// Reserved for a future custom-grouping feature; v1 uses the default when null.
+    /// Optional template for the dedup key. Null falls back to <c>ruleId + workflowId + eventType</c>.
+    /// Reserved for a future custom-grouping feature.
     /// </summary>
     public string? DedupKeyTemplate { get; set; }
 
     /// <summary>Flap suppression: only fire once at least this many matching occurrences land
-    /// within <see cref="OccurrenceWindowMinutes"/>. 1 = fire on the first occurrence.</summary>
+    /// within <see cref="OccurrenceWindowMinutes"/>. 1 fires on the first occurrence.</summary>
     public int MinOccurrences { get; set; } = 1;
 
     /// <summary>Rolling window (minutes) for <see cref="MinOccurrences"/>. 0 disables the threshold.</summary>

@@ -1,10 +1,9 @@
 /**
  * The literal "Always" that older workflows carry in `edge.data.label`.
  *
- * The properties panel used to write it whenever a condition was cleared, so it is still present in
- * saved workflow JSON. It is no longer written and no longer drawn on the canvas, but two places
- * still have to recognise it: LabeledEdge skips it, and EdgePropertiesPanel treats it as
- * auto-generated so a later condition change replaces it.
+ * It is no longer written and no longer drawn on the canvas, but two places still have to
+ * recognise it: LabeledEdge skips it, and EdgePropertiesPanel treats it as auto-generated so a
+ * later condition change replaces it.
  */
 export const LEGACY_ALWAYS_LABEL = 'Always';
 

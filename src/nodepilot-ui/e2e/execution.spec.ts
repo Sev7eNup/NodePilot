@@ -2,21 +2,11 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Part 6 — Workflow Execution & Debugging.
- *
- * Hermetic constraints (see fixtures/mockApi.ts + the team playbook):
- *   - SignalR is mocked to 404, so live PROGRESS (Running→Completed, step pulses, the green
- *     "Test-Verlauf" banner, the live Cancel button) never arrives in the browser. Execution
- *     scenarios therefore assert the UI-observable side: the /execute request fires with the
- *     right body (parameters / debug flag) and the editor enters the submitted state.
- *   - React Flow canvas drag is not synthesizable — every node/edge is pre-seeded via
- *     definitionJson, never dropped from the library.
- *
- * The Test button (Play icon, aria-label "Test run") fires handleRunClick(false) → POST
- * /execute {debug:false}. The Debug button (Bug icon, "Debug run …") fires handleRunClick(true)
- * → {debug:true}. A manualTrigger WITH parameters opens RunWorkflowDialog first; the dialog's
- * "Run" submit posts {parameters, debug}. handleRunClick early-returns with an alert() when the
- * workflow is disabled, so every executable fixture sets isEnabled:true.
+ * E2ETests.md section "Part 6": workflow execution and debugging. SignalR is mocked to 404, so
+ * live progress never reaches the browser and these tests assert only that /execute fires with
+ * the expected body. The Test button posts {debug:false}, the Debug button {debug:true}, and a
+ * manualTrigger with parameters opens RunWorkflowDialog first. handleRunClick bails out on a
+ * disabled workflow, so every executable fixture sets isEnabled:true.
  */
 
 const WF_ID = 'e6e6e6e6-0000-0000-0000-000000000006';

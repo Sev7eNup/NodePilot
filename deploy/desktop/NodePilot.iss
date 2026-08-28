@@ -37,10 +37,9 @@ WizardStyle=modern
 SetupIconFile={#StageDir}\setup-icon.ico
 
 [Tasks]
-; The desktop shortcut is the one optional part of this install. Checked by default, as is
-; conventional for a desktop application; unticking it still leaves the Start-Menu entry, which is
-; created unconditionally. Literal English text rather than {cm:CreateDesktopIcon}, because this
-; script declares no [Languages] section - every other user-visible string here is literal too.
+; The desktop shortcut is the one optional part of this install; the Start-Menu entry is created
+; unconditionally. The description is literal English rather than {cm:CreateDesktopIcon}, because
+; this script declares no [Languages] section.
 Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "Additional shortcuts:"
 
 [Files]
@@ -57,12 +56,11 @@ Name: "{group}\NodePilot";         Filename: "{app}\desktop\NodePilot.exe"
 Name: "{commondesktop}\NodePilot"; Filename: "{app}\desktop\NodePilot.exe"; Tasks: desktopicon
 
 [Run]
-; NOTE: provisioning is NOT a [Run] entry. [Run] discards the exit code, so a failed provisioning
-; produced a green "installation complete" and a dead app. It runs from CurStepChanged below,
-; where ResultCode can be inspected. See ProvisionRuntime().
-; Launch the shell as the interacting user (installer runs elevated) - but only when provisioning
-; actually succeeded, otherwise the user gets a second error dialog from the shell for a problem
-; they were already told about.
+; NOTE: provisioning is not a [Run] entry. [Run] discards the exit code, so a failed provisioning
+; would still report a successful install. It runs from CurStepChanged below, where ResultCode can
+; be inspected. See ProvisionRuntime().
+; Launches the shell as the interacting user (the installer runs elevated), and only when
+; provisioning succeeded, so the user is not shown a second dialog for a problem already reported.
 Filename: "{app}\desktop\NodePilot.exe"; \
   Description: "Launch NodePilot"; \
   Check: ProvisionSucceeded; \

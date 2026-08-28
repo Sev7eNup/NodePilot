@@ -10,9 +10,9 @@
     Prerequisites (see deploy\README.md for details):
       - Windows Server 2022/2025. Domain-joined for the gMSA path; -UseLocalSystem installs
         without a domain (the service then authenticates as the computer account DOMAIN\HOST$).
-      - ASP.NET Core Runtime 10.0.11 or newer in the 10.x line, x64 - the PLAIN runtime, NOT the
-        Hosting Bundle. The bundle wires up IIS and restarts W3SVC, which you do not want on a
-        shared host; the pre-flight rejects a 32-bit runtime by name rather than passing it.
+      - ASP.NET Core Runtime 10.0.11 or newer in the 10.x line, x64 - the plain runtime, not the
+        Hosting Bundle. The bundle wires up IIS and restarts W3SVC, which is unwanted on a shared
+        host. The pre-flight rejects a 32-bit runtime.
       - gMSA created in AD, installed on this host (Test-ADServiceAccount green) - unless
         -UseLocalSystem is used.
       - SQL Server path: gMSA has SQL login with db_owner on the target DB
@@ -84,7 +84,7 @@
     HTTPS listen port. Default: 443.
 
 .PARAMETER HttpPort
-    HTTP listen port (HTTP → HTTPS redirect). Default: 80. Pass 0 to disable HTTP binding.
+    HTTP listen port, redirected to HTTPS. Default: 80. Pass 0 to disable HTTP binding.
 
 .PARAMETER InstallPath
     Install directory (read-only for the service). Default: C:\Program Files\NodePilot.
@@ -99,9 +99,9 @@
     Windows Service display name. Default: NodePilot Orchestrator.
 
 .PARAMETER ExternalTriggerApiKey
-    Transitional legacy key for POST /api/trigger/{workflow}. Auto-generated (48 random bytes
-    base64) if omitted. It authorizes nothing until workflow GUIDs are explicitly configured in
-    ExternalTrigger:AllowedWorkflowIds; new integrations should use hashed ExternalTrigger:Keys entries.
+    Legacy key for POST /api/trigger/{workflow}. Auto-generated (48 random bytes, base64) if
+    omitted. It authorizes nothing until workflow GUIDs are listed in
+    ExternalTrigger:AllowedWorkflowIds. New integrations use hashed ExternalTrigger:Keys entries.
 
 .PARAMETER JwtIssuer
     JWT issuer claim. Default: nodepilot:prod:<machine-name>.
@@ -118,7 +118,7 @@
     for example -KnownProxyIps '10.0.1.5','10.0.1.6'. Do not pass the public VIP.
 
 .PARAMETER SkipSqlConnectivityCheck
-    Skip the Test-NetConnection probe to SQL / Postgres AND the SQL Server version gate
+    Skip the Test-NetConnection probe to SQL / Postgres and the SQL Server version gate
     (>= 2022 CU1 / 16.0.4003.1, required for the runtime's Encrypt=Strict TDS 8.0
     connections). Use when the installer host cannot reach the DB port but the service
     account will once the service starts.
@@ -179,9 +179,9 @@ param(
     [string]$ServiceName = 'NodePilot',
     [string]$ServiceDisplayName = 'NodePilot Orchestrator',
     [string]$ExternalTriggerApiKey,
-    # Pins which username may consume the one-shot setup token. Empty by default: an interactive
-    # installer cannot know the answer, and pinning the wrong name would lock the operator out of
-    # their own bootstrap. An unattended install does know it, and passes it.
+    # Pins which username may consume the one-shot setup token. Empty by default, because an
+    # interactive installer cannot know the name and pinning the wrong one locks the operator out
+    # of the bootstrap. An unattended install knows it and passes it.
     [string]$BootstrapAdminUsername,
     # A configuration backup to restore on first start. The file is copied into DataPath and the
     # passphrase goes into the service's Environment value, never into appsettings.
@@ -205,15 +205,15 @@ if (-not (Test-Path -LiteralPath $ArtifactSecurityScript -PathType Leaf)) {
 . $ArtifactSecurityScript
 
 # Readiness checks live in their own file because the setup wizard runs the same set behind a
-# "re-check" button. That shared use is why nothing in Preflight.ps1 may mutate anything.
+# re-check button. Because of that shared use, nothing in Preflight.ps1 may mutate anything.
 $PreflightScript = Join-Path $PSScriptRoot 'Preflight.ps1'
 if (-not (Test-Path -LiteralPath $PreflightScript -PathType Leaf)) {
     throw "Preflight helper not found: $PreflightScript"
 }
 . $PreflightScript
 
-# Shared with Update-NodePilot.ps1: a service the SCM calls stopped can still have a live process
-# holding its own binaries, and waiting that out is this script's job, not the operator's.
+# Shared with Update-NodePilot.ps1: a service the SCM reports as stopped can still have a live
+# process holding its binaries, and this script waits that out before replacing files.
 $ServiceControlScript = Join-Path $PSScriptRoot 'ServiceControl.ps1'
 if (-not (Test-Path -LiteralPath $ServiceControlScript -PathType Leaf)) {
     throw "Service control helper not found: $ServiceControlScript"
@@ -246,8 +246,8 @@ try {
     Write-Host "[install] Verified signed artifact version $($verifiedArtifact.Version), signer $($verifiedArtifact.SignerThumbprint)." -ForegroundColor Green
 
 # Provider-specific param validation. The param() block makes all DB params optional so a
-# single entry point works for both SQL Server and Postgres; we enforce the actually-required
-# subset here so callers get a clean error instead of a mid-install surprise.
+# single entry point works for both SQL Server and Postgres; the required subset is enforced
+# here so callers get a clean error instead of a mid-install failure.
 $DbProvider = $DbProvider.ToLowerInvariant()
 if ($DbProvider -eq 'sqlserver') {
     if ([string]::IsNullOrWhiteSpace($SqlServer)) {
@@ -285,7 +285,7 @@ foreach ($proxyIp in $KnownProxyIps) {
 # Two supported runtime identities:
 #   * gMSA         -ServiceAccount 'CONTOSO\svc-nodepilot$'  (AD-managed password)
 #   * LocalSystem  -UseLocalSystem  (or -ServiceAccount 'LocalSystem')
-# LocalSystem authenticates on the network as the COMPUTER account (DOMAIN\<host>$):
+# LocalSystem authenticates on the network as the computer account (DOMAIN\<host>$):
 #   - SQL Server Trusted_Connection logs in as DOMAIN\<host>$ (that login needs db_owner)
 #   - integrated WinRM presents the computer account to targets
 # It already holds FullControl on the machine plus SeServiceLogonRight, so the per-file ACL
@@ -346,12 +346,10 @@ function Set-DirectoryAclForService {
     $acl = Get-Acl $Path
     $acl.SetAccessRuleProtection($true, $false)
 
-    # Owner, not just the ACEs. The API refuses to read its bootstrap token when any directory on
-    # the way to it has an owner it does not trust, and a data directory that survived a previous
-    # life carries whoever last took ownership of it - which the uninstaller's own -PurgeData does,
-    # by design, to delete owner-only files. Fixing the ACEs and leaving that owner in place
-    # produced an installation that looked perfect and could never create its first admin.
-    # A fresh directory already comes out owned by Administrators; this only repairs the rest.
+    # Set the owner, not just the ACEs. The API refuses to read its bootstrap token when any
+    # directory on the way to it has an owner it does not trust, and a reused data directory
+    # carries whoever last took ownership of it (the uninstaller's -PurgeData takes ownership to
+    # delete owner-only files). A fresh directory is already owned by Administrators.
     $acl.SetOwner([System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
 
     # Wipe inherited ACEs that SetAccessRuleProtection preserved-as-explicit.
@@ -383,21 +381,15 @@ function Set-DirectoryAclForService {
 
 function Test-ServiceDirectoryAclTrust {
     <#
-      Answers the one question the service will ask itself seconds later, and answers it the same
-      way: RestrictedFileWriter.ValidateWindowsDirectoryAcl refuses to read the JWT signing key
-      when the directory holding it has an owner it does not trust, or grants mutation rights to a
-      principal outside a deliberately tiny set - SYSTEM, Administrators, TrustedInstaller,
-      CreatorOwner, OwnerRights, and the identity the service is RUNNING as.
+      Applies the same rule the service applies at start time:
+      RestrictedFileWriter.ValidateWindowsDirectoryAcl refuses to read the JWT signing key when the
+      directory holding it has an untrusted owner, or grants mutation rights to a principal outside
+      a small set - SYSTEM, Administrators, TrustedInstaller, CreatorOwner, OwnerRights, and the
+      identity the service runs as. A leftover ACE for a previous service account is the common
+      case, and checking it here keeps that failure out of the rollback path.
 
-      That last one is the trap this exists for. An ACE for a service account is only harmless
-      while the service runs as that account; install once as A and again as B, and A's leftover
-      ACE is a stranger with write access next to the signing key. The service then refuses to
-      start with "grants mutation rights to an untrusted principal", after the installer has
-      already replaced the binaries - so the failure lands in the rollback path instead of in a
-      check. Same rule, evaluated here, turns that into something the installer can fix.
-
-      Returns @{ IsSecure = bool; Reason = string } - never throws, so a directory this account
-      cannot read its ACL from is reported rather than crashing the install.
+      Returns @{ IsSecure = bool; Reason = string } and never throws, so a directory whose ACL
+      cannot be read is reported instead of crashing the install.
     #>
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -470,10 +462,10 @@ function Test-ServiceDirectoryAclTrust {
 
 function Resolve-SidLabel {
     <#
-      "DOMAIN\account (S-1-5-21-...)" where the SID still resolves, the bare SID otherwise. An
-      orphaned SID is the common case here - a decommissioned service account keeps its ACE - and
-      it is precisely the value icacls needs to remove it, so translation failure is an answer,
-      not an error.
+      Returns "DOMAIN\account (S-1-5-21-...)" where the SID still resolves, the bare SID otherwise.
+      An orphaned SID is common here (a decommissioned service account keeps its ACE) and is
+      exactly the value icacls needs to remove it, so a failed translation is an answer, not an
+      error.
     #>
     param([Parameter(Mandatory)][string]$Sid)
     try {
@@ -487,11 +479,10 @@ function Resolve-SidLabel {
 
 function Assert-ServiceDirectoryAclUsable {
     <#
-      Verify, repair once, verify again - then give up loudly instead of handing the service a
-      directory it will refuse. The repair is not a second mechanism: it is the same
-      Set-DirectoryAclForService the install already ran, which drops inheritance, wipes every
-      explicit ACE and forces the owner back to Administrators. Running it again is what clears a
-      stranger's ACE that predates this installation.
+      Verify, repair once, verify again, then fail instead of handing the service a directory it
+      will refuse. The repair reuses Set-DirectoryAclForService, which drops inheritance, wipes
+      every explicit ACE and forces the owner back to Administrators, so it clears an ACE left by
+      an earlier installation.
     #>
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -520,14 +511,11 @@ function Assert-ServiceDirectoryAclUsable {
 
 function Assert-SafeInstallRoot {
     <#
-      H-18. The install directory holds the service binaries and is registered as the image path
-      of a LocalSystem/gMSA service, so write access to it IS SYSTEM code execution. Only DataPath
-      used to be hardened; InstallPath was created with a plain New-Item -Force and inherited
-      whatever the parent allowed - on a custom root such as D:\NodePilot that is
-      BUILTIN\Users:(M) straight off the volume root. The default under Program Files was never
-      affected, which is exactly why this went unnoticed.
+      The install directory holds the service binaries and is registered as the image path of a
+      LocalSystem/gMSA service, so write access to it is SYSTEM code execution. A custom root such
+      as D:\NodePilot inherits BUILTIN\Users:(M) from the volume root, which Program Files does not.
 
-      Validate the LOCATION here, before anything is copied in. The DACL itself is applied by
+      This validates the location, before anything is copied in. The DACL itself is applied by
       Set-DirectoryAclForService and re-checked by Assert-InstallRootHardened after the copy.
     #>
     param([Parameter(Mandatory)][string]$Path)
@@ -610,12 +598,9 @@ function Set-ServiceRegistryAclForSecrets {
     param([Parameter(Mandatory)][string]$Path)
 
     # -Path, not -LiteralPath. On a registry path Get-Acl/Set-Acl -LiteralPath resolves against the
-    # CURRENT provider instead of the drive qualifier in the string, so from a filesystem location
-    # 'HKLM:\SYSTEM\...' comes back as "Cannot find path" while Test-Path on the very same string
-    # says True. Measured on the lab host: this aborted an installation between registering the
-    # service and writing its Environment value, and it would have done so on every PostgreSQL
-    # install - the one path that called this before now, and the one case the smoke matrix has
-    # never run.
+    # current provider instead of the drive qualifier in the string, so from a filesystem location
+    # 'HKLM:\SYSTEM\...' fails with "Cannot find path" while Test-Path on the same string returns
+    # True.
     $acl = Get-Acl -Path $Path
     $acl.SetAccessRuleProtection($true, $false)
     @($acl.Access) | ForEach-Object { [void]$acl.RemoveAccessRule($_) }
@@ -634,9 +619,9 @@ function Set-ServiceRegistryAclForSecrets {
 
 function Grant-CertPrivateKeyAccess {
     <#
-      The service account needs READ access to the private key backing the TLS cert.
-      Works for both RSA (CAPI/CNG via X509Certificate2.GetRSAPrivateKey) and ECDSA.
-      We locate the on-disk key container and apply an icacls grant.
+      Grants the service account read access to the private key backing the TLS cert by locating
+      the on-disk key container and applying an icacls grant. Works for both RSA (CAPI/CNG via
+      X509Certificate2.GetRSAPrivateKey) and ECDSA.
     #>
     param(
         [Parameter(Mandatory)][string]$Thumbprint,
@@ -647,7 +632,7 @@ function Grant-CertPrivateKeyAccess {
     if (-not $cert) { throw "Certificate $Thumbprint not found in LocalMachine\My." }
     if (-not $cert.HasPrivateKey) { throw "Certificate $Thumbprint has no private key." }
 
-    # Try CNG first (modern), fall back to RSA CSP (legacy .PFX imports).
+    # Try CNG first, fall back to RSA CSP for legacy .PFX imports.
     $keyName = $null
     try {
         $cng = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($cert)
@@ -689,29 +674,23 @@ function Grant-CertPrivateKeyAccess {
 
 function Enable-SqlReadCommittedSnapshot {
     <#
-      Enable READ_COMMITTED_SNAPSHOT on the target database. This is the SQL-Server-side
-      analogue to Postgres MVCC: without it, long-running readers (the WorkflowStatsRefresher's
-      GROUP BY sweeps, retention scans) block every concurrent INSERT into WorkflowExecutions
-      / StepExecutions under the default 2PL locking model. RCSI flips reads to row-versioning;
-      writers no longer block readers and vice versa. It's the single biggest production
-      foot-gun for the SQL Server provider.
+      Enables READ_COMMITTED_SNAPSHOT on the target database, the SQL Server counterpart to
+      Postgres MVCC. Without it, long-running readers (stats refresh, retention scans) block
+      concurrent INSERTs into WorkflowExecutions / StepExecutions under the default locking model.
 
       Idempotent: checks `sys.databases.is_read_committed_snapshot_on` first. WITH ROLLBACK
-      IMMEDIATE drops any open sessions on the target DB so the ALTER can grab the brief
-      exclusive lock it needs - safe at install time when the service isn't running yet.
-      Failure here is a warning, not a hard fail: RCSI is performance, not correctness.
-
-      This is the reason Preflight.ps1 exists as a separate, mutation-free file: dropping every
-      open session is correct install-time work, and catastrophic behind a wizard's "re-check"
-      button. It stays here, and it runs only after the preflight has passed in full.
+      IMMEDIATE drops open sessions on the target DB so the ALTER can take its brief exclusive
+      lock, which is safe at install time while the service is not running. Failure is a warning,
+      because RCSI affects performance, not correctness. Dropping sessions is also why this is a
+      mutation that stays out of the wizard-callable Preflight.ps1.
     #>
     param(
         [Parameter(Mandatory)][string]$Server,
         [Parameter(Mandatory)][string]$Database,
         [Parameter(Mandatory)][string]$CertificateHostName
     )
-    # Connect to master so ALTER DATABASE ... WITH ROLLBACK IMMEDIATE doesn't kick out our
-    # own session.
+    # Connect to master so ALTER DATABASE ... WITH ROLLBACK IMMEDIATE does not drop this
+    # session as well.
     $connectionString = Resolve-NodePilotSqlProbeConnectionString `
         -Server $Server -Database 'master' -CertificateHostName $CertificateHostName
 
@@ -733,9 +712,8 @@ function Enable-SqlReadCommittedSnapshot {
         }
 
         $alter = $conn.CreateCommand()
-        # QUOTENAME the database name to defend against unusual identifiers; sp_executesql
-        # would also work but adds noise. Database names cannot contain ']' so escape is the
-        # standard Replace pattern.
+        # Bracket-quote the database name to handle unusual identifiers. Doubling ']' is the
+        # standard escape for a bracketed SQL Server identifier.
         $escaped = $Database.Replace(']', ']]')
         $alter.CommandText = "ALTER DATABASE [$escaped] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE"
         $alter.CommandTimeout = 60
@@ -794,17 +772,16 @@ public class TrustAllCerts : ICertificatePolicy {
 
 function Grant-LogOnAsServiceRight {
     <#
-      Grants SeServiceLogonRight to the given account. Required because Win32_Service.Create
-      does NOT auto-grant this right (unlike New-Service / sc.exe). Without it the SCM rejects
-      the service start with a generic "Cannot start service" error.
+      Grants SeServiceLogonRight to the given account. Required because Win32_Service.Create does
+      not auto-grant this right the way New-Service and sc.exe do; without it the SCM rejects the
+      service start with a generic "Cannot start service" error.
 
-      We export the current LSA policy with secedit, append the account's SID to
-      SeServiceLogonRight (idempotent), and re-import. Pure built-in tooling, no external
-      module dependency, no P/Invoke.
+      Exports the current LSA policy with secedit, appends the account's SID to
+      SeServiceLogonRight (idempotent), and re-imports it. Built-in tooling only, no P/Invoke.
     #>
     param([Parameter(Mandatory)][string]$Account)
 
-    # Resolve account -> SID. The INF file expects "*S-1-5-21-..." format.
+    # Resolve the account to a SID. The INF file expects the "*S-1-5-21-..." format.
     $ntAccount = New-Object System.Security.Principal.NTAccount($Account)
     $sid       = $ntAccount.Translate([System.Security.Principal.SecurityIdentifier]).Value
     $sidEntry  = "*$sid"
@@ -863,15 +840,12 @@ SeServiceLogonRight = $newValue
 function Remove-ExistingService {
     param(
         [Parameter(Mandatory)][string]$Name,
-        # Explicit rather than reached out of the script scope: the wait below is about this
-        # directory's binaries, and a function that silently depends on an ambient variable is
-        # one refactor away from waiting on the wrong path.
+        # Passed explicitly instead of read from the script scope, so the wait below always
+        # applies to the directory the caller means.
         [Parameter(Mandatory)][string]$InstallPath,
-        # What to say when a service is found. The rollback calls this to remove the service THIS
-        # run registered a minute earlier, and the default wording turned a failed first
-        # installation into "Existing service 'NodePilot' found - stopping and removing" on a
-        # machine that had never had one. The operator read it as the installer destroying
-        # something that was already there.
+        # What to report when a service is found. The rollback path removes the service this run
+        # registered, where the default wording would wrongly suggest a pre-existing installation
+        # was destroyed.
         [string]$FoundMessage = ''
     )
     $svc = Get-Service -Name $Name -ErrorAction SilentlyContinue
@@ -892,10 +866,10 @@ function Remove-ExistingService {
         }
     }
 
-    # Between SERVICE_STOPPED and the process actually exiting, the binaries stay mapped. This
-    # wait belongs BEFORE sc.exe delete: deleting first orphans a live process that nothing can
-    # address through the SCM any more, and the file replacement below then rips DLLs out from
-    # under it. Same ordering as Uninstall-NodePilot.ps1, for the same reason.
+    # Between SERVICE_STOPPED and the process exiting, the binaries stay mapped. The wait runs
+    # before sc.exe delete: deleting first orphans a live process that the SCM can no longer
+    # address, and the file replacement below would then pull DLLs out from under it.
+    # Uninstall-NodePilot.ps1 uses the same ordering.
     $remaining = @(Wait-NodePilotProcessesUnderPath -Path $InstallPath -TimeoutSeconds 30 -Force)
     if ($remaining.Count -gt 0) {
         $names = ($remaining | ForEach-Object { "$($_.ProcessName) (PID $($_.Id))" }) -join ', '
@@ -1002,8 +976,8 @@ function Restore-ServiceRollbackSnapshot {
     if ($Snapshot.StartMode -eq 'Auto' -and $Snapshot.DelayedAutoStart -eq 1) {
         & sc.exe config $Snapshot.Name start= delayed-auto | Out-Null
     }
-    # sc.exe separates multiple dependencies with '/'. Restoring these matters because the
-    # service we replaced may itself have carried depend= Netlogon.
+    # sc.exe separates multiple dependencies with '/'. The replaced service may itself have
+    # carried depend= Netlogon, so the list is restored.
     if ($Snapshot.DependOnService.Count -gt 0) {
         & sc.exe config $Snapshot.Name depend= ($Snapshot.DependOnService -join '/') | Out-Null
         if ($LASTEXITCODE -ne 0) { Write-Warn "  Rollback could not restore service dependencies." }
@@ -1037,16 +1011,13 @@ if (-not $PublicHostname) {
 if (-not $JwtIssuer)   { $JwtIssuer   = "nodepilot:prod:$env:COMPUTERNAME" }
 if (-not $JwtAudience) { $JwtAudience = "nodepilot:prod:$env:COMPUTERNAME" }
 if (-not $AllowedHosts) { $AllowedHosts = $PublicHostname }
-# localhost is not optional, whatever the operator asked for. UseHostFiltering rejects any Host
-# header outside this list with a 400 - and the health probe below is a request to
-# https://localhost:<port>/healthz/ready. An AllowedHosts of "nodepilot.corp.example" therefore
-# makes the installer fail its own probe and roll back a perfectly good installation, after the
-# database has been migrated, with "Service did not report /healthz/ready within 180s" as the only
-# clue. Measured on a lab host 2026-08-04.
+# localhost is always added, whatever the operator asked for. Host filtering rejects any Host
+# header outside this list with a 400, and the health probe below requests
+# https://localhost:<port>/healthz/ready, so a list without localhost makes the installer fail its
+# own probe and roll back a working installation.
 #
-# It costs nothing: a Host header of "localhost" is not privileged, and anyone who can send one
-# from outside can send the real name just as easily. Host filtering exists to stop an attacker
-# controlling the host NodePilot echoes back, not to make loopback unreachable.
+# It costs nothing: a Host header of "localhost" is not privileged, and host filtering exists to
+# control which host NodePilot echoes back, not to make loopback unreachable.
 if (@($AllowedHosts -split ';' | ForEach-Object { $_.Trim() }) -notcontains 'localhost') {
     $AllowedHosts = "$AllowedHosts;localhost"
 }
@@ -1121,15 +1092,13 @@ $preflightResults = Invoke-NodePilotPreflight `
 
 Assert-NodePilotPreflight -Results $preflightResults
 
-# RCSI is best applied at install time, before the service starts and holds connections - the
-# brief exclusive lock is uncontended then. Failures degrade to a warning so a missing
-# ALTER DATABASE permission doesn't block install.
+# RCSI is applied at install time, before the service starts and holds connections, so the brief
+# exclusive lock is uncontended. Failure degrades to a warning so a missing ALTER DATABASE
+# permission does not block the install.
 #
-# It runs AFTER the preflight passed in full, not inside it. Two reasons: it is a mutation and
-# so it cannot live in the shared, wizard-callable Preflight.ps1 (its WITH ROLLBACK IMMEDIATE
-# would drop every open session on the customer's database each time someone clicks
-# "re-check"), and an install that is about to abort on a later check should not have altered
-# the database on its way out.
+# It runs after the preflight passed in full, not inside it: it is a mutation, so it cannot live
+# in the shared, wizard-callable Preflight.ps1, and an install that is about to abort on a later
+# check should not have altered the database.
 if (-not $SkipSqlConnectivityCheck -and $DbProvider -eq 'sqlserver') {
     try {
         Enable-SqlReadCommittedSnapshot `
@@ -1200,25 +1169,23 @@ $installMutationStarted = $true
 Remove-ExistingService -Name $ServiceName -InstallPath $InstallPath
 
 Write-Step "Preparing directories"
-# H-18: validate the location before creating anything in it - an unsuitable root (UNC, FAT/exFAT,
+# Validate the location before creating anything in it: an unsuitable root (UNC, FAT/exFAT,
 # behind a junction) cannot be secured after the fact.
 Assert-SafeInstallRoot -Path $InstallPath
 if (Test-Path $InstallPath) {
-    # Empty install path but do NOT touch DataPath.
+    # Empty the install path; leave DataPath untouched.
     Get-ChildItem $InstallPath -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
 
-    # The GUI setup keeps its uninstaller in this directory, so emptying it invalidates whatever
-    # Add/Remove Programs entry pointed at that uninstaller. Both the setup and this script are
-    # documented ways to install the same product and an operator may well mix them - and an entry
-    # whose uninstaller no longer exists is one Windows can neither run nor clear, so it sits there
-    # until somebody edits the registry.
+    # The GUI setup keeps its uninstaller in this directory, so emptying it invalidates the
+    # Add/Remove Programs entry that pointed at it. Windows can neither run nor clear such an
+    # entry, so it stays until someone edits the registry.
     #
-    # Sparing the uninstaller instead is not an option: Assert-NodePilotExtractedFiles a few steps
-    # below requires this directory to hold exactly the signed artifact and nothing else, which is
-    # what stops a binary being swapped before the service executes it.
+    # Keeping the uninstaller is not an option: Assert-NodePilotExtractedFiles below requires this
+    # directory to hold exactly the signed artifact and nothing else, which is what stops a binary
+    # from being swapped before the service executes it.
     #
-    # Deliberately narrow - an entry is removed only when its uninstaller lived in the directory
-    # just emptied AND is really gone. One that still works belongs to somebody else.
+    # The removal is narrow: an entry goes only when its uninstaller lived in the directory just
+    # emptied and is really gone. One that still works belongs to another product.
     $deadEntryPrefix = $InstallPath.TrimEnd('\') + '\'
     foreach ($uninstallRoot in @(
             'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
@@ -1240,22 +1207,21 @@ if (Test-Path $InstallPath) {
 }
 New-Item -ItemType Directory -Path $DataPath -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $DataPath 'logs') -Force | Out-Null
-# H-18: the binaries are read-only for the service - it executes them, it never rewrites them.
+# The binaries are read-only for the service: it executes them, it never rewrites them.
 # Inheritance is dropped here too, so a permissive parent (a custom root on D:\ inherits
 # BUILTIN\Users:(M) from the volume) cannot reach the files the service starts from.
 Set-DirectoryAclForService -Path $InstallPath -ServiceAccount $AclIdentity `
     -ReadOnlyForService -SkipServiceRule:$isLocalSystem
 Set-DirectoryAclForService -Path $DataPath -ServiceAccount $AclIdentity -SkipServiceRule:$isLocalSystem
 # From here on the data directory carries an ACE for the identity being installed. If anything
-# below fails, the rollback has to take it off again - see the catch block.
+# below fails, the catch block has to take it off again.
 $dataAclApplied = $true
 
-# The two files the SERVICE writes for itself, owned by whoever it was at the time: a single ACE,
-# FullControl, protected. Change the service identity and the new one cannot open them, while the
-# old one is gone - so a fresh install with a different identity used to fail at the first start
-# with "the file, its owner, or its ACL could not be verified" (lab 2026-08-05, LocalSystem then
-# gMSA). Deleting them is not an option: the JWT key signs live sessions, and the setup token is
-# the only way into a not-yet-provisioned instance. They are handed over instead.
+# The service writes these two files for itself, owned by its identity at the time, with a single
+# protected FullControl ACE. A new service identity could not open them, and the install would
+# fail at first start with "the file, its owner, or its ACL could not be verified". Deleting them
+# is not an option: the JWT key signs live sessions and the setup token is the only way into a
+# not-yet-provisioned instance, so ownership is handed over instead.
 foreach ($identityBoundSecret in @('jwt-secret.key', 'admin-setup.token')) {
     $secretPath = Join-Path $DataPath $identityBoundSecret
     if (Test-Path -LiteralPath $secretPath -PathType Leaf) {
@@ -1264,10 +1230,9 @@ foreach ($identityBoundSecret in @('jwt-secret.key', 'admin-setup.token')) {
     }
 }
 
-# Applying an ACL and assuming it landed is what let a leftover ACE from an earlier installation
-# survive all the way to the first service start, where the API - not the installer - discovered
-# it and refused to read the JWT key. Ask the same question here, while the only thing that has
-# happened is that two directories exist: the binaries are not extracted until below.
+# Check the ACL instead of assuming it landed: a leftover ACE from an earlier installation would
+# otherwise surface at the first service start, where the API refuses to read the JWT key. The
+# check runs here, while only the two directories exist and the binaries are not extracted yet.
 Assert-ServiceDirectoryAclUsable -Path $DataPath -ServiceAccount $AclIdentity `
     -SkipServiceRule:$isLocalSystem -Label "The data directory '$DataPath'"
 
@@ -1314,10 +1279,9 @@ Get-ChildItem -LiteralPath $artifactStage -Force | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination $InstallPath -Recurse -Force
 }
 Assert-NodePilotExtractedFiles -RootPath $InstallPath
-# H-18: the hash check above proves the files are ours right now; this proves they cannot be
+# The hash check above proves the files are the signed ones right now; this proves they cannot be
 # swapped before the service (LocalSystem/gMSA) executes them. Copy-Item into a freshly ACL'd
-# directory does not re-introduce inheritance, but the whole point of the finding is that nobody
-# was checking - so check.
+# directory does not re-introduce inheritance, but the result is verified rather than assumed.
 Assert-NodePilotInstallRootHardened -Path $InstallPath -RequireProtectedRules
 
 $ApiExe = Join-Path $InstallPath 'NodePilot.Api.exe'
@@ -1339,16 +1303,14 @@ $dataEscaped = $DataPath -replace '\\', '\\'
 $sqlServerConnStr = ''
 $postgresServiceConnStr = ''
 if ($DbProvider -eq 'sqlserver') {
-    # MARS (MultipleActiveResultSets) is intentionally omitted. EF Core 10's BatchExecutor
-    # combined with MARS can retry a batch after a transient network blip, re-sending INSERTs
-    # that already committed on the first attempt — resulting in PRIMARY KEY violations on
-    # StepExecutions when multiple parallel steps flush their SaveChanges at the same time.
-    # EF Core works correctly without MARS; the feature is only needed for legacy ADO.NET
-    # patterns with multiple open DataReaders on one connection simultaneously.
+    # MARS (MultipleActiveResultSets) is intentionally omitted. Combined with MARS, the EF Core
+    # batch executor can retry a batch after a transient network fault and re-send INSERTs that
+    # already committed, which shows up as PRIMARY KEY violations on StepExecutions when parallel
+    # steps save at the same time. EF Core does not need MARS; only legacy ADO.NET code with
+    # several open DataReaders on one connection does.
     #
-    # Pool sizing (Min=40 / Max=800) matches the Postgres branch and gives MaxConcurrentSteps=600
-    # in appsettings.json enough headroom — without it SqlClient defaults to Max=100 and
-    # parallel-step bursts queue at the connection level instead of the engine's step gate.
+    # Pool sizing matches the Postgres branch and gives the engine's parallel steps enough
+    # connection headroom; the SqlClient default would queue bursts at the connection level.
     $sqlBuilder = New-Object System.Data.Common.DbConnectionStringBuilder
     $sqlBuilder['Server'] = $SqlServer
     $sqlBuilder['Database'] = $SqlDatabase
@@ -1369,9 +1331,9 @@ if ($DbProvider -eq 'sqlserver') {
     } finally {
         [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
     }
-    # Pool sizing matches the dev appsettings.json default and gives MaxConcurrentSteps=600
-    # enough connection headroom. Connection Idle Lifetime=60 keeps the pool from holding
-    # connections open longer than necessary on a slow workload.
+    # Pool sizing matches the appsettings.json default and gives the engine's parallel steps
+    # enough connection headroom. The idle lifetime keeps the pool from holding connections
+    # open longer than necessary on a light workload.
     $postgresBuilder = New-Object System.Data.Common.DbConnectionStringBuilder
     $postgresBuilder['Host'] = $PostgresHost
     $postgresBuilder['Port'] = $PostgresPort
@@ -1398,8 +1360,8 @@ function ConvertTo-JsonInnerLocal {
     return $json.Substring(1, $json.Length - 2)
 }
 
-# Substitute placeholders with literal String.Replace (NOT -replace, which is regex-based and
-# would interpret $1 in API keys as backreferences and Regex.Escape would clobber dots/spaces).
+# Substitute placeholders with literal String.Replace, not -replace: the latter is regex-based
+# and would treat $1 in an API key as a backreference.
 $rendered = $tpl
 $rendered = $rendered.Replace('{{DB_PROVIDER}}',                $DbProvider)
 $rendered = $rendered.Replace('{{SQLSERVER_CONNECTION_STRING}}',(ConvertTo-JsonInnerLocal $sqlServerConnStr))
@@ -1413,7 +1375,7 @@ $rendered = $rendered.Replace('{{BIND_HTTP_JSON}}',             $BindHttpJson)
 $rendered = $rendered.Replace('{{DATA_PATH_ESCAPED}}',          $dataEscaped)
 $rendered = $rendered.Replace('{{EXTERNAL_TRIGGER_API_KEY}}',   (ConvertTo-JsonInnerLocal $ExternalTriggerApiKey))
 $rendered = $rendered.Replace('{{BOOTSTRAP_ADMIN_USERNAME}}',   (ConvertTo-JsonInnerLocal $BootstrapAdminUsername))
-# Only the PATH goes into the configuration file. The passphrase that unlocks it is placed in the
+# Only the path goes into the configuration file. The passphrase that unlocks it is placed in the
 # service's Environment value instead, next to the database secret and behind the same ACL.
 $rendered = $rendered.Replace('{{SEED_BACKUP_PATH}}',           (ConvertTo-JsonInnerLocal $seedTargetPath))
 $rendered = $rendered.Replace('{{ALLOWED_HOSTS}}',              (ConvertTo-JsonInnerLocal $AllowedHosts))
@@ -1456,11 +1418,10 @@ if ($BindHttp) {
     Get-NetFirewallRule -DisplayName $fwRuleHttp -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
     New-NetFirewallRule -DisplayName $fwRuleHttp -Direction Inbound -Protocol TCP -LocalPort $HttpPort -Action Allow -Profile Domain | Out-Null
 }
-# The rules above are scoped to the Domain profile on purpose - opening a listener on Private or
-# Public without the operator asking for it is not ours to decide. But -UseLocalSystem makes a
-# non-domain-joined install a supported case, and there the rule silently applies to no active
-# profile: the service starts, https://localhost answers, and nothing else on the network can
-# reach it. Say so instead of leaving it to be discovered.
+# The rules above are scoped to the Domain profile on purpose: opening a listener on Private or
+# Public is the operator's decision. With -UseLocalSystem a non-domain-joined install is
+# supported, and there the rule applies to no active profile, so the service answers on localhost
+# and is unreachable from the network. Warn about it rather than leaving it to be discovered.
 try {
     if (-not (Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).PartOfDomain) {
         Write-Warn "  This host is not domain-joined, and the firewall rules above apply to the Domain profile only."
@@ -1475,10 +1436,10 @@ try {
 }
 
 Write-Step "Registering Windows Service"
-# Win32_Service.Create over CIM is the native PS way to register a service and - unlike
-# New-Service, whose -Credential parameter rejects empty SecureStrings - it accepts a blank
-# StartPassword, which is exactly what a gMSA needs (AD manages the password). This avoids
-# the PS-5.1 sc.exe-quoting trap where `password= ''` got stripped from the argv.
+# Win32_Service.Create over CIM registers the service. Unlike New-Service, whose -Credential
+# parameter rejects empty SecureStrings, it accepts a blank StartPassword, which is what a gMSA
+# needs because AD manages the password. It also avoids the PowerShell 5.1 sc.exe quoting problem
+# where `password= ''` is stripped from the argument list.
 $pathName = '"{0}" --contentRoot "{1}"' -f $ApiExe, $InstallPath
 $cimArgs = @{
     Name            = $ServiceName
@@ -1506,11 +1467,10 @@ if ($cimResult.ReturnValue -ne 0) {
 }
 Write-Info "  Service '$ServiceName' registered (running as $AccountLabel)."
 
-# CRITICAL for gMSAs: mark the service as a Managed Account. This sets
-# SERVICE_CONFIG_MANAGED_ACCOUNT in the SCM database so Windows fetches the gMSA password
-# from the DC at start time instead of trying a regular logon with an empty password (which
-# fails with "Cannot start service" - generic SCM error code 1057 / "the account name is
-# invalid or does not exist"). Win32_Service.Create does NOT expose this flag.
+# A gMSA service must be marked as a Managed Account. This sets SERVICE_CONFIG_MANAGED_ACCOUNT in
+# the SCM database so Windows fetches the gMSA password from the DC at start time instead of
+# attempting a regular logon with an empty password, which fails with SCM error 1057 ("the account
+# name is invalid or does not exist"). Win32_Service.Create does not expose this flag.
 if (-not $isLocalSystem -and $ScmStartName.TrimEnd().EndsWith('$')) {
     & sc.exe managedaccount $ServiceName true | Out-Null
     if ($LASTEXITCODE -ne 0) {
@@ -1521,24 +1481,22 @@ if (-not $isLocalSystem -and $ScmStartName.TrimEnd().EndsWith('$')) {
     }
     Write-Info "  Marked service as Managed Account (SCM will retrieve gMSA password from DC)."
 
-    # A gMSA logon needs a DC: LSA fetches the managed password at start time. Without this
-    # dependency SCM can start us before Netlogon is running and the logon fails outright with
-    # event 7000 - a failure the API cannot ride out, because the process never starts. Only
-    # the domain-account path needs it; LocalSystem always logs on, and its database connection
-    # (computer-account Kerberos) is covered by the readiness gate inside the API instead.
+    # A gMSA logon needs a DC, because LSA fetches the managed password at start time. Without
+    # this dependency the SCM can start the service before Netlogon runs and the logon fails with
+    # event 7000, which the API cannot recover from because the process never starts. Only the
+    # domain-account path needs it; LocalSystem always logs on, and its database connection is
+    # covered by the readiness gate inside the API.
     & sc.exe config $ServiceName depend= Netlogon | Out-Null
     if ($LASTEXITCODE -ne 0) { Write-Warn "  sc.exe config (depend= Netlogon) returned $LASTEXITCODE" }
 }
 
-# start type and recovery-actions aren't exposed via Win32_Service, so we still use sc.exe
-# for those - but those calls don't involve empty-string args, so the plain & operator works.
+# Start type and recovery actions are not exposed via Win32_Service, so sc.exe handles those.
+# Those calls carry no empty-string arguments, so the plain & operator works.
 #
-# Plain auto, NOT delayed-auto. Delayed-auto was standing in for a database wait the API did not
-# have on this path, and it was wrong at both ends: it idled for two minutes on a host whose SQL
-# Server was ready after eight, and it still started too early whenever the database needed
-# longer than the fixed delay - leaving a crash-and-restart loop as the only recovery. The API
-# now waits for connectivity itself (DatabaseReadinessGate, Database:StartupWaitSeconds), so the
-# service may start as early as SCM will let it and simply blocks until the database answers.
+# Plain auto, not delayed-auto: a fixed delay is either too long or too short for the database to
+# come up. The API waits for connectivity itself (DatabaseReadinessGate,
+# Database:StartupWaitSeconds), so the service can start as early as the SCM allows and blocks
+# until the database answers.
 & sc.exe config $ServiceName start= auto | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-Warn "  sc.exe config (start= auto) returned $LASTEXITCODE" }
 
@@ -1580,10 +1538,10 @@ if ($isLocalSystem) {
     Write-Info "Skipping 'Log on as a service' grant - LocalSystem holds SeServiceLogonRight inherently."
 } else {
     Write-Step "Granting 'Log on as a service' to $AccountLabel"
-    # Win32_Service.Create does NOT auto-grant SeServiceLogonRight (sc.exe and New-Service do).
-    # Without this the SCM rejects the start with "Cannot start service" - generic error, real
-    # cause only visible in Event Viewer as event 7000 / "Logon failure: the user has not been
-    # granted the requested logon type at this computer".
+    # Win32_Service.Create does not auto-grant SeServiceLogonRight the way sc.exe and New-Service
+    # do. Without it the SCM rejects the start with a generic "Cannot start service"; the real
+    # cause appears in Event Viewer as event 7000, "Logon failure: the user has not been granted
+    # the requested logon type at this computer".
     Grant-LogOnAsServiceRight -Account $ServiceAccount
 }
 

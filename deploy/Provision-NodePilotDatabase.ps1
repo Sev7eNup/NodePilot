@@ -2,19 +2,16 @@
 
 <#
 .SYNOPSIS
-    Creates the SQL Server login and database NodePilot needs, when the installing admin may.
+    Creates the SQL Server login and database NodePilot needs, if the installing admin may.
 .DESCRIPTION
     Opt-in helper behind the setup wizard's readiness page. Idempotent and existence-guarded.
 
-    The permission gate runs FIRST and nothing is touched when it fails: without sysadmin or
-    CREATE ANY DATABASE the script returns the DDL for a DBA to run instead of half-applying it.
-    That is the whole design - degrade before mutating, not during.
+    The permission gate runs before anything is mutated. Without sysadmin or CREATE ANY DATABASE
+    the script changes nothing and returns the DDL for a DBA to run.
 
-    PostgreSQL is deliberately out of scope. The installer ships no Npgsql (pulling it in would
-    bloat the bootstrap, which is also why Test-NodePilotPostgresReachable is a TCP probe) and
-    psql.exe exists only in the desktop payload. The wizard therefore shows the CREATE ROLE
-    snippet from Get-NodePilotPostgresRemediationScript rather than offering a button that
-    cannot work.
+    PostgreSQL is out of scope. The installer ships no Npgsql and psql.exe exists only in the
+    desktop payload, so the wizard shows the CREATE ROLE snippet from
+    Get-NodePilotPostgresRemediationScript instead of a button that cannot work.
 .PARAMETER Server
     SQL Server instance, as passed to Install-NodePilot.ps1 -SqlServer.
 .PARAMETER Database
@@ -52,9 +49,8 @@ function New-Outcome {
     [pscustomobject]@{ Status = $Status; Detail = $Detail; Remediation = $Remediation }
 }
 
-# DDL cannot be parameterised and these names come out of wizard text boxes. Two layers, not one:
-# an allowlist before interpolation, and the house-style ']' doubling from
-# Enable-SqlReadCommittedSnapshot. Either alone is a single point of failure.
+# DDL cannot be parameterised and these names come from wizard text boxes. Two layers guard the
+# interpolation: an allowlist check on the name, and doubling of ']' inside the identifier.
 if ($Database -notmatch '^[A-Za-z_][A-Za-z0-9_]{0,127}$') {
     return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
         "Database name '$Database' is not a plain identifier. The wizard will not build DDL from it; " +
@@ -83,8 +79,8 @@ function Invoke-NonQuery {
     [void]$command.ExecuteNonQuery()
 }
 
-# Same connection shape the runtime and the pre-flight use, so a success here cannot be achieved
-# over a TLS path the service would later reject.
+# Uses the same connection shape as the runtime and the pre-flight, so success here cannot come
+# from a TLS path the service would later reject.
 $masterConnectionString = Resolve-NodePilotSqlProbeConnectionString `
     -Server $Server -Database 'master' -CertificateHostName $CertificateHostName
 

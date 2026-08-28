@@ -27,7 +27,10 @@ public sealed record CustomActivityDefinitionInput
     public string? ChangeNote { get; init; }
 }
 
-/// <summary>Thrown by the store when a mutation carries a stale <see cref="CustomActivityDefinition.ConcurrencyToken"/>.</summary>
+/// <summary>
+/// Thrown by the store when a mutation carries a stale
+/// <see cref="CustomActivityDefinition.ConcurrencyToken"/>.
+/// </summary>
 public sealed class CustomActivityConcurrencyException(string message) : Exception(message);
 
 /// <summary>
@@ -36,26 +39,35 @@ public sealed class CustomActivityConcurrencyException(string message) : Excepti
 /// </summary>
 public interface ICustomActivityDefinitionStore
 {
-    /// <summary>All non-deleted definitions, ordered by name. <paramref name="includeDisabled"/>=false returns only enabled (palette/catalog).</summary>
+    /// <summary>
+    /// All non-deleted definitions, ordered by name. <paramref name="includeDisabled"/>=false
+    /// returns only enabled ones (palette/catalog).
+    /// </summary>
     Task<IReadOnlyList<CustomActivityDefinition>> GetAllAsync(bool includeDisabled, CancellationToken ct);
 
     Task<CustomActivityDefinition?> GetByIdAsync(Guid id, CancellationToken ct);
     Task<CustomActivityDefinition?> GetByKeyAsync(string key, CancellationToken ct);
 
-    /// <summary>Inserts a new definition. Always created disabled (Draft); the key must be unique among non-deleted rows.</summary>
+    /// <summary>
+    /// Inserts a new definition. Always created disabled (Draft); the key must be unique among
+    /// non-deleted rows.
+    /// </summary>
     Task<CustomActivityDefinition> CreateAsync(CustomActivityDefinitionInput input, string? createdBy, CancellationToken ct);
 
     /// <summary>
-    /// Updates the live row: snapshots the previous state into a version row, bumps the counter and
-    /// regenerates the concurrency token. Throws <see cref="CustomActivityConcurrencyException"/> on a
-    /// stale token, <see cref="KeyNotFoundException"/> if missing/deleted.
+    /// Updates the live row: snapshots the previous state into a version row, bumps the counter
+    /// and regenerates the concurrency token. Throws
+    /// <see cref="CustomActivityConcurrencyException"/> on a stale token and
+    /// <see cref="KeyNotFoundException"/> if the row is missing or deleted.
     /// </summary>
     Task<CustomActivityDefinition> UpdateAsync(Guid id, CustomActivityDefinitionInput input, Guid expectedConcurrencyToken, string? updatedBy, CancellationToken ct);
 
     /// <summary>Admin-only enable/disable. Bumps the concurrency token.</summary>
     Task SetEnabledAsync(Guid id, bool enabled, string? updatedBy, CancellationToken ct);
 
-    /// <summary>Soft-delete (tombstone) — keeps script+versions resolvable for old executions/audit.</summary>
+    /// <summary>
+    /// Soft-delete (tombstone). Keeps script and versions resolvable for old executions and audit.
+    /// </summary>
     Task SoftDeleteAsync(Guid id, CancellationToken ct);
 
     Task<IReadOnlyList<CustomActivityDefinitionVersion>> GetVersionsAsync(Guid id, CancellationToken ct);

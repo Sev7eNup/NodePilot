@@ -40,9 +40,8 @@ public static class ActivityCatalog
         Action("runScript", "runScript", "terminal",
             isRemote: true,
             timeout: ActivityTimeoutKind.Always,
-            // Always-present exit code: the wrapper captures $LASTEXITCODE (reconciled with the
-            // real process exit code on the process/isolated path). User `$var = …` params remain
-            // dynamic (scanned client-side); exitCode is the one static output.
+            // exitCode is the only static output: the wrapper always captures $LASTEXITCODE.
+            // Params from user `$var = ...` assignments are dynamic and scanned client-side.
             outputs:
             [
                 Output("exitCode", "number"),
@@ -129,13 +128,9 @@ public static class ActivityCatalog
             isRemote: true,
             timeout: ActivityTimeoutKind.Always,
             telemetry: ["count"]),
-        // wmiQuery has NO static outputParameters: per-property params (`Caption`,
-        // `SMBIOSBIOSVersion`, …) and the auto-emitted `count` are *dynamic* — they
-        // only exist when the workflow author sets `captureProperties`. The UI's
-        // upstream-variables helper inspects each node's captureProperties at design
-        // time and surfaces them in the variable picker. Keeping them out of the
-        // static catalog avoids promising params that the runtime won't emit when
-        // captureProperties is absent (legacy raw-output mode).
+        // wmiQuery declares no static output parameters: the per-property params and the
+        // auto-emitted `count` exist only when the node sets `captureProperties`. The UI reads
+        // captureProperties at design time and offers those params in the variable picker.
         Action("startProgram", "startProgram", "rocket_launch",
             isRemote: true,
             timeout: ActivityTimeoutKind.WhenWaitForExit,
@@ -216,8 +211,8 @@ public static class ActivityCatalog
             ]),
         Action("llmQuery", "llmQuery", "smart_toy",
             timeout: ActivityTimeoutKind.Always,
-            // Token/finishReason are static outputs: the executor ALWAYS emits these keys
-            // (empty string when the server omits `usage`), so downstream templates never break.
+            // The executor always emits the token and finishReason keys (empty string when the
+            // server omits `usage`), so downstream templates always resolve.
             outputs:
             [
                 Output("model", "string"),
@@ -226,7 +221,7 @@ public static class ActivityCatalog
                 Output("totalTokens", "number"),
                 Output("finishReason", "string"),
             ],
-            // Telemetry: model only — never the prompt/baseUrl/apiKey.
+            // Telemetry records the model only, never the prompt, baseUrl or apiKey.
             telemetry: ["model"]),
 
         Logic("log", "log", "note_add",
@@ -279,11 +274,10 @@ public static class ActivityCatalog
         Trigger("webhookTrigger", "webhookTrigger", "webhook", isExternalTrigger: true,
             outputs:
             [
-                // Names match WebhooksController.cs payload — dot-free so the
-                // {{step.param.X}} template regex (no nested dots in the param tail) can
-                // match them. Header/query keys add a `webhookHeader_` / `webhookQuery_`
-                // prefix dynamically at run time and aren't enumerable up front, so they're
-                // documented in CLAUDE.md instead of declared here.
+                // Names match the WebhooksController.cs payload and stay dot-free, because the
+                // {{step.param.X}} template regex allows no dots in the param tail. Header and
+                // query keys get a `webhookHeader_` / `webhookQuery_` prefix at run time and
+                // cannot be listed here.
                 Output("webhookBody", "string"),
                 Output("webhookMethod", "string"),
                 Output("webhookPath", "string"),
@@ -294,8 +288,8 @@ public static class ActivityCatalog
                 Output("fileAction", "string"),
                 Output("filePath", "string"),
                 Output("fileName", "string"),
-                // Split-out parts of filePath. Templates have no expression language, so without
-                // these a workflow needs a script step just to address the event it already got.
+                // Split-out parts of filePath. Templates have no expression language, so a
+                // workflow would otherwise need a script step to take the path apart.
                 Output("fileNameWithoutExtension", "string"),
                 Output("fileDirectory", "string"),
             ]),

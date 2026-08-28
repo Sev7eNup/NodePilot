@@ -2,14 +2,11 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
 /**
- * Edit-Lock-Lifecycle E2E. The 4-states-toggle (CLAUDE.md "Edit-Lifecycle") is a
- * common-regression area because the button labels + endpoint dispatch change with
- * `IsEnabled` × `CheckedOutByUserId` combinations.
- *
- * Maps to scenarios in [E2ETests.md](../../../docs/testing/E2ETests.md) Teil 27:
- *   - Test 27.1 — State A: Productive (no lock) → "Bearbeiten" + "Disable" visible.
- *   - Test 27.2 — Bearbeiten → State B: lock-by-me + IsEnabled=false.
- *   - Test 27.7 — State D: lock-by-other → Designer read-only + lock-banner.
+ * Edit-lock lifecycle. Button labels and endpoint dispatch depend on the combination of
+ * `IsEnabled` and `CheckedOutByUserId`, so this covers the state toggle described in CLAUDE.md
+ * "Edit-Lifecycle" and [E2ETests.md](../../../docs/testing/E2ETests.md) section "Teil 27":
+ * state A (no lock), state B (locked by the current user and disabled), and state D (locked by
+ * another user, which leaves the designer read-only).
  */
 
 const WORKFLOW_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
@@ -80,7 +77,7 @@ test.describe('Edit-Lock-Lifecycle', () => {
     await page.goto(`/workflows/${WORKFLOW_ID}`);
     await page.getByRole('button', { name: /bearbeiten|edit/i }).first().click();
 
-    // After lock, Save + Publish + Beenden should be the visible action set.
+    // After locking, Save, Publish and the end-editing button are the visible action set.
     await expect(page.getByRole('button', { name: /zwischen-speichern|speichern|save/i }).first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: /publish|veröffentlichen/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /beenden|end editing|finish editing|cancel edit/i })).toBeVisible();
@@ -101,12 +98,12 @@ test.describe('Edit-Lock-Lifecycle', () => {
 
     await page.goto(`/workflows/${WORKFLOW_ID}`);
 
-    // Some lock-owner indicator must be present. Allow either a banner or a toolbar
-    // hint — the assertion targets the data, not a specific element shape.
+    // Some lock-owner indicator must be present. Either a banner or a toolbar hint is accepted:
+    // the assertion targets the text, not a specific element shape.
     await expect(page.getByText(/gesperrt|locked?|read-only|bearbeitung läuft|checked\s*out/i).first()).toBeVisible({
       timeout: 10_000,
     });
-    // Force-Unlock is admin-only; an Operator (this test's user) must NOT see it.
+    // Force-Unlock is admin-only, so the Operator used by this test must not see it.
     await expect(page.getByRole('button', { name: /force[\s-]?unlock/i })).toHaveCount(0);
   });
 });

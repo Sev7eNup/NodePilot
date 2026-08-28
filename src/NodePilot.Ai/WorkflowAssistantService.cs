@@ -12,22 +12,20 @@ using NodePilot.Core.WorkflowDefinitions;
 namespace NodePilot.Ai;
 
 /// <summary>
-/// Streams one turn of the workflow chat assistant: secret-redact the workflow JSON, build the
-/// multi-turn prompt, then <b>stream</b> the LLM call. The response follows the format "markdown
-/// prose, then optionally <c>===NODEPILOT-DEFINITION===</c> + {nodes,edges}". The prose is
-/// emitted token by token as <c>Delta</c> events; an appended definition is buffered and, at the
-/// end (when <c>allowModify</c>), structurally validated, merged back onto the (unredacted)
-/// original via <see cref="WorkflowDefinitionMerge"/> (preserving layout/secrets/other fields),
-/// and checked for AI-specific issues — then sent as a <c>Proposal</c> event. Persistence is not
-/// this service's job. <c>allowModify</c> is false for Viewers (any proposed definition is
-/// discarded).
+/// Streams one turn of the workflow chat assistant: redacts secrets from the workflow JSON, builds
+/// the multi-turn prompt, then streams the LLM call. Prose arrives as <c>Delta</c> events; anything
+/// after <c>===NODEPILOT-DEFINITION===</c> is buffered, structurally validated, merged onto the
+/// unredacted original via <see cref="WorkflowDefinitionMerge"/> and sent as a <c>Proposal</c>
+/// event. Nothing is persisted here, and <c>allowModify</c> false (Viewers) drops the proposal.
 /// </summary>
 public sealed class WorkflowAssistantService
 {
     private const long MaxDefinitionBytes = 5L * 1024 * 1024;
     internal const string DefinitionDelimiter = "===NODEPILOT-DEFINITION===";
 
-    /// <summary>Guidance that keeps tool-calling sparing — only appended when EnableToolCalling is on.</summary>
+    /// <summary>
+    /// Guidance that keeps tool use sparing; only appended when EnableToolCalling is on.
+    /// </summary>
     private const string ToolUsageGuidance =
         "## Tools (read-only)\n"
         + "Dir stehen read-only Tools zur Verfuegung (z. B. `analyze_workflow`). Rufe ein Tool NUR, wenn du es "
@@ -36,7 +34,9 @@ public sealed class WorkflowAssistantService
         + "direkt aus dem vorliegenden Workflow-JSON ableiten kannst, rufe KEIN Tool. Nach einem Tool-Ergebnis "
         + "antworte normal weiter (ggf. mit einem Vorschlag).";
 
-    /// <summary>Extra guidance, only appended when the context carries an execution-log reader.</summary>
+    /// <summary>
+    /// Extra guidance, only appended when the context carries an execution-log reader.
+    /// </summary>
     private const string ExecutionToolsGuidance =
         "Zusaetzlich kannst du die juengsten Laeufe DIESES Workflows einsehen: `list_recent_executions` "
         + "(letzte Runs mit Status/Fehler), `get_execution_steps` (Step-Details eines Laufs inkl. Output) und "
@@ -44,13 +44,13 @@ public sealed class WorkflowAssistantService
         + "wenn der User nach Fehlschlaegen oder dem Verhalten vergangener Ausfuehrungen fragt - rate nicht. "
         + "Outputs sind redigiert und gekuerzt.";
 
-    // The factory, not a pre-built client: Create() resolves the active LLM profile and throws
-    // when none is configured, so it has to run inside the call — after the controller's gate.
+    // The factory, not a pre-built client: Create() resolves the active LLM profile and throws when
+    // none is configured, so it has to run inside the call, after the controller's gate.
     private readonly ILlmClientFactory _llmFactory;
     private readonly PromptCatalog _prompts;
     private readonly IChatToolRegistry _tools;
-    // Hot-reload: hold the live monitor (not a cached snapshot) so a config edit of the active
-    // profile's EnableToolCalling / ToolCallMaxDepth takes effect on the next chat turn.
+    // Hold the live monitor rather than a cached snapshot so a config edit of the active profile's
+    // EnableToolCalling / ToolCallMaxDepth takes effect on the next chat turn.
     private readonly IOptionsMonitor<LlmOptions> _options;
     private readonly ICustomActivityDefinitionStore? _customStore;
     private readonly IExecutionLogReader? _executionLogs;
@@ -68,14 +68,11 @@ public sealed class WorkflowAssistantService
     }
 
     /// <summary>
-    /// Streams one chat turn. <paramref name="original"/> is the unredacted canvas definition
-    /// (used for merging and activity metadata); <paramref name="allowModify"/> is false for
-    /// Viewers. <paramref name="allowExecutionTools"/> is the controller's RBAC verdict (folder
-    /// read verified for <c>request.WorkflowId</c>) — only then does the execution-log reader get
-    /// added to the tool context; the workflow ID is client-controlled and must never unlock
-    /// server-side data without this verdict.
-    /// Yields: any number of <c>Delta</c> events (prose), optionally one <c>Proposal</c>, then one
-    /// <c>Done</c>.
+    /// Streams one chat turn: any number of <c>Delta</c> events, optionally one <c>Proposal</c>,
+    /// then one <c>Done</c>. <paramref name="original"/> is the unredacted canvas definition, used
+    /// for merging and activity metadata; <paramref name="allowModify"/> is false for Viewers.
+    /// <paramref name="allowExecutionTools"/> is the controller's RBAC verdict for the
+    /// client-supplied <c>request.WorkflowId</c>; only then is the execution-log reader offered.
     /// </summary>
     public async IAsyncEnumerable<ChatStreamEvent> StreamChatAsync(
         WorkflowChatRequest request, JsonElement original, bool allowModify, bool allowExecutionTools,
@@ -83,23 +80,22 @@ public sealed class WorkflowAssistantService
     {
         var sw = Stopwatch.StartNew();
 
-        // Secrets must NEVER go to the external LLM: redact before building the prompt. The
-        // unredacted original is kept around for the later merge.
+        // Secrets must not reach the external LLM, so redact before building the prompt. The
+        // unredacted original is kept for the later merge.
         var redacted = WorkflowSecretRedactor.Redact(original);
         var redactedJson = redacted.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
 
-        // Enabled custom activities the workflow references, so the assistant knows their inputs/outputs.
+        // Enabled custom activities, so the assistant knows their inputs and outputs.
         var customFacts = await LoadCustomFactsAsync(ct);
         var systemPrompt = BuildSystemPrompt(original, customFacts);
         var conversation = new List<LlmMessage>(BuildConversation(request, redactedJson));
 
-        // Tool-calling only when opted in. Off → Tools=null → the model never calls one → exactly
-        // one round → identical to the pre-tool-calling behavior. Read live from the ACTIVE
-        // profile so the setting takes effect immediately on the next chat turn — and so that
-        // switching to a model without reliable function-calling takes the capability with it.
+        // Tool-calling only when opted in: without it, tools stay null and the turn is a single
+        // round. The setting is read from the active profile per turn, so a config change or a
+        // switch to a model without reliable function-calling applies on the next turn.
         var llm = _llmFactory.Create(); // throws unless an active profile resolves
-        // Re-read rather than reuse: a config reload between the two calls would otherwise NRE.
-        // The tool-calling defaults of a fresh profile (off) are the safe answer for that window.
+        // Re-read the profile instead of reusing an earlier one: a config reload between the two
+        // calls can leave none resolvable. Fresh defaults keep tool-calling off, the safe fallback.
         var profile = _options.CurrentValue.TryResolveActiveProfile(out var active)
             ? active
             : new LlmProfileOptions();
@@ -108,16 +104,15 @@ public sealed class WorkflowAssistantService
         ChatToolContext? toolContext = null;
         if (profile.EnableToolCalling)
         {
-            // Tools operate on the REDACTED definition — the same view the LLM has — so that even
-            // read-only tools can't leak secrets out of the original definition.
+            // Tools operate on the redacted definition, the same view the LLM has, so read-only
+            // tools cannot leak secrets out of the original definition.
             JsonElement redactedDefinition;
             using (var redactedDoc = JsonDocument.Parse(redactedJson))
                 redactedDefinition = redactedDoc.RootElement.Clone();
 
-            // The execution-log reader only goes into the context when the controller has
-            // verified folder-read access AND the workflow is actually saved — otherwise the
-            // execution tools aren't even offered in the first place (GetTools filters on the
-            // context).
+            // The execution-log reader enters the context only when the controller verified
+            // folder-read access and the workflow is saved. GetTools filters on the context, so
+            // otherwise the execution tools are not offered at all.
             var executionLogs = allowExecutionTools && request.WorkflowId is { } wfId && wfId != Guid.Empty
                 ? _executionLogs
                 : null;
@@ -136,14 +131,14 @@ public sealed class WorkflowAssistantService
             }
         }
 
-        var raw = new StringBuilder();            // raw prose up to the delimiter (across all rounds)
+        var raw = new StringBuilder();            // raw prose up to the delimiter (all rounds)
         var definition = new StringBuilder();      // everything after the delimiter
         var proseFlushedLen = 0;
         var inDefinition = false;
 
-        // Prose/definition splitting is THIS service's specialty; the bounded tool-loop
-        // mechanics (final round without tools, presence-based tool execution, usage
-        // accumulation) live once in AgenticToolLoop, shared with the knowledge assistant.
+        // Splitting prose from the definition belongs to this service; the bounded tool-loop
+        // mechanics (final round without tools, tool execution, usage accumulation) live once in
+        // AgenticToolLoop, shared with the knowledge assistant.
         IEnumerable<ChatStreamEvent> OnDelta(string delta)
         {
             var events = new List<ChatStreamEvent>(2);
@@ -166,15 +161,15 @@ public sealed class WorkflowAssistantService
                 if (idx > proseFlushedLen)
                     events.Add(ChatStreamEvent.Delta(text[proseFlushedLen..idx]));
                 inDefinition = true;
-                // No more prose deltas from here on — the definition is being buffered.
-                // Tell the client generation is still in progress ("Building change…").
+                // No more prose deltas from here on; the definition is buffered instead. Tell the
+                // client that generation is still in progress.
                 events.Add(ChatStreamEvent.Building());
                 definition.Append(text[(idx + DefinitionDelimiter.Length)..]);
                 proseFlushedLen = idx;
             }
             else
             {
-                // Hold back the last (delimiter.Length-1) chars so a partial delimiter never leaks through.
+                // Hold back the last delimiter.Length-1 chars so a partial delimiter never leaks.
                 var safeEnd = text.Length - (DefinitionDelimiter.Length - 1);
                 if (safeEnd > proseFlushedLen)
                 {
@@ -190,8 +185,8 @@ public sealed class WorkflowAssistantService
             llm, systemPrompt, conversation, tools, maxDepth,
             OnDelta,
             (call, token) => _tools.ExecuteAsync(call.Name, call.ArgumentsJson, toolContext!, token),
-            // Precedence: if the model emits BOTH a definition (inDefinition) and tool_calls in
-            // the same round, the definition wins — the tool_calls are deliberately dropped.
+            // Precedence: when a round emits both a definition and tool_calls, the definition
+            // wins and the tool_calls are dropped.
             suppressToolCalls: () => inDefinition,
             ct))
         {
@@ -227,7 +222,10 @@ public sealed class WorkflowAssistantService
         yield return ChatStreamEvent.Done(model ?? "unknown", (int)sw.ElapsedMilliseconds, promptTokens, completionTokens, generationMs);
     }
 
-    /// <summary>Fetches enabled custom activities keyed by their <c>custom:&lt;key&gt;</c> type. Empty when the store is absent or the LLM call fails.</summary>
+    /// <summary>
+    /// Fetches enabled custom activities keyed by their <c>custom:&lt;key&gt;</c> type. Empty when
+    /// no store is configured.
+    /// </summary>
     private async Task<IReadOnlyDictionary<string, CustomActivityDefinition>> LoadCustomFactsAsync(CancellationToken ct)
     {
         if (_customStore is null) return new Dictionary<string, CustomActivityDefinition>();
@@ -242,8 +240,8 @@ public sealed class WorkflowAssistantService
         sb.Append("\n\n## Activity & definition reference\n\n");
         sb.Append(_prompts.ActivityReference);
 
-        // Every enabled custom activity, not just the ones already on the canvas — otherwise the
-        // assistant can explain a custom node but never propose one the user does not have yet.
+        // Every enabled custom activity, not just the ones already on the canvas, so the assistant
+        // can propose a custom node the workflow does not use yet.
         var customSection = ActivityCatalogPromptRenderer.RenderCustomActivities(customFacts.Values.ToList());
         if (customSection.Length > 0)
         {
@@ -258,10 +256,9 @@ public sealed class WorkflowAssistantService
             sb.Append(metadata);
         }
 
-        // Empty canvas → this is really a from-scratch creation, not an edit. Give the model a
-        // rich, branching example to mimic — otherwise the edit prompt's "change as little as
-        // possible" bias produces a thin linear chain (unlike the dedicated /generate-workflow
-        // endpoint, which already includes this example).
+        // An empty canvas means a from-scratch creation, not an edit. A rich branching example to
+        // mimic counters the edit prompt's bias towards changing as little as possible, which
+        // otherwise yields a thin linear chain. The /generate-workflow endpoint always sends it.
         if (IsEmptyCanvas(original))
         {
             sb.Append("\n\n## Empty canvas — design mode\n\n");
@@ -282,9 +279,8 @@ public sealed class WorkflowAssistantService
     }
 
     /// <summary>
-    /// True when the canvas has no real activity yet (0 nodes, or only trigger nodes — where
-    /// <c>activityType</c> ends in "Trigger"). In that case, this chat turn is effectively a
-    /// from-scratch creation.
+    /// True when the canvas has no real activity yet: no nodes, or only trigger nodes (an
+    /// <c>activityType</c> ending in "Trigger"). Such a chat turn is a from-scratch creation.
     /// </summary>
     private static bool IsEmptyCanvas(JsonElement original)
     {
@@ -294,15 +290,14 @@ public sealed class WorkflowAssistantService
         {
             var t = ActivityTypeOf(node);
             if (!string.IsNullOrEmpty(t) && !t.EndsWith("Trigger", StringComparison.Ordinal))
-                return false; // a real activity exists → not an empty canvas
+                return false; // a real activity exists, so the canvas is not empty
         }
         return true;
     }
 
     /// <summary>
     /// Compact catalog metadata (category, remote flag, timeout, outputs) for the activity types
-    /// actually present in this workflow — this also covers types not listed in the static
-    /// reference text (control-flow / niche types).
+    /// present in this workflow, including types the static reference text does not list.
     /// </summary>
     private static string BuildActivityMetadata(JsonElement original, IReadOnlyDictionary<string, CustomActivityDefinition> customFacts)
     {
@@ -330,8 +325,8 @@ public sealed class WorkflowAssistantService
             }
             else if (customFacts.TryGetValue(type, out var cd))
             {
-                // User-authored custom activity — surface its declared facts so the assistant can
-                // wire its inputs/outputs instead of treating it as an unknown type.
+                // User-authored custom activity: surface its declared inputs and outputs so the
+                // assistant can wire them instead of treating the type as unknown.
                 sb.Append($"- `{type}` ({cd.Name}) — custom activity (Action)");
                 if (cd.RunsRemote) sb.Append(", remote (WinRM)");
                 var inputs = CustomActivityParameters.ParseInputs(cd.InputParametersJson);
@@ -364,8 +359,8 @@ public sealed class WorkflowAssistantService
     }
 
     /// <summary>
-    /// Builds a validated, merged proposal from the definition text buffered after the delimiter
-    /// — or null plus explanatory notes (Viewer / invalid / trigger removed / too large).
+    /// Builds a validated, merged proposal from the definition text buffered after the delimiter,
+    /// or null plus explanatory notes (Viewer, invalid, trigger removed, too large).
     /// </summary>
     private (WorkflowChatProposalDto? proposal, List<string> notes) TryBuildProposal(
         string definitionText, JsonElement original, string baseHash, bool allowModify)
@@ -397,7 +392,7 @@ public sealed class WorkflowAssistantService
         {
             var def = doc.RootElement;
 
-            // Structural validation only (IDs, references, known types — not config semantics).
+            // Structural validation only: IDs, references, known types, not config semantics.
             var validation = WorkflowDefinitionStructuralValidator.Validate(def);
             if (!validation.IsValid)
             {
@@ -405,7 +400,7 @@ public sealed class WorkflowAssistantService
                 return (null, notes);
             }
 
-            // Merge back onto the original: preserves layout/secrets/other fields.
+            // Merge back onto the original, which preserves layout, secrets and other fields.
             var merge = WorkflowDefinitionMerge.Merge(original, def);
             notes.AddRange(merge.Notes);
 
@@ -437,8 +432,8 @@ public sealed class WorkflowAssistantService
     }
 
     /// <summary>
-    /// New activity nodes (ID not present in the original) that have no <c>position</c> get a
-    /// fallback position so React Flow can render them. A note is added recommending "Tidy".
+    /// New activity nodes (an ID not present in the original) that carry no <c>position</c> get a
+    /// fallback position so React Flow can render them, plus a note recommending a tidy-up.
     /// </summary>
     private static void ApplyPositionFallback(JsonObject mergedDef, JsonElement original, List<string> notes)
     {
@@ -458,8 +453,8 @@ public sealed class WorkflowAssistantService
         {
             if (node is not JsonObject obj) continue;
             var id = (obj["id"] as JsonValue)?.GetValue<string>();
-            if (id is not null && originalIds.Contains(id)) continue; // existing node — keep its position
-            if (obj["position"] is JsonObject) continue;              // the AI already supplied a position
+            if (id is not null && originalIds.Contains(id)) continue; // keep the existing position
+            if (obj["position"] is JsonObject) continue;              // the AI supplied a position
 
             obj["position"] = new JsonObject { ["x"] = 120, ["y"] = 120 + fallbackIndex * 130 };
             fallbackIndex++;
@@ -496,17 +491,20 @@ public sealed class WorkflowAssistantService
             : null;
 }
 
-/// <summary>An event in the chat stream: a prose delta, "building change", a finished proposal, or the closing event.</summary>
+/// <summary>
+/// An event in the chat stream: a prose delta, a building signal, a finished proposal, a tool call
+/// or its result, or the closing event.
+/// </summary>
 public abstract record ChatStreamEvent
 {
     public static ChatStreamEvent Delta(string text) => new DeltaEvent(text);
-    /// <summary>Signal: from here on the definition is being generated/buffered — the client shows "Building change…".</summary>
+    /// <summary>The definition is buffered from here on; the client shows progress.</summary>
     public static ChatStreamEvent Building() => new BuildingEvent();
     public static ChatStreamEvent Proposal(WorkflowChatProposalDto dto) => new ProposalEvent(dto);
-    /// <summary>The LLM is calling a read-only tool — the client shows "Calling tool X…".</summary>
+    /// <summary>The LLM is calling a read-only tool; the client shows an indicator.</summary>
     public static ChatStreamEvent ToolCall(string toolName, string toolId, string argumentsJson)
         => new ToolCallEvent(toolName, toolId, argumentsJson);
-    /// <summary>The tool result (JSON) — lets the client close out the "Calling tool X…" indicator.</summary>
+    /// <summary>The tool result as JSON; lets the client close the tool-call indicator.</summary>
     public static ChatStreamEvent ToolResult(string toolId, string toolName, string resultJson)
         => new ToolResultEvent(toolId, toolName, resultJson);
     public static ChatStreamEvent Done(string model, int durationMs, int? promptTokens, int? completionTokens, int? generationMs = null)
@@ -517,7 +515,14 @@ public abstract record ChatStreamEvent
     public sealed record ProposalEvent(WorkflowChatProposalDto Dto) : ChatStreamEvent;
     public sealed record ToolCallEvent(string ToolName, string ToolId, string ArgumentsJson) : ChatStreamEvent;
     public sealed record ToolResultEvent(string ToolId, string ToolName, string ResultJson) : ChatStreamEvent;
-    /// <param name="DurationMs">End-to-end wall clock of the whole assistant loop — including prefill, tool execution and every LLM round.</param>
-    /// <param name="GenerationMs">Of that, the time actually spent generating tokens (summed over all rounds). Divide <paramref name="CompletionTokens"/> by this — never by <paramref name="DurationMs"/> — to get a throughput that matches what the LLM server itself reports.</param>
+    /// <param name="DurationMs">
+    /// Wall clock of the whole assistant loop, including prefill, tool execution and every LLM
+    /// round.
+    /// </param>
+    /// <param name="GenerationMs">
+    /// Of that, the time spent generating tokens, summed over all rounds. Divide
+    /// <paramref name="CompletionTokens"/> by this, not by <paramref name="DurationMs"/>, for a
+    /// throughput that matches what the LLM server reports.
+    /// </param>
     public sealed record DoneEvent(string Model, int DurationMs, int? PromptTokens, int? CompletionTokens, int? GenerationMs = null) : ChatStreamEvent;
 }

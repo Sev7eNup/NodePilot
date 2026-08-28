@@ -3,29 +3,20 @@
 <#
   Side-effect-free readiness checks for a NodePilot server installation.
 
-  Dot-sourced by Install-NodePilot.ps1 (which asserts on the results and aborts) and, later,
-  by the setup wizard's adapter (which renders them as a traffic-light page with a "re-check"
-  button). That second consumer is the whole reason this file exists as a separate unit, and
-  it dictates the one rule everything here obeys:
+  Dot-sourced by Install-NodePilot.ps1, which asserts on the results and aborts, and by the
+  setup wizard's adapter, which renders them as a traffic-light page with a re-check button.
 
-      NOTHING IN THIS FILE MAY MUTATE ANYTHING.
-
-  No ALTER DATABASE, no CREATE, no New-Service, no Set-Acl, no New-SelfSignedCertificate, no
-  firewall rules. A check that mutates would fire again on every click of a "re-check" button.
-  The concrete near-miss: Enable-SqlReadCommittedSnapshot used to live inside the SQL
-  reachability try/catch, and it runs
-      ALTER DATABASE [x] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE
-  which drops every open session on the target database. That is correct install-time work and
-  it stayed in Install-NodePilot.ps1. Test-DeploymentTemplates.ps1 enforces this rule so it
-  cannot rot back in.
+  Nothing in this file may mutate anything: no ALTER DATABASE, no CREATE, no New-Service, no
+  Set-Acl, no New-SelfSignedCertificate, no firewall rules. Every check runs again on each click
+  of re-check, so install-time work stays in Install-NodePilot.ps1.
+  Test-DeploymentTemplates.ps1 enforces the rule.
 
   Two layers:
-    * Test-NodePilot*        - one probe each, returns a result object, NEVER throws for a
-                               failed check (only for a caller error such as a missing param).
-                               This is what makes them callable from a UI button.
+    * Test-NodePilot*        - one probe each, returns a result object and does not throw for a
+                               failed check (only for a caller error such as a missing param),
+                               which is what makes them callable from a UI button.
     * Invoke-NodePilotPreflight / Assert-NodePilotPreflight
-                             - collect the applicable set, then print and abort exactly the
-                               way the installer always has.
+                             - collect the applicable set, then print and abort.
 #>
 
 Set-StrictMode -Version 3.0
@@ -48,11 +39,10 @@ function New-NodePilotPreflightResult {
         [bool]$Required = $false,
         [bool]$CanAutoFix = $false,
         [string]$AutoFixLabel = '',
-        # Whether the wizard should arrive with this fix already ticked. Reserved for work that is
-        # part of installing rather than a decision about someone else's server: granting the
-        # service identity access to a database that already exists is the former, CREATE DATABASE
-        # on a production instance is the latter. The box stays visible either way, so a default of
-        # $true is "one fewer click", never "done behind your back".
+        # Whether the wizard arrives with this fix already ticked. Reserved for work that is part
+        # of installing rather than a decision about someone else's server: granting the service
+        # identity access to an existing database is the former, CREATE DATABASE on a production
+        # instance is the latter. The box stays visible either way.
         [bool]$AutoFixDefault = $false
     )
     [pscustomobject]@{
@@ -109,9 +99,8 @@ function Get-NodePilotSqlRemediationScript {
     param(
         [Parameter(Mandatory)][string]$Principal,
         [Parameter(Mandatory)][string]$Database,
-        # Dropped when the caller has already proven the database is there. Handing a DBA a
-        # CREATE DATABASE for a database they can see invites them to read the rest of the script
-        # as equally wrong.
+        # Dropped when the caller has already proven the database exists. A CREATE DATABASE for a
+        # database the DBA can see makes the rest of the script look wrong too.
         [switch]$SkipCreateDatabase
     )
     $lines = @("CREATE LOGIN [$Principal] FROM WINDOWS;")
@@ -141,15 +130,15 @@ function Get-NodePilotPostgresRemediationScript {
 
 function Get-NodePilotPeArchitecture {
     <#
-      The machine type out of a PE file's COFF header: 'x64', 'x86', 'arm64', or $null when the
-      file cannot be read or is not a PE image at all.
+      The machine type from a PE file's COFF header: 'x64', 'x86', 'arm64', or $null when the
+      file cannot be read or is not a PE image.
 
-      Deliberately not 'dotnet --info', which also reports the host architecture: its labels are
-      localised, so on a German server it prints "Architektur:" and any parse of the English text
-      quietly finds nothing. 'dotnet --list-runtimes' is not localised, which is why that one stays
-      for the version question - but it says nothing about architecture, so this reads the bytes.
+      Not 'dotnet --info', which also reports the host architecture: its labels are localised, so
+      a parse of the English text finds nothing on a non-English server. 'dotnet --list-runtimes'
+      is not localised and stays for the version question, but it says nothing about architecture,
+      so this reads the bytes.
 
-      Opened with FileShare ReadWrite: dotnet.exe may be running while we look at it.
+      Opened with FileShare ReadWrite because dotnet.exe may be running.
     #>
     param([Parameter(Mandatory)][string]$Path)
 
@@ -159,14 +148,13 @@ function Get-NodePilotPeArchitecture {
     catch { return $null }
 
     try {
-        # A file too short, or a header offset pointing past the end, runs into the reader and is
-        # answered by the catch below. No separate length guard: it would be a branch no test could
-        # tell apart from the catch, which is how dead code gets in.
+        # A file that is too short, or a header offset pointing past the end, fails in the reader
+        # and is handled by the catch below. A separate length guard would add an untestable branch.
         $reader = New-Object IO.BinaryReader($stream)
         $stream.Position = 0x3C
         $stream.Position = $reader.ReadInt32()
-        # This one is not redundant. Without it, anything at all would be read as a machine type and
-        # some junk file would classify as a perfectly good x64 host.
+        # Without the PE signature check any file would yield a machine type, so a junk file
+        # would classify as a valid x64 host.
         if ($reader.ReadUInt32() -ne 0x00004550) { return $null }   # 'PE\0\0'
         switch ($reader.ReadUInt16()) {
             0x8664 { return 'x64' }
@@ -183,19 +171,16 @@ function Get-NodePilotDotNetHostCandidates {
     <#
       Every dotnet.exe this machine might offer, most-likely first.
 
-      PATH alone is not enough on two counts. A clean Windows Server has no dotnet on PATH at all,
-      and - the case that actually bites - a process that installed the runtime itself still carries
-      the PATH it was started with, so PATH stays stale until it restarts. Hence the well-known
-      machine-wide locations as a fallback.
+      PATH alone is not enough: a clean Windows Server has no dotnet on PATH, and a process that
+      installed the runtime itself keeps the PATH it started with. The well-known machine-wide
+      locations are the fallback.
 
-      All PATH hits, not the first: a machine with both runtimes installed can easily have the x86
-      one earlier in PATH, and taking only the first hit would answer for a dotnet that is not the
-      one NodePilot's service will use.
+      All PATH hits are collected, not just the first, because a machine with both runtimes
+      installed can have the x86 one earlier in PATH.
 
       The registry (HKLM\SOFTWARE\dotnet\Setup\InstalledVersions\x64\InstallLocation) is what the
-      apphost itself consults and is deliberately not read here: over PATH plus ProgramW6432 it only
-      adds installations in unusual places, which PATH already covers, and a registry view redirected
-      under WOW64 would be a new way to be wrong.
+      apphost consults but is not read here: it only adds installations in unusual places that
+      PATH already covers, and a registry view redirected under WOW64 could answer wrongly.
     #>
     $candidates = New-Object System.Collections.Generic.List[string]
     foreach ($command in @(Get-Command dotnet -CommandType Application -All -ErrorAction SilentlyContinue)) {
@@ -228,8 +213,8 @@ function Get-NodePilotDotNetHostState {
     foreach ($candidate in @(Get-NodePilotDotNetHostCandidates)) {
         $architecture = Get-NodePilotPeArchitecture -Path $candidate
         if ($architecture -eq 'x64') { $x64Path = $candidate; break }
-        # Only architectures worth naming. An unreadable or exotic image says nothing the operator
-        # could act on, so it falls through to the plain "nothing found" verdict.
+        # Only architectures worth naming. An unreadable or exotic image falls through to the
+        # plain "nothing found" verdict.
         if (-not $otherPath -and @('x86', 'arm64') -contains $architecture) {
             $otherPath = $candidate
             $otherArchitecture = $architecture
@@ -251,9 +236,9 @@ function Get-NodePilotDotNetHostState {
 
 function Test-NodePilotDotNetRuntime {
     <#
-      NodePilot publishes with --runtime win-x64 and installs the NodePilot.Api.exe apphost, which a
-      32-bit runtime cannot host. A check that accepts any architecture goes green on a machine where
-      the service then refuses to start - which is exactly what happened in the field.
+      NodePilot publishes with --runtime win-x64 and installs the NodePilot.Api.exe apphost, which
+      a 32-bit runtime cannot host. A check that accepts any architecture would pass on a machine
+      where the service then refuses to start.
     #>
     param([object]$State = (Get-NodePilotDotNetHostState))
 
@@ -264,9 +249,8 @@ function Test-NodePilotDotNetRuntime {
     $fixLabel = 'Install the bundled ASP.NET Core 10 runtime now'
 
     if (-not $State.X64Path) {
-        # Two different stories, and telling them apart is the point: "nothing found" sends the
-        # operator looking for an installer, while "found, but 32-bit" tells them why the dotnet they
-        # can plainly see on PATH does not count.
+        # Two different messages: "nothing found" sends the operator looking for an installer,
+        # while "found, but 32-bit" explains why the dotnet already on PATH does not count.
         if ($State.OtherPath) {
             $found = switch ($State.OtherArchitecture) {
                 'x86' { '32-bit (x86)' }
@@ -314,13 +298,12 @@ function Test-NodePilotDotNetRuntime {
 
 function Get-NodePilotCertificateInventory {
     <#
-      What is actually available in LocalMachine\My. The installer prints this when a
-      thumbprint does not normalize; the wizard fills its certificate picker from it.
+      What is available in LocalMachine\My. The installer prints this when a thumbprint does not
+      normalize; the wizard fills its certificate picker from it.
 
-      Sorted by expiry, latest first, and sorted HERE rather than in either caller: a renewed
-      certificate sits in the store beside the one it replaces, under the same subject, and the
-      only thing separating them is that date. Newest-first puts the renewal at the top of the
-      picker and sinks anything already expired to the bottom, where it belongs.
+      Sorted by expiry, latest first, and sorted here rather than in either caller: a renewed
+      certificate sits in the store beside the one it replaces, under the same subject, and only
+      that date separates them. Newest first puts the renewal at the top and expired ones last.
     #>
     Get-ChildItem Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
         Sort-Object -Property NotAfter -Descending |
