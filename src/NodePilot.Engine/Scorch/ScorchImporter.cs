@@ -19,17 +19,23 @@ namespace NodePilot.Engine.Scorch;
 /// <list type="bullet">
 /// <item><c>&lt;ExportData&gt;/&lt;Policies&gt;/&lt;Folder&gt;/&lt;Policy&gt;</c> tree — Policies
 ///   are Runbooks and may nest in sub-folders.</item>
-/// <item>Links are <c>&lt;Object&gt;</c> elements with <c>&lt;ObjectTypeName&gt;Link&lt;/ObjectTypeName&gt;</c>,
+/// <item>Links are <c>&lt;Object&gt;</c> elements with
+/// <c>&lt;ObjectTypeName&gt;Link&lt;/ObjectTypeName&gt;</c>,
 ///   NOT separate <c>&lt;Link&gt;</c> elements. They carry <c>&lt;SourceObject&gt;</c> +
-///   <c>&lt;TargetObject&gt;</c> and an optional <c>&lt;TRIGGERS&gt;</c> block with condition logic.</item>
+/// <c>&lt;TargetObject&gt;</c> and an optional <c>&lt;TRIGGERS&gt;</c> block with condition
+/// logic.</item>
 /// <item>Activity properties are direct children of <c>&lt;Object&gt;</c> (e.g.
-///   <c>&lt;ScriptBody&gt;</c>, <c>&lt;Subject&gt;</c>), not a <c>&lt;Data&gt;/&lt;Property&gt;</c> nest.</item>
+/// <c>&lt;ScriptBody&gt;</c>, <c>&lt;Subject&gt;</c>), not a <c>&lt;Data&gt;/&lt;Property&gt;</c>
+/// nest.</item>
 /// <item>Classification via <c>&lt;ObjectTypeName&gt;</c> (human-readable) is more reliable than
-///   <c>&lt;ObjectType&gt;</c> GUID lookup — SCOrch emits consistent ObjectTypeName strings across versions.</item>
+/// <c>&lt;ObjectType&gt;</c> GUID lookup — SCOrch emits consistent ObjectTypeName strings across
+/// versions.</item>
 /// <item>Published-Data references use the pattern <c>`d.T.~Vb/{GUID}`d.T.~Vb/</c> (variable)
 ///   or <c>`d.T.~Ed/{GUID}.field`d.T.~Ed/</c> (step output). The <c>`</c> are literal backticks,
-///   <c>Vb</c>/<c>Ed</c>/<c>Ec</c>/<c>De</c> are type-prefixes for Variable/ExecutionData/Encrypted/DataEncrypted.</item>
-/// <item>Global Variables live under <c>&lt;GlobalSettings&gt;/&lt;Variables&gt;</c> as Objects with
+/// <c>Vb</c>/<c>Ed</c>/<c>Ec</c>/<c>De</c> are type-prefixes for
+/// Variable/ExecutionData/Encrypted/DataEncrypted.</item>
+/// <item>Global Variables live under <c>&lt;GlobalSettings&gt;/&lt;Variables&gt;</c> as Objects
+/// with
 ///   <c>ObjectTypeName="Variable"</c>.</item>
 /// </list>
 ///
@@ -65,7 +71,8 @@ public sealed class ScorchImporter
     /// <summary>
     /// Largest document this importer will parse, in characters.
     ///
-    /// <para>Has to track the <c>RequestSizeLimit</c> on the import endpoint, which lives in another
+    /// <para>Has to track the <c>RequestSizeLimit</c> on the import endpoint, which lives in
+    /// another
     /// project — set below it and a body the controller accepts dies in the parser instead,
     /// reported as a flat "Failed to parse XML". That is exactly what happened when the endpoint
     /// went from 50 to 300 MiB and this stayed behind, so the two are pinned against each other by
@@ -135,7 +142,7 @@ public sealed class ScorchImporter
         }
 
         // Extract global variables first — step scripts reference them by GUID, and we need
-        // the GUID→Name map to rewrite those references to NodePilot's {{globals.Name}}.
+        // the GUID to Name map to rewrite those references to NodePilot's {{globals.Name}}.
         var variableMap = ExtractGlobalVariables(root, result);
 
         // Policies can live anywhere under <ExportData> — <Policies> is the canonical root,
@@ -167,7 +174,7 @@ public sealed class ScorchImporter
     /// <summary>
     /// Walks <c>&lt;GlobalSettings&gt;/&lt;Variables&gt;</c> and returns each SCOrch Variable
     /// object as a (GUID, info) pair. Variables with <c>Name</c> incompatible with NodePilot's
-    /// <c>[A-Za-z0-9_\-]{1,100}</c> grammar are sanitized (non-alphanumeric → underscore) and
+    /// <c>[A-Za-z0-9_\-]{1,100}</c> grammar are sanitized (non-alphanumeric -> underscore) and
     /// a warning is raised so the operator sees the rename.
     /// </summary>
     private static Dictionary<Guid, ScorchVariable> ExtractGlobalVariables(
@@ -286,7 +293,8 @@ public sealed class ScorchImporter
     /// The folder names an object sits under, outermost first.
     ///
     /// <para>SCOrch organises both of the things an export carries — runbooks under
-    /// <c>&lt;Policies&gt;</c>, global variables under <c>&lt;GlobalSettings&gt;/&lt;Variables&gt;</c>
+    /// <c>&lt;Policies&gt;</c>, global variables under
+    /// <c>&lt;GlobalSettings&gt;/&lt;Variables&gt;</c>
     /// — in a folder tree, and each section is wrapped in one root <c>&lt;Folder&gt;</c>. That root
     /// stands for the destination the operator picked on import, so it is dropped; only the levels
     /// below it are the author's own structure.</para>
@@ -523,9 +531,12 @@ public sealed class ScorchImporter
             return definitionJson; // Keep the original; the controller validates the definition anyway.
         }
 
-        // Preferred: keep the author's own arrangement, scaled up until the cards fit. The layout of
-        // a runbook carries real information — which branch is the happy path, what belongs together
-        // — and that is exactly what makes an imported graph recognisable to the person who wrote it.
+        // Preferred: keep the author's own arrangement, scaled up until the cards fit. The layout
+        // of
+        // a runbook carries real information — which branch is the happy path, what belongs
+        // together
+        // — and that is exactly what makes an imported graph recognisable to the person who wrote
+        // it.
         var preserved = WorkflowLayoutEngine.TryPreserveGeometry(definition, new PreservedLayoutOptions());
         if (preserved is not null) return preserved.ToJsonString();
 
@@ -577,7 +588,8 @@ public sealed class ScorchImporter
     /// Runs the workflow analyzer over the produced definition and folds its findings into the
     /// import report, then adds the one check it cannot make.
     ///
-    /// <para>Reusing the analyzer means "no trigger", "unreachable node", "cycle", "unknown activity
+    /// <para>Reusing the analyzer means "no trigger", "unreachable node", "cycle", "unknown
+    /// activity
     /// type" and "missing target machine" are reported by the same code the designer and the MCP
     /// tools use, so the import report cannot drift from what the canvas says about the same
     /// workflow.</para>
@@ -640,7 +652,8 @@ public sealed class ScorchImporter
     }
 
     /// <summary>
-    /// References made by edge conditions. A SCOrch link filter becomes a variable operand, so these
+    /// References made by edge conditions. A SCOrch link filter becomes a variable operand, so
+    /// these
     /// read the data bus exactly like a node config does — and a filter reading a parameter its
     /// source never publishes makes the edge silently never match, which is harder to spot than a
     /// broken step. Checking only node configs left the most consequential references unexamined.
@@ -660,7 +673,8 @@ public sealed class ScorchImporter
         }
     }
 
-    /// <summary>Walks a condition AST for <c>{kind:"variable", field:"param", paramName:…}</c> operands.</summary>
+    /// <summary>Walks a condition AST for <c>{kind:"variable", field:"param", paramName:…}</c>
+    /// operands.</summary>
     private static IEnumerable<(string StepId, string Parameter)> VariableOperands(JsonElement element)
     {
         switch (element.ValueKind)
@@ -714,9 +728,11 @@ public sealed class ScorchImporter
     /// The one check the analyzer cannot make, because the referenced step genuinely exists.
     ///
     /// <para>SCOrch's data bus is run-scoped: any activity can read the published data of any
-    /// activity that already ran, including one on a parallel branch. NodePilot's is ancestor-scoped
+    /// activity that already ran, including one on a parallel branch. NodePilot's is
+    /// ancestor-scoped
     /// — a reference resolves only if the target is on this step's own predecessor path. Such a
-    /// reference is idiomatic in a runbook and never resolves after import, so it is worth naming at
+    /// reference is idiomatic in a runbook and never resolves after import, so it is worth naming
+    /// at
     /// import time rather than at three in the morning.</para>
     /// </summary>
     private static void ReportCrossBranchReferences(
@@ -758,7 +774,8 @@ public sealed class ScorchImporter
         }
     }
 
-    /// <summary>Resolves a template head — a step id or an outputVariable alias — to a node id.</summary>
+    /// <summary>Resolves a template head — a step id or an outputVariable alias — to a node
+    /// id.</summary>
     private static string? ResolveHead(WorkflowDefinitionDocument doc, string head)
         => doc.OutputVariableToStepId.TryGetValue(head, out var byAlias) ? byAlias
          : doc.NodesById.ContainsKey(head) ? head
@@ -768,7 +785,8 @@ public sealed class ScorchImporter
     /// Checks every rewritten <c>{{step.param.X}}</c> against what the referenced activity actually
     /// publishes.
     ///
-    /// <para>Translating the marker syntax is not the same as translating the DATA. SCOrch's Monitor
+    /// <para>Translating the marker syntax is not the same as translating the DATA. SCOrch's
+    /// Monitor
     /// File publishes <c>Path</c>, <c>FileName</c> and <c>FileNameExt</c>; NodePilot's
     /// fileWatcherTrigger publishes <c>filePath</c>, <c>fileName</c> and <c>fileAction</c>. A
     /// rewritten reference therefore looks perfectly well-formed and still resolves to nothing —
@@ -777,7 +795,8 @@ public sealed class ScorchImporter
     /// (SCOrch's <c>Path</c> is a folder, <c>filePath</c> is a full file path), so the mismatch is
     /// reported instead, with the list of names that are actually available.</para>
     ///
-    /// <para>What a step publishes is asked of <see cref="WorkflowDataBusAnalyzer.PublishedParameters"/>,
+    /// <para>What a step publishes is asked of <see
+    /// cref="WorkflowDataBusAnalyzer.PublishedParameters"/>,
     /// NOT of the static catalog: a runScript's real outputs are the variables its script assigns,
     /// and the catalog knows only <c>exitCode</c>. Checking against the catalog alone flagged
     /// six perfectly good references in the reference runbook — a report that tells an operator to
@@ -820,7 +839,8 @@ public sealed class ScorchImporter
                   (sources.Count > 3 ? ", …)" : ")");
 
             // A `log` target is not a field-naming difference: the SCOrch activity had no NodePilot
-            // counterpart, so it produces nothing a downstream step or link condition can read. Said
+            // counterpart, so it produces nothing a downstream step or link condition can read.
+            // Said
             // as a naming mismatch it would send the operator looking for the right field name.
             var advice = target.Type == "log"
                 ? $"but '{LabelOf(target)}' was imported as a log node — the original SCOrch activity " +
@@ -856,7 +876,8 @@ public sealed class ScorchImporter
     {
         if (hasActiveTrigger || nodes.Count == 0) return;
 
-        // Source-less activities are the runbook's real entry points. A runbook whose every node has
+        // Source-less activities are the runbook's real entry points. A runbook whose every node
+        // has
         // an incoming link is a pure cycle; attach to the first node so the graph still has a root.
         var entryPoints = nodeIds.Where(id => !edgeTargets.Contains(id)).ToList();
         if (entryPoints.Count == 0) entryPoints.Add(nodeIds[0]);
@@ -982,7 +1003,8 @@ public sealed class ScorchImporter
     private static readonly Regex EncryptedMarkerRx =
         new(@"\\?`d\.T\.~(Ec|De)/", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
-    /// <summary>Everything a rewrite needs to resolve a marker and report what it could not.</summary>
+    /// <summary>Everything a rewrite needs to resolve a marker and report what it could
+    /// not.</summary>
     private sealed record RewriteContext(
         IReadOnlyDictionary<Guid, ScorchVariable> Variables,
         IReadOnlySet<Guid> ActivityGuids,
@@ -1002,16 +1024,18 @@ public sealed class ScorchImporter
     };
 
     /// <summary>
-    /// SCOrch published-data name → NodePilot output parameter, for the activities where the two
+    /// SCOrch published-data name -> NodePilot output parameter, for the activities where the two
     /// name the same value differently.
     ///
-    /// <para>Only exact equivalents belong here. SCOrch's Monitor File distinguishes <c>FileName</c>
+    /// <para>Only exact equivalents belong here. SCOrch's Monitor File distinguishes
+    /// <c>FileName</c>
     /// (WITHOUT extension) from <c>FileNameExt</c> (with it) and publishes the watched folder as
     /// <c>Path</c>; mapping any of those onto fileWatcherTrigger's <c>fileName</c> would move a
     /// wrong value rather than no value. They map cleanly now only because the trigger publishes
     /// <c>fileNameWithoutExtension</c> and <c>fileDirectory</c> as well.</para>
     ///
-    /// <para>Guarded by the NodePilot type: a Query XML that degraded to a placeholder must not have
+    /// <para>Guarded by the NodePilot type: a Query XML that degraded to a placeholder must not
+    /// have
     /// its references renamed to a parameter the placeholder does not have either.</para>
     /// </summary>
     private static readonly Dictionary<string, (string ActivityType, Dictionary<string, string> Map)>
@@ -1024,9 +1048,12 @@ public sealed class ScorchImporter
         };
 
     /// <summary>
-    /// Translates a SCOrch published-data field name to the parameter the imported activity actually
-    /// publishes. Both reference paths need this — step templates in a config value and the variable
-    /// operands of a link condition — and they must agree, or the same value resolves in one and not
+    /// Translates a SCOrch published-data field name to the parameter the imported activity
+    /// actually
+    /// publishes. Both reference paths need this — step templates in a config value and the
+    /// variable
+    /// operands of a link condition — and they must agree, or the same value resolves in one and
+    /// not
     /// in the other.
     /// </summary>
     private sealed record FieldTranslation(
@@ -1102,7 +1129,8 @@ public sealed class ScorchImporter
         var sb = new System.Text.StringBuilder(raw.Length);
         foreach (var c in raw.Trim())
             sb.Append(char.IsLetterOrDigit(c) || c is '_' or '-' ? c : '_');
-        // Collapse runs of underscores so "Query XML - Status?" does not become "Query_XML___Status_".
+        // Collapse runs of underscores so "Query XML - Status?" does not become
+        // "Query_XML___Status_".
         var collapsed = Regex.Replace(sb.ToString(), "_{2,}", "_", RegexOptions.None, TimeSpan.FromSeconds(1));
         return collapsed.Trim('_', '-');
     }
@@ -1115,7 +1143,8 @@ public sealed class ScorchImporter
     }
 
     /// <summary>
-    /// Rewrites nested values too, not just top-level strings. startWorkflow's <c>parameters</c> is a
+    /// Rewrites nested values too, not just top-level strings. startWorkflow's <c>parameters</c> is
+    /// a
     /// map and manualTrigger's <c>parameters</c> a list, and those carry references as often as any
     /// scalar does — a string-only pass shipped a sub-runbook call whose every argument was still
     /// raw SCOrch marker text.
@@ -1146,13 +1175,13 @@ public sealed class ScorchImporter
 
         var dottedFields = new List<string>();
 
-        // 1. Variable refs → {{globals.Name}}
+        // 1. Variable refs -> {{globals.Name}}
         var rewritten = VariableRefRx.Replace(input, m =>
             Guid.TryParse(m.Groups[1].Value, out var g) && ctx.Variables.TryGetValue(g, out var v)
                 ? "{{globals." + v.Name + "}}"
                 : m.Value);
 
-        // 2. Execution-data refs → {{stepId.param.field}} or {{stepId.output}}
+        // 2. Execution-data refs -> {{stepId.param.field}} or {{stepId.output}}
         rewritten = ExecutionDataRefRx.Replace(rewritten, m =>
         {
             if (!Guid.TryParse(m.Groups[1].Value, out var g) || !ctx.ActivityGuids.Contains(g))
@@ -1180,9 +1209,8 @@ public sealed class ScorchImporter
     }
 
     /// <summary>
-    /// A config value that still carries a SCOrch marker after rewriting is incomplete, and the
-    /// step will run with literal marker text in it. That used to be invisible; now it is named
-    /// together with the config key so the operator knows exactly which field to fix.
+    /// Reports any config value that still contains a SCOrch marker after rewriting.
+    /// The diagnostic includes the config key so the operator can locate the incomplete field.
     /// </summary>
     private static void ReportResidualMarkers(
         string value, List<string> dottedFields, RewriteContext ctx, string activityName, string configKey)
@@ -1209,7 +1237,7 @@ public sealed class ScorchImporter
     /// <summary>
     /// Translates a SCOrch Link's <c>&lt;TRIGGERS&gt;</c> block into a NodePilot
     /// <c>conditionExpression</c> JSON-object-as-dictionary. Multiple entries in the same
-    /// GroupID are AND-joined; different GroupIDs are OR-joined. No TRIGGERS block → null
+    /// GroupID are AND-joined; different GroupIDs are OR-joined. No TRIGGERS block -> null
     /// (unconditional edge). We emit the structured expression directly — the edge's
     /// <c>condition</c> shortcut string is only used for pure success/failure semantics
     /// which SCOrch's TRIGGERS model doesn't align with cleanly.
@@ -1230,7 +1258,8 @@ public sealed class ScorchImporter
 
         // Within a group the link's <And> decides ALL vs. ANY; different GroupIDs are OR-joined.
         // GroupID is empty in real exports, so <And> is the only thing that carries the intent —
-        // inferring AND from the group alone turned every "match any of these" link into "match all".
+        // inferring AND from the group alone turned every "match any of these" link into "match
+        // all".
         var joinWithAnd = ParseScorchBool(linkObj.Element("And")?.Value, false);
         var groups = triggers
             .GroupBy(t => int.TryParse(t.Element("GroupID")?.Value, out var g) ? g : 0)
@@ -1279,7 +1308,8 @@ public sealed class ScorchImporter
     }
 
     /// <summary>
-    /// SCOrch's status triggers carry a bare <c>{GUID}</c> in <c>Data</c> (no field) and the outcome
+    /// SCOrch's status triggers carry a bare <c>{GUID}</c> in <c>Data</c> (no field) and the
+    /// outcome
     /// in <c>Value</c>. The old parser required <c>{GUID}.field</c>, so every one of them was
     /// reported as unparseable and dropped — turning "on success" links into unconditional ones.
     /// </summary>
@@ -1353,7 +1383,8 @@ public sealed class ScorchImporter
             warnings.Add($"'{runbookName}': could not parse trigger Data '{dataStr}' — skipping this filter.");
             return null;
         }
-        // Normalized to the node-id form. SCOrch writes GUIDs upper-case, node ids are Guid.ToString()
+        // Normalized to the node-id form. SCOrch writes GUIDs upper-case, node ids are
+        // Guid.ToString()
         // — the evaluator tolerates the mismatch, but the designer and the import checks match ids
         // literally, so an unnormalized operand reads as a reference to a step that does not exist.
         var srcGuid = NormalizeStepId(match.Groups[1].Value);
@@ -1374,7 +1405,7 @@ public sealed class ScorchImporter
         if (Guid.TryParse(srcGuid, out var sourceId))
             field = fields.Translate(sourceId, field);
 
-        // Map SCOrch field to NodePilot operand: stdout → output, stderr → error, else param.
+        // Map SCOrch field to NodePilot operand: stdout -> output, stderr -> error, else param.
         var (npField, paramName) = field.ToLowerInvariant() switch
         {
             "stdout" => ("output", (string?)null),
@@ -1465,7 +1496,8 @@ public sealed class ScorchImportResult
 /// whole-estate import makes ordinary: SCOrch scopes runbook names per folder, NodePilot's are
 /// global, so two runbooks called <c>Cleanup</c> in different folders both import — one of them
 /// renamed — and a call that still says <c>Cleanup</c> lands on the wrong one or on nothing.
-/// Keeping the whole path lets the caller re-point it at the name that was actually assigned.</para>
+/// Keeping the whole path lets the caller re-point it at the name that was actually
+/// assigned.</para>
 /// </summary>
 /// <param name="NodeId">The <c>startWorkflow</c> node in this runbook's definition.</param>
 /// <param name="TargetFolderPath">

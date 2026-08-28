@@ -10,10 +10,11 @@ using Xunit;
 namespace NodePilot.Data.Tests.Rbac;
 
 /// <summary>
-/// Migration-level coverage for RBAC Tier A (the first RBAC rollout phase): the AddSharedWorkflowFolders migration must
-/// produce a usable Root folder, every existing workflow must end up assigned to Root,
-/// and the bootstrapper's idempotent default-permissions step must grant Operator/Viewer
-/// users the right baseline grant on Root (Admin gets nothing â€” global role bypasses).
+/// Migration-level coverage for RBAC Tier A (the first RBAC rollout phase): the
+/// AddSharedWorkflowFolders migration must produce a usable Root folder, every existing
+/// workflow must end up assigned to Root, and the bootstrapper's idempotent
+/// default-permissions step must grant Operator/Viewer users the right baseline grant on
+/// Root (Admin gets nothing, since the global role already bypasses folder checks).
 /// </summary>
 public sealed class SharedWorkflowFolderMigrationTests : IDisposable
 {
@@ -61,18 +62,16 @@ public sealed class SharedWorkflowFolderMigrationTests : IDisposable
     [Fact]
     public void Bootstrap_BackfillsExistingWorkflowsToRoot()
     {
-        // Seed one workflow before any RBAC awareness â€” simulates an upgrade from a pre-RBAC
+        // Seed one workflow before any RBAC awareness; simulates an upgrade from a pre-RBAC
         // schema. The migration's AddColumn defaultValue must put it on Root automatically.
         var preExistingId = Guid.NewGuid();
         using (var db = NewContext())
         {
             MigrationBootstrapper.Bootstrap(db, NullLogger.Instance);  // creates schema + Root
-            // Reset state so the migration check is meaningful: delete the auto-created Root
-            // and re-insert a Workflow without FolderId would require raw SQL on a freshly-
-            // migrated DB. The realistic scenario here is "migration ran on an existing DB
-            // with workflows" â€” covered by adding a workflow AFTER bootstrap and verifying
-            // it points at Root by default (which AddColumn defaultValue does for upgrades
-            // and the model default does for fresh inserts).
+            // Deleting the auto-created Root and re-inserting a Workflow without FolderId
+            // would need raw SQL on an already-migrated DB. Instead this adds a workflow after
+            // bootstrap and checks it defaults to Root, the same default AddColumn applies on
+            // upgrade and the model applies on fresh inserts.
             db.Workflows.Add(new Workflow
             {
                 Id = preExistingId,
@@ -92,15 +91,14 @@ public sealed class SharedWorkflowFolderMigrationTests : IDisposable
     [Fact]
     public void Bootstrap_DoesNotReseedRootPermissions_AfterAdminRevoke()
     {
-        // F1 fix (finding from the high-availability/HA review) â€” the prior runtime backfill loop re-created revoked rows on every
-        // restart, undermining intentional Admin revokes. The new design moves the seed
-        // into a one-shot EF migration; subsequent Bootstrap calls must NOT re-grant.
+        // The Root permission seed runs once as part of an EF migration; repeated Bootstrap
+        // calls must not re-grant a permission an admin has revoked.
         var operatorId = Guid.NewGuid();
 
         using (var db = NewContext())
         {
             MigrationBootstrapper.Bootstrap(db, NullLogger.Instance);
-            // Simulate UsersController.Create â€” adds user + default Root grant.
+            // Simulate UsersController.Create: adds user + default Root grant.
             db.Users.Add(new User { Id = operatorId, Username = "op", PasswordHash = "x", Role = UserRole.Operator });
             db.SharedFolderPermissions.Add(new SharedFolderPermission
             {
@@ -121,7 +119,7 @@ public sealed class SharedWorkflowFolderMigrationTests : IDisposable
             db.SaveChanges();
         }
 
-        // Three more bootstraps â€” the revoke must SURVIVE every one of them.
+        // Three more bootstraps; the revoke must survive every one of them.
         for (var i = 0; i < 3; i++)
         {
             using var db = NewContext();
@@ -136,14 +134,13 @@ public sealed class SharedWorkflowFolderMigrationTests : IDisposable
                 "(the prior runtime backfill loop was the bug)");
     }
 
-    // Note: the new BackfillSharedFolderUserPermissions migration's SELECT-INSERT path
-    // is covered end-to-end by the integration suite (real upgrade scenarios with users
-    // pre-existing). Replicating "users existed before the migration applied" inside a
-    // SQLite unit test is impractical: db.Database.Migrate() applies all pending
-    // migrations atomically against a model that was created from scratch â€” there's no
-    // hook to insert rows between InitialBaseline and the backfill migration without
-    // forking EF's migrator. The F1 regression we care about (revokes surviving boots)
-    // is fully covered by Bootstrap_DoesNotReseedRootPermissions_AfterAdminRevoke above.
+    // Note: BackfillSharedFolderUserPermissions' SELECT-INSERT path is covered end-to-end by
+    // the integration suite (real upgrade scenarios with pre-existing users). Reproducing
+    // "users existed before the migration applied" in a SQLite unit test is impractical:
+    // db.Database.Migrate() applies all pending migrations atomically against a model built
+    // from scratch, so there is no hook to insert rows between InitialBaseline and the
+    // backfill migration without forking EF's migrator. The revoke-survives-reboot behavior
+    // is covered by Bootstrap_DoesNotReseedRootPermissions_AfterAdminRevoke above.
 
     [Fact]
     public void SiblingNameUniqueness_IsEnforcedAtSchemaLevel()
@@ -158,7 +155,8 @@ public sealed class SharedWorkflowFolderMigrationTests : IDisposable
         });
         db.SaveChanges();
 
-        // Second sibling with the same name under the same parent must fail at the unique-index level.
+        // A second sibling with the same name under the same parent must fail at the
+        // unique-index level.
         db.SharedWorkflowFolders.Add(new SharedWorkflowFolder
         {
             Id = Guid.NewGuid(), ParentFolderId = rootId, Name = "Finance", Path = "/Finance", Depth = 1

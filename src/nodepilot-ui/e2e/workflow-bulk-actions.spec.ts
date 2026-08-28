@@ -2,21 +2,19 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 18 / 52 companion — bulk selection on /workflows.
+ * E2ETests.md Parts 18 and 52 companion: bulk selection on /workflows.
  *
- * Hermetic: page.route() mocks only (no backend), per fixtures/mockApi.ts conventions.
- * EN locale under Playwright; selectors are data-testid based.
- *
- * Unlike the row→folder drag (HTML5 DnD, unsynthesizable — see workflow-organisation.spec.ts),
- * every bulk affordance here is a real click target, so these specs drive the actual UI end to
- * end: tick the checkboxes, press the button, assert the requests that leave the browser.
+ * Every bulk affordance is a real click target, so these specs drive the UI end to end: tick the
+ * checkboxes, press the button, assert the requests that leave the browser.
  *
  * Covered:
- *   - selection: row checkboxes, select-all, the bar appearing/disappearing, clear.
+ *   - selection: row checkboxes, select-all, the bar appearing and disappearing, clear.
  *   - delete: one confirm for the batch, one DELETE per selected workflow.
- *   - move: dialog → destination folder → one POST /move-folder per selected workflow.
+ *   - move: dialog, destination folder, one POST /move-folder per selected workflow.
  *   - disable: one POST /disable per selected workflow.
  *   - RBAC: a row without canDelete disables the bulk Delete button.
+ *
+ * Hermetic: page.route() mocks only (no backend). English locale, data-testid selectors.
  */
 
 const ME = MOCK_USER; // Admin
@@ -147,8 +145,8 @@ test.describe('Workflow bulk selection & actions', () => {
 
     await page.getByTestId('bulk-delete').click();
 
-    // Store-driven confirm dialog (ConfirmHost), not window.confirm — it confirms with OK.
-    // One dialog for the whole batch is the behaviour under test: the count appears in it.
+    // The confirm dialog is the store-driven ConfirmHost, not window.confirm, and is confirmed
+    // with OK. One dialog for the whole batch is the behaviour under test, so it names the count.
     await expect(page.getByText(/2 selected workflows/i)).toBeVisible();
     await page.getByRole('button', { name: 'OK' }).click();
 
@@ -210,7 +208,7 @@ test.describe('Workflow bulk selection & actions', () => {
 
     await page.getByTestId(`workflow-select-${WF_B}`).check();
     await expect(page.getByTestId('bulk-delete')).toBeDisabled();
-    // Move stays available — Beta may still be edited, just not deleted.
+    // Move stays available because Beta may still be edited, just not deleted.
     await expect(page.getByTestId('bulk-move')).toBeEnabled();
   });
 

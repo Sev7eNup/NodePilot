@@ -79,8 +79,7 @@ public sealed class ExecutionControlToolsTests
 
         json.Should().Contain("\"resumed\":true");
 
-        // Regression guard: an earlier version of this tool dropped stepId before sending the
-        // request — assert it actually reaches the wire.
+        // The resume request must preserve stepId on the wire.
         var body = api.Server.LogEntries.Last().RequestMessage!.Body ?? "";
         body.Should().Contain("step-7");
         body.Should().Contain("continue");

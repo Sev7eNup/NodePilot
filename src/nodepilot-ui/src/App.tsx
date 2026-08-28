@@ -18,7 +18,7 @@ import { LoginPage } from './pages/LoginPage';
 import { startAuthBoundarySynchronization, useAuthStore } from './stores/authStore';
 import { useThemeStore, applyTheme } from './stores/themeStore';
 // Side-effect import: the module configures i18next on load. Nothing here reads its default
-// export any more — the one caller that did moved into lib/queryErrorToast.
+// export.
 import './i18n';
 import { applyFavicon } from './lib/appIcon';
 import { queryClient } from './queryClient';
@@ -53,7 +53,7 @@ applyFavicon(useThemeStore.getState().theme, useThemeStore.getState().resolvedTh
 startAuthBoundarySynchronization();
 
 // Kick off the auth probe once at bundle load. The store flips `isAuthenticated` from
-// null → true/false when the /auth/me call resolves. ProtectedRoute renders a loading
+// null to true/false when the /auth/me call resolves. ProtectedRoute renders a loading
 // shell while `isAuthenticated === null` so we don't flash the login page for a user
 // whose cookie is still valid.
 void useAuthStore.getState().initialize();
@@ -88,7 +88,7 @@ function ThemeWatcher() {
 /**
  * Owns the single database-health poll and the outage banner. A component rather than a bare hook
  * call in App so it sits inside the QueryClientProvider, and rendered as a sibling of the router
- * so the banner exists on EVERY route - including the designer, which bypasses the layout shell.
+ * so the banner exists on every route - including the designer, which bypasses the layout shell.
  */
 function DatabaseHealthWatcher() {
   useDatabaseHealth();

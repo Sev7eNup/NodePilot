@@ -11,12 +11,11 @@ using Spectre.Console.Cli;
 
 namespace NodePilot.Cli.Commands.Alerting;
 
-// `np system-alert ...` — CLI commands for system-alert policies: built-in checks on
+// `np system-alert ...` — commands for system-alert policies: built-in checks on
 // infrastructure/service health (e.g. backlog, stuck executions, unreachable machines),
-// kept as a separate feature from the user-defined event rules under `np alerting`
-// (see ADR 0008 for the reasoning). Mirrors the custom-alerting command shape. The
-// complex condition/params payload for create/update is passed as a
-// SaveSystemAlertPolicyRequest JSON file (--file) rather than a wide option surface.
+// kept separate from the user-defined event rules under `np alerting` (see ADR 0008).
+// Mirrors the alerting command shape. Create/update take a SaveSystemAlertPolicyRequest
+// JSON file (--file) instead of a wide option surface.
 
 [SupportedOSPlatform("windows")]
 public sealed class SystemAlertCatalogCommand : BaseCommand<GlobalSettings>

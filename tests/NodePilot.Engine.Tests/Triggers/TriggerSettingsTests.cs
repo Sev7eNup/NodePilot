@@ -139,9 +139,7 @@ public class EventLogTriggerSettingsTests
     [Fact]
     public void IsLogAllowed_ConfiguredList_ExtendsRatherThanReplacesTheDefaults()
     {
-        // The node executor used to REPLACE the defaults with the configured list, so adding one
-        // custom log silently locked workflows out of Application and System while the background
-        // listener still allowed them.
+        // Custom logs extend the Application and System defaults in both trigger runtimes.
         string[] configured = ["NodePilot-Custom"];
 
         EventLogTriggerSettings.IsLogAllowed("NodePilot-Custom", configured).Should().BeTrue();
@@ -186,8 +184,7 @@ public class DatabaseTriggerSettingsTests
     [Fact]
     public void Parse_NoInterval_KeepsTheEstablishedThirtySecondCadence()
     {
-        // The designer used to display 60 for an absent key while the poll loop ran at 30. The
-        // display was corrected to 30, not the interval — an existing trigger must not slow down.
+        // An absent interval preserves the established 30-second polling cadence.
         DatabaseTriggerSettings.Parse(Cfg(MinimalQuery)).PollingIntervalSeconds.Should().Be(30);
     }
 

@@ -7,9 +7,9 @@ using NodePilot.Core.WorkflowDefinitions;
 namespace NodePilot.Ai;
 
 /// <summary>
-/// Orchestrates a workflow-generation round trip: system prompt + few-shot example + user
-/// prompt → JSON-mode call → tolerant parsing → an optional single retry with a "reply with
-/// ONLY JSON" hint → schema validation. If both attempts fail, the method throws an
+/// Orchestrates a workflow-generation round trip: system prompt, few-shot example and user
+/// prompt go into a JSON-mode call, the reply is parsed tolerantly, one retry asks for JSON
+/// only, then the definition is validated. If every attempt fails the method throws an
 /// <see cref="LlmException"/> with <see cref="LlmErrorKind.MalformedResponse"/>, which the
 /// controller maps to a 502.
 /// </summary>
@@ -19,12 +19,12 @@ public sealed class WorkflowGenerationService
 
     private readonly ILlmClientFactory _llmFactory;
     private readonly PromptCatalog _prompts;
-    // Optional on purpose: AddNodePilotAi does not register the store (it comes from the API host),
-    // so requiring it would turn a missing host registration into a resolve-time crash.
+    // Optional because AddNodePilotAi does not register the store; it comes from the API host,
+    // and requiring it would turn a missing host registration into a resolve-time crash.
     private readonly ICustomActivityDefinitionStore? _customStore;
 
-    // The factory, not a pre-built client: Create() resolves the active LLM profile and throws
-    // when none is configured, so it has to run inside the call — after the controller's gate.
+    // Takes the factory rather than a client: Create() resolves the active LLM profile and
+    // throws when none is configured, so it must run inside the call, after the controller's gate.
     public WorkflowGenerationService(
         ILlmClientFactory llmFactory,
         PromptCatalog prompts,
@@ -61,8 +61,8 @@ public sealed class WorkflowGenerationService
         var (envelope, retried, modelEcho, promptTokens, completionTokens, totalTokens) = await CallWithRetry(
             systemPrompt, userPromptInitial, request.Prompt, ct);
 
-        // The envelope holds "definition" as a JsonElement — we serialize it back to compact
-        // JSON so the frontend can pass it straight through as CreateWorkflowRequest.DefinitionJson.
+        // The envelope holds "definition" as a JsonElement. Serialize it back to compact JSON so
+        // the frontend can pass it straight through as CreateWorkflowRequest.DefinitionJson.
         var definitionJson = JsonSerializer.Serialize(envelope.Definition);
         if (Encoding.UTF8.GetByteCount(definitionJson) > MaxDefinitionBytes)
         {
@@ -131,9 +131,9 @@ public sealed class WorkflowGenerationService
     }
 
     /// <summary>
-    /// Lists the installation's enabled custom activities so generation can propose them. Without
-    /// this the model only ever knows the built-in catalog and silently ignores user-authored nodes.
-    /// A store failure must not sink the generation call — the built-in catalog still works.
+    /// Lists the installation's enabled custom activities so generation can propose them.
+    /// Without them the model knows only the built-in catalog and ignores user-authored nodes.
+    /// A store failure returns an empty section instead of failing the generation call.
     /// </summary>
     private async Task<string> BuildCustomActivitySectionAsync(CancellationToken ct)
     {

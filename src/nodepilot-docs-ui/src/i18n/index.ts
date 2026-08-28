@@ -6,13 +6,13 @@ import en from './locales/en.json'
 import { DEFAULT_LANG, detectLang } from './languages'
 
 /**
- * One namespace, two languages — the docs site is small enough that the app shell's
- * 30-namespace split would be pure overhead here.
+ * One namespace, two languages. The docs site is small enough that splitting it into
+ * several namespaces would add no value.
  *
  * No browser-language detector plugin: the URL carries the language (`#/de/...`), so the
  * router is the single source of truth and `App` pushes every change in here. Detection
- * only ever runs once, for the initial redirect, and lives in `languages.ts` because the
- * router needs it before an i18n instance exists.
+ * runs once, for the initial redirect, and lives in `languages.ts` because the router
+ * needs it before an i18n instance exists.
  */
 void i18n.use(initReactI18next).init({
   resources: {

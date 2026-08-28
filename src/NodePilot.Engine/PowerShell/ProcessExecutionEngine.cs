@@ -148,7 +148,8 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
                 // Error-based success: the script "failed" only if it raised a terminating error
                 // (the wrapper emits ErrorMarker on a throw). An explicit `exit N` is NOT a failure
                 // — consistent with the in-process runspace and WinRM (!HadErrors). The real exit
-                // code is still surfaced via ExitCode for {{step.param.exitCode}} / successExitCodes.
+                // code is still surfaced via ExitCode for {{step.param.exitCode}} /
+                // successExitCodes.
                 Success = !stdoutText.Contains(PowerShellScriptWrapper.ErrorMarker, StringComparison.Ordinal),
                 ExitCode = process.ExitCode,
                 Output = stdoutText.TrimEnd(),
@@ -234,8 +235,10 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
                 stderr = drain.Stderr;
                 if (drain.DrainTimedOut)
                 {
-                    // Leaked inherited pipe handle: the root is long dead and the job tree terminated,
-                    // yet the write-end is still open in some other process (see ProcessSpawnCoordinator).
+                    // Leaked inherited pipe handle: the root is long dead and the job tree
+                    // terminated,
+                    // yet the write-end is still open in some other process (see
+                    // ProcessSpawnCoordinator).
                     // We returned captured output and abandoned the drain rather than hang forever.
                     _logger.LogWarning(
                         "Isolated {Engine} (pid {Pid}): stdout/stderr did not reach EOF within {Grace:0}s after the " +
@@ -319,12 +322,16 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
     }
 
     /// <summary>
-    /// Drains the isolated stdout/stderr reads with a bounded grace. Call ONLY after the root process
-    /// has exited and its job tree has been terminated: at that point no legitimate writer to the pipe
+    /// Drains the isolated stdout/stderr reads with a bounded grace. Call ONLY after the root
+    /// process
+    /// has exited and its job tree has been terminated: at that point no legitimate writer to the
+    /// pipe
     /// remains, so a read that has not reached EOF within <paramref name="grace"/> is blocked by a
     /// leaked inherited pipe handle in an unrelated process and is abandoned (and observed, so its
-    /// eventual fault never raises an UnobservedTaskException). <c>DrainTimedOut</c> reports the leak.
-    /// A real user cancel (<paramref name="ct"/>) propagates as <see cref="OperationCanceledException"/>.
+    /// eventual fault never raises an UnobservedTaskException). <c>DrainTimedOut</c> reports the
+    /// leak.
+    /// A real user cancel (<paramref name="ct"/>) propagates as <see
+    /// cref="OperationCanceledException"/>.
     /// </summary>
     internal static async Task<(string Stdout, string Stderr, bool DrainTimedOut)> DrainReadsAsync(
         Task<string> stdoutTask, Task<string> stderrTask, TimeSpan grace, CancellationToken ct)
@@ -354,9 +361,11 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
     };
 
     /// <summary>
-    /// Returns a completed read's text, or empty for a read still blocked by a leaked inherited pipe
+    /// Returns a completed read's text, or empty for a read still blocked by a leaked inherited
+    /// pipe
     /// handle. A still-pending read is observed via a continuation so its eventual fault
-    /// (ObjectDisposedException once the reader is disposed) never raises an UnobservedTaskException.
+    /// (ObjectDisposedException once the reader is disposed) never raises an
+    /// UnobservedTaskException.
     /// </summary>
     private static string ObserveAbandonedRead(Task<string> readTask)
     {
@@ -380,7 +389,8 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
                 RedirectStandardOutput = true,
             };
             // Gate the redirected spawn too (see ProcessSpawnCoordinator) — this runs at engine
-            // construction, but serializing it keeps the "every inheritable spawn is gated" invariant.
+            // construction, but serializing it keeps the "every inheritable spawn is gated"
+            // invariant.
             Process? p;
             lock (ProcessSpawnCoordinator.Gate)
             {
@@ -394,7 +404,8 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
         }
         catch
         {
-            // best-effort discovery: missing 'where'/'which' or non-executable shell falls through to OS-default heuristic below.
+            // best-effort discovery: missing 'where'/'which' or non-executable shell falls through
+            // to OS-default heuristic below.
         }
 
         if (OperatingSystem.IsWindows())

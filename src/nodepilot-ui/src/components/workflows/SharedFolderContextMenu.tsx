@@ -16,12 +16,10 @@ interface Props {
 
 /**
  * Right-click pop-up on a folder row in the SharedFolderTree sidebar. Uses the shared
- * ContextMenuShell for outside-click + Escape close behaviour, so the affordance feels
- * familiar to users who already use the designer's edge/node menus.
+ * ContextMenuShell for outside-click and Escape close behaviour, matching the designer menus.
  *
- * Every item is optional and the parent (SharedFolderTree) decides per folder which
- * handlers to pass — Root gets permissions only, a read-only folder gets no menu at all.
- * The parent also gates whether to OPEN the menu in the first place.
+ * Every item is optional; SharedFolderTree decides per folder which handlers to pass and whether
+ * to open the menu at all. Root gets permissions only, a read-only folder gets no menu.
  */
 export function SharedFolderContextMenu({
   x,
@@ -33,8 +31,8 @@ export function SharedFolderContextMenu({
 }: Readonly<Props>) {
   const { t } = useTranslation(['workflows', 'common']);
   const action = makeMenuAction(onClose);
-  // Only draw a divider when both groups actually rendered, so a permissions-only menu
-  // (Root) doesn't end in a dangling rule.
+  // Draw the divider only when both groups render, so a permissions-only menu (Root) does not
+  // end in a dangling rule.
   const showDivider = !!onManagePermissions && (!!onRename || !!onDelete);
 
   return (

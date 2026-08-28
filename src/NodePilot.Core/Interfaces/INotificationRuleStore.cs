@@ -4,14 +4,16 @@ using NodePilot.Core.Models;
 namespace NodePilot.Core.Interfaces;
 
 /// <summary>
-/// CRUD persistence for <see cref="NotificationRule"/> and its child <see cref="NotificationRoute"/>
+/// CRUD persistence for <see cref="NotificationRule"/> and its child <see
+/// cref="NotificationRoute"/>
 /// and <see cref="NotificationRuleTarget"/> rows. Pure storage; matching and dispatch live in the
 /// scheduler pipeline. Mirrors <see cref="IMaintenanceWindowStore"/>. Route secrets are encrypted
 /// at rest by the implementation.
 /// </summary>
 public interface INotificationRuleStore
 {
-    /// <summary>All rules with routes + targets, ordered by name. Includes disabled rules.</summary>
+    /// <summary>All rules with routes + targets, ordered by name. Includes disabled
+    /// rules.</summary>
     Task<IReadOnlyList<NotificationRule>> GetAllAsync(CancellationToken ct);
 
     /// <summary>Rules of one <see cref="NotificationRuleKind"/>. The custom (user-defined) and
@@ -27,7 +29,8 @@ public interface INotificationRuleStore
 
     /// <summary>
     /// Toggles a rule's enabled state and returns the updated rule. Enabling a System policy stamps
-    /// <c>ActivatedAt = now</c>, a per-policy watermark that keeps the policy from firing alerts for
+    /// <c>ActivatedAt = now</c>, a per-policy watermark that keeps the policy from firing alerts
+    /// for
     /// events that happened before it was turned on. Throws <see cref="KeyNotFoundException"/> if
     /// the id is unknown.
     /// </summary>

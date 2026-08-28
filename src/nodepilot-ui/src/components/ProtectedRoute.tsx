@@ -19,9 +19,9 @@ export function ProtectedRoute({ children }: Readonly<{ children: React.ReactNod
 
   if (!isAuthenticated) return <Navigate to="/login" />;
 
-  // React can batch clear(false) + accept(true) into one render during a local A→B identity
-  // switch. This key still forces the complete protected subtree to unmount/remount, dropping
-  // component-local SQL/results and running AbortController cleanup for AI/SSE consumers.
+  // React can batch clear(false) and accept(true) into a single render when the signed-in identity
+  // changes. This key forces the whole protected subtree to unmount and remount, dropping
+  // component-local SQL and results and running AbortController cleanup for AI and SSE consumers.
   return (
     <Fragment key={`${authBoundaryEpoch}:${userId ?? 'unknown'}`}>
       {children}

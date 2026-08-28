@@ -120,8 +120,7 @@ test.describe('Teil 20 — Machines & Credentials', () => {
     // Pick the credential in the dropdown (round-trips defaultCredentialId).
     await panel.locator('select').selectOption(CRED_ID);
 
-    // Submit button is "Add" / "Hinzufügen" — scope inside the panel & match exactly so it
-    // doesn't collide with the "Add Machine" heading/header button.
+    // Scope the localized Add button to the panel so it does not match the page heading button.
     await panel.getByRole('button', { name: /^add$|^hinzufügen$/i }).click();
 
     await expect.poll(() => postedBody).not.toBeNull();
@@ -256,7 +255,8 @@ test.describe('Teil 20 — Machines & Credentials', () => {
       const req = route.request();
       if (req.method() === 'POST') {
         postedBody = req.postDataJSON();
-        // Server returns the credential WITHOUT the password (Credential type has no password field).
+        // Server returns the credential WITHOUT the password (Credential type has no password
+        // field).
         const created = credentialJson({
           id: 'new-cred',
           name: (postedBody as { name: string }).name,

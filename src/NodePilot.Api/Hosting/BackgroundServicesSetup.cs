@@ -34,14 +34,15 @@ public static class BackgroundServicesSetup
 
         // Hot-reload companion to the cold-start ThreadPool.SetMinThreads prewarm in Program.cs:
         // re-applies Threading:MinWorkerThreads / MinIoCompletionThreads from the live config on
-        // start and on every config reload (Admin-Settings-UI save → appsettings.runtime.json).
+        // start and on every config reload (Admin-Settings-UI save -> appsettings.runtime.json).
         services.AddHostedService<ThreadPoolTuningService>();
 
         // Maintenance-window snapshot refresher. Always on (no opt-out), NOT leader-gated — every
         // node must evaluate windows for the API/webhook traffic it serves.
         services.AddHostedService<NodePilot.Scheduler.MaintenanceWindowSnapshotService>();
 
-        // Execution-history retention: on by default, opt-out via Retention:Executions:Enabled=false
+        // Execution-history retention: on by default, opt-out via
+        // Retention:Executions:Enabled=false
         // (see RetentionOptions — a silent default-off would grow the table into the millions).
         services.AddHostedService<NodePilot.Scheduler.ExecutionRetentionService>();
 
@@ -63,14 +64,19 @@ public static class BackgroundServicesSetup
         // is seeded to "now" on first run so existing execution history is never back-alerted.
         services.AddSingleton<NodePilot.Core.Interfaces.INotificationSink, NodePilot.Engine.Notifications.SmtpNotificationSink>();
         services.AddSingleton<NodePilot.Core.Interfaces.INotificationSink, NodePilot.Engine.Notifications.WebhookNotificationSink>();
-        // Infra/workflow-state signals (backlog, machine health, credential expiry, schedule health, …) are
-        // modular ISystemAlertSources evaluated per system policy (ADR 0008) — registered just below. The
-        // legacy IGaugeSignalProvider path was removed once the sources fully covered it (one pipeline).
+        // Infra/workflow-state signals (backlog, machine health, credential expiry, schedule
+        // health, …) are
+        // modular ISystemAlertSources evaluated per system policy (ADR 0008) — registered just
+        // below. The
+        // legacy IGaugeSignalProvider path was removed once the sources fully covered it (one
+        // pipeline).
         services.AddHostedService<NodePilot.Scheduler.NotificationDispatcher>();
 
-        // System-alert sources (ADR 0008): the modular, self-describing forward path for alerting. The
-        // read-only catalog (GET /api/alerting/system/catalog) is built from these; the policy evaluator
-        // and REST/UI surfaces land in later phases. Stateless + side-effect free → singletons.
+        // System-alert sources (ADR 0008): the modular, self-describing forward path for alerting.
+        // The
+        // read-only catalog (GET /api/alerting/system/catalog) is built from these; the policy
+        // evaluator
+        // and REST/UI surfaces land in later phases. Stateless + side-effect free -> singletons.
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.BacklogSource>();
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.PendingSource>();
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.CancelRateSource>();
@@ -83,8 +89,10 @@ public static class BackgroundServicesSetup
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.StuckExecutionSource>();
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.WorkflowHealthSource>();
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.AlertDeliveryFailureSource>();
-        // Audit-log entries (failed logins, lockouts, break-glass sign-ins, privilege changes) — the one
-        // source that makes security events alertable in-product rather than only via the SIEM stream.
+        // Audit-log entries (failed logins, lockouts, break-glass sign-ins, privilege changes) —
+        // the one
+        // source that makes security events alertable in-product rather than only via the SIEM
+        // stream.
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.AuditEventSource>();
         // Unlike its thirteen siblings this one reads process memory, not the database: trigger
         // registrations are process-local, so their health has no meaningful DB representation
@@ -93,11 +101,14 @@ public static class BackgroundServicesSetup
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.TriggerUnhealthySource>();
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertCatalog, NodePilot.Scheduler.SystemAlerts.SystemAlertCatalog>();
 
-        // Trims the alerting delivery ledger (terminal NotificationDeliveryAttempt + stale suppression
-        // rows) so it doesn't grow unbounded. Opt-out via Retention:Notifications:Enabled=false. Leader-only.
+        // Trims the alerting delivery ledger (terminal NotificationDeliveryAttempt + stale
+        // suppression
+        // rows) so it doesn't grow unbounded. Opt-out via Retention:Notifications:Enabled=false.
+        // Leader-only.
         services.AddHostedService<NodePilot.Scheduler.NotificationRetentionService>();
 
-        // Support-Event retention: trims SupportEvents older than Retention:SupportEvents:MaxAgeDays
+        // Support-Event retention: trims SupportEvents older than
+        // Retention:SupportEvents:MaxAgeDays
         // (default 90, matcht Plain-Text-File-Retention). Leader-only.
         services.AddHostedService<NodePilot.Scheduler.SupportEventRetentionService>();
 

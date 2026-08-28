@@ -4,9 +4,9 @@ import { edgeArrowPath, defaultControlPoints, getSmartEdgePath, EDGE_ARROW_STROK
 
 /**
  * Pins:
- *   - User-defined controlPoints produce a `M…C…` cubic Bezier path with the exact CPs
- *   - Label position is De Casteljau evaluated at t=0.5 (the visual midpoint of the curve)
- *   - controlPoints override even backward-edge U-loops (one segment, not two)
+ *   - user-defined controlPoints produce a `M…C…` cubic Bezier path with those exact points
+ *   - the label position is the De Casteljau point at t=0.5, the visual midpoint of the curve
+ *   - controlPoints also override backward-edge U-loops, giving one segment instead of two
  *   - defaultControlPoints projects outward per port direction (Right/Left/Top/Bottom)
  */
 
@@ -40,7 +40,7 @@ describe('smartEdgePath — controlPoints override', () => {
   });
 
   it('controlPointsOverride_evenForBackwardEdge', () => {
-    // Without controlPoints this would be a 2-segment U-loop. With them, single segment.
+    // Without controlPoints this is a two-segment U-loop; with them it is a single segment.
     const backwardParams = {
       sourceX: 500, sourceY: 0,
       targetX: 0, targetY: 100,
@@ -59,27 +59,24 @@ describe('smartEdgePath — controlPoints override', () => {
 });
 
 /**
- * Two nodes in the SAME column, one above the other. The backward U-loop is keyed on the port
- * pair, and the offset is measured between ports — so with the default Right→Left the source's
- * right port already sits a full node width past the target's left port and the edge kinks, no
- * matter that the nodes are perfectly aligned. Docking the pair vertically instead sidesteps the
- * branch entirely.
- *
- * This is what lets the SCOrch import keep a stacked arrangement without kinking its edges: on a
- * real 47-activity runbook, 13 of 15 kinked edges were exactly this case.
+ * Two nodes in the same column, one above the other. The backward U-loop is keyed on the port
+ * pair and the offset is measured between ports, so with the default right-to-left pair the
+ * source's right port sits a full node width past the target's left port and the edge kinks
+ * even though the nodes are aligned. Docking the pair vertically avoids that branch, which is
+ * what lets a stacked import keep its arrangement without kinked edges.
  */
 describe('smartEdgePath — a stacked pair docks vertically instead of looping', () => {
   // Both nodes at x = 0, 108 px wide, target 150 px below.
   const rightToLeft = {
-    sourceX: 108, sourceY: 0,   // source's RIGHT port
-    targetX: 0, targetY: 150,   // target's LEFT port
+    sourceX: 108, sourceY: 0,   // source's right port
+    targetX: 0, targetY: 150,   // target's left port
     sourcePosition: Position.Right,
     targetPosition: Position.Left,
   };
 
   const bottomToTop = {
-    sourceX: 54, sourceY: 50,   // source's BOTTOM port (node centre x)
-    targetX: 54, targetY: 100,  // target's TOP port
+    sourceX: 54, sourceY: 50,   // source's bottom port (node centre x)
+    targetX: 54, targetY: 100,  // target's top port
     sourcePosition: Position.Bottom,
     targetPosition: Position.Top,
   };
@@ -133,9 +130,9 @@ describe('smartEdgePath — arrowhead allocation', () => {
 
     const arrow = segs[0][3];
     expect(arrow).toBeDefined();
-    // The playful dart is a straight-sided 4-point polygon (tip, barb, notch, barb). Its core
-    // geometry is inset by half the rounding stroke, so the path's first point sits slightly
-    // BEHIND the true tip along the axis — the stroked (rounded) silhouette ends at the tip.
+    // The arrow is a straight-sided 4-point polygon (tip, barb, notch, barb). Its core geometry
+    // is inset by half the rounding stroke, so the path's first point sits slightly behind the
+    // true tip along the axis; the stroked, rounded silhouette ends at the tip.
     const path = edgeArrowPath(arrow!);
     expect(path).toMatch(/^M [-\d.]+,[-\d.]+ L /);
     expect((path.match(/ L /g) ?? []).length).toBe(3); // 4 corners: tip + 2 barbs + back notch
@@ -173,7 +170,7 @@ describe('defaultControlPoints — port-aware projection', () => {
   });
 
   it('mixedPorts_eachEndpointProjectsOwnDirection', () => {
-    // Right port → +x, Top port → -y (target's "outward" is upward, away from target node)
+    // A right port projects along +x, a top port along -y, outward from the target node.
     const cps = defaultControlPoints({
       sourceX: 0, sourceY: 0, sourcePosition: Position.Right,
       targetX: 100, targetY: 100, targetPosition: Position.Top,

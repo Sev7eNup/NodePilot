@@ -37,9 +37,8 @@ public sealed class HealthCommand : BaseCommand<GlobalSettings>
                 console.MarkupLine($"Ready : {(v.Ready ? "[green]ok[/]" : "[red]down[/]")}");
                 if (!v.Ready && !string.IsNullOrEmpty(v.Detail))
                     console.MarkupLine($"[grey]{Spectre.Console.Markup.Escape(v.Detail)}[/]");
-                // Database line: before it existed, an outage printed only "Ready: down" — the CLI
-                // twin of the SPA's formerly-green pill. Display-only, never folded into the exit
-                // code (`ready` already flips on an outage; see the comment below).
+                // Database line: mirrors the SPA's DB status pill. Display-only, excluded from
+                // the exit code (`ready` already flips on an outage; see the comment below).
                 if (!string.IsNullOrEmpty(v.Database))
                 {
                     var dbColor = v.Database switch

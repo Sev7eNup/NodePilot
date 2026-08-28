@@ -5,7 +5,7 @@ namespace NodePilot.Engine.Debug;
 /// <summary>
 /// The resume command the user sends from the UI once an execution is paused at a
 /// breakpoint. Continue = keep running until the next breakpoint. StepOver = run the
-/// next step and then pause again IMMEDIATELY afterward (whether or not that step has
+/// next step and then pause again immediately afterward (whether or not that step has
 /// a breakpoint of its own). Stop = cancel the execution.
 /// </summary>
 public enum ResumeCommand { Continue, StepOver, Stop }
@@ -25,11 +25,9 @@ public sealed record ResumeRequest(
 /// Per-execution state of the debugger. Lives only in the in-memory dictionary
 /// <c>WorkflowEngine._debugHandles</c> — a process restart terminates any paused
 /// executions. The engine calls <see cref="AwaitResumeAsync"/> when a breakpoint is
-/// reached; the API controller calls <see cref="Resume"/> when the user clicks a button.
-///
-/// Concurrency note: multiple parallel branches can pause at the same time. That's why
-/// <see cref="_pending"/> is keyed by step ID — otherwise two concurrent resumes would
-/// race each other. Each step gets its own TaskCompletionSource.
+/// reached; the API controller calls <see cref="Resume"/> when the user clicks resume.
+/// <see cref="_pending"/> is keyed by step ID so concurrent pauses on parallel
+/// branches each get their own TaskCompletionSource.
 /// </summary>
 public sealed class DebugHandle
 {
@@ -47,19 +45,16 @@ public sealed class DebugHandle
     public int? OriginalTimeoutSeconds { get; init; }
 
     /// <summary>Next-stop flag: true when the last resume was a StepOver, meaning the
-    /// next step MUST pause too, even without a breakpoint of its own.
+    /// next step must pause too, even without a breakpoint of its own.
     ///
-    /// A single flag is enough (instead of a per-step map) because StepOver only applies
-    /// to the very NEXT step — once that step consumes it, we reset the flag. With
-    /// parallel branches, this means the first branch to pause consumes the flag and the
-    /// other branches keep running unhindered. That's a deliberate trade-off: step-over
-    /// is inherently ambiguous in parallel flows, so we favor simplicity over trying to
-    /// pause every branch.</summary>
+    /// A single flag (not a per-step map) is enough because StepOver only applies to the
+    /// very next step; consuming it resets it. With parallel branches, the first branch
+    /// to pause consumes the flag and the rest keep running unhindered — a deliberate
+    /// trade-off, since step-over is inherently ambiguous across parallel branches.</summary>
     public bool StepOverArmed { get; set; }
 
-    /// <summary>Sum of all pause durations for this execution. Used to correct the
-    /// execution timeout — time spent waiting at the debugger should not eat into the
-    /// workflow's timeout budget.</summary>
+    /// <summary>Sum of all pause durations for this execution. Excludes debugger wait time
+    /// from the workflow timeout budget.</summary>
     public TimeSpan TotalPausedDuration { get; set; }
 
     /// <summary>Waits for a resume command to arrive for the given step. The engine
@@ -71,10 +66,9 @@ public sealed class DebugHandle
     {
         var tcs = new TaskCompletionSource<ResumeRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending[stepId] = tcs;
-        // Cancellation-token registration: if the outer token source is cancelled (e.g.
-        // the user hits /cancel while paused), resolve the TaskCompletionSource with
-        // cancellation. Without this, the engine's awaiting task would hang until the
-        // pause guard's own timeout eventually fires.
+        // If the outer token source is cancelled (e.g. the user hits /cancel while paused),
+        // resolve the TaskCompletionSource with cancellation. Otherwise the engine's
+        // awaiting task would hang until the pause guard's own timeout eventually fires.
         ct.Register(() => tcs.TrySetCanceled(ct));
         return tcs.Task;
     }
@@ -91,11 +85,10 @@ public sealed class DebugHandle
     /// <summary>IDs of steps currently paused and waiting. For debugging / tests.</summary>
     public IEnumerable<string> PendingSteps => _pending.Keys;
 
-    /// <summary>Signals "Stop" to every currently paused step — used by the cancel
-    /// endpoint so the engine thread comes out of its pause cleanly and the execution
-    /// terminates as Cancelled. Without this, /cancel would still cancel the token
-    /// source, but the engine thread would stay blocked awaiting the
-    /// TaskCompletionSource until the pause guard's own timeout eventually fires.</summary>
+    /// <summary>Signals "Stop" to every currently paused step, used by the cancel
+    /// endpoint so the engine thread exits its pause cleanly and the execution
+    /// terminates as Cancelled. Without this, cancelling the token source alone would
+    /// leave the engine thread blocked until the pause guard's own timeout fires.</summary>
     public void ReleaseAllAsStop()
     {
         foreach (var key in _pending.Keys.ToList())

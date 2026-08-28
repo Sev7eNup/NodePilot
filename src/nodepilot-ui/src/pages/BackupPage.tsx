@@ -58,8 +58,8 @@ function BackupTab() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [passphrase, setPassphrase] = useState('');
   const [confirm, setConfirm] = useState('');
-  // Client-side validation errors (empty selection / short or mismatched passphrase) live
-  // outside the mutation — they never reach the server.
+  // Client-side validation errors (empty selection, short or mismatched passphrase) are held
+  // outside the mutation because they never reach the server.
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const createMutation = useMutation({
@@ -167,9 +167,8 @@ function RestoreTab() {
     previewMutation.mutate({ file: picked, passphrase });
   };
 
-  // Picking a file IS the request to see what is in it, so the preview runs right away instead
-  // of leaving the operator in front of an unchanged page wondering whether the file loaded.
-  // With no passphrase yet this is the structure-only preview; typing one and pressing Preview
+  // Picking a file is itself the request to see what it contains, so the preview runs at once.
+  // Without a passphrase this is the structure-only preview; entering one and pressing Preview
   // re-runs it with the integrity check.
   const onFilePicked = (picked: File | null) => {
     setFile(picked);
@@ -215,8 +214,8 @@ function RestoreTab() {
           <Upload size={15} /> {busy && !result ? t('backup:restore.previewing') : t('backup:restore.preview')}
         </button>
       </section>
-      {/* The auto-run starts away from the button, so the analysis needs to say so where the
-          result will appear — otherwise a big file reads as "nothing happened". */}
+      {/* The preview can start without a button press, so show its progress where the result
+          will appear; otherwise a large file looks like nothing happened. */}
       {previewMutation.isPending && (
         <p className="text-sm text-on-surface-variant font-label">{t('backup:restore.previewing')}</p>
       )}

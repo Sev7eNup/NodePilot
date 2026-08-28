@@ -338,8 +338,10 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         return await _transport.SendAsync(body, HttpCompletionOption.ResponseHeadersRead, token, ct);
     }
 
-    /// <summary>Builds the OpenAI `messages` array: [system, ...Conversation] or [system, user]. Also
-    /// serializes tool-call assistant turns (with <c>tool_calls</c>) and tool-result turns (Role <c>"tool"</c>).</summary>
+    /// <summary>Builds the OpenAI `messages` array: [system, ...Conversation] or [system, user].
+    /// Also
+    /// serializes tool-call assistant turns (with <c>tool_calls</c>) and tool-result turns (Role
+    /// <c>"tool"</c>).</summary>
     private static List<object> BuildMessages(LlmRequest request)
     {
         var messages = new List<object>(1 + (request.Conversation?.Count ?? 1))
@@ -354,7 +356,8 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         return messages;
     }
 
-    /// <summary>Maps an <see cref="LlmMessage"/> to the OpenAI wire form (incl. tool role + tool_calls).</summary>
+    /// <summary>Maps an <see cref="LlmMessage"/> to the OpenAI wire form (incl. tool role +
+    /// tool_calls).</summary>
     private static object MessageToWire(LlmMessage turn)
     {
         if (string.Equals(turn.Role, "tool", StringComparison.Ordinal))
@@ -374,7 +377,8 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         return new { role = turn.Role, content = turn.Content };
     }
 
-    /// <summary>Appends `tools` + `tool_choice` to the body — but only when the request supplies tools.</summary>
+    /// <summary>Appends `tools` + `tool_choice` to the body — but only when the request supplies
+    /// tools.</summary>
     private static void AppendTools(Dictionary<string, object?> body, LlmRequest request)
     {
         if (request.Tools is not { Count: > 0 } tools) return;
@@ -396,7 +400,8 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         body["tool_choice"] = request.ToolChoice ?? "auto";
     }
 
-    /// <summary>Parses `choices[0].message.tool_calls` (non-streaming) into <see cref="LlmToolCall"/>s; null if there are none.</summary>
+    /// <summary>Parses `choices[0].message.tool_calls` (non-streaming) into <see
+    /// cref="LlmToolCall"/>s; null if there are none.</summary>
     private static IReadOnlyList<LlmToolCall>? ParseToolCalls(JsonElement message)
     {
         if (!message.TryGetProperty("tool_calls", out var tcs)

@@ -62,16 +62,10 @@ public class DashboardController : ControllerBase
             return Ok(EmptyStats(sinceWindow, windowHours, NormalizeProvider(_db.Database.ProviderName), GetClusterRole(), GetLlmEnabled()));
         }
 
-        // TriggerTypesJson, not DefinitionJson. The definition is unbounded text holding the whole
-        // graph including every inline script (21-42 KB in the repo's own samples), and this
-        // endpoint only ever needed the trigger metadata that the denormalized column already
-        // carries — maintained on every write path via WorkflowMetadata.PopulateComputedColumns
-        // and backfilled at boot. Loading the definitions here cost megabytes per call, and the
-        // call is not rare: the sidebar badge polls it once a minute from every open browser
-        // (useSidebarBadges), not just from the dashboard page.
-        // FolderId is needed by the maintenance-window evaluator below (windows target a workflow
-        // directly or via folder ancestry). One uuid column — the "no DefinitionJson" reasoning
-        // above is unaffected.
+        // Select TriggerTypesJson, not DefinitionJson: the definition holds the whole graph and
+        // every inline script, but this endpoint only needs trigger metadata, which the
+        // denormalized column already carries. FolderId is included for the maintenance-window
+        // evaluator below.
         var workflows = await workflowQuery
             .Select(w => new { w.Id, w.Name, w.FolderId, w.IsEnabled, w.TriggerTypesJson, w.CheckedOutByUserId, w.CheckedOutAt })
             .ToListAsync(ct);
@@ -82,11 +76,10 @@ public class DashboardController : ControllerBase
 
         var execsTotal = await execQuery.CountAsync(ct);
 
-        // DB-side GROUP BY (Year/Month/Day/Hour, Status) — single aggregated query
-        // returning at most `windowHours` × 5 rows (≤720 for the 30 d view, all small).
-        // We keep the DB grouping at hour granularity because EF Core compiles
-        // `e.StartedAt.Year` etc. natively on both SqlServer and Postgres; coarser-span
-        // bucketing (for >24 h windows) is folded down in C# below to ≤24 display buckets.
+        // DB-side GROUP BY (Year/Month/Day/Hour, Status): one aggregated query instead of
+        // loading rows into memory. Grouped at hour granularity because EF Core compiles
+        // e.StartedAt.Year etc. natively on both SqlServer and Postgres; wider windows are
+        // folded into fewer display buckets in C# below.
         var hourlyAgg = await execQuery
             .Where(e => e.StartedAt >= sinceWindow)
             .GroupBy(e => new
@@ -132,9 +125,9 @@ public class DashboardController : ControllerBase
             buckets[idx] = b with { Succeeded = b.Succeeded + a.Succeeded, Failed = b.Failed + a.Failed, Cancelled = b.Cancelled + a.Cancelled };
         }
 
-        // Window totals drive the hero gauge + KPI cluster. Note: `Running` here counts
-        // executions whose StartedAt falls inside the window and that are still Running —
-        // the same semantics the prior 24 h view had (hour-bucket attribution by start).
+        // Window totals drive the hero gauge and KPI cluster. `Running` counts executions
+        // whose StartedAt falls inside the window and that are still Running (attribution
+        // is by start time, not current status alone).
         var countsWindow = new ExecutionCounts(
             hourlyAgg.Sum(a => a.Total),
             hourlyAgg.Sum(a => a.Succeeded),
@@ -202,14 +195,13 @@ public class DashboardController : ControllerBase
                 : null,
             e.TriggeredBy)).ToList();
 
-        // "Armed" = enabled workflow with at least one non-manual trigger. The trigger TYPES come
-        // from the denormalized column; only the two kinds whose detail lives inside the graph
-        // (cron expression, poll interval) need the definition, so only those get loaded.
-        // Everything else — webhook, fileWatcher, eventLog — is "event-driven" and fully
-        // described by its type.
+        // "Armed" = enabled workflow with at least one non-manual trigger. Trigger types come
+        // from the denormalized column; only scheduleTrigger and databaseTrigger need the full
+        // definition (cron expression, poll interval), so only those get loaded. Everything
+        // else is event-driven and fully described by its type.
         //
-        // A null TriggerTypesJson means the row predates the backfill; fall back to loading its
-        // definition rather than silently dropping the workflow from the list.
+        // A null TriggerTypesJson means the row predates the backfill; load its definition
+        // instead of dropping the workflow from the list.
         var armedCandidates = workflows
             .Where(w => w.IsEnabled)
             .Select(w =>
@@ -282,22 +274,15 @@ public class DashboardController : ControllerBase
                 }
                 if (kind is null)
                 {
-                    // Remaining trigger types (fileWatcher, eventLog, webhook) are all event-driven.
+                    // Remaining trigger types (fileWatcher, eventLog, webhook) are all
+                    // event-driven.
                     kind = "event-driven";
                 }
 
-                // Evaluate the maintenance windows at the PREDICTED FIRE TIME, not at "now" —
-                // TriggerOrchestrator applies this exact predicate at the moment it fires, so
-                // this is the same question the scheduler will ask, not an approximation.
-                // Rows without a prediction (event-driven / polling) fall back to now, which is
-                // the only honest answer for them.
-                //
-                // Evaluate() rather than GetWindowsAffecting(): only the former expresses the
-                // AllowOnly-outside-window block and applies deny-wins precedence.
-                //
-                // Inherent limitation: judged against the window snapshot as of THIS response.
-                // A window created or edited between now and the fire time is not reflected
-                // until the next poll.
+                // Evaluate at the predicted fire time (falls back to now if there is none) so
+                // this matches what TriggerOrchestrator checks when it actually fires. Uses
+                // Evaluate(), not GetWindowsAffecting(), because only Evaluate() applies
+                // deny-wins precedence for the AllowOnly-outside-window block.
                 var blockedBy = _maintenance?.Evaluate(w.Id, w.FolderId, nextFire ?? now) is { Blocked: true } v
                     ? v.WindowName
                     : null;
@@ -334,7 +319,7 @@ public class DashboardController : ControllerBase
             .ToListAsync(ct);
         var runCountByWf = runCountsForFailing.ToDictionary(r => r.WorkflowId, r => r.RunCount);
 
-        // Previous 7d window for trend arrows (day -14 → -7).
+        // Previous 7-day window for trend arrows (days -14 to -7).
         var since14d = now.AddDays(-14);
         var prevFailing = await execQuery
             .Where(e => e.StartedAt >= since14d && e.StartedAt < since7d
@@ -366,7 +351,7 @@ public class DashboardController : ControllerBase
         var longRunningCount = await execQuery.CountAsync(
             e => e.Status == ExecutionStatus.Running && e.StartedAt < longRunningCutoff, ct);
 
-        // Edit locks — Join Workflow.CheckedOutByUserId → Users.Username.
+        // Edit locks: join Workflow.CheckedOutByUserId to Users.Username.
         var lockedWorkflows = workflows
             .Where(w => w.CheckedOutByUserId != null && w.CheckedOutAt != null)
             .ToList();
@@ -451,10 +436,9 @@ public class DashboardController : ControllerBase
     }
 
     /// <summary>
-    /// Whether the AI features are actually usable: <c>Llm:Enabled</c> AND an active profile that
-    /// resolves. Shown on the system-status banner as "AI activated" — with the switch on but no
-    /// profile selected, every AI endpoint answers 503, so reporting "activated" would be wrong.
-    /// It still says nothing about whether that endpoint is reachable.
+    /// Whether AI features are actually usable: <c>Llm:Enabled</c> and an active profile that
+    /// resolves. Shown on the status banner as "AI activated"; with the switch on but no profile
+    /// selected every AI endpoint returns 503, so this must be false in that case.
     /// </summary>
     private bool GetLlmEnabled() => _llmOptions?.CurrentValue.IsUsable ?? false;
 
@@ -465,11 +449,9 @@ public class DashboardController : ControllerBase
     /// </summary>
     /// <summary>
     /// Reads the denormalized <see cref="Workflow.TriggerTypesJson"/> column and drops the manual
-    /// trigger, yielding the same set the definition-based path derived from
-    /// <c>TriggerDescriptors.Where(t =&gt; !t.IsManual)</c>: both are built from non-disabled
-    /// trigger nodes, and <c>IsManual</c> is exactly <c>Type == "manualTrigger"</c>.
-    /// Returns an empty list for malformed JSON rather than throwing — a broken column must not
-    /// take the whole dashboard down.
+    /// trigger, matching what the definition-based path derives via <c>IsManual</c> (exactly
+    /// <c>Type == "manualTrigger"</c>). Returns an empty list for malformed JSON instead of
+    /// throwing, so a broken column does not take down the whole dashboard.
     /// </summary>
     private static List<string> ParseNonManualTriggerTypes(string? triggerTypesJson)
     {

@@ -34,16 +34,12 @@ public static class StartupRecovery
                 db, logger, ourNodeId, expectedEpoch, ct);
         }
 
-        // Cluster-mode predicate: only rows whose owner is NOT us. NULL counts as "not us"
-        // (NULL != "anything" is true in EF/SQL), so legacy rows from before the cluster
-        // feature shipped also get recovered the first time.
-        // Single-node call (ourNodeId == null): recover everything non-terminal.
-        // Process in bounded batches so a crash with a large in-flight backlog never
-        // materializes every orphaned row (and its steps) into memory at once. Each batch
-        // re-queries the same non-terminal predicate and flips its rows to Cancelled, so the
-        // next Take(batchSize) naturally advances past the rows just recovered — no keyset
-        // bookkeeping needed. Batches commit independently, so partial progress survives a
-        // mid-recovery failure (startup recovery re-runs on the next boot regardless).
+        // Cluster mode recovers rows whose owner is not us (NULL counts as not-us, so rows
+        // with no owner recover too). Single-node mode recovers everything non-terminal.
+        // Bounded batches keep a large backlog out of memory: each batch re-queries the same
+        // predicate, so rows already flipped to Cancelled fall out of the next page on their
+        // own. Batches commit independently, so a crash mid-recovery leaves partial progress
+        // that the next startup run picks up.
         const int batchSize = 500;
         var totalExecutions = 0;
         var totalSteps = 0;

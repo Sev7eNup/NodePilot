@@ -84,11 +84,12 @@ public sealed class DbErrorClassifierTests
     // ---------------------------------------------------------------------------------------------
 
     // The next two tests are a PAIR and neither is meaningful alone: they feed the *same exception
-    // object* to the two classification entry points and require opposite answers. That is the whole
+    // object* to the two classification entry points and require opposite answers. That is the
+    // whole
     // "context beats shape" rule, expressed as an executable claim rather than a comment.
     //
-    // Measured against Npgsql 10.0.3 on 2026-08-06 with a byte-swallowing TCP proxy in front of a real
-    // PostgreSQL: a command timeout on a warm pooled connection arrives as
+    // Against Npgsql, with a byte-swallowing TCP proxy in front of a real PostgreSQL server,
+    // a command timeout on a warm pooled connection arrives as
     //   NpgsqlException("Exception while reading from stream") -> TimeoutException
     // and a connect timeout against a hung-but-listening server arrives as
     //   NpgsqlException("The operation has timed out")         -> TimeoutException
@@ -101,7 +102,8 @@ public sealed class DbErrorClassifierTests
     public void Classify_NpgsqlExceptionWrappingTimeout_IsCommandTimeoutNotConnectionFailure()
     {
         // On the command path the honest answer is "one slow query" - the server answered the
-        // handshake, it just did not finish this statement. Reading it as ConnectionFailure would let
+        // handshake, it just did not finish this statement. Reading it as ConnectionFailure would
+        // let
         // a single locked table put a "database unavailable" banner in front of every user.
         DbErrorClassifier.Classify(NpgsqlTimeout()).Should().Be(DbFailureKind.CommandTimeout);
     }
@@ -109,7 +111,8 @@ public sealed class DbErrorClassifierTests
     [Fact]
     public void ClassifyConnectionFailure_SameExceptionOnConnectHook_IsConnectionFailure()
     {
-        // Same object, opposite answer: a physical open that timed out means no handshake completed,
+        // Same object, opposite answer: a physical open that timed out means no handshake
+        // completed,
         // which is a dead server rather than a slow query.
         DbErrorClassifier.ClassifyConnectionFailure(NpgsqlTimeout()).Should().Be(DbFailureKind.ConnectionFailure);
     }
@@ -117,7 +120,8 @@ public sealed class DbErrorClassifierTests
     [Fact]
     public void ClassifyConnectionFailure_ServerAnsweredAndDeclined_StaysRejected()
     {
-        // The two answers that must survive the fold: the server spoke. Reporting a wrong password as
+        // The two answers that must survive the fold: the server spoke. Reporting a wrong password
+        // as
         // an outage would hide a permanent misconfiguration behind a forever-"reconnecting" banner.
         var badPassword = new PostgresException(
             messageText: "password authentication failed for user \"nodepilot\"",
@@ -142,7 +146,8 @@ public sealed class DbErrorClassifierTests
     [Fact]
     public void Classify_SqlClientPoolTimeout_IsCapacityBackpressure()
     {
-        // SqlClient reports pool exhaustion as a plain InvalidOperationException - not a SqlException,
+        // SqlClient reports pool exhaustion as a plain InvalidOperationException - not a
+        // SqlException,
         // so it carries no Number and cannot be matched by the error-number table.
         var exhausted = new InvalidOperationException(
             "Timeout expired. The timeout period elapsed prior to obtaining a connection from the " +
@@ -154,7 +159,8 @@ public sealed class DbErrorClassifierTests
     [Fact]
     public void Classify_CapacityBackpressureOutranksTimeoutInTheSameChain()
     {
-        // Precedence is declaration order in DbFailureKind, and it must hold no matter which layer of
+        // Precedence is declaration order in DbFailureKind, and it must hold no matter which layer
+        // of
         // the chain each signal sits in.
         var chain = new InvalidOperationException(
             "An exception has been raised that is likely due to a transient failure.",
@@ -174,7 +180,8 @@ public sealed class DbErrorClassifierTests
     [InlineData("08006", DbFailureKind.ConnectionFailure)]    // connection_failure
     [InlineData("08001", DbFailureKind.ConnectionFailure)]    // sqlclient_unable_to_establish
     // The class-57 shutdown/startup states are deliberately ConnectionFailure, NOT rejections:
-    // ConnectionRejected drives the probe's "configuration problem, retrying will not fix it" ERROR,
+    // ConnectionRejected drives the probe's "configuration problem, retrying will not fix it"
+    // ERROR,
     // and 57P03 is what a server answers WHILE IT IS STARTING UP - a routine restart must read as
     // "unreachable, keep probing", or every restart scolds the operator about a config problem.
     [InlineData("57P01", DbFailureKind.ConnectionFailure)]    // admin_shutdown
@@ -223,7 +230,8 @@ public sealed class DbErrorClassifierTests
     [Fact]
     public void Classify_SqliteBusy_IsNone()
     {
-        // SQLite is the in-memory test backend. A SQLITE_BUSY from a test fixture must never be able
+        // SQLite is the in-memory test backend. A SQLITE_BUSY from a test fixture must never be
+        // able
         // to trip a production-shaped breaker, so the provider has no availability branch at all.
         DbErrorClassifier.Classify(new Microsoft.Data.Sqlite.SqliteException("database is locked", 5))
             .Should().Be(DbFailureKind.None);

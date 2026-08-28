@@ -28,7 +28,7 @@ namespace NodePilot.Api.Controllers;
 ///   query pane, the CLI and the MCP <c>run_readonly_sql</c> tool all enforce one contract.
 /// - PK columns and read-only columns reject PATCH.
 /// - User entity enforces last-admin guard and self-demote block.
-/// - Audit entries are committed in the SAME SaveChangesAsync as the mutation (atomic).
+/// - Audit entries are committed in the same SaveChangesAsync as the mutation (atomic).
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -263,9 +263,9 @@ public class DbAdminController : ControllerBase
                     session.RevokedAt = DateTime.UtcNow;
             }
 
-            // Audit entry attached to the SAME DbContext — committed in one SaveChangesAsync
-            // so the row mutation and the audit row are atomic. Routes through IAuditStager
-            // (same as every other audit-write path) so redaction + 4 KiB cap apply uniformly.
+            // Audit entry attached to the same DbContext, committed in one SaveChangesAsync so
+            // the row mutation and the audit row are atomic. Routes through IAuditStager, same
+            // as every other audit-write path, so redaction and the 4 KiB cap apply uniformly.
             var pkDisplay = string.Join(";", pk);
             var auditActor = CurrentAuditActor();
             var auditEntry = _stager.Build(
@@ -287,10 +287,9 @@ public class DbAdminController : ControllerBase
             }
             catch (DbUpdateException ex) when (_db.Database.CurrentTransaction is null)
             {
-                // L-3 (security audit 2026-05-15): never echo provider error text to the client —
-                // it leaks schema, index, and constraint details that a compromised Admin (or
-                // a lower-trust Admin once RBAC stage B lands) can mine to map the database.
-                // The correlation id lets an operator grep server logs for the matching detail.
+                // Never echo provider error text to the client: it leaks schema, index, and
+                // constraint details that a compromised Admin could use to map the database.
+                // The correlation id lets an operator find the matching detail in server logs.
                 var correlationId = HttpContext.TraceIdentifier;
                 _logger.LogWarning(ex, "DbAdmin UpdateCell constraint violation on {Table} pk={Pk} column={Column} correlationId={CorrelationId}",
                     name, string.Join(";", pk), req.Column, correlationId);
@@ -406,7 +405,7 @@ public class DbAdminController : ControllerBase
             }
             catch (DbUpdateException ex) when (_db.Database.CurrentTransaction is null)
             {
-                // L-3 (security audit 2026-05-15): generic conflict response — see UpdateCell.
+                // Generic conflict response, same reasoning as UpdateCell.
                 var correlationId = HttpContext.TraceIdentifier;
                 _logger.LogWarning(ex, "DbAdmin DeleteRow constraint violation on {Table} pk={Pk} correlationId={CorrelationId}",
                     name, string.Join(";", pk), correlationId);
@@ -440,7 +439,7 @@ public class DbAdminController : ControllerBase
 
     /// <summary>
     /// Executes an ad-hoc SQL statement against the active database. Read-mode is the
-    /// default; write-mode is gated by both a server-side config flag AND a per-request
+    /// default; write-mode is gated by both a server-side config flag and a per-request
     /// confirmation header. Every call is audited with the statement text.
     /// </summary>
     [HttpPost("query")]
@@ -470,17 +469,16 @@ public class DbAdminController : ControllerBase
             return BadRequest(new DbAdminQueryError("multiple_statements_not_allowed",
                 "Read mode accepts exactly one SQL statement. Switch to write mode to execute batches.", null));
 
-        // Naming a hidden column defeats the result-column mask below (aliases and expressions lose
-        // lineage), so those reads are refused outright — the same contract the row browser and the
-        // text2sql reader enforce. Write mode stays open: rotating a PasswordHash is a legitimate
-        // admin recovery action, and it is already gated by config flag + confirmation header +
-        // fail-closed audit.
+        // Naming a hidden column would defeat the result-column mask (aliases and expressions lose
+        // lineage), so read-mode queries that reference one are refused outright, same as the row
+        // browser and the text2sql reader. Write mode stays open since rotating a PasswordHash is
+        // a legitimate admin action, already gated by config flag, confirmation header, and audit.
         if (mode == "read" && _secretColumns.ReferencesProtectedColumn(req.Sql))
             return BadRequest(new DbAdminQueryError("protected_column",
                 "Query references a protected column. Secret columns (password hashes, encrypted "
                 + "credentials, global-variable values) cannot be read through raw SQL.", null));
 
-        // A row serializer defeats BOTH name-based layers at once: it never names the hidden column
+        // A row serializer defeats both name-based layers at once: it never names the hidden column
         // and it hands the whole row back under a result-column name the mask does not know.
         if (mode == "read" && _secretColumns.ReferencesProtectedRowProjection(req.Sql))
             return BadRequest(new DbAdminQueryError("protected_row_projection",
@@ -555,8 +553,8 @@ public class DbAdminController : ControllerBase
         catch (Exception ex)
         {
             // Provider-error text leaks schema/index/constraint details. For read-mode we keep a
-            // hint (operators need to debug typos), for write-mode we go fully generic + correlation
-            // ID. This mirrors L-3 in the 2026-05-15 security audit.
+            // hint since operators need to debug typos; for write-mode we return a generic
+            // message plus a correlation id for server-side lookup.
             var correlationId = HttpContext.TraceIdentifier;
             _logger.LogWarning(ex,
                 "DbAdmin query failed mode={Mode} correlationId={CorrelationId} sql={SqlPreview}",
@@ -716,7 +714,8 @@ public class DbAdminController : ControllerBase
         }
     }
 
-    /// <summary>Actor for every DB-admin audit row: caller identity plus the remote address.</summary>
+    /// <summary>Actor for every DB-admin audit row: caller identity plus the remote
+    /// address.</summary>
     private AuditActor CurrentAuditActor() => new(
         this.GetCurrentUserId(), this.GetCurrentUsername(),
         HttpContext?.Connection?.RemoteIpAddress?.ToString());
@@ -740,7 +739,7 @@ public class DbAdminController : ControllerBase
 
     private static string ToDisplayName(string entityName)
     {
-        // "WorkflowExecution" → "Workflow Executions"
+        // Example: "WorkflowExecution" becomes "Workflow Executions".
         var spaced = System.Text.RegularExpressions.Regex.Replace(
             entityName, @"(?<=[a-z])(?=[A-Z])", " ", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1));
         // Pluralize last word naively (enough for display)

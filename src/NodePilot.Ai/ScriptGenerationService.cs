@@ -167,7 +167,8 @@ public sealed class ScriptGenerationService
     }
 }
 
-/// <summary>An event in the script stream: a text delta, or the closing event (model + usage/duration).</summary>
+/// <summary>An event in the script stream: a text delta, or the closing event (model +
+/// usage/duration).</summary>
 public abstract record ScriptStreamEvent
 {
     public static ScriptStreamEvent Delta(string text) => new DeltaEvent(text);

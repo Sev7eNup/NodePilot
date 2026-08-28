@@ -25,11 +25,10 @@ public static class NotificationRuleSemantics
         new(@"\{\{\s*(?:event\.)?([A-Za-z0-9_]+)\s*\}\}", RegexOptions.Compiled, TimeSpan.FromMilliseconds(200));
 
     // Event types a CUSTOM rule may react to. Infra/signal types (ServiceStale, MachineUnreachable,
-    // BacklogHigh, PendingHigh, CancelRateHigh, CredentialExpiring, ScheduleMissed, WorkflowNoRecentSuccess)
-    // were removed here when the legacy gauge path was retired (ADR 0008 — one pipeline): those signals are
-    // now system policies over ISystemAlertSources. Their enum values remain (append-only persisted contract),
-    // just no longer offered on the custom-rule surface. What stays are the execution-family events custom
-    // rules filter over freely.
+    // BacklogHigh, PendingHigh, CancelRateHigh, CredentialExpiring, ScheduleMissed,
+    // WorkflowNoRecentSuccess) are handled as system policies over ISystemAlertSources instead,
+    // per ADR 0008. Their enum values stay in the persisted contract but are not offered here;
+    // only the execution-family events below are available to custom rules.
     public static readonly NotificationEventType[] SupportedEventTypes =
     [
         NotificationEventType.ExecutionFailed,
@@ -149,7 +148,8 @@ public static class NotificationRuleSemantics
             return false;
         }
 
-        // Compile-time sanity check for catastrophic token scans; unknown tokens are allowed and render empty.
+        // Compile-time sanity check for catastrophic token scans; unknown tokens are allowed and
+        // render empty.
         _ = TemplateTokenRegex.Replace(template, static m => m.Value);
         return true;
     }
@@ -174,9 +174,12 @@ public static class NotificationRuleSemantics
         : $"{rule.Id}:{ctx.SourceKey}:{ctx.EventType}";
 
     /// <summary>
-    /// Truncates an over-long key (e.g. a system-alert EventKey encoding a long instanceKey) to the 300-char
-    /// column cap, appending a SHA-256 suffix so distinct keys stay distinct. Same discipline as the dedup-key
-    /// fitter — exposed so callers that build their own EventKeys don't overflow the delivery-attempt insert.
+    /// Truncates an over-long key (e.g. a system-alert EventKey encoding a long instanceKey) to the
+    /// 300-char
+    /// column cap, appending a SHA-256 suffix so distinct keys stay distinct. Same discipline as
+    /// the dedup-key
+    /// fitter — exposed so callers that build their own EventKeys don't overflow the
+    /// delivery-attempt insert.
     /// </summary>
     public static string FitKey(string key) => FitDedupKey(key);
 

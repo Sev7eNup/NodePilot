@@ -277,7 +277,7 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
     // Go to the Retention sub-tab and save.
     await page.getByRole('button', { name: /retention/i }).click();
     await expect(page.getByRole('heading', { name: /executions/i })).toBeVisible();
-    // Hot-reloadable section → the emerald "applies immediately" hint is rendered on each card.
+    // Hot-reloadable section -> the emerald "applies immediately" hint is rendered on each card.
     await expect(page.getByText(/changes apply immediately/i).first()).toBeVisible({ timeout: 15_000 });
     await page.getByRole('button', { name: /^save$|^speichern$/i }).first().click();
 
@@ -322,7 +322,7 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
     await page.route('**/api/admin/settings/Retention', (route) => {
       const req = route.request();
       if (req.method() === 'PUT') {
-        // 412 with the server's current snapshot in the body → the conflict dialog.
+        // 412 with the server's current snapshot in the body -> the conflict dialog.
         return route.fulfill({
           status: 412,
           contentType: 'application/json',

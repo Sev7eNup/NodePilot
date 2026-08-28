@@ -60,7 +60,7 @@ interface Props {
   onUndo?: () => void;
   /** Canvas auto-layout — powers the "Tidy up layout" action after applying a proposal. */
   onAutoLayout?: () => void;
-  /** Current canvas selection (labels/count) — used to scope the question to the selected nodes. */
+  /** Current canvas selection that limits the question to selected nodes. */
   selection?: { nodeLabels: string[]; edgeCount: number };
 }
 
@@ -86,7 +86,8 @@ export function AiWorkflowChatPanel({
   const setActiveThread = useAiChatStore((s) => s.setActiveThread);
   const updateMessages = useAiChatStore((s) => s.updateMessages);
 
-  // Ensure there's an active thread (in an effect, not during render) — e.g. after switching workflow/user.
+  // Ensure there's an active thread (in an effect, not during render) — e.g. after switching
+  // workflow/user.
   useEffect(() => {
     ensureActiveThread(scope, t('ai:chat.threadDefault', { n: 1 }));
   }, [scope, ensureActiveThread, t]);
@@ -107,7 +108,8 @@ export function AiWorkflowChatPanel({
   const [error, setError] = useState<string | null>(null);
   const [atBottom, setAtBottom] = useState(true);
   const [mention, setMention] = useState<{ query: string; index: number } | null>(null);
-  // "Refine": the LLM iterates on the previous proposal (def), while the staleness/diff base stays the real canvas (applyBase).
+  // "Refine": the LLM iterates on the previous proposal (def), while the staleness/diff base stays
+  // the real canvas (applyBase).
   const [refineTarget, setRefineTarget] = useState<{ def: WorkflowDefinition; applyBase: WorkflowDefinition } | null>(null);
   // "Selection" scoping: relate the question to the current canvas selection.
   const [scopeToSelection, setScopeToSelection] = useState(false);
@@ -119,7 +121,8 @@ export function AiWorkflowChatPanel({
   // Abort an in-progress stream on unmount (panel closes / workflow switches).
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  // Only auto-scroll when the user is already at the bottom — don't yank them down while they're scrolling up.
+  // Only auto-scroll when the user is already at the bottom — don't yank them down while they're
+  // scrolling up.
   useEffect(() => {
     const el = scrollRef.current;
     if (el && atBottomRef.current && typeof el.scrollTo === 'function') {
@@ -152,8 +155,10 @@ export function AiWorkflowChatPanel({
   // Core: appends a streaming assistant bubble and drives the stream. Remembers the last
   // attempt for regenerate/retry. Expects the user message to already be appended.
   const streamAssistant = useCallback(
-    // `llmBase` = what the LLM sees as its base (the previous proposal, when refining); `applyBase` =
-    // the real canvas (used for the staleness guard + diff base). For normal turns both are the same.
+    // `llmBase` = what the LLM sees as its base (the previous proposal, when refining); `applyBase`
+    // =
+    // the real canvas (used for the staleness guard + diff base). For normal turns both are the
+    // same.
     async (question: string, history: AiChatTurn[], llmBase: WorkflowDefinition, applyBase: WorkflowDefinition = llmBase) => {
       setError(null);
       const baseDefinitionHash = hashDefinition(applyBase);
@@ -192,7 +197,8 @@ export function AiWorkflowChatPanel({
     (raw: string) => {
       const typed = raw.trim();
       if (!typed || sending) return;
-      // Selection scoping: prefix the focused node names for the LLM (the chat bubble still shows only what the user typed).
+      // Selection scoping: prefix the focused node names for the LLM (the chat bubble still shows
+      // only what the user typed).
       const scoped = scopeToSelection && selection && selection.nodeLabels.length > 0
         ? `[Bezogen auf die ausgewählten Nodes: ${selection.nodeLabels.join(', ')}] ${typed}`
         : typed;
@@ -743,7 +749,7 @@ function ProposalCard({
   // Everything is selected by default; the state tracks what the user opted OUT of. Storing the
   // inverse matters because `changelog` recomputes whenever the canvas changes — an "included" set
   // built once at mount would silently leave later rows unchecked, and a proposal whose rows are
-  // all layout moves (e.g. "clean up the layout") would arrive with a dead "0 übernehmen" button.
+  // all layout moves would arrive with a disabled apply button.
   const [deselected, setDeselected] = useState<Set<string>>(() => new Set());
   const toggle = useCallback((id: string) =>
     setDeselected((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; }), []);

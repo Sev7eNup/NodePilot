@@ -153,7 +153,8 @@ test.describe('Special Node-Types (Teil 13)', () => {
     const group = page.locator(`.react-flow__node[data-id="${GROUP_ID}"]`);
     await expect(group).toBeVisible({ timeout: 20_000 });
 
-    // Select the group frame (click its dashed border area, away from the header buttons) and Delete.
+    // Select the group frame (click its dashed border area, away from the header buttons) and
+    // Delete.
     await group.click({ position: { x: 180, y: 180 } });
     await page.keyboard.press('Delete');
 

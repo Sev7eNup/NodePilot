@@ -8,31 +8,33 @@ using NodePilot.Engine.Security;
 namespace NodePilot.Engine.Activities;
 
 /// <summary>
-/// Polls a condition until it is met or a timeout elapses — the SCOrch "Monitor" pattern
-/// equivalent. **Hybrid** (like <see cref="RunScriptActivity"/>): without a target machine, or
-/// with a loopback host and no credential, polling runs locally in the API process; with a real
-/// target machine a WinRM session is opened for each poll. We inherit from
-/// <see cref="BaseRemoteActivity"/> for machine/credential resolution and the localhost-bypass
-/// behavior, but override <see cref="ExecuteAsync"/> directly because BuildScript only models a
-/// single one-shot run.
+/// Polls a condition until it is met or a timeout elapses — equivalent to the SCOrch
+/// "Monitor" pattern. Hybrid execution (like <see cref="RunScriptActivity"/>): without a
+/// target machine, or with a loopback host and no credential, polling runs locally in the
+/// API process; with a real target machine a WinRM session opens for each poll. Inherits
+/// <see cref="BaseRemoteActivity"/> for machine/credential resolution and the localhost
+/// bypass, but overrides <see cref="ExecuteAsync"/> directly because BuildScript only
+/// models a single one-shot run.
 ///
 /// <para>
-/// <b>conditionType</b> chooses between free-form script mode and four typed sub-modes
-/// (added 2026-05-17 to cover cases where a dynamic value couldn't be plugged into the
-/// <c>script</c> field):
+/// <c>conditionType</c> chooses between free-form script mode and four typed sub-modes,
+/// for cases where a dynamic value cannot be plugged into the <c>script</c> field:
 /// <list type="bullet">
-///   <item><c>script</c> (default, backward-compatible) — any PowerShell expression in the
-///     <c>script</c> field, boolean-cast as before. <c>{{...}}</c> templates are still forbidden
-///     in this field (injection protection).</item>
+///   <item><c>script</c> (default) — any PowerShell expression in the <c>script</c> field,
+///     boolean-cast. <c>{{...}}</c> templates are forbidden in this field (injection
+///     protection).</item>
 ///   <item><c>pathExists</c> — <c>path</c> (string). Resolves to <c>Test-Path</c>.</item>
-///   <item><c>serviceRunning</c> — <c>serviceName</c> (string). Checks <c>(Get-Service).Status -eq 'Running'</c>.</item>
-///   <item><c>portOpen</c> — <c>host</c> (string) + <c>port</c> (int). Checks a bounded <c>TcpClient</c> connect.</item>
-///   <item><c>httpOk</c> — <c>url</c> (string). Checks for an HTTP 2xx via <c>Invoke-WebRequest</c>.</item>
+///   <item><c>serviceRunning</c> — <c>serviceName</c> (string). Checks
+///     <c>(Get-Service).Status -eq 'Running'</c>.</item>
+///   <item><c>portOpen</c> — <c>host</c> (string) + <c>port</c> (int). Checks a bounded
+///     <c>TcpClient</c> connect.</item>
+///   <item><c>httpOk</c> — <c>url</c> (string). Checks for an HTTP 2xx via
+///     <c>Invoke-WebRequest</c>.</item>
 /// </list>
 /// Sub-mode fields may contain <c>{{step.param.x}}</c> templates — the engine's resolver
-/// substitutes those <i>before</i> we assemble the PowerShell expression. Values are passed
-/// through <see cref="PowerShellQuoter.Literal"/> verbatim as a single-quoted PowerShell
-/// literal in the test call, so they are injection-safe.
+/// substitutes those before the PowerShell expression is assembled. Values pass through
+/// <see cref="PowerShellQuoter.Literal"/> as a single-quoted PowerShell literal in the
+/// test call, so they are injection-safe.
 /// </para>
 ///
 /// Config:
@@ -69,9 +71,8 @@ public class WaitForConditionActivity : BaseRemoteActivity
         }
         catch (InvalidOperationException ex)
         {
-            // Validation errors come through as a clean Failed result instead of an
-            // exception so the step shows up as Failed (not Error) in the timeline —
-            // matches how the legacy "script must not contain {{...}}" branch behaved.
+            // Validation errors produce a clean Failed result instead of an exception,
+            // so the step shows up as Failed (not Error) in the timeline.
             return new ActivityResult { Success = false, ErrorOutput = ex.Message };
         }
 
@@ -79,7 +80,7 @@ public class WaitForConditionActivity : BaseRemoteActivity
         var timeout = Math.Max(1, config.TryGetProperty("timeoutSeconds", out var to) && to.TryGetInt32(out var toi) ? toi : 300);
 
         // Wrapper that casts the expression to a boolean and writes it out behind a marker.
-        // The user's script may also produce diagnostic output on the side — we carry that
+        // The script may also produce diagnostic output on the side; that output is carried
         // along as a `lastResult` hint in the timeout error message.
         var wrapped = $@"
 $__npResult = $null
@@ -91,8 +92,8 @@ try {{
 }}
 Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
 
-        // Hybrid resolution (matches RunScript): no target machine → local; a machine with a
-        // loopback host and no credential → local; otherwise remote via WinRM.
+        // Hybrid resolution (matches RunScript): no target machine -> local; a machine with a
+        // loopback host and no credential -> local; otherwise remote via WinRM.
         var machine = context.ResolvedMachine;
         Credential? credential = null;
         if (machine is not null)
@@ -109,12 +110,12 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         // A fresh session per poll instead of one held for the whole wait: WinRM servers cap
-        // shells per user (default MaxShellsPerUser = 30, often lowered to 10-15 via GPO). A
-        // session held for the entire wait duration (up to 300s) would occupy a shell slot the
-        // whole time — several parallel waitForCondition steps against the same host would blow
-        // through that quota immediately and block every other step targeting that host. The
-        // connection pool reuses sessions between polls (idle TTL 120s, poll interval typically
-        // 1-5s → almost always a pool hit), so the authentication cost is only paid on the first poll.
+        // shells per user (default MaxShellsPerUser = 30, often lowered via GPO). Holding a
+        // session for the whole wait (up to 300s) would occupy a shell slot the whole time —
+        // several parallel waitForCondition steps against the same host would exhaust that
+        // quota and block every other step targeting that host. The connection pool reuses
+        // sessions between polls (idle TTL 120s), so the authentication cost is normally
+        // paid only on the first poll.
         while (!ct.IsCancellationRequested && DateTime.UtcNow < deadline)
         {
             attempts++;
@@ -169,16 +170,16 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
         }
 
         sw.Stop();
-        // D2: cap the tail-of-last-output to 2 KB so a chatty polling script does not
+        // Cap the tail of the last output to 2 KB so a chatty polling script does not
         // pump hundreds of KB into ErrorOutput, the SignalR stream, and the support log.
         var lastTrimmed = lastOutput?.Trim();
         if (lastTrimmed is { Length: > MaxLastOutputChars })
             lastTrimmed = lastTrimmed[..MaxLastOutputChars] + "…(truncated)";
-        // Name the probe target and where it ran. Every failure mode of the typed sub-modes —
-        // closed port, wrong host, name that does not resolve — collapses into the same opaque
-        // `###NODEPILOT_COND:False###`, and "localhost" means the *remote* machine's loopback on
-        // the WinRM path. Without this, a probe pointed at the wrong port is indistinguishable
-        // from a broken product.
+        // Names the probe target and where it ran. Every failure mode of the typed sub-modes —
+        // closed port, wrong host, a name that does not resolve — collapses into the same
+        // opaque `###NODEPILOT_COND:False###`, and "localhost" means the remote machine's
+        // loopback on the WinRM path. Without this, a probe pointed at the wrong port is
+        // indistinguishable from a broken product.
         var probeContext = DescribeProbeTarget(config) is { } target
             ? $" probing {target} [{(isLocalhost ? "local" : machine!.Hostname)}]"
             : "";
@@ -238,8 +239,8 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
         }
     }
 
-    // BuildScript is never called by our overridden ExecuteAsync; we still have to implement
-    // the abstract member. Nothing should ever reach this code path.
+    // BuildScript is never called; ExecuteAsync is overridden directly instead. The abstract
+    // member still needs an implementation, but this code path should never be reached.
     protected override string BuildScript(JsonElement config, StepExecutionContext context)
         => throw new NotSupportedException("WaitForConditionActivity overrides ExecuteAsync and does not use BuildScript.");
 
@@ -259,12 +260,12 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
     /// polling wrapper. Routes by <c>conditionType</c>:
     /// <list type="bullet">
     ///   <item><c>script</c> — raw expression from <c>script</c> field. <c>{{...}}</c>
-    ///     residue rejected (would land unquoted in the cast, see legacy guard).</item>
+    ///     residue is rejected, since it would land unquoted inside the cast.</item>
     ///   <item><c>pathExists</c>, <c>serviceRunning</c>, <c>portOpen</c>, <c>httpOk</c> —
-    ///     dedicated typed builders. Each accepts dynamic values (already resolved by the
-    ///     engine before this point) and runs them through <see cref="PowerShellQuoter.Literal"/>
-    ///     so the value lands as a single-quoted PS literal, immune to injection even when
-    ///     the upstream output contained apostrophes or shell metacharacters.</item>
+    ///     dedicated typed builders. Each accepts dynamic values, already resolved by the
+    ///     engine, and runs them through <see cref="PowerShellQuoter.Literal"/> so the value
+    ///     lands as a single-quoted PS literal, immune to injection even when the upstream
+    ///     output contains apostrophes or shell metacharacters.</item>
     /// </list>
     /// </summary>
     internal static string BuildConditionExpression(JsonElement config)
@@ -293,12 +294,12 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
                 "WaitForCondition: 'script' is required when conditionType='script' (or unset).");
 
         // The engine deliberately keeps `script` out of the template-resolution pass (see
-        // StepRunner.FieldsNotToResolve). Residual {{...}} placeholders mean a workflow
-        // author tried to template a value into the PS expression — which would land
+        // StepRunner.FieldsNotToResolve). A residual {{...}} placeholder means a workflow
+        // author tried to template a value into the PS expression, which would land
         // unquoted inside a `[bool](...)` cast and let an upstream output close the cast
         // and inject arbitrary PS. Fail closed and point the author at the typed sub-modes
         // (pathExists / serviceRunning / portOpen / httpOk) for dynamic values — those
-        // accept {{...}} safely because we build the script with PS-quoted literals.
+        // accept {{...}} safely because the script is built with PS-quoted literals.
         if (script.Contains("{{", StringComparison.Ordinal) && script.Contains("}}", StringComparison.Ordinal))
             throw new InvalidOperationException(
                 "WaitForCondition: 'script' must not contain {{...}} templates. "
@@ -328,7 +329,7 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
             throw new InvalidOperationException(
                 "WaitForCondition: 'serviceName' is required when conditionType='serviceRunning'.");
         // Wrapped in try/catch via the outer wrapper, so a missing service raises an error
-        // → caught → $__npResult=$false → poll continues.
+        // -> caught -> $__npResult=$false -> poll continues.
         return $"((Get-Service -Name {PowerShellQuoter.Literal(name)} -ErrorAction Stop).Status -eq 'Running')";
     }
 
@@ -339,7 +340,8 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
             throw new InvalidOperationException(
                 "WaitForCondition: 'host' is required when conditionType='portOpen'.");
         // Numeric-string tolerant: a templated port ({{manual.probePort}}) arrives quoted
-        // because the resolver substitutes inside the raw config JSON. See TryGetIntOrNumericString.
+        // because the resolver substitutes inside the raw config JSON. See
+        // TryGetIntOrNumericString.
         if (!config.TryGetIntOrNumericString("port", out var port))
             throw new InvalidOperationException(
                 "WaitForCondition: 'port' (integer) is required when conditionType='portOpen'.");

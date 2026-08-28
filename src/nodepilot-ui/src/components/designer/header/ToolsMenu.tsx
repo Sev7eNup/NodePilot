@@ -18,11 +18,11 @@ import { LAYOUT_LABELS, type LayoutMode } from '../../../stores/designStore';
 import { usePopover, MenuSectionLabel, MenuButton } from './menuPrimitives';
 
 /**
- * "Werkzeuge" (Tools) menu — groups the expert-only inspect/analysis actions that used to
- * be individual toolbar icons: find & replace, zoom-to-selection, version diff, dry-run
- * simulation, keyboard shortcuts, layout (tidy + restore) and export (JSON/PNG). Stateful
- * rows (tidy/restore/simulation) keep the menu OPEN so they can be clicked repeatedly;
- * overlay-opening rows close it. `title`s mirror the former buttons so tests still resolve.
+ * Tools menu — groups the expert-only inspect/analysis actions: find & replace,
+ * zoom-to-selection, version diff, dry-run simulation, keyboard shortcuts, layout
+ * (tidy + restore) and export (JSON/PNG). Stateful rows (tidy/restore/simulation) keep the
+ * menu open so they can be clicked repeatedly; overlay-opening rows close it. `title`s match
+ * the button labels so tests can find them by title.
  */
 export function ToolsMenu({
   workflowId, workflowName, nodes,

@@ -2,9 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Pre-bundle fallback only: `applyFavicon` swaps in the skin-matched variant before first
-         paint. A blue variant, not the untinted orange source art appicon.png, so the brief tab
-         icon before the bundle loads is already on-brand. -->
+    <!-- Fallback shown until the bundle loads; `applyFavicon` then swaps in the skin-matched
+         variant before first paint. A blue variant is used rather than the untinted source art
+         appicon.png so the brief initial tab icon is already on-brand. -->
     <link rel="icon" type="image/png" href="/appicon-dark.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />

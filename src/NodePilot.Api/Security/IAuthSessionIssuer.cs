@@ -3,15 +3,12 @@ using NodePilot.Core.Models;
 namespace NodePilot.Api.Security;
 
 /// <summary>
-/// Issues a NodePilot session for an already-authenticated user — independent of
-/// <i>how</i> the user authenticated (local BCrypt, LDAP-bind, Windows-Negotiate). Mints
-/// the JWT, sets the auth + CSRF cookies on the current response, and writes the
-/// LOGIN_SUCCESS audit row with the originating <see cref="AuthSource"/>.
+/// Issues a NodePilot session for a user authenticated through local BCrypt, LDAP bind,
+/// or Windows Negotiate. Mints the JWT, sets authentication and CSRF cookies, and writes
+/// the LOGIN_SUCCESS audit row with the originating <see cref="AuthSource"/>.
 /// <para>
-/// Extracted from the previously-private <c>AuthController.SetAuthCookies</c> +
-/// <c>AuthController.GenerateJwtToken</c> pair so LDAP and Windows-SSO endpoints can
-/// reuse the exact same session-establishment logic instead of re-implementing
-/// JWT-mint + cookie-shape + audit-write three times.
+/// Centralizes session establishment so every authentication path applies the same JWT,
+/// cookie, and audit policy.
 /// </para>
 /// </summary>
 public interface IAuthSessionIssuer

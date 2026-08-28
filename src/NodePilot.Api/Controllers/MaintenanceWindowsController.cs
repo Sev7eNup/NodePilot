@@ -66,7 +66,8 @@ public class MaintenanceWindowsController : ControllerBase
 
     /// <summary>
     /// Read-only "which maintenance windows affect this workflow" badge. Resolves the workflow's
-    /// folder ancestry through the evaluator snapshot — no second write path, single source of truth.
+    /// folder ancestry through the evaluator snapshot — no second write path, single source of
+    /// truth.
     /// </summary>
     [HttpGet("affecting/{workflowId:guid}")]
     public async Task<ActionResult<List<MaintenanceWindowAffectingDto>>> Affecting(Guid workflowId, CancellationToken ct)

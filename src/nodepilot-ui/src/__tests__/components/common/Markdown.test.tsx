@@ -20,7 +20,7 @@ describe('Markdown code highlighting', () => {
     // Tokens are wrapped in .hljs-* spans (e.g. hljs-string for "Running").
     expect(container.querySelector('[class*="hljs-"]')).not.toBeNull();
 
-    // The full source survives through the nested token spans → CopyButton's nodeText() still works.
+    // The full source survives the nested token spans, so CopyButton's nodeText() still works.
     expect(code!.textContent).toContain('Get-Service');
     expect(code!.textContent).toContain('Running');
   });

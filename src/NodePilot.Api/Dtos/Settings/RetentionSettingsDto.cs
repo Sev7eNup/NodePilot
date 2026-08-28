@@ -49,7 +49,8 @@ public sealed class ExecutionsRetentionDto
 {
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Older executions are pruned. 1 day–10 years bounds the practical range; anything outside
+    /// <summary>Older executions are pruned. 1 day–10 years bounds the practical range; anything
+    /// outside
     /// that is almost certainly a typo or a misunderstood unit.</summary>
     [Range(1, 3650)]
     public int MaxAgeDays { get; set; } = 30;
@@ -58,11 +59,13 @@ public sealed class ExecutionsRetentionDto
     [Range(1, 1440)]
     public int IntervalMinutes { get; set; } = 60;
 
-    /// <summary>Rows deleted per sweep iteration. 1 – 10 000 covers both small dev DBs and high-volume prod.</summary>
+    /// <summary>Rows deleted per sweep iteration. 1 – 10 000 covers both small dev DBs and
+    /// high-volume prod.</summary>
     [Range(1, 10_000)]
     public int BatchSize { get; set; } = 500;
 
-    /// <summary>Optional directory for NDJSON archival of deleted rows. Empty/null = no archive.</summary>
+    /// <summary>Optional directory for NDJSON archival of deleted rows. Empty/null = no
+    /// archive.</summary>
     [StringLength(1024)]
     public string? ArchivePath { get; set; }
 }

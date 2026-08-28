@@ -58,8 +58,8 @@ describe('MetricsPage', () => {
   });
 
   it('paintsAxesLegendAndSeriesFromTheSuppliedThemeTokens', () => {
-    // The page used to hardcode #94a3b8 for every axis and legend and a fixed
-    // 8-colour series list, so it looked identical in every skin — including light.
+    // Axis, legend, and series colours must come from the passed-in theme tokens
+    // rather than a fixed palette, so each skin (including light) renders distinctly.
     const widget: MetricsWidget = {
       id: 100, title: 'Latency', description: null, type: 'timeseries', unit: 'ms',
       grid: { x: 0, y: 0, width: 12, height: 8 }, error: null,
@@ -84,10 +84,10 @@ describe('MetricsPage', () => {
   });
 
   it('ordersHeatmapTimestampsNumericallyNotLexicographically', () => {
-    // The axis used to be built from a bare .sort(), which compares stringified numbers:
-    // [1, 2, 10] came out as [1, 10, 2], so every heatmap covering a window that crosses a
-    // digit boundary drew its columns out of order and put each cell under the wrong time.
-    // The single-timestamp fixtures above cannot see this - the bug needs at least three.
+    // Heatmap timestamps must sort numerically, not lexicographically: a plain .sort()
+    // on stringified numbers would order [1, 2, 10] as [1, 10, 2], putting cells for a
+    // window that crosses a digit boundary under the wrong time. At least three
+    // timestamps are needed to catch this; the single-timestamp fixtures above cannot.
     const widget: MetricsWidget = {
       id: 102, title: 'Failures over time', description: null, type: 'heatmap', unit: 'short',
       grid: { x: 0, y: 0, width: 12, height: 8 }, error: null,
@@ -109,7 +109,7 @@ describe('MetricsPage', () => {
     };
 
     // Three distinct columns, and the value at each x index belongs to the timestamp that
-    // index stands for: x=0 -> ts 1 -> value 1, x=1 -> ts 2 -> value 2, x=2 -> ts 10 -> value 3.
+    // index stands for: x=0 is ts 1 (value 1), x=1 is ts 2 (value 2), x=2 is ts 10 (value 3).
     expect(option.xAxis?.data).toHaveLength(3);
     const byIndex = new Map(option.series?.[0]?.data?.map(([x, , value]) => [x, value]));
     expect(byIndex.get(0)).toBe(1);

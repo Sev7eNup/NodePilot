@@ -255,7 +255,7 @@ describe('useEditorKeyboardShortcuts', () => {
   });
 
   it('Ctrl+Shift+D_callsSetDiffOpen_notDuplicate', () => {
-    // Ctrl+Shift+D now opens Diff overlay; Ctrl+D (no shift) stays duplicate.
+    // Ctrl+Shift+D opens the diff overlay; Ctrl+D without shift duplicates.
     mount(mocks);
     dispatchKey({ key: 'D', ctrlKey: true, shiftKey: true });
     expect(mocks.setDiffOpen).toHaveBeenCalledWith(true);
@@ -334,8 +334,8 @@ describe('useEditorKeyboardShortcuts', () => {
   });
 
   it('Escape_cancelsEdgeDetach_beforeEveryOverlay', () => {
-    // Ein gelöstes Edge-Ende ist ein canvas-weiter Modus. Würde Escape stattdessen ein
-    // Overlay schließen, bliebe der Nutzer mitten in der Operation hängen.
+    // A detached edge end is a canvas-wide mode. If Escape closed an overlay instead, the
+    // user would be left stuck in the middle of that operation.
     mount(mocks, { edgeDetachActive: true, findReplaceOpen: true, searchOpen: true, helpOpen: true });
     dispatchKey({ key: 'Escape' });
     expect(mocks.cancelEdgeDetach).toHaveBeenCalledOnce();
@@ -376,7 +376,7 @@ describe('useEditorKeyboardShortcuts', () => {
     expect(mocks.selectAll).not.toHaveBeenCalled();
   });
 
-  // ---- Lifecycle / save / run shortcuts (added in iteration 3) ------------------------------
+  // ---- Lifecycle / save / run shortcuts -----------------------------------------------------
 
   it('Ctrl+S_callsTriggerSave', () => {
     mount(mocks);
@@ -440,7 +440,7 @@ describe('useEditorKeyboardShortcuts', () => {
     expect(mocks.toggleLintPanel).toHaveBeenCalledOnce();
   });
 
-  // ---- New shortcuts: Lifecycle (unlock / force-unlock) ---------------------------------------
+  // ---- Lifecycle: unlock / force-unlock -------------------------------------------------------
 
   it('Ctrl+U_callsTriggerUnlock', () => {
     mount(mocks);
@@ -456,7 +456,7 @@ describe('useEditorKeyboardShortcuts', () => {
     expect(mocks.triggerUnlock).not.toHaveBeenCalled();
   });
 
-  // ---- New shortcuts: Run (cancel) -----------------------------------------------------------
+  // ---- Run: cancel ---------------------------------------------------------------------------
 
   it('Ctrl+Shift+X_callsTriggerCancel', () => {
     mount(mocks);

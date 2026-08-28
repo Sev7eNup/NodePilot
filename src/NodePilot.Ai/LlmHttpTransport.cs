@@ -54,8 +54,9 @@ internal sealed class LlmHttpTransport
     /// </summary>
     /// <param name="io">The timeout-scoped token every I/O operation runs under.</param>
     /// <param name="caller">
-    /// The caller's own token. Only used to tell a timeout apart from a genuine caller-side cancel:
-    /// when the caller cancelled, the <see cref="OperationCanceledException"/> propagates untouched.
+    /// The caller's token distinguishes a timeout from genuine caller-side cancellation:
+    /// when the caller cancelled, the <see cref="OperationCanceledException"/> propagates
+    /// untouched.
     /// </param>
     public async Task<HttpResponseMessage> SendAsync(
         Dictionary<string, object?> body,

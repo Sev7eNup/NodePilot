@@ -42,8 +42,8 @@ describe('findMatches', () => {
   });
 
   it('matchesConfigValues_traversesNestedObjectsAndArrays', () => {
-    // The traversal walks objects + arrays recursively. We pin the path-rendering
-    // shape so a refactor that breaks the dotted path key doesn't go unnoticed.
+    // The traversal walks objects and arrays recursively; the dotted path key of a hit is part
+    // of the contract and is asserted here.
     const nodes = [
       node('n1', 'Run Script', {
         script: 'Get-Content C:\\logs\\app.log',
@@ -53,7 +53,7 @@ describe('findMatches', () => {
 
     const hits = findMatches('log', nodes, [], { nodeLabels: false, edgeLabels: false, configValues: true });
 
-    // Should match script + headers[0].value (both contain "log")
+    // Matches script and headers[0].value, which both contain "log".
     expect(hits.length).toBeGreaterThanOrEqual(2);
     expect(hits.some((h) => h.configKeyPath === 'script')).toBe(true);
     expect(hits.some((h) => h.configKeyPath === 'headers.0.value')).toBe(true);
@@ -79,7 +79,7 @@ describe('findMatches', () => {
     const nodes = [node('n1', 'My Node', { script: 'My script content' })];
     const edges = [edge('e1', 'My edge label')];
 
-    // Only nodeLabels enabled → 1 match (the node label).
+    // Only nodeLabels is enabled, so there is a single match: the node label.
     const hits = findMatches('My', nodes, edges, { nodeLabels: true, edgeLabels: false, configValues: false });
     expect(hits).toHaveLength(1);
     expect(hits[0].kind).toBe('node-label');
@@ -105,8 +105,7 @@ describe('applyReplaceAll', () => {
   });
 
   it('replacesAllOccurrences_notJustFirst', () => {
-    // The replacement uses replaceAll, not replace — confirm a multi-occurrence label
-    // gets fully rewritten.
+    // The replacement uses replaceAll, so a label with several occurrences is fully rewritten.
     const nodes = [node('n1', 'cat dog cat dog cat')];
     const matches = findMatches('cat', nodes, [], { nodeLabels: true, edgeLabels: false, configValues: false });
 
@@ -127,7 +126,7 @@ describe('applyReplaceAll', () => {
   });
 
   it('doesNotMutateOriginalArrays', () => {
-    // Immutability check — applyReplaceAll must produce new arrays, not splice in place.
+    // applyReplaceAll must produce new arrays instead of splicing the inputs in place.
     const nodes = [node('n1', 'OldText')];
     const original = JSON.parse(JSON.stringify(nodes));
     const matches = findMatches('Old', nodes, [], ALL_SCOPES);

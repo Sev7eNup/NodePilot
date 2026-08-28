@@ -71,7 +71,7 @@ describe('resolveWorkflowRef', () => {
   });
 
   it('returns null for empty input without hitting the network', async () => {
-    // No handler registered — if we call fetch we'd get an error
+    // No handler is registered, so any request would fail the test.
     server.use();
     expect(await resolveWorkflowRef('')).toBeNull();
     expect(await resolveWorkflowRef('   ')).toBeNull();

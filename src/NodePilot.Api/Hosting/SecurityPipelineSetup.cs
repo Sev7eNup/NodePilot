@@ -27,10 +27,10 @@ public static class SecurityPipelineSetup
             if (!headers.ContainsKey("Content-Security-Policy"))
             {
                 // Tightened CSP (audit L4 + M-3):
-                //  - object-src 'none'        → blocks <object>/<embed>/<applet> plugin loaders
-                //  - form-action 'self'       → forms can only POST back to our own origin
-                //  - frame-src 'none'         → no nested browsing contexts at all
-                //  - ws:/wss: dropped         → 'self' already covers SignalR's same-origin upgrades
+                //  - object-src 'none'        -> blocks <object>/<embed>/<applet> plugin loaders
+                //  - form-action 'self'       -> forms can only POST back to our own origin
+                //  - frame-src 'none'         -> no nested browsing contexts at all
+                //  - ws:/wss: dropped         -> 'self' already covers SignalR's same-origin upgrades
                 //  - style-src 'unsafe-inline' (M-3 partially reverted, 2026-08-01): the designer's
                 //    code editors inject their styling as runtime <style> elements — CodeMirror 6
                 //    (style-mod) does so exclusively, Monaco for its token colors. The former

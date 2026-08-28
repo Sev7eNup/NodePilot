@@ -1,8 +1,8 @@
 import { Catalog, DataBase, FolderDetails, Time, Webhook, type CarbonIconType } from '@carbon/icons-react';
 import i18n from '../i18n';
 
-// Shared badge metadata for the 5 non-manual trigger types.
-// `label` is resolved at call time via a getter so the language switch is live.
+// Shared badge metadata for the five non-manual trigger types.
+// `label` is a getter resolved at call time so a language switch takes effect immediately.
 type TriggerBadge = { readonly label: string; icon: CarbonIconType; className: string };
 
 function badge(key: string, icon: CarbonIconType, className: string): TriggerBadge {

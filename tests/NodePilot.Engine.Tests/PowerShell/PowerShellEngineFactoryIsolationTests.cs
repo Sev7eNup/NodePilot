@@ -25,7 +25,7 @@ public class PowerShellEngineFactoryIsolationTests
     public void GetEngine_IsolatedWithRunspaceRequest_ReturnsProcessEngineNotRunspace()
     {
         // engine:"runspace" + isolated is a category error (runspace is in-process). Isolation
-        // wins → a process engine, never the pool.
+        // wins -> a process engine, never the pool.
         var engine = Factory().GetEngine("runspace", isolated: true);
 
         engine.EngineType.Should().Be("pwsh");
@@ -60,7 +60,7 @@ public class PowerShellEngineFactoryIsolationTests
     [Fact]
     public void GetEngine_IsolatedNoProcessHostAvailable_Throws()
     {
-        // Neither pwsh nor powershell present → fail loudly, do NOT degrade to the runspace pool
+        // Neither pwsh nor powershell present -> fail loudly, do NOT degrade to the runspace pool
         // (that would void the opt-in isolation guarantee).
         var act = () => Factory(pwsh: false, windows: false).GetEngine("auto", isolated: true);
         act.Should().Throw<InvalidOperationException>().WithMessage("*no PowerShell host*");

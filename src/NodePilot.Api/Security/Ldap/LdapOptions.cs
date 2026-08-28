@@ -38,7 +38,8 @@ public sealed class LdapOptions
     public string? UpnSuffix { get; set; }
 
     /// <summary>
-    /// Bound for both bind- and search-operations. Sets <see cref="System.DirectoryServices.Protocols.LdapConnection.Timeout"/> —
+    /// Bound for both bind- and search-operations. Sets <see
+    /// cref="System.DirectoryServices.Protocols.LdapConnection.Timeout"/> —
     /// the underlying system library doesn't distinguish between a connect-timeout and an
     /// operation-timeout, so there is no separate <c>ConnectTimeoutSeconds</c> here: a
     /// dedicated knob for it would only document a setting that has no real effect.

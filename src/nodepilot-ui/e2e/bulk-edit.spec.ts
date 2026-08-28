@@ -158,7 +158,8 @@ test.describe('BulkEditPanel & ActivityTypeFilter (Teil 60)', () => {
     const logRow = page.locator('label').filter({ hasText: 'log' });
     await expect(logRow).toBeVisible();
 
-    // Hide the "log" type → its two nodes leave the DOM (React-Flow hidden:true), leaving 2 runScript.
+    // Hide the "log" type to its two nodes leave the DOM (React-Flow hidden:true), leaving 2
+    // runScript.
     await logRow.getByRole('checkbox').check();
     await expect(page.locator('.react-flow__node')).toHaveCount(2, { timeout: 10_000 });
 

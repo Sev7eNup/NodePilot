@@ -14,7 +14,8 @@ public static partial class CustomActivityValidation
     [GeneratedRegex(@"^[A-Za-z0-9_]+$", RegexOptions.CultureInvariant)]
     private static partial Regex ParamNameRegex();
 
-    // Material Symbol names are lowercase snake_case. Shape check only, the full set is not checked.
+    // Material Symbol names are lowercase snake_case. Shape check only, the full set is not
+    // checked.
     [GeneratedRegex(@"^[a-z0-9_]{1,60}$", RegexOptions.CultureInvariant)]
     private static partial Regex IconRegex();
 

@@ -173,7 +173,8 @@ public sealed class SystemAlertingValidationTests : IDisposable
         SystemAlertConditions.Compare("status", "==", "Failed"), 0, null, "Workflows", targets,
         [new NotificationRouteDto(null, "Email", "ops@example.test", null, 0)], 0, 1, 0);
 
-    /// <summary>Bad() returns an anonymous { message } payload — serialize so tests can read it.</summary>
+    /// <summary>Bad() returns an anonymous { message } payload — serialize so tests can read
+    /// it.</summary>
     private static string BadRequestMessage(ActionResult<SystemAlertPolicyResponse> result)
     {
         var bad = result.Result.Should().BeOfType<BadRequestObjectResult>().Subject;

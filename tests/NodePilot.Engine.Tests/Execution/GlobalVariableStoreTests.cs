@@ -114,7 +114,8 @@ public class GlobalVariableStoreTests
             var created = await store.CreateAsync("DB_HOST", "db.prod", false, null,
                 folder.Id, null, CancellationToken.None);
 
-            // folderId: null = "leave the existing folder untouched" — the variable must stay in /Env,
+            // folderId: null = "leave the existing folder untouched" — the variable must stay in
+            // /Env,
             // not be silently relocated to Root. Mirrors the value:null = unchanged convention.
             await store.UpdateAsync(created.Id, "DB_HOST", value: null, isSecret: false,
                 description: null, folderId: null, updatedBy: "admin", ct: CancellationToken.None);

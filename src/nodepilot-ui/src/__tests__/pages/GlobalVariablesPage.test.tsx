@@ -216,11 +216,11 @@ describe('GlobalVariablesPage', () => {
     server.use(http.get(`${BASE}/api/global-variables`, () => HttpResponse.json(VARS)));
     renderPage('Admin');
 
-    // Root is selected by default → descendant-inclusive, so both variables show.
+    // Root is selected by default -> descendant-inclusive, so both variables show.
     await waitFor(() => expect(screen.getByText('API_URL')).toBeInTheDocument());
     expect(screen.getByText('API_KEY')).toBeInTheDocument();
 
-    // Click the "Databases" subfolder → list scopes to f-db (only API_KEY lives there).
+    // Click the "Databases" subfolder -> list scopes to f-db (only API_KEY lives there).
     fireEvent.click(screen.getByTestId('global-folder-f-db'));
 
     await waitFor(() => expect(screen.queryByText('API_URL')).not.toBeInTheDocument());

@@ -4,12 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useWorkflowContract } from '../../hooks/useWorkflowContract';
 
 /**
- * Pin:
- * - Empty / variable expression → no fetch, contract=null
- * - GUID-shaped input → fetches /workflows/{id}/contract
- * - Name-shaped input → fetches /workflows/by-name/{name}/contract (encoded)
- * - 404 response → contract=null + isNotFound=true (no error throw)
- * - Debounce: rapid input changes only fire one request
+ * Covers useWorkflowContract: an empty or variable expression fetches nothing and leaves
+ * the contract null, a GUID fetches /workflows/{id}/contract, a name fetches the encoded
+ * /workflows/by-name/{name}/contract, a 404 yields a null contract with isNotFound true
+ * instead of an error, and rapid input changes are debounced into a single request.
  */
 
 const fetchMock = vi.fn();

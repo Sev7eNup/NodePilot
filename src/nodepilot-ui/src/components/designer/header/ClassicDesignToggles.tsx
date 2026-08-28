@@ -26,11 +26,10 @@ const ROUTING_OPTIONS: { value: EdgeRouting; titleKey: string }[] = [
 ];
 
 /**
- * The canvas-display controls as the classic inline row of icon buttons + steppers (edge
- * animation, routing, node-style, ports, sizes, grid-snap, …). This is the pre-redesign
- * `DesignToggle` cluster resurrected for the classic toolbar layout; the compact layout uses
- * the labeled {@link CanvasSettingsPanel} instead. Boolean toggles carry `aria-pressed`; all
- * tooltips reuse the existing `designer:toolbar.*` keys and semantic colour tokens.
+ * Canvas-display controls as a classic inline row of icon buttons and steppers (edge
+ * animation, routing, node style, ports, sizes, grid snap, …). Used by the classic toolbar
+ * layout; the compact layout uses the labeled {@link CanvasSettingsPanel} instead. Boolean
+ * toggles carry `aria-pressed`; tooltips reuse the existing `designer:toolbar.*` keys.
  */
 export function ClassicDesignToggles() {
   const { t } = useTranslation('designer');

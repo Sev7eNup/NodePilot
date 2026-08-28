@@ -9,11 +9,11 @@ using Xunit;
 namespace NodePilot.Api.Tests.Hosting;
 
 /// <summary>
-/// <c>Logging:LogLevel:*</c> is exposed in appsettings.json and editable through
-/// Admin → Settings, but Serilog's <c>ReadFrom.Configuration</c> only reads its own
-/// <c>Serilog:*</c> section — so the keys used to be inert while still reporting success to
-/// the operator. <see cref="LoggingSetup.ApplyConfiguredLevels"/> translates them; these tests
-/// pin that translation, including the dampening defaults that must survive an empty section.
+/// <c>Logging:LogLevel:*</c> is exposed in appsettings.json and editable through the Admin
+/// Settings page, but Serilog's <c>ReadFrom.Configuration</c> only reads its own
+/// <c>Serilog:*</c> section, so these keys need a translation step to take effect.
+/// <see cref="LoggingSetup.ApplyConfiguredLevels"/> does that translation; these tests pin
+/// it, including the dampening defaults that must survive an empty section.
 /// </summary>
 public sealed class LoggingLevelConfigurationTests
 {
@@ -106,8 +106,8 @@ public sealed class LoggingLevelConfigurationTests
     }
 
     /// <summary>
-    /// Guards the actual shipped defaults: every category appsettings.json configures must be
-    /// a level the translator understands, otherwise the key is silently inert again.
+    /// Guards the shipped defaults: every category appsettings.json configures must use a
+    /// level the translator understands, otherwise the key stays silently inert.
     /// </summary>
     [Fact]
     public void ShippedAppSettings_UsesOnlyParsableLevels()
@@ -121,7 +121,7 @@ public sealed class LoggingLevelConfigurationTests
         using var logger = BuildLogger(configured.ToDictionary(
             c => $"Logging:LogLevel:{c.Key}", c => c.Value!));
 
-        // Warning is what every shipped entry asks for; Information must therefore be filtered.
+        // Every shipped entry asks for Warning, so Information must be filtered out.
         logger.ForContext(Constants.SourceContextPropertyName, "Microsoft.AspNetCore")
             .IsEnabled(LogEventLevel.Information).Should().BeFalse();
     }

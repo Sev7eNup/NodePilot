@@ -9,11 +9,10 @@ using Xunit;
 namespace NodePilot.Cli.Tests.Commands;
 
 /// <summary>
-/// End-to-end command coverage for verbs not previously harnessed: settings test smtp/llm,
-/// workflow step-test + step-test-context, and the backup export/preview/restore/manifest
-/// surface. Asserts real behaviour — validation guards that fire before any HTTP call,
-/// exit-code mapping from the server's success flag, and the multipart upload path — not
-/// just "command ran".
+/// End-to-end command coverage for settings test smtp/llm, workflow step-test and
+/// step-test-context, and the backup export/preview/restore/manifest surface. Asserts real
+/// behavior: validation guards that fire before any HTTP call, exit-code mapping from the
+/// server's success flag, and the multipart upload path.
 /// </summary>
 [Collection(CommandTestCollection.Name)]
 public class CommandIntegrationCoverageTests
@@ -65,7 +64,7 @@ public class CommandIntegrationCoverageTests
         try
         {
             var result = h.Run("settings", "test", "smtp", "--file", file);
-            // ok=false → the command maps the probe result to a non-zero exit code.
+            // ok=false: the command maps the probe result to a non-zero exit code.
             result.ExitCode.Should().Be(ExitCodes.Error);
         }
         finally { Del(file); }
@@ -137,7 +136,7 @@ public class CommandIntegrationCoverageTests
         h.Server.Given(Request.Create().WithPath($"/api/workflows/{id}").UsingGet())
             .RespondWith(Response.Create().WithStatusCode(200).WithBody(SampleWorkflow(id)));
 
-        // "noEquals" has no '=' → the mock parser rejects it before any test POST.
+        // "noEquals" has no '=', so the mock parser rejects it before any test POST.
         var result = h.Run("workflow", "step-test", id.ToString(), "step-1", "-m", "noEquals");
         result.ExitCode.Should().Be(ExitCodes.Error);
         result.StdErr.Should().Contain("key=value");
@@ -240,8 +239,8 @@ public class CommandIntegrationCoverageTests
     {
         using var h = new CommandTestHarness();
         var outFile = Path.Combine(Path.GetTempPath(), "np-bk-" + Guid.NewGuid().ToString("N") + ".npbackup");
-        // No passphrase env/file given and stdin is redirected under the test host → resolver
-        // returns the "no passphrase source" error before any HTTP call.
+        // No passphrase env/file given and stdin is redirected under the test host, so the
+        // resolver returns the "no passphrase source" error before any HTTP call.
         var result = h.Run("backup", "export", "--out", outFile, "--sections", "workflows");
         result.ExitCode.Should().Be(ExitCodes.Error);
         result.StdErr.Should().Contain("passphrase");
@@ -318,7 +317,7 @@ public class CommandIntegrationCoverageTests
         var file = WriteTempBytes(new byte[] { 1, 2, 3 });
         try
         {
-            // stdin redirected under the test host + no --yes → destructive guard refuses.
+            // stdin redirected under the test host and no --yes, so the destructive guard refuses.
             var result = h.Run("backup", "restore", file, "--passphrase-file", pwFile);
             result.ExitCode.Should().Be(ExitCodes.Error);
             result.StdErr.Should().Contain("--yes");
@@ -414,7 +413,7 @@ public class CommandIntegrationCoverageTests
         var result = h.Run("settings", "effective-sizing", "-o", "table");
         result.ExitCode.Should().Be(ExitCodes.Success);
         result.Output.Should().Contain("Pending").And.Contain("manual after restart");
-        // Undetected memory must not render as "0 GB" - the plan then ignored RAM entirely.
+        // Undetected memory must not render as "0 GB", which would look like the plan ignored RAM.
         result.Output.Should().Contain("CPU-only").And.NotContain("0.0 GB");
     }
 
@@ -522,10 +521,10 @@ public class CommandIntegrationCoverageTests
     private static void Del(string path) { try { File.Delete(path); } catch { /* best-effort */ } }
 
     /// <summary>
-    /// Runs a command that writes its table to the *static* <see cref="AnsiConsole"/>
-    /// (backup manifest/preview/restore do). Redirects the static console to a width-pinned
-    /// <see cref="TestConsole"/> so layout never hits the "could not determine terminal width"
-    /// path under a redirected test host, and returns its captured output alongside the exit code.
+    /// Runs a command that writes its table to the static <see cref="AnsiConsole"/> (backup
+    /// manifest/preview/restore do). Redirects it to a width-pinned <see cref="TestConsole"/>
+    /// so layout does not hit the "could not determine terminal width" path under a redirected
+    /// test host, and returns the captured output together with the exit code.
     /// </summary>
     private static (int ExitCode, string Output) RunWithStaticConsole(CommandTestHarness h, params string[] args)
     {

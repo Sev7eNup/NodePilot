@@ -79,7 +79,7 @@ describe('buildChangelog', () => {
     const base = { nodes: [node('a', { data: { activityType: 'log', label: 'Keep' } }), node('b', { data: { activityType: 'log', label: 'Gone' } })], edges: [edge('e1', 'a', 'b')] };
     const current = {
       nodes: [
-        node('a', { position: { x: 200, y: 0 }, data: { activityType: 'log', label: 'Keep' } }), // moved → layout-only
+        node('a', { position: { x: 200, y: 0 }, data: { activityType: 'log', label: 'Keep' } }), // moved, layout-only
         node('c', { data: { activityType: 'restApi', label: 'New' } }),                          // added
       ],
       edges: [edge('e2', 'a', 'c')], // e1 removed, e2 added
@@ -112,7 +112,7 @@ describe('assembleSelectiveDefinition', () => {
   });
 
   it('drops an added edge whose node was not selected (dangling)', () => {
-    const res = assembleSelectiveDefinition(current, proposed, new Set(['e1'])); // edge but NOT its 'new' node
+    const res = assembleSelectiveDefinition(current, proposed, new Set(['e1'])); // edge but not its 'new' node
     expect(res.nodes.map((n) => n.id).sort()).toEqual(['keep', 't1']);
     expect(res.edges.map((e) => e.id).sort()).toEqual(['e0']); // e1 dropped
     expect(res.droppedEdges).toBe(1);

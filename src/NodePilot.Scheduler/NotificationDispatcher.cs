@@ -16,19 +16,26 @@ namespace NodePilot.Scheduler;
 
 /// <summary>
 /// Leader-gated alerting dispatcher. Each pass: (1) re-sends any Pending delivery attempts left
-/// over from a crashed pass, then (2) runs the execution-family <see cref="INotificationCollector"/>s
+/// over from a crashed pass, then (2) runs the execution-family <see
+/// cref="INotificationCollector"/>s
 /// (terminal executions since the persisted watermark, long-running, queued-long) for CUSTOM rules,
-/// AND the <see cref="NodePilot.Scheduler.SystemAlerts.SystemAlertEvaluator"/> for SYSTEM policies —
-/// both through the SHARED match → suppress → persist-Pending → send pipeline: a Pending
-/// <see cref="NotificationDeliveryAttempt"/> per route (idempotent on (rule,route,eventKey)) persisted
+/// AND the <see cref="NodePilot.Scheduler.SystemAlerts.SystemAlertEvaluator"/> for SYSTEM policies
+/// —
+/// both through the SHARED match -> suppress -> persist-Pending -> send pipeline: a Pending
+/// <see cref="NotificationDeliveryAttempt"/> per route (idempotent on (rule,route,eventKey))
+/// persisted
 /// BEFORE any network I/O, and only then send. Delivery is intentionally at-least-once: a crash
 /// after the receiver accepted a request but before the Sent update committed leaves a Pending
 /// attempt which the next leader sends again. Receivers use EventKey to deduplicate.
 ///
-/// <para>Infra/signal alerts (backlog, machine health, credential expiry, schedule health, …) are no
-/// longer a legacy gauge collector: they are modular <c>ISystemAlertSource</c>s evaluated per system
-/// policy (ADR 0008). The collectors own their EventKey shapes (collection AND crash recovery); this
-/// class owns the pass loop and pipeline. The execution watermark is seeded to "now" on first run, and
+/// <para>Infra/signal alerts (backlog, machine health, credential expiry, schedule health, …) are
+/// no
+/// longer a legacy gauge collector: they are modular <c>ISystemAlertSource</c>s evaluated per
+/// system
+/// policy (ADR 0008). The collectors own their EventKey shapes (collection AND crash recovery);
+/// this
+/// class owns the pass loop and pipeline. The execution watermark is seeded to "now" on first run,
+/// and
 /// system policies stamp an activation watermark, so existing history is never back-alerted.</para>
 /// </summary>
 public class NotificationDispatcher : BackgroundService
@@ -49,8 +56,9 @@ public class NotificationDispatcher : BackgroundService
     private readonly QueuedLongExecutionCollector _queuedLongCollector;
     private readonly IReadOnlyList<INotificationCollector> _collectors;
 
-    // System-alert policies (ADR 0008) run on their own evaluator (source sampling + per-policy sustain /
-    // episode state), then reuse this dispatcher's suppress → persist-Pending → send primitives.
+    // System-alert policies (ADR 0008) run on their own evaluator (source sampling + per-policy
+    // sustain /
+    // episode state), then reuse this dispatcher's suppress -> persist-Pending -> send primitives.
     private readonly SystemAlertEvaluator _systemEvaluator;
 
     // Test seams — forwarded to the owning collector so tests keep configuring the dispatcher.
@@ -173,9 +181,12 @@ public class NotificationDispatcher : BackgroundService
         return total;
     }
 
-    // System-alert policies: prune state for disabled/removed policies, evaluate the rest (staging match/episode
-    // state), then deliver every fire through the shared suppress → persist-Pending → send primitives. The
-    // single SaveChanges flushes the evaluator's state mutations together with the Pending attempts.
+    // System-alert policies: prune state for disabled/removed policies, evaluate the rest (staging
+    // match/episode
+    // state), then deliver every fire through the shared suppress to persist-Pending to send
+    // primitives. The
+    // single SaveChanges flushes the evaluator's state mutations together with the Pending
+    // attempts.
     private async Task<int> DispatchSystemAlertsAsync(
         NodePilotDbContext db,
         INotificationRuleStore store,
@@ -223,10 +234,11 @@ public class NotificationDispatcher : BackgroundService
     }
 
     /// <summary>
-    /// Shared match → suppress → persist-Pending → send pipeline for any collector's contexts.
+    /// Shared match -> suppress -> persist-Pending -> send pipeline for any collector's contexts.
     /// One SaveChanges flushes the Pending attempts together with whatever state the collector has
     /// already staged on the tracked context (execution watermark / gauge signal-states) —
-    /// preserving the persist-before-send crash-safety. Then each attempt is sent and statuses saved.
+    /// preserving the persist-before-send crash-safety. Then each attempt is sent and statuses
+    /// saved.
     /// </summary>
     private async Task<int> MatchAndSendAsync(
         NodePilotDbContext db, INotificationRuleStore store, IReadOnlyList<NotificationRule> rules,
@@ -277,10 +289,14 @@ public class NotificationDispatcher : BackgroundService
     }
 
     /// <summary>
-    /// Shared tail of both delivery paths. One unconditional SaveChanges flushes whatever the caller
-    /// staged on the tracked context — the collector's watermark / signal-states, or the system-alert
-    /// evaluator's match/episode state — together with the Pending attempts, even when nothing fired
-    /// this pass; that ordering is what preserves persist-before-send crash-safety. Then every attempt
+    /// Shared tail of both delivery paths. One unconditional SaveChanges flushes whatever the
+    /// caller
+    /// staged on the tracked context — the collector's watermark / signal-states, or the
+    /// system-alert
+    /// evaluator's match/episode state — together with the Pending attempts, even when nothing
+    /// fired
+    /// this pass; that ordering is what preserves persist-before-send crash-safety. Then every
+    /// attempt
     /// is sent under the lease fence and the resulting statuses are saved.
     /// </summary>
     private async Task<int> PersistAndSendAsync(
@@ -400,7 +416,8 @@ public class NotificationDispatcher : BackgroundService
         }
         catch (Exception ex)
         {
-            // A throwing secret-decrypt (corrupt cipher / key rotation) must not abort the whole pass
+            // A throwing secret-decrypt (corrupt cipher / key rotation) must not abort the whole
+            // pass
             // or wedge the dispatcher — treat it as a bounded-retry failure like any other.
             if (!attemptStarted)
             {
@@ -412,8 +429,10 @@ public class NotificationDispatcher : BackgroundService
         }
 
         attempt.Error = result.Error;
-        // Keep the attempt re-queueable (Pending) on failure until MaxAttempts so a transient sink /
-        // endpoint outage is retried by RecoverPendingAsync on later passes; only then give up (Failed).
+        // Keep the attempt re-queueable (Pending) on failure until MaxAttempts so a transient sink
+        // /
+        // endpoint outage is retried by RecoverPendingAsync on later passes; only then give up
+        // (Failed).
         // This makes the bounded-retry machinery live and honours at-least-once for sink-reported
         // failures, not only for crashes between persist and send.
         attempt.Status = result.Success

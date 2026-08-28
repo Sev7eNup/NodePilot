@@ -15,17 +15,16 @@ import {
 } from '../../security/authBoundary';
 
 /**
- * Admin-only modal: list/grant/revoke folder permissions for one
- * <c>SharedWorkflowFolder</c>. Grants can target a user or an authority-scoped directory group.
- * Both entry points (the folder-tree right-click entry and the button under the folder
- * card) only render when the folder's <c>capabilities.canAdmin</c> is true, so this modal
- * does not need to enforce admin-only itself; the API enforces 403 on Grant/Revoke
- * if the caller lacks permission.
+ * Admin-only modal that lists, grants and revokes folder permissions for one
+ * <c>SharedWorkflowFolder</c>. A grant targets a user or an authority-scoped directory group.
+ * Both entry points render only when the folder's <c>capabilities.canAdmin</c> is true, and the
+ * API answers 403 on Grant/Revoke when the caller lacks permission, so the modal does not
+ * enforce admin-only itself.
  */
 export interface SharedFolderPermissionsModalProps {
   folderId: string;
   folderPath: string;
-  /** Available users for the principal-picker — caller passes the result of GET /api/users. */
+  /** Available users for the principal picker; the caller passes the result of GET /api/users. */
   users: { id: string; username: string }[];
   onClose: () => void;
 }
@@ -131,7 +130,7 @@ export function SharedFolderPermissionsModal({
     }
   };
 
-  // Users that don't have a grant yet — keep the picker tidy.
+  // Users without a grant yet, so the picker only offers principals that can still be added.
   const unassignedUsers = users.filter(
     (u) => !permissions.some((p) => p.principalType === 'User' && p.principalKey === u.id),
   );

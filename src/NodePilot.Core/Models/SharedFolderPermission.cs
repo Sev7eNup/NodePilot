@@ -31,11 +31,13 @@ public class SharedFolderPermission
     ///   <item><description><see cref="FolderPrincipalType.User"/>: <see cref="User.Id"/>
     ///         formatted as <c>Guid.ToString("D")</c> (lowercase, hyphenated).</description></item>
     ///   <item><description><see cref="FolderPrincipalType.Group"/>: provider-stable group
-    ///         key within <see cref="PrincipalAuthority"/> (AD SID, OIDC or SCIM group id).</description></item>
-    ///   <item><description><see cref="FolderPrincipalType.Role"/>: reserved for future use.</description></item>
+    /// key within <see cref="PrincipalAuthority"/> (AD SID, OIDC or SCIM group
+    /// id).</description></item>
+    /// <item><description><see cref="FolderPrincipalType.Role"/>: reserved for future
+    /// use.</description></item>
     /// </list>
-    /// Renamed from <c>PrincipalId Guid</c> → <c>PrincipalKey string</c> in PR0a (LDAP groundwork)
-    /// because Group-SIDs don't fit a Guid column.
+    /// The type is <c>string</c>, not <c>Guid</c>, because group principal keys do not fit a
+    /// Guid column.
     /// </summary>
     public string PrincipalKey { get; set; } = string.Empty;
 

@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useOpsClock } from '../../hooks/useOpsClock';
 
-// The clock is what makes timeline bars grow and slide, so pausing it is what actually holds
-// the picture still during a display freeze.
+// The clock drives the growth and movement of timeline bars, so pausing it is what holds the
+// view still during a display freeze.
 
 describe('useOpsClock', () => {
   beforeEach(() => vi.useFakeTimers());

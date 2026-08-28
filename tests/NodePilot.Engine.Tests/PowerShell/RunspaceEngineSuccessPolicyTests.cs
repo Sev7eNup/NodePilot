@@ -31,7 +31,7 @@ public class RunspaceEngineSuccessPolicyTests
     [Fact]
     public async Task Execute_PureWriteError_FailsBecauseNoUsableOutput()
     {
-        // Write-Error sends to error stream and produces no stdout output → genuine failure.
+        // Write-Error sends to error stream and produces no stdout output -> genuine failure.
         var result = await Engine.ExecuteAsync(
             new PowerShellExecutionRequest
             {

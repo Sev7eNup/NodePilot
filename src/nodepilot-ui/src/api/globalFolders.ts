@@ -39,7 +39,7 @@ export const globalFoldersApi = {
   deleteRecursive: (id: string) =>
     api.delete<RecursiveGlobalFolderDeleteResult>(`${base}/${id}?recursive=true`),
 
-  // Variable → folder reassignment.
+  // Variable -> folder reassignment.
   moveVariableToFolder: (variableId: string, folderId: string) =>
     api.post<void>(`/global-variables/${variableId}/move-folder`, { folderId }),
 };

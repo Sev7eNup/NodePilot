@@ -2,31 +2,27 @@
 
 <#
 .SYNOPSIS
-    Creates the PostgreSQL role and database NodePilot needs, when the credentials given may.
+    Creates the PostgreSQL role and database NodePilot needs, if the given credentials may do so.
 .DESCRIPTION
-    Sibling of Provision-NodePilotDatabase.ps1 and it follows the same rule: the permission gate
-    runs FIRST and nothing is touched when it fails. Without CREATEROLE + CREATEDB (or superuser)
-    the script returns the DDL for a DBA to run instead of half-applying it.
+    Companion to Provision-NodePilotDatabase.ps1, with the same rule: the permission check runs
+    before anything is changed. Without CREATEROLE and CREATEDB (or superuser) the script returns
+    the DDL for a DBA to run instead of applying part of it.
 
-    Two things are deliberately NOT done, both because they change a server that already works:
+    Two things are left alone on purpose, because both would change a server that already works:
 
-      * An existing role's password is never reset. A password that does not authenticate is a
-        typo in the answer file, and healing it by rewriting the server's idea of the password
-        would hide the typo and lock out anything else using that role.
-      * An existing database's owner is never changed. If the database is there and belongs to
-        somebody else, that is reported, not corrected.
+      * An existing role keeps its password. Rewriting it would hide a typo in the answer file
+        and lock out anything else that uses the role.
+      * An existing database keeps its owner. A database owned by somebody else is reported,
+        not corrected.
 
-    Where SQL Server gets its authority for free - Trusted_Connection means the installing admin's
-    own Windows identity IS the permission - PostgreSQL has no such thing, so this needs a second
-    set of credentials that the SQL Server path never asked for.
+    SQL Server can use Trusted_Connection, so the installing admin's Windows identity carries the
+    permission. PostgreSQL has no equivalent, so this script needs a second set of credentials.
 
-    Connects exactly the way the runtime will: sslmode=verify-full against the same root
-    certificate. A success reached over a laxer TLS path would be a success the service cannot
-    repeat, which is the same reason Resolve-NodePilotSqlProbeConnectionString pins the
-    certificate host name on the SQL Server side.
+    Connects the same way the runtime does: sslmode=verify-full against the same root certificate.
+    A success reached over a laxer TLS path would be one the service cannot repeat.
 .PARAMETER PsqlPath
-    psql.exe from the installer payload. The client is bundled with the setup; nothing here
-    assumes PostgreSQL is installed on the NodePilot host.
+    psql.exe from the installer payload. The client ships with the setup; PostgreSQL does not have
+    to be installed on the NodePilot host.
 .OUTPUTS
     An object with Status ('Pass' | 'Skipped' | 'Fail'), Detail and Remediation.
 #>
@@ -68,8 +64,8 @@ if (-not (Test-Path -LiteralPath $RootCertificate -PathType Leaf)) {
         'with sslmode=verify-full and so does this, so there is nothing to verify the server against.')
 }
 
-# Identifiers cannot be parameterised in DDL and these come out of wizard text boxes. Same two
-# layers as the SQL Server side: an allowlist before interpolation, and quoting after it.
+# DDL cannot parameterise identifiers, and these come from wizard text boxes. Two layers, as on
+# the SQL Server side: an allowlist before interpolation, and quoting after it.
 foreach ($pair in @(@{ Name = 'Database'; Value = $Database }, @{ Name = 'Role'; Value = $User })) {
     if ($pair.Value -notmatch '^[A-Za-z_][A-Za-z0-9_]{0,62}$') {
         return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
@@ -82,13 +78,13 @@ $quotedUser = '"' + $User.Replace('"', '""') + '"'
 
 function Invoke-Psql {
     <#
-      -w on every call so psql fails instead of prompting: there is no console behind a hidden
-      Exec, and a prompt there is an installation that hangs until the wizard's timeout.
-      ON_ERROR_STOP so a failing statement is a non-zero exit code rather than a message nobody
-      reads. Same shape as deploy\desktop\Provision-LocalDb.ps1.
+      -w on every call so psql fails instead of prompting; there is no console behind the hidden
+      Exec, so a prompt would hang the installation until the wizard times out. ON_ERROR_STOP
+      turns a failing statement into a non-zero exit code. Same shape as
+      deploy\desktop\Provision-LocalDb.ps1.
 
-      The process plumbing and the connection environment come from Preflight.ps1, so the fix
-      cannot end up connecting differently from the check that decided it was needed.
+      Process plumbing and connection environment come from Preflight.ps1, so this connects the
+      same way as the check that decided the fix was needed.
     #>
     param(
         [Parameter(Mandatory)][string]$ConnectAs,
@@ -108,8 +104,8 @@ function Invoke-Psql {
     )
     if ($Tuples) { $arguments += '-tA' }
 
-    # The statement travels on stdin, not as -c: CREATE ROLE carries the new role's password, and
-    # an argument is readable in the process list by every user on the machine while it runs.
+    # The statement goes over stdin rather than -c: CREATE ROLE carries the new role's password,
+    # and command-line arguments are readable in the process list by every user on the machine.
     return Invoke-NodePilotPsql -PsqlPath $PsqlPath -Arguments $arguments -Sql "$Sql;" `
         -Environment (Get-NodePilotPsqlEnvironment -Secret $Secret -RootCertificate $RootCertificate)
 }
@@ -118,8 +114,8 @@ $superSecret = ConvertFrom-NodePilotSecureString -Value $SuperPassword
 $roleSecret = ConvertFrom-NodePilotSecureString -Value $Password
 
 # --- permission gate: everything below this point mutates ---------------------------------------
-# Connects to 'postgres', which every cluster has - the target database is what we may be about
-# to create, so it cannot be the one we authenticate against.
+# Connects to 'postgres', which every cluster has. The target database may still have to be
+# created, so it cannot authenticate this connection.
 $gate = Invoke-Psql -ConnectAs $SuperUser -Secret $superSecret -Database 'postgres' -Tuples `
     -Sql "SELECT rolsuper OR (rolcreaterole AND rolcreatedb) FROM pg_roles WHERE rolname = current_user"
 if (-not $gate.Succeeded) {
@@ -141,9 +137,9 @@ if (-not $roleExists.Succeeded) {
         "Could not read pg_roles on $HostName`: $($roleExists.Error)")
 }
 if ($roleExists.Output -ne '1') {
-    # The password is a literal here because CREATE ROLE has no parameters. It comes from the
-    # answer file or a wizard field, never from the database, and the quote doubling below is the
-    # same treatment the identifiers get above.
+    # The password is a literal because CREATE ROLE takes no parameters. It comes from the answer
+    # file or a wizard field, never from the database, and quotes are doubled as for the
+    # identifiers above.
     $create = Invoke-Psql -ConnectAs $SuperUser -Secret $superSecret -Database 'postgres' `
         -Sql "CREATE ROLE $quotedUser WITH LOGIN PASSWORD '$($roleSecret.Replace("'", "''"))'"
     if (-not $create.Succeeded) {
@@ -169,9 +165,8 @@ if ($databaseExists.Output -ne '1') {
     $created.Add('database')
 }
 
-# Whatever was or was not created, the thing that matters is whether the SERVICE can now log in
-# and work. Asking as the role itself is the only answer that counts, and it is the same question
-# the readiness page asks.
+# What matters is whether the service can log in and create objects, so the check connects as the
+# role itself rather than as the superuser. The readiness page asks the same question.
 $verify = Invoke-Psql -ConnectAs $User -Secret $roleSecret -Database $Database -Tuples `
     -Sql 'SELECT has_database_privilege(current_user, current_database(), ''CREATE'')'
 if (-not $verify.Succeeded) {

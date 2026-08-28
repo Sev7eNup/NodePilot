@@ -83,7 +83,7 @@ public class MaintenanceWindowEvaluatorTests
         await using var db = TestDbFactory.Create();
         var sat = new DateTime(2026, 6, 6, 0, 0, 0, DateTimeKind.Utc); // Saturday
         sat.DayOfWeek.Should().Be(DayOfWeek.Saturday);
-        // Sat 22:00 -> Sun 02:00
+        // Sat 22:00 to Sun 02:00
         db.MaintenanceWindows.Add(Weekly("Patch", MaintenanceMode.Blackout, DayBit(DayOfWeek.Saturday), 22 * 60, 2 * 60));
         await db.SaveChangesAsync();
         var ev = await BuildAsync(db);
@@ -152,10 +152,9 @@ public class MaintenanceWindowEvaluatorTests
     [Fact]
     public async Task DanglingTargets_ReferencedFolderOrWorkflowDeleted_AreInert()
     {
-        // F8: MaintenanceWindowTarget.TargetId is a soft reference (no FK). The evaluator is a
-        // pure in-memory id matcher, so deleting the referenced folder/workflow must leave the
-        // window inert — RefreshAsync must not choke on the missing referent, and the orphaned
-        // target must never spuriously block a live, unrelated workflow.
+        // MaintenanceWindowTarget.TargetId is a soft reference (no FK). Deleting the referenced
+        // folder or workflow must leave the window inert: RefreshAsync must not choke on the
+        // missing referent, and the orphaned target must never block an unrelated workflow.
         await using var db = TestDbFactory.Create();
         var monday = new DateTime(2026, 6, 1, 10, 0, 0, DateTimeKind.Utc);
         monday.DayOfWeek.Should().Be(DayOfWeek.Monday);
@@ -173,11 +172,13 @@ public class MaintenanceWindowEvaluatorTests
         await db.SaveChangesAsync();
 
         // Delete the referenced folder — the folder window's target is now dangling. (The workflow
-        // window's target id was never a live workflow, i.e. already "deleted" from the matcher's view.)
+        // window's target id was never a live workflow, i.e. already "deleted" from the matcher's
+        // view.)
         db.SharedWorkflowFolders.Remove(doomedFolder);
         await db.SaveChangesAsync();
 
-        // RefreshAsync must load the window with the now-missing folder referent without throwing...
+        // RefreshAsync must load the window with the now-missing folder referent without
+        // throwing...
         var ev = await BuildAsync(db);
 
         // ...and the dangling folder/workflow targets must not block an unrelated live workflow.
@@ -287,9 +288,9 @@ public class MaintenanceWindowEvaluatorTests
         await db.SaveChangesAsync();
         var ev = await BuildAsync(db);
 
-        // 2026-01-05 is a Monday. 01:30 UTC == 02:30 Berlin local -> inside [02:00,03:00).
+        // 2026-01-05 is a Monday. 01:30 UTC is 02:30 Berlin local, inside [02:00,03:00).
         var insideUtc = new DateTime(2026, 1, 5, 1, 30, 0, DateTimeKind.Utc);
-        // 02:30 UTC == 03:30 Berlin local -> outside.
+        // 02:30 UTC is 03:30 Berlin local, outside.
         var outsideUtc = new DateTime(2026, 1, 5, 2, 30, 0, DateTimeKind.Utc);
 
         // A naive UTC evaluator would treat 01:30 as outside the window and fail to block — so
@@ -303,7 +304,7 @@ public class MaintenanceWindowEvaluatorTests
     {
         await using var db = TestDbFactory.Create();
         // The UI sends IANA ids (Intl...timeZone). The evaluator must resolve them even on a
-        // Windows host, where raw FindSystemTimeZoneById historically only knew Windows ids.
+        // Windows host, where raw FindSystemTimeZoneById only resolves Windows ids.
         db.MaintenanceWindows.Add(new MaintenanceWindow
         {
             Id = Guid.NewGuid(), Name = "BerlinIana", Mode = MaintenanceMode.Blackout,
@@ -314,7 +315,8 @@ public class MaintenanceWindowEvaluatorTests
         await db.SaveChangesAsync();
         var ev = await BuildAsync(db);
 
-        // 2026-01-05 Monday, 01:30 UTC == 02:30 Berlin local -> inside; 02:30 UTC == 03:30 -> outside.
+        // 2026-01-05 Monday, 01:30 UTC == 02:30 Berlin local is inside; 02:30 UTC == 03:30 is
+        // outside.
         ev.Evaluate(Guid.NewGuid(), Guid.NewGuid(), new DateTime(2026, 1, 5, 1, 30, 0, DateTimeKind.Utc)).Blocked.Should().BeTrue();
         ev.Evaluate(Guid.NewGuid(), Guid.NewGuid(), new DateTime(2026, 1, 5, 2, 30, 0, DateTimeKind.Utc)).Blocked.Should().BeFalse();
     }
@@ -324,9 +326,8 @@ public class MaintenanceWindowEvaluatorTests
     {
         await using var db = TestDbFactory.Create();
         // A garbage TimeZoneId resolves to neither an IANA nor a Windows zone. RefreshAsync must
-        // compile the window with Tz=null (and log a warning) instead of throwing — and the
-        // evaluator must then treat it as inert. A misconfigured blackout fails OPEN; it must
-        // never trap every workflow forever just because someone fat-fingered the zone.
+        // compile the window with Tz=null and log a warning instead of throwing. A misconfigured
+        // blackout fails open instead of trapping every workflow because the zone id was wrong.
         db.MaintenanceWindows.Add(new MaintenanceWindow
         {
             Id = Guid.NewGuid(), Name = "BadTz", Mode = MaintenanceMode.Blackout,
@@ -429,10 +430,10 @@ public class MaintenanceWindowEvaluatorTests
         await db.SaveChangesAsync();
         var ev = await BuildAsync(db);
 
-        // 02:30 UTC == 03:30 Berlin -> inside [03:00, 04:00) local.
+        // 02:30 UTC == 03:30 Berlin, inside [03:00, 04:00) local.
         ev.Evaluate(Guid.NewGuid(), Guid.NewGuid(), new DateTime(2026, 1, 5, 2, 30, 0, DateTimeKind.Utc)).Blocked
             .Should().BeTrue("02:30 UTC is 03:30 Berlin local — inside");
-        // 03:30 UTC == 04:30 Berlin -> outside. A naive UTC evaluator would block here.
+        // 03:30 UTC == 04:30 Berlin, outside. A naive UTC evaluator would block here.
         ev.Evaluate(Guid.NewGuid(), Guid.NewGuid(), new DateTime(2026, 1, 5, 3, 30, 0, DateTimeKind.Utc)).Blocked
             .Should().BeFalse("03:30 UTC is 04:30 Berlin local — outside");
     }
@@ -469,7 +470,7 @@ public class MaintenanceWindowEvaluatorTests
     public async Task CronAllowOnly_InsideFireWindowAllows_OutsideBlocks()
     {
         await using var db = TestDbFactory.Create();
-        // AllowOnly cron: workflows may run ONLY during [03:00, 04:00) UTC each day.
+        // AllowOnly cron: workflows may run only during [03:00, 04:00) UTC each day.
         db.MaintenanceWindows.Add(Cron("OnlyCronSlot", MaintenanceMode.AllowOnly, "0 0 3 * * ?", 60));
         await db.SaveChangesAsync();
         var ev = await BuildAsync(db);
@@ -485,10 +486,9 @@ public class MaintenanceWindowEvaluatorTests
     public async Task CronAllowOnly_ExhaustedExpression_DoesNotTrapForever()
     {
         await using var db = TestDbFactory.Create();
-        // Quartz supports an optional YEAR field. This expression fired Saturdays 03:00 UTC
-        // in 2020 only — as of 2026 it can never fire again. An exhausted AllowOnly window
-        // must go non-live (like an elapsed OneTime), otherwise it permanently blocks every
-        // targeted workflow (live allow window that is never active).
+        // Quartz supports an optional year field. This expression only fires Saturdays 03:00 UTC
+        // in 2020, so it can never fire again. An exhausted AllowOnly window must go non-live
+        // like an elapsed OneTime, or it permanently blocks every targeted workflow.
         db.MaintenanceWindows.Add(Cron("SatPatching2020", MaintenanceMode.AllowOnly, "0 0 3 ? * SAT 2020", 60));
         await db.SaveChangesAsync();
         var ev = await BuildAsync(db);

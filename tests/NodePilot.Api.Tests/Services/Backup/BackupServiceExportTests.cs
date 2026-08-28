@@ -230,7 +230,8 @@ public sealed class BackupServiceExportTests : IDisposable
         var env = Parse(result.Content);
         var encB64 = env["sections"]!["credentials"]!["items"]![0]!["password"]!["$enc"]!.GetValue<string>();
 
-        // Re-derive the passphrase protector from the file's salt and decrypt — must equal the original.
+        // Re-derive the passphrase protector from the file's salt and decrypt — must equal the
+        // original.
         var salt = Convert.FromBase64String(env["crypto"]!["salt"]!.GetValue<string>());
         var protector = PassphraseSecretProtector.Derive(Passphrase, salt);
         protector.Unprotect(Convert.FromBase64String(encB64)).Should().Be("the-password");

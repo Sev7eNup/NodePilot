@@ -63,13 +63,10 @@ public class WorkflowsControllerTests
     }
 
     /// <summary>
-    /// Refactoring-finding 2.2 (the controller's raw-SQL stats query): the ROW_NUMBER
-    /// raw-SQL replacement for the old correlated subquery must
-    /// PARTITION BY WorkflowId. If the partitioning regresses to a single global window,
-    /// a workflow with many executions would steal the entire top-20 slots and other
-    /// workflows would show empty stats. This test seeds two workflows with very
-    /// different execution counts (30 vs 5) and verifies that each workflow gets its own
-    /// independent windowed slice.
+    /// The ROW_NUMBER raw-SQL stats query must PARTITION BY WorkflowId. If the partitioning
+    /// regresses to a single global window, a workflow with many executions steals the top-20
+    /// slots and other workflows show empty stats. This test seeds two workflows with very
+    /// different execution counts and verifies each workflow gets its own windowed slice.
     /// </summary>
     [Fact]
     public async Task GetAll_RowNumberWindow_PartitionsExecutionsPerWorkflow()
@@ -141,9 +138,8 @@ public class WorkflowsControllerTests
     }
 
     /// <summary>
-    /// Refactoring-finding 2.2: GetAll must not crash when there are no workflows at all —
-    /// the ROW_NUMBER raw-SQL path is only entered when wfIds is non-empty, so this
-    /// exercises the short-circuit branch.
+    /// GetAll must not crash when there are no workflows at all — the ROW_NUMBER raw-SQL
+    /// path is only entered when wfIds is non-empty, so this exercises the short-circuit branch.
     /// </summary>
     [Fact]
     public async Task GetAll_NoWorkflows_ReturnsEmptyList()
@@ -188,9 +184,9 @@ public class WorkflowsControllerTests
     }
 
     /// <summary>
-    /// Refactoring-finding 2.2: a workflow with zero executions must produce a response
-    /// with empty stats (LastExecution=null, TotalCount=0). The ROW_NUMBER query simply
-    /// returns no rows for that workflow id.
+    /// A workflow with zero executions must produce a response with empty stats
+    /// (LastExecution=null, TotalCount=0). The ROW_NUMBER query simply returns no rows
+    /// for that workflow id.
     /// </summary>
     [Fact]
     public async Task GetAll_WorkflowWithoutExecutions_ReturnsZeroStats()
@@ -551,9 +547,8 @@ public class WorkflowsControllerTests
 
         // Assert
         result.Should().BeOfType<NoContentResult>();
-        // Delete now removes the row via an atomic ExecuteDelete (security-audit finding
-        // M-3, a fix for a lock-check/delete race), which bypasses the change tracker —
-        // query the DB directly rather than the (stale) identity-map cache.
+        // Delete removes the row via an atomic ExecuteDelete, which bypasses the change
+        // tracker — query the DB directly rather than the stale identity-map cache.
         (await db.Workflows.AnyAsync(w => w.Id == workflow.Id)).Should().BeFalse();
     }
 
@@ -800,7 +795,7 @@ public class WorkflowsControllerTests
             DefinitionJson = OneNodeDef,
             Version = 1,
             // Edit-lock pre-claimed by the test user — Update requires the caller to hold
-            // the write-lock since the SCOrch-style edit-lock feature shipped.
+            // the write-lock.
             CheckedOutByUserId = TestUserId,
             CheckedOutAt = DateTime.UtcNow,
         };
@@ -1020,11 +1015,10 @@ public class WorkflowsControllerTests
     [Fact]
     public async Task Rollback_HistoricVersionWithInvalidDefinition_Returns400()
     {
-        // Hardening: a historic WorkflowVersion can carry a DefinitionJson that has since become
-        // structurally invalid (schema tightened, required field added, etc.). Rolling forward
-        // would push a definition the engine refuses to load at fire time, surfacing the failure
-        // as a mysterious runtime error instead of an actionable HTTP response. Validation at
-        // rollback time turns that into a clean 400 against the operator who initiated the roll.
+        // A historic WorkflowVersion can carry a DefinitionJson that is no longer structurally
+        // valid (schema tightened, required field added). Rolling it forward would push a
+        // definition the engine refuses to load at fire time. Validating at rollback time turns
+        // that into a clean 400 instead of a runtime failure.
         var db = CreateContext();
         var workflow = new Workflow
         {
@@ -1141,7 +1135,7 @@ public class WorkflowsControllerTests
         await db.SaveChangesAsync();
 
         var h = NewController(db);
-        // No exact-case match for "daily" and two case-insensitive candidates → 409.
+        // No exact-case match for "daily" and two case-insensitive candidates, so this returns 409.
         var result = await h.Workflows.GetContractByName("daily", CancellationToken.None);
         result.Result.Should().BeOfType<ConflictObjectResult>();
     }

@@ -10,7 +10,7 @@ namespace NodePilot.Api.Tests.Controllers;
 /// <see cref="ApiProblems"/> is the single place that shapes RFC7807 error bodies for the API.
 /// Every controller relies on the code/title/traceId contract here, and the legacy-payload
 /// adapter is what the result filter uses to upgrade older string/object error returns. Pin
-/// the builders, the legacy adapter's accept/reject rules, and the status→code/title tables.
+/// the builders, the legacy adapter's accept/reject rules, and the status to code/title tables.
 /// </summary>
 public class ApiProblemsTests
 {

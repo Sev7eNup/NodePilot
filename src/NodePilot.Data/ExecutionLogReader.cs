@@ -7,12 +7,10 @@ namespace NodePilot.Data;
 
 /// <summary>
 /// Default <see cref="IExecutionLogReader"/> for the AI chat assistant's execution-log tools.
-/// Redacts ALL free-text fields (ErrorMessage, Output, ErrorOutput) regardless of the caller's
-/// role — deliberately stricter than the role-based gradient in <c>ExecutionsController</c>,
-/// because these results are sent to an external LLM. Redaction at write time (StepRunner) is
-/// the first line of defense; this is belt-and-braces cover for older rows or regressions.
-/// The ownership check (does this execution actually belong to the authorized workflow?) lives
-/// only here.
+/// Redacts all free-text fields (ErrorMessage, Output, ErrorOutput) regardless of role, since
+/// results go to an external LLM — stricter than <c>ExecutionsController</c>'s role-based
+/// redaction. Also performs the ownership check: whether the execution belongs to the
+/// authorized workflow.
 /// </summary>
 public sealed class ExecutionLogReader(NodePilotDbContext db, IAuditDetailsRedactor redactor) : IExecutionLogReader
 {
@@ -33,8 +31,8 @@ public sealed class ExecutionLogReader(NodePilotDbContext db, IAuditDetailsRedac
 
         var execIds = rows.Select(r => r.Id).ToList();
 
-        // Two batched IN-list queries instead of a sub-select per row — the same provider-portable
-        // pattern as ExecutionsController.GetAll (works identically on Postgres/SqlServer/SQLite test backend).
+        // Two batched IN-list queries instead of a per-row sub-select — same pattern as
+        // ExecutionsController.GetAll, portable across Postgres/SqlServer/SQLite test backend.
         var stepCounts = await db.StepExecutions.AsNoTracking()
             .Where(s => execIds.Contains(s.WorkflowExecutionId))
             .GroupBy(s => s.WorkflowExecutionId)
@@ -67,7 +65,7 @@ public sealed class ExecutionLogReader(NodePilotDbContext db, IAuditDetailsRedac
         Guid workflowId, Guid executionId, CancellationToken ct)
     {
         // Ownership check: both ids are in the filter — an execution belonging to a different
-        // workflow is indistinguishable from here from "does not exist".
+        // workflow is indistinguishable here from "does not exist".
         var exec = await db.WorkflowExecutions.AsNoTracking()
             .Where(e => e.Id == executionId && e.WorkflowId == workflowId)
             .Select(e => new { e.Id, e.Status, e.StartedAt, e.CompletedAt, e.TriggeredBy, e.ErrorMessage })

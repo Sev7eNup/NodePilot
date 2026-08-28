@@ -17,8 +17,8 @@ export default function DocPage({ lang, path }: { lang: Lang; path: string }) {
   const markdown = getContent(lang, path)
   const articleRef = useRef<HTMLElement>(null)
 
-  // Reset scroll on navigation. The document is the scroller (the app's inner-scroller
-  // model would break `scroll-padding-top` for TOC jumps and deep links).
+  // Reset scroll on navigation. The document is the scroller; an inner scroller would break
+  // `scroll-padding-top` for TOC jumps and deep links.
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' })
   }, [path, lang])
@@ -45,8 +45,8 @@ export default function DocPage({ lang, path }: { lang: Lang; path: string }) {
   }
 
   const { prev, next } = neighbors(path)
-  // Content came from the fallback language — say so rather than silently serving
-  // English text under a German nav.
+  // The content came from the fallback language; show a notice rather than serving English
+  // text under a translated navigation.
   const fellBack = !hasTranslation(lang, path)
 
   return (
@@ -129,28 +129,24 @@ function FooterLink({
   )
 }
 
-// Markdown component overrides. Headings keep their rehype-slug `id` natively
-// (we deliberately do NOT render hash anchors here — clicking `#id` would collide
-// with the HashRouter route living in location.hash and navigate to a 404).
-// Section navigation is handled by the right-side <Toc/> via scrollIntoView.
+// Markdown component overrides. Headings keep the `id` from rehype-slug but render no hash
+// anchors: clicking `#id` would collide with the HashRouter route in location.hash and land
+// on a 404. Section navigation goes through the right-side <Toc/> via scrollIntoView.
 //
-// Internal cross-links (`./x`, `../group/page`, `/group/page`) are rewritten to
-// react-router `<Link>` so they use HashRouter client-side navigation instead of
-// a full page load — a plain `<a href="./installation">` would resolve against the
-// document base URL (before the `#`), producing a broken `/installation` path and
-// leaving the user on the current page. See makeLinkComponents() below.
+// Internal cross-links (`./x`, `../group/page`, `/group/page`) become react-router `<Link>`s
+// so they navigate client-side. A plain `<a href="./installation">` resolves against the
+// document base URL before the `#` and produces a broken `/installation` path.
 //
-// The markdown sources are language-neutral: they cross-link by content path only
-// (`../enterprise/folder-rbac`), never by language. The active language is re-applied
-// here, which is what keeps a reader inside their language while following links.
+// The markdown sources cross-link by content path only (`../enterprise/folder-rbac`), never
+// by language, so the active language is re-applied here to keep a reader in their language.
 
 /** Resolve a markdown cross-link href against the current doc path into a nav
  * path like "getting-started/installation". Returns null for non-internal links. */
 function resolveDocHref(href: string, currentPath: string): string | null {
   if (!href) return null
-  // External (http/https), mailto, tel, data — leave to the browser.
+  // External (http/https), mailto, tel, data: leave these to the browser.
   if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//')) return null
-  // In-page anchor (#slug) — handled separately by InternalLink via scroll.
+  // In-page anchor (#slug); InternalLink handles it by scrolling.
   if (href.startsWith('#')) return null
   // Treat the current page path as a directory base ("getting-started/" for
   // "getting-started/introduction"; "" for top-level pages like "triggers").

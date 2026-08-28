@@ -118,7 +118,7 @@ test.describe('Diagnostics / Support-Log (Teil 37)', () => {
     await expect(page.getByText('the started one')).toBeVisible({ timeout: 15_000 });
 
     // The first <select> in the filter bar is the EventType dropdown (option values are the
-    // raw codes). Select STEP_FAILED → the query string carries eventType=STEP_FAILED.
+    // raw codes). Select STEP_FAILED -> the query string carries eventType=STEP_FAILED.
     await page.getByRole('combobox').first().selectOption('STEP_FAILED');
 
     await expect.poll(() => seenEventTypeParams.includes('STEP_FAILED'), { timeout: 10_000 }).toBe(true);

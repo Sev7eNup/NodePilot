@@ -57,7 +57,7 @@ function renderSection() {
   };
 }
 
-/** Header of the collapsible outbound-proxy block. Its accessible name carries the summary too. */
+/** Header of the collapsible outbound-proxy block. Its accessible name also carries the summary. */
 function proxyHeader() {
   return screen.getByRole('button', { name: /outbound.?proxy/i });
 }
@@ -106,7 +106,7 @@ describe('IntegrationsSection — SMTP card', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /speichern|save/i })[0]);
 
     await waitFor(() => {
-      // The save body must echo "__unchanged__" for the masked password — operators didn't retype it.
+      // The masked password was not retyped, so the save body echoes "__unchanged__".
 
       const body = putBody as any;
       expect(body?.Host).toBe('new-host');
@@ -124,9 +124,8 @@ describe('IntegrationsSection — SMTP card', () => {
     renderSection();
     await waitFor(() => expect(screen.getByDisplayValue('mail.example.com')).toBeInTheDocument());
 
-    // EnableSsl is the only checkbox in the SMTP card. Saved with the default-true
-    // snapshot it must be checked. After toggling it off and saving, the PUT body
-    // must carry EnableSsl=false.
+    // EnableSsl is the only checkbox in the SMTP card. With the default-true snapshot it
+    // renders checked, and after toggling it off the PUT body carries EnableSsl=false.
     const smtpEnableSsl = screen.getAllByRole('checkbox')[0] as HTMLInputElement;
     expect(smtpEnableSsl.checked).toBe(true);
 
@@ -149,7 +148,7 @@ describe('IntegrationsSection — SMTP card', () => {
     ));
 
     renderSection();
-    // The warning string starts with "Warnung:" (DE) / "Warning:" (EN); match both.
+    // The warning string starts with "Warnung:" in German and "Warning:" in English.
     await waitFor(() => expect(screen.getByText(/Warnung:|Warning:/i)).toBeInTheDocument());
   });
 
@@ -167,7 +166,7 @@ describe('IntegrationsSection — SMTP card', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /speichern|save/i })[0]);
 
     await waitFor(() => expect(screen.getByText(/Konflikt|Conflict/i)).toBeInTheDocument());
-    // Server's "wins" value is rendered in the diff.
+    // The server value appears in the conflict diff.
     expect(screen.getByText(/server-wins/)).toBeInTheDocument();
   });
 });
@@ -203,7 +202,7 @@ describe('IntegrationsSection — LLM card', () => {
       expect(body?.Profiles).toHaveLength(1);
       expect(body.Profiles[0].Id).toBe('openai');
       expect(body.Profiles[0].Model).toBe('gpt');
-      // apiKey was null in the snapshot → keep-mode doesn't apply → null sent unchanged.
+      // apiKey was null in the snapshot, so keep-mode does not apply and null is sent as is.
       expect(body.Profiles[0].ApiKey).toBeNull();
       expect(body.Profiles[0].EnableToolCalling).toBe(false);
       expect(body.Profiles[0].ToolCallMaxDepth).toBe(4);
@@ -217,8 +216,8 @@ describe('IntegrationsSection — LLM card', () => {
     renderSection();
     await waitFor(() => expect(screen.getByDisplayValue('http://127.0.0.1:1234/v1')).toBeInTheDocument());
 
-    // Direct connection is what almost every installation runs: the block stays folded and says
-    // so in its header instead of parking an inert select on the card.
+    // A direct connection is the common case, so the block stays folded and states the mode in
+    // its header instead of showing an inert select on the card.
     const header = proxyHeader();
     expect(header).toHaveAttribute('aria-expanded', 'false');
     expect(header).toHaveTextContent(/kein proxy|no proxy/i);
@@ -240,8 +239,8 @@ describe('IntegrationsSection — LLM card', () => {
 
     renderSection();
 
-    // The snapshot arrives after the first render, so the open state has to follow the data —
-    // a plain useState(initial) would leave a configured proxy folded away.
+    // The snapshot arrives after the first render, so the open state has to follow the data.
+    // A plain useState(initial) would leave a configured proxy folded away.
     await waitFor(() => expect(proxyHeader()).toHaveAttribute('aria-expanded', 'true'));
     expect(proxyHeader()).toHaveTextContent('http://proxy.corp.local:8080');
     expect(screen.getByDisplayValue('http://proxy.corp.local:8080')).toBeInTheDocument();
@@ -257,14 +256,13 @@ describe('IntegrationsSection — LLM card', () => {
     renderSection();
     await waitFor(() => expect(screen.getByDisplayValue('http://127.0.0.1:1234/v1')).toBeInTheDocument());
 
-    // Off: no address field at all — an inert-but-visible input is what gets filled in and then
-    // debugged for an hour.
+    // In off mode there is no address field, so nobody can fill in a value that is ignored.
     expect(screen.queryByPlaceholderText('http://proxy.firma.local:8080')).not.toBeInTheDocument();
 
     fireEvent.click(proxyHeader());
     const mode = screen.getByLabelText(/Modus|^Mode$/i) as HTMLSelectElement;
     fireEvent.change(mode, { target: { value: 'system' } });
-    // System mode takes the OS configuration — still no address field.
+    // System mode uses the OS configuration, so there is still no address field.
     expect(screen.queryByPlaceholderText('http://proxy.firma.local:8080')).not.toBeInTheDocument();
 
     fireEvent.change(mode, { target: { value: 'custom' } });
@@ -319,7 +317,8 @@ describe('IntegrationsSection — LLM card', () => {
 
     clickLlmSave();
 
-    // The delayed second invalidation (IOptionsMonitor grace) is pinned in useAiCapabilities.test.
+    // The delayed second invalidation that waits out the IOptionsMonitor reload is covered in
+    // useAiCapabilities.test.
     await waitFor(() =>
       expect(invalidate).toHaveBeenCalledWith({ queryKey: ['ai-knowledge-capabilities'] }));
   });
@@ -387,7 +386,7 @@ describe('IntegrationsSection — LLM card', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Profil hinzufügen|Add profile/i }));
 
-    // The new profile becomes the selected one; rename it.
+    // The new profile becomes the selected one, so this renames it.
     const nameInput = await screen.findByDisplayValue(/Neues Profil|New profile/i);
     fireEvent.change(nameInput, { target: { value: 'Local Ollama' } });
 
@@ -398,7 +397,7 @@ describe('IntegrationsSection — LLM card', () => {
       const body = putBody as any;
       expect(body.Profiles).toHaveLength(2);
       expect(body.Profiles.map((p: { Id: string }) => p.Id)).toContain('openai');
-      // The id is slugged from the name at creation and stays put through the later rename.
+      // The id is slugged from the name at creation and stays the same through a later rename.
       const added = body.Profiles.find((p: { Id: string }) => p.Id !== 'openai');
       expect(added.Id).toMatch(/^[a-z0-9][a-z0-9-]*$/);
       expect(added.Name).toBe('Local Ollama');

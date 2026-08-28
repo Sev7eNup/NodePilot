@@ -7,7 +7,7 @@ namespace NodePilot.Api.Hosting;
 /// <summary>
 /// Hot-reload companion to the cold-start <c>ThreadPool.SetMinThreads</c> prewarm in
 /// <c>Program.cs</c>. The boot call tunes the pool once from the bootstrap config so burst
-/// workloads don't stall before this service even runs; this hosted service additionally
+/// workloads do not stall during hosted-service startup; this service additionally
 /// re-applies <c>Threading:MinWorkerThreads</c> / <c>Threading:MinIoCompletionThreads</c>
 /// from the <em>live</em> app configuration on start and whenever the config reloads (an
 /// Admin-Settings-UI save writes <c>appsettings.runtime.json</c> with

@@ -107,7 +107,7 @@ public static class DbAdminQueryBuilder
 
     /// <summary>
     /// Coerces a JSON <see cref="JsonElement"/> to the given CLR type.
-    /// Throws <see cref="ArgumentException"/> on type mismatch (caller → 400).
+    /// Throws <see cref="ArgumentException"/> on type mismatch; the caller turns this into a 400.
     /// </summary>
     public static object? CoerceJsonValue(JsonElement element, Type targetType)
     {

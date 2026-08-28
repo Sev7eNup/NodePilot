@@ -9,10 +9,8 @@ namespace NodePilot.Api.Security;
 /// behind <c>WorkflowsControllerBase.RequireWorkflowAccessAsync</c> and every controller that
 /// doesn't inherit that base (<c>ExecutionsController</c>, <c>AiChatController</c>,
 /// <c>WorkflowTelemetryController</c>, <c>SharedWorkflowFoldersController</c>,
-/// <c>SharedFolderPermissionsController</c>, <c>ExecutionDebugController</c>). Previously
-/// several of those carried verbatim or subtly-diverging copies; the copies drifted into
-/// review debt, so the gate lives here once — no controller hand-rolls the
-/// read-mask-then-op sequence anymore.
+/// <c>SharedFolderPermissionsController</c>, <c>ExecutionDebugController</c>). Centralizing the
+/// gate keeps the read-mask-then-operation sequence consistent across controllers.
 ///
 /// <para>Semantics: returns <c>null</c> when access is permitted (caller continues the
 /// action). Returns 404 when the caller cannot even read the folder — masking existence so

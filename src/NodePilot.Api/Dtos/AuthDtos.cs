@@ -2,7 +2,8 @@ namespace NodePilot.Api.Dtos;
 
 /// <summary>
 /// Login payload. The <c>ToString</c> override masks the password so that any accidental
-/// structured-logging call that destructures this record (e.g. <c>_logger.Log("req={Req}", req)</c>,
+/// structured-logging call that destructures this record (e.g. <c>_logger.Log("req={Req}",
+/// req)</c>,
 /// or a future <c>UseSerilogRequestLogging</c> middleware that captures bodies) cannot leak it.
 /// </summary>
 public record LoginRequest(string Username, string Password)

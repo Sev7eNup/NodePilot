@@ -5,9 +5,9 @@ import { useDesignStore } from '../../stores/designStore';
 
 /**
  * The AtelierThemeToggle switches the designer between the Atelier design language and the
- * classic look. It must stay a `role="switch"` BUTTON (never a checkbox input — a global
- * checkbox in the editor header gets caught by e2e specs using `getByRole('checkbox').first()`)
- * and must reflect + drive `designStore.designerTheme`.
+ * classic look. It stays a `role="switch"` button rather than a checkbox input, so that e2e
+ * specs using `getByRole('checkbox').first()` do not match it in the editor header, and it
+ * both reflects and drives `designStore.designerTheme`.
  */
 describe('AtelierThemeToggle', () => {
   beforeEach(() => {

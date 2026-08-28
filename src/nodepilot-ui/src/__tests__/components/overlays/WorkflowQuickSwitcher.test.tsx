@@ -85,7 +85,7 @@ describe('readRecentWorkflows / pushRecentWorkflow', () => {
   it('capsAt10Entries', () => {
     for (let i = 0; i < 15; i++) pushRecentWorkflow(`id-${i}`);
     expect(readRecentWorkflows()).toHaveLength(10);
-    // newest still at head, oldest five evicted
+    // The newest id stays at the head and the oldest five are evicted.
     expect(readRecentWorkflows()[0]).toBe('id-14');
   });
 
@@ -145,7 +145,7 @@ describe('WorkflowQuickSwitcher', () => {
     await waitFor(() => expect(screen.getByText('Alpha workflow')).toBeInTheDocument());
     fireEvent.click(screen.getByText('Alpha workflow'));
 
-    // No currentId in URL (non-editor route) → navigate with undefined state
+    // The URL holds no currentId on a non-editor route, so navigate gets undefined state.
     expect(navigateMock).toHaveBeenCalledWith(`/workflows/${MOCK[0].id}`, { state: undefined });
     expect(readRecentWorkflows()).toEqual([MOCK[0].id]);
   });
@@ -160,7 +160,7 @@ describe('WorkflowQuickSwitcher', () => {
     fireEvent.keyDown(input, { key: 'ArrowDown' });
     fireEvent.keyDown(input, { key: 'Enter' });
 
-    // No currentId in URL (non-editor route) → navigate with undefined state
+    // The URL holds no currentId on a non-editor route, so navigate gets undefined state.
     expect(navigateMock).toHaveBeenCalledWith(`/workflows/${MOCK[1].id}`, { state: undefined });
   });
 
@@ -193,7 +193,7 @@ describe('WorkflowQuickSwitcher', () => {
     const allRows = screen.getAllByRole('button').filter((b) =>
       b.textContent?.includes('workflow')
     );
-    // Gamma should appear before Alpha/Beta in the list since it's the recent.
+    // Gamma is the recent workflow, so it sorts ahead of Alpha and Beta.
     expect(allRows[0].textContent).toContain('Gamma workflow');
   });
 });

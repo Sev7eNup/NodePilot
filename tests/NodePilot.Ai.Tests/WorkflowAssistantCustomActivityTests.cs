@@ -7,7 +7,10 @@ using Xunit;
 
 namespace NodePilot.Ai.Tests;
 
-/// <summary>The chat assistant surfaces enabled custom-activity facts (name, remote, inputs/outputs) in its system prompt.</summary>
+/// <summary>
+/// The chat assistant lists enabled custom activities (name, remote, inputs/outputs)
+/// in its system prompt.
+/// </summary>
 public class WorkflowAssistantCustomActivityTests
 {
     [Fact]

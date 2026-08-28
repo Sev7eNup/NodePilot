@@ -159,7 +159,7 @@ describe('aiChatStore', () => {
       ]);
 
       const stored = persisted().messagesByThread[aiChatFullKey(scope, id)];
-      expect(stored[0].proposal?.definitionJson).toBe('');            // superseded → stub
+      expect(stored[0].proposal?.definitionJson).toBe('');            // superseded, becomes a stub
       expect(stored[0].proposal?.summary).toBe('s');                  // metadata survives
       expect(stored[2].proposal?.definitionJson).toBe('');
     });
@@ -190,7 +190,7 @@ describe('aiChatStore', () => {
     });
 
     it('does NOT persist threads of unsaved (__new__) workflows', () => {
-      const newScope = aiChatScopeKey('u1', undefined); // → u1::__new__
+      const newScope = aiChatScopeKey('u1', undefined); // -> u1::__new__
       const id = useAiChatStore.getState().newThread(newScope, 'Chat 1');
       useAiChatStore.getState().updateMessages(newScope, id, () => [{ role: 'user', content: 'hi' }]);
 

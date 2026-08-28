@@ -57,10 +57,8 @@ public class ScorchActivityMapperTests
     }
 
     /// <summary>
-    /// The classifier used to read a SPACE as command-line evidence, so an ordinary path under
-    /// "C:\Program Files\" without separate Parameters became a runScript — which is how a whole
-    /// runbook import came back with its program calls turned into script nodes. `filePath` is
-    /// handed to the process as a literal and only has to be fully qualified, never space-free.
+    /// Paths with spaces or quotes remain program calls because <c>filePath</c> is passed to the
+    /// process as a fully qualified literal.
     /// </summary>
     [Theory]
     [InlineData(@"C:\Program Files\Tools\backup.exe")]
@@ -94,8 +92,10 @@ public class ScorchActivityMapperTests
 
     /// <summary>
     /// The whole point of the builder: the export already says whether an activity is an embedded
-    /// script or an external call, so the node type comes from the type name and is never overridden
-    /// by the shape of the value. Two earlier heuristics did override it — first a space (every path
+    /// script or an external call, so the node type comes from the type name and is never
+    /// overridden
+    /// by the shape of the value. Two earlier heuristics did override it — first a space (every
+    /// path
     /// under "C:\Program Files\"), then a shell metacharacter, which fired on the '&amp;' of an
     /// ordinary powershell -Command call and on SCOrch's own field separator — and turned program
     /// calls into script nodes across whole imports.
@@ -117,7 +117,8 @@ public class ScorchActivityMapperTests
 
     /// <summary>
     /// A value with no identifiable executable at its head still has to run. cmd.exe expresses
-    /// pipes, redirects and chaining, and it is how SCOrch runs a command-line-mode activity itself —
+    /// pipes, redirects and chaining, and it is how SCOrch runs a command-line-mode activity itself
+    /// —
     /// so the call stays a program call AND keeps working.
     /// </summary>
     [Theory]
@@ -156,7 +157,8 @@ public class ScorchActivityMapperTests
     }
 
     /// <summary>
-    /// Verified against a real export: in command-line mode SCOrch writes "&lt;launcher&gt; | &lt;command&gt;",
+    /// Verified against a real export: in command-line mode SCOrch writes "&lt;launcher&gt; |
+    /// &lt;command&gt;",
     /// where the bar separates the two fields. As a pipe "cmd /C | attrib" would not even be valid
     /// shell syntax; read as a pipe it degraded the activity to a script node.
     /// </summary>
@@ -180,7 +182,8 @@ public class ScorchActivityMapperTests
     }
 
     /// <summary>A genuine pipe is not a separator: the head is a program, not a launcher, so the
-    /// value is left intact and runs through the cmd.exe wrap — which is what a pipe needs.</summary>
+    /// value is left intact and runs through the cmd.exe wrap — which is what a pipe
+    /// needs.</summary>
     [Fact]
     public void Map_RunProgram_DoesNotMistakeARealPipeForTheSeparator()
     {
@@ -211,13 +214,17 @@ public class ScorchActivityMapperTests
     }
 
     /// <summary>
-    /// A path that still holds a template placeholder resolves only at run time, so there is nothing
+    /// A path that still holds a template placeholder resolves only at run time, so there is
+    /// nothing
     /// to judge statically — complaining about it would put a false warning on every SCOrch call
-    /// whose program path came from a runbook variable. This is the real export's robocopy activity.
+    /// whose program path came from a runbook variable. This is the real export's robocopy
+    /// activity.
     /// </summary>
     /// <remarks>
-    /// The raw SCOrch marker is the case that actually occurs: the mapper runs BEFORE Published-Data
-    /// is rewritten to <c>{{…}}</c>, so a program path built from a runbook variable still looks like
+    /// The raw SCOrch marker is the case that actually occurs: the mapper runs BEFORE
+    /// Published-Data
+    /// is rewritten to <c>{{…}}</c>, so a program path built from a runbook variable still looks
+    /// like
     /// <c>\`d.T.~Vb/{GUID}\`d.T.~Vb/\robocopy</c> here. Both forms must be exempt.
     /// </remarks>
     [Theory]
@@ -260,7 +267,8 @@ public class ScorchActivityMapperTests
     }
 
     /// <summary>
-    /// The engine launches through CreateProcess — useShellExecute is blocked by configuration — and
+    /// The engine launches through CreateProcess — useShellExecute is blocked by configuration —
+    /// and
     /// that cannot start a script: Win32 193. A .ps1 left in filePath is a node that can never run,
     /// and routing it through cmd is worse, because .PS1 has no association and the launch falls
     /// through to an editor that sits there until the step times out.
@@ -357,7 +365,8 @@ public class ScorchActivityMapperTests
     /// <summary>
     /// The SCOrch activity carries its own relay, sender and TLS flag; emailNotification reads none
     /// of them, because NodePilot's SMTP settings are installation-wide. Writing them onto the node
-    /// produced four keys the engine ignores, so the imported mail silently went somewhere else than
+    /// produced four keys the engine ignores, so the imported mail silently went somewhere else
+    /// than
     /// the runbook said. They are now reported in the note instead of faked in the config.
     /// </summary>
     [Fact]
@@ -523,7 +532,8 @@ public class ScorchActivityMapperTests
         result.Config["provider"].Should().Be("sqlserver");
         result.Config["query"].Should().Be("SELECT TOP 1 * FROM Orders");
 
-        // The SCOrch connection string routinely embeds a password, and SqlActivity requires a named
+        // The SCOrch connection string routinely embeds a password, and SqlActivity requires a
+        // named
         // connectionRef unless the deployment opts out — so copying it would both persist a secret
         // in the workflow definition and fail on a default install.
         result.Config.Should().NotContainKey("connectionString");

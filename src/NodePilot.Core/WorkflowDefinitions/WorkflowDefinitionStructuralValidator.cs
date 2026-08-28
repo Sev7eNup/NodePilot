@@ -6,9 +6,9 @@ namespace NodePilot.Core.WorkflowDefinitions;
 
 public static class WorkflowDefinitionStructuralValidator
 {
-    // Visual-only node types — no executor, no entry in ActivityCatalog. The designer
-    // creates them for documentation/grouping, the engine ignores them during traversal.
-    // We still require id + data to be well-formed so they don't corrupt the JSON shape.
+    // Visual-only node types: no executor, no entry in ActivityCatalog. The designer creates
+    // them for documentation and grouping; the engine ignores them during traversal. Id and
+    // data must still be well-formed so they don't corrupt the JSON shape.
     private static readonly HashSet<string> _annotationNodeTypes =
         new(StringComparer.OrdinalIgnoreCase) { "stickyNote", "group" };
 

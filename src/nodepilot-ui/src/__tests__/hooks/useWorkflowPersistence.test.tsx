@@ -3,10 +3,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-// Control the react-router `useBlocker` return value per test. The hook owns the in-app
-// navigation discard-confirm; WorkflowEditorPage.test.tsx stubs useBlocker to 'unblocked'
-// (it runs under MemoryRouter, which has no data router), so the blocked→confirm→proceed/reset
-// branch is exercised here instead.
+// Controls the react-router `useBlocker` return value per test. The hook owns the discard
+// confirm for in-app navigation, and WorkflowEditorPage.test.tsx pins useBlocker to
+// 'unblocked', so the blocked, confirm and proceed/reset branch is covered here.
 const routerMock = vi.hoisted(() => ({
   blocker: { state: 'unblocked' as string, proceed: vi.fn(), reset: vi.fn() },
 }));
@@ -15,7 +14,7 @@ vi.mock('react-router', async (importOriginal) => {
   return { ...actual, useBlocker: () => routerMock.blocker };
 });
 
-// Store-driven confirm replaces the native confirm(); default-resolve true (user confirms).
+// The store-driven confirm replaces the native confirm() and resolves true by default.
 vi.mock('../../stores/confirmStore', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../../stores/confirmStore')>();
   return { ...mod, confirmDialog: vi.fn().mockResolvedValue(true) };
@@ -185,7 +184,7 @@ describe('useWorkflowPersistence — revision-safe requests', () => {
 
 describe('useWorkflowPersistence — useBlocker discard guard', () => {
   beforeEach(() => {
-    // Fresh spies + a blocked navigation for each test; the effect fires on mount.
+    // Fresh spies and a blocked navigation per test; the effect fires on mount.
     routerMock.blocker = { state: 'blocked', proceed: vi.fn(), reset: vi.fn() };
     vi.mocked(confirmDialog).mockClear();
   });
@@ -195,7 +194,7 @@ describe('useWorkflowPersistence — useBlocker discard guard', () => {
 
   it('confirming the discard proceeds with the blocked navigation', async () => {
     renderPersistence();
-    // confirmDialog resolves async — the blocker stays 'blocked' until proceed() is called.
+    // confirmDialog resolves asynchronously, so the blocker stays 'blocked' until proceed().
     await waitFor(() => expect(routerMock.blocker.proceed).toHaveBeenCalledTimes(1));
     expect(confirmDialog).toHaveBeenCalledTimes(1);
     expect(routerMock.blocker.reset).not.toHaveBeenCalled();

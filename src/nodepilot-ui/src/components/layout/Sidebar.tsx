@@ -18,9 +18,8 @@ import { BrandLogo } from '../BrandLogo';
 import type { AppLang } from '../../i18n';
 import { navGroups, type BadgeKind } from '../../lib/navigation';
 
-// Icon per skin id (+ system). Falls back to Monitor for any future skin without
-// an explicit icon. Options/cycle are derived from the THEMES registry so a new
-// scheme appears in the quick-toggle + popover automatically.
+// Icon per skin id, plus system. Options and cycle order come from the THEMES registry so a
+// new skin shows up in the quick toggle and the popover without further wiring.
 const THEME_ICONS: Record<string, CarbonIconType> = { light: Light, dark: Asleep, 'dark-lila': ColorPalette, 'light-grey': Contrast, 'dark-bank': BankVault, 'light-bank': Building, 'dark-nebula': Star, system: Screen };
 
 const THEME_OPTIONS: { value: Theme; icon: CarbonIconType; key: string }[] = [
@@ -36,8 +35,8 @@ const LANG_OPTIONS: { value: AppLang; label: string }[] = [
 ];
 
 /** Trailing count badge for a nav item. Neutral for totals, accent for running activity,
- *  warning for alerts, and a static pulsing pill for the live-ops entry. Renders nothing
- *  when the count is unavailable (loading / role-gated) or a zero activity count. */
+ *  warning for alerts, and a pulsing pill for the live-ops entry. Renders nothing when the
+ *  count is unavailable (loading or role-gated) or an activity count is zero. */
 function NavBadge({ kind, badges, liveLabel }: { kind: BadgeKind; badges: SidebarBadges; liveLabel: string }) {
   if (kind === 'live') {
     return (
@@ -52,14 +51,14 @@ function NavBadge({ kind, badges, liveLabel }: { kind: BadgeKind; badges: Sideba
       : kind === 'machines' ? badges.machines
         : badges.alerts;
   if (value == null) return null;
-  // Activity counters (running / alerts) hide at zero — a "0" there is noise, not signal.
+  // Activity counters (running, alerts) hide at zero, where a badge would carry no signal.
   if ((kind === 'running' || kind === 'alerts') && value <= 0) return null;
   const cls = kind === 'running' ? ' is-running' : kind === 'alerts' ? ' is-alerts' : '';
   return <span className={`np-nav-badge${cls}`}>{value}</span>;
 }
 
-/** Gradient avatar tile. Size/shape come from the caller so the same treatment serves the
- *  42px footer panel and the small collapsed-rail avatar. */
+/** Gradient avatar tile. Size and shape come from the caller so the same treatment serves
+ *  both the footer panel and the smaller collapsed-rail avatar. */
 function UserAvatar({ username, className }: { username: string; className: string }) {
   return (
     <div className="relative shrink-0 select-none">
@@ -78,11 +77,11 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
   const { collapsed, setCollapsed } = useSidebarStore();
   const isMobile = useIsMobile();
   const badges = useSidebarBadges();
-  // Gates the AI-Chat nav entry: hidden until both master switches (Llm + AiKnowledge) are on.
+  // Gates the AI-Chat nav entry: hidden until both master switches (Llm and AiKnowledge) are on.
   const { data: aiCaps } = useAiCapabilities();
 
-  // Inside the drawer the icon-only rail makes no sense — always show the full layout.
-  // The persisted `collapsed` preference only applies to the static desktop sidebar.
+  // The drawer always shows the full layout; the persisted `collapsed` preference applies
+  // only to the static desktop sidebar.
   const effectiveCollapsed = collapsed && !isMobile;
 
   const visibleGroups = useMemo(
@@ -97,7 +96,7 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
     [role, aiCaps],
   );
 
-  // Live nav filter: matches the translated label. Only active in the full (non-rail) layout.
+  // Live nav filter matching the translated label. Active only in the full (non-rail) layout.
   const [filter, setFilter] = useState('');
   const query = filter.trim().toLowerCase();
   const filteredGroups = useMemo(() => {
@@ -113,7 +112,7 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
   const accountRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   // Set when Ctrl-K expands a collapsed rail, so the effect below focuses the search once
-  // the input has actually rendered.
+  // the input has rendered.
   const pendingSearchFocus = useRef(false);
 
   useEffect(() => {
@@ -126,7 +125,7 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
     return () => document.removeEventListener('mousedown', handler);
   }, [themeOpen, accountOpen]);
 
-  // Global Ctrl/Cmd-K → focus the sidebar search, expanding the rail first if collapsed.
+  // Global Ctrl/Cmd-K focuses the sidebar search, expanding the rail first if collapsed.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
@@ -143,7 +142,7 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
     return () => globalThis.removeEventListener('keydown', onKey);
   }, [collapsed, isMobile, setCollapsed]);
 
-  // Focus the search after a Ctrl-K expanded the rail (input only exists once expanded).
+  // Focus the search after Ctrl-K expanded the rail; the input exists only once expanded.
   useEffect(() => {
     if (!effectiveCollapsed && pendingSearchFocus.current) {
       pendingSearchFocus.current = false;
@@ -170,7 +169,7 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
           : `${effectiveCollapsed ? 'w-14' : 'np-sidebar-expanded'} shrink-0`
       }`}
     >
-      {/* Header: brand mark + wordmark + ENTERPRISE / collapse (desktop) or close (drawer) */}
+      {/* Header: brand mark, wordmark, edition badge, and collapse (desktop) or close (drawer) */}
       {effectiveCollapsed ? (
         <div className="flex flex-col items-center gap-2 px-2 pt-4 pb-3">
           <div className="relative">
@@ -225,8 +224,8 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
         </div>
       )}
 
-      {/* Search — live-filters the nav by label; Ctrl/Cmd-K focuses it. Hidden in the rail.
-          Spacing mirrors the mock: 20px below the brand, 16px above the nav. */}
+      {/* Search filters the nav by label as you type; Ctrl/Cmd-K focuses it. Hidden in the
+          rail layout. */}
       {!effectiveCollapsed && (
         <div className="px-[18px] pt-5 pb-4">
           <div className="relative">
@@ -250,8 +249,8 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
         </div>
       )}
 
-      {/* Nav groups — scrollable so a short viewport (phone in the off-canvas drawer)
-          never pushes the bottom action area off-screen; the bottom area stays pinned. */}
+      {/* Nav groups scroll on their own so a short viewport (phone in the off-canvas drawer)
+          cannot push the bottom action area off-screen; that area stays pinned. */}
       <nav className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden pb-[22px] ${effectiveCollapsed ? 'px-2 pt-2' : 'px-3 pt-1'}`}>
         {filteredGroups.map((group, gi) => (
           <div key={group.labelKey} className={effectiveCollapsed ? (gi > 0 ? 'mt-2' : '') : (gi > 0 ? 'mt-[18px]' : 'mt-1.5')}>
@@ -296,8 +295,8 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
         )}
       </nav>
 
-      {/* Bottom area — extra bottom padding clears the phone's system navigation bar
-          (env(safe-area-inset-bottom); 0 on desktop) so the controls aren't hidden. */}
+      {/* Bottom area. The extra bottom padding clears the phone's system navigation bar
+          (env(safe-area-inset-bottom), zero on desktop) so the controls stay visible. */}
       <div className={`border-t border-outline-variant/60 pt-3 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] ${effectiveCollapsed ? 'px-2' : 'px-3'}`}>
         {effectiveCollapsed ? (
           <div className="space-y-1">
@@ -338,8 +337,8 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
         ) : (
           <>
             {username && (
-              // Wrapper is position:relative but NOT overflow-hidden so the upward "…" popover
-              // isn't clipped; the .np-profile-card supplies the panel styling.
+              // Wrapper is position:relative and not overflow-hidden, so the popover that opens
+              // upward is not clipped. Panel styling comes from .np-profile-card.
               <div ref={accountRef} className="relative">
                 <div className="np-profile-card">
                   <UserAvatar username={username} className="w-[42px] h-[42px] rounded-[13px] text-sm" />
@@ -381,7 +380,7 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
             )}
 
             <div className="flex items-center gap-2 mt-[9px]">
-              {/* Theme dropdown — icon-only trigger, popover opens upward */}
+              {/* Theme dropdown with an icon-only trigger; the popover opens upward. */}
               <div ref={themeRef} className="relative">
                 <button
                   title={t(`nav:${activeThemeKey}`)}

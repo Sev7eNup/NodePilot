@@ -7,18 +7,16 @@ namespace NodePilot.Api.Services;
 /// Process-wide cache of each workflow's extracted child-workflow references, keyed by the
 /// workflow's <c>UpdatedAt</c>.
 /// <para>
-/// Exists for one reason: the Live-Ops snapshot (<c>GET /api/operations/graph</c>) derives the
-/// workflow call graph, and deriving it from scratch meant selecting every workflow's
-/// <c>DefinitionJson</c> and JSON-parsing it — on a 5 s poll, from every open browser, on every
-/// page. Definitions are unbounded text including all inline scripts (21–42 KB apiece in the repo's
-/// own example set), so a 24-workflow board moved and parsed roughly 750 KB per poll to answer a
-/// question whose answer only changes when somebody saves a workflow. This is the same lesson the
-/// dashboard query already learned; it just reaches the call graph instead of trigger metadata.
+/// The Live-Ops snapshot (<c>GET /api/operations/graph</c>) derives the workflow call graph on a
+/// 5 s poll, from every open browser, on every page. Deriving it from scratch means loading and
+/// JSON-parsing every workflow's <c>DefinitionJson</c>, which is unbounded text including all
+/// inline scripts — an expensive way to answer a question whose answer only changes when
+/// somebody saves a workflow.
 /// </para>
 /// <para>
-/// Cached are <see cref="WorkflowCallSite"/>s, NOT resolved edges — a name-based reference resolves
-/// against every other workflow's name, so renaming a sibling changes the edge without touching
-/// this workflow's definition. Resolution therefore stays per-request in
+/// Cached are <see cref="WorkflowCallSite"/>s, not resolved edges — a name-based reference
+/// resolves against every other workflow's name, so renaming a sibling changes the edge without
+/// touching this workflow's definition. Resolution therefore stays per-request in
 /// <see cref="WorkflowCallGraphBuilder.BuildFromCallSites"/>, which is dictionary lookups over a
 /// handful of refs.
 /// </para>
@@ -31,30 +29,33 @@ namespace NodePilot.Api.Services;
 public sealed class WorkflowCallSiteCache
 {
     /// <summary>
-    /// Entry ceiling. Deleted workflows leave their entry behind — nothing tells this cache about a
-    /// delete, and asking would cost the very query it exists to avoid — so the map needs some bound.
+    /// Entry ceiling. Deleted workflows leave their entry behind — nothing tells this cache about
+    /// a delete, and asking would cost the very query it exists to avoid — so the map needs
+    /// a bound.
     /// <para>
-    /// Overflow evicts the OLDEST entries down to <see cref="EvictTo"/>; it must never drop the whole
-    /// map. A global clear turns one workflow past the ceiling into permanent thrash: every poll finds
-    /// everything stale, reloads every definition, and wipes the lot again on the way out — the exact
-    /// state this cache exists to prevent, now with extra work on top. The headroom between ceiling and
-    /// target means a board sitting just above the ceiling still keeps most of its entries.
+    /// Overflow evicts the oldest entries down to <see cref="EvictTo"/>; it must never drop the
+    /// whole map. A global clear would turn one workflow past the ceiling into permanent thrash:
+    /// every poll finds everything stale, reloads every definition, and wipes the lot again on the
+    /// way out. The headroom between ceiling and target keeps a board just above the ceiling mostly
+    /// cached.
     /// </para>
     /// </summary>
     private const int MaxEntries = 8192;
 
-    /// <summary>Entry count an overflow eviction trims down to — the headroom that stops it recurring per store.</summary>
+    /// <summary>Entry count an overflow eviction trims the cache down to, so it doesn't recur on
+    /// every store.</summary>
     private const int EvictTo = 6144;
 
     private readonly ConcurrentDictionary<Guid, Entry> _entries = new();
     private readonly object _evictionGate = new();
     private long _sequence;
 
-    /// <param name="Sequence">Insertion order, for eviction. Not an LRU stamp: refreshing it on every
-    /// read would put a write on the hot path to save re-parsing a definition once.</param>
+    /// <param name="Sequence">Insertion order, for eviction. Not an LRU stamp: refreshing it on
+    /// every read would put a write on the hot path to save re-parsing a definition once.</param>
     private sealed record Entry(DateTime UpdatedAt, IReadOnlyList<WorkflowCallSite> Sites, long Sequence);
 
-    /// <summary>Workflow ids whose cached call sites are missing or older than the given revision.</summary>
+    /// <summary>Workflow ids whose cached call sites are missing or older than the given
+    /// revision.</summary>
     public List<Guid> StaleIds(IEnumerable<(Guid Id, DateTime UpdatedAt)> current)
     {
         ArgumentNullException.ThrowIfNull(current);
@@ -69,7 +70,8 @@ public sealed class WorkflowCallSiteCache
         return stale;
     }
 
-    /// <summary>Stores the call sites extracted from a workflow definition at the given revision.</summary>
+    /// <summary>Stores the call sites extracted from a workflow definition at the given
+    /// revision.</summary>
     public void Store(Guid workflowId, DateTime updatedAt, IReadOnlyList<WorkflowCallSite> sites)
     {
         ArgumentNullException.ThrowIfNull(sites);
@@ -78,9 +80,9 @@ public sealed class WorkflowCallSiteCache
     }
 
     /// <summary>
-    /// Trims the oldest entries back to <see cref="EvictTo"/>. Gated so concurrent polls do not each
-    /// run a full pass; best-effort by design — a missed eviction only means the map is briefly a few
-    /// entries over, and every entry it drops costs exactly one definition re-read.
+    /// Trims the oldest entries back to <see cref="EvictTo"/>. Gated so concurrent polls do not
+    /// each run a full pass; best-effort by design — a missed eviction only means the map is
+    /// briefly a few entries over, and every entry it drops costs exactly one definition re-read.
     /// </summary>
     private void EvictOldest()
     {

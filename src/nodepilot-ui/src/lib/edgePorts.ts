@@ -77,7 +77,7 @@ export interface PortPoint {
 }
 
 /**
- * Scan order used to break ties. Not `EDGE_PORT_SIDES`, which sets the button order in the
+ * Scan order for breaking ties. Not `EDGE_PORT_SIDES`, which sets the button order in the
  * properties panel. A click exactly at the node center is equidistant from all four points;
  * letting a horizontal port win there matches the designer's left-to-right default.
  */

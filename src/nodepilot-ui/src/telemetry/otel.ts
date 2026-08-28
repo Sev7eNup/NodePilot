@@ -16,18 +16,16 @@ let initialized = false;
 let tracer: Tracer | null = null;
 
 /**
- * Initialize the OpenTelemetry Web SDK. Idempotent — safe to call multiple times.
- * Returns the tracer when initialization succeeded, otherwise null. If the server
- * hasn't configured a browser endpoint the SDK is not started and all tracing
- * calls become cheap no-ops.
+ * Initialize the OpenTelemetry Web SDK. Idempotent: safe to call multiple times.
+ * Returns the tracer on success, otherwise null. When the server has not configured
+ * a browser endpoint the SDK is not started and all tracing calls become cheap no-ops.
  */
 export function initTelemetry(config: ObservabilityConfig): Tracer | null {
   if (initialized) return tracer;
   if (!config.enabled || !config.browserOtlpEndpoint) return null;
 
   const provider = new WebTracerProvider({
-    // OTel JS 2.x removed the `Resource` class in favour of the resourceFromAttributes()
-    // factory (security-fix migration off @opentelemetry/core <2.8.0, W3C-Baggage DoS).
+    // OTel JS 2.x has no Resource class; resources are built with resourceFromAttributes().
     resource: resourceFromAttributes({
       'service.name': config.serviceName ?? 'nodepilot-ui',
       'service.version': '1.0.0',
@@ -51,7 +49,7 @@ export function initTelemetry(config: ObservabilityConfig): Tracer | null {
       new DocumentLoadInstrumentation(),
       new UserInteractionInstrumentation({ eventNames: ['click', 'submit'] }),
       new FetchInstrumentation({
-        // Propagate traceparent to our own API so backend spans attach as children
+        // Propagate traceparent to the API so backend spans attach as children
         propagateTraceHeaderCorsUrls: [/.*/],
         clearTimingResources: true,
         ignoreUrls: [/\/api\/observability\//, /\/hubs\//],

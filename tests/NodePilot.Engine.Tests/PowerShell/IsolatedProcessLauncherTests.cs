@@ -77,7 +77,7 @@ public class IsolatedProcessLauncherTests
         using var child = Process.GetProcessById(p.ProcessId);
         child.HasExited.Should().BeFalse("the sleeping child must be alive before the job handle closes");
 
-        p.Dispose(); // closing the job handle ⇒ KILL_ON_JOB_CLOSE reaps the tree
+        p.Dispose(); // closing the job handle -> KILL_ON_JOB_CLOSE reaps the tree
 
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
         while (!child.HasExited && DateTime.UtcNow < deadline)
@@ -91,7 +91,7 @@ public class IsolatedProcessLauncherTests
     {
         using var p = IsolatedProcessLauncher.Launch(
             Pwsh,
-            // 1.5 GB allocation under a 512 MB aggregate job cap → the commit fails (OOM); the
+            // 1.5 GB allocation under a 512 MB aggregate job cap -> the commit fails (OOM); the
             // kernel does NOT terminate — the script sees the failure and exits non-zero.
             Command("$ErrorActionPreference='Stop'; $b=[byte[]]::new(1500MB); [Console]::Out.Write('ALLOCATED ' + $b.Length)"),
             Path.GetTempPath(),
@@ -114,7 +114,8 @@ public class IsolatedProcessLauncherTests
     {
         using var p = IsolatedProcessLauncher.Launch(
             Pwsh,
-            // Active-process limit 1 = just the root; any child spawn fails with ERROR_NOT_ENOUGH_QUOTA.
+            // Active-process limit 1 = just the root; any child spawn fails with
+            // ERROR_NOT_ENOUGH_QUOTA.
             Command("$ErrorActionPreference='Stop'; Start-Process cmd -ArgumentList '/c','exit' | Out-Null; Write-Output 'SPAWNED'"),
             Path.GetTempPath(),
             new ProcessIsolationLimits { MaxProcesses = 1 });
@@ -135,7 +136,8 @@ public class IsolatedProcessLauncherTests
     public async Task Launch_RootExitsChildHoldsPipe_DoesNotHangOnEof()
     {
         // Root starts a long-lived child (inheriting stdout via -NoNewWindow) then exits at once.
-        // Without "Terminate before awaiting EOF" the stdout read would hang on the surviving child.
+        // Without "Terminate before awaiting EOF" the stdout read would hang on the surviving
+        // child.
         // (Reap itself is proven by Launch_KillOnClose; this test targets the no-hang ordering.)
         using var p = IsolatedProcessLauncher.Launch(
             Pwsh,
@@ -146,7 +148,7 @@ public class IsolatedProcessLauncherTests
         var outTask = p.StandardOutput.ReadToEndAsync();
         var errTask = p.StandardError.ReadToEndAsync();
         await p.WaitForExitAsync(CancellationToken.None); // root exits quickly
-        p.Terminate();                                     // reap survivors → close inherited pipe ends
+        p.Terminate();                                     // reap survivors -> close inherited pipe ends
 
         // .WaitAsync turns a regression (EOF hang) into a TimeoutException instead of blocking CI.
         var stdout = await outTask.WaitAsync(TimeSpan.FromSeconds(20));

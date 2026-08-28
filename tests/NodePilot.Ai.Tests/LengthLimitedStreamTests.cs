@@ -70,7 +70,7 @@ public sealed class LengthLimitedStreamTests
     public void Read_ExactlyAtLimit_DoesNotThrow()
     {
         var payload = new byte[8];
-        using var s = Wrap(payload, 8); // cap == payload size → boundary is inclusive
+        using var s = Wrap(payload, 8); // cap == payload size -> boundary is inclusive
 
         var n = s.Read(new byte[8], 0, 8);
 
@@ -99,7 +99,7 @@ public sealed class LengthLimitedStreamTests
         first.Should().Be(5);
         s.Position.Should().Be(5);
 
-        // Second read pushes cumulative to 10 > 8 → trips the cap.
+        // Second read pushes cumulative to 10 > 8 -> trips the cap.
         s.Invoking(x => x.Read(new byte[5], 0, 5))
          .Should().Throw<InvalidOperationException>()
          .WithMessage("*Body-Limit*");

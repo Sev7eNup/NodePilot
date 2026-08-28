@@ -74,10 +74,10 @@ describe('toastStore', () => {
     expect(useToastStore.getState().toasts).toHaveLength(0);
   });
 
-  // --- database-outage suppression ----------------------------------------------------------
+  // --- database-outage suppression ---
   // The api client formats structured errors as "message (CODE)", so the two database 503 codes
   // are reliably present in the string every mutation onError hands to toast.error. Filtering at
-  // the sink suppresses ~50 call sites at once; the global outage banner owns that message.
+  // the sink suppresses these everywhere at once; the global outage banner owns that message.
 
   it('push_databaseOutageError_isSuppressed', () => {
     const id = useToastStore.getState().push(
@@ -88,10 +88,9 @@ describe('toastStore', () => {
   });
 
   it('push_databaseTimeoutError_stillToasts', () => {
-    // Deliberately NOT suppressed, and this test is the reversal of an earlier one. The breaker
-    // stays CLOSED for a command timeout, so no outage banner is on screen to carry the message.
-    // Swallowing it here reproduced the exact defect the feature exists to remove: a busy database
-    // rendering as an empty installation, with nothing for the user to act on.
+    // Deliberately not suppressed: the breaker stays closed for a command timeout, so no
+    // outage banner is on screen to carry the message. Without a toast, a busy database would
+    // look like an empty installation with nothing for the user to act on.
     useToastStore.getState().push('error', 'Did not answer in time. (DATABASE_TIMEOUT)');
     expect(useToastStore.getState().toasts).toHaveLength(1);
   });

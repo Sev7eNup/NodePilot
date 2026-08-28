@@ -2,28 +2,23 @@ import { TRIGGER_ACTIVITY_TYPES } from '../../../lib/activityCatalog.generated';
 import type { EdgePortSide } from '../../../lib/edgePorts';
 
 /**
- * Shape system for ActivityNode — visual categorization by outline shape, independent of colour.
+ * Shape system for ActivityNode — visual categorization by outline shape, independent of color.
  *
- * Trigger      → left-pointing pentagon (`pennant`); returnData → right-pointing pentagon
- *               (`flag`): together they form a bookend pair ◁ … ▷ (slate grey, NOT part of the
- *               control-flow group).
- * Control-flow → each gets its own shape (decision=`diamond`, junction=`hexLong`, forEach=`reel`,
- *               startWorkflow=`tagLeft`, see `CONTROL_SHAPE`) PLUS a shared indigo double-outline
- *               frame (ActivityNode `isControl` + `--np-controlflow-accent`) that visually sets the
- *               "control-flow" group apart from normal activities.
- * Every single **action** activity (+ `log`/`delay`) gets its OWN shape (see `ACTION_SHAPE`), so
- *               the node type is recognizable from its silhouette alone. The activity icon sits
- *               centered as a separate, NOT clipped layer on top → the icon itself stays fully
- *               readable, and the shape is an additional recognition cue.
- * `square`    → fallback for unknown/future types (no clip-path, normal render path).
+ * Trigger nodes use the left-pointing pentagon (`pennant`); returnData uses the right-pointing
+ * pentagon (`flag`) — together a bookend pair, slate grey, not part of the control-flow group.
+ * Control-flow activities each get their own shape (see `CONTROL_SHAPE`) plus a shared indigo
+ * double-outline frame (ActivityNode `isControl` + `--np-controlflow-accent`). Every action
+ * activity (plus `log`/`delay`) gets its own shape (see `ACTION_SHAPE`) so the node type is
+ * recognizable from its silhouette alone; the icon renders as a separate, unclipped layer on top
+ * so it stays fully readable while the shape adds a second recognition cue.
+ * `square` is the fallback for unknown/future types (no clip-path, normal render path).
  *
- * All special shapes are clip-path polygons. **Constraint:** every shape must touch the box's
- * edge midpoints on the left (0,50%) and right (100,50%), because that's where ReactFlow docks
- * ports/edges (`portHandleStyle` / `getPortPoint`). Where a shape's vertex is NOT at the edge
- * midpoint (e.g. a triangle's top point), `handleInset` pulls that side's handle inward onto
- * the silhouette.
+ * All special shapes are clip-path polygons. Every shape must touch the box's edge midpoints on
+ * the left (0,50%) and right (100,50%), because that's where ReactFlow docks ports/edges
+ * (`portHandleStyle` / `getPortPoint`). Where a shape's vertex isn't at the edge midpoint (e.g. a
+ * triangle's top point), `handleInset` pulls that side's handle inward onto the silhouette.
  *
- * Selection/live-pulse rings can't use CSS `ring-*` (it doesn't follow clip-path); instead we
+ * Selection/live-pulse rings can't use CSS `ring-*` (it doesn't follow clip-path); instead they
  * use a layering trick: an extra div with the same clip-path and a negative inset.
  *
  * The 22 action polygons were generated and visually validated via `scratchpad/gen-shapes.mjs`
@@ -43,7 +38,7 @@ export const NODE_SHAPES = [
 ] as const;
 export type NodeShape = typeof NODE_SHAPES[number];
 
-/** CSS-Position-Properties für einen Badge-Slot. */
+/** CSS position properties for a badge slot. */
 export interface BadgePosition {
   top?: string;
   right?: string;
@@ -64,10 +59,10 @@ export interface BadgeProfile {
 export type HandleInset = Partial<Record<EdgePortSide, number>>;
 
 export interface ShapeDef {
-  /** clip-path polygon; `undefined` for `square` → normal (non-clipped) render path. */
+  /** clip-path polygon; `undefined` for `square` means the normal, non-clipped render path. */
   clip?: string;
-  /** Optional SOLID body silhouette rendered BEHIND `clip`. When set, the border/fill/halo layers
-   *  clip to THIS shape (an opaque body), and `clip` is drawn on top as a coloured accent outline.
+  /** Optional solid body silhouette rendered behind `clip`. When set, the border/fill/halo layers
+   *  clip to this shape (an opaque body), and `clip` is drawn on top as a colored accent outline.
    *  Used by `power`, whose `clip` is a hollow ring: the backing disc makes the node opaque while
    *  the ring stays the visible silhouette. `undefined` for every normal (single-layer) shape. */
   backingClip?: string;
@@ -79,12 +74,12 @@ export interface ShapeDef {
   handleInset?: HandleInset;
   /** Vertical offset of the activity icon as a fraction of the icon box (negative = upward).
    *  Defaults to 0 (bbox center). For shapes whose visual center isn't at the bbox center
-   *  (e.g. speechBubble: body fills the upper 75%, tail points down → icon needs to shift up). */
+   *  (e.g. speechBubble: body fills the upper 75%, tail points down, so the icon shifts up). */
   iconOffsetY?: number;
   /** Horizontal offset of the activity icon as a fraction of the icon box (negative = left).
    *  Defaults to 0. For the left/right-pointing bookend shapes (pennant/flag), whose visual
-   *  center of mass sits off to one side of the bbox → shift the icon toward the body's center
-   *  so it looks centered. */
+   *  center of mass sits off to one side of the bbox, so the icon shifts toward the body's
+   *  center to look centered. */
   iconOffsetX?: number;
 }
 
@@ -137,18 +132,18 @@ const control = (clip: string, size: number, iconScale = 1.0, handleInset?: Hand
 
 // --- Registry -------------------------------------------------------------
 export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
-  // `square` is the optical anchor: size 1.0, iconScale 1.0 → its inside-icon (iconFont) is the
+  // `square` is the optical anchor: size 1.0, iconScale 1.0 -> its inside-icon (iconFont) is the
   // equal-size target every other shape is tuned toward.
   square: { clip: undefined, size: 1.0, iconScale: 1.0, badges: SQUARE_BADGES },
   // Bookend pair (trigger + returnData). `size` area-compensated (pennant/flag fill ~62% of their
-  // bbox → bumped to 1.25 so the silhouettes read equal to square); iconScale 1.0 → inside-icon
+  // bbox -> bumped to 1.25 so the silhouettes read equal to square); iconScale 1.0 -> inside-icon
   // matches square. iconOffsetX shifts the icon toward the body's center of mass (pennant body
-  // spans 25–100%, point at 0% → center ~56%; flag is the mirror, ~44%), mirrored like the shape.
+  // spans 25–100%, point at 0% -> center ~56%; flag is the mirror, ~44%), mirrored like the shape.
   pennant: { clip: 'polygon(100% 0%, 25% 0%, 0% 50%, 25% 100%, 100% 100%)', size: 1.25, iconScale: 1.0, badges: PENNANT_BADGES, iconOffsetX: 0.06 },
   flag: { clip: 'polygon(0% 0%, 75% 0%, 100% 50%, 75% 100%, 0% 100%)', size: 1.25, iconScale: 1.0, badges: FLAG_BADGES, iconOffsetX: -0.06 },
 
   // Control-flow shapes (each rendered with the shared indigo frame). `size` area-compensated:
-  // diamond fills 50% of its bbox → capped at 1.25; hexLong/reel/tagLeft tuned by visible area
+  // diamond fills 50% of its bbox -> capped at 1.25; hexLong/reel/tagLeft tuned by visible area
   // (elongated hexLong keeps its width as a recognition cue, sized by height). iconScale 1.0.
   diamond: { clip: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', size: 1.25, iconScale: 1.0, badges: DIAMOND_BADGES, handleInset: { right: 0.02 } },
   hexLong: control('polygon(15% 0%, 85% 0%, 100% 50%, 85% 100%, 15% 100%, 0% 50%)', 1.10),          // junction (merge bar)
@@ -157,8 +152,9 @@ export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
 
   // 22 per-activity action shapes (polygons generated via scratchpad/gen-shapes.mjs). `size` is
   // area-compensated (1/sqrt(visible-fill), capped at 1.25) so every silhouette reads equal;
-  // `iconScale` 1.0 → inside-icon matches square. One deliberate per-shape override: `stopwatch`
-  // is ENLARGED so the clock icon fills the round watch face (a standard icon looks lost on a dial).
+  // `iconScale` 1.0 -> inside-icon matches square. One deliberate per-shape override: `stopwatch`
+  // is ENLARGED so the clock icon fills the round watch face (a standard icon looks lost on a
+  // dial).
   hexPointy: blob('polygon(50.0% 0.0%, 100.0% 25.0%, 100.0% 75.0%, 50.0% 100.0%, 0.0% 75.0%, 0.0% 25.0%)', 1.10),
   hexFlat: blob('polygon(25.0% 0.0%, 75.0% 0.0%, 100.0% 50.0%, 75.0% 100.0%, 25.0% 100.0%, 0.0% 50.0%)', 1.10),
   octagon: blob('polygon(30.0% 0.0%, 70.0% 0.0%, 100.0% 30.0%, 100.0% 70.0%, 70.0% 100.0%, 30.0% 100.0%, 0.0% 70.0%, 0.0% 30.0%)', 1.10),
@@ -170,7 +166,7 @@ export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
   // stopwatch's side pushers — parallelograms leaning up-left / up-right, NOT vertical pins). The
   // round body makes a standard-size icon look lost on the watch face, so iconScale is ENLARGED
   // (1.25) to fill the dial (still within the inscribed square); iconOffsetY 0.06 seats the icon
-  // at the circle's center. The circle's left/right edge sits at ~6 % inset → handleInset pulls
+  // at the circle's center. The circle's left/right edge sits at ~6 % inset -> handleInset pulls
   // the side ports onto the silhouette; top port lands on the center crown, bottom port on the
   // circle's tangent.
   stopwatch: blob('polygon(6% 56%, 6.4% 62.1%, 7.7% 68.1%, 9.8% 73.9%, 12.7% 79.3%, 16.3% 84.3%, 20.6% 88.7%, 25.4% 92.5%, 30.7% 95.5%, 36.4% 97.8%, 42.4% 99.3%, 48.5% 100%, 54.6% 99.8%, 60.6% 98.7%, 66.5% 96.8%, 72% 94.1%, 77.1% 90.7%, 81.7% 86.6%, 85.6% 81.9%, 88.8% 76.7%, 91.3% 71%, 93% 65.1%, 93.9% 59.1%, 94% 56%, 93.6% 49.9%, 92.3% 43.9%, 90.2% 38.1%, 87.3% 32.7%, 83.7% 27.7%, 79.4% 23.3%, 78.3% 22.3%, 87.3% 14.3%, 79.7% 9.2%, 70.7% 17.2%, 65% 14.7%, 59.1% 13%, 56.1% 12.4%, 56.1% 0%, 43.9% 0%, 43.9% 12.4%, 37.9% 13.7%, 32.1% 15.8%, 29.3% 17.2%, 20.3% 9.2%, 12.7% 14.3%, 21.7% 22.3%, 17.3% 26.6%, 13.5% 31.4%, 10.5% 36.7%, 8.2% 42.4%, 6.7% 48.4%, 6% 54.5%)', 1.23, 1.25, { left: 0.06, right: 0.06 }, 0.06),
@@ -178,7 +174,7 @@ export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
   // glyph — a HOLLOW ring broken at the top with a bar in the gap — drawn as a coloured accent on
   // top of a solid backing disc (`backingClip`, concentric, same 0.44 radius) so the node reads as
   // an opaque round body AND as a power symbol. Both centre on y=56 %; the disc's widest span sits
-  // below the y=50 % port line → handleInset pulls the side ports (~6.4 %) onto the disc, the top
+  // below the y=50 % port line -> handleInset pulls the side ports (~6.4 %) onto the disc, the top
   // port onto the bar. iconScale 0.9 keeps the (kept) activity glyph large inside the ring's hole;
   // iconOffsetY +0.06 seats it on the disc's centre. The ring polygon: outer arc + inner arc walked
   // back (one closed C-contour), then the bar as a second loop via a zero-width bridge (evenodd).
@@ -189,7 +185,7 @@ export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
     handleInset: { left: 0.064, right: 0.064, top: 0.05 }, iconOffsetY: 0.06,
   },
   house: blob('polygon(50.0% 0.0%, 100.0% 34.0%, 100.0% 100.0%, 0.0% 100.0%, 0.0% 34.0%)', 1.12, 1.0, { top: 0.34 }),
-  // iconOffsetY: the shield tapers to a point at the bottom (50% 100%) → its visual center is
+  // iconOffsetY: the shield tapers to a point at the bottom (50% 100%) -> its visual center is
   // at ~40% y, so an icon placed at the bbox center (50%) sits too low; shift it up ~10% so it
   // reads as centered inside the shield.
   shield: blob('polygon(0.0% 0.0%, 100.0% 0.0%, 100.0% 55.0%, 50.0% 100.0%, 0.0% 55.0%)', 1.20, 1.0, { bottom: 0 }, -0.10),
@@ -214,7 +210,7 @@ export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
   kite: blob('polygon(50.0% 4.0%, 100.0% 50.0%, 50.0% 100.0%, 0.0% 50.0%)', 1.30, 1.08, { top: 0.04 }),
   gem: blob('polygon(28.0% 12.0%, 72.0% 12.0%, 100.0% 50.0%, 72.0% 88.0%, 28.0% 88.0%, 0.0% 50.0%)', 1.28, 1.12, { top: 0.12, bottom: 0.12 }),
   pentagonUp: blob('polygon(50.0% 0.0%, 100.0% 50.0%, 82.0% 100.0%, 18.0% 100.0%, 0.0% 50.0%)', 1.20, 1.0, { top: 0 }),
-  // iconOffsetY: pentagonDown tapers to a point at the bottom (50% 100%) → its visual center is
+  // iconOffsetY: pentagonDown tapers to a point at the bottom (50% 100%) -> its visual center is
   // at ~42% y, so an icon at the bbox center (50%) sits too low; shift it up ~8% (same idea as
   // shield/speechBubble).
   pentagonDown: blob('polygon(18.0% 0.0%, 82.0% 0.0%, 100.0% 50.0%, 50.0% 100.0%, 0.0% 50.0%)', 1.20, 1.0, { bottom: 0 }, -0.08),
@@ -236,7 +232,7 @@ export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
   // llmQuery — chat/speech bubble with a tail (body fills the upper 75%; left+right edges reach the
   // vertical mid so ReactFlow ports dock cleanly).
   // iconOffsetY: Body center sits at 37.5% of the bbox (upper 75% body + lower-25% tail), but the
-  // icon container centers at 50% → shift the icon up so it reads as centered in the bubble body.
+  // icon container centers at 50% -> shift the icon up so it reads as centered in the bubble body.
   speechBubble: blob('polygon(0.0% 0.0%, 100.0% 0.0%, 100.0% 75.0%, 42.0% 75.0%, 26.0% 100.0%, 26.0% 75.0%, 0.0% 75.0%)', 1.15, 1.0, { bottom: 0.25 }, -0.12),
 };
 
@@ -245,7 +241,7 @@ export const SHAPE_CLIP_PATHS = Object.fromEntries(
   NODE_SHAPES.map((s) => [s, SHAPE_DEFS[s].clip]),
 ) as Record<NodeShape, string | undefined>;
 
-/** Optional solid-body clip drawn BEHIND the silhouette (only `power` today). `undefined` → the
+/** Optional solid-body clip drawn BEHIND the silhouette (only `power` today). `undefined` -> the
  *  shape renders as a single layer clipped to `SHAPE_CLIP_PATHS[shape]`. */
 export const getBackingClip = (shape: NodeShape): string | undefined => SHAPE_DEFS[shape].backingClip;
 

@@ -50,7 +50,7 @@ public class NotificationRendererTests
             .And.Contain("Status: Failed")
             .And.Contain("Error: disk full")
             .And.Contain("Duration: 4200 ms")
-            .And.NotContain("Target machine:"); // null → line omitted
+            .And.NotContain("Target machine:"); // null -> line omitted
     }
 
     [Fact]
@@ -92,7 +92,8 @@ public class NotificationRendererTests
     [Fact]
     public void WebhookJson_ExposesGaugeFields_AsStructuredValues()
     {
-        // Regression: gauge measurements must be first-class JSON fields, not just text in the summary.
+        // Regression: gauge measurements must be first-class JSON fields, not just text in the
+        // summary.
         using var doc = JsonDocument.Parse(NotificationRenderer.WebhookJson(GaugeSample()));
         var root = doc.RootElement;
         root.GetProperty("eventType").GetString().Should().Be("BacklogHigh");

@@ -29,17 +29,17 @@ const proposalDefinitionJson = JSON.stringify({
   edges: [{ id: 'e1', source: 't1', target: 'l1', type: 'labeled', data: {} }],
 });
 
-/** Same graph as the base, just moved — every changelog row comes back flagged "layout only". */
+/** Same graph as the base with moved nodes, so every changelog row is flagged "layout only". */
 const layoutOnlyDefinitionJson = JSON.stringify({
   nodes: baseNodes.map((n) => ({ ...n, position: { x: 120, y: 60 } })),
   edges: [],
 });
 
-/** Drives the streaming handlers: sends text deltas, and optionally a proposal (which echoes
- *  back the request's baseDefinitionHash).
- *  The `if (!h) return` guard exists because vitest's module-mock spread calls this mock
- *  implementation a second time under `act()` without a handlers object — in the real component,
- *  `handleSend` (and thus the single `chatStream` call) only fires once. */
+/** Drives the streaming handlers: sends text deltas, and optionally a proposal that echoes
+ *  back the request's baseDefinitionHash.
+ *  The `if (!h) return` guard is needed because vitest's module-mock spread calls this mock a
+ *  second time under `act()` without a handlers object. In the real component `handleSend`,
+ *  and with it the single `chatStream` call, fires only once. */
 function streamMock(opts: { reply: string; proposal?: boolean; definitionJson?: string }) {
   return (req: WorkflowChatRequest, h?: ChatStreamHandlers) => {
     if (!h) return Promise.resolve();
@@ -57,8 +57,8 @@ function streamMock(opts: { reply: string; proposal?: boolean; definitionJson?: 
 function setup(over: Partial<Parameters<typeof AiWorkflowChatPanel>[0]> = {}) {
   const applyDefinition = vi.fn();
   let currentDef = baseDef();
-  // A fresh arrow function is created on every render, matching real usage: WorkflowEditorPage
-  // recreates getCurrentDefinition via useCallback([nodes, edges]) on every canvas change, and
+  // A fresh arrow function per render matches real usage: WorkflowEditorPage recreates
+  // getCurrentDefinition via useCallback([nodes, edges]) on every canvas change, and
   // MessageBubble memoizes its diff base on that function identity.
   const element = () => (
     <AiWorkflowChatPanel
@@ -137,7 +137,7 @@ describe('AiWorkflowChatPanel (streaming)', () => {
     fireEvent.click(screen.getByRole('button', { name: /chats/i }));
     fireEvent.click(screen.getByText('New chat'));
 
-    // The new thread is empty — the previous answer is no longer shown.
+    // The new thread is empty, so the previous answer is no longer shown.
     await waitFor(() => expect(screen.queryByText('First answer.')).not.toBeInTheDocument());
   });
 
@@ -371,8 +371,8 @@ describe('AiWorkflowChatPanel (streaming)', () => {
     chatMock.mockImplementation((_req: WorkflowChatRequest, h?: ChatStreamHandlers) => {
       if (!h) return Promise.resolve();
       h.onDelta('done answer');
-      // 50 completion tokens generated in 1000 ms → 50 tok/s. The other 10 s of the turn were
-      // prefill and tool calls; dividing by durationMs would report 4.5 tok/s for the same run.
+      // The rate uses generationMs: 50 completion tokens over a 1000 ms generation window.
+      // The remaining turn time is prefill and tool calls, so durationMs would understate it.
       h.onDone?.({ model: 'gpt-x', durationMs: 11000, generationMs: 1000, promptTokens: 100, completionTokens: 50 });
       return Promise.resolve();
     });
@@ -397,7 +397,7 @@ describe('AiWorkflowChatPanel (streaming)', () => {
 
     await waitFor(() => expect(screen.getByText(/gpt-x/i)).toBeInTheDocument());
     expect(screen.getByText(/150 tokens/i)).toBeInTheDocument();
-    // Falling back to the wall clock here would resurrect the misleading figure.
+    // Without a generation window the rate is dropped; the wall clock would be misleading.
     expect(screen.queryByText(/tok\/s/i)).not.toBeInTheDocument();
   });
 
@@ -435,7 +435,7 @@ describe('AiWorkflowChatPanel (streaming)', () => {
     expect(screen.queryByText(/a-secret/i)).not.toBeInTheDocument();
   });
 
-  // ---- Smarter proposals: structured changelog, selective apply, refine ---------
+  // ---- Proposals: structured changelog, selective apply, refine ---------
 
   it('renders a structured changelog for the proposal', async () => {
     chatMock.mockImplementation(streamMock({ reply: 'Added a log step.', proposal: true }));
@@ -456,8 +456,8 @@ describe('AiWorkflowChatPanel (streaming)', () => {
   });
 
   it('a layout-only proposal is still applyable — every row starts selected', async () => {
-    // Regression: rows flagged "layout only" used to start unchecked, so a proposal consisting
-    // purely of moves (e.g. "clean up the layout") rendered a disabled "0 apply" button.
+    // Rows flagged "layout only" start selected, so a proposal made purely of node moves
+    // still renders an enabled Apply button.
     chatMock.mockImplementation(streamMock({
       reply: 'Tidied the layout.', proposal: true, definitionJson: layoutOnlyDefinitionJson,
     }));

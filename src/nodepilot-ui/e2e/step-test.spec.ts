@@ -194,7 +194,8 @@ test.describe('Step-Test mit Kontext (Teil 28)', () => {
   });
 
   test('28.6 — Viewer cannot run a step-test: the Run button is hidden', async ({ page }) => {
-    // A Viewer (or a non-lock-owner) has canWrite=false → StepTestPanel canRun=false → no Run button.
+    // A Viewer (or a non-lock-owner) has canWrite=false to StepTestPanel canRun=false to no Run
+    // button.
     const def = JSON.stringify({
       nodes: [{ id: 'step-probe', type: 'activity', position: { x: 50, y: 50 }, data: { label: 'Probe', activityType: 'runScript', config: { script: 'Get-Date' } } }],
       edges: [],
@@ -203,7 +204,7 @@ test.describe('Step-Test mit Kontext (Teil 28)', () => {
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id: MOCK_USER.id, username: 'viewer', role: 'Viewer' }) }),
     );
     await page.route(`**/api/workflows/${WF_ID}`, (route) =>
-      // Not checked out by me → read-only → canWrite=false.
+      // Not checked out by me -> read-only -> canWrite=false.
       route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson(def, { checkedOutByUserId: null, checkedOutByUserName: null, checkedOutAt: null }) }),
     );
 

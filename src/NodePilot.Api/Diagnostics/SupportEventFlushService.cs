@@ -75,7 +75,7 @@ internal sealed class SupportEventFlushService : BackgroundService
                     await TryFlushRecoverySummaryAsync(stoppingToken);
 
                 var available = await WaitForInputOrRecoveryAsync(reader, stoppingToken);
-                if (!available) break; // Channel completed → shutdown
+                if (!available) break; // Channel completed -> shutdown
 
                 // Drain into the batch — TryRead is non-blocking, grabs everything ready now.
                 while (batch.Count < BatchSize && reader.TryRead(out var ev))

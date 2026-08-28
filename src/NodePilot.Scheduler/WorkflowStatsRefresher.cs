@@ -19,7 +19,8 @@ namespace NodePilot.Scheduler;
 /// <para>Config keys:</para>
 /// <list type="bullet">
 ///   <item><c>Stats:RefreshIntervalMinutes</c> (default 5)</item>
-///   <item><c>Stats:WindowDays</c> (default 7) — size of the rolling window the *Window columns cover</item>
+/// <item><c>Stats:WindowDays</c> (default 7) — size of the rolling window the *Window columns
+/// cover</item>
 /// </list>
 ///
 /// <para>

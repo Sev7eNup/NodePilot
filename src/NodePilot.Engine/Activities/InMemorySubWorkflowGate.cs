@@ -4,17 +4,10 @@ namespace NodePilot.Engine.Activities;
 
 /// <summary>
 /// In-process default for <see cref="ISubWorkflowGate"/>. Backs the cap with a
-/// <see cref="SemaphoreSlim"/>; lifetime is Singleton so all activities in the
-/// process share the same pool.
-///
-/// 64 was the long-standing default but proved fragile when 500-workflow stress
-/// probes pushed 1500+ startWorkflow calls through it: the cap reads as serial
-/// wait on the surface but lifting it to 600 actively *worsened* throughput
-/// because the system saturates downstream (DB pool, runspace pool, CIM
-/// provider). 128 lands in the "deep enough to keep the queue moving, shallow
-/// enough not to thrash" band. (240 was tried 2026-05-07 with a 30 s WaitAsync
-/// timeout and made wall time worse — longer WaitAsync just stretches saturation
-/// rather than relieving it.)
+/// <see cref="SemaphoreSlim"/>; lifetime is Singleton so all activities in the process share
+/// the same pool. The cap limits concurrent startWorkflow calls; raising it does not help once
+/// downstream resources (DB pool, runspace pool, CIM provider) saturate, so the default balances
+/// keeping the queue moving against overloading those resources.
 /// </summary>
 public sealed class InMemorySubWorkflowGate : ISubWorkflowGate, IDisposable
 {

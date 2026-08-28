@@ -62,7 +62,7 @@ export const dbAdminApi = {
   /**
    * Executes a SQL statement against the active database. Read-mode never persists
    * (server wraps everything in a rollback transaction). Write-mode requires the
-   * server-side flag AND the X-Confirm-Write header — both are sent by this client.
+   * server-side flag and the X-Confirm-Write header — both are sent by this client.
    */
   query: (sql: string, mode: 'read' | 'write') => {
     if (mode === 'write') {

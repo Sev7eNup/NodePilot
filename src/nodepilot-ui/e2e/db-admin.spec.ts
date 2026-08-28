@@ -2,20 +2,20 @@ import { test, expect } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 31 — DB-Admin Viewer.
+ * DB admin viewer.
  *
- * Route `/database` (Admin-only — guarded by <AdminOnly>). DbViewerPage renders a TableList
+ * Route `/database` (Admin-only, guarded by <AdminOnly>). DbViewerPage renders a TableList
  * sidebar fed by GET /api/dbadmin/tables, and a TableGrid (rows) fed by
  * GET /api/dbadmin/tables/{name}/rows?skip&take&orderBy&desc.
- *   - Cell edit → PATCH /api/dbadmin/tables/{name}/rows?pk=... body {column,value}
- *   - Row delete → native confirm() then DELETE /api/dbadmin/tables/{name}/rows?pk=...
+ *   - Cell edit sends PATCH /api/dbadmin/tables/{name}/rows?pk=... with body {column,value}
+ *   - Row delete asks for confirmation, then DELETE /api/dbadmin/tables/{name}/rows?pk=...
  *
  * Hermetic: page.route() mocks only. The default MOCK_USER is Admin, which the AdminOnly guard
  * requires. The catch-all returns [] for unmocked /api/* so the page mounts cookieless.
- * Selectors stay language-agnostic / bilingual (preview build renders EN under Playwright).
+ * Selectors stay bilingual (the preview build renders English under Playwright).
  */
 
-// Two EF entities; "Workflows" is editable + has cascade targets, "AuditLogs" is read-only.
+// Two EF entities: "Workflows" is editable and has cascade targets, "AuditLogs" is read-only.
 const TABLES = [
   {
     name: 'Workflow',
@@ -62,15 +62,15 @@ async function mockTables(page: import('@playwright/test').Page) {
 
 test.describe('DB-Admin Viewer (Teil 31)', () => {
   test.beforeEach(async ({ page }) => {
-    await installDefaultMocks(page); // MOCK_USER is Admin → AdminOnly guard passes
+    await installDefaultMocks(page); // MOCK_USER is an Admin, so the AdminOnly guard passes
     await mockTables(page);
   });
 
   test('31.1 — table list renders all EF entities with read-only marker', async ({ page }) => {
     await page.goto('/database');
 
-    // Both tables show up in the sidebar as buttons (accessible name = displayName text).
-    // The left nav also has a "Workflows" *link*; using role=button disambiguates.
+    // Both tables show up in the sidebar as buttons whose accessible name is the displayName.
+    // The left nav also has a "Workflows" link, so role=button disambiguates.
     await expect(page.getByRole('button', { name: /Workflows/ })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: /AuditLogs/ })).toBeVisible();
     // The read-only table is flagged with a lock marker (accessible label "Read-only").
@@ -78,8 +78,8 @@ test.describe('DB-Admin Viewer (Teil 31)', () => {
   });
 
   test('31.2 — selecting a table shows its rows and columns', async ({ page }) => {
-    // /rows must be mocked BEFORE the catch-all-relative ordering: last route wins, and this is
-    // added after installDefaultMocks, so it takes precedence.
+    // Route registration is last-wins: this handler is added after installDefaultMocks, so it
+    // takes precedence over the catch-all.
     let rowsUrl: string | null = null;
     await page.route('**/api/dbadmin/tables/*/rows**', (route) => {
       if (route.request().method() === 'GET') {
@@ -117,7 +117,8 @@ test.describe('DB-Admin Viewer (Teil 31)', () => {
     await page.getByRole('button', { name: /Workflows/ }).click();
     await expect(page.getByText('Patch Tuesday')).toBeVisible({ timeout: 15_000 });
 
-    // Editable cell click opens EditCellDialog. The Name column is editable (not PK / RO / masked).
+    // Clicking an editable cell opens EditCellDialog. The Name column is editable: not a primary
+    // key, not read-only, not masked.
     const patchPromise = page.waitForRequest(
       (req) => req.method() === 'PATCH' && /\/dbadmin\/tables\/Workflow\/rows\?/.test(req.url()),
     );
@@ -153,7 +154,7 @@ test.describe('DB-Admin Viewer (Teil 31)', () => {
       (req) => req.method() === 'DELETE' && /\/dbadmin\/tables\/Workflow\/rows\?/.test(req.url()),
     );
 
-    // The first row's delete button (Trash2 icon) — title is the localized "Delete".
+    // The delete button of the first row (Trash2 icon); its title is the localized "Delete".
     const firstRow = page.getByRole('row').filter({ hasText: 'Patch Tuesday' });
     await firstRow.getByRole('button', { name: /delete|löschen/i }).click();
 
@@ -179,11 +180,11 @@ test.describe('DB-Admin Viewer (Teil 31)', () => {
     await page.getByRole('button', { name: /AuditLogs/ }).click();
     await expect(page.getByText('LOGIN_OK')).toBeVisible({ timeout: 15_000 });
 
-    // canDelete=false → no per-row delete buttons at all.
+    // canDelete=false means there are no per-row delete buttons.
     const row = page.getByRole('row').filter({ hasText: 'LOGIN_OK' });
     await expect(row.getByRole('button', { name: /delete|löschen/i })).toHaveCount(0);
 
-    // Clicking a read-only cell does NOT open the edit dialog.
+    // Clicking a read-only cell does not open the edit dialog.
     await page.getByText('LOGIN_OK').click();
     await expect(page.getByRole('heading', { name: /edit cell|zelle bearbeiten/i })).toHaveCount(0);
   });
@@ -193,7 +194,7 @@ test.describe('DB-Admin Viewer — access control (Teil 31.5 / 26.5)', () => {
   test('31.6 — non-admin (Viewer) hitting /database is redirected away', async ({ page }) => {
     await installDefaultMocks(page);
     await mockTables(page);
-    // Override /me to a Viewer; AdminOnly guard → <Navigate to="/" replace/>.
+    // Override /me with a Viewer; the AdminOnly guard then renders <Navigate to="/" replace/>.
     await page.route('**/api/auth/me', (route) =>
       route.fulfill({
         status: 200,

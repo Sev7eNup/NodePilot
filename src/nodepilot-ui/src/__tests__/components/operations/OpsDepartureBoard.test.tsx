@@ -66,8 +66,8 @@ describe('OpsDepartureBoard', () => {
         nowMs={NOW}
       />,
     );
-    // The blackout label replaces the countdown — the board must not promise a start
-    // that will never happen.
+    // The blackout label replaces the countdown so the board does not promise a start
+    // that never happens.
     expect(screen.getByText('maintenance')).toBeInTheDocument();
     expect(screen.queryByText('in 10:00')).not.toBeInTheDocument();
     expect(screen.getByRole('row', { name: /Nightly Backup/ }))

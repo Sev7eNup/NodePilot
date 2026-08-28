@@ -206,7 +206,7 @@ public sealed class LlmConfiguredProxyTests
     [Fact]
     public void CredentialChange_TakesEffectOnTheNextRequest()
     {
-        // Same address, different credentials — the proxy must not serve a previously built one.
+        // A credential change must invalidate the cached proxy for the same address.
         var options = LlmTestOptions.WithProfile();
         options.Proxy = new LlmProxyOptions
         {

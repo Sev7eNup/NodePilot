@@ -17,12 +17,11 @@ using NodePilot.Data;
 namespace NodePilot.Api.Controllers;
 
 /// <summary>
-/// AI workflow assistant: a multi-turn chat about the currently-open workflow — it explains
-/// the workflow and, on request, proposes full definition rewrites. Deliberately <b>separate</b>
-/// from <see cref="AiController"/>: this endpoint is open to <b>every</b> authenticated role
-/// (Viewers may ask questions too), while change proposals are only generated server-side for
-/// Admin/Operator. Persistence never happens here — the frontend applies the proposal to the
-/// canvas and saves it through the normal edit-lock/publish flow.
+/// AI workflow assistant: a multi-turn chat about the currently-open workflow that explains it
+/// and, on request, proposes full definition rewrites. Deliberately <b>separate</b> from
+/// <see cref="AiController"/>: <b>every</b> authenticated role can use it, including Viewers who
+/// may only ask questions, while proposals are generated only for Admin/Operator. Persistence
+/// never happens here — the frontend applies proposals through the normal edit-lock/publish flow.
 /// </summary>
 [ApiController]
 [Route("api/ai")]
@@ -64,12 +63,11 @@ public sealed class AiChatController : ControllerBase
     }
 
     /// <summary>
-    /// Folder-RBAC gate for the workflow-scoped AI audit endpoints. Loads the workflow, returns
-    /// 404 if it doesn't exist, and then delegates to the shared gate
-    /// (<see cref="ResourceAuthorizationGateExtensions.RequireWorkflowAccessAsync"/>): also 404
-    /// when the caller can't even read it (existence is masked — no 403/404 differential that
-    /// would help someone probe for valid IDs), 403 when they can read but can't perform the
-    /// requested operation.
+    /// Folder-RBAC gate for the workflow-scoped AI audit endpoints. Loads the workflow, then
+    /// delegates to the shared gate
+    /// (<see cref="ResourceAuthorizationGateExtensions.RequireWorkflowAccessAsync"/>): 404 when
+    /// the workflow doesn't exist or the caller can't read it (no 403/404 differential to probe
+    /// for valid IDs), 403 when they can read but can't perform the requested operation.
     /// </summary>
     private async Task<ActionResult?> RequireWorkflowAccessAsync(Guid workflowId, ResourceOp op, CancellationToken ct)
     {
@@ -116,12 +114,12 @@ public sealed class AiChatController : ControllerBase
 
             var allowModify = User.IsPrivileged(); // Admin or Operator
 
-            // Folder-RBAC gate for the execution-log tools: the workflowId comes from the client —
-            // without this check, any authenticated user could exfiltrate step outputs from other
-            // people's workflows through the assistant. No access / unknown / unsaved workflow =>
-            // the tools are silently disabled (the chat itself still proceeds; existence stays
-            // masked, no 404/403 differential). Deliberately NOT using RequireWorkflowAccessAsync
-            // here — the chat request itself must never fail because of this check.
+            // Folder-RBAC gate for the execution-log tools: workflowId comes from the client, so
+            // without this check any authenticated user could pull step outputs from another
+            // user's workflow through the assistant. A missing, unknown, or unsaved workflow just
+            // disables the tools silently, and existence stays masked (no 404/403 differential).
+            // Deliberately skips RequireWorkflowAccessAsync so this check never fails the chat
+            // itself.
             var allowExecutionTools = false;
             var toolCallingEnabled = _options.CurrentValue.TryResolveActiveProfile(out var activeProfile)
                                      && activeProfile.EnableToolCalling;
@@ -216,7 +214,7 @@ public sealed class AiChatController : ControllerBase
     }
 
     /// <summary>
-    /// Records that an AI proposal was applied to the canvas -> audit event
+    /// Records that an AI proposal was applied to the canvas, as audit event
     /// <c>AI_PROPOSAL_APPLIED</c>. Persistence still goes through the normal edit-lock/publish
     /// flow; this call is only the audit trail. Admin/Operator only (Viewers may not apply
     /// changes).
@@ -228,7 +226,7 @@ public sealed class AiChatController : ControllerBase
         if (request.WorkflowId == Guid.Empty)
             return BadRequest(new { code = "WORKFLOW_ID_REQUIRED", message = "workflowId is required." });
 
-        // Applying a proposal changes the workflow -> require Edit on the folder (404 if the
+        // Applying a proposal changes the workflow, so it requires Edit on the folder (404 if the
         // caller can't even read it).
         if (await RequireWorkflowAccessAsync(request.WorkflowId, ResourceOp.Edit, ct) is { } denied)
             return denied;
@@ -249,7 +247,8 @@ public sealed class AiChatController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<AiActivityEntryDto>>> ChatActivity(
         Guid workflowId, [FromQuery] int take = 20, CancellationToken ct = default)
     {
-        // Reading activity requires reading the workflow -> require Read (404 if unreadable/nonexistent).
+        // Reading activity requires reading the workflow, so it requires Read (404 if
+        // unreadable/nonexistent).
         if (await RequireWorkflowAccessAsync(workflowId, ResourceOp.Read, ct) is { } denied)
             return denied;
 

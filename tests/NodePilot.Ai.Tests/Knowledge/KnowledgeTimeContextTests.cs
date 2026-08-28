@@ -28,7 +28,7 @@ public class KnowledgeTimeContextTests
     public void Build_ValidIanaZone_RendersLocalTimeAndOffset()
     {
         var text = KnowledgeTimeContext.Build(NowUtc, "Europe/Berlin", 120);
-        // CEST in July = UTC+02:00 → 16:42 local, honouring DST via the IANA zone.
+        // CEST in July = UTC+02:00 -> 16:42 local, honouring DST via the IANA zone.
         text.Should().Contain("Jetzt (Lokalzeit des Users): 2026-07-21 16:42 (Europe/Berlin, UTC+02:00)");
     }
 
@@ -43,7 +43,7 @@ public class KnowledgeTimeContextTests
     [Fact]
     public void Build_NegativeOffset_LabelsCorrectly()
     {
-        // No IANA id → pure offset fallback, UTC-05:00 (e.g. US Eastern winter).
+        // No IANA id -> pure offset fallback, UTC-05:00 (e.g. US Eastern winter).
         var text = KnowledgeTimeContext.Build(NowUtc, null, -300);
         text.Should().Contain("Jetzt (Lokalzeit des Users): 2026-07-21 09:42 (UTC-05:00)");
     }
@@ -51,7 +51,7 @@ public class KnowledgeTimeContextTests
     [Fact]
     public void Build_ImplausibleOffset_IsIgnored()
     {
-        // > 14h is not a real zone offset → treated as absent, UTC-only.
+        // > 14h is not a real zone offset -> treated as absent, UTC-only.
         var text = KnowledgeTimeContext.Build(NowUtc, null, 6000);
         text.Should().NotContain("Lokalzeit des Users");
     }

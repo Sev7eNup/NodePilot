@@ -35,7 +35,7 @@ describe('ToolbarGlow', () => {
   });
 
   it('tracks the cursor on document (pointermove) so approach-from-below is detected', () => {
-    // Default matchMedia stub (setup.ts) reports matches:false → motion allowed.
+    // The default matchMedia stub (setup.ts) reports matches:false, so motion is allowed.
     const types = spyOnDocumentListeners();
     render(
       <ToolbarGlow>

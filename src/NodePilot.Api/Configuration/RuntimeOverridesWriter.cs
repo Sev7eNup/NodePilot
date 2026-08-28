@@ -7,7 +7,7 @@ namespace NodePilot.Api.Configuration;
 
 /// <summary>
 /// Owns reading/writing of <c>appsettings.runtime.json</c> — the UI-managed override
-/// file that sits between <c>appsettings.{Env}.json</c> (Installer-Bootstrap) and the
+/// file that sits between <c>appsettings.{Env}.json</c> (installer bootstrap) and the
 /// EnvVar/CLI providers in the configuration chain.
 ///
 /// <para>Responsibilities:</para>
@@ -27,7 +27,7 @@ namespace NodePilot.Api.Configuration;
 ///   fires.</item>
 /// </list>
 ///
-/// <para>Cross-host concurrency (HA cluster on a UNC share) is NOT solved here — that
+/// <para>Cross-host concurrency (HA cluster on a UNC share) is not solved here — that
 /// belongs to the controller's ETag/If-Match check. The mutex is only intra-process.</para>
 /// </summary>
 public sealed class RuntimeOverridesWriter
@@ -131,13 +131,14 @@ public sealed class RuntimeOverridesWriter
     /// <summary>
     /// Atomic check-then-write under the process-local mutex. This is the only correct
     /// way to serialise a section save: the ETag comparison, the JSON mutation, the
-    /// last-save metadata + restart-marker bookkeeping, and the file replace ALL happen
+    /// last-save metadata + restart-marker bookkeeping, and the file replace all happen
     /// inside the same critical section. Without this, two concurrent PUTs with the
     /// same ETag would both pass the pre-flight check and the second write would
-    /// silently clobber the first — which is exactly the HA/UNC race the design called
-    /// out as the central guarantee.
+    /// silently clobber the first — which is exactly the HA/UNC race this guards
+    /// against.
     ///
-    /// <para>On ETag mismatch the file is NOT written and <see cref="AtomicSectionUpdateResult.CurrentSection"/>
+    /// <para>On ETag mismatch the file is not written and <see
+    /// cref="AtomicSectionUpdateResult.CurrentSection"/>
     /// carries the on-disk snapshot the caller should surface to the client.</para>
     /// </summary>
     public AtomicSectionUpdateResult TryUpdateSectionAtomic(

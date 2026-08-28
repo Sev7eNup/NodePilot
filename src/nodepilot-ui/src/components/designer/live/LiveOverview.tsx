@@ -16,16 +16,16 @@ type SubTab = 'timeline' | 'console';
 
 /**
  * Composite view shown in the right pane of the Live tab when no individual step is
- * selected. Stacks: stats header → sub-tab switcher (Timeline / Console) → content.
+ * selected. Stacks a stats header, a sub-tab switcher (Timeline / Console), and content.
  *
- * Selecting a node/bar/console-line bubbles up to the parent and switches the right
- * pane to the existing per-step inspector — so this component never has to render
- * the inspector itself.
+ * Selecting a node, bar, or console line bubbles up to the parent, which switches the
+ * right pane to the existing per-step inspector, so this component never renders the
+ * inspector itself.
  */
 export function LiveOverview({ execution, onSelectStep, medianRunDurationMs }: Readonly<Props>) {
   const { t } = useTranslation('designer');
-  // Default tab: Timeline. The console is the secondary "what's the run printing"
-  // lookup; users overwhelmingly look for "what's happening over time" first.
+  // Timeline is the default tab; the console is the secondary lookup for output text,
+  // since seeing run progress over time is usually the first thing users want.
   const [tab, setTab] = useState<SubTab>('timeline');
 
   return (

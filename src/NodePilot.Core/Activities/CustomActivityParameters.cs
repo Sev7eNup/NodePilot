@@ -17,7 +17,8 @@ public sealed record CustomActivityInputParameter(
     IReadOnlyList<string>? Options = null,
     string? Description = null);
 
-/// <summary>Output descriptor. The set of <see cref="Name"/>s is the wrapper's capture allow-list.</summary>
+/// <summary>Output descriptor. The set of <see cref="Name"/>s is the wrapper's capture
+/// allow-list.</summary>
 public sealed record CustomActivityOutputParameter(string Name, string Type);
 
 /// <summary>
@@ -35,7 +36,8 @@ public static class CustomActivityParameterTypes
         new HashSet<string>(StringComparer.Ordinal) { "string", "number", "boolean", "object", "array" };
 }
 
-/// <summary>JSON (de)serialization for the parameter arrays. Malformed JSON gives an empty list.</summary>
+/// <summary>JSON (de)serialization for the parameter arrays. Malformed JSON gives an empty
+/// list.</summary>
 public static class CustomActivityParameters
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)

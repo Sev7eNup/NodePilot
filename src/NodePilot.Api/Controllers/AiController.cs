@@ -13,7 +13,8 @@ namespace NodePilot.Api.Controllers;
 /// AI assistant that helps author workflows: PowerShell generation in the script editor and
 /// full workflow generation from a free-text prompt. Both endpoints call an OpenAI-compatible
 /// LLM endpoint (OpenAI Cloud, Ollama, LM Studio, …) — configuration lives under
-/// <c>Llm:*</c>, with the master on/off switch <c>Llm:Enabled</c> (default false → 503).
+/// <c>Llm:*</c>, with the master on/off switch <c>Llm:Enabled</c> (default false, which returns
+/// 503).
 /// </summary>
 [ApiController]
 [Route("api/ai")]

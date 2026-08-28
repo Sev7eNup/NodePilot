@@ -11,11 +11,10 @@ interface Heading {
 /**
  * Right-side "on this page" navigation.
  *
- * Headings are read from the **rendered DOM** (the article's `h2[id]`/`h3[id]`,
- * whose ids come from `rehype-slug` → `github-slugger`) rather than recomputed
- * from the markdown source. This guarantees the jump target's id exactly matches
- * the rendered element, even for headings with `&` / `/` / `·` separators where
- * a hand-rolled slugify would diverge from github-slugger (single vs. double hyphen).
+ * Headings are read from the rendered DOM (the article's `h2[id]`/`h3[id]`, whose ids come
+ * from `rehype-slug` via `github-slugger`) instead of being recomputed from the markdown
+ * source, so each jump target matches the rendered element even for headings containing
+ * separators like `&` or `/`, where a hand-written slugify would diverge.
  */
 export default function Toc({
   articleRef,
@@ -71,8 +70,8 @@ export default function Toc({
   if (headings.length === 0) return null
 
   return (
-    // A <nav> landmark, not an <aside>: it *is* navigation, and it keeps the sidebar's
-    // `aside`-scoped rail styling from ever reaching this rail.
+    // A <nav> landmark rather than an <aside>: this is navigation, and it keeps the
+    // sidebar's `aside`-scoped rail styling from reaching this rail.
     <nav
       aria-label={t('ui.onThisPage')}
       className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 overflow-y-auto pr-6 pt-8 xl:block"

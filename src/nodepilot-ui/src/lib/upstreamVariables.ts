@@ -98,8 +98,8 @@ function addRunScriptParams(out: UpstreamVariable[], node: Node, nodeLabel: stri
   const nodeData = node.data as Record<string, unknown>;
   const config = (nodeData.config as Record<string, unknown>) || {};
   const script = (config.script as string) || '';
-  // Note: the always-present `exitCode` param is surfaced via the static activity catalog
-  // (STATIC_OUTPUT_PARAMETERS_BY_TYPE), not here — adding it twice would duplicate the picker entry.
+  // The always-present `exitCode` param comes from the static activity catalog
+  // (STATIC_OUTPUT_PARAMETERS_BY_TYPE); adding it here too would duplicate the picker entry.
   const varMatches = script.matchAll(/\$([a-zA-Z_]\w*)\s*=/g);
   const ignored = new Set([
     'ErrorActionPreference',
@@ -113,7 +113,7 @@ function addRunScriptParams(out: UpstreamVariable[], node: Node, nodeLabel: stri
     'PSScriptRoot',
     'PSCommandPath'
   ]);
-  const seen = new Set<string>(['exitCode']); // reserved — surfaced via the static catalog
+  const seen = new Set<string>(['exitCode']); // reserved: comes from the static catalog
   for (const m of varMatches) {
     const pName = m[1];
     if (ignored.has(pName) || seen.has(pName)) continue;
@@ -123,11 +123,10 @@ function addRunScriptParams(out: UpstreamVariable[], node: Node, nodeLabel: stri
 }
 
 function addWmiCaptureParams(out: UpstreamVariable[], node: Node, nodeLabel: string, varName: string): void {
-  // Added 2026-05-17: wmiQuery now projects user-listed CIM properties into param.<Name>
-  // (plus an always-present param.count). Surface those to the variable picker so authors
-  // get autocomplete on {{wmi_os.param.Caption}} etc. The backend type for a CIM property
-  // is dynamic — surface as 'string' which is the dominant case + how everything else is
-  // resolved at template-substitution time anyway.
+  // wmiQuery projects the user-listed CIM properties into param.<Name>, plus an always-present
+  // param.count. Surface them to the variable picker so authors get autocomplete on
+  // {{wmi_os.param.Caption}}. A CIM property has no fixed backend type, so report 'string',
+  // which is the dominant case and matches how values are substituted at run time.
   const nodeData = node.data as Record<string, unknown>;
   const config = (nodeData.config as Record<string, unknown>) || {};
   const captureProperties = config.captureProperties;
@@ -208,9 +207,9 @@ function toVariableType(type: unknown): VariableType {
 }
 
 /**
- * Walk the graph backwards from the given node to find all upstream nodes
- * and their declared output variables (and exposed parameters for ManualTrigger
- * / RunScript activities). Does NOT include the start node itself.
+ * Walks the graph backwards from the given node to collect all upstream nodes and their
+ * declared output variables, plus the parameters exposed by ManualTrigger and RunScript
+ * activities. The start node itself is not included.
  */
 export function getUpstreamVariables(nodeId: string, allNodes: Node[], edges: Edge[]): UpstreamVariable[] {
   const visited = new Set<string>();

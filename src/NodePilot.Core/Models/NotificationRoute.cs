@@ -15,13 +15,15 @@ public class NotificationRoute
 
     /// <summary>
     /// Channel-specific destination: e-mail recipient(s) (comma-separated), webhook URL,
-    /// PagerDuty routing key, or Opsgenie API key. Non-secret (the URL/recipient is shown in the UI).
+    /// PagerDuty routing key, or Opsgenie API key. Non-secret (the URL/recipient is shown in the
+    /// UI).
     /// </summary>
     public string Target { get; set; } = string.Empty;
 
     /// <summary>
     /// Optional secret material (generic-webhook HMAC signing secret, etc.), encrypted at rest via
-    /// <c>ISecretProtector</c> and redacted in API responses. Null when the channel needs no secret.
+    /// <c>ISecretProtector</c> and redacted in API responses. Null when the channel needs no
+    /// secret.
     /// </summary>
     public string? Secret { get; set; }
 

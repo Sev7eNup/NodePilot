@@ -3,16 +3,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * Drift guard across two files: in a LIGHT skin the workflow designer must use the same surface
- * vocabulary as every other page — the canvas is the shell's page ground, the floating chrome is
- * a white plate on top of it.
+ * Drift guard across two files: in a light skin the workflow designer must use the same surface
+ * vocabulary as every other page. The canvas is the shell's page ground and the floating chrome
+ * is a white plate on top of it. The app ramp lives in `index.css`, the designer ramp in
+ * `designer-atelier.css`, and nothing else compares them.
  *
- * Atelier used to invert that on a warm paper ramp (canvas `#faf8f3`, chrome `#ece9e1`), which is
- * why the designer read greyer and darker than the dashboard next to it. Nothing mechanical
- * stopped it: the app ramp lives in `index.css` and the designer ramp in `designer-atelier.css`,
- * and no test compared them. This one does.
- *
- * Dark skins are deliberately NOT covered — there the chrome lifting off a deeper canvas floor is
+ * Dark skins are deliberately not covered: there the chrome lifting off a deeper canvas floor is
  * the intended reading, and `e2e/designer-atelier.spec.ts` pins that separately.
  */
 
@@ -81,15 +77,15 @@ describe('designer light-skin parity', () => {
     const ground = blockAfter(indexCss, 'html:not(.dark) .np-designer:not(.wd-atelier),');
     expect(ground).toContain('var(--color-surface-low)');
 
-    // `html:not(.dark)` is what keeps it out of the dark skins — where the chrome lifting off a
-    // deeper canvas floor is the intended reading, not a bug.
+    // `html:not(.dark)` keeps this out of the dark skins, where the chrome lifting off a
+    // deeper canvas floor is the intended reading.
     const editor = readFileSync(join(CSS_DIR, 'pages', 'WorkflowEditorPage.tsx'), 'utf8');
     expect(editor, 'the canvas needs its stable hook').toContain('np-canvas flex-1');
   });
 
   it('the canvas dot grid and minimap masks are tokens in BOTH bases, not literals', () => {
-    // The light values used to be hardcoded rgba() in WorkflowEditorPage.tsx, so the grid stayed
-    // a flat 42% black no matter which light skin was on.
+    // A hardcoded rgba() in WorkflowEditorPage.tsx would pin the grid to one shade, so it would
+    // no longer follow the active skin.
     const darkBase = blockAfter(indexCss, 'html.dark {', '--color-surface:');
     for (const token of ['--np-canvas-dot', '--np-minimap-mask', '--np-minimap-mask-atelier']) {
       expect(blockAfter(indexCss, '@theme'), `light ${token}`).toContain(token);

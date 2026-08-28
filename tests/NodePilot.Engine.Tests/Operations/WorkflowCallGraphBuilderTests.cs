@@ -221,7 +221,8 @@ public class WorkflowCallGraphBuilderTests
     {
         // The reason call SITES are the cacheable unit and edges are not: a name-based reference
         // resolves against every OTHER workflow's name, so renaming the child changes the parent's
-        // edge while the parent's own definition — and therefore its cached call sites — is untouched.
+        // edge while the parent's own definition — and therefore its cached call sites — is
+        // untouched.
         var parentSites = WorkflowCallGraphBuilder.ExtractCallSites(StartWorkflowDef("Child"));
         var sites = new Dictionary<Guid, IReadOnlyList<WorkflowCallSite>>
         {

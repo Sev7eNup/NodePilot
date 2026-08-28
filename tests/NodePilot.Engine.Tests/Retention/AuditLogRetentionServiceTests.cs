@@ -119,7 +119,8 @@ public class AuditLogRetentionServiceTests
     }
 
     /// <summary>
-    /// Covers audit finding F-4's happy path: archive enabled, both archive and DB delete succeed →
+    /// Covers audit finding F-4's happy path: archive enabled, both archive and DB delete succeed
+    /// to
     /// gzipped archive file plus its SHA-256 sidecar exist on disk and the rows are gone from
     /// the DB. Pins the per-batch filename shape ("audit-{date}-{ticks}-{rand}.ndjson.gz")
     /// + sidecar pairing so a future refactor that breaks the idempotent layout or drops
@@ -193,7 +194,8 @@ public class AuditLogRetentionServiceTests
     }
 
     /// <summary>
-    /// Audit finding F-4's regression case: archive succeeds, DB delete throws → the archive file MUST be
+    /// Audit finding F-4's regression case: archive succeeds, DB delete throws to the archive file
+    /// MUST be
     /// rolled back so the next retention pass doesn't double-archive the same rows.
     /// Without this rollback, audit archives accumulate duplicate entries on every retry,
     /// breaking compliance dedup and SIEM frequency analytics.
@@ -212,7 +214,7 @@ public class AuditLogRetentionServiceTests
                 Id = Guid.NewGuid(), Action = "OLD",
                 Timestamp = DateTime.UtcNow.AddDays(-400)
             });
-            await db.SaveChangesAsync();   // outerDb → no interceptor → succeeds
+            await db.SaveChangesAsync();   // outerDb -> no interceptor -> succeeds
 
             var opts = new NodePilot.Scheduler.Options.RetentionOptions();
             opts.AuditLog.ArchivePath = archiveDir;
@@ -229,7 +231,8 @@ public class AuditLogRetentionServiceTests
             (await db.AuditLog.CountAsync()).Should().Be(1,
                 "the simulated delete failure must leave the row in place");
 
-            // Audit finding F-4's invariant: the per-batch archive file MUST have been deleted — both
+            // Audit finding F-4's invariant: the per-batch archive file MUST have been deleted —
+            // both
             // the gzip and the .sha256 sidecar, so the next retention pass writes a fresh pair
             // instead of leaving an orphaned sidecar pointing at a vanished archive.
             Directory.GetFiles(archiveDir, "audit-*.ndjson.gz").Should().BeEmpty(
@@ -349,7 +352,7 @@ public class AuditLogRetentionServiceTests
     /// <summary>
     /// Hot-reload + audit-compliance invariant: RunIterationAsync reads
     /// IOptionsMonitor&lt;RetentionOptions&gt;.CurrentValue per pass, and a changed ArchivePath is
-    /// re-probed live. Start with a broken archive path (child of a file → CreateDirectory throws)
+    /// re-probed live. Start with a broken archive path (child of a file -> CreateDirectory throws)
     /// — per the AuditLog compliance rule, rows MUST stay in-DB (no archive = no delete). Then
     /// mutate ArchivePath to a valid directory via config reload and assert the next iteration
     /// re-probes, archives, and deletes. Proves the re-probe invalidation preserves the
@@ -384,13 +387,13 @@ public class AuditLogRetentionServiceTests
                 NullLogger<AuditLogRetentionService>.Instance,
                 NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
-            // First pass: broken archive path → ArchiveAsync fails → PurgeOnceAsync breaks out
+            // First pass: broken archive path -> ArchiveAsync fails -> PurgeOnceAsync breaks out
             // WITHOUT deleting. Compliance: audit rows stay in-DB until the archive works.
             await svc.RunIterationAsync(CancellationToken.None);
             (await db.AuditLog.CountAsync()).Should().Be(1, "a broken archive path must retain audit rows in-DB");
             Directory.Exists(validDir).Should().BeFalse();
 
-            // Operator fixes Retention:AuditLog:ArchivePath in the Settings UI → config reload.
+            // Operator fixes Retention:AuditLog:ArchivePath in the Settings UI -> config reload.
             monitor.Set(new RetentionOptions
             {
                 AuditLog = new AuditLogRetentionOptions
@@ -399,8 +402,8 @@ public class AuditLogRetentionServiceTests
                 }
             });
 
-            // Same service instance: the path change invalidates the cached "broken" verdict →
-            // re-probe succeeds → archive written + rows deleted.
+            // The path change invalidates the cached "broken" verdict. A successful re-probe
+            // allows the archive write and row deletion on the same service instance.
             await svc.RunIterationAsync(CancellationToken.None);
             (await db.AuditLog.CountAsync()).Should().Be(0);
             Directory.GetFiles(validDir, "audit-*.ndjson.gz").Should().HaveCount(1);

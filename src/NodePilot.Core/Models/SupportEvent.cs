@@ -17,10 +17,12 @@ public class SupportEvent
 {
     public Guid Id { get; set; }
 
-    /// <summary>UTC timestamp of the Serilog event itself (not when it was inserted into the DB).</summary>
+    /// <summary>UTC timestamp of the Serilog event itself (not when it was inserted into the
+    /// DB).</summary>
     public DateTime Timestamp { get; set; }
 
-    /// <summary>Serilog log level as an int (Verbose=0, Debug=1, Information=2, Warning=3, Error=4, Fatal=5).</summary>
+    /// <summary>Serilog log level as an int (Verbose=0, Debug=1, Information=2, Warning=3, Error=4,
+    /// Fatal=5).</summary>
     public int Level { get; set; }
 
     /// <summary>
@@ -35,12 +37,14 @@ public class SupportEvent
 
     public Guid? WorkflowId { get; set; }
 
-    /// <summary>Workflow name captured from the scope, frozen at write time — stays correct even if the workflow is renamed later.</summary>
+    /// <summary>Workflow name captured from the scope, frozen at write time — stays correct even if
+    /// the workflow is renamed later.</summary>
     public string? WorkflowName { get; set; }
 
     public Guid? ExecutionId { get; set; }
 
-    /// <summary>8-hex-character prefix of the ExecutionId, denormalized for human-readable grouping in the UI.</summary>
+    /// <summary>8-hex-character prefix of the ExecutionId, denormalized for human-readable grouping
+    /// in the UI.</summary>
     public string? ExecutionShort { get; set; }
 
     public string? StepId { get; set; }
@@ -49,7 +53,8 @@ public class SupportEvent
 
     public string? ActivityType { get; set; }
 
-    /// <summary>Username frozen at write time (e.g. for audit events) — stays interpretable after the user is renamed or deleted.</summary>
+    /// <summary>Username frozen at write time (e.g. for audit events) — stays interpretable after
+    /// the user is renamed or deleted.</summary>
     public string? UserName { get; set; }
 
     public Guid? UserId { get; set; }

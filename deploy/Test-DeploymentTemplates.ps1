@@ -511,10 +511,7 @@ if ($versionMatch.Groups[1].Value -notmatch '^\d+\.\d+\.\d+') {
 }
 
 # --- update contract -----------------------------------------------------------------------
-# A successful update must leave the service RUNNING. The script used to restore the pre-update
-# state, which combined badly with its own 30-second stop timeout: operators stop the service by
-# hand first, so "stopped" became the recorded state and a successful update ended with a dead
-# service. Failure must still restore the prior state.
+# A successful update must leave the service running. Failure restores the prior state.
 $updateScript = Get-Content -LiteralPath $UpdateScriptPath -Raw
 
 $successStart = $updateScript.IndexOf("Write-Ok '/healthz/ready returned 200 OK'")
@@ -532,14 +529,13 @@ $successCode = ($successPath -split "`n" | Where-Object { $_.TrimStart() -notmat
 Assert-TextDoesNotMatch -Name 'a successful update must not stop the service again' `
     -Text $successCode -Pattern 'Stop-ServiceAndVerify'
 
-# Only the installer used to write the marker, so its Version kept naming the last INSTALL and a
-# script-driven update was invisible in it - including on the setup wizard's own mode page, which
-# reads exactly this value to tell the operator what is already installed.
+# Script-driven updates must refresh the version marker consumed by the setup wizard.
 Assert-TextMatches -Name 'a successful update refreshes the installation marker' `
     -Text $successCode `
     -Pattern "(?s)SOFTWARE\\NodePilot\\Server[\s\S]{0,700}New-ItemProperty[^\r\n]*-Name 'Version'"
 # The marker is one machine-wide key, so on a host with a second instance it may well describe a
-# different installation. Stamping this update's version onto that one is worse than leaving it stale.
+# different installation. Stamping this update's version onto that one is worse than leaving it
+# stale.
 Assert-TextMatches -Name 'and only when the marker describes this installation' `
     -Text $successCode -Pattern '\$markerInstallPath\.TrimEnd\([^)]*\) -eq \$InstallPath\.TrimEnd\('
 
@@ -572,10 +568,7 @@ $preflightScript = Get-Content -LiteralPath $PreflightScriptPath -Raw
 # "must not parse --info", for one - so they have to look at code only.
 $preflightStripped = Remove-CommentLines -Text $preflightScript
 
-# The near-miss this guards against, concretely: Enable-SqlReadCommittedSnapshot used to sit
-# INSIDE the SQL reachability try/catch. Moving the pre-flight block wholesale would have carried
-# its ALTER DATABASE ... WITH ROLLBACK IMMEDIATE along - and that drops every open session on the
-# target database, once per click of a re-check button, against production.
+# Preflight must not execute database bootstrap changes such as READ_COMMITTED_SNAPSHOT.
 #
 # Checked over the parsed AST, not with a regex over the source. A regex cannot tell "executes
 # New-NetFirewallRule" from "prints New-NetFirewallRule as the fix for a red row" - and this file
@@ -732,13 +725,8 @@ foreach ($trustedSid in @('S-1-5-18', 'S-1-5-32-544', 'S-1-3-0', 'S-1-3-4')) {
         -Pattern ([regex]::Escape($trustedSid))
 }
 
-# H-18. The install directory is the image path of a service running as LocalSystem or a gMSA, so
-# write access to it is code execution as that account. Only DataPath used to be hardened;
-# InstallPath was created with a plain New-Item -Force and inherited whatever the parent allowed -
-# under the Program Files default that is safe, under a custom root such as D:\NodePilot it is
-# BUILTIN\Users:(M) off the volume root. Three separate guarantees, each with its own regression:
-# validate the location before writing, apply a protected read-only-for-service DACL, and re-verify
-# after the copy (the hash manifest proves the files are ours now, not that they stay ours).
+# The privileged service image directory must reject untrusted writes. Validate its location,
+# apply a protected DACL, and verify it after copying files.
 Assert-TextMatches -Name 'the installer validates the install root before creating it' `
     -Text $installerScript `
     -Pattern '(?s)Write-Step "Preparing directories"[\s\S]{0,400}Assert-SafeInstallRoot -Path \$InstallPath'
@@ -902,10 +890,7 @@ Assert-TextMatches -Name 'installer records a machine-wide installation marker' 
     -Text $installerScript -Pattern 'HKLM:\\SOFTWARE\\NodePilot\\Server'
 
 # --- process-wait contracts ---------------------------------------------------------------------
-# The SCM reports SERVICE_STOPPED while the host is still unwinding, so an immediate snapshot of
-# the install directory finds the very process the script just stopped. Both scripts used to abort
-# there and tell the operator to kill it by hand (lab 2026-08-03, exit code 4 on a plain update).
-# Waiting for it - and ending what is left - is the script's job.
+# The host can keep unwinding after SCM reports SERVICE_STOPPED. Scripts must wait for or end it.
 Assert-TextMatches -Name 'the update waits for the stopped service process instead of blaming it' `
     -Text $updateCode -Pattern 'Wait-NodePilotProcessesUnderPath[^\r\n]*-Force'
 Assert-TextMatches -Name 'the installer waits for the stopped service process too' `
@@ -1030,9 +1015,7 @@ Assert-TextDoesNotMatch -Name 'the grant must not carry container inheritance fl
 # and the residual gap is written down in deploy/server/README.md rather than left implied.
 $serverIss = Get-Content -LiteralPath $ServerIssPath -Raw
 
-# [Run] cannot inspect an exit code. Forbidding the section outright makes that class of defect
-# structurally impossible here rather than merely absent today. (The desktop installer used to have
-# exactly this defect; it now runs provisioning from [Code] too - pinned further down.)
+# [Run] cannot inspect an exit code, so provisioning must run from [Code].
 Assert-TextDoesNotMatch -Name 'the server setup must not use a [Run] section' `
     -Text $serverIss -Pattern '(?mi)^\s*\[Run\]'
 Assert-TextMatches -Name 'every Exec result is inspected' `
@@ -1183,15 +1166,7 @@ if ($readinessStart -lt 0 -or $readinessEnd -lt 0) {
     throw 'Deployment template check failed: could not delimit CreateReadinessPage in the server setup.'
 }
 $readinessPageCode = $serverIss.Substring($readinessStart, $readinessEnd - $readinessStart)
-# This used to ban TNewMemo outright, because a memo sized to the leftovers of eight check rows came
-# out one line tall with a scrollbar and read as a broken edit field. That reason is gone: the rows
-# are laid out after their text is known, which leaves the remediation area about five lines. What
-# remains true is that a remediation is unbounded - a database fix is a CREATE LOGIN / CREATE USER /
-# ALTER ROLE block - so the control has to be able to reach content past its own height. A label
-# could not, and simply stopped at the last line that fit, hiding the SQL behind the buttons.
-#
-# So the rule is no longer "not a memo" but "read-only and scrollable": not mistakable for an input,
-# and incapable of silently truncating.
+# Remediation text can exceed the available height, so its control must be read-only and scrollable.
 Assert-TextMatches -Name 'the remediation area cannot be typed into' `
     -Text $readinessPageCode -Pattern 'RemediationBox\.ReadOnly := True'
 Assert-TextMatches -Name 'the remediation area can reach text taller than itself' `
@@ -1245,10 +1220,7 @@ if ($loaderCalls.Count -ne 1) {
            'it belongs to the TLS page handler alone, so the unattended path never shells out for it.')
 }
 
-# The picker is a convenience, never a gate. An unreadable store, a missing adapter or a PowerShell
-# that will not start must leave the operator typing the thumbprint by hand exactly as before this
-# existed - the prerequisite page verifies it either way, so there is nothing here worth stopping
-# an installation over.
+# Picker failure must preserve manual thumbprint entry; the prerequisite page validates it.
 Assert-TextDoesNotMatch -Name 'a certificate list that cannot be read must not stop the wizard' `
     -Text $loaderCode -Pattern 'MsgBox|RaiseException'
 # Offering a line that failed to parse would put something that is not a thumbprint into the field,
@@ -1273,8 +1245,7 @@ Assert-TextMatches -Name 'the readiness page has a row for the artifact publishe
     -Text $serverIss -Pattern "CheckIds\[9\] := 'signer';"
 Assert-TextMatches -Name 'the check array has room for that row' `
     -Text $serverIss -Pattern 'CheckCount = 10;'
-# It used to be written as the constant false, which is why ticking it was impossible: the answer
-# file said "do not trust the publisher" no matter what the operator chose.
+# The answer file must preserve the operator's publisher-trust selection.
 Assert-TextMatches -Name 'trusting the publisher follows the tick, not a constant' `
     -Text $serverIss -Pattern 'trustArtifactSigner[^\r\n]*JsonBool\(IsFixRequested\(''signer''\)\)'
 Assert-TextDoesNotMatch -Name 'the publisher fix is not hard-wired off' `
@@ -1495,9 +1466,7 @@ Assert-TextMatches -Name 'the readiness page asks for the port check' `
     -Text $serverIss -Pattern "CheckIds\[\d\] := 'ports';"
 
 # --- certificate validity and naming -------------------------------------------------------------
-# The expiry used to be rendered into the green line as text with nothing acting on it, so an
-# expired certificate installed cleanly and the first person to find out was a user with a browser
-# warning. It is a required failure now.
+# Expired certificates are a required preflight failure.
 Assert-TextMatches -Name 'an expired certificate fails the pre-flight' `
     -Text $preflightStripped `
     -Pattern "(?s)NotAfter -lt \`$Now[\s\S]{0,300}Status 'Fail' -Required \`$true"
@@ -1527,10 +1496,7 @@ Assert-TextMatches -Name 'the Postgres row logs in rather than only probing the 
 # cannot repeat - the reason the SQL probe pins the certificate host name too.
 Assert-TextMatches -Name 'the Postgres login probe verifies the server certificate' `
     -Text $preflightStripped -Pattern "PGSSLMODE\s*=\s*'verify-full'"
-# What is missing comes from pg_roles and pg_database, never from psql's message. That message is
-# localised - a de-DE cluster answers "Rolle »x« existiert nicht" - so an English-only matcher
-# classifies correctly on one host and calls everything "refused" on the next. Measured while
-# building this against a German cluster.
+# Determine missing roles and databases from the catalog because psql messages are localized.
 Assert-TextMatches -Name 'the Postgres cause comes from the catalogue' `
     -Text $preflightStripped -Pattern '(?s)pg_roles WHERE rolname[\s\S]{0,200}pg_database WHERE datname'
 Assert-TextDoesNotMatch -Name 'the Postgres cause is never parsed out of a localised message' `
@@ -2003,8 +1969,10 @@ Assert-TextMatches -Name 'the crash lookup cannot itself fail the run' `
     -Text $setupAdapter -Pattern "(?s)function Get-NodePilotServiceCrashReason[\s\S]*?catch \{ return '' \}"
 
 # The finish page is the only place the bootstrap token is ever shown, and a plain read of it always
-# fails: the service writes the file with a single ACE for its own identity, and the installing admin
-# is not that identity for either LocalSystem or a gMSA. Test-Path still returns true - Administrators
+# fails: the service writes the file with a single ACE for its own identity, and the installing
+# admin
+# is not that identity for either LocalSystem or a gMSA. Test-Path still returns true -
+# Administrators
 # own the directory - so the naive version reported no error and simply produced no token. The
 # operator then went looking for the file by hand, and granting themselves access on the folder is
 # what stops the server accepting any setup token at all.
@@ -2036,7 +2004,7 @@ Assert-TextMatches -Name 'the staged token copy is shredded in a finally' `
 # value must be filled.
 Assert-TextMatches -Name 'the answer file accepts an empty certificate thumbprint' `
     -Text $contractScript -Pattern "\`$mayBeEmpty = @\('certificate\.thumbprint'\)"
-# Empty is a statement; a typo is not, and used to travel all the way into Kestrel's configuration.
+# Empty is valid, but a supplied thumbprint must have the expected shape.
 Assert-TextMatches -Name 'a thumbprint that is present is still checked for shape' `
     -Text $contractScript -Pattern "40 hexadecimal characters, or empty"
 # An install that arrives with no certificate at all binds an empty string to a mandatory
@@ -2315,7 +2283,8 @@ Assert-TextMatches -Name 'the PostgreSQL major comes from that binary version re
     -Text $desktopPayloadHelper -Pattern 'FileVersionInfo\]::GetVersionInfo\(\$postgresExe\)'
 Assert-TextDoesNotMatch -Name 'the PostgreSQL major must not be parsed out of the path' `
     -Text $desktopPayloadHelper -Pattern '\$PgRootPath\s*-(match|like|split)\b'
-# An operator staring at a failed build needs both numbers; "wrong version" only sends them guessing.
+# An operator staring at a failed build needs both numbers; "wrong version" only sends them
+# guessing.
 Assert-TextMatches -Name 'a PostgreSQL major mismatch names the found and the expected version' `
     -Text $desktopPayloadHelper -Pattern '(?s)major version \$actualMajor[\s\S]{0,200}\$ExpectedMajorVersion'
 

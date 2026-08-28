@@ -4,7 +4,8 @@ namespace NodePilot.Core.Interfaces;
 
 /// <summary>
 /// Editable surface of a <see cref="CustomActivityDefinition"/>. <see cref="Key"/> is honored only
-/// on create (immutable thereafter); <see cref="IsEnabled"/> is not here because enable/disable is a
+/// on create (immutable thereafter); <see cref="IsEnabled"/> is not here because enable/disable is
+/// a
 /// separate Admin-only operation.
 /// </summary>
 public sealed record CustomActivityDefinitionInput

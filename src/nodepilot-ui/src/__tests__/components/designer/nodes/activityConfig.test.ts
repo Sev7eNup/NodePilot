@@ -53,12 +53,12 @@ describe('getActivityVisual — custom activities', () => {
     expect(v.color).toBe('#6366f1');
     expect(v.bgColor).toBe('#6366f11a');
     expect(v.borderColor).toBe('#6366f155');
-    // empty icon → 'extension' default
+    // An empty icon falls back to the 'extension' default.
     expect(v.icon).toBe('extension');
   });
 
   it('falls back to indigo/extension for a custom type with no runtime facts', () => {
-    // store is empty → getCustomActivityFacts returns undefined
+    // With an empty store, getCustomActivityFacts returns undefined.
     const v = getActivityVisual('custom:not_loaded');
     expect(v).toEqual({
       icon: 'extension',

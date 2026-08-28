@@ -10,9 +10,9 @@ using Xunit;
 namespace NodePilot.Api.Tests.Controllers;
 
 /// <summary>
-/// Coverage for the H8/M-20 PromQL allow-list — the only thing standing between an
-/// authenticated operator token and "query the entire shared Prometheus TSDB". Every
-/// test here is a security regression guard, not a happy-path.
+/// Coverage for the PromQL allow-list — the only thing standing between an
+/// authenticated operator token and querying the entire shared Prometheus TSDB. Every
+/// test here is a security regression guard, not a happy path.
 /// </summary>
 public class ObservabilityControllerPromQlTests
 {
@@ -76,8 +76,8 @@ public class ObservabilityControllerPromQlTests
     [Fact]
     public async Task Query_NameLabelSelectorTrick_Rejected()
     {
-        // H8 regression: this query bypasses the prefix allow-list (zero metric tokens)
-        // and would dump every series in Prometheus including co-tenant data.
+        // This query bypasses the prefix allow-list (zero metric tokens) and would dump
+        // every series in Prometheus, including data from other tenants.
         var controller = CreateController();
         var result = await controller.Query("""{__name__=~".+"}""", null, CancellationToken.None);
 
@@ -112,10 +112,9 @@ public class ObservabilityControllerPromQlTests
     [InlineData("up")]
     public async Task Query_AllowedPrefix_PassesValidation(string metric)
     {
-        // The validation lets the metric through; the request to a fake Prometheus host
-        // will then fail at the HTTP layer — but with a non-400 status code (the validator
-        // didn't reject the metric). That's the assertion: the response shape is *not* a
-        // BadRequestObjectResult from the validator.
+        // The validation lets the metric through; the request to a fake Prometheus host then
+        // fails at the HTTP layer with a non-400 status. The assertion only checks that the
+        // response is not a BadRequestObjectResult from the validator.
         var controller = CreateController();
 
         var result = await controller.Query(metric, null, CancellationToken.None);
@@ -129,7 +128,7 @@ public class ObservabilityControllerPromQlTests
     [Fact]
     public async Task Query_AggregationOnAllowedMetric_PassesValidation()
     {
-        // sum/rate/clamp_min are reserved keywords → not metrics → must pass validation
+        // sum/rate/clamp_min are reserved keywords -> not metrics -> must pass validation
         // because the underlying metric is allowed.
         var controller = CreateController();
         var result = await controller.Query(

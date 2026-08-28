@@ -5,7 +5,7 @@ import type { Workflow } from '../types/api';
 
 interface UseWorkflowLockArgs {
   workflowId: string | undefined;
-  /** The loaded workflow — drives the derived lock state. */
+  /** The loaded workflow. Drives the derived lock state. */
   workflow: Workflow | undefined;
   currentUserId: string | null | undefined;
   /** Whether the current role may edit at all (Admin/Operator). */
@@ -14,10 +14,9 @@ interface UseWorkflowLockArgs {
 
 /**
  * Edit-lock lifecycle for a workflow, kept separate from save/dirty (see
- * useWorkflowPersistence). Owns the lock/unlock/force-unlock/disable/enable mutations
- * *internally* and exposes only intent commands + their pending flags plus the derived
- * lock state — callers (page + EditorHeader/EditorStatusBanners/CommandPalette) never see
- * a raw TanStack mutation, so the module isn't a shallow pass-through.
+ * useWorkflowPersistence). Owns the lock, unlock, force-unlock, disable and enable mutations
+ * and exposes only intent commands, their pending flags and the derived lock state, so callers
+ * never handle a raw TanStack mutation.
  */
 export function useWorkflowLock({ workflowId, workflow, currentUserId, roleCanWrite }: UseWorkflowLockArgs) {
   const queryClient = useQueryClient();
@@ -29,15 +28,13 @@ export function useWorkflowLock({ workflowId, workflow, currentUserId, roleCanWr
   const unlockMutation = useMutation({ mutationFn: () => api.post<Workflow>(`/workflows/${workflowId}/unlock`, {}), onSuccess: invalidate });
   const forceUnlockMutation = useMutation({ mutationFn: () => api.post<Workflow>(`/workflows/${workflowId}/force-unlock`, {}), onSuccess: invalidate });
   const disableMutation = useMutation({ mutationFn: () => api.post(`/workflows/${workflowId}/disable`, {}), onSuccess: invalidate });
-  // Re-enable a Disabled workflow without going through the edit-lock — used by the
-  // Publish/Disable toggle when the workflow is disabled but nobody has it checked out.
-  // /enable returns 423 if any user holds the lock, so callers disable the button in that
-  // state to avoid a wasted round-trip.
+  // Re-enables a disabled workflow without taking the edit-lock, for the Publish/Disable toggle.
+  // /enable returns 423 while any user holds the lock, so callers disable the button in that state.
   const enableMutation = useMutation({ mutationFn: () => api.post(`/workflows/${workflowId}/enable`, {}), onSuccess: invalidate });
 
-  // Edit-lock state, derived from the loaded workflow. `canWrite` only flips on when the
-  // current user holds the lock — non-Viewers without a lock still see a read-only canvas
-  // (consistent with the SCOrch-style "must Check Out before editing" rule).
+  // Edit-lock state derived from the loaded workflow. `canWrite` requires the current user to
+  // hold the lock: a workflow must be checked out before it can be edited, so an editor without
+  // the lock still sees a read-only canvas.
   const isLocked = !!workflow?.checkedOutByUserId;
   const isLockedByMe = isLocked && !!currentUserId && workflow!.checkedOutByUserId === currentUserId;
   const isLockedByOther = isLocked && !isLockedByMe;

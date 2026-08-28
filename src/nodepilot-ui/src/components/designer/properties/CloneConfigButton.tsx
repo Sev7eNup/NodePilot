@@ -10,19 +10,11 @@ import {
 } from '../../../lib/configClone';
 
 /**
- * "Config übernehmen von …" affordance — sits at the top of the PropertiesPanel and gives the
- * user a one-click way to copy machine + credential + retry/timeout policy from another step
- * onto the current one. Action-payload fields (script body, query, path, …) are deliberately
- * NOT copied — the whole point of "another step in the same workflow doing similar work" is
- * that the connection params match while the action differs.
- *
- * Two scopes:
- *   - "all"        → identical activity type. Copies the type-specific cloneable config keys
- *                    plus targetMachineId/credentialId (when both ends are remote-capable).
- *   - "remoteOnly" → only targetMachineId + credentialId. Lets you say "all my remote work
- *                    runs on machine-A" without dragging timeout/retry across activity types.
- *
- * Only renders when at least one valid candidate exists in the workflow.
+ * Control at the top of the PropertiesPanel that copies machine, credential and retry/timeout
+ * settings from another step onto the current one; action payloads such as script body, query
+ * or path are left alone. Scope "all" requires the same activity type and copies its cloneable
+ * config keys, scope "remoteOnly" copies only targetMachineId and credentialId between remote
+ * steps. Renders only when the workflow holds at least one candidate.
  */
 interface Props {
   currentNode: Node;
@@ -40,9 +32,8 @@ export function CloneConfigButton({ currentNode, allNodes, onClone }: Readonly<P
   const currentData = currentNode.data as Record<string, unknown>;
   const currentActivityType = (currentData.activityType as string) || '';
 
-  // Candidates depend on scope: same-type clones need an exact activity-type match;
-  // remote-only clones accept any other Remote-Activity. Note-/group-/trigger-types and the
-  // current node itself are always excluded.
+  // Candidates depend on the scope: "all" needs an exact activity-type match, "remoteOnly"
+  // accepts any other remote activity. Sticky notes, groups and the current node are excluded.
   const candidates = useMemo(() => {
     return allNodes.filter((n) => {
       if (n.id === currentNode.id) return false;
@@ -50,8 +41,8 @@ export function CloneConfigButton({ currentNode, allNodes, onClone }: Readonly<P
       const at = (n.data as Record<string, unknown>)?.activityType as string | undefined;
       if (!at) return false;
       if (scope === 'all') return at === currentActivityType;
-      // remoteOnly: both ends remote-capable, AND the source actually has a machineId set
-      // (otherwise the clone copies "null" which is a no-op users wouldn't expect).
+      // remoteOnly: both ends must be remote-capable and the source must carry a machineId,
+      // otherwise the clone would copy an empty value and change nothing.
       if (!isRemoteActivityType(at) || !isRemoteActivityType(currentActivityType)) return false;
       const machine = (n.data as Record<string, unknown>)?.targetMachineId;
       return machine !== null && machine !== undefined && machine !== '';
@@ -70,9 +61,8 @@ export function CloneConfigButton({ currentNode, allNodes, onClone }: Readonly<P
     return () => globalThis.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // Hide entirely when neither scope can produce candidates — keeps the panel uncluttered
-  // for trivial workflows. We probe both scopes here (not just current) so toggling between
-  // them after click doesn't suddenly show an empty list.
+  // Hide the control when neither scope can produce candidates. Both scopes are probed, not
+  // just the active one, so switching the scope never lands on an empty list.
   const sameTypeCandidates = useMemo(
     () => allNodes.some((n) => n.id !== currentNode.id
       && (n.data as Record<string, unknown>)?.activityType === currentActivityType
@@ -124,8 +114,8 @@ export function CloneConfigButton({ currentNode, allNodes, onClone }: Readonly<P
           className="absolute z-30 mt-1 w-full bg-surface-lowest rounded-md shadow-xl border border-outline-variant/30 overflow-hidden"
           data-testid="clone-config-popover"
         >
-          {/* Scope toggle: same-type only or any-remote. Hidden when one of them has no
-              candidates — no point showing a useless tab. */}
+          {/* Scope toggle: same-type only or any-remote. Hidden when one of the two has
+              no candidates. */}
           {sameTypeCandidates && remoteCandidates && (
             <div className="grid grid-cols-2 border-b border-outline-variant/20 text-[10px] font-label font-semibold">
               <button

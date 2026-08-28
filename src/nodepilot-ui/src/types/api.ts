@@ -15,8 +15,8 @@ export interface ResourceCapabilities {
   canRead: boolean;
   canRun: boolean;
   canEdit: boolean;
-  /** Workflow DELETE is Admin-only, enforced at the controller. canDelete is therefore
-   *  independent of canEdit — a FolderEditor Operator has canEdit=true but canDelete=false. */
+  /** Workflow DELETE is Admin-only, enforced at the controller, so canDelete is independent
+   *  of canEdit: a FolderEditor Operator has canEdit=true but canDelete=false. */
   canDelete: boolean;
   canAdmin: boolean;
 }
@@ -38,14 +38,14 @@ export interface Workflow {
   successCount?: number;
   totalCount?: number;
   avgDurationMs?: number | null;
-  /** Edit-Lock — non-null when somebody has the workflow checked out for editing. */
+  /** Edit lock: non-null when a user has the workflow checked out for editing. */
   checkedOutByUserId?: string | null;
-  /** Resolved username of the lock owner — server-side join saves a per-row /users round-trip. */
+  /** Username of the lock owner, joined server-side to save a per-row /users round-trip. */
   checkedOutByUserName?: string | null;
   checkedOutAt?: string | null;
   /** RBAC home folder. Always populated; legacy responses default to the Root sentinel. */
   folderId?: string;
-  /** "/Finance/Reports" — convenience for breadcrumb / list rendering. */
+  /** Full folder path such as "/Finance/Reports", for breadcrumb and list rendering. */
   folderPath?: string;
   /** Caller's effective capabilities on this workflow. Undefined means the server
    *  did not surface them (older endpoints) and the UI must fall back to global role. */
@@ -63,13 +63,13 @@ export interface ManagedMachine {
   lastConnectivityCheck: string | null;
   isReachable: boolean;
   /** Distinct workflows whose definition references this machine via any node's
-   *  `data.targetMachineId`. Drives the "where is this machine used?" indicator
-   *  on the machines list — operators check this before deleting/disabling. */
+   *  `data.targetMachineId`. Drives the usage indicator on the machines list, which
+   *  operators check before deleting or disabling a machine. */
   usedByWorkflowCount: number;
   /** Step executions in the last 7 days targeting this machine (all statuses). */
   recentStepCount: number;
-  /** Subset of recentStepCount with status = Failed. Pair drives the success-rate
-   *  bar in the activity cell, analogous to WorkflowsPage.successCount/totalCount. */
+  /** Subset of recentStepCount with status = Failed. Both values feed the success-rate
+   *  bar in the activity cell, like WorkflowsPage.successCount/totalCount. */
   recentFailedStepCount: number;
   /** Step executions currently in Running state targeting this machine. 0 = idle. */
   activeRunCount: number;
@@ -96,17 +96,17 @@ export interface WorkflowExecution {
   spanId: string | null;
   returnData: string | null;
   inputParametersJson: string | null;
-  // Triage fields from GET /api/executions (list view). On single-resource endpoints
-  // (Execute/Retry) these are typically empty/0 — the server only populates them for
-  // the history-grid use case. Exception: GetById resolves the parent link fields so
-  // detail views (Live-Ops drilldown) can render a navigable parent chip.
+  // Triage fields from GET /api/executions (list view). Single-resource endpoints
+  // (Execute/Retry) usually leave these empty or 0; the server fills them for the
+  // history grid. GetById also resolves the parent link fields so detail views
+  // (Live-Ops drilldown) can render a navigable parent chip.
   startedByUsername?: string | null;
   parentExecutionId?: string | null;
   parentWorkflowName?: string | null;
   stepsTotal?: number;
   stepsCompleted?: number;
-  // ALL failed steps of the run (chronological by StartedAt). Parallel branches can
-  // fail at the same time; the grid joins this list into a comma-separated string.
+  // All failed steps of the run, ordered by StartedAt. Parallel branches can fail at
+  // the same time; the grid joins this list into a comma-separated string.
   failedSteps?: { stepId: string; stepName: string | null }[] | null;
 }
 
@@ -167,13 +167,16 @@ export interface StepExecution {
   attemptCount?: number;
   pausedAt?: string | null;
   variablesSnapshot?: string | null;
-  /** Verbose execution log (PowerShell Start-Transcript capture for runScript with `config.transcript:true`). Null when tracing was disabled. */
+  /** Verbose execution log (PowerShell Start-Transcript capture for runScript with
+   *  `config.transcript:true`). Null when tracing was disabled. */
   traceOutput: string | null;
-  /** JSON-serialized OutputParameters captured at terminal time. Null when the step produced no params. Already redacted. */
+  /** JSON-serialized OutputParameters captured when the step reached a terminal state,
+   *  already redacted. Null when the step produced no parameters. */
   outputParametersJson?: string | null;
   /** Producing node's `data.outputVariable` alias, when set. */
   outputVariable?: string | null;
-  /** Custom-activity reproducibility snapshot (which definition key/version/hash ran). Non-null only for custom:&lt;key&gt; steps. */
+  /** Snapshot of which custom-activity definition (key, version, hash) ran, so the step
+   *  stays reproducible. Non-null only for custom:&lt;key&gt; steps. */
   customActivityKey?: string | null;
   customActivityVersion?: number | null;
   customActivityHash?: string | null;
@@ -181,8 +184,8 @@ export interface StepExecution {
 
 /**
  * Per-step coverage stats over the last <windowDays>. Drives the canvas heatmap toggle.
- * `executedCount` covers Succeeded + Failed; `skippedCount` covers Skipped + Cancelled
- * (cancelled = junction-race, didn't produce a result).
+ * `executedCount` covers Succeeded + Failed; `skippedCount` covers Skipped + Cancelled,
+ * since a step that lost a junction race produces no result.
  */
 export interface NodeCoverageStats {
   stepId: string;
@@ -221,10 +224,11 @@ export interface WorkflowContractInput {
 /**
  * One downstream-available key after the parent's startWorkflow step.
  *
- * - `system`: always-present engine metadata (__executionId, __status, __workflowId, __workflowName)
- * - `single`: from the workflow's only returnData node — reliable
- * - `multiple`: from one of several returnData nodes — only one wins per execution,
- *   so the UI surfaces a warning that this key may not be populated for any given run
+ * - `system`: always-present engine metadata (__executionId, __status, __workflowId,
+ * __workflowName)
+ * - `single`: from the workflow's only returnData node, so the key is always populated
+ * - `multiple`: from one of several returnData nodes; only one wins per execution, so the
+ *   UI warns that this key may not be populated for a given run
  */
 export interface WorkflowContractOutput {
   name: string;
@@ -279,10 +283,9 @@ export interface StepTestContextRunInfo {
 }
 
 /**
- * Browser auth response (login / refresh / windows). The JWT is NOT here — it lives only in
- * the httpOnly `np_auth` cookie, so JS (and any XSS) cannot read or exfiltrate it. The server
- * returns the token in the body solely to non-browser Bearer callers (CLI / API), which the
- * SPA never is.
+ * Browser auth response (login / refresh / windows). The JWT is not part of it: it lives only
+ * in the httpOnly `np_auth` cookie, so scripts (including injected ones) cannot read it. The
+ * server returns the token in the body only to non-browser Bearer callers (CLI / API).
  */
 export interface LoginResponse {
   userId: string;
@@ -291,8 +294,8 @@ export interface LoginResponse {
 }
 
 /**
- * Anonymous /auth/methods response — the LoginPage uses this to decide which auth
- * affordances to render. The password form is available when either local or LDAP
+ * Anonymous /auth/methods response. The LoginPage uses it to decide which auth
+ * controls to render. The password form is available when either local or LDAP
  * authentication is enabled. Windows and OIDC expose dedicated browser endpoints.
  */
 export interface AuthMethodsResponse {
@@ -354,12 +357,13 @@ export interface OpsNode {
   lastStatus: string | null;
   callFrequency: number | null;
   /**
-   * Caller may cancel / retry / cancel-all on THIS workflow (folder ResourceOp.Run, already
+   * Caller may cancel / retry / cancel-all on this workflow (folder ResourceOp.Run, already
    * ANDed with the global role server-side). Per-node, not snapshot-wide: a global Operator
    * with only folder-Viewer rights must not be offered a button the endpoint then 403s.
    */
   canRun: boolean;
-  /** Caller may disable / quarantine THIS workflow (folder ResourceOp.Edit — stricter than canRun). */
+  /** Caller may disable or quarantine this workflow (folder ResourceOp.Edit, which is
+   *  stricter than canRun). */
   canEdit: boolean;
 }
 
@@ -379,24 +383,24 @@ export interface OpsRunningExecution {
   workflowId: string;
   status: string;
   startedAt: string;
-  /** Parent run for sub-workflow executions — drives the timeline call connectors. */
+  /** Parent run for sub-workflow executions; drives the timeline call connectors. */
   parentExecutionId: string | null;
   /**
-   * Observed step ACTIVITY, not progress — there is deliberately no percentage, because every
-   * available denominator is wrong (trigger nodes, skipped rows, loop re-runs). All four fields
-   * are null when the run was not enriched (beyond the server's cap); null means "unknown",
-   * never "nothing happened", so the UI renders nothing rather than a zero.
+   * Observed step activity, not progress. There is no percentage because every available
+   * denominator is wrong (trigger nodes, skipped rows, loop re-runs). All four fields are
+   * null when the run was not enriched (beyond the server's cap); null means unknown, not
+   * "nothing happened", so the UI renders nothing rather than a zero.
    */
   stepsFinished: number | null;
   lastCompletedStepName: string | null;
-  /** When the last step finished — the real answer to "working or hung?". */
+  /** When the last step finished. Distinguishes a run that is working from one that hangs. */
   lastProgressAt: string | null;
   activeStepCount: number | null;
 }
 
 /**
  * Terminal execution completed within the requested window, newest first and capped. Runs past
- * the cap are not dropped — they come back aggregated in `OpsDensityLane`.
+ * the cap are not dropped; they come back aggregated in `OpsDensityLane`.
  */
 export interface OpsRecentExecution {
   executionId: string;
@@ -404,7 +408,7 @@ export interface OpsRecentExecution {
   status: string;
   startedAt: string;
   completedAt: string;
-  /** Parent run for sub-workflow executions — drives the timeline call connectors. */
+  /** Parent run for sub-workflow executions; drives the timeline call connectors. */
   parentExecutionId: string | null;
 }
 
@@ -417,7 +421,7 @@ export interface OpsSnapshotMeta {
   overdueSeconds: number;
   /** Window this snapshot was built for, after the server's clamp (30 | 60). */
   windowMinutes: number;
-  /** Left edge the client ASKED for (now - windowMinutes). */
+  /** Left edge the client requested (now - windowMinutes). */
   recentSinceUtc: string;
   /**
    * Completion time of the oldest settled run actually returned; null when none. Anchor for
@@ -440,7 +444,8 @@ export interface OpsSnapshotMeta {
   densityCapped: boolean;
 }
 
-/** One time slice of one workflow's settled runs. Outcome is split, never reduced to a worst status. */
+/** One time slice of one workflow's settled runs. Outcome is split, never reduced to a worst
+ * status. */
 export interface OpsDensityBucket {
   /** Slice offset from `meta.recentSinceUtc`, in `meta.densityBucketSeconds` steps. */
   bucketIndex: number;

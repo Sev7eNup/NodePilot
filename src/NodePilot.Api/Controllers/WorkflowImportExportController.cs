@@ -137,7 +137,7 @@ public class WorkflowImportExportController : WorkflowsControllerBase
 
         // Folder targeting: ?folderId= picks the destination (query param — the body is the
         // export envelope, which must stay a pure sharing artifact without instance-local
-        // folder ids). Missing → Root. RBAC = Edit on the CHOSEN folder, so a folder-scoped
+        // folder ids). Missing -> Root. RBAC = Edit on the CHOSEN folder, so a folder-scoped
         // Operator without Root-Edit can import into their own folder.
         var targetFolderId = folderId ?? NodePilot.Core.Models.SharedWorkflowFolder.RootFolderId;
         if (await RequireFolderAccessAsync(targetFolderId, NodePilot.Core.Interfaces.ResourceOp.Edit, ct) is { } folderDenied)
@@ -291,10 +291,7 @@ public class WorkflowImportExportController : WorkflowsControllerBase
     [HttpPost("import-scorch")]
     [Authorize(Roles = "Admin,Operator")]
     [Consumes("application/xml", "text/xml")]
-    // H-16 capped this at 50 MiB, down from 600, so one authenticated request could not pin the
-    // heap on an attacker-supplied payload. Raised to 300 MiB because that ceiling turned out to
-    // sit below the actual job: a whole-estate export is one file, and a measured runbook runs
-    // ~6.5 KiB per activity, so 50 MiB stopped at roughly 160 runbooks of realistic size.
+    // Bound memory use while allowing a whole-estate export to arrive as one XML document.
     //
     // The cost is real and worth stating: the body is buffered whole and then parsed into an
     // XDocument, whose in-memory tree runs several times the file size. A 300 MiB import is a
@@ -305,7 +302,7 @@ public class WorkflowImportExportController : WorkflowsControllerBase
     {
         var sw = Stopwatch.StartNew();
         // Folder targeting mirrors the JSON import: the body is raw XML, so the destination
-        // can only travel as ?folderId= (missing → Root). RBAC = Edit on the chosen folder.
+        // can only travel as ?folderId= (missing -> Root). RBAC = Edit on the chosen folder.
         var targetFolderId = folderId ?? NodePilot.Core.Models.SharedWorkflowFolder.RootFolderId;
         if (await RequireFolderAccessAsync(targetFolderId, NodePilot.Core.Interfaces.ResourceOp.Edit, ct) is { } folderDenied)
             return folderDenied;
@@ -461,7 +458,8 @@ public class WorkflowImportExportController : WorkflowsControllerBase
                 FolderPath: null));
         }
 
-        // 2b. Rebuild the runbook folders below the destination the operator chose. A single-runbook
+        // 2b. Rebuild the runbook folders below the destination the operator chose. A
+        // single-runbook
         //     export carries none and everything lands in the destination itself; a whole-estate
         //     export carries the tree the SCOrch console showed, and re-filing a few hundred
         //     workflows by hand is the kind of work a migration should not create.

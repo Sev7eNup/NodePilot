@@ -101,7 +101,7 @@ test.describe('Credential- & Machine-Picker im Properties Panel (Teil 65)', () =
     const listPickers = page.getByRole('button', { name: /^list\b/i });
     await expect(listPickers).toHaveCount(2);
 
-    // First List picker (under Target machine) → opens popover listing WEB01.
+    // First List picker (under Target machine) -> opens popover listing WEB01.
     await listPickers.first().click();
     const machineOption = page.getByRole('button', { name: /WEB01/ });
     await expect(machineOption).toBeVisible({ timeout: 5_000 });
@@ -110,7 +110,7 @@ test.describe('Credential- & Machine-Picker im Properties Panel (Teil 65)', () =
     // Green resolved-label caption confirms the GUID maps to the machine.
     await expect(page.getByText(/web01\.corp\.local/i).first()).toBeVisible();
 
-    // Save → PUT carries targetMachineId.
+    // Save -> PUT carries targetMachineId.
     await page.getByRole('button', { name: /save in place|zwischen.?speichern|speichern|^save/i }).first().click();
     await expect.poll(() => {
       if (!cap.body) return null;
@@ -129,7 +129,7 @@ test.describe('Credential- & Machine-Picker im Properties Panel (Teil 65)', () =
 
     await expect(page.getByText(/execution context/i)).toBeVisible();
 
-    // Second List picker (under Credential) → opens popover listing svc-deploy.
+    // Second List picker (under Credential) -> opens popover listing svc-deploy.
     const listPickers = page.getByRole('button', { name: /^list\b/i });
     await expect(listPickers).toHaveCount(2);
     await listPickers.nth(1).click();
@@ -137,7 +137,7 @@ test.describe('Credential- & Machine-Picker im Properties Panel (Teil 65)', () =
     await expect(credOption).toBeVisible({ timeout: 5_000 });
     await credOption.click();
 
-    // Save → PUT carries credentialId.
+    // Save -> PUT carries credentialId.
     await page.getByRole('button', { name: /save in place|zwischen.?speichern|speichern|^save/i }).first().click();
     await expect.poll(() => {
       if (!cap.body) return null;

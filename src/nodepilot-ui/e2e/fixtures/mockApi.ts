@@ -79,7 +79,7 @@ export async function installDefaultMocks(page: Page) {
   // array instead of falling through to the real backend, where the cookie-less Playwright
   // context gets a 401 and the client's interceptor redirects to /login.
   //
-  // The match is a `pathname.startsWith('/api/')` predicate, not the glob '**/api/**': that
+  // The match is a `pathname.startsWith('/api/')` predicate, not the glob '/api/': that
   // glob also matches Vite's own source modules served at '/src/api/*.ts' in dev and would
   // answer them as `application/json`, which fails the strict MIME check and white-screens
   // every lazy-loaded page chunk. `[]` rather than 204 keeps list consumers' `.map` working.

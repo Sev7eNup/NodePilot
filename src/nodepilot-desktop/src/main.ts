@@ -10,7 +10,8 @@ import { defaultIcons, skinIconsForFavicons, type SkinIcons } from './skins';
  *  so the auth cookies set during first-run setup are available to the app. */
 const PARTITION = 'persist:nodepilot';
 
-/** Generated icon set — sits next to dist/ inside the asar (see scripts/generate-desktop-icons.ps1). */
+/** Generated icon set — sits next to dist/ inside the asar (see
+ * scripts/generate-desktop-icons.ps1). */
 const ASSETS_DIR = join(__dirname, '..', 'assets');
 
 /** Per-user handoff copy of the admin bootstrap token, written by the elevated installer into the
@@ -87,7 +88,7 @@ async function bootstrap(): Promise<void> {
 
   createTray();
 
-  // First run: the installer left a bootstrap-token handoff → show the local setup page.
+  // First run: the installer left a bootstrap-token handoff -> show the local setup page.
   if (existsSync(HANDOFF_PATH)) {
     openSetupWindow();
   } else {

@@ -11,11 +11,13 @@ namespace NodePilot.Ai;
 ///
 /// <para>When <c>Llm:Enabled=true</c> every profile's BaseUrl must pass, not just the active one:
 /// switching the active profile is a plain settings save with no restart. With
-/// <c>Enabled=false</c> nothing is checked, so an untouched default block never blocks a boot.</para>
+/// <c>Enabled=false</c> nothing is checked, so an untouched default block never blocks a
+/// boot.</para>
 /// </summary>
 public static class LlmProfileValidation
 {
-    /// <summary>A rejected profile endpoint: the offending configuration key plus a ready-to-show message.</summary>
+    /// <summary>A rejected profile endpoint: the offending configuration key plus a ready-to-show
+    /// message.</summary>
     public sealed record ProfileIssue(string ConfigKey, string Message);
 
     /// <summary>Configuration path of the profile dictionary (<c>Llm:Profiles</c>).</summary>

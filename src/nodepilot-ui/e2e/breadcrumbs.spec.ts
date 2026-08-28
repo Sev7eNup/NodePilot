@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 72 — WorkflowBreadcrumbs (Calls → Navigation) (lines 3910-3927).
+ * E2ETests.md Teil 72 — WorkflowBreadcrumbs (Calls -> Navigation) (lines 3910-3927).
  *
  * WorkflowBreadcrumbs renders a "Calls" strip under the editor header for every static
  * outgoing workflow reference (`startWorkflow.config.workflowNameOrId` and

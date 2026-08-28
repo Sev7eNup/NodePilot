@@ -298,7 +298,7 @@ describe('MaintenanceWindowsPage', () => {
   });
 
   it('editCronWindow_keepsCronRecurrenceAndPrefillsFields', async () => {
-    // Regression: the editor used to coerce Cron -> Weekly and drop the schedule on edit.
+    // Editing a Cron window must keep the Cron recurrence and its schedule fields.
     seed({
       windows: [mw({
         id: 'c1', name: 'Cron Win', recurrence: 'Cron',
@@ -423,7 +423,7 @@ describe('MaintenanceWindowsPage', () => {
       .map((tr) => tr.querySelector('td .text-sm.font-semibold')?.textContent?.trim());
     expect(names()).toEqual(['Global Win', 'One Target', 'Two Targets']); // default name asc
     fireEvent.click(screen.getByRole('button', { name: /^Targets$/ }));
-    // asc by effective target count; Global ("all") is Infinity → last: One(1), Two(2), Global
+    // asc by effective target count; Global ("all") is Infinity -> last: One(1), Two(2), Global
     expect(names()).toEqual(['One Target', 'Two Targets', 'Global Win']);
   });
 });

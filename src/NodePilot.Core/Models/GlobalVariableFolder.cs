@@ -24,7 +24,8 @@ public class GlobalVariableFolder
     /// </summary>
     public Guid? ParentFolderId { get; set; }
 
-    /// <summary>Display name. Sibling-unique within a parent (enforced by a unique index).</summary>
+    /// <summary>Display name. Sibling-unique within a parent (enforced by a unique
+    /// index).</summary>
     public string Name { get; set; } = string.Empty;
 
     /// <summary>

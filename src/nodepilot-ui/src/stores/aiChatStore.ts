@@ -15,16 +15,16 @@ export interface ChatMessage {
   building?: boolean;
   /** Only present on assistant turns where a change was requested and is allowed. */
   proposal?: WorkflowChatProposal;
-  /** Canvas state at the time the question was asked — the basis for the diff preview. */
+  /** Canvas state when the question was asked; the basis for the diff preview. */
   baseDef?: WorkflowDefinition;
   /** Completion metadata (model / duration / tokens) for the usage footer. */
   meta?: ChatDoneMeta;
-  /** Read-only tools the assistant called during this turn (e.g. `analyze_workflow`) — drives
-   *  the "calling tool X..." indicator and gives the user visibility into what happened. */
+  /** Read-only tools the assistant called during this turn (e.g. `analyze_workflow`). Drives the
+   *  tool-call indicator so the user can see what the assistant did. */
   toolCalls?: ChatToolActivity[];
 }
 
-/** One tool call made by the assistant within a turn. `done=false` while the result is still pending. */
+/** One tool call made by the assistant in a turn. `done=false` while the result is pending. */
 export interface ChatToolActivity {
   toolId: string;
   toolName: string;
@@ -43,13 +43,11 @@ export interface ChatThreadMeta {
 const MAX_PERSISTED_MESSAGES = 200;
 
 /**
- * Holds chat history **per user, workflow, and thread**. Unlike an earlier version, this
- * store is now `persist`-ed in sessionStorage (survives a page reload, not a closed tab), but
- * privacy-conscious: `partialize`
- * strips the heavy/sensitive fields (`baseDef` snapshots, `proposal.definitionJson`,
- * streaming flags) and does **not** persist threads for unsaved workflows (`__new__`).
- * Logout calls `clearAll()`, which also empties the persisted store — so the next user on
- * this browser never sees someone else's chat history.
+ * Holds chat history per user, workflow, and thread. Persisted in sessionStorage, so it survives
+ * a page reload but not a closed tab. `partialize` strips heavy or sensitive fields (`baseDef`
+ * snapshots, `proposal.definitionJson`, streaming flags) and skips threads of unsaved workflows
+ * (`__new__`). Logout calls `clearAll()`, which also empties the persisted store, so the next
+ * user on this browser sees no earlier chat history.
  *
  * Keys: `scope` = `userId::workflowId`; the full message key = `scope::threadId`.
  */
@@ -216,7 +214,7 @@ export const useAiChatStore = create<AiChatStore>()(
         }
         const messagesByThread: Record<string, ChatMessage[]> = {};
         for (const [key, messages] of Object.entries(state.messagesByThread)) {
-          if (!isPersistableScope(key)) continue; // key starts with scope → same __new__ check applies
+          if (!isPersistableScope(key)) continue; // The key starts with the scope.
           messagesByThread[key] = stripForPersist(messages);
         }
         return { messagesByThread, threadsByScope, activeThreadByScope };

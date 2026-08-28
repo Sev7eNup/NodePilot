@@ -3,11 +3,11 @@ import { useThemeStore, resolveTheme, resolveSkin, applyTheme, normalizeTheme, T
 
 /**
  * Theme resolution + DOM side-effects. Two pieces:
- *   * resolveTheme(theme) — pure function, light/dark/system → light|dark
+ *   * resolveTheme(theme) — pure function, maps light/dark/system to light or dark
  *   * applyTheme + setTheme — toggle the .dark class on documentElement
  *
  * The system path reads window.matchMedia. The shared test setup stubs that as
- * "always light", but we override per-test where the dark branch matters.
+ * "always light", but individual tests override it where the dark branch matters.
  */
 
 const initialState = useThemeStore.getState();
@@ -131,7 +131,7 @@ describe('skins / data-skin attribute', () => {
     applyTheme('light');
     expect(document.documentElement.classList.contains('dark')).toBe(false);
     expect(document.documentElement.dataset.skin).toBe('light');
-    // The blue `light` default keeps its blue accent → no remap marker.
+    // The blue `light` default keeps its blue accent, so no remap marker is needed.
     expect(document.documentElement.classList.contains('np-accent-remap')).toBe(false);
   });
 

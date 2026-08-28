@@ -2,8 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 
-// Suppress React's componentDidCatch noise that would otherwise pollute test output
-// when a child renders an exception on purpose.
+// Suppress the console noise React emits when a child throws on purpose.
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
@@ -46,7 +45,7 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>,
     );
     expect(screen.getByText('Custom: kaboom custom')).toBeInTheDocument();
-    // Default fallback's UI must NOT be rendered when a custom fallback is used.
+    // The default fallback must not render when a custom fallback is provided.
     expect(screen.queryByText('Unerwarteter Fehler')).not.toBeInTheDocument();
   });
 
@@ -76,8 +75,8 @@ describe('ErrorBoundary', () => {
         <Boom message="kaboom scoped" />
       </ErrorBoundary>,
     );
-    // React itself emits a few console.error calls when a boundary catches —
-    // we want OUR componentDidCatch tag to appear in at least one of them.
+    // React emits its own console.error calls when a boundary catches, so the scope tag from
+    // componentDidCatch only has to appear in one of them.
     const allMessages = consoleErrorSpy.mock.calls
       .map((args: unknown[]) => args.filter((a: unknown) => typeof a === 'string').join(' '))
       .join('|');

@@ -759,7 +759,8 @@ public class FileWatcherTriggerSourceTests
 
     // ---- health probe: catches a path that vanished without the watcher raising Error ----
 
-    /// <summary>Polls <see cref="FileWatcherTriggerSource.Health"/> until it faults or time runs out.</summary>
+    /// <summary>Polls <see cref="FileWatcherTriggerSource.Health"/> until it faults or time runs
+    /// out.</summary>
     private static async Task<TriggerHealth> WaitForFaultAsync(FileWatcherTriggerSource src, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;

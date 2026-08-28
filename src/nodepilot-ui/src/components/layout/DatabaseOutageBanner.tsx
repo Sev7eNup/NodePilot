@@ -6,17 +6,15 @@ import { useDbHealthStore } from '../../stores/dbHealthStore';
 const PERSISTENT_OUTAGE_AFTER_MS = 60_000;
 
 /**
- * The global "database is gone" banner.
+ * Global banner shown while the database is unreachable.
  *
- * Rendered from App.tsx as a sibling of the router — NOT inside the layout shell. The designer
- * route (`/workflows/:id`) renders a bare Outlet without the shell, and losing work in the designer
- * is precisely the screen where this banner matters most. Anchored top-center because the
- * designer's bottom-left is occupied (xyflow Controls + a Panel).
+ * Rendered from App.tsx as a sibling of the router rather than inside the layout shell, so it
+ * also covers the designer route (`/workflows/:id`), which renders a bare Outlet. Anchored
+ * top-center because the designer occupies the bottom-left corner (xyflow Controls and a Panel).
  *
- * Copy escalates instead of staying cheerful: after 60 seconds the friendly "reconnecting" line
- * gains a "check the database service" instruction, and a server-rejected outage (wrong password,
- * missing database) says outright that an administrator has to act — a permanently optimistic
- * banner over a configuration error would be worse than the bug this feature fixes.
+ * The wording escalates: after a minute the reconnecting line gains an instruction to check the
+ * database service, and a server-rejected outage (wrong password, missing database) states that
+ * an administrator has to act.
  */
 export function DatabaseOutageBanner() {
   const { t } = useTranslation(['common']);

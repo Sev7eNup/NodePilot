@@ -2,12 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { parseOutputParametersJson } from '../../lib/outputParameters';
 
 /**
- * parseOutputParametersJson is the shared defensive-parse helper for the backend-persisted
- * `StepExecution.OutputParametersJson` (string->string). We pin:
- *   - empty/missing JSON -> null (no params; the caller decides on a fallback)
- *   - a valid flat object -> a map with stringified values
- *   - non-string values (number/boolean/null) get stringified, null becomes ''
- *   - arrays / primitives / malformed JSON -> null (never throws)
+ * parseOutputParametersJson defensively parses the backend-persisted
+ * `StepExecution.OutputParametersJson` (string->string). Contract: empty/missing JSON
+ * returns null; a valid flat object returns stringified values; non-string values are
+ * stringified (null becomes ''); arrays, primitives, and malformed JSON all return null
+ * without throwing.
  */
 describe('parseOutputParametersJson', () => {
   it('emptyOrMissingJson_returnsNull', () => {
@@ -40,8 +39,8 @@ describe('parseOutputParametersJson', () => {
   });
 
   it('preservesAllKeys_forDatabusHydration', () => {
-    // signalrReducer.buildDatabusFromHydratedSteps relies on ALL declared params making it
-    // through — a missing key here would corrupt downstream {{step.param.X}} resolution.
+    // signalrReducer.buildDatabusFromHydratedSteps relies on every declared param making it
+    // through; a missing key here would corrupt downstream {{step.param.X}} resolution.
     const map = parseOutputParametersJson('{"a":"1","b":"2","c":"3"}');
     expect(Object.keys(map ?? {})).toEqual(['a', 'b', 'c']);
   });

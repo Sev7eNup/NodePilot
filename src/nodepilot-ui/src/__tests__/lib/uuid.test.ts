@@ -18,9 +18,8 @@ describe('randomUuid', () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
-  // The regression this module exists for: over plain HTTP on a LAN address the page is not a
-  // secure context, so `crypto.randomUUID` is simply absent — calling it threw
-  // "crypto.randomUUID is not a function" and took the whole route down.
+  // Over plain HTTP on a LAN address the page is not a secure context, so
+  // `crypto.randomUUID` is unavailable. randomUuid must still produce a valid v4 without it.
   it('produces a valid v4 without crypto.randomUUID (insecure context)', () => {
     vi.stubGlobal('crypto', { getRandomValues: globalThis.crypto.getRandomValues.bind(globalThis.crypto) });
 

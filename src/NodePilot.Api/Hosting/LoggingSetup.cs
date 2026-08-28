@@ -107,8 +107,10 @@ internal static class LoggingSetup
         ("Microsoft.EntityFrameworkCore.Database.Connection", LogEventLevel.Warning),
         ("Microsoft.EntityFrameworkCore.Infrastructure", LogEventLevel.Warning),
         ("Microsoft.AspNetCore", LogEventLevel.Warning),
-        // The health-check service logs at Error for every failing check, and /healthz/ready is polled
-        // continuously by load balancers and orchestrators - so a database outage produces one line per
+        // The health-check service logs at Error for every failing check, and /healthz/ready is
+        // polled
+        // continuously by load balancers and orchestrators - so a database outage produces one line
+        // per
         // poll for its whole duration, while the availability breaker has already reported the same
         // outage once with a classified reason.
         //
@@ -174,8 +176,8 @@ internal static class LoggingSetup
 
     /// <summary>
     /// Accepts Serilog level names and the Microsoft.Extensions.Logging spellings that appear
-    /// in <c>Logging:LogLevel</c> (<c>Trace</c> → Verbose, <c>Critical</c> → Fatal,
-    /// <c>None</c> → off).
+    /// in <c>Logging:LogLevel</c> (<c>Trace</c> -> Verbose, <c>Critical</c> -> Fatal,
+    /// <c>None</c> -> off).
     /// </summary>
     private static bool TryParseLevel(string? value, out LogEventLevel level)
     {
@@ -264,9 +266,8 @@ internal static class LoggingSetup
 
             // Serilog reads only its own `Serilog:*` section, so the Microsoft.Extensions.Logging
             // `Logging:LogLevel:*` keys are not honoured by ReadFrom.Configuration. They are
-            // nonetheless exposed in appsettings.json AND editable through Admin → Settings
-            // (SettingsSections.LogLevel), which used to mean an operator could change a level,
-            // get a success response, and see no effect. Translate them explicitly instead.
+            // exposed in appsettings.json and editable through Admin Settings, so translate them
+            // explicitly into Serilog overrides.
             ApplyConfiguredLevels(cfg, ctx.Configuration);
             cfg.Filter.ByExcluding(ShouldSuppressRepeatedDatabaseHealthFailure);
 

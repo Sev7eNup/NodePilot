@@ -15,7 +15,8 @@ namespace NodePilot.Api.Controllers;
 /// Governance: a definition is created disabled (Draft); Admin+Operator may edit/delete it while
 /// disabled; once an Admin enables it, every mutation is Admin-only. Enable/Disable + import
 /// freshly-imported (always-disabled) definitions are Admin-gated for go-live. The lightweight
-/// <see cref="GetCatalog"/> feeds the designer palette for all roles; full detail incl. the script is
+/// <see cref="GetCatalog"/> feeds the designer palette for all roles; full detail incl. the script
+/// is
 /// author-only.
 /// </summary>
 [ApiController]
@@ -27,7 +28,8 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
 
     // ---- Catalog (palette) -------------------------------------------------
 
-    /// <summary>Lightweight catalog for the designer palette. All roles see enabled entries; authors may include drafts.</summary>
+    /// <summary>Lightweight catalog for the designer palette. All roles see enabled entries;
+    /// authors may include drafts.</summary>
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<CustomActivityCatalogEntry>>> GetCatalog(
         [FromQuery] bool includeDisabled, CancellationToken ct)
@@ -194,7 +196,8 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
         return Ok(new CustomActivityExportEnvelope(ExportSchema, 1, DateTime.UtcNow, items));
     }
 
-    /// <summary>Imports definitions from an export envelope. Every imported definition lands DISABLED and must be reviewed + enabled by an Admin. Key collisions are skipped.</summary>
+    /// <summary>Imports definitions from an export envelope. Every imported definition lands
+    /// disabled and must be reviewed + enabled by an Admin. Key collisions are skipped.</summary>
     [HttpPost("import")]
     [Authorize(Roles = "Admin,Operator")]
     public async Task<ActionResult<IReadOnlyList<CustomActivityResponse>>> Import(CustomActivityExportEnvelope envelope, CancellationToken ct)
@@ -226,7 +229,8 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
 
     // ---- Helpers -----------------------------------------------------------
 
-    /// <summary>Once enabled, only an Admin may mutate. Returns true (and a 403) when forbidden.</summary>
+    /// <summary>Once enabled, only an Admin may mutate. Returns true (and a 403) when
+    /// forbidden.</summary>
     private bool MutationForbidden(CustomActivityDefinition def, out ActionResult? result)
     {
         if (def.IsEnabled && !User.IsInRole("Admin"))
@@ -258,7 +262,8 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
             outputs ?? []);
 
     /// <summary>
-    /// Single mapper onto the store's input record. Create, Update and Import persist the exact same
+    /// Single mapper onto the store's input record. Create, Update and Import persist the exact
+    /// same
     /// shape from three different payload types; only the key source (request vs. existing row) and
     /// the change note differ, which is why those are parameters.
     /// </summary>

@@ -2,17 +2,17 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 82 — database-outage surface (banner, toast suppression, recovery).
+ * Database outage surface: banner, toast suppression and recovery.
  *
  * Hermetic: the SPA learns about an outage exclusively from `/healthz/database` (memory-only on
  * the real backend, mocked here) plus the DATABASE_* 503 bodies on `/api/*`. That makes the whole
  * feature drivable from `page.route` with no backend: override the health route to `unavailable`,
- * let the api catch-alls answer 503, and the same banner/pill/toast behaviour runs as against a
- * real stopped PostgreSQL (verified live on 2026-08-07; this spec pins the UI half).
+ * let the api catch-alls answer 503, and the banner, pill and toast behaviour is the same as
+ * against a stopped PostgreSQL.
  *
- * The banner is mounted in App.tsx as a SIBLING of the router — deliberately outside the layout
- * shell, because `/workflows/:id` (the designer) renders a bare Outlet without the shell, and the
- * designer is exactly where losing work matters. The last test pins that mount point.
+ * The banner is mounted in App.tsx as a sibling of the router, outside the layout shell, because
+ * `/workflows/:id` (the designer) renders a bare Outlet without the shell, and the designer is
+ * where losing work matters. The last test pins that mount point.
  */
 
 const OUTAGE_HEALTH = {
@@ -41,10 +41,10 @@ test.describe('Teil 82 — database outage', () => {
   test('82.1 banner appears while the health probe reports unavailable — and API 503s raise no toast storm', async ({ page }) => {
     await installDefaultMocks(page);
     await mockHealth(page, OUTAGE_HEALTH);
-    // Every list endpoint answers the outage contract, the way the sealed backend would.
-    // /api/workflows is the WorkflowsPage query (meta.silentError — never toasted) but machines,
-    // executions and the dashboard pollers all go through the global QueryCache.onError, which
-    // used to toast each of them: an outage produced one 8-second error toast per visible query.
+    // Every list endpoint answers the outage contract, the way the real backend would.
+    // /api/workflows is the WorkflowsPage query (meta.silentError, never toasted); machines,
+    // executions and the dashboard pollers run through the global QueryCache.onError, which has
+    // to stay silent during an outage so the banner is the only message.
     for (const path of ['**/api/workflows', '**/api/machines', '**/api/executions**', '**/api/dashboard/**']) {
       await page.route(path, (route) =>
         route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify(OUTAGE_503) }),
@@ -54,8 +54,8 @@ test.describe('Teil 82 — database outage', () => {
     await page.goto('/workflows');
 
     await expect(banner(page)).toBeVisible({ timeout: 15_000 });
-    // The friendly phase promises automatic recovery (sinceUtc is fresh relative to nothing —
-    // the copy escalates on elapsed time, which a hermetic run does not wait out).
+    // The early wording promises automatic recovery; the copy escalates with elapsed time,
+    // which a hermetic run never reaches.
     await expect(page.getByText(/resumes on its own|automatisch wieder auf/i)).toBeVisible();
 
     // No toast storm: the banner owns this message. Give the queries a moment to fail.
@@ -77,11 +77,10 @@ test.describe('Teil 82 — database outage', () => {
     await expect(banner(page)).toBeVisible({ timeout: 15_000 });
     const requestsDuringOutage = workflowListRequests;
 
-    // The database comes back: the health probe flips (fast cadence: the SPA polls every 3 s
-    // while an outage is on), the banner clears, every query refetches, and a single success
-    // toast marks the moment. The recovery handler must keep counting - route registration is
-    // last-wins, so a non-counting 200 handler here would freeze the counter and the refetch
-    // assertion below would time out against a page that visibly refetched.
+    // The database comes back: the health probe flips (the SPA polls every 3 s during an
+    // outage), the banner clears, every query refetches and one success toast marks the moment.
+    // The recovery handler keeps counting requests because route registration is last-wins: a
+    // non-counting 200 handler would freeze the counter and the refetch assertion would time out.
     await page.route('**/api/workflows', (route) => {
       workflowListRequests += 1;
       return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
@@ -123,9 +122,8 @@ test.describe('Teil 82 — database outage', () => {
 
     await page.goto(`/workflows/${wfId}`);
 
-    // The designer route bypasses the layout shell entirely — a banner mounted inside the shell
-    // would be invisible exactly where unsaved work is at stake. Mounted from App, it overlays
-    // the canvas.
+    // The designer route bypasses the layout shell, so a banner mounted inside the shell would
+    // be invisible where unsaved work is at stake. Mounted from App, it overlays the canvas.
     await expect(page.locator('.react-flow__node')).toHaveCount(1, { timeout: 15_000 });
     await expect(banner(page)).toBeVisible();
   });

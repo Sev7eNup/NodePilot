@@ -8,8 +8,8 @@ import {
 
 describe('activityIcons', () => {
   it('maps every built-in activity/trigger catalog icon token to a Carbon component', () => {
-    // Guards catalog<->map parity: a new activity whose icon token has no Carbon mapping would
-    // silently render the fallback glyph instead of erroring. Fail loudly here instead.
+    // An icon token without a Carbon mapping renders the fallback glyph and raises no error,
+    // so parity between the catalog and the component map is checked here.
     const unmapped = Object.values(ACTIVITY_ICONS).filter((token) => !ACTIVITY_ICON_COMPONENTS[token]);
     expect(unmapped).toEqual([]);
   });

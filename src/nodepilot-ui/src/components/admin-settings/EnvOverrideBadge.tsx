@@ -4,18 +4,16 @@ import { useTranslation } from 'react-i18next';
 type Props = {
   /** Source token from the backend, e.g. <c>"env"</c> or <c>"cli"</c>. */
   source: string;
-  /** Config-key path used to hint the operator at which env var to inspect. */
+/** Config-key path that hints which environment variable to inspect. */
   configKey: string;
 };
 
 /**
- * Renders a small inline warning badge for fields whose effective value comes from an
- * environment variable or command-line argument — i.e. a UI save will be persisted to
- * the override file but won't take effect because a higher-priority source wins.
+ * Small inline warning badge for fields whose effective value comes from an environment
+ * variable or command-line argument. A UI save still writes to the override file, but the
+ * value won't take effect because the higher-priority source wins.
  *
- * <para>The badge is intentionally non-blocking: the underlying input stays read-only
- * (parent's responsibility), but the rest of the form still works. This mirrors how
- * Kubernetes operators expect env-injection to override file-based config.</para>
+ * The badge itself is non-blocking; the parent is responsible for keeping the input read-only.
  */
 export function EnvOverrideBadge({ source, configKey }: Readonly<Props>) {
   const { t } = useTranslation(['adminSettings']);

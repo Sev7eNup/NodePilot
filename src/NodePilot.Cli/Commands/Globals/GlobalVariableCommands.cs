@@ -114,7 +114,7 @@ public sealed class GlobalsUpdateCommand : BaseCommand<GlobalsUpdateSettings>
             value = (await Console.In.ReadToEndAsync(ct)).TrimEnd('\r', '\n');
 
         var isSecret = !settings.ClearSecret && (settings.Secret ?? current.IsSecret);
-        // --folder omitted → keep the variable's current folder.
+        // --folder omitted: keep the variable's current folder.
         var folderId = settings.Folder is not null
             ? await FolderResolver.ResolveAsync(api, settings.Folder, ct)
             : current.FolderId;

@@ -22,19 +22,18 @@ public static class WorkflowScheduler
         public bool IsHeld { get; set; } = true;
     }
 
-    // Global step-concurrency gate. Without this, hundreds of parallel workflow steps
-    // contend for the ThreadPool, DbContext writes, OutputRedactor regex passes, and DI
-    // scope creation — sustained 100% CPU on moderately-sized hosts.
+    // Global step-concurrency gate. Without it, many parallel workflow steps contend for
+    // the ThreadPool, DbContext writes, OutputRedactor regex passes, and DI scope creation,
+    // driving sustained high CPU on moderately sized hosts.
     //
-    // The cap trades parallelism for steady-state CPU. Default = ProcessorCount * 32 so
-    // a 16-core host caps at 512 concurrent in-flight steps. Sized to absorb a bursty
-    // 50-execution × 12-branch fan-out (~600 step tasks) without making most of them
-    // queue on the gate, where a junction-race cancel would have to be unwound through
-    // exception paths. Set <= 0 to disable the gate entirely.
+    // The cap trades parallelism for steady-state CPU. Default = ProcessorCount * 32, sized
+    // to absorb a bursty fan-out without making most steps queue on the gate, where a
+    // junction-race cancel would have to be unwound through exception paths. Set <= 0 to
+    // disable the gate entirely.
     //
     // Deadlock note: startWorkflow(waitForCompletion=true) releases its step slot while
     // waiting on the child workflow, then reacquires it before returning the child result.
-    // That keeps parent waiters from consuming the entire global step pool.
+    // This keeps parent waiters from consuming the entire global step pool.
     private static volatile SemaphoreSlim? _stepSemaphore;
     private static int _maxConcurrentSteps = Environment.ProcessorCount * 32;
     private static readonly object _semaphoreLock = new();
@@ -146,11 +145,10 @@ public static class WorkflowScheduler
             var node = entry.Node;
             inFlight.Remove(completedTask);
             ActivityResult result;
-            // True only when the OCE was raised by a gate-WaitAsync that we cancelled, i.e.
-            // the step never reached StepRunner and therefore wrote no StepExecution row.
-            // Distinct from `entry.SkipRequested`, which is also set during the junction-race
-            // fanout below for past-the-gate siblings whose StepRunner already wrote a
-            // Cancelled row through its own OCE catch.
+            // True only when the OCE came from a gate-WaitAsync we cancelled, meaning the step
+            // never reached StepRunner and wrote no StepExecution row. Distinct from
+            // `entry.SkipRequested`, which the junction-race fanout below also sets for
+            // past-the-gate siblings whose StepRunner already wrote a Cancelled row.
             bool gateRaceCancelled = false;
             try
             {
@@ -158,13 +156,12 @@ public static class WorkflowScheduler
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested && entry.Cancellation.IsCancellationRequested)
             {
-                // Junction-Race: a waitAny/waitNofM successor was satisfied while this step
-                // was still queued on the global step-gate semaphore. The scheduler cancelled
-                // its per-step CTS (further down in this loop) and gate.WaitAsync(stepCt)
-                // threw before StepRunner could swallow it. Without this catch, the OCE
-                // propagates up to WorkflowEngine.ExecuteAsync's catch (OperationCanceledException)
-                // and the entire execution is marked Cancelled — even though the workflow
-                // logically should continue along the winning branch.
+                // Junction race: a waitAny/waitNofM successor was satisfied while this step was
+                // still queued on the global step-gate semaphore, so the scheduler cancelled its
+                // per-step CTS before StepRunner could observe it. Without this catch, the
+                // cancellation would propagate to WorkflowEngine.ExecuteAsync and mark the whole
+                // execution Cancelled, even though the workflow should continue on the winning
+                // branch.
                 EngineMetrics.Cancellations.Add(1,
                     new KeyValuePair<string, object?>("reason", "junction_race"));
                 result = new ActivityResult { Success = false, ErrorOutput = "Step skipped by junction race." };
@@ -180,13 +177,10 @@ public static class WorkflowScheduler
 
             if (gateRaceCancelled)
             {
-                // Route this node into `skipped` (not `completed`) so the end-of-execution
+                // Route this node into `skipped`, not `completed`, so the end-of-execution
                 // writeback in WorkflowEngine.ExecuteAsync persists a StepExecution row with
-                // Status=Skipped. Without this, gate-cancelled steps disappeared from the
-                // StepExecutions table entirely — StepRunner never ran, so no Cancelled row
-                // was written there; and putting them in `completed` excluded them from the
-                // end-of-execution skipped pass. Symptom: identical workflow + parameters
-                // produced different StepExecution row counts per run.
+                // Status=Skipped. StepRunner never ran for a gate-cancelled step, so no Cancelled
+                // row exists yet, and `completed` would exclude it from that pass.
                 skipped.Add(node.Id);
                 continue;
             }
@@ -196,14 +190,11 @@ public static class WorkflowScheduler
             if (entry.SkipRequested || skipped.Contains(node.Id))
                 continue;
 
-            // M-31: log the failure, never its payload. StepRunner deliberately returns the RAW
-            // ActivityResult — the data bus has to resolve {{step.error}} to the real value — and
-            // redacts only on the way out to the DB, the UI, telemetry and the support log. This
-            // line used to interpolate result.ErrorOutput directly, which made the main log and any
-            // SIEM shipping it the one sink that saw unredacted stderr while the UI showed "***".
-            // The reason is already logged, redacted, by StepRunner's STEP_FAILED support event on
-            // every failure (and by LogStepDetail when Engine step detail is enabled), so nothing
-            // is lost here.
+            // Log the failure without its payload. StepRunner deliberately returns the raw
+            // ActivityResult so the data bus can resolve {{step.error}} to the real value, and
+            // redacts only on the way out to the DB, UI, telemetry, and the support log. The
+            // redacted reason is already logged by StepRunner's STEP_FAILED support event (and by
+            // LogStepDetail when Engine step detail is enabled), so nothing is lost here.
             if (!result.Success)
                 logger.LogWarning("Step {StepId} failed; see the STEP_FAILED event for the redacted reason.", node.Id);
 

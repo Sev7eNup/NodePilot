@@ -33,7 +33,8 @@ public sealed class AncestorScopedDatabusTests : IDisposable
     private readonly Microsoft.Data.Sqlite.SqliteConnection _connection;
     private readonly WorkflowEngine _engine;
 
-    /// <summary>Config each step received, captured so the assertions can read what was substituted.</summary>
+    /// <summary>Config each step received, captured so the assertions can read what was
+    /// substituted.</summary>
     private readonly Dictionary<string, string> _seenConfigByStep = new(StringComparer.Ordinal);
 
     public AncestorScopedDatabusTests()
@@ -195,9 +196,8 @@ public sealed class AncestorScopedDatabusTests : IDisposable
     }
 
     /// <summary>
-    /// The out-of-scope test asks the graph, not the result map. A sibling that has not produced
-    /// a result yet is just as unreadable as one that has — and it is the "not yet" case that
-    /// used to slip through, because it was indistinguishable from a typo.
+    /// Determines scope from the graph so unfinished and completed sibling nodes are equally
+    /// unreadable.
     /// </summary>
     [Fact]
     public void ScopedResults_NonAncestorNode_IsOutOfScopeEvenBeforeItHasRun()
@@ -239,11 +239,7 @@ public sealed class AncestorScopedDatabusTests : IDisposable
     }
 
     /// <summary>
-    /// The decisive case. The graph is arranged so the sibling branch is guaranteed to have
-    /// FINISHED before the consumer starts: the consumer sits behind a deliberately slow node,
-    /// while the sibling returns immediately. Under the old unscoped databus its result was
-    /// therefore sitting in the shared map and the reference resolved — the workflow went green
-    /// on the strength of a value it never waited for. Scoped to ancestors, it fails every time.
+    /// Ensures a consumer cannot read a completed sibling branch outside its predecessor path.
     /// </summary>
     [Fact]
     public async Task Execution_StepReadingAFinishedSiblingBranch_StillFails()
@@ -315,17 +311,12 @@ public sealed class AncestorScopedDatabusTests : IDisposable
     }
 
     /// <summary>
-    /// The dangerous case, and the reason the runScript exemption needed narrowing.
+    /// Ensures the runScript placeholder exemption does not permit cross-branch references.
     ///
-    /// <para>runScript resolves its own templates with PowerShell quoting and is therefore exempt
-    /// from the general unresolved-placeholder check — a leftover <c>{{...}}</c> may be real
-    /// script text. But an unresolved reference used to sail straight into PowerShell as code:
-    /// measured end to end, <c>$wert = {{sibling.output}}</c> produced the output
-    /// <c>Ergebnis: {sibling.output}</c> and the step reported SUCCESS. Green run, placeholder
-    /// string written wherever the real value belonged, nothing logged.</para>
+    /// <para>runScript resolves templates with PowerShell quoting, so unresolved placeholders may
+    /// be valid script text. References to known nodes still require graph validation.</para>
     ///
-    /// <para>A reference to a step that ran in this execution but off the predecessor path is
-    /// never legitimate script text, so it is fatal for runScript too.</para>
+    /// <para>A reference to a node outside the predecessor path is invalid for runScript.</para>
     /// </summary>
     [Fact]
     public async Task Execution_RunScriptReadingASibling_FailsInsteadOfRunningWithThePlaceholder()
@@ -348,12 +339,8 @@ public sealed class AncestorScopedDatabusTests : IDisposable
     }
 
     /// <summary>
-    /// The mirror image of the test above, and the one that used to fail: the sibling is still
-    /// RUNNING when the script starts. The gate used to ask the result map — "has this step
-    /// produced a value" — so an unfinished sibling read as an unknown step, fell into the
-    /// runScript tolerance, and the literal reached PowerShell. Same graph, same reference,
-    /// opposite outcome depending on which branch won the race. Measured against the lab
-    /// install: the step reported Succeeded having written "Ergebnis: {sibling.output}".
+    /// Ensures a running sibling remains out of scope and cannot reach PowerShell as a literal
+    /// placeholder. Scope depends on the graph rather than branch timing.
     /// </summary>
     [Fact]
     public async Task Execution_RunScriptReadingAStillRunningSibling_FailsToo()

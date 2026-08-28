@@ -42,9 +42,11 @@ public class MaintenanceWindow
     public MaintenanceRecurrenceKind Recurrence { get; set; } = MaintenanceRecurrenceKind.Weekly;
 
     // --- OneTime ---
-    /// <summary>Absolute UTC start instant (inclusive) for <see cref="MaintenanceRecurrenceKind.OneTime"/>.</summary>
+    /// <summary>Absolute UTC start instant (inclusive) for <see
+    /// cref="MaintenanceRecurrenceKind.OneTime"/>.</summary>
     public DateTime? OneTimeStartUtc { get; set; }
-    /// <summary>Absolute UTC end instant (exclusive) for <see cref="MaintenanceRecurrenceKind.OneTime"/>.</summary>
+    /// <summary>Absolute UTC end instant (exclusive) for <see
+    /// cref="MaintenanceRecurrenceKind.OneTime"/>.</summary>
     public DateTime? OneTimeEndUtc { get; set; }
 
     // --- Weekly ---
@@ -53,7 +55,8 @@ public class MaintenanceWindow
     /// Evaluated against the day-of-week of the window's local time zone.
     /// </summary>
     public int WeeklyDaysMask { get; set; }
-    /// <summary>Local minute-of-day the window opens (0..1439), interpreted in <see cref="TimeZoneId"/>.</summary>
+    /// <summary>Local minute-of-day the window opens (0..1439), interpreted in <see
+    /// cref="TimeZoneId"/>.</summary>
     public int? WeeklyStartMinuteOfDay { get; set; }
     /// <summary>
     /// Local minute-of-day the window closes (0..1439). If less than
@@ -80,7 +83,8 @@ public class MaintenanceWindow
     /// </summary>
     public string TimeZoneId { get; set; } = "UTC";
 
-    /// <summary>Reserved for a future catch-up feature; only <see cref="MaintenanceDeferralPolicy.Skip"/> is honored.</summary>
+    /// <summary>Reserved for a future catch-up feature; only <see
+    /// cref="MaintenanceDeferralPolicy.Skip"/> is honored.</summary>
     public MaintenanceDeferralPolicy DeferralPolicy { get; set; } = MaintenanceDeferralPolicy.Skip;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

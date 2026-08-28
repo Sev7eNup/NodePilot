@@ -2,9 +2,9 @@ namespace NodePilot.Api.Configuration.Validators;
 
 /// <summary>
 /// Rejects an unrecognized <c>Deployment:Mode</c> value at boot with a clear message.
-/// <see cref="DeploymentModeReader.IsDesktop"/> itself fails safe (unknown → Server), so a
-/// typo never silently weakens the posture — but it would silently ignore the operator's
-/// intent, so this validator surfaces it as a boot Error instead.
+/// <see cref="DeploymentModeReader.IsDesktop"/> fails safe by reading an unknown value as
+/// Server, so a typo never weakens the posture, but it would silently ignore the configured
+/// intent. This validator reports it as a boot error instead.
 /// </summary>
 public sealed class DeploymentModeBootValidator : IBootValidator
 {

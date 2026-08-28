@@ -11,7 +11,7 @@ using NodePilot.Mcp.Mapping;
 namespace NodePilot.Mcp.Tools;
 
 /// <summary>
-/// Workflow authoring + edit-lifecycle tools (lock → edit → publish). Two editing styles:
+/// Workflow authoring + edit-lifecycle tools (lock -> edit -> publish). Two editing styles:
 /// full-definition (publish/update) and granular batch (preview/apply patch). Both protect
 /// secrets (the agent only sees redacted definitions, so a naive full write would clobber real
 /// secrets with "***") and validate the WHOLE result with the Core structural validator before
@@ -114,7 +114,8 @@ public sealed class WorkflowEditTools
         var (mergedElement, notes, validation) = ApplyPatch(wf, operations);
 
         // Dry-run mirrors preview: return the merged (redacted) definition + validation and
-        // notes, even when invalid — so the caller can review/diagnose without anything being saved.
+        // notes, even when invalid — so the caller can review/diagnose without anything being
+        // saved.
         if (dryRun)
             return new
             {
@@ -143,7 +144,8 @@ public sealed class WorkflowEditTools
         CancellationToken cancellationToken = default)
     {
         RequireFullDefinition(definition);
-        // No original → MergeFull against an empty def masks any secrets the agent set on new nodes.
+        // No original to MergeFull against an empty def masks any secrets the agent set on new
+        // nodes.
         var merged = WorkflowDefinitionPatcher.MergeFull(EmptyDefinition, definition);
         var mergedElement = JsonSerializer.SerializeToElement(merged.Definition);
         var validation = WorkflowDefinitionStructuralValidator.Validate(mergedElement);

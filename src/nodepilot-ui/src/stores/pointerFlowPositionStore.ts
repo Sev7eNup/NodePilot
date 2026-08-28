@@ -2,8 +2,8 @@ import { create } from 'zustand';
 
 /**
  * Live cursor position in React-Flow (canvas) coordinates, or null when the pointer is off the
- * canvas. Written by the editor's (rAF-throttled) pointer handler and read by nodes to reveal
- * their ports on proximity. Deliberately NOT persisted — it's transient interaction state.
+ * canvas. Written by the editor's rAF-throttled pointer handler and read by nodes to reveal
+ * their ports on proximity. Not persisted: this is transient interaction state.
  */
 interface PointerFlowPositionState {
   x: number | null;

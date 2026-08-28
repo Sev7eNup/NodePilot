@@ -14,8 +14,8 @@ import {
   DB_ADMIN_QUERY_MODE_KEY,
 } from '../../security/sensitiveBrowserState';
 
-// Mock the api module — `post`, `get` and `postWithHeaders` (setup-token login) are
-// used by the auth flow now.
+// Mock the api module: `post`, `get`, and `postWithHeaders` (setup-token login) are
+// used by the auth flow.
 vi.mock('../../api/client', () => {
   // The store branches on `err instanceof ApiError`, so the mock must export a real class —
   // an auto-mocked undefined would crash the instanceof check itself.
@@ -168,7 +168,7 @@ describe('authStore (cookie-based, audit H-5)', () => {
     sessionStorage.setItem(DB_ADMIN_QUERY_HISTORY_KEY, '["SELECT password FROM users"]');
     sessionStorage.setItem(DB_ADMIN_QUERY_DRAFT_KEY, 'SELECT token FROM integrations');
     sessionStorage.setItem(DB_ADMIN_QUERY_MODE_KEY, 'write');
-    // Residue from releases which used localStorage must be removed during the same boundary.
+    // Legacy localStorage entries must also be cleared, not only sessionStorage.
     localStorage.setItem(AI_CHAT_STORAGE_KEY, 'legacy-chat');
     localStorage.setItem(DB_ADMIN_QUERY_DRAFT_KEY, 'legacy-sql');
     vi.mocked(api.post).mockResolvedValueOnce(undefined);
@@ -695,7 +695,7 @@ describe('authStore (cookie-based, audit H-5)', () => {
     await expect(useAuthStore.getState().login('admin', 'wrong')).rejects.toThrow('Invalid credentials');
 
     const state = useAuthStore.getState();
-    // isAuthenticated stays at its pre-login value (null or false); critically, no auth granted.
+    // isAuthenticated stays at its pre-login value (null or false); no auth is granted.
     expect(state.isAuthenticated).not.toBe(true);
   });
 

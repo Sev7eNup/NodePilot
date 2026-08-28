@@ -71,7 +71,7 @@ public class ClusterSetupTests
     [Fact]
     public void ComputeLeaderHealth_LeaseExpiredButRenewFresh_Returns503()
     {
-        // Edge case: a renew call returned RowsAffected=0 (so we technically lost the lease)
+        // Edge case: a renew call returned RowsAffected=0, so the lease is technically lost,
         // but in-memory state still says IsLeader=true momentarily before the next tick
         // fixes it. The endpoint must already report 503 because LeaseExpiresAt is in the
         // past — this is what makes the LB redirect immediately, not after the next tick.

@@ -46,7 +46,7 @@ public class CustomActivityDefinition
     public string? Color { get; set; }
 
     /// <summary>The PowerShell template. Resolved inputs are injected as <c>$name</c> variables
-    /// before this body runs.</summary>
+    /// before entering the method body.</summary>
     public string ScriptTemplate { get; set; } = string.Empty;
 
     /// <summary>auto, pwsh or powershell; forwarded to the execution engine.</summary>

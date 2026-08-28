@@ -33,8 +33,8 @@ describe('WorkflowBrowser info card', () => {
   beforeEach(() => {
     localStorage.clear();
     mockedGet.mockReset();
-    // Trigger view → no folder tree (no shared-folders fetch). Expand the "no trigger" group
-    // so its items render and can be hovered.
+    // Trigger view has no folder tree and so no shared-folders fetch. Expand the group of
+    // trigger-less workflows so its items render and can be hovered.
     useWorkflowBrowserStore.setState({ viewMode: 'trigger', collapsedFolders: { __none__: false }, infoCardHeight: 200 });
   });
 
@@ -66,21 +66,20 @@ describe('WorkflowBrowser info card', () => {
     const alphaBtn = await screen.findByRole('button', { name: /Alpha/ });
     const card = screen.getByTestId('workflow-info-card');
 
-    // Move the card off the fallback first…
+    // Move the card off the fallback first.
     fireEvent.mouseEnter(alphaBtn);
     expect(within(card).getByText('Alpha')).toBeInTheDocument();
 
-    // …then hover the currently-open workflow's marker (a separate render branch with its
-    // own mouse handlers). Its title is a hardcoded string in the component.
+    // Then hover the currently open workflow's marker, a separate render branch with its own
+    // mouse handlers. Its title is a hardcoded string in the component.
     const currentMarker = screen.getByTitle('Aktuell geöffneter Workflow');
     fireEvent.mouseEnter(currentMarker);
     expect(within(card).getByText('Beta')).toBeInTheDocument();
   });
 
   it('folderView_treeHugsContent_listTakesRemainingSpace', () => {
-    // Regression: the tree used to be flex-1 and the list a fixed 234px, which floated a
-    // handful of workflows in the middle of the sidebar. Now the tree is capped/shrink-0 and
-    // the list flex-fills, so both blocks stay pinned to the top.
+    // The tree is height-capped and shrink-0 while the list flex-fills, so both blocks stay
+    // pinned to the top of the sidebar.
     mockedGet.mockImplementation((url: string) =>
       Promise.resolve(url === '/workflows' ? [wf('wf-A', 'Alpha')] : []));
     useWorkflowBrowserStore.setState({ viewMode: 'folder', collapsedFolders: {}, infoCardHeight: 320 });

@@ -24,11 +24,10 @@ using NodePilot.TestCommons;
 namespace NodePilot.Api.Tests.Controllers;
 
 /// <summary>
-/// Coverage for phase PR5 of the LDAP/Windows-SSO rollout: AuthController.WindowsLogin. We
-/// bypass the Negotiate middleware and
-/// drive the controller with a synthetic ClaimsPrincipal carrying the same claim shape
-/// that the Negotiate handler would emit (PrimarySid + zero or more GroupSid claims),
-/// so the test runs without real Kerberos infrastructure.
+/// Tests AuthController.WindowsLogin by bypassing the Negotiate middleware and driving
+/// the controller with a synthetic ClaimsPrincipal carrying the same claim shape the
+/// Negotiate handler would emit (PrimarySid plus zero or more GroupSid claims), so the
+/// test runs without real Kerberos infrastructure.
 /// </summary>
 public sealed class AuthControllerWindowsTests : IDisposable
 {
@@ -49,9 +48,9 @@ public sealed class AuthControllerWindowsTests : IDisposable
         envMock.SetupGet(e => e.EnvironmentName).Returns("Test");
         _env = envMock.Object;
 
-        // Rollout phase PR10 added an empty-DB bootstrap gate; bypass it here so these
-        // tests exercise the post-bootstrap mainline. Bootstrap-gate behaviour is covered
-        // by the dedicated PR10 regression tests.
+        // Seed an admin so the empty-DB bootstrap gate does not trigger, letting these
+        // tests exercise the post-bootstrap login path. Bootstrap-gate behavior has its
+        // own dedicated tests.
         _db.Users.Add(new User
         {
             Id = Guid.NewGuid(),
@@ -229,7 +228,7 @@ public sealed class AuthControllerWindowsTests : IDisposable
 
         var result = await controller.WindowsLogin(default);
 
-        // The JWT is NOT in the body for Windows SSO — extract it from the np_auth cookie to
+        // The JWT is not in the body for Windows SSO — extract it from the np_auth cookie to
         // verify the group SIDs are still stamped onto the issued token.
         result.Result.Should().BeOfType<OkObjectResult>();
         var setCookie = controller.Response.Headers.SetCookie.ToString();

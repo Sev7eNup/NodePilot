@@ -36,9 +36,9 @@ public class OpsObservabilityDbCommandTests
                 },
                 edges = new object[]
                 {
-                    // resolvable target → renders the callee's name
+                    // resolvable target: renders the callee's name
                     new { id = "e1", source = wfA, target = wfB, kind = "startWorkflow", refStatus = "resolved", rawRef = "Cleanup", callCount = 3 },
-                    // unresolved target → renders "{refStatus}: {rawRef}"
+                    // unresolved target: renders "{refStatus}: {rawRef}"
                     new { id = "e2", source = wfA, target = (Guid?)null, kind = "forEach", refStatus = "missing", rawRef = "Ghost", callCount = 0 },
                 },
                 running = Array.Empty<object>(),
@@ -65,8 +65,8 @@ public class OpsObservabilityDbCommandTests
     [Fact]
     public void OperationsGraph_TruncatedWindow_ReportsTheAggregateInsteadOfClaimingRunsAreMissing()
     {
-        // The note used to say older runs "are omitted". They are not — they come back as density,
-        // and the number a reader wants is what those buckets add up to.
+        // Older runs are not omitted; they come back as density buckets, and the number
+        // a reader wants is what those buckets add up to.
         using var h = new CommandTestHarness();
         var wf = Guid.NewGuid();
         h.Server.Given(Request.Create().WithPath("/api/operations/graph").WithParam("windowMinutes", "60").UsingGet())

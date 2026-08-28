@@ -7,7 +7,7 @@ namespace NodePilot.Ai;
 /// which keeps data out of the prompt and limits the prompt-injection surface.
 /// </summary>
 /// <param name="StepId">ID of the source step.</param>
-/// <param name="Label">Display label ("Collect Info → $hostname").</param>
+/// <param name="Label">Display label ("Collect Info -> $hostname").</param>
 /// <param name="Variable">Variable path ("collectInfo.param.hostname").</param>
 /// <param name="Expression">Template form ("{{collectInfo.param.hostname}}").</param>
 /// <param name="Type">Type hint ("string"/"number"/"boolean"/"object"/"array"/"unknown").</param>

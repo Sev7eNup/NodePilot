@@ -18,11 +18,10 @@ const COOKIE_MUTATING_AUTH_PATHS = new Set([
 ]);
 
 /**
- * Error thrown for every non-OK API response, carrying the machine-readable parts the display
- * string used to swallow: HTTP status, the server's stable `code` (ADR 0007) and the Retry-After
- * hint. `super(message)` receives the exact string `new Error(...)` used to carry, so every
- * existing `instanceof Error` guard and `.message` read keeps working unchanged — but callers can
- * now branch on `status`/`code` instead of substring-matching prose.
+ * Error thrown for every non-OK API response. Carries the HTTP status, the server's stable
+ * `code` (ADR 0007) and the Retry-After hint, not just a display string, so callers can branch
+ * on `status`/`code` instead of matching on message text. `super(message)` keeps the same
+ * message string, so existing `instanceof Error` guards and `.message` reads still work.
  */
 export class ApiError extends Error {
   readonly status: number;
@@ -39,30 +38,29 @@ export class ApiError extends Error {
 }
 
 /**
- * The breaker is open: the database is gone and the outage banner is on screen owning that message.
- * Deliberately NOT including DATABASE_TIMEOUT — see isDatabaseSlowError.
+ * True when the breaker is open: the database is unreachable and the outage banner owns the
+ * message on screen. Deliberately excludes DATABASE_TIMEOUT — see isDatabaseSlowError.
  */
 export function isDatabaseOutageError(err: unknown): boolean {
   return err instanceof ApiError && err.code === 'DATABASE_UNAVAILABLE';
 }
 
 /**
- * The database answered too slowly while the breaker stayed CLOSED (one slow query, not an outage).
- * No banner is shown for this state by design, so it must stay visible as an ordinary error: the
- * bug this whole area exists to prevent is a busy database rendering as an empty installation.
+ * True when the database answered too slowly but the breaker stayed closed (a single slow
+ * query, not an outage). No banner is shown for this case, so it must surface as an ordinary
+ * error — otherwise a busy database would look like an empty installation.
  */
 export function isDatabaseSlowError(err: unknown): boolean {
   return err instanceof ApiError && err.code === 'DATABASE_TIMEOUT';
 }
 
 /**
- * Shared auth + error-handling shell for every API call (introduced by a security-audit
- * fix that moved the JWT out of client-readable storage and into an httpOnly cookie).
+ * Shared auth and error-handling wrapper for every API call.
  *
- * Auth model: the JWT lives in an httpOnly cookie (`np_auth`) that the browser attaches
- * automatically when we pass `credentials: 'include'`. Mutating requests additionally
- * echo the CSRF cookie back in the `X-CSRF-Token` header; the server rejects mismatches.
- * No token is ever stored in localStorage, so a future XSS cannot exfiltrate it.
+ * The JWT lives in an httpOnly cookie (`np_auth`) that the browser attaches automatically
+ * when `credentials: 'include'` is set. Mutating requests also echo the CSRF cookie back
+ * in the `X-CSRF-Token` header; the server rejects mismatches. The token is never stored
+ * in localStorage, so XSS cannot read it.
  */
 interface AuthBoundaryRequestPolicy {
   /** Remote cross-tab identity probes handle their own result and must not echo a 401. */
@@ -75,11 +73,11 @@ async function authedFetch(
   authBoundaryPolicy?: AuthBoundaryRequestPolicy,
   requestBoundaryGeneration = captureAuthBoundaryGeneration(),
 ): Promise<Response> {
-  // Bind every request—not just auth endpoints—to the identity under which it started. A delayed
-  // User-A 401 must not clear or redirect a newer User-B session.
+  // Bind every request, not just auth endpoints, to the identity it started under. A delayed
+  // 401 for user A must not clear or redirect a newer session for user B.
   const method = (options?.method ?? 'GET').toUpperCase();
   const headers: Record<string, string> = {
-    // FormData must NOT carry an explicit Content-Type — the browser sets the multipart
+    // FormData must not carry an explicit Content-Type — the browser sets the multipart
     // boundary itself. Only JSON string bodies get the application/json header.
     ...(options?.body !== undefined && !(options.body instanceof FormData)
       ? { 'Content-Type': 'application/json' }
@@ -93,37 +91,35 @@ async function authedFetch(
     headers: { ...headers, ...options?.headers },
   });
 
-  // Discard stale successes and failures before any caller can cache, display, download or persist
-  // them. This is the global defense; feature-level generation checks remain defense-in-depth.
+  // Discard stale successes and failures before a caller can cache, display, download or persist
+  // them. This is the global defense; feature-level generation checks are additional defense.
   if (!isAuthBoundaryGenerationCurrent(requestBoundaryGeneration)) {
-    // Set-Cookie is a browser side effect which already happened before fetch resolved. For the
-    // four SPA auth endpoints, a stale response can therefore replace/clear a newer tab's cookie
-    // even though its JSON body is rejected. Force every tab back through authoritative /auth/me.
+    // Set-Cookie already happened as a browser side effect before fetch resolved. A stale
+    // response on the four SPA auth endpoints can still replace or clear a newer tab's cookie
+    // even though its JSON body is rejected, so force every tab back through /auth/me.
     if (COOKIE_MUTATING_AUTH_PATHS.has(path)) handleStaleAuthCookieResponseBoundary();
     throw new AuthBoundaryChangedError();
   }
   let responseBoundaryGeneration = requestBoundaryGeneration;
   if (response.status === 401) {
-    // A 401 is a complete local boundary before redirect/error handling: in-memory AI/auth state,
-    // SQL/AI persistence, legacy residue and React Query data are all discarded centrally.
-    // Credential rejection on the login endpoints is local to that attempt and must not disturb
-    // a still-valid session in another tab; all other 401s are broadcast for a safe re-probe.
+    // A 401 is a full local boundary before redirect/error handling: in-memory AI/auth state,
+    // SQL/AI persistence and React Query data are all discarded here. Credential rejection on
+    // the login endpoints stays local to that attempt; every other 401 is broadcast for re-probe.
     const isRejectedLoginAttempt = path === '/auth/login' || path === '/auth/windows';
     handleUnauthorizedAuthBoundary(
       authBoundaryPolicy?.broadcastUnauthorized ?? !isRejectedLoginAttempt,
     );
-    // The 401 above intentionally established a new anonymous boundary. On /login we still need
-    // to parse its structured error payload; bind that parsing to the newly-created generation.
+    // The 401 above starts a new anonymous boundary. /login still needs to parse its structured
+    // error payload, so bind that parsing to the newly created generation.
     responseBoundaryGeneration = captureAuthBoundaryGeneration();
   }
 
   if (response.status === 401
     && typeof window !== 'undefined'
     && !globalThis.location.pathname.startsWith('/login')) {
-    // Cookie expired / revoked / missing. Redirect to login. On the login page itself we
-    // instead fall through to the generic error parser below so the form can distinguish
-    // the server's 401 payloads (wrong password vs. the SETUP_TOKEN_REQUIRED bootstrap
-    // gate) instead of seeing an opaque "Unauthorized".
+    // Cookie expired, revoked, or missing: redirect to login. On the login page itself, fall
+    // through to the generic error parser below instead, so the form can tell a wrong password
+    // apart from the SETUP_TOKEN_REQUIRED bootstrap gate rather than showing "Unauthorized".
     globalThis.location.href = '/login';
     throw new ApiError('Unauthorized', 401);
   }
@@ -135,10 +131,9 @@ async function authedFetch(
     assertAuthBoundaryGenerationCurrent(responseBoundaryGeneration);
     let code: string | undefined;
 
-    // Structured server errors have the shape `{code, message, bodyExcerpt?}` (see
-    // AiController, MapLlmException, etc.). If the body parses as JSON and matches that
-    // shape, format only the fields relevant to the user — otherwise they'd see the raw
-    // JSON string, brackets/quotes and all, as the error message.
+    // Structured server errors have the shape `{code, message, bodyExcerpt?}` (see AiController,
+    // MapLlmException, etc.). When the body parses as that shape, format only the fields the
+    // user needs — otherwise they would see the raw JSON string as the error message.
     if (error.startsWith('{')) {
       try {
         const parsed = JSON.parse(error) as {
@@ -173,11 +168,10 @@ async function authedFetch(
       code,
       Number.isFinite(retryAfterRaw) && retryAfterRaw > 0 ? retryAfterRaw : undefined);
 
-    // Central observation point: every DATABASE_* 503 flows through here, no matter which page or
-    // mutation triggered it. BOTH codes raise suspicion — a timeout is the earliest hint that
-    // something is wrong, often before the breaker has decided anything, which is exactly when a
-    // faster poll pays off. Suspicion only accelerates the health poll; the poll's own probe stays
-    // the single authority on whether the banner goes up (one slow query must not raise it).
+    // Every DATABASE_* 503 flows through here, no matter which page or mutation triggered it.
+    // Both codes raise suspicion: a timeout is often the earliest hint of trouble, before the
+    // breaker has decided anything, so it speeds up the health poll. The poll's own probe stays
+    // the only authority on whether the outage banner goes up; one slow query must not raise it.
     if (isDatabaseOutageError(apiError) || isDatabaseSlowError(apiError)) reportDatabaseOutageSuspected();
 
     throw apiError;

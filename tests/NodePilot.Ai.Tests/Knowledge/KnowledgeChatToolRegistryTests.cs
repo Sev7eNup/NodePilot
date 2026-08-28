@@ -255,7 +255,7 @@ public class KnowledgeChatToolRegistryTests
         var reg = Registry(out _, out _, out _);
         var op = new FakeOperationalKnowledgeReader
         {
-            // A trigger + an orphan (unconnected) activity → the analyzer flags the orphan.
+            // A trigger + an orphan (unconnected) activity -> the analyzer flags the orphan.
             Definition = new WorkflowKnowledgeDetail(Guid.NewGuid(), "wf", null, true, """
                 {"nodes":[
                   {"id":"t1","type":"activity","data":{"activityType":"scheduleTrigger","config":{}}},
@@ -298,7 +298,8 @@ public class KnowledgeChatToolRegistryTests
     {
         var reg = Registry(out _, out _, out _);
         var op = new FakeOperationalKnowledgeReader();
-        // Schedule times are non-privileged operational data (like list_workflows) — a Viewer may ask.
+        // Schedule times are non-privileged operational data (like list_workflows) — a Viewer may
+        // ask.
         var r = await reg.ExecuteAsync("get_next_scheduled_fires", "{}", Ctx(priv: false, src: false, opReader: op), CancellationToken.None);
         JsonDocument.Parse(r).RootElement.TryGetProperty("error", out _).Should().BeFalse();
     }
@@ -334,11 +335,11 @@ public class KnowledgeChatToolRegistryTests
         var reg = Registry(out _, out _, out _);
         // All three: toggle on, global Admin, reader present.
         ToolNames(reg, Ctx(db: true, priv: true)).Should().Contain("execute_readonly_sql");
-        // Toggle off → no DB tools, even for an admin.
+        // Toggle off -> no DB tools, even for an admin.
         ToolNames(reg, Ctx(db: false, priv: true)).Should().NotContain("execute_readonly_sql").And.NotContain("list_db_tables").And.NotContain("get_db_table");
-        // Non-Admin (Viewer) → never, even with toggle on.
+        // Non-Admin (Viewer) -> never, even with toggle on.
         ToolNames(reg, Ctx(db: true, priv: false)).Should().NotContain("execute_readonly_sql");
-        // Reader absent (service mis-wired) → gate stays closed.
+        // Reader absent (service mis-wired) -> gate stays closed.
         var ctx = new KnowledgeToolContext(AccessibleFolderSet.Unrestricted, true, true, true, true, true, true, new FakeOperationalKnowledgeReader(), new FakeSettings(), Sql: null);
         ToolNames(reg, ctx).Should().NotContain("execute_readonly_sql");
     }

@@ -29,10 +29,9 @@ interface AuditPageResponse {
 }
 
 /**
- * Admin-only Audit-Log-Viewer. Reads the cursor-paginated `GET /api/audit` endpoint with
- * the current filter set, renders the response newest-first, and lets the operator load
- * more pages via the `nextCursor` token. The streaming export endpoint runs against the
- * same filter set so what you see on screen is what you get in the CSV/NDJSON.
+ * Admin-only audit log viewer. Reads the cursor-paginated `GET /api/audit` endpoint with the
+ * current filter set, renders entries newest first, and loads further pages via `nextCursor`.
+ * The export endpoint uses the same filters, so the CSV/NDJSON matches what is on screen.
  */
 export function AuditLogPage() {
   const { t } = useTranslation(['audit', 'common']);
@@ -46,11 +45,10 @@ export function AuditLogPage() {
   const [until, setUntil] = useState('');
   const [take, setTake] = useState(100);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  // Accumulated pages: each "Load more" appends the next page to this list. Resetting the
-  // filters resets it back to the first page automatically via queryKey invalidation.
+  // Pages appended by "Load more". Cleared back to the first page when the filters change.
   const [extraPages, setExtraPages] = useState<AuditPageResponse[]>([]);
 
-  // Build the query string once so both the live query and the export-button share it.
+  // Builds the query string shared by the live query and the export links.
   const buildParams = useCallback(
     (overrides?: Record<string, string>) => {
       const params = new URLSearchParams();
@@ -75,14 +73,12 @@ export function AuditLogPage() {
       params.set('take', String(take));
       return await api.get<AuditPageResponse>(`/audit?${params.toString()}`);
     },
-    refetchInterval: 15_000, // Poll every 15s — audit entries aren't time-critical, so near-live is enough
+    refetchInterval: 15_000, // Audit entries are not time-critical, so near-live polling is enough
   });
 
-  // Reset the accumulated pages whenever the filter set changes — old pages no longer
-  // match the new filter, so keeping them would be misleading. This MUST live outside
-  // queryFn: queryFn also fires on the 15s auto-refetch and on manual Refresh, both of
-  // which must keep the "Load more"-extras intact. Tying the reset to the filter values
-  // (not to the fetch) means refetch keeps the user's pagination, filter-change drops it.
+  // Drop the accumulated pages when the filter set changes, since they no longer match it.
+  // This is keyed on the filter values rather than on the fetch: queryFn also runs on the
+  // auto-refetch and on manual refresh, which have to keep the "Load more" pages intact.
    
   useEffect(() => { setExtraPages([]); }, [action, resourceType, resourceId, userId, ipAddress, since, until, take]);
 
@@ -107,9 +103,9 @@ export function AuditLogPage() {
     setExtraPages((prev) => [...prev, next]);
   }, [lastCursor, buildParams, take]);
 
-  // Export-Links: the streaming endpoint reads the same filter params; browser attaches the
-  // httpOnly auth cookie on the GET, Content-Disposition triggers the download. No fetch +
-  // blob roundtrip needed since the response is already a file download.
+  // Export links: the streaming endpoint reads the same filter params. The browser sends the
+  // httpOnly auth cookie on the GET and Content-Disposition triggers the download, so no
+  // fetch and blob roundtrip is needed.
   const exportHref = useCallback(
     (format: 'csv' | 'ndjson') => {
       const params = buildParams({ format });
@@ -118,7 +114,7 @@ export function AuditLogPage() {
     [buildParams],
   );
 
-  // Group counter — surface the most frequent actions as quick-filter chips.
+  // Most frequent actions in the loaded entries, surfaced as quick-filter chips.
   const actionCounts = useMemo(() => {
     const c = new Map<string, number>();
     for (const e of entries) c.set(e.action, (c.get(e.action) ?? 0) + 1);
@@ -132,7 +128,7 @@ export function AuditLogPage() {
           {t('audit:subtitle')}
         </p>
 
-        {/* Export-Dropdown */}
+        {/* Export dropdown */}
         <div className="flex items-center gap-2">
           <div className="relative group">
             <button
@@ -167,7 +163,7 @@ export function AuditLogPage() {
           </button>
         </div>
       </div>
-      {/* Filter-Zeile */}
+      {/* Filter row */}
       <div className="np-card p-3 space-y-2">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
           <div>
@@ -275,7 +271,7 @@ export function AuditLogPage() {
           </div>
         )}
       </div>
-      {/* Entry-Liste */}
+      {/* Entry list */}
       <div className="np-card overflow-hidden">
         <div className="hidden lg:grid grid-cols-[160px_22px_minmax(180px,1fr)_minmax(120px,auto)_minmax(120px,auto)_minmax(140px,auto)_minmax(110px,auto)] gap-x-3 px-3 py-2 bg-surface-low text-[10px] font-label font-bold text-outline uppercase tracking-wider">
           <span>{t('audit:tableHeaders.timestamp')}</span>
@@ -295,9 +291,8 @@ export function AuditLogPage() {
           const isOpen = expandedId === e.id;
           const details = e.details;
           const hasDetails = !!details && details !== '{}';
-          // Username column wins over UserId truncation — frozen at write-time so deleted
-          // users still show up as their original name. Falls back to short id for legacy
-          // entries that predate the username column.
+          // Prefer the username stored with the entry, so deleted users still show their
+          // original name. Falls back to a truncated user id for entries without one.
           const userDisplay = e.username ?? (e.userId ? e.userId.slice(0, 8) + '…' : '—');
           return (
             <div key={e.id}>
@@ -381,7 +376,7 @@ export function AuditLogPage() {
   );
 }
 
-/** Farbkodierung nach dem Verb-Präfix — visuell grep-freundlich. */
+/** Colour coding derived from the action verb, so related actions are easy to spot. */
 function actionColor(action: string): string {
   if (action.endsWith('_CREATED') || action.endsWith('_SUCCESS') || action.endsWith('_RESUMED')) return 'text-green-700';
   if (action.endsWith('_DELETED') || action.endsWith('_FAILED')   || action.endsWith('_CANCELLED') || action.endsWith('_DEBUG_STOP')) return 'text-red-700';

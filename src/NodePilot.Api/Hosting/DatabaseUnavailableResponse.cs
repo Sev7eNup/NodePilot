@@ -5,12 +5,15 @@ namespace NodePilot.Api.Hosting;
 /// <summary>
 /// The single owner of the 503 body that speaks for the database.
 ///
-/// <para>Three places need to produce it — the availability middleware (which short-circuits before any
+/// <para>Three places need to produce it — the availability middleware (which short-circuits before
+/// any
 /// controller), <see cref="DatabaseUnavailableExceptionHandler"/> and
 /// <see cref="DatabaseTimeoutExceptionHandler"/> — and they must agree, because the SPA branches on
-/// <c>code</c> to decide whether to raise the outage banner. Three hand-written bodies would drift.</para>
+/// <c>code</c> to decide whether to raise the outage banner. Three hand-written bodies would
+/// drift.</para>
 ///
-/// <para><b>Not ProblemDetails.</b> ADR 0007's error contract is applied by an MVC result filter, and a
+/// <para><b>Not ProblemDetails.</b> ADR 0007's error contract is applied by an MVC result filter,
+/// and a
 /// middleware short-circuit never reaches MVC. Rather than have the same condition answer in two
 /// different shapes depending on where it was caught, both use this one.</para>
 /// </summary>
@@ -23,19 +26,23 @@ public static class DatabaseUnavailableResponse
     public const string TimeoutCode = "DATABASE_TIMEOUT";
 
     /// <summary>
-    /// Deliberately coarser than the probe's 5 s outage cadence: the probe must notice recovery quickly,
-    /// while callers retrying every probe tick would produce 120 pointless requests per tab in ten minutes.
+    /// Deliberately coarser than the probe's 5 s outage cadence: the probe must notice recovery
+    /// quickly,
+    /// while callers retrying every probe tick would produce 120 pointless requests per tab in ten
+    /// minutes.
     /// </summary>
     public const int UnavailableRetryAfterSeconds = 15;
 
-    /// <summary>Deliberately short: the condition that causes a timeout clears in seconds, not minutes.</summary>
+    /// <summary>Deliberately short: the condition that causes a timeout clears in seconds, not
+    /// minutes.</summary>
     public const int TimeoutRetryAfterSeconds = 5;
 
     public static Task WriteUnavailableAsync(
         HttpContext context, DatabaseOutage? outage, CancellationToken cancellationToken = default)
     {
         // A wrong password or missing database is not an outage that clears on its own — promising
-        // "resumes automatically" over one would be a lie that hides a configuration problem behind a
+        // "resumes automatically" over one would be a lie that hides a configuration problem behind
+        // a
         // cheerful banner. The reason and the honest retryable flag let the SPA (and any external
         // caller) tell the two situations apart without parsing prose.
         var rejected = outage?.Reason is DatabaseOutageReason.RejectedByServer;
@@ -79,8 +86,10 @@ public static class DatabaseUnavailableResponse
 }
 
 /// <summary>
-/// What <c>/healthz/database</c> answers. Deliberately thin: this endpoint is anonymous, so it must not
-/// disclose the provider, the host, error numbers or attempt counts. The SPA computes elapsed time from
+/// What <c>/healthz/database</c> answers. Deliberately thin: this endpoint is anonymous, so it must
+/// not
+/// disclose the provider, the host, error numbers or attempt counts. The SPA computes elapsed time
+/// from
 /// <see cref="SinceUtc"/> itself.
 /// </summary>
 /// <param name="Status">One of <c>ok</c>, <c>armed</c>, <c>unavailable</c>.</param>
@@ -89,12 +98,16 @@ public static class DatabaseUnavailableResponse
 public sealed record DatabaseHealthDto(string Status, DateTime? SinceUtc, string? Reason);
 
 /// <summary>
-/// Pure function behind <c>/healthz/database</c>, in the shape of <c>ClusterSetup.ComputeLeaderHealth</c>
+/// Pure function behind <c>/healthz/database</c>, in the shape of
+/// <c>ClusterSetup.ComputeLeaderHealth</c>
 /// so it is testable without a host.
 ///
-/// <para><b>It answers 200 in every state, including an outage.</b> That is not an oversight. A 503 here
-/// would be indistinguishable from "the process is gone" to the SPA polling it, which is exactly the
-/// misleading-indicator bug this whole feature exists to fix — <c>/healthz/live</c> staying green while
+/// <para><b>It answers 200 in every state, including an outage.</b> That is not an oversight. A 503
+/// here
+/// would be indistinguishable from "the process is gone" to the SPA polling it, which is exactly
+/// the
+/// misleading-indicator bug this whole feature exists to fix — <c>/healthz/live</c> staying green
+/// while
 /// the product was dead. <c>/healthz/ready</c> keeps the 503 convention for load balancers and
 /// orchestrators; this endpoint reports rather than gates.</para>
 /// </summary>

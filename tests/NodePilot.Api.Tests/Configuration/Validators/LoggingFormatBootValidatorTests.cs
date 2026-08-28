@@ -43,7 +43,7 @@ public class LoggingFormatBootValidatorTests
     [Theory]
     [InlineData("ecs-jsom")]    // typo
     [InlineData("ECS-Json2")]   // version drift attempt
-    [InlineData("syslog")]      // hopeful future format
+    [InlineData("syslog")]      // unsupported format
     public void UnknownFormat_EmitsError(string format)
     {
         var issues = Run(format);

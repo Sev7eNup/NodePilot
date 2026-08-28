@@ -6,9 +6,9 @@ using Xunit;
 namespace NodePilot.Api.Tests.Configuration;
 
 /// <summary>
-/// Runner-level behaviour: aggregation, error-vs-warning routing, the auto-discovery
-/// pipeline finds the production validators. Individual validator rules are covered
-/// by their own test fixtures.
+/// Runner-level behavior: aggregation, error-vs-warning routing, and that the
+/// auto-discovery pipeline finds the production validators. Individual validator
+/// rules are covered by their own test fixtures.
 /// </summary>
 public class BootValidatorRunnerTests
 {
@@ -58,8 +58,8 @@ public class BootValidatorRunnerTests
 
         var act = () => BootValidatorRunner.RunAll(EmptyConfig(), new[] { v1, v2 });
 
-        // The whole point of the runner — operators see every fix in one error rather
-        // than fix-restart-fix-restart per individual throw site.
+        // Aggregating lets operators see every fix in one error, instead of restarting
+        // once per validator to discover the next problem.
         act.Should().Throw<InvalidOperationException>()
             .Where(e => e.Message.Contains("K1") && e.Message.Contains("K2")
                      && e.Message.Contains("broken thing 1") && e.Message.Contains("broken thing 2"),

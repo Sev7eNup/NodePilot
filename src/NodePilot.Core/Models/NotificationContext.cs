@@ -5,7 +5,8 @@ namespace NodePilot.Core.Models;
 
 /// <summary>
 /// An immutable occurrence to be matched against notification rules and rendered by sinks. Built by
-/// the event collector; not a DB entity. <see cref="EventKey"/> is the stable per-occurrence id that
+/// the event collector; not a DB entity. <see cref="EventKey"/> is the stable per-occurrence id
+/// that
 /// drives exactly-once delivery.
 /// </summary>
 public sealed record NotificationContext(
@@ -38,19 +39,24 @@ public sealed record NotificationContext(
     // "dispatch", or "system". Empty for non-cancel events.
     // Exposed as the `cancelledBy` filter field so a rule can target manual cancels only.
     string? CancelledBy = null,
-    // For SystemAlert events (ADR 0008): the emitting source's stable id (e.g. "backlog"). Exposed as
+    // For SystemAlert events (ADR 0008): the emitting source's stable id (e.g. "backlog"). Exposed
+    // as
     // the `sourceId` filter field. Null for custom-rule events.
     string? SourceId = null,
-    // For SystemAlert events: the source observation's own field values, such as depth or reachable,
-    // merged into ToFieldMap so a policy condition and its route filters can address source-specific
+    // For SystemAlert events: the source observation's own field values, such as depth or
+    // reachable,
+    // merged into ToFieldMap so a policy condition and its route filters can address
+    // source-specific
     // fields by name. The fixed keys below only cover the custom-rule field catalog. Null for
     // custom-rule events.
     IReadOnlyDictionary<string, string>? ExtraFields = null)
 {
     /// <summary>
     /// Flattens the event into the string map the condition evaluator matches against (operands of
-    /// <c>source: "event"</c>). The fixed keys must stay in sync with the frontend EVENT_FIELD_CATALOG;
-    /// <see cref="ExtraFields"/> (system-alert source fields) are merged on top and win on key collision.
+    /// <c>source: "event"</c>). The fixed keys must stay in sync with the frontend
+    /// EVENT_FIELD_CATALOG;
+    /// <see cref="ExtraFields"/> (system-alert source fields) are merged on top and win on key
+    /// collision.
     /// </summary>
     public IReadOnlyDictionary<string, string> ToFieldMap()
     {
@@ -72,8 +78,10 @@ public sealed record NotificationContext(
             ["signalValue"] = SignalValue?.ToString(inv) ?? "",
             ["cancelledBy"] = CancelledBy ?? "",
         };
-        // System-alert source fields (including sourceId) arrive via ExtraFields, kept out of the fixed key
-        // set so the custom-rule field catalog and its frontend parity guard stay at exactly these keys.
+        // System-alert source fields (including sourceId) arrive via ExtraFields, kept out of the
+        // fixed key
+        // set so the custom-rule field catalog and its frontend parity guard stay at exactly these
+        // keys.
         if (ExtraFields is not null)
             foreach (var (k, v) in ExtraFields) map[k] = v;
         return map;

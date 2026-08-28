@@ -9,10 +9,10 @@ using Xunit;
 namespace NodePilot.Api.Tests.Hosting;
 
 /// <summary>
-/// Coverage for the strict-mode path in <see cref="SecurityHardeningWarnings"/>
-/// (audit finding H-4). The log escalation to Error level is not tested via Serilog
-/// capture here — what matters operationally is that StrictAllowedHosts=true aborts
-/// boot when an unsafe Host value is configured.
+/// Coverage for the strict-mode path in <see cref="SecurityHardeningWarnings"/>. The log
+/// escalation to Error level is not tested via Serilog capture here; what matters
+/// operationally is that StrictAllowedHosts=true aborts boot when an unsafe Host value is
+/// configured.
 /// </summary>
 public class SecurityHardeningWarningsTests
 {
@@ -71,7 +71,7 @@ public class SecurityHardeningWarningsTests
     public void LogSecurityHardeningWarnings_NoStrictMode_StarAllowedHosts_DoesNotThrow()
     {
         // Default path: without strict mode, this only logs (at Error level) and does not
-        // abort boot. Verifies the opt-in behavior — existing deployments using "*" keep starting.
+        // abort boot. Deployments using "*" keep starting since the check is opt-in.
         var env = new StubEnvironment();
         var cfg = BuildConfig(new Dictionary<string, string?>
         {
@@ -97,14 +97,14 @@ public class SecurityHardeningWarningsTests
         act.Should().NotThrow();
     }
 
-    // ---- H-2 (security audit 2026-05-15): plaintext-SMTP warning code path ----
+    // ---- Plaintext SMTP warning code path ----
 
     [Fact]
     public void LogSecurityHardeningWarnings_PlaintextSmtpWithUsername_DoesNotThrow()
     {
         // The warning is informational (Serilog Log.Warning, not an exception). This test
-        // exercises the new code path so coverage stays consistent — actual log assertion
-        // is left to the manual deployment audit.
+        // exercises that code path for coverage; the actual log assertion is left to the
+        // manual deployment audit.
         var env = new StubEnvironment();
         var cfg = BuildConfig(new Dictionary<string, string?>
         {
@@ -120,9 +120,9 @@ public class SecurityHardeningWarningsTests
     [Fact]
     public void LogSecurityHardeningWarnings_AllPermissiveTogglesAndPlaintextSecrets_ExercisesEveryWarning()
     {
-        // Fire every warning branch at once: hardening flags off, plaintext secrets present,
+        // Fires every warning branch at once: hardening flags off, plaintext secrets present,
         // weak JWT/DPAPI/LDAP settings, anonymous Prometheus scrape. A safe AllowedHosts keeps
-        // the strict fail-hard out of the way so we assert the audit runs end-to-end w/o throwing.
+        // the strict fail-hard out of the way so the audit can run end-to-end without throwing.
         var env = new StubEnvironment();
         var cfg = BuildConfig(new Dictionary<string, string?>
         {
@@ -181,9 +181,9 @@ public class SecurityHardeningWarningsTests
     [Fact]
     public void LogSecurityHardeningWarnings_PlaintextSmtpWithoutUsername_DoesNotThrow()
     {
-        // A localhost relay without auth is the legitimate use-case for EnableSsl=false
-        // — no credentials on the wire to leak. The warning must NOT fire (no throw,
-        // but also no boot-blocking semantics).
+        // A localhost relay without auth is the legitimate use case for EnableSsl=false;
+        // there are no credentials on the wire to leak, so the warning must not fire
+        // (no throw, and no boot-blocking semantics).
         var env = new StubEnvironment();
         var cfg = BuildConfig(new Dictionary<string, string?>
         {

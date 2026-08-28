@@ -9,7 +9,7 @@ namespace NodePilot.Api.Tests.Services.DbAdmin;
 
 /// <summary>
 /// Direct coverage for <see cref="DbAdminQueryExecutor"/> against the in-memory SQLite backend:
-/// the read path, row-value normalisation (byte[]→base64, NULL→null, passthrough scalars) and
+/// the read path, row-value normalisation (byte[] to base64, NULL to null, passthrough scalars) and
 /// the provider-name fallback branch. Complements <c>DbAdminControllerTests</c>, which drives the
 /// executor through the HTTP controller for the write/confirmation flows.
 /// </summary>

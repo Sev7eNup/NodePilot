@@ -5,10 +5,9 @@ import faviconLight from '../assets/logo-light.png'
 type Theme = 'light' | 'dark'
 
 /**
- * Light/dark toggle. The initial resolution (stored preference → OS preference) happens
- * in the inline pre-hydration script in `index.html`, which has already stamped
- * `html.dark` before first paint; seeding from that class here keeps one resolution rule
- * instead of two that can drift.
+ * Light/dark toggle. The initial choice (stored preference, else OS preference) is made by
+ * the inline pre-hydration script in `index.html`, which stamps `html.dark` before first
+ * paint. Seeding from that class keeps a single resolution rule instead of two that can drift.
  */
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(() =>

@@ -123,7 +123,7 @@ public class WorkflowsController : WorkflowsControllerBase
             //          WHERE WorkflowId = e.WorkflowId AND StartedAt > e.StartedAt) < 20
             //
             // …grew quadratically with the executions table (45k rows in the user's setup
-            // → ~14 s response time). The window function does a single ranked scan,
+            // -> ~14 s response time). The window function does a single ranked scan,
             // emitting only the top-20 per workflow.
             //
             // Window functions are supported by SQL Server ≥ 2012 and PostgreSQL ≥ 8.4 —
@@ -195,8 +195,8 @@ public class WorkflowsController : WorkflowsControllerBase
 
         // RBAC: pre-resolve capabilities + paths for every distinct folder appearing in
         // the result set. The per-request cache in ResourceAuthorizationService ensures
-        // each folder is walked at most once even before this batch step; doing it
-        // up-front keeps the per-row Select() purely synchronous.
+        // each folder is walked at most once. Resolving up front keeps the per-row Select()
+        // purely synchronous.
         var distinctFolderIds = workflows.Select(w => w.FolderId).Distinct().ToList();
         var folderCaps = new Dictionary<Guid, ResourceCapabilities>();
         foreach (var fid in distinctFolderIds)
@@ -498,7 +498,7 @@ public class WorkflowsController : WorkflowsControllerBase
 
         // M-3 (security audit 2026-05-15): atomic guarded delete. A row is removed only when
         // nobody holds the lock OR the caller is the lock owner — the WHERE guard closes the
-        // load→EnsureWriteLockAsync→SaveChanges TOCTOU window where a foreign lock could be
+        // load to EnsureWriteLockAsync to SaveChanges TOCTOU window where a foreign lock could be
         // acquired between the in-memory check and the write. Child rows (executions, versions,
         // stats) cascade at the DB level, exactly as the previous Remove()+SaveChanges did.
         var meId = this.GetCurrentUserId();

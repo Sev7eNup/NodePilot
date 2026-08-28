@@ -62,7 +62,7 @@ public sealed class CsrfMiddleware
 
         // Bearer requests are not browser-originated; browsers do not auto-attach Authorization.
         // Restrict the exemption to the Bearer scheme explicitly. A blanket "Authorization
-        // header present → skip CSRF" let an attacker bypass the cookie-gated CSRF check by
+        // header present -> skip CSRF" let an attacker bypass the cookie-gated CSRF check by
         // tacking on a header of an unsupported scheme (e.g. Basic, Negotiate) — the header is
         // ignored by JwtBearer but the request still carries the np_auth cookie. The CSRF check
         // must still fire in that scenario; only valid Bearer Authorization headers signal a
@@ -74,7 +74,7 @@ public sealed class CsrfMiddleware
                 return false;
         }
 
-        // No cookie → either unauthenticated (downstream will 401) or a non-cookie scheme.
+        // No cookie -> either unauthenticated (downstream will 401) or a non-cookie scheme.
         if (!ctx.Request.Cookies.ContainsKey(AuthController.AuthCookieName)) return false;
 
         // Login itself has no pre-existing cookie in the happy path; if one is replayed from

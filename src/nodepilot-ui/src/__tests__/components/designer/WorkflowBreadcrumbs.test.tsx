@@ -90,12 +90,10 @@ describe('WorkflowBreadcrumbs', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  // Both pills carry the class hooks index.css keys their outline on — an inset hairline on a
-  // fixed even height. Drawn as Tailwind's outset `ring-1` instead, the pill's fractional edge
-  // splits the top and bottom lines across two device pixels, they wash out against the
-  // near-white strip of the light skins, and only the rounded ends survive: the pill reads as a
-  // pair of brackets around the name. Renaming the hooks, or bringing a `ring-*`/`shadow-*`
-  // utility back (the latter would replace the box-shadow that carries the outline), regresses it.
+  // Both pills carry the class hooks index.css keys their outline on: an inset hairline on a
+  // fixed even height. An outset `ring-1` splits the top and bottom lines across two device
+  // pixels, so they wash out on the light skins and only the rounded ends stay visible.
+  // Renaming the hooks or reintroducing a `ring-*`/`shadow-*` utility breaks the outline.
   it('keeps the class hooks the pill-outline rule depends on', () => {
     renderBreadcrumbs([callNode('n1', CHILD.id), callNode('n2', 'Does not exist')]);
     const link = screen.getByRole('link', { name: /Child workflow/ });

@@ -27,7 +27,8 @@ public class ExecutionDebugControllerTests
     private sealed record Harness(
         ExecutionDebugController Ctrl, Mock<IWorkflowEngine> Engine, CapturingAuditWriter Audit, Guid ExecutionId);
 
-    // Authz stub that says yes to Read but no to Run — for the "insufficient run permission" 403 path.
+    // Authz stub that allows Read but denies Run, for the "insufficient run permission"
+    // 403 path.
     private sealed class ReadOnlyAuthz : IResourceAuthorizationService
     {
         public Task<bool> CanAccessWorkflowAsync(ClaimsPrincipal u, Guid f, ResourceOp op, CancellationToken ct = default)
@@ -161,7 +162,7 @@ public class ExecutionDebugControllerTests
     public async Task Resume_NonOwnerNonAdmin_Returns403()
     {
         await using var db = TestDbFactory.Create();
-        // Run started by _ownerId; caller is a different Operator → ownership check forbids.
+        // Run started by _ownerId; caller is a different Operator - ownership check forbids it.
         var h = await BuildAsync(db, role: "Operator", callerId: Guid.NewGuid(), startedBy: _ownerId);
 
         (await h.Ctrl.Resume(h.ExecutionId, new ResumeDebugRequest("s", "continue", null), CancellationToken.None))

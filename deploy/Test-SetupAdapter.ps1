@@ -642,7 +642,8 @@ try {
     Assert-True -Name 'a file too short to hold a PE header classifies as unknown' `
         -Condition ($null -eq (Get-NodePilotPeArchitecture -Path $truncated))
 
-    # 512 bytes of 0x41: the header offset at 0x3C reads as 0x41414141, far past the end of the file.
+    # 512 bytes of 0x41: the header offset at 0x3C reads as 0x41414141, far past the end of the
+    # file.
     $outOfBounds = Join-Path $workingDirectory 'out-of-bounds-image.bin'
     [IO.File]::WriteAllBytes($outOfBounds, ([byte[]](, 0x41 * 512)))
     Assert-True -Name 'a PE header offset pointing past the file classifies as unknown' `
@@ -1043,9 +1044,7 @@ try {
     Assert-True -Name 'a publisher certificate without the code-signing purpose blocks the install' `
         -Condition ($noEkuVerdict.Status -eq 'Fail' -and $noEkuVerdict.Required)
 
-    # The one the chain used to catch for us: the EKU says what the certificate is FOR, KeyUsage
-    # says what the key MAY DO. Code-signing EKU with a KeyUsage that forbids signing is a
-    # certificate that may not sign code, and CheckSignature($true) will not notice.
+    # EKU states certificate purpose; KeyUsage must also permit signing.
     $wrongUsage = New-TestPublisherCertificateFile -FileName 'wrong-usage-publisher.cer' `
         -KeyUsage ([System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyEncipherment)
     $wrongUsageVerdict = Test-NodePilotArtifactSignerTrust `
@@ -1210,11 +1209,8 @@ try {
     Assert-True -Name 'the passing row says the login was actually tried' `
         -Condition ($pgOk.Detail -match 'can log in')
 
-    # What is missing comes from pg_roles and pg_database, NOT from psql's message. That message is
-    # localised: the de-DE cluster this was built against answers "Rolle »nodepilot« existiert
-    # nicht" and "Passwort-Authentifizierung ... fehlgeschlagen", so an English-only matcher
-    # classifies correctly on one host and calls everything "refused" on the next. The German
-    # strings below are the real ones, kept as the regression they are.
+    # Determine missing roles and databases from the catalog because psql messages are localized.
+    # These fixtures confirm that localized errors do not affect classification.
     $germanNoRole = 'psql: Fehler: FATAL: Rolle »nodepilot« existiert nicht'
     $germanBadPassword = 'psql: Fehler: FATAL: Passwort-Authentifizierung für Benutzer »nodepilot« fehlgeschlagen'
 

@@ -15,21 +15,17 @@ import { OpsStuckStrip } from './OpsStuckStrip';
 import { EmptyState } from '../common/EmptyState';
 import { CopyableId } from '../common/CopyableId';
 
-// The Mission-Control centerpiece: a real-time horizontal timeline. Running executions grow
-// toward the NOW line; settled ones freeze and drift left out of the window. One lane per
-// workflow, overlapping runs stack into sub-rows — and each sub-row gets its own labeled
-// entry (full workflow name + that run's job id), so concurrent runs of the same workflow
-// show as separate rows instead of a single name with a ×N badge. All geometry comes from
-// lib/opsTimeline (pure, unit-tested); this component only measures the track and maps
-// geometry onto divs.
+// Real-time horizontal timeline for the operations view. Running executions grow toward the NOW
+// line; settled ones freeze and drift left out of the window. One lane per workflow, with
+// overlapping runs stacked into sub-rows, and each sub-row carries its own label (workflow name
+// plus that run's job id). All geometry comes from lib/opsTimeline; this component only measures
+// the track and maps geometry onto divs.
 
 const LANE_GAP = 8;
 /**
- * Lane-label column. Width lives in CSS (`.np-ops-lane-labels`) rather than here because it has to
- * shrink with the window: at 380 px fixed, a narrow desktop left almost nothing for the track. The
- * axis strip below has to follow the same width, hence the shared class rather than an inline
- * number on both. Phones no longer reach this component at all — below `lg` the page renders
- * OpsMobileView instead, because no label width makes a 390 px Gantt readable.
+ * Lane-label column. Its width lives in CSS (`.np-ops-lane-labels`) so it can shrink with the
+ * window, and so the axis strip below can share the same class instead of repeating a number here.
+ * Below the `lg` breakpoint the page renders OpsMobileView instead of this component.
  */
 /** Room the out-of-bar duration text needs before it is worth drawing. */
 const OUTSIDE_LABEL_PX = 46;
@@ -40,16 +36,11 @@ const DENSITY_BASELINE_INSET = 6;
 const DENSITY_RUG_H = 3;
 
 /**
- * Ink for the incident rug under a density slice, or `null` when the slice holds nothing to look
- * at. Failures win over cancellations: a cancelled run is an operator decision, a failed one is
- * the thing this whole view exists to surface. Both keep their exact counts in the tooltip — the
- * rug only answers "is there something here".
- *
- * This replaces a proportional outcome stack, which cannot survive the scale. Sixty-five failures
- * among 2981 runs is 2.2 %, i.e. a third of a pixel on a 14 px column: the stack either hid the
- * failure outright or, once floored to stay visible, claimed a share it did not have. Splitting
- * "how much ran" (the column, above the line) from "what went wrong" (the rug, below it) is the
- * only encoding that stays true at every ratio.
+ * Color for the incident rug under a density slice, or `null` when the slice holds no incident.
+ * Failures take precedence over cancellations, since a cancellation is an operator decision. Exact
+ * counts stay in the tooltip; the rug only signals that something is there. Splitting "how much
+ * ran" (the column) from "what went wrong" (the rug) stays readable at any failure ratio, which a
+ * proportional stack does not.
  */
 function densityRugColor(cell: DensityCell): string | null {
   if (cell.failed > 0) return STATUS_COLOR_VAR.failed;
@@ -63,8 +54,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
   recent: OpsRecentExecution[];
   /**
    * Bucketed run counts for the stretch the bars could not reach. Empty whenever `recent` already
-   * covers the window, which is the normal case — density is what a busy system degrades to, not
-   * a second rendering mode the view flips between.
+   * covers the window, which is the normal case.
    */
   density: OpsDensityLane[];
   locallySettled: Record<string, LocalSettled>;
@@ -78,23 +68,23 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
   /** Visible span of the track. */
   windowMs: number;
   /**
-   * Oldest settled run the server actually returned — the seam between bars and density. When
-   * nothing is left of it, everything left of it is "no history returned", not "nothing ran".
+   * Oldest settled run the server returned: the seam between bars and density. Everything left of
+   * it means "no history returned", not "nothing ran".
    */
   historyFromMs: number | null;
   /** Left edge the snapshot was built for; density bucket 0 starts here. */
   recentSinceMs: number;
   /** Width of one density bucket; 0 when the snapshot carries no density. */
   densityBucketSeconds: number;
-  /** Density was computed off the newest N runs only — the counts are a floor, not a total. */
+  /** Density was computed from the newest N runs only, so the counts are a floor, not a total. */
   densityCapped: boolean;
   onSelect: (executionId: string) => void;
 }>) {
   const { t } = useTranslation(['operations', 'executions']);
-  // The track element mounts/unmounts as the view flips between the idle hero and the lane
-  // view, so the ResizeObserver must re-attach per element — a ref callback (state) instead
-  // of a plain ref keys the effect on the CURRENT element; a one-shot [] effect would keep
-  // observing a destroyed node and freeze the width at 0.
+  // The track element mounts and unmounts as the view flips between the idle hero and the lane
+  // view, so the ResizeObserver has to re-attach per element. A ref callback held in state keys
+  // the effect to the current element; a plain ref with an empty dependency list would keep
+  // observing a detached node and freeze the width at 0.
   const [trackEl, setTrackEl] = useState<HTMLDivElement | null>(null);
   const [trackWidth, setTrackWidth] = useState(0);
 
@@ -111,34 +101,29 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
 
   const w = useMemo(() => windowFor(nowMs, windowMs, trackWidth), [nowMs, windowMs, trackWidth]);
 
-  // Local-clock timestamp of the snapshot currently on screen. Deliberately NOT the server's
-  // `recentSinceUtc`: the anchored layer below would inherit any browser/server clock skew as a raw
-  // pixel offset. The translation would still land every bar in the right place, but it would first
-  // put it thousands of pixels outside the layer, and a browser neither renders nor hit-tests that
-  // reliably — a snapshot stamped at the epoch pushed the bars far enough out that they could not
-  // even be clicked. Captured from `nowMs` when the data changes instead, which bounds the offset
-  // by the poll interval no matter what clock the server keeps.
+  // Local-clock timestamp of the snapshot currently on screen. Not the server's `recentSinceUtc`:
+  // the anchored layer would inherit any browser/server clock skew as a raw pixel offset, which can
+  // push bars far outside the layer, where a browser renders and hit-tests them unreliably. Taking
+  // it from `nowMs` when the data changes bounds the offset by the poll interval.
   //
-  // Set during render: React's documented way to adjust state when a prop changes. It re-runs this
-  // component before committing, and it costs nothing extra here because a new `recent` already
-  // re-renders every bar. `recent` keeps its identity across polls that changed nothing (React
-  // Query's structural sharing), so a quiet board does not re-anchor at all.
+  // Set during render, which is React's supported way to adjust state when a prop changes.
+  // `recent` keeps its identity across polls that changed nothing (React Query structural
+  // sharing), so a quiet board does not re-anchor at all.
   const [snapshot, setSnapshot] = useState({ key: recent, atMs: nowMs });
   if (snapshot.key !== recent) setSnapshot({ key: recent, atMs: nowMs });
 
-  // Anchor window: the coordinate system the settled layer is drawn in. Moves once per snapshot,
-  // never on a clock tick — that is what lets thousands of settled bars keep their memoized
-  // geometry, and their DOM, between ticks.
+  // Anchor window: the coordinate system the settled layer is drawn in. It moves once per snapshot
+  // and never on a clock tick, so settled bars keep their memoized geometry, and their DOM,
+  // between ticks.
   const wAnchor = useMemo(
     () => windowFor(snapshot.atMs, windowMs, trackWidth),
     [snapshot.atMs, windowMs, trackWidth],
   );
 
-  // How far the anchored layer has drifted since the snapshot, in px — never more than one poll
-  // interval's worth. Both windows share a span, so the difference between them is a pure
-  // translation: one number for the whole layer, and the only thing a clock tick has to change.
-  // Applied as a transform (compositor work) instead of rewriting `left` on every bar (layout
-  // work, once per second, thousands of times).
+  // How far the anchored layer has drifted since the snapshot, in px; at most one poll interval
+  // worth. Both windows share a span, so the difference is a pure translation: one number for the
+  // whole layer, and the only thing a clock tick has to change. Applied as a transform (compositor
+  // work) instead of rewriting `left` on every bar (layout work).
   const shiftPx = useMemo(() => {
     const span = w.endMs - w.startMs;
     if (span <= 0 || trackWidth <= 0) return 0;
@@ -154,10 +139,8 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
     return map;
   }, [density, scopedWorkflowIds]);
 
-  // Bar building and lane allocation depend on the SNAPSHOT only — no window, no clock. Before
-  // this they hung off `w` and therefore re-ran every second: ~8000 Date.parse calls on ISO
-  // strings, a fresh object per bar, then a full group-sort-and-stack pass over all of them. None
-  // of that can change between two polls, so none of it belongs on the tick.
+  // Bar building and lane allocation depend on the snapshot only: no window, no clock. Their
+  // result cannot change between two polls, so it must not be recomputed on every clock tick.
   const { lanes, placed } = useMemo(() => {
     const bars = buildTimelineBars(running, recent, locallySettled, scopedWorkflowIds);
     return assignLanes(bars, nodesById, new Set(densityByWorkflow.keys()));
@@ -180,10 +163,10 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
     [placed, wAnchor],
   );
 
-  // Live-space geometry for the only bars whose SHAPE changes between ticks: a running bar grows
-  // toward the NOW line, so it cannot ride the anchored layer — a translation would slide its
-  // right edge away from NOW instead of extending it. There is a handful of these next to
-  // thousands of settled ones, so recomputing them every tick costs nothing.
+  // Live-space geometry for the only bars whose shape changes between ticks: a running bar grows
+  // toward the NOW line, so it cannot ride the anchored layer, where a translation would slide its
+  // right edge away from NOW instead of extending it. There are few of these, so recomputing them
+  // every tick is cheap.
   const activeBars: PlacedBar[] = useMemo(
     () => placed.filter((p) => isActiveBarStatus(p.status)).map((p) => placeBar(p, w)),
     [placed, w],
@@ -194,11 +177,10 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
     [placedBars],
   );
 
-  // Representative execution (job) id per lane sub-row for the copyable chip next to the
-  // workflow name: each overlapping run gets its own row label, so we key by (laneIndex,
-  // subRow) and pick the most relevant bar on that row — prefer an active run, else the most
-  // recently started one. (A sub-row can hold several sequential, non-overlapping runs; the
-  // chip names the live/latest one. Every bar stays clickable for its own drilldown.)
+  // Representative execution id per lane sub-row, for the copyable chip next to the workflow name.
+  // Keyed by (laneIndex, subRow); an active run wins, otherwise the most recently started one. A
+  // sub-row can hold several sequential runs, so the chip names only one of them, while every bar
+  // stays clickable for its own drilldown.
   const rowExecId = useMemo(() => {
     const best = new Map<string, { id: string; active: boolean; startedAtMs: number }>();
     for (const b of placed) {
@@ -212,10 +194,9 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
     return best;
   }, [placed]);
 
-  // Call connectors: elbow lines from the parent bar down/up to each sub-workflow bar's start.
-  // Anchor space, and drawn inside the anchored layer: an elbow attaches to bar STARTS, which do
-  // not move relative to each other, so the layer's translation carries them exactly right — a
-  // connector into a running bar lands on the same pixel as the live-placed bar it points at.
+  // Call connectors: elbow lines from the parent bar to the start of each sub-workflow bar. Drawn
+  // in anchor space inside the anchored layer, because an elbow attaches to bar starts, which do
+  // not move relative to each other, so the layer's translation carries them correctly.
   const connectors = useMemo(() => pairCallConnectors(placedBars), [placedBars]);
 
   // Overdue set, computed once and shared by the bars and the strip so the two can never
@@ -229,19 +210,18 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
     [activeBars, overdueIds],
   );
 
-  // Stalled reuses the overdue threshold: "no step finished for as long as a whole run is
-  // allowed to take" is the same operator judgement, applied to progress instead of age.
+  // Stalled reuses the overdue threshold: "no step finished for as long as a whole run is allowed
+  // to take" is the same judgement, applied to progress instead of age.
   const stalledIds = useMemo(
     () => new Set(activeBars.filter((b) => isStalled(b, nowMs, overdueMs)).map((b) => b.executionId)),
     [activeBars, nowMs, overdueMs],
   );
 
-  // Duration written NEXT TO bars too narrow to hold it inside. Without this, wide windows
-  // compress every run toward the minimum bar width and "which one took longer?" becomes
-  // unanswerable — the bar length alone cannot carry it at 4 h.
+  // Duration written next to bars too narrow to hold it inside. Wide windows compress every run
+  // toward the minimum bar width, where bar length alone no longer shows which run took longer.
   //
-  // Only when the gap to the next bar on the SAME sub-row can hold the text, so labels never
-  // overlap a following run. Bars on other rows are irrelevant: each sub-row is its own line.
+  // Added only when the gap to the next bar on the same sub-row can hold the text, so a label
+  // never overlaps a following run. Each sub-row is its own line, so other rows do not matter.
   const outsideLabelIds = useMemo(() => {
     const rows = new Map<string, PlacedBar[]>();
     for (const b of placedBars) {
@@ -267,15 +247,13 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
 
   // Density cells per lane, covering the stretch left of the bar/aggregate seam.
   //
-  // Anchor space, like the settled bars, and for the same reason: density IS frozen history, so
-  // none of this can change between two polls. It used to hang off `w` and therefore off the clock,
-  // which at the 4 h window meant recomputing and re-rendering ~1150 cells plus their rugs and
-  // baselines every single second while the bars beside them sat perfectly still.
+  // Anchor space, like the settled bars, and for the same reason: density is frozen history and
+  // cannot change between two polls.
   //
-  // The seam falls back to the anchor's own NOW rather than the live clock. That branch is in fact
-  // unreachable whenever there is density to draw — the server only sends `density[]` when the bar
-  // cap bit, which presupposes settled runs came back, which makes `oldestReturnedCompletedAt`
-  // non-null — but reading the clock here would put the whole memo back on the tick for nothing.
+  // The seam falls back to the anchor's own NOW rather than the live clock. That branch is
+  // unreachable whenever there is density to draw, since the server sends `density[]` only when
+  // the bar cap bit, which implies `oldestReturnedCompletedAt` is non-null; reading the live clock
+  // here would put the whole memo back on the tick for nothing.
   const densityCellsByLane = useMemo(() => {
     const seam = historyFromMs ?? wAnchor.nowMs;
     const map = new Map<string, DensityCell[]>();
@@ -287,8 +265,8 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
   }, [densityByWorkflow, recentSinceMs, densityBucketSeconds, historyFromMs, wAnchor]);
 
   // One baseline per density lane, spanning exactly the stretch its columns cover. Dashed, so the
-  // aggregate reads as a chart axis rather than as another track element — and because it stops at
-  // the seam, it doubles as the marker for where individual runs take over.
+  // aggregate reads as a chart axis rather than another track element; it stops at the seam and so
+  // also marks where individual runs take over.
   const densityAxes = useMemo(() => {
     const axes = new Map<string, { leftPx: number; widthPx: number }>();
     for (const [workflowId, cells] of densityCellsByLane) {
@@ -303,8 +281,8 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
     return axes;
   }, [densityCellsByLane]);
 
-  // Busiest slice on the board — the reference every column height is scaled against, so "taller"
-  // reliably means "more runs" both within a lane and across lanes.
+  // Busiest slice on the board: the reference every column height is scaled against, so a taller
+  // column always means more runs, both within a lane and across lanes.
   const densityPeak = useMemo(() => {
     let peak = 0;
     for (const cells of densityCellsByLane.values()) {
@@ -313,9 +291,9 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
     return peak;
   }, [densityCellsByLane]);
 
-  // Window-wide totals for the notice line. Summed over every bucket, INCLUDING the ones right of
-  // the seam that are not drawn — the server buckets the whole window precisely so this number is
-  // the honest answer to "how much ran here?", not just "how much was aggregated".
+  // Window-wide totals for the notice line. Summed over every bucket, including the ones right of
+  // the seam that are not drawn, so the number reports how much ran in the window rather than how
+  // much was aggregated.
   const densitySummary = useMemo(() => {
     let runs = 0;
     let failed = 0;
@@ -325,15 +303,15 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
     return { runs, failed };
   }, [densityByWorkflow]);
 
-  // Width of the "no history returned" band at the left edge, in px. Anchored on the oldest
-  // row the server actually sent — NOT on the requested window edge: when the cap bit, the
-  // requested edge would mark the one stretch truncation did not lose.
+  // Width of the "no history returned" band at the left edge, in px. Anchored on the oldest row
+  // the server actually sent, not on the requested window edge: when the cap bit, the requested
+  // edge would mark the one stretch truncation did not lose.
   //
-  // Suppressed once density is present: the band claims "nothing came back for this stretch",
-  // and the density strip is exactly the refutation of that claim.
+  // Suppressed once density is present, because density shows that something did come back for
+  // that stretch.
   //
   // Anchor space too, and drawn in the anchored layer: like the bars and the density it covers, it
-  // is a statement about history and does not change between polls.
+  // states something about history and does not change between polls.
   const historyGapPx = useMemo(() => {
     if (historyFromMs === null || densityCellsByLane.size > 0) return 0;
     const x = timeToX(historyFromMs, wAnchor);
@@ -348,15 +326,12 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
   );
 
   /**
-   * Accessible names, one entry per DISTINCT (workflow, status) pair rather than per bar.
+   * Accessible names, one entry per distinct (workflow, status) pair rather than per bar. Every
+   * bar needs a label, and building it inline would cost an i18next lookup and a template string
+   * per bar; resolving up front runs `t()` once per pair instead.
    *
-   * The caller needs a label for every bar, and building it inline meant an i18next lookup and a
-   * template string per bar: at a full bar cap, 4000 of each per snapshot for at most lanes x
-   * status distinct results. Resolved up front here instead, so `t()` runs once per status.
-   *
-   * Built eagerly rather than filled on demand. A lazily populated cache would be mutated after
-   * render, which the React Compiler rejects outright -- and rightly, since it makes what a render
-   * produces depend on which renders came before it.
+   * Built eagerly rather than filled on demand: a lazily populated cache would be mutated after
+   * render, which the React Compiler rejects, and it would make a render depend on earlier ones.
    */
   const labelByWorkflowStatus = useMemo(() => {
     const map = new Map<string, string>();
@@ -372,7 +347,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
 
   /**
    * Keyboard order over every bar on the board: lanes top to bottom, bars left to right inside a
-   * lane. Derived from anchor-space geometry, so it survives a clock tick like everything else here.
+   * lane. Derived from anchor-space geometry, so it survives a clock tick.
    */
   const navBars = useMemo(() => {
     const seen = new Set(placedBars.map((b) => b.executionId));
@@ -383,10 +358,9 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
   /**
    * Where the track's roving focus points.
    *
-   * The track is ONE tab stop and moves `aria-activedescendant` across the bars instead of making
-   * every bar tabbable. Thousands of tab stops is a keyboard trap — nothing below the timeline would
-   * be reachable — and a per-bar `tabIndex` would be a prop, so every arrow key would rebuild the
-   * whole memoized anchored subtree. Keeping the pointer out here costs one DOM focus() call.
+   * The track is a single tab stop and moves `aria-activedescendant` across the bars instead of
+   * making every bar tabbable: thousands of tab stops would trap the keyboard, and a per-bar
+   * `tabIndex` would be a prop, so every arrow key would rebuild the memoized anchored subtree.
    */
   const [activeBarId, setActiveBarId] = useState<string | null>(null);
   const focusedBar = navBars.find((b) => b.executionId === activeBarId) ?? navBars[0];
@@ -425,15 +399,12 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
   };
 
   /**
-   * Everything the anchored layer draws, as ONE memoized subtree.
+   * Everything the anchored layer draws, as one memoized subtree, so a clock tick rebuilds neither
+   * the density and bar elements nor the `densityTitle` string of every cell.
    *
-   * Memoizing the geometry was only half the job: the JSX itself lived in the render body, so a
-   * clock tick still rebuilt ~1150 density elements and thousands of bar elements a second and
-   * re-ran `densityTitle` for every cell — two `toLocaleTimeString` calls and up to three i18n
-   * lookups apiece, none of which can change between polls. The helpers below therefore live
-   * INSIDE the memo: as plain per-render closures they would be new on every render and this memo
-   * would never hold. Nothing here may depend on `nowMs`, `w` or `shiftPx` — that is the invariant
-   * the whole two-layer split rests on, and a test pins it.
+   * The helpers below live inside the memo: as per-render closures they would be new on every
+   * render and the memo would never hold. Nothing here may depend on `nowMs`, `w` or `shiftPx`;
+   * that invariant carries the two-layer split, and a test pins it.
    */
   const anchoredLayer = useMemo(() => {
     const clockLabel = (ms: number) => formatTime(ms, { hour: '2-digit', minute: '2-digit' });
@@ -441,8 +412,8 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
     const rowCenterY = (bar: PlacedBar) =>
       laneTops.tops[bar.laneIndex] + bar.subRow * OPS_ROW_H + OPS_ROW_H / 2;
 
-    // Failed/cancelled are appended only when non-zero: a slice that reads "· 0 failed" trains the
-    // eye to skip the very part of the label that matters when it is not zero.
+    // Failed and cancelled counts are appended only when non-zero, so the label never carries a
+    // "0 failed" part that the eye learns to skip.
     const densityTitle = (cell: DensityCell) => [
       t('operations:timeline.densityCell', {
         from: clockLabel(cell.fromMs),
@@ -468,17 +439,16 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
           />
         )}
         {/* Density: what the window holds where individual bars ran out. A bottom-anchored
-            column chart, not a block — column height is the run count, the dashed rule beneath
-            it is the baseline, and a slice where something went wrong carries a rug BELOW that
-            baseline. Two marks rather than one stacked bar because no proportional split
-            survives this scale: 65 failures among 2981 runs is 2.2 %, a third of a pixel on a
-            14 px column. */}
+            column chart: column height is the run count, the dashed rule beneath it is the
+            baseline, and a slice with failures or cancellations carries a rug below that
+            baseline. Two marks rather than one stacked bar, because a proportional split
+            hides a small failure share at this scale. */}
         {lanes.flatMap((lane, i) => {
           const cells = densityCellsByLane.get(lane.workflowId);
           const axis = densityAxes.get(lane.workflowId);
           if (!cells || !axis) return [];
-          // Anchored on the FIRST sub-row's bottom, not the lane's: a constant band height
-          // keeps columns comparable across lanes, and a lane only grows extra sub-rows from
+          // Anchored on the first sub-row's bottom, not the lane's: a constant band height
+          // keeps columns comparable across lanes, and extra sub-rows only come from
           // overlapping bars, which live right of the seam where density never draws.
           const baselineY = laneTops.tops[i] + OPS_ROW_H - DENSITY_BASELINE_INSET;
           return [
@@ -500,8 +470,8 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
                   style={{ left: cell.leftPx, width: cell.widthPx, top: baselineY - h, height: h }}
                   title={title}
                   // A div with a `title` is invisible to a screen reader, and this column carries
-                  // real information: how much ran in that slice. It is announced, but stays out of
-                  // the tab order — there is nothing to activate, only something to read.
+                  // real information: how much ran in that slice. Announced, but kept out of the
+                  // tab order, since there is nothing to activate.
                   role="img"
                   aria-label={title}
                   data-testid="ops-density-cell"
@@ -528,7 +498,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
             }),
           ];
         })}
-        {/* Call connectors: parent run → sub-workflow run (trace-waterfall elbows) */}
+        {/* Call connectors: elbows from a parent run to the sub-workflow run it started */}
         {connectors.length > 0 && (
           <svg
             className="pointer-events-none absolute inset-0 h-full w-full"
@@ -653,9 +623,8 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
                     >
                       {lane.depth > 0 && <span className="shrink-0 text-outline" aria-hidden="true">↳</span>}
                       <span className="whitespace-nowrap">{lane.name}</span>
-                      {/* The lane ran out of sub-rows, so some bars share a row and overlap. Saying so
-                          is the difference between "crowded" and a layout that quietly misrepresents
-                          concurrency. */}
+                      {/* The lane ran out of sub-rows, so some bars share a row and overlap. The
+                          marker says so instead of letting the layout misrepresent concurrency. */}
                       {lane.subRowsCapped && r === 0 && (
                         <span
                           className="shrink-0 text-warning"
@@ -689,7 +658,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
           onKeyDown={onTrackKeyDown}
         >
           <div className="relative" style={{ height: laneTops.totalHeight }}>
-            {/* Zebra lane backgrounds — group parallel sub-rows visually under their lane */}
+            {/* Zebra lane backgrounds: group parallel sub-rows visually under their lane */}
             {lanes.map((lane, i) => (
               <div
                 key={`bg-${lane.workflowId}`}
@@ -706,11 +675,11 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
             <div className="np-ops-now" style={{ left: nowX }} aria-hidden="true" />
 
             {/* Anchored layer: everything whose geometry was frozen at the snapshot. Between polls
-                the ONLY thing that changes is the inner layer's translation — the subtree itself is
-                memoized (see anchoredLayer), so React does not even rebuild the elements.
-                Two elements, not one: the outer div clips and stays put, the inner one moves. Sharing
-                both roles would drag the clip rectangle along with the transform and shave a few
-                pixels off the right edge. */}
+                the only thing that changes is the inner layer's translation; the subtree itself is
+                memoized (see anchoredLayer), so React does not rebuild the elements.
+                Two elements, not one: the outer div clips and stays put, the inner one moves. One
+                element in both roles would drag the clip rectangle along with the transform and
+                shave pixels off the right edge. */}
             <div className="np-ops-clip">
               <div
                 className="np-ops-shift"
@@ -722,7 +691,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
             </div>
 
             {/* Live layer: running bars grow toward NOW every tick, so they are placed against the
-                live window and stay outside the anchored layer. A handful, not thousands. */}
+                live window and stay outside the anchored layer. */}
             {activeBars.map((bar) => (
               <OpsTimelineBar
                 key={bar.executionId}
@@ -737,7 +706,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
               />
             ))}
 
-            {/* Duration beside bars too narrow to hold it — keeps runs comparable at 1 h / 4 h. */}
+            {/* Duration beside bars too narrow to hold it, so runs stay comparable. */}
             {activeBars.filter((b) => outsideLabelIds.has(b.executionId)).map((bar) => (
               <span
                 key={`dur-${bar.executionId}`}

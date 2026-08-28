@@ -11,7 +11,7 @@ export interface BulkFailure<T> {
 
 export interface BulkResult<T> {
   succeeded: T[];
-  /** Items the operation reported as "nothing to do" (e.g. a move into the folder it already sits in). */
+  /** Items the operation had nothing to do for, such as a move into their current folder. */
   skipped: T[];
   failed: BulkFailure<T>[];
   /** True when `shouldAbort` stopped the run before every item was processed. */
@@ -27,7 +27,7 @@ export interface BulkProgress {
 
 export interface RunBulkOptions<T> {
   getLabel: (item: T) => string;
-  /** Generation captured before the run — every iteration re-checks it. */
+  /** Generation captured before the run; every iteration re-checks it. */
   authBoundaryGeneration: number;
   onProgress?: (progress: BulkProgress) => void;
   /** Polled before each item; returning true stops the run and sets `aborted`. */
@@ -45,16 +45,15 @@ export class BulkSkippedError extends Error {
 /**
  * Runs `op` over `items` one at a time and reports a per-item outcome.
  *
- * Sequential on purpose. Firing N deletes at once would put N audit writes and N RBAC checks on
- * the server simultaneously for what is a housekeeping action, and neither progress nor a cancel
- * button could exist. This mirrors the multi-file import loop in WorkflowsPage, including its two
- * hard rules:
+ * Sequential on purpose: running the items in parallel would issue one audit write and one RBAC
+ * check per item at the same time, and leaves no place to report progress or to cancel. Two
+ * rules hold:
  *
- *  - A failing item never aborts the batch. Someone clearing 30 workflows wants the other 29 gone
- *    plus a report naming the one that refused, not an all-or-nothing stop.
- *  - The auth boundary is re-checked before and after every call. Continuing the loop after a
- *    user switch would run the rest of User A's batch under User B's cookie, so that case throws
- *    out of the whole run rather than being recorded as a per-item failure.
+ *  - A failing item never aborts the batch; the remaining items still run and the failure is
+ *    reported alongside them.
+ *  - The auth boundary is re-checked before and after every call. Continuing after a user switch
+ *    would run the rest of the batch under the new user's cookie, so that case throws out of the
+ *    whole run instead of being recorded as a per-item failure.
  */
 export async function runBulkOperation<T>(
   items: readonly T[],

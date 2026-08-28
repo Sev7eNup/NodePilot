@@ -20,6 +20,7 @@ public class MaintenanceWindowTarget
 
     public MaintenanceTargetKind TargetKind { get; set; }
 
-    /// <summary>Id of the targeted <see cref="SharedWorkflowFolder"/> or <see cref="Workflow"/>.</summary>
+    /// <summary>Id of the targeted <see cref="SharedWorkflowFolder"/> or <see
+    /// cref="Workflow"/>.</summary>
     public Guid TargetId { get; set; }
 }

@@ -33,19 +33,23 @@ internal static class DbContextSetup
         var dbProvider = (configuration["Database:Provider"] ?? "postgres").ToLowerInvariant();
         var dbPoolSize = configuration.GetValue<int?>("Database:PoolSize") ?? 1024;
 
-        // The (sp, options) overload is required, not cosmetic: the interceptors and the retry strategy
-        // all need the singleton breaker, and there is no other way to reach the container from here.
+        // The (sp, options) overload is required, not cosmetic: the interceptors and the retry
+        // strategy
+        // all need the singleton breaker, and there is no other way to reach the container from
+        // here.
         services.AddDbContextPool<NodePilotDbContext>((sp, options) =>
         {
             var availability = sp.GetRequiredService<IDatabaseAvailability>();
             // Connect timeout sits on the critical path TWICE for every command timeout against a
             // wedged server. Resolve it from the same immutable, startup-validated snapshot used by
-            // auth, readiness and the dedicated probe; configuration reloads take effect together on
+            // auth, readiness and the dedicated probe; configuration reloads take effect together
+            // on
             // the next process start rather than splitting the four safety budgets.
             var dbConnectTimeout = sp.GetRequiredService<DatabaseAvailabilityOptions>()
                 .ConnectTimeoutSeconds;
 
-            // Singletons, reused across the whole pool: AddDbContextPool shares one options object, and
+            // Singletons, reused across the whole pool: AddDbContextPool shares one options object,
+            // and
             // EF expects interceptor instances to be reused rather than allocated per context.
             options.AddInterceptors(
                 sp.GetRequiredService<DatabaseConnectionAvailabilityInterceptor>(),
@@ -68,18 +72,25 @@ internal static class DbContextSetup
                 options.UseSqlServer(
                     DatabaseConnectionString.EnsureConnectTimeout(
                         dbProvider, configuration.GetConnectionString("DefaultConnection"), dbConnectTimeout),
-                    // Retry absorbs transient SQL Server errors (deadlocks, brief network blips, login
-                    // timeouts during restart). Without it, EF Core throws "An exception has been raised
+                    // Retry absorbs transient SQL Server errors (deadlocks, brief network blips,
+                    // login
+                    // timeouts during restart). Without it, EF Core throws "An exception has been
+                    // raised
                     // that is likely due to a transient failure" and the step fails permanently.
                     // Combined with the PK-violation catch in
-                    // WorkflowDbWriteMetrics.SaveChangesMeasuredAsync, retries become idempotent: if the
+                    // WorkflowDbWriteMetrics.SaveChangesMeasuredAsync, retries become idempotent:
+                    // if the
                     // original INSERT actually committed before the network blip, the retry's PK
                     // violation is silently absorbed.
                     //
-                    // BreakerAware... instead of EnableRetryOnFailure: both write the same option slot,
-                    // so this REPLACES the built-in strategy rather than layering on it. The subclass
-                    // keeps the provider's transient-error list verbatim and only vetoes two cases -
-                    // a command timeout (retrying a statement that already blew its budget turns one
+                    // BreakerAware... instead of EnableRetryOnFailure: both write the same option
+                    // slot,
+                    // so this REPLACES the built-in strategy rather than layering on it. The
+                    // subclass
+                    // keeps the provider's transient-error list verbatim and only vetoes two cases
+                    // -
+                    // a command timeout (retrying a statement that already blew its budget turns
+                    // one
                     // slow query into 6 x 120 s) and anything at all while the breaker is open.
                     sqlOpts =>
                     {
@@ -102,12 +113,14 @@ internal static class DbContextSetup
                     // attribute"). Without retry, EF Core surfaces the generic
                     // "An exception has been raised that is likely due to a transient failure"
                     // and the step fails permanently — even though the activity itself succeeded.
-                    // The PK-violation absorber in WorkflowDbWriteMetrics.SaveChangesIdempotentAsync
+                    // The PK-violation absorber in
+                    // WorkflowDbWriteMetrics.SaveChangesIdempotentAsync
                     // also catches Npgsql 23505 so retries that replay an already-committed INSERT
                     // become idempotent.
                     npgOpts =>
                     {
-                        // See the SQL Server branch: this replaces EnableRetryOnFailure (same option
+                        // See the SQL Server branch: this replaces EnableRetryOnFailure (same
+                        // option
                         // slot) and keeps Npgsql's transient list intact.
                         npgOpts.ExecutionStrategy(deps => new BreakerAwareNpgsqlExecutionStrategy(
                             deps,
@@ -126,9 +139,10 @@ internal static class DbContextSetup
             // EF Core 9+ promotes PendingModelChangesWarning from Warning to Error by default. Our
             // migrations are deliberately provider-agnostic (the same set runs on both SQL Server
             // and Postgres - see CLAUDE.md "Database"), but the ModelSnapshot file was generated
-            // against only one of the two providers. At runtime, EF compares the snapshot against the active
-            // provider's type mapping and raises false-positive pending-changes (Guid →
-            // uniqueidentifier vs uuid), even though the migration produces the correct schema.
+            // against only one of the two providers. At runtime, EF compares the snapshot against
+            // the active provider's type mapping and raises false-positive pending changes (Guid
+            // maps to uniqueidentifier versus uuid), even though the migration produces the
+            // correct schema.
             // Downgrade to a no-op so MigrationBootstrapper can apply migrations cleanly.
             options.ConfigureWarnings(w =>
                 w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));

@@ -17,12 +17,12 @@ namespace NodePilot.Api.Tests.Ai;
 /// <summary>
 /// Regression guard for the DI shape behind <c>LLM_NO_ACTIVE_PROFILE</c>.
 ///
-/// <para>Resolving the LLM connection can fail (no profile configured, or the active id names
-/// none). If that resolution happened during <b>construction</b> — as it would with a
+/// <para>Resolving the LLM connection can fail when no profile is configured, or the active id
+/// names none. If that resolution happened during construction — as it would with a
 /// container-registered <see cref="ILlmClient"/> built from <c>factory.Create(null)</c> — the
-/// failure would land while ASP.NET was building the controller, i.e. <i>before</i> the action's
-/// gate ever ran. The operator would get an opaque 500 instead of the 503 that tells them what to
-/// fix. These tests build a <b>real</b> service provider and drive the real controller.</para>
+/// failure would land while ASP.NET was building the controller, before the action's own gate
+/// ever ran. The operator would get an opaque 500 instead of the 503 that explains what to fix.
+/// These tests build a real service provider and drive the real controller.</para>
 /// </summary>
 public sealed class LlmDependencyResolutionTests
 {
@@ -52,7 +52,7 @@ public sealed class LlmDependencyResolutionTests
     [Fact]
     public void AiServices_ResolveEvenWithoutAnActiveProfile()
     {
-        // The services must be constructible; only the CALL may fail.
+        // The services must be constructible; only the call may fail.
         using var sp = BuildProvider(EnabledWithoutProfile);
         using var scope = sp.CreateScope();
 
@@ -104,9 +104,8 @@ public sealed class LlmDependencyResolutionTests
     [Fact]
     public async Task ScriptGeneration_CalledWithoutAGate_FailsAsLlmExceptionNotNullReference()
     {
-        // The service layer's own contract: if a caller skips the gate, the failure is still the
-        // classified LlmException the controllers know how to map — never an NRE from a half-built
-        // client.
+        // If a caller skips the gate, the failure is still the classified LlmException the
+        // controllers know how to map, never an NRE from a half-built client.
         using var sp = BuildProvider(EnabledWithoutProfile);
         using var scope = sp.CreateScope();
         var svc = scope.ServiceProvider.GetRequiredService<ScriptGenerationService>();

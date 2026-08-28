@@ -25,16 +25,19 @@ public sealed class PromptCatalog
 
     public string ScriptSystemPrompt { get; }
 
-    /// <summary>Shared activity/definition reference (schema, catalog, variables, layout). Does not include output rules.</summary>
+    /// <summary>Shared activity/definition reference (schema, catalog, variables, layout). Does not
+    /// include output rules.</summary>
     public string ActivityReference { get; }
 
     /// <summary>Workflow-generation prompt: output rules + activity reference (combined).</summary>
     public string WorkflowSystemPrompt { get; }
 
-    /// <summary>Chat-assistant prompt (explain + edit). Gets the activity reference injected separately.</summary>
+    /// <summary>Chat-assistant prompt (explain + edit). Gets the activity reference injected
+    /// separately.</summary>
     public string AssistantSystemPrompt { get; }
 
-    /// <summary>Global "AI Chat" knowledge/operations assistant prompt (read-only, tool-driven).</summary>
+    /// <summary>Global "AI Chat" knowledge/operations assistant prompt (read-only,
+    /// tool-driven).</summary>
     public string KnowledgeSystemPrompt { get; }
 
     public string WorkflowExampleJson { get; }

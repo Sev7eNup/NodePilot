@@ -12,8 +12,8 @@ const customEntry = (over: Partial<CustomActivityCatalogEntry> = {}): CustomActi
   inputs: [], outputs: [], isEnabled: true, version: 1, ...over,
 });
 
-// Activity types the backend catalog groups under each built-in category (returnData is
-// deliberately category controlFlow, so it shows up in the controlFlow list — verified here).
+// Activity types the backend catalog groups under each built-in category. returnData carries
+// category controlFlow, so it appears in the controlFlow list.
 const catalogTypesFor = (category: string) =>
   ACTIVITY_CATALOG.filter((a) => a.category === category).map((a) => a.type).sort();
 

@@ -24,14 +24,13 @@ interface EditorStatusBannersProps {
   workflow: Workflow | undefined;
   onForceUnlock: () => void;
   isForceUnlocking: boolean;
-  /** Current workflow nodes — the outgoing "Calls →" references share this strip. */
+  /** Current workflow nodes — the outgoing call references share this strip. */
   nodes: Node[];
 }
 
 /**
- * Compact tonal status pill — replaces the old full-width colored banner bars.
- * All pills share one horizontal strip under the header; several can coexist
- * (e.g. replay + lock state) without stacking full-height rows.
+ * Compact tonal status pill shown in the strip under the header. Several pills can
+ * coexist (e.g. replay + lock state) without stacking full-height rows.
  */
 function StatusPill({ tone, children }: Readonly<{
   tone: 'info' | 'success' | 'warning' | 'neutral' | 'primary';
@@ -68,15 +67,15 @@ export function EditorStatusBanners({
   nodes,
 }: Readonly<EditorStatusBannersProps>) {
   const { t } = useTranslation(['editor', 'common']);
-  // The banner shows minute-level granularity → a 60s tick is enough. State instead of
-  // Date.now() during render (purity rule: no impure calls during render).
+  // The banner only needs minute-level granularity, so a 60s tick is enough. Uses state
+  // instead of calling Date.now() during render, since render must stay pure.
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const handle = globalThis.setInterval(() => setNowMs(Date.now()), 60_000);
     return () => globalThis.clearInterval(handle);
   }, []);
 
-  // Outgoing "Calls →" references now share this strip instead of stacking their own row.
+  // Outgoing call references share this strip instead of stacking their own row.
   const callRefs = useWorkflowCallRefs(nodes);
 
   const showReplay = !!replayExecutionId;
@@ -197,7 +196,7 @@ export function EditorStatusBanners({
             </StatusPill>
           );
         }
-        // Not locked, role allows write — read-only by default until "Edit" is clicked.
+        // Not locked, and the role allows write — read-only by default until Edit is clicked.
         return (
           <StatusPill tone={workflow?.isEnabled ? 'warning' : 'neutral'}>
             <View size={12} className="shrink-0" />

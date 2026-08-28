@@ -167,7 +167,8 @@ public class GenerateTextActivityTests
     public async Task ExecuteAsync_Password_OnlyUsesAllowedSymbols()
     {
         // Minimal password: charset is letters+digits+the curated symbol set; no policy guarantee,
-        // but every produced char must come from that union (notably none of the excluded metachars).
+        // but every produced char must come from that union (notably none of the excluded
+        // metachars).
         var allowed = new Regex("^[A-Za-z0-9!#$%*+\\-=?@^_~]+$");
         for (var i = 0; i < Iterations; i++)
             (await Run(Cfg(new { mode = "password", length = 24 }))).Output.Should().MatchRegex(allowed);

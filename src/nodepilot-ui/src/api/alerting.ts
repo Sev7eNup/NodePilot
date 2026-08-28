@@ -1,13 +1,15 @@
 import { api } from './client';
 
-/** Matches NotificationRuleStore.UnchangedSecret on the backend — a route echoing this keeps its stored secret. */
+/** Matches NotificationRuleStore.UnchangedSecret on the backend — a route echoing this keeps its
+ * stored secret. */
 export const UNCHANGED_SECRET = '__unchanged__';
 
 export interface NotificationRouteDto {
   id: string | null;
   channel: string;
   target: string;
-  /** On read: UNCHANGED_SECRET when a secret is stored (never the cipher), else null. On write: echo to keep, new value to replace, null/'' to clear. */
+  /** On read: UNCHANGED_SECRET when a secret is stored (never the cipher), else null. On write:
+   * echo to keep, new value to replace, null/'' to clear. */
   secret: string | null;
   order: number;
   conditionExpressionJson?: string | null;

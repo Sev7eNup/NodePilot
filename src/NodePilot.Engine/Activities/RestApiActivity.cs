@@ -44,8 +44,8 @@ public class RestApiActivity : IActivityExecutor
             // Resolve the HttpClient via the proxy-aware provider. Default mode uses the
             // "NodePilot" named client (configured once from RestApi:Proxy:*). proxyMode
             // "direct"/"custom" yields a step-local client over a cached handler so
-            // connection pools are still reused. AllowAutoRedirect is always off so we can
-            // revalidate every hop here (closes H6 + L2 from the SSRF audit).
+            // connection pools are still reused. AllowAutoRedirect is always off so every
+            // hop can be revalidated here.
             using var client = _clientProvider.GetClient(config);
 
             var headers = ParseHeaders(config);
@@ -76,8 +76,8 @@ public class RestApiActivity : IActivityExecutor
         List<(string Name, string Value)> initialHeaders,
         CancellationToken ct)
     {
-        // Manual redirect loop so we can (a) re-run NetworkGuard against the new target on
-        // every hop, and (b) strip every non-public custom header when we cross an origin.
+        // Manual redirect loop, to (a) re-run NetworkGuard against the new target on
+        // every hop, and (b) strip every non-public custom header when crossing an origin.
         var currentUrl = initialUrl;
         var currentMethod = initialMethod;
         var currentBody = initialBody;
@@ -140,17 +140,17 @@ public class RestApiActivity : IActivityExecutor
             effectiveHeaders.RemoveAll(h => !WorkflowSecretContent.IsPublicHttpHeader(h.Name));
 
         // Per RFC 7231 §6.4.2/§6.4.3, 301/302/303 with a non-GET body "SHOULD" be
-        // resubmitted as GET. We take the conservative route and drop the body on
-        // redirect — fewer surprises, matches what most HTTP clients do.
+        // resubmitted as GET. Drop the body on redirect as well, the conservative
+        // choice that matches what most HTTP clients do.
         if ((int)statusCode is 301 or 302 or 303)
         {
             currentMethod = HttpMethod.Get;
             currentBody = null;
         }
-        // M-11: 307/308 preserve the body and method per RFC, BUT when the redirect
-        // crosses authority the body may contain credentials or secrets that were
-        // intended only for the original origin (API key in JSON body, etc). Drop
-        // the body defensively — mirrors the cross-authority header-stripping above.
+        // 307/308 preserve the body and method per RFC, but when the redirect crosses
+        // authority the body may contain credentials or secrets that were intended
+        // only for the original origin (API key in JSON body, etc). Drop the body
+        // defensively — this mirrors the cross-authority header-stripping above.
         else if ((int)statusCode is 307 or 308 && !SameAuthority(currentUrl, nextUrl))
         {
             currentBody = null;
@@ -200,9 +200,9 @@ public class RestApiActivity : IActivityExecutor
 
     private static async Task<(string Body, bool Exceeded)> ReadBoundedBodyAsync(HttpResponseMessage response, CancellationToken ct)
     {
-        // M-12: bounded response read. A malicious / misconfigured endpoint that returns
-        // 50 GiB of chunked body would otherwise pin the managed heap for the lifetime of
-        // the step. 16 MiB is generous for real API responses; beyond that, fail the step.
+        // Bounded response read. A malicious or misconfigured endpoint that returns
+        // 50 GiB of chunked body would otherwise pin the managed heap for the lifetime
+        // of the step. 16 MiB is generous for real API responses; beyond that, fail.
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var ms = new MemoryStream();
         var buf = new byte[8192];

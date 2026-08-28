@@ -3,8 +3,8 @@ using NodePilot.Ai;
 namespace NodePilot.Api.Ai;
 
 /// <summary>
-/// Unified error codes for the AI endpoints — shared between the HTTP mapping
-/// (<c>MapLlmException</c>) and the SSE <c>error</c> events so both paths report the same code.
+/// Error codes for the AI endpoints. Shared by the HTTP mapping (<c>MapLlmException</c>) and the
+/// SSE <c>error</c> events so both paths report the same code.
 /// </summary>
 internal static class LlmErrorCodes
 {

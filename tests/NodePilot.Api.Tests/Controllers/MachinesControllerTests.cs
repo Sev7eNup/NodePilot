@@ -330,10 +330,10 @@ public class MachinesControllerTests
     [Fact]
     public async Task GetAll_PopulatesUsedByWorkflowCount_DistinctPerWorkflow()
     {
-        // Arrange — two machines, three workflows.
-        //   - WF-A targets machineX twice (two nodes) + machineY once  → X counts once, Y counts once
-        //   - WF-B targets machineX only                                → X counts once more
-        //   - WF-C has no machine targets                               → no contribution
+        // Arrange - two machines, three workflows.
+        //   - WF-A targets machineX twice (two nodes) plus machineY once: X and Y each count once
+        //   - WF-B targets machineX only: X counts once more
+        //   - WF-C has no machine targets: no contribution
         // Expected: X usedBy=2, Y usedBy=1.
         var db = CreateContext();
         var machineX = new ManagedMachine { Id = Guid.NewGuid(), Name = "X", Hostname = "x.local" };
@@ -421,7 +421,7 @@ public class MachinesControllerTests
         var db = CreateContext();
         var machine = new ManagedMachine { Id = Guid.NewGuid(), Name = "M", Hostname = "m.local" };
         db.ManagedMachines.Add(machine);
-        // Garbage JSON must NOT take the whole endpoint down — log-and-skip semantics.
+        // Garbage JSON must not take the whole endpoint down - log-and-skip semantics.
         db.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "broken", DefinitionJson = "{not-json" });
         await db.SaveChangesAsync();
 
@@ -491,10 +491,10 @@ public class MachinesControllerTests
     [Fact]
     public async Task TestConnection_SessionThrows_DoesNotLeakExceptionMessageToCaller()
     {
-        // M-6 (security audit 2026-05-15): a WinRM/PSRemoting failure must not echo the raw
-        // exception text back over the HTTP response — it can leak internal hostnames, SPN /
-        // Kerberos realm details and provider internals. The detail stays in the audit trail
-        // (admin-only) and server log; the caller gets a generic message + a correlation id.
+        // A WinRM/PSRemoting failure must not echo the raw exception text in the HTTP response;
+        // it can leak hostnames, SPN/Kerberos details, and provider internals. The detail stays
+        // in the audit trail and server log; the caller gets a generic message and a correlation
+        // id.
         const string secretLeak = "Kerberos realm CORP.INTERNAL ticket for dc01.corp.internal failed";
 
         var db = CreateContext();

@@ -596,7 +596,7 @@ test.describe('Teil 78 — Alerting', () => {
     // The saved policy row appears under the Execution source.
     await expect(page.getByText('Backlog critical')).toBeVisible();
 
-    // Edit the policy → Test-fire renders a partial result.
+    // Edit the policy -> Test-fire renders a partial result.
     await page.locator('li', { hasText: 'Backlog critical' }).getByTitle(/^edit$|^bearbeiten$/i).click();
     const editPanel = editorPanel(page, /edit policy|policy bearbeiten/i);
     await expect(editPanel).toBeVisible();

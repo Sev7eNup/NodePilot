@@ -8,21 +8,19 @@ namespace NodePilot.Data.Security;
 /// Decorator that lets a deployment migrate secret ciphertexts from one
 /// <see cref="ISecretProtector"/> to another without re-entering every value by hand.
 /// <list type="bullet">
-///   <item><description><see cref="Protect"/> always uses the new (active) protector —
-///   so any value written under the migration regime ends up in the new format
-///   immediately.</description></item>
+///   <item><description><see cref="Protect"/> always uses the new (active) protector, so
+///   newly written values end up in the new format immediately.</description></item>
 ///   <item><description><see cref="Unprotect"/> tries the active protector first; on
-///   failure (header mismatch, MAC mismatch, format error) falls back to the legacy
+///   failure (header mismatch, MAC mismatch, format error) it falls back to the legacy
 ///   protector. Successful legacy reads are counted via the
-///   <c>nodepilot_credential_crypto_legacy_reads_total</c> meter so an operator can
-///   tell when the sweep has fully migrated all rows and the legacy config can be
-///   removed.</description></item>
+///   <c>nodepilot_credential_crypto_legacy_reads_total</c> meter, so an operator can tell
+///   when the sweep is complete and the legacy config can be removed.</description></item>
 /// </list>
 /// <para>
-/// Wire only when <c>Secrets:LegacyProvider</c> is set in addition to
-/// <c>Secrets:Provider</c>. The intended operational lifecycle is: enable legacy
-/// alongside the new provider → run <c>POST /api/secrets/reencrypt</c> → confirm
-/// counter at zero new legacy reads → drop the legacy config from settings.
+/// Wire only when <c>Secrets:LegacyProvider</c> is set alongside <c>Secrets:Provider</c>.
+/// Lifecycle: enable legacy alongside the new provider, run
+/// <c>POST /api/secrets/reencrypt</c>, confirm the counter shows zero new legacy reads,
+/// then drop the legacy config from settings.
 /// </para>
 /// </summary>
 public sealed class MigratingSecretProtector : ISecretProtector
@@ -52,8 +50,8 @@ public sealed class MigratingSecretProtector : ISecretProtector
         catch (Exception activeEx) when (
             activeEx is CryptographicException || activeEx is FormatException || activeEx is ArgumentException)
         {
-            // Active protector couldn't read this blob — try the legacy one. If the
-            // legacy ALSO fails, throw a combined error pointing at both attempts so
+            // Active protector couldn't read this blob; try the legacy one. If the
+            // legacy also fails, throw a combined error pointing at both attempts so
             // the operator sees the full diagnostic, not just the legacy failure.
             try
             {

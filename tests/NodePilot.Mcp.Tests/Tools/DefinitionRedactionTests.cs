@@ -18,7 +18,8 @@ public sealed class DefinitionRedactionTests
     public async Task GetWorkflowDefinition_MasksSecretConfigValues()
     {
         var id = Guid.NewGuid();
-        // A definition with named secrets and free-form fields whose contents cannot be classified safely.
+        // A definition with named secrets and free-form fields whose contents cannot be classified
+        // safely.
         var definition = """
         {
           "nodes": [

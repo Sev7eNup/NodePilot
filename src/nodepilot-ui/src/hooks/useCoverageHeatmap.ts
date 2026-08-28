@@ -5,14 +5,13 @@ import { api } from '../api/client';
 import type { WorkflowCoverageResponse, NodeCoverageStats } from '../types/api';
 
 /**
- * Coverage classification — drives the canvas tint when the heatmap toggle is on.
- *  - never:     node has no executions in the window AT ALL → grey/dashed border
- *  - rare:      < 25% of total executions reached this node → faint amber
- *  - common:    >= 25% reached this node → no tint (normal)
- *  - failure:   reached but failed at least once → red dot in corner (additive)
+ * Coverage classification that drives the canvas tint while the heatmap toggle is on.
+ *  - never: no executions in the window; grey dashed border
+ *  - rare: fewer than 25% of the executions reached this node; faint amber
+ *  - common: 25% or more reached this node; no tint
+ *  - failure: reached but failed at least once; red corner dot, drawn in addition
  *
- * Threshold is intentionally crude — the V1 goal is "show me what's never run", not
- * a precise gradient. Operators looking for fine-grained distribution use step-stats.
+ * The threshold is deliberately coarse. Step stats carry the fine-grained distribution.
  */
 export type CoverageClass = 'never' | 'rare' | 'common';
 
@@ -29,8 +28,8 @@ export interface CoverageAnnotation {
 
 /**
  * Fetches coverage stats and stamps `__coverage` onto each activity node so
- * ActivityNode.tsx can render a tint without prop-drilling. Cleared when the toggle
- * is off so a stale grey border doesn't bleed into normal designer use.
+ * ActivityNode.tsx can render a tint without prop drilling. The annotation is cleared
+ * while the toggle is off so a stale grey border does not show up in normal designer use.
  */
 export function useCoverageHeatmap({
   workflowId,

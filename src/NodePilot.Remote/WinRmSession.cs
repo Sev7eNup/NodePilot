@@ -15,7 +15,6 @@ public class WinRmSession : IRemoteSession
     // only abandons the awaiter while the pipeline keeps running on the threadpool. Once that
     // happens the runspace is left in an unknown state and is unsafe to hand out to the next
     // pool consumer, so we mark the session poisoned and let the pool discard it on Return.
-    // (Originally introduced under internal fix ticket F-1.)
     private int _poisoned;
 
     public WinRmSession(Runspace runspace, string? targetHostname = null)
@@ -80,14 +79,9 @@ public class WinRmSession : IRemoteSession
         ps.Runspace = _runspace;
         ps.AddScript(script);
 
-        // Real timeout + cancellation handling, built on .NET's older Begin/End async pattern
-        // (IAsyncResult) plus ps.Stop(). BeginInvoke posts the pipeline to the runspace's executor
-        // thread and returns an IAsyncResult immediately, so the awaiting Task does NOT park a
-        // ThreadPool worker for the script's duration (Task.Run(() => ps.Invoke()) used to). Both
-        // timeout and caller cancellation flow through a linked CTS that triggers ps.Stop() on
-        // fire — EndInvoke then throws PipelineStoppedException. The runspace may be left in an
-        // undefined state after Stop, so we still poison the session and let the pool discard it
-        // on Return.
+        // BeginInvoke runs the pipeline without occupying a ThreadPool worker for its duration.
+        // Timeout and caller cancellation share a linked CTS that calls ps.Stop(). Because Stop
+        // can leave the runspace undefined, the pool discards the poisoned session on return.
         //
         // timeoutSeconds null or <=0 means "no timeout" — only the parent cancellation token (ct)
         // can cancel the call.

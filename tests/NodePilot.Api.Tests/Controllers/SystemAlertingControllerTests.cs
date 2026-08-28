@@ -59,7 +59,7 @@ public class SystemAlertingControllerTests
         return (SystemAlertPolicyResponse)created.Value!;
     }
 
-    // ---- catalog (carried from the foundation phase) ----
+    // ---- catalog ----
 
     [Fact]
     public async Task GetCatalog_ReturnsAllSources_WithParametersAndAvailability()

@@ -11,23 +11,27 @@ namespace NodePilot.Api.Dtos.Settings;
 /// </summary>
 public sealed class AiKnowledgeSettingsDto
 {
-    /// <summary>Master switch for the global knowledge chat (also gated by <c>Llm:Enabled</c>).</summary>
+    /// <summary>Master switch for the global knowledge chat (also gated by
+    /// <c>Llm:Enabled</c>).</summary>
     public bool Enabled { get; set; }
 
     public bool DocsEnabled { get; set; } = true;
     public bool OperationalEnabled { get; set; } = true;
 
-    /// <summary>Exposes the repository source code. Source-code tools are additionally Admin/Operator-only at request time.</summary>
+    /// <summary>Exposes the repository source code. Source-code tools are additionally
+    /// Admin/Operator-only at request time.</summary>
     public bool SourceCodeEnabled { get; set; }
 
-    /// <summary>Exposes the App-DB as a read-only text2sql source. Global-Admin-only at request time; result cells are secret-redacted.</summary>
+    /// <summary>Exposes the App-DB as a read-only text2sql source. Global-Admin-only at request
+    /// time; result cells are secret-redacted.</summary>
     public bool DbEnabled { get; set; }
 
     /// <summary>Docs corpus root. Empty resolves to <c>{ContentRoot}/knowledge/docs</c>.</summary>
     [StringLength(1024)]
     public string? DocsRootPath { get; set; }
 
-    /// <summary>Source tree root. Empty resolves to <c>{ContentRoot}/knowledge/source</c>.</summary>
+    /// <summary>Source tree root. Empty resolves to
+    /// <c>{ContentRoot}/knowledge/source</c>.</summary>
     [StringLength(1024)]
     public string? SourceCodeRootPath { get; set; }
 

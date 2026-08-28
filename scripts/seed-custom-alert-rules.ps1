@@ -38,7 +38,8 @@ function UnaryCond($field, $op) {
   @{ type = 'comparison'; left = @{ kind = 'variable'; source = 'event'; name = $field }; op = $op } | ConvertTo-Json -Depth 6 -Compress
 }
 
-# name, description, eventTypes, filter (or $null), cooldownMinutes, minOccurrences, occurrenceWindowMinutes
+# name, description, eventTypes, filter (or $null), cooldownMinutes, minOccurrences,
+# occurrenceWindowMinutes
 $rules = @(
   # --- batch 1: outcome & lifecycle basics ---
   @{ name = 'Credential-/Login-Fehler';    desc = 'Ein Lauf scheiterte an Authentifizierung/Credential (falsches Passwort, gesperrtes Konto, WinRM-Login).';                events = @('CredentialFailure');    filter = $null;                                                    cd = 15; minOcc = 1; win = 0  },

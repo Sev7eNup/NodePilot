@@ -38,7 +38,8 @@ public class WorkflowAssistantServiceTests
         => new(question, workflowJson ?? SampleWorkflow, Guid.NewGuid(), "base-hash-abc",
                history ?? Array.Empty<AiChatTurnDto>());
 
-    /// <summary>Streams one chat turn and collects the prose reply plus any proposal it produced.</summary>
+    /// <summary>Streams one chat turn and collects the prose reply plus any proposal it
+    /// produced.</summary>
     private static async Task<(string text, WorkflowChatProposalDto? proposal)> Run(
         WorkflowAssistantService svc, WorkflowChatRequest req, bool allowModify = true,
         bool allowExecutionTools = false)
@@ -57,7 +58,8 @@ public class WorkflowAssistantServiceTests
         return (sb.ToString(), proposal);
     }
 
-    /// <summary>Chunks for a modify-stream: prose, then the delimiter, then the definition JSON.</summary>
+    /// <summary>Chunks for a modify-stream: prose, then the delimiter, then the definition
+    /// JSON.</summary>
     private static string[] ModifyStream(string prose, string definitionJson) =>
         new[] { prose, "\n" + WorkflowAssistantService.DefinitionDelimiter + "\n", definitionJson };
 
@@ -312,7 +314,7 @@ public class WorkflowAssistantServiceTests
         call.Conversation[2].Content.Should().Contain("Und s1?");
     }
 
-    // ---- Tool-Calling (read-only MCP/Analyse-Tools) --------------------------------
+    // ---- Tool calling (read-only MCP/analysis tools) --------------------------------
 
     [Fact]
     public async Task StreamChat_ToolCallingDisabled_DoesNotAdvertiseTools()
@@ -374,12 +376,12 @@ public class WorkflowAssistantServiceTests
         secondConv.Should().Contain(m => m.Role == "assistant" && m.ToolCalls != null && m.ToolCalls.Count == 1);
         secondConv.Should().Contain(m => m.Role == "tool" && m.ToolCallId == "call-1");
 
-        // Token usage is SUMMED across both rounds (1/1 from the fake each) — not overwritten.
+        // Token usage sums across both rounds (1/1 from the fake each), not overwritten.
         done.Should().NotBeNull();
         done!.PromptTokens.Should().Be(2);
         done.CompletionTokens.Should().Be(2);
         // The generation window is summed the same way, so it stays the matching denominator for
-        // those completion tokens. DurationMs must NOT be used for that — it also covers prefill
+        // those completion tokens. DurationMs must not be used for that: it also covers prefill
         // and the tool execution between the rounds.
         done.GenerationMs.Should().Be(2 * FakeLlmClient.FakeGenerationMs);
     }
@@ -387,9 +389,9 @@ public class WorkflowAssistantServiceTests
     [Fact]
     public async Task StreamChat_ToolCall_WithNonCanonicalFinishReason_StillExecutes()
     {
-        // A local endpoint (LM Studio, llama.cpp) reports finish_reason "stop" even though it emitted a
-        // tool call. The loop must execute it on the PRESENCE of tool_calls, not the finish_reason string —
-        // otherwise such models get capped at a single (or zero) tool call.
+        // A local endpoint (LM Studio, llama.cpp) reports finish_reason "stop" even though it
+        // emitted a tool call. The loop must execute based on the presence of tool_calls, not the
+        // finish_reason string, otherwise such models get capped at a single (or zero) tool call.
         var toolCall = new LlmToolCall("call-1", "analyze_workflow", "{}");
         var fake = new FakeLlmClient()
             .EnqueueToolCallStreamWithFinish(new[] { toolCall }, "stop", "Ich prüfe. ")
@@ -407,7 +409,7 @@ public class WorkflowAssistantServiceTests
 
         toolCalls.Should().ContainSingle().Which.Should().Be("analyze_workflow");
         toolResults.Should().ContainSingle();
-        fake.Calls.Should().HaveCount(2); // it DID a second round after executing the tool
+        fake.Calls.Should().HaveCount(2); // it ran a second round after executing the tool
     }
 
     [Fact]
@@ -428,7 +430,7 @@ public class WorkflowAssistantServiceTests
         toolCallCount.Should().Be(1);      // only round 0 was allowed to execute the tool
         fake.Calls[0].ToolChoice.Should().Be("auto");
         fake.Calls[0].Tools.Should().NotBeNullOrEmpty();
-        fake.Calls[1].Tools.Should().BeNull();      // last round advertises no tools → forces a text answer
+        fake.Calls[1].Tools.Should().BeNull();      // no tools on last round forces a text answer
         fake.Calls[1].ToolChoice.Should().BeNull(); // no literal `tool_choice:none` (some providers 400 on that)
     }
 
@@ -438,7 +440,7 @@ public class WorkflowAssistantServiceTests
         var toolCall = new LlmToolCall("c", "analyze_workflow", "{}");
         var fake = new FakeLlmClient()
             .EnqueueToolCallStream(new[] { toolCall }, "Analysiere… ") // round 0 calls a tool
-            .EnqueueStream("Fertige Antwort.");                        // round 1 (final, no tools) → real answer
+            .EnqueueStream("Fertige Antwort.");                        // final round: real answer
 
         using var doc = JsonDocument.Parse(SampleWorkflow);
         var prose = new StringBuilder();
@@ -474,7 +476,7 @@ public class WorkflowAssistantServiceTests
         ctxJson.Should().NotContain("SUPER-SECRET");
     }
 
-    // ---- Execution-Log-Tools (Kontext-Gating) ---------------------------------------
+    // ---- Execution log tools (context gating) ---------------------------------------
 
     [Fact]
     public async Task StreamChat_ExecutionToolsAllowed_ContextCarriesReader()
@@ -512,7 +514,8 @@ public class WorkflowAssistantServiceTests
     {
         var fake = new FakeLlmClient().EnqueueStream("ok");
         var capturing = new CapturingChatToolRegistry();
-        // Unsaved workflow: WorkflowId=null — no reader is attached even if the controller allows it.
+        // Unsaved workflow: WorkflowId=null — no reader is attached even if the controller allows
+        // it.
         var req = new WorkflowChatRequest("Frage.", SampleWorkflow, null, "h", Array.Empty<AiChatTurnDto>());
 
         using var doc = JsonDocument.Parse(SampleWorkflow);

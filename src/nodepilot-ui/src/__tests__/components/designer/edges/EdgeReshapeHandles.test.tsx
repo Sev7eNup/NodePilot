@@ -5,21 +5,21 @@ import { Position } from '@xyflow/react';
 /**
  * EdgeReshapeHandles renders partly into the SVG (dashed connector lines) and partly into
  * the EdgeLabelRenderer layer (cp1/cp2 as HTML divs with z-index 10, so they sit above the
- * "+" insert button that lives in the same layer — otherwise the button would cover cp2 on
- * Right→Bottom edges).
+ * "+" insert button in the same layer; without that the button would cover cp2 on edges
+ * running from a right port to a bottom port).
  *
  * Mocks:
- *   - useReactFlow().screenToFlowPosition: identity (test passes screen coords directly)
+ *   - useReactFlow().screenToFlowPosition: identity, so the test passes screen coordinates
  *   - EdgeLabelRenderer: a plain <div> wrapper, so the portal content lands in the normal
  *     DOM tree and stays reachable via getByTestId(...).
  *
  * Pinned behavior:
- *   - 2 handle-divs + 2 dashed hint-lines render when visible AND canWrite=true
- *   - Nothing renders when visible=false OR canWrite=false
- *   - pointerdown on a handle calls beginEdgeReshape EXACTLY ONCE before any updateEdgeShape
- *   - subsequent pointermove events call updateEdgeShape with deltas applied to the right CP
- *   - port-aware default control points (sanity: the rendered div transform follows port direction)
- *   - the cp-divs sit above the "+" button via position:absolute + zIndex:10 + pointerEvents:all
+ *   - two handle divs and two dashed hint lines render when visible and canWrite are true
+ *   - nothing renders when visible or canWrite is false
+ *   - pointerdown on a handle calls beginEdgeReshape once before any updateEdgeShape
+ *   - later pointermove events apply the delta to the control point being dragged
+ *   - default control points follow the port direction
+ *   - the cp divs sit above the "+" button via position:absolute, zIndex:10 and pointerEvents:all
  */
 
 vi.mock('@xyflow/react', async () => {
@@ -64,8 +64,8 @@ const baseProps = {
   visible: true,
 };
 
-/** Parses the second translate(…) component out of the inline-style transform,
- *  e.g. "translate(-50%, -50%) translate(50px, 0px)" → { x: 50, y: 0 }. */
+/** Parses the second translate(...) component out of the inline-style transform,
+ *  e.g. "translate(-50%, -50%) translate(50px, 0px)" yields { x: 50, y: 0 }. */
 function parseTransformXY(el: HTMLElement): { x: number; y: number } {
   const m = el.style.transform.match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)$/);
   if (!m) throw new Error(`Cannot parse transform: ${el.style.transform}`);
@@ -74,7 +74,7 @@ function parseTransformXY(el: HTMLElement): { x: number; y: number } {
 
 describe('EdgeReshapeHandles', () => {
   beforeEach(() => {
-    // Reset snapToGrid before each test — Zustand singleton survives between renders.
+    // Reset snapToGrid before each test; the Zustand store is a singleton shared across tests.
     useDesignStore.getState().setSnapToGrid(false);
   });
 
@@ -102,7 +102,7 @@ describe('EdgeReshapeHandles', () => {
   });
 
   it('defaultControlPoints_rightLeft_handlesPositionedHorizontally', () => {
-    // distance = 0.25 * 200 = 50 → cp1 at (50, 0), cp2 at (150, 0)
+    // distance = 0.25 * 200 = 50, so cp1 sits at (50, 0) and cp2 at (150, 0).
     const { getByTestId } = renderInSvg(<EdgeReshapeHandles {...baseProps} />);
     expect(parseTransformXY(getByTestId('edge-reshape-cp1-e1'))).toEqual({ x: 50, y: 0 });
     expect(parseTransformXY(getByTestId('edge-reshape-cp2-e1'))).toEqual({ x: 150, y: 0 });
@@ -132,7 +132,6 @@ describe('EdgeReshapeHandles', () => {
   });
 
   it('handles_renderedAboveButtonLayer_via_zIndexAndPositioning', () => {
-    // Regression guard for exactly the layering bug this component fixes:
     // z-index only takes effect on a positioned element, and pointer-events:all must be
     // set so clicks land on the handle instead of falling through to the button layer.
     const { getByTestId } = renderInSvg(<EdgeReshapeHandles {...baseProps} />);
@@ -180,7 +179,7 @@ describe('EdgeReshapeHandles', () => {
 
     expect(ctx.beginEdgeReshape).toHaveBeenCalledTimes(1);
     expect(ctx.updateEdgeShape).toHaveBeenCalledTimes(3);
-    // last call: delta = (+30, +30), new cp2 = (180, 30)
+    // Last call: delta = (+30, +30), so cp2 becomes (180, 30).
     expect(ctx.updateEdgeShape).toHaveBeenLastCalledWith('e1', {
       cp1x: 50, cp1y: 0,
       cp2x: 180, cp2y: 30,
@@ -208,7 +207,7 @@ describe('EdgeReshapeHandles', () => {
     const cp1 = getByTestId('edge-reshape-cp1-e1');
 
     fireEvent.pointerDown(cp1, { clientX: 50, clientY: 0, pointerId: 1 });
-    // delta = (+33, -47) → unsnapped new cp1 = (83, -47); rounded to nearest 20 → (80, -40)
+    // delta = (+33, -47) gives an unsnapped cp1 of (83, -47), rounded to nearest 20: (80, -40)
     fireEvent.pointerMove(window, { clientX: 83, clientY: -47 });
 
     expect(ctx.updateEdgeShape).toHaveBeenCalledWith('e1', {
@@ -220,7 +219,7 @@ describe('EdgeReshapeHandles', () => {
   it('canWriteFalse_pointerDownNoOp', () => {
     const { queryByTestId, ctx } = renderInSvg(<EdgeReshapeHandles {...baseProps} />, { canWrite: false });
 
-    // Component renders nothing when canWrite=false, so no handles to click.
+    // The component renders nothing when canWrite is false, so there is no handle to click.
     expect(queryByTestId('edge-reshape-cp1-e1')).toBeNull();
     expect(ctx.beginEdgeReshape).not.toHaveBeenCalled();
   });

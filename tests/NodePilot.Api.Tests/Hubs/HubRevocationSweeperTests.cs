@@ -15,7 +15,7 @@ using Xunit;
 namespace NodePilot.Api.Tests.Hubs;
 
 /// <summary>
-/// M2/M-3 (security-audit findings) regression coverage. The sweeper must:
+/// Regression coverage for the revocation sweeper. The sweeper must:
 ///   * read the union of (revoked-and-not-yet-expired tokens, deactivated users) from DB
 ///   * call FindConnectionsToDrop for live connections matching either set
 ///   * send a "forceDisconnect" client event
@@ -45,9 +45,8 @@ public sealed class HubRevocationSweeperTests : IDisposable
 
     private static (HubRevocationSweeper sweeper, Mock<IHubContext<ExecutionHub>> hub, Mock<ISingleClientProxy> proxy, Mock<IHubClients> clients) Build(NodePilotDbContext db)
     {
-        // Note: IHubClients.Client(connId) returns ISingleClientProxy (newer SignalR API),
-        // not the legacy IClientProxy. Mock the right surface or the .Returns chain doesn't
-        // type-check against the production code.
+        // IHubClients.Client(connId) returns ISingleClientProxy, not IClientProxy. Mock the
+        // correct interface, or the .Returns chain won't type-check against production code.
         var proxy = new Mock<ISingleClientProxy>();
         proxy.Setup(p => p.SendCoreAsync(It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()))
              .Returns(Task.CompletedTask);
@@ -119,9 +118,8 @@ public sealed class HubRevocationSweeperTests : IDisposable
     [Fact]
     public async Task SweepOnceAsync_AlreadyExpiredToken_NotLoaded_NoAbort()
     {
-        // Performance contract: tokens whose ExpiresAt is in the past fail JwtBearer
-        // validation on handshake anyway, so the sweeper deliberately filters them out
-        // of the working set. Pin it.
+        // Expired tokens fail JwtBearer validation on handshake.
+        // anyway, so the sweeper filters them out of its working set.
         var db = NodePilot.TestCommons.TestDbFactory.Create();
         var jti = Guid.NewGuid().ToString();
         db.RevokedTokens.Add(new RevokedToken
@@ -278,7 +276,7 @@ public sealed class HubRevocationSweeperTests : IDisposable
         var (sweeper, _, _, _) = Build(db);
 
         // No RegisterAuthForTest — the auth map is empty, so FindConnectionsToDrop yields
-        // nothing → SweepOnceAsync exits early without throwing.
+        // nothing, and SweepOnceAsync exits early without throwing.
         await sweeper.SweepOnceAsync(CancellationToken.None);
     }
 }

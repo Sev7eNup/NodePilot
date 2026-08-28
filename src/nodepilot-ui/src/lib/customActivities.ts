@@ -2,13 +2,13 @@ import { create } from 'zustand';
 
 /**
  * Runtime catalog of user-authored custom activities ("Custom Nodes"). The static
- * `activityCatalog.generated.ts` is parity-locked against the backend and must NOT carry these —
- * custom activities are fetched from `GET /api/custom-activities` and held here.
+ * `activityCatalog.generated.ts` is parity-locked against the backend and cannot carry these,
+ * so they are fetched from `GET /api/custom-activities` and held here.
  *
  * Two access shapes:
- *  - a Zustand store for React components that need to re-render when the catalog loads/changes;
- *  - a synchronous module-level cache (kept in sync by the store's setter) for the plain helper
- *    functions `getActivityLabel` / `describeNodeOutputs` that run OUTSIDE React.
+ *  - a Zustand store for React components that re-render when the catalog loads or changes;
+ *  - a synchronous module-level cache (kept current by the store's setter) for the plain helper
+ *    functions `getActivityLabel` and `describeNodeOutputs` that run outside React.
  */
 
 const CUSTOM_PREFIX = 'custom:';
@@ -28,7 +28,7 @@ export interface CustomActivityOutputParameter {
   type: 'string' | 'number' | 'boolean' | 'object' | 'array';
 }
 
-/** Mirrors the API's CustomActivityCatalogEntry (palette/facts — no script). */
+/** Mirrors the API's CustomActivityCatalogEntry: palette facts, no script. */
 export interface CustomActivityCatalogEntry {
   id: string;
   key: string;
@@ -63,7 +63,7 @@ function syncModuleCache(entries: CustomActivityCatalogEntry[]): void {
   for (const e of entries) byType.set(e.type, e);
 }
 
-/** Facts for a single custom type, or undefined. Synchronous — safe in non-React helpers. */
+/** Facts for a single custom type, or undefined. Synchronous, so it is safe outside React. */
 export function getCustomActivityFacts(type: string): CustomActivityCatalogEntry | undefined {
   return byType.get(type);
 }

@@ -5,21 +5,15 @@ import { ContractMappingTable } from '../../../components/designer/properties/Co
 import type { WorkflowContractResponse } from '../../../types/api';
 
 /**
- * Pin (V1):
- * - Required + missing-and-no-default → red border + error message
- * - Required + has-default → no error
- * - Empty-out a value → key REMOVED from values dict (engine-correct, lets child default kick in)
- * - Stale key (in values, not in contract) → render with warning + remove button
- * - hasManualTrigger=false → render info banner, no inputs table
- * - hasMultipleReturnDataNodes → output section gets warning badge
- * - hasReturnData=false → noReturnDataHint shown, no user outputs (only system)
- * - Conflict input → renders conflict badge
- * - Output hint uses parentStepHandle to render `{{handle.param.x}}`
+ * Covers ContractMappingTable: errors for required inputs without a value or default, clearing
+ * a value removing its key from the values dict, stale keys that are not in the contract, the
+ * banners for hasManualTrigger, hasMultipleReturnDataNodes and hasReturnData, conflict badges,
+ * and the output hint built from parentStepHandle.
  */
 
 beforeEach(() => {
-  // VariableInsertField transitively imports GlobalVariablePicker which fans out to
-  // /api/global-variables — stub fetch.
+  // VariableInsertField transitively imports GlobalVariablePicker, which calls
+  // /api/global-variables, so fetch is stubbed here.
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(
     new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } }),
   );
@@ -112,7 +106,7 @@ describe('ContractMappingTable', () => {
 
     expect(onChange).toHaveBeenCalled();
     const last = onChange.mock.calls.at(-1)![0];
-    // Key 'foo' must be removed entirely, not set to ""
+    // The key 'foo' must be removed entirely, not set to an empty string.
     expect(last).toEqual({});
     expect('foo' in last).toBe(false);
   });

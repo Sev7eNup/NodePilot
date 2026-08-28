@@ -18,7 +18,7 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));
 beforeEach(() => {
   vi.mocked(confirmDialog).mockClear().mockResolvedValue(true);
   useToastStore.setState({ toasts: [] });
-  useAuthStore.setState({ role: null }); // default: no role → re-encrypt card hidden
+  useAuthStore.setState({ role: null }); // default: without a role the re-encrypt card is hidden
 });
 afterEach(() => { server.resetHandlers(); vi.restoreAllMocks(); });
 afterAll(() => server.close());
@@ -70,15 +70,15 @@ describe('SecuritySection', () => {
     await waitFor(() => expect(screen.getByDisplayValue('*')).toBeInTheDocument(), { timeout: 3000 });
     // ExternalTrigger card shows the masked key when set.
     expect(screen.getByDisplayValue('********')).toBeInTheDocument();
-    // Multiple "Speichern" buttons confirm each card has its own save flow.
+    // One save button per card confirms each card has its own save flow.
     expect(screen.getAllByRole('button', { name: /speichern|save/i }).length).toBeGreaterThanOrEqual(7);
   });
 
   it('shows the hot-reload hint on the six live hardening cards but not on RestApi/Security', async () => {
     renderAll();
     await waitFor(() => expect(screen.getByDisplayValue('*')).toBeInTheDocument(), { timeout: 3000 });
-    // WaitForCondition / FileSystemOperation / SqlActivity / StartProgram / Webhook /
-    // ExternalTrigger → 6 hints.
+    // Six hints: WaitForCondition, FileSystemOperation, SqlActivity, StartProgram, Webhook
+    // and ExternalTrigger.
     expect(screen.getAllByText(/Changes apply immediately/i).length).toBe(6);
   });
 
@@ -103,8 +103,8 @@ describe('SecuritySection', () => {
 
   it('every hardening switch carries an explanatory hint', async () => {
     // These are security switches an operator will not touch without knowing what they do.
-    // Pin one distinctive phrase per hint so a dropped `hint` prop — or a key that silently
-    // resolves to itself — fails here instead of shipping an unexplained checkbox.
+    // One distinctive phrase per hint is pinned, so a missing `hint` prop or a key that
+    // resolves to itself fails here instead of shipping an unexplained checkbox.
     renderAll();
     await waitFor(() => expect(screen.getByDisplayValue('*')).toBeInTheDocument(), { timeout: 3000 });
     const phrases = [
@@ -124,7 +124,7 @@ describe('SecuritySection', () => {
   });
 
   it('the Remote pointer note is translated, not hardcoded German', async () => {
-    // It used to be inline German JSX and rendered German inside the English UI.
+    // The note has to come from the translation catalogue so it follows the selected language.
     renderAll();
     await waitFor(() => expect(screen.getByDisplayValue('*')).toBeInTheDocument(), { timeout: 3000 });
     expect(screen.getByText(/every remote switch lives there together/i)).toBeInTheDocument();
@@ -139,7 +139,7 @@ describe('SecuritySection', () => {
     }));
     renderAll();
     await waitFor(() => expect(screen.getByDisplayValue('*')).toBeInTheDocument(), { timeout: 3000 });
-    // Last save button = Security card (rendered last in the section list).
+    // The last save button belongs to the Security card, which renders last in the section list.
     const saves = screen.getAllByRole('button', { name: /speichern|save/i });
     fireEvent.click(saves[saves.length - 1]);
     await waitFor(() => {

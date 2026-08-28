@@ -34,7 +34,8 @@ import {
 type StatusFilter = 'all' | 'Succeeded' | 'Failed' | 'Cancelled';
 
 // ColKey covers every sortable column; ResizableColKey drops the auto-flex "workflow"
-// column (no explicit width / no drag-handle) — same pattern as WorkflowsPage / GlobalVariablesPage.
+// column (no explicit width / no drag-handle) — same pattern as WorkflowsPage /
+// GlobalVariablesPage.
 type ColKey = 'status' | 'workflow' | 'trigger' | 'startedBy' | 'steps' | 'duration' | 'started';
 type ResizableColKey = Exclude<ColKey, 'workflow'>;
 
@@ -223,7 +224,7 @@ export function ExecutionsPage() {
     getItemKey: (index) => filteredSorted[index].id,
     measureElement: (el) => el?.getBoundingClientRect().height ?? 52,
     scrollMargin,
-    // jsdom has no layout → initialRect prevents 0-item render in unit tests.
+    // jsdom has no layout -> initialRect prevents 0-item render in unit tests.
     initialRect: { width: 1200, height: 900 },
   });
 

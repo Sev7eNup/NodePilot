@@ -132,7 +132,8 @@ test.describe('Gantt-Chart & Execution-Timeline (Teil 57)', () => {
 
     await page.goto(`/workflows/${WF_ID}`);
 
-    // The bottom ExecutionPanel mounts with the editor; switch from the default Live tab to History.
+    // The bottom ExecutionPanel mounts with the editor; switch from the default Live tab to
+    // History.
     // Its accessible name is "History" plus an optional count badge, so the match is unanchored.
     const historyTab = page.getByRole('button', { name: /history/i });
     await expect(historyTab).toBeVisible({ timeout: 15_000 });

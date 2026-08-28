@@ -20,7 +20,7 @@ public sealed class CanvasAssistantToolsTests
     };
     private static string J(object o) => JsonSerializer.Serialize(o, Web);
 
-    // manualTrigger n0 → runScript n1 → remote fileOperation n2 (no machine); n9 disconnected.
+    // manualTrigger n0 -> runScript n1 -> remote fileOperation n2 (no machine); n9 disconnected.
     private const string Master = """
     {
       "nodes": [
@@ -101,7 +101,7 @@ public sealed class CanvasAssistantToolsTests
     public async Task GetAvailableVariables_ListsUpstreamOutputsParamsAndManual()
     {
         using var api = new TestApi();
-        // globals endpoint left unstubbed → best-effort fetch fails gracefully.
+        // globals endpoint left unstubbed -> best-effort fetch fails gracefully.
         var json = J(await Tools(api).GetAvailableVariables(E(Master), "n2"));
 
         json.Should().Contain("{{n1.output}}");
@@ -173,7 +173,7 @@ public sealed class CanvasAssistantToolsTests
     public void AnalyzeWorkflow_HybridRunScriptWithoutMachine_IsNotWarned()
     {
         using var api = new TestApi();
-        // runScript without a machine is HYBRID (runs locally) → must NOT be flagged.
+        // runScript without a machine is HYBRID (runs locally) -> must NOT be flagged.
         var def = """
         {"nodes":[
           {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"t","config":{}}},
@@ -189,7 +189,7 @@ public sealed class CanvasAssistantToolsTests
     public void SuggestLayout_CyclicGraph_Terminates()
     {
         using var api = new TestApi();
-        // t → a → b → a (cycle reachable from a trigger). Must not hang.
+        // t -> a -> b -> a (cycle reachable from a trigger). Must not hang.
         var cyclic = """
         {"nodes":[
           {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"t","config":{}}},
@@ -208,7 +208,8 @@ public sealed class CanvasAssistantToolsTests
     public async Task GetAvailableVariables_IncludesTriggerReturnDataAndRegistry()
     {
         using var api = new TestApi();
-        // webhookTrigger (static outputs) → registryOperation read (dynamic) → returnData → target.
+        // webhookTrigger (static outputs) to registryOperation read (dynamic) to returnData to
+        // target.
         var def = """
         {"nodes":[
           {"id":"hook","type":"activity","data":{"activityType":"webhookTrigger","label":"h","config":{}}},
@@ -230,7 +231,7 @@ public sealed class CanvasAssistantToolsTests
     public void ValidateActivityConfig_RestApi_NowCoveredByReference()
     {
         using var api = new TestApi();
-        // restApi is now in the curated reference → url is required.
+        // restApi is now in the curated reference -> url is required.
         var json = J(Tools(api).ValidateActivityConfig("restApi", E("""{"method":"GET"}""")));
         json.Should().Contain("\"hasConfigReference\":true");
         json.Should().Contain("url"); // missingRequired

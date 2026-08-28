@@ -2,13 +2,9 @@
  * CSRF double-submit helpers, shared by every caller that talks to the API.
  *
  * The backend's CsrfMiddleware requires mutating cookie-authenticated requests to echo the
- * JS-readable `np_csrf` cookie back in the `X-CSRF-Token` header; a mismatch is rejected. That
- * defeats cross-origin form submission against the httpOnly `np_auth` cookie.
- *
- * This lived as five identical copies (api/client.ts, api/adminSettings.ts, hooks/useSignalR.ts,
- * hooks/useDashboardFeed.ts, hooks/useOperationsFeed.ts). The cookie name and the header name
- * are a contract with the server — one copy going stale is a silent authentication failure on
- * whichever surface owned it, so the contract lives in exactly one place.
+ * JS-readable `np_csrf` cookie back in the `X-CSRF-Token` header; a mismatch is rejected. This
+ * defeats cross-origin form submission against the httpOnly `np_auth` cookie. The cookie name
+ * and header name are a contract with the server, so they live in exactly one place.
  */
 
 /** Cookie the backend sets on every login/refresh. */

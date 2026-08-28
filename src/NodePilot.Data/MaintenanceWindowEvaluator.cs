@@ -9,20 +9,19 @@ namespace NodePilot.Data;
 /// <summary>
 /// Singleton <see cref="IMaintenanceWindowEvaluator"/>. Holds an immutable in-memory snapshot
 /// of all <i>enabled</i> windows plus the folder parent-id map, refreshed on an interval and
-/// inline after CRUD. <see cref="Evaluate"/> is pure in-memory (no I/O) so it is cheap on the
-/// dispatch hot path, and fails OPEN on any error — a maintenance window is an availability
-/// control, not a security gate, and there is no off-switch.
+/// inline after CRUD. <see cref="Evaluate"/> is pure in-memory (no I/O), so it is cheap on the
+/// dispatch hot path, and fails open on any error — a maintenance window is an availability
+/// control, not a security gate.
 ///
 /// <para>Cron-recurrence windows open at each fire of their Quartz expression (interpreted in
-/// the window's time zone) and stay active for <c>DurationMinutes</c> — i.e. active iff
+/// the window's time zone) and stay active for <c>DurationMinutes</c>, i.e. active while
 /// <c>now ∈ [fire, fire + duration)</c> for the most recent fire. An unparseable expression or
-/// a missing/non-positive duration makes the window inert (fail open), like an unknown zone.</para>
+/// a missing/non-positive duration makes the window inert, same as an unknown zone.</para>
 ///
-/// <para><b>Placement (deliberate):</b> the window-matching math looks Core-shaped (pure,
-/// no I/O), but the compiled snapshot embeds <c>Quartz.CronExpression</c> for cron windows —
-/// and Core must stay package-dependency-free. Splitting the cron path out just to move the
-/// rest would scatter one cohesive evaluation across two layers, so the whole evaluator stays
-/// here in Data, next to the snapshot loading it exists to serve (interface remains in Core).</para>
+/// <para>This evaluator stays in Data rather than Core: the matching logic itself is pure, but
+/// the compiled snapshot embeds <c>Quartz.CronExpression</c>, and Core must stay free of
+/// package dependencies. The interface lives in Core; the implementation sits next to the
+/// snapshot it evaluates.</para>
 /// </summary>
 public sealed class MaintenanceWindowEvaluator : IMaintenanceWindowEvaluator
 {
@@ -80,7 +79,7 @@ public sealed class MaintenanceWindowEvaluator : IMaintenanceWindowEvaluator
 
             if (blackout is not null) return blackout.Value;
 
-            // A workflow with at least one live AllowOnly window may run ONLY while inside one of
+            // A workflow with at least one live AllowOnly window may run only while inside one of
             // them. Expired (non-live) AllowOnly windows are inert and fall through to allow.
             if (hasLiveAllow && !insideAnyAllow)
                 return new MaintenanceEvaluation(true, allowWindowId, allowWindowName, null, MaintenanceMode.AllowOnly);
@@ -137,9 +136,9 @@ public sealed class MaintenanceWindowEvaluator : IMaintenanceWindowEvaluator
                     "Maintenance window '{Name}' ({Id}) has unknown time zone '{Tz}'; it will not be evaluated.",
                     w.Name, w.Id, w.TimeZoneId);
 
-            // Cron expressions are compiled once per refresh. A garbage expression (or an
+            // Cron expressions are compiled once per refresh. An invalid expression (or an
             // unresolved zone) leaves Cron=null and the window inert — a misconfigured window
-            // must fail OPEN on the dispatch hot path, never throw or trap everything.
+            // must fail open on the dispatch hot path, never throw.
             Quartz.CronExpression? cron = null;
             if (w.Recurrence == MaintenanceRecurrenceKind.Cron && tz is not null
                 && !string.IsNullOrWhiteSpace(w.CronExpression))
@@ -273,11 +272,11 @@ public sealed class MaintenanceWindowEvaluator : IMaintenanceWindowEvaluator
     }
 
     // A cron window is active during [fire, fire + duration) for every fire of its expression.
-    // GetTimeAfter(now - duration) yields the earliest fire STRICTLY after that probe — i.e.
-    // exactly the fires with fire + duration > now — so the window is active iff that fire has
-    // already happened (fire <= now). Half-open semantics fall out naturally: at now == fire +
-    // duration the fire is no longer strictly after the probe, so the window reads closed.
-    // The zone is baked into the compiled CronExpression (Quartz's TimeZone property).
+    // GetTimeAfter(now - duration) returns the earliest fire strictly after that probe, i.e.
+    // the fires with fire + duration > now — so the window is active iff that fire already
+    // happened (fire <= now). At now == fire + duration the fire is no longer strictly after
+    // the probe, so the window correctly reads closed. The zone is baked into the compiled
+    // CronExpression via Quartz's TimeZone property.
     private static bool TryCronActive(CompiledWindow w, DateTime nowUtc, out DateTime activeUntilUtc)
     {
         activeUntilUtc = default;
@@ -298,8 +297,8 @@ public sealed class MaintenanceWindowEvaluator : IMaintenanceWindowEvaluator
     {
         MaintenanceRecurrenceKind.OneTime => w.OneTimeEndUtc is { } e && e > nowUtc,
         MaintenanceRecurrenceKind.Weekly => true,
-        // A cron window is live only while it can still open: currently active OR at
-        // least one future fire exists. Quartz expressions can EXHAUST (optional year
+        // A cron window is live only while it can still open: currently active or at
+        // least one future fire exists. Quartz expressions can exhaust (optional year
         // field, e.g. "0 0 3 ? * SAT 2026") — without this check an exhausted AllowOnly
         // window would stay "live" forever and permanently trap its targeted workflows
         // (hasLiveAllow && never insideAnyAllow). Misconfigured crons stay inert.

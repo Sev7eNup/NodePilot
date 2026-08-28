@@ -35,9 +35,8 @@ describe('findReferencedVariables', () => {
 
   it('strips runtime prefixes (globals, manual)', () => {
     // Only `globals` and `manual` are real engine-injected namespaces (see
-    // VariableResolver.BuildStepVariables). `trigger.*` / `webhook.*` look like upstream
-    // step references — they used to be filtered by mistake which masked unresolvable
-    // templates as "runtime-injected, OK".
+    // VariableResolver.BuildStepVariables). `trigger.*` and `webhook.*` look like upstream
+    // step references and must not be treated as runtime-injected namespaces.
     const heads = findReferencedVariables(
       '{{globals.ENV}} {{manual.foo}} {{realStep.output}}',
     );
@@ -146,8 +145,8 @@ describe('computeFlowingVariablesPerEdge', () => {
   });
 
   it('propagates a head transitively along edge direction', () => {
-    // A → B → C, with C consuming {{A.output}}. The A→B edge must light up too,
-    // otherwise the visualisation would lie about the data path.
+    // Chain A then B then C, with C consuming {{A.output}}. The A-to-B edge must also
+    // light up, or the visualization would misrepresent the data path.
     const nodes = [
       activityNode('a', { config: {} }),
       activityNode('b', { config: { script: 'echo nothing-from-a' } }),
@@ -184,7 +183,7 @@ describe('computeFlowingVariablesPerEdge', () => {
   });
 
   it('lists multiple flowing heads when both source and an upstream feed downstream usage', () => {
-    // A → B → C, where C consumes both {{A.output}} and {{B.output}}.
+    // Chain A then B then C, where C consumes both {{A.output}} and {{B.output}}.
     const nodes = [
       activityNode('a', { config: {} }),
       activityNode('b', { config: {} }),
@@ -192,9 +191,9 @@ describe('computeFlowingVariablesPerEdge', () => {
     ];
     const edges = [edge('e_ab', 'a', 'b'), edge('e_bc', 'b', 'c')];
     const map = computeFlowingVariablesPerEdge(nodes, edges);
-    // a→b carries A only (B is the source side; nothing has produced B yet from b's POV)
+    // a-to-b carries A only (B is the source side; nothing has produced B yet from b's POV)
     expect(map.get('e_ab')).toEqual(['a']);
-    // b→c carries A (transitive) AND B (direct)
+    // b-to-c carries A (transitive) and B (direct)
     expect(map.get('e_bc')).toEqual(['a', 'b']);
   });
 

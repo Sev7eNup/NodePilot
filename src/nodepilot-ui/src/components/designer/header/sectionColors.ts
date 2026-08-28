@@ -22,6 +22,6 @@ export const SECTION_GLOW_COLOR: Record<SectionId, string> = {
   inspect: 'var(--act-junction-color)', // search + View/Tools menus — indigo
   view: 'var(--act-wmiQuery-color)', // design-toggle/filter — cyan
   run: 'var(--act-manualTrigger-color)', // run/debug/lint/overlays — red
-  lifecycle: 'var(--np-toolbar-accent)', // lock/save/publish/disable — skin-adaptive accent (distinct from run's red)
+  lifecycle: 'var(--np-toolbar-accent)', // lock/save/publish/disable — skin accent, not run's red
   export: 'var(--act-serviceManagement-color)', // json/png export — green
 };

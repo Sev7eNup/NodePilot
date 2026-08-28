@@ -1,6 +1,6 @@
 /**
- * Browser-persisted state which can contain customer data, SQL text, workflow definitions or
- * prompts. It may survive a component unmount/page reload, but must never survive an
+ * Browser-persisted state that can contain customer data, SQL text, workflow definitions or
+ * prompts. It may survive a component unmount or page reload, but must never survive an
  * authentication boundary in the same browser profile.
  */
 export const AI_CHAT_STORAGE_KEY = 'nodepilot-aichat';
@@ -22,8 +22,8 @@ function removeKeys(storage: Storage, includeOwner: boolean): void {
 }
 
 /**
- * Removes both current session state and residue left in localStorage by older releases.
- * Storage access is best-effort because hardened/private browser profiles can disable it.
+ * Removes the current session state and any leftover copies in localStorage.
+ * Storage access is best-effort because hardened or private browser profiles can disable it.
  */
 export function clearSensitiveBrowserState(): void {
   try {
@@ -34,16 +34,16 @@ export function clearSensitiveBrowserState(): void {
   try {
     removeKeys(globalThis.localStorage, false);
   } catch {
-    // Same policy for legacy localStorage cleanup.
+    // Same policy for the localStorage cleanup.
   }
 }
 
-/** Remove only pre-fix localStorage residue without destroying a valid same-user tab session. */
+/** Removes the localStorage copies only, so a valid same-user tab session stays intact. */
 export function clearLegacySensitiveLocalStorage(): void {
   try {
     removeKeys(globalThis.localStorage, false);
   } catch {
-    // Best effort; new code never writes these values to localStorage.
+    // Best effort; these values are never written to localStorage.
   }
 }
 

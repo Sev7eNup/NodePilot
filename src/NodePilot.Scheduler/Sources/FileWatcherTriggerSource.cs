@@ -323,9 +323,7 @@ public class FileWatcherTriggerSource : ITriggerSource
         if (watchType is "created" or "any") watcher.Created += (_, e) => HandleEvent("created", e.FullPath);
         if (watchType is "changed" or "any") watcher.Changed += (_, e) => HandleEvent("changed", e.FullPath);
         if (watchType is "deleted" or "any") watcher.Deleted += (_, e) => HandleEvent("deleted", e.FullPath);
-        // B3: "renamed" first-class plus "any" covers it for the UI's "All Changes" option.
-        // Previously the UI offered "renamed"/"all" labels but the source had no Renamed
-        // subscription — the "All Changes" workflow lost every rename event silently.
+        // Subscribe to rename events directly and through the UI's "All Changes" option.
         if (watchType is "renamed" or "any") watcher.Renamed += (_, e) => HandleEvent("renamed", e.FullPath);
 
         watcher.EnableRaisingEvents = true;

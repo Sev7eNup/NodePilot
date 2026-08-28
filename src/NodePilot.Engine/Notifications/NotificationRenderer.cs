@@ -15,7 +15,8 @@ public static class NotificationRenderer
     public static string Title(NotificationContext c)
         => c.Title ?? $"[{c.Severity}] {c.EventType}" + (string.IsNullOrEmpty(c.WorkflowName) ? "" : $": {c.WorkflowName}");
 
-    /// <summary>Plain-text e-mail body — a short summary line followed by the relevant fields.</summary>
+    /// <summary>Plain-text e-mail body — a short summary line followed by the relevant
+    /// fields.</summary>
     public static string EmailBody(NotificationContext c)
     {
         var sb = new StringBuilder();
@@ -38,7 +39,8 @@ public static class NotificationRenderer
         return sb.ToString();
     }
 
-    /// <summary>Generic-webhook JSON body (camelCase). Also the payload the HMAC signature covers.</summary>
+    /// <summary>Generic-webhook JSON body (camelCase). Also the payload the HMAC signature
+    /// covers.</summary>
     public static string WebhookJson(NotificationContext c)
         => JsonSerializer.Serialize(new
         {
@@ -56,7 +58,7 @@ public static class NotificationRenderer
             durationMs = c.DurationMs,
             targetMachine = c.TargetMachine,
             triggeredBy = c.TriggeredBy,
-            // Gauge-event measurements as first-class fields (not just baked into the summary text) so
+            // Gauge measurements as first-class fields, not just baked into the summary text, so
             // webhook consumers can branch on them. Null for execution events.
             sourceKey = c.SourceKey,
             signalValue = c.SignalValue,

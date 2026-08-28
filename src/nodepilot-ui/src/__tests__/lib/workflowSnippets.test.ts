@@ -3,11 +3,10 @@ import type { Node, Edge } from '@xyflow/react';
 import { WORKFLOW_SNIPPETS, insertSnippet } from '../../lib/workflowSnippets';
 
 /**
- * Snippets are append-only quick-start templates. We pin two contracts:
- *   1. The catalog itself stays internally consistent — every edge.from/to references a
- *      node that exists in the snippet.
- *   2. insertSnippet generates collision-free IDs, applies the cursor offset, deselects
- *      the existing graph, and selects only the new nodes/edges.
+ * Pins two contracts of the quick-start snippet catalog:
+ *   1. Every edge in a snippet references node local ids that exist in that same snippet.
+ *   2. insertSnippet generates collision-free ids, applies the cursor offset, deselects
+ *      the existing graph, and selects only the new nodes and edges.
  */
 
 beforeEach(() => {
@@ -53,8 +52,7 @@ describe('WORKFLOW_SNIPPETS catalog', () => {
 
 describe('insertSnippet', () => {
   function snippet() {
-    // Look up by id, not by array index — the catalog order is just UI sort order
-    // and can change without breaking these tests.
+    // Look up by id, not by array index: catalog order is only a UI sort order and may change.
     const found = WORKFLOW_SNIPPETS.find((s) => s.id === 'try-catch-script');
     if (!found) throw new Error("Test fixture missing snippet 'try-catch-script'.");
     return found;
@@ -97,11 +95,11 @@ describe('insertSnippet', () => {
   it('appliesOriginOffsetToEachNode', () => {
     const result = insertSnippet(snippet(), { x: 1000, y: 500 }, [], []);
 
-    // try-catch-script first node has dx:0/dy:0 → at exactly (1000, 500)
+    // The first node of try-catch-script has dx:0/dy:0, so it lands exactly on the origin.
     const tryNode = result.nodes.find((n) => (n.data as { label: string }).label === 'Try script');
     expect(tryNode?.position).toEqual({ x: 1000, y: 500 });
 
-    // catch node: dx:260, dy:150 → (1260, 650)
+    // The catch node has dx:260/dy:150, so it lands at the origin plus that offset.
     const catchNode = result.nodes.find((n) => (n.data as { label: string }).label === 'On failure — log');
     expect(catchNode?.position).toEqual({ x: 1260, y: 650 });
   });
@@ -113,7 +111,7 @@ describe('insertSnippet', () => {
     for (const edge of result.edges) {
       expect(ids.has(edge.source)).toBe(true);
       expect(ids.has(edge.target)).toBe(true);
-      // Old localIds (e.g. 'try', 'catch') must not leak into edge endpoints unmodified.
+      // Snippet-local ids such as 'try' or 'catch' must not survive as edge endpoints.
       expect(['try', 'catch', 'continue']).not.toContain(edge.source);
     }
   });
@@ -126,8 +124,8 @@ describe('insertSnippet', () => {
   });
 
   it('twoInsertsProduceDistinctIds', () => {
-    // The id-suffix uses crypto.randomUUID, mocked above as a counter so each call yields
-    // a different suffix. This pins the no-clash contract.
+    // The id suffix comes from crypto.randomUUID, mocked above as a counter, so repeated
+    // inserts of the same snippet must not clash.
     const a = insertSnippet(snippet(), { x: 0, y: 0 }, [], []);
     const b = insertSnippet(snippet(), { x: 0, y: 0 }, a.nodes, a.edges);
 
@@ -146,7 +144,7 @@ describe('insertSnippet', () => {
   });
 
   it('nodeDataIncludesOutputVariableWhenDeclared', () => {
-    // parallel-fanout snippet has branch nodes with outputVariable set
+    // The parallel-fanout snippet declares an outputVariable on its branch nodes.
     const fanout = WORKFLOW_SNIPPETS.find((s) => s.id === 'parallel-fanout')!;
     const result = insertSnippet(fanout, { x: 0, y: 0 }, [], []);
 
@@ -161,9 +159,9 @@ describe('insertSnippet', () => {
     expect(onSuccess).toBeDefined();
     expect((onSuccess!.data as { condition: string }).condition).toBe('try.success');
 
-    // Edges without an explicit condition get an empty string (not undefined) so the engine's
-    // schema validation doesn't reject the JSON. They also carry no label: an edge that runs
-    // always is shown by having none.
+    // An edge without an explicit condition gets an empty string, not undefined, so the
+    // engine's schema validation accepts the JSON. It also carries an empty label, which is
+    // how an edge that always runs is shown.
     const alwaysEdge = result.edges.find((e) => (e.data as { label: string }).label === '');
     expect(alwaysEdge).toBeDefined();
     expect((alwaysEdge!.data as { condition: string }).condition).toBe('');

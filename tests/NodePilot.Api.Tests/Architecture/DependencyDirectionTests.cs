@@ -5,12 +5,11 @@ using Xunit;
 namespace NodePilot.Api.Tests.Architecture;
 
 /// <summary>
-/// Enforces the dependency graph CLAUDE.md declares ("Dep-Graph"). The layering held for a
-/// year on discipline alone — nothing failed when a project gained a reference it must not
-/// have (e.g. Core → Data, or Engine → Api). This guard makes the documented graph
-/// machine-checked: the set of <c>ProjectReference</c>s per production project must equal
-/// the declared set EXACTLY — an added edge is a layering violation, a removed edge means
-/// the documentation (and this list) must be updated in the same change.
+/// Enforces the dependency graph declared in CLAUDE.md ("Dep-Graph"). The set of
+/// <c>ProjectReference</c>s per production project must equal the declared set exactly:
+/// an added edge is a layering violation (for example Core depending on Data, or Engine
+/// on Api), and a removed edge means the documentation (and this list) must be updated
+/// in the same change.
 /// </summary>
 public sealed class DependencyDirectionTests
 {

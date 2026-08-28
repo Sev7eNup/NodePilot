@@ -34,30 +34,30 @@ function mapDagreResult(nodes: Node[], g: DagreGraph): Node[] {
   });
 }
 
-/** LR — standard left-to-right (default, matches CLAUDE.md styleguide). */
+/** Left-to-right layout. Default, and the one the layout styleguide asks for. */
 export function autoLayout(nodes: Node[], edges: Edge[]): Node[] {
   const g = buildDagreGraph(nodes, edges, { rankdir: 'LR', ranksep: 180, nodesep: 80 });
   dagre.layout(g as Parameters<typeof dagre.layout>[0]);
   return mapDagreResult(nodes, g);
 }
 
-/** TB — top-to-bottom; useful for tree-shaped workflows. */
+/** Top-to-bottom layout, useful for tree-shaped workflows. */
 export function autoLayoutTB(nodes: Node[], edges: Edge[]): Node[] {
   const g = buildDagreGraph(nodes, edges, { rankdir: 'TB', ranksep: 120, nodesep: 60 });
   dagre.layout(g as Parameters<typeof dagre.layout>[0]);
   return mapDagreResult(nodes, g);
 }
 
-/** Compact — LR with tighter spacing for dense or large workflows. */
+/** Left-to-right layout with tighter spacing, for dense or large workflows. */
 export function autoLayoutCompact(nodes: Node[], edges: Edge[]): Node[] {
   const g = buildDagreGraph(nodes, edges, { rankdir: 'LR', ranksep: 100, nodesep: 35 });
   dagre.layout(g as Parameters<typeof dagre.layout>[0]);
   return mapDagreResult(nodes, g);
 }
 
-/** ELK layered — minimises edge crossings better than dagre on complex fan-out graphs. Async. */
+/** Layered ELK layout. Produces fewer edge crossings than dagre on complex fan-out graphs. */
 export async function autoLayoutELK(nodes: Node[], edges: Edge[]): Promise<Node[]> {
-  // Dynamic import keeps ELK (~1 MB) out of the initial bundle.
+  // Dynamic import keeps the ELK bundle out of the initial page load.
   const ELKModule = await import('elkjs/lib/elk.bundled.js');
   const ELK = (ELKModule as unknown as { default: new () => { layout: (g: unknown) => Promise<{ children?: Array<{ id: string; x?: number; y?: number }> }> } }).default;
   const elk = new ELK();

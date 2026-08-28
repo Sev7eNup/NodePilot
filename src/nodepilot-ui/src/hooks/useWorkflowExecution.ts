@@ -20,7 +20,7 @@ interface UseWorkflowExecutionArgs {
   isDirty: boolean;
   nodes: Node[];
   edges: Edge[];
-  /** Awaitable save from useWorkflowPersistence — a failed save aborts the run. */
+  /** Awaitable save from useWorkflowPersistence; a failed save aborts the run. */
   saveAsync: () => Promise<unknown>;
   /** Pin the started execution's path-coloring onto the canvas (useCanvasExecutionState). */
   pinCanvasExecution: (executionId: string) => void;
@@ -28,12 +28,11 @@ interface UseWorkflowExecutionArgs {
 }
 
 /**
- * Owns running a workflow from the designer: the execute mutation, the run-with-parameters
- * dialog state (open flag + pending debug flag), and the last-execution prefill query — all
- * internal. Exposes intent commands only: `run(debug)` (the Test/Debug entry point, which
- * saves first when dirty and routes to the param dialog when the manual trigger declares
- * parameters), `confirmRunWithParams` (the dialog's submit), and `closeRunDialog`. The raw
- * mutation and the dialog setters never leak out.
+ * Owns running a workflow from the designer. The execute mutation, the run-with-parameters
+ * dialog state and the last-execution prefill query stay internal; only intent commands are
+ * exposed. `run(debug)` saves first when dirty and opens the parameter dialog when the manual
+ * trigger declares parameters, `confirmRunWithParams` submits that dialog, and
+ * `closeRunDialog` closes it.
  */
 export function useWorkflowExecution({
   workflowId,
@@ -50,9 +49,8 @@ export function useWorkflowExecution({
   const [showRunDialog, setShowRunDialog] = useState(false);
   const [pendingRunIsDebug, setPendingRunIsDebug] = useState(false);
 
-  // Most recent execution — fetched lazily when the run dialog is about to open so we can
-  // pre-fill the parameter form with whatever was used last time. Bounded to 1 row to keep
-  // the network call cheap.
+  // Most recent execution, fetched only when the run dialog is about to open, to pre-fill the
+  // parameter form with the values used last time. Bounded to one row to keep the call cheap.
   const { data: lastExecutionList } = useQuery({
     queryKey: ['last-execution', workflowId],
     queryFn: () => api.get<Array<{ id: string; inputParametersJson: string | null }>>(`/executions?workflowId=${workflowId}&limit=1`),
@@ -80,21 +78,18 @@ export function useWorkflowExecution({
     },
   });
 
-  // Test/Debug entry point. When `debug` is true, the execution starts with `debug: true`
-  // so the engine honors breakpoints. This isn't a persistent flag — it only applies to
-  // this one run.
-  // Memoized so the keyboard handlers (triggerTest/triggerDebug) that close over `run` can
-  // depend on it honestly — an unmemoized `run` would force those handlers to either re-create
-  // every render or capture a stale closure (stale isDirty/nodes/edges/saveAsync).
+  // Test/Debug entry point. `debug` applies to this one run only and makes the engine honor
+  // breakpoints. Memoized so the keyboard handlers that close over `run` keep a stable
+  // reference instead of re-creating every render or capturing stale props.
   const run = useCallback(async (debug = false) => {
     const authBoundaryGeneration = captureAuthBoundaryGeneration();
     if (workflow && !workflow.isEnabled) {
       toast.info(t('editor:workflowDisabledRunHint'));
       return;
     }
-    // Only save if the user holds the edit lock AND there are unsaved changes. On a
-    // published/read-only workflow the PUT would otherwise fail with 423 Locked — but
-    // running/testing is still allowed, since /execute itself has no lock check.
+    // Save only while the user holds the edit lock and has unsaved changes. On a published or
+    // read-only workflow the PUT would answer 423 Locked, while running stays allowed because
+    // /execute has no lock check.
     if (canWrite && isDirty) {
       try {
         await saveAsync();
@@ -105,7 +100,7 @@ export function useWorkflowExecution({
       if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
     }
 
-    // Check if workflow has a ManualTrigger node with parameters.
+    // Route to the parameter dialog when the workflow has a manual trigger with parameters.
     const triggerConfig = extractManualTriggerConfig(JSON.stringify({ nodes, edges }));
     if (triggerConfig && triggerConfig.parameters.length > 0) {
       if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
@@ -119,7 +114,7 @@ export function useWorkflowExecution({
     }
   }, [workflow, t, canWrite, isDirty, saveAsync, nodes, edges, executeMutation]);
 
-  /** Submit the parameter dialog — fires the run with the collected params + pending debug flag. */
+  /** Submits the parameter dialog: starts the run with the collected params and debug flag. */
   const confirmRunWithParams = useCallback((params: Record<string, string>) => {
     executeMutation.mutate({ params, debug: pendingRunIsDebug }, {
       onError: (err) => toast.error(t('editor:executionStartFailed', { message: (err as Error).message })),

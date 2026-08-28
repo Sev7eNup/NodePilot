@@ -418,7 +418,7 @@ public sealed class ForEachActivityTests : IDisposable
     [Fact]
     public async Task ExecuteAsync_LinesFormat_ParsesNewlineSeparatedAndPassesParsingStage()
     {
-        // "host1\nhost2\n\nhost3\n" → 3 items. Unknown child → fails AFTER parsing, confirming
+        // "host1\nhost2\n\nhost3\n" -> 3 items. Unknown child -> fails AFTER parsing, confirming
         // the parse itself didn't blow up and we reached the child-lookup stage.
         var activity = CreateActivity();
         var ctx = new StepExecutionContext { WorkflowExecutionId = Guid.NewGuid(), StepId = "fe1" };

@@ -131,8 +131,7 @@ describe('DatabaseTriggerConfig', () => {
     expect(screen.getByPlaceholderText(/Trigger:Database:Connections/i)).toHaveValue('');
   });
 
-  // 30, not 60: the field used to display 60 for an absent key while the poll loop actually ran
-  // at 30. The display was corrected to the real backend default rather than the other way round.
+  // Default must be 30, matching the poll loop's actual interval for an absent key.
   it('pollingIntervalDefault_is30', () => {
     wrap(<DatabaseTriggerConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} />);
     expect(screen.getByDisplayValue('30')).toBeInTheDocument();
@@ -181,8 +180,7 @@ describe('EventLogTriggerConfig', () => {
   });
 
   it('messagePatternInput_emitsPatch_andClearsToUndefined', () => {
-    // The background listener always supported this regex filter; it had no designer field, so it
-    // was only reachable by hand-editing JSON.
+    // The designer field lets users set this regex filter without hand-editing JSON.
     const onUpdate = vi.fn();
     wrap(<EventLogTriggerConfig config={{}} onUpdate={onUpdate} upstreamVars={[]} />);
 

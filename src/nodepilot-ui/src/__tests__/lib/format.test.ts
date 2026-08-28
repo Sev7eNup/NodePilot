@@ -71,7 +71,7 @@ describe('formatRelative', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2024-01-20T12:00:00Z'));
     const result = formatRelative('2024-01-01T12:00:00Z');
-    // Locale-dependent — just check it is not a relative string
+    // Locale-dependent, so only assert that it is not a relative string
     expect(result).not.toContain('ago');
     expect(result).not.toBe('just now');
   });

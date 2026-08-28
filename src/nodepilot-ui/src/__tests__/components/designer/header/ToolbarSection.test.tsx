@@ -33,7 +33,7 @@ describe('ToolbarSection', () => {
     expect(section.className).toContain('flex');
     expect(section.className).toContain('items-center');
     expect(section.className).toContain('gap-0.5');
-    // Segment tray introduced by the toolbar redesign — buttons render as tiles on this tint.
+    // Segment tray chrome: buttons render as tiles on this tint.
     expect(section.className).toContain('bg-surface-container/75');
     expect(section.className).toContain('rounded-lg');
     expect(section.className).toContain('extra-class');

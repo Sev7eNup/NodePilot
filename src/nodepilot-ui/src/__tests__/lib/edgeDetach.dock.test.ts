@@ -3,18 +3,16 @@ import { readHandlePoints, resolveDockTarget } from '../../lib/edgeDetach';
 import { nearestPortPoint, getPortPoint, type PortPoint } from '../../lib/edgePorts';
 
 /**
- * `resolveDockTarget` beantwortet für den Edge-Detach die Frage „woran würde dieser Zeiger
- * andocken?" — und ist der EINZIGE Auflösungspfad für Vorschau-Linie und Klick zugleich.
+ * `resolveDockTarget` answers where a pointer would dock during an edge detach, and is the
+ * only resolution path shared by the preview line and the click.
  *
- * Der zentrale Fall unten (`classicNodeWithLabel_…`) pinnt genau den Fehler, an dem ein
- * naiver Ansatz scheitert: die Port-Punkte aus `width`/`height` des `.react-flow__node`-
- * Rechtecks zu rechnen. Im Classic-Layout hängen die Handles am inneren Icon-Kasten, während
- * das äußere Rechteck zusätzlich das Label darunter umfasst — und `handleInset` schiebt
- * einzelne Seiten je nach Shape noch weiter nach innen. Die Außenrechteck-Formel liefert
- * dort nachweislich einen ANDEREN Port als die echten Handles.
+ * Port points come from the measured DOM handles, not from the `width`/`height` of the
+ * `.react-flow__node` rectangle: in the classic layout the handles sit on the inner icon box
+ * while the outer rectangle also covers the label below it, and `handleInset` pulls single
+ * sides further inward per shape.
  *
- * jsdom kennt kein Layout, `getBoundingClientRect` liefert überall Nullen — die Rects werden
- * deshalb pro Element gestubbt.
+ * jsdom has no layout and `getBoundingClientRect` returns zeros, so the rects are stubbed
+ * per element.
  */
 
 function rect(el: Element, x: number, y: number, w: number, h: number) {
@@ -26,7 +24,7 @@ function rect(el: Element, x: number, y: number, w: number, h: number) {
 
 interface HandleSpec {
   port: string;
-  /** Mittelpunkt des Handles in Screen-Koordinaten. */
+  /** Handle centre in screen coordinates. */
   cx: number;
   cy: number;
   nodeId?: string;
@@ -34,7 +32,7 @@ interface HandleSpec {
 
 const HANDLE_SIZE = 10;
 
-/** Baut ein `.react-flow__node`-Element mit gestubbten Rects für sich und seine Handles. */
+/** Builds a `.react-flow__node` element with stubbed rects for itself and its handles. */
 function buildNode(
   nodeId: string,
   outer: { x: number; y: number; w: number; h: number },
@@ -61,10 +59,10 @@ const ALWAYS = () => true;
 const NEVER = () => false;
 
 /**
- * Classic-Node: äußeres Rechteck 200×110 bei (100, 100) — der Icon-Kasten ist nur 60×60 und
- * sitzt oben mittig, das breitere Label darunter bläht das äußere Rechteck in BEIDE
- * Richtungen auf. Die Handles hängen am ICON-Kasten, und die linke Seite ist per
- * `handleInset` um 8 px nach innen gezogen, wie es Shapes mit schrägen Kanten tun.
+ * Classic node: outer rectangle 200x110 at (100, 100). The icon box is only 60x60 and sits at
+ * the top centre, while the wider label below it grows the outer rectangle in both directions.
+ * The handles sit on the icon box, and the left side is pulled 8 px inward by `handleInset`,
+ * as shapes with slanted edges do.
  */
 const ICON = { x: 170, y: 100, w: 60, h: 60 };
 const CLASSIC_OUTER = { x: 100, y: 100, w: 200, h: 110 };
@@ -75,7 +73,7 @@ const CLASSIC_HANDLES: HandleSpec[] = [
   { port: 'left', cx: 178, cy: 130 }, // 170 + 8 px handleInset
 ];
 
-/** Die verworfene Rechnung: Port-Punkte aus dem äußeren Node-Rechteck statt aus dem DOM. */
+/** The rejected computation: port points from the outer node rectangle instead of the DOM. */
 function outerRectangleFormula(): PortPoint[] {
   return (['top', 'right', 'bottom', 'left'] as const).map((port) => {
     const p = getPortPoint(
@@ -97,7 +95,7 @@ describe('readHandlePoints', () => {
   });
 
   it('foreignNodeIdHandles_areIgnored', () => {
-    // Ein verschachtelt gerendertes Node-Element darf keine fremden Handles einschleusen.
+    // A nested node element must not contribute handles that belong to another node.
     const node = buildNode('n1', CLASSIC_OUTER, [
       ...CLASSIC_HANDLES,
       { port: 'left', cx: 999, cy: 999, nodeId: 'other' },
@@ -120,34 +118,34 @@ describe('readHandlePoints', () => {
 
 describe('resolveDockTarget', () => {
   it('classicNodeWithLabel_picksADifferentPortThanTheOuterRectangleFormula', () => {
-    // Klick knapp unter der Unterkante des ICON-Kastens (y=160), horizontal mittig.
+    // Click just inside the bottom edge of the icon box (y=160), horizontally centred.
     const node = buildNode('n1', CLASSIC_OUTER, CLASSIC_HANDLES);
     const clickX = 200;
     const clickY = 155;
 
-    // Aus dem Außenrechteck gerechnet liegt die Unterkante 50 px tiefer (Label!) — der Klick
-    // ist dann von 'top' und 'bottom' gleich weit weg und fällt auf 'top'. Das ist der
-    // konkrete Fehlgriff, den die DOM-Messung verhindert.
+    // Computed from the outer rectangle, the bottom edge sits 50 px lower because of the
+    // label, so the click is equally far from 'top' and 'bottom' and resolves to 'top'.
+    // Measuring the DOM avoids that.
     expect(nearestPortPoint(outerRectangleFormula(), clickX, clickY)?.port).toBe('top');
 
-    // Gemessen ist es eindeutig das Bottom-Handle des Icon-Kastens, 5 px entfernt.
+    // Measured, it is unambiguously the bottom handle of the icon box, 5 px away.
     const hit = resolveDockTarget(node, clickX, clickY, ALWAYS);
     expect(hit).toEqual({ nodeId: 'n1', port: 'bottom', screenPoint: { x: 200, y: 160 } });
   });
 
   it('handleInsetSide_isMeasuredNotAssumed', () => {
-    // Klick auf x=174: knapp links vom eingerückten Handle (178), noch innerhalb des
-    // Icon-Kastens (170). Die Außenrechteck-Kante läge bei x=100 — 74 px daneben.
+    // Click at x=174: just left of the inset handle (178) and still inside the icon box
+    // (170). The outer rectangle edge would sit at x=100, 74 px away.
     const node = buildNode('n1', CLASSIC_OUTER, CLASSIC_HANDLES);
     expect(nearestPortPoint(outerRectangleFormula(), 174, 130)?.port).toBe('top');
 
     const hit = resolveDockTarget(node, 174, 130, ALWAYS);
     expect(hit?.port).toBe('left');
-    expect(hit?.screenPoint).toEqual({ x: 178, y: 130 }); // der eingerückte, echte Punkt
+    expect(hit?.screenPoint).toEqual({ x: 178, y: 130 }); // the inset, measured point
   });
 
   it('clickOnADescendant_resolvesViaClosestNode', () => {
-    // Getroffen wird real ein Icon/Label im Node, nie das Node-Element selbst.
+    // A real click lands on an icon or label inside the node, never on the node element itself.
     const node = buildNode('n1', CLASSIC_OUTER, CLASSIC_HANDLES);
     const inner = document.createElement('span');
     rect(inner, ICON.x, ICON.y, ICON.w, ICON.h);

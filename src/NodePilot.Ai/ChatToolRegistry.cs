@@ -27,7 +27,8 @@ public interface IChatToolRegistry
     IReadOnlyList<LlmToolDefinition> GetTools(ChatToolContext context);
 
     /// <summary>Executes a tool and returns the result as a JSON string (for the tool-role turn).
-    /// Unknown tools / errors come back as <c>{ "error": … }</c> instead of aborting the loop.</summary>
+    /// Unknown tools / errors come back as <c>{ "error": … }</c> instead of aborting the
+    /// loop.</summary>
     Task<string> ExecuteAsync(string name, string argumentsJson, ChatToolContext context, CancellationToken ct);
 }
 

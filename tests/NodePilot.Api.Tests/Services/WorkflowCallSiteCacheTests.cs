@@ -78,10 +78,9 @@ public class WorkflowCallSiteCacheTests
     [Fact]
     public void Store_PastTheEntryCeiling_EvictsTheOldestAndKeepsTheRest()
     {
-        // Nothing tells this cache about a deleted workflow, so it needs a bound. What it must NOT do
-        // is drop everything: one workflow past the ceiling would then thrash forever, reloading every
-        // definition each poll and wiping the map again on the way out. A is stored first and is
-        // therefore among the oldest; the newest entries have to survive.
+        // Nothing tells this cache about a deleted workflow, so it needs a bound. Evicting
+        // everything at once would thrash forever, reloading every definition on each poll. A is
+        // stored first, so it is among the oldest; the newest entries must survive eviction.
         var cache = new WorkflowCallSiteCache();
         cache.Store(A, Rev1, Sites("Child"));
 

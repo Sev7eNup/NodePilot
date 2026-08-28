@@ -98,7 +98,7 @@ public class StepRunnerUnresolvedVariableTests
         StepRunner.FindUnresolvedStepReferences("databaseTrigger", config).Should().BeEmpty();
     }
 
-    // ---- Patterns that look like {{...}} but do NOT match StepPattern ----
+    // ---- Patterns that look like {{...}} but do not match StepPattern ----
 
     [Fact]
     public void FindUnresolvedStepReferences_GlobalsPattern_IsNotFlagged()
@@ -109,14 +109,13 @@ public class StepRunnerUnresolvedVariableTests
         StepRunner.FindUnresolvedStepReferences("log", config).Should().BeEmpty();
     }
 
-    // ---- .success tail (added 2026-05-17 — fixture-audit fallout) ----
+    // ---- .success tail ----
 
     [Fact]
     public void FindUnresolvedStepReferences_UnknownStepSuccess_IsFlagged()
     {
-        // {{step.success}} used to slip past the regex entirely and survive as a
-        // literal string in returnData / log messages. Now it's part of StepPattern
-        // and must be caught when the step is unknown.
+        // {{step.success}} is part of StepPattern, so it must be caught (not left as a
+        // literal string in returnData / log messages) when the step is unknown.
         var config = Parse("""{"message":"step ok? {{missing.success}}"}""");
         var result = StepRunner.FindUnresolvedStepReferences("log", config);
         result.Should().ContainSingle().Which.Should().Be("{{missing.success}}");

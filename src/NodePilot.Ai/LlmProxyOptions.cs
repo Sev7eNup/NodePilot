@@ -50,7 +50,8 @@ public class LlmProxyOptions
     /// </summary>
     public List<string> BypassList { get; set; } = new();
 
-    /// <summary>Username for a proxy that wants Basic auth. Empty means no explicit credentials.</summary>
+    /// <summary>Username for a proxy that wants Basic auth. Empty means no explicit
+    /// credentials.</summary>
     public string? Username { get; set; }
 
     /// <summary>

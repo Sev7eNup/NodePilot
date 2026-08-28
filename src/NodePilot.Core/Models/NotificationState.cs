@@ -59,26 +59,33 @@ public class SystemAlertPolicyState
     public Guid NotificationRuleId { get; set; }
     public string SourceId { get; set; } = string.Empty;
     public string InstanceKey { get; set; } = string.Empty;
-    /// <summary>Whether the policy's condition held for this instance at the last evaluation.</summary>
+    /// <summary>Whether the policy's condition held for this instance at the last
+    /// evaluation.</summary>
     public bool IsMatching { get; set; }
-    /// <summary>When the condition first began holding continuously (start of the sustain window). Null when not matching.</summary>
+    /// <summary>When the condition first began holding continuously (start of the sustain window).
+    /// Null when not matching.</summary>
     public DateTime? MatchStartedAt { get; set; }
-    /// <summary>Start of the current alertable episode (sustain satisfied). Null until an episode opens.</summary>
+    /// <summary>Start of the current alertable episode (sustain satisfied). Null until an episode
+    /// opens.</summary>
     public DateTime? EpisodeStartedAt { get; set; }
-    /// <summary>Last time this instance was seen in an observation — drives stale-instance retention.</summary>
+    /// <summary>Last time this instance was seen in an observation — drives stale-instance
+    /// retention.</summary>
     public DateTime LastObservedAt { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
-/// Coarse per-source cursor state shared across a source's policies (ADR 0008) — e.g. the terminal-execution
-/// scan watermark. Distinct from <see cref="SystemAlertPolicyState"/> (which is per policy): a source samples
+/// Coarse per-source cursor state shared across a source's policies (ADR 0008) — e.g. the
+/// terminal-execution
+/// scan watermark. Distinct from <see cref="SystemAlertPolicyState"/> (which is per policy): a
+/// source samples
 /// once per pass regardless of how many policies read it. Unique on (SourceId, StateKey).
 /// </summary>
 public class SystemAlertSourceState
 {
     public Guid Id { get; set; }
     public string SourceId { get; set; } = string.Empty;
-    /// <summary>Discriminator within a source when it keeps more than one cursor (e.g. per normalized query). Empty = the source's single cursor.</summary>
+    /// <summary>Discriminator within a source when it keeps more than one cursor (e.g. per
+    /// normalized query). Empty = the source's single cursor.</summary>
     public string StateKey { get; set; } = string.Empty;
     /// <summary>Opaque cursor payload (JSON) owned by the source.</summary>
     public string? CursorJson { get; set; }

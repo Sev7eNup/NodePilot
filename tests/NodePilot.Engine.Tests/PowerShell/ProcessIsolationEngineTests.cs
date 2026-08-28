@@ -64,8 +64,7 @@ public class ProcessIsolationEngineTests
         var thrown = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
         sw.Stop();
 
-        // Specifically NOT "Isolated execution failed: Script execution cancelled" — the outer
-        // catch-all used to re-wrap the throw into a failed result under a new name.
+        // Preserve the cancellation exception and message instead of wrapping it as a failure.
         thrown.Message.Should().Be(IPowerShellExecutionEngine.CancelledMessage);
         sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(15), "cancel must tear the job down promptly, not wait out the 60s sleep");
     }
@@ -94,7 +93,8 @@ public class ProcessIsolationEngineTests
     public async Task ExecuteIsolated_NativeLaunchFailure_ReturnsCleanFailedResult()
     {
         // An engine pointed at a non-existent executable makes IsolatedProcessLauncher.Launch throw
-        // a Win32Exception (CreateProcess fails). The catch must turn that into a clean step failure
+        // a Win32Exception (CreateProcess fails). The catch must turn that into a clean step
+        // failure
         // instead of faulting the whole run.
         var engine = new ProcessExecutionEngine(
             "pwsh", @"Z:\nodepilot-does-not-exist\nope.exe", available: true, NullLogger.Instance);
@@ -115,7 +115,8 @@ public class ProcessIsolationEngineTests
     [WindowsFact]
     public async Task ExecuteIsolated_NormalExit_CapturesOutputAndReturnsPromptly()
     {
-        // Regression for the bounded drain: a script that exits normally drains stdout/stderr on EOF
+        // Regression for the bounded drain: a script that exits normally drains stdout/stderr on
+        // EOF
         // and returns immediately — it must NOT wait out the drain grace, and output must survive.
         var engine = IsolatedPowerShell();
 
@@ -140,13 +141,16 @@ public class ProcessIsolationEngineTests
     public async Task ConcurrentIsolatedAndProcessSpawns_AllComplete_NoHang()
     {
         // Part A (ProcessSpawnCoordinator): isolated launches (inheritable pipe handles) run
-        // concurrently with the non-isolated Process.Start path (bInheritHandles:true, no HANDLE_LIST
-        // — the leak vector). The spawn gate serializes both so no isolated read can hang on a handle
-        // leaked into a sibling spawn. Asserts the whole fan-out completes (no wedged step) and every
+        // concurrently with the non-isolated Process.Start path (bInheritHandles:true, no
+        // HANDLE_LIST
+        // — the leak vector). The spawn gate serializes both so no isolated read can hang on a
+        // handle
+        // leaked into a sibling spawn. Asserts the whole fan-out completes (no wedged step) and
+        // every
         // run succeeds. Also proves the gate does not deadlock under contention.
         var factory = new PowerShellEngineFactory(NullLoggerFactory.Instance);
         var isolated = factory.GetEngine("powershell", isolated: true);
-        var process = factory.GetEngine("powershell"); // non-isolated → ProcessExecutionEngine.Process.Start
+        var process = factory.GetEngine("powershell"); // non-isolated -> ProcessExecutionEngine.Process.Start
 
         var tasks = new List<Task<PowerShellExecutionResult>>();
         for (var i = 0; i < 8; i++)

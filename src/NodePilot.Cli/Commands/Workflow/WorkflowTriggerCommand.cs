@@ -83,11 +83,9 @@ public sealed class WorkflowTriggerCommand : AsyncCommand<WorkflowTriggerSetting
             return ExitCodes.Error;
         }
 
-        // --wait implies "block until terminal" — but the polling endpoint /api/executions/{id}
-        // is JWT-only, the API key alone can't read it. A late warning AFTER firing would let
-        // CI scripts see exit 0 + "started OK" and assume the run finished, when really only
-        // the trigger fired. Fail BEFORE firing so the workflow isn't kicked off in a state
-        // the caller can't observe.
+        // --wait means block until the run is terminal. The polling endpoint
+        // /api/executions/{id} is JWT-only, so the API key alone cannot read it. Fail before
+        // firing rather than after, so a script never sees exit 0 for a run it cannot observe.
         if (settings.Wait && !session.HasSession)
         {
             writer.Error("--wait braucht eine gültige JWT-Session (`np auth login`) für das Polling. Trigger wurde NICHT gefeuert.");
@@ -154,10 +152,9 @@ public sealed class WorkflowTriggerCommand : AsyncCommand<WorkflowTriggerSetting
         if (!string.IsNullOrWhiteSpace(settings.ApiKey)) return settings.ApiKey;
         if (settings.ApiKeyStdin)
         {
-            // First non-empty line wins. We trim trailing CR/LF only — leading whitespace
-            // is preserved because some operators paste a key whose first byte is a space
-            // (real-world: copy-paste from a vault UI) and a silent trim could mask
-            // "wrong key" with a confusing 401.
+            // First non-empty line wins. Trim trailing CR/LF only — a pasted key can start
+            // with a space, and trimming leading whitespace would silently turn a wrong key
+            // into a confusing 401 instead of a clear mismatch.
             var line = Console.In.ReadLine();
             return string.IsNullOrEmpty(line) ? null : line.TrimEnd('\r', '\n');
         }

@@ -25,7 +25,8 @@ public class CustomActivityWrapperAllowlistTests
         wrapped.Should().Contain("$__npOutAllow");
         wrapped.Should().Contain("$__npOutAllow.Add('result')");
         wrapped.Should().Contain("$__npOutAllow.Contains($_.Name)");
-        // The injected input + the undeclared helper local must NOT be added to the capture allow-list.
+        // The injected input + the undeclared helper local must NOT be added to the capture
+        // allow-list.
         wrapped.Should().NotContain("$__npOutAllow.Add('ComputerName')");
         wrapped.Should().NotContain("$__npOutAllow.Add('helper')");
     }

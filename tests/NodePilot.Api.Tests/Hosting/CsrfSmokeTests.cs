@@ -8,15 +8,11 @@ using Xunit;
 namespace NodePilot.Api.Tests.Hosting;
 
 /// <summary>
-/// Pins the double-submit CSRF gate (CsrfMiddleware) through the real pipeline. The
-/// direct-controller suite can't exercise this at all — the middleware never runs there.
-///
-/// Contract under test: a request that authenticates via the np_auth COOKIE (the browser
-/// path) and mutates state must reflect the JS-readable np_csrf cookie in the X-CSRF-Token
-/// header. CsrfMiddleware sits between UseAuthentication and UseAuthorization, so a missing/
-/// wrong token is rejected with exactly 403 and the machine-readable body
-/// {"error":"CSRF token missing or invalid","code":"csrf_mismatch"} — before any role gate
-/// or action logic is consulted.
+/// Pins the double-submit CSRF gate (CsrfMiddleware) through the real pipeline; the
+/// direct-controller suite never runs the middleware, so it cannot cover this.
+/// A cookie-authenticated mutating request must echo the JS-readable np_csrf cookie in the
+/// X-CSRF-Token header, or CsrfMiddleware rejects it with 403 and code "csrf_mismatch"
+/// before any role gate or action logic runs.
 /// </summary>
 [Collection(ApiPipelineCollection.Name)] // serialize full-host boots — see ApiPipelineCollection
 public sealed class CsrfSmokeTests
@@ -35,7 +31,7 @@ public sealed class CsrfSmokeTests
         // nothing except the CSRF gate can produce a 403 here.
         const string machineBody = """{"name":"csrf-smoke","hostname":"csrf-host"}""";
 
-        // 1) WITHOUT the header: CsrfMiddleware must reject with its pinned 403 + code. The
+        // 1) Without the header: CsrfMiddleware must reject with its pinned 403 + code. The
         //    np_auth cookie is attached automatically by the client's cookie container.
         using (var request = new HttpRequestMessage(HttpMethod.Post, "/api/machines")
                { Content = new StringContent(machineBody, Encoding.UTF8, "application/json") })
@@ -51,7 +47,7 @@ public sealed class CsrfSmokeTests
                 "not a coincidental 403 from a later gate");
         }
 
-        // 2) WITH the header: the request must get PAST the CSRF gate. Any non-CSRF status
+        // 2) With the header: the request must get past the CSRF gate. Any non-CSRF status
         //    would do; with an Admin session and a valid body the deterministic outcome is
         //    201, which we pin as the strongest available proof the gate opened.
         using (var request = new HttpRequestMessage(HttpMethod.Post, "/api/machines")

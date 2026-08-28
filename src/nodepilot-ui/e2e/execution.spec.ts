@@ -30,7 +30,7 @@ function workflowJson(overrides: Record<string, unknown> = {}) {
   };
 }
 
-// log → delay → log, no trigger, no parameters → Test runs directly (no dialog).
+// log -> delay -> log, no trigger, no parameters -> Test runs directly (no dialog).
 const SIMPLE_DEF = JSON.stringify({
   nodes: [
     { id: 'n1', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'Start', activityType: 'log', config: { message: 'Starting' } } },
@@ -43,7 +43,7 @@ const SIMPLE_DEF = JSON.stringify({
   ],
 });
 
-// manualTrigger with two parameters → Test opens RunWorkflowDialog.
+// manualTrigger with two parameters -> Test opens RunWorkflowDialog.
 const PARAM_DEF = JSON.stringify({
   nodes: [
     {
@@ -64,7 +64,7 @@ const PARAM_DEF = JSON.stringify({
   edges: [{ id: 'e1', source: 'trg', target: 'log', type: 'labeled', data: {} }],
 });
 
-// manualTrigger with a single `result` parameter → fans out to three log branches by condition.
+// manualTrigger with a single `result` parameter -> fans out to three log branches by condition.
 const BRANCH_DEF = JSON.stringify({
   nodes: [
     { id: 'trg', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'Manual', activityType: 'manualTrigger', config: { title: 'Branch Test', parameters: [{ name: 'result', type: 'string', required: true, default: 'success' }] } } },
@@ -81,7 +81,7 @@ const BRANCH_DEF = JSON.stringify({
   ],
 });
 
-// log → delay (breakpoint candidate) → log.
+// log -> delay (breakpoint candidate) -> log.
 const DEBUG_DEF = JSON.stringify({
   nodes: [
     { id: 's1', type: 'activity', position: { x: 0, y: 0 }, data: { label: 'Step 1', activityType: 'log', config: { message: 'Step 1' } } },
@@ -139,7 +139,8 @@ test.describe('Workflow-Ausführung & Debugging (Teil 6)', () => {
 
     await page.getByRole('button', { name: /test run/i }).click();
 
-    // RunWorkflowDialog (role="dialog") shows a field per declared parameter, prefilled with defaults.
+    // RunWorkflowDialog (role="dialog") shows a field per declared parameter, prefilled with
+    // defaults.
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible({ timeout: 10_000 });
     const env = dialog.getByRole('textbox').first();

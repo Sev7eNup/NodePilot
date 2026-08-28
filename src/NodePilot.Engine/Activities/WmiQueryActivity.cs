@@ -11,29 +11,32 @@ namespace NodePilot.Engine.Activities;
 /// <summary>
 /// WMI/CIM activity. Supports three modes (selected via <c>config.mode</c>):
 /// <list type="bullet">
-///   <item><description><c>query</c> (default) — class-based <c>Get-CimInstance</c> with
-///     optional WHERE-style filter. Backwards-compatible with the original activity shape.</description></item>
-///   <item><description><c>wql</c> — raw WQL via <c>Get-CimInstance -Query</c> against the chosen
-///     namespace. Lets the user write the full SELECT including JOINs and ASSOCIATORS OF.</description></item>
+///   <item><description><c>query</c> (default) — class-based <c>Get-CimInstance</c> with an
+///     optional WHERE-style filter.</description></item>
+///   <item><description><c>wql</c> — raw WQL via <c>Get-CimInstance -Query</c> against the
+///     chosen namespace. Lets the user write the full SELECT including JOINs and
+///     ASSOCIATORS OF.</description></item>
 ///   <item><description><c>invokeMethod</c> — call a WMI method via <c>Invoke-CimMethod</c>.
 ///     Static methods are scoped by <c>className</c> alone; instance methods scope via
-///     <c>filter</c> (the <c>Get-CimInstance | Invoke-CimMethod</c> pipe). Method arguments come
-///     from <c>config.arguments</c> (a JSON object) and are emitted as a PowerShell hashtable
-///     literal — keys are validated as PS identifiers, values are typed-quoted.</description></item>
+///     <c>filter</c> (the <c>Get-CimInstance | Invoke-CimMethod</c> pipe). Method arguments
+///     come from <c>config.arguments</c> (a JSON object) and are emitted as a PowerShell
+///     hashtable literal — keys are validated as PS identifiers, values are
+///     typed-quoted.</description></item>
 /// </list>
-/// All user-supplied strings flow through <see cref="PowerShellQuoter.Literal"/> before landing
-/// in the script. Argument <b>keys</b> are restricted to <c>^[A-Za-z_][A-Za-z0-9_]*$</c> because
-/// they're emitted unquoted into the hashtable literal — anything else would let the upstream
-/// step inject arbitrary PS by naming an argument something like <c>x; rm -rf …</c>.
+/// All user-supplied strings flow through <see cref="PowerShellQuoter.Literal"/> before
+/// landing in the script. Argument <c>keys</c> are restricted to
+/// <c>^[A-Za-z_][A-Za-z0-9_]*$</c> because they are emitted unquoted into the hashtable
+/// literal — anything else would let the upstream step inject arbitrary PS by naming an
+/// argument something like <c>x; rm -rf …</c>.
 ///
-/// <para><b>captureProperties</b> (optional, added 2026-05-17): JSON array of CIM property
-/// names to project into <see cref="ActivityResult.OutputParameters"/>. Without it the
-/// activity only emits a formatted text output and downstream <c>{{step.param.X}}</c>
-/// references can never resolve. With it the activity wraps the CIM call, captures the
-/// first row's named properties (plus a <c>count</c> param with the row total), and
-/// exposes each as <c>param.&lt;PropName&gt;</c>. Property names must match the same
-/// identifier rules as method-argument keys — otherwise they'd land unquoted in the
-/// projection script and become an injection vector.</para>
+/// <para><c>captureProperties</c> (optional) is a JSON array of CIM property names to
+/// project into <see cref="ActivityResult.OutputParameters"/>. Without it the activity
+/// only emits a formatted text output and downstream <c>{{step.param.X}}</c> references
+/// can never resolve. With it the activity wraps the CIM call, captures the first row's
+/// named properties (plus a <c>count</c> param with the row total), and exposes each as
+/// <c>param.&lt;PropName&gt;</c>. Property names must match the same identifier rules as
+/// method-argument keys — otherwise they would land unquoted in the projection script and
+/// become an injection vector.</para>
 /// </summary>
 public class WmiQueryActivity : BaseRemoteActivity
 {
@@ -44,8 +47,8 @@ public class WmiQueryActivity : BaseRemoteActivity
 
     // Cap to keep the projected hashtable script bounded and to discourage authors
     // from blindly dumping the entire CIM class into params — that's what `.output`
-    // is for. 50 covers every real-world CIM class shape we cared about during
-    // design (Win32_OperatingSystem has ~60 properties total).
+    // is for. 50 comfortably covers real-world CIM class shapes (Win32_OperatingSystem
+    // has around 60 properties total).
     internal const int MaxCaptureProperties = 50;
 
     public WmiQueryActivity(
@@ -191,9 +194,9 @@ public class WmiQueryActivity : BaseRemoteActivity
 
             if (root.TryGetProperty("Properties", out var propsEl) && propsEl.ValueKind == JsonValueKind.Object)
             {
-                // Iterate the REQUESTED list (not the JSON object) so a missing key in the
-                // JSON still surfaces as an empty-string param — the contract is "all
-                // requested keys are always present in OutputParameters".
+                // Iterate the requested list (not the JSON object), so a missing key in the
+                // JSON still surfaces as an empty-string param. The contract guarantees that
+                // all requested keys are present in OutputParameters.
                 foreach (var requested in captureProperties)
                 {
                     if (propsEl.TryGetProperty(requested, out var valEl))
@@ -260,7 +263,7 @@ public class WmiQueryActivity : BaseRemoteActivity
             throw new InvalidOperationException("WMI Query: 'methodName' is required for invokeMethod mode");
 
         // Method names are PS-identifier-like (e.g. Create, Terminate, GetOwner). Reject anything
-        // weirder so we can emit them unquoted into -MethodName.
+        // else so the name can be emitted unquoted into -MethodName.
         if (!IdentifierPattern.IsMatch(methodName))
             throw new InvalidOperationException($"WMI Query: 'methodName' must be a valid identifier, got '{methodName}'");
 
@@ -299,8 +302,8 @@ public class WmiQueryActivity : BaseRemoteActivity
     /// Renders <c>config.arguments</c> as a PowerShell hashtable literal (e.g.
     /// <c>@{ Name = 'svc'; Count = 5; Force = $true }</c>) or returns <c>null</c> when there
     /// are no arguments. JSON object only — arrays and scalars at the top level are rejected.
-    /// Each value is type-mapped: string → single-quoted literal; number → numeric literal;
-    /// boolean → <c>$true</c>/<c>$false</c>; null → <c>$null</c>; nested object/array → JSON
+    /// Each value is type-mapped: string -> single-quoted literal; number -> numeric literal;
+    /// boolean -> <c>$true</c>/<c>$false</c>; null -> <c>$null</c>; nested object/array -> JSON
     /// re-serialised then single-quoted (so it lands as a string the WMI provider may parse).
     /// </summary>
     private static string? BuildArgumentsHashtable(JsonElement config)

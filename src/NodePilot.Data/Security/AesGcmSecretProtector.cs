@@ -8,17 +8,16 @@ namespace NodePilot.Data.Security;
 /// Cross-host-portable <see cref="ISecretProtector"/> backed by AES-256-GCM with a
 /// shared Master-Key from <c>Secrets:MasterKey</c> (base64-encoded ≥32 bytes).
 /// <para>
-/// Use this provider in active/passive HA: DPAPI's machine binding makes it impossible
-/// for Node B to decrypt a credential that was written on Node A. AES-GCM with a key in
-/// config solves that — both nodes have the same key in their <c>appsettings.Production.json</c>.
-/// The trade-off is that the master key now lives in plaintext on disk; protect the
-/// settings file with file-system ACLs (`icacls` / `chmod 600`).
+/// Use this provider for active/passive HA: DPAPI's machine binding would block Node B from
+/// decrypting a credential written on Node A, but both nodes can share one AES-GCM key in
+/// <c>appsettings.Production.json</c>. Protect that file with file-system ACLs, since the key
+/// then lives in plaintext on disk.
 /// </para>
 /// <para>
-/// Wire format (binary, persisted as-is in the existing <c>byte[]</c> column):
+/// Wire format, persisted as-is in the existing <c>byte[]</c> column:
 /// <c>[1 byte version=0x01] [12 bytes nonce] [N bytes ciphertext] [16 bytes auth tag]</c>.
-/// The version prefix is reserved for future key-rotation envelopes; today it's always
-/// 0x01. <see cref="Unprotect"/> rejects any blob whose first byte is anything else.
+/// The version byte is reserved for future key-rotation envelopes; <see cref="Unprotect"/> rejects
+/// any blob whose version does not match.
 /// </para>
 /// </summary>
 public sealed class AesGcmSecretProtector : ISecretProtector
@@ -48,8 +47,8 @@ public sealed class AesGcmSecretProtector : ISecretProtector
 
     public string Unprotect(byte[] blob)
     {
-        // Header validation runs OUTSIDE the measured region, as it always has: a malformed blob
-        // is a caller error, not a crypto failure, and must not land in the failed-decrypt series.
+        // Header validation runs outside the measured region: a malformed blob is a caller error,
+        // not a crypto failure, and must not land in the failed-decrypt series.
         SecretEnvelope.ValidateHeader(blob, TooShortMessage, UnknownVersionMessage);
 
         return DataMetrics.MeasureCrypto("decrypt", ProviderName, () =>

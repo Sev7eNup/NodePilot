@@ -46,9 +46,9 @@ function computePosition(rect: DOMRect): Position {
 }
 
 /**
- * Viewport-anchored shell for property pickers. The portal is essential: property Sections
- * and the panel scroller intentionally clip their contents, so an in-tree absolute popover
- * can never overlap the following Sections reliably.
+ * Viewport-anchored shell for property pickers. It renders into a portal because property
+ * sections and the panel scroller clip their contents, which would cut off a popover placed
+ * inside the tree.
  */
 export function AnchoredPickerPopover({
   open,

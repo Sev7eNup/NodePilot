@@ -67,17 +67,15 @@ public static class DbAdminPolicy
         // dedicated Globals UI is cleaner and safer)
         ["GlobalVariable.Value"] = new(IsHidden: false, IsReadOnly: true),
 
-        // Workflow.DefinitionJson: allowing this to be PATCHed via DbAdmin would bypass
-        // domain validation, versioning, the edit-lock, and webhook-collision protection —
-        // all of which are guaranteed by the WorkflowsController/WorkflowEditingController
-        // path. Making it read-only via DbAdmin forces the operator onto the correct
-        // mutation path; the column stays visible for forensics ("what's actually stored
-        // right now"), but changes must go through the proper application surface.
+        // Workflow.DefinitionJson: PATCHing this via DbAdmin would bypass domain validation,
+        // versioning, the edit-lock, and webhook-collision protection enforced by the
+        // WorkflowsController/WorkflowEditingController path. It stays read-only here so
+        // edits go through that path; the column stays visible for forensics.
         ["Workflow.DefinitionJson"] = new(IsHidden: false, IsReadOnly: true),
     };
 
-    // Navigation properties (ICollection<*>) are always hidden — EF would need Include() to load them.
-    // byte[] properties other than explicitly hidden ones are also hidden to avoid large binary blobs.
+    // Navigation properties (ICollection<*>) are hidden — EF needs Include() to load them.
+    // Other byte[] properties are hidden too, to avoid large binary blobs.
 
     public static EntityCapabilities GetCapabilities(string entityTypeName)
     {

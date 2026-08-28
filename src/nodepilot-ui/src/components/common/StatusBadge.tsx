@@ -16,14 +16,11 @@ import {
 } from '../../lib/statusTokens';
 
 /**
- * Shared status pill, backed by `statusTokens` + the `executions:status.*` i18n namespace.
- *
- * Contract: takes a RAW backend status string (PascalCase: "Succeeded", "Failed",
- * "TimedOut", "Running", …). Known statuses are styled via `STATUS_BADGE_CLASS` and labeled
- * via `executions:status.*` (keyed by the raw string so `TimedOut`/`Queued` keep distinct
- * labels — `NpStatus` merges them and is only used for styling). UNKNOWN statuses render
- * their raw string as-is with neutral styling — this deliberately does NOT fall back to
- * `info`, so a newly introduced backend status is surfaced verbatim instead of masked.
+ * Shared status pill, backed by `statusTokens` and the `executions:status.*` i18n keys.
+ * Takes the raw backend status string (PascalCase, e.g. "Succeeded", "TimedOut"). Known
+ * statuses are styled via `STATUS_BADGE_CLASS` and labeled via `executions:status.*`,
+ * keyed by the raw string so statuses `NpStatus` merges for styling still get distinct
+ * labels. An unknown status renders its raw string as-is rather than falling back to `info`.
  */
 const ICON_BY_RAW_KEY: Record<string, CarbonIconType> = {
   succeeded: CheckmarkFilled,

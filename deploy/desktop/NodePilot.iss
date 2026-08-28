@@ -83,12 +83,8 @@ begin
   Result := ProvisionOk;
 end;
 
-// Runs the elevated provisioning script and REPORTS ITS EXIT CODE. Previously this was a [Run]
-// entry, which throws the exit code away: a provisioning that aborted (port pool exhausted, the
-// API service never reaching /healthz/ready, a cluster whose secrets went missing) still produced
-// a "Setup completed successfully" page, and the first thing the user saw was the shell failing
-// to connect. Deliberately does NOT abort setup - the files are already in place and a rollback
-// here would delete a database the user may still want. It reports plainly and names the log.
+// Runs elevated provisioning and reports its exit code. Failure does not roll back files or a
+// database that the user may still need; the installer reports the log instead.
 procedure ProvisionRuntime();
 var
   ResultCode: Integer;

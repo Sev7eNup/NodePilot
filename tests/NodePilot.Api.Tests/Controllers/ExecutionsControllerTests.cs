@@ -412,10 +412,9 @@ public class ExecutionsControllerTests
     }
 
     // ---- ExternalTrigger ----
-    // NOTE: The endpoint now enforces a minimum API-key length of 32 bytes (M-2 hardening,
-    // a security-audit finding).
-    // Tests that exercise the "correct key" path therefore use a long key; short-key tests
-    // still exercise the explicit rejection path (either too short → 401, or mismatch → 401).
+    // The endpoint enforces a minimum API-key length of 32 bytes.
+    // Tests for the "correct key" path use a long key; short-key tests exercise the rejection
+    // path directly (too short or mismatched key both return 401).
 
     // 32-byte test key — matches MinExternalApiKeyBytes.
     private const string LongKey = "test-api-key-needs-32-bytes-yep!";
@@ -536,9 +535,8 @@ public class ExecutionsControllerTests
     [Fact]
     public async Task ExternalTrigger_NoApiKeyConfigured_ReturnsUnauthorized()
     {
-        // Previously this returned 503, which confirmed to an unauthenticated caller that
-        // the endpoint existed but was unconfigured. The hardened endpoint now returns 401
-        // indistinguishable from "wrong key" so callers cannot enumerate misconfigurations.
+        // Returns 401, indistinguishable from a wrong key, when no API key is configured,
+        // so a caller cannot use the response to tell the endpoint is unconfigured.
         var db = CreateContext();
         var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: "anything");
 
@@ -585,7 +583,8 @@ public class ExecutionsControllerTests
     [Fact]
     public async Task ExternalTrigger_WrongKeyLength_ReturnsUnauthorized()
     {
-        // Regression: FixedTimeEquals returns false for length-mismatch without throwing.
+        // FixedTimeEquals returns false for a length mismatch instead of throwing;
+        // this test covers that path.
         var db = CreateContext();
         var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: "x");
 
@@ -608,9 +607,8 @@ public class ExecutionsControllerTests
     [Fact]
     public async Task ExternalTrigger_DisabledWorkflow_ReturnsNotFound()
     {
-        // Security-audit finding M-29: external trigger collapses "not found" and "exists but disabled" into the same
-        // 404. Previously a BadRequest for disabled let a holder of a valid API key enumerate
-        // which named workflows exist even while disabled.
+        // External trigger returns 404 for both "not found" and "exists but disabled", so a
+        // holder of a valid API key cannot enumerate which named workflows exist while disabled.
         var db = CreateContext();
         var workflow = new Workflow
         {
@@ -1071,9 +1069,9 @@ public class ExecutionsControllerTests
         var result = await controller.ExternalTrigger(
             "Enabled", null, ConfigWithKey(LongKey, wf.Id), TriggerLogger, CancellationToken.None);
 
-        // Uniform 404 (anti-enumeration) + the critical invariant: the maintenance check runs
-        // BEFORE the idempotency-key transaction, so a blocked fire neither persists the key nor
-        // a Pending row — a legitimate retry after the window reopens then actually runs.
+        // Uniform 404 response (anti-enumeration). The maintenance check must run before the
+        // idempotency-key transaction, so a blocked fire persists neither the key nor a pending
+        // row, and a retry after the window reopens can actually run.
         result.Result.Should().BeOfType<NotFoundObjectResult>();
         queue.EnqueueCount.Should().Be(0);
         (await db.IdempotencyKeys.CountAsync()).Should().Be(0, "a blocked fire must not consume its idempotency key");
@@ -1083,8 +1081,8 @@ public class ExecutionsControllerTests
     [Fact]
     public async Task ExternalTrigger_TooManyParameters_ReturnsBadRequestWithoutEnqueue()
     {
-        // M-32: the parameter map is bound before the API key is compared and every entry is
-        // copied into the execution's variable dictionary, so an unbounded map is engine work.
+        // The parameter map is bound before the API key is compared, and every entry is copied
+        // into the execution's variable dictionary, so an unbounded map means real engine work.
         var db = CreateContext();
         var wf = ExternalWorkflow("Enabled");
         db.Workflows.Add(wf);
@@ -1311,10 +1309,10 @@ public class ExecutionsControllerTests
     [Fact]
     public async Task ExternalTrigger_Replay_RedactsSensitiveExecutionFields()
     {
-        // L-7 (security audit 2026-05-15): the API-key trigger surface carries no role, so it
-        // must redact ReturnData / ErrorMessage / InputParametersJson exactly like
-        // ExecutionsController does for callers below Admin/Operator — otherwise step-stdout
-        // tokens or webhook-body secrets leak straight back to the API-key holder.
+        // The API-key trigger surface carries no role, so it must redact ReturnData,
+        // ErrorMessage, and InputParametersJson exactly like ExecutionsController does for
+        // callers below Admin/Operator, otherwise step output or webhook-body secrets leak
+        // straight back to the API-key holder.
         var db = CreateContext();
         var wf = ExternalWorkflow("Enabled");
         db.Workflows.Add(wf);
@@ -1391,9 +1389,9 @@ public class ExecutionsControllerTests
     [Fact]
     public async Task ExternalTrigger_IdempotencyReplay_DoesNotEmitSecondAudit()
     {
-        // Idempotency replays return the original execution — they must NOT emit a second
-        // EXTERNAL_TRIGGER_FIRED. Otherwise a misbehaving caller retrying the same key
-        // would inflate the audit log.
+        // Idempotency replays return the original execution and must not emit a second
+        // EXTERNAL_TRIGGER_FIRED - otherwise a caller retrying the same key inflates the
+        // audit log.
         var db = CreateContext();
         var wf = ExternalWorkflow("Enabled");
         db.Workflows.Add(wf);
@@ -1576,7 +1574,7 @@ public class ExecutionsControllerTests
             StepName = "Update DB", StepType = "sql", Status = ExecutionStatus.Failed,
             StartedAt = exec.StartedAt.AddSeconds(3),
         };
-        // A Succeeded step in between — must NOT show up in FailedSteps.
+        // A succeeded step in between must not show up in FailedSteps.
         var ok = new StepExecution
         {
             Id = Guid.NewGuid(), WorkflowExecutionId = exec.Id, StepId = "ok",
@@ -1635,7 +1633,7 @@ public class ExecutionsControllerTests
     {
         // A child run triggered via startWorkflow references its parent execution. GetAll
         // must resolve the parent's workflow name from that reference so the grid can show
-        // the "↳ from <parentName>" badge.
+        // the "from <parentName>" badge.
         var db = CreateContext();
         var parentWf = new Workflow { Id = Guid.NewGuid(), Name = "Daily Report", DefinitionJson = "{}" };
         var childWf = new Workflow { Id = Guid.NewGuid(), Name = "Send Email", DefinitionJson = "{}" };
@@ -1757,10 +1755,10 @@ public class ExecutionsControllerTests
 
     // ---- GetById step triage ---------------------------------------------------------------
     //
-    // The Live-Ops drilldown fetches GetById, so the step columns have to be populated there
-    // too — the list endpoint alone is not enough. Note these counts are only meaningful for a
-    // TERMINAL run: Engine:DeferRunningStateWrite defaults to true, so an in-flight step has no
-    // row at all and StepsTotal would read as "everything finished".
+    // The Live-Ops drilldown fetches GetById, so the step columns must be populated there too,
+    // not just on the list endpoint. These counts are only meaningful for a terminal run:
+    // Engine:DeferRunningStateWrite defaults to true, so an in-flight step has no row at all,
+    // and StepsTotal would read as "everything finished".
 
     private static StepExecution Step(Guid execId, string stepId, ExecutionStatus status,
         DateTime startedAt, string? stepName = null)

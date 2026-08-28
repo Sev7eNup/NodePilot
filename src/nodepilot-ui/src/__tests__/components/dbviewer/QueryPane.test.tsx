@@ -24,10 +24,9 @@ vi.mock('../../../api/dbadmin', () => ({
   },
 }));
 
-// CodeMirror layout-measurement code uses Range.getClientRects, which jsdom doesn't
-// support. We mock the @uiw/react-codemirror component to a plain textarea — keeps
-// these tests focused on QueryPane's behaviour (wiring, run, history, mode-toggle)
-// rather than the editor's internals.
+// CodeMirror measures layout via Range.getClientRects, which jsdom does not implement.
+// Mocking @uiw/react-codemirror as a plain textarea keeps these tests on QueryPane
+// behaviour (wiring, run, history, mode toggle) instead of the editor internals.
 vi.mock('@uiw/react-codemirror', () => ({
   __esModule: true,
   default: ({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) => (

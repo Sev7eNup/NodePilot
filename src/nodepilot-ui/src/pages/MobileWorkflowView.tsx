@@ -20,23 +20,22 @@ import { withDefaultEdgePorts } from '../lib/edgePorts';
 import { NodeScaleOverrideContext } from '../components/designer/nodeScaleContext';
 import { useWorkflowSignalR } from '../hooks/useSignalR';
 
-// Render the read-only phone graph at the `lg` node scale (NODE_SCALES index 3) — big enough
-// icons/labels to keep a workflow legible on a small screen. This matches the desktop default
-// today, but stays an explicit override: the phone view must not shrink when someone steps the
-// desktop size down, since there is no size stepper on this screen to undo it.
+// Render the read-only phone graph at the `lg` node scale (NODE_SCALES index 3), which keeps
+// icons and labels legible on a small screen. This stays an explicit override rather than the
+// desktop default, because this screen has no size stepper to undo a smaller desktop setting.
 const MOBILE_SCALE_INDEX = 3;
 
-// Reuse the editor's node/edge renderers verbatim. ActivityNode reads everything it needs
-// from the global designStore (defaults) + node.data, including data.__liveStatus, so it
-// renders correctly in this read-only context with no editor callbacks.
+// Reuse the editor's node and edge renderers unchanged. ActivityNode reads everything it
+// needs from the global designStore and node.data, including data.__liveStatus, so it renders
+// correctly in this read-only context without any editor callbacks.
 const nodeTypes: NodeTypes = { activity: ActivityNode, stickyNote: StickyNoteNode, group: GroupNode };
 const edgeTypes: EdgeTypes = { labeled: LabeledEdge };
 
 /**
- * Read-only workflow graph for phones / portrait tablets. The full designer is
- * desktop-only (mouse drag-to-connect, dense side panels), so on small screens we render
- * a pannable/pinch-zoomable canvas that mirrors the workflow and reflects live execution
- * status — enough to monitor a run from a phone. Editing stays on the desktop.
+ * Read-only workflow graph for phones and portrait tablets. The full designer is desktop
+ * only, so small screens get a pannable and pinch-zoomable canvas that mirrors the workflow
+ * and shows live execution status, which is enough to monitor a run. Editing stays on the
+ * desktop.
  */
 function MobileWorkflowViewInner({ workflowId }: Readonly<{ workflowId: string }>) {
   const navigate = useNavigate();
@@ -59,17 +58,17 @@ function MobileWorkflowViewInner({ workflowId }: Readonly<{ workflowId: string }
     try {
       const def = JSON.parse(workflow.definitionJson) as { nodes?: Node[]; edges?: Edge[] };
       const rawNodes = def.nodes ?? [];
-      // Render the authored layout verbatim: the mobile view must mirror the desktop
-      // arrangement exactly — only the node *scale* is enlarged (NodeScaleOverrideContext
-      // below), never the positions.
-      // Groups must precede their children in the array (React Flow renders in order).
-      // `connectable: true` is load-bearing: ActivityNode derives handle connectability from
-      // it, and React Flow needs it to wire pre-existing edges to their target handles.
+      // Render the authored layout unchanged: the mobile view mirrors the desktop
+      // arrangement, and only the node scale is enlarged (NodeScaleOverrideContext below),
+      // never the positions.
+      // Groups must precede their children in the array, since React Flow renders in order.
+      // `connectable: true` is required: ActivityNode derives handle connectability from it,
+      // and React Flow needs it to wire existing edges to their target handles.
       setNodes([...rawNodes]
         .sort((a) => (a.type === 'group' ? -1 : 1))
         .map((n) => ({ ...n, draggable: false, selectable: false, connectable: true })));
-      // Backfill default source/target ports (right→left) exactly like the editor and the
-      // sub-workflow preview — without it React Flow drops edges whose handles are null and
+      // Backfill default source and target ports the same way as the editor and the
+      // sub-workflow preview. Without it React Flow drops edges whose handles are null and
       // no line renders.
       setEdges((def.edges ?? []).map((e) => withDefaultEdgePorts(e)));
     } catch {
@@ -78,7 +77,7 @@ function MobileWorkflowViewInner({ workflowId }: Readonly<{ workflowId: string }
     }
   }, [workflow, setNodes, setEdges]);
 
-  // Mirror live step status onto node.data.__liveStatus — node id === step id (see editor).
+  // Mirror live step status onto node.data.__liveStatus; the node id is the step id.
   useEffect(() => {
     if (!liveExecution || liveExecution.steps.length === 0) return;
     const statusByStepId = new Map(liveExecution.steps.map((s) => [s.stepId, s.status]));
@@ -132,9 +131,9 @@ function MobileWorkflowViewInner({ workflowId }: Readonly<{ workflowId: string }
               isValidConnection={() => false}
               minZoom={0.1}
               fitView
-              // minZoom floor keeps nodes legible on big graphs: instead of shrinking to fit
-              // everything, fitView clamps at 0.7 and the user pans. Small graphs still zoom in
-              // (up to 1.6) to fill the phone. Combined with the larger node scale (provider).
+              // The minZoom floor keeps nodes legible on large graphs: fitView clamps at 0.7
+              // instead of shrinking everything to fit, and the user pans. Small graphs still
+              // zoom in up to 1.6 to fill the screen.
               fitViewOptions={{ padding: 0.08, minZoom: 0.7, maxZoom: 1.6 }}
             >
               <Background variant={BackgroundVariant.Dots} gap={16} size={1} />

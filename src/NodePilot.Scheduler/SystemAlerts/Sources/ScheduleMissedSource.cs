@@ -8,11 +8,15 @@ using Quartz;
 namespace NodePilot.Scheduler.SystemAlerts.Sources;
 
 /// <summary>
-/// Workflow-scoped schedule-health source (replaces an older, hard-coded "ScheduleMissed" metric with one
-/// where each policy can set its own grace period). For every enabled scheduleTrigger node it reconstructs
-/// the last expected Quartz (the cron-scheduling library NodePilot uses) fire within a lookback window and checks
+/// Workflow-scoped schedule-health source (replaces an older, hard-coded "ScheduleMissed" metric
+/// with one
+/// where each policy can set its own grace period). For every enabled scheduleTrigger node it
+/// reconstructs
+/// the last expected Quartz (the cron-scheduling library NodePilot uses) fire within a lookback
+/// window and checks
 /// whether a schedule-triggered execution was actually created; exposes <c>missed</c> (bool) and
-/// <c>minutesLate</c>. Keyed per (workflow, node). The <c>graceMinutes</c> parameter debounces the "just fired,
+/// <c>minutesLate</c>. Keyed per (workflow, node). The <c>graceMinutes</c> parameter debounces the
+/// "just fired,
 /// execution not visible yet" race.
 /// </summary>
 public sealed class ScheduleMissedSource : ISystemAlertSource

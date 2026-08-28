@@ -4,16 +4,11 @@ import type { Node, Edge } from '@xyflow/react';
 import { useDisplayedGraph } from '../../hooks/useDisplayedGraph';
 
 /**
- * Die Projektion `nodes`/`edges` → `displayedNodes`/`displayedEdges` patcht rein visuelle
- * Marker in die Graph-Daten. Kritisch daran ist die **Aufräum**-Richtung, nicht das Setzen:
- *
- * `useWorkflowHistory` snapshottet über React Flows Store, also über den PROJIZIERTEN
- * Graphen, und schreibt ihn beim Undo in den Rohzustand zurück. Ein Marker, den die
- * Projektion nur setzt und nie entfernt, wandert damit dauerhaft in die rohen Edges — beim
- * Edge-Detach hatte genau das eine Edge nach „Umhängen + Undo" bis zum Reload unklickbar
- * gemacht (`__detached` ⇒ `pointerEvents: 'none'` in LabeledEdge).
- *
- * Deshalb pinnen die Tests hier für jeden Marker beide Richtungen.
+ * The projection from `nodes`/`edges` to `displayedNodes`/`displayedEdges` patches purely visual
+ * markers into the graph data. Clearing them matters as much as setting them: `useWorkflowHistory`
+ * snapshots the projected graph from the React Flow store and writes it back as raw state on undo,
+ * so a marker that is only ever set leaks into the raw edges for good (`__detached` makes
+ * LabeledEdge apply `pointerEvents: 'none'`). These tests pin both directions for every marker.
  */
 
 const NODES: Node[] = [
@@ -46,7 +41,7 @@ function edgeData(edges: Edge[], id: string) {
 
 describe('useDisplayedGraph — edge detach marker', () => {
   const cleanEdge: Edge = { id: 'e1', source: 'a', target: 'b', type: 'labeled', data: { label: 'On Success' } };
-  /** So sieht eine Edge aus, nachdem ein Undo den projizierten Snapshot zurückgeschrieben hat. */
+  /** An edge as it looks after an undo wrote the projected snapshot back into raw state. */
   const staleEdge: Edge = { ...cleanEdge, data: { label: 'On Success', __detached: true } };
 
   it('detachedEdgeId_marksThatEdge', () => {
@@ -55,11 +50,11 @@ describe('useDisplayedGraph — edge detach marker', () => {
   });
 
   it('noDetachInProgress_stripsAStaleMarkerFromRawEdges', () => {
-    // DIE Regression: ohne diesen Aufräum-Zweig bleibt die Edge nach einem Undo gedimmt
-    // und `pointerEvents: 'none'` — nicht mehr anklickbar bis zum Reload.
+    // Without this cleanup branch the edge stays dimmed after an undo and keeps
+    // `pointerEvents: 'none'`, so it cannot be clicked until the page reloads.
     const { displayedEdges } = project({ edges: [staleEdge], detachedEdgeId: null });
     expect(edgeData(displayedEdges, 'e1')).not.toHaveProperty('__detached');
-    expect(edgeData(displayedEdges, 'e1').label).toBe('On Success'); // Rest bleibt unangetastet
+    expect(edgeData(displayedEdges, 'e1').label).toBe('On Success'); // rest of the data untouched
   });
 
   it('anotherEdgeDetached_stillStripsTheStaleMarker', () => {
@@ -71,8 +66,8 @@ describe('useDisplayedGraph — edge detach marker', () => {
   });
 
   it('cleanEdgeWithoutDetach_isPassedThroughUntouched', () => {
-    // Kein unnötiges Neu-Objekt: die Identitätsprüfung der Projektion muss greifen, sonst
-    // rendert jede Edge bei jedem Pass neu.
+    // The projection must return the same object when nothing changes, otherwise every edge
+    // re-renders on every pass.
     const withPorts: Edge = { ...cleanEdge, sourceHandle: 'right', targetHandle: 'left', animated: false, hidden: false };
     const { displayedEdges } = project({ edges: [withPorts], detachedEdgeId: null });
     expect(displayedEdges[0]).toBe(withPorts);
@@ -87,7 +82,7 @@ describe('useDisplayedGraph — dock target marker', () => {
   });
 
   it('noDockTarget_clearsTheClassEverywhere', () => {
-    // Gleiche Falle wie oben: der Ring darf nach einem Undo nicht an einem Node kleben.
+    // Same cleanup direction as above: the ring must not stay on a node after an undo.
     const stale: Node[] = NODES.map((n) => ({ ...n, className: 'np-dock-target' }));
     const { displayedNodes } = project({ nodes: stale, dockTargetNodeId: null });
     for (const n of displayedNodes) expect(n.className).toBeUndefined();

@@ -8,7 +8,8 @@ namespace NodePilot.Data;
 
 /// <summary>
 /// Default <see cref="INotificationRuleStore"/>. EF CRUD with route-secret encryption via
-/// <see cref="ISecretProtector"/> (like <see cref="GlobalVariableStore"/>). Routes are <b>diffed</b>
+/// <see cref="ISecretProtector"/> (like <see cref="GlobalVariableStore"/>). Routes are
+/// <b>diffed</b>
 /// on update (matched by id, updated in place) rather than removed-and-re-added: keeping a route's
 /// id — required so an <see cref="UnchangedSecret"/> round-trip preserves the stored cipher — would
 /// otherwise collide in the EF change tracker. Deleting a rule also clears its transient
@@ -58,7 +59,8 @@ public class NotificationRuleStore : INotificationRuleStore
             ?? throw new KeyNotFoundException($"NotificationRule {id} not found");
 
         existing.IsEnabled = enabled;
-        // Enabling a System policy (re-)stamps its activation watermark so event sources never back-alert
+        // Enabling a System policy (re-)stamps its activation watermark so event sources never
+        // back-alert
         // history; the evaluator prunes any leftover state for a disabled policy on its next pass.
         if (enabled && existing.Kind == NotificationRuleKind.System)
             existing.ActivatedAt = DateTime.UtcNow;
@@ -97,8 +99,10 @@ public class NotificationRuleStore : INotificationRuleStore
             .FirstOrDefaultAsync(r => r.Id == id, ct)
             ?? throw new KeyNotFoundException($"NotificationRule {id} not found");
 
-        // Capture the system-relevant "before" values so we can drop transient policy state when a change
-        // invalidates it (ADR 0008 — a changed source/params/filter/scope/duration resets the state machine).
+        // Capture the system-relevant "before" values so we can drop transient policy state when a
+        // change
+        // invalidates it (ADR 0008 — a changed source/params/filter/scope/duration resets the state
+        // machine).
         var systemStateInvalidated = existing.Kind == NotificationRuleKind.System && (
             existing.SystemSourceId != draft.SystemSourceId
             || existing.SourceParametersJson != draft.SourceParametersJson
@@ -117,7 +121,8 @@ public class NotificationRuleStore : INotificationRuleStore
         existing.DedupKeyTemplate = draft.DedupKeyTemplate;
         existing.MinOccurrences = draft.MinOccurrences;
         existing.OccurrenceWindowMinutes = draft.OccurrenceWindowMinutes;
-        // System-policy fields (Kind itself is immutable after create — a custom rule never becomes a system
+        // System-policy fields (Kind itself is immutable after create — a custom rule never becomes
+        // a system
         // policy — so it is deliberately not copied here).
         existing.SystemSourceId = draft.SystemSourceId;
         existing.SystemPresetId = draft.SystemPresetId;
@@ -147,10 +152,11 @@ public class NotificationRuleStore : INotificationRuleStore
             else
             {
                 var newId = dr.Id == Guid.Empty ? Guid.NewGuid() : dr.Id;
-                // Add via the DbSet (NOT the navigation): a new route carries a client-set Guid, and
-                // Guid PKs are ValueGeneratedOnAdd by EF convention — added through the tracked
-                // parent's collection EF would infer "already exists" → Modified → an UPDATE that
-                // affects 0 rows. Explicit DbSet.Add pins the Added state.
+                // Add via the DbSet, not the navigation: a new route carries a client-set Guid, and
+                // Guid PKs are ValueGeneratedOnAdd by EF convention. Added through the tracked
+                // parent's collection, EF would infer it already exists, mark it Modified, and
+                // issue
+                // an UPDATE that affects 0 rows. Explicit DbSet.Add pins the Added state.
                 _db.NotificationRoutes.Add(new NotificationRoute
                 {
                     Id = newId,
@@ -168,7 +174,8 @@ public class NotificationRuleStore : INotificationRuleStore
         foreach (var ex in existingList.Where(r => !keep.Contains(r.Id)))
             _db.NotificationRoutes.Remove(ex);
 
-        // Targets carry fresh ids each time (no preserved state), so the cheap full replace is safe.
+        // Targets carry fresh ids each time (no preserved state), so the cheap full replace is
+        // safe.
         _db.NotificationRuleTargets.RemoveRange(existing.Targets);
         _db.NotificationRuleTargets.AddRange(NormalizeTargets(draft, existing.Id));
 
@@ -227,7 +234,8 @@ public class NotificationRuleStore : INotificationRuleStore
         // state has already been wiped.
         await RunInTransactionAsync(async token =>
         {
-            // System policies also carry per-instance evaluator state (no rule FK either) — clear it so a
+            // System policies also carry per-instance evaluator state (no rule FK either) — clear
+            // it so a
             // deleted policy leaves no orphan match/episode rows behind.
             if (existing.Kind == NotificationRuleKind.System)
                 await _db.SystemAlertPolicyStates.Where(s => s.NotificationRuleId == id).ExecuteDeleteAsync(token);
@@ -269,7 +277,8 @@ public class NotificationRuleStore : INotificationRuleStore
         }).ToList();
     }
 
-    // Set-equality of scope targets by (kind, id), ignoring row ids — a changed scope target set invalidates
+    // Set-equality of scope targets by (kind, id), ignoring row ids — a changed scope target set
+    // invalidates
     // a system policy's transient state (its instances may differ).
     private static bool TargetsEqual(ICollection<NotificationRuleTarget>? a, ICollection<NotificationRuleTarget>? b)
     {

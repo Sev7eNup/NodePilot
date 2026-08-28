@@ -14,7 +14,7 @@ namespace NodePilot.Core.Interfaces;
 public interface ISecretProtector
 {
     /// <summary>
-    /// Stable identifier exposed in audit events, for example "Dpapi" or "AesGcm". Used to
+    /// Stable identifier exposed in audit events, for example "Dpapi" or "AesGcm". Enables
     /// filter migration sweeps and to show operators which provider owns each row.
     /// </summary>
     string ProviderName { get; }

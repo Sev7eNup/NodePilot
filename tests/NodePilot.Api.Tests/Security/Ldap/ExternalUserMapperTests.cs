@@ -36,9 +36,9 @@ public sealed class ExternalUserMapperTests : IDisposable
     }
 
     /// <summary>
-    /// Seeds an existing admin user so the empty-DB bootstrap-gate (PR10) doesn't refuse
-    /// non-Admin JIT-provisioning. Tests that exercise the JIT happy path must call this
-    /// or set themselves up to resolve to <see cref="UserRole.Admin"/>.
+    /// Seeds an existing admin user so the empty-DB bootstrap gate does not refuse non-Admin
+    /// JIT provisioning. Tests exercising the JIT happy path must call this or resolve to
+    /// <see cref="UserRole.Admin"/>.
     /// </summary>
     private async Task SeedExistingAdminAsync()
     {
@@ -854,7 +854,7 @@ public sealed class ExternalUserMapperTests : IDisposable
     public async Task UsernameCollisionWithLocalUser_Refuses()
     {
         // Pre-existing local user with the same username (a local "alice@firma.de" — unusual
-        // but possible). Identities are never merged → must refuse.
+        // but possible). Identities are never merged, so the mapper must refuse.
         var local = new User
         {
             Id = Guid.NewGuid(),

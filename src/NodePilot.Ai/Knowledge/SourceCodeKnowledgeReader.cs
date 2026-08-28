@@ -14,7 +14,8 @@ public interface ISourceCodeKnowledgeReader
 
 /// <summary>
 /// Reads the git-tracked source snapshot from <see cref="AiKnowledgeOptions.SourceCodeRootPath"/>
-/// (default <c>{AppBaseDir}/knowledge/source</c>, shipped by Build-Artifact.ps1). Four safety layers
+/// (default <c>{AppBaseDir}/knowledge/source</c>, shipped by Build-Artifact.ps1). Four safety
+/// layers
 /// apply to both search and read, independent of the root: a traversal guard, a secret-file deny
 /// list (evaluated first), an extension allowlist (<c>.json</c> is excluded to keep appsettings
 /// out), and size and result caps. Every call re-reads the tree, so code changes are picked up.

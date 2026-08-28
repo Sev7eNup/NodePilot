@@ -4,10 +4,11 @@ import { ViewMenu } from '../../../components/designer/header/ViewMenu';
 import { useDesignStore } from '../../../stores/designStore';
 
 /**
- * The "Display" canvas-settings popover (ViewMenu → CanvasSettingsPanel). It's a settings
- * DIALOG, not a menu: labeled rows with a switch / segmented control / stepper each. The body
- * only mounts while the dialog is open, so every test clicks the trigger first. SPA renders
- * ENGLISH under the test i18n. Store state is the source of truth for control behaviour.
+ * The "Display" canvas-settings popover that ViewMenu renders through CanvasSettingsPanel.
+ * It is a settings dialog, not a menu: each labelled row holds a switch, a segmented control
+ * or a stepper. The body mounts only while the dialog is open, so every test clicks the
+ * trigger first. The test i18n renders English, and store state is the source of truth for
+ * control behaviour.
  */
 
 beforeEach(() => {
@@ -59,7 +60,7 @@ describe('CanvasSettings — dialog open/close + focus', () => {
     expect(screen.getByRole('heading', { name: 'Canvas' })).toBeInTheDocument();
     expect(screen.getByText('Animation')).toBeInTheDocument();
     expect(screen.getByText('Routing')).toBeInTheDocument();
-    // Explanations no longer consume permanent vertical space, but remain available to AT.
+    // Explanations are not rendered as visible text, but stay available to assistive tech.
     expect(screen.queryByText('Flowing pulse dots along the edges.')).not.toBeInTheDocument();
     expect(screen.getByTestId('canvas-setting-edge-animation'))
       .toHaveAttribute('aria-description', 'Flowing pulse dots along the edges.');
@@ -113,7 +114,7 @@ describe('CanvasSettings — controls affect design store', () => {
 
   it('clickingActiveSegment_isNoOp_notAccidentalToggle', () => {
     open();
-    // 'Classic' is already active — clicking it must keep the value, never flip to 'card'.
+    // 'Classic' is already active, so clicking it keeps the value instead of flipping to 'card'.
     fireEvent.click(screen.getByRole('radio', { name: 'Classic' }));
     expect(useDesignStore.getState().nodeStyle).toBe('classic');
   });
@@ -147,7 +148,7 @@ describe('CanvasSettings — classic-only rows', () => {
   it('cardMode_hidesClassicOnlyRows', () => {
     useDesignStore.setState({ nodeStyle: 'card' });
     open();
-    // Node-style row itself stays (it's how you switch back); classic-only rows disappear.
+    // The node-style row stays so the style can be switched back; classic-only rows disappear.
     expect(screen.getByText('Style')).toBeInTheDocument();
     expect(screen.queryByText('Size')).not.toBeInTheDocument();
     expect(screen.queryByText('Premium effects')).not.toBeInTheDocument();

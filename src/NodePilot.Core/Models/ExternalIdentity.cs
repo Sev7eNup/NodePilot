@@ -12,7 +12,7 @@ public sealed class ExternalIdentity
 
     /// <summary>
     /// Transitional authority for LDAP objectGUID values. A successful LDAP login replaces
-    /// this key with the canonical AD SID; it is never used to merge users.
+/// this key with the canonical AD SID; it must never merge users.
     /// </summary>
     public const string LegacyLdapAuthority = "urn:nodepilot:identity:legacy-ldap-object-guid";
 

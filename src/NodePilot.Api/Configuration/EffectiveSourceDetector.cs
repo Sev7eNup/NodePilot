@@ -6,15 +6,14 @@ namespace NodePilot.Api.Configuration;
 
 /// <summary>
 /// Identifies which provider in the configuration chain currently supplies the value
-/// for a given key — used by the Admin Settings API so the UI can render
+/// for a given key. The Admin Settings API uses it so the UI can render
 /// env-overridden fields as read-only.
 ///
-/// <para><b>Deliberate imprecision:</b> Env/CLI providers don't carry a per-key source
-/// map. We classify by walking the providers in reverse order (last-wins, same as
-/// configuration lookup) and report the first provider's class. Edge case: two JSON
-/// providers with the same value will report the latest-source even though the
-/// earlier one would still match — the UI only cares about read-only-ness, so the
-/// approximation is fine.</para>
+/// <para>The result is an approximation: env and CLI providers carry no per-key source
+/// map, so classification walks the providers in reverse order (last wins, matching
+/// configuration lookup) and reports the class of the first provider that defines the
+/// key. When several providers define it, only the last one is reported. The UI only
+/// needs to know whether the field is read-only, so that is accurate enough.</para>
 ///
 /// <para>Returned source tokens (lowercase, stable for API contract):</para>
 /// <list type="bullet">
@@ -22,7 +21,7 @@ namespace NodePilot.Api.Configuration;
 ///   <item><c>"appsettings"</c> — base <c>appsettings.json</c></item>
 ///   <item><c>"production"</c> — <c>appsettings.{Env}.json</c></item>
 ///   <item><c>"runtime"</c> — the UI-managed override file (<c>appsettings.runtime.json</c>)</item>
-///   <item><c>"json"</c> — some other JSON source we didn't recognise</item>
+///   <item><c>"json"</c> — any other JSON source</item>
 ///   <item><c>"env"</c> — Environment-variable provider</item>
 ///   <item><c>"cli"</c> — Command-line argument provider</item>
 ///   <item><c>"user-secrets"</c> — User secrets provider</item>
@@ -59,13 +58,14 @@ public static class EffectiveSourceDetector
     }
 
     /// <summary>
-    /// Source token of the first provider <b>other than</b> the runtime-overrides file that supplies
-    /// any of <paramref name="keys"/> — or <c>null</c> when only the runtime file (or nothing) does.
+    /// Source token of the first provider other than the runtime-overrides file that supplies any
+    /// of <paramref name="keys"/>, or <c>null</c> when only the runtime file (or nothing) does.
     ///
-    /// <para>Needed wherever "can the Settings UI make this disappear?" is the question.
-    /// <see cref="Detect"/> can't answer it: the runtime file sits above the base config, so once a
-    /// value has been saved through the UI it reports <c>runtime</c> even though the underlying
-    /// <c>appsettings.json</c> entry would resurface the moment the runtime entry is dropped.</para>
+    /// <para>Answers whether removing the runtime entry would make the value disappear.
+    /// <see cref="Detect"/> cannot: the runtime file sits above the base config, so once a value
+    /// has
+    /// been saved through the UI it reports <c>runtime</c> even though the underlying
+    /// <c>appsettings.json</c> entry would resurface once the runtime entry is dropped.</para>
     /// </summary>
     public static string? DetectNonRuntimeSource(IConfigurationRoot root, IEnumerable<string> keys)
     {

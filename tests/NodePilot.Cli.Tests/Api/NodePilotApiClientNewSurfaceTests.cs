@@ -397,7 +397,7 @@ public sealed class NodePilotApiClientNewSurfaceTests : IDisposable
         _server.Given(Request.Create().WithPath($"/api/workflows/{wf}/move-folder").UsingPost())
                .RespondWith(Response.Create().WithStatusCode(204));
         await _client.MoveWorkflowToFolderAsync(wf, new MoveWorkflowToFolderRequest(target), CancellationToken.None);
-        // Reaches here without throwing → success.
+        // Reaching here without throwing means success.
     }
 
     // ---- Observability ------------------------------------------------------
@@ -568,8 +568,8 @@ public sealed class NodePilotApiClientNewSurfaceTests : IDisposable
         graph.Running.Should().ContainSingle().Which.ExecutionId.Should().Be(exec);
         graph.Recent.Should().ContainSingle().Which.Status.Should().Be("Succeeded");
         graph.Recent[0].ParentExecutionId.Should().Be(exec);
-        // Action rights ride per node now, not once per snapshot: the child is runnable but
-        // not editable, which a single snapshot-wide flag could not express.
+        // Action rights are per node, not one flag for the whole snapshot: the child is
+        // runnable but not editable, which a shared flag could not express.
         graph.Nodes[0].CanRun.Should().BeTrue();
         graph.Nodes[0].CanEdit.Should().BeTrue();
         graph.Nodes[1].CanRun.Should().BeTrue();

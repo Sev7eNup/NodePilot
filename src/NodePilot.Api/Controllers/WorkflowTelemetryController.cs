@@ -32,7 +32,8 @@ public class WorkflowTelemetryController : ControllerBase
         _authz = authz;
     }
 
-    /// <summary>Returns recent execution outcomes per step for sparkline display in the designer.</summary>
+    /// <summary>Returns recent execution outcomes per step for sparkline display in the
+    /// designer.</summary>
     [HttpGet("{workflowId:guid}/step-health")]
     public async Task<ActionResult<Dictionary<string, List<StepHealthEntry>>>> GetStepHealth(
         Guid workflowId,

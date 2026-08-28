@@ -70,7 +70,8 @@ async function pointOnEdge(page: Page): Promise<{ x: number; y: number }> {
 async function selectEdge(page: Page) {
   const heading = page.getByRole('heading', { name: /^connection$|^verbindung$/i });
   await page.waitForTimeout(500); // let the load-time fitView animation settle before measuring the point
-  // The point is viewport-relative; if fitView is still animating the click can miss. Re-measure + retry.
+  // The point is viewport-relative; if fitView is still animating the click can miss. Re-measure +
+  // retry.
   for (let i = 0; i < 8; i++) {
     const { x, y } = await pointOnEdge(page);
     await page.mouse.click(x, y);

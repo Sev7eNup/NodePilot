@@ -4,12 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StepTestPanel } from '../../../components/designer/properties/StepTestPanel';
 
 /**
- * Pin:
- * - All four mode tabs render and can be switched
- * - "Run test" sends configOverride and selected mocks
- * - "Pick a run" disables the Run button until a run is chosen
- * - Manual mocks editor parses key=value lines, ignores #-comments and blanks
- * - Last-run mode forwards the context's variables (minus globals) as mocks
+ * Covers StepTestPanel: rendering and switching all four mode tabs, "Run test" sending the
+ * configOverride and the selected mocks, "Pick a run" keeping the Run button disabled until a
+ * run is chosen, the manual mocks editor parsing key=value lines while skipping comments and
+ * blank lines, and last-run mode forwarding the context variables without globals.
  */
 
 const fetchMock = vi.fn();
@@ -62,8 +60,8 @@ describe('StepTestPanel', () => {
         canRun={true}
       />,
     );
-    // The Run button echoes the active mode in its label, so /Empty/ would also match it.
-    // Anchor on "^…$" so we hit the mode-pill exactly.
+    // The Run button repeats the active mode in its label, so a loose /Empty/ would match it
+    // too. The anchored patterns below match the mode pill exactly.
     expect(screen.getByRole('button', { name: /^Empty$/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Last run$/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Pick a run$/ })).toBeInTheDocument();
@@ -156,7 +154,7 @@ describe('StepTestPanel', () => {
           ],
         }));
       }
-      // /test response
+      // Response for the /test call.
       return Promise.resolve(jsonResponse({
         success: true, output: 'OK', errorOutput: null,
         outputParameters: {}, durationMs: 5, errorMessage: null,
@@ -174,8 +172,8 @@ describe('StepTestPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^Last run$/ }));
 
-    // Wait for the context fetch + render so the test below sees the latest `context` state.
-    // The variable list shows the keys, so block until "a.output" appears in the DOM.
+    // Wait for the context fetch and render so the assertions see the latest `context` state.
+    // The variable list shows the keys, so wait until "a.output" appears in the DOM.
     await screen.findByText(/a\.output/);
 
     fireEvent.click(screen.getByRole('button', { name: /Run test/i }));
@@ -191,12 +189,12 @@ describe('StepTestPanel', () => {
       (c) => typeof c[0] === 'string' && c[0].endsWith('/test'),
     )!;
     const body = JSON.parse((testCall[1] as RequestInit).body as string);
-    // a.output and a.success have non-null values → forwarded.
+    // a.output and a.success have non-null values, so they are forwarded.
     expect(body.mockVariables).toEqual({
       'a.output': '7',
       'a.success': 'true',
     });
-    // globals.* must NOT be passed; b.output is null and must be excluded too.
+    // globals.* is never passed, and b.output is null so it is excluded too.
     expect(body.mockVariables['globals.ENV']).toBeUndefined();
     expect(body.mockVariables['b.output']).toBeUndefined();
   });
@@ -204,7 +202,7 @@ describe('StepTestPanel', () => {
   it('Pick-a-run mode disables Run until a run is chosen', async () => {
     fetchMock.mockImplementation((url: string) => {
       if (url.includes('/test-context/runs')) {
-        // Empty list so the auto-pick effect doesn't enable the button.
+        // An empty list keeps the auto-pick effect from enabling the button.
         return Promise.resolve(jsonResponse([]));
       }
       return Promise.resolve(jsonResponse({}));
@@ -221,7 +219,7 @@ describe('StepTestPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^Pick a run$/ }));
 
-    // With an empty runs list, the button must be disabled (no run selected).
+    // With an empty runs list no run is selected, so the button stays disabled.
     const runButton = screen.getByRole('button', { name: /Run test/i });
     expect(runButton).toBeDisabled();
   });

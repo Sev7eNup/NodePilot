@@ -21,9 +21,10 @@ namespace NodePilot.Api.Controllers;
 
 /// <summary>
 /// External trigger surface: <c>POST /api/trigger/{workflowNameOrId}</c>. Anonymous transport,
-/// gated by an <c>X-Api-Key</c> header that is matched against a configured, workflow-scoped
-/// external-trigger key in constant time. Idempotency-Key handling lives here too — internal callers (UI, scheduler,
-/// CLI) hit <see cref="ExecutionsController.Execute"/> instead, which is owner-tagged via JWT.
+/// gated by an <c>X-Api-Key</c> header matched against a configured, workflow-scoped
+/// external-trigger key in constant time. Idempotency-Key handling lives here too. Internal
+/// callers (UI, scheduler, CLI) hit <see cref="ExecutionsController.Execute"/> instead, which
+/// is owner-tagged via JWT.
 /// </summary>
 [ApiController]
 public class ExternalTriggerController : ControllerBase
@@ -53,20 +54,19 @@ public class ExternalTriggerController : ControllerBase
     // value in appsettings.json does not silently become a weak secret.
     internal const int MinExternalApiKeyBytes = 32;
 
-    // M-32: caps on the anonymous-reachable trigger payload. Every parameter is copied into the
+    // Caps on the anonymous-reachable trigger payload. Every parameter is copied into the
     // execution's variable dictionary and resolved into each step's config, so an unbounded
-    // dictionary is engine work, not just bytes. The ceilings are far above any realistic runbook
-    // (a webhook-style fan-in tops out at a few dozen fields) and exist to bound the worst case.
+    // dictionary means unbounded engine work, not just unbounded bytes.
     internal const int MaxTriggerBodyBytes = 256 * 1024;
     internal const int MaxTriggerParameterCount = 200;
     internal const int MaxTriggerParameterKeyLength = 200;
     internal const int MaxTriggerParameterValueLength = 8 * 1024;
 
-    // L-7 (security audit 2026-05-15): the external-trigger surface is API-key-authenticated and
-    // therefore carries no role. ExecutionsController redacts ErrorMessage / ReturnData /
-    // InputParametersJson for every caller below Admin/Operator; the API-key holder must get the
-    // same treatment, otherwise step-stdout tokens or webhook-body secrets leak through the
-    // trigger response. Instance (not static) so it can reach the injected OutputRedactor.
+    // The external-trigger surface is API-key-authenticated and carries no role, so it must
+    // apply the same redaction ExecutionsController applies for callers below Admin/Operator
+    // (ErrorMessage, ReturnData, InputParametersJson) — otherwise step output or webhook-body
+    // secrets leak through the trigger response. Instance-scoped so it can reach the injected
+    // OutputRedactor.
     private ExecutionResponse ToResponse(WorkflowExecution execution) => new(
         execution.Id,
         execution.WorkflowId,
@@ -124,9 +124,8 @@ public class ExternalTriggerController : ControllerBase
 
     /// <summary>
     /// Produces the database key for one caller-supplied Idempotency-Key. The authenticated key
-    /// principal is part of the digest domain, so two integrations cannot replay or reserve one
-    /// another's token even when they target the same workflow. The raw header and key principal
-    /// are never persisted. The fixed-size v1 value fits the existing 200-character column.
+    /// principal is part of the digest domain, so two integrations cannot replay or reserve each
+    /// other's token even when they target the same workflow. Only the digest is persisted.
     /// </summary>
     internal static string BuildIdempotencyStorageKey(string keyPrincipalId, string clientKey)
     {
@@ -172,10 +171,9 @@ public class ExternalTriggerController : ControllerBase
     }
 
     /// <summary>
-    /// The external API is one transport for a workflow's manual entry point; it is not an
-    /// instance-wide bypass around the workflow definition. Parse the authoritative definition
-    /// instead of trusting the denormalized TriggerTypesJson column so a stale or malformed row
-    /// fails closed. Disabled manual-trigger nodes are omitted from TriggerDescriptors.
+    /// The external API is one transport for a workflow's manual entry point, not a bypass around
+    /// the workflow definition. Parses the authoritative definition instead of trusting the
+    /// denormalized TriggerTypesJson column, so a stale or malformed row fails closed.
     /// </summary>
     private static bool AllowsExternalTrigger(Workflow workflow)
         => WorkflowDefinitionDocument.TryParse(workflow.DefinitionJson, out var definition)
@@ -183,22 +181,20 @@ public class ExternalTriggerController : ControllerBase
            && definition.TriggerDescriptors.Any(trigger => trigger.IsManual);
 
     /// <summary>
-    /// External trigger endpoint — start a workflow by name or ID with parameters.
-    /// Requires an API key via X-Api-Key header. Preferred configuration uses SHA-256 hashes
-    /// under ExternalTrigger:Keys:&lt;integration&gt; with a GUID-only AllowedWorkflowIds scope.
-    /// The legacy ExternalTrigger:ApiKey is inert unless its own AllowedWorkflowIds is set.
-    /// Example: POST /api/trigger/Deploy%20App {"parameters": {"version": "2.1.0"}}
+    /// External trigger endpoint — starts a workflow by name or ID with parameters. Requires an
+    /// API key via the X-Api-Key header. Preferred configuration uses SHA-256 hashes under
+    /// ExternalTrigger:Keys:&lt;integration&gt; with a GUID-only AllowedWorkflowIds scope; the
+    /// legacy ExternalTrigger:ApiKey is inert unless its own AllowedWorkflowIds is set.
     /// </summary>
     [HttpPost("/api/trigger/{workflowNameOrId}")]
     [AllowAnonymous]
-    // H-1: without this policy, an attacker who discovers the API key (or a legitimate
-    // integration with a bug) can fire workflows at unlimited RPS — every trigger spawns
-    // engine/DB work. The "trigger" policy (30/min per IP) is defined in RateLimitingSetup.cs.
+    // Without this policy, an attacker who discovers the API key (or a legitimate integration
+    // with a bug) could fire workflows at an unlimited rate — every trigger spawns engine/DB
+    // work. The "trigger" policy (30/min per IP) is defined in RateLimitingSetup.cs.
     [EnableRateLimiting("trigger")]
-    // M-32: the body is model-bound in full BEFORE the X-Api-Key comparison below, so an
-    // unauthenticated caller decides how much the server allocates per attempt. The rate limiter
-    // bounds requests per minute, never bytes per request, and without an endpoint limit this
-    // inherits Kestrel's 30 MiB default.
+    // The body is model-bound in full before the X-Api-Key check below, so an unauthenticated
+    // caller controls how much the server allocates per attempt. The rate limiter bounds
+    // requests per minute, not bytes per request, so this endpoint needs its own size limit.
     [RequestSizeLimit(MaxTriggerBodyBytes)]
     public async Task<ActionResult<ExecutionResponse>> ExternalTrigger(
         string workflowNameOrId,
@@ -336,7 +332,7 @@ public class ExternalTriggerController : ControllerBase
                 {
                     // A retried attempt must not inherit the previous attempt's staged
                     // execution + key rows, which would insert two of each on commit.
-                    // Only reads happened before this point, so nothing else is lost.
+                    // Only reads precede this reset, so no other pending changes are lost.
                     _db.ChangeTracker.Clear();
 
                     await using var tx = await _db.Database.BeginTransactionAsync(ct);

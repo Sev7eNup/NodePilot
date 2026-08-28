@@ -14,7 +14,8 @@ namespace NodePilot.Api.Services.Backup;
 public static class BackupCanonicalJson
 {
     /// <summary>
-    /// Canonical UTF-8 bytes of <paramref name="node"/>, with the top-level <paramref name="excludeKey"/>
+    /// Canonical UTF-8 bytes of <paramref name="node"/>, with the top-level <paramref
+    /// name="excludeKey"/>
     /// (the <c>mac</c> field itself) omitted so the MAC can be computed over everything-but-itself.
     /// </summary>
     public static byte[] Canonicalize(JsonNode? node, string? excludeKey = null)

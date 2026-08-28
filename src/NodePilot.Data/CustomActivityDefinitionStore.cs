@@ -5,12 +5,12 @@ using NodePilot.Core.Models;
 namespace NodePilot.Data;
 
 /// <summary>
-/// Default <see cref="ICustomActivityDefinitionStore"/>. Soft-delete semantics: tombstoned rows are
-/// invisible to every read but retained so old executions stay reproducible. Key-uniqueness-among-
-/// live and optimistic concurrency are enforced here (the latter via a regenerated
-/// <see cref="CustomActivityDefinition.ConcurrencyToken"/>, a provider-agnostic stand-in for a SQL
-/// rowversion). Every update snapshots the previous state into the version table, mirroring
-/// <see cref="WorkflowVersion"/>.
+/// Default <see cref="ICustomActivityDefinitionStore"/>. Soft-delete: tombstoned rows are
+/// invisible to every read but retained so old executions stay reproducible. Key uniqueness
+/// among live rows and optimistic concurrency (via a regenerated
+/// <see cref="CustomActivityDefinition.ConcurrencyToken"/>, a provider-agnostic stand-in for a
+/// SQL rowversion) are enforced here. Every update snapshots the previous state into the
+/// version table, mirroring <see cref="WorkflowVersion"/>.
 /// </summary>
 public sealed class CustomActivityDefinitionStore(NodePilotDbContext db) : ICustomActivityDefinitionStore
 {
@@ -138,7 +138,7 @@ public sealed class CustomActivityDefinitionStore(NodePilotDbContext db) : ICust
         await db.CustomActivityDefinitions.FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted, ct)
             ?? throw new KeyNotFoundException($"Custom activity {id} not found.");
 
-    /// <summary>Appends a version row capturing the live row's CURRENT state under its current version number.</summary>
+    /// <summary>Snapshots the live row's current state into the version table.</summary>
     private void SnapshotCurrent(CustomActivityDefinition def) =>
         db.CustomActivityDefinitionVersions.Add(new CustomActivityDefinitionVersion
         {
@@ -164,7 +164,8 @@ public sealed class CustomActivityDefinitionStore(NodePilotDbContext db) : ICust
             ChangeNote = def.ChangeNote,
         });
 
-    /// <summary>Copies editable fields from the input onto the entity. Never touches the immutable Key.</summary>
+    /// <summary>Copies editable fields from the input onto the entity. Never touches the immutable
+    /// Key.</summary>
     private static void ApplyInput(CustomActivityDefinition def, CustomActivityDefinitionInput input)
     {
         def.Name = input.Name;

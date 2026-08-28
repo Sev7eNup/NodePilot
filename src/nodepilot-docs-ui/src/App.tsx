@@ -20,14 +20,14 @@ export default function App() {
   const home = availablePages[0]?.path ?? FALLBACK_HOME
   const { lang, current } = parseLocation(location.pathname)
 
-  // Language-less URL → send it to the detected language, preserving the page.
+  // A URL without a language prefix redirects to the detected language, keeping the page.
   useEffect(() => {
     if (lang) return
     navigate(`/${detectLang()}/${current || home}`, { replace: true })
   }, [lang, current, home, navigate])
 
-  // The URL is authoritative for language: mirror it into i18next, remember the choice
-  // for the next visit, and keep <html lang> honest for screen readers and search engines.
+  // The URL is authoritative for the language: mirror it into i18next, remember the choice
+  // for the next visit, and set <html lang> for screen readers and search engines.
   useEffect(() => {
     if (!lang) return
     if (i18n.language !== lang) void i18n.changeLanguage(lang)
@@ -35,14 +35,14 @@ export default function App() {
     try {
       window.localStorage?.setItem(LANG_STORAGE_KEY, lang)
     } catch {
-      // Private mode / storage disabled — the URL still carries the language.
+      // Private mode or disabled storage; the language stays in the URL.
     }
   }, [lang, i18n])
 
   // Close mobile drawer on navigation.
   useEffect(() => setMenuOpen(false), [location.pathname])
 
-  // Global Ctrl/Cmd+K → search.
+  // Global Ctrl/Cmd+K toggles the search modal.
   const openSearch = useCallback(() => setSearchOpen(true), [])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -55,7 +55,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // Redirecting — rendering the shell here would flash a nav in the wrong language.
+  // While redirecting, rendering the shell would flash the navigation in the wrong language.
   if (!lang) return null
 
   const page = current || home
@@ -70,7 +70,7 @@ export default function App() {
         onOpenSearch={openSearch}
       />
 
-      {/* Drawer backdrop — below the rail (z-40), above the sticky TopBar (z-20). */}
+      {/* Drawer backdrop: below the rail (z-40), above the sticky TopBar (z-20). */}
       {menuOpen && (
         <button
           type="button"

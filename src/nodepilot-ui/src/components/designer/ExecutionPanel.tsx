@@ -58,10 +58,9 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<'live' | 'history' | 'output' | 'watch'>('live');
 
-  // When the user just started a simulation, they should see the result right away —
-  // not miss it behind a collapsed panel or the History tab. We expand the panel and switch to
-  // the Live tab as soon as `simulation` becomes non-null. useEffect depends on `simulation`
-  // so subsequent re-clicks reopen the panel too.
+  // Expand the panel and switch to the Live tab as soon as a simulation starts, so the
+  // result is not hidden behind a collapsed panel or the History tab. Depends on
+  // `simulation` so repeat runs reopen the panel too.
   useEffect(() => {
     if (simulation) {
       setIsCollapsed(false);
@@ -91,12 +90,9 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
     if (historyScope === 'all') setHistoryScope('current');
   }, [expertMode, activeTab, historyScope]);
 
-  // The History tab shows only terminal runs. Active runs are rendered via the Live
-  // tab through SignalR instead — this avoids duplication and makes the behaviour clearer
-  // ("Live = what's running", "History = what happened"). `terminalOnly=true` filters
-  // server-side. No refetchInterval: useSignalR invalidates this cache via
-  // scheduleQueryInvalidate(workflowId) on every ExecutionStatusChanged event — exactly when
-  // new terminal runs can appear in the list.
+  // History shows only terminal runs; active runs render via the Live tab through
+  // SignalR instead. No refetchInterval needed: useSignalR invalidates this query on
+  // every ExecutionStatusChanged event, exactly when new terminal runs can appear.
   const { data: executions } = useQuery({
     queryKey: ['workflow-executions', workflowId, historyScope, 'terminalOnly'],
     queryFn: () => api.get<WorkflowExecution[]>(

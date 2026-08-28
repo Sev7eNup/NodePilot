@@ -24,7 +24,8 @@ namespace NodePilot.Engine.Tests.Scorch;
 public class ScorchMappingContractTests
 {
     /// <summary>
-    /// Union of every property name the mapper probes, so one bag exercises all builders. Values are
+    /// Union of every property name the mapper probes, so one bag exercises all builders. Values
+    /// are
     /// deliberately plausible: a builder that reads a key must find something usable in it.
     /// </summary>
     private static Dictionary<string, string> KitchenSinkProps() => new(StringComparer.OrdinalIgnoreCase)
@@ -146,7 +147,8 @@ public class ScorchMappingContractTests
     }
 
     /// <summary>
-    /// The degradation itself: with nothing to read, no supported type may produce a runnable-looking
+    /// The degradation itself: with nothing to read, no supported type may produce a
+    /// runnable-looking
     /// node. Every one of them has to end up as a disabled placeholder that says what was lost.
     /// </summary>
     [Theory]

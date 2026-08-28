@@ -33,8 +33,8 @@ describe('LoginPage', () => {
       role: null,
       isAuthenticated: false,
     });
-    // Default: methods endpoint returns local-only so the existing form-only tests stay
-    // unchanged. Windows-tests below override this with a focused mock.
+    // Default: the methods endpoint reports local-only, which is what the form-only tests need.
+    // The Windows tests below override this with their own mock.
     vi.spyOn(api, 'get').mockResolvedValue({
       local: true,
       ldap: false,
@@ -91,8 +91,8 @@ describe('LoginPage', () => {
     const user = userEvent.setup();
     const loginMock = vi
       .fn()
-      // The page now branches on ApiError.code, not on prose in the message - reject with the
-      // shape the real api client throws.
+      // The page branches on ApiError.code, not on the message text, so reject with the shape
+      // the real api client throws.
       .mockRejectedValueOnce(new ApiError('Admin bootstrap required. (SETUP_TOKEN_REQUIRED)', 400, 'SETUP_TOKEN_REQUIRED'))
       .mockResolvedValueOnce(undefined);
     useAuthStore.setState({ login: loginMock });

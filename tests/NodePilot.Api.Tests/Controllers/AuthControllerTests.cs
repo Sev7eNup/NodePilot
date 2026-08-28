@@ -172,7 +172,7 @@ public sealed class AuthControllerTests : IDisposable
         // Assert
         var unauthorized = result.Result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
         // The SPA login page keys on this code to reveal its setup-token field — a plain
-        // wrong-password 401 must NOT carry it (see Login_WrongPassword_ReturnsUnauthorized).
+        // wrong-password 401 must not carry it (see Login_WrongPassword_ReturnsUnauthorized).
         unauthorized.Value!.ToString().Should().Contain("SETUP_TOKEN_REQUIRED");
         (await db.Users.AnyAsync()).Should().BeFalse("no user must be created without a valid setup token");
         audit.Calls.Should().ContainSingle(call =>
@@ -302,9 +302,9 @@ public sealed class AuthControllerTests : IDisposable
     [Fact]
     public async Task Login_BrowserCaller_NoOptInHeader_OmitsTokenFromBody()
     {
-        // Security-audit finding H-5 completion: a browser login (no X-Auth-Token-Response header) must receive
-        // identity only. The JWT reaches the browser solely via the httpOnly np_auth cookie,
-        // so a future XSS has no response body to read a portable bearer token out of.
+        // A browser login (no X-Auth-Token-Response header) must receive identity only. The
+        // JWT reaches the browser solely via the httpOnly np_auth cookie, so a future XSS
+        // has no response body to read a portable bearer token out of.
         var db = CreateContext();
         var config = CreateConfig();
         db.Users.Add(new User
@@ -471,7 +471,7 @@ public sealed class AuthControllerTests : IDisposable
                 }, "test")),
             },
         };
-        // Bearer-header caller (CLI/API) → the rotated token IS returned in the body.
+        // A Bearer-header caller (CLI/API) gets the rotated token back in the body.
         controller.Request.Headers.Authorization = "Bearer dummy.presented.token";
 
         var result = await controller.Refresh(CancellationToken.None);
@@ -527,7 +527,7 @@ public sealed class AuthControllerTests : IDisposable
     [Fact]
     public async Task Refresh_CookieAuthWithOptInHeader_StillOmitsToken()
     {
-        // Defence against an XSS trying to opt in: refresh deliberately does NOT honour the
+        // Defence against an XSS trying to opt in: refresh deliberately does not honour the
         // X-Auth-Token-Response header. Authentication is via the cookie (no Bearer header),
         // so the response stays identity-only even though the opt-in header is present.
         var db = CreateContext();
@@ -569,7 +569,7 @@ public sealed class AuthControllerTests : IDisposable
     {
         var db = CreateContext();
         var ghostId = Guid.NewGuid();
-        // no user row inserted â€” simulates a token from a now-deleted account
+        // No user row is inserted; this simulates a token from a now-deleted account.
 
         var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
         controller.ControllerContext = new ControllerContext
@@ -605,9 +605,9 @@ public sealed class AuthControllerTests : IDisposable
 
     /// <summary>
     /// Token rotation must leave a forensic trail. Without this audit row, a stolen JWT
-    /// being renewed every 11h would be invisible — the AuthTokenRevocations metric tracks
-    /// the count but not the actor. Distinct action code from LOGIN_SUCCESS so SIEM
-    /// dashboards that count active logins are not double-counted by 12h refresh cadence.
+    /// renewed repeatedly would be invisible: the AuthTokenRevocations metric tracks the
+    /// count but not the actor. This uses a distinct action code from LOGIN_SUCCESS so
+    /// SIEM dashboards that count active logins are not skewed by refresh cadence.
     /// </summary>
     [Fact]
     public async Task Refresh_EmitsTokenRefreshedAudit()

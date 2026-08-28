@@ -7,8 +7,8 @@ import {
   type SecretFieldMode,
 } from '../../../components/admin-settings/SecretField';
 
-// i18n is initialised globally in tests/setup — `t('adminSettings:…')` resolves to the
-// real DE translations, which is fine for these tests.
+// i18n is initialised globally in tests/setup, so `t('adminSettings:…')` resolves to the
+// real German translations. That is good enough for these tests.
 
 function renderField(initial: { mode: SecretFieldMode; hasPersistedValue: boolean; value?: string }) {
   const onModeChange = vi.fn();
@@ -30,7 +30,7 @@ function renderField(initial: { mode: SecretFieldMode; hasPersistedValue: boolea
 describe('SecretField', () => {
   it('keep mode with persisted value shows masked input + change/clear affordances', () => {
     renderField({ mode: 'keep', hasPersistedValue: true });
-    // The mask "********" is rendered as the input's value, so we look for it via role.
+    // The mask "********" is rendered as the input's value, so query it by display value.
     const masked = screen.getByDisplayValue('********');
     expect(masked).toBeDisabled();
     expect(screen.getByRole('button', { name: /neu setzen|set new/i })).toBeInTheDocument();
@@ -38,7 +38,7 @@ describe('SecretField', () => {
 
   it('keep mode without persisted value falls through to plain input (change mode)', () => {
     renderField({ mode: 'keep', hasPersistedValue: false });
-    // No "********" placeholder when there's nothing to keep — operator types directly.
+    // With no stored secret to keep there is no "********" placeholder; the user types directly.
     expect(screen.queryByDisplayValue('********')).not.toBeInTheDocument();
   });
 
@@ -53,7 +53,7 @@ describe('SecretField', () => {
     const input = screen.getByLabelText('Password') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'super-secret' } });
     expect(onValueChange).toHaveBeenCalledWith('super-secret');
-    // onModeChange should NOT fire when mode was already 'change'.
+    // onModeChange does not fire when the mode is already 'change'.
     expect(onModeChange).not.toHaveBeenCalled();
   });
 

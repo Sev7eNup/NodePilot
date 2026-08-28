@@ -60,7 +60,7 @@ function renderAll(sizing: Partial<{
   manualTuning: boolean; desiredManualTuning: boolean; usableMemoryBytes: number | null;
 }> = {}) {
   const manualTuning = sizing.manualTuning ?? true;
-  // The Performance section stores the DESIRED mode — that is what the checkbox shows, and it is
+  // The Performance section stores the desired mode — that is what the checkbox shows, and it is
   // `desiredManualTuning` in the sizing plan, not the mode the process booted in.
   const desiredManualTuning = sizing.desiredManualTuning ?? manualTuning;
   server.use(
@@ -98,7 +98,8 @@ describe('PerformanceSection', () => {
   it('shows the hot-reload hint only on the Threading card', async () => {
     renderAll();
     await waitFor(() => expect(screen.getByDisplayValue('5000')).toBeInTheDocument());
-    // Engine / ExecutionDispatch / Remote need a service restart to take effect → only Threading carries the hint.
+    // Engine, ExecutionDispatch, and Remote need a service restart to take effect;
+    // only Threading carries the hint.
     expect(screen.getAllByText(/Changes apply immediately/i).length).toBe(1);
   });
 
@@ -174,7 +175,8 @@ describe('PerformanceSection', () => {
     await waitFor(() => expect(
       screen.getAllByText(/Automatische Dimensionierung ist gewählt|Automatic sizing is selected/i).length,
     ).toBe(3));
-    // Still booted manual → the stored numbers are what the process runs on, so they stay editable.
+    // Still booted manual to the stored numbers are what the process runs on, so they stay
+    // editable.
     expect(screen.getByDisplayValue('256')).not.toBeDisabled();
   });
 

@@ -34,7 +34,7 @@ public interface ISubWorkflowGate
     Task WaitAsync(CancellationToken cancellationToken);
 
     /// <summary>
-    /// Releases one previously acquired slot. Every successful Wait must be paired with
+    /// Releases one acquired slot. Every successful Wait must be paired with
     /// exactly one Release.
     /// </summary>
     void Release();

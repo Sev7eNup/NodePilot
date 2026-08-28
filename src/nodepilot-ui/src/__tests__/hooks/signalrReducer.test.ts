@@ -154,9 +154,9 @@ describe('signalrReducer.classifyEntry', () => {
   const stepNames = new Map<string, string | null | undefined>([['step-1', 'My Step']]);
 
   it('classifies manual.* keys as trigger-input', () => {
-    // Engine only populates manual.* as a trigger-input namespace. Webhook payload lives
-    // under manual.webhookBody / manual.webhookHeader_X — the pseudo "webhook.*" /
-    // "trigger.*" namespaces never appear in the real variables dict.
+    // The engine exposes trigger inputs only under manual.*, including the webhook payload
+    // (manual.webhookBody, manual.webhookHeader_X). There is no webhook.* or trigger.*
+    // namespace in the variables dictionary.
     expect(classifyEntry('manual.x', 'v', stepNames).kind).toBe('trigger');
     expect(classifyEntry('manual.webhookBody', '{}', stepNames).kind).toBe('trigger');
   });
@@ -223,10 +223,9 @@ describe('signalrReducer.applyLiveEvents', () => {
   });
 
   it('StepCompleted writes .output and .error databus entries (live parity with engine vars-dict)', () => {
-    // Regression: before this fix, only .param.* was written to the databus — running
-    // workflows therefore showed a different view than paused ones (StepPaused dumps the
-    // full variables snapshot). During a run, the live preview and expression tester saw
-    // empty `{{s1.output}}` tooltips even though stdout was actually available.
+    // A running workflow must expose the same databus keys as a paused one, where StepPaused
+    // dumps the full variables snapshot. Without .output and .error entries the live preview
+    // and the expression tester show empty tooltips for `{{s1.output}}`.
     const prev: LiveExecutionsById = {
       e1: baseExec({ steps: [step({ status: 'Running' })] }),
     };
@@ -251,11 +250,9 @@ describe('signalrReducer.applyLiveEvents', () => {
   });
 
   it('buildDatabusFromHydratedSteps rebuilds entries from REST snapshot', async () => {
-    // Regression: after a browser refresh, exec.databus was always empty because
-    // hydrateStepsForExecution only merged step status/output. Param tooltips for terminal
-    // runs went blank even though the data is right there in the /steps endpoint. This
-    // helper must build the same keys from outputParametersJson + output/error that a
-    // live StepCompleted event would produce.
+    // After a browser refresh the databus is rebuilt from the /steps endpoint. The helper
+    // must derive the same keys from outputParametersJson plus output/error that a live
+    // StepCompleted event produces, so tooltips keep working for terminal runs.
     const { buildDatabusFromHydratedSteps } = await import('../../hooks/signalrReducer');
     const databus = buildDatabusFromHydratedSteps([
       {
@@ -276,22 +273,21 @@ describe('signalrReducer.applyLiveEvents', () => {
   });
 
   it('buildDatabusFromHydratedSteps tolerates malformed outputParametersJson', async () => {
-    // Hydration must never throw — a corrupted/legacy row blanking the whole live view
-    // would be worse than missing param entries for that row.
+    // Hydration must never throw: one unparsable row loses its param entries, but the rest
+    // of the live view still renders.
     const { buildDatabusFromHydratedSteps } = await import('../../hooks/signalrReducer');
     const databus = buildDatabusFromHydratedSteps([
       { stepId: 's1', output: 'ok', errorOutput: null, outputParametersJson: '{not json' },
     ]);
     expect(databus['s1.output'].value).toBe('ok');
-    // No s1.param.* entries — but the call still succeeded.
+    // No s1.param.* entries, but the call still succeeded.
     expect(Object.keys(databus).filter((k) => k.startsWith('s1.param.'))).toHaveLength(0);
   });
 
   it('StepCompleted with outputVariable mirrors entries under the alias head', () => {
-    // Engine BuildStepVariables exposes the same value under both {stepId}.output and
-    // {alias}.output. The live databus must match — otherwise a downstream node's
-    // `{{diskCheck.output}}` template lights up as "unresolved" in the preview overlay
-    // while the engine itself would happily substitute it.
+    // The engine's BuildStepVariables exposes the same value under {stepId}.output and
+    // {alias}.output. The live databus mirrors that, so a downstream `{{diskCheck.output}}`
+    // is not shown as unresolved in the preview overlay.
     const prev: LiveExecutionsById = {
       e1: baseExec({ steps: [step({ status: 'Running' })] }),
     };

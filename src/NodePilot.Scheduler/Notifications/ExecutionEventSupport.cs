@@ -104,7 +104,8 @@ internal static class ExecutionEventSupport
             Title: null,
             Summary: null,
             DeepLinkPath: $"/executions/{row.Id}",
-            // Only meaningful for Cancelled; null for Succeeded/Failed. Lets a rule filter cancelledBy == "user".
+            // Only meaningful for Cancelled; null for Succeeded/Failed. Lets a rule filter
+            // cancelledBy == "user".
             CancelledBy: eventType == NotificationEventType.ExecutionCancelled ? row.CancelledBy : null);
     }
 

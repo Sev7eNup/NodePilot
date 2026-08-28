@@ -25,7 +25,7 @@ namespace NodePilot.Api.Tests.Controllers;
 /// Round-trips the five settings sections the existing section tests never touch:
 /// AiKnowledge and the four hardening toggles (FileSystemOperation, SqlActivity,
 /// StartProgram, Webhook). Each asserts the documented default that applies when the
-/// override file has no entry — a missing key must read as *hardened*, not as false.
+/// override file has no entry — a missing key must read as hardened, not as false.
 /// </summary>
 public sealed class AdminSettingsRemainingSectionsTests : IDisposable
 {

@@ -7,7 +7,8 @@ using Xunit;
 namespace NodePilot.Engine.Tests.WorkflowDefinitions;
 
 /// <summary>
-/// Drives each structural-validation rule of <see cref="WorkflowDefinitionStructuralValidator"/> with
+/// Drives each structural-validation rule of <see cref="WorkflowDefinitionStructuralValidator"/>
+/// with
 /// a purpose-built malformed (or valid) definition and asserts the exact rule that fires.
 /// </summary>
 public class WorkflowDefinitionStructuralValidatorTests
@@ -127,7 +128,8 @@ public class WorkflowDefinitionStructuralValidatorTests
     [Fact]
     public void Validate_AnnotationNode_WithoutActivityType_IsValid()
     {
-        // Annotation nodes never require an activityType — the early return skips the whole activity branch.
+        // Annotation nodes never require an activityType — the early return skips the whole
+        // activity branch.
         var result = Validate("""{ "nodes": [ { "id": "g1", "type": "group", "data": {} } ] }""");
         result.IsValid.Should().BeTrue();
     }
@@ -161,7 +163,8 @@ public class WorkflowDefinitionStructuralValidatorTests
     [Fact]
     public void Validate_NodeTypeIsConcreteActivity_NoActivityType_IsValid()
     {
-        // No data.activityType, but node.type is a concrete (non-"activity") built-in type → used as the type.
+        // No data.activityType, but node.type is a concrete (non-"activity") built-in type to used
+        // as the type.
         var result = Validate("""{ "nodes": [ { "id": "n1", "type": "runScript", "data": {} } ] }""");
         result.IsValid.Should().BeTrue();
     }

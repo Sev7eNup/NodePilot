@@ -222,7 +222,8 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     const state = routeWorkflow(page, definitionWith(seed));
     await openAndSelect(page, /file operation/i);
 
-    // Operation dropdown — fileOperation has exactly 6 options (copy/move/rename/delete/exists/create).
+    // Operation dropdown — fileOperation has exactly 6 options
+    // (copy/move/rename/delete/exists/create).
     const opSelect = page.getByRole('combobox').filter({ hasText: /copy/i }).first();
     await expect(opSelect).toBeVisible();
     await expect(opSelect.locator('option')).toHaveCount(6);

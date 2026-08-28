@@ -4,16 +4,11 @@ import type { Node, Edge } from '@xyflow/react';
 
 /**
  * Harness approach:
- * useCriticalPath computes Critical Path Method (CPM) scheduling annotations — earliest
- * start time, duration, slack, and whether a node sits on the longest chain — from its
- * `nodes`/`edges` args and stamps
- * `__criticalPath` back onto the graph via `useReactFlow().setNodes(updater)`. Rather than
- * spin up a live <ReactFlow> store and read its internal node state (brittle), we mock
- * `useReactFlow` so `setNodes` is a spy that merely CAPTURES the updater the hook pushes.
- * We then replay every captured updater onto the same seeded node array and read the stamped
- * `data.__criticalPath`. This mirrors the codebase precedent in useNodeAnnotations.test.tsx
- * (which reduces captured setNodes updaters) and needs no ReactFlowProvider because the only
- * ReactFlow API the hook touches (useReactFlow) is mocked. Fully deterministic, no timers.
+ * useCriticalPath derives Critical Path Method (CPM) annotations (earliest start, duration,
+ * slack, and whether a node sits on the longest chain) from its `nodes`/`edges` args and stamps
+ * `__criticalPath` back onto the graph via `useReactFlow().setNodes(updater)`. These tests mock
+ * `useReactFlow` so `setNodes` only captures the updaters, then replay them onto the seeded node
+ * array to read the stamped `data.__criticalPath`. No ReactFlowProvider and no timers needed.
  */
 
 const setNodes = vi.fn();
@@ -85,19 +80,19 @@ describe('useCriticalPath', () => {
     expect(b.slack).toBe(0);
     expect(c.slack).toBe(0);
 
-    // earliestStart accumulates predecessor durations: 0 → 100 → 300.
+    // earliestStart accumulates predecessor durations: 0, then 100, then 300.
     expect(a.earliestStart).toBe(0);
     expect(b.earliestStart).toBe(100);
     expect(c.earliestStart).toBe(300);
 
-    // Durations echo the p95 stats.
+    // Durations come straight from the p95 stats.
     expect(a.duration).toBe(100);
     expect(b.duration).toBe(200);
     expect(c.duration).toBe(300);
   });
 
   it('puts the longer diamond branch on the critical path and gives the shorter branch slack', () => {
-    // A→B→C (long: B=100) and A→D→C (short: D=20).
+    // Long branch A, B, C with B at 100; short branch A, D, C with D at 20.
     const nodes = [makeNode('A', 10), makeNode('B', 100), makeNode('D', 20), makeNode('C', 10)];
     const edges = [
       makeEdge('e1', 'A', 'B'),
@@ -112,23 +107,22 @@ describe('useCriticalPath', () => {
     const d = annotationOf(stamped, 'D')!;
     const c = annotationOf(stamped, 'C')!;
 
-    // Long branch (B) + the shared endpoints are critical.
+    // The long branch (B) and the shared endpoints are critical.
     expect(a.isCritical).toBe(true);
     expect(b.isCritical).toBe(true);
     expect(c.isCritical).toBe(true);
     expect(b.slack).toBe(0);
 
-    // Short branch (D) is NOT critical and carries positive slack.
+    // The short branch (D) is not critical and carries positive slack.
     expect(d.isCritical).toBe(false);
     expect(d.slack).toBeGreaterThan(0);
-    // Slack = (latestStart 90) − (earliestStart 10) = 80.
+    // Slack is latestStart 90 minus earliestStart 10.
     expect(d.slack).toBe(80);
   });
 
   it('excludes a disabled node from the CPM graph but its successor still reaches the topo queue', () => {
-    // Regression guard for the documented in-degree bug: A→B(disabled)→C. B is removed from
-    // the graph AND its edges are dropped, so C becomes an isolated root that must still be
-    // topologically processed and stamped (rather than being stranded behind B's in-degree).
+    // Chain A, B, C with B disabled. B and its edges leave the graph, so C becomes an isolated
+    // root that still has to be processed and stamped instead of waiting on B's in-degree.
     const nodes = [makeNode('A', 50), makeNode('B', 999, { disabled: true }), makeNode('C', 70)];
     const edges = [makeEdge('e1', 'A', 'B'), makeEdge('e2', 'B', 'C')];
 
@@ -141,7 +135,7 @@ describe('useCriticalPath', () => {
     expect(c!.earliestStart).toBe(0); // isolated root, no predecessor duration
     expect(c!.duration).toBe(70);
 
-    // A is now a terminal isolated node with slack (finishes before C's longer duration).
+    // A is an isolated terminal node with slack; it finishes before C's longer duration.
     const a = annotationOf(stamped, 'A');
     expect(a).toBeDefined();
     expect(a!.isCritical).toBe(false);
@@ -152,17 +146,17 @@ describe('useCriticalPath', () => {
   });
 
   it('skips a disabled edge so its target is treated as a root (earliestStart 0)', () => {
-    // A→B→C linear, but the B→C edge is disabled. With the edge skipped, C has no predecessor
-    // and its earliestStart is 0 (it would be 300 if the edge were live).
+    // Linear chain A, B, C with the edge from B to C disabled. With that edge skipped, C has no
+    // predecessor, so its earliestStart is 0 instead of 300.
     const nodes = [makeNode('A', 100), makeNode('B', 200), makeNode('C', 300)];
     const edges = [makeEdge('e1', 'A', 'B'), makeEdge('e2', 'B', 'C', /* disabled */ true)];
 
     const stamped = runAndStamp(nodes, edges);
     const c = annotationOf(stamped, 'C')!;
 
-    expect(c.earliestStart).toBe(0); // proves the B→C edge was not counted
+    expect(c.earliestStart).toBe(0); // the edge from B to C was not counted
     const b = annotationOf(stamped, 'B')!;
-    expect(b.earliestStart).toBe(100); // A→B edge is still honored
+    expect(b.earliestStart).toBe(100); // the edge from A to B still counts
   });
 
   it('stamps nothing and clears prior annotations when enabled is false', () => {
@@ -185,7 +179,7 @@ describe('useCriticalPath', () => {
   });
 
   it('defaults nodes without __stats to 0ms duration', () => {
-    // No node carries __stats → every duration is 0, every node critical with zero slack.
+    // Without __stats every duration is 0, so every node is critical with zero slack.
     const nodes = [makeNode('A'), makeNode('B'), makeNode('C')];
     const edges = [makeEdge('e1', 'A', 'B'), makeEdge('e2', 'B', 'C')];
 

@@ -15,9 +15,9 @@ function KindIcon({ kind, className }: Readonly<{ kind: ToastKind; className: st
 }
 
 /**
- * Global toast stack — non-blocking replacement for the former alert() call
- * sites. Mounted once in App.tsx; portal keeps it above every page/overlay,
- * np-shell wrapper keeps theme tokens applied (same trick as ModalShell).
+ * Global toast stack, a non-blocking replacement for alert() calls. Mounted once in
+ * App.tsx; the portal keeps it above every page/overlay, and the np-shell wrapper keeps
+ * theme tokens applied (same approach as ModalShell).
  */
 export function ToastHost() {
   const toasts = useToastStore((s) => s.toasts);

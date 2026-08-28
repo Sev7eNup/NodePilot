@@ -3,8 +3,7 @@ namespace NodePilot.Api.Dtos;
 // Workflow-domain DTOs only (CRUD, contract, versions, capabilities, publish).
 // Sibling resources live in their own per-resource files (MachineDtos, CredentialDtos,
 // UserDtos, AuthDtos, GlobalVariableDtos, AuditDtos, ExecutionDtos, WorkflowTelemetryDtos,
-// StepTestDtos, WorkflowImportExportDtos, DashboardDtos) — this file was historically a
-// multi-resource catch-all and was decomposed in the 2026-07 coherence cleanup.
+// StepTestDtos, WorkflowImportExportDtos, and DashboardDtos) to keep resource contracts focused.
 
 /// <summary>
 /// Body for <c>POST /api/workflows</c>. <see cref="FolderId"/> is the optional target shared
@@ -119,7 +118,8 @@ public record WorkflowResponse(
 public record WorkflowCapabilities(bool CanRead, bool CanRun, bool CanEdit, bool CanDelete, bool CanAdmin);
 
 /// <summary>
-/// Body for <c>POST /api/workflows/{id}/publish</c>. Same shape as <see cref="UpdateWorkflowRequest"/>
+/// Body for <c>POST /api/workflows/{id}/publish</c>. Same shape as <see
+/// cref="UpdateWorkflowRequest"/>
 /// — publish is "save current draft + enable + unlock" in one atomic transaction, so it
 /// needs the full editable surface.
 /// </summary>

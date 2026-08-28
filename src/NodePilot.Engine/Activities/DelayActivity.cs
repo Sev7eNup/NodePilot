@@ -8,9 +8,9 @@ public class DelayActivity : IActivityExecutor
     public string ActivityType => "delay";
 
     // Workflow-time delay is bounded to 24 hours. Anything longer should be a schedule
-    // trigger, not a `delay` step pinning a step-runner slot. Bare `GetInt32()` previously
-    // threw on a JSON string ("5"), a null, or a non-int — now we accept those gracefully
-    // and clamp before passing to Task.Delay (which would throw on negatives).
+    // trigger, not a `delay` step pinning a step-runner slot. Values are read leniently (a
+    // JSON string, null, or non-int all fall back to the default) and clamped before
+    // Task.Delay, which throws on negative durations.
     internal const int MinDelaySeconds = 0;
     internal const int MaxDelaySeconds = 24 * 60 * 60;
     internal const int DefaultDelaySeconds = 5;

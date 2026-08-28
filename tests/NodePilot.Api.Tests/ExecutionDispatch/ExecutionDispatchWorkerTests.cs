@@ -11,7 +11,7 @@ namespace NodePilot.Api.Tests.ExecutionDispatch;
 /// <summary>
 /// Coverage for the dispatch worker pool — the loop that pulls items off the queue,
 /// runs them, and emits success/failure metrics. Uses a real ExecutionDispatchQueue so
-/// the worker -> queue contract isn't mocked away.
+/// the worker-to-queue contract isn't mocked away.
 /// </summary>
 public class ExecutionDispatchWorkerTests
 {
@@ -107,11 +107,10 @@ public class ExecutionDispatchWorkerTests
     [Fact]
     public async Task ExecutionDispatchQueue_InteractivePriority_DequeuesBeforeNormal()
     {
-        // Direct unit-test for the queue ordering. We pre-enqueue all three items WHILE
-        // no worker is running, so the queue accumulates them in arrival order. Then we
-        // start the worker — its first dequeue must hit the interactive queue, then the
-        // two normals. A previous version of this test awaited firstNormalDone before
-        // starting the worker, which deadlocked (no worker → callback never fires).
+        // Direct unit-test for the queue ordering. All three items are enqueued while no
+        // worker is running, so the queue accumulates them in arrival order. The worker is
+        // started only after that setup — its first dequeue must hit the interactive queue,
+        // then the two normals.
         var queue = NewQueue(capacity: 16);
         var processed = new System.Collections.Concurrent.ConcurrentQueue<string>();
         var allDone = new TaskCompletionSource();

@@ -71,10 +71,9 @@ public class ExecutionsController : ControllerBase
     private string? Scrub(string? value)
         => IsPrivileged ? value : _redactor.Redact(value);
 
-    // Instance (not static) and routes user-facing fields through Scrub() so any future read
-    // path that grabs this helper inherits the same role-gradient redaction as GetAll/GetById.
-    // For Admin/Operator (the only callers today: Execute + Retry) Scrub() is a pass-through,
-    // so behavior is unchanged.
+    // Kept as an instance method and routed through Scrub() so any future caller inherits
+    // the same role-gradient redaction as GetAll/GetById. For Admin/Operator, Scrub() is
+    // a pass-through, so Execute and Retry return raw values.
     private ExecutionResponse ToResponse(WorkflowExecution execution) => new(
         execution.Id,
         execution.WorkflowId,
@@ -175,10 +174,10 @@ public class ExecutionsController : ControllerBase
             })
             .ToDictionaryAsync(x => x.ExecId, ct);
 
-        // 4) Failed-step list: ALL failed steps per execution, sorted chronologically. Parallel
+        // 4) Failed-step list: every failed step per execution, sorted chronologically. Parallel
         // branches can fail at the same time; the grid joins them into a comma-separated list.
-        // A narrow projection plus a C#-side GroupBy is robust and cheap here (in practice there
-        // are only ever a handful of failed rows per execution).
+        // A narrow projection plus a C#-side GroupBy stays cheap since there are usually only
+        // a few failed rows per execution.
         var failedStepRows = await _db.StepExecutions.AsNoTracking()
             .Where(s => execIds.Contains(s.WorkflowExecutionId) && s.Status == ExecutionStatus.Failed)
             .OrderBy(s => s.StartedAt)
@@ -241,13 +240,13 @@ public class ExecutionsController : ControllerBase
                 .FirstOrDefaultAsync(ct);
         }
 
-        // Step triage, same semantics as the list endpoint but for a single run: one indexed
+        // Same step-triage logic as the list endpoint, scoped to a single run: one indexed
         // range scan on (WorkflowExecutionId, StartedAt) with a narrow projection, aggregated
-        // in C#. Cheaper than three round-trips for one execution, and the row count per run
-        // is bounded by the workflow's node count.
+        // in C#. Cheaper than three round-trips, and the row count is bounded by the
+        // workflow's node count.
         //
-        // Ordering is (StartedAt, Id): parallel branches can fail within the same tick, and
-        // StartedAt alone is not a deterministic sort key there.
+        // Ordered by (StartedAt, Id) because parallel branches can fail in the same tick, so
+        // StartedAt alone is not a stable sort key.
         var steps = await _db.StepExecutions.AsNoTracking()
             .Where(s => s.WorkflowExecutionId == id)
             .OrderBy(s => s.StartedAt).ThenBy(s => s.Id)
@@ -559,7 +558,7 @@ public class ExecutionsController : ControllerBase
         if (await this.RequireWorkflowAccessAsync(_authz, workflow, NodePilot.Core.Interfaces.ResourceOp.Run, ct) is { } d) return d;
         if (!workflow.IsEnabled) return BadRequest(new { message = $"Workflow '{workflow.Name}' is disabled." });
 
-        // Deserialize snapshot. Missing / malformed JSON → fresh empty params (still audits
+        // Deserialize snapshot. Missing / malformed JSON -> fresh empty params (still audits
         // as a retry so the lineage stays visible).
         Dictionary<string, string>? parameters = null;
         if (!string.IsNullOrWhiteSpace(original.InputParametersJson))

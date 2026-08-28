@@ -4,25 +4,23 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 /**
- * Drift-Guard für das `<select>`-Dropdown — nach dem Muster von `fontTokens.test.ts`:
- * die CSS-Quelle wird als Text gelesen, nicht importiert.
+ * Drift guard for the `<select>` dropdown, following the pattern of `fontTokens.test.ts`:
+ * the CSS source is read as text instead of imported.
  *
- * Warum es diesen Test gibt: das Popup ist eine eigene Fläche. jsdom rendert es nicht,
- * Playwright kann es nicht anfassen — ein Fehler dort fällt in KEINER Suite auf, sondern
- * nur einem Menschen, der das Dropdown aufklappt. Und die Lösung ist alles andere als
- * selbsterklärend: das native Popup übernimmt nur die *Basis*-Styles der Options, deshalb
- * braucht es `appearance: base-select`, damit `:hover`/`:checked` überhaupt greifen. Genau
- * die Sorte Code, die beim „Aufräumen" vereinfacht und damit lautlos kaputtgemacht wird.
+ * The popup is a separate surface that jsdom does not render and Playwright cannot reach, so
+ * a mistake there surfaces only for a person who opens the dropdown. The native popup applies
+ * only the base option styles, which is why `appearance: base-select` is required for
+ * `:hover` and `:checked` to take effect.
  */
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const indexCss = readFileSync(join(__dirname, '..', '..', 'index.css'), 'utf8');
 
-/** Kommentarfrei + Whitespace normalisiert — die Working Copy ist CRLF, und die
- *  Selektorlisten stehen mehrzeilig. */
+/** Comments stripped and whitespace collapsed: the file uses CRLF and selector lists
+ *  span several lines. */
 const cssFlat = indexCss.replaceAll(/\/\*[\s\S]*?\*\//g, ' ').replaceAll(/\s+/g, ' ');
 
-/** Inhalt eines Blocks ab `head`, per Klammerzählung (verschachtelungsfest). */
+/** Returns a nested block body by counting braces from `head`. */
 function blockBody(css: string, head: string): string | null {
   const start = css.indexOf(head);
   if (start < 0) return null;
@@ -34,8 +32,7 @@ function blockBody(css: string, head: string): string | null {
   return null;
 }
 
-/** Body einer Regel mit exakt diesem Selektorkopf. Die Grenze davor (`}`/`;`/`{`/Anfang)
- *  verhindert, dass `select` auch in `select option` trifft. */
+/** Returns the rule body for an exact selector boundary. */
 function ruleBody(css: string, selector: string): string | null {
   const escaped = selector.replaceAll(/\s+/g, ' ').trim().replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
   const match = new RegExp(`(?:^|[{};])\\s*${escaped}\\s*\\{([^}]*)\\}`).exec(css);
@@ -46,15 +43,13 @@ const baseSelect = blockBody(cssFlat, '@supports (appearance: base-select)');
 
 describe('native select popup theming', () => {
   it('declares the color-scheme hint for both bases', () => {
-    // Ohne diesen Hinweis zieht der Browser für alles Native (Scrollbars, Popup-Rahmen)
-    // die helle System-Palette — auch unter einem dunklen Skin.
+    // Native controls need this hint to use the dark system palette in dark themes.
     expect(indexCss).toMatch(/:root\s*\{\s*color-scheme:\s*light;\s*\}/);
     expect(indexCss).toMatch(/html\.dark\s*\{\s*color-scheme:\s*dark;\s*\}/);
   });
 
   it('keeps a themed surface for the native fallback popup', () => {
-    // Gilt weiter für alles ohne base-select: ein transparentes Select lässt das native
-    // Popup aufs helle Systemmenü zurückfallen, während der Text hell bleibt.
+    // The fallback needs an opaque surface so light system menus do not hide light text.
     for (const selector of ['select', 'select option']) {
       const body = ruleBody(cssFlat, selector);
       expect(body, `${selector} must carry a surface in index.css`).not.toBeNull();
@@ -66,8 +61,7 @@ describe('native select popup theming', () => {
 
 describe('customisable select (appearance: base-select)', () => {
   it('is opted into behind a @supports guard', () => {
-    // Der Guard ist der Grund, warum es keinen Fallback-Zweig zu pflegen gibt: kennt der
-    // Browser den Wert nicht, fällt der ganze Block weg und das native Popup bleibt.
+    // Unsupported browsers ignore the guarded block and retain the native popup.
     expect(baseSelect, '@supports (appearance: base-select) block must exist').not.toBeNull();
     const optIn = ruleBody(baseSelect!, 'select, ::picker(select)');
     expect(optIn, 'both the button and its picker must opt in').not.toBeNull();
@@ -79,7 +73,7 @@ describe('customisable select (appearance: base-select)', () => {
     expect(picker).not.toBeNull();
     expect(picker).toContain('background: var(--color-surface-lowest)');
     expect(picker).toContain('border: 1px solid var(--color-outline-variant)');
-    // Lange Listen dürfen das Popup nicht über den Viewport wachsen lassen.
+    // Long option lists must remain within the viewport.
     expect(picker).toMatch(/max-height:\s*\S+/);
     expect(picker).toContain('overflow-y: auto');
   });
@@ -106,8 +100,7 @@ describe('customisable select (appearance: base-select)', () => {
     ]) {
       const body = ruleBody(baseSelect!, selector);
       expect(body, `${selector} must exist inside the @supports block`).not.toBeNull();
-      // Keine Farb-Literale — sonst friert das Popup auf einem Skin ein. Der reine
-      // Schatten (rgb(0 0 0 / …)) ist skin-neutral und deshalb ausgenommen.
+      // Color literals would prevent themes from updating the popup; neutral shadows are exempt.
       expect(body!.replaceAll(/box-shadow:[^;]*;/g, '')).not.toMatch(/#[0-9a-f]{3,8}\b/i);
     }
   });

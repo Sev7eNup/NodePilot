@@ -5,16 +5,22 @@ using NodePilot.Core.Models;
 
 namespace NodePilot.Engine.Notifications;
 
-/// <summary>A single condition-validation problem, with a JSON-pointer-ish path into the AST.</summary>
+/// <summary>A single condition-validation problem, with a JSON-pointer-ish path into the
+/// AST.</summary>
 public sealed record SystemAlertValidationError(string Path, string Message);
 
 /// <summary>
 /// Strict validator for a System-alert policy's condition AST (see ADR 0008, the design
-/// decision that introduced system-alert policies as a single alerting pipeline). Unlike the permissive
-/// workflow-edge <c>ConditionEvaluator</c> (which fails open — unknown nodes evaluate to true), this rejects
-/// a malformed or nonsensical policy filter at save time with field-level errors: it checks the AST shape,
-/// that every referenced field is one the source declares, operator/type compatibility, the presence/absence
-/// of a right operand per operator arity, numeric-literal parseability, and depth/node/regex caps. It does
+/// decision that introduced system-alert policies as a single alerting pipeline). Unlike the
+/// permissive
+/// workflow-edge <c>ConditionEvaluator</c> (which fails open — unknown nodes evaluate to true),
+/// this rejects
+/// a malformed or nonsensical policy filter at save time with field-level errors: it checks the AST
+/// shape,
+/// that every referenced field is one the source declares, operator/type compatibility, the
+/// presence/absence
+/// of a right operand per operator arity, numeric-literal parseability, and depth/node/regex caps.
+/// It does
 /// NOT change the evaluator's runtime semantics — it only gates what a policy may persist.
 /// </summary>
 public static class SystemAlertConditionValidator
@@ -27,8 +33,10 @@ public static class SystemAlertConditionValidator
     private static readonly HashSet<string> NumericOps = ["==", "!=", "<", ">", "<=", ">="];
 
     /// <summary>
-    /// Validates <paramref name="conditionJson"/> against a source's declared <paramref name="fields"/>. An
-    /// empty/null condition is valid (matches everything). Returns true with no errors when the AST is sound.
+    /// Validates <paramref name="conditionJson"/> against a source's declared <paramref
+    /// name="fields"/>. An
+    /// empty/null condition is valid (matches everything). Returns true with no errors when the AST
+    /// is sound.
     /// </summary>
     public static bool TryValidate(string? conditionJson, IReadOnlyList<SystemAlertField> fields, out IReadOnlyList<SystemAlertValidationError> errors)
     {

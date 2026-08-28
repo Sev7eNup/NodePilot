@@ -2,11 +2,11 @@ import i18n from '../i18n';
 import type { StepExecution } from '../types/api';
 import { parseOutputParametersJson } from './outputParameters';
 
-/** Maximum chars surfaced in the hover-preview before "…(truncated)". Keeps the tooltip readable. */
+/** Maximum characters shown in a hover preview before truncation. Keeps tooltips readable. */
 export const PREVIEW_MAX_CHARS = 300;
 
 export interface VariablePreview {
-  /** Where the value came from — "stdout", "stderr", or "param" (for `{{x.param.foo}}`). */
+  /** Where the value came from: "stdout", "stderr", or "param" (for `{{x.param.foo}}`). */
   channel: 'stdout' | 'stderr' | 'param' | 'unknown';
   /** Resolved string value, already truncated to PREVIEW_MAX_CHARS. Empty string if no value. */
   value: string;
@@ -17,17 +17,15 @@ export interface VariablePreview {
 }
 
 /**
- * Resolves what the last-run value of a `{{step.X}}` expression was, given the StepExecution
- * for the producing step. Best-effort: `.output`/`.error` are direct fields; `.param.X` reads
- * from `step.output` because StepExecution doesn't expose structured outputParameters via the
- * /executions/{id}/steps endpoint — we surface the full stdout instead so the user can at
- * least see the raw value rather than an empty tooltip.
+ * Resolves the last-run value of a `{{step.X}}` expression from the StepExecution of the
+ * producing step. `.output` and `.error` map to direct fields; `.param.X` reads the structured
+ * output parameters and falls back to scanning stdout.
  *
- * Returns null when there's no value to show (no past run, empty channel).
+ * Returns null when there is no value to show (no past run, empty channel).
  */
 export function resolveVariablePreview(step: StepExecution | undefined, expression: string): VariablePreview | null {
   if (!step) return null;
-  // Strip outer braces if present and split on '.' — same shape as the engine's resolver.
+  // Strip outer braces if present and split on '.', the same shape as the engine's resolver.
   const inner = expression.replaceAll(/^\{\{|\}\}$/g, '');
   const parts = inner.split('.');
   // parts[0] is the alias (varName / stepId). parts[1..] is the field path.
@@ -45,19 +43,16 @@ export function resolveVariablePreview(step: StepExecution | undefined, expressi
   }
   if (tail.startsWith('param.')) {
     const paramName = tail.slice('param.'.length);
-    // Primary source: the structured OutputParameters dict persisted alongside the step.
-    // ExecutionsController.GetSteps emits it on `outputParametersJson`; rebuilding the
-    // databus from here matches what the engine itself would substitute at run time.
-    // Malformed/empty JSON or unknown param → silently fall through to the stdout-scan
-    // heuristic. Hovering a variable preview must never throw — worst case the user sees
-    // the legacy best-effort view instead of a blank tooltip.
+    // Primary source: the structured OutputParameters dict persisted alongside the step and
+    // emitted by ExecutionsController.GetSteps on `outputParametersJson`. It matches what the
+    // engine substitutes at run time. Malformed JSON or an unknown param falls through to the
+    // stdout scan below, because a hover preview must never throw.
     const paramMap = parseOutputParametersJson(step.outputParametersJson);
     if (paramMap && Object.prototype.hasOwnProperty.call(paramMap, paramName)) {
       return preview('param', paramMap[paramName], i18n.t('properties:variablePreview.paramLastRun', { name: paramName }));
     }
-    // Heuristic fallback: pre-fix runs (or step types that never produced
-    // OutputParameters) don't carry the structured snapshot. Scan stdout for a
-    // "$paramName = value" / "paramName: value" line so the tooltip still shows
+    // Fallback for steps that carry no structured snapshot: scan stdout for a
+    // "$paramName = value" or "paramName: value" line so the tooltip still shows
     // something useful instead of going blank.
     const stdout = step.output ?? '';
     if (!stdout) return null;
@@ -67,7 +62,7 @@ export function resolveVariablePreview(step: StepExecution | undefined, expressi
     }
     return preview('param', stdout, i18n.t('properties:variablePreview.paramFullStdout', { name: paramName }));
   }
-  // Unknown suffix — we don't lie about what it means, but we can still show the stdout.
+  // Unknown suffix: the meaning is not known, but stdout is still worth showing.
   const raw = step.output ?? '';
   if (!raw) return null;
   return preview('unknown', raw, i18n.t('properties:variablePreview.unknownSuffix', { tail }));
@@ -80,10 +75,10 @@ function preview(channel: VariablePreview['channel'], raw: string, sourceLabel: 
 }
 
 /**
- * Tries to pluck a single param value out of a runScript-style stdout capture. The engine
- * appends a block of `$paramName = value` lines for each declared variable; we look for
- * either that pattern or a standard `paramName: value` colon-form. Returns null if neither
- * matches — caller decides what to do (typically: surface the full stdout instead).
+ * Extracts a single param value from a runScript-style stdout capture. The engine appends a
+ * `$paramName = value` line per declared variable; a plain `paramName: value` colon form is
+ * matched as well. Returns null when neither pattern matches, leaving the caller to decide
+ * (typically: show the full stdout instead).
  */
 function extractParamFromOutput(stdout: string, paramName: string): string | null {
   const escaped = paramName.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&');

@@ -1,10 +1,10 @@
 /**
- * Semantic status → design-token mapping. Single source of truth for status
+ * Maps semantic statuses to design tokens. Single source of truth for status
  * coloring across the designer (edges, node rings, MiniMap, Gantt, badges,
  * banners). All values reference the status tokens declared in index.css
- * (`--color-success`, `--color-warning`, …) — never raw Tailwind palette
- * classes or hex literals. "failed" uses the existing M3 `--color-error`
- * family so the app keeps a single red.
+ * (`--color-success`, `--color-warning`, …), never raw Tailwind palette classes
+ * or hex literals. "failed" reuses the M3 `--color-error` family so the app
+ * keeps a single red.
  */
 export type NpStatus =
   | 'success'
@@ -102,10 +102,10 @@ export const STATUS_DOT_CLASS: Record<NpStatus, string> = {
 };
 
 /**
- * Known raw backend status strings (PascalCase). `NpStatus` collapses `TimedOut`→`failed`
- * and `Queued`→`pending`, so it CANNOT carry distinct labels for those. For label lookup,
- * use `rawStatusLabelKey()` (keyed by the raw string) — `NpStatus` is only for styling.
- * Comparison is case-insensitive (backend emits PascalCase, but be robust).
+ * Known raw backend status strings (PascalCase). `NpStatus` collapses `TimedOut` into
+ * `failed` and `Queued` into `pending`, so it cannot carry distinct labels for those; use
+ * `rawStatusLabelKey()` for labels and `NpStatus` only for styling. Comparison is
+ * case-insensitive even though the backend emits PascalCase.
  */
 const KNOWN_RAW_STATUSES = new Set([
   'succeeded', 'success', 'failed', 'timedout', 'running', 'pending', 'queued',

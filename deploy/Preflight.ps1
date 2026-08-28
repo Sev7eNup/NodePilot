@@ -377,7 +377,8 @@ function Get-NodePilotPortStatus {
             if ($exception -is [System.Net.Sockets.SocketException]) { $socketError = $exception.SocketErrorCode }
             $exception = $exception.InnerException
         }
-        # 10013 is the one that matters here, and it does NOT mean "in use". Windows returns it for a
+        # 10013 is the one that matters here, and it does NOT mean "in use". Windows returns it for
+        # a
         # port held by an HTTP.SYS reservation or sitting inside an excluded range - IIS, WinRM and
         # WSUS all create those - and nothing appears in any listener list to explain it.
         if ($socketError -eq [System.Net.Sockets.SocketError]::AccessDenied) {
@@ -700,11 +701,8 @@ function New-NodePilotCertificateVerdict {
     $importHint = 'Import a current certificate into Cert:\LocalMachine\My (MachineKeySet|PersistKeySet), then re-check.'
     $importCommand = 'Import-PfxCertificate -FilePath <file>.pfx -CertStoreLocation Cert:\LocalMachine\My -Password (Read-Host -AsSecureString)'
 
-    # Validity is a hard stop, not a note in the margin. The expiry used to be rendered into the
-    # green line as text with nothing acting on it, so an expired certificate installed cleanly
-    # and surfaced as a browser warning to the first user - after the rollout, on someone else's
-    # screen. Deliberately NOT auto-fixable: offering the self-signed generator here would answer
-    # "your PKI certificate expired" with "here, have a lab certificate instead".
+    # Certificate expiry is a required failure and cannot be replaced automatically with a
+    # self-signed certificate.
     if ($Certificate.NotAfter -lt $Now) {
         return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Fail' -Required $true `
             -Detail ("Certificate $($Certificate.Subject) expired on $($Certificate.NotAfter.ToString('yyyy-MM-dd')). " +
@@ -1113,9 +1111,7 @@ function New-NodePilotPostgresResult {
             -AbortMessage 'Aborted: Postgres pre-flight failed.'
     }
 
-    # No client bundled: the port answered and that is all anyone can say. This is what the check
-    # did for its whole life, and it is why a missing role or a wrong password used to cost a full
-    # install and a 180-second health probe before anybody found out.
+    # Without a bundled client, report only whether the database port responds.
     if ($null -eq $PsqlOutcome) {
         return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Warn' -Required $true `
             -Detail ("Postgres TCP reachable: ${HostName}:${Port}. This build carries no PostgreSQL " +
@@ -1458,7 +1454,7 @@ function Invoke-NodePilotPreflight {
         [Parameter(Mandatory)][AllowEmptyString()][string]$CertificateThumbprint,
         [Parameter(Mandatory)][ValidateSet('sqlserver', 'postgres')][string]$DbProvider,
         [Parameter(Mandatory)][bool]$IsLocalSystem,
-        # Only used to tell the operator that the certificate names a different host. Optional,
+        # This only reports certificate host-name mismatches. Optional,
         # because the console path can be invoked without one and a missing name is not a finding.
         [AllowEmptyString()][string]$PublicHostname = '',
         [int]$HttpsPort = 443,
@@ -1484,7 +1480,8 @@ function Invoke-NodePilotPreflight {
         [bool]$CanProvisionPostgres = $false,
         [string]$ServiceName = 'NodePilot',
         # Only the setup passes these: it carries the publisher certificate in its payload and knows
-        # the thumbprint it was built against. Absent - the scripted path, which has no payload - the
+        # the thumbprint it was built against. Absent - the scripted path, which has no payload -
+        # the
         # row is not emitted at all, exactly as the Postgres credentials degrade.
         [AllowEmptyString()][string]$ArtifactSignerCertificatePath = '',
         [AllowEmptyString()][string]$ExpectedSignerThumbprint = '',

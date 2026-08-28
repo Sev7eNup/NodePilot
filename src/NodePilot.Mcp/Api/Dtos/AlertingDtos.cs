@@ -1,6 +1,7 @@
 namespace NodePilot.Mcp.Api.Dtos;
 
-// Mirror of the API's alerting DTOs. Duplicated by convention (MCP is HTTP-only against the REST API).
+// Mirror of the API's alerting DTOs. Duplicated by convention (MCP is HTTP-only against the REST
+// API).
 
 public sealed record NotificationRouteDto(Guid? Id, string Channel, string Target, string? Secret, int Order, string? ConditionExpressionJson = null);
 

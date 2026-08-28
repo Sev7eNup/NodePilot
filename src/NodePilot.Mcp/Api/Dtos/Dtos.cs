@@ -2,7 +2,8 @@ using System.Text.Json;
 
 namespace NodePilot.Mcp.Api.Dtos;
 
-// DTOs duplicated from src/NodePilot.Api/Dtos (no ProjectReference to Api — same convention as the CLI).
+// DTOs duplicated from src/NodePilot.Api/Dtos (no ProjectReference to Api — same convention as the
+// CLI).
 // JSON is Web-default (camelCase, case-insensitive); see NodePilotApiClient.JsonOptions.
 
 // ---- Auth ----

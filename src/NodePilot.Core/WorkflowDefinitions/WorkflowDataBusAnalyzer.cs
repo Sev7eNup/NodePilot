@@ -8,7 +8,8 @@ namespace NodePilot.Core.WorkflowDefinitions;
 /// <summary>
 /// Data-bus reasoning over a definition: which <c>{{…}}</c> references are available at a node,
 /// and which references in the workflow will not resolve under the contract guarantee (only the
-/// <c>output</c>/<c>error</c>/<c>success</c>/<c>param.X</c> tails plus <c>globals.*</c>/<c>manual.*</c>
+/// <c>output</c>/<c>error</c>/<c>success</c>/<c>param.X</c> tails plus
+/// <c>globals.*</c>/<c>manual.*</c>
 /// resolve; anything else stays a literal).
 ///
 /// <para>Static analysis over an unsaved definition. It is not
@@ -38,7 +39,8 @@ public static class WorkflowDataBusAnalyzer
             upstream.AddRange(DescribeNode(node, name)); // triggers included (e.g. {{hook.param.webhookBody}})
         }
 
-        // Run-level: manual.* from every manualTrigger's declared parameters (available anywhere in the run).
+        // Run-level: manual.* from every manualTrigger's declared parameters (available anywhere in
+        // the run).
         var runLevel = new List<string>();
         foreach (var node in doc.Nodes.Where(n => string.Equals(n.Type, "manualTrigger", StringComparison.Ordinal)))
             foreach (var p in ManualParams(node))

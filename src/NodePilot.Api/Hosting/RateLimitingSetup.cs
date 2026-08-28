@@ -83,7 +83,8 @@ public static class RateLimitingSetup
             // AI assistant endpoints: 20/min/IP. Guards against cost-runaway (a user mashing
             // the Generate button in a loop) and against valid Operator credentials being
             // abused from a script. Hardcoded — Operator already has Llm:Enabled as the master
-            // switch and Llm:MaxTokens as the per-call cost cap, so no further tuning is needed here.
+            // switch and Llm:MaxTokens as the per-call cost cap, so no further tuning is needed
+            // here.
             options.AddPolicy("ai-generate", ctx => IpWindow(ctx, 20, TimeSpan.FromMinutes(1)));
             // Audit endpoints: Admin-only + a 500-row cap is enough in practice, but without its
             // own limit /api/audit was the only endpoint in the system that let a compromised
@@ -95,9 +96,12 @@ public static class RateLimitingSetup
             // able to hammer either. 10/min/IP is far above any legit operator use (export/restore
             // are rare, deliberate actions) and caps script-driven abuse.
             options.AddPolicy("backup", ctx => IpWindow(ctx, 10, TimeSpan.FromMinutes(1)));
-            // System-alert policy preview + test-fire (ADR 0008): both are Admin/Operator but heavy —
-            // preview runs a live source sample (DB scans) per call and test-fire does real outbound
-            // channel I/O. 20/min/IP is generous for the editor (an operator previews interactively) and
+            // System-alert policy preview + test-fire (ADR 0008): both are Admin/Operator but heavy
+            // —
+            // preview runs a live source sample (DB scans) per call and test-fire does real
+            // outbound
+            // channel I/O. 20/min/IP is generous for the editor (an operator previews
+            // interactively) and
             // caps script-driven abuse of either.
             options.AddPolicy("alerting-heavy", ctx => IpWindow(ctx, 20, TimeSpan.FromMinutes(1)));
         });
@@ -105,7 +109,7 @@ public static class RateLimitingSetup
     }
 
     /// <summary>
-    /// Audit H-4: IPv4 → partition by full /32, IPv6 → partition by /64 so an attacker
+    /// Audit H-4: IPv4 -> partition by full /32, IPv6 -> partition by /64 so an attacker
     /// controlling a single /64 (the typical ISP allocation) cannot rotate through 2^64
     /// source addresses to bypass the limit.
     /// </summary>

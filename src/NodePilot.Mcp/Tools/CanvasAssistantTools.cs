@@ -175,7 +175,7 @@ public sealed class CanvasAssistantTools
         => Wrap(() =>
         {
             var reflowed = WorkflowLayoutEngine.Reflow(definition, WorkflowLayoutOptions.Compact);
-            // Returns the full definition → redact inline secrets before handing it back.
+            // Returns the full definition -> redact inline secrets before handing it back.
             return new { definition = DefinitionRedactor.Redact(JsonSerializer.SerializeToElement(reflowed)) };
         });
 

@@ -248,7 +248,7 @@ public sealed class DiagnosticsControllerExportTests
     public void Tail_ReadError_Returns500()
     {
         // Point the resolver at a *directory* path: opening it as a FileStream throws,
-        // exercising the catch → 500 branch.
+        // exercising the catch -> 500 branch.
         var dir = Path.Combine(Path.GetTempPath(), "np-diag-taildir-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         try

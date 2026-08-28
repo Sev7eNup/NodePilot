@@ -13,7 +13,8 @@ namespace NodePilot.Engine.Tests.Triggers;
 /// </summary>
 internal static class TriggerContractSources
 {
-    /// <summary>Concatenated text of the shared trigger settings — the parsing half of the contract.</summary>
+    /// <summary>Concatenated text of the shared trigger settings — the parsing half of the
+    /// contract.</summary>
     internal static string LoadSharedContractText()
     {
         var sb = new System.Text.StringBuilder();
@@ -22,7 +23,8 @@ internal static class TriggerContractSources
         return sb.ToString();
     }
 
-    /// <summary>Every runtime file that participates, tagged with the trigger type it serves.</summary>
+    /// <summary>Every runtime file that participates, tagged with the trigger type it
+    /// serves.</summary>
     internal static IEnumerable<(string Type, string File, string Text)> RuntimeSources()
     {
         var dirs = new[]
@@ -45,7 +47,8 @@ internal static class TriggerContractSources
 
     /// <summary>
     /// "EventLogTriggerSettings.cs" / "EventLogTriggerSource.cs" / "EventLogTrigger.cs" all serve
-    /// the "eventLogTrigger" node type. Files that do not reduce to a known type (TriggerFireObserver,
+    /// the "eventLogTrigger" node type. Files that do not reduce to a known type
+    /// (TriggerFireObserver,
     /// ITriggerSource, …) are dropped by the caller's catalog check.
     /// </summary>
     private static string? TriggerTypeFromFileName(string file)
@@ -71,18 +74,13 @@ internal static class TriggerContractSources
 /// <summary>
 /// Holds the two runtime halves of every background trigger to one config vocabulary.
 ///
-/// <para>A trigger node is read by two independent runtimes: the node executor in
-/// <c>NodePilot.Engine/Triggers</c> (the manual sample run) and the live source in
-/// <c>NodePilot.Scheduler/Sources</c> (what actually fires the workflow). Nothing used to compare
-/// them, and they drifted in the direction that hurts most — silently. The listener never read
-/// <c>eventLogTrigger.eventId</c>, so a UI-set event-id filter was ignored and the workflow fired on
-/// every entry of the log. The poll loop read <c>intervalSeconds</c> while the designer, the docs
-/// and the node executor all wrote <c>pollingIntervalSeconds</c>, so the configured interval was
-/// dead. Both keys passed the old key guard, which only ever looked at the engine-side file.</para>
+/// <para>A trigger node is read by the node executor in <c>NodePilot.Engine/Triggers</c> for manual
+/// sample runs and by the live source in <c>NodePilot.Scheduler/Sources</c>. Both runtimes must
+/// read
+/// the same documented keys so filters and polling intervals behave consistently.</para>
 ///
-/// <para>These tests fail on the two shapes that produced that drift: a runtime reading a key that
-/// no documentation mentions, and a runtime parsing a trigger config on its own instead of through
-/// the shared settings type.</para>
+/// <para>These tests reject undocumented runtime keys and config parsing outside the shared
+/// settings type.</para>
 /// </summary>
 public class TriggerContractParityTests
 {

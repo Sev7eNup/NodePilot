@@ -3,18 +3,16 @@ using NodePilot.Core.Configuration;
 namespace NodePilot.Api.Configuration;
 
 /// <summary>
-/// Detects the hardware NodePilot is running on and builds the process-wide
-/// <see cref="PerformancePlan"/>. Kept in the Api because it reads
+/// Detects the hardware NodePilot runs on and builds the process-wide
+/// <see cref="PerformancePlan"/>. Lives in Api because it reads
 /// <see cref="DeploymentModeReader"/> and <see cref="IConfiguration"/>; the sizing arithmetic
 /// itself lives in <see cref="PerformanceSizing"/> in Core, which takes plain values so it stays
 /// pure and testable (Core must not reference Api — see the dependency graph in CLAUDE.md).
 ///
-/// <para>The plan is built exactly once, during boot, and registered as a singleton. It is
-/// deliberately <em>not</em> re-resolved on configuration reload: the runspace pool and the
-/// dispatch queue are constructed at startup and cannot be re-sized in-process, so a live
-/// re-resolve would leave the hot-reloadable ThreadPool tuned for one mode while everything else
-/// still ran in the other. What the operator changes in the Settings UI is the <em>desired</em>
-/// mode; the difference to the active plan is what drives the restart hint.</para>
+/// <para>The plan is built once at boot and registered as a singleton. It is not re-resolved on
+/// configuration reload: the runspace pool and dispatch queue are constructed at startup and
+/// cannot be resized in-process. The Settings UI shows the operator's desired mode next to the
+/// active plan, and the difference between them drives the restart hint.</para>
 /// </summary>
 public static class PerformancePlanFactory
 {
@@ -26,19 +24,18 @@ public static class PerformancePlanFactory
             ReadConfigured(configuration));
 
     /// <summary>
-    /// Hardware as this process may actually use it — both APIs honour container and Windows
-    /// job-object limits, which is the whole point: a cgroup-limited container must be sized for
-    /// its slice, not for the host it happens to sit on.
+    /// Hardware limits as this process can actually use them: both APIs honor container and
+    /// Windows job-object limits, so a cgroup-limited container is sized for its own slice,
+    /// not for the host it happens to run on.
     /// </summary>
     public static DetectedResources Detect(IConfiguration configuration)
         => new(Environment.ProcessorCount, DetectUsableMemoryBytes(), DeploymentModeReader.IsDesktop(configuration));
 
     /// <summary>
     /// <c>GC.GetGCMemoryInfo().TotalAvailableMemoryBytes</c> is the memory the GC believes it may
-    /// use, as of the last collection — under a container limit it already reflects that limit
-    /// (and may itself be an implementation-defined fraction of it). Anything zero or
-    /// implausibly small means detection did not work; the caller then sizes on CPU alone instead
-    /// of trusting a bogus number.
+    /// use as of the last collection — under a container limit it already reflects that limit.
+    /// A value of zero or implausibly small means detection failed; the caller then sizes on
+    /// CPU alone instead of trusting a bogus number.
     /// </summary>
     private static long? DetectUsableMemoryBytes()
     {
@@ -50,7 +47,7 @@ public static class PerformancePlanFactory
         catch (Exception)
         {
             // Never let hardware detection stop the host from booting — CPU-only sizing is a
-            // perfectly safe fallback.
+            // safe fallback.
             return null;
         }
     }
@@ -64,9 +61,8 @@ public static class PerformancePlanFactory
     }
 
     /// <summary>
-    /// One-line summary for the startup log. Without this the effective sizing is invisible in
-    /// the field — an operator wondering why their box behaves differently needs to see what was
-    /// detected, what was chosen, and which constraint bound each value.
+    /// One-line summary for the startup log, showing what was detected, what was chosen, and
+    /// which constraint bound each value.
     /// </summary>
     public static string Describe(PerformancePlan plan)
     {

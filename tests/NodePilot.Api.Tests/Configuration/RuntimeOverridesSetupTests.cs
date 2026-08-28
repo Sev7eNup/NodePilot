@@ -11,13 +11,10 @@ namespace NodePilot.Api.Tests.Configuration;
 
 /// <summary>
 /// Verifies that <see cref="RuntimeOverridesSetup.FindInsertionIndex"/> places the
-/// runtime-overrides JSON source at the correct position in the configuration source
-/// list — directly after <c>appsettings.{Env}.json</c>, falling back to "after
-/// appsettings.json" or "at the end" when the env-specific file isn't present.
-///
-/// Wrong placement here is silent + dangerous: if the override lands AFTER EnvVars,
-/// the UI silently overrules deployment-injected secrets (broken K8s/Container UX);
-/// if it lands BEFORE appsettings.json, defaults overrule UI saves (broken UI UX).
+/// runtime-overrides JSON source right after <c>appsettings.{Env}.json</c>, falling back
+/// to right after appsettings.json, or to the end, when no env-specific file exists.
+/// Wrong placement is dangerous: after env vars, the UI silently loses to deployment
+/// secrets; before appsettings.json, defaults silently override UI saves.
 /// </summary>
 public class RuntimeOverridesSetupTests
 {

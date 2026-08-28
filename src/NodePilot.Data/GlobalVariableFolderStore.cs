@@ -145,7 +145,7 @@ public class GlobalVariableFolderStore(NodePilotDbContext db) : IGlobalVariableF
         var subtreeIds = DescendantFolderIds(all, id);
         var doomedFolders = all
             .Where(f => subtreeIds.Contains(f.Id))
-            .OrderByDescending(f => f.Depth)   // bottom-up: Folder→Folder is Restrict, not Cascade
+            .OrderByDescending(f => f.Depth)   // bottom-up: Folder to Folder is Restrict, not Cascade
             .ToList();
 
         var strategy = db.Database.CreateExecutionStrategy();

@@ -160,13 +160,8 @@ public class StepTester : IStepTester
         // Convert flat mock dict to ActivityResult dict for JSON config resolution
         var fakeResults = BuildFakeResults(mockVariables ?? []);
 
-        // Build the variables dict through the SAME assembly path as the production
-        // StepRunner (VariableResolver.BuildStepVariables) so step-test inherits its full
-        // semantics: `.success` derivation, alias/stepId dual keys, and — security-relevant —
-        // the M-23 short-name denylist (an upstream param called `Authorization` is never
-        // aliased unqualified). A hand-built dict here previously skipped all of that.
-        // Mock entries are then re-applied verbatim on top so non-step-shaped keys
-        // (`globals.X` / `manual.X` overrides, ad-hoc names) keep their mock-wins semantics.
+        // Build variables through the production resolver so step tests share alias, success,
+        // and sensitive-name behavior. Reapply mock-only keys so explicit overrides still win.
         var variables = VariableResolver.BuildStepVariables(
             inputParameters: null,
             globalVariables: globalVars,
@@ -264,8 +259,8 @@ public record StepTestContextEntry(string Key, string Origin, string Source, str
 
 /// <summary>
 /// Returned from <see cref="IStepTestContextProvider.GetContextAsync"/> — describes the
-/// concrete execution that was used to build the variable dump (so the UI can show "from
-/// run started 14:02 → succeeded") plus the variables themselves. <c>ExecutionId</c> is
+/// concrete execution behind the variable dump (so the UI can show its run and outcome) plus
+/// the variables themselves. <c>ExecutionId</c> is
 /// null when no historical run was found and we fell back to a schema-only suggestion list
 /// derived from the static graph.
 /// </summary>
@@ -384,7 +379,7 @@ public sealed class StepTestContextProvider : IStepTestContextProvider
 
         if (candidate is null)
         {
-            // No execution available → dump just the schema (handle names + null values),
+            // No execution available -> dump just the schema (handle names + null values),
             // computed from the static graph. The user still gets autocomplete-style guidance.
             foreach (var ancestorId in ancestors)
             {

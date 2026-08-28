@@ -13,7 +13,8 @@ namespace NodePilot.Engine.Conditions;
 ///   group:      { "type": "group", "op": "AND|OR", "children": [...] }
 ///   not:        { "type": "not", "child": {...} }
 ///   comparison: { "type": "comparison", "left": OPERAND, "op": OP, "right": OPERAND? }
-///   operand:    { "kind": "variable", "stepId": "...", "field": "output|error|param", "paramName"?: "..." }
+/// operand: { "kind": "variable", "stepId": "...", "field": "output|error|param", "paramName"?:
+/// "..." }
 ///             | { "kind": "literal", "value": "..." }
 ///
 /// Supported ops:
@@ -132,9 +133,8 @@ public static class ConditionEvaluator
 
         if (kind != "variable") return "";
 
-        // Source discriminator (default "step" for backward-compat with operands written
-        // before globals/manual were addable). When source is "global" / "manual", the
-        // operand carries a flat `name` instead of stepId/field.
+        // Source discriminator, defaults to "step" for operands that omit it. When source
+        // is "global" / "manual", the operand carries a flat `name` instead of stepId/field.
         var source = operand.TryGetProperty("source", out var srcEl) ? srcEl.GetString() : "step";
         if (string.Equals(source, "global", StringComparison.OrdinalIgnoreCase))
         {
@@ -197,20 +197,17 @@ public static class ConditionEvaluator
         return cmp(c, 0);
     }
 
-    // Guard against catastrophic-backtracking regexes authored in edge conditions. M-22:
-    // tightened from 1 s to 200 ms — an edge condition is on the critical path between every
-    // pair of steps and a full second of regex burn per evaluation is noticeably DOS-able
-    // with N parallel branches. Pattern length capped too; 2 KiB is enough for anything
-    // humans write by hand and blocks blob-sized attack patterns at parse time.
+    // Guards against catastrophic-backtracking regexes authored in edge conditions. The
+    // timeout is short because an edge condition sits on the critical path between every
+    // pair of steps. Pattern length is capped at 2 KiB, enough for hand-written patterns.
     private static readonly TimeSpan RegexMatchTimeout = TimeSpan.FromMilliseconds(200);
     private const int RegexMaxInputLength = 1024 * 1024;
     private const int RegexMaxPatternLength = 2048;
 
-    // Compiled-pattern cache: edge conditions reuse the same `matches`-pattern across every
-    // run of a workflow, so JIT-compiling the regex per evaluation was burning CPU on a
-    // critical path. Bounded at 256 entries to prevent unbounded growth from caller-controlled
-    // input. Past the cap we skip the cache write but still return the compiled instance —
-    // duplicate compilations are cheap relative to the per-eval cost we're saving.
+    // Compiled-pattern cache: edge conditions reuse the same `matches` pattern across every
+    // run of a workflow, so this avoids recompiling the regex on each evaluation. Bounded at
+    // 256 entries to limit growth from caller-controlled input; past the cap, a compiled
+    // instance is still returned but not cached.
     private static readonly ConcurrentDictionary<string, Regex?> RegexCache = new();
     private const int RegexCacheMaxSize = 256;
 
@@ -272,10 +269,10 @@ public static class ConditionEvaluator
                 ctx.InputParameters.TryGetValue(m.Groups[1].Value, out var mv) ? mv : m.Value);
         }
 
-        // The substitution body stays local: it resolves against ctx.Results with THAT dict's
+        // The substitution body stays local: it resolves against ctx.Results with that dict's
         // own comparer (ordinal for the engine's result map), whereas VariableResolver merges
-        // results + aliases into an OrdinalIgnoreCase map. Routing through it would newly
-        // resolve differently-cased step ids in conditions.
+        // results + aliases into an OrdinalIgnoreCase map. Routing through it would change how
+        // differently-cased step ids resolve in conditions.
         return VariableResolver.StepPattern.Replace(raw, m =>
         {
             var name = m.Groups[1].Value;

@@ -6,9 +6,8 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  // coverage/ holds generated istanbul HTML (with its own eslint-disable banners). CI never
-  // sees it because lint runs before test:coverage, so linting it only ever produced a
-  // local-vs-CI discrepancy in the warning count.
+  // coverage/ holds generated istanbul HTML with its own eslint-disable banners. It exists
+  // only locally, so linting it just makes the local warning count differ from CI.
   globalIgnores(['dist', 'playwright-report', 'coverage']),
   {
     files: ['**/*.{ts,tsx}'],
@@ -23,17 +22,16 @@ export default defineConfig([
       globals: globals.browser,
     },
     rules: {
-      // The project intentionally exports shared constants/helpers from several component
-      // modules; Fast Refresh still works, and enforcing this rule would require broad file
-      // moves unrelated to runtime correctness.
+      // Several component modules deliberately export shared constants and helpers. Fast
+      // Refresh still works, and enforcing this rule would only force wide file moves.
       'react-refresh/only-export-components': 'off',
-      // Current React compiler lint treats common sync state-derivation effects as errors.
-      // Keep the rest of react-hooks recommended rules active while avoiding noisy false
-      // positives in existing editor controls.
+      // The React compiler lint flags common synchronous state-derivation effects as errors.
+      // Disabling just this rule keeps the rest of react-hooks recommended active without the
+      // false positives in the existing editor controls.
       'react-hooks/set-state-in-effect': 'off',
-      // Underscore-prefix is the project convention for "intentionally unused" — args kept
-      // for stable callback signatures, destructure-discards, etc. Match the standard
-      // tseslint pattern so we don't have to scatter eslint-disable comments.
+      // An underscore prefix is the project convention for an intentionally unused binding:
+      // arguments kept for a stable callback signature, discarded destructure elements, and
+      // so on. Matching the standard tseslint pattern avoids scattered eslint-disable lines.
       '@typescript-eslint/no-unused-vars': ['error', {
         argsIgnorePattern: '^_',
         varsIgnorePattern: '^_',
@@ -48,11 +46,11 @@ export default defineConfig([
       '@typescript-eslint/no-explicit-any': 'off',
     },
   },
-  // All user-visible date/time/number formatting must go through lib/format.ts: its helpers
-  // resolve the locale from the active i18n language, while a direct toLocale*() call hardcodes
-  // or omits the locale and silently ignores the UI language switch. format.ts itself is the
-  // one place allowed to call the primitives; tests may build locale-dependent EXPECTED values
-  // with toLocale*() to stay independent of the runtime locale.
+  // All user-visible date, time and number formatting goes through lib/format.ts, whose helpers
+  // resolve the locale from the active i18n language. A direct toLocale*() call hardcodes or
+  // omits the locale and ignores the UI language switch. format.ts is the one place allowed to
+  // call the primitives; tests may use them to build expected values that stay independent of
+  // the runtime locale.
   {
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/lib/format.ts', 'src/**/*.test.{ts,tsx}', 'src/**/__tests__/**/*.{ts,tsx}'],

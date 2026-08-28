@@ -20,7 +20,7 @@ function workflowJson(definition: { nodes: unknown[]; edges: unknown[] }, overri
     name: 'Shortcuts_E2E_WF',
     description: '',
     isEnabled: false,
-    checkedOutByUserId: MOCK_USER.id, // locked-by-me → canWrite (Admin + own lock)
+    checkedOutByUserId: MOCK_USER.id, // locked-by-me -> canWrite (Admin + own lock)
     checkedOutByUserName: MOCK_USER.username,
     checkedOutAt: '2026-06-01T00:00:00.000Z',
     definitionJson: JSON.stringify(definition),
@@ -219,7 +219,7 @@ test.describe('Keyboard-Shortcuts & Productivity (Teil 12 + 55)', () => {
     // Make the workflow dirty (nudge a selected node) so Ctrl+S has something to persist.
     await page.locator('.react-flow__node[data-id="step-aaaa1111"]').click();
     await expect(page.locator('.react-flow__node[data-id="step-aaaa1111"].selected')).toHaveCount(1);
-    await page.keyboard.press('ArrowRight'); // nudge → dirty
+    await page.keyboard.press('ArrowRight'); // nudge -> dirty
     await page.keyboard.press('Control+s');
     await expect.poll(() => putSeen, { timeout: 10_000 }).toBe(true);
 
@@ -257,7 +257,7 @@ test.describe('Keyboard-Shortcuts & Productivity (Teil 12 + 55)', () => {
 
     await page.keyboard.press('Control+Shift+t');
 
-    // Auto-layout rewrites positions → the node's CSS transform (its position) changes.
+    // Auto-layout rewrites positions -> the node's CSS transform (its position) changes.
     await expect.poll(async () => transformOf('step-bbbb2222'), { timeout: 10_000 }).not.toBe(before);
 
     // Undo restores the original arrangement.

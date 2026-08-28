@@ -44,8 +44,8 @@ function setup({
   const commitHistory = vi.fn();
   const screenToFlowPosition = vi.fn(({ x, y }) => ({ x, y }));
 
-  // canvasRef.current.getBoundingClientRect() must return something - the hook reads it for
-  // viewport-based placement. Stub a 800x600 canvas at origin.
+  // The hook reads canvasRef.current.getBoundingClientRect() for viewport-based placement,
+  // so stub an 800x600 canvas at the origin.
   const canvasEl = {
     getBoundingClientRect: () => ({
       left: 0, top: 0, right: 800, bottom: 600, width: 800, height: 600, x: 0, y: 0, toJSON: () => ({}),
@@ -155,7 +155,7 @@ describe('useNodeOperations', () => {
 
     const edgeUpdater = (harness.setEdges as any).mock.calls[0][0];
     const remainingEdges: Edge[] = edgeUpdater([e1, e2, e3]);
-    expect(remainingEdges.map(e => e.id)).toEqual(['e3']); // only the a→c edge survives
+    expect(remainingEdges.map(e => e.id)).toEqual(['e3']); // only the edge from a to c survives
 
     expect(harness.setSelected).toHaveBeenCalledWith(null);
   });
@@ -278,7 +278,7 @@ describe('useNodeOperations', () => {
       const updater = (harness.setNodes as any).mock.calls[0][0];
       const next: Node[] = updater([restApi]);
       const newNode = next[next.length - 1];
-      // No similar runScript existed, so defaults stay null + empty config (no URL leakage).
+      // No similar runScript exists, so the defaults stay null and the config stays empty.
       expect(newNode.data).toMatchObject({ targetMachineId: null, credentialId: null });
       expect(newNode.data!.config).toEqual({});
     });

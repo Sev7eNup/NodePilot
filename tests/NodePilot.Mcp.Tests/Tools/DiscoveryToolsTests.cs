@@ -52,7 +52,7 @@ public sealed class DiscoveryToolsTests
     [Fact]
     public void GetSafetyStatus_DefaultGate_ListsDestructiveAsBlocked()
     {
-        // Default (env unset) → destructive tools are blocked.
+        // Default (env unset) -> destructive tools are blocked.
         var prev = Environment.GetEnvironmentVariable("NODEPILOT_MCP_ALLOW_DESTRUCTIVE");
         Environment.SetEnvironmentVariable("NODEPILOT_MCP_ALLOW_DESTRUCTIVE", null);
         try

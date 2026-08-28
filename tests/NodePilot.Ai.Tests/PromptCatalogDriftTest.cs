@@ -7,13 +7,9 @@ namespace NodePilot.Ai.Tests;
 /// <summary>
 /// Keeps the AI prompts aligned with the backend-owned activity catalog.
 ///
-/// <para>The activity list used to be hand-maintained Markdown, and the old version of this test
-/// only asserted that a type's NAME appeared somewhere in the file. That let two failure modes
-/// through: an activity could be deliberately withheld (<c>llmQuery</c> was, so the model reached
-/// for <c>restApi</c> when a workflow needed an AI call), and a listed activity could carry wrong or
-/// missing config keys and still pass. The catalog section is now rendered from
-/// <see cref="ActivityCatalog"/> + <see cref="ActivityConfigReference"/>, and these tests assert
-/// completeness down to the required config keys.</para>
+/// <para>The catalog is rendered from <see cref="ActivityCatalog"/> and
+/// <see cref="ActivityConfigReference"/>. These tests verify that every activity and required
+/// configuration key appears in the prompt.</para>
 /// </summary>
 public class PromptCatalogDriftTest
 {

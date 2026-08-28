@@ -152,7 +152,7 @@ public class ScheduleTriggerSourceTests
     [Fact]
     public async Task DisposeAsync_IsSafe_WhenStartAsyncWasNeverCalled()
     {
-        // No prior Start → no JobKey set → DisposeAsync must short-circuit without
+        // No prior Start -> no JobKey set -> DisposeAsync must short-circuit without
         // touching the scheduler. Otherwise the static counter or Quartz interaction
         // would erroneously fire.
         var src = new ScheduleTriggerSource(
@@ -166,13 +166,8 @@ public class ScheduleTriggerSourceTests
     [Fact]
     public async Task DisposeAsync_ReleasesTheJobSlotExactlyOnce_AcrossRepeatedCalls()
     {
-        // Regression: the decrement used to hang off _jobKey, which is set once and never
-        // cleared, so every extra DisposeAsync decremented the process-static active-job
-        // counter again. The orchestrator has four teardown paths that can overlap, and a
-        // counter driven below zero makes the MaxActiveJobs cap accept everything from then
-        // on. Asserted behaviourally: start a source under a cap of 1 (consuming the only
-        // slot), dispose it repeatedly, then verify a fresh source still hits the cap —
-        // which only holds if the extra disposes were no-ops.
+        // Repeated disposal must release the process-wide active-job slot only once.
+        // A negative counter would let subsequent sources bypass MaxActiveJobs.
         var scheduler = new Mock<IScheduler>();
         var factory = new Mock<ISchedulerFactory>();
         factory.Setup(f => f.GetScheduler(It.IsAny<CancellationToken>())).ReturnsAsync(scheduler.Object);
@@ -188,8 +183,7 @@ public class ScheduleTriggerSourceTests
         await first.DisposeAsync();
         await first.DisposeAsync();
 
-        // The counter is back to its pre-test value, so one more source fits and a second
-        // one does not. A leaked-negative counter would let both through.
+        // One source fits after disposal; a second must still hit the configured cap.
         var fits = new ScheduleTriggerSource(
             factory.Object, NullLogger<ScheduleTriggerSource>.Instance, cap1);
         var overflows = new ScheduleTriggerSource(

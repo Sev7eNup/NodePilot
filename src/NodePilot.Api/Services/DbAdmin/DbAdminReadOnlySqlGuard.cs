@@ -3,13 +3,13 @@ using NodePilot.Core.Security;
 namespace NodePilot.Api.Services.DbAdmin;
 
 /// <summary>
-/// Provider-neutral, fail-closed lexical guard applied at the executor boundary. This is deliberately
-/// below every controller/tool adapter so callers cannot bypass the read policy by reusing the executor
-/// directly. The database read-only transaction remains the second line of defence.
+/// Provider-neutral, fail-closed lexical guard applied at the executor boundary, below every
+/// controller and tool adapter, so callers cannot bypass the read policy by calling the
+/// executor directly. The database's own read-only transaction is the second line of defence.
 /// </summary>
 internal static class DbAdminReadOnlySqlGuard
 {
-    /// <summary>Pseudo-token emitted by the shared inspector for PostgreSQL's <c>::</c> cast operator.</summary>
+    /// <summary>Token the inspector emits for PostgreSQL's <c>::</c> cast operator.</summary>
     public const string CastOperator = "::";
 
     /// <summary>

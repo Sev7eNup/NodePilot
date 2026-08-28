@@ -13,24 +13,18 @@ import { formatTime } from '../../lib/format';
 import { EmptyState } from '../common/EmptyState';
 
 /**
- * Live-Ops on a phone. Replaces the timeline below `lg` — it does NOT try to shrink it.
- *
- * A Gantt chart is a horizontal-time medium and a 390 px screen has no horizontal room to give:
- * measured, the lane-label column leaves ~190 px of track, so a 30-minute window renders at
- * ~6 px per minute and a typical run is a 4 px sliver with a truncated name beside it. No amount
- * of tuning changes that arithmetic, so the phone gets the same facts in the shape a phone is
- * good at — a vertical list, ordered by what an operator needs first.
- *
- * Same inputs as OpsTimeline and the same derivation (`buildTimelineBars`), so both views always
- * agree on which runs exist; only the presentation differs.
+ * Live-Ops view for phones, replacing the timeline below `lg` rather than shrinking it. A Gantt
+ * chart needs horizontal room a narrow screen cannot give, so the same facts appear as a vertical
+ * list ordered by what an operator needs first. Inputs and derivation match OpsTimeline
+ * (`buildTimelineBars`), so both views agree on which runs exist; only the presentation differs.
  */
 
-/** Live runs listed before the remainder is summarised. Generous — but a phone re-renders this
- *  list once per clock tick, and an unbounded one on a busy estate is a scroll with no end. */
+/** Live runs listed before the remainder is summarised. Capped because the list re-renders once
+ *  per clock tick, and an unbounded one on a busy estate scrolls without end. */
 const RUNNING_CAP = 25;
 /** Finished runs listed. Short on purpose: "what just happened", not a history page. */
 const FINISHED_CAP = 10;
-/** Failures listed. Its own budget — failures must not be squeezed out by a busy success list. */
+/** Failures listed. Has its own budget so a busy success list cannot squeeze them out. */
 const FAILED_CAP = 10;
 
 export function OpsMobileView({
@@ -43,7 +37,7 @@ export function OpsMobileView({
   locallySettled: Record<string, LocalSettled>;
   scopedWorkflowIds: Set<string>;
   nodesById: Map<string, OpsNode>;
-  /** Long-running threshold from the snapshot meta — same value the timeline flags with. */
+  /** Long-running threshold from the snapshot meta; the same value the timeline flags with. */
   overdueMs: number;
   selectedExecutionId: string | null;
   onSelect: (executionId: string) => void;
@@ -60,21 +54,21 @@ export function OpsMobileView({
       if (bar.completedAtMs === null && isActiveBarStatus(bar.status)) {
         (isOverdue(bar, nowMs, overdueMs) ? stuckBars : liveBars).push(bar);
       } else if (npStatusFromExecution(bar.status) === 'failed') {
-        // Failures get their own section rather than a colour inside "just finished". On a busy
-        // estate that list is thousands long and the capped ten newest are all successes — the
-        // counter would name failures the list could never reach. A cancellation stays in the
-        // general list on purpose: that one was somebody's decision, not an incident.
+        // Failures get their own section rather than a colour inside "just finished": on a busy
+        // estate the capped newest entries can be all successes, hiding failures behind a count
+        // the list never reaches. Cancellations stay in the general list because they are a
+        // deliberate action, not an incident.
         failedBars.push(bar);
       } else {
         finishedBars.push(bar);
       }
     }
 
-    // Oldest first among live runs: the top of a phone list is all an operator takes in at a
-    // glance, and the run that has been going longest is the one most likely to want them.
+    // Oldest first among live runs: only the top of a phone list is taken in at a glance, and
+    // the longest-running run is the one most likely to need attention.
     stuckBars.sort((a, b) => a.startedAtMs - b.startedAtMs);
     liveBars.sort((a, b) => a.startedAtMs - b.startedAtMs);
-    // Newest completion first — reading downward walks back into the past.
+    // Newest completion first, so reading downward walks back into the past.
     const byNewest = (a: TimelineBarInput, b: TimelineBarInput) => (b.completedAtMs ?? 0) - (a.completedAtMs ?? 0);
     failedBars.sort(byNewest);
     finishedBars.sort(byNewest);
@@ -83,8 +77,8 @@ export function OpsMobileView({
   }, [running, recent, locallySettled, scopedWorkflowIds, nowMs, overdueMs]);
 
   const nameFor = (workflowId: string) => nodesById.get(workflowId)?.name ?? workflowId;
-  // Root-folder workflows carry "/" as their path. Printing that under every second card is a
-  // line of pure noise on a screen this narrow, so only a real folder earns the row.
+  // Root-folder workflows carry "/" as their path, which says nothing on a screen this narrow,
+  // so only a real folder gets its own row.
   const folderFor = (workflowId: string) => {
     const path = nodesById.get(workflowId)?.folderPath ?? '';
     return path === '/' ? '' : path;
@@ -136,8 +130,8 @@ export function OpsMobileView({
         </Section>
       )}
 
-      {/* Failures sit above the running list: on a phone the top of the screen is the whole
-          message, and "something broke" outranks "something is going fine". */}
+      {/* Failures sit above the running list because the top of a phone screen carries the
+          whole message, and a broken run outranks a healthy one. */}
       {failed.length > 0 && (
         <Section
           title={t('operations:mobile.failed')}
@@ -216,8 +210,8 @@ function Section({
 }
 
 /**
- * One run. Tapping it opens the same drilldown the timeline opens, so every action an operator
- * has on a desktop (cancel, retry, cancel-all, quarantine) is reachable from a phone unchanged.
+ * One run. Tapping it opens the same drilldown as the timeline, so every desktop action
+ * (cancel, retry, cancel-all, quarantine) stays reachable from a phone.
  */
 function RunCard({
   bar, nowMs, name, folderPath, selected, onSelect, t,
@@ -254,7 +248,7 @@ function RunCard({
           {folderPath && <div className="truncate text-[11px] text-on-surface-variant">{folderPath}</div>}
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs tabular-nums text-on-surface-variant">
             {/* Live runs read as elapsed time; settled ones as how long they took and how long
-                ago they ended — the two questions are different and never share a phrasing. */}
+                ago they ended. The two questions differ, so the wording never overlaps. */}
             {live ? (
               <span>{t('operations:stuck.since', { value: formatDuration(durationMs) })}</span>
             ) : (
@@ -267,8 +261,8 @@ function RunCard({
               </>
             )}
           </div>
-          {/* Only live bars from the snapshot carry activity, and only "finished" is honest
-              mid-run — there is no trustworthy total while DeferRunningStateWrite is on. */}
+          {/* Only live bars from the snapshot carry activity, and only the finished count is
+              reliable mid-run: DeferRunningStateWrite leaves no trustworthy total. */}
           {live && bar.lastProgressAtMs !== null && (
             <div className="mt-0.5 truncate text-xs text-on-surface-variant">
               {t('operations:stuck.lastProgress', {

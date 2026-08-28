@@ -48,13 +48,11 @@ export function LabeledEdge({
     arrowDefault: 'var(--color-outline-variant)',
   };
 
-  // Read each endpoint's simulation state from the React Flow store. IMPORTANT: one
-  // separate `useStore` call per endpoint, each returning a *primitive* value. Returning a
-  // tuple/object instead would take fewer lines, but would create a new object on every
-  // store update and defeat React Flow's identity comparison — the edge would then
-  // re-render on EVERY hover / pan / selection change. That's not just a perf problem: it
-  // also yanks away the `+` insert button between mousedown and mouseup, causing clicks
-  // to get lost.
+  // One separate useStore call per endpoint, each returning a primitive value. A
+  // tuple/object return would create a new object on every store update and defeat
+  // React Flow's identity comparison, causing the edge to re-render on every hover, pan,
+  // or selection change — which also drops the insert button between mousedown and
+  // mouseup, losing clicks.
   const srcSim = useStore((s) =>
     (s.nodeLookup.get(source)?.data as Record<string, unknown> | undefined)?.__simulated as string | undefined,
   );
@@ -69,10 +67,10 @@ export function LabeledEdge({
   );
   const simulationActive = !!(srcSim || tgtSim);
 
-  // Replay/Live-Execution: coloring for edges where both endpoints were executed.
+  // Replay/live-execution coloring for edges where both endpoints were executed.
   // Target status determines the color (the flow arrives at the target). A target
-  // that is running RIGHT NOW gets its own state — amber stroke + the animated
-  // flow-dash overlay ("the flow is moving into this step").
+  // that is running right now gets its own state: amber stroke plus the animated
+  // flow-dash overlay showing the flow moving into this step.
   const replayEdgeState: 'success' | 'failed' | 'skipped' | 'running' | 'none' =
     srcLive && tgtLive
       ? (tgtLive === 'Failed' ? 'failed'
@@ -101,20 +99,20 @@ export function LabeledEdge({
   const hasExpression = !!conditionExpression;
   const isDisabled = (edgeData.disabled as boolean) || false;
   const controlPoints = edgeData.controlPoints as ControlPoints | undefined;
-  // Edge-Detach: das Zielende hängt gerade am Cursor (EdgeDetachPreview zeichnet die
-  // Vorschau). Die alte Route bleibt als Geist stehen, damit sichtbar ist, was man gerade
-  // umhängt und wohin es zurückspringt, wenn man abbricht. Das Label-Pill behält volle
-  // Deckkraft — es benennt die Edge, die man bewegt.
+  // Edge detach: the target end is currently following the cursor (EdgeDetachPreview draws
+  // the preview line). The old route stays visible as a ghost so it's clear what is being
+  // moved and where it snaps back on cancel. The label pill stays at full opacity since it
+  // still names the edge being moved.
   const isDetached = !!edgeData.__detached;
   // Data-flow overlay: when the toggle is on, every edge carries the list of variable heads
-  // that actually ride across it. Non-empty list → render a small chip; empty list →
-  // de-emphasise the edge (it's pure control-flow with no data crossing).
+  // that actually ride across it. Non-empty lists render a small chip; empty lists de-emphasise
+  // the edge because it carries only control flow.
   const flowingVars = edgeData.__flowingVars as string[] | undefined;
   const dataFlowActive = Array.isArray(flowingVars);
   const hasFlowingVars = dataFlowActive && (flowingVars?.length ?? 0) > 0;
 
   // Human-readable summary of the expression, with step labels resolved via nodeLookup.
-  // The selector returns a plain string → React compares it with Object.is and only
+  // The selector returns a plain string, so React compares it with Object.is and only
   // re-renders when the summary text actually changes.
   const expressionSummary = useStore((s) => {
     if (!conditionExpression) return '';
@@ -125,10 +123,10 @@ export function LabeledEdge({
     });
   });
 
-  // Arrowhead length scales PROPORTIONALLY with the edge stroke width (its base width is
+  // Arrowhead length scales proportionally with the edge stroke width (its base width is
   // derived from the length in arrowFromBaseAndTip), so a thicker edge gets a proportionally
-  // bolder arrowhead instead of the old flat 16px ceiling. Floor keeps thin edges' arrows
-  // visible; a soft ceiling avoids absurd heads at the very widest setting.
+  // bolder arrowhead. The floor keeps thin edges' arrows visible; the soft ceiling avoids
+  // absurd heads at the widest setting.
   const premiumArrowLength = premiumCanvas ? Math.max(12, Math.min(48, edgeWidth * 6)) : undefined;
   const segments = getSmartEdgePath({
     sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, routing: edgeRouting,
@@ -137,10 +135,9 @@ export function LabeledEdge({
   });
   const [, labelX, labelY] = segments[0];
 
-  // Condition-based edge coloring — semantic status tokens (skin-stable, dark-aware):
-  //   .success → success-green, .failed → error-red, any other expression/condition →
-  //   custom-orange (matches the condition pill — stroke and chip agree),
-  //   empty (always) → neutral outline.
+  // Condition-based edge coloring uses semantic, theme-aware status tokens:
+  //   .success: success green; .failed: error red; other expressions: custom orange;
+  //   empty (always): neutral outline.
   const conditionKind: 'success' | 'failed' | 'custom' | 'always' =
     condition.endsWith('.success') ? 'success' :
     condition.endsWith('.failed')  ? 'failed'  :
@@ -153,9 +150,9 @@ export function LabeledEdge({
     'var(--color-outline-variant)';
   const conditionArrowFill = conditionKind === 'always' ? EDGE_COLORS.arrowDefault : conditionStroke;
 
-  // Premium: glow CSS class applied to the <g> wrapper for dark-mode drop-shadow filter.
+  // Premium: glow CSS class applied to the <g> wrapper for the dark-mode drop-shadow filter.
   // Only active when premiumCanvas is on and no override state is active (live execution,
-  // simulation, data-flow overlay, etc.) so we don't double-colour semantic edges.
+  // simulation, data-flow overlay, etc.), to avoid double-colouring semantic edges.
   const isOverrideState =
     edgeSimState !== 'none' || replayEdgeState !== 'none'
     || isVarFlowHighlighted || isCollapsedSummary || dataFlowActive || isDisabled;
@@ -170,7 +167,7 @@ export function LabeledEdge({
           : ''))
     : '';
 
-  // Flow-animation overlay path — idle edges stay SOLID and calm; the animated dash
+  // Flow-animation overlay path — idle edges stay solid and calm; the animated dash
   // only rides edges whose flow is actually moving right now (live execution entering
   // a currently-running target). The `edgesAnimated` toggle remains the master switch.
   const showFlowAnimation = premiumCanvas
@@ -210,7 +207,7 @@ export function LabeledEdge({
           : replayEdgeState === 'failed'
           ? { stroke: EDGE_COLORS.failed, strokeWidth: edgeWidth + 1, opacity: 1 }
           : replayEdgeState === 'running'
-          // Der Lauf in den Running-Target wird amber gefärbt.
+          // The transition into a running target is colored amber.
           ? { stroke: EDGE_COLORS.running, strokeWidth: edgeWidth + 1, opacity: 1 }
           : { stroke: EDGE_COLORS.skipped, strokeWidth: edgeWidth, strokeDasharray: '4,4', opacity: 0.4 })
       : isVarFlowHighlighted
@@ -231,27 +228,26 @@ export function LabeledEdge({
     ...(style || {}),
   };
 
-  // Skip a stored "Always" on an edge that has no condition. Older workflows carry it because the
-  // properties panel used to write it; an edge without a condition runs always, so the word adds
-  // nothing. Skipped at render only — the workflow JSON keeps the value.
-  // The check is narrow: exact string, and only without a condition, so a hand-written label such
-  // as "Lane A" and an "Always" next to a real condition both still render.
+  // Skip a stored "Always" label on an edge that has no condition: such an edge always runs,
+  // so the word adds nothing, even though some stored workflows carry it as a literal value.
+  // Skipped at render only — the workflow JSON keeps the value. The check is narrow (exact
+  // string, only without a condition) so a hand-written label like "Lane A", or "Always" next
+  // to a real condition, still renders.
   const storedLabel = (!condition && !hasExpression && label === LEGACY_ALWAYS_LABEL) ? '' : label;
   const rawDisplayLabel = storedLabel
     || (hasExpression ? (expressionSummary || 'ƒ(x)') : '')
     || (condition ? (condition.endsWith('.success') ? t('edges.onSuccess') : condition.endsWith('.failed') ? t('edges.onFailure') : condition) : '');
-  // Edge labels are rendered directly on the graph canvas → hard-truncate overly long
+  // Edge labels are rendered directly on the graph canvas -> hard-truncate overly long
   // expressions so the layout doesn't fall apart. The full text is still visible in the
   // edge properties panel.
   const displayLabel = rawDisplayLabel.length > 60 ? rawDisplayLabel.slice(0, 60) + '…' : rawDisplayLabel;
 
   const { onInsertRequest, canWrite } = useContext(EdgeEditingContext);
 
-  // Hover state for the inline-insert „+" button. Tracked separately for edge body and
-  // button itself: when the cursor moves from the SVG edge into the button div (which
+  // Hover state for the inline-insert "+" button, tracked separately for edge body and
+  // button: when the cursor moves from the SVG edge into the button div (which
   // EdgeLabelRenderer mounts outside the edge `<g>`), the edge's mouseleave fires before
-  // the button's mouseenter. Combining both states keeps the button visible across that
-  // gap so a user actually reaching for it doesn't watch it disappear at the last moment.
+  // the button's mouseenter. Combining both states keeps the button visible across that gap.
   const [edgeHovered, setEdgeHovered] = useState(false);
   const [buttonHovered, setButtonHovered] = useState(false);
   const showInsertButton = !isCollapsedSummary && !isDetached && (edgeHovered || buttonHovered || !!selected);
@@ -266,7 +262,7 @@ export function LabeledEdge({
         const manualArrow = premiumCanvas && i === segments.length - 1 ? arrow : undefined;
         return (
         // Wrap each BaseEdge in a <g> so the zero-opacity `interactionWidth` hit path
-        // bubbles its pointer events up to our hover handler. BaseEdge itself returns a
+        // bubbles its pointer events up to the hover handler. BaseEdge itself returns a
         // fragment, so without the wrapping group there's no element to listen on.
         // np-edge-g + conditionGlowClass drive the dark-mode drop-shadow glow in CSS.
         <g
@@ -363,13 +359,11 @@ export function LabeledEdge({
               : `${(flowingVars ?? []).slice(0, 2).join(' · ')} +${(flowingVars ?? []).length - 2}`}
           </div>
         )}
-        {/* Inline insert button: small and unobtrusive at the edge's midpoint, offset a bit
-            from the label so it doesn't collide with it. Hidden by default; appears as soon
-            as the cursor reaches the edge (or the button itself). Clicking it opens the
-            activity picker at the label's midpoint.
-            pointer-events set inline + onMouseDown stopPropagation: otherwise React Flow's
-            pane handler consumes the mousedown before our onClick can fire — that was the
-            reason clicks appeared to "just do nothing". */}
+        {/* Inline insert button: small and unobtrusive at the edge's midpoint, offset from
+            the label so it doesn't collide with it. Hidden until the cursor reaches the edge
+            or the button; clicking it opens the activity picker at the label's midpoint.
+            pointer-events set inline plus onMouseDown stopPropagation, since React Flow's
+            pane handler would otherwise consume the mousedown before onClick fires. */}
         <div
           className={`nodrag nopan absolute transition-opacity duration-150 ${
             showInsertButton ? 'opacity-100' : 'opacity-0'

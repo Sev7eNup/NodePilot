@@ -317,13 +317,7 @@ public sealed class WmiQueryActivityTests : IDisposable
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*arguments*object*");
     }
 
-    // ---- captureProperties (added 2026-05-17 — closes Caption/Name/... param gap) ----
-    //
-    // BEFORE this commit, {{wmi_os.param.Caption}} could never resolve because
-    // wmiQuery produced no OutputParameters. The activity now optionally wraps the
-    // CIM call, projects requested properties into a hashtable, and exposes them as
-    // param.<PropName>. These tests pin the contract so the "test workflows broken
-    // for months" situation cannot silently come back.
+    // captureProperties projects requested CIM values into param.<PropName> output parameters.
 
     [Fact]
     public void ParseCaptureProperties_AbsentKey_ReturnsEmpty()

@@ -40,7 +40,7 @@ function getAside(container: HTMLElement): HTMLElement {
 }
 
 beforeEach(() => {
-  // TopBar reads the health store; /api/system host-info still goes through fetch - keep it quiet.
+  // TopBar reads the health store; the /api/system host-info call still uses fetch, so stub it.
   useDbHealthStore.setState({ status: 'ok' });
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }));
   useAuthStore.setState({ userId: 'u1', username: 'admin', role: 'Admin', isAuthenticated: true });

@@ -297,12 +297,10 @@ public class ExecutionDispatchServiceTests
     [Fact]
     public async Task EnqueueAsync_WorkerCallback_AwaitsEngineForFullWorkflowLifetime()
     {
-        // Backpressure contract: the worker callback must AWAIT engine.ExecuteAsync for
-        // the entire workflow lifetime. This is what makes WorkerCount the real concurrency
-        // cap and the queue (Capacity) the spike buffer — incoming starts beyond WorkerCount
-        // wait in the queue rather than all hitting the engine at once and tripping the
-        // per-user/global caps. A previous fire-and-forget refactor broke this and caused
-        // the engine to reject ~92% of bursty starts as Failed instead of queueing them.
+        // Backpressure contract: the worker callback must AWAIT engine.ExecuteAsync for the
+        // entire workflow lifetime. This makes WorkerCount the real concurrency cap and the
+        // queue (Capacity) the spike buffer — starts beyond WorkerCount wait in the queue
+        // instead of all hitting the engine at once and tripping the per-user/global caps.
         await using var db = NodePilot.TestCommons.TestDbFactory.Create();
         var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}", IsEnabled = true };
         var pending = new WorkflowExecution

@@ -108,8 +108,8 @@ describe('DbViewerPage', () => {
 
     await waitFor(() => expect(screen.getByText('Workflows')).toBeInTheDocument());
     expect(screen.getByText('Audit Log')).toBeInTheDocument();
-    // Row counts rendered by TableList — build the expectation through the same i18n-aware
-    // formatNumber helper the component uses, so the test is independent of the runtime locale.
+    // TableList renders the row counts. Building the expectation with the same i18n-aware
+    // formatNumber helper keeps the test independent of the runtime locale.
     expect(screen.getByText(formatNumber(3))).toBeInTheDocument();
     expect(screen.getByText(formatNumber(1200))).toBeInTheDocument();
   });
@@ -119,8 +119,8 @@ describe('DbViewerPage', () => {
 
     await waitFor(() => screen.getByText('Audit Log'));
 
-    // The Lock icon in TableList.tsx has title="Read-only" (en locale)
-    // Only the fully read-only table gets one
+    // The Lock icon in TableList.tsx carries title="Read-only" (en locale), and only the
+    // fully read-only table renders one.
     const lockIcons = document.querySelectorAll('[title="Read-only"]');
     expect(lockIcons).toHaveLength(1);
   });
@@ -181,7 +181,7 @@ describe('DbViewerPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /Workflows/ }));
     await waitFor(() => screen.getByText('My Workflow'));
 
-    // Click the IsEnabled cell — shows "true"
+    // Click the IsEnabled cell, which shows "true"
     const firstRow = document.querySelector('tbody tr')!;
     const cells = firstRow.querySelectorAll('td');
     await userEvent.click(cells[2]); // IsEnabled at index 2
@@ -228,7 +228,7 @@ describe('DbViewerPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /Workflows/ }));
     await waitFor(() => screen.getByText('fixed'));
 
-    // ReadonlyCol cell — no dialog
+    // A read-only column cell must not open the edit dialog
     await userEvent.click(screen.getByText('fixed'));
 
     expect(screen.queryByText('Edit cell')).not.toBeInTheDocument();
@@ -256,7 +256,7 @@ describe('DbViewerPage', () => {
     await waitFor(() => {
       expect(dbAdminApi.patchRow).toHaveBeenCalled();
       const [, , , submittedValue] = vi.mocked(dbAdminApi.patchRow).mock.calls[0];
-      // Must be ISO UTC — toISOString() with Z suffix, not just appending "Z" to local string
+      // Must be ISO UTC from toISOString(), not the local string with a "Z" appended
       expect(typeof submittedValue).toBe('string');
       expect(submittedValue as string).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     });
@@ -289,9 +289,8 @@ describe('DbViewerPage', () => {
   });
 
   it('numericEdit_emptyOnNullable_submitsNull', async () => {
-    // Regression test: Number('') === 0 (not NaN), so clearing a nullable numeric cell used to
-    // save 0 instead of null. Fixed in EditCellDialog by forcing an empty string to null before
-    // the Number() conversion whenever the column is nullable.
+    // Number('') is 0, not NaN, so EditCellDialog maps an empty string to null before the
+    // Number() conversion on nullable columns. Clearing the cell must submit null, not 0.
     wrap(<DbViewerPage />);
 
     await waitFor(() => screen.getByText('Workflows'));

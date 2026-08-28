@@ -14,7 +14,8 @@ internal delegate Task<object> ChatToolHandler<TContext>(JsonElement args, TCont
 /// </summary>
 internal static class ChatToolDispatch
 {
-    /// <summary>The error envelope a tool failure comes back as instead of aborting the loop.</summary>
+    /// <summary>The error envelope a tool failure comes back as instead of aborting the
+    /// loop.</summary>
     public static string Error(string message, JsonSerializerOptions json) =>
         JsonSerializer.Serialize(new { error = message }, json);
 

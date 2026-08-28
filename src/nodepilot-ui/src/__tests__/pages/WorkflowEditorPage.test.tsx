@@ -107,8 +107,8 @@ const MOCK_WORKFLOW = {
       { id: 'step-a', type: 'activity', position: { x: 100, y: 100 },
         data: { label: 'Trigger', activityType: 'manualTrigger', config: {} } },
       { id: 'step-b', type: 'activity', position: { x: 400, y: 100 },
-        // targetMachineId is set so the pre-publish lint stays clean — required since the
-        // Publish-button now routes through PrePublishChecklistModal, which would otherwise
+        // targetMachineId is set so the pre-publish lint stays clean — required because the
+        // Publish button routes through PrePublishChecklistModal, which would otherwise
         // intercept the click on a runScript missing its machine.
         data: { label: 'Run', activityType: 'runScript', targetMachineId: 'machine-test', config: { script: 'Get-PSDrive C' } } },
     ],
@@ -202,23 +202,20 @@ function renderPage(role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
   );
 }
 
-// The toolbar action buttons (Publish / Test / Disable …) render as soon as the workflow query
-// resolves — they are gated on role + lock, NOT on the canvas. The canvas nodes hydrate from
-// definitionJson in a SEPARATE effect a tick later. Clicking a graph-dependent action before
-// hydration makes prePublishLint / run() see an empty graph (no-trigger) and take the wrong
-// branch — opening the pre-publish checklist modal or no-opping instead of firing the mutation —
-// which then silently times out. Waiting only for the workflow-name input is NOT enough (nodes
-// hydrate a tick after it). Under v8 coverage on the 2-core CI runner this race loses almost
-// every time, flaking a rotating 3-5 of these tests each run. Gate graph-dependent interactions
-// on a rendered canvas node (mirrors the node-context-menu test further down).
+// Toolbar buttons (Publish / Test / Disable) render once the workflow query resolves; they
+// are gated on role + lock, not on the canvas. Canvas nodes hydrate from definitionJson in a
+// separate effect a tick later, so a graph-dependent click before hydration can see an empty
+// graph and take the wrong branch (opening the pre-publish checklist modal, or no-opping
+// instead of firing the mutation). Gate graph-dependent interactions on a rendered canvas
+// node (mirrors the node-context-menu test further down).
 async function waitForCanvasReady() {
   await waitFor(() => expect(document.querySelector('.react-flow__node')).not.toBeNull());
 }
 
 // The expert-mode inspect/layout/export actions (Find&Replace, Diff, Dry-Run, Keyboard
-// shortcuts, Tidy/Restore, Export JSON/PNG) now live inside the "Werkzeuge" (Tools) popover
-// instead of being individual toolbar buttons. Open it before querying those rows. The menu
-// stays open across stateful clicks (tidy/restore), so one call suffices per test.
+// shortcuts, Tidy/Restore, Export JSON/PNG) live inside the "Werkzeuge" (Tools) popover.
+// Open it before querying those rows. The menu stays open across stateful clicks
+// (tidy/restore), so one call suffices per test.
 async function openToolsMenu() {
   fireEvent.click(await screen.findByTestId('tools-menu-trigger'));
 }
@@ -385,17 +382,17 @@ describe('WorkflowEditorPage — RBAC', () => {
 
 describe('WorkflowEditorPage — Workflow data variations', () => {
   it('locked-by-me workflow shows Publish button (no Republish label)', async () => {
-    // Default MOCK_WORKFLOW is locked-by-test-user → Save+Publish are visible. With the new
-    // lock model, Publish always reads "Publish" (no Republish — the workflow is always
-    // disabled while locked, so it's always re-enabling on publish).
+    // MOCK_WORKFLOW is locked-by-test-user, so Save and Publish are visible. Publish always
+    // reads "Publish", never "Republish": the workflow stays disabled while locked, so
+    // publishing always re-enables it.
     renderPage();
     await waitFor(() => expect(screen.getByRole('button', { name: /^Publish$/ })).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: /Republish/ })).not.toBeInTheDocument();
   });
 
   it('unlocked disabled workflow shows BOTH Bearbeiten and Publish buttons', async () => {
-    // Iteration 2: the Publish button is visible whenever roleCanWrite, not just lock-by-me.
-    // On a disabled+unlocked workflow it routes to /enable (re-publish without editing).
+    // The Publish button is visible whenever roleCanWrite, not just lock-by-me. On a
+    // disabled+unlocked workflow it routes to /enable (re-publish without editing).
     // Bearbeiten remains the entry point for actual editing.
     server.use(http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(MOCK_DISABLED)));
     renderPage();
@@ -406,9 +403,9 @@ describe('WorkflowEditorPage — Workflow data variations', () => {
   });
 
   it('productive workflow shows Disable button (no Publish, no Bearbeiten yet because Bearbeiten still appears)', async () => {
-    // The Publish/Disable-Toggle reads "Disable" when the workflow is productive. Bearbeiten
-    // also appears as the lock entry-point — both coexist in the header. There is NO button
-    // labelled "Publish" while the workflow is currently enabled.
+    // The Publish/Disable toggle reads "Disable" when the workflow is productive. Bearbeiten
+    // also appears as the lock entry point — both coexist in the header. There is no button
+    // labelled "Publish" while the workflow is enabled.
     server.use(http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(MOCK_PRODUCTIVE)));
     renderPage();
     await waitFor(() => expect(screen.getByRole('button', { name: /Disable/ })).toBeInTheDocument());
@@ -459,7 +456,7 @@ describe('WorkflowEditorPage — Workflow data variations', () => {
 describe('WorkflowEditorPage — Sidebar (Node Library / Workflows tabs)', () => {
   it('defaults to Workflows tab; switching to Nodes shows Node Library', async () => {
     renderPage();
-    // Default is Workflows tab — the node-search input (Nodes-tab-only) is NOT visible
+    // Default is the Workflows tab — the node-search input (Nodes-tab-only) is not visible
     await waitFor(() => expect(screen.queryByPlaceholderText('Search nodes...')).not.toBeInTheDocument());
 
     // Switching to Nodes reveals the node library (its search input)
@@ -563,8 +560,8 @@ describe('WorkflowEditorPage — Mutations', () => {
   });
 
   it('Publish button posts to atomic /publish endpoint', async () => {
-    // Publish now hits a single atomic endpoint instead of PUT + /enable. The default
-    // MOCK_WORKFLOW is locked-by-test-user, so the Publish button is visible.
+    // Publish hits a single atomic endpoint. MOCK_WORKFLOW is locked-by-test-user, so
+    // the Publish button is visible.
     let publishCalled = false;
     server.use(
       http.post(`${BASE}/api/workflows/wf-smoke-1/publish`, () => {
@@ -582,8 +579,8 @@ describe('WorkflowEditorPage — Mutations', () => {
   });
 
   it('Disable-Toggle on productive workflow posts to /disable', async () => {
-    // Iteration 2: clicking the Disable button (the toggle's productive-state label) hits the
-    // existing /disable endpoint — kill-switch path, no lock interaction.
+    // Clicking the Disable button (the toggle's productive-state label) hits the /disable
+    // endpoint — kill-switch path, no lock interaction.
     let disableCalled = false;
     server.use(
       http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(MOCK_PRODUCTIVE)),
@@ -603,8 +600,8 @@ describe('WorkflowEditorPage — Mutations', () => {
   });
 
   it('Publish-Toggle on disabled+unlocked workflow posts to /enable (no lock needed)', async () => {
-    // Iteration 2: on a disabled workflow without an active lock, Publish routes to /enable
-    // directly — the user can re-publish without going through Bearbeiten first.
+    // On a disabled workflow without an active lock, Publish routes to /enable directly —
+    // the user can re-publish without going through Bearbeiten first.
     let enableCalled = false;
     server.use(
       http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(MOCK_DISABLED)),
@@ -623,10 +620,10 @@ describe('WorkflowEditorPage — Mutations', () => {
   });
 
   it('Publish click on a workflow with lint warnings opens the pre-publish modal instead of mutating', async () => {
-    // Workflow with a remote fileOperation missing targetMachineId - that's a lint ERROR, so the
-    // pre-publish modal should intercept and the /enable mutation must NOT fire until the
-    // user explicitly confirms (which they can't with errors anyway, but absence-of-call is
-    // the assertion here).
+    // Workflow with a remote fileOperation missing targetMachineId is a lint error, so the
+    // pre-publish modal should intercept and the /enable mutation must not fire until the
+    // user explicitly confirms (which they can't with errors anyway, but absence of the call
+    // is the assertion here).
     let enableCalled = false;
     const dirtyDef = JSON.stringify({
       nodes: [
@@ -919,14 +916,13 @@ describe('WorkflowEditorPage — Replay banner', () => {
   });
 
   it('Test-Verlauf banner persists after Live View TTL eviction (canvasExecutionSnapshot fix)', async () => {
-    // Regression guard for cbaa6aa: the canvas snapshot keeps effectiveCanvasExecution
-    // non-null after the 30 s TTL evicts the execution from liveExecutionsById. Without the
-    // fix, canvasLiveExecution → null at eviction time would (in a refactored world) clear
-    // canvasRunIsTerminalState and drop the banner prematurely.
+    // canvasExecutionSnapshot keeps effectiveCanvasExecution non-null after the 30 s TTL
+    // evicts the execution from liveExecutionsById, so canvasRunIsTerminalState stays true
+    // and the banner does not disappear.
     //
-    // We switch to fake timers *after* the page is set up so MSW + React Query work
-    // normally, but *before* emitting SignalR events so the debounce (100 ms) and eviction
-    // (30 s) timers are fake and can be advanced instantly.
+    // Switch to fake timers after the page is set up so MSW + React Query work normally,
+    // but before emitting SignalR events so the debounce (100 ms) and eviction (30 s)
+    // timers are fake and can be advanced instantly.
     server.use(
       http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(MOCK_PRODUCTIVE)),
       http.post(`${BASE}/api/workflows/wf-smoke-1/execute`, () =>
@@ -956,7 +952,7 @@ describe('WorkflowEditorPage — Replay banner', () => {
       expect(signalRMock.connection?.invoke).toHaveBeenCalledWith('JoinWorkflow', 'wf-smoke-1'),
     );
 
-    // Phase 2 — fake timers: emit events AFTER switching so scheduleEviction's setTimeout
+    // Phase 2 — fake timers: emit events after switching so scheduleEviction's setTimeout
     // is intercepted by Vitest. This lets us advance past the 30 s TTL without a real wait.
     vi.useFakeTimers();
     try {
@@ -1138,8 +1134,8 @@ describe('WorkflowEditorPage — Lock Mutations', () => {
 
 describe('WorkflowEditorPage — Right Sidebar (Properties / EdgeProperties / BulkEdit)', () => {
   /**
-   * Trick: ReactFlow honors the initial selected:true on nodes/edges in its store. We pre-select
-   * via the workflow JSON so onSelectionChange fires on mount and the page renders the right pane.
+   * ReactFlow honors the initial selected:true on nodes/edges in its store. Pre-select via
+   * the workflow JSON so onSelectionChange fires on mount and the page renders the right pane.
    */
 
   it('selecting a single node renders PropertiesPanel', async () => {
@@ -1245,8 +1241,8 @@ describe('WorkflowEditorPage — AI chat vs. Properties (shared right panel)', (
     fireEvent.click(await screen.findByTestId('toggle-ai-assistant'));
     await waitFor(() => expect(aiPanel()).toBeInTheDocument());
 
-    // Re-clicking the ALREADY selected node changes nothing in ReactFlow's selection — this is
-    // exactly the case the onNodeClick handler exists for.
+    // Re-clicking the already selected node changes nothing in ReactFlow's selection — this
+    // is exactly the case the onNodeClick handler exists for.
     fireEvent.click(document.querySelector('.react-flow__node[data-id="step-a"]')!);
 
     await waitFor(() => expect(aiPanel()).not.toBeInTheDocument());
@@ -1277,9 +1273,9 @@ describe('WorkflowEditorPage — AI chat vs. Properties (shared right panel)', (
     fireEvent.click(await screen.findByTestId('toggle-ai-assistant'));
     await waitFor(() => expect(aiPanel()).toBeInTheDocument());
 
-    // Shift-click adds step-b to the already-selected step-a → 2 nodes selected. The chat shows
-    // that selection as its context chip, so it must survive. (ReactFlow reads the held modifier
-    // from its own key listener, hence the keyDown alongside the click's shiftKey.)
+    // Shift-click adds step-b to the selected step-a, leaving 2 nodes selected. The chat
+    // shows that selection as its context chip, so it must survive. ReactFlow reads the
+    // shift modifier from its own key listener, hence the keyDown alongside the click.
     fireEvent.keyDown(document, { key: 'Shift' });
     fireEvent.click(document.querySelector('.react-flow__node[data-id="step-b"]')!, { shiftKey: true });
     fireEvent.keyUp(document, { key: 'Shift' });
@@ -1533,7 +1529,7 @@ describe('WorkflowEditorPage — Keyboard Shortcuts', () => {
     renderPage('Admin');
     await waitFor(() => expect(screen.getByDisplayValue('Smoke Workflow')).toBeInTheDocument());
 
-    // No nodes selected → zoom-to-selection is a no-op but must not throw.
+    // With no nodes selected, zoom-to-selection is a no-op but must not throw.
     fireEvent.keyDown(window, { key: 'E', ctrlKey: true, shiftKey: true });
 
     expect(screen.getByDisplayValue('Smoke Workflow')).toBeInTheDocument();
@@ -1563,14 +1559,14 @@ describe('WorkflowEditorPage — Keyboard Shortcuts', () => {
   });
 });
 
-// Note: a Cancel-running-execution test was attempted but skipped — toggling the
-// useWorkflowSignalR mock at runtime via vi.resetModules + dynamic import triggered
-// "Maximum update depth exceeded" inside the @xyflow/react store wiring. The button
-// is only ~10 lines of code in EditorHeader and is exercised in EditorHeader-level tests.
+// No test here covers cancelling a running execution: toggling the useWorkflowSignalR mock
+// at runtime via vi.resetModules + dynamic import triggers "Maximum update depth exceeded"
+// inside the @xyflow/react store wiring. The cancel button is simple enough to be covered
+// by the EditorHeader-level tests instead.
 
-// The dedicated "cycle-only" banner was removed: roots are trigger-only, so a graph with no
-// (enabled) trigger — including a cycle-only graph — now surfaces the always-on `no-trigger` lint
-// error instead (covered by workflowLint.test.ts + e2e/error-handling.spec.ts 7.3).
+// Roots are trigger-only, so a graph with no (enabled) trigger — including a cycle-only
+// graph — surfaces the always-on `no-trigger` lint error (covered by workflowLint.test.ts
+// + e2e/error-handling.spec.ts 7.3).
 
 describe('WorkflowEditorPage — RunWorkflowDialog (manualTrigger params)', () => {
   it('clicking Test on a workflow with manualTrigger parameters opens RunWorkflowDialog', async () => {
@@ -1612,10 +1608,9 @@ describe('WorkflowEditorPage — RunWorkflowDialog (manualTrigger params)', () =
   });
 
   it('Test on productive (enabled, unlocked) workflow calls /execute without PUT save', async () => {
-    // Regression: handleRunClick used to call saveMutation unconditionally, which 423'd on
-    // read-only workflows because PUT requires the edit-lock. /execute itself has no lock
-    // check — the user must be able to start a run on a published workflow without first
-    // checking it out.
+    // PUT requires the edit lock, so calling saveMutation unconditionally would 423 on
+    // read-only workflows. /execute itself has no lock check — the user must be able to
+    // start a run on a published workflow without checking it out first.
     let putCalled = false;
     let executeCalled = false;
     server.use(
@@ -1670,7 +1665,7 @@ describe('WorkflowEditorPage — DesignToggle + ActivityTypeFilter', () => {
 
   it('Heatmap toggle in the view-overlays popover flips the store flag', async () => {
     renderPage('Admin');
-    // The failure-heatmap switch row lives inside the "Ansicht" popover since the toolbar redesign.
+    // The failure-heatmap switch row lives inside the "Ansicht" popover.
     fireEvent.click(await screen.findByTestId('view-overlays-trigger'));
     const heatmapBtn = await screen.findByTestId('toggle-failure-heatmap');
 
@@ -1712,11 +1707,9 @@ describe('WorkflowEditorPage — Lint Panel toggle', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Characterization tests (pre-refactor safety net for the frontend large-file
-// split). These pin externally-observable behaviour the rest of the suite does
-// NOT cover — autosave timing, save-before-run incl. the save-failure abort,
-// and the beforeunload guard — so the upcoming useWorkflowPersistence /
-// useWorkflowExecution extractions can be verified to preserve it.
+// Characterization tests: pin externally observable behavior not covered elsewhere in the
+// suite — autosave timing, save-before-run (including the save-failure abort), and the
+// beforeunload guard — so future refactors of this file can be verified to preserve it.
 // ---------------------------------------------------------------------------
 describe('WorkflowEditorPage — characterization (autosave + run + unload)', () => {
   // Fake timers leak across tests if a test throws before restoring; reset defensively.
@@ -1731,8 +1724,8 @@ describe('WorkflowEditorPage — characterization (autosave + run + unload)', ()
     renderPage();
     await waitFor(() => expect(screen.getByDisplayValue('Smoke Workflow')).toBeInTheDocument());
 
-    // Load resets isDirty=false → the autosave effect arms no timer. Advancing past
-    // the 5s debounce must not produce a save.
+    // Loading resets isDirty to false, so the autosave effect arms no timer. Advancing
+    // past the 5s debounce must not produce a save.
     await act(async () => { vi.advanceTimersByTime(6000); });
 
     expect(putCalled).toBe(false);
@@ -1773,11 +1766,9 @@ describe('WorkflowEditorPage — characterization (autosave + run + unload)', ()
   });
 
   it('Ctrl+Enter on a dirty workflow saves (PUT) before calling /execute', async () => {
-    // Regression: the keyboard handler (triggerTest) memoizes the `run` it closes over.
-    // When `run` was unmemoized + excluded from triggerTest's deps, editing after mount
-    // left a stale `run` (isDirty=false) bound to the shortcut — Ctrl+Enter skipped the
-    // pre-run save and tested the server's old definition. Editing here AFTER mount, without
-    // touching role/run-status, is exactly the scenario that exposed the stale closure.
+    // triggerTest must memoize the `run` it closes over, or a stale closure (isDirty=false)
+    // stays bound to the Ctrl+Enter shortcut and skips the pre-run save. Editing after mount,
+    // without touching role/run-status, exercises exactly that path.
     const lockedEnabled = { ...MOCK_WORKFLOW, isEnabled: true }; // locked-by-test-user + enabled
     const order: string[] = [];
     server.use(
@@ -1822,13 +1813,13 @@ describe('WorkflowEditorPage — characterization (autosave + run + unload)', ()
     renderPage();
     await waitFor(() => expect(screen.getByDisplayValue('Smoke Workflow')).toBeInTheDocument());
 
-    // Clean state → handler must not cancel the unload.
+    // Clean state: handler must not cancel the unload.
     const cleanEvt = new Event('beforeunload', { cancelable: true });
     const cleanPrevent = vi.spyOn(cleanEvt, 'preventDefault');
     globalThis.dispatchEvent(cleanEvt);
     expect(cleanPrevent).not.toHaveBeenCalled();
 
-    // Dirty state → handler cancels (browser shows the leave-confirmation).
+    // Dirty state: handler cancels (browser shows the leave-confirmation).
     fireEvent.change(screen.getByDisplayValue('Smoke Workflow'), { target: { value: 'Renamed' } });
     const dirtyEvt = new Event('beforeunload', { cancelable: true });
     const dirtyPrevent = vi.spyOn(dirtyEvt, 'preventDefault');
@@ -1838,12 +1829,10 @@ describe('WorkflowEditorPage — characterization (autosave + run + unload)', ()
 });
 
 describe('WorkflowEditorPage — node context menu preserves node data', () => {
-  // Regression: the right-click context menu's disable/enable (and breakpoint) toggles call
-  // handleNodeDataUpdate with a PARTIAL patch (e.g. { disabled: true }), but the handler used
-  // to REPLACE the node's entire `data`. Toggling disable then enable therefore wiped
-  // activityType/config/label, producing a definition the backend rejects on save
-  // (400 "data.activityType is required") — exactly the "save button doesn't work after
-  // disabling a node" symptom. The handler now merges the patch onto the existing data.
+  // The context menu's disable/enable (and breakpoint) toggles call handleNodeDataUpdate
+  // with a partial patch (e.g. { disabled: true }). The handler must merge the patch onto
+  // the existing node data — replacing it wholesale would wipe activityType/config/label
+  // and produce a definition the backend rejects on save.
   it('disabling then re-enabling a node via the context menu keeps its type/config on save', async () => {
     let savedDefinition: { nodes: { id: string; data: Record<string, unknown> }[] } | null = null;
     server.use(
@@ -1862,11 +1851,11 @@ describe('WorkflowEditorPage — node context menu preserves node data', () => {
     });
     const nodeEl = () => container.querySelector('.react-flow__node[data-id="step-b"]') as HTMLElement;
 
-    // Right-click → "Disable step".
+    // Right-click, then "Disable step".
     fireEvent.contextMenu(nodeEl());
     fireEvent.click(await screen.findByText('Disable step'));
 
-    // Right-click again → the menu now offers "Enable step" (re-query: the node re-rendered).
+    // Right-click again: the menu now offers "Enable step" (re-query: the node re-rendered).
     fireEvent.contextMenu(nodeEl());
     fireEvent.click(await screen.findByText('Enable step'));
 
@@ -1876,11 +1865,11 @@ describe('WorkflowEditorPage — node context menu preserves node data', () => {
     await waitFor(() => expect(savedDefinition).not.toBeNull());
     const stepB = savedDefinition!.nodes.find((n) => n.id === 'step-b');
     expect(stepB).toBeDefined();
-    // Core of the regression: the merge must preserve the node's identity fields.
+    // The merge must preserve the node's identity fields.
     expect(stepB!.data.activityType).toBe('runScript');
     expect(stepB!.data.label).toBe('Run');
     expect((stepB!.data.config as Record<string, unknown>).script).toBe('Get-PSDrive C');
-    // And the disable→enable round-trip left it enabled again.
+    // The disable-then-enable round-trip leaves the node enabled again.
     expect(stepB!.data.disabled).toBe(false);
   });
 });

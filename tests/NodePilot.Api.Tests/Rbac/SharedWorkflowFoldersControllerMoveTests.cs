@@ -164,7 +164,7 @@ public sealed class SharedWorkflowFoldersControllerMoveTests
         var b = AddFolder(db, a, "B", "/A/B", 2);
         await db.SaveChangesAsync();
 
-        // Null new-parent → move under Root.
+        // A null new parent moves the folder under Root.
         var result = await NewCtrl(db).Move(b, new MoveSharedFolderRequest(null), CancellationToken.None);
         result.Should().BeOfType<NoContentResult>();
 
@@ -191,7 +191,7 @@ public sealed class SharedWorkflowFoldersControllerMoveTests
         AddFolder(db, b, "C", "/A/B/C", 3);
         await db.SaveChangesAsync();
 
-        // 4 (X4) + 1 + 2 (A's subtree) = 7 > MaxDepth(5) → rejected.
+        // 4 (X4) + 1 + 2 (A's subtree) = 7, which exceeds MaxDepth(5), so the move is rejected.
         (await NewCtrl(db).Move(a, new MoveSharedFolderRequest(x4), CancellationToken.None))
             .Should().BeOfType<BadRequestObjectResult>();
     }
@@ -239,10 +239,10 @@ public sealed class SharedWorkflowFoldersControllerMoveTests
     [Fact]
     public async Task MoveWorkflow_RevokesLiveSubscriptionsForThatWorkflowOnly()
     {
-        // M-33: JoinExecution/JoinWorkflow authorize once, at join, and the notifier fans out to
-        // the group without re-checking. After a move the REST surface 404s for a viewer who lost
-        // Read while the already-joined socket kept streaming step output — so the move has to
-        // evict the membership. A bystander workflow's subscribers must survive.
+        // JoinExecution/JoinWorkflow authorize once, at join, and the notifier fans out to the
+        // group without re-checking membership. If a move revokes a viewer's Read access, their
+        // already-joined socket would keep streaming step output unless the move evicts them.
+        // A bystander workflow's subscribers must survive.
         await using var db = TestDbFactory.Create();
         var root = SharedWorkflowFolder.RootFolderId;
         var source = AddFolder(db, root, "A", "/A", 1);

@@ -179,7 +179,8 @@ public class WorkflowAnalyzerTests
         r.Ok.Should().BeFalse();
     }
 
-    /// <summary>An empty workflow runs through with 0 steps and Succeeds — "no trigger" would lie.</summary>
+    /// <summary>An empty workflow runs through with 0 steps and Succeeds — "no trigger" would
+    /// lie.</summary>
     [Fact]
     public void Analyze_EmptyWorkflow_ReportsNothing()
     {

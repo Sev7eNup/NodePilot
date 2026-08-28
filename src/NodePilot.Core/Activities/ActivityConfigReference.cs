@@ -67,7 +67,8 @@ public static class ActivityConfigReference
             StringComparer.Ordinal);
     }
 
-    /// <summary>The entry for <paramref name="activityType"/>, or null when it is not documented.</summary>
+    /// <summary>The entry for <paramref name="activityType"/>, or null when it is not
+    /// documented.</summary>
     public static ActivityConfigEntry? TryGet(string activityType)
         => ByType.TryGetValue(activityType, out var entry) ? entry : null;
 

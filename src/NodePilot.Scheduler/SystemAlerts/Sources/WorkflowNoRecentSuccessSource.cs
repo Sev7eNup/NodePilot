@@ -7,13 +7,16 @@ using NodePilot.Scheduler.Gauge;
 namespace NodePilot.Scheduler.SystemAlerts.Sources;
 
 /// <summary>
-/// Workflow-scoped source: one observation per enabled scheduled workflow, keyed by workflow id, exposing
+/// Workflow-scoped source: one observation per enabled scheduled workflow, keyed by workflow id,
+/// exposing
 /// <c>minutesSinceSuccess</c> and <c>neverSucceeded</c>. A policy decides "too long" (e.g.
-/// <c>minutesSinceSuccess &gt; 1440</c>). Carries workflow/folder identity so it can be folder/workflow-scoped.
+/// <c>minutesSinceSuccess &gt; 1440</c>). Carries workflow/folder identity so it can be
+/// folder/workflow-scoped.
 /// </summary>
 public sealed class WorkflowNoRecentSuccessSource : ISystemAlertSource
 {
-    // Sentinel minutes-since for a workflow that never succeeded — larger than any realistic threshold.
+    // Sentinel minutes-since for a workflow that never succeeded — larger than any realistic
+    // threshold.
     private const long NeverSucceededMinutes = 10_000_000;
 
     public string SourceId => "workflow-no-recent-success";

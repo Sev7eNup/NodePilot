@@ -170,7 +170,7 @@ describe('PrePublishChecklistModal — counter strip', () => {
         warnings: [warn('w1', 'c'), warn('w2', 'd'), warn('w3', 'e')],
       },
     });
-    // Counter blocks render the count as the only large number — easier to assert by role+name.
+    // Each counter block renders its count as the only number, so assert on the block text.
     const errorsBlock = screen.getByText('Errors').parentElement!;
     const warningsBlock = screen.getByText('Warnings').parentElement!;
     expect(errorsBlock.textContent).toMatch(/2/);

@@ -9,8 +9,10 @@ using Xunit;
 namespace NodePilot.Engine.Tests.SystemAlerts;
 
 /// <summary>
-/// Exercises each exemplar source's read-only <c>ObserveAsync</c> against seeded in-memory data, proving the
-/// three archetypes (global metric, per-instance health, event) yield correctly-shaped observations.
+/// Exercises each exemplar source's read-only <c>ObserveAsync</c> against seeded in-memory data,
+/// proving the
+/// three archetypes (global metric, per-instance health, event) yield correctly-shaped
+/// observations.
 /// </summary>
 public class SystemAlertSourceTests
 {
@@ -194,7 +196,7 @@ public class SystemAlertSourceTests
         var wf = Wf(Guid.NewGuid(), "Deploy");
         db.Workflows.Add(wf);
         db.WorkflowExecutions.Add(new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = wf.Id, Status = ExecutionStatus.Running, StartedAt = DateTime.UtcNow.AddMinutes(-40), CompletedAt = null });
-        db.WorkflowExecutions.Add(Exec(wf.Id, ExecutionStatus.Succeeded, DateTime.UtcNow)); // terminal → ignored
+        db.WorkflowExecutions.Add(Exec(wf.Id, ExecutionStatus.Succeeded, DateTime.UtcNow)); // terminal -> ignored
         await db.SaveChangesAsync();
 
         var obs = await new StuckExecutionSource().ObserveAsync(db, SystemAlertQuery.Empty, CancellationToken.None);

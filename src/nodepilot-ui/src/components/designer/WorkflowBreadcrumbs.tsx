@@ -16,7 +16,7 @@ export interface WorkflowCallRef {
 /**
  * Derives the outgoing static workflow references of the current workflow:
  * `startWorkflow.config.workflowNameOrId` and `forEach.config.childWorkflowNameOrId`.
- * Dynamic refs (containing `{{`) resolve at runtime and are skipped. Deduped by target.
+ * Dynamic refs containing `{{` resolve at runtime and are skipped. Results are deduped by target.
  */
 export function useWorkflowCallRefs(nodes: Node[]): WorkflowCallRef[] {
   const { data: workflows = [] } = useQuery({
@@ -36,11 +36,11 @@ export function useWorkflowCallRefs(nodes: Node[]): WorkflowCallRef[] {
       let ref: string | undefined;
       if (activityType === 'startWorkflow') ref = config.workflowNameOrId as string | undefined;
       else if (activityType === 'forEach') ref = config.childWorkflowNameOrId as string | undefined;
-      if (!ref || ref.includes('{{')) continue;  // skip dynamic / unresolved refs
-      // Resolve like the backend WorkflowNameResolver: id or exact-case name wins,
-      // otherwise fall back to a case-/whitespace-insensitive name match. Without the
-      // fallback, SCOrch-imported refs that differ only by casing render as broken
-      // (non-clickable) pills even though the engine would resolve them fine.
+      if (!ref || ref.includes('{{')) continue;  // skip dynamic and unresolved refs
+      // Resolve like the backend WorkflowNameResolver: an id or exact-case name wins,
+      // otherwise fall back to a case- and whitespace-insensitive name match. The fallback
+      // keeps refs that differ only by casing from rendering as broken pills even though
+      // the engine would resolve them.
       const norm = (s: string) => s.trim().toLowerCase();
       const target =
         workflows.find((w) => w.id === ref || w.name === ref) ??
@@ -48,7 +48,7 @@ export function useWorkflowCallRefs(nodes: Node[]): WorkflowCallRef[] {
         null;
       out.push({ sourceLabel: label, refName: ref, target });
     }
-    // Dedupe by target id (a workflow may be referenced multiple times — show once).
+    // Dedupe by target id so a workflow referenced several times shows once.
     const seen = new Set<string>();
     return out.filter((r) => {
       const key = r.target?.id ?? r.refName;
@@ -60,11 +60,11 @@ export function useWorkflowCallRefs(nodes: Node[]): WorkflowCallRef[] {
 }
 
 /**
- * Inline "Calls →" group — the icon + label + a pill per outgoing reference. Deliberately
- * renders NO strip/background of its own so it can be composed into the shared editor status
- * strip (see EditorStatusBanners) next to the other hints instead of stacking its own row.
- * Each resolvable pill links to the child editor; unresolved refs show a broken-ref pill.
- * Returns null when there are no static references.
+ * Inline group of outgoing calls: an icon, a label and one pill per reference. It renders no
+ * strip or background of its own so it can be composed into the shared editor status strip
+ * next to the other hints instead of taking its own row. Each resolvable pill links to the
+ * child editor; unresolved refs show a broken-ref pill. Returns null when there are no
+ * static references.
  */
 export function WorkflowCallsInline({ refs }: Readonly<{ refs: WorkflowCallRef[] }>) {
   const { t } = useTranslation('designer');
@@ -110,14 +110,14 @@ export function WorkflowCallsInline({ refs }: Readonly<{ refs: WorkflowCallRef[]
 }
 
 interface Props {
-  /** Current workflow's nodes — used to find startWorkflow / forEach references. */
+  /** Nodes of the current workflow, scanned for startWorkflow and forEach references. */
   nodes: Node[];
 }
 
 /**
- * Standalone outgoing-references row. Kept as a thin wrapper (hook + inline group) for direct
- * use and unit tests; the editor composes {@link useWorkflowCallRefs} + {@link WorkflowCallsInline}
- * into the shared status strip instead of rendering this as its own row.
+ * Standalone outgoing-references row. A thin wrapper over the hook and the inline group for
+ * direct use and unit tests; the editor composes {@link useWorkflowCallRefs} and
+ * {@link WorkflowCallsInline} into the shared status strip instead of rendering this row.
  */
 export function WorkflowBreadcrumbs({ nodes }: Readonly<Props>) {
   const refs = useWorkflowCallRefs(nodes);

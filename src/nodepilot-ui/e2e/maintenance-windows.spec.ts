@@ -2,14 +2,12 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
 /**
- * Maintenance-Windows E2E. A window gates when its targeted workflows may start (Blackout blocks /
- * AllowOnly permits while active). This page is the only frontend surface for the feature and is
- * otherwise untested at the UI level — these specs cover the CRUD round-trips that scripts and
- * admins rely on: list rendering, create (weekly blackout), edit, delete, and the Admin-only gate.
+ * Maintenance windows E2E. A window gates when its targeted workflows may start: Blackout blocks
+ * them while the window is active, AllowOnly permits them only then. These specs cover the CRUD
+ * round-trips of the page: list rendering, create (weekly blackout), edit, delete, Admin-only gate.
  *
- * Conventions mirror edit-lock.spec.ts: per-test `page.route()` mocks (no real backend) and
- * bilingual name regexes, because the preview build resolves i18n from the browser locale and
- * may render EN or DE. Day buttons (Mon/Tue/…) are NOT translated, so they match literally.
+ * Mocks are per-test `page.route()` calls, with no real backend. Name regexes are bilingual
+ * because the preview build resolves i18n from the browser locale; day buttons are not translated.
  */
 
 const WF_ID = '11111111-1111-1111-1111-111111111111';
@@ -40,7 +38,7 @@ function windowJson(overrides: Record<string, unknown> = {}) {
 }
 
 // The dialog has no role="dialog" (role="presentation") and the name input has no associated
-// <label htmlFor>, so we scope by the dialog heading's parent panel and pick fields by role.
+// <label htmlFor>, so fields are scoped by the dialog heading's parent panel and picked by role.
 function createPanel(page: Page) {
   return page
     .getByRole('heading', { name: /wartungsfenster anlegen|create maintenance window/i })
@@ -55,7 +53,7 @@ function editPanel(page: Page) {
 test.describe('Maintenance Windows', () => {
   test.beforeEach(async ({ page }) => {
     await installDefaultMocks(page);
-    // Secondary query the page fires for folder-target name resolution — empty by default.
+    // Secondary query the page fires for folder-target name resolution, empty by default.
     await page.route('**/api/shared-workflow-folders', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
     );
@@ -130,7 +128,7 @@ test.describe('Maintenance Windows', () => {
     await panel.getByRole('button', { name: 'Mon', exact: true }).click();
     await panel.getByRole('button', { name: /^anlegen$|^create$/i }).click();
 
-    // Request body carries the form translation: Mon == bit 1 == mask 2; 22:00 == 1320; 02:00 == 120.
+    // The request body carries the form translation: Mon is mask 2, 22:00 is 1320, 02:00 is 120.
     await expect.poll(() => postedBody).not.toBeNull();
     expect(postedBody).toMatchObject({
       name: 'Nightly Patch E2E',
@@ -198,11 +196,11 @@ test.describe('Maintenance Windows', () => {
     await expect(page.getByText('Doomed Window')).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole('button', { name: /löschen|delete/i }).click();
-    // The page deletes via the in-app ConfirmHost modal — confirm with OK.
+    // The page deletes via the in-app ConfirmHost modal, so confirm with OK.
     await page.getByRole('button', { name: 'OK' }).click();
 
     await expect.poll(() => deleteHit).toBe(true);
-    // Refetch returns the now-empty list → row gone, empty state back.
+    // The refetch returns an empty list, so the row is gone and the empty state is back.
     await expect(page.getByText('Doomed Window')).toHaveCount(0);
     await expect(page.getByText(/noch keine wartungsfenster|no maintenance windows yet/i)).toBeVisible();
   });

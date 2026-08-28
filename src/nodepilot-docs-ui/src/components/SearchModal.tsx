@@ -7,7 +7,7 @@ import { DEFAULT_LANG, type Lang } from '../i18n/languages'
 import { ArrowRight, Close, Search } from '@carbon/icons-react'
 
 interface SearchModalProps {
-  /** Active language — both the corpus searched and the routes minted. */
+  /** Active language: selects the corpus that is searched and the routes that are built. */
   lang: Lang
   open: boolean
   onClose: () => void
@@ -44,8 +44,8 @@ export default function SearchModal({ lang, open, onClose }: SearchModalProps) {
   }, [open, onClose])
 
   const results: Hit[] = useMemo(() => {
-    // Search the reader's language, falling back per page so an untranslated page is
-    // still findable rather than invisible.
+    // Search the reader's language, falling back per page so an untranslated page stays
+    // findable.
     const corpus = (path: string) =>
       contentByLang[lang]?.[path] ?? contentByLang[DEFAULT_LANG]?.[path]
 
@@ -93,8 +93,8 @@ export default function SearchModal({ lang, open, onClose }: SearchModalProps) {
       role="dialog"
       aria-label={t('ui.search')}
     >
-      {/* `np-card` carries the lit-plate treatment (and its own shadow in dark) — adding
-          a `shadow-2xl` utility here would be a second unlayered rule fighting it. */}
+      {/* `np-card` carries the lit-plate treatment and its own dark-mode shadow; adding a
+          `shadow-2xl` utility here would be a second rule conflicting with it. */}
       <div
         className="np-card flex h-fit max-h-[60vh] w-full max-w-xl flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}

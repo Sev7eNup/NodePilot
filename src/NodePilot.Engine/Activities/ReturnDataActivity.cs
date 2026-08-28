@@ -15,11 +15,11 @@ namespace NodePilot.Engine.Activities;
 /// Config:
 ///   data: { key1: "literal or {{template}}", key2: "...", ... }
 ///
-/// Concurrency: multiple returnData steps on parallel branches write the same row. The write
-/// goes through ExecuteUpdate, which bypasses tracked-entity state entirely — no stale-entity
-/// concurrency exception between a fetch and an update from a different scope. Which branch
-/// wins is deliberately not promised: the documented semantic is last-write-wins on the whole
-/// JSON (not per-key), so designers are expected to place a single terminal returnData step.
+/// Concurrency: multiple returnData steps on parallel branches can write the same row.
+/// The write goes through ExecuteUpdate, which bypasses tracked-entity state, so there
+/// is no stale-entity exception across scopes. Which branch wins is not defined — the
+/// semantic is last-write-wins on the whole JSON, not per key, so a workflow should use
+/// a single terminal returnData step.
 /// </summary>
 public class ReturnDataActivity : IActivityExecutor
 {
@@ -30,10 +30,10 @@ public class ReturnDataActivity : IActivityExecutor
     // to stuff secrets) can't blow the column / audit trail.
     private const int MaxReturnDataChars = 32 * 1024;
 
-    // Per-value cap. Truncating the *serialized* JSON would shred string-escape sequences
+    // Per-value cap. Truncating the serialized JSON would shred string-escape sequences
     // and trailing braces — the parent's JsonDocument.Parse in StartWorkflowActivity then
     // silently catches the exception and the child's returnData becomes empty. Capping
-    // each value BEFORE serialisation keeps the envelope syntactically valid.
+    // each value before serialization keeps the envelope syntactically valid.
     private const int MaxPerValueChars = 8 * 1024;
     private const string PerValueTruncationMarker = "…(truncated)";
 
@@ -56,7 +56,7 @@ public class ReturnDataActivity : IActivityExecutor
             };
         }
 
-        // Variables in values are already resolved by the engine before this executor is called
+        // The engine resolves variables in values before invoking this executor.
         // (non-runScript activities go through ResolveVariables on the config), so dataEl is plain.
         // Per-value cap is applied here so each value stays small enough that the envelope as a
         // whole almost always fits inside MaxReturnDataChars.
@@ -71,7 +71,7 @@ public class ReturnDataActivity : IActivityExecutor
 
         var json = JsonSerializer.Serialize(outputParams);
 
-        // H-9: run ReturnData through the redactor — a careless workflow that echoes a secret
+        // Run ReturnData through the redactor — a careless workflow that echoes a secret
         // into returnData would otherwise persist it unmasked to the WorkflowExecution.ReturnData
         // column and flow it up to any startWorkflow parent.
         var persistJson = _redactor?.Redact(json) ?? json;

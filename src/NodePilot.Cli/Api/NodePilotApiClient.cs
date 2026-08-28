@@ -184,7 +184,8 @@ public sealed class NodePilotApiClient
         return await ParseAsync<BackupManifestResponse>(res, ct);
     }
 
-    /// <summary>Posts an export request and returns the raw <c>.npbackup</c> bytes + warning count.</summary>
+    /// <summary>Posts an export request and returns the raw <c>.npbackup</c> bytes + warning
+    /// count.</summary>
     public async Task<(byte[] Content, int Warnings)> ExportBackupAsync(
         List<string> sections, string passphrase, CancellationToken ct)
     {
@@ -538,7 +539,7 @@ public sealed class NodePilotApiClient
         return await ParseAsync<List<NotificationDeliveryDto>>(res, ct);
     }
 
-    // ---- System-Alert Policies (ADR 0008 — configurable policies that replaced the old built-in gauge alerts) ----
+    // ---- System-Alert Policies (ADR 0008) ------------------------------------
 
     public async Task<SystemAlertCatalogResponse> GetSystemAlertCatalogAsync(CancellationToken ct)
     {
@@ -876,7 +877,8 @@ public sealed class NodePilotApiClient
     /// <summary>
     /// Triggers the bulk re-encrypt sweep. The endpoint returns 207 Multi-Status when
     /// some rows could not be migrated — that is NOT a transport-level failure, so we
-    /// accept it as success and let the caller branch on <see cref="ReencryptResult.PartialSuccess"/>.
+    /// accept it as success and let the caller branch on <see
+    /// cref="ReencryptResult.PartialSuccess"/>.
     /// </summary>
     public async Task<ReencryptResult> ReencryptSecretsAsync(CancellationToken ct)
     {

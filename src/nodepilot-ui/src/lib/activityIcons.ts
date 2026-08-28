@@ -10,12 +10,12 @@ import {
 import { CurlyBracesIcon } from './CurlyBracesIcon';
 
 /**
- * Material-Symbols glyph token -> Carbon icon component.
+ * Maps a glyph token to a Carbon icon component.
  *
- * The token string stays the stable identifier carried by the activity catalog
- * (`activityCatalog.generated.ts`, kept in parity with the backend `ActivityCatalog`)
- * and by persisted custom-activity definitions. This map is the single point that
- * resolves such a token to a rendered SVG, so the backend/data never has to change.
+ * The token is the stable identifier carried by the activity catalog
+ * (`activityCatalog.generated.ts`, in parity with the backend `ActivityCatalog`) and by
+ * stored custom-activity definitions. This map is the only place a token becomes an SVG,
+ * so changing an icon never touches the backend or stored data.
  */
 export const ACTIVITY_ICON_COMPONENTS: Record<string, CarbonIconType> = {
   // --- built-in activity / trigger catalog ---
@@ -84,20 +84,18 @@ export const ACTIVITY_ICON_COMPONENTS: Record<string, CarbonIconType> = {
 };
 
 /**
- * Fallback for unknown / legacy tokens — e.g. free-text Material Symbols names persisted
- * by custom activities created before the Carbon migration. Renders a generic plugin glyph.
+ * Generic plugin glyph used for tokens the map does not know.
  *
- * Resolve at a render site with member access (NOT a wrapper function): a component obtained
- * from a call is flagged by the React Compiler as "created during render", whereas a map lookup
- * is a stable reference — same pattern the sidebar theme icons use:
+ * Resolve it at the render site with a map lookup, not through a wrapper function: the React
+ * Compiler flags a component returned by a call as created during render, while a lookup is a
+ * stable reference.
  *   const Icon = ACTIVITY_ICON_COMPONENTS[token] ?? FALLBACK_ACTIVITY_ICON;
  */
 export const FALLBACK_ACTIVITY_ICON: CarbonIconType = Application;
 
 /**
- * Curated tokens offered in the custom-activity icon picker. All are Carbon-backed via the
- * map above. Kept as the previous Material-Symbols token strings so existing definitions
- * keep their icon after the migration (no data rewrite needed).
+ * Tokens offered in the custom-activity icon picker. Each one resolves through the map above,
+ * and the strings match the tokens already stored with existing definitions.
  */
 export const CUSTOM_ACTIVITY_ICON_CHOICES: readonly string[] = [
   'extension', 'terminal', 'bolt', 'rocket_launch', 'settings', 'build', 'memory', 'dns',

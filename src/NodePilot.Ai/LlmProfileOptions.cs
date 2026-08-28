@@ -16,7 +16,8 @@ public class LlmProfileOptions
     public string Name { get; set; } = "";
 
     /// <summary>
-    /// Address of the OpenAI-compatible endpoint. For Ollama, e.g. <c>http://localhost:11434/v1</c>.
+    /// Address of the OpenAI-compatible endpoint. For Ollama, e.g.
+    /// <c>http://localhost:11434/v1</c>.
     /// The path also picks the wire dialect (see <see cref="LlmEndpointGuard.ResolveEndpoint"/>): a
     /// URL ending in <c>/responses</c> speaks OpenAI's Responses API, one ending in
     /// <c>/chat/completions</c> is used verbatim, anything else gets <c>/chat/completions</c>

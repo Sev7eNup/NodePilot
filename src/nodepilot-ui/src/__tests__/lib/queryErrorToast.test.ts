@@ -5,9 +5,8 @@ import { useToastStore } from '../../stores/toastStore';
 import { ApiError } from '../../api/client';
 
 /**
- * Builds the smallest object the policy actually reads. The real `Query` carries far more, and
- * constructing one through a QueryClient would test React Query's plumbing rather than this
- * decision.
+ * Builds the smallest object the policy reads. A real `Query` carries far more, and building one
+ * through a QueryClient would test React Query's plumbing instead of this decision.
  */
 function fakeQuery(
   options: { data?: unknown; silentError?: boolean } = {},
@@ -28,9 +27,8 @@ describe('shouldToastQueryError', () => {
   });
 
   it('stays silent when data is already on screen', () => {
-    // A failed background refetch leaves the last good values visible. Without this the app's
-    // ~18 polling queries would fire a toast each, per interval, for as long as the backend is
-    // unreachable.
+    // A failed background refetch leaves the last good values visible. Without this, every polling
+    // query would fire a toast on each interval for as long as the backend is unreachable.
     expect(shouldToastQueryError(fakeQuery({ data: [{ id: 1 }] }))).toBe(false);
   });
 
@@ -87,9 +85,8 @@ describe('handleQueryError', () => {
   });
 
   it('does not accumulate a toast per poll for a persistently failing background query', () => {
-    // The shape of the shipped defect: the header polls /healthz/live every 15 s, and a dead
-    // backend turned that into an endless stream of "status 502" toasts saying exactly what the
-    // red pill beside them already said.
+    // The header polls /healthz/live on an interval. Without the opt-out, an unreachable backend
+    // produces an endless stream of toasts repeating what the status pill beside them shows.
     const query = fakeQuery({ silentError: true });
     for (let poll = 0; poll < 10; poll++) handleQueryError(new Error('status 502'), query);
     expect(useToastStore.getState().toasts).toHaveLength(0);
@@ -100,8 +97,8 @@ describe('handleQueryError — database codes', () => {
   beforeEach(() => useToastStore.setState({ toasts: [] }));
 
   it('handleQueryError_databaseUnavailable_doesNotToast', () => {
-    // The outage banner is on screen owning this message, and this handler fires once per failed
-    // query — during an outage that is every visible query at once.
+    // The outage banner already carries this message, and this handler fires once per failed
+    // query, which during an outage is every visible query at once.
     handleQueryError(
       new ApiError('The database is not reachable right now. (DATABASE_UNAVAILABLE)', 503, 'DATABASE_UNAVAILABLE'),
       fakeQuery());
@@ -110,9 +107,9 @@ describe('handleQueryError — database codes', () => {
   });
 
   it('handleQueryError_databaseTimeout_stillToasts', () => {
-    // The regression this pins: DATABASE_TIMEOUT means the breaker stayed CLOSED, so no banner is
-    // rendered for it anywhere. Suppressing it left a page that reads only `data`/`isLoading`
-    // showing an empty list for a busy database — verbatim the defect this handler exists to fix.
+    // DATABASE_TIMEOUT means the breaker stayed closed, so no banner is rendered for it.
+    // Suppressing the toast would leave a page that only reads `data`/`isLoading` showing an
+    // empty list for a busy database.
     handleQueryError(
       new ApiError('The database did not answer in time. (DATABASE_TIMEOUT)', 503, 'DATABASE_TIMEOUT'),
       fakeQuery());

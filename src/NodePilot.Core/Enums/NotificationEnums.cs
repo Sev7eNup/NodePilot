@@ -27,7 +27,8 @@ public enum NotificationEventType
     /// A modular system-alert policy episode (ADR 0008). The producer is identified by
     /// <c>NotificationContext.SourceId</c> rather than a per-source enum value, so this one family
     /// carries every <c>ISystemAlertSource</c>. It is absent from
-    /// <c>NotificationRuleSemantics.SupportedEventTypes</c>, so the custom-rule API and editor never
+    /// <c>NotificationRuleSemantics.SupportedEventTypes</c>, so the custom-rule API and editor
+    /// never
     /// offer it; only the system-policy surface emits it.
     /// </summary>
     SystemAlert = 14,
@@ -64,7 +65,8 @@ public enum NotificationSeverity
     Critical = 2,
 }
 
-/// <summary>Which workflows a rule applies to. Mirrors <see cref="MaintenanceScopeKind"/>.</summary>
+/// <summary>Which workflows a rule applies to. Mirrors <see
+/// cref="MaintenanceScopeKind"/>.</summary>
 public enum NotificationScopeKind
 {
     Global = 0,

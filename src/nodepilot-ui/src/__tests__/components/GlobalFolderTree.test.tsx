@@ -7,9 +7,9 @@ import { GlobalFolderTree } from '../../components/globals/GlobalFolderTree';
 import { globalFoldersApi, ROOT_FOLDER_ID, type GlobalFolder } from '../../api/globalFolders';
 
 /**
- * The global-variable folder tree. Same gesture as the workflow tree — checkbox per row, one
- * request per top-most folder, recursive delete — but gated on a single `canManage` flag instead
- * of per-folder capabilities, because globals carry no folder RBAC.
+ * Tests for the global-variable folder tree: one checkbox per row, one request per top-most
+ * folder, recursive delete. Access is gated on a single `canManage` flag instead of per-folder
+ * capabilities, because global variables carry no folder RBAC.
  */
 function renderWithClient(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -125,7 +125,7 @@ describe('GlobalFolderTree', () => {
 
     await waitFor(() => expect(mockApi.deleteRecursive).toHaveBeenCalledTimes(1));
     expect(mockApi.deleteRecursive).toHaveBeenCalledWith('env');
-    // And exactly one confirmation for the whole run.
+    // One confirmation covers the whole run.
     expect(confirmDialog).toHaveBeenCalledTimes(1);
   });
 
@@ -145,7 +145,7 @@ describe('GlobalFolderTree', () => {
   });
 
   it('the confirmation names what goes with the folder', async () => {
-    // Dropping the "must be empty" rule is only safe if the dialog says how much rides along.
+    // A recursive delete is only safe if the dialog states what the folder takes with it.
     mockApi.list.mockResolvedValue([rootFolder, env, prod]);
     mockApi.deleteRecursive.mockResolvedValue({ deletedFolders: 2, deletedVariables: 5 });
 
@@ -185,7 +185,7 @@ describe('GlobalFolderTree', () => {
   });
 
   it('resets the folder filter when the filtered folder is a descendant of a deleted one', async () => {
-    // /Environment/Prod is never requested — it disappears with its parent.
+    // /Environment/Prod is never requested; it disappears with its parent.
     mockApi.list.mockResolvedValue([rootFolder, env, prod]);
     mockApi.deleteRecursive.mockResolvedValue({ deletedFolders: 2, deletedVariables: 5 });
     const onFolderSelected = vi.fn();
@@ -201,7 +201,7 @@ describe('GlobalFolderTree', () => {
   });
 
   it('keeps the folder filter when the delete failed', async () => {
-    // Sending the user back to "all variables" while their folder is still there would be a lie.
+    // The folder still exists after a failed delete, so the filter must stay on it.
     mockApi.list.mockResolvedValue([rootFolder, env, prod]);
     mockApi.deleteRecursive.mockRejectedValue(new Error('nope'));
     const onFolderSelected = vi.fn();

@@ -14,18 +14,25 @@ namespace NodePilot.Scheduler.SystemAlerts;
 public sealed record SystemAlertFire(NotificationRule Policy, NotificationContext Context);
 
 /// <summary>
-/// The system-alert policy evaluator — decides whether a built-in alert source's current reading should
-/// actually fire a notification (this replaced a set of hard-coded per-source thresholds; see ADR 0008 for
-/// the rationale). Each pass it groups the enabled System policies by (source, normalized parameters),
-/// samples every distinct source once, and runs each policy's condition + sustain window against every
+/// The system-alert policy evaluator — decides whether a built-in alert source's current reading
+/// should
+/// actually fire a notification (this replaced a set of hard-coded per-source thresholds; see ADR
+/// 0008 for
+/// the rationale). Each pass it groups the enabled System policies by (source, normalized
+/// parameters),
+/// samples every distinct source once, and runs each policy's condition + sustain window against
+/// every
 /// applicable observation — maintaining per-(policy, source, instance) match state in
-/// <c>SystemAlertPolicyStates</c>. When a policy's condition holds continuously for its sustain window an
+/// <c>SystemAlertPolicyStates</c>. When a policy's condition holds continuously for its sustain
+/// window an
 /// episode opens; while the episode is open the evaluator emits a fire every pass (the dispatcher's
 /// (rule, route, eventKey) exactly-once guard dedups these), the same "keep re-emitting while true"
 /// crash-safety approach the old gauge-based alerting system used.
 ///
-/// <para>Sources decide nothing — the evaluator owns health. It stages state mutations on the tracked
-/// context; the dispatcher's single SaveChanges flushes them together with the Pending attempts (the match
+/// <para>Sources decide nothing — the evaluator owns health. It stages state mutations on the
+/// tracked
+/// context; the dispatcher's single SaveChanges flushes them together with the Pending attempts
+/// (the match
 /// state and the delivery record are written together, before anything is actually sent). Recovery
 /// (condition stops holding) is silent (no "resolved" alert in v1).</para>
 /// </summary>
@@ -38,8 +45,10 @@ public sealed class SystemAlertEvaluator
     public SystemAlertEvaluator(ISystemAlertCatalog catalog) => _catalog = catalog;
 
     /// <summary>
-    /// Evaluate every enabled System policy against current observations, staging match-state changes on
-    /// <paramref name="db"/> and returning the deliveries that should fire this pass. Does not save.
+    /// Evaluate every enabled System policy against current observations, staging match-state
+    /// changes on
+    /// <paramref name="db"/> and returning the deliveries that should fire this pass. Does not
+    /// save.
     /// </summary>
     public async Task<IReadOnlyList<SystemAlertFire>> EvaluateAsync(
         NodePilotDbContext db, IReadOnlyList<NotificationRule> systemPolicies, DateTime now, CancellationToken ct)
@@ -57,7 +66,7 @@ public sealed class SystemAlertEvaluator
             var source = _catalog.Find(group.Key.SourceId);
             if (source is null) continue; // misconfigured policy (source removed) — skip, no crash
 
-            if (!await source.IsAvailableAsync(db, ct)) continue; // unavailable → no alert, no recovery
+            if (!await source.IsAvailableAsync(db, ct)) continue; // unavailable -> no alert, no recovery
 
             var query = BuildQuery(group.Key.ParamsKey);
             IReadOnlyList<SystemAlertObservation> observations;
@@ -87,8 +96,10 @@ public sealed class SystemAlertEvaluator
         {
             if (!ScopeAllows(policy, obs)) continue;
 
-            // Activation watermark (event sources): never back-alert an event that happened before the
-            // policy was (re-)activated — even if a sibling policy already advanced the shared source cursor.
+            // Activation watermark (event sources): never back-alert an event that happened before
+            // the
+            // policy was (re-)activated — even if a sibling policy already advanced the shared
+            // source cursor.
             if (obs.OccurredAt is { } occurred && policy.ActivatedAt is { } activated && occurred < activated)
                 continue;
 
@@ -97,9 +108,12 @@ public sealed class SystemAlertEvaluator
 
             if (!byInstance.TryGetValue(obs.InstanceKey, out var state))
             {
-                // Nothing to track yet for an instance that doesn't match: the row only matters once a
-                // match starts (MatchStartedAt) or has to be reset. Creating it unconditionally persisted
-                // one state row per non-matching observation per policy — every succeeded execution, every
+                // Nothing to track yet for an instance that doesn't match: the row only matters
+                // once a
+                // match starts (MatchStartedAt) or has to be reset. Creating it unconditionally
+                // persisted
+                // one state row per non-matching observation per policy — every succeeded
+                // execution, every
                 // audit entry — until the retention sweep pruned it 90 days later.
                 if (!holds) continue;
 
@@ -128,13 +142,19 @@ public sealed class SystemAlertEvaluator
                     && now >= started.AddSeconds(Math.Max(0, policy.SustainForSeconds));
                 if (sustainOver)
                 {
-                    // Millisecond-aligned on purpose: the episode start's ticks are part of the EventKey,
-                    // and PostgreSQL stores timestamps at microsecond precision. With raw 100-ns ticks the
-                    // first pass keyed the attempt on the in-memory value and every later pass on the
-                    // rounded value read back from the row — two keys, two deliveries, for one episode.
+                    // Millisecond-aligned on purpose: the episode start's ticks are part of the
+                    // EventKey,
+                    // and PostgreSQL stores timestamps at microsecond precision. With raw 100-ns
+                    // ticks the
+                    // first pass keyed the attempt on the in-memory value and every later pass on
+                    // the
+                    // rounded value read back from the row — two keys, two deliveries, for one
+                    // episode.
                     state.EpisodeStartedAt ??= TruncateToMilliseconds(now);
-                    // Emit every pass while the episode is open; the delivery ledger's (rule,route,eventKey)
-                    // guard makes this idempotent and recovers a persist-before-send crash on the next pass.
+                    // Emit every pass while the episode is open; the delivery ledger's
+                    // (rule,route,eventKey)
+                    // guard makes this idempotent and recovers a persist-before-send crash on the
+                    // next pass.
                     fires.Add(new SystemAlertFire(policy,
                         BuildContext(policy, obs, fieldMap, state.EpisodeStartedAt.Value, now)));
                 }
@@ -151,8 +171,10 @@ public sealed class SystemAlertEvaluator
     }
 
     /// <summary>
-    /// Best-effort rebuild of a system context from a crash-orphaned attempt's EventKey: re-sample the source
-    /// and match the instance. Returns null when the key isn't ours, the source is gone/unavailable, or the
+    /// Best-effort rebuild of a system context from a crash-orphaned attempt's EventKey: re-sample
+    /// the source
+    /// and match the instance. Returns null when the key isn't ours, the source is
+    /// gone/unavailable, or the
     /// instance no longer appears (the dispatcher then fails the attempt out).
     /// </summary>
     public async Task<NotificationContext?> TryReconstructContextAsync(NodePilotDbContext db, string eventKey, CancellationToken ct)
@@ -170,13 +192,16 @@ public sealed class SystemAlertEvaluator
         var obs = observations.FirstOrDefault(o => string.Equals(o.InstanceKey, instanceKey, StringComparison.Ordinal));
         if (obs is null) return null;
 
-        // The owning policy id is encoded in the key but the observation carries no severity override — a
-        // reconstructed send uses the observation's suggested severity, which is acceptable for recovery.
+        // The owning policy id is encoded in the key but the observation carries no severity
+        // override — a
+        // reconstructed send uses the observation's suggested severity, which is acceptable for
+        // recovery.
         var reconstructed = BuildContext(policyId: ParsePolicyId(eventKey), obs, FieldMap(obs), episodeStart, DateTime.UtcNow);
         return reconstructed with { EventKey = eventKey };
     }
 
-    /// <summary>Delete transient state for policies that are no longer enabled System policies (disable/delete reset).</summary>
+    /// <summary>Delete transient state for policies that are no longer enabled System policies
+    /// (disable/delete reset).</summary>
     public async Task PruneOrphanedStateAsync(NodePilotDbContext db, IReadOnlyCollection<Guid> enabledSystemPolicyIds, CancellationToken ct)
     {
         await db.SystemAlertPolicyStates
@@ -197,8 +222,10 @@ public sealed class SystemAlertEvaluator
     };
 
     /// <summary>
-    /// Whether a policy's condition holds against an observation's fields. Empty condition matches everything.
-    /// Shared with the stateless <c>preview</c> endpoint so what an operator sees previewed is exactly what
+    /// Whether a policy's condition holds against an observation's fields. Empty condition matches
+    /// everything.
+    /// Shared with the stateless <c>preview</c> endpoint so what an operator sees previewed is
+    /// exactly what
     /// the evaluator will decide.
     /// </summary>
     public static bool Matches(string? filterJson, IReadOnlyDictionary<string, string> fields)
@@ -212,14 +239,17 @@ public sealed class SystemAlertEvaluator
         catch (JsonException) { return false; }
     }
 
-    /// <summary>Flattens an observation's fields (plus its <c>sourceId</c>) to the string map conditions match against.</summary>
+    /// <summary>Flattens an observation's fields (plus its <c>sourceId</c>) to the string map
+    /// conditions match against.</summary>
     public static Dictionary<string, string> FieldMap(SystemAlertObservation obs)
     {
         var inv = CultureInfo.InvariantCulture;
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            // Exposed to policy conditions / route filters (e.g. sourceId == "backlog"). It travels in the
-            // generic ExtraFields bag rather than as one of NotificationContext's built-in named fields,
+            // Exposed to policy conditions / route filters (e.g. sourceId == "backlog"). It travels
+            // in the
+            // generic ExtraFields bag rather than as one of NotificationContext's built-in named
+            // fields,
             // since "sourceId" is only meaningful for system-alert policies, not custom rules.
             ["sourceId"] = obs.SourceId,
         };
@@ -316,7 +346,8 @@ public sealed class SystemAlertEvaluator
             && TryTicks(ticks, out episodeStart);
     }
 
-    /// <summary>Drops sub-millisecond ticks — the precision every supported provider round-trips intact.</summary>
+    /// <summary>Drops sub-millisecond ticks — the precision every supported provider round-trips
+    /// intact.</summary>
     public static DateTime TruncateToMilliseconds(DateTime value)
         => new(value.Ticks - value.Ticks % TimeSpan.TicksPerMillisecond, value.Kind);
 

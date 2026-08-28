@@ -12,16 +12,14 @@ using NodePilot.Api.Security.Ldap;
 namespace NodePilot.Api.Services;
 
 /// <summary>
-/// "Test connection" probes for the Admin Settings UI. Each method accepts a fully-
-/// populated section DTO (i.e. the values the operator just typed in the form, NOT
-/// the persisted ones) so the operator can validate a candidate configuration before
-/// committing it. Results are surfaced as a small JSON payload — no streaming, no
-/// websocket — which keeps both the API and the UI modal as simple as possible.
+/// "Test connection" probes for the Admin Settings UI. Each method accepts a fully-populated
+/// section DTO — the values the operator just typed in the form, not the persisted ones — so
+/// the operator can validate a candidate configuration before committing it. Results come back
+/// as a small JSON payload; no streaming, no websocket.
 ///
-/// <para>The probe deliberately does NOT touch the persistent settings file. It's a
-/// read-only diagnostic; failure does not prevent a subsequent PUT, and success does
-/// not imply the value will be persisted. The UI uses it strictly as "would this
-/// work?" feedback alongside the form.</para>
+/// <para>The probe never touches the persistent settings file. It is a read-only diagnostic:
+/// failure does not block a subsequent PUT, and success does not mean the value will be saved.
+/// The UI uses it purely as "would this work?" feedback next to the form.</para>
 /// </summary>
 public sealed class SettingsTestProbe
 {
@@ -49,15 +47,14 @@ public sealed class SettingsTestProbe
         {
             using var client = new SmtpClient(request.Settings.Host, request.Settings.Port)
             {
-                // H-2: respect the DTO's EnableSsl flag so the "Test connection" button
-                // exercises the same transport behaviour the runtime EmailActivity will
-                // use. Hardcoding false would lie to the operator about whether their
-                // TLS configuration actually works.
+                // Respect the DTO's EnableSsl flag so the "Test connection" button exercises
+                // the same transport behaviour the runtime EmailActivity uses. Hardcoding
+                // false would lie to the operator about whether their TLS configuration works.
                 EnableSsl = request.Settings.EnableSsl,
                 DeliveryMethod = SmtpDeliveryMethod.Network,
                 Timeout = 10_000,
             };
-            // SmtpClient credential semantics: null → anonymous bind. Empty/blank user
+            // SmtpClient credential semantics: null -> anonymous bind. Empty/blank user
             // is treated as "don't authenticate" so a misconfigured form (user typed
             // a space) doesn't surface as 535-auth-failure noise.
             if (!string.IsNullOrWhiteSpace(request.Settings.Username))
@@ -95,12 +92,11 @@ public sealed class SettingsTestProbe
 
     /// <summary>
     /// LLM connectivity probe. Sends a GET to <c>{ApiRoot}/models</c>, which every
-    /// OpenAI-compatible endpoint (OpenAI Cloud, Ollama, LM Studio, vLLM, LocalAI,
-    /// llama.cpp) supports as a cheap "are you there + does my key work" check. Avoids
-    /// burning tokens on a chat-completion probe. The root is the configured BaseUrl minus its
-    /// dialect suffix, so a BaseUrl pointing straight at <c>/responses</c> or
-    /// <c>/chat/completions</c> probes the sibling <c>/models</c> instead of a nested path that
-    /// doesn't exist.
+    /// OpenAI-compatible endpoint (OpenAI Cloud, Ollama, LM Studio, vLLM, LocalAI, llama.cpp)
+    /// supports as a cheap "is it up and does my key work" check, without spending tokens on a
+    /// chat completion. The root is the configured BaseUrl minus its dialect suffix, so a BaseUrl
+    /// pointing straight at <c>/responses</c> or <c>/chat/completions</c> probes the sibling
+    /// <c>/models</c> instead of a nested path that doesn't exist.
     /// </summary>
     public async Task<SettingsTestProbeResult> TestLlmAsync(LlmTestProbeRequest request, CancellationToken ct)
     {
@@ -110,13 +106,13 @@ public sealed class SettingsTestProbe
         var sw = Stopwatch.StartNew();
         try
         {
-            // Single guarded egress path (Finding 17): the SSRF-guarded named "Llm" client plus the
-            // shared LlmEndpointGuard — same validation/guard the runtime LLM calls use. Rejects
+            // Single guarded egress path: the SSRF-guarded named "Llm" client plus the shared
+            // LlmEndpointGuard — the same validation the runtime LLM calls use. Rejects
             // cloud-metadata / non-http(s) BaseUrls before any connect.
             var client = _httpFactory.CreateClient(LlmHttpClient.Name);
             // Deliberately above the handler's 30 s connect/TLS budget: whichever deadline fires
-            // first decides the message the operator reads, and the handler's produces a named
-            // stage ("TLS handshake did not complete") where this one only ever produces
+            // first decides the message the operator reads. The handler's timeout produces a
+            // named stage ("TLS handshake did not complete"); this one only ever produces
             // "the request was canceled due to the configured HttpClient.Timeout".
             client.Timeout = TimeSpan.FromSeconds(Math.Min(request.Settings.TimeoutSeconds, 40));
 
@@ -270,7 +266,7 @@ public sealed class SettingsTestProbe
 
 public sealed record SmtpTestProbeRequest(SmtpSettingsDto Settings, string? ToAddress);
 /// <summary>
-/// <paramref name="ProfileId"/> is only ever used to look up a stored API key when
+    /// <paramref name="ProfileId"/> only looks up a stored API key when
 /// <paramref name="Settings"/> sends the unchanged-secret marker; the connection under test comes
 /// entirely from <paramref name="Settings"/>. Keeping the id out of the settings DTO means the two
 /// can't disagree.

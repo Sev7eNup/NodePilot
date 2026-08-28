@@ -20,8 +20,8 @@ function formatOperand(op: ExprOperand, resolve: StepLabelResolver): string {
     const trimmed = v.length > 15 ? v.slice(0, 15) + '…' : v;
     return `"${trimmed}"`;
   }
-  // kind === 'variable'. Discriminate further by source — global/manual carry a flat `name`,
-  // step (the default) carries stepId + field + optional paramName.
+  // kind === 'variable'. Discriminate by source: global/manual carry a flat `name`, while
+  // step (the default) carries stepId, field and an optional paramName.
   if (op.source === 'global') return `globals.${op.name}`;
   if (op.source === 'manual') return `manual.${op.name}`;
   if (op.source === 'event') return `event.${op.name}`;

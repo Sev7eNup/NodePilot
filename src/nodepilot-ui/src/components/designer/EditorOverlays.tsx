@@ -454,7 +454,8 @@ function ScriptDoubleClickEditor({
   const upstreamRefs = upstreamVars.map((v) => ({ expression: v.expression, label: v.label }));
   const outputVariableName = (data.outputVariable as string) || undefined;
 
-  // Live (possibly unsaved) config so the step-test reflects the editor, not the last-saved DB state.
+  // Live (possibly unsaved) config so the step-test reflects the editor, not the last-saved DB
+  // state.
   const runStepTest = async (): Promise<StepTestResult> =>
     api.post<StepTestResult>(`/workflows/${workflowId}/steps/${node.id}/test`, { configOverride: config });
 

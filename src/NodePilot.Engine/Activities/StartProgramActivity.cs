@@ -12,7 +12,7 @@ namespace NodePilot.Engine.Activities;
 /// and returns the exit code plus stdout/stderr.
 ///
 /// Config:
-///   filePath           string, required — e.g. "C:\\Program Files\\7-Zip\\7z.exe", "powershell.exe",
+///   filePath           string, required, such as "C:\\Program Files\\7-Zip\\7z.exe"
 ///                                            or a document-associated path like "C:\\report.xlsx"
 ///                                            (in which case set `useShellExecute=true`).
 ///   arguments          string, optional — command-line args, passed through as-is.
@@ -26,9 +26,10 @@ namespace NodePilot.Engine.Activities;
 ///                                             e.g. "0,1,2". Success=false on a mismatch.
 ///
 /// Result:
-///   Success → exitCode is in successExitCodes (or fire-and-forget successfully started the process).
-///   Output  → stdout plus a short meta line (PID, ExitCode, Duration).
-///   ErrorOutput → stderr, or a timeout/launch error.
+/// Success to exitCode is in successExitCodes (or fire-and-forget successfully started the
+/// process).
+///   Output  -> stdout plus a short meta line (PID, ExitCode, Duration).
+///   ErrorOutput -> stderr, or a timeout/launch error.
 ///   OutputParameters["exitCode"], ["processId"], ["stdout"], ["stderr"], ["waited"].
 /// </summary>
 public class StartProgramActivity : BaseRemoteActivity
@@ -37,18 +38,16 @@ public class StartProgramActivity : BaseRemoteActivity
 
     private static readonly PowerShellOperationMarkers ResultMarkers = PowerShellOperation.Markers("PROGRAM");
 
-    // C2: documented in the catalog as 300s; the code previously fell through to
-    // Timeout.Infinite when the field was missing.
+    // Default kill timeout for wait mode, matching the documented catalog default.
     internal const int DefaultTimeoutSeconds = 300;
 
-    // D7: cap stdout/stderr at 1 MiB each. Beyond this the StringBuilder stops
-    // accepting new lines but the pipe keeps draining, so the producer doesn't
-    // block. Caller learns via `OutputParameters["stdoutTruncated"|"stderrTruncated"]`.
+    // Cap stdout/stderr at 1 MiB each. Beyond this the StringBuilder stops accepting new
+    // lines but the pipe keeps draining, so the producer doesn't block. Callers learn via
+    // `OutputParameters["stdoutTruncated"|"stderrTruncated"]`.
     internal const int MaxOutputBytesPerStream = 1024 * 1024;
 
-    // Configuration is inherited from the base class (protected `_configuration`). The local
-    // copy used to duplicate that state and was removed once the base field became protected —
-    // this also removes the compiler's redundant CS0108 hide-warning that came with it.
+    // Configuration is inherited from the base class (protected `_configuration`);
+    // no local copy is kept here.
 
     public StartProgramActivity(
         IRemoteSessionFactory sessionFactory,
@@ -74,9 +73,9 @@ public class StartProgramActivity : BaseRemoteActivity
 
         // UseShellExecute=true spawns via the OS shell (document associations, UI apps).
         // The shell parser introduces a second injection surface beyond PowerShell quoting,
-        // so default-on since Phase 3: a missing config key is treated as
-        // "DisallowShellExecute=true". Dev/test deployments that need shell-mediated launches
-        // flip StartProgram:DisallowShellExecute=false explicitly.
+        // so a missing config key is treated as "DisallowShellExecute=true" by default.
+        // Dev/test deployments that need shell-mediated launches set
+        // StartProgram:DisallowShellExecute=false explicitly.
         if (useShell)
         {
             var raw = _configuration["StartProgram:DisallowShellExecute"];
@@ -90,14 +89,14 @@ public class StartProgramActivity : BaseRemoteActivity
                     "to permit shell-mediated launches.");
         }
         var wait = config.GetBool("waitForExit", true);
-        // C2: default 300s (matches the documented default + the activity-catalog UI
-        // hint). PowerShellOperation.TimeoutSecondsFromConfig returns null for missing
-        // or non-positive values, which previously fell through to Timeout.Infinite and
-        // hung wait-mode steps forever. A sane bounded default is the safer operational
-        // choice; explicit per-step values still override.
+        // Default is 300s, matching the documented default and the activity-catalog UI hint.
+        // PowerShellOperation.TimeoutSecondsFromConfig returns null for missing or non-positive
+        // values, so a wait-mode step never ends up waiting forever with no bound.
+        // Explicit per-step values still override.
         var timeoutSeconds = PowerShellOperation.TimeoutSecondsFromConfig(config) ?? DefaultTimeoutSeconds;
 
-        // Script is embedded with single-quoted PS strings. Uses the shared PowerShell Operation module
+        // Script is embedded with single-quoted PS strings. Uses the shared PowerShell Operation
+        // module
         // so every activity builder funnels through the same apostrophe-doubling routine.
         var pFile = PowerShellOperation.Literal(filePath);
         var pArgs = PowerShellOperation.Literal(arguments);
@@ -220,7 +219,8 @@ public class StartProgramActivity : BaseRemoteActivity
 
     protected override ActivityResult PostProcess(ActivityResult raw, JsonElement config)
     {
-        // Engine returned a failure from the transport layer (WinRM down, script threw before marker).
+        // Engine returned a failure from the transport layer (WinRM down, script threw before
+        // marker).
         // Pass that through but still try to parse if output is present.
         var output = raw.Output ?? "";
         if (!PowerShellOperation.TryExtractJsonBlock(output, ResultMarkers, out var block))

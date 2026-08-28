@@ -6,21 +6,12 @@ using NodePilot.Core.Interfaces;
 namespace NodePilot.Engine.Activities;
 
 /// <summary>
-/// Generates a cryptographically-secure random string (IDs, tokens, GUIDs, password charsets).
-/// Engine-local analogue of System Center Orchestrator's "Generate Random Text".
-///
-/// All entropy comes from <see cref="RandomNumberGenerator"/> — never <see cref="System.Random"/> —
-/// because the output is used for passwords/secrets; <see cref="RandomNumberGenerator.GetInt32(int)"/>
-/// rejection-samples, so there is no modulo bias even for non-power-of-two alphabets (62/52/10/16/14).
-///
-/// The <c>password</c> mode is deliberately just a charset preset (letters+digits+symbols, uniform
-/// selection). It does <b>not</b> guarantee one character per class, so it is not a policy-compliant
-/// password generator — a future "ensure categories" option would live here.
-///
-/// Note: the generated value is intentionally returned in <see cref="ActivityResult.Output"/> and is
-/// NOT passed through OutputRedactor — the activity produces fresh randomness, it does not echo a
-/// configured secret, so masking it would defeat its only purpose (downstream consumption). Do not
-/// "fix" this by redacting <c>text</c>.
+/// Generates a cryptographically secure random string (IDs, tokens, GUIDs, password charsets).
+/// Uses <see cref="RandomNumberGenerator"/> instead of <see cref="System.Random"/>, with
+/// rejection sampling via <see cref="RandomNumberGenerator.GetInt32(int)"/> to avoid modulo bias.
+/// The <c>password</c> mode is a charset preset only and does not guarantee one character per
+/// class, so it is not a policy-compliant password generator. The result is not redacted in
+/// <see cref="ActivityResult.Output"/>, because it is generated randomness, not an echoed secret.
 /// </summary>
 public sealed class GenerateTextActivity : IActivityExecutor
 {
@@ -61,10 +52,11 @@ public sealed class GenerateTextActivity : IActivityExecutor
     // ---- config readers (internal static = unit-testable) ----
 
     /// <summary>
-    /// Reads a string property only when it is genuinely a JSON string. We do NOT use
-    /// <c>ConfigExtensions.GetStringOrNull</c> here because that throws on non-string JSON
-    /// (e.g. <c>mode: 5</c>), whereas this activity is intentionally tolerant — a malformed
-    /// mode/customCharset should fall back, not blow up the step.
+    /// Reads a string property only when it is genuinely a JSON string. Unlike
+    /// <c>ConfigExtensions.GetStringOrNull</c>, which throws on non-string JSON (e.g. <c>mode:
+    /// 5</c>),
+    /// this stays tolerant so a malformed mode/customCharset falls back instead of failing the
+    /// step.
     /// </summary>
     private static string? ReadString(JsonElement config, string key)
         => config.TryGetProperty(key, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;

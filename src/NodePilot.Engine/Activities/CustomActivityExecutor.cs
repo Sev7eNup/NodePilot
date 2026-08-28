@@ -8,17 +8,17 @@ using NodePilot.Engine.PowerShell;
 namespace NodePilot.Engine.Activities;
 
 /// <summary>
-/// The single executor for every user-authored custom activity. Workflow nodes carry the routing
-/// type <c>custom:&lt;key&gt;</c> and reference the definition via <c>config.__customDefinitionId</c>
-/// (authoritative) + <c>config.__customKey</c> (drift cross-check). This class is a thin adapter that
-/// turns a <see cref="CustomActivityDefinition"/> into a runScript-equivalent invocation: it resolves
-/// the declared input values, injects them as PowerShell variables, runs the script template through
-/// the shared <see cref="PowerShellActivitySupport"/> primitives, and captures ONLY the declared
-/// outputs via the wrapper allow-list. A missing/disabled/mismatched definition is a clean step
-/// failure (Success=false), never a thrown run-aborting exception.
+/// The single executor for every user-authored custom activity. A workflow node carries the
+/// routing type <c>custom:&lt;key&gt;</c> and points at its definition via
+/// <c>config.__customDefinitionId</c> (authoritative), cross-checked against
+/// <c>config.__customKey</c>. This class adapts a <see cref="CustomActivityDefinition"/> into a
+/// runScript-equivalent run: it resolves declared inputs into PowerShell variables, runs the
+/// script template through <see cref="PowerShellActivitySupport"/>, and captures only the
+/// declared outputs via the wrapper allow-list. A missing, disabled, or mismatched definition
+/// fails the step (Success=false) instead of throwing.
 ///
-/// <para>Dispatch: <see cref="ActivityRegistry"/> resolves any <c>custom:*</c> type to this executor;
-/// <see cref="ActivityType"/> is the reserved sentinel under which it registers.</para>
+/// <para>Dispatch: <see cref="ActivityRegistry"/> routes any <c>custom:*</c> type to this
+/// executor; <see cref="ActivityType"/> is the reserved sentinel it registers under.</para>
 /// </summary>
 public sealed class CustomActivityExecutor : IActivityExecutor
 {
@@ -65,7 +65,8 @@ public sealed class CustomActivityExecutor : IActivityExecutor
         if (expectedKey is not null && !string.Equals(expectedKey, def.Key, StringComparison.Ordinal))
             return Fail($"Custom activity reference drift: node points at key '{expectedKey}' but definition {defId} now has key '{def.Key}'.");
 
-        // 3. Honor RunsRemote explicitly (routing is otherwise data-driven and would silently run local).
+        // 3. Honor RunsRemote explicitly (routing is otherwise data-driven and would silently run
+        // local).
         var machine = def.RunsRemote ? context.ResolvedMachine : null;
         if (def.RunsRemote && machine is null && context.TargetMachineId is { } tid && _db is not null)
             machine = await _db.ManagedMachines.FindAsync([tid], ct);
@@ -73,7 +74,8 @@ public sealed class CustomActivityExecutor : IActivityExecutor
             return Fail($"Custom activity '{def.Name}' requires a target machine but none was provided.");
 
         // 4. Resolve declared inputs to raw values (against the step variables) and inject them as
-        //    PowerShell variables. Routing through the variables dict means the wrapper injects them as
+        // PowerShell variables. Routing through the variables dict means the wrapper injects them
+        // as
         //    $name; the capture allow-list (step 6) keeps them out of the outputs.
         var variables = new Dictionary<string, string>(context.Variables);
         foreach (var p in CustomActivityParameters.ParseInputs(def.InputParametersJson))
@@ -91,7 +93,8 @@ public sealed class CustomActivityExecutor : IActivityExecutor
         // 5. Resolve {{globals.X}} / upstream refs the author embedded in the template itself.
         var script = PowerShellActivitySupport.ResolveScriptVariables(def.ScriptTemplate, variables);
 
-        // 6. Build options. Allow-list = declared output names; exitCode is emitted separately anyway.
+        // 6. Build options. Allow-list = declared output names; exitCode is emitted separately
+        // anyway.
         var allowlist = CustomActivityParameters.ParseOutputs(def.OutputParametersJson)
             .Select(o => o.Name).ToArray();
         var timeoutSeconds = config.GetOptionalPositiveInt("timeoutSeconds") ?? def.DefaultTimeoutSeconds;

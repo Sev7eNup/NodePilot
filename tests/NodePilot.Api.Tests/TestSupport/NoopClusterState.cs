@@ -3,9 +3,9 @@ using NodePilot.Core.Interfaces;
 namespace NodePilot.Api.Tests.TestSupport;
 
 /// <summary>
-/// Always-leader <see cref="IClusterStateProvider"/> with inert leadership events — for
+/// Always-leader <see cref="IClusterStateProvider"/> with inert leadership events, for
 /// controller tests whose subject takes the provider as a dependency but never exercises
-/// HA behavior. Previously duplicated across the three AdminSettings test files.
+/// HA behavior.
 /// </summary>
 public sealed class NoopClusterState : IClusterStateProvider
 {

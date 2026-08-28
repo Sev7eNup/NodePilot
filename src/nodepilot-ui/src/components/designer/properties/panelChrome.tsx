@@ -20,10 +20,10 @@ import { getActivityLabel, VariableInsertField, VariablePicker, GlobalVariablePi
 
 /* ---- Section ----------------------------------------------------------- */
 
-/** Visual section wrapper used throughout the PropertiesPanel. Inspector style:
- *  top-level sections separate via a full-bleed hairline and carry the same neutral
- *  grey micro-header as the palette category headers in EditorSidebar; collapse is
- *  opt-in. Accent color is reserved for interactive/active states elsewhere. */
+/** Visual section wrapper used throughout the PropertiesPanel. Top-level sections are split
+ *  by a full-bleed hairline and carry the same neutral grey micro-header as the palette
+ *  categories in EditorSidebar; collapsing is opt-in. Accent colors stay reserved for
+ *  interactive and active states elsewhere. */
 export function Section({
   title, collapsible = false, defaultOpen = true, action, nested = false, children,
 }: Readonly<{
@@ -182,8 +182,8 @@ interface StatusPillRowProps {
   onChangeOutputVariable: (v: string) => void;
 }
 
-/** Compact horizontal row of three clickable pills replacing the three full-width
- *  Active/Breakpoint/Output-Variable sections at the bottom of the legacy panel. */
+/** Compact horizontal row of three clickable pills for the active state, the breakpoint
+ *  and the output variable of a step. */
 export function StatusPillRow({
   showExpertControls = true,
   isDisabled, hasBreakpoint, breakpointCondition, outputVariable, outputVariablePlaceholder,
@@ -333,15 +333,11 @@ export function StatusPillRow({
 
 /* ---- PanelHeader ------------------------------------------------------- */
 
-/** Sticky header at the top of the PropertiesPanel scroll container. Combines
- *  the activity icon, inline-editable name, activity-type label, close button
- *  and the StatusPillRow into a single visual unit so the user never loses
- *  context when scrolling through long activity configs.
- *
- *  Read-only mode (`canWrite=false`): InlineEditable renders as a plain span
- *  instead of an editable field, and StatusPillRow gets wrapped in its own
- *  `<fieldset disabled>`. The close button stays active, since the user should
- *  still be able to close the panel even in read-only mode. */
+/** Sticky header at the top of the PropertiesPanel scroll container. Combines activity icon,
+ *  inline-editable name, activity-type label, close button and the StatusPillRow so the
+ *  context stays visible while scrolling long configs. With `canWrite=false` the name shows
+ *  as plain text and the StatusPillRow sits in a disabled fieldset; the close button stays
+ *  active so the panel can be closed in read-only mode too. */
 export function PanelHeader({
   activityType, name, onChangeName, onClose, statusRow, canWrite = true,
 }: Readonly<{
@@ -418,8 +414,8 @@ function compactEditorTheme(fontSize: number) {
 }
 
 /** Inline CodeMirror wrapper with variable autocomplete on `{{` and the same
- *  picker buttons as VariableInsertField. Keeps the existing fullscreen
- *  ScriptEditorDialog flow intact via `onOpenFullscreen`. */
+ *  picker buttons as VariableInsertField. `onOpenFullscreen` hands off to the
+ *  ScriptEditorDialog. */
 export function CodeField({
   language, value, onChange, upstreamVars, upstreamRefs,
   minLines = 12, fontSize = 12, onOpenFullscreen, fullscreenLabel,
@@ -495,8 +491,8 @@ export function CodeField({
     insertExpression(expression);
   }, [insertExpression]);
 
-  // Min-height in px from line-count × line-height. CodeMirror's default
-  // line-height is roughly fontSize × 1.4.
+  // Min-height in px from line count and line height. CodeMirror's default line height
+  // is roughly fontSize * 1.4.
   const minHeightPx = Math.round(minLines * fontSize * 1.4) + 12; // +12 for padding
 
   return (
@@ -537,7 +533,7 @@ export function CodeField({
             highlightActiveLineGutter: false,
             highlightActiveLine: false,
             foldGutter: false,
-            autocompletion: false, // we install our own with custom source
+            autocompletion: false, // replaced by the custom completion source above
             bracketMatching: true,
             closeBrackets: true,
             indentOnInput: true,

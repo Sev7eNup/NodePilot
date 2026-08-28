@@ -117,8 +117,8 @@ public class GlobalVariableFoldersController : ControllerBase
         catch (Exception ex) { return MapError(ex); }
     }
 
-    // Typed store exceptions → HTTP status. KeyNotFound → 404, conflict → 409, the rest
-    // (depth cap, cycle, root-protected, bad parent, bad name) → 400 with the message.
+    // Typed store exceptions -> HTTP status. KeyNotFound -> 404, conflict -> 409, the rest
+    // (depth cap, cycle, root-protected, bad parent, bad name) -> 400 with the message.
     private ActionResult MapError(Exception ex) => ex switch
     {
         KeyNotFoundException => NotFound(),

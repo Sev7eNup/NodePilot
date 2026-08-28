@@ -37,15 +37,18 @@ public sealed class TriggerHealthRegistry
 
     public void MarkHealthy(string key) => _unhealthy.TryRemove(key, out _);
 
-    /// <summary>Drops everything — used when this node stops owning triggers at all (leadership loss, shutdown).</summary>
+    /// <summary>Drops everything — used when this node stops owning triggers at all (leadership
+    /// loss, shutdown).</summary>
     public void Clear() => _unhealthy.Clear();
 
     public IReadOnlyCollection<TriggerHealthEntry> Snapshot() => _unhealthy.Values.ToList();
 }
 
-/// <param name="Reason">Operator-facing diagnostic — the source's fault reason or the registration error.</param>
+/// <param name="Reason">Operator-facing diagnostic — the source's fault reason or the registration
+/// error.</param>
 /// <param name="SinceUtc">When this trigger first went unhealthy, not when it last failed.</param>
-/// <param name="ConsecutiveFailures">Failed registration attempts so far; 0 while it has been evicted but not yet retried.</param>
+/// <param name="ConsecutiveFailures">Failed registration attempts so far; 0 while it has been
+/// evicted but not yet retried.</param>
 public sealed record TriggerHealthEntry(
     Guid WorkflowId,
     string NodeId,

@@ -239,7 +239,8 @@ public class NotificationDispatcherTests
             var dispatcher = Build(factory, email);
 
             await dispatcher.DispatchOnceAsync(CancellationToken.None);
-            // Simulate a crash that lost the advanced watermark: roll it back so the same execution is rescanned.
+            // Simulate a crash that lost the advanced watermark: roll it back so the same execution
+            // is rescanned.
             var state = await db.NotificationDispatcherStates.FirstAsync();
             state.LastCompletedAtSeen = DateTime.UtcNow.AddHours(-1);
             state.LastIdSeen = Guid.Empty;
@@ -415,7 +416,8 @@ public class NotificationDispatcherTests
         {
             var wf = SeedWorkflow(db);
             SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
-            // A route whose stored cipher is not valid base64 -> GetRouteSecretAsync throws on decrypt.
+            // A route whose stored cipher is not valid base64 -> GetRouteSecretAsync throws on
+            // decrypt.
             var route = Route(NotificationChannel.GenericWebhook, "https://hook");
             route.Secret = "!!!not-base64!!!";
             SeedRule(db, "ExecutionFailed", route);
@@ -608,15 +610,15 @@ public class NotificationDispatcherTests
                 .Single();
             var dispatcher = BuildWithConfig(factory, config, email);
 
-            // Pass 1: threshold 120s → a 60s-old run is too young → no alert.
+            // Pass 1: threshold 120s -> a 60s-old run is too young -> no alert.
             (await dispatcher.DispatchOnceAsync(CancellationToken.None)).Should().Be(0);
             email.Sends.Should().BeEmpty();
 
-            // Operator lowers Alerting:LongRunningSeconds in the Settings UI → config reload.
+            // Operator lowers Alerting:LongRunningSeconds in the Settings UI -> config reload.
             memProvider.Set("Alerting:LongRunningSeconds", "10");
 
-            // Same dispatcher instance: the next pass overlays the new 10s threshold → 60s-old
-            // run now qualifies → exactly one alert (per-execution existence-check dedup).
+            // Same dispatcher instance: the next pass overlays the new 10s threshold -> 60s-old
+            // run now qualifies -> exactly one alert (per-execution existence-check dedup).
             (await dispatcher.DispatchOnceAsync(CancellationToken.None)).Should().Be(1);
             email.Sends.Should().ContainSingle();
         }

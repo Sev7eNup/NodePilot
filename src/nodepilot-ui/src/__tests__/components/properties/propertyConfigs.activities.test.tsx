@@ -27,11 +27,11 @@ import { PowerManagementConfig } from '../../../components/designer/properties/a
 import { RestApiConfig } from '../../../components/designer/properties/activities/RestApiConfig';
 
 /**
- * Sister file to propertyConfigs.test.tsx — covers the 20 activity configs not in the
- * P1 sweep. Each config gets a render-with-empty plus the most consequential interaction
- * (conditional sections, partial-patch shape, default values). The bar is "regression
- * canary", not exhaustive — anything that requires CodeMirror / ConditionBuilder
- * interaction is intentionally skipped, since those would be flaky in jsdom.
+ * Companion to propertyConfigs.test.tsx, covering the activity configs it does not test.
+ * Each config gets a render with an empty config plus its most consequential interaction:
+ * conditional sections, the shape of the emitted patch, and default values. Coverage is
+ * deliberately not exhaustive, and anything needing CodeMirror or ConditionBuilder
+ * interaction is left out because it is flaky in jsdom.
  */
 
 beforeEach(() => {
@@ -47,9 +47,9 @@ function wrap(ui: React.ReactElement) {
 
 describe('RestApiConfig', () => {
   it('rendersObjectHeadersAsText_withoutCrashing', () => {
-    // Regression: node data stores `headers` as an object (the engine's ParseHeaders accepts
-    // object + newline-string). The field must render it as text, not feed the object into the
-    // template validator — `value.includes` would throw and crash the whole designer.
+    // Node data can store `headers` as an object, since the engine's ParseHeaders accepts both
+    // an object and a newline-separated string. The field has to render it as text rather than
+    // pass the object to the template validator, where `value.includes` would throw.
     wrap(
       <RestApiConfig
         config={{ method: 'GET', headers: { 'Content-Type': 'application/json', 'X-Test': 'np' } }}
@@ -84,10 +84,9 @@ describe('WaitForConditionConfig', () => {
   });
 
   it('intervalSeconds_negativeInput_clampedToOneMinimum', () => {
-    // Pin the floor: a negative typo gets bumped to 1, never persisted as <1 which
-    // would saturate the engine with a tight poll loop. (Note: typing "0" is caught by
-    // the `|| 5` fallback ahead of Math.max, so 0 silently resets to the default 5 —
-    // that's a separate UX path that's also fine.)
+    // A negative value is raised to 1, so a typo cannot persist an interval below 1 and turn
+    // the poll loop into a tight loop. A typed "0" takes a different path: the `|| 5` fallback
+    // runs before Math.max, so it resets to the default of 5.
     const onUpdate = vi.fn();
     wrap(<WaitForConditionConfig config={{ intervalSeconds: 5 }} onUpdate={onUpdate} upstreamVars={[]} />);
 
@@ -121,13 +120,13 @@ describe('JunctionConfig', () => {
 
   it('waitNofM_revealsRequiredCountField', () => {
     wrap(<JunctionConfig config={{ mode: 'waitNofM' }} onUpdate={vi.fn()} upstreamVars={[]} />);
-    // Per the workflow-styleguide pin: waitNofM uses requiredCount, not the "n" alias.
+    // waitNofM uses the requiredCount key, not the "n" alias.
     expect(screen.getByText('Required Count (N)')).toBeInTheDocument();
   });
 
   it('waitAny_showsSkipWarning', () => {
-    // Operators rely on the warning banner before saving — without it they assume
-    // "wait for any" still completes the sibling branches.
+    // The warning banner tells the user that "wait for any" skips the sibling branches
+    // instead of completing them.
     wrap(<JunctionConfig config={{ mode: 'waitAny' }} onUpdate={vi.fn()} upstreamVars={[]} />);
     expect(screen.getByText(/Skipped/i)).toBeInTheDocument();
   });
@@ -156,8 +155,8 @@ describe('ReturnDataConfig', () => {
 });
 
 describe('StartProgramConfig', () => {
-  // The timeout field no longer renders inline here — it moved to the separate Timeout
-  // section in PropertiesPanel, shown only when `config.waitForExit` is set.
+  // The timeout field is not inline here. It lives in the separate Timeout section of
+  // PropertiesPanel, which only shows when `config.waitForExit` is set.
   it('rendersWithEmptyConfig_waitForExitDefaultTrue', () => {
     wrap(<StartProgramConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} />);
     expect(screen.getByText(/Auf Beendigung warten/i)).toBeInTheDocument();
@@ -250,8 +249,8 @@ describe('EmailConfig', () => {
 });
 
 describe('StartWorkflowConfig', () => {
-  // The timeout field no longer renders inline here — it moved to the separate Timeout
-  // section in PropertiesPanel, shown only when `config.waitForCompletion` is set.
+  // The timeout field is not inline here. It lives in the separate Timeout section of
+  // PropertiesPanel, which only shows when `config.waitForCompletion` is set.
   it('renders_waitForCompletionDefaultTrue', () => {
     wrap(<StartWorkflowConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} />);
     expect(screen.getByText(/Synchron \(warten\)/i)).toBeInTheDocument();
@@ -283,7 +282,7 @@ describe('ForEachConfig', () => {
     const onUpdate = vi.fn();
     wrap(<ForEachConfig config={{ maxParallelism: 1 }} onUpdate={onUpdate} upstreamVars={[]} />);
 
-    // Two number inputs: parallelism (default 1, value=1) + timeoutSecondsPerItem (default 3600).
+    // Two number inputs: parallelism (default 1) and timeoutSecondsPerItem (default 3600).
     const inputs = screen.getAllByRole('spinbutton');
     const parallelism = inputs.find(i => (i as HTMLInputElement).value === '1') as HTMLInputElement;
     fireEvent.change(parallelism, { target: { value: '8' } });
@@ -331,9 +330,9 @@ describe('ZipOperationConfig', () => {
     expect(onUpdate).toHaveBeenCalledWith({ operation: 'extract' });
   });
 
-  // Dropdown defaults visually to "compress", but if user never touched it the saved
-  // JSON had no `operation` key and runs failed with "'operation' is required". The
-  // panel now backfills the default the moment it opens.
+  // The dropdown shows "compress", but an untouched dropdown leaves no `operation` key in the
+  // saved JSON and the run fails with "'operation' is required". The panel therefore writes
+  // the default as soon as it opens.
   it('missingOperation_persistsCompressDefaultOnMount', () => {
     const onUpdate = vi.fn();
     wrap(<ZipOperationConfig config={{}} onUpdate={onUpdate} upstreamVars={[]} />);
@@ -370,9 +369,9 @@ describe('ScheduledTaskConfig', () => {
     expect(screen.getByText(/Permanently deletes the task/i)).toBeInTheDocument();
   });
 
-  // The dropdown defaults visually to "get", but the saved JSON had no `action` key,
-  // so workflows would run with action='' and fail with "unknown action ''". The panel
-  // now backfills the default the moment it opens.
+  // The dropdown shows "get", but an untouched dropdown leaves no `action` key in the saved
+  // JSON and the run fails with "unknown action ''". The panel therefore writes the default
+  // as soon as it opens.
   it('missingAction_persistsGetDefaultOnMount', () => {
     const onUpdate = vi.fn();
     wrap(<ScheduledTaskConfig config={{}} onUpdate={onUpdate} upstreamVars={[]} />);
@@ -385,9 +384,9 @@ describe('ScheduledTaskConfig', () => {
     expect(onUpdate).not.toHaveBeenCalled();
   });
 
-  // Same bug pattern within the register branch: triggerType dropdown shows
-  // "Täglich (daily)" but doesn't persist. Backend's BuildRegisterScript throws on
-  // missing triggerType, so the persistence must follow when action flips to register.
+  // Same pattern inside the register branch: the triggerType dropdown shows the daily option
+  // without persisting it. BuildRegisterScript on the backend throws on a missing triggerType,
+  // so the default is written when action switches to register.
   it('registerWithoutTriggerType_persistsDailyDefault', () => {
     const onUpdate = vi.fn();
     wrap(<ScheduledTaskConfig config={{ action: 'register' }} onUpdate={onUpdate} upstreamVars={[]} />);
@@ -397,8 +396,8 @@ describe('ScheduledTaskConfig', () => {
   it('registerWithTriggerType_doesNotEmitTriggerTypeDefault', () => {
     const onUpdate = vi.fn();
     wrap(<ScheduledTaskConfig config={{ action: 'register', triggerType: 'weekly' }} onUpdate={onUpdate} upstreamVars={[]} />);
-    // Only one call expected: action is already set, so the action-effect skips.
-    // The triggerType-effect should also skip since 'weekly' is already present.
+    // action is already set, so the action effect skips, and the triggerType effect skips
+    // as well because 'weekly' is already present.
     expect(onUpdate).not.toHaveBeenCalled();
   });
 });
@@ -494,21 +493,21 @@ describe('FileOperationConfig', () => {
   });
 
   it('emptyConfig_initialisesOperationToCopy', () => {
-    // useEffect on mount writes the default — pin the auto-init behaviour so a refactor
-    // that drops the effect doesn't silently leave the saved workflow with operation=undefined.
+    // A useEffect on mount writes the default. Without it the saved workflow would keep
+    // operation undefined.
     const onUpdate = vi.fn();
     wrap(<FileOperationConfig config={{}} onUpdate={onUpdate} upstreamVars={[]} />);
     expect(onUpdate).toHaveBeenCalledWith({ operation: 'copy' });
   });
 
   it('operationDropdown_doesNotOfferFolderOnlyOps', () => {
-    // File activity has no list option (folder-exclusive). create exists but is labelled
-    // "Create (empty file)", so a regex anchored on the folder-only "Create" label proves
-    // the ambiguity is resolved.
+    // The file activity has no list option, which is folder-only. It does have create, but
+    // labelled "Create (empty file)", so a regex anchored on the plain folder label "Create"
+    // must not match.
     wrap(<FileOperationConfig config={{ operation: 'copy' }} onUpdate={vi.fn()} upstreamVars={[]} />);
     expect(screen.queryByRole('option', { name: /List Contents/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /^Create$/ })).not.toBeInTheDocument();
-    // But the new file-create is offered with its own label
+    // The file create option is offered under its own label.
     expect(screen.getByRole('option', { name: /Create \(empty file\)/i })).toBeInTheDocument();
   });
 
@@ -519,8 +518,8 @@ describe('FileOperationConfig', () => {
   });
 
   it('pathInput_emitsPatch', () => {
-    // Use 'delete' so only the path input renders — copy/move would also render a destination
-    // input with an overlapping placeholder ("…file.txt"), making the lookup ambiguous.
+    // 'delete' renders only the path input. copy and move also render a destination input
+    // whose placeholder overlaps, which would make the lookup ambiguous.
     const onUpdate = vi.fn();
     wrap(<FileOperationConfig config={{ operation: 'delete' }} onUpdate={onUpdate} upstreamVars={[]} />);
     const input = screen.getByPlaceholderText('C:\\Temp\\file.txt') as HTMLInputElement;
@@ -565,8 +564,8 @@ describe('FolderOperationConfig', () => {
   });
 
   it('operationDropdown_offersAllSevenFolderOps', () => {
-    // Pin the full op-set so a refactor that drops one (list/create are folder-exclusive)
-    // breaks here instead of mysteriously disappearing in the UI.
+    // Checks the full operation set, including the folder-only list and create options, so a
+    // dropped option fails here instead of just disappearing from the UI.
     wrap(<FolderOperationConfig config={{ operation: 'copy' }} onUpdate={vi.fn()} upstreamVars={[]} />);
     expect(screen.getByRole('option', { name: 'Copy' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Move' })).toBeInTheDocument();
@@ -578,7 +577,7 @@ describe('FolderOperationConfig', () => {
   });
 
   it('pathInput_emitsPatch', () => {
-    // Use 'delete' so only the path input renders (no destination row with overlapping placeholder).
+    // 'delete' renders only the path input, with no destination row whose placeholder overlaps.
     const onUpdate = vi.fn();
     wrap(<FolderOperationConfig config={{ operation: 'delete' }} onUpdate={onUpdate} upstreamVars={[]} />);
     const input = screen.getByPlaceholderText('C:\\Temp\\Folder') as HTMLInputElement;
@@ -671,7 +670,7 @@ describe('PowerManagementConfig', () => {
   });
 
   it('logoffAction_hidesDelayAndForce', () => {
-    // logoff/abort/hibernate ignore delay+force — the UI must not show fields that don't apply.
+    // logoff, abort and hibernate ignore delay and force, so those fields stay hidden.
     wrap(<PowerManagementConfig config={{ action: 'logoff' }} onUpdate={vi.fn()} upstreamVars={[]} />);
     expect(screen.queryByText('Delay (seconds)')).not.toBeInTheDocument();
     expect(screen.queryByText(/Force close running apps/i)).not.toBeInTheDocument();
@@ -684,9 +683,9 @@ describe('PowerManagementConfig', () => {
     expect(onUpdate).toHaveBeenCalledWith({ action: 'restart' });
   });
 
-  // Dropdown defaults visually to "shutdown", but if user never touched it the saved
-  // JSON had no `action` key and runs failed with "'action' is required". The panel
-  // now backfills the default the moment it opens.
+  // The dropdown shows "shutdown", but an untouched dropdown leaves no `action` key in the
+  // saved JSON and the run fails with "'action' is required". The panel therefore writes the
+  // default as soon as it opens.
   it('missingAction_persistsShutdownDefaultOnMount', () => {
     const onUpdate = vi.fn();
     wrap(<PowerManagementConfig config={{}} onUpdate={onUpdate} upstreamVars={[]} />);

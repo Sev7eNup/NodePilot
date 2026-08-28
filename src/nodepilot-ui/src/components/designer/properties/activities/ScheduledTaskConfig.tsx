@@ -35,19 +35,18 @@ export function ScheduledTaskConfig({ config, onUpdate, upstreamVars = [] }: Rea
   const force = config.force === true;
   const weekdayShort = t('config.scheduledTask.weekdayShort', { returnObjects: true }) as string[];
 
-  // Persist the visual default for `action` the moment the panel opens. Otherwise the
-  // dropdown shows "Get / Status" but the saved JSON has no action key, and the run
-  // fails with "unknown action ''". This matches what the user actually sees.
+  // Persist the visual default for `action` when the panel opens. Otherwise the dropdown
+  // shows "Get / Status" but the saved JSON has no action key, and the run fails with
+  // "unknown action ''".
   useEffect(() => {
     if (config.action === undefined) {
       onUpdate({ action: 'get' });
     }
   }, [config.action, onUpdate]);
 
-  // Same fix for triggerType: the register branch requires a triggerType, and the UI
-  // shows the daily trigger as visual default. Without persistence the run would fail
-  // with "unknown triggerType ''" once the user picks 'register' without touching the
-  // trigger-type dropdown.
+  // Same fix for triggerType: the register branch requires one, and the UI shows daily
+  // as the visual default. Without persistence, picking 'register' without touching the
+  // trigger-type dropdown fails with "unknown triggerType ''".
   useEffect(() => {
     if (action === 'register' && config.triggerType === undefined) {
       onUpdate({ triggerType: 'daily' });

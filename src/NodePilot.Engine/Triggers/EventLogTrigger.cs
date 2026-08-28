@@ -37,7 +37,8 @@ public class EventLogTrigger : IActivityExecutor
 
     public Task<ActivityResult> ExecuteAsync(StepExecutionContext context, JsonElement config, CancellationToken ct)
     {
-        // If the orchestrator fired this trigger, event metadata is in context.Variables as manual.*
+        // If the orchestrator fired this trigger, event metadata is in context.Variables as
+        // manual.*
         var orchestratorParams = TriggerVariables.ExtractManualParams(context.Variables);
 
         if (orchestratorParams.TryGetValue("eventId", out var triggeredEventId))
@@ -136,7 +137,7 @@ public class EventLogTrigger : IActivityExecutor
             try { entry = entries[i]; }
             catch (ArgumentException) { continue; } // entry was rotated out between Count and read
             inspected++;
-            if (entry.TimeGenerated < cutoff) break; // sorted; older than cutoff → done
+            if (entry.TimeGenerated < cutoff) break; // sorted; older than cutoff -> done
 
             switch (settings.Matches(entry.Source, entry.InstanceId, ToFilter(entry.EntryType), entry.Message))
             {

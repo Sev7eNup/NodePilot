@@ -21,7 +21,8 @@ public static class LlmEndpointGuard
     /// Validates <paramref name="baseUrl"/> (see <see cref="NormalizeAndValidateBaseUrl"/>) and
     /// derives the wire dialect plus the concrete POST target from its path:
     /// <list type="bullet">
-    /// <item>ends in <c>/responses</c>: <see cref="LlmApiFlavor.Responses"/>, POSTed verbatim</item>
+    /// <item>ends in <c>/responses</c>: <see cref="LlmApiFlavor.Responses"/>, POSTed
+    /// verbatim</item>
     /// <item>ends in <c>/chat/completions</c>: <see cref="LlmApiFlavor.ChatCompletions"/>, POSTed
     /// verbatim, so a pasted full endpoint URL does not get the suffix appended twice</item>
     /// <item>anything else: <see cref="LlmApiFlavor.ChatCompletions"/> under

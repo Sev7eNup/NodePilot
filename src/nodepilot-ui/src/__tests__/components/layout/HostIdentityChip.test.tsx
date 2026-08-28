@@ -28,8 +28,8 @@ function renderTopBar() {
 
 describe('TopBar host-identity chip', () => {
   beforeEach(() => {
-    // BackendStatus reads the app-wide health store now (the poll lives in useDatabaseHealth,
-    // mounted once in App) — drive the store instead of stubbing its old fetch.
+    // BackendStatus reads the app-wide health store, whose poll lives in useDatabaseHealth
+    // (mounted once in App), so drive the store directly.
     useDbHealthStore.setState({ status: 'ok' });
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }));
     useAuthStore.setState({ isAuthenticated: true, role: 'Admin', userId: 'u1', username: 'admin' });
@@ -50,7 +50,7 @@ describe('TopBar host-identity chip', () => {
     });
     renderTopBar();
 
-    // All three values are visible at once — no hover/click required.
+    // All values are visible at once; no hover or click is required.
     expect(await screen.findByText('npsrv01.corp.example.local')).toBeInTheDocument();
     expect(screen.getByText('Host')).toBeInTheDocument();
     expect(screen.queryByText('NPSRV01')).not.toBeInTheDocument();

@@ -2,24 +2,19 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 75 — Quick-Interaktionen im Designer (lines 3957-3996).
+ * E2ETests.md Part 75, quick interactions in the designer.
  *
- *   75.1 QuickEditPopup — double-click a node → inline popup with the activity's primary field
- *        (log → Message, restApi → URL, runScript → Monaco dialog, sql → Query). Enter/Save
- *        commits, Escape discards.
- *   75.2 QuickConnectPicker — drag from a node handle into empty canvas → picker. This relies on
- *        React-Flow d3-drag of a connection line, which Playwright cannot synthesize → skipped
- *        with reason. (The picker UI itself is the same ActivityPickerGrid covered by 75.3/68.)
- *   75.3 EdgeInserter — the inline "+" affordance on an edge opens the ActivityPickerGrid; a pick
- *        splits A→B into A→NEW→B. The "+" appears on edge-hover then is clicked — synthesizable.
- *   75.4 SubWorkflowPreviewModal — opened from the node-body "Preview" link on a startWorkflow
- *        node. That link only renders when the node has a non-empty summary line; startWorkflow
- *        has no summarizer (summarizeActivityConfig returns ''), so the body affordance never
- *        renders hermetically and the modal cannot be opened → skipped with reason. (The
- *        sub-workflow navigation affordance that IS reachable — the "Calls →" breadcrumb — is
- *        covered by breadcrumbs.spec.ts / Teil 72.)
+ *   75.1 QuickEditPopup: double-clicking a node opens an inline popup holding the activity's
+ *        primary field (Message for log, URL for restApi). Enter or Save commits, Escape discards.
+ *   75.2 QuickConnectPicker: dragging from a node handle into empty canvas. Playwright cannot
+ *        synthesize that React-Flow d3-drag, so the case is skipped with a reason.
+ *   75.3 EdgeInserter: hovering an edge reveals an inline "+" that opens the ActivityPickerGrid,
+ *        and picking an activity splits the edge into two hops through the new node.
+ *   75.4 SubWorkflowPreviewModal: opens from the startWorkflow node-body "Preview" link, which
+ *        renders only when the node has a summary line. startWorkflow has no summarizer, so the
+ *        link never appears in the hermetic harness and the case is skipped with a reason.
  *
- * Hermetic: page.route mocks. Workflow locked-by-me (State B). SPA renders ENGLISH.
+ * Hermetic: page.route mocks. Workflow locked by the current user. The SPA renders English.
  */
 
 const WF_ID = 'e7575757-7575-7575-7575-757575757575';
@@ -59,7 +54,7 @@ async function openEditor(page: Page, onPut?: (body: { definitionJson?: string }
   });
   await page.goto(`/workflows/${WF_ID}`);
   await expect(page.locator('.react-flow__node[data-id="step-log"]')).toBeVisible({ timeout: 20_000 });
-  await page.waitForTimeout(400); // let the post-load fitView (50ms setTimeout) settle so dblclick/hover land accurately
+  await page.waitForTimeout(400); // let the post-load fitView settle before dblclick/hover
 }
 
 const saveButton = (page: Page) =>
@@ -105,7 +100,7 @@ test.describe('Quick-Interaktionen im Designer (Teil 75)', () => {
     await popup.locator('.input-field').fill('throwaway');
     await page.keyboard.press('Escape');
 
-    // Popup closes; nothing persisted (we re-open and confirm the original value is intact).
+    // The popup closes and nothing is persisted; re-opening it shows the original value.
     await expect(popup).toHaveCount(0);
     await page.locator('.react-flow__node[data-id="step-log"]').dblclick({ position: { x: 20, y: 12 } });
     const popup2 = page.locator('div.z-\\[9999\\]');
@@ -125,10 +120,10 @@ test.describe('Quick-Interaktionen im Designer (Teil 75)', () => {
     await expect(plus).toBeVisible({ timeout: 10_000 });
     await plus.click({ force: true });
 
-    // The ActivityPickerGrid ("Add node") opens — the same picker the EdgeInserter wraps.
+    // The ActivityPickerGrid ("Add node") opens; it is the same picker the EdgeInserter wraps.
     await expect(page.getByText(/^Add node$|^Node hinzufügen$/).first()).toBeVisible({ timeout: 5_000 });
 
-    // Pick "Delay / Wait" → the original A→B edge is replaced by A→NEW→B (3 nodes, 2 edges).
+    // Picking "Delay / Wait" replaces the single edge with two hops (3 nodes, 2 edges).
     await page.getByRole('button').filter({ hasText: /Delay/ }).first().click();
 
     await saveButton(page).click();
@@ -136,7 +131,7 @@ test.describe('Quick-Interaktionen im Designer (Teil 75)', () => {
     const def = JSON.parse(putBody!.definitionJson as string) as { nodes: unknown[]; edges: { source: string; target: string }[] };
     expect(def.nodes).toHaveLength(3);          // log + b + inserted
     expect(def.edges).toHaveLength(2);          // split into two hops
-    // No direct log→b edge survives — it was split.
+    // No direct edge from step-log to step-b survives the split.
     expect(def.edges.some((e) => e.source === 'step-log' && e.target === 'step-b')).toBe(false);
   });
 

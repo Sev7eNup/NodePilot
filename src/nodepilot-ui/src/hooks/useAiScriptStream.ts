@@ -15,9 +15,9 @@ export interface AiScriptStreamBinding {
 }
 
 /**
- * Builds the streaming binding for both runScript editors. Current editor content is absent by
- * default; the dialog only supplies it after an explicit, one-shot consent. The request carries
- * the matching server-enforced flag, so older clients cannot opt in by merely sending a value.
+ * Builds the streaming binding for both runScript editors. The current editor content is left
+ * out by default; the dialog supplies it only after an explicit, one-shot consent. The request
+ * carries the matching server-enforced flag, so sending a value alone cannot opt in.
  */
 export function useAiScriptStream(opts: {
   workflowId?: string;

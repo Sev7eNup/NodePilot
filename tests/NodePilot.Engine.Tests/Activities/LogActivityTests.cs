@@ -13,10 +13,10 @@ public class LogActivityTests
 {
     private readonly Mock<ILogger<LogActivity>> _logger = new();
 
-    // LogActivity now takes an OutputRedactor so `message: "pw={{step.param.pw}}"` gets
-    // scrubbed before it hits the log pipeline. We pass a fresh redactor with default
-    // patterns — the test messages don't match any secret-bearing pattern so behavior
-    // is unchanged for every existing assertion.
+    // LogActivity takes an OutputRedactor that scrubs secrets like `message:
+    // "pw={{step.param.pw}}"` before they hit the log pipeline. Tests use a fresh redactor
+    // with default patterns; none of the test messages match a secret-bearing pattern, so
+    // behavior is unaffected for every assertion below.
     private LogActivity Create() => new(_logger.Object, new OutputRedactor());
 
     private static JsonElement Cfg(object obj) =>
@@ -142,7 +142,8 @@ public class LogActivityTests
     /// <summary>
     /// The user-log line in the support log (the plain-text formatter doesn't render scope
     /// properties) must carry the workflow name and step label directly in the message —
-    /// otherwise the operator just sees "USER-LOG: ..." with no way to tell which workflow it came from.
+    /// otherwise the operator just sees "USER-LOG: ..." with no way to tell which workflow it came
+    /// from.
     /// </summary>
     [Fact]
     public async Task ExecuteAsync_LogMessage_IncludesWorkflowNameAndStepLabel()
@@ -159,10 +160,9 @@ public class LogActivityTests
     [Fact]
     public async Task ExecuteAsync_MessageContainsSecret_OutputAndLogAreRedacted()
     {
-        // OutputRedactor is supposed to scrub secret-shaped substrings before they reach the
-        // log pipeline OR the ActivityResult.Output that downstream steps can read. Without
-        // this test, a regression in the LogActivity → OutputRedactor wiring would silently
-        // re-introduce secret leakage into the audit trail.
+        // OutputRedactor scrubs secret-shaped substrings before they reach the log pipeline
+        // or the ActivityResult.Output that downstream steps can read. This test guards
+        // against the LogActivity-to-OutputRedactor wiring leaking secrets into the audit trail.
         var result = await Create().ExecuteAsync(Ctx(),
             Cfg(new { level = "info", message = "deploy ok password=hunter2 done" }),
             CancellationToken.None);

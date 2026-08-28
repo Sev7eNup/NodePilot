@@ -61,7 +61,7 @@ export interface WorkflowChatRequest {
   /** Current canvas definition (cleaned via stripRuntimeDefinition), as a JSON string. */
   workflowJson: string;
   workflowId?: string | null;
-  /** SHA-256 of that same canvas state — used to detect and reject a stale proposal
+/** SHA-256 of that same canvas state for detecting and rejecting a stale proposal
    *  when the user tries to apply it (the canvas may have changed in the meantime). */
   baseDefinitionHash: string;
   history: AiChatTurn[];
@@ -139,7 +139,7 @@ function sseError(data: string): Error {
   }
 }
 
-/** Completion metadata for a chat turn (model, duration, token usage) — shown in the usage footer. */
+/** Chat completion metadata shown in the usage footer. */
 export interface ChatDoneMeta {
   model: string;
   /** End-to-end wall clock: prompt prefill, every LLM round and all tool execution included. */
@@ -202,7 +202,8 @@ export interface KnowledgeAskRequest {
   utcOffsetMinutes: number;
 }
 
-/** Effective knowledge-chat capabilities for the current user (drives nav visibility + source badges). */
+/** Effective knowledge-chat capabilities for the current user (drives nav visibility + source
+ * badges). */
 export interface KnowledgeCapabilities {
   enabled: boolean;
   /** Raw `LlmOptions.IsUsable` (kill-switch on + active profile resolves), independent of the
@@ -216,8 +217,7 @@ export interface KnowledgeCapabilities {
   scriptContextTargetHost?: string | null;
 }
 
-/** Handlers for the read-only knowledge stream — deliberately leaner than {@link ChatStreamHandlers}
- *  (no `building`/`proposal`: the knowledge chat never proposes canvas changes). */
+/** Read-only knowledge stream handlers without canvas proposal events. */
 export interface KnowledgeStreamHandlers {
   onDelta: (text: string) => void;
   onToolCall?: (toolName: string, toolId: string) => void;
@@ -226,7 +226,8 @@ export interface KnowledgeStreamHandlers {
   signal?: AbortSignal;
 }
 
-/** Streams one knowledge-chat turn: `onDelta` per token, tool-call indicators, `onDone` with metadata. */
+/** Streams one knowledge-chat turn: `onDelta` per token, tool-call indicators, `onDone` with
+ * metadata. */
 export async function askStream(req: KnowledgeAskRequest, h: KnowledgeStreamHandlers): Promise<void> {
   const authBoundaryGeneration = captureAuthBoundaryGeneration();
   const resp = await postEventStream('/ai/knowledge/ask', req, h.signal);
@@ -254,7 +255,7 @@ export interface ScriptStreamHandlers {
   signal?: AbortSignal;
 }
 
-/** Streams script generation: `onDelta` per token (with code-fence markers stripped) — used to
+/** Streams script generation: `onDelta` per token (with code-fence markers stripped) to
  *  make the script appear to type itself live into the Monaco editor. */
 export async function generateScriptStream(req: GenerateScriptRequest, h: ScriptStreamHandlers): Promise<void> {
   const authBoundaryGeneration = captureAuthBoundaryGeneration();
@@ -275,7 +276,8 @@ export interface ChatActivityEntry {
   details: string | null;
 }
 
-/** Tells the backend that an AI proposal was applied (audit action `AI_PROPOSAL_APPLIED`). Fire-and-forget. */
+/** Tells the backend that an AI proposal was applied (audit action `AI_PROPOSAL_APPLIED`).
+ * Fire-and-forget. */
 export function chatApplied(req: { workflowId: string; nodeCount: number; edgeCount: number }): Promise<void> {
   return api.post<void>('/ai/chat/applied', req);
 }

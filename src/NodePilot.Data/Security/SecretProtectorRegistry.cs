@@ -7,12 +7,11 @@ namespace NodePilot.Data.Security;
 
 /// <summary>
 /// DI registration for <see cref="ISecretProtector"/>. Picks the implementation from
-/// <c>Secrets:Provider</c>: <c>"Dpapi"</c> (default, identical to pre-abstraction
-/// behaviour) or <c>"AesGcm"</c> (cross-host portable, required for active/passive HA).
+/// <c>Secrets:Provider</c>: <c>"Dpapi"</c> (default) or <c>"AesGcm"</c> (cross-host
+/// portable, required for active/passive HA).
 /// <para>
-/// Reads <c>Credentials:DpapiScope</c> for the legacy DPAPI path so existing deployments
-/// keep working without config changes. Registered as a singleton because the protectors
-/// are stateless and the AES-GCM key only needs to be parsed once at startup.
+/// Reads <c>Credentials:DpapiScope</c> for the DPAPI path so existing deployments work
+/// without config changes. Registered as a singleton since protectors are stateless.
 /// </para>
 /// </summary>
 public static class SecretProtectorRegistry
@@ -21,18 +20,14 @@ public static class SecretProtectorRegistry
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // Active-provider selection + cluster/DPAPI conflict check live in the factory
-        // so the encrypting JSON configuration provider (which loads before DI exists)
-        // gets identical semantics. The DI registration only adds the migrating-
-        // fallback wrapper and the boot-log line on top of that.
+        // Active-provider selection and the cluster/DPAPI conflict check live in the factory,
+        // so the encrypting JSON configuration provider (which loads before DI exists) gets
+        // identical semantics. This registration only adds the migrating-fallback wrapper.
         var active = SecretProtectorBootstrapFactory.FromConfigSnapshot(configuration);
 
-        // Optional legacy-provider configuration: when set, the active protector is
-        // wrapped in a MigratingSecretProtector that falls back to the legacy on read.
-        // Lets a deployment rotate from DPAPI→AES-GCM (or vice versa) without manual
-        // re-entry: existing rows decrypt via the legacy fallback, the bulk re-encrypt
-        // endpoint then sweeps them into the active format and the legacy config can
-        // be removed in a follow-up restart.
+        // Optional legacy-provider config: when set, the active protector is wrapped in a
+        // MigratingSecretProtector that falls back to the legacy provider on read. This lets
+        // a deployment rotate providers without manual re-entry of every secret.
         var legacyName = (configuration["Secrets:LegacyProvider"] ?? string.Empty).Trim();
         var hasLegacy = !string.IsNullOrEmpty(legacyName);
         ISecretProtector? legacyProtector = null;
@@ -77,10 +72,9 @@ public static class SecretProtectorRegistry
         }
         if (string.Equals(providerName, "Dpapi", StringComparison.OrdinalIgnoreCase))
         {
-            // Hard-validate the scope value: a typo in Secrets:LegacyDpapiScope would
-            // silently fall to CurrentUser otherwise, leading to the same "I encrypted
-            // under LocalMachine but my standby reads as CurrentUser" silent breakage
-            // we already fixed for the canonical Credentials:DpapiScope key.
+            // Validates the scope value explicitly: a typo in Secrets:LegacyDpapiScope would
+            // otherwise silently fall back to CurrentUser, causing decryption to succeed
+            // with the wrong scope instead of failing loudly.
             var scopeKey = $"{prefix}DpapiScope";
             var scope = DpapiScopeResolver.Parse(configuration[scopeKey], scopeKey);
             return new DpapiSecretProtector(scope);

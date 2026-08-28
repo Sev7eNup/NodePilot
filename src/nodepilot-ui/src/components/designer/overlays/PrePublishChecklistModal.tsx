@@ -25,16 +25,9 @@ interface Props {
 }
 
 /**
- * Modal that fires before publish. Routes:
- *   - Errors present  → the "Publish anyway" button is greyed out; only "Close" is available.
- *   - Warnings only   → both buttons are clickable; the confirm label emphasizes "anyway".
- *   - Empty (clean)   → not rendered at all (caller short-circuits straight to publish).
- *
- * Why a modal at all: the user clicks Publish *expecting* the workflow to go live, so
- * silent lint warnings shouldn't block them — but unconnected triggers and missing
- * machines have caused production incidents before, and the per-keystroke lint pill in
- * the toolbar is easy to ignore. The pre-publish gate creates one explicit "are you
- * sure" moment without adding friction to the always-on lint flow.
+ * Modal shown before publish, listing lint errors and warnings for review. Errors block
+ * the confirm button; warnings alone still allow publishing. Not rendered when the lint
+ * result is clean — the caller publishes directly in that case.
  */
 export function PrePublishChecklistModal({
   result, nodes, workflowName, isPending, onConfirm, onCancel, onJumpToNode, onJumpToEdge,

@@ -20,7 +20,8 @@ namespace NodePilot.Api.Hosting;
 /// </summary>
 public sealed class DatabaseTimeoutExceptionHandler : IExceptionHandler
 {
-    /// <summary>Stable, machine-readable, SCREAMING_SNAKE_CASE - the convention from ADR 0007.</summary>
+    /// <summary>Stable, machine-readable, SCREAMING_SNAKE_CASE - the convention from ADR
+    /// 0007.</summary>
     public const string ErrorCode = DatabaseUnavailableResponse.TimeoutCode;
 
     private readonly ILogger<DatabaseTimeoutExceptionHandler> _logger;
@@ -31,11 +32,8 @@ public sealed class DatabaseTimeoutExceptionHandler : IExceptionHandler
     public async ValueTask<bool> TryHandleAsync(
         HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
-        // CapacityBackpressure joins CommandTimeout here: PostgreSQL 53300 and SQL Server 10928 mean
-        // "alive but out of resources", which is the same answer to the user as "busy, try again".
-        // They used to reach this handler by accident, via the old unqualified TimeoutException catch;
-        // now that the classifier separates them properly they are named explicitly rather than
-        // silently demoted to a 500.
+        // PostgreSQL 53300 and SQL Server 10928 indicate a live server without capacity.
+        // Treat capacity backpressure like a command timeout so clients can retry.
         if (DbErrorClassifier.Classify(exception)
             is not (DbFailureKind.CommandTimeout or DbFailureKind.CapacityBackpressure)) return false;
 

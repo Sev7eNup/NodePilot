@@ -54,7 +54,8 @@ internal static class DirectoryMembershipReconciler
         }
     }
 
-    /// <summary>Loads the (user, authority) memberships and applies <see cref="Apply"/> to them.</summary>
+    /// <summary>Loads the (user, authority) memberships and applies <see cref="Apply"/> to
+    /// them.</summary>
     public static async Task ApplyAsync(
         NodePilotDbContext db,
         Guid userId,

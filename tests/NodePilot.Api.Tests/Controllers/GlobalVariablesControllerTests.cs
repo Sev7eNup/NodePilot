@@ -155,9 +155,9 @@ public class GlobalVariablesControllerTests
         var variable = await Seed(db, "SECRET_VAR", "original-secret", isSecret: true);
         var (controller, _) = NewController(db);
 
-        // Demoting IsSecret=true → false without supplying a new plaintext would force the
-        // store to decrypt-and-persist the ciphertext as cleartext (M-24). The store throws
-        // InvalidOperationException; the controller now surfaces that as 400 instead of 500.
+        // Demoting IsSecret from true to false without a new plaintext would force the store
+        // to decrypt and persist the ciphertext as cleartext. The store throws
+        // InvalidOperationException, and the controller surfaces that as 400.
         var result = await controller.Update(variable.Id,
             new UpdateGlobalVariableRequest("SECRET_VAR", null, false, null, null),
             CancellationToken.None);
@@ -185,7 +185,8 @@ public class GlobalVariablesControllerTests
     public async Task Update_NullFolderId_PreservesCurrentFolder()
     {
         var db = TestDbFactory.Create();
-        // Place the variable in a non-Root folder so a null-folderId "move to Root" regression is observable.
+        // Place the variable in a non-Root folder so a null-folderId "move to Root" regression
+        // is observable.
         var folder = new GlobalVariableFolder
         {
             Id = Guid.NewGuid(), ParentFolderId = GlobalVariableFolder.RootFolderId,
@@ -201,9 +202,9 @@ public class GlobalVariablesControllerTests
         await db.SaveChangesAsync();
         var (controller, _) = NewController(db);
 
-        // folderId omitted (null) must NOT relocate the variable — it stays in /Env. This is the
-        // `np globals import --upsert` scenario: the import payload carries no folderId, so a null
-        // meaning "Root" would silently strip the folder assignment on every bulk upsert.
+        // folderId omitted (null) must not relocate the variable - it stays in /Env. This is
+        // the `np globals import --upsert` scenario: the import payload carries no folderId,
+        // so treating null as "Root" would silently strip the folder on every bulk upsert.
         var result = await controller.Update(variable.Id,
             new UpdateGlobalVariableRequest("DB_HOST", "db.prod", false, null, null),
             CancellationToken.None);

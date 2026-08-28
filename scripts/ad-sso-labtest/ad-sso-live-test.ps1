@@ -377,14 +377,12 @@ if ($IncludeRaceDrill) {
     Add-Skip 'W18. Race beim Erst-Login' 'nicht angefordert (-IncludeRaceDrill)'
 }
 
-# ---------- W19. NTLM-Negativtest (optional) ----------
+# ---------- W19. NTLM negative test (optional) ----------
 if ($IncludeNtlmProbe) {
     $probe = Join-Path $scriptDir 'Invoke-NtlmProbe.ps1'
     $p = & $probe -Base $Base -NtlmAliasFqdn $NtlmAliasFqdn -NetbiosDomain $NetbiosDomain `
         -SamAccountName "$UserPrefix.alice" -Password $LabPassword -PassThruResult
-    # 401 allein genuegt NICHT: ohne die Ablehnungsmeldung der Anwendung hat der Server
-    # gar keinen NTLM-Versuch gesehen (unbeantwortete Negotiate-Challenge). Siehe die
-    # ausfuehrliche Begruendung in Invoke-NtlmProbe.ps1.
+    # A 401 alone is inconclusive. The application rejection proves that NTLM reached the server.
     Add-Result 'W19a. Erzwungenes NTLM -> von der ANWENDUNG abgelehnt' `
         ($p.Status -eq 401 -and $p.AppRejected) `
         $(if ($p.AppRejected) { "status=$($p.Status), Ablehnungsmeldung vorhanden" }
@@ -394,8 +392,8 @@ if ($IncludeNtlmProbe) {
     Add-Skip 'W19. NTLM-Negativtest' 'nicht angefordert (-IncludeNtlmProbe)'
 }
 
-# ---------- W13. Deaktivierter AD-Account (optional) ----------
-# Braucht RSAT-AD-PowerShell auf dem Client. Nutzt <prefix>.erin, damit alice Admin bleibt.
+# ---------- W13. Disabled AD account (optional) ----------
+# Requires RSAT AD PowerShell on the client. Uses <prefix>.erin so alice remains an admin.
 if ($IncludeDisableDrill) {
     try {
         Import-Module ActiveDirectory -ErrorAction Stop
@@ -404,9 +402,8 @@ if ($IncludeDisableDrill) {
         Disable-ADAccount -Identity "$UserPrefix.erin" -Server $DcFqdn
         Start-Sleep -Seconds 5
         $r = Invoke-SsoLogin (New-LabCredential "$UserPrefix.erin")
-        # 401 ist die Erwartung. Wenn AD den Bind schon verweigert, kommt der Fehler
-        # frueher -- deshalb zaehlt auch ein Handshake-Fehlschlag als bestanden, solange
-        # KEINE Session entsteht.
+        # AD may reject the bind before the API returns 401. Either result passes if no session
+        # exists.
         Add-Result 'W13b. erin deaktiviert -> kein Login' ($r.Status -ne 200) "status=$($r.Status)"
         Enable-ADAccount -Identity "$UserPrefix.erin" -Server $DcFqdn
         "$UserPrefix.erin wieder aktiviert."
@@ -417,22 +414,19 @@ if ($IncludeDisableDrill) {
     Add-Skip 'W13. Deaktivierter AD-Account' 'nicht angefordert (-IncludeDisableDrill)'
 }
 
-# ---------- W15/W16. Revocation nach Gruppenentzug (optional) ----------
-# Zwei unabhaengige Uhren: DirectorySynchronizationService (1-5 min, leader-only) reagiert
-# auf den Entzug, ExternalAuthorizationStalenessService haelt die 15-Minuten-Decke.
-# Bestehensschwelle ist deshalb die Decke, nicht das Sync-Intervall.
+# ---------- W15/W16. Revocation after group removal (optional) ----------
+# Directory synchronization reacts to removal; authorization staleness enforces the upper bound.
 if ($IncludeRevocationDrill) {
     try {
         Import-Module ActiveDirectory -ErrorAction Stop
         $erin = Invoke-SsoLogin (New-LabCredential "$UserPrefix.erin")
         if ($erin.Status -ne 200) { throw "Vorbedingung verletzt: erin-Login lieferte $($erin.Status)" }
 
-        # Session in eine lokale Variable ziehen: [ref] auf einen Hashtable-Eintrag
-        # schreibt nicht zuverlaessig zurueck.
+        # Use a local variable because [ref] does not reliably update a hashtable entry.
         $erinSession = $erin.Session
         $execId = $null
         if ($RevocationWorkflowId) {
-            # np_csrf ist URL-encodiert -- vor dem Header-Echo decodieren.
+            # Decode the URL-encoded np_csrf value before echoing it into the header.
             $erinCsrf = [Uri]::UnescapeDataString((Get-SessionCookie $erinSession 'np_csrf').Value)
             $x = Invoke-JsonPost "$Base/api/workflows/$RevocationWorkflowId/execute" `
                 @{ parameters = @{}; timeoutSeconds = 900 } `
@@ -476,10 +470,8 @@ if ($IncludeRevocationDrill) {
     Add-Skip 'W15/W16. Revocation-Drill' 'nicht angefordert (-IncludeRevocationDrill)'
 }
 
-# ---------- W14. DC-Ausfall -> fail-closed (optional) ----------
-# Vorbedingung: /healthz/directory war vorher Healthy. Sonst ist das 503 nicht
-# aussagekraeftig -- eine LDAPS-Fehlkonfiguration liefert denselben Reason-Code
-# (windows_directory_unavailable) wie ein echter DC-Ausfall.
+# ---------- W14. DC outage fail-closed test (optional) ----------
+# Require a healthy directory first because LDAPS misconfiguration returns the same reason code.
 if ($IncludeOutageDrill) {
     $vmParams = @{ Name = $DcVmName }
     if ($HyperVHost) { $vmParams['ComputerName'] = $HyperVHost }
@@ -512,10 +504,8 @@ if ($IncludeOutageDrill) {
     Add-Skip 'W14. DC-Ausfall-Drill' 'nicht angefordert (-IncludeOutageDrill)'
 }
 
-# ---------- W22. Rate-Limit (optional, LAEUFT ZULETZT) ----------
-# UseRateLimiter() steht vor UseAuthentication() -- der anonyme Challenge-Leg des
-# Negotiate-Handshakes verbraucht deshalb ebenfalls ein Token. Erwartet wird also
-# deutlich weniger als 50 erfolgreiche Logins pro Minute.
+# ---------- W22. Rate limit (optional, runs last) ----------
+# The anonymous Negotiate challenge also consumes a token because rate limiting precedes auth.
 if ($IncludeRateLimitDrill) {
     $codes = @()
     for ($i = 0; $i -lt 60; $i++) {

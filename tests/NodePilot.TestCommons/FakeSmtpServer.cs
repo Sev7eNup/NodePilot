@@ -8,9 +8,8 @@ namespace NodePilot.TestCommons;
 /// Minimal in-process SMTP server for tests that need to prove a mail was actually handed to a
 /// server — the <c>emailNotification</c> activity, the admin-settings SMTP probe, alerting sinks.
 /// Listens on an ephemeral loopback port, speaks just enough ESMTP to complete one delivery
-/// (EHLO/HELO → MAIL FROM → RCPT TO → DATA → QUIT) and records what it saw in a
-/// <see cref="SmtpSession"/>. Consolidates the private copies that previously lived in
-/// Api.Tests and Engine.Tests.
+/// (EHLO/HELO -> MAIL FROM -> RCPT TO -> DATA -> QUIT) and records what it saw in a
+/// <see cref="SmtpSession"/>. Shared by Api.Tests and Engine.Tests.
 /// </summary>
 public sealed class FakeSmtpServer : IAsyncDisposable
 {
@@ -39,7 +38,8 @@ public sealed class FakeSmtpServer : IAsyncDisposable
         return Task.FromResult(server);
     }
 
-    /// <summary>Waits for the single recorded session, or throws once <paramref name="timeout"/> elapses.</summary>
+    /// <summary>Waits for the single recorded session, or throws once <paramref name="timeout"/>
+    /// elapses.</summary>
     public async Task<SmtpSession> AwaitSessionAsync(TimeSpan timeout)
     {
         var completed = await Task.WhenAny(_sessionTcs.Task, Task.Delay(timeout));

@@ -25,7 +25,8 @@ public class WorkflowDefinitionMergeTests
               "edges": []
             }
             """);
-        // The AI only changes the label, omitting position/credentialId/the remaining config fields.
+        // The AI only changes the label, omitting position/credentialId/the remaining config
+        // fields.
         var proposed = Parse("""
             {
               "nodes": [
@@ -169,9 +170,9 @@ public class WorkflowDefinitionMergeTests
     [Fact]
     public void Merge_ContentMaskedHeadersString_RestoredFromOriginal_ByUniversalMaskRule()
     {
-        // `headers` is NOT a secret key — the inline secret is caught by content detection and the
-        // whole value is masked to "***". The AI only ever saw "***", so a naive write would corrupt
-        // the real header; the universal "***"-restore rule must bring the original back.
+        // `headers` is not a secret key, and the inline secret is caught by content detection: the
+        // whole value is masked to "*". The AI only ever saw "*", so a naive write would
+        // corrupt the real header; the universal "***"-restore rule brings the original back.
         var original = Parse("""
             { "nodes": [ { "id": "n1", "type": "activity", "position": {"x":0,"y":0},
                 "data": { "activityType": "restApi",

@@ -130,13 +130,13 @@ public class DiagnosticsControllerEventsTests
         await db.SaveChangesAsync();
 
         var ctrl = MakeController(db);
-        // First page: take=2 → expect 2 events + nextCursor
+        // First page: take=2 -> expect 2 events + nextCursor
         var page1 = PageOf(await ctrl.Events(null, null, null, null, null, null, null, null, null, null, null,
             afterTs: null, afterId: null, take: 2, ct: CancellationToken.None));
         page1.Items.Should().HaveCount(2);
         page1.NextCursor.Should().NotBeNull();
 
-        // Second page: cursor from the end of page1 → expect 2 more
+        // Second page: cursor from the end of page1 -> expect 2 more
         var page2 = PageOf(await ctrl.Events(null, null, null, null, null, null, null, null, null, null, null,
             afterTs: page1.NextCursor!.AfterTs, afterId: page1.NextCursor.AfterId, take: 2, ct: CancellationToken.None));
         page2.Items.Should().HaveCount(2);

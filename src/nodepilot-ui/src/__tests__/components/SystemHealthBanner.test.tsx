@@ -29,7 +29,7 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('SystemHealthBanner — AI / LLM indicator', () => {
   it('shows "AI activated" when the LLM master switch is on', () => {
-    // Default role is Viewer → maintenance/alert queries stay disabled, no fetch needed.
+    // The default role is Viewer, so the maintenance and alert queries stay disabled.
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }));
     renderBanner({ llmEnabled: true });
     expect(screen.getByText('AI activated')).toBeInTheDocument();

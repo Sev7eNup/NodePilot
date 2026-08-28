@@ -19,7 +19,7 @@ function patchFetch() {
   });
 }
 
-// Only the three totals the sidebar badges read; the real endpoint returns much more.
+// Only the totals the sidebar badges read; the real endpoint returns more fields.
 const STATS = {
   workflowsTotal: 24, workflowsEnabled: 20, machinesTotal: 128, machinesReachable: 120,
   executionsTotal: 999, runningCount: 3, pendingCount: 0, longRunningCount: 0,
@@ -73,7 +73,7 @@ describe('Sidebar', () => {
     const { container } = renderSidebar('Admin', '/executions');
     const executions = await screen.findByRole('link', { name: /executions/i });
     expect(executions).toHaveAttribute('aria-current', 'page');
-    // Nav icons are Carbon SVG components now, not Bootstrap icon-font <i> elements.
+    // Nav icons are Carbon SVG components, not Bootstrap icon-font <i> elements.
     expect(executions.querySelector('.np-nav-icon > svg')).toBeInTheDocument();
     expect(container.querySelector('a[href="/workflows"] .np-nav-icon > svg')).toBeInTheDocument();
     expect(container.querySelector('.np-nav-icon > i')).not.toBeInTheDocument();
@@ -107,10 +107,10 @@ describe('Sidebar', () => {
     renderSidebar('Admin');
     expect(await screen.findByText('admin')).toBeInTheDocument();
     expect(screen.getByText('System Administrator')).toBeInTheDocument();
-    // Menu closed → only the footer Logout affordance.
+    // Menu closed: only the footer Logout entry is present.
     expect(screen.getAllByText('Logout')).toHaveLength(1);
     fireEvent.click(screen.getByLabelText('Account menu'));
-    // Menu open → Settings + Logout entries added inside the popover.
+    // Menu open: the popover adds Settings and Logout entries.
     expect(screen.getAllByText('Logout')).toHaveLength(2);
   });
 
@@ -124,9 +124,9 @@ describe('Sidebar', () => {
 
   it('hides admin-only items and the alerts badge for a Viewer', async () => {
     renderSidebar('Viewer');
-    // dashboard-stats is all-roles, so the workflows badge still resolves…
+    // dashboard-stats is open to every role, so the workflows badge still resolves.
     expect(await screen.findByText('24')).toBeInTheDocument();
-    // …but the alerting-rule count is Admin/Operator-only → no alerts badge for a Viewer.
+    // The alerting-rule count is Admin/Operator-only, so a Viewer gets no alerts badge.
     expect(screen.queryByText('7')).not.toBeInTheDocument();
     // Admin-only nav items are filtered out.
     expect(screen.queryByText('Users')).not.toBeInTheDocument();

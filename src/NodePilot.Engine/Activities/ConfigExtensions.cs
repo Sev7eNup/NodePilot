@@ -3,20 +3,15 @@ using System.Text.Json;
 namespace NodePilot.Engine.Activities;
 
 /// <summary>
-/// Extension helpers for reading values out of the <see cref="JsonElement"/> config blob
-/// every activity receives. These preserve the exact semantics of the inline patterns
-/// they replace — in particular:
-/// <list type="bullet">
-///   <item><description><see cref="GetStringOrNull"/> still throws if the property exists
-///     but is not a JSON string (matches the previous <c>p.GetString()</c> behaviour).</description></item>
-///   <item><description><see cref="GetBool"/> preserves both flavours of the bool pattern
-///     used across activities: with <c>defaultValue: false</c> it mirrors
-///     <c>TryGetProperty &amp;&amp; ValueKind == True</c>, and with <c>defaultValue: true</c> it
-///     mirrors <c>!(TryGetProperty &amp;&amp; ValueKind == False)</c>.</description></item>
-/// </list>
-/// Int extraction is intentionally <b>not</b> wrapped here because activities mix the
-/// strict (<c>GetInt32()</c> throws on non-int) and lenient (<c>TryGetInt32</c> falls back)
-/// variants; conflating them would silently shift behaviour.
+/// Extension helpers for reading values out of the <see cref="JsonElement"/> config blob every
+/// activity receives. <see cref="GetStringOrNull"/> throws if the property exists but holds a
+/// non-string value. <see cref="GetBool"/> supports both defaulting directions activities use:
+/// with <c>defaultValue: false</c> it mirrors <c>TryGetProperty &amp;&amp; ValueKind == True</c>,
+/// with <c>defaultValue: true</c> it mirrors <c>!(TryGetProperty &amp;&amp; ValueKind ==
+/// False)</c>.
+/// Int extraction is not wrapped here because activities mix strict (<c>GetInt32()</c>, throws on
+/// non-int) and lenient (<c>TryGetInt32</c>, falls back) reads, and a single helper would have to
+/// pick one.
 /// </summary>
 internal static class ConfigExtensions
 {

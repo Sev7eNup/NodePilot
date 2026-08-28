@@ -1298,7 +1298,8 @@ $tpl = Get-Content $Template -Raw
 $dataEscaped = $DataPath -replace '\\', '\\'
 
 # Build provider-specific connection strings. The template carries both DefaultConnection
-# (SQL Server) and Postgres keys; the unused one is rendered empty so Program.cs's GetConnectionString
+# (SQL Server) and Postgres keys; the unused one is rendered empty so Program.cs's
+# GetConnectionString
 # returns null for it - harmless, since Program.cs only reads the key for the active provider.
 $sqlServerConnStr = ''
 $postgresServiceConnStr = ''
@@ -1772,12 +1773,7 @@ catch {
     Write-Host "[install] FAILED: $($installError.Exception.Message)" -ForegroundColor Red
     if ($installMutationStarted) {
         try {
-            # Two different situations, and until now both were narrated as the first one. Over an
-            # existing installation this really does put something back. On a machine that never
-            # had NodePilot there is nothing to put back: the rollback removes what this run
-            # created and leaves the host as it found it. Both of the messages below used to claim
-            # a restore either way, which is exactly how a failed first install reads as though the
-            # installer had eaten something that was already there.
+            # Restore a prior installation when present; otherwise remove artifacts from this run.
             #
             # The wording is deliberately not repeated in this comment: the template test delimits
             # this block by searching the source for those two phrases, and a comment that quotes

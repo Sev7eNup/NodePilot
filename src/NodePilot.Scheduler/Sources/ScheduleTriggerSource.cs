@@ -125,7 +125,7 @@ public class ScheduleTriggerSource : ITriggerSource
 
     public async ValueTask DisposeAsync()
     {
-        // No slot held → nothing to release. Covers "never started" and every dispose after
+        // No slot held -> nothing to release. Covers "never started" and every dispose after
         // the first, so the orchestrator's several teardown paths can overlap harmlessly.
         if (Interlocked.Exchange(ref _holdsJobSlot, 0) == 0) return;
 

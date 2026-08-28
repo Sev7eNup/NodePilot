@@ -90,7 +90,7 @@ public class ObservabilityController : ControllerBase
         if (query.Length > MaxPromQueryLength)
             return BadRequest(new { message = $"query exceeds {MaxPromQueryLength} characters." });
 
-        // H8: explicitly reject the __name__ label-selector trick. A query like
+        // Explicitly reject the __name__ label-selector trick. A query like
         // `{__name__=~".+"}` has zero bare-metric tokens for the identifier regex below, so
         // it trivially passes the prefix allow-list while returning every series in the
         // Prometheus TSDB (including prometheus_tsdb_* internals and any co-tenant data).
@@ -163,7 +163,7 @@ public class ObservabilityController : ControllerBase
         return null;
     }
 
-    // M-20: raw PromQL (and the pre-composed summary) can reveal infrastructure metrics,
+    // Raw PromQL (and the pre-composed summary) can reveal infrastructure metrics,
     // tenant activity patterns, and — via co-tenant series on a shared Prometheus — data
     // from outside NodePilot. Viewer role (read-only) gets access to the UI's tile widgets
     // only, not to the raw query surface. Admin/Operator retain full access for dashboards.

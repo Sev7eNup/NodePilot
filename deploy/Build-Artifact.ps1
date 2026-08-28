@@ -253,9 +253,8 @@ if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXIT
 # under runtimes\win\lib\<tfm>\Modules, but the hosted runspace pool resolves them via
 # $PSHOME\Modules, where $PSHOME is the directory holding System.Management.Automation.dll —
 # after publish that is the stage root. Without this copy the in-process engine finds no
-# cmdlet modules at all and every runScript fails with "The term 'Write-Output' is not
-# recognized" (server-lab finding 2026-08-01; implicit WinPS compat used to mask this by
-# delegating to powershell.exe and is deliberately disabled). Same staging as
+# cmdlet modules at all and every runScript fails to resolve core commands. Implicit WinPS
+# compatibility is disabled. Same staging as
 # deploy\desktop\Build-DesktopInstaller.ps1.
 Write-Host "[build] Staging PowerShell built-in modules" -ForegroundColor Cyan
 $psModuleSource = Get-ChildItem -Path (Join-Path $StageDir 'runtimes\win\lib') -Directory -ErrorAction SilentlyContinue |
@@ -325,7 +324,7 @@ if (-not $SkipFrontend) {
         }
         # Temporarily lower ErrorActionPreference so that Vite/Rolldown warnings on stderr
         # (e.g. the harmless [EVAL] warning from @protobufjs/inquire) don't trigger
-        # PS 5.1's NativeCommandError → terminating exception under Stop mode.
+        # PS 5.1's NativeCommandError -> terminating exception under Stop mode.
         # We still check $LASTEXITCODE to catch real npm failures.
         $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
         cmd.exe /c 'npm run build'
@@ -348,7 +347,7 @@ Copy-Item (Join-Path $DistDir '*') $WwwRoot -Recurse -Force
 
 # Ship a git-tracked source snapshot into knowledge\source so the global "AI Chat" knowledge
 # assistant can serve source-code questions on a production Windows-service install. `git archive
-# HEAD` emits ONLY tracked files → bin/obj, node_modules, dist and every gitignored secret
+# HEAD` emits ONLY tracked files -> bin/obj, node_modules, dist and every gitignored secret
 # (jwt-secret.key, appsettings.runtime.json, *.pfx/*.pem, .env, data-protection-keys/) fall out
 # automatically. The reader applies a read-time DENY-list on top (the authoritative secret guard).
 # The whole tracked tree ships (incl. deploy/, scripts/, tests/) — see docs/ai-features.md.
@@ -555,11 +554,7 @@ Write-Host "         $(Split-Path $DeployScriptsZip -Leaf) ($($deployScriptFiles
 # downloader to read the thumbprint out of this file and compare it against the release notes, and
 # calls that comparison "the trust decision".
 #
-# It is produced HERE, as a build output, because it used to be attached to releases by hand: it
-# rode along in 1.1.0, 1.2.0 and 1.2.4 and was then simply forgotten from 1.2.8 onwards, which left
-# the documented verification impossible to perform. It is also listed in SHA256SUMS below - as a
-# hand-attached file it never was, so the one artifact the whole ceremony rests on was the only one
-# nobody could check.
+# Produce the trust artifact as a build output and include it in SHA256SUMS with the archives.
 $publisherCertPath = $null
 if (-not $AllowUnsignedDevelopmentArtifact) {
     Write-Host "[build] Export publisher certificate" -ForegroundColor Cyan

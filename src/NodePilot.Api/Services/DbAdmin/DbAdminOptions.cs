@@ -7,7 +7,7 @@ namespace NodePilot.Api.Services.DbAdmin;
 /// Write-queries are a deliberate escalation: they bypass every guard the row-editor
 /// applies (masked columns, last-admin protection, GlobalVariable.Value masking). The
 /// default is read-only — operators that need write-mode have to flip the config flag
-/// AND the UI has to send an explicit confirmation header per request.
+/// and the UI has to send an explicit confirmation header per request.
 /// </remarks>
 public sealed class DbAdminOptions
 {

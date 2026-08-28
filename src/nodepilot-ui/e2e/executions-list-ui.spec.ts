@@ -2,9 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * E2ETests.md Teil 57 — ExecutionsPage list interactions used to find a run: the search
- * box, the status filter chips, the per-workflow dropdown, column sorting, the summary
- * chips, the Refresh button and the per-row open-workflow action.
+ * Covers ExecutionsPage search, filters, sorting, summary, refresh, and row actions.
  *
  * Hermetic: page.route() mocks only, per fixtures/mockApi.ts conventions. The preview
  * build renders the UI in English, so selectors use the English strings and stable title

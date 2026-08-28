@@ -16,7 +16,7 @@ interface UseDisplayedGraphArgs {
   revealIndex: number;
   lintResult: LintResult;
   failureHeatmapEnabled: boolean;
-  /** Edge whose target end is currently detached (context menu → "Detach target"). */
+  /** Edge whose target end is currently detached (context menu -> "Detach target"). */
   detachedEdgeId?: string | null;
   /** Node the detach preview is currently docking to — gets the highlight ring. */
   dockTargetNodeId?: string | null;
@@ -76,12 +76,8 @@ export function useDisplayedGraph({
         : baseData.__flowingVars !== undefined
           ? (() => { const { __flowingVars: _, ...rest } = baseData as Record<string, unknown>; return rest; })()
           : baseData;
-      // Edge-Detach: dieselbe Setzen-ODER-Entfernen-Mechanik wie oben — und der Aufräum-Zweig
-      // ist hier NICHT optional. `useWorkflowHistory` snapshottet über React Flows Store,
-      // also den PROJIZIERTEN Graphen, und schreibt ihn beim Undo in den Rohzustand zurück:
-      // ein Undo direkt nach dem Umhängen holte damit ein `__detached: true` in die rohen
-      // Edges, und LabeledEdge rendert die Edge dann dauerhaft gedimmt und mit
-      // `pointerEvents: 'none'` — sie war bis zum Reload nicht mehr anklickbar.
+      // Always remove projected __detached state from raw edges. Otherwise undo can persist the
+      // marker and leave the restored edge dimmed and non-interactive.
       const isDetached = e.id === detachedEdgeId;
       const finalData = isDetached
         ? { ...dataWithFlow, __detached: true }
@@ -143,9 +139,7 @@ export function useDisplayedGraph({
         const stats = (n.data as Record<string, unknown>)?.__stats as { failureRate: number; totalRuns: number } | undefined;
         if (stats && stats.totalRuns > 0 && stats.failureRate > 0) dataPatch.__failureTint = stats.failureRate;
       }
-      // Edge-Detach: der Ring markiert GENAU den Node, an dem die Vorschau gerade andockt —
-      // nicht jeden Node unter dem Cursor. Sonst würden Quell-Node, altes Ziel, Sticky-Notes
-      // und Duplikat-Ziele eine Verbindung versprechen, die der Klick danach ablehnt.
+      // Mark only the accepted preview target so the ring never promises an invalid connection.
       const isDockTarget = n.id === dockTargetNodeId;
       return { ...n, data: dataPatch, hidden: isHidden, className: isDockTarget ? 'np-dock-target' : undefined };
     });

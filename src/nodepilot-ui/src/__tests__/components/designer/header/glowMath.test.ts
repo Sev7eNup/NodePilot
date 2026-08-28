@@ -7,12 +7,12 @@ import {
 } from '../../../../components/designer/header/glowMath';
 
 /**
- * Pure geometry — tested with hand-built rects on purpose: src/__tests__/setup.ts
- * monkey-patches getBoundingClientRect to a fixed 600×800 box for every element, so a
- * layout-driven test would be meaningless. Keeping the math DOM-free sidesteps that.
+ * Pure geometry, tested with hand-built rects: src/__tests__/setup.ts patches
+ * getBoundingClientRect to a fixed 600x800 box for every element, so a layout-driven test
+ * would say nothing.
  *
- * Two sections side by side, level at y∈[10,40]:
- *   sec0: x∈[100,200]   sec1: x∈[260,360]   (gap 200..260, midpoint 230)
+ * Two sections side by side, both spanning y 10 to 40:
+ *   sec0: x 100 to 200, sec1: x 260 to 360, gap 200 to 260 with midpoint 230.
  */
 const SECTIONS: GlowRect[] = [
   { left: 100, right: 200, top: 10, bottom: 40 },
@@ -43,7 +43,7 @@ describe('activeSectionGlow — section selection', () => {
   });
 
   it('resolves the gap midpoint deterministically to the earlier section', () => {
-    expect(activeSectionGlow(SECTIONS, 230, 25)?.index).toBe(0); // tie → first
+    expect(activeSectionGlow(SECTIONS, 230, 25)?.index).toBe(0); // a tie goes to the first section
   });
 });
 
@@ -57,7 +57,7 @@ describe('activeSectionGlow — vertical approach intensity', () => {
   });
 
   it('eases (squares) as the cursor approaches from below', () => {
-    // Half a reach below the bottom edge → linear 0.5, squared → 0.25
+    // Half a reach below the bottom edge: linear 0.5, squared 0.25.
     const cy = 40 + DEFAULT_GLOW_REACH / 2;
     expect(activeSectionGlow(SECTIONS, 150, cy)?.intensity).toBeCloseTo(0.25, 5);
   });

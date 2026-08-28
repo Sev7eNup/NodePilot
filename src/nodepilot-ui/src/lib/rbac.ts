@@ -5,11 +5,9 @@ export type Role = 'Admin' | 'Operator' | 'Viewer';
 /**
  * Client-side mirror of the server role matrix (see CLAUDE.md §Autorisierung).
  *
- * These flags only control UI affordances — hide/disable buttons so Viewers
- * don't see actions that will 403. The server enforces the actual check; a
- * forged client that bypasses these booleans still gets blocked at the API.
- * So: keep them in sync with the server matrix, but don't treat them as a
- * security boundary.
+ * These flags only control UI affordances: hiding or disabling buttons for
+ * actions that would return 403. The server enforces access, so keep them in
+ * sync with the server matrix but do not treat them as a security boundary.
  */
 export function useRole() {
   const role = (useAuthStore((s) => s.role) ?? 'Viewer') as Role;

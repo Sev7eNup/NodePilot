@@ -9,11 +9,10 @@ namespace NodePilot.Engine.Mail;
 /// <see cref="Notifications.SmtpNotificationSink"/> must decide identically: how the client is
 /// built and which recipients/subjects are refused outright.
 /// <para>
-/// Both previously carried their own copy. That is a bad place for a copy — H-2 of the
-/// 2026-05-15 security audit turned on TLS by default here, and the recipient-list rule exists
-/// so an operator (or a trigger payload interpolated via <c>{{…}}</c>) cannot BCC an attacker
-/// onto a notification and exfiltrate log contents. A fix applied to one copy and not the other
-/// would be a silent hole.
+/// Kept in one place because a fix applied to only one caller would be a silent hole: TLS is
+/// on by default here, and the recipient-list rule stops an operator (or a trigger payload
+/// interpolated via <c>{{…}}</c>) from BCCing an attacker onto a notification to exfiltrate
+/// log contents.
 /// </para>
 /// <para>
 /// Deliberately NOT shared: the send/await itself. The activity bounds the await with
@@ -32,10 +31,10 @@ internal static class SmtpTransport
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        // H-2 (security audit 2026-05-15): default-on TLS. SmtpClient defaults to EnableSsl=false;
-        // that would send LOGIN/PLAIN credentials + the whole message body in plaintext. The
-        // option lives on SmtpOptions with a safe default, and SecurityHardeningWarnings yells at
-        // boot if an operator flipped it off while still configuring a Username.
+        // Default-on TLS. SmtpClient defaults to EnableSsl=false, which would send LOGIN/PLAIN
+        // credentials and the whole message body in plaintext. The option lives on SmtpOptions
+        // with a safe default, and SecurityHardeningWarnings warns at boot if an operator turned
+        // it off while still configuring a Username.
         var client = new SmtpClient(options.Host, options.Port) { EnableSsl = options.EnableSsl };
         if (options.Username is not null && options.Password is not null)
             client.Credentials = new NetworkCredential(options.Username, options.Password);

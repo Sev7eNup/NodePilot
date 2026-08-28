@@ -92,7 +92,8 @@ public readonly record struct PrometheusProxyResult(bool IsSuccess, int StatusCo
 
 public static class PrometheusResponseParser
 {
-    /// <summary>Parses a Prometheus numeric string, rejecting NaN/infinity because JSON cannot represent them.</summary>
+    /// <summary>Parses a Prometheus numeric string, rejecting NaN/infinity because JSON cannot
+    /// represent them.</summary>
     public static double? TryParseFiniteNumber(string? raw)
     {
         if (!double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value))

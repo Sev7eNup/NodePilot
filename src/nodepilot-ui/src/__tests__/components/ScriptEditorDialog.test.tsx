@@ -207,7 +207,7 @@ describe('ScriptEditorDialog', () => {
 
   it('closes the dialog immediately on Generate and shows the waiting indicator until the first token', async () => {
     let resolve!: () => void;
-    const onAiGenerate = vi.fn(() => new Promise<void>((r) => { resolve = r; })); // never tokens → stays waiting
+    const onAiGenerate = vi.fn(() => new Promise<void>((r) => { resolve = r; })); // emits no tokens
     render(
       <ScriptEditorDialog value="" onChange={() => {}} onClose={() => {}} onAiGenerate={onAiGenerate} />,
     );
@@ -216,7 +216,8 @@ describe('ScriptEditorDialog', () => {
     fireEvent.change(screen.getByLabelText('AI prompt'), { target: { value: 'go' } });
     fireEvent.click(screen.getAllByRole('button', { name: /^generate$/i })[0]);
 
-    // The dialog closes immediately (title gone); the editor instead shows a waiting indicator with a Cancel button.
+    // The dialog closes immediately, so its title is gone and the editor shows a waiting
+    // indicator with a Cancel button instead.
     await waitFor(() => expect(screen.queryByText(/^generate script with ai$/i)).not.toBeInTheDocument());
     expect(screen.getByRole('button', { name: /^cancel$/i })).toBeInTheDocument();
 
@@ -261,7 +262,8 @@ describe('ScriptEditorDialog', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /^generate$/i })[0]);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('LLM unreachable');
-    // The dialog is already closed — the error shows up in the editor's banner, not inside the (closed) dialog.
+    // The dialog is already closed, so the error appears in the editor's banner rather than
+    // in the dialog.
     expect(screen.queryByText(/^generate script with ai$/i)).not.toBeInTheDocument();
   });
 });

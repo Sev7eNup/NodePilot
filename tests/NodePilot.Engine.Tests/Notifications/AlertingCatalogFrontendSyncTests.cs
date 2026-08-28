@@ -8,10 +8,12 @@ using Xunit;
 namespace NodePilot.Engine.Tests.Notifications;
 
 /// <summary>
-/// Keeps the frontend alerting catalog (src/nodepilot-ui/src/lib/eventFields.ts) + i18n in lock-step
+/// Keeps the frontend alerting catalog (src/nodepilot-ui/src/lib/eventFields.ts) + i18n in
+/// lock-step
 /// with the backend: event-field names must match <see cref="NotificationContext.ToFieldMap"/>, the
 /// event-type list must mirror the <see cref="NotificationEventType"/> enum, and the DE/EN i18n key
-/// sets must be complete + identical. A drift here breaks the rule editor silently, so fail CI instead.
+/// sets must be complete + identical. A drift here breaks the rule editor silently, so fail CI
+/// instead.
 /// </summary>
 public class AlertingCatalogFrontendSyncTests
 {

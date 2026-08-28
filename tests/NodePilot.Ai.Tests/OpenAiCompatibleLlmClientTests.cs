@@ -63,8 +63,7 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
     [Fact]
     public async Task CompleteAsync_BaseUrlAlreadyEndsWithChatCompletions_PostsThereExactlyOnce()
     {
-        // Regression: the endpoint path used to be appended unconditionally, so an operator
-        // pasting the full endpoint URL got POST /chat/completions/chat/completions → HTTP 404.
+        // Preserve a complete endpoint URL instead of appending another chat-completions segment.
         _server.Given(Request.Create().WithPath("/chat/completions").UsingPost())
                .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
                {
@@ -137,9 +136,9 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
     [Fact]
     public async Task CompleteAsync_JsonMode400_RetriesWithoutResponseFormat()
     {
-        // First call: body includes "response_format" → server responds 400 (typical LM Studio
+        // First call: body includes "response_format" -> server responds 400 (typical LM Studio
         // behavior for models without JSON-mode support).
-        // Second call: body WITHOUT "response_format" → server responds 200 with valid content.
+        // Second call: body WITHOUT "response_format" -> server responds 200 with valid content.
         _server.Given(Request.Create().WithPath("/chat/completions").UsingPost()
                 .WithBody(b => b != null && b.Contains("response_format")))
                .RespondWith(Response.Create().WithStatusCode(400)
@@ -198,8 +197,8 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
     public async Task CompleteAsync_MaxTokensUnsupported400_RetriesWithMaxCompletionTokens()
     {
         // Newer OpenAI models (o-series / GPT-5 era) reject `max_tokens` with a 400 and require
-        // `max_completion_tokens` instead. First call (body has max_tokens) → 400 with the
-        // typical unsupported_parameter body; retry (body has max_completion_tokens) → 200.
+        // `max_completion_tokens` instead. First call (body has max_tokens) -> 400 with the
+        // typical unsupported_parameter body; retry (body has max_completion_tokens) -> 200.
         _server.Given(Request.Create().WithPath("/chat/completions").UsingPost()
                 .WithBody(b => b != null && b.Contains("max_tokens") && !b.Contains("max_completion_tokens")))
                .RespondWith(Response.Create().WithStatusCode(400)
@@ -221,7 +220,8 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
         retryBody.Should().Contain("max_completion_tokens");
         retryBody.Should().NotContain("\"max_tokens\"");
 
-        // The compatibility decision is shared across short-lived clients for the same endpoint/model,
+        // The compatibility decision is shared across short-lived clients for the same
+        // endpoint/model,
         // so subsequent calls do not pay another guaranteed HTTP 400 round-trip.
         var second = await BuildClient().CompleteAsync(
             new LlmRequest("sys", "user"), CancellationToken.None);
@@ -433,7 +433,7 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
     [Fact]
     public async Task StreamAsync_MaxTokensUnsupported400_RetriesWithMaxCompletionTokens()
     {
-        // Streaming counterpart: max_tokens-400 → retry with max_completion_tokens, then SSE.
+        // Streaming counterpart: max_tokens-400 -> retry with max_completion_tokens, then SSE.
         _server.Given(Request.Create().WithPath("/chat/completions").UsingPost()
                 .WithBody(b => b != null && b.Contains("max_tokens") && !b.Contains("max_completion_tokens")))
                .RespondWith(Response.Create().WithStatusCode(400)
@@ -615,7 +615,8 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
     public async Task StreamAsync_TwoToolCalls_WithoutIndex_DoNotCollapse()
     {
         // LM Studio / llama.cpp style: parallel calls streamed WITHOUT the OpenAI `index` field.
-        // The old accumulator defaulted the missing index to 0 → both collapsed into one corrupt call.
+        // The old accumulator defaulted the missing index to 0 to both collapsed into one corrupt
+        // call.
         var sse = Sse(
             """{"choices":[{"delta":{"tool_calls":[{"id":"call_a","type":"function","function":{"name":"search_docs","arguments":"{\"q\":\"a\"}"}}]}}]}""",
             """{"choices":[{"delta":{"tool_calls":[{"id":"call_b","type":"function","function":{"name":"search_source","arguments":"{\"q\":\"b\"}"}}]}}]}""",
@@ -637,7 +638,7 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
     public async Task StreamAsync_IndexlessToolCall_SplitArguments_AppendToSameSlot()
     {
         // One index-less call whose arguments arrive across two chunks; the continuation fragment
-        // carries neither id nor name → must append to the current slot, not open a new one.
+        // carries neither id nor name -> must append to the current slot, not open a new one.
         var sse = Sse(
             """{"choices":[{"delta":{"tool_calls":[{"id":"call_a","type":"function","function":{"name":"search_docs","arguments":"{\"q\":"}}]}}]}""",
             """{"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"\"abc\"}"}}]}}]}""",

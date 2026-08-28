@@ -99,7 +99,8 @@ public class AlertingControllerTests
         await using var db = TestDbFactory.Create();
         var h = Build(db);
         await Create(h.Ctrl, Req("custom-rule"));
-        // A system policy persisted directly on the shared table must be invisible to the custom endpoint (A11).
+        // A system policy persisted directly on the shared table must be invisible to the custom
+        // endpoint (A11).
         var system = await h.Store.CreateAsync(new NotificationRule
         {
             Name = "system-policy", EventTypes = "SystemAlert", Kind = NotificationRuleKind.System, SystemSourceId = "backlog",
@@ -118,7 +119,8 @@ public class AlertingControllerTests
 
         var catalog = (AlertingCatalogResponse)((OkObjectResult)h.Ctrl.GetCatalog().Result!).Value!;
 
-        // Infra/signal types moved to system policies (ADR 0008) — the custom catalog only offers the
+        // Infra/signal types moved to system policies (ADR 0008) — the custom catalog only offers
+        // the
         // execution-family types now.
         catalog.EventTypes.Select(e => e.Name).Should().BeEquivalentTo(
             ["ExecutionFailed", "ExecutionSucceeded", "ExecutionCancelled", "ExecutionRunningLong", "ExecutionQueuedLong", "CredentialFailure"]);
@@ -197,7 +199,8 @@ public class AlertingControllerTests
     {
         await using var db = TestDbFactory.Create();
         var h = Build(db);
-        // A system policy on the shared table must be untouchable via the custom enable/disable surface (A11).
+        // A system policy on the shared table must be untouchable via the custom enable/disable
+        // surface (A11).
         var system = await h.Store.CreateAsync(new NotificationRule
         {
             Name = "system-policy", EventTypes = "SystemAlert", Kind = NotificationRuleKind.System, SystemSourceId = "backlog",
@@ -237,7 +240,8 @@ public class AlertingControllerTests
     [InlineData("WorkflowNoRecentSuccess")]
     public async Task Create_InfraSignalType_Rejected_MovedToSystemPolicies(string eventType)
     {
-        // The legacy gauge path was retired (ADR 0008) — infra/signal alerts are now system policies, so the
+        // The legacy gauge path was retired (ADR 0008) — infra/signal alerts are now system
+        // policies, so the
         // custom-rule surface no longer accepts these event types (whatever scope).
         await using var db = TestDbFactory.Create();
         var h = Build(db);
@@ -251,8 +255,9 @@ public class AlertingControllerTests
     [InlineData("CredentialFailure")]
     public async Task Create_WorkflowScopedEvent_AllowsWorkflowScope(string eventType)
     {
-        // ExecutionRunningLong is execution-scoped (NOT a gauge), so a Workflows-scoped rule is valid —
-        // this is the regression guard against accidentally classifying it as gauge (Global-only).
+        // ExecutionRunningLong is execution-scoped, not a gauge, so a Workflows-scoped rule is
+        // valid.
+        // This guards against accidentally classifying it as a gauge (Global-only).
         await using var db = TestDbFactory.Create();
         var h = Build(db);
         var created = await Create(h.Ctrl, Req($"{eventType}-rule", events: eventType, scope: "Workflows",
@@ -266,8 +271,8 @@ public class AlertingControllerTests
     {
         await using var db = TestDbFactory.Create();
         var h = Build(db);
-        // 200000 minutes (~139d) exceeds the 30-day throttle cap → must be rejected so the retention
-        // sweep can never wipe an still-active cooldown row.
+        // 200000 minutes (about 139 days) exceeds the 30-day throttle cap and must be rejected, so
+        // the retention sweep can never wipe a still-active cooldown row.
         (await h.Ctrl.Create(Req("rule", cooldown: 200000), CancellationToken.None)).Result
             .Should().BeOfType<BadRequestObjectResult>();
     }

@@ -16,17 +16,18 @@ namespace NodePilot.Api.Tests.Hosting;
 /// Pins the security-header contract of <see cref="SecurityPipelineSetup"/>. The CSP is the
 /// production-only XSS floor: no test environment renders the SPA behind it (Development and
 /// the hermetic E2E suite skip this middleware), so a directive regression would otherwise
-/// surface only on a deployed server — as the 2026-08-01 lab rollout proved when
-/// style-src-elem 'self' silently broke every CodeMirror editor.
+/// surface only on a deployed server, for example a tightened style directive silently
+/// breaking the CodeMirror and Monaco editors.
 /// </summary>
 public sealed class SecurityPipelineSetupTests
 {
     private static async Task<HttpResponseMessage> GetThroughPipelineAsync(
         Action<WebApplication>? preSecurityMiddleware = null)
     {
-        // Production: the extension no-ops in Development (line 13), so the headers only exist
-        // outside it. Its parameterless UseExceptionHandler requires a ProblemDetails service —
-        // Program.cs registers one, so the test host mirrors that.
+        // The security-headers extension no-ops in Development, so the headers only appear
+        // when the environment is set to Production, as here. Its parameterless
+        // UseExceptionHandler requires a ProblemDetails service; Program.cs registers one,
+        // so the test host mirrors that.
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
             EnvironmentName = Environments.Production,
@@ -101,10 +102,10 @@ public sealed class SecurityPipelineSetupTests
     }
 
     /// <summary>
-    /// L-17. Mirrors the Program.cs pipeline for a TLS-terminating reverse proxy that speaks plain
-    /// HTTP to Kestrel. <c>UseHsts()</c> short-circuits on <c>!Request.IsHttps</c>, so the relative
-    /// order of ForwardedHeaders and the security headers decides whether HSTS reaches the wire at
-    /// all — a silent failure that config inspection cannot reveal.
+    /// Mirrors the Program.cs pipeline for a TLS-terminating reverse proxy that speaks plain
+    /// HTTP to Kestrel. <c>UseHsts()</c> short-circuits on <c>!Request.IsHttps</c>, so the
+    /// relative order of ForwardedHeaders and the security headers decides whether HSTS
+    /// reaches the wire at all, a failure that config inspection alone cannot reveal.
     /// </summary>
     private static async Task<HttpResponseMessage> GetThroughProxiedPipelineAsync(bool forwardedHeadersFirst)
     {
@@ -171,7 +172,8 @@ public sealed class SecurityPipelineSetupTests
     [Fact]
     public async Task ForwardedHeaders_RunningAfterSecurityHeaders_SilentlyDropsHsts()
     {
-        // Pins the L-17 regression itself: this is exactly what the pipeline did before the fix.
+        // Pins the ordering regression: security headers running before ForwardedHeaders
+        // means UseHsts() never sees the proxied https scheme.
         using var response = await GetThroughProxiedPipelineAsync(forwardedHeadersFirst: false);
 
         response.Headers.Contains("Strict-Transport-Security").Should().BeFalse(

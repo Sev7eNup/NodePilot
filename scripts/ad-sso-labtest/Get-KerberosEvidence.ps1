@@ -107,18 +107,12 @@ if ($Role -in @('Client', 'Both')) {
 if ($Role -in @('Server', 'Both')) {
     "Server-Belege:"
 
-    # 4624 LogonType 3 ist der serverseitige Gegenbeweis zum klist-Ticket.
+    # Event 4624 with LogonType 3 provides server-side evidence for the klist ticket.
     #
-    # Ausgewertet werden die strukturierten EventData-Felder, NICHT der Message-Text:
-    # der ist lokalisiert (auf de-DE steht dort "Anmeldetyp"/"Authentifizierungspaket"),
-    # ein Text-Regex faende auf einem deutschen Server null Treffer und saehe damit aus
-    # wie "kein Kerberos-Logon".
+    # Read structured EventData fields because localized message text is not stable.
     #
-    # Die Feldkombination ist das eigentliche Signal:
-    #   AuthenticationPackageName=Kerberos                      -> echtes Kerberos
-    #   AuthenticationPackageName=Negotiate + LmPackageName=NTLM -> SPNEGO auf NTLM
-    #                                                              zurueckgefallen
-    # Ein reiner Blick auf "Negotiate" wuerde den Fallback also gerade verdecken.
+    # AuthenticationPackageName=Kerberos proves Kerberos. Negotiate with LmPackageName=NTLM
+    # indicates an SPNEGO fallback to NTLM.
     try {
         $rows = @(Get-WinEvent -FilterHashtable @{ LogName = 'Security'; Id = 4624; StartTime = $since } -ErrorAction Stop |
             ForEach-Object {
@@ -147,8 +141,7 @@ if ($Role -in @('Server', 'Both')) {
         "  Security-Log nicht lesbar (elevated ausfuehren?): $($_.Exception.Message)"
     }
 
-    # 8004 = eingehendes NTLM im Auditmodus protokolliert (W19).
-    # 4004 = eingehendes NTLM durch "Deny all accounts" blockiert (W20).
+    # Event 8004 records incoming NTLM in audit mode; 4004 records policy rejection.
     try {
         $ntlmEvents = @(Get-WinEvent -FilterHashtable @{ LogName = 'Microsoft-Windows-NTLM/Operational'; StartTime = $since } -ErrorAction Stop |
             Select-Object -First 50 |
@@ -159,7 +152,7 @@ if ($Role -in @('Server', 'Both')) {
         "  NTLM-Operational-Log leer oder nicht aktiviert: $($_.Exception.Message)"
     }
 
-    # Registry-Beleg fuer die NtlmDisabledByPolicy-Attestierung.
+    # Registry evidence for the NtlmDisabledByPolicy attestation.
     $lsa = 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0'
     $restrict = (Get-ItemProperty -Path $lsa -ErrorAction SilentlyContinue).RestrictReceivingNTLMTraffic
     Save-Evidence 'ntlm-policy-registry.txt' @(

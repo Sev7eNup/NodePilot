@@ -15,9 +15,7 @@ using NodePilot.Data;
 namespace NodePilot.Api.Controllers;
 
 /// <summary>
-/// Admin-only management of users. Before this controller existed, the only way to add
-/// or deactivate users was direct DB manipulation — a foot-gun that broke audit trails and
-/// invited accidental lockouts. This keeps the full CRUD inside the API with proper auth.
+/// Admin-only user management that keeps CRUD operations authorized and audited through the API.
 ///
 /// <para>
 /// Every mutation emits a granular audit code (<c>USER_CREATED</c>,

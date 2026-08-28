@@ -6,7 +6,8 @@ namespace NodePilot.Core.Models;
 /// An alerting rule: "when an event of one of <see cref="EventTypes"/> happens and the
 /// <see cref="FilterExpressionJson"/> filter matches, deliver via every <see cref="Routes"/>".
 ///
-/// <para>Matching has two layers: a cheap coarse pre-filter on event type (<see cref="EventTypes"/>),
+/// <para>Matching has two layers: a cheap coarse pre-filter on event type (<see
+/// cref="EventTypes"/>),
 /// then a composable AND/OR/NOT filter tree over the event fields (the same condition AST the
 /// designer uses for edge conditions, stored as a JSON string here). Throttling (cooldown, dedup
 /// and flap suppression) keeps a single incident from fanning out into many alerts.</para>
@@ -17,42 +18,54 @@ public class NotificationRule
 
     /// <summary>
     /// Which alerting kind owns this row (ADR 0008). <see cref="NotificationRuleKind.Custom"/> is a
-    /// free-filter rule and the default; <see cref="NotificationRuleKind.System"/> is a policy bound to
-    /// an <c>ISystemAlertSource</c> via <see cref="SystemSourceId"/>. The custom and system management
+    /// free-filter rule and the default; <see cref="NotificationRuleKind.System"/> is a policy
+    /// bound to
+    /// an <c>ISystemAlertSource</c> via <see cref="SystemSourceId"/>. The custom and system
+    /// management
     /// surfaces each filter on this so neither mutates the other's rows.
     /// </summary>
     public NotificationRuleKind Kind { get; set; } = NotificationRuleKind.Custom;
 
-    /// <summary>For <see cref="NotificationRuleKind.System"/> policies: the bound source's stable id. Null for Custom.</summary>
+    /// <summary>For <see cref="NotificationRuleKind.System"/> policies: the bound source's stable
+    /// id. Null for Custom.</summary>
     public string? SystemSourceId { get; set; }
 
-    /// <summary>For System policies: the preset the policy was seeded from, if any (informational). Null for Custom.</summary>
+    /// <summary>For System policies: the preset the policy was seeded from, if any (informational).
+    /// Null for Custom.</summary>
     public string? SystemPresetId { get; set; }
 
     /// <summary>
-    /// For System policies: descriptor-validated source query parameters as a JSON object (e.g. a lookback
-    /// window). Shapes what the source measures; the filter still decides whether a measurement alerts. Null
+    /// For System policies: descriptor-validated source query parameters as a JSON object (e.g. a
+    /// lookback
+    /// window). Shapes what the source measures; the filter still decides whether a measurement
+    /// alerts. Null
     /// for Custom or a parameter-less source.
     /// </summary>
     public string? SourceParametersJson { get; set; }
 
     /// <summary>
-    /// For System policies: the condition must hold continuously for this many seconds before an episode
-    /// opens (debounce). 0 fires on the first matching observation. Ignored for Custom rules. Resolution
+    /// For System policies: the condition must hold continuously for this many seconds before an
+    /// episode
+    /// opens (debounce). 0 fires on the first matching observation. Ignored for Custom rules.
+    /// Resolution
     /// is bounded by the dispatcher pass interval.
     /// </summary>
     public int SustainForSeconds { get; set; }
 
     /// <summary>
-    /// Optional per-policy severity override applied to the delivered notification, replacing the severity
+    /// Optional per-policy severity override applied to the delivered notification, replacing the
+    /// severity
     /// suggested by the source observation. Null keeps the observation's severity.
     /// </summary>
     public NotificationSeverity? SeverityOverride { get; set; }
 
     /// <summary>
-    /// For System policies: the UTC instant the policy was (re-)activated. Event sources only alert on
-    /// observations at or after this instant, so a policy enabled later never alerts on history that a
-    /// sibling policy already moved the shared source cursor past. Null for Custom or never activated.
+    /// For System policies: the UTC instant the policy was (re-)activated. Event sources only alert
+    /// on
+    /// observations at or after this instant, so a policy enabled later never alerts on history
+    /// that a
+    /// sibling policy already moved the shared source cursor past. Null for Custom or never
+    /// activated.
     /// </summary>
     public DateTime? ActivatedAt { get; set; }
 
@@ -82,11 +95,13 @@ public class NotificationRule
     public NotificationScopeKind ScopeKind { get; set; } = NotificationScopeKind.Global;
 
     // --- Throttle ---
-    /// <summary>Minimum minutes between alerts for the same dedup key. 0 disables the cooldown.</summary>
+    /// <summary>Minimum minutes between alerts for the same dedup key. 0 disables the
+    /// cooldown.</summary>
     public int CooldownMinutes { get; set; }
 
     /// <summary>
-    /// Optional template for the dedup key. Null falls back to <c>ruleId + workflowId + eventType</c>.
+    /// Optional template for the dedup key. Null falls back to <c>ruleId + workflowId +
+    /// eventType</c>.
     /// Reserved for a future custom-grouping feature.
     /// </summary>
     public string? DedupKeyTemplate { get; set; }
@@ -95,7 +110,8 @@ public class NotificationRule
     /// within <see cref="OccurrenceWindowMinutes"/>. 1 fires on the first occurrence.</summary>
     public int MinOccurrences { get; set; } = 1;
 
-    /// <summary>Rolling window (minutes) for <see cref="MinOccurrences"/>. 0 disables the threshold.</summary>
+    /// <summary>Rolling window (minutes) for <see cref="MinOccurrences"/>. 0 disables the
+    /// threshold.</summary>
     public int OccurrenceWindowMinutes { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

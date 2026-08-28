@@ -194,7 +194,8 @@ if (-not $SkipServiceStop) {
     $rejoined = $false
     while ((Get-Date) -lt $rejoinDeadline) {
         $h = Get-LeaderHealth $leaderUrl
-        # A follower answers 503 with reason=not_leader; a process still starting refuses the connection.
+        # A follower answers 503 with reason=not_leader; a process still starting refuses the
+        # connection.
         if ($h.StatusCode -eq 503 -and $h.Reason -eq 'not_leader') { $rejoined = $true; break }
         Start-Sleep -Milliseconds 2000
     }

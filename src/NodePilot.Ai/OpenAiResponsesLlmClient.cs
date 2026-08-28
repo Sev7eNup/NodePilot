@@ -169,7 +169,8 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
     }
 
     /// <summary>Builds the Responses request body. It carries no <c>max_tokens</c>,
-    /// <c>response_format</c> or <c>stream_options</c>: those belong to the other dialect.</summary>
+    /// <c>response_format</c> or <c>stream_options</c>: those belong to the other
+    /// dialect.</summary>
     private Dictionary<string, object?> BuildBody(LlmRequest request, bool stream)
     {
         var body = new Dictionary<string, object?>
@@ -232,7 +233,8 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
         input.Add(new { role = turn.Role, content = turn.Content });
     }
 
-    /// <summary>Appends the flat Responses tool schema: no nested <c>function</c> object, unlike chat completions.</summary>
+    /// <summary>Appends the flat Responses tool schema: no nested <c>function</c> object, unlike
+    /// chat completions.</summary>
     private static void AppendTools(Dictionary<string, object?> body, LlmRequest request)
     {
         if (request.Tools is not { Count: > 0 } tools) return;
@@ -251,8 +253,10 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
         body["tool_choice"] = request.ToolChoice ?? "auto";
     }
 
-    /// <summary>Parses a non-streaming Responses body: text from <c>output[].message</c>, calls from
-    /// <c>output[].function_call</c>, usage from <c>usage.{input,output,total}_tokens</c>.</summary>
+    /// <summary>Parses a non-streaming Responses body: text from <c>output[].message</c>, calls
+    /// from
+    /// <c>output[].function_call</c>, usage from
+    /// <c>usage.{input,output,total}_tokens</c>.</summary>
     private LlmResponse ParseResponse(JsonElement root)
     {
         // A failed run can arrive as HTTP 200 with status: "failed". Surface it as an upstream

@@ -35,7 +35,7 @@ public sealed class WorkflowResolverTests : IDisposable
 
         var w = await WorkflowResolver.ResolveAsync(_client, id.ToString(), CancellationToken.None);
         w.Id.Should().Be(id);
-        // List endpoint must NOT have been called.
+        // The list endpoint must not have been called.
         _server.LogEntries.Should().NotContain(e => e.RequestMessage!.AbsolutePath == "/api/workflows" && e.RequestMessage!.Method == "GET");
     }
 
@@ -48,7 +48,7 @@ public sealed class WorkflowResolverTests : IDisposable
 
         var w = await WorkflowResolver.ResolveAsync(_client, "Report", CancellationToken.None);
         w.Id.Should().Be(id);
-        // The whole workflow list no longer travels over the wire to resolve one name.
+        // Resolving one name does not require fetching the whole workflow list.
         _server.LogEntries.Should().NotContain(e => e.RequestMessage!.AbsolutePath == "/api/workflows" && e.RequestMessage!.Method == "GET");
     }
 

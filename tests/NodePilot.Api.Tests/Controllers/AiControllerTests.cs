@@ -194,9 +194,11 @@ public class AiControllerTests
     }
 
     /// <summary>
-    /// Hot-reload: AiController reads IOptionsMonitor&lt;LlmOptions&gt;.CurrentValue per request, so
+    /// Hot-reload: AiController reads IOptionsMonitor&lt;LlmOptions&gt;.CurrentValue per request,
+    /// so
     /// toggling Llm:Enabled in the Settings UI flips the 503 gate live without a restart. Drive the
-    /// monitor (test stand-in for a reloadOnChange config reload) from disabled→enabled between two
+    /// monitor (test stand-in for a reloadOnChange config reload) from disabled to enabled between
+    /// two
     /// requests on the SAME controller instance and assert the gate flips.
     /// </summary>
     [Fact]
@@ -222,7 +224,7 @@ public class AiControllerTests
         (await controller.GenerateScript(ScriptReq(), CancellationToken.None))
             .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
 
-        // Operator enables LLM in the Settings UI → config reload.
+        // Operator enables LLM in the Settings UI, which triggers a config reload.
         monitor.Set(LlmTestOptions.WithProfile(
             baseUrl: "http://localhost/v1", model: "test-model", maxTokens: 100, timeoutSeconds: 30));
         llm.EnqueueStream("Get-Service ", "-Name Spooler");

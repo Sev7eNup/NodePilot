@@ -1,20 +1,19 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-/** Which visual language the workflow designer renders in. `atelier` = the skin-independent
- *  "Atelier" redesign (light-first workbench: floating chrome, paper/graphite canvas, cobalt
- *  accent); `classic` = the previous look including app-skin passthrough. Evaluation toggle —
- *  both looks share the exact same components and functionality. */
+/** Visual language of the workflow designer. `atelier` is the skin-independent light-first
+ *  workbench (floating chrome, paper/graphite canvas, cobalt accent); `classic` follows the
+ *  app skin. Both share the same components and functionality. */
 export type DesignerTheme = 'atelier' | 'classic';
 export type NodeStyle = 'classic' | 'card';
-/** Classic-only: how an activity node draws its icon. `shape` = clip-path silhouette + small
- *  centered glyph (the default look); `glyph` = the bare palette icon (large, accent-coloured,
- *  no silhouette) — the same icon shown in the left "Actions" palette. Ignored in card mode. */
+/** Classic-only: how an activity node draws its icon. `shape` is a clip-path silhouette with a
+ *  small centered glyph; `glyph` is the bare palette icon, large and accent-coloured, as shown
+ *  in the left palette. Ignored in card mode. */
 export type NodeIconStyle = 'shape' | 'glyph';
 export type EdgeRouting = 'smart' | 'curved' | 'straight';
 export type DesignerMode = 'standard' | 'expert';
-/** Editor-header toolbar arrangement. `compact` = the grouped three-zone toolbar (default);
- *  `classic` = the pre-redesign row where every control is its own inline button. */
+/** Editor-header toolbar arrangement. `compact` is the grouped three-zone toolbar;
+ *  `classic` is a single row where every control is its own inline button. */
 export type ToolbarLayout = 'compact' | 'classic';
 
 export type LayoutMode = 'LR' | 'TB' | 'Compact' | 'ELK';
@@ -73,8 +72,8 @@ interface DesignState {
   edgesAnimated: boolean;
   edgeWidthIndex: number;
   edgeRouting: EdgeRouting;
-  /** When true, node ports stay hidden until the cursor nears the node (or it's selected / a
-   *  connection is being dragged toward it) — keeps the canvas clean. false = ports always shown. */
+  /** When true, node ports stay hidden until the cursor nears the node, the node is selected, or
+   *  a connection is dragged toward it. When false, ports are always shown. */
   autoHidePorts: boolean;
   snapToGrid: boolean;
   snapGridSize: SnapGridSize;
@@ -135,10 +134,10 @@ export const useDesignStore = create<DesignState>()(
       setToolbarLayout: (toolbarLayout: ToolbarLayout) => set({ toolbarLayout }),
       nodeStyle: 'classic',
       nodeIconStyle: 'shape',
-      nodeScaleIndex: 3, // lg default — sm was legible but too small to actually author in
-      labelFontOffsetIndex: 2, // 0-offset — use base labelFont from NODE_SCALES
+      nodeScaleIndex: 3, // lg default; the smaller steps are too small to author in
+      labelFontOffsetIndex: 2, // zero offset: use the base labelFont from NODE_SCALES
       edgesAnimated: true,
-      edgeWidthIndex: 2, // 2px default — matches previous hardcoded width
+      edgeWidthIndex: 2, // default edge stroke width
       edgeRouting: 'smart' as EdgeRouting,
       autoHidePorts: true,
       snapToGrid: false,
@@ -187,19 +186,18 @@ export const useDesignStore = create<DesignState>()(
     {
       name: 'nodepilot-design',
       version: 3,
-      // Profiles that already used the full designer retain the previous surface. Fresh
+      // Profiles that already used the full designer keep the expert surface. Fresh
       // profiles use the standard-mode default above.
       migrate: (persisted, version) => {
         let state = persisted as Partial<DesignState>;
         if (version < 1 && !state.designerMode) state = { ...state, designerMode: 'expert' };
-        // v2 raised the node-size default from sm (1) to lg (3). Only lift profiles that are
-        // still sitting on the OLD default — a stored index of anything else is a deliberate
-        // choice from the size stepper and must survive the bump.
+        // v2 raises the node-size default from sm (1) to lg (3). Only lift profiles still on
+        // the old default; any other stored index is a deliberate choice from the size stepper
+        // and must survive the bump.
         if (version < 2 && state.nodeScaleIndex === 1) state = { ...state, nodeScaleIndex: 3 };
-        // v3 hat die klassische 2-Port-Variante abgeschafft — alle vier Ports sind jetzt der
-        // einzige Weg. Der Key muss aktiv weg: Zustands Default-Merge ist
-        // `{...currentState, ...persistedState}`, ein verwaister Eintrag würde also in den
-        // Runtime-State kopiert und bei jedem Speichern weiter mitgeschleppt.
+        // v3 drops the two-port variant; all four ports are the only mode. The key has to be
+        // removed explicitly: zustand merges as `{...currentState, ...persistedState}`, so an
+        // orphaned entry would be copied into runtime state and written back on every save.
         if (version < 3 && 'flexiblePortsEnabled' in state) {
           const { flexiblePortsEnabled: _dropped, ...rest } = state as Partial<DesignState> & { flexiblePortsEnabled?: boolean };
           void _dropped;

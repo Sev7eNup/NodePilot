@@ -5,31 +5,19 @@ using NodePilot.Core.Interfaces;
 namespace NodePilot.Data.Security;
 
 /// <summary>
-/// Builds an <see cref="ISecretProtector"/> from a configuration snapshot — outside of
-/// the dependency-injection container. Needed by the encrypting JSON configuration
-/// provider, which has to decrypt <c>enc:v1:</c>-prefixed values during
-/// <c>IConfiguration</c> load — at that point the <c>ServiceProvider</c> doesn't exist
-/// yet and we can't pull the protector via DI.
-///
-/// <para>The factory deliberately handles ONLY the active provider (DPAPI / AES-GCM).
-/// The migrating-fallback wrapper used by the regular DI registration is a runtime
-/// feature for credential rotation; the configuration-load path needs decryption only
-/// against the currently active key.</para>
-///
-/// <para>Validation behaviour is identical to <see cref="SecretProtectorRegistry"/>:
-/// unknown provider names throw, <c>Cluster:Enabled=true</c> + DPAPI throws, missing
-/// AES-GCM master key throws. The point is: the encrypting JSON provider must NEVER
-/// silently fall back — a misconfigured override file with encrypted secrets that
-/// "decrypt to gibberish" is a much worse failure than refusing to boot.</para>
+/// Builds an <see cref="ISecretProtector"/> from a configuration snapshot, without DI.
+/// The encrypting JSON configuration provider needs this to decrypt <c>enc:v1:</c>
+/// values while <c>IConfiguration</c> loads, before the service provider exists.
+/// Handles only the active provider (DPAPI or AES-GCM); validation matches
+/// <see cref="SecretProtectorRegistry"/> and throws rather than falling back silently.
 /// </summary>
 public static class SecretProtectorBootstrapFactory
 {
     /// <summary>
-    /// Build an <see cref="ISecretProtector"/> from the supplied configuration snapshot.
-    /// The snapshot must already contain the <c>Secrets:*</c> / <c>Credentials:DpapiScope</c>
-    /// / <c>Cluster:Enabled</c> keys — typically a builder loading appsettings + env-specific
-    /// JSON + EnvVars + CLI (everything EXCEPT the runtime-overrides file the protector
-    /// will subsequently decrypt).
+    /// Builds an <see cref="ISecretProtector"/> from the supplied configuration snapshot.
+    /// The snapshot must already contain the <c>Secrets:*</c>, <c>Credentials:DpapiScope</c>,
+    /// and <c>Cluster:Enabled</c> keys — typically everything loaded before the runtime-
+    /// overrides file that this protector will later decrypt.
     /// </summary>
     public static ISecretProtector FromConfigSnapshot(IConfiguration snapshot, ILogger? log = null)
     {

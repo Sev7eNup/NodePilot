@@ -83,9 +83,9 @@ export function RetentionSection() {
     return <CompactCard headingMargin="mb-4" icon={DataBase} title="Retention"><p className="text-sm">{t('adminSettings:loading')}</p></CompactCard>;
   }
 
-  // env/cli-overridden fields are read-only — this mirrors the SMTP/LLM cards and
-  // satisfies the design contract that any field surfaced through Settings must show
-  // its EnvOverrideBadge + disable when a higher-priority source wins (Finding 4).
+  // env/cli-overridden fields are read-only, matching the SMTP/LLM cards: any field
+  // surfaced through Settings shows its EnvOverrideBadge and disables when a
+  // higher-priority source wins.
   const isEnvLocked = (key: string) => {
     const src = data?.effectiveSource[key];
     return src === 'env' || src === 'cli';
@@ -291,9 +291,9 @@ function NumberInput({
   );
 }
 
-// camelCase (UI) → PascalCase (backend DTO) key map. Backend deserialises
-// case-insensitively, but TypeScript wants the exact shape on the wire so
-// the test assertions and reader-side typings stay in sync.
+// Maps camelCase (UI) keys to PascalCase (backend DTO) keys. Backend deserialises
+// case-insensitively, but TypeScript wants the exact shape on the wire so the test
+// assertions and reader-side typings stay in sync.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapKeysToPascal(obj: Record<string, any>): Record<string, any> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

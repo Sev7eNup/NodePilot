@@ -9,18 +9,18 @@ import { useBulkSelection } from '../../hooks/useBulkSelection';
 import { useFolderBulkDelete } from '../../hooks/useFolderBulkDelete';
 import { flattenVisible } from '../../lib/folderSelection';
 
-/** Stable identity for the selection hook — declared at module level so it never changes. */
+/** Identity function for the selection hook. Module level so its reference stays stable. */
 const folderKey = (folder: GlobalFolder) => folder.id;
 
-/** Module-level so the delete hook's memoized callbacks keep a stable dependency identity. */
+/** Module level so the delete hook's memoized callbacks keep a stable dependency identity. */
 const EMPTY_FOLDERS: GlobalFolder[] = [];
 const INVALIDATE_KEYS = [['global-folders'], ['global-variables']] as const;
 
 /**
- * Sidebar tree of global-variable folders (mirror of the workflow SharedFolderTree, minus RBAC).
- * The selected folder id flows back to the parent (GlobalVariablesPage) which filters the list.
- * Folder management (create / rename / delete / drop) is gated by a single `canManage` flag —
- * Admin-only, matching the rest of the globals surface — rather than per-folder capabilities.
+ * Sidebar tree of global-variable folders (mirrors the workflow SharedFolderTree, without RBAC).
+ * The selected folder id flows back to the parent (GlobalVariablesPage), which filters the list.
+ * Folder management (create, rename, delete, drop) is gated by the single `canManage` flag rather
+ * than per-folder capabilities, because the whole globals surface is Admin-only.
  */
 export interface GlobalFolderTreeProps {
   selectedFolderId: string | null;
@@ -76,9 +76,9 @@ export function GlobalFolderTree({
 
   const tree = useMemo(() => buildTree(folders ?? []), [folders]);
 
-  // Selection runs over the VISIBLE rows, not the whole tree: `useBulkSelection` derives its
+  // Selection covers the visible rows, not the whole tree: `useBulkSelection` derives its
   // shift-range from the index in this list and prunes ids that leave it, so a collapsed branch
-  // must not be in here. Root is excluded — it cannot be deleted.
+  // must stay out. Root is excluded because it cannot be deleted.
   const selectableFolders = useMemo(
     () => (canManage
       ? flattenVisible(tree, collapsedIds).filter((f) => f.id !== ROOT_FOLDER_ID)
@@ -221,9 +221,9 @@ export function GlobalFolderTree({
             onVariableDropped?.(variableId, node.folder.id);
           }}
         >
-          {/* Multi-select checkbox. Root has none — it cannot be deleted. The click is stopped
-              from bubbling because the row itself means "filter to this folder"; ticking a box
-              must not also navigate. */}
+          {/* Multi-select checkbox. Root has none because it cannot be deleted. The click stops
+              bubbling because clicking the row filters the list to that folder, and ticking a
+              box must not do that too. */}
           {canManage && !isRoot && (
             <span role="presentation" onClick={(e) => e.stopPropagation()}>
               <input

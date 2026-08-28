@@ -30,7 +30,7 @@ export function pushRecentWorkflow(id: string) {
 
 interface Props {
   onClose: () => void;
-  /** Kept for compatibility; dirty navigation is guarded centrally by WorkflowEditorPage. */
+  /** Unused here; dirty navigation is guarded centrally by WorkflowEditorPage. */
   isDirty?: boolean;
 }
 
@@ -98,10 +98,9 @@ export function WorkflowQuickSwitcher({ onClose }: Readonly<Props>) {
       return;
     }
 
-    // Pass the current workflow as fromWorkflow in location state so the EditorHeader
-    // back button can show where we came from. For editor-to-editor switches we avoid
-    // pre-navigation side effects; the central useBlocker may still cancel this route
-    // change, and WorkflowEditorPage records recents after a workflow actually loads.
+    // Pass the current workflow as fromWorkflow so the EditorHeader back button can show
+    // where we came from. Avoid other side effects here — useBlocker may still cancel this
+    // navigation, and WorkflowEditorPage records recents once the target workflow loads.
     const currentWorkflow = currentId ? workflows.find((w) => w.id === currentId) : undefined;
     const state = currentId
       ? { fromWorkflow: { id: currentId, name: currentWorkflow?.name ?? currentId } }

@@ -4,12 +4,12 @@ import { randomUuid } from './uuid';
 
 /**
  * A workflow snippet is a predefined mini-pattern the user drops onto the canvas with one
- * click. Saves re-building common constructs by hand every time (try/catch, a for-each
- * loop, fan-out + join).
+ * click, instead of rebuilding common constructs such as try/catch, a for-each loop or
+ * fan-out plus join by hand.
  *
- * The snippet definition describes nodes + edges using the same workflow-JSON syntax that
- * ends up in DefinitionJson. IDs are regenerated on insert so pasting the same snippet
- * more than once never causes an id clash.
+ * A snippet describes nodes and edges in the same workflow-JSON syntax that ends up in
+ * DefinitionJson. IDs are regenerated on insert, so inserting the same snippet more than
+ * once never causes an id clash.
  */
 export interface WorkflowSnippet {
   id: string;
@@ -17,8 +17,8 @@ export interface WorkflowSnippet {
   description: string;
   icon: string;
   nodes: Array<{
-    localId: string; // replaced with a fresh UUID on insert; edges reference each other by this id
-    dx: number;      // x offset relative to the cursor/insert origin
+    localId: string; // replaced with a fresh UUID on insert; edges reference nodes by this id
+    dx: number;      // x offset relative to the insert origin
     dy: number;
     label: string;
     activityType: string;
@@ -34,9 +34,10 @@ export interface WorkflowSnippet {
 }
 
 /**
- * Built fresh on each call so the snippet `name`/`description` strings resolve against the
- * current language (and so i18n is initialized by the time they're read). The NodeLibrary
- * snippet picker calls this at render time — never cache the result across a language switch.
+ * Built fresh on each call so the snippet `name` and `description` strings resolve against
+ * the current language and i18n is initialized by the time they are read. The NodeLibrary
+ * snippet picker calls this at render time; the result must not be cached across a language
+ * switch.
  */
 export function getWorkflowSnippets(): WorkflowSnippet[] {
   return [
@@ -135,17 +136,17 @@ export function getWorkflowSnippets(): WorkflowSnippet[] {
 }
 
 /**
- * Eager snapshot for consumers that only need the stable structure (ids, nodes, edges) —
- * e.g. `insertSnippet` lookups by id. The localized `name`/`description` are resolved against
- * whatever language is active at module-load time; UI surfaces that must react to a language
- * switch (the NodeLibrary picker) call {@link getWorkflowSnippets} at render time instead.
+ * Eager snapshot for consumers that only need the stable structure of ids, nodes and edges,
+ * such as `insertSnippet` lookups by id. The localized `name` and `description` resolve
+ * against the language active at module-load time; UI surfaces that must follow a language
+ * switch call {@link getWorkflowSnippets} at render time instead.
  */
 export const WORKFLOW_SNIPPETS: WorkflowSnippet[] = getWorkflowSnippets();
 
 /**
- * Inserts a snippet into an existing workflow at the given origin (flow-space coordinates).
- * Returns the new nodes + edges arrays that the caller will pass to setNodes/setEdges.
- * Generates fresh crypto-UUID-suffix IDs so multiple inserts of the same snippet don't clash.
+ * Inserts a snippet into an existing workflow at the given origin in flow-space coordinates.
+ * Returns the new nodes and edges arrays the caller passes to setNodes and setEdges. IDs get
+ * a fresh UUID suffix so repeated inserts of the same snippet do not clash.
  */
 export function insertSnippet(
   snippet: WorkflowSnippet,

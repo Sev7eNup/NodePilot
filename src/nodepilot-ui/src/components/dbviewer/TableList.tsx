@@ -24,11 +24,9 @@ export function TableList({
 
   return (
     <aside className="w-60 shrink-0 border-r border-outline-variant/20 bg-surface-low flex flex-col h-full overflow-hidden">
-      {/* ── Tools section ──
-          Uniform sidebar background, no contrasting card — instead the Query button
-          carries a left accent bar (primary colour) so it reads as "a different kind
-          of thing" without breaking the visual rhythm with a hard-edged white box.
-          A thin divider + margin gap to the Tables section seals the separation. */}
+      {/* Tools section: same background as the rest of the sidebar, no card border.
+          The Query button gets a left accent bar instead, marking it as a different
+          kind of item, and a thin divider below separates it from the Tables section. */}
       <div className="px-4 pt-3 pb-1">
         <p className="text-[10px] font-label font-semibold text-outline uppercase tracking-wider">
           {t('database:toolsLabel')}
@@ -43,8 +41,8 @@ export function TableList({
             : 'text-on-surface hover:bg-surface-highest'
         }`}
       >
-        {/* Left accent bar marks this as a primary tool/action — visible in both
-            idle and active states, just dimmer when idle. */}
+        {/* Left accent bar marks this as a primary action — dimmer when idle,
+            brighter when active. */}
         <span
           aria-hidden
           className={`absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r ${
@@ -54,10 +52,10 @@ export function TableList({
         <Terminal size={13} className={`shrink-0 ${queryActive ? 'text-primary' : 'text-primary/70'}`} />
         <span className="truncate font-label">{t('database:queryEntry')}</span>
       </button>
-      {/* Divider + spacing between the two sections — hairline + small gap reads
-          as "separator" without the heavy bordered-card vibe. */}
+      {/* Divider between the Tools section above and the Tables section
+          below. */}
       <div className="mx-4 mt-3 mb-1 border-t border-outline-variant/40" />
-      {/* ── Tables section ── */}
+      {/* Tables section */}
       <div className="px-4 pt-2 pb-1">
         <p className="text-[10px] font-label font-semibold text-outline uppercase tracking-wider">
           {t('database:tablesLabel', { count: tables.length })}
@@ -68,11 +66,9 @@ export function TableList({
           const isReadOnly = !table.capabilities.canUpdate && !table.capabilities.canDelete;
           const isActive = !queryActive && selectedTable === table.name;
           return (
-            // Row layout: main click area opens the table (works in both browse and
-            // query mode — so you always have a way out of the query view), and a
-            // dedicated "+" icon-button on the right inserts the table name into
-            // the editor when the query pane is showing. Keeping these on the same
-            // row keeps the sidebar density unchanged.
+            // The main click area opens the table in both browse and query mode, so
+            // there's always a way out of the query view. A "+" button on the right
+            // inserts the table name into the editor when the query pane is showing.
             <div
               key={table.name}
               className={`group w-full flex items-center justify-between gap-2 px-2 pl-4 py-2 text-sm transition-colors ${

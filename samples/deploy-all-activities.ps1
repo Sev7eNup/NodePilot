@@ -1,8 +1,9 @@
 # Deploys the "all activities" showcase workflows (parent + child) into a running NodePilot API.
 #
 # Usage:
-#   pwsh ./samples/deploy-all-activities.ps1                                  # prompts for credentials
-#   pwsh ./samples/deploy-all-activities.ps1 -BaseUrl http://localhost:5000 -Username admin -Password 'pw'
+#   pwsh ./samples/deploy-all-activities.ps1 # prompts for credentials
+# pwsh ./samples/deploy-all-activities.ps1 -BaseUrl http://localhost:5000 -Username admin -Password
+# 'pw'
 #
 # What it does:
 #   1. POST /api/auth/login for a JWT.
