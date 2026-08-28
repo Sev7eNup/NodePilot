@@ -513,6 +513,53 @@ zurückgerollt werden.
 
 Das Binärbackup enthält keine secret-haltige `appsettings.Production.json`. Sie wird beim Austausch deshalb als Letztes ersetzt, damit ein Abbruch sie nicht zerstört.
 
+## HTTPS-Zertifikat austauschen
+
+Das Zertifikat lässt sich jederzeit an einer laufenden Installation wechseln — für die Ablösung
+eines selbstsignierten Setup-Zertifikats durch eines aus der eigenen PKI genauso wie für eine
+turnusmäßige Erneuerung. Eine Neuinstallation ist dafür nicht nötig; es ist ein Konfigurationswechsel.
+
+```powershell
+# 1. Neues Zertifikat samt privatem Schlüssel importieren
+$pfxPassword = Read-Host -AsSecureString "PFX password"
+$cert = Import-PfxCertificate -FilePath 'C:\PKI\nodepilot-new.pfx' `
+  -CertStoreLocation Cert:\LocalMachine\My -Password $pfxPassword
+$cert.Thumbprint
+```
+
+**2. Dem Dienstkonto Leserecht auf den privaten Schlüssel geben.** Das ist der Schritt, den ein
+Handwechsel übersieht — bei der Installation erledigt ihn der Installer selbst. Ohne ihn startet der
+Dienst nach dem Neustart nicht mehr, und die Meldung nennt das Zertifikat nicht.
+
+```powershell
+$rsa = [System.Security.Cryptography.X509Certificates.RSACertificateExtensions]::GetRSAPrivateKey($cert)
+$keyFile = Join-Path $env:ProgramData `
+  "Microsoft\Crypto\RSA\MachineKeys\$($rsa.Key.UniqueName)"
+icacls.exe $keyFile /grant '<Dienstkonto>:(R)'
+```
+
+Bei `LocalSystem` als Dienstidentität entfällt der Schritt — `SYSTEM` hat auf `MachineKeys` bereits
+Leserecht. Für ein gMSA ist `<Dienstkonto>` in der Form `DOMAIN\gmsa$` anzugeben. Bei einem
+ECDSA-Zertifikat statt `GetRSAPrivateKey` die Methode `GetECDsaPrivateKey` verwenden und den Pfad
+unter `Microsoft\Crypto\Keys` suchen.
+
+**3. Thumbprint in der Konfiguration setzen.** In `C:\Program Files\NodePilot\appsettings.Production.json`:
+
+```json
+"Kestrel": { "Https": { "CertificateThumbprint": "<neuer Thumbprint>" } }
+```
+
+**4. Dienst neu starten.** `Kestrel` gehört zum boot-festen Konfigurationskern — ein Hot-Reload
+greift dort nicht.
+
+```powershell
+Restart-Service NodePilot
+Invoke-WebRequest https://<host>:<port>/healthz/ready -UseBasicParsing
+```
+
+Das alte Zertifikat bis zum erfolgreichen Neustart im Store lassen: Scheitert der Start, ist der
+Rückweg das Zurücksetzen des Thumbprints in derselben Zeile. Erst danach entfernen.
+
 ## Deinstallation
 
 ```powershell

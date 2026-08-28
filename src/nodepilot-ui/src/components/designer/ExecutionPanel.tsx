@@ -1,6 +1,8 @@
 import {
   Chemistry,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   CircleDash,
   DataBase,
@@ -10,11 +12,11 @@ import {
 } from '@carbon/icons-react';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import type { Node } from '@xyflow/react';
 import { api } from '../../api/client';
-import { getAllPages } from '../../api/paging';
+import { getPage } from '../../api/paging';
 import type { WorkflowExecution, Workflow } from '../../types/api';
 import type { LiveExecution } from '../../hooks/useSignalR';
 import { OutputTab } from './execution/OutputTab';
@@ -22,6 +24,8 @@ import { WatchTab } from './execution/WatchTab';
 import { HistoryTab } from './execution/HistoryTab';
 import { LiveTab } from './execution/LiveExecutionPanel';
 import { useDesignStore } from '../../stores/designStore';
+
+const HISTORY_PAGE_SIZE = 100;
 
 /** A lightweight simulation snapshot the editor passes down to the bottom panel, so it
  *  lists the dry-run result there instead of "No active execution". Not persisted.
@@ -83,7 +87,13 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
     }
   }, [anyStepPaused]);
   const [historyScope, setHistoryScope] = useState<'current' | 'all'>('current');
+  const [historyPage, setHistoryPage] = useState(1);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setHistoryPage(1);
+    setExpandedHistoryId(null);
+  }, [workflowId, historyScope]);
 
   useEffect(() => {
     if (expertMode) return;
@@ -94,13 +104,18 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
   // History shows only terminal runs; active runs render via the Live tab through
   // SignalR instead. No refetchInterval needed: useSignalR invalidates this query on
   // every ExecutionStatusChanged event, exactly when new terminal runs can appear.
-  const { data: executions } = useQuery({
-    queryKey: ['workflow-executions', workflowId, historyScope, 'terminalOnly'],
-    queryFn: () => getAllPages<WorkflowExecution>(
+  const { data: executionPage, isFetching: isHistoryFetching } = useQuery({
+    queryKey: ['workflow-executions', workflowId, historyScope, 'terminalOnly', historyPage],
+    queryFn: () => getPage<WorkflowExecution>(
       historyScope === 'all'
         ? '/executions?terminalOnly=true'
-        : `/executions?workflowId=${workflowId}&terminalOnly=true`),
+        : `/executions?workflowId=${workflowId}&terminalOnly=true`,
+      historyPage,
+      HISTORY_PAGE_SIZE),
+    placeholderData: keepPreviousData,
   });
+  const executions = executionPage?.items ?? [];
+  const executionCount = executionPage?.total ?? 0;
 
   const { data: allWorkflows } = useQuery({
     queryKey: ['workflows'],
@@ -146,7 +161,7 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
           )}
           {connected && <div className="w-1.5 h-1.5 rounded-full bg-green-500" title={t('execution.connected')} />}
         </div>
-        <span className="font-label text-[10px] text-outline">{t('execution.runs', { count: executions?.length ?? 0 })}</span>
+        <span className="font-label text-[10px] text-outline">{t('execution.runs', { count: executionCount })}</span>
       </div>
     );
   }
@@ -169,9 +184,9 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
           <TabButton active={activeTab === 'history'} onClick={() => setActiveTab('history')}>
             <History size={13} />
             {t('execution.tabs.history')}
-            {(executions?.length ?? 0) > 0 && (
+            {executionCount > 0 && (
               <span className="text-[10px] bg-surface-highest rounded-full px-1.5 py-0 font-semibold">
-                {executions?.length}
+                {executionCount}
               </span>
             )}
           </TabButton>
@@ -219,6 +234,34 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
           </Link>
         </div>
       )}
+      {activeTab === 'history' && (executionPage?.totalPages ?? 0) > 1 && (
+        <div className="flex items-center justify-end gap-2 px-4 py-1 border-b border-outline-variant/10 bg-surface-low/30 shrink-0 text-[10px] text-on-surface-variant font-label">
+          <button
+            type="button"
+            onClick={() => setHistoryPage((value) => Math.max(1, value - 1))}
+            disabled={historyPage <= 1 || isHistoryFetching}
+            aria-label={t('execution.historyScope.previousPage')}
+            className="p-1 rounded hover:bg-surface-high disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <ChevronLeft size={12} />
+          </button>
+          <span className="tabular-nums">
+            {t('execution.historyScope.pageOf', {
+              page: historyPage,
+              totalPages: executionPage?.totalPages ?? 1,
+            })}
+          </span>
+          <button
+            type="button"
+            onClick={() => setHistoryPage((value) => Math.min(executionPage?.totalPages ?? value, value + 1))}
+            disabled={historyPage >= (executionPage?.totalPages ?? 1) || isHistoryFetching}
+            aria-label={t('execution.historyScope.nextPage')}
+            className="p-1 rounded hover:bg-surface-high disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <ChevronRight size={12} />
+          </button>
+        </div>
+      )}
       <div className="flex-1 overflow-hidden">
         {activeTab === 'live' ? (
           <LiveTab
@@ -226,7 +269,7 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
             executionsLive={displayExecutions}
             simulation={simulation ?? null}
             workflowId={workflowId}
-            executions={executions ?? []}
+            executions={executions}
             panelHeight={height ?? 280}
             onJoinExecution={onJoinExecution}
             onLeaveExecution={onLeaveExecution}
@@ -237,7 +280,7 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
           <WatchTab workflowId={workflowId} databus={liveExecution?.databus ?? {}} nodes={nodes ?? []} />
         ) : (
           <HistoryTab
-            executions={executions ?? []}
+            executions={executions}
             scope={historyScope}
             workflowNames={workflowNames}
             expandedId={expandedHistoryId}

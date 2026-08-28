@@ -43,6 +43,9 @@ export interface Workflow {
   /** Username of the lock owner, joined server-side to save a per-row /users round-trip. */
   checkedOutByUserName?: string | null;
   checkedOutAt?: string | null;
+  /** Max executions of this workflow allowed at once across all callers. Null = unlimited;
+   *  runs beyond the limit queue instead of being rejected. */
+  maxConcurrentExecutions?: number | null;
   /** RBAC home folder. Always populated; legacy responses default to the Root sentinel. */
   folderId?: string;
   /** Full folder path such as "/Finance/Reports", for breadcrumb and list rendering. */

@@ -127,11 +127,11 @@ public sealed class BackupPreviewSettings : GlobalSettings
     public string File { get; set; } = "";
 
     [CommandOption("--passphrase-env <VAR>")]
-    [Description("Optional: env var with the passphrase. Without it, integrity is not verified.")]
+    [Description("Env var with the passphrase (preferred for headless preview).")]
     public string? PassphraseEnv { get; set; }
 
     [CommandOption("--passphrase-file <PATH>")]
-    [Description("Optional: file with the passphrase.")]
+    [Description("File with the passphrase.")]
     public string? PassphraseFile { get; set; }
 }
 
@@ -144,20 +144,15 @@ public sealed class BackupPreviewCommand : BaseCommand<BackupPreviewSettings>
     {
         if (!File.Exists(settings.File)) { writer.Error($"Datei nicht gefunden: {settings.File}"); return ExitCodes.Error; }
 
-        // Passphrase optional for preview — only resolve if one of the options was given.
-        string? passphrase = null;
-        if (!string.IsNullOrWhiteSpace(settings.PassphraseEnv) || !string.IsNullOrWhiteSpace(settings.PassphraseFile))
-        {
-            var (p, err) = PassphraseResolver.Resolve(settings.PassphraseEnv, settings.PassphraseFile, "Backup passphrase");
-            if (p is null) { writer.Error(err!); return ExitCodes.Error; }
-            passphrase = p;
-        }
+        var (passphrase, err) = PassphraseResolver.Resolve(
+            settings.PassphraseEnv, settings.PassphraseFile, "Backup passphrase");
+        if (passphrase is null) { writer.Error(err!); return ExitCodes.Error; }
 
         var api = ClientFactory.Create(session);
         var content = await File.ReadAllBytesAsync(settings.File, ct);
         var result = await api.PreviewBackupAsync(content, passphrase, ct);
 
-        writer.Info($"Backup app version: {result.AppVersion ?? "?"} — integrity {(result.IntegrityVerified ? "[green]verified[/]" : "[yellow]unverified[/]")}");
+        writer.Info($"Backup app version: {result.AppVersion ?? "?"} — integrity [green]verified[/]");
         var table = new Table().AddColumn("Section").AddColumn("In backup").AddColumn("New").AddColumn("Conflicts");
         foreach (var s in result.Sections)
             table.AddRow(Markup.Escape(s.Section), s.InBackup.ToString(), s.New.ToString(), s.Conflicts.ToString());

@@ -11,6 +11,8 @@ public class NodePilotDbContext : DbContext
     public DbSet<Workflow> Workflows => Set<Workflow>();
     public DbSet<WorkflowExecution> WorkflowExecutions => Set<WorkflowExecution>();
     public DbSet<ExecutionDispatchOutboxItem> ExecutionDispatchOutbox => Set<ExecutionDispatchOutboxItem>();
+    public DbSet<TriggerDeliveryReceipt> TriggerDeliveryReceipts => Set<TriggerDeliveryReceipt>();
+    public DbSet<TriggerDeliveryCheckpoint> TriggerDeliveryCheckpoints => Set<TriggerDeliveryCheckpoint>();
     public DbSet<StepExecution> StepExecutions => Set<StepExecution>();
     public DbSet<ManagedMachine> ManagedMachines => Set<ManagedMachine>();
     public DbSet<Credential> Credentials => Set<Credential>();
@@ -127,6 +129,8 @@ public class NodePilotDbContext : DbContext
             // Deliberately no index on IsEnabled: the column is low-cardinality and the table
             // is small, so both providers would pick a sequential scan over the index anyway.
             // An index here would only add insert overhead with no read benefit.
+            // Same for MaxConcurrentExecutions: it is only ever read alongside the row it
+            // belongs to, never used as a query predicate.
             // Sparse index for "show me every workflow user X has open for editing".
             // Most rows have a null lock — sparse keeps the index small.
             e.HasIndex(x => x.CheckedOutByUserId);
@@ -213,6 +217,35 @@ public class NodePilotDbContext : DbContext
             e.HasOne(x => x.Execution)
                 .WithOne()
                 .HasForeignKey<ExecutionDispatchOutboxItem>(x => x.ExecutionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TriggerDeliveryReceipt>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.TriggerNodeId).HasMaxLength(200).IsRequired();
+            e.Property(x => x.TriggerType).HasMaxLength(100).IsRequired();
+            e.Property(x => x.EventKey).HasMaxLength(500).IsRequired();
+            e.Property(x => x.Outcome).HasMaxLength(40).IsRequired();
+            e.HasIndex(x => new { x.WorkflowId, x.TriggerNodeId, x.EventKey }).IsUnique();
+            e.HasIndex(x => x.ReceivedAt);
+            e.HasOne(x => x.Workflow)
+                .WithMany()
+                .HasForeignKey(x => x.WorkflowId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TriggerDeliveryCheckpoint>(e =>
+        {
+            e.HasKey(x => new { x.WorkflowId, x.TriggerNodeId });
+            e.Property(x => x.TriggerNodeId).HasMaxLength(200).IsRequired();
+            e.Property(x => x.TriggerType).HasMaxLength(100).IsRequired();
+            e.Property(x => x.ConfigurationHash).HasMaxLength(128).IsRequired();
+            e.Property(x => x.Position).IsRequired();
+            e.Property(x => x.Version).HasMaxLength(500).IsRequired();
+            e.HasOne(x => x.Workflow)
+                .WithMany()
+                .HasForeignKey(x => x.WorkflowId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

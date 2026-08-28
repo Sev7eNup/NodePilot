@@ -50,6 +50,7 @@ public class WebhooksControllerTests
             new OutputRedactor(config),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
             NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
+            new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate(),
             NullLogger<ExecutionDispatchService>.Instance);
 
         var controller = new WebhooksController(

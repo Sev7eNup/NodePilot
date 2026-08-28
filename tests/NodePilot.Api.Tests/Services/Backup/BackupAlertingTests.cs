@@ -62,16 +62,13 @@ public sealed class BackupAlertingTests : IDisposable
         new(StringComparer.Ordinal) { [BackupSections.Folders] = RestoreConflictPolicy.Skip, [BackupSections.Workflows] = RestoreConflictPolicy.Skip, [BackupSections.Alerting] = RestoreConflictPolicy.Skip };
 
     [Fact]
-    public async Task Export_AdvertisesCurrentSchema_AndKeepsOlderSchemasReadable()
+    public async Task Export_AdvertisesOnlyFullyEncryptedCurrentSchema()
     {
         await using var db = TestDbFactory.Create();
         var bytes = await ExportAsync(db, [BackupSections.Alerting]);
         var reader = BackupFileReader.Parse(bytes);
-        reader.Schema.Should().Be(BackupSections.SchemaV3);
-        BackupSections.SupportedSchemas.Should()
-            .Contain(BackupSections.Schema)
-            .And.Contain(BackupSections.SchemaV2)
-            .And.Contain(BackupSections.SchemaV3);
+        reader.Schema.Should().Be(BackupSections.SchemaV4);
+        BackupSections.SupportedSchemas.Should().Equal(BackupSections.SchemaV4);
     }
 
     [Fact]

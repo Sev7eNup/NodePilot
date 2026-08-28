@@ -243,6 +243,24 @@ public sealed class NodePilotApiClientTests : IDisposable
     }
 
     [Fact]
+    public async Task SetWorkflowConcurrencyLimitAsync_PutsTheLimit()
+    {
+        var id = Guid.NewGuid();
+        _server.Given(Request.Create().WithPath($"/api/workflows/{id}/concurrency-limit").UsingPut())
+               .RespondWith(Response.Create().WithStatusCode(204));
+        await _client.SetWorkflowConcurrencyLimitAsync(id, 5, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task SetWorkflowConcurrencyLimitAsync_WithNull_ClearsTheLimit()
+    {
+        var id = Guid.NewGuid();
+        _server.Given(Request.Create().WithPath($"/api/workflows/{id}/concurrency-limit").UsingPut())
+               .RespondWith(Response.Create().WithStatusCode(204));
+        await _client.SetWorkflowConcurrencyLimitAsync(id, null, CancellationToken.None);
+    }
+
+    [Fact]
     public async Task CancelAllAsync_ReturnsCounts()
     {
         var id = Guid.NewGuid();

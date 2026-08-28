@@ -25,6 +25,7 @@ public sealed record WorkflowResponse(
     Guid? CheckedOutByUserId,
     string? CheckedOutByUserName,
     DateTime? CheckedOutAt,
+    int? MaxConcurrentExecutions = null,
     Guid FolderId = default,
     string? FolderPath = null,
     WorkflowCapabilities? Capabilities = null);
@@ -36,6 +37,7 @@ public sealed record CreateWorkflowRequest(
     string Name, string? Description, string DefinitionJson, Guid? FolderId = null);
 public sealed record UpdateWorkflowRequest(string Name, string? Description, string DefinitionJson);
 public sealed record PublishWorkflowRequest(string Name, string? Description, string DefinitionJson);
+public sealed record SetWorkflowConcurrencyLimitRequest(int? MaxConcurrentExecutions);
 public sealed record RollbackRequest(string? Reason);
 
 public sealed record ExecuteWorkflowRequest(
@@ -95,7 +97,7 @@ public sealed record NextFiresResponse(List<DateTime> Fires, string Summary);
 
 public sealed record WorkflowExportItem(
     string Name, string? Description, JsonElement Definition,
-    bool? IsEnabled = null);
+    bool? IsEnabled = null, int? MaxConcurrentExecutions = null);
 
 public sealed record WorkflowExportEnvelope(
     string Schema,

@@ -25,6 +25,12 @@ the raw XML, `Content-Type: application/xml`, 300 MiB cap; folder targeting and 
 
 What the translation does:
 
+- **Job concurrency** — a runbook's `MaxParallelRequests` becomes the workflow's concurrency
+  limit, verbatim. That includes the value `1`, which in Orchestrator means one instance at a
+  time and is its default, so an imported runbook keeps the behaviour it had instead of quietly
+  becoming unlimited. Because that default is so common, most runbooks arrive limited — the
+  import report tells you how many, so nothing serializes unnoticed after a migration. An absent
+  or out-of-range value imports as unlimited.
 - **Activities** — around forty SCOrch type names map to a NodePilot activity. Note that SCOrch's
   wire names are not always its designer labels: *Invoke Runbook* is `Trigger Policy`, and its
   child-runbook arguments come across as `startWorkflow.parameters`.
@@ -81,19 +87,20 @@ Imported workflows are always created disabled. Review the warnings before enabl
 
 ## System configuration backup (ADR 0001)
 
-A full DR snapshot of the configuration: workflows + folders/sharing, machines, credentials, globals + global-variable folders, custom activities, alerting, users, settings. **Not included:** execution history, audit, statistics. Admin only. Envelope `nodepilot-system-backup/v3` (`.npbackup`) — v2 added the `alerting` section; v3 protects complete workflow definitions with `$encDefinition`, and custom-activity scripts and input defaults with `$enc`. A workflow export automatically pulls in custom activities as a hard dependency. The reader accepts v1, v2 and v3 (including old plaintext custom-activity fields); only v3 is written. Older builds reject v3 visibly.
+An admin-only, portable **configuration backup** containing workflows + folders/sharing, machines, credentials, globals + global-variable folders, custom activities, alerting, users, and settings. It is deliberately not advertised as a complete disaster-recovery snapshot: execution history, audit data, statistics, the native database, service configuration, and installation data are not included. Back those up separately and test the complete recovery procedure.
+
+The only supported envelope is `nodepilot-system-backup/v4` (`.npbackup`). Export fails instead of producing a partial archive when any requested section cannot be exported. A workflow export automatically pulls in custom activities as a hard dependency.
 
 ### Secret handling
 
-Secrets through a **passphrase rewrap** (PBKDF2→HKDF→AES-GCM) + a whole-file HMAC. The secret logic is shared with the workflow export through `WorkflowDefinitionSecretRewriter` (`SecretHandling`).
+The complete configuration payload, including its metadata and section list, is encrypted and authenticated with the supplied passphrase (PBKDF2→HKDF→AES-GCM). Sensitive fields also retain their section-level protection. Metadata and preview data are unavailable until authenticated decryption succeeds.
 
 ### Restore
 
-- **The preview runs automatically when the file is selected** — the diff table is right there. Without
-  a passphrase it is the structural preview (integrity unverified); after entering the passphrase,
-  click "Preview" again to additionally verify the integrity.
+- Preview requires the passphrase and is shown only after the complete archive was authenticated and decrypted.
 - Validates references (aborting on unresolvable ones).
 - Runs in a transaction wrapped by the EF execution strategy, in dependency order, with ID remapping.
+- Aborts and rolls back the complete restore if any selected part produces a warning or cannot be restored completely; settings-file changes are compensated if the database commit fails.
 - Conflict policy: `skip` / `rename` / `overwrite`.
 - Last-admin protection.
 

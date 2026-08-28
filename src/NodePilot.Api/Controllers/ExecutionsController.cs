@@ -95,7 +95,9 @@ public class ExecutionsController : ControllerBase
         [FromQuery] bool terminalOnly = false,
         CancellationToken ct = default,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 100)
+        [FromQuery] int pageSize = 100,
+        [FromQuery] ExecutionStatus? status = null,
+        [FromQuery] string? search = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 200);
@@ -121,6 +123,26 @@ public class ExecutionsController : ControllerBase
                 e.Status == ExecutionStatus.Succeeded ||
                 e.Status == ExecutionStatus.Failed ||
                 e.Status == ExecutionStatus.Cancelled);
+
+        if (status.HasValue)
+            query = query.Where(e => e.Status == status.Value);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            if (Guid.TryParse(term, out var executionId))
+            {
+                query = query.Where(e => e.Id == executionId);
+            }
+            else
+            {
+                var normalizedTerm = term.ToLowerInvariant();
+                query = query.Where(e =>
+                    e.Workflow.Name.ToLower().Contains(normalizedTerm) ||
+                    (e.TriggeredBy != null && e.TriggeredBy.ToLower().Contains(normalizedTerm)) ||
+                    (e.ErrorMessage != null && e.ErrorMessage.ToLower().Contains(normalizedTerm)));
+            }
+        }
 
         var total = await query.LongCountAsync(ct);
         var skip = (int)Math.Min((long)(page - 1) * pageSize, int.MaxValue);

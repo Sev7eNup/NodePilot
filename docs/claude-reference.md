@@ -71,7 +71,7 @@ Trigger-Sources seeden ihre Event-Daten als `manual.*`-Variablen in den Run (`Va
 |---|---|
 | `manualTrigger` | user-deklarierte Parameter-Namen → `{{manual.<name>}}` |
 | `scheduleTrigger` | `firedAt`, `nextFireAt` (ISO-8601 UTC) |
-| `fileWatcherTrigger` | `fileAction` (created/changed/deleted/renamed), `filePath`, `fileName`, `fileNameWithoutExtension`, `fileDirectory` |
+| `fileWatcherTrigger` | `fileAction` (created/changed/deleted/renamed), `filePath`, `fileOldPath` (nur rename), `fileName`, `fileNameWithoutExtension`, `fileDirectory` |
 | `databaseTrigger` | `dbSentinel` (neuer Sentinel-Wert), `dbPrevious` |
 | `eventLogTrigger` | `eventSource`, `eventEntryType`, `eventId`, `eventMessage`, `eventTimeWritten` |
 | `webhookTrigger` | `webhookBody`, `webhookMethod`, `webhookPath`, `webhookQuery_<key>`, `webhookHeader_<key>` + pro `fieldMappings`-Eintrag der gemappte Name (JSONPath aus dem JSON-Body, Dialekt wie `jsonQuery`) |
@@ -141,8 +141,10 @@ brauchen, laufen auf eigenem Timer und cachen das Urteil.
   Fault-Flag + Dispose/Recreate statt lokalem Re-Arm. `EnableRaisingEvents` taugt **nicht** als
   Health-Check.
 - **Buffer-Overflow ist kein Fault.** Bei `InternalBufferOverflowException` stellt die Runtime den
-  Read neu aus, der Watcher lebt weiter. Evicten würde unter Dauerlast flappen und mehr Events
-  kosten als der Overflow. Klassifizierung in `FileWatcherTriggerSource.ClassifyWatcherError`.
+  Read neu aus, der Watcher lebt weiter. NodePilot scannt den persistenten Dateisnapshot sofort
+  und rekonstruiert bleibende Create/Change/Delete-Zustände; eindeutige Old/New-Stempel werden als
+  Rename gepaart. Evicten würde unter Dauerlast flappen und mehr Events kosten als der Overflow.
+  Klassifizierung in `FileWatcherTriggerSource.ClassifyWatcherError`.
 - **Gemessen:** sowohl eine verschwindende Freigabe als auch ein gelöschtes lokales Verzeichnis
   feuern normalerweise `Error` (`Win32Exception`), der Fault steht also in Millisekunden fest.
 - **Backstop-Probe** für den Fall, dass gar kein `Error` kommt (Host hart weg → ausstehende
@@ -156,9 +158,8 @@ brauchen, laufen auf eigenem Timer und cachen das Urteil.
   Identitäts-Guard in `HandleEvent` lässt nur die publizierte Instanz feuern.
 
 **Andere Quellen:** `databaseTrigger` meldet ein beendetes Poll-Loop als Fault. `scheduleTrigger`
-meldet konstant gesund (Quartz besitzt Job-Liveness prozessweit). `eventLogTrigger` ebenfalls — und
-das ist eine bewusste Grenze: `EventLog` hat gar keinen Fault-Kanal, die einzige echte Probe wäre
-RPC an den EventLog-Dienst.
+meldet konstant gesund (Quartz besitzt Job-Liveness prozessweit). `eventLogTrigger` besitzt nun
+eine eigene Reconciliation-Schleife; endet sie unerwartet, wird die Quelle als faulted neu gebaut.
 
 **Config (`Trigger:FileWatcher:*`, keine `SettingsSchema`-Sektion → keine Admin-UI, kein
 Hot-Reload, keine Zeile in der Hardening-Tabelle):**
@@ -167,6 +168,30 @@ Hot-Reload, keine Zeile in der Hardening-Tabelle):**
 |---|---|---|
 | `PathTimeoutSeconds` | `5` | Deadline für die Filesystem-Calls bei der Registrierung. Überschreitung → `TimeoutException` → Backoff. |
 | `HealthProbeSeconds` | `60` | Intervall der Backstop-Probe. `0` schaltet sie ab. |
+
+### Durable Trigger-Zustellung und Reconciliation
+
+Für `scheduleTrigger`, `fileWatcherTrigger`, `databaseTrigger` und `eventLogTrigger` persistiert der
+Orchestrator pro Workflow/Trigger-Node einen Quell-Cursor und deduplizierte Delivery-Receipts. Ein
+Signal gilt erst als angenommen, wenn Receipt, Cursor, Pending Execution und Dispatch-Outbox in
+derselben DB-Transaktion committed sind. DB-Ausfall oder Leadership-Verlust liefert der Quelle
+`false`; sie hält das Signal fest oder rekonstruiert es aus dem Cursor. Ein Replay desselben
+`EventKey` wird quittiert, erzeugt aber keine zweite Execution.
+
+- Schedule holt alle Cron-Zeitpunkte nach dem Cursor nach; Quartz darf Misfires deshalb weiterhin
+  überspringen, die eigene Reconciliation übernimmt den Backfill.
+- EventLog liest erhaltene Entries nach ihrer Indexposition nach. Nach Log-Clear beginnt eine neue
+  Generation, damit wiederverwendete Indizes nicht mit alten Receipts kollidieren.
+- FileWatcher hält einen persistenten vollständigen Snapshot. Alle rohen Eventarten aktualisieren
+  ihn, auch wenn der User nur eine Art ausgewählt hat; ausgelöst wird weiterhin nur die gewählte.
+- Database hält den letzten Sentinel persistent und feuert eine noch nicht quittierte Änderung nach
+  DB-/Prozessausfall erneut.
+
+Die Garantie lautet bewusst: **at least once für beobachtete oder aus der Quelle rekonstruierbare
+Signale, genau eine persistierte Execution pro EventKey**. Eine pollende Quelle ist kein Journal:
+mehrere DB-Sentinel-Zwischenwerte zwischen zwei Polls, bereits gelöschte EventLog-Einträge sowie ein
+File-Create-und-Delete vollständig während Watcher-Ausfall/Overflow sind nicht rekonstruierbar.
+Solche Anforderungen brauchen eine externe durable Eventquelle (Queue/Outbox/Journal).
 
 **Sichtbarkeit:** Der Heartbeat meldet `degraded: N trigger(s) retrying` statt `ok`, solange
 irgendein Trigger im Backoff ist (erreicht `/api/dashboard`, wird von der UI aber nicht gerendert).
@@ -248,6 +273,23 @@ UI: [ContractMappingTable.tsx](../src/nodepilot-ui/src/components/designer/prope
 + [ScorchActivityMapper.cs](../src/NodePilot.Engine/Scorch/ScorchActivityMapper.cs). Fixture:
 `tests/NodePilot.Engine.Tests/Scorch/Fixtures/realistic-runbook.ois_export` (synthetisch, aber
 strukturtreu — echte Exports enthalten Kundendaten und gehören nicht ins öffentliche Repo).
+
+JSON- und SCOrch-Importe erzeugen Workflows ausnahmslos disabled, liefern aber jede erzeugte ID in
+`workflows[].id`. Nach fachlicher Prüfung ist die Aktivierung ausdrücklich über
+`POST /api/workflows/{id}/enable` oder `np workflow enable <id>` möglich. `np workflow import` und
+`import-scorch` schreiben mit `-o json` den vollständigen Importreport auf stdout, damit CI die ID
+ohne Namenssuche an den separaten Aktivierungsschritt weiterreichen kann; Status-, Warn- und
+Fehlertexte bleiben auf stderr.
+
+**Job-Concurrency wird übernommen.** `<MaxParallelRequests>` ist ein direktes Kind von `<Policy>`
+(neben `PolicyTimeout`/`RunInPipelineMode`) und trägt die Job-Concurrency des Runbooks. Der Import
+setzt daraus `Workflow.MaxConcurrentExecutions` — **originalgetreu, inklusive `1`**, was in
+Orchestrator „ein Lauf zur Zeit" heißt und dort der Default ist. Ein importiertes Runbook behält
+damit sein Verhalten, statt still unbegrenzt zu werden. Fehlt das Element, ist es
+`datatype="null"` oder liegt der Wert außerhalb von 1..1000, wird ohne Limit importiert (bei einem
+unbrauchbaren Wert mit Warnung). Weil der Orchestrator-Default 1 ist, kommen die meisten Runbooks
+limitiert an — der Importreport nennt deshalb die Anzahl, sonst serialisieren Workflows nach einer
+Migration unbemerkt.
 
 **Was am echten Format anders ist als es aussieht.** Jede dieser Annahmen war einmal falsch im Code
 und wurde erst an einem echten 2016-Export sichtbar:
@@ -479,6 +521,77 @@ Implementierung: [StepTestContextProvider.cs](../src/NodePilot.Engine/StepTester
 
 ---
 
+## Per-Workflow-Parallelität (`Workflow.MaxConcurrentExecutions`)
+
+SCOrch-Parität zu „maximum number of running instances": ein optionales Limit (1..1000, `null` =
+unbegrenzt) pro Workflow. Ist es erreicht, wird **eingereiht, nicht abgelehnt**.
+
+**Ein Zähler, zwei Zugriffsarten.** `IWorkflowConcurrencyGate` (Core, In-Memory-Implementierung
+`InMemoryWorkflowConcurrencyGate` in der Engine, Singleton via `AddNodePilotActivities` — Vorbild
+`ISubWorkflowGate`). Die Startpfade zerfallen in zwei Gruppen, die sich denselben Zähler teilen
+müssen, sonst gälte das Limit je Gruppe getrennt:
+
+- **Einreihbar** — alles über die Dispatch-Outbox (manuell, Retry, Webhook, External-Trigger inkl.
+  Idempotency-Pfad, `TriggerOrchestrator`, `startWorkflow` ohne Warten). `TryAcquire` ist
+  nicht blockierend; ein abgewiesener Lauf bleibt `Pending`.
+- **Nicht einreihbar** — `StartWorkflowActivity` mit `waitForCompletion:true` und `ForEachActivity`
+  rufen die Engine direkt auf und legen die Zeile sofort als `Running` an. Sie **warten**
+  (`AcquireAsync`, FIFO).
+
+**Der Gate-Aufruf sitzt vor `engineStarted = true`** in `ExecutionDispatchService`. Das ist keine
+Stilfrage: eine Exception *aus* `engine.ExecuteAsync` landet im generischen `catch` dahinter und
+markiert den Lauf **`Failed`**. Ein werfendes Limit (wie `CheckCapacityCaps`) würde eingereihte
+Läufe also fehlschlagen lassen. Stattdessen `ExecutionDispatchOutcome.DeferredByConcurrencyLimit`
+— eigener Metrik-Tag und eigener Backoff (5 s statt 1 s), und `AttemptCount` wird auf diesem Pfad
+zurückgerollt, damit die Zahl ein Handoff-Fehlersignal bleibt.
+
+**Release dekrementiert zuerst, dann weckt es.** Ein „Slot direkt an den nächsten Wartenden
+durchreichen" würde `Active` beim Absenken des Limits nie fallen lassen, solange jemand wartet —
+der Überhang liefe nie aus. Dieselbe Wake-Routine ist der Pfad einer Anhebung und gibt deshalb
+mehrere Wartende auf einmal frei, nicht einen pro abgeschlossenem Lauf.
+
+**Limit-Aktualität hat drei Schreiber.** Der Claim-Filter überspringt blockierte Workflows *bevor*
+ein Acquire stattfindet — ohne Gegenmaßnahme bliebe eine Anhebung bis zum Ende des laufenden Laufs
+unsichtbar. Deshalb: (1) der Dispatcher beobachtet die ohnehin geladene Zeile, (2) `ForEachActivity`
+liest **pro Item** frisch nach (`ResolveChildWorkflowAsync` läuft nur einmal für die ganze
+Schleife), (3) die drei Schreibpfade (Endpoint, Import, Restore) pushen nach dem Commit per
+`SetLimit`. Ein gepushter Wert schlägt Beobachtungen, solange der Eintrag lebt — sonst könnte ein
+Lesevorgang von *vor* der Änderung den alten Wert zurückschreiben. Der Push ist HA-sicher, weil
+`LeaderRequiredMiddleware` jeden nicht-lesenden `/api`-Request auf einem Follower mit 503 abweist.
+Zusätzlich verfallen Blocked-Einträge nach 10 s als Absicherung gegen einen künftigen Schreibpfad,
+der den Push vergisst.
+
+**Head-of-line-Blocking:** `TryClaimAsync` nimmt `Take(max(4, WorkerCount))` Kandidaten in
+`Priority`/`CreatedAt`-Reihenfolge und prüft sie seriell. Ein Workflow am Limit füllt damit alle
+Kandidatenplätze mit eigenen Zeilen. Der Filter (`!blocked.Contains(...)`, nur bei nicht-leerer
+Menge angehängt) verhindert das. `BlockedWorkflowIds` ist bewusst `Guid[]` und kein
+`IReadOnlySet<Guid>` — dessen eigene `Contains`-Methode bindet der Compiler an die Schnittstelle
+statt an `Enumerable.Contains`, was EF Core nicht zuverlässig zu `NOT IN (…)` übersetzt.
+
+**Deadlock-Ventil:** direkte Rekursion blockt `SubWorkflowInvocation.IsSelfInvocation`. Bleibt
+gegenseitige Rekursion (A→B→A) durch einen limitierten Workflow — beide Waits hängen am Step- bzw.
+Per-Item-Timeout und scheitern mit klarer Meldung statt zu hängen.
+
+**Sperrreihenfolge:** in beiden Sub-Workflow-Aktivitäten erst `ISubWorkflowGate`, dann
+`IWorkflowConcurrencyGate`, und der Wait liegt innerhalb der Step-Gate-Freigabe
+(`RunWithCurrentStepGateReleasedAsync`), damit Wartende keine `Engine:MaxConcurrentSteps`-Slots
+halten.
+
+**`0` wird abgelehnt** (400): `Engine:MaxConcurrentExecutions` liest einen nicht-positiven Cap als
+„aus", dieselbe Zahl dürfte hier nicht „nie laufen" heißen. Gemeinsamer Validator
+`NodePilot.Core.Validation.WorkflowConcurrency`, aufgerufen von Endpoint, Import und Restore — die
+letzten beiden schreiben die Entität direkt. Ein DB-Check-Constraint gibt es bewusst nicht: das
+Migration-Set ist provider-agnostisch und `HasCheckConstraint` kommt im Repo sonst nirgends vor.
+
+**Nicht versioniert und nicht im Update/Publish-Body.** `UpdateWorkflowRequest` ist ein
+Voll-Ersetzungs-Body — ein Client, der das Feld weglässt, würde die Drossel beim nächsten Speichern
+still auf „unbegrenzt" setzen. Deshalb ein eigener Endpoint (`PUT /concurrency-limit`) nach dem
+`enable`/`disable`-Muster, dessen Request-Property `[JsonRequired]` trägt, damit `{}` ein 400 ist.
+`WorkflowVersion` führt die Spalte nicht — ein Graph-Rollback soll einen Kapazitätsschutz nicht
+still ändern, wie bei `IsEnabled`.
+
+---
+
 ## `WorkflowExecution.ErrorMessage` — Triage-Summary
 
 Beim Übergang in einen terminalen Zustand befüllt die Engine `ErrorMessage` mit einer kompakten
@@ -624,6 +737,11 @@ Operations-CLI für Operatoren — eigenes Projekt unter [src/NodePilot.Cli/](..
 - System — `audit list`, `health`, `cron next`, **`db`** (info/query — read-mode default, `--write` opt-in), `dashboard`, `observability` (summary/**query**/**query-range**), **`settings`** (status/system-info/**effective-sizing**/get/put/test smtp|llm), **`secrets reencrypt`**, `config get|set`
 
 Globale Flags: `--server`, `--profile`, `-o table|json|yaml`, `--no-color`, `-v`. Exit-Codes: 0 ok, 1 generic, 2 run failed/cancelled, 3 auth required, 4 permission denied.
+
+**Import in CI:** `workflow import` und `workflow import-scorch` geben bei `-o json` den kompletten
+Importreport mit `workflows[].id` auf stdout aus. Jeder Import ist zunächst disabled; die Pipeline
+schaltet ausschließlich die geprüften IDs in einem zweiten, auditierbaren Schritt mit
+`workflow enable <id>` scharf.
 
 **External-Trigger-Spezialfall:** `np workflow trigger <name>` ist session-unabhängig — der Endpoint ist anonym, aber der `X-Api-Key` ist per `ExternalTrigger:Keys:<id>:AllowedWorkflowIds` auf Workflow-GUIDs begrenzt; der Workflow braucht einen aktiven `manualTrigger`. Die vollständige `Keys`-Map kommt aus dem höchstprioren Provider, der sie deklariert (`Keys: {}` widerruft niedrigere Keys); Scope-Arrays kommen ebenfalls vollständig aus ihrem definierenden Provider statt aus dem indexweise gemergten `IConfiguration`-View. Schlüsselquellen in Präzedenz-Reihenfolge: `--api-key <K>` > `--api-key-stdin` > `NODEPILOT_TRIGGER_API_KEY` env. Optional `--idempotency-key <K>` für einen pro Key-Principal + Workflow isolierten Replay-Schutz; die DB speichert nur einen versionierten Digest.
 
@@ -803,15 +921,15 @@ sonst ist `assets/` leer).
 
 ## System-Configuration Backup (ADR 0001)
 
-Voller DR-Snapshot der **Konfiguration** — getrennt vom redigierten Workflow-Export. Vollständige Designentscheidung: [docs/adr/0001-system-configuration-backup-restore.md](../docs/adr/0001-system-configuration-backup-restore.md).
+Portables, verschlüsseltes Backup der **Konfiguration** — getrennt vom redigierten Workflow-Export. Es ersetzt kein vollständiges Disaster-Recovery-Backup: native Datenbank, `ProgramData`, Dienstkonfiguration und Schlüsselmaterial müssen separat gesichert und gemeinsam getestet werden. Vollständige Designentscheidung: [docs/adr/0001-system-configuration-backup-restore.md](../docs/adr/0001-system-configuration-backup-restore.md).
 
 **Scope.** Enthalten: `folders` (Struktur + Grants), `users` (inkl. BCrypt-Hash), `credentials`, `machines`, `globalVariables` (+ Global-Variable-Ordner), `workflows`, `customActivities` (`CustomActivityBackupPart`, siehe `docs/custom-activities.md`), `alerting` (Custom-Regeln + System-Policies, ADR 0008), `settings` (nur `appsettings.runtime.json`). **Nicht** enthalten: AuditLog, Execution-History, StepExecutions, WorkflowVersions, Stats, SupportEvents, Alerting-Ledger/Suppression/Policy-State (transient) — dafür gilt der DB-eigene Backup-Pfad.
 
-**Datei.** `.npbackup`, JSON-Envelope **`nodepilot-system-backup/v3`** — v2 fügte die `alerting`-Sektion hinzu; v3 verschlüsselt jede vollständige Workflowdefinition als `$encDefinition`, damit auch unbekannte Literale in Scripts und Import-Payloads geschützt sind. Custom-Activity-`scriptTemplate` und `inputParametersJson` werden ebenfalls vollständig als `$enc` versiegelt; Workflows ziehen die referenzierten Definitionen als harte Backup-Abhängigkeit mit. Der Reader importiert v1, v2 und v3 (inklusive früherer Plaintext-Custom-Activity-Felder); ältere Builds lehnen unbekannte neuere Schemas sichtbar ab (`BackupSections.SupportedSchemas`). Andere Secret-Felder bleiben `{"$enc":"<b64>"}`. Header `crypto` (kdf/iterations/salt/verifier) + Top-Level `mac`.
+**Datei.** `.npbackup`, JSON-Envelope **`nodepilot-system-backup/v4`**. Außen sichtbar bleiben nur Schema, begrenzte KDF-Parameter, Passphrase-Verifier und ein authentifizierter AES-GCM-Ciphertext. Der Ciphertext enthält die komplette Konfiguration einschließlich Section-Namen, Counts, Metadaten, Workflowdefinitionen und Custom-Activity-Skripten. Der Reader akzeptiert ausschließlich v4; die früheren v1–v3-Formate mit sichtbaren Metadaten werden abgelehnt. Secret-Felder bleiben innerhalb des verschlüsselten Payloads zusätzlich als `{"$enc":"<b64>"}` beziehungsweise `$encDefinition` gekapselt, damit der Restore-Pfad keine Klartext-Zwischendatei braucht.
 
 **Alerting-Sektion (v2).** `AlertingBackupPart` exportiert jede `NotificationRule` mit Routen (Route-Secret-Rewrap wie Credentials) + Scope-Targets. Restore remappt Targets über `FolderMap`/`WorkflowMap` und stempelt bei restaurierten enabled System-Policies ein frisches `ActivatedAt` (verhindert Back-Alerting der Historie).
 
-**Crypto.** Passphrase → PBKDF2-SHA256 (600k Iter., per-File-Salt) → HKDF-Expand in drei Subkeys: `enc` (AES-256-GCM der `$enc`-Felder), `mac` (HMAC-SHA256 über kanonisches JSON der ganzen Datei), `verifier` (GCM eines bekannten Tokens → Passphrase-Check vor jedem Schreiben). [PassphraseSecretProtector.cs](../src/NodePilot.Data/Security/PassphraseSecretProtector.cs). Rewrap-Pfad (Export: at-rest entschlüsseln → Passphrase verschlüsseln; Restore: umgekehrt) entspricht `ReencryptAllCredentialsAsync`.
+**Crypto.** Passphrase → PBKDF2-SHA256 (600k Iter., per-File-Salt) → HKDF-Subkeys. AES-256-GCM verschlüsselt und authentifiziert den kompletten Payload; ein separater GCM-Verifier prüft die Passphrase vor dem Öffnen. [PassphraseSecretProtector.cs](../src/NodePilot.Data/Security/PassphraseSecretProtector.cs). Rewrap-Pfad (Export: at-rest entschlüsseln → Passphrase verschlüsseln; Restore: umgekehrt) entspricht `ReencryptAllCredentialsAsync`.
 
 **Endpoints** (alle `[Authorize(Roles="Admin")]`):
 
@@ -819,23 +937,22 @@ Voller DR-Snapshot der **Konfiguration** — getrennt vom redigierten Workflow-E
 |---|---|---|
 | `GET /api/backup/manifest` | — | Section-Counts |
 | `POST /api/backup/export` | JSON `{sections[], passphrase}` | streamt `.npbackup` |
-| `POST /api/backup/preview` | multipart `file` + `passphrase?` | Diff je Section; ohne Passphrase `integrityVerified=false` |
-| | | *UI:* feuert bereits beim Dateiauswählen (Struktur-Vorschau), der „Vorschau"-Button ist der Re-Run nach Passphrase-Eingabe |
+| `POST /api/backup/preview` | multipart `file` + `passphrase` | authentifizierter Diff je Section |
 | `POST /api/backup/restore` | multipart `file` + `passphrase` + `policy` | wendet an |
 
-**Export** zieht harte Dependencies automatisch mit (Workflows → Folders/Machines/Credentials/CustomActivities) und versiegelt mit dem Whole-file-MAC. Der Sharing-Export redigiert Definitionen strukturell; das DR-Backup verschlüsselt jede vollständige Workflowdefinition als `$encDefinition` und Custom-Activity-Skripte/-Inputdefaults als `$enc`. `targetMachineId`/`credentialId` sowie `config.__customDefinitionId` sind harte GUID-Referenzen → pfadgebundene Validierung und ID-Remap beim Restore; gleichnamige verschachtelte Nutzdaten bleiben unverändert.
+**Export** zieht harte Dependencies automatisch mit (Workflows → Folders/Machines/Credentials/CustomActivities). Jede Warnung bricht den Export ab; ein unvollständiges Archiv wird nicht ausgegeben. Der Sharing-Export redigiert Definitionen strukturell; das Konfigurations-Backup verschlüsselt den vollständigen Payload und kapselt Workflowdefinitionen zusätzlich als `$encDefinition` sowie Custom-Activity-Skripte/-Inputdefaults als `$enc`. `targetMachineId`/`credentialId` sowie `config.__customDefinitionId` sind harte GUID-Referenzen → pfadgebundene Validierung und ID-Remap beim Restore; gleichnamige verschachtelte Nutzdaten bleiben unverändert.
 
 **Restore** (Service: [BackupRestoreService.cs](../src/NodePilot.Api/Services/Backup/BackupRestoreService.cs)):
-1. Passphrase via Verifier prüfen → sonst Abbruch. Whole-file-MAC prüfen → Mismatch = Abbruch (Tamper).
+1. Passphrase via Verifier prüfen und AES-GCM-Payload authentifizieren/entschlüsseln → sonst Abbruch.
 2. **Referenz-Validierung** (vor jedem Schreiben): jede harte Ref muss im Backup **oder** in der Ziel-DB (per `sourceId`) auflösbar sein, sonst Abbruch.
 3. Eine DB-Transaktion, **gekapselt in `db.Database.CreateExecutionStrategy().ExecuteAsync(...)`** — Pflicht, weil Postgres/SQL Server eine Retrying-Strategy nutzen, die direkte `BeginTransaction` ablehnen. Reihenfolge: Users → Folder-Struktur → Credentials → Machines → Globals → Custom Activities → Workflows → Folder-Grants. Jede Section füllt eine `sourceId→targetId`-Map; Folgereferenzen werden darüber remappt (`Machine.DefaultCredentialId`, `Folder.ParentFolderId`/`CreatedByUserId`, Workflow-Def-GUIDs, Custom-Definition-IDs, Grant-Principals). AD-Group-SIDs in Grants bleiben unverändert.
-4. **Settings** danach, **außerhalb** der Transaktion (File via `RuntimeOverridesWriter`), eigene Ergebniszeile. **Replace, nicht Merge**: Top-Level-Overrides, die im Ziel existieren aber nicht im Backup, werden entfernt (`__meta` bleibt); `enc:v1:`-Werte werden re-sealed.
+4. **Settings** werden vor dem DB-Commit atomar per `RuntimeOverridesWriter.ReplaceAll` ersetzt. Scheitert der DB-Commit, wird die Originaldatei kompensierend zurückgeschrieben; scheitert auch das, folgt ein kritischer Fehler mit manueller Recovery-Anweisung. **Replace, nicht Merge**: Top-Level-Overrides, die im Ziel existieren aber nicht im Backup, werden entfernt (`__meta` bleibt); `enc:v1:`-Werte werden re-sealed.
 
 **Konflikt-Policy** (by-name-Match; default `skip`): `skip` / `rename` (Suffix `(Restored N)`) / `overwrite`. Format im `policy`-Feld: bare Wert (global) und/oder `section=policy`-Paare, komma-getrennt (z. B. `skip,users=overwrite`).
 
-**Sicherungen:** Last-Admin-Schutz (Restore lässt nie 0 aktive Admins zurück → Abbruch). User-`overwrite` bumpt `SecurityStamp` + setzt `PasswordChangedAt` bei Hash-/Rollen-/Status-Änderung (invalidiert Sessions). Verwaiste Grants (Principal-User existiert nicht) werden mit Warnung übersprungen, nicht wiederbelebt.
+**Sicherungen:** Last-Admin-Schutz (Restore lässt nie 0 aktive Admins zurück → Abbruch). User-`overwrite` bumpt `SecurityStamp` + setzt `PasswordChangedAt` bei Hash-/Rollen-/Status-Änderung (invalidiert Sessions). Jede Restore-Warnung gilt als unvollständiges Ergebnis und rollt die komplette Operation zurück; verwaiste Grants oder nicht wiederherstellbare Secret-Werte werden nicht mehr still übersprungen.
 
-**Audit:** `BACKUP_EXPORTED` (Counts je Sektion und akkurates `containsSecrets` — nur wahr wenn tatsächlich ein `$enc`-Feld versiegelt wurde) / `BACKUP_RESTORED` (effektive Konflikt-Policy und Ergebnis je Sektion; Passphrase nie im Log). **Rate-Limit:** Policy `backup` (10/min/IP) auf dem ganzen Controller — Export liest Secrets, Restore ist ein schwerer Bulk-Write. **Fehlerbild:** falsche Passphrase / MAC-Fehler / unresolvable Refs / Last-Admin → 409; strukturell kaputte (aber MAC-valide) Datei → 400 (nicht 500). **CLI:** `np backup manifest|export|preview|restore`; Passphrase via `--passphrase-env`/`--passphrase-file`/Prompt, nie als Flag.
+**Audit:** `BACKUP_EXPORTED` (Counts je Sektion und akkurates `containsSecrets` — nur wahr wenn tatsächlich ein `$enc`-Feld versiegelt wurde) / `BACKUP_RESTORED` (effektive Konflikt-Policy und Ergebnis je Sektion; Passphrase nie im Log). **Rate-Limit:** Policy `backup` (10/min/IP) auf dem ganzen Controller — Export liest Secrets, Restore ist ein schwerer Bulk-Write. **Fehlerbild:** falsche Passphrase / unvollständiger Export oder Restore / unauflösbare Referenzen / Last-Admin → 409; beschädigter Ciphertext oder strukturell kaputter authentifizierter Inhalt → 400. **CLI:** `np backup manifest|export|preview|restore`; auch Preview benötigt die Passphrase via `--passphrase-env`/`--passphrase-file`/Prompt, nie als Flag.
 
 **Test-Coverage-Lücke (bewusst):** Die Execution-Strategy-Kapselung (Schritt 3) wird von den Tests über SQLites *non-retrying* Strategy ausgeführt, aber nicht *erzwungen* — ein Entfernen des Wrappers bliebe in SQLite-Tests grün und würde erst gegen echtes Postgres/SQL Server brechen. Der ADR-Kommentar + Code-Kommentar halten die Invariante fest.
 

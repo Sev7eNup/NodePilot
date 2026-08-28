@@ -6,9 +6,11 @@ namespace NodePilot.Api.Dtos;
 // Export envelope v1. One of Workflow/Workflows is set (single vs bulk).
 // "definition" is the parsed workflow object (nodes/edges), not the raw string — so the
 // file stays human-readable. On import it is re-serialized into DefinitionJson.
+// MaxConcurrentExecutions travels with the workflow: an omitted limit reads as unlimited on
+// the target, which is the unsafe direction for a guard that protects a downstream system.
 public record WorkflowExportItem(
     string Name, string? Description, [property: JsonRequired] JsonElement Definition,
-    bool? IsEnabled = null);
+    bool? IsEnabled = null, int? MaxConcurrentExecutions = null);
 public record WorkflowExportEnvelope(
     string Schema,
     [property: JsonRequired] int ExportVersion,

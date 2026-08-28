@@ -8,6 +8,7 @@ using NodePilot.Core.Audit;
 using NodePilot.Core.ExecutionDispatch;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
+using NodePilot.Core.Models;
 using NodePilot.Data.Availability;
 using NodePilot.Core.WorkflowDefinitions;
 using NodePilot.Data;
@@ -417,7 +418,15 @@ public class TriggerOrchestrator : BackgroundService
                 WorkflowId = want.wfId,
                 NodeId = want.nodeId,
                 Config = want.config,
+                ConfigurationHash = want.hash,
                 OnFire = parameters => FireAsync(want.wfId, want.activityType, parameters),
+                OnDurableFire = signal => AdmitFireAsync(
+                    want.wfId, want.nodeId, want.activityType, want.hash, signal),
+                ReadCheckpoint = () => ReadCheckpointAsync(want.wfId, want.nodeId, want.hash),
+                InitializeCheckpoint = checkpoint => InitializeCheckpointAsync(
+                    want.wfId, want.nodeId, want.activityType, want.hash, checkpoint),
+                SaveCheckpoint = checkpoint => SaveCheckpointAsync(
+                    want.wfId, want.nodeId, want.activityType, want.hash, checkpoint),
             };
             try
             {
@@ -519,26 +528,154 @@ public class TriggerOrchestrator : BackgroundService
 
     internal async Task FireAsync(Guid workflowId, string triggerType, Dictionary<string, string> parameters)
     {
-        // Availability deliberately precedes leadership. During a confirmed outage the lease
-        // will normally already have demoted, but fires observed by still-active sources are
-        // nevertheless outage drops and must remain visible in the counter.
+        await AdmitFireAsync(
+            workflowId,
+            "__direct_test__",
+            triggerType,
+            "__direct_test_config__",
+            new TriggerSignal($"direct:{Guid.NewGuid():N}", string.Empty, parameters));
+    }
+
+    internal async Task<TriggerCheckpoint?> ReadCheckpointAsync(
+        Guid workflowId, string nodeId, string configurationHash)
+    {
+        if (!_availability.IsServable || !_cluster.IsLeader) return null;
+
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+        var checkpoint = await db.TriggerDeliveryCheckpoints.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.WorkflowId == workflowId && x.TriggerNodeId == nodeId);
+        return checkpoint is null
+               || !string.Equals(checkpoint.ConfigurationHash, configurationHash, StringComparison.Ordinal)
+            ? null
+            : new TriggerCheckpoint(checkpoint.Position, checkpoint.Version);
+    }
+
+    internal async Task<bool> InitializeCheckpointAsync(
+        Guid workflowId,
+        string nodeId,
+        string triggerType,
+        string configurationHash,
+        TriggerCheckpoint checkpoint)
+    {
+        if (!_availability.IsServable || !_cluster.IsLeader) return false;
+        var leaseEpoch = _cluster.LeaseEpoch;
+        if (!StillOwnsLease(leaseEpoch)) return false;
+
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+            var entity = await db.TriggerDeliveryCheckpoints.SingleOrDefaultAsync(
+                x => x.WorkflowId == workflowId && x.TriggerNodeId == nodeId,
+                _stoppingToken);
+            if (entity is not null
+                && string.Equals(entity.ConfigurationHash, configurationHash, StringComparison.Ordinal))
+                return true;
+            if (!StillOwnsLease(leaseEpoch)) return false;
+
+            if (entity is null)
+            {
+                entity = new TriggerDeliveryCheckpoint
+                {
+                    WorkflowId = workflowId,
+                    TriggerNodeId = nodeId,
+                };
+                db.TriggerDeliveryCheckpoints.Add(entity);
+            }
+            entity.TriggerType = triggerType;
+            entity.ConfigurationHash = configurationHash;
+            entity.Position = checkpoint.Position;
+            entity.Version = checkpoint.Version;
+            entity.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(_stoppingToken);
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            // A leadership hand-off may race the initial insert. The unique composite key makes
+            // the winner authoritative; the source can simply re-read it on its next pass.
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Could not initialize durable checkpoint for {TriggerType} workflow {WorkflowId} node {NodeId}.",
+                triggerType, workflowId, nodeId);
+            return false;
+        }
+    }
+
+    private async Task<bool> SaveCheckpointAsync(
+        Guid workflowId,
+        string nodeId,
+        string triggerType,
+        string configurationHash,
+        TriggerCheckpoint checkpoint)
+    {
+        if (!_availability.IsServable || !_cluster.IsLeader) return false;
+        var leaseEpoch = _cluster.LeaseEpoch;
+        if (!StillOwnsLease(leaseEpoch)) return false;
+        try
+        {
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+            var entity = await db.TriggerDeliveryCheckpoints.SingleOrDefaultAsync(
+                x => x.WorkflowId == workflowId && x.TriggerNodeId == nodeId,
+                _stoppingToken);
+            if (!StillOwnsLease(leaseEpoch)) return false;
+            if (entity is null)
+            {
+                entity = new TriggerDeliveryCheckpoint
+                {
+                    WorkflowId = workflowId,
+                    TriggerNodeId = nodeId,
+                };
+                db.TriggerDeliveryCheckpoints.Add(entity);
+            }
+            entity.TriggerType = triggerType;
+            entity.ConfigurationHash = configurationHash;
+            entity.Position = checkpoint.Position;
+            entity.Version = checkpoint.Version;
+            entity.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(_stoppingToken);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Could not persist durable checkpoint for {TriggerType} workflow {WorkflowId} node {NodeId}.",
+                triggerType, workflowId, nodeId);
+            return false;
+        }
+    }
+
+    internal async Task<bool> AdmitFireAsync(
+        Guid workflowId,
+        string nodeId,
+        string triggerType,
+        string configurationHash,
+        TriggerSignal signal)
+    {
+        // A source keeps or reconstructs the signal until this method returns true. Database
+        // outage therefore means "retry pending", never "drop".
         if (!_availability.IsServable)
         {
-            SchedulerMetrics.TriggersDroppedDbUnavailable.Add(1,
+            SchedulerMetrics.TriggerAdmissionsDeferred.Add(1,
                 new KeyValuePair<string, object?>("trigger_type", triggerType));
             _logger.LogDebug(
-                "Dropping {TriggerType} fire for workflow {WorkflowId}: the database is unavailable.",
+                "Deferring {TriggerType} fire for workflow {WorkflowId}: the database is unavailable.",
                 triggerType, workflowId);
-            return;
+            return false;
         }
 
         // Defensive race-protection: Quartz / FileSystemWatcher / EventLog can deliver a
-        // pending fire microseconds AFTER we lost leadership and started disposing
-        // sources. Dropping it here is the cheapest way to keep the "follower never fires"
-        // invariant intact.
-        if (!_cluster.IsLeader) return;
+        // pending fire microseconds AFTER we lost leadership and started disposing sources.
+        // Returning false keeps the signal pending while preserving the "follower never fires"
+        // invariant.
+        if (!_cluster.IsLeader) return false;
         var leaseEpoch = _cluster.LeaseEpoch;
-        if (!StillOwnsLease(leaseEpoch)) return;
+        if (!StillOwnsLease(leaseEpoch)) return false;
 
         using var fireActivity = SchedulerMetrics.Source.StartActivity("trigger.fire", System.Diagnostics.ActivityKind.Producer);
         fireActivity?.SetTag("nodepilot.trigger.type", triggerType);
@@ -548,76 +685,165 @@ public class TriggerOrchestrator : BackgroundService
             new KeyValuePair<string, object?>("trigger_type", triggerType),
             new KeyValuePair<string, object?>("workflow_id", workflowId.ToString()));
 
-        using var scope = _scopeFactory.CreateScope();
+        await using var scope = _scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
-        var wf = await db.Workflows.FindAsync(workflowId);
-        if (wf is null || !wf.IsEnabled)
-        {
-            var reason = wf is null ? "workflow_deleted" : "workflow_disabled";
-            _logger.LogWarning("Trigger fired for {Type} but workflow {Wf} is missing or disabled", triggerType, workflowId);
-            fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "workflow missing or disabled");
-            if (StillOwnsLease(leaseEpoch))
-                await AppendSuppressionAudit(db, workflowId, triggerType, reason);
-            return;
-        }
-
-        // Maintenance-window gate. Early-skip here (rather than letting the dispatch choke point
-        // create-then-cancel a row) so a schedule firing through a long blackout doesn't churn
-        // out a Cancelled execution every interval. The dispatch gate is still the authoritative
-        // backstop for the rare case a window opens between this check and worker pickup.
-        var maintenance = _rootServices.GetService<IMaintenanceWindowEvaluator>();
-        if (maintenance is not null)
-        {
-            var verdict = maintenance.Evaluate(wf.Id, wf.FolderId, DateTime.UtcNow);
-            if (verdict.Blocked)
-            {
-                _logger.LogInformation(
-                    "Trigger fire for {Type} on workflow {Wf} suppressed by maintenance window '{Window}'",
-                    triggerType, workflowId, verdict.WindowName);
-                fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok, "maintenance window");
-                SchedulerMetrics.MaintenanceWindowBlocks.Add(1,
-                    new KeyValuePair<string, object?>("trigger_type", triggerType));
-                if (StillOwnsLease(leaseEpoch))
-                    await AppendMaintenanceBlockAudit(db, workflowId, triggerType, verdict);
-                return;
-            }
-        }
-
-        var parametersSnapshot = parameters.Count == 0
-            ? new Dictionary<string, string>(0)
-            : new Dictionary<string, string>(parameters, StringComparer.OrdinalIgnoreCase);
         try
         {
-            // Fence immediately before DispatchAsync persists its Pending execution. A node
-            // that lost and re-acquired leadership has a different epoch and may not reuse a
-            // fire observed under the old lease.
-            if (!StillOwnsLease(leaseEpoch)) return;
-            var dispatcher = scope.ServiceProvider.GetRequiredService<IWorkflowExecutionDispatcher>();
-            await dispatcher.DispatchAsync(
-                new WorkflowDispatchIntent(
-                    workflowId,
-                    triggerType,
-                    parametersSnapshot,
-                    StartedByUserId: wf.PublishedByUserId,
-                    RequireWorkflowEnabled: true,
-                    MissingWorkflowMessage: "Queued trigger dispatch was not executed because the workflow no longer exists or is disabled.",
-                    PreOwnershipFailurePrefix: "Queued trigger dispatch failed before the engine could take ownership",
-                    OnDispatchSuppressedAsync: async (suppression, _) =>
+            // The retrying execution strategy has to own the transaction: opening one directly
+            // throws InvalidOperationException under Postgres and SQL Server, and the SQLite tests
+            // never see it. Retry-safe because every write below happens inside the transaction, so
+            // a second attempt starts from a cleared tracker and an empty transaction.
+            var strategy = db.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
+            {
+                db.ChangeTracker.Clear();
+                await using var transaction = await db.Database.BeginTransactionAsync(_stoppingToken);
+                if (await db.TriggerDeliveryReceipts.AnyAsync(x =>
+                        x.WorkflowId == workflowId
+                        && x.TriggerNodeId == nodeId
+                        && x.EventKey == signal.EventKey,
+                        _stoppingToken))
+                {
+                    await transaction.CommitAsync(_stoppingToken);
+                    return true;
+                }
+
+                var wf = await db.Workflows.FindAsync([workflowId], _stoppingToken);
+                if (wf is null)
+                {
+                    _logger.LogWarning("Trigger fired for {Type} but workflow {Wf} no longer exists", triggerType, workflowId);
+                    if (StillOwnsLease(leaseEpoch))
+                        await AppendSuppressionAudit(db, workflowId, triggerType, "workflow_deleted");
+                    await transaction.CommitAsync(_stoppingToken);
+                    return true;
+                }
+
+                var receipt = new TriggerDeliveryReceipt
+                {
+                    Id = Guid.NewGuid(),
+                    WorkflowId = workflowId,
+                    TriggerNodeId = nodeId,
+                    TriggerType = triggerType,
+                    EventKey = signal.EventKey,
+                    Outcome = "admitted",
+                    ReceivedAt = DateTime.UtcNow,
+                };
+                db.TriggerDeliveryReceipts.Add(receipt);
+
+                if (!wf.IsEnabled)
+                {
+                    const string reason = "workflow_disabled";
+                    receipt.Outcome = reason;
+                    _logger.LogWarning("Trigger fired for {Type} but workflow {Wf} is missing or disabled", triggerType, workflowId);
+                    fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "workflow missing or disabled");
+                    if (StillOwnsLease(leaseEpoch))
+                        await AppendSuppressionAudit(db, workflowId, triggerType, reason);
+                    UpsertCheckpoint(db, workflowId, nodeId, triggerType, configurationHash, signal);
+                    await db.SaveChangesAsync(_stoppingToken);
+                    await transaction.CommitAsync(_stoppingToken);
+                    return true;
+                }
+
+                // Maintenance-window gate. A suppressed signal is nevertheless acknowledged and its
+                // cursor advanced: replaying it after the window closes would violate blackout
+                // semantics and create a surprise backfill.
+                var maintenance = _rootServices.GetService<IMaintenanceWindowEvaluator>();
+                if (maintenance is not null)
+                {
+                    var verdict = maintenance.Evaluate(wf.Id, wf.FolderId, DateTime.UtcNow);
+                    if (verdict.Blocked)
                     {
-                        await using var auditScope = _scopeFactory.CreateAsyncScope();
-                        var auditDb = auditScope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
-                        await AppendSuppressionAudit(auditDb, workflowId, triggerType, suppression.Reason);
-                    }),
-                _stoppingToken);
-            fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);
+                        receipt.Outcome = "maintenance_window";
+                        _logger.LogInformation(
+                            "Trigger fire for {Type} on workflow {Wf} suppressed by maintenance window '{Window}'",
+                            triggerType, workflowId, verdict.WindowName);
+                        fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok, "maintenance window");
+                        SchedulerMetrics.MaintenanceWindowBlocks.Add(1,
+                            new KeyValuePair<string, object?>("trigger_type", triggerType));
+                        if (StillOwnsLease(leaseEpoch))
+                            await AppendMaintenanceBlockAudit(db, workflowId, triggerType, verdict);
+                        UpsertCheckpoint(db, workflowId, nodeId, triggerType, configurationHash, signal);
+                        await db.SaveChangesAsync(_stoppingToken);
+                        await transaction.CommitAsync(_stoppingToken);
+                        return true;
+                    }
+                }
+
+                var parametersSnapshot = signal.Parameters.Count == 0
+                    ? new Dictionary<string, string>(0)
+                    : new Dictionary<string, string>(signal.Parameters, StringComparer.OrdinalIgnoreCase);
+                // Fence immediately before DispatchAsync persists its Pending execution. A node
+                // that lost and re-acquired leadership has a different epoch and may not reuse a
+                // fire observed under the old lease.
+                if (!StillOwnsLease(leaseEpoch)) return false;
+                var dispatcher = scope.ServiceProvider.GetRequiredService<IWorkflowExecutionDispatcher>();
+                var execution = await dispatcher.DispatchAsync(
+                    new WorkflowDispatchIntent(
+                        workflowId,
+                        triggerType,
+                        parametersSnapshot,
+                        StartedByUserId: wf.PublishedByUserId,
+                        RequireWorkflowEnabled: true,
+                        MissingWorkflowMessage: "Queued trigger dispatch was not executed because the workflow no longer exists or is disabled.",
+                        PreOwnershipFailurePrefix: "Queued trigger dispatch failed before the engine could take ownership",
+                        OnDispatchSuppressedAsync: async (suppression, _) =>
+                        {
+                            await using var auditScope = _scopeFactory.CreateAsyncScope();
+                            var auditDb = auditScope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+                            await AppendSuppressionAudit(auditDb, workflowId, triggerType, suppression.Reason);
+                        }),
+                    _stoppingToken);
+                receipt.ExecutionId = execution.Id;
+                UpsertCheckpoint(db, workflowId, nodeId, triggerType, configurationHash, signal);
+                await db.SaveChangesAsync(_stoppingToken);
+                await transaction.CommitAsync(_stoppingToken);
+                fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);
+                return true;
+            });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Trigger-started execution of {Wf} failed durable dispatch admission", workflowId);
+            SchedulerMetrics.TriggerAdmissionsDeferred.Add(1,
+                new KeyValuePair<string, object?>("trigger_type", triggerType));
+            _logger.LogWarning(ex,
+                "Trigger-started execution of {Wf} was not durably admitted; the source will retry or reconcile it.",
+                workflowId);
             fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
-            if (StillOwnsLease(leaseEpoch))
-                await AppendSuppressionAudit(db, workflowId, triggerType, "dispatch_exception");
+            return false;
         }
+    }
+
+    private static void UpsertCheckpoint(
+        NodePilotDbContext db,
+        Guid workflowId,
+        string nodeId,
+        string triggerType,
+        string configurationHash,
+        TriggerSignal signal)
+    {
+        var checkpoint = db.TriggerDeliveryCheckpoints.Local.FirstOrDefault(x =>
+                             x.WorkflowId == workflowId && x.TriggerNodeId == nodeId)
+                         ?? db.TriggerDeliveryCheckpoints.Find(workflowId, nodeId);
+        if (checkpoint is null)
+        {
+            db.TriggerDeliveryCheckpoints.Add(new TriggerDeliveryCheckpoint
+            {
+                WorkflowId = workflowId,
+                TriggerNodeId = nodeId,
+                TriggerType = triggerType,
+                ConfigurationHash = configurationHash,
+                Position = signal.Position,
+                Version = signal.EventKey,
+                UpdatedAt = DateTime.UtcNow,
+            });
+            return;
+        }
+
+        checkpoint.TriggerType = triggerType;
+        checkpoint.ConfigurationHash = configurationHash;
+        checkpoint.Position = signal.Position;
+        checkpoint.Version = signal.EventKey;
+        checkpoint.UpdatedAt = DateTime.UtcNow;
     }
 
     private bool StillOwnsLease(long leaseEpoch)

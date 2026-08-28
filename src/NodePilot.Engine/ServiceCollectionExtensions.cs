@@ -19,6 +19,10 @@ public static class ServiceCollectionExtensions
     /// concurrent sub-workflows). Capacity defaults to <see
     /// cref="InMemorySubWorkflowGate.DefaultCapacity"/>
     /// (128); override it with an earlier deployment-specific registration.
+    ///
+    /// Likewise the default <see cref="IWorkflowConcurrencyGate"/> (per-workflow cap from
+    /// <c>Workflow.MaxConcurrentExecutions</c>), shared by the durable dispatcher and the
+    /// synchronous sub-workflow activities so one counter covers every caller.
     /// </summary>
     public static IServiceCollection AddNodePilotActivities(this IServiceCollection services)
     {
@@ -26,6 +30,7 @@ public static class ServiceCollectionExtensions
         // TryAdd so a host that wants a custom gate (e.g. a future distributed implementation
         // for HA) can register first and not be overwritten.
         services.TryAddSingleton<ISubWorkflowGate>(_ => new InMemorySubWorkflowGate());
+        services.TryAddSingleton<IWorkflowConcurrencyGate>(_ => new InMemoryWorkflowConcurrencyGate());
 
         var executorInterface = typeof(IActivityExecutor);
         var assembly = typeof(WorkflowEngine).Assembly;

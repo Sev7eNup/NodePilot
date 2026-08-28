@@ -14,6 +14,17 @@ public class Workflow
     public string? UpdatedBy { get; set; }
 
     /// <summary>
+    /// Maximum executions of this workflow that may run at once, across every caller — manual
+    /// runs, triggers, webhooks and sub-workflow invocations alike. Null means unlimited.
+    /// Reaching the limit queues further runs rather than rejecting them.
+    /// <para>
+    /// Operational, not part of the versioned definition: a rollback of the graph must not
+    /// silently change a capacity guard, which is why <c>WorkflowVersion</c> does not carry it.
+    /// </para>
+    /// </summary>
+    public int? MaxConcurrentExecutions { get; set; }
+
+    /// <summary>
     /// Stable principal whose permissions govern trigger-driven cross-folder sub-workflow
     /// calls. Set only by Publish; routine moves, locks and enable/disable operations must
     /// not silently change runtime authority.

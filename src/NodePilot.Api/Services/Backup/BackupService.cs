@@ -21,11 +21,13 @@ public sealed record BackupExportResult(
     IReadOnlyList<string> Warnings,
     bool ContainsSecrets);
 
+public sealed class BackupExportException(string message) : Exception(message);
+
 /// <summary>
 /// Orchestrates the system-configuration backup (ADR 0001). Phase 1 covers the manifest and the
 /// export: it resolves the requested sections + their transitive dependencies (K12), drives each
 /// <see cref="IBackupPart"/>, assembles the current versioned system-backup envelope, and seals it
-/// with a passphrase-derived whole-file HMAC (K5).
+/// and authenticates that complete payload with passphrase-derived AES-GCM.
 /// </summary>
 public sealed class BackupService(IEnumerable<IBackupPart> parts)
 {
@@ -96,12 +98,24 @@ public sealed class BackupService(IEnumerable<IBackupPart> parts)
             sections[key] = await byKey[key].ExportAsync(ctx, ct);
         }
 
-        var envelope = new JsonObject
+        if (ctx.Warnings.Count > 0)
+            throw new BackupExportException(
+                "Backup aborted because one or more selected values could not be exported completely: "
+                + string.Join(" | ", ctx.Warnings));
+
+        var payload = new JsonObject
         {
-            ["schema"] = BackupSections.CurrentSchema,
+            ["backupKind"] = "configuration",
             ["appVersion"] = AppVersion(),
             ["createdAt"] = DateTime.UtcNow.ToString("O"),
             ["createdBy"] = createdBy,
+            ["sections"] = sections,
+        };
+        var payloadJson = payload.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
+
+        var envelope = new JsonObject
+        {
+            ["schema"] = BackupSections.CurrentSchema,
             ["crypto"] = new JsonObject
             {
                 ["kdf"] = PassphraseSecretProtector.KdfName,
@@ -109,12 +123,8 @@ public sealed class BackupService(IEnumerable<IBackupPart> parts)
                 ["salt"] = Convert.ToBase64String(salt),
                 ["verifier"] = Convert.ToBase64String(protector.CreateVerifier()),
             },
-            ["sections"] = sections,
+            ["payload"] = Convert.ToBase64String(protector.Protect(payloadJson)),
         };
-
-        // Seal: HMAC over the canonical envelope (excluding the mac field itself), then embed it.
-        var canonical = BackupCanonicalJson.Canonicalize(envelope, excludeKey: "mac");
-        envelope["mac"] = Convert.ToBase64String(protector.ComputeMac(canonical));
 
         var json = envelope.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
         var content = Encoding.UTF8.GetBytes(json);
@@ -131,7 +141,7 @@ public sealed class BackupService(IEnumerable<IBackupPart> parts)
                                   "\"" + WorkflowDefinitionSecretRewriter.DefinitionEncKey + "\"",
                                   StringComparison.Ordinal);
 
-        return new BackupExportResult(content, includedOrdered, autoIncluded, counts, ctx.Warnings, containsSecrets);
+        return new BackupExportResult(content, includedOrdered, autoIncluded, counts, [], containsSecrets);
     }
 
     private static string AppVersion()

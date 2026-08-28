@@ -3,7 +3,7 @@
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets an AI agent
 (Claude Desktop/Code or any MCP client) **control and edit NodePilot workflows** and **read data**.
 Like the `np` CLI it is a pure HTTP client against the existing REST API — **no new backend path**;
-every tool calls an existing endpoint or computes in-process against `NodePilot.Core`. 100 tools
+every tool calls an existing endpoint or computes in-process against `NodePilot.Core`. 101 tools
 across 10 groups, plus 3 MCP resources.
 
 ## Installation

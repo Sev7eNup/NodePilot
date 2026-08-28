@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -6,6 +7,7 @@ using System.Xml;
 using System.Xml.Linq;
 using NodePilot.Core.Activities;
 using NodePilot.Core.Models;
+using NodePilot.Core.Validation;
 using NodePilot.Core.WorkflowDefinitions;
 using NodePilot.Engine.Execution;
 
@@ -334,6 +336,8 @@ public sealed class ScorchImporter
         var description = policy.Element("Description")?.Value?.Trim();
         if (string.IsNullOrEmpty(description)) description = null;
 
+        var maxConcurrent = ParseMaxParallelRequests(policy, name, warnings);
+
         // Partition the Policy's <Object> children into activities vs. links. Links have
         // ObjectType equal to the well-known Link-GUID; fallback to ObjectTypeName.
         var allObjects = policy.Elements("Object").ToList();
@@ -503,7 +507,34 @@ public sealed class ScorchImporter
             HeuristicCount: heuristicCount,
             FallbackCount: fallbackCount,
             FolderPath: FolderPathOf(policy),
-            ChildReferences: CollectChildReferences(mapped));
+            ChildReferences: CollectChildReferences(mapped),
+            MaxConcurrentExecutions: maxConcurrent);
+    }
+
+    /// <summary>
+    /// Reads the Policy's <c>MaxParallelRequests</c> — the job concurrency shown in the
+    /// Orchestrator runbook properties. Carried over as-is, including the value 1, so an
+    /// imported runbook keeps the concurrency it had. Absent, empty (<c>datatype="null"</c>)
+    /// or out-of-range values import as unlimited.
+    /// </summary>
+    private static int? ParseMaxParallelRequests(XElement policy, string runbookName, List<string> warnings)
+    {
+        var raw = policy.Element("MaxParallelRequests")?.Value?.Trim();
+        if (string.IsNullOrEmpty(raw)) return null;
+
+        if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
+        {
+            warnings.Add($"'{runbookName}': MaxParallelRequests '{raw}' is not a number — imported without a concurrency limit.");
+            return null;
+        }
+
+        if (WorkflowConcurrency.Validate(value) is not null)
+        {
+            warnings.Add($"'{runbookName}': MaxParallelRequests {value} is outside the supported range — imported without a concurrency limit.");
+            return null;
+        }
+
+        return value;
     }
 
     private static string? Trimmed(string? value)
@@ -1592,7 +1623,12 @@ public sealed record ScorchRunbook(
     int HeuristicCount,
     int FallbackCount,
     IReadOnlyList<string> FolderPath,
-    IReadOnlyList<ScorchChildReference> ChildReferences);
+    IReadOnlyList<ScorchChildReference> ChildReferences,
+    /// <summary>
+    /// The Policy's <c>MaxParallelRequests</c> — Orchestrator's job concurrency. Null when the
+    /// export omits it or carries a value outside the supported range.
+    /// </summary>
+    int? MaxConcurrentExecutions = null);
 
 public sealed record ScorchVariable(
     Guid SourceGuid,

@@ -193,6 +193,19 @@ public sealed class WorkflowEditTools
         return new { disabled = true, workflowId = wf.Id };
     }
 
+    [McpServerTool(Name = "set_workflow_concurrency_limit", Idempotent = true)]
+    [Description("Cap how many executions of a workflow may run at the same time, across every caller (manual, trigger, webhook, startWorkflow, forEach). Runs beyond the cap stay Pending and start automatically as slots free up — nothing is rejected or lost. Omit maxConcurrentExecutions for unlimited. Not lock-gated: this is an operational setting, so it needs no checkout and does not bump the version.")]
+    public async Task<object> SetWorkflowConcurrencyLimit(
+        [Description("The workflow GUID or exact name.")] string idOrName,
+        [Description("Maximum concurrent executions, 1-1000. Omit for unlimited.")] int? maxConcurrentExecutions = null,
+        CancellationToken cancellationToken = default)
+    {
+        var wf = await ResolveAsync(idOrName, cancellationToken);
+        await ApiErrorMapper.Guard(() =>
+            _api.SetWorkflowConcurrencyLimitAsync(wf.Id, maxConcurrentExecutions, cancellationToken));
+        return new { workflowId = wf.Id, maxConcurrentExecutions };
+    }
+
     [McpServerTool(Name = "rollback_workflow")]
     [Description("Roll a workflow back to a previous version (requires you hold the lock). Snapshots the current version first. Use list_workflow_versions / get_workflow_version to choose.")]
     public async Task<object> RollbackWorkflow(
@@ -220,12 +233,22 @@ public sealed class WorkflowEditTools
     }
 
     [McpServerTool(Name = "import_scorch_workflow")]
-    [Description("Import a System Center Orchestrator runbook (XML) as a best-effort-translated NodePilot workflow. Returns created workflows, variables and any warnings.")]
+    [Description("Import a System Center Orchestrator runbook from its base64-encoded original file bytes as a best-effort-translated NodePilot workflow. Returns created workflows, variables and any warnings.")]
     public async Task<object> ImportScorchWorkflow(
-        [Description("The raw Orchestrator export XML.")] string xml,
+        [Description("Base64-encoded bytes of the original Orchestrator export file. Preserve its BOM and encoding exactly.")] string xmlBase64,
         [Description("Target shared folder id; omit for Root. Requires Edit on that folder.")] Guid? folderId = null,
         CancellationToken cancellationToken = default)
     {
+        byte[] xml;
+        try
+        {
+            xml = Convert.FromBase64String(xmlBase64);
+        }
+        catch (FormatException)
+        {
+            throw new McpException("xmlBase64 must contain valid base64-encoded file bytes.");
+        }
+
         var result = await ApiErrorMapper.Guard(() => _api.ImportScorchAsync(xml, folderId, cancellationToken));
         return result;
     }

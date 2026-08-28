@@ -66,6 +66,37 @@ Engine/Scheduler-Fokus 97/97, CLI-Contract/Client 54/54, MCP-Fokus 2/2 und UI-Fo
 bestanden; TypeScript- und Vite-Produktionsbuild erfolgreich. Der Solution-Build meldet weiterhin
 1.253 bereits vorhandene Warnungen, aber keine neuen Buildfehler.
 
+## Weiterer Umsetzungsnachtrag zu Priority 1 (27. August 2026)
+
+Die anschließend angeforderten offenen Punkte 3, 5, 6 und 7 wurden umgesetzt:
+
+3. **SCOrch-Dateien bleiben bytegenau:** UI und CLI übertragen die Originalbytes inklusive BOM;
+   das MCP-Tool nimmt dieselben Bytes als Base64 entgegen. UTF-16LE-/UTF-16BE-Exporte werden nicht
+   mehr vor dem Server in UTF-8 umcodiert.
+5. **Native Imports sind immer deaktiviert:** `IsEnabled` aus einer Exportdatei wird im Ziel nicht
+   mehr übernommen. Jeder importierte Workflow benötigt nach Ziel-, Credential- und
+   Side-effect-Prüfung eine bewusste Aktivierung. Beide Import-APIs liefern dafür die erzeugten IDs;
+   `POST /api/workflows/{id}/enable` und `np workflow enable <id>` schalten gezielt scharf. CLI-
+   Importe geben den vollständigen ID-Report mit `-o json` CI-tauglich auf stdout aus.
+6. **Triggerzustellung ist persistent und dedupliziert:** Schedule-, FileWatcher-, Database- und
+   EventLog-Quellen persistieren Cursor. Receipt, Cursor, Pending Execution und Dispatch-Outbox
+   werden gemeinsam committed; DB-Ausfall und Leadership-Wechsel führen zu Retry/Reconciliation
+   statt stillem Verwerfen. Cron-Misfires und erhaltene EventLog-Einträge werden nachgeholt,
+   FileWatcher rekonstruiert bleibende Zustandsänderungen aus einem persistenten Snapshot. Ein
+   EventKey erzeugt höchstens eine persistierte Execution. Physisch nicht rekonstruierbare
+   Zwischenereignisse einer Polling-/Watcher-Quelle benötigen weiterhin eine externe Queue oder
+   ein Journal; diese Grenze ist jetzt ausdrücklich dokumentiert.
+7. **Backup vermittelt keine Vollsicherheit mehr:** Schema v4 verschlüsselt und authentifiziert den
+   kompletten Payload statt nur einzelner Secret-Felder. Exportwarnungen verhindern die Ausgabe
+   eines unvollständigen Archivs; Restorewarnungen rollen die gesamte Wiederherstellung zurück.
+   Preview benötigt die Passphrase. UI und Dokumentation kennzeichnen `.npbackup` ausdrücklich als
+   Konfigurationsportabilität und verlangen für echtes DR zusätzlich native DB-, `ProgramData`-,
+   Konfigurations- und Key-Sicherung samt Restore-Drill.
+
+Abschlussverifikation: Solution-Release-Build ohne Fehler; Engine/Trigger 223/223,
+Data/Migration 33/33, API Backup/Import 115/115, CLI 120/120, MCP 11/11 und UI
+Backup/Import 89/89 bestanden; TypeScript- und Vite-Produktionsbuild erfolgreich.
+
 ## 1. Executive Summary
 
 Für einen unbeschränkten, produktionsnahen Ablöse-POC lautet die Bewertung: **No-Go**.

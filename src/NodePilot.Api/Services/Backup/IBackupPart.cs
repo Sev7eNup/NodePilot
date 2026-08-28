@@ -52,16 +52,20 @@ public static class BackupSections
     /// reject this schema instead of treating <c>$encDefinition</c> as an ordinary definition.
     /// </summary>
     public const string SchemaV3 = "nodepilot-system-backup/v3";
+    /// <summary>
+    /// Entire backup payload encryption. The outer document exposes only the schema, KDF
+    /// parameters, passphrase verifier and one authenticated AES-GCM payload.
+    /// </summary>
+    public const string SchemaV4 = "nodepilot-system-backup/v4";
     /// <summary>The schema every new export writes.</summary>
-    public const string CurrentSchema = SchemaV3;
-    /// <summary>Schemas this build can import. Older builds reject unknown newer schemas
-    /// visibly.</summary>
-    public static readonly string[] SupportedSchemas = [Schema, SchemaV2, SchemaV3];
+    public const string CurrentSchema = SchemaV4;
+    /// <summary>Only fully encrypted archives are accepted by this build.</summary>
+    public static readonly string[] SupportedSchemas = [SchemaV4];
 }
 
 /// <summary>
 /// Per-export state threaded to every <see cref="IBackupPart"/>. Carries the passphrase protector
-/// (for the <c>$enc</c> fields + later the whole-file MAC) and a warning sink so a part can report
+/// (for the <c>$enc</c> fields and the complete encrypted payload) and a warning sink so a part can report
 /// non-fatal issues (e.g. a credential whose at-rest ciphertext could not be decrypted on this
 /// host).
 /// </summary>

@@ -12,6 +12,7 @@ using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Data.Availability;
 using NodePilot.Core.Telemetry;
+using NodePilot.Core.Validation;
 
 namespace NodePilot.Api.Controllers;
 
@@ -29,6 +30,7 @@ public class WorkflowsController : WorkflowsControllerBase
 {
     private readonly NodePilot.Api.Services.IWorkflowContractDeriver _contractDeriver;
     private readonly NodePilot.Api.Services.WorkflowVersionDefinitionProtector _versionDefinitions;
+    private readonly IWorkflowConcurrencyGate _concurrency;
 
     public WorkflowsController(
         NodePilotDbContext db,
@@ -36,11 +38,13 @@ public class WorkflowsController : WorkflowsControllerBase
         IAuditWriter audit,
         IResourceAuthorizationService authz,
         NodePilot.Api.Services.IWorkflowContractDeriver contractDeriver,
-        NodePilot.Api.Services.WorkflowVersionDefinitionProtector versionDefinitions)
+        NodePilot.Api.Services.WorkflowVersionDefinitionProtector versionDefinitions,
+        IWorkflowConcurrencyGate concurrency)
         : base(db, logger, audit, authz)
     {
         _contractDeriver = contractDeriver;
         _versionDefinitions = versionDefinitions;
+        _concurrency = concurrency;
     }
 
     /// <summary>
@@ -575,6 +579,58 @@ public class WorkflowsController : WorkflowsControllerBase
         return await SetEnabled(workflow, false, requireUnlocked: false, ct);
     }
 
+    /// <summary>
+    /// Sets the workflow's concurrency limit — how many of its executions may run at once
+    /// across every caller. Null clears it (unlimited). Reaching the limit queues further runs
+    /// instead of rejecting them.
+    /// <para>
+    /// Deliberately its own endpoint rather than a field on the update/publish body: those are
+    /// full-replace bodies, so any client that omitted the field would silently reset the limit
+    /// on its next save. Like enable/disable, this is an operational change — no edit lock, no
+    /// version bump, no version-history snapshot.
+    /// </para>
+    /// </summary>
+    [HttpPut("{id:guid}/concurrency-limit")]
+    [Authorize(Roles = "Admin,Operator")]
+    public async Task<IActionResult> SetConcurrencyLimit(
+        Guid id, [FromBody] SetWorkflowConcurrencyLimitRequest request, CancellationToken ct)
+    {
+        var workflow = await _db.Workflows.FindAsync([id], ct);
+        if (workflow is null) return NotFound();
+        if (await RequireWorkflowAccessAsync(workflow, ResourceOp.Edit, ct) is { } denied) return denied;
+
+        var limit = request.MaxConcurrentExecutions;
+        if (WorkflowConcurrency.Validate(limit) is { } validationError)
+            return BadRequest(new { code = "invalid_concurrency_limit", message = validationError });
+
+        if (workflow.MaxConcurrentExecutions == limit)
+            return NoContent(); // no-op; don't audit
+
+        var updatedAt = DateTime.UtcNow;
+        var updatedBy = this.GetCurrentUsername();
+        var previous = workflow.MaxConcurrentExecutions;
+        var affected = await _db.Workflows
+            .Where(w => w.Id == workflow.Id && w.FolderId == workflow.FolderId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(w => w.MaxConcurrentExecutions, limit)
+                .SetProperty(w => w.UpdatedAt, updatedAt)
+                .SetProperty(w => w.UpdatedBy, updatedBy), ct);
+
+        if (affected == 0) return NotFound();
+        _db.ChangeTracker.Clear();
+
+        // Tell the running gate immediately. Without this the dispatcher skips a saturated
+        // workflow when claiming, so a raised limit would not be re-read until the workflow
+        // went idle. Safe on any node: LeaderRequiredMiddleware refuses mutating requests on
+        // followers, so this always runs in the process that owns the gate.
+        _concurrency.SetLimit(workflow.Id, limit);
+
+        await _audit.LogAsync(AuditActions.WorkflowConcurrencyLimitChanged, "Workflow", workflow.Id,
+            AuditDetails.Json(("name", workflow.Name), ("previous", previous), ("limit", limit)), ct);
+
+        return NoContent();
+    }
+
     private async Task<IActionResult> SetEnabled(Workflow workflow, bool enabled, bool requireUnlocked, CancellationToken ct)
     {
         if (workflow.IsEnabled == enabled)
@@ -682,6 +738,9 @@ public class WorkflowsController : WorkflowsControllerBase
             // under-review workflow into an immediately-firing one, side-stepping the edit-lock.
             // The operator must explicitly Enable/Publish the copy after reviewing it.
             IsEnabled = false,
+            // Copied: the limit protects whatever the workflow talks to, and the copy talks to
+            // the same thing. Unlike IsEnabled it cannot make the copy do more than the source.
+            MaxConcurrentExecutions = source.MaxConcurrentExecutions,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };

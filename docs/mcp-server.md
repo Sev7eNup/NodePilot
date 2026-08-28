@@ -96,7 +96,7 @@ Large free-text fields (stdout/stderr, return data, audit details, diagnostics) 
 
 ## Tool catalog
 
-90 default tools across 10 groups, plus 10 gated destructive tools (100 total). (Roles refer to the
+91 default tools across 10 groups, plus 10 gated destructive tools (101 total). (Roles refer to the
 authenticated user.)
 
 ### Discovery
@@ -110,8 +110,12 @@ authenticated user.)
 `validate_workflow_definition` (in-proc) · `lock_workflow` · `unlock_workflow` · `publish_workflow` ·
 `update_workflow_definition` · `preview_workflow_patch` · `apply_workflow_patch` (merge-by-id,
 secrets protected, validate-before-save) · `create_workflow` · `duplicate_workflow` ·
-`enable_workflow` · `disable_workflow` · `rollback_workflow` · `import_workflow` ·
+`enable_workflow` · `disable_workflow` · `set_workflow_concurrency_limit` ·
+`rollback_workflow` · `import_workflow` ·
 `import_scorch_workflow` · `list_step_test_runs` · `get_step_test_context`
+
+`import_scorch_workflow.xmlBase64` is the base64 representation of the original export bytes, not
+decoded XML text. This preserves UTF-16 BOMs and declarations end to end.
 
 ### Executions (Operator+ for control)
 `list_executions` · `get_execution` · `get_execution_steps` · `list_paused_steps` ·

@@ -58,6 +58,10 @@ public sealed class BackupController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+        catch (BackupExportException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
 
         await _audit.LogAsync(AuditActions.BackupExported, "Backup", null,
             AuditDetails.Json(
@@ -65,24 +69,16 @@ public sealed class BackupController : ControllerBase
                 ("autoIncluded", string.Join(",", result.AutoIncludedSections)),
                 ("counts", string.Join(",", result.Counts.Select(count => $"{count.Section}:{count.Count}"))),
                 ("containsSecrets", result.ContainsSecrets.ToString()),
-                ("warnings", result.Warnings.Count.ToString())),
+                ("warnings", "0")),
             ct);
 
-        if (result.Warnings.Count > 0)
-            _logger.LogWarning("Backup export completed with {Count} warning(s): {Warnings}",
-                result.Warnings.Count, string.Join(" | ", result.Warnings));
-
         var filename = $"nodepilot-backup-{DateTime.UtcNow:yyyyMMdd-HHmmss}.npbackup";
-        // Surface non-fatal warnings (e.g. undecryptable credential) in a response header so the
-        // CLI/UI can show them — the body is the raw file stream.
-        if (result.Warnings.Count > 0)
-            Response.Headers["X-Backup-Warnings"] = result.Warnings.Count.ToString();
         return File(result.Content, "application/octet-stream", filename);
     }
 
     /// <summary>
-    /// Dry-run a restore: reports per-section new/conflict counts without writing. Passphrase is
-    /// optional — without it the result is <c>integrityUnverified</c> and secrets are not compared.
+    /// Dry-run a restore: authenticates and decrypts the complete archive, then reports
+    /// per-section new/conflict counts without writing.
     /// </summary>
     [HttpPost("preview")]
     [Consumes("multipart/form-data")]
@@ -100,6 +96,10 @@ public sealed class BackupController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+        catch (BackupRestoreException ex)
+        {
+            return Conflict(new { error = ex.Message });
+        }
         catch (Exception ex) when (IsMalformedContent(ex))
         {
             // Security: don't append raw ex.Message — a malformed file surfaces parser / crypto
@@ -110,9 +110,9 @@ public sealed class BackupController : ControllerBase
     }
 
     /// <summary>
-    /// Applies a restore. Requires the passphrase, verifies the whole-file MAC, validates
-    /// references,
-    /// and writes all DB sections in one transaction (settings are applied separately afterwards).
+    /// Applies a restore. Requires the passphrase, authenticates the encrypted payload, validates
+    /// references, and writes all DB sections in one transaction. Runtime settings use an atomic
+    /// file replacement with compensation if the database commit fails.
     /// </summary>
     [HttpPost("restore")]
     [Consumes("multipart/form-data")]
@@ -136,12 +136,12 @@ public sealed class BackupController : ControllerBase
         }
         catch (BackupRestoreException ex)
         {
-            // Conflict — wrong passphrase / failed MAC / unresolvable refs / last-admin guard.
+            // Conflict: wrong passphrase, incomplete restore, unresolvable refs, or last-admin guard.
             return Conflict(new { error = ex.Message });
         }
         catch (Exception ex) when (IsMalformedContent(ex))
         {
-            // A MAC-valid but structurally malformed file (e.g. a hand-edited + re-signed backup
+            // An authenticated but structurally malformed file (e.g. one with a non-GUID id)
             // with a non-GUID id) must surface as a clean 400, not a 500. Security: don't append
             // raw ex.Message — it surfaces parser / crypto internals; detail goes to the log.
             _logger.LogWarning(ex, "Backup restore rejected malformed content");
@@ -163,7 +163,7 @@ public sealed class BackupController : ControllerBase
         return Ok(result);
     }
 
-    // Exceptions that indicate the (MAC-verified) file's JSON is structurally wrong — a bad GUID,
+    // Exceptions that indicate the authenticated file's JSON is structurally wrong — a bad GUID,
     // wrong value kind, unknown enum, etc. — rather than a server fault. Mapped to 400.
     private static bool IsMalformedContent(Exception ex) =>
         ex is FormatException or System.Text.Json.JsonException or ArgumentException

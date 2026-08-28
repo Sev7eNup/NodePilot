@@ -31,6 +31,10 @@ public class ScheduleTriggerSource : ITriggerSource
     private readonly IConfiguration _config;
     private JobKey? _jobKey;
     private TriggerKey? _triggerKey;
+    private CancellationTokenSource? _deliveryCts;
+    private Task? _reconcileTask;
+    private readonly SemaphoreSlim _deliveryGate = new(1, 1);
+    private TriggerCheckpoint? _checkpoint;
 
     // Global counter across all ScheduleTriggerSource instances in this process. Each
     // StartAsync increments; DisposeAsync decrements. Simple and good enough — a few
@@ -64,6 +68,7 @@ public class ScheduleTriggerSource : ITriggerSource
         CronExpression parsed;
         try { parsed = new CronExpression(cron); }
         catch (FormatException ex) { throw new InvalidOperationException($"ScheduleTrigger: invalid cron '{cron}': {ex.Message}"); }
+        parsed.TimeZone = TimeZoneInfo.Local;
 
         var minIntervalSeconds = _config.GetValue<int?>("Trigger:Schedule:MinIntervalSeconds") ?? 60;
         if (minIntervalSeconds > 1)
@@ -93,25 +98,46 @@ public class ScheduleTriggerSource : ITriggerSource
         // The increment above is now this instance's to release, whatever happens below.
         _holdsJobSlot = 1;
 
+        _deliveryCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var deliveryCt = _deliveryCts.Token;
+
+        _checkpoint = await context.ReadCheckpointAsync();
+        if (_checkpoint is null)
+        {
+            var position = DateTimeOffset.UtcNow.ToString("O");
+            var seeded = new TriggerCheckpoint(position, $"schedule-seed:{Guid.NewGuid():N}");
+            if (!await context.InitializeCheckpointAsync(seeded))
+                throw new InvalidOperationException("ScheduleTrigger: durable cursor could not be initialized");
+            _checkpoint = seeded;
+        }
+        else
+        {
+            await CatchUpAsync(context, parsed, deliveryCt);
+        }
+
         var scheduler = await _schedulerFactory.GetScheduler(ct);
         _jobKey = new JobKey($"wf-{context.WorkflowId}-{context.NodeId}", "nodepilot");
         _triggerKey = new TriggerKey($"trg-{context.WorkflowId}-{context.NodeId}", "nodepilot");
 
-        // Store the OnFire callback in JobDataMap so the job can invoke it
-        ScheduleJob.Register(_jobKey.ToString(), context.OnFire);
+        ScheduleJob.Register(_jobKey.ToString(), async parameters =>
+        {
+            if (!DateTimeOffset.TryParse(
+                    parameters["firedAt"],
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind,
+                    out var firedAt))
+                firedAt = DateTimeOffset.UtcNow;
+            await DeliverAtAsync(context, firedAt, parameters.GetValueOrDefault("nextFireAt", ""), deliveryCt);
+        });
 
         var job = JobBuilder.Create<ScheduleJob>()
             .WithIdentity(_jobKey)
             .UsingJobData("callbackKey", _jobKey.ToString())
             .Build();
 
-        // M-15: explicit misfire policy = DoNothing. Without this, Quartz's default
-        // "SmartPolicy" resolves to "fire once immediately" for cron triggers after
-        // downtime. For a workflow that fires "every 5 minutes" and is down for 6 hours,
-        // that still only produces one backfill — but the misfire is counted even when
-        // missing by a few seconds, which surprises operators. DoNothing = "if the fire
-        // time is past by the misfire-threshold, skip it and wait for the next regular
-        // fire". Prevents a post-deploy backfill storm.
+        // Quartz's "SmartPolicy" fires only once after downtime, which is neither complete nor
+        // deterministic. Quartz therefore skips its own misfire callback; CatchUpAsync replays
+        // every missed fire in order from the durable cursor.
         var trigger = TriggerBuilder.Create()
             .WithIdentity(_triggerKey)
             .WithCronSchedule(cron, x => x
@@ -120,7 +146,97 @@ public class ScheduleTriggerSource : ITriggerSource
             .Build();
 
         await scheduler.ScheduleJob(job, trigger, ct);
+        var reconcileSeconds = Math.Max(1, _config.GetValue<int?>("Trigger:Schedule:ReconcileSeconds") ?? 30);
+        _reconcileTask = ReconcileLoopAsync(
+            context, parsed, TimeSpan.FromSeconds(reconcileSeconds), deliveryCt);
         _logger.LogInformation("ScheduleTrigger: scheduled {Job} with cron '{Cron}'", _jobKey, cron);
+    }
+
+    private async Task ReconcileLoopAsync(
+        TriggerContext context,
+        CronExpression cron,
+        TimeSpan interval,
+        CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(interval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+                await CatchUpAsync(context, cron, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ScheduleTrigger reconciliation stopped unexpectedly.");
+        }
+    }
+
+    private async Task CatchUpAsync(TriggerContext context, CronExpression cron, CancellationToken ct)
+    {
+        await _deliveryGate.WaitAsync(ct);
+        try
+        {
+            if (_checkpoint is null
+                || !DateTimeOffset.TryParse(
+                    _checkpoint.Position,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind,
+                    out var cursor))
+                return;
+
+            var upperBound = DateTimeOffset.UtcNow;
+            while (cron.GetNextValidTimeAfter(cursor) is { } next && next <= upperBound)
+            {
+                ct.ThrowIfCancellationRequested();
+                var nextAfter = cron.GetNextValidTimeAfter(next);
+                if (!await DeliverAtCoreAsync(context, next, nextAfter?.UtcDateTime.ToString("O") ?? ""))
+                    return;
+                cursor = next;
+            }
+        }
+        finally
+        {
+            _deliveryGate.Release();
+        }
+    }
+
+    private async Task DeliverAtAsync(
+        TriggerContext context,
+        DateTimeOffset firedAt,
+        string nextFireAt,
+        CancellationToken ct)
+    {
+        await _deliveryGate.WaitAsync(ct);
+        try
+        {
+            while (!ct.IsCancellationRequested
+                   && !await DeliverAtCoreAsync(context, firedAt, nextFireAt))
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+        }
+        finally
+        {
+            _deliveryGate.Release();
+        }
+    }
+
+    private async Task<bool> DeliverAtCoreAsync(
+        TriggerContext context,
+        DateTimeOffset firedAt,
+        string nextFireAt)
+    {
+        var utc = firedAt.ToUniversalTime();
+        var position = utc.ToString("O");
+        var signal = new TriggerSignal(
+            $"schedule:{utc.UtcTicks}",
+            position,
+            new Dictionary<string, string>
+            {
+                ["firedAt"] = position,
+                ["nextFireAt"] = nextFireAt,
+            });
+        var accepted = await context.DeliverAsync(signal);
+        if (accepted) _checkpoint = new TriggerCheckpoint(position, signal.EventKey);
+        return accepted;
     }
 
     public async ValueTask DisposeAsync()
@@ -133,6 +249,15 @@ public class ScheduleTriggerSource : ITriggerSource
         _jobKey = null;
         try
         {
+            if (_deliveryCts is not null)
+            {
+                await _deliveryCts.CancelAsync();
+                try { if (_reconcileTask is not null) await _reconcileTask; }
+                catch (OperationCanceledException) { }
+                _deliveryCts.Dispose();
+                _deliveryCts = null;
+                _reconcileTask = null;
+            }
             // jobKey is null when StartAsync failed after taking the slot but before
             // scheduling — there is nothing to unschedule, but the slot still must go back.
             if (jobKey is not null)

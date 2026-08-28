@@ -57,7 +57,7 @@ public class DatabaseTriggerSource : ITriggerSource
         _config = config;
     }
 
-    public Task StartAsync(TriggerContext context, CancellationToken ct)
+    public async Task StartAsync(TriggerContext context, CancellationToken ct)
     {
         _ctx = context;
         var settings = DatabaseTriggerSettings.Parse(context.Config);
@@ -66,15 +66,15 @@ public class DatabaseTriggerSource : ITriggerSource
             RequireConnectionRef());
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var checkpoint = await context.ReadCheckpointAsync();
         // Own the poll loop as a tracked task on the source itself instead of spawning an
         // unmanaged Task.Run wrapper. DisposeAsync awaits this task for shutdown.
         _loopTask = PollLoopAsync(
             connStr, settings.Provider, settings.Query,
-            TimeSpan.FromSeconds(settings.PollingIntervalSeconds), _cts.Token);
+            TimeSpan.FromSeconds(settings.PollingIntervalSeconds), checkpoint, _cts.Token);
         _logger.LogInformation("DatabaseTrigger: poll {Interval}s provider={Provider} source={Source}",
             settings.PollingIntervalSeconds, settings.Provider,
             !string.IsNullOrWhiteSpace(settings.ConnectionRef) ? $"ref:{settings.ConnectionRef}" : "inline");
-        return Task.CompletedTask;
     }
 
     private bool RequireConnectionRef()
@@ -84,9 +84,14 @@ public class DatabaseTriggerSource : ITriggerSource
             || !string.Equals(configured, "false", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task PollLoopAsync(string connStr, string provider, string query, TimeSpan interval, CancellationToken ct)
+    private async Task PollLoopAsync(
+        string connStr,
+        string provider,
+        string query,
+        TimeSpan interval,
+        TriggerCheckpoint? checkpoint,
+        CancellationToken ct)
     {
-        string? lastSentinel = null;
         var typeTag = new KeyValuePair<string, object?>("trigger_type", "databaseTrigger");
         while (!ct.IsCancellationRequested)
         {
@@ -99,17 +104,29 @@ public class DatabaseTriggerSource : ITriggerSource
                 cmd.CommandText = query;
                 var result = await cmd.ExecuteScalarAsync(ct);
                 var sentinel = result?.ToString() ?? "";
-                if (lastSentinel is not null && sentinel != lastSentinel)
+                if (checkpoint is null)
                 {
-                    TriggerFireObserver.Observe(
-                        _ctx!.OnFire(new Dictionary<string, string>
+                    var seeded = new TriggerCheckpoint(
+                        sentinel,
+                        $"database-seed:{Guid.NewGuid():N}");
+                    if (await _ctx!.InitializeCheckpointAsync(seeded))
+                        checkpoint = seeded;
+                }
+                else if (!string.Equals(sentinel, checkpoint.Position, StringComparison.Ordinal))
+                {
+                    var eventKey = BuildEventKey(checkpoint.Version, sentinel);
+                    var accepted = await _ctx!.DeliverAsync(
+                        new TriggerSignal(
+                            eventKey,
+                            sentinel,
+                            new Dictionary<string, string>
                         {
                             ["dbSentinel"] = sentinel,
-                            ["dbPrevious"] = lastSentinel,
-                        }),
-                        _logger, ActivityType, _ctx.WorkflowId, _ctx.NodeId);
+                            ["dbPrevious"] = checkpoint.Position,
+                        }));
+                    if (accepted)
+                        checkpoint = new TriggerCheckpoint(sentinel, eventKey);
                 }
-                lastSentinel = sentinel;
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
@@ -135,6 +152,12 @@ public class DatabaseTriggerSource : ITriggerSource
             try { await Task.Delay(interval, ct); }
             catch (OperationCanceledException) { break; }
         }
+    }
+
+    private static string BuildEventKey(string previousVersion, string sentinel)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(previousVersion + "\0" + sentinel);
+        return "database:" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
     }
 
     private static DbConnection CreateConnection(string provider, string connStr) => provider switch

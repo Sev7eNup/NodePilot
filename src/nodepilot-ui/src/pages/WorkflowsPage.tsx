@@ -7,7 +7,7 @@ import { formatDate, formatDuration, formatRelative } from '../lib/format';
 import { TRIGGER_BADGE_META } from '../lib/triggerBadgeMeta';
 import {
   Add, Apps, ChatBot, CheckmarkFilled, ChevronDown, ChevronUp, CircleDash, Copy, DocumentExport,
-  Download, Edit, ErrorFilled, FlashFilled, Locked, Play, Power,
+  Download, Edit, ErrorFilled, FlashFilled, Locked, Play, Power, Queued,
   SubtractAlt, Time, Touch_1, TrashCan, Unlocked, Upload,
 } from '@carbon/icons-react';
 import { useEffect, useRef, useState, useMemo } from 'react';
@@ -19,6 +19,7 @@ import { useAuthStore } from '../stores/authStore';
 import { SharedFolderTree, WORKFLOW_DRAG_MIME } from '../components/workflows/SharedFolderTree';
 import { SharedFolderPermissionsModal } from '../components/workflows/SharedFolderPermissionsModal';
 import { WorkflowBulkBar } from '../components/workflows/WorkflowBulkBar';
+import { ConcurrencyLimitDialog } from '../components/workflows/ConcurrencyLimitDialog';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { useWorkflowBulkActions } from '../hooks/useWorkflowBulkActions';
 import { ROOT_FOLDER_ID, sharedFoldersApi, type SharedFolder } from '../api/sharedFolders';
@@ -233,6 +234,18 @@ export function WorkflowsPage() {
         old?.map(w => w.id === id ? { ...w, isEnabled: false } : w) ?? []),
   });
 
+  // Operational, like enable/disable: no edit lock, no version bump.
+  const [concurrencyTarget, setConcurrencyTarget] = useState<Workflow | null>(null);
+  const concurrencyMutation = useMutation({
+    mutationFn: ({ id, limit }: { id: string; limit: number | null }) =>
+      api.put(`/workflows/${id}/concurrency-limit`, { maxConcurrentExecutions: limit }),
+    onSuccess: (_, { id, limit }) => {
+      queryClient.setQueryData<Workflow[]>(['workflows'], old =>
+        old?.map(w => w.id === id ? { ...w, maxConcurrentExecutions: limit } : w) ?? []);
+      setConcurrencyTarget(null);
+    },
+  });
+
   const forceUnlockMutation = useMutation({
     mutationFn: (id: string) => api.post(`/workflows/${id}/force-unlock`, {}),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workflows'] }),
@@ -382,13 +395,13 @@ export function WorkflowsPage() {
           maxMb: Math.floor(MAX_SCORCH_BYTES / (1024 * 1024)),
         }));
       }
-      const text = await file.text();
+      const bytes = await file.arrayBuffer();
       assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       const scorchUrl = selectedFolderId
         ? `/workflows/import-scorch?folderId=${selectedFolderId}`
         : '/workflows/import-scorch';
       assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
-      return api.postRaw<ScorchImportResponse>(scorchUrl, text, 'application/xml');
+      return api.postRaw<ScorchImportResponse>(scorchUrl, bytes, 'application/xml');
     },
     onSuccess: (resp, { file, authBoundaryGeneration }) => {
       if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
@@ -941,6 +954,19 @@ export function WorkflowsPage() {
                     <Power size={15} />
                   </button>
                 )}
+                {rowCanEdit(w) && (
+                  <button
+                    onClick={() => setConcurrencyTarget(w)}
+                    title={t('workflows:concurrency.action')}
+                    className={`p-1.5 rounded-lg transition-colors ${
+                      w.maxConcurrentExecutions == null
+                        ? 'text-gray-400 hover:text-primary hover:bg-primary/15'
+                        : 'text-primary hover:bg-primary/15'
+                    }`}
+                  >
+                    <Queued size={15} />
+                  </button>
+                )}
                 {rowCanForceUnlock(w) && lockedByOther && (
                   <button
                     onClick={async () => { if (await confirmDialog(t('workflows:forceUnlockConfirm', { name: w.name, user: w.checkedOutByUserName ?? t('common:unknown') }))) forceUnlockMutation.mutate(w.id); }}
@@ -1216,6 +1242,19 @@ export function WorkflowsPage() {
                                 <Power size={15} />
                               </button>
                             )}
+                            {rowCanEdit(w) && (
+                              <button
+                                onClick={() => setConcurrencyTarget(w)}
+                                title={t('workflows:concurrency.action')}
+                                className={`p-1.5 rounded-lg transition-colors ${
+                                  w.maxConcurrentExecutions == null
+                                    ? 'text-gray-400 hover:text-primary hover:bg-primary/15'
+                                    : 'text-primary hover:bg-primary/15'
+                                }`}
+                              >
+                                <Queued size={15} />
+                              </button>
+                            )}
                             {rowCanForceUnlock(w) && lockedByOther && (
                               <button
                                 onClick={async () => {
@@ -1303,6 +1342,16 @@ export function WorkflowsPage() {
             queryClient.invalidateQueries({ queryKey: ['workflows'] });
             queryClient.invalidateQueries({ queryKey: ['shared-folders'] });
           }}
+        />
+      )}
+
+      {/* Per-workflow concurrency limit. Operational, so it needs no edit lock. */}
+      {concurrencyTarget && (
+        <ConcurrencyLimitDialog
+          workflow={concurrencyTarget}
+          isSaving={concurrencyMutation.isPending}
+          onClose={() => setConcurrencyTarget(null)}
+          onSave={(limit) => concurrencyMutation.mutate({ id: concurrencyTarget.id, limit })}
         />
       )}
 

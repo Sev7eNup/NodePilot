@@ -22,6 +22,7 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
     private readonly ExecutionDispatchCallbackRegistry _callbacks;
     private readonly IClusterStateProvider _cluster;
     private readonly IMaintenanceWindowEvaluator _maintenance;
+    private readonly IWorkflowConcurrencyGate _concurrency;
     private readonly ILogger<ExecutionDispatchService> _logger;
     private readonly IDatabaseAvailability? _availability;
 
@@ -31,6 +32,7 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
         OutputRedactor redactor,
         IClusterStateProvider cluster,
         IMaintenanceWindowEvaluator maintenance,
+        IWorkflowConcurrencyGate concurrency,
         ILogger<ExecutionDispatchService> logger,
         IDatabaseAvailability? availability = null,
         ISecretProtector? protector = null,
@@ -46,6 +48,7 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
         _callbacks = callbacks ?? new ExecutionDispatchCallbackRegistry();
         _cluster = cluster;
         _maintenance = maintenance;
+        _concurrency = concurrency;
         _logger = logger;
         _availability = availability;
     }
@@ -269,30 +272,50 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
                     return ExecutionDispatchOutcome.Completed;
                 }
 
-                // Crossing this line transfers ownership to the engine. Any exception afterwards
-                // has
-                // unknown side effects/claim state and must never cause an automatic second start.
-                engineStarted = true;
-                var executed = await engine.ExecuteAsync(
-                    workflow,
-                    request.TriggeredBy,
-                    workerCt,
-                    request.Parameters,
-                    request.TimeoutSeconds,
-                    request.DebugEnabled,
-                    request.StartedByUserId,
-                    request.ParentExecutionId,
-                    request.CallDepth,
-                    executionIdOverride: pending.Id,
-                    interactiveRun: request.Priority == ExecutionDispatchPriority.Interactive);
-                if (executed.Status == ExecutionStatus.Pending)
+                // Per-workflow concurrency limit. Checked here, after the gates that can
+                // terminalize the run (a run about to be Cancelled must not consume a slot) and
+                // before ownership transfers: throwing from inside the engine would land in the
+                // catch below and mark the execution Failed instead of leaving it queued.
+                // The limit comes from the row loaded just above, so it is always current.
+                if (!_concurrency.TryAcquire(workflow.Id, workflow.MaxConcurrentExecutions))
                 {
-                    // The engine's database claim was fenced (typically leadership changed
-                    // between outbox lease and engine ownership). No activity ran; preserve the
-                    // durable intent for the current leader instead of deleting accepted work.
-                    return ExecutionDispatchOutcome.RetryBeforeStart;
+                    Telemetry.ApiMetrics.WorkflowConcurrencyDeferrals.Add(1,
+                        new KeyValuePair<string, object?>("source", request.TriggeredBy));
+                    return ExecutionDispatchOutcome.DeferredByConcurrencyLimit;
                 }
-                return ExecutionDispatchOutcome.Completed;
+
+                try
+                {
+                    // Crossing this line transfers ownership to the engine. Any exception
+                    // afterwards has unknown side effects/claim state and must never cause an
+                    // automatic second start.
+                    engineStarted = true;
+                    var executed = await engine.ExecuteAsync(
+                        workflow,
+                        request.TriggeredBy,
+                        workerCt,
+                        request.Parameters,
+                        request.TimeoutSeconds,
+                        request.DebugEnabled,
+                        request.StartedByUserId,
+                        request.ParentExecutionId,
+                        request.CallDepth,
+                        executionIdOverride: pending.Id,
+                        interactiveRun: request.Priority == ExecutionDispatchPriority.Interactive);
+                    if (executed.Status == ExecutionStatus.Pending)
+                    {
+                        // The engine's database claim was fenced (typically leadership changed
+                        // between outbox lease and engine ownership). No activity ran; preserve
+                        // the durable intent for the current leader instead of deleting accepted
+                        // work.
+                        return ExecutionDispatchOutcome.RetryBeforeStart;
+                    }
+                    return ExecutionDispatchOutcome.Completed;
+                }
+                finally
+                {
+                    _concurrency.Release(workflow.Id);
+                }
             }
             catch (OperationCanceledException) when (workerCt.IsCancellationRequested)
             {

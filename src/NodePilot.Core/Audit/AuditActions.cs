@@ -175,6 +175,7 @@ public static class AuditActions
     public const string WebhookTriggered = "WEBHOOK_TRIGGERED";
 
     public const string WorkflowCancelAll = "WORKFLOW_CANCEL_ALL";
+    public const string WorkflowConcurrencyLimitChanged = "WORKFLOW_CONCURRENCY_LIMIT_CHANGED";
     public const string WorkflowCreated = "WORKFLOW_CREATED";
     public const string WorkflowDeleted = "WORKFLOW_DELETED";
     public const string WorkflowDisabled = "WORKFLOW_DISABLED";

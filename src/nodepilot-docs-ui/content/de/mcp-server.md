@@ -4,7 +4,7 @@ Ein [Model-Context-Protocol](https://modelcontextprotocol.io)-Server, mit dem ei
 (Claude Desktop/Code oder ein beliebiger MCP-Client) **NodePilot-Workflows steuern und bearbeiten**
 sowie **Daten auslesen** kann. Wie die `np`-CLI ist er ein reiner HTTP-Client gegen die bestehende
 REST-API — **kein neuer Backend-Pfad**; jedes Tool ruft einen vorhandenen Endpoint auf oder rechnet
-in-proc gegen `NodePilot.Core`. 100 Tools über 10 Gruppen, plus 3 MCP-Resources.
+in-proc gegen `NodePilot.Core`. 101 Tools über 10 Gruppen, plus 3 MCP-Resources.
 
 ## Installation
 

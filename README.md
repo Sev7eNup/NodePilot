@@ -81,7 +81,7 @@ NodePilot is a **drop-in modern alternative** for organizations stuck on legacy 
 - **AI-assisted authoring** — generate PowerShell scripts and entire workflows from natural language; works against OpenAI **or local Ollama / LM Studio / vLLM** for zero-egress setups.
 - **Global AI chat** — a read-only assistant on its own page (`/ai-chat`) that answers from admin-switchable knowledge sources: the documentation, operational data scoped by folder permissions, the source code, and read-only SQL against the database. Every source is opt-in; the chat never executes or publishes anything.
 - **Operations CLI (`np`)** — full-featured command-line client (login, run, watch, audit, lock/publish, import/export), published as a self-contained folder you put on `PATH`.
-- **Drivable by AI agents** — an opt-in MCP server (`nodepilot-mcp`) exposes NodePilot to Claude Code, Claude Desktop and any other MCP client — 100 tools over 10 groups, HTTP-only against the same REST API, with destructive operations gated.
+- **Drivable by AI agents** — an opt-in MCP server (`nodepilot-mcp`) exposes NodePilot to Claude Code, Claude Desktop and any other MCP client — 101 tools over 10 groups, HTTP-only against the same REST API, with destructive operations gated.
 - **Batteries-included observability** — opt-in OpenTelemetry + Prometheus exporter, plus a hardened, loopback-bound **Grafana stack with 10 pre-provisioned dashboards** (Mission Control, Workflows, Activities, WinRM, Triggers, API, Runtime, Security, AI, Database). Startup requires a unique `NODEPILOT_GRAFANA_ADMIN_PASSWORD` — Compose fails closed while the password is missing, rather than coming up on a default credential.
 - **SCOrch-style edit lock** — atomic per-user check-out / publish flow, `423 Locked` enforced by every mutating endpoint, force-unlock for admins with audit trail.
 - **Workflow versioning** — every edit is snapshotted; one-click rollback; visual diff between any two versions.
@@ -149,7 +149,10 @@ np workflow import-scorch --file .\runbooks.ois_export
 
 Treat the result as a reviewed draft, not a finished migration. Imported workflows arrive disabled,
 credentials are never reconstructed (SCOrch encrypts them), and anything the report flags needs a
-decision. The point is that you start from your actual runbooks instead of a blank canvas.
+decision. After review, activate a workflow explicitly through
+`POST /api/workflows/{id}/enable` or `np workflow enable <id>`. Both import APIs return the created
+ids; the CLI exposes the same report as machine-readable stdout with `-o json`. The point is that you
+start from your actual runbooks instead of a blank canvas.
 
 ### How the two compare
 

@@ -76,10 +76,15 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
         _connection.Dispose();
     }
 
-    private StartWorkflowActivity CreateActivity(IWorkflowExecutionDispatcher? dispatcher = null) =>
-        dispatcher is null
-            ? new StartWorkflowActivity(_scopeServices.GetRequiredService<IServiceScopeFactory>(), _db, new InMemorySubWorkflowGate())
-            : new StartWorkflowActivity(_scopeServices.GetRequiredService<IServiceScopeFactory>(), _db, new InMemorySubWorkflowGate(), dispatcher);
+    private StartWorkflowActivity CreateActivity(
+        IWorkflowExecutionDispatcher? dispatcher = null,
+        IWorkflowConcurrencyGate? concurrency = null)
+    {
+        var gate = concurrency ?? new InMemoryWorkflowConcurrencyGate();
+        return dispatcher is null
+            ? new StartWorkflowActivity(_scopeServices.GetRequiredService<IServiceScopeFactory>(), _db, new InMemorySubWorkflowGate(), gate)
+            : new StartWorkflowActivity(_scopeServices.GetRequiredService<IServiceScopeFactory>(), _db, new InMemorySubWorkflowGate(), gate, dispatcher);
+    }
 
     private async Task<Workflow> InsertWorkflowAsync(string name)
     {
@@ -363,5 +368,87 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
             CancellationToken.None);
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("dispatch failed");
+    }
+
+    // -------------------------------------------------- per-workflow concurrency limit
+
+    [Fact]
+    public async Task ExecuteAsync_SynchronousChildAtItsLimit_WaitsThenRunsWhenASlotFrees()
+    {
+        var parent = await InsertWorkflowAsync("parent");
+        var parentExec = await InsertExecutionAsync(parent.Id);
+        var child = await InsertWorkflowAsync("child");
+        child.MaxConcurrentExecutions = 1;
+        await _db.SaveChangesAsync();
+        _engineMock.Setup(e => e.ExecuteAsync(
+                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
+                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
+                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(),
+                It.IsAny<bool>()))
+            .ReturnsAsync(new WorkflowExecution
+            {
+                Id = Guid.NewGuid(), WorkflowId = child.Id, Status = ExecutionStatus.Succeeded,
+            });
+
+        var gate = new InMemoryWorkflowConcurrencyGate();
+        gate.TryAcquire(child.Id, 1).Should().BeTrue();
+        var run = CreateActivity(concurrency: gate).ExecuteAsync(
+            MakeContext(parentExec.Id),
+            Cfg("""{"workflowNameOrId":"child","waitForCompletion":true}"""),
+            CancellationToken.None);
+
+        run.IsCompleted.Should().BeFalse("the child must wait for a slot, not fail");
+        gate.Release(child.Id);
+
+        (await run).Success.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SynchronousChild_ReleasesItsConcurrencySlot()
+    {
+        var parent = await InsertWorkflowAsync("parent");
+        var parentExec = await InsertExecutionAsync(parent.Id);
+        var child = await InsertWorkflowAsync("child");
+        child.MaxConcurrentExecutions = 1;
+        await _db.SaveChangesAsync();
+        _engineMock.Setup(e => e.ExecuteAsync(
+                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
+                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
+                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(),
+                It.IsAny<bool>()))
+            .ReturnsAsync(new WorkflowExecution
+            {
+                Id = Guid.NewGuid(), WorkflowId = child.Id, Status = ExecutionStatus.Succeeded,
+            });
+
+        var gate = new InMemoryWorkflowConcurrencyGate();
+        await CreateActivity(concurrency: gate).ExecuteAsync(
+            MakeContext(parentExec.Id),
+            Cfg("""{"workflowNameOrId":"child","waitForCompletion":true}"""),
+            CancellationToken.None);
+
+        gate.BlockedWorkflowIds.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SynchronousChildSlotNeverFrees_FailsOnTheStepTimeout()
+    {
+        // The wait runs on the step timeout token, so a limit that can never be satisfied
+        // surfaces as a timeout instead of hanging the parent forever.
+        var parent = await InsertWorkflowAsync("parent");
+        var parentExec = await InsertExecutionAsync(parent.Id);
+        var child = await InsertWorkflowAsync("child");
+        child.MaxConcurrentExecutions = 1;
+        await _db.SaveChangesAsync();
+
+        var gate = new InMemoryWorkflowConcurrencyGate();
+        gate.TryAcquire(child.Id, 1).Should().BeTrue();
+
+        var result = await CreateActivity(concurrency: gate).ExecuteAsync(
+            MakeContext(parentExec.Id),
+            Cfg("""{"workflowNameOrId":"child","waitForCompletion":true,"timeoutSeconds":1}"""),
+            CancellationToken.None);
+
+        result.Success.Should().BeFalse();
     }
 }

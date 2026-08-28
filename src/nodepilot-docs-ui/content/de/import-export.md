@@ -25,6 +25,13 @@ das rohe XML, `Content-Type: application/xml`, 300-MiB-Grenze; Ziel-Folder und R
 
 Was die Übersetzung leistet:
 
+- **Job-Concurrency** — das `MaxParallelRequests` eines Runbooks wird unverändert zum
+  Parallelitätslimit des Workflows. Das schließt den Wert `1` ein, der in Orchestrator „ein Lauf
+  zur Zeit" bedeutet und dort der Default ist — ein importiertes Runbook behält damit sein
+  Verhalten, statt still unbegrenzt zu werden. Weil dieser Default so verbreitet ist, kommen die
+  meisten Runbooks limitiert an; der Importreport nennt die Anzahl, damit nach einer Migration
+  nichts unbemerkt serialisiert. Fehlt der Wert oder liegt er außerhalb des Bereichs, wird ohne
+  Limit importiert.
 - **Aktivitäten** — rund vierzig SCOrch-Typnamen werden auf eine NodePilot-Aktivität abgebildet.
   Achtung: SCOrch schreibt nicht immer die Namen, die sein Designer zeigt — *Invoke Runbook* heißt
   auf der Leitung `Trigger Policy`, und dessen Argumente für das Kind-Runbook kommen als
@@ -87,19 +94,20 @@ Aktivieren durchsehen.
 
 ## System-Configuration Backup (ADR 0001)
 
-Voller DR-Snapshot der Konfiguration: Workflows + Folders/Sharing, Machines, Credentials, Globals + Global-Variable-Ordner, Custom Activities, Alerting, Users, Settings. **Nicht enthalten:** Execution-History, Audit, Stats. Admin-only. Envelope `nodepilot-system-backup/v3` (`.npbackup`) — v2 ergänzte die `alerting`-Sektion; v3 schützt vollständige Workflowdefinitionen mit `$encDefinition` sowie Custom-Activity-Skripte und Eingabe-Defaults mit `$enc`. Ein Workflow-Export zieht Custom Activities automatisch als harte Abhängigkeit mit. Der Reader akzeptiert v1, v2 und v3 (inklusive alter Plaintext-Custom-Activity-Felder), geschrieben wird ausschließlich v3. Ältere Builds lehnen v3 sichtbar ab.
+Ein Admin-only, portables **Konfigurations-Backup** mit Workflows + Folders/Sharing, Machines, Credentials, Globals + Global-Variable-Ordnern, Custom Activities, Alerting, Users und Settings. Es ist bewusst kein vollständiger Disaster-Recovery-Snapshot: Execution-History, Audit-Daten, Statistiken, die native Datenbank, Service-Konfiguration und Installationsdaten sind nicht enthalten. Diese Bestandteile separat sichern und den vollständigen Wiederanlauf testen.
+
+Das einzige unterstützte Envelope ist `nodepilot-system-backup/v4` (`.npbackup`). Kann eine angeforderte Sektion nicht vollständig exportiert werden, bricht der Export ab, statt ein Teil-Backup zu erzeugen. Ein Workflow-Export zieht Custom Activities automatisch als harte Abhängigkeit mit.
 
 ### Secret-Handling
 
-Secrets per **Passphrase-Rewrap** (PBKDF2→HKDF→AES-GCM) + Whole-file-HMAC. Geteilte Secret-Logik mit dem Workflow-Export via `WorkflowDefinitionSecretRewriter` (`SecretHandling`).
+Der komplette Konfigurations-Payload inklusive Metadaten und Sektionsliste wird mit der Passphrase verschlüsselt und authentifiziert (PBKDF2→HKDF→AES-GCM). Sensitive Felder behalten zusätzlich ihren Schutz innerhalb der Sektionen. Metadaten und Vorschau sind erst nach erfolgreicher authentifizierter Entschlüsselung verfügbar.
 
 ### Restore
 
-- **Vorschau läuft beim Dateiauswählen automatisch** — die Diff-Tabelle steht direkt da. Ohne
-  Passphrase ist es die Struktur-Vorschau (Integrität ungeprüft); nach Eingabe der Passphrase
-  erneut auf „Vorschau" klicken, um zusätzlich die Integrität zu prüfen.
+- Die Vorschau benötigt die Passphrase und wird erst angezeigt, nachdem das komplette Archiv authentifiziert und entschlüsselt wurde.
 - Validiert Refs (Abbruch bei unresolvable).
 - Läuft in EF-Execution-Strategy-gekapselter Transaktion in Abhängigkeitsreihenfolge mit ID-Remap.
+- Bricht den gesamten Restore ab und rollt ihn zurück, wenn eine gewählte Sektion eine Warnung erzeugt oder nicht vollständig wiederhergestellt werden kann; Settings-Dateiänderungen werden bei einem fehlgeschlagenen DB-Commit kompensiert.
 - Konflikt-Policy: `skip` / `rename` / `overwrite`.
 - Last-Admin-Schutz.
 

@@ -19,7 +19,7 @@ namespace NodePilot.Api.Tests.Services.Backup;
 /// End-to-end export behaviour of <see cref="BackupService"/> (ADR 0001 Phase 1 — the
 /// system-configuration backup feature): envelope shape, per-field secret encryption,
 /// GUID-reference preservation, automatically pulling in sections a selection depends on
-/// (K12), and the whole-file MAC / tamper-evidence checksum (K5). Uses an in-memory SQLite DB
+/// (K12), and complete-payload confidentiality/authentication (K5). Uses an in-memory SQLite DB
 /// and a deterministic at-rest AES-GCM protector.
 /// </summary>
 public sealed class BackupServiceExportTests : IDisposable
@@ -93,8 +93,16 @@ public sealed class BackupServiceExportTests : IDisposable
         await _db.SaveChangesAsync();
     }
 
-    private static JsonObject Parse(byte[] content) =>
-        (JsonObject)JsonNode.Parse(Encoding.UTF8.GetString(content))!;
+    private static JsonObject Parse(byte[] content)
+    {
+        var outer = (JsonObject)JsonNode.Parse(Encoding.UTF8.GetString(content))!;
+        var salt = Convert.FromBase64String(outer["crypto"]!["salt"]!.GetValue<string>());
+        var protector = PassphraseSecretProtector.Derive(Passphrase, salt);
+        var payload = protector.Unprotect(Convert.FromBase64String(outer["payload"]!.GetValue<string>()));
+        var result = (JsonObject)JsonNode.Parse(payload)!;
+        result["crypto"] = outer["crypto"]!.DeepClone();
+        return result;
+    }
 
     [Fact]
     public async Task Export_Workflows_AutoIncludesHardDependencies()
@@ -283,24 +291,21 @@ public sealed class BackupServiceExportTests : IDisposable
     }
 
     [Fact]
-    public async Task Export_SealsWithWholeFileMac_AndDetectsTampering()
+    public async Task Export_EncryptsAndAuthenticatesTheWholePayload()
     {
         await SeedAsync();
         var result = await _service.ExportAsync(
             [BackupSections.Workflows, BackupSections.Users], Passphrase, "admin", CancellationToken.None);
 
-        var env = Parse(result.Content);
-        var salt = Convert.FromBase64String(env["crypto"]!["salt"]!.GetValue<string>());
-        var protector = PassphraseSecretProtector.Derive(Passphrase, salt);
+        var outer = (JsonObject)JsonNode.Parse(Encoding.UTF8.GetString(result.Content))!;
+        outer.ToJsonString().Should().NotContain("users").And.NotContain("wf1");
 
-        var storedMac = Convert.FromBase64String(env["mac"]!.GetValue<string>());
-        var canonical = BackupCanonicalJson.Canonicalize(env, excludeKey: "mac");
-        protector.VerifyMac(canonical, storedMac).Should().BeTrue("the embedded MAC must validate over the canonical envelope");
-
-        // Tamper with a plaintext (non-encrypted) field — the MAC must catch it.
-        env["sections"]!["users"]!["items"]![0]!["role"] = "Viewer";
-        var tampered = BackupCanonicalJson.Canonicalize(env, excludeKey: "mac");
-        protector.VerifyMac(tampered, storedMac).Should().BeFalse("flipping a plaintext field must break the whole-file MAC");
+        var payload = Convert.FromBase64String(outer["payload"]!.GetValue<string>());
+        payload[payload.Length / 2] ^= 0x01;
+        outer["payload"] = Convert.ToBase64String(payload);
+        var reader = BackupFileReader.Parse(Encoding.UTF8.GetBytes(outer.ToJsonString()));
+        var act = () => reader.TryUnlock(Passphrase);
+        act.Should().Throw<BackupFormatException>().WithMessage("*authentication*");
     }
 
     [Fact]
@@ -349,6 +354,31 @@ public sealed class BackupServiceExportTests : IDisposable
         await SeedAsync();
         var act = () => _service.ExportAsync([BackupSections.Users], "short", "admin", CancellationToken.None);
         await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task Export_AnyPartWarning_AbortsInsteadOfProducingAnIncompleteArchive()
+    {
+        var service = new BackupService([new WarningPart()]);
+
+        var act = () => service.ExportAsync(
+            [BackupSections.Users], Passphrase, "admin", CancellationToken.None);
+
+        await act.Should().ThrowAsync<BackupExportException>()
+            .WithMessage("*could not be exported completely*");
+    }
+
+    private sealed class WarningPart : IBackupPart
+    {
+        public string Key => BackupSections.Users;
+        public IReadOnlyList<string> DependsOn => [];
+        public Task<int> CountAsync(CancellationToken ct) => Task.FromResult(1);
+
+        public Task<JsonNode> ExportAsync(BackupExportContext ctx, CancellationToken ct)
+        {
+            ctx.Warn("simulated unreadable secret");
+            return Task.FromResult<JsonNode>(new JsonObject { ["items"] = new JsonArray() });
+        }
     }
 
     public void Dispose()

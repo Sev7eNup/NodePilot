@@ -163,5 +163,15 @@
       "adGroupSid": "AD group SID",
       "oidcGroupId": "OIDC / SCIM group ID"
     }
+  },
+  "concurrency": {
+    "title": "Concurrency limit",
+    "description": "Limit how many executions of \"{{name}}\" may run at the same time. The limit applies to every caller: manual runs, triggers, webhooks and sub-workflow calls.",
+    "unlimited": "No limit",
+    "maxLabel": "Max concurrent executions",
+    "rangeError": "Enter a number between 1 and 1000.",
+    "queueHint": "Runs beyond the limit are queued and start automatically as slots free up. Nothing is rejected.",
+    "action": "Concurrency limit",
+    "badge": "max {{count}} at once"
   }
 }

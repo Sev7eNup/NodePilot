@@ -163,5 +163,15 @@
       "adGroupSid": "AD-Gruppen-SID",
       "oidcGroupId": "OIDC-/SCIM-Gruppen-ID"
     }
+  },
+  "concurrency": {
+    "title": "Parallelitätslimit",
+    "description": "Begrenzt, wie viele Ausführungen von „{{name}}\" gleichzeitig laufen dürfen. Das Limit gilt für alle Aufrufer: manuelle Läufe, Trigger, Webhooks und Sub-Workflow-Aufrufe.",
+    "unlimited": "Kein Limit",
+    "maxLabel": "Maximal gleichzeitige Ausführungen",
+    "rangeError": "Bitte eine Zahl zwischen 1 und 1000 eingeben.",
+    "queueHint": "Läufe über dem Limit werden eingereiht und starten automatisch, sobald ein Platz frei wird. Es geht nichts verloren.",
+    "action": "Parallelitätslimit",
+    "badge": "max. {{count}} gleichzeitig"
   }
 }

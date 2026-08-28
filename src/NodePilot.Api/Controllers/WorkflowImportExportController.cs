@@ -10,6 +10,7 @@ using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Telemetry;
 using NodePilot.Core.Models;
+using NodePilot.Core.Validation;
 using NodePilot.Core.WorkflowDefinitions;
 using NodePilot.Data;
 using NodePilot.Core.Telemetry;
@@ -196,15 +197,10 @@ public class WorkflowImportExportController : WorkflowsControllerBase
             var finalName = UniqueName(item.Name, takenNames);
             takenNames.Add(finalName);
 
-            // Respect the source's IsEnabled flag when the envelope carries it. Defaulting to
-            // enabled=false when it doesn't is a deliberate safety choice: an import that comes
-            // in already-enabled could start firing triggers immediately, before the operator
-            // has had a chance to review it. The UI/CLI then shows "Disabled — click Enable" so
-            // the operator opts in explicitly. If the imported webhook path collides with an
-            // already-running workflow, enabled=false is the only safe outcome anyway — the
-            // collision check below is redundant when the caller didn't set IsEnabled, but acts
-            // as an extra safety net for envelopes that explicitly request `IsEnabled: true`.
-            var enabled = item.IsEnabled ?? false;
+            // Import is a safety boundary: source-side activation state is never trusted in the
+            // destination environment. Every imported workflow must be reviewed and enabled
+            // explicitly after credentials, targets and trigger side effects have been checked.
+            var enabled = false;
             if (hmacError is not null)
             {
                 // Export intentionally redacts workflow secrets. Preserve import/edit usability,
@@ -224,6 +220,16 @@ public class WorkflowImportExportController : WorkflowsControllerBase
             }
             foreach (var k in newWebhookKeys) takenWebhookKeys.Add(k);
 
+            // The file is untrusted input and never passes through the concurrency-limit
+            // endpoint, so the range is enforced here too. An out-of-range value imports as
+            // unlimited rather than failing the whole file.
+            var concurrencyLimit = item.MaxConcurrentExecutions;
+            if (WorkflowConcurrency.Validate(concurrencyLimit) is { } limitError)
+            {
+                errors.Add($"workflows[{i}] ({item.Name}): {limitError} Imported without a concurrency limit.");
+                concurrencyLimit = null;
+            }
+
             var workflow = new Workflow
             {
                 Id = Guid.NewGuid(),
@@ -232,6 +238,7 @@ public class WorkflowImportExportController : WorkflowsControllerBase
                 DefinitionJson = definitionJson,
                 Version = 1,
                 IsEnabled = enabled,
+                MaxConcurrentExecutions = concurrencyLimit,
                 FolderId = targetFolderId,
                 // Import establishes runtime authority the same way Publish does: the importing
                 // user becomes the effective principal. Without this every automated trigger
@@ -441,6 +448,9 @@ public class WorkflowImportExportController : WorkflowsControllerBase
                 DefinitionJson = rb.DefinitionJson,
                 Version = 1,
                 IsEnabled = false,
+                // Orchestrator's MaxParallelRequests, carried over as-is so an imported runbook
+                // keeps the job concurrency it had. Null when the export omits it.
+                MaxConcurrentExecutions = rb.MaxConcurrentExecutions,
                 FolderId = targetFolderId,
                 // Same as the workflow-import path: the importing user becomes the effective
                 // principal, so automated triggers work once the operator enables the workflow.
@@ -719,7 +729,18 @@ public class WorkflowImportExportController : WorkflowsControllerBase
             new(TelemetryConstants.Attributes.ImportExportOperation, "import_scorch"),
             new("result", "success"));
 
-        return Ok(new ScorchImportResponse(created.Count, created, importedVariables, parsed.Warnings, errors));
+        // Orchestrator defaults job concurrency to 1, so most runbooks arrive limited. Say so:
+        // the alternative is workflows that silently serialize after an import.
+        var warnings = parsed.Warnings.ToList();
+        var limited = parsed.Workflows.Count(r => r.MaxConcurrentExecutions is not null);
+        if (limited > 0)
+        {
+            warnings.Add(
+                $"{limited} workflow(s) were given a concurrency limit taken from the runbook's "
+                + "MaxParallelRequests. Runs beyond the limit queue instead of starting immediately.");
+        }
+
+        return Ok(new ScorchImportResponse(created.Count, created, importedVariables, warnings, errors));
     }
 
     /// <summary>One folder the import has to create, with its identity fixed up front.</summary>
@@ -857,7 +878,8 @@ public class WorkflowImportExportController : WorkflowsControllerBase
             using var doc = JsonDocument.Parse("""{"nodes":[],"edges":[],"_importError":"original DefinitionJson was not valid JSON"}""");
             definition = doc.RootElement.Clone();
         }
-        return new WorkflowExportItem(w.Name, w.Description, definition, IsEnabled: w.IsEnabled);
+        return new WorkflowExportItem(w.Name, w.Description, definition,
+            IsEnabled: w.IsEnabled, MaxConcurrentExecutions: w.MaxConcurrentExecutions);
     }
 
     private sealed record ScorchImportAttempt(

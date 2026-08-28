@@ -1,6 +1,6 @@
 # ADR 0001 — System Configuration Backup & Restore
 
-**Status:** Implemented (phases 1–4) — 2026-05-29
+**Status:** Implemented (phases 1–4), security contract amended for schema v4 — 2026-08-27
 **Scope:** New top-level Backup feature (API + CLI + UI). Implementation in 4 phases.
 
 ## Context
@@ -19,7 +19,7 @@ Split by **intent**, share the code beneath:
 
 | | Context export (stays) | System backup (new) |
 |---|---|---|
-| Purpose | share *one* workflow | DR of the whole configuration |
+| Purpose | share *one* workflow | portable system configuration |
 | Location | Workflows page | its own admin entry `/backup` |
 | Secrets | redacted | rewrapped behind a passphrase |
 | Scope | workflows only | workflows+folders/sharing, machines, credentials, globals, users, settings |
@@ -32,35 +32,30 @@ menu entry.
 
 It is a **system *configuration* backup**, not a full database backup. **Not** included: audit
 log, execution history, step executions, support events, workflow versions, stats, idempotency
-keys. Both the UI **and** the documentation have to say so plainly. For real database backups the
-DBA's Postgres/SQL Server path still applies.
+keys. Both the UI **and** the documentation have to say so plainly. For an operational
+disaster-recovery plan, the native database, `ProgramData`, service configuration and key material
+must be backed up as well. The combined restore procedure must be tested; a `.npbackup` file by
+itself is not proof of recoverability.
 
-## File format `nodepilot-system-backup/v1`
+## Current file format `nodepilot-system-backup/v4`
 
-`.npbackup` (JSON). The structure is readable and diffable; **only secret fields** are
-passphrase-encrypted. A passphrase-based MAC additionally covers the **whole** file (see
-Integrity).
+`.npbackup` is a JSON envelope whose complete content payload is encrypted and authenticated.
+Section names, counts, application metadata, scripts, hostnames and all resource data are visible
+only after successful passphrase verification and AES-GCM authentication. Schemas v1–v3 exposed
+non-secret metadata and are deliberately rejected by the current reader.
 
 ```jsonc
 {
-  "schema": "nodepilot-system-backup/v1",
-  "appVersion": "x.y.z",
-  "createdAt": "…Z", "createdBy": "admin",
-  "crypto": { "kdf":"PBKDF2-SHA256","iterations":600000,"salt":"<b64>",
-              "subkeys":"HKDF-SHA256→{enc,mac,verifier}", "verifier":"<b64>" },
-  "mac": "<b64 HMAC-SHA256(macKey) over canonical JSON without this field>",
-  "sections": {
-    // EVERY remappable item carries "sourceId" (the original GUID) — see K3.
-    "folders":        { "structure":[ { "sourceId":"<guid>", … } ], "grants":[…] },  // separate! (K4)
-    "users":          { "items":[ { "sourceId":"<guid>", …, "passwordHash": {"$enc":"…"} } ] },
-    "credentials":    { "items":[ { "sourceId":"<guid>", …, "password": {"$enc":"…"} } ] },
-    "machines":       { "items":[ { "sourceId":"<guid>", … } ] },
-    "globalVariables":{ "items":[ { "sourceId":"<guid>", …, "value": {"$enc":"…"} | "plain" } ] },
-    "workflows":      { "items":[ { "sourceId":"<guid>", "definition":{…} } ] },
-    "settings":       { "runtimeJson": {…} }               // raw appsettings.runtime.json content
-  }
+  "schema": "nodepilot-system-backup/v4",
+  "crypto": { "kdf":"PBKDF2-SHA256", "iterations":600000,
+              "salt":"<b64>", "verifier":"<b64>" },
+  "payload": "<base64 AES-256-GCM envelope>"
 }
 ```
+
+The authenticated inner payload contains `backupKind: "configuration"`, `appVersion`,
+`createdAt`, `createdBy` and `sections`. Secret-bearing fields remain individually wrapped so the
+existing per-resource restore path never needs a plaintext intermediate file.
 
 ## Corrections to the first draft (binding before phase 1)
 
@@ -130,14 +125,10 @@ An alternative for machines, if an ordering without the credentials precondition
 create them without `DefaultCredentialId` and patch it after the credentials. The order above is
 the default.
 
-### K5 — Whole-file integrity (MAC)
-Per-secret GCM only protects the encrypted fields. Plaintext (scripts, hostnames, roles, the
-settings structure) would be tamperable. Hence an additional **passphrase-based HMAC-SHA256 over
-the canonical JSON** of the entire file (field `mac`).
-- **Restore** requires the passphrase → verifies the MAC **before** anything is written. A
-  mismatch aborts.
-- **Preview without a passphrase** stays possible but reports status `integrityUnverified` and
-  diffs only structure, counts and names — **never** secret identity (K10).
+### K5 — Whole-payload confidentiality and integrity
+Schema v4 encrypts and authenticates the complete inner payload with AES-256-GCM. Both preview and
+restore require the passphrase and reject an authentication failure before exposing section
+metadata or writing anything. This supersedes the v1–v3 plaintext envelope plus whole-file HMAC.
 
 ### K6 — Upload as multipart/form-data
 `preview`/`restore` take the file as `multipart/form-data` (field `file` plus field
@@ -174,7 +165,7 @@ restored 1:1.
 |---|---|---|
 | `GET /api/backup/manifest` | — | per-section counts (UI checkboxes) |
 | `POST /api/backup/export` | `{ sections[], passphrase }` | streams the `.npbackup` |
-| `POST /api/backup/preview` | multipart `file` + `passphrase?` | per-section diff + `integrityUnverified` |
+| `POST /api/backup/preview` | multipart `file` + `passphrase` | authenticated per-section diff |
 | `POST /api/backup/restore` | multipart `file` + `passphrase` + `policy{}` | applies it |
 
 **Conflict policy** (by-name match, as with import; default `skip`): `skip` / `rename` (suffix) /
@@ -217,11 +208,12 @@ and rebuilds the state so a retry starts clean. SQLite (tests) supplies a non-re
 a single pass. **Test gap:** the tests execute the wrapper but do not enforce it (SQLite would not
 need it) — the invariant is only held by a comment.
 
-### K8 — Settings as a separate, non-atomic step
-The database transaction only covers database sections. The settings restore runs through
-`RuntimeOverridesWriter` (the file `appsettings.runtime.json`) → **after** the database
-transaction commits, with **its own result line** (success/failure independently). No DDL or file
-hot-patching.
+### K8 — Settings replacement with compensation
+The database transaction covers database sections. Runtime settings are prepared before it,
+written through an atomic `RuntimeOverridesWriter.ReplaceAll` immediately before the database
+commit, and restored to their original content if the database commit fails. A compensation
+failure aborts with a critical manual-recovery error. The result keeps its own settings line
+because a service restart may still be required.
 
 ### K9 — Export only the runtime overrides, as raw file content
 What is exported is **only** the **raw JSON content** of `appsettings.runtime.json` (the
@@ -246,8 +238,8 @@ A sidebar entry in the admin group, the route behind `<AdminOnly>` and lazy-load
 (the boundary).
 - **Backup tab:** section checkboxes with counts (`/manifest`), passphrase plus confirmation and
   strength, button → `POST /export` → download.
-- **Restore tab:** upload → `POST /preview` (passphrase optional, otherwise the
-  `integrityUnverified` note) → per-section diff table → per-section policy dropdown →
+- **Restore tab:** upload + required passphrase → authenticated `POST /preview` → per-section diff
+  table → per-section policy dropdown →
   `POST /restore` → result summary (including the separate settings line, K8).
 
 ## Security & audit
@@ -260,8 +252,8 @@ minimum passphrase length is enforced.
 **No schema change** — the backup only reads and writes existing tables.
 
 ## Tests (mandatory)
-- Crypto units: round trip, wrong passphrase, tampering with plaintext → MAC failure, tampering
-  with `$enc` → GCM failure, key separation (encKey ≠ macKey ≠ verifierKey).
+- Crypto units: round trip, wrong passphrase, complete-payload confidentiality, ciphertext/header
+  tamper rejection and key separation.
 - Backend: export→restore round trip with per-section equality; **ID remap** (a workflow with
   `targetMachineId`/`credentialId` points at the new ids after restore; `{{globals.X}}` unchanged
   — K13); `Machine.DefaultCredentialId` remap (K4); `Folder.ParentFolderId`/`CreatedByUserId` and
@@ -269,8 +261,7 @@ minimum passphrase length is enforced.
   a user overwrite raises `SecurityStamp` and sets `PasswordChangedAt` (K16); last-admin protection
   (K11); the separate settings path (K8); RBAC (non-admin gets 403).
 - CLI: WireMock for export/preview/restore.
-- Frontend: BackupPage — section selection, passphrase validation, preview diff including the
-  `integrityUnverified` status.
+- Frontend: BackupPage — section selection, passphrase validation and authenticated preview diff.
 
 ## Phases
 1. Crypto (`PassphraseSecretProtector` + HKDF subkeys + MAC) + envelope (sourceId per section) +
@@ -283,7 +274,8 @@ minimum passphrase length is enforced.
 4. Hardening and docs (`deploy/README.md`, `docs/claude-reference.md`).
 
 ## Consequences
-- A portable, secure DR artifact; a restore onto a fresh machine is possible (the passphrase is
-  enough).
+- A portable, encrypted configuration artifact; a restore onto a fresh application instance is
+  possible when the surrounding database, files, configuration and key material are handled by
+  the tested DR procedure.
 - The context workflow export stays unchanged (redacted).
 - No replacement for a full database backup — deliberately out of scope.

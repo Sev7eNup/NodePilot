@@ -1502,6 +1502,87 @@ namespace NodePilot.Data.Migrations
                     b.ToTable("SystemHealth");
                 });
 
+            modelBuilder.Entity("NodePilot.Core.Models.TriggerDeliveryCheckpoint", b =>
+                {
+                    b.Property<Guid>("WorkflowId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TriggerNodeId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ConfigurationHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Position")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TriggerType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("WorkflowId", "TriggerNodeId");
+
+                    b.ToTable("TriggerDeliveryCheckpoints");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.TriggerDeliveryReceipt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EventKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid?>("ExecutionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TriggerNodeId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TriggerType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("WorkflowId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReceivedAt");
+
+                    b.HasIndex("WorkflowId", "TriggerNodeId", "EventKey")
+                        .IsUnique();
+
+                    b.ToTable("TriggerDeliveryReceipts");
+                });
+
             modelBuilder.Entity("NodePilot.Core.Models.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1608,6 +1689,9 @@ namespace NodePilot.Data.Migrations
 
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("boolean");
+
+                    b.Property<int?>("MaxConcurrentExecutions")
+                        .HasColumnType("integer");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -1951,6 +2035,28 @@ namespace NodePilot.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("WorkflowExecution");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.TriggerDeliveryCheckpoint", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.Workflow", "Workflow")
+                        .WithMany()
+                        .HasForeignKey("WorkflowId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Workflow");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.TriggerDeliveryReceipt", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.Workflow", "Workflow")
+                        .WithMany()
+                        .HasForeignKey("WorkflowId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Workflow");
                 });
 
             modelBuilder.Entity("NodePilot.Core.Models.Workflow", b =>

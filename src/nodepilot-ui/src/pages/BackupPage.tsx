@@ -1,4 +1,4 @@
-import { Archive, Certificate, Download, SecurityServices, Upload, WarningAltFilled } from '@carbon/icons-react';
+import { Archive, Certificate, Download, Upload, WarningAltFilled } from '@carbon/icons-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -26,6 +26,11 @@ export function BackupPage() {
       <header>
         <p className="text-sm text-on-surface-variant font-label">{t('backup:subtitle')}</p>
       </header>
+
+      <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-on-surface font-label">
+        <WarningAltFilled size={16} className="mt-0.5 shrink-0 text-amber-600" />
+        <span>{t('backup:scopeNotice')}</span>
+      </div>
 
       <div className="np-tab-list">
         {(['backup', 'restore'] as const).map((key) => {
@@ -163,16 +168,15 @@ function RestoreTab() {
     // Reset both mutations so a re-preview clears the old table, error, and restore result.
     previewMutation.reset();
     restoreMutation.reset();
-    if (!picked) return;
+    if (!picked || !passphrase) return;
     previewMutation.mutate({ file: picked, passphrase });
   };
 
-  // Picking a file is itself the request to see what it contains, so the preview runs at once.
-  // Without a passphrase this is the structure-only preview; entering one and pressing Preview
-  // re-runs it with the integrity check.
   const onFilePicked = (picked: File | null) => {
     setFile(picked);
-    runPreview(picked);
+    previewMutation.reset();
+    restoreMutation.reset();
+    setPolicies({});
   };
 
   const runRestore = async () => {
@@ -203,28 +207,37 @@ function RestoreTab() {
         </div>
         <div>
           <label className="font-label text-xs font-semibold text-on-surface-variant">{t('backup:restore.passphrase')}</label>
-          <input type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} className="input-field mt-1" autoComplete="off" />
+          <input
+            type="password"
+            value={passphrase}
+            onChange={(e) => {
+              setPassphrase(e.target.value);
+              previewMutation.reset();
+              restoreMutation.reset();
+              setPolicies({});
+            }}
+            className="input-field mt-1"
+            autoComplete="off"
+          />
           <p className="text-xs text-on-surface-variant font-label mt-1">{t('backup:restore.passphraseHint')}</p>
         </div>
         <button
           onClick={() => runPreview()}
-          disabled={busy || !file}
+          disabled={busy || !file || !passphrase}
           className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-label font-medium bg-surface-high text-on-surface hover:bg-surface-highest transition-colors disabled:opacity-50"
         >
           <Upload size={15} /> {busy && !result ? t('backup:restore.previewing') : t('backup:restore.preview')}
         </button>
       </section>
-      {/* The preview can start without a button press, so show its progress where the result
-          will appear; otherwise a large file looks like nothing happened. */}
       {previewMutation.isPending && (
         <p className="text-sm text-on-surface-variant font-label">{t('backup:restore.previewing')}</p>
       )}
       {error && <p className="text-sm text-error font-label whitespace-pre-wrap">{error}</p>}
       {preview && (
         <section className="space-y-3">
-          <div className={`flex items-center gap-2 text-sm font-label ${preview.integrityVerified ? 'text-green-600' : 'text-amber-600'}`}>
-            {preview.integrityVerified ? <Certificate size={16} /> : <SecurityServices size={16} />}
-            {preview.integrityVerified ? t('backup:restore.integrityVerified') : t('backup:restore.integrityUnverified')}
+          <div className="flex items-center gap-2 text-sm font-label text-green-600">
+            <Certificate size={16} />
+            {t('backup:restore.integrityVerified')}
             {preview.appVersion && <span className="text-on-surface-variant">· {t('backup:restore.appVersion')}: {preview.appVersion}</span>}
           </div>
 

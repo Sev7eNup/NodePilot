@@ -10,8 +10,14 @@
   "tracingFallback": "Tracing",
   "searchPlaceholder": "Search workflow, trigger, ID or error…",
   "allWorkflows": "All workflows",
+  "pagination": {
+    "previous": "Previous page",
+    "next": "Next page",
+    "pageOf": "Page {{page}} of {{totalPages}}"
+  },
   "summary": {
     "total": "Total",
+    "currentPage": "Current page:",
     "succeeded": "Succeeded",
     "failed": "Failed",
     "cancelled": "Cancelled",

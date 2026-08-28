@@ -49,6 +49,7 @@ public static class Renderers
         grid.AddRow("Triggers", string.Join(", ", w.TriggerTypes));
         grid.AddRow("Activities", w.ActivityCount.ToString());
         grid.AddRow("Lock", string.IsNullOrEmpty(w.CheckedOutByUserName) ? "-" : $"[yellow]{w.CheckedOutByUserName}[/] @ {w.CheckedOutAt:u}");
+        grid.AddRow("Max Concurrent", w.MaxConcurrentExecutions?.ToString() ?? "unlimited");
         grid.AddRow("Updated", w.UpdatedAt.ToLocalTime().ToString("u"));
         grid.AddRow("Updated By", w.UpdatedBy ?? "-");
         if (w.LastExecution is not null)

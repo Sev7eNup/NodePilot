@@ -14,6 +14,17 @@ public record CreateWorkflowRequest(string Name, string? Description, string Def
 public record UpdateWorkflowRequest(string Name, string? Description, string DefinitionJson);
 
 /// <summary>
+/// Body for <c>PUT /api/workflows/{id}/concurrency-limit</c>. Null means unlimited.
+/// <para>
+/// The property is required even though it is nullable: without that, an empty body would
+/// deserialize to null and silently clear the limit. Sending an explicit null is how a caller
+/// asks for unlimited; omitting the property is a malformed request.
+/// </para>
+/// </summary>
+public record SetWorkflowConcurrencyLimitRequest(
+    [property: System.Text.Json.Serialization.JsonRequired] int? MaxConcurrentExecutions);
+
+/// <summary>
 /// One declared input parameter in a workflow's <c>manualTrigger.parameters</c> array.
 ///
 /// <para><c>HasConflict</c> is set when the same parameter name was declared in multiple
@@ -89,6 +100,10 @@ public record WorkflowResponse(
     public int SuccessCount { get; init; }
     public int TotalCount { get; init; }
     public double? AvgDurationMs { get; init; }
+
+    // Per-workflow concurrency limit; null means unlimited. Operational, so it is changed
+    // through its own endpoint rather than the full-replace update body.
+    public int? MaxConcurrentExecutions { get; init; }
 
     // Edit-Lock surface — null when nobody has the workflow checked out. Username is
     // resolved server-side so the UI doesn't need a separate /users round-trip per row.
