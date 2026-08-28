@@ -139,7 +139,10 @@ test.describe('Backup & Restore (/backup)', () => {
     await expect(policySelect.locator('option', { hasText: /overwrite|überschreiben/i })).toHaveCount(1);
   });
 
-  test('restore tab: picking the file previews it without pressing Preview', async ({ page }) => {
+  test('restore tab: a file alone previews nothing — the passphrase is required first', async ({ page }) => {
+    // Envelope v4 encrypts and authenticates the whole payload, so there is no structure-only
+    // preview to show before the passphrase is known. Picking a file must therefore issue no
+    // request at all; anything else would imply the file can be read without it.
     await mockManifest(page);
     let previewCalls = 0;
     await page.route('**/api/backup/preview', (route) => {
@@ -147,7 +150,7 @@ test.describe('Backup & Restore (/backup)', () => {
       return route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify({
-          integrityVerified: false, appVersion: '1.4.0',
+          integrityVerified: true, appVersion: '1.4.0',
           sections: [{ section: 'workflows', inBackup: 5, new: 2, conflicts: 3 }],
           warnings: [],
         }),
@@ -160,9 +163,15 @@ test.describe('Backup & Restore (/backup)', () => {
       name: 'cfg.npbackup', mimeType: 'application/octet-stream', buffer: Buffer.from('sealed'),
     });
 
-    // Without a Preview click the diff table has to appear on its own.
+    const previewButton = page.getByRole('button', { name: /^preview$|^vorschau$/i });
+    await expect(previewButton).toBeDisabled();
+    expect(previewCalls).toBe(0);
+
+    await page.locator('input[type="password"]').fill('correct-horse-battery');
+    await expect(previewButton).toBeEnabled();
+    await previewButton.click();
+
     await expect(page.locator('table select').first()).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/enter the passphrase for a full check|Passphrase eingeben/i)).toBeVisible();
     expect(previewCalls).toBe(1);
   });
 

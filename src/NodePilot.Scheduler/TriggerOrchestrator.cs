@@ -689,108 +689,117 @@ public class TriggerOrchestrator : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
         try
         {
-            await using var transaction = await db.Database.BeginTransactionAsync(_stoppingToken);
-            if (await db.TriggerDeliveryReceipts.AnyAsync(x =>
-                    x.WorkflowId == workflowId
-                    && x.TriggerNodeId == nodeId
-                    && x.EventKey == signal.EventKey,
-                    _stoppingToken))
+            // The retrying execution strategy has to own the transaction: opening one directly
+            // throws InvalidOperationException under Postgres and SQL Server, and the SQLite tests
+            // never see it. Retry-safe because every write below happens inside the transaction, so
+            // a second attempt starts from a cleared tracker and an empty transaction.
+            var strategy = db.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
             {
-                await transaction.CommitAsync(_stoppingToken);
-                return true;
-            }
-
-            var wf = await db.Workflows.FindAsync([workflowId], _stoppingToken);
-            if (wf is null)
-            {
-                _logger.LogWarning("Trigger fired for {Type} but workflow {Wf} no longer exists", triggerType, workflowId);
-                if (StillOwnsLease(leaseEpoch))
-                    await AppendSuppressionAudit(db, workflowId, triggerType, "workflow_deleted");
-                await transaction.CommitAsync(_stoppingToken);
-                return true;
-            }
-
-            var receipt = new TriggerDeliveryReceipt
-            {
-                Id = Guid.NewGuid(),
-                WorkflowId = workflowId,
-                TriggerNodeId = nodeId,
-                TriggerType = triggerType,
-                EventKey = signal.EventKey,
-                Outcome = "admitted",
-                ReceivedAt = DateTime.UtcNow,
-            };
-            db.TriggerDeliveryReceipts.Add(receipt);
-
-            if (!wf.IsEnabled)
-            {
-                const string reason = "workflow_disabled";
-                receipt.Outcome = reason;
-                _logger.LogWarning("Trigger fired for {Type} but workflow {Wf} is missing or disabled", triggerType, workflowId);
-                fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "workflow missing or disabled");
-                if (StillOwnsLease(leaseEpoch))
-                    await AppendSuppressionAudit(db, workflowId, triggerType, reason);
-                UpsertCheckpoint(db, workflowId, nodeId, triggerType, configurationHash, signal);
-                await db.SaveChangesAsync(_stoppingToken);
-                await transaction.CommitAsync(_stoppingToken);
-                return true;
-            }
-
-            // Maintenance-window gate. A suppressed signal is nevertheless acknowledged and its
-            // cursor advanced: replaying it after the window closes would violate blackout
-            // semantics and create a surprise backfill.
-            var maintenance = _rootServices.GetService<IMaintenanceWindowEvaluator>();
-            if (maintenance is not null)
-            {
-                var verdict = maintenance.Evaluate(wf.Id, wf.FolderId, DateTime.UtcNow);
-                if (verdict.Blocked)
+                db.ChangeTracker.Clear();
+                await using var transaction = await db.Database.BeginTransactionAsync(_stoppingToken);
+                if (await db.TriggerDeliveryReceipts.AnyAsync(x =>
+                        x.WorkflowId == workflowId
+                        && x.TriggerNodeId == nodeId
+                        && x.EventKey == signal.EventKey,
+                        _stoppingToken))
                 {
-                    receipt.Outcome = "maintenance_window";
-                    _logger.LogInformation(
-                        "Trigger fire for {Type} on workflow {Wf} suppressed by maintenance window '{Window}'",
-                        triggerType, workflowId, verdict.WindowName);
-                    fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok, "maintenance window");
-                    SchedulerMetrics.MaintenanceWindowBlocks.Add(1,
-                        new KeyValuePair<string, object?>("trigger_type", triggerType));
+                    await transaction.CommitAsync(_stoppingToken);
+                    return true;
+                }
+
+                var wf = await db.Workflows.FindAsync([workflowId], _stoppingToken);
+                if (wf is null)
+                {
+                    _logger.LogWarning("Trigger fired for {Type} but workflow {Wf} no longer exists", triggerType, workflowId);
                     if (StillOwnsLease(leaseEpoch))
-                        await AppendMaintenanceBlockAudit(db, workflowId, triggerType, verdict);
+                        await AppendSuppressionAudit(db, workflowId, triggerType, "workflow_deleted");
+                    await transaction.CommitAsync(_stoppingToken);
+                    return true;
+                }
+
+                var receipt = new TriggerDeliveryReceipt
+                {
+                    Id = Guid.NewGuid(),
+                    WorkflowId = workflowId,
+                    TriggerNodeId = nodeId,
+                    TriggerType = triggerType,
+                    EventKey = signal.EventKey,
+                    Outcome = "admitted",
+                    ReceivedAt = DateTime.UtcNow,
+                };
+                db.TriggerDeliveryReceipts.Add(receipt);
+
+                if (!wf.IsEnabled)
+                {
+                    const string reason = "workflow_disabled";
+                    receipt.Outcome = reason;
+                    _logger.LogWarning("Trigger fired for {Type} but workflow {Wf} is missing or disabled", triggerType, workflowId);
+                    fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "workflow missing or disabled");
+                    if (StillOwnsLease(leaseEpoch))
+                        await AppendSuppressionAudit(db, workflowId, triggerType, reason);
                     UpsertCheckpoint(db, workflowId, nodeId, triggerType, configurationHash, signal);
                     await db.SaveChangesAsync(_stoppingToken);
                     await transaction.CommitAsync(_stoppingToken);
                     return true;
                 }
-            }
 
-            var parametersSnapshot = signal.Parameters.Count == 0
-                ? new Dictionary<string, string>(0)
-                : new Dictionary<string, string>(signal.Parameters, StringComparer.OrdinalIgnoreCase);
-            // Fence immediately before DispatchAsync persists its Pending execution. A node
-            // that lost and re-acquired leadership has a different epoch and may not reuse a
-            // fire observed under the old lease.
-            if (!StillOwnsLease(leaseEpoch)) return false;
-            var dispatcher = scope.ServiceProvider.GetRequiredService<IWorkflowExecutionDispatcher>();
-            var execution = await dispatcher.DispatchAsync(
-                new WorkflowDispatchIntent(
-                    workflowId,
-                    triggerType,
-                    parametersSnapshot,
-                    StartedByUserId: wf.PublishedByUserId,
-                    RequireWorkflowEnabled: true,
-                    MissingWorkflowMessage: "Queued trigger dispatch was not executed because the workflow no longer exists or is disabled.",
-                    PreOwnershipFailurePrefix: "Queued trigger dispatch failed before the engine could take ownership",
-                    OnDispatchSuppressedAsync: async (suppression, _) =>
+                // Maintenance-window gate. A suppressed signal is nevertheless acknowledged and its
+                // cursor advanced: replaying it after the window closes would violate blackout
+                // semantics and create a surprise backfill.
+                var maintenance = _rootServices.GetService<IMaintenanceWindowEvaluator>();
+                if (maintenance is not null)
+                {
+                    var verdict = maintenance.Evaluate(wf.Id, wf.FolderId, DateTime.UtcNow);
+                    if (verdict.Blocked)
                     {
-                        await using var auditScope = _scopeFactory.CreateAsyncScope();
-                        var auditDb = auditScope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
-                        await AppendSuppressionAudit(auditDb, workflowId, triggerType, suppression.Reason);
-                    }),
-                _stoppingToken);
-            receipt.ExecutionId = execution.Id;
-            UpsertCheckpoint(db, workflowId, nodeId, triggerType, configurationHash, signal);
-            await db.SaveChangesAsync(_stoppingToken);
-            await transaction.CommitAsync(_stoppingToken);
-            fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);
-            return true;
+                        receipt.Outcome = "maintenance_window";
+                        _logger.LogInformation(
+                            "Trigger fire for {Type} on workflow {Wf} suppressed by maintenance window '{Window}'",
+                            triggerType, workflowId, verdict.WindowName);
+                        fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok, "maintenance window");
+                        SchedulerMetrics.MaintenanceWindowBlocks.Add(1,
+                            new KeyValuePair<string, object?>("trigger_type", triggerType));
+                        if (StillOwnsLease(leaseEpoch))
+                            await AppendMaintenanceBlockAudit(db, workflowId, triggerType, verdict);
+                        UpsertCheckpoint(db, workflowId, nodeId, triggerType, configurationHash, signal);
+                        await db.SaveChangesAsync(_stoppingToken);
+                        await transaction.CommitAsync(_stoppingToken);
+                        return true;
+                    }
+                }
+
+                var parametersSnapshot = signal.Parameters.Count == 0
+                    ? new Dictionary<string, string>(0)
+                    : new Dictionary<string, string>(signal.Parameters, StringComparer.OrdinalIgnoreCase);
+                // Fence immediately before DispatchAsync persists its Pending execution. A node
+                // that lost and re-acquired leadership has a different epoch and may not reuse a
+                // fire observed under the old lease.
+                if (!StillOwnsLease(leaseEpoch)) return false;
+                var dispatcher = scope.ServiceProvider.GetRequiredService<IWorkflowExecutionDispatcher>();
+                var execution = await dispatcher.DispatchAsync(
+                    new WorkflowDispatchIntent(
+                        workflowId,
+                        triggerType,
+                        parametersSnapshot,
+                        StartedByUserId: wf.PublishedByUserId,
+                        RequireWorkflowEnabled: true,
+                        MissingWorkflowMessage: "Queued trigger dispatch was not executed because the workflow no longer exists or is disabled.",
+                        PreOwnershipFailurePrefix: "Queued trigger dispatch failed before the engine could take ownership",
+                        OnDispatchSuppressedAsync: async (suppression, _) =>
+                        {
+                            await using var auditScope = _scopeFactory.CreateAsyncScope();
+                            var auditDb = auditScope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+                            await AppendSuppressionAudit(auditDb, workflowId, triggerType, suppression.Reason);
+                        }),
+                    _stoppingToken);
+                receipt.ExecutionId = execution.Id;
+                UpsertCheckpoint(db, workflowId, nodeId, triggerType, configurationHash, signal);
+                await db.SaveChangesAsync(_stoppingToken);
+                await transaction.CommitAsync(_stoppingToken);
+                fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);
+                return true;
+            });
         }
         catch (Exception ex)
         {
