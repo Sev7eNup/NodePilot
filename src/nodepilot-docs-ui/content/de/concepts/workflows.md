@@ -30,6 +30,22 @@ Ein Workflow-Lauf (`POST /execute`, asynchron, `202` + `ExecutionId`) durchläuf
 
 Step-Status: `Pending`, `Running`, `Succeeded`, `Failed`, `Skipped`, `Paused`.
 
+## Trigger nach Neustart und Failover
+
+**Es wird nichts nachgeholt.** Jede Trigger-Quelle führt einen durablen Cursor, aber der dient der
+Deduplizierung und der Diagnose — nicht dem Backfill. Beim Start spult jede Quelle ihn auf den
+aktuellen Stand vor, ohne zu feuern, und schreibt eine Log-Zeile plus den Zähler
+`nodepilot.scheduler.triggers.fires_skipped` über die Größe des übersprungenen Fensters. Ohne diese
+Regel erzeugt ein Minutentakt 60 Läufe je Stunde Stillstand — und zwar je Workflow.
+
+Der **laufende** Betrieb ist davon unberührt: Ein Signal, das eine aktive Quelle bereits beobachtet
+hat, wird wiederholt, bis die Datenbank es annimmt; FileWatcher und EventLog holen weiterhin
+Benachrichtigungen nach, die ihnen im laufenden Betrieb entgehen.
+
+Der Preis wird ausdrücklich benannt: Dateien und EventLog-Einträge, die entstehen, während NodePilot
+gestoppt ist, ein Failover läuft oder kein Leader existiert, werden nicht verarbeitet. Wo eine Last
+das nicht verlieren darf, gehört eine durable Queue davor statt eines Triggers.
+
 ## Retry & Timeout
 
 - **Retry pro Step:** `config.retry` mit `maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayMs`.

@@ -93,6 +93,11 @@ public class DatabaseTriggerSource : ITriggerSource
         CancellationToken ct)
     {
         var typeTag = new KeyValuePair<string, object?>("trigger_type", "databaseTrigger");
+        // The first successful observation after a start re-baselines instead of firing: a
+        // sentinel that moved while this source was not running is a change from a window we
+        // deliberately skip. Cleared only once a baseline is actually persisted, so a failed
+        // first poll does not promote the second one into a catch-up fire.
+        var awaitingBaseline = true;
         while (!ct.IsCancellationRequested)
         {
             var pollSw = System.Diagnostics.Stopwatch.StartNew();
@@ -110,7 +115,36 @@ public class DatabaseTriggerSource : ITriggerSource
                         sentinel,
                         $"database-seed:{Guid.NewGuid():N}");
                     if (await _ctx!.InitializeCheckpointAsync(seeded))
+                    {
                         checkpoint = seeded;
+                        awaitingBaseline = false;
+                    }
+                }
+                else if (awaitingBaseline)
+                {
+                    var moved = !string.Equals(sentinel, checkpoint.Position, StringComparison.Ordinal);
+                    if (moved)
+                    {
+                        // SaveCheckpointAsync, not InitializeCheckpointAsync: the latter returns
+                        // early for an existing row whose configuration hash matches and would
+                        // leave the stale sentinel in place, so the next poll would fire after all.
+                        var advanced = new TriggerCheckpoint(sentinel, $"database-skip:{Guid.NewGuid():N}");
+                        if (await _ctx!.SaveCheckpointAsync(advanced))
+                        {
+                            checkpoint = advanced;
+                            awaitingBaseline = false;
+                            SchedulerMetrics.TriggerFiresSkipped.Add(1, typeTag);
+                            _logger.LogWarning(
+                                "DatabaseTrigger: sentinel moved while the source was not running "
+                                + "(workflow {WorkflowId} node {NodeId}); taking the current value as the new "
+                                + "baseline. Missed changes are never replayed.",
+                                _ctx!.WorkflowId, _ctx.NodeId);
+                        }
+                    }
+                    else
+                    {
+                        awaitingBaseline = false;
+                    }
                 }
                 else if (!string.Equals(sentinel, checkpoint.Position, StringComparison.Ordinal))
                 {

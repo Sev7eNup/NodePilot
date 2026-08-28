@@ -580,13 +580,14 @@ public class FileWatcherTriggerSourceTests
     }
 
     [Fact]
-    public async Task StartAsync_ReconcilesAFileCreatedWhileTheSourceWasOffline()
+    public async Task StartAsync_DoesNotDeliverAFileCreatedWhileTheSourceWasOffline()
     {
+        // Was the opposite assertion until missed windows stopped being replayed: a restart after
+        // a long outage turned every file that had landed meanwhile into a run, all at once.
         using var tempDir = new TempDirectory();
         var path = Path.Combine(tempDir.Path, "offline.txt");
         await File.WriteAllTextAsync(path, "arrived during downtime");
-        var delivered = new TaskCompletionSource<TriggerSignal>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var delivered = 0;
         var context = Ctx(
             $$"""{"directory":"{{Esc(tempDir.Path)}}","filter":"*.txt","watchType":"created"}""");
         context = new TriggerContext
@@ -596,11 +597,8 @@ public class FileWatcherTriggerSourceTests
             Config = context.Config,
             OnFire = context.OnFire,
             ReadCheckpoint = () => Task.FromResult<TriggerCheckpoint?>(new TriggerCheckpoint("{}", "seed")),
-            OnDurableFire = signal =>
-            {
-                delivered.TrySetResult(signal);
-                return Task.FromResult(true);
-            },
+            SaveCheckpoint = _ => Task.FromResult(true),
+            OnDurableFire = _ => { Interlocked.Increment(ref delivered); return Task.FromResult(true); },
         };
         var src = new FileWatcherTriggerSource(
             NullLogger<FileWatcherTriggerSource>.Instance,
@@ -609,11 +607,11 @@ public class FileWatcherTriggerSourceTests
         try
         {
             await src.StartAsync(context, CancellationToken.None);
-            var signal = await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.Delay(TimeSpan.FromSeconds(1));
 
-            signal.EventKey.Should().StartWith("file-reconcile:");
-            signal.Parameters["fileAction"].Should().Be("created");
-            signal.Parameters["filePath"].Should().Be(path);
+            Volatile.Read(ref delivered).Should().Be(0);
+            src.SnapshotPathsForTests().Should().Contain(path,
+                "the file belongs to the new baseline instead of becoming a run");
         }
         finally
         {
@@ -1036,6 +1034,102 @@ public class FileWatcherTriggerSourceTests
         public void Dispose()
         {
             try { Directory.Delete(Path, recursive: true); } catch { /* best-effort */ }
+        }
+    }
+
+    // ------------------------------------- changes made while down are skipped, never replayed
+
+    [Fact]
+    public async Task StartAsync_WithStaleSnapshot_DeliversNothingAndRebaselines()
+    {
+        // Files created while the source was not running used to be replayed from the stored
+        // snapshot on the next start. They are now folded into a fresh baseline instead.
+        using var tempDir = new TempDirectory();
+        await File.WriteAllTextAsync(Path.Combine(tempDir.Path, "arrived-while-down.txt"), "x");
+
+        var delivered = 0;
+        var saved = new List<TriggerCheckpoint>();
+        var ctx = new TriggerContext
+        {
+            WorkflowId = Guid.NewGuid(),
+            NodeId = "trg",
+            Config = Cfg($$"""{"directory":"{{Esc(tempDir.Path)}}","watchType":"created"}"""),
+            OnFire = _ => Task.CompletedTask,
+            OnDurableFire = _ => { delivered++; return Task.FromResult(true); },
+            // An empty snapshot: from the cursor's point of view the file did not exist.
+            ReadCheckpoint = () => Task.FromResult<TriggerCheckpoint?>(
+                new TriggerCheckpoint("{}", "prev")),
+            SaveCheckpoint = cp => { saved.Add(cp); return Task.FromResult(true); },
+        };
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance, EmptyConfig());
+
+        await src.StartAsync(ctx, CancellationToken.None);
+        await src.DisposeAsync();
+
+        delivered.Should().Be(0, "changes from the downtime window are skipped");
+        saved.Should().ContainSingle();
+        saved[0].Position.Should().Contain("arrived-while-down.txt",
+            "the fresh snapshot becomes the baseline, or the next start diffs against a stale one");
+    }
+
+    [Fact]
+    public async Task StartAsync_WhenSnapshotCannotBeAdvanced_DoesNotGoLive()
+    {
+        using var tempDir = new TempDirectory();
+        var ctx = new TriggerContext
+        {
+            WorkflowId = Guid.NewGuid(),
+            NodeId = "trg",
+            Config = Cfg($$"""{"directory":"{{Esc(tempDir.Path)}}"}"""),
+            OnFire = _ => Task.CompletedTask,
+            ReadCheckpoint = () => Task.FromResult<TriggerCheckpoint?>(
+                new TriggerCheckpoint("{}", "prev")),
+            SaveCheckpoint = _ => Task.FromResult(false),
+        };
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance, EmptyConfig());
+
+        var act = () => src.StartAsync(ctx, CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*could not be advanced*");
+        await src.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task StartAsync_TakesTheBaselineBeforeArming_SoALiveFileIsStillSeen()
+    {
+        // The baseline has to predate arming. Captured afterwards, a file landing in the
+        // arm-to-publish window would be folded into the baseline while the identity guard still
+        // drops its event — and nothing would ever deliver it.
+        using var tempDir = new TempDirectory();
+        var ctx = new TriggerContext
+        {
+            WorkflowId = Guid.NewGuid(),
+            NodeId = "trg",
+            Config = Cfg($$"""{"directory":"{{Esc(tempDir.Path)}}","watchType":"created"}"""),
+            OnFire = _ => Task.CompletedTask,
+            OnDurableFire = _ => Task.FromResult(true),
+            ReadCheckpoint = () => Task.FromResult<TriggerCheckpoint?>(null),
+            InitializeCheckpoint = _ => Task.FromResult(true),
+        };
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance, EmptyConfig());
+
+        await src.StartAsync(ctx, CancellationToken.None);
+        try
+        {
+            var late = Path.Combine(tempDir.Path, "after-start.txt");
+            await File.WriteAllTextAsync(late, "x");
+
+            // The snapshot the source is holding must not already contain the new file.
+            src.SnapshotPathsForTests().Should().NotContain(late,
+                "the baseline predates arming, so a file created afterwards is a real change");
+        }
+        finally
+        {
+            await src.DisposeAsync();
         }
     }
 }

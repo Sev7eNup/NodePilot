@@ -115,12 +115,22 @@ public class FileWatcherTriggerSource : ITriggerSource
         var pathTimeout = TimeSpan.FromSeconds(
             Math.Max(1, _config.GetValue<int?>("Trigger:FileWatcher:PathTimeoutSeconds") ?? 5));
 
+        _checkpoint = await context.ReadCheckpointAsync();
+
         FileSystemWatcher watcher;
+        Dictionary<string, FileStamp> initialSnapshot;
         try
         {
-            watcher = await RunBoundedAsync(
-                () => BuildAndArmWatcher(dir, filter, includeSub),
-                pathTimeout, static w => w.Dispose(), ct);
+            // The baseline is taken inside this bounded call — see BuildAndArmWatcher.
+            var built = await RunBoundedAsync(
+                () =>
+                {
+                    var w = BuildAndArmWatcher(dir, filter, includeSub, out var snap);
+                    return (watcher: w, snapshot: snap);
+                },
+                pathTimeout, static b => b.watcher.Dispose(), ct);
+            watcher = built.watcher;
+            initialSnapshot = built.snapshot;
         }
         catch (TimeoutException)
         {
@@ -129,28 +139,56 @@ public class FileWatcherTriggerSource : ITriggerSource
                 "(unreachable share or hung SMB redirector).");
         }
 
-        // Publishes the instance the event handlers gate on. Between the arming inside
-        // BuildAndArmWatcher and this assignment there is a sub-millisecond window in which an
-        // event is dropped by that identity guard — the safe direction, and the same class of
-        // gap as the failover window documented in docs/ha-active-passive.md.
-        Volatile.Write(ref _watcher, watcher);
-
-        _checkpoint = await context.ReadCheckpointAsync();
-        var initialSnapshot = CaptureSnapshot();
-        if (_checkpoint is null)
+        // Held until the baseline is in place. The event handlers take the same gate, so a file
+        // arriving between arming and the assignment below waits and is then delivered against the
+        // correct baseline — instead of being diffed against an empty snapshot and delivered a
+        // second time by the next reconcile scan.
+        await _deliveryGate.WaitAsync(ct);
+        try
         {
+            // Publishes the instance the event handlers gate on. Between the arming inside
+            // BuildAndArmWatcher and this assignment there is a sub-millisecond window in which an
+            // event is dropped by that identity guard — the safe direction, and the same class of
+            // gap as the failover window documented in docs/ha-active-passive.md.
+            Volatile.Write(ref _watcher, watcher);
+
             var position = JsonSerializer.Serialize(initialSnapshot);
-            var seeded = new TriggerCheckpoint(position, $"file-seed:{Guid.NewGuid():N}");
-            if (!await context.InitializeCheckpointAsync(seeded))
-                throw new InvalidOperationException("FileWatcherTrigger: durable snapshot could not be initialized");
-            _checkpoint = seeded;
+            if (_checkpoint is null)
+            {
+                var seeded = new TriggerCheckpoint(position, $"file-seed:{Guid.NewGuid():N}");
+                if (!await context.InitializeCheckpointAsync(seeded))
+                    throw new InvalidOperationException("FileWatcherTrigger: durable snapshot could not be initialized");
+                _checkpoint = seeded;
+            }
+            else
+            {
+                // Changes made while this source was not running are skipped, not replayed: the
+                // snapshot taken just now becomes the new baseline. Written with SaveCheckpointAsync
+                // because InitializeCheckpointAsync returns early for an existing row with a matching
+                // configuration hash and would leave the stale snapshot in place — the next start
+                // would then diff against it and deliver the very window this skipped.
+                var skipped = CountChanges(DeserializeSnapshot(_checkpoint.Position), initialSnapshot);
+                var advanced = new TriggerCheckpoint(position, $"file-skip:{Guid.NewGuid():N}");
+                if (!await context.SaveCheckpointAsync(advanced))
+                    throw new InvalidOperationException(
+                        "FileWatcherTrigger: durable snapshot could not be advanced past the missed window");
+                _checkpoint = advanced;
+
+                if (skipped > 0)
+                {
+                    SchedulerMetrics.TriggerFiresSkipped.Add(skipped,
+                        new KeyValuePair<string, object?>("trigger_type", ActivityType));
+                    _logger.LogWarning(
+                        "FileWatcher: skipped {Skipped} change(s) in '{Dir}' for workflow {WorkflowId} node "
+                        + "{NodeId} that happened while the source was not running. Missed changes are never replayed.",
+                        skipped, dir, context.WorkflowId, context.NodeId);
+                }
+            }
             _snapshot = initialSnapshot;
         }
-        else
+        finally
         {
-            _snapshot = DeserializeSnapshot(_checkpoint.Position);
-            // Replay changes missed during downtime and close the checkpoint-to-watcher gap.
-            await ReconcileAsync(_deliveryCts.Token);
+            _deliveryGate.Release();
         }
 
         var probeSeconds = _config.GetValue<int?>("Trigger:FileWatcher:HealthProbeSeconds") ?? 60;
@@ -264,7 +302,8 @@ public class FileWatcherTriggerSource : ITriggerSource
     /// Constructs, subscribes and arms the watcher. Runs on a thread-pool thread under the
     /// caller's deadline — everything here may block on an unreachable path.
     /// </summary>
-    private FileSystemWatcher BuildAndArmWatcher(string dir, string filter, bool includeSub)
+    private FileSystemWatcher BuildAndArmWatcher(
+        string dir, string filter, bool includeSub, out Dictionary<string, FileStamp> baseline)
     {
         // Keep canonicalization in the same bounded target-side operation as handle creation,
         // immediately before the first filesystem touch. A concurrent rename after this check
@@ -371,6 +410,12 @@ public class FileWatcherTriggerSource : ITriggerSource
         watcher.Changed += (_, e) => HandleEvent("changed", e.FullPath);
         watcher.Deleted += (_, e) => HandleEvent("deleted", e.FullPath);
         watcher.Renamed += (_, e) => HandleEvent("renamed", e.FullPath, e.OldFullPath);
+
+        // Baseline immediately before arming, inside the same bounded operation so it shares the
+        // path deadline and runs only after the directory validated. Captured after arming it
+        // would fold a file that landed in the arm-to-publish window into the baseline while the
+        // identity guard above still drops its event, and nothing would ever deliver it.
+        baseline = CaptureSnapshot();
 
         watcher.EnableRaisingEvents = true;
         return watcher;
@@ -526,6 +571,33 @@ public class FileWatcherTriggerSource : ITriggerSource
     }
 
     private bool Watches(string action) => _watchType == "any" || _watchType == action;
+
+    /// <summary>
+    /// Paths in the baseline the source is currently holding. Tests only — exposes just the keys
+    /// so the stamp type stays internal to this class.
+    /// </summary>
+    internal IReadOnlyCollection<string> SnapshotPathsForTests() => _snapshot.Keys;
+
+    /// <summary>
+    /// How far the stored baseline and a fresh snapshot differ, counted the way
+    /// <see cref="ReconcileAsync"/> would have delivered them: only what the configured
+    /// <c>watchType</c> covers, so the number in the skip log is what was actually passed over.
+    /// Renames are not paired up here — an unpaired one counts as its create and its delete, which
+    /// errs high rather than reporting nothing.
+    /// </summary>
+    private int CountChanges(
+        Dictionary<string, FileStamp> previous, Dictionary<string, FileStamp> current)
+    {
+        var count = 0;
+        if (_watchType is "created" or "renamed" or "any")
+            count += current.Keys.Except(previous.Keys, StringComparer.OrdinalIgnoreCase).Count();
+        if (_watchType is "deleted" or "any")
+            count += previous.Keys.Except(current.Keys, StringComparer.OrdinalIgnoreCase).Count();
+        if (_watchType is "changed" or "any")
+            count += current.Keys.Intersect(previous.Keys, StringComparer.OrdinalIgnoreCase)
+                .Count(path => current[path] != previous[path]);
+        return count;
+    }
 
     private Dictionary<string, FileStamp> CaptureSnapshot()
     {

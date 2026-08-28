@@ -18,7 +18,17 @@ export function ConcurrencyLimitDialog({
 }>) {
   const { t } = useTranslation(['workflows', 'common']);
   const [unlimited, setUnlimited] = useState(workflow.maxConcurrentExecutions == null);
-  const [value, setValue] = useState(String(workflow.maxConcurrentExecutions ?? 5));
+  // Empty while unlimited, never a pre-filled number. A greyed-out field showing a value reads as
+  // "the default is that number" — which is how an unlimited workflow got mistaken for a limited
+  // one. The suggestion only appears once the operator opts into a limit.
+  const [value, setValue] = useState(
+    workflow.maxConcurrentExecutions == null ? '' : String(workflow.maxConcurrentExecutions),
+  );
+
+  const chooseLimited = (limited: boolean) => {
+    setUnlimited(!limited);
+    if (limited && value === '') setValue('5');
+  };
 
   const parsed = Number.parseInt(value, 10);
   const invalid = !unlimited && (Number.isNaN(parsed) || parsed < 1 || parsed > 1000);
@@ -54,7 +64,7 @@ export function ConcurrencyLimitDialog({
             <input
               type="checkbox"
               checked={unlimited}
-              onChange={(event) => setUnlimited(event.target.checked)}
+              onChange={(event) => chooseLimited(!event.target.checked)}
             />
             {t('workflows:concurrency.unlimited')}
           </label>
@@ -73,6 +83,7 @@ export function ConcurrencyLimitDialog({
               max={1000}
               value={value}
               disabled={unlimited}
+              placeholder={t('workflows:concurrency.noLimitPlaceholder')}
               onChange={(event) => setValue(event.target.value)}
               className="w-32 rounded-lg border border-outline-variant bg-surface-low px-3 py-2 text-sm text-on-surface disabled:opacity-40"
             />

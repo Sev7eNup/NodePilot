@@ -214,7 +214,9 @@ public sealed record WorkflowDefinitionDocument(
             var config = node.Data.Config.ValueKind == JsonValueKind.Undefined
                 ? default
                 : node.Data.Config.Clone();
-            var hash = node.Type + ":" + (config.ValueKind == JsonValueKind.Undefined ? "" : config.GetRawText());
+            var hash = HashTriggerConfig(
+                node.Type,
+                config.ValueKind == JsonValueKind.Undefined ? "" : config.GetRawText());
             descriptors.Add(new WorkflowTriggerDescriptor(
                 node.Id,
                 node.Type,
@@ -226,6 +228,17 @@ public sealed record WorkflowDefinitionDocument(
 
         return descriptors;
     }
+
+    /// <summary>
+    /// Fingerprint of a trigger node's type plus its raw config, used to detect that a registered
+    /// trigger's configuration changed. A real digest, not the config itself: it is persisted into
+    /// <c>TriggerDeliveryCheckpoint.ConfigurationHash</c>, which is a fixed-width column — a long
+    /// directory path, SQL query, or message pattern would otherwise overflow it and stop the
+    /// trigger from ever registering.
+    /// </summary>
+    private static string HashTriggerConfig(string activityType, string rawConfig)
+        => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(activityType + ":" + rawConfig)));
 
     private static WorkflowDefinitionMetadata BuildMetadata(
         IReadOnlyList<WorkflowNode> nodes,

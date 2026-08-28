@@ -326,4 +326,50 @@ public class DatabaseTriggerSourceTests
 
         src.Health.IsHealthy.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task PollLoop_WhenSentinelMovedWhileDown_RebaselinesInsteadOfFiring()
+    {
+        // A stored sentinel that no longer matches means the value changed while this source was
+        // not running. That is a missed window, and missed windows are never replayed — the first
+        // successful poll takes the current value as the new baseline instead of firing.
+        var dbName = "trg-rebaseline-" + Guid.NewGuid().ToString("N");
+        var connStr = $"DataSource={dbName};Mode=Memory;Cache=Shared";
+        await using var holder = new SqliteConnection(connStr);
+        await holder.OpenAsync();
+        await using (var ddl = holder.CreateCommand())
+        {
+            ddl.CommandText = "CREATE TABLE Q (Id INTEGER PRIMARY KEY AUTOINCREMENT, V TEXT); INSERT INTO Q (V) VALUES ('a');";
+            await ddl.ExecuteNonQueryAsync();
+        }
+
+        var fires = 0;
+        var saved = new List<TriggerCheckpoint>();
+        var src = new DatabaseTriggerSource(
+            NullLogger<DatabaseTriggerSource>.Instance, PermissiveConfig());
+        var firstPollDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        src.OnPollCompletedForTest = () => firstPollDone.TrySetResult();
+
+        var ctx = new TriggerContext
+        {
+            WorkflowId = Guid.NewGuid(),
+            NodeId = "trg",
+            Config = ParseConfig($$"""{"connectionString":"{{connStr}}","provider":"sqlite","query":"SELECT MAX(Id) FROM Q","pollingIntervalSeconds":5}"""),
+            OnFire = _ => Task.CompletedTask,
+            OnDurableFire = _ => { Interlocked.Increment(ref fires); return Task.FromResult(true); },
+            // Stored sentinel is stale: the table has moved on since it was written.
+            ReadCheckpoint = () => Task.FromResult<TriggerCheckpoint?>(
+                new TriggerCheckpoint("-1", "prev")),
+            SaveCheckpoint = cp => { lock (saved) saved.Add(cp); return Task.FromResult(true); },
+        };
+
+        await src.StartAsync(ctx, CancellationToken.None);
+        var completed = await Task.WhenAny(firstPollDone.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+        completed.Should().Be(firstPollDone.Task);
+        await src.DisposeAsync();
+
+        Volatile.Read(ref fires).Should().Be(0, "the change happened while the source was down");
+        saved.Should().ContainSingle().Which.Position.Should().Be("1",
+            "the current value becomes the new baseline");
+    }
 }

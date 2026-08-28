@@ -67,8 +67,11 @@ the state.
   may already have happened; NodePilot never converts that ambiguity into an automatic duplicate.
 - Database-dependent hosted services park on the shared availability signal. Support events are
   dropped with a counter during the outage and summarised once after recovery.
-- Trigger fires that active sources observe during the outage are dropped with a counter and never
-  replayed. Leadership loss disposes of the sources; persistence and dispatch check the lease epoch.
+- A trigger fire a running source observes during the outage is held and retried until the database
+  accepts it. What is never replayed is a window in which the source was not running at all: on
+  start every source fast-forwards its cursor to the current state, counts what it skipped, and
+  fires nothing for it. Leadership loss disposes of the sources; persistence and dispatch check the
+  lease epoch.
 - Notification delivery stays at-least-once. Webhooks carry `eventKey` in the JSON body and in
   `X-NodePilot-Event-Key` so recipients can deduplicate.
 

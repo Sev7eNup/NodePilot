@@ -11,6 +11,7 @@ Retention services delete or archive historical data after a retention period. I
 | `WorkflowVersionsRetentionService` | Keeps N versions per workflow | 50 | `Retention:WorkflowVersions:Enabled` |
 | `SupportEventRetentionService` | Trims `SupportEvents` | 90 d | `Retention:SupportEvents:Enabled`, leader only |
 | `NotificationRetentionService` | Trims terminal `NotificationDeliveryAttempt` records + orphaned `NotificationSuppressionState` | 90 d | `Retention:Notifications:Enabled`, leader only |
+| `TriggerReceiptRetentionService` | Trims `TriggerDeliveryReceipts` — one row per observed trigger signal, so the fastest-growing table here. `TriggerDeliveryCheckpoints` is never swept: one row per trigger node, updated in place | 7 d | `Retention:TriggerReceipts:Enabled`, leader only |
 | `IdempotencyKeyCleanupService` | Trims idempotency keys after a 24 h TTL | 24 h | Always on (cannot be disabled) |
 
 ## Other background services

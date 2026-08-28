@@ -175,23 +175,46 @@ Für `scheduleTrigger`, `fileWatcherTrigger`, `databaseTrigger` und `eventLogTri
 Orchestrator pro Workflow/Trigger-Node einen Quell-Cursor und deduplizierte Delivery-Receipts. Ein
 Signal gilt erst als angenommen, wenn Receipt, Cursor, Pending Execution und Dispatch-Outbox in
 derselben DB-Transaktion committed sind. DB-Ausfall oder Leadership-Verlust liefert der Quelle
-`false`; sie hält das Signal fest oder rekonstruiert es aus dem Cursor. Ein Replay desselben
+`false`; sie hält das Signal fest und wiederholt, bis es angenommen ist. Ein Replay desselben
 `EventKey` wird quittiert, erzeugt aber keine zweite Execution.
 
-- Schedule holt alle Cron-Zeitpunkte nach dem Cursor nach; Quartz darf Misfires deshalb weiterhin
-  überspringen, die eigene Reconciliation übernimmt den Backfill.
-- EventLog liest erhaltene Entries nach ihrer Indexposition nach. Nach Log-Clear beginnt eine neue
-  Generation, damit wiederverwendete Indizes nicht mit alten Receipts kollidieren.
-- FileWatcher hält einen persistenten vollständigen Snapshot. Alle rohen Eventarten aktualisieren
-  ihn, auch wenn der User nur eine Art ausgewählt hat; ausgelöst wird weiterhin nur die gewählte.
-- Database hält den letzten Sentinel persistent und feuert eine noch nicht quittierte Änderung nach
-  DB-/Prozessausfall erneut.
+**Nichts wird über Neustart oder Failover hinweg nachgeholt.** Der Cursor dient der Deduplizierung
+und der Diagnose, nicht dem Backfill: Beim Start spult jede Quelle ihren Cursor auf den aktuellen
+Stand vor, ohne zu feuern, und schreibt **eine** Log-Zeile über die Größe des übersprungenen Fensters
+plus den Zähler `nodepilot.scheduler.triggers.fires_skipped`. Ohne diese Regel produziert ein
+Minutentakt 60 Läufe je Stunde Stillstand — und zwar je Workflow.
 
-Die Garantie lautet bewusst: **at least once für beobachtete oder aus der Quelle rekonstruierbare
-Signale, genau eine persistierte Execution pro EventKey**. Eine pollende Quelle ist kein Journal:
+Das Vorspulen läuft über `SaveCheckpointAsync`, nicht über den Seed-Pfad:
+`InitializeCheckpointAsync` kehrt bei vorhandener Zeile mit passendem `ConfigurationHash` sofort
+zurück, ohne `Position` zu setzen, und ließe den alten Cursor stehen. Schlägt das Vorspulen fehl,
+wird die Quelle **nicht** aktiv — sonst liefert sie Live-Ereignisse, während der Cursor noch in der
+Vergangenheit steht.
+
+| Quelle | Was der Start tut | Was im Betrieb weiterhin nachgeholt wird |
+|---|---|---|
+| `scheduleTrigger` | Cursor auf jetzt; verpasste Cron-Takte werden gezählt und verworfen. Quartz überspringt Misfires ohnehin (`DoNothing`) | nichts — ein Takt trägt keine Daten |
+| `fileWatcherTrigger` | Frischer Verzeichnis-Snapshot wird zur neuen Basislinie; Differenz zum alten Snapshot wird gezählt und verworfen | Scan alle `Trigger:FileWatcher:HealthProbeSeconds` (60 s) und nach Buffer-Overflow — Benachrichtigungen, die der **laufenden** Quelle entgehen |
+| `eventLogTrigger` | Cursor auf den höchsten Index im Log; Einträge darüber werden gezählt und verworfen. Nach Log-Clear beginnt eine neue Generation, damit wiederverwendete Indizes nicht mit alten Receipts kollidieren | Scan alle `Trigger:EventLog:ReconcileSeconds` (30 s) — `EntryWritten`-Benachrichtigungen, die der **laufenden** Quelle entgehen |
+| `databaseTrigger` | Der erste erfolgreiche Poll nimmt den aktuellen Sentinel als Basislinie, ohne zu feuern | eine nicht angenommene Zustellung lässt den Cursor stehen; der nächste erfolgreiche Poll feuert |
+
+Die Grenze verläuft also zwischen **Fenster, in denen die Quelle nicht lief** (verworfen) und
+**Signalen, die die laufende Quelle in der Hand hat** (wiederholt, bis angenommen). Der Preis ist
+ausdrücklich in Kauf genommen: Dateien und EventLog-Einträge aus einem Stillstandsfenster werden
+nicht verarbeitet.
+
+Die Garantie lautet damit: **at least once für Signale, die eine laufende Quelle beobachtet hat,
+genau eine persistierte Execution pro EventKey**. Eine pollende Quelle ist ohnehin kein Journal:
 mehrere DB-Sentinel-Zwischenwerte zwischen zwei Polls, bereits gelöschte EventLog-Einträge sowie ein
 File-Create-und-Delete vollständig während Watcher-Ausfall/Overflow sind nicht rekonstruierbar.
 Solche Anforderungen brauchen eine externe durable Eventquelle (Queue/Outbox/Journal).
+
+**Receipts werden getrimmt, Checkpoints nicht.** Je beobachtetem Signal entsteht eine
+`TriggerDeliveryReceipt`-Zeile — die am schnellsten wachsende Tabelle der Retention-Familie.
+`TriggerReceiptRetentionService` räumt sie nach `Retention:TriggerReceipts:MaxAgeDays` (default 7)
+ab. Ein Receipt muss nur das Fenster überleben, in dem dieselbe Quelle dasselbe Signal erneut melden
+und wiederholen kann — das sind Minuten; die Woche existiert, damit ein Betreiber einen Lauf noch
+nachvollziehen kann. `TriggerDeliveryCheckpoints` bleibt unangetastet: eine Zeile je Trigger-Node,
+in-place aktualisiert; ein Löschen ließe die Quelle beim nächsten Start neu seeden.
 
 **Sichtbarkeit:** Der Heartbeat meldet `degraded: N trigger(s) retrying` statt `ok`, solange
 irgendein Trigger im Backoff ist (erreicht `/api/dashboard`, wird von der UI aber nicht gerendert).
@@ -1012,6 +1035,7 @@ Alle Hosted-Services werden gebündelt in [BackgroundServicesSetup.cs](../src/No
 | `AuditLogRetentionService` | Trimmt `AuditLogs` (365 d) + gzip/SHA-256-Archiv | opt-in `Retention:AuditLog:Enabled` |
 | `WorkflowVersionsRetentionService` | Hält je Workflow die letzten N Versionen (50) | opt-in `Retention:WorkflowVersions:Enabled` |
 | `SupportEventRetentionService` | Trimmt `SupportEvents` (90 d) | opt-in `Retention:SupportEvents:Enabled`, leader-only |
+| `TriggerReceiptRetentionService` | Trimmt `TriggerDeliveryReceipts` (7 d) | opt-out `Retention:TriggerReceipts:Enabled`, leader-only |
 | `NotificationDispatcher` | Alerting: matcht Execution- + Signal-Events gegen Regeln, sendet via Sinks (~30 s) | opt-in by data, leader-only |
 | `NotificationRetentionService` | Trimmt den Delivery-Ledger + stale Suppression-States (90 d) | opt-out `Retention:Notifications:Enabled`, leader-only |
 | `IdempotencyKeyCleanupService` | Prunt Idempotency-Keys nach 24 h TTL | always-on (nicht abschaltbar) |
@@ -1116,7 +1140,7 @@ Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (hängt
 | `Smtp` | ✓ | `SmtpNotificationSink` + `EmailActivity` lesen `IOptionsMonitor<SmtpOptions>.CurrentValue` pro Senden |
 | `Llm` | ✓ | `ILlmClientFactory` + `WorkflowAssistantService` + Gates (`LlmQueryActivity`/`AiController`/`AiChatController`) lesen `IOptionsMonitor<LlmOptions>.CurrentValue` pro Use/Request — gilt auch für den Profilwechsel (`ActiveProfileId`) |
 | `AiKnowledge` | ✓ | `KnowledgeChatOrchestrator`, Tool-Registry und `/api/ai/knowledge/capabilities` lesen `IOptionsMonitor<AiKnowledgeOptions>.CurrentValue` pro Use — Source-Toggles und Root-Pfade greifen ohne Restart |
-| `Retention` | ✓ | `Execution`/`AuditLog`/`WorkflowVersions`/`Notification`/`SupportEvent`-RetentionService lesen `IOptionsMonitor<RetentionOptions>.CurrentValue` pro Schleifen-Pass (`RunIterationAsync`-Seam); `ArchivePath`-Wechsel invalidiert den Cache → Re-Probe (AuditLog bewahrt Compliance-Invariante). `IdempotencyKeyCleanupService` bleibt bewusst config-frei (fixe 24h-TTL) |
+| `Retention` | ✓ | `Execution`/`AuditLog`/`WorkflowVersions`/`Notification`/`SupportEvent`/`TriggerReceipt`-RetentionService lesen `IOptionsMonitor<RetentionOptions>.CurrentValue` pro Schleifen-Pass (`RunIterationAsync`-Seam); `ArchivePath`-Wechsel invalidiert den Cache → Re-Probe (AuditLog bewahrt Compliance-Invariante). `IdempotencyKeyCleanupService` bleibt bewusst config-frei (fixe 24h-TTL) |
 | `Stats` | ✓ | `WorkflowStatsRefresher` liest `IConfiguration.GetValue` pro Pass |
 | `Threading` | ✓ | `ThreadPoolTuningService` re-appliert `ThreadPool.SetMinThreads` bei Start + `ChangeToken.OnChange` (Boot-Call bleibt für Cold-Start-Prewarm). **Nur bei `Performance:ManualTuning=true`** — unter Auto-Dimensionierung folgt der Service dem Boot-Plan, sonst würde ein Reload allein den ThreadPool in einen anderen Modus ziehen als Runspace-Pool und Dispatch-Worker-Pool |
 | `FileSystemOperation` | ✓ | `PathGuard` liest `FileSystemOperation:RejectTraversal`/`AllowedRoots` pro Use aus `IConfiguration`. Der Remote-Zweig baut daraus pro Step den injizierten `TargetPathGuardScript` — auch dort greift eine Änderung ohne Restart, sie wirkt aber erst beim nächsten Step-Start |

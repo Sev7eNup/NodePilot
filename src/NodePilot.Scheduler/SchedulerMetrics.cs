@@ -21,6 +21,16 @@ public static class SchedulerMetrics
     public static readonly Counter<long> TriggerAdmissionsDeferred = Meter.CreateCounter<long>(
         "nodepilot.scheduler.triggers.admission_deferred");
 
+    /// <summary>
+    /// Signals a source observed as missed while it was not running and deliberately did not
+    /// deliver. Restart and failover skip their window instead of replaying it, so this counter is
+    /// the only trace an outage leaves — a non-zero value means work was passed over, not lost to a
+    /// fault.
+    /// </summary>
+    public static readonly Counter<long> TriggerFiresSkipped = Meter.CreateCounter<long>(
+        "nodepilot.scheduler.triggers.fires_skipped", unit: "1",
+        description: "Missed trigger signals skipped after a restart or failover (tagged by trigger_type).");
+
     public static readonly Counter<long> TriggersFired = Meter.CreateCounter<long>(
         "nodepilot.triggers.fired", unit: "1", description: "Number of times a trigger fired a workflow execution (tagged by trigger_type).");
 

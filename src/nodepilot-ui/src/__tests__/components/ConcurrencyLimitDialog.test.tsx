@@ -18,7 +18,7 @@ const workflow = (maxConcurrentExecutions: number | null): Workflow => ({
 });
 
 describe('ConcurrencyLimitDialog', () => {
-  it('starts unlimited when the workflow has no limit', () => {
+  it('starts unlimited when the workflow has no limit, and shows no number', () => {
     render(
       <ConcurrencyLimitDialog
         workflow={workflow(null)}
@@ -29,7 +29,28 @@ describe('ConcurrencyLimitDialog', () => {
     );
 
     expect(screen.getByRole('checkbox')).toBeChecked();
-    expect(screen.getByRole('spinbutton')).toBeDisabled();
+    const input = screen.getByRole('spinbutton');
+    expect(input).toBeDisabled();
+    // A greyed-out field carrying a number reads as "the default is that number", which is how an
+    // unlimited workflow was mistaken for a limited one.
+    expect(input).toHaveValue(null);
+  });
+
+  it('suggests a value only once a limit is opted into', () => {
+    render(
+      <ConcurrencyLimitDialog
+        workflow={workflow(null)}
+        onClose={() => {}}
+        onSave={() => {}}
+        isSaving={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('checkbox'));
+
+    const input = screen.getByRole('spinbutton');
+    expect(input).toBeEnabled();
+    expect(input).toHaveValue(5);
   });
 
   it('pre-fills the existing limit', () => {

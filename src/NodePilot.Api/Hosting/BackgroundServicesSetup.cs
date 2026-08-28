@@ -112,6 +112,12 @@ public static class BackgroundServicesSetup
         // (default 90, matcht Plain-Text-File-Retention). Leader-only.
         services.AddHostedService<NodePilot.Scheduler.SupportEventRetentionService>();
 
+        // Trigger-receipt retention: trims TriggerDeliveryReceipts older than
+        // Retention:TriggerReceipts:MaxAgeDays (default 7). One row per observed trigger signal,
+        // so this is the fastest-growing of the retention targets. Checkpoints are not swept —
+        // one row per trigger node, updated in place. Leader-only.
+        services.AddHostedService<NodePilot.Scheduler.TriggerReceiptRetentionService>();
+
         // Workflow-KPI aggregate refresher — populates WorkflowStats so dashboards and list
         // endpoints don't scan WorkflowExecutions per request. Always-on (cheap enough).
         services.AddHostedService<NodePilot.Scheduler.WorkflowStatsRefresher>();

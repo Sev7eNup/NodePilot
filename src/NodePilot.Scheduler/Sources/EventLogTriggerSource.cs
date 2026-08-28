@@ -69,8 +69,19 @@ public class EventLogTriggerSource : ITriggerSource
         _log = new EventLog(settings.LogName) { EnableRaisingEvents = true };
         _log.EntryWritten += OnEntry;
 
-        var maxIndex = _log.Entries.Cast<EventLogEntry>().Select(entry => entry.Index).DefaultIfEmpty(0).Max();
         _cursor = DeserializeCursor(_checkpoint?.Position);
+
+        // One pass over the log for both questions we have at startup: the highest index present,
+        // and how many entries sit above the stored cursor. Enumerating EventLog.Entries costs
+        // O(log size), so it happens once rather than once per question.
+        var priorIndex = _cursor?.Index ?? int.MaxValue;
+        var maxIndex = 0;
+        var writtenWhileDown = 0;
+        foreach (var entry in _log.Entries.Cast<EventLogEntry>())
+        {
+            if (entry.Index > maxIndex) maxIndex = entry.Index;
+            if (entry.Index > priorIndex) writtenWhileDown++;
+        }
         if (_cursor is null)
         {
             _cursor = new EventLogCursor(Guid.NewGuid().ToString("N"), maxIndex);
@@ -83,6 +94,9 @@ public class EventLogTriggerSource : ITriggerSource
         {
             // The log was cleared or recreated. A fresh generation prevents reused Entry.Index
             // values from colliding with receipts from the previous incarnation.
+            // Every entry still in the log predates this start, so all of them count as written
+            // while the source was down; the count above was measured against the stale cursor.
+            writtenWhileDown = _log.Entries.Count;
             _cursor = new EventLogCursor(Guid.NewGuid().ToString("N"), 0);
             var reset = new TriggerCheckpoint(JsonSerializer.Serialize(_cursor), $"eventlog-reset:{_cursor.Generation}");
             if (!await context.SaveCheckpointAsync(reset))
@@ -90,7 +104,7 @@ public class EventLogTriggerSource : ITriggerSource
             _checkpoint = reset;
         }
 
-        await ReconcileAsync(_cts.Token);
+        await SkipEntriesWrittenWhileDownAsync(context, maxIndex, writtenWhileDown, _cts.Token);
         var reconcileSeconds = Math.Max(1, _config.GetValue<int?>("Trigger:EventLog:ReconcileSeconds") ?? 30);
         _reconcileTask = ReconcileLoopAsync(TimeSpan.FromSeconds(reconcileSeconds), _cts.Token);
         _logger.LogInformation(
@@ -117,6 +131,47 @@ public class EventLogTriggerSource : ITriggerSource
         TriggerFireObserver.Observe(
             ReconcileAsync(_cts?.Token ?? CancellationToken.None),
             _logger, ActivityType, _ctx!.WorkflowId, _ctx.NodeId);
+    }
+
+    /// <summary>
+    /// Moves the cursor past everything already in the log at startup, so entries written while
+    /// this source was not running are skipped rather than replayed. The periodic reconcile and
+    /// the <c>EntryWritten</c> handler keep their full behaviour — they recover notifications
+    /// missed while the source *is* running, which is a live gap, not a restart.
+    /// <para>
+    /// Takes the delivery gate because the handler is already attached at this point and may be
+    /// running a reconcile of its own.
+    /// </para>
+    /// </summary>
+    private async Task SkipEntriesWrittenWhileDownAsync(
+        TriggerContext context, int maxIndex, int skipped, CancellationToken ct)
+    {
+        await _deliveryGate.WaitAsync(ct);
+        try
+        {
+            if (PlanSkip(_cursor, maxIndex) is not { } advanced) return;
+
+            var checkpoint = new TriggerCheckpoint(
+                JsonSerializer.Serialize(advanced), $"eventlog-skip:{Guid.NewGuid():N}");
+            if (!await context.SaveCheckpointAsync(checkpoint))
+                throw new InvalidOperationException(
+                    "EventLogTrigger: durable cursor could not be advanced past the missed window");
+            _cursor = advanced;
+            _checkpoint = checkpoint;
+
+            if (skipped == 0) return;
+
+            SchedulerMetrics.TriggerFiresSkipped.Add(skipped,
+                new KeyValuePair<string, object?>("trigger_type", ActivityType));
+            _logger.LogWarning(
+                "EventLogTrigger: skipped {Skipped} entr(y/ies) in '{Log}' for workflow {WorkflowId} node "
+                + "{NodeId} that were written while the source was not running. Missed entries are never replayed.",
+                skipped, _settings?.LogName, context.WorkflowId, context.NodeId);
+        }
+        finally
+        {
+            _deliveryGate.Release();
+        }
     }
 
     private async Task ReconcileLoopAsync(TimeSpan interval, CancellationToken ct)
@@ -252,5 +307,17 @@ public class EventLogTriggerSource : ITriggerSource
         }
     }
 
-    private sealed record EventLogCursor(string Generation, int Index);
+    /// <summary>
+    /// Where the cursor has to land so nothing written while the source was down is replayed:
+    /// the highest index currently in the log, under the cursor's existing generation. Returns
+    /// null when there is nothing to skip. The generation is carried over deliberately — a new
+    /// one is only minted when the log itself was cleared, and reusing indices across an unnoticed
+    /// clear would collide with receipts from the previous incarnation.
+    /// </summary>
+    internal static EventLogCursor? PlanSkip(EventLogCursor? cursor, int maxIndex)
+        => cursor is null || maxIndex <= cursor.Index
+            ? null
+            : new EventLogCursor(cursor.Generation, maxIndex);
+
+    internal sealed record EventLogCursor(string Generation, int Index);
 }
