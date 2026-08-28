@@ -121,10 +121,11 @@ show signal fields, workflow-scoped signal rules show both workflow context and 
 machine name; terminal execution events carry the resolved machine name of the **last-failing step**
 — empty for successes/cancels and for failures without a remote target).
 
-`cancelledBy` is set only for `ExecutionCancelled` events and records who initiated the cancel:
-`user` (a single manual `POST /executions/{id}/cancel`), `cancelAll`, `failover`, `reconciler`,
-`dispatch`, or `system` (a timeout / host-shutdown / bare-token cancel). A rule targeting **manual**
-cancels filters `cancelledBy == "user"`.
+`cancelledBy` is set only for `ExecutionCancelled` events and records what initiated the cancel:
+`user` (a single manual `POST /executions/{id}/cancel`), `cancelAll`, `failover`,
+`failover-pending`, `reconciler`, `reconciler-pending`, `dispatch`, or `system` (a timeout /
+host-shutdown / bare-token cancel). The `*-pending` values identify accepted work that never
+crossed engine ownership. A rule targeting **manual** cancels filters `cancelledBy == "user"`.
 
 Implementation: the value is persisted in `WorkflowExecution.CancelledBy` (migration
 `AddExecutionCancelledBy`), set in every cancel path. For a live cancel the engine thread writes the

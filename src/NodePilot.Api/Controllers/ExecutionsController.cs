@@ -559,13 +559,36 @@ public class ExecutionsController : ControllerBase
         if (await this.RequireWorkflowAccessAsync(_authz, workflow, NodePilot.Core.Interfaces.ResourceOp.Run, ct) is { } d) return d;
         if (!workflow.IsEnabled) return BadRequest(new { message = $"Workflow '{workflow.Name}' is disabled." });
 
-        // Deserialize snapshot. Missing / malformed JSON → fresh empty params (still audits
-        // as a retry so the lineage stays visible).
+        // InputParametersJson is an observability snapshot: secret-looking values are redacted and
+        // the whole value is capped. It is safe as a retry source only while it is valid JSON and
+        // contains neither marker. Fail closed instead of silently executing with masked or empty
+        // parameters.
         Dictionary<string, string>? parameters = null;
         if (!string.IsNullOrWhiteSpace(original.InputParametersJson))
         {
-            try { parameters = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(original.InputParametersJson); }
-            catch { /* swallow — original's snapshot is corrupt; run without params */ }
+            if (original.InputParametersJson.Contains(OutputRedactor.Placeholder, StringComparison.Ordinal)
+                || original.InputParametersJson.EndsWith("... [truncated]", StringComparison.Ordinal))
+            {
+                return BadRequest(new
+                {
+                    code = "execution_inputs_not_replayable",
+                    message = "This execution cannot be retried safely because its saved inputs were redacted or truncated. Start the workflow again with fresh parameters."
+                });
+            }
+
+            try
+            {
+                parameters = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(
+                    original.InputParametersJson);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                return BadRequest(new
+                {
+                    code = "execution_inputs_not_replayable",
+                    message = "This execution cannot be retried safely because its saved inputs are invalid. Start the workflow again with fresh parameters."
+                });
+            }
         }
 
         // C-2: tag retry with the user who clicked the retry button (not the original author).

@@ -71,12 +71,14 @@ public sealed class CanvasAssistantToolsTests
         var cyclic = """
         {"nodes":[
           {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"t","config":{}}},
+          {"id":"join","type":"activity","data":{"activityType":"junction","label":"join","config":{"mode":"waitAll"}}},
           {"id":"a","type":"activity","data":{"activityType":"log","label":"a","config":{}}},
           {"id":"b","type":"activity","data":{"activityType":"log","label":"b","config":{}}}],
          "edges":[
-          {"id":"e0","source":"t","target":"a"},
-          {"id":"e1","source":"a","target":"b"},
-          {"id":"e2","source":"b","target":"a"}]}
+          {"id":"e0","source":"t","target":"join"},
+          {"id":"e1","source":"join","target":"a"},
+          {"id":"e2","source":"a","target":"b"},
+          {"id":"e3","source":"b","target":"join"}]}
         """;
         var json = J(Tools(api).AnalyzeWorkflow(E(cyclic)));
         json.Should().Contain("Cycle detected");

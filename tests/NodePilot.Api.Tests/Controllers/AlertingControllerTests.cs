@@ -124,6 +124,8 @@ public class AlertingControllerTests
             ["ExecutionFailed", "ExecutionSucceeded", "ExecutionCancelled", "ExecutionRunningLong", "ExecutionQueuedLong", "CredentialFailure"]);
         catalog.EventTypes.Select(e => e.Name).Should().NotContain(["BacklogHigh", "MachineUnreachable", "ScheduleMissed"]);
         catalog.EventFields.Select(f => f.Name).Should().Contain(["eventType", "durationMs", "signalValue"]);
+        catalog.EventFields.Single(field => field.Name == "cancelledBy").Values.Should()
+            .Contain(["failover-pending", "reconciler-pending"]);
         catalog.Channels.Should().BeEquivalentTo(["Email", "GenericWebhook"]);
         catalog.DedupTemplateFields.Should().Contain("workflowId");
     }

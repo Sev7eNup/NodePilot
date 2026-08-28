@@ -160,9 +160,10 @@ describe('lintWorkflow — duplicate-edge', () => {
     const duplicate = result.errors.filter((e) => e.code === 'duplicate-edge');
     expect(duplicate).toHaveLength(1);
     expect(duplicate[0].edgeId).toBe('e2');
+    expect(result.errors.filter((e) => e.code === 'fan-in-requires-junction')).toHaveLength(0);
   });
 
-  it('allows different source nodes to connect into the same target', () => {
+  it('requires a junction when different source nodes connect into an ordinary target', () => {
     const nodes: Node[] = [node('a', 0, 0), node('b', 0, 180), node('target', 240, 80)];
     const edges: Edge[] = [
       edge('e1', 'a', 'target'),
@@ -170,7 +171,24 @@ describe('lintWorkflow — duplicate-edge', () => {
     ];
 
     const result = lintWorkflow(nodes, edges);
-    expect(result.errors.filter((e) => e.code === 'duplicate-edge')).toHaveLength(0);
+    expect(result.errors.filter((e) => e.code === 'fan-in-requires-junction')).toEqual([
+      expect.objectContaining({ nodeId: 'target' }),
+    ]);
+  });
+
+  it('allows different source nodes to connect into a junction', () => {
+    const nodes: Node[] = [
+      node('a', 0, 0),
+      node('b', 0, 180),
+      node('join', 240, 80, { activityType: 'junction', config: { mode: 'waitAll' } }),
+    ];
+    const edges: Edge[] = [
+      edge('e1', 'a', 'join'),
+      edge('e2', 'b', 'join'),
+    ];
+
+    const result = lintWorkflow(nodes, edges);
+    expect(result.errors.filter((e) => e.code === 'fan-in-requires-junction')).toHaveLength(0);
   });
 });
 

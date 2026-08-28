@@ -319,6 +319,63 @@ public class WorkflowDefinitionStructuralValidatorTests
         result.Error.Should().Be("edges[0].data.label must be a string");
     }
 
+    [Fact]
+    public void Validate_MultipleIncomingEdgesToOrdinaryActivity_IsInvalid()
+    {
+        var result = Validate("""
+        { "nodes": [
+            { "id": "a", "type": "activity", "data": { "activityType": "runScript" } },
+            { "id": "b", "type": "activity", "data": { "activityType": "runScript" } },
+            { "id": "target", "type": "activity", "data": { "activityType": "log" } }
+        ], "edges": [
+            { "id": "e1", "source": "a", "target": "target" },
+            { "id": "e2", "source": "b", "target": "target" }
+        ] }
+        """);
+
+        result.IsValid.Should().BeFalse();
+        result.Error.Should().Be("node 'target' has multiple incoming edges; insert a junction before it");
+        result.Code.Should().Be("fan-in-requires-junction");
+        result.NodeId.Should().Be("target");
+    }
+
+    [Fact]
+    public void Validate_DuplicateConnection_IsInvalidWithoutBeingReportedAsFanIn()
+    {
+        var result = Validate("""
+        { "nodes": [
+            { "id": "source", "type": "activity", "data": { "activityType": "runScript" } },
+            { "id": "target", "type": "activity", "data": { "activityType": "log" } }
+        ], "edges": [
+            { "id": "e1", "source": "source", "target": "target" },
+            { "id": "e2", "source": "source", "target": "target" }
+        ] }
+        """);
+
+        result.IsValid.Should().BeFalse();
+        result.Code.Should().Be("duplicate-edge");
+        result.NodeId.Should().Be("source");
+    }
+
+    [Fact]
+    public void Validate_MultipleIncomingEdgesToJunction_IsValid()
+    {
+        var result = Validate("""
+        { "nodes": [
+            { "id": "a", "type": "activity", "data": { "activityType": "runScript" } },
+            { "id": "b", "type": "activity", "data": { "activityType": "runScript" } },
+            { "id": "join", "type": "activity", "data": { "activityType": "junction", "config": { "mode": "waitAll" } } },
+            { "id": "target", "type": "activity", "data": { "activityType": "log" } }
+        ], "edges": [
+            { "id": "e1", "source": "a", "target": "join" },
+            { "id": "e2", "source": "b", "target": "join" },
+            { "id": "e3", "source": "join", "target": "target" }
+        ] }
+        """);
+
+        result.IsValid.Should().BeTrue();
+    }
+
     // ---------- full happy path ----------
 
     [Fact]

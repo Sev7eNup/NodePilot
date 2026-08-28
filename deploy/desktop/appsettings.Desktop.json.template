@@ -59,7 +59,7 @@
   "Logging": {
     "Format": "cmtrace",
     "LogLevel": {
-      "Default": "Warning",
+      "Default": "Information",
       "Microsoft.AspNetCore": "Warning",
       "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
       "Microsoft.EntityFrameworkCore.Database.Connection": "Warning",

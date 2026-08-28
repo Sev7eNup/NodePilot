@@ -1,14 +1,12 @@
 ; NodePilot server setup (Inno Setup 6).
 ;
-; A thin wizard in front of Install-NodePilot.ps1 - pages and payload, no installation logic.
-; Everything it collects goes into an ACL-protected JSON answer file which
-; deploy\Invoke-NodePilotSetup.ps1 reads and splats into the existing deployment scripts. That
-; indirection is not decoration: -PostgresPassword is a [SecureString] and cannot be passed on a
-; powershell.exe command line at all, and it gives /SILENT /ANSWERFILE= for SCCM for free.
+; A wizard in front of Install-NodePilot.ps1 - pages and payload, no installation logic. What it
+; collects goes into an ACL-protected JSON answer file that deploy\Invoke-NodePilotSetup.ps1 reads
+; and passes to the deployment scripts. A file rather than a command line, because
+; -PostgresPassword is a [SecureString], and it also enables /SILENT /ANSWERFILE= rollouts.
 ;
-; Deliberately NO [Run] section. [Run] cannot inspect an exit code, and the desktop installer's
-; equivalent silently swallows a failed provisioning run. Everything here goes through Exec() in
-; [Code] with the result checked. Test-DeploymentTemplates.ps1 pins that.
+; There is no [Run] section: [Run] cannot inspect an exit code. Everything runs through Exec() in
+; [Code] with the result checked. Test-DeploymentTemplates.ps1 enforces that.
 ;
 ; Built by deploy\server\Build-ServerInstaller.ps1, which passes the /D defines below.
 
@@ -46,29 +44,19 @@ SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
-; Windows Server 2022 is build 20348. The desktop installer pins 22000 because it targets
-; Windows 11 - copying that here would make the SERVER installer refuse to run on the only
-; operating system it actually targets.
+; Windows Server 2022 is build 20348. The desktop installer pins 22000 for Windows 11; that value
+; would make this server installer refuse to run on its own target platform.
 MinVersion=10.0.20348
 OutputDir={#OutputDir}
 OutputBaseFilename=NodePilot-Server-Setup-{#AppVersion}
 WizardStyle=modern
-; Bigger than default, measured rather than guessed. An earlier note here claimed "every page fits
-; at 100%" and reverted a previous attempt on that basis; the prerequisites page disproves it once
-; all ten checks report. Each row is "Title: Detail" (see the render loop), so at the default width
-; six of ten wrap to two lines, LayoutReadiness stacks ~238 px of rows into a ~309 px surface, and
-; the remediation box - which gets whatever is left - lands at ~30 px. That is one clipped line for
-; the field that has to show a CREATE LOGIN / CREATE USER block when the database check fails.
+; Larger than the default because the prerequisites page needs it: at the default width most check
+; rows wrap to two lines and the remediation box is left with about one line for a CREATE LOGIN /
+; CREATE USER block.
 ;
-; Width does most of the work: +25% (497 -> ~621 px) puts most rows back on one line, which shortens
-; the stack before height is even considered. Height then buys the explanation real room: +45%
-; (360 -> ~522 px, surface ~309 -> ~471 px) leaves ~210 px, about twelve lines. The window is
-; ~560 px tall including its frame and fits a 768 px server console.
-;
-; WizardResizable stays off regardless: the controls on the network and prerequisites pages are
-; positioned once, at wizard construction, and carry no anchors. A window the operator drags open
-; would grow around a certificate picker that stays where it was. A fixed larger START size is a
-; different thing and is safe - every control that must grow is already sized from SurfaceWidth.
+; WizardResizable stays off: the network and prerequisites pages position their controls once at
+; construction and carry no anchors, so a resized window would grow around them. A fixed larger
+; start size is safe, because every control that must grow is sized from SurfaceWidth.
 WizardSizePercent=125,145
 SetupIconFile={#StageDir}\setup-icon.ico
 LicenseFile={#StageDir}\LICENSE.txt
@@ -76,41 +64,33 @@ LicenseFile={#StageDir}\LICENSE.txt
 SetupLogging=yes
 
 [Files]
-; Everything setup needs AT RUNTIME is dontcopy, extracted to {tmp} on demand, because every
-; phase that uses it runs before Inno has copied a single file: the readiness page during the
-; wizard, and the installation itself from PrepareToInstall.
+; Everything setup needs at runtime is dontcopy and extracted to {tmp} on demand, because every
+; phase that uses it runs before Inno has copied any file: the readiness page during the wizard,
+; and the installation from PrepareToInstall.
 ;
-; The installation cannot live in ssPostInstall, which is the obvious place for it. Measured on
-; Inno 6.7.3: neither RaiseException nor Abort in ssPostInstall changes the exit code - a failed
-; install still reports 0. Under SCCM that is a deployment that claims success and installed
-; nothing. PrepareToInstall returns a message and exits 7, so failure is visible.
+; The installation cannot run in ssPostInstall: neither RaiseException nor Abort in that step
+; changes the exit code, so a failed install would still report success. PrepareToInstall returns
+; a message and exits 7, which is visible to whatever launched setup.
 ;
-; payload\ and deploy\ are separate staging trees holding the same scripts twice. Inno
-; deduplicates identical SOURCE files, so listing one file both dontcopy and with a DestDir
-; collapses the pair into a single entry and the dontcopy variant silently vanishes - which
-; showed up as the scripts being extracted into a literal "{app}\deploy" folder under {tmp}.
+; payload\ and deploy\ are separate staging trees holding the same scripts twice. Inno deduplicates
+; identical source files, so listing one file both dontcopy and with a DestDir collapses the pair
+; and the dontcopy variant disappears.
 Source: "{#StageDir}\payload\*";    Flags: dontcopy
 
-; The only thing that stays on disk: the deployment scripts, for the uninstaller wired up below
-; and for an operator who later wants to run Update-NodePilot.ps1 by hand. Copied after
-; PrepareToInstall, which is the right order - Install-NodePilot.ps1 wipes its install directory
-; before repopulating it, so anything placed there first would be deleted again.
+; The only files that stay on disk: the deployment scripts, for the uninstaller below and for
+; running Update-NodePilot.ps1 by hand later. Copied after PrepareToInstall, because
+; Install-NodePilot.ps1 wipes its install directory before repopulating it.
 Source: "{#StageDir}\deploy\*";     DestDir: "{app}\deploy"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [UninstallDelete]
-; Inno decides whether {app} is empty BEFORE it removes its own uninstaller from inside it, so
-; without this the uninstall finishes leaving an empty C:\Program Files\NodePilot behind. This
-; entry runs last and clears it. Observed on the lab host; an empty folder is a small thing, but a
-; leftover folder is what makes an operator wonder what else was left.
+; Inno decides whether {app} is empty before it removes its own uninstaller from inside it, so
+; without this the uninstall leaves an empty installation folder behind. This entry runs last.
 Type: dirifempty; Name: "{app}"
 
-; Deliberately NO [UninstallRun] section, for the same two reasons [Run] is absent above.
-;
-; It cannot inspect an exit code - and, measured on the lab host, it cannot carry an uninstall-time
-; decision either: Inno evaluates {code:...} in [UninstallRun] parameters at INSTALL time and
-; records the resulting string in unins000.dat. A /PURGEDATA=1 given to the uninstaller reached the
-; uninstaller's command line correctly and still never reached the script, because the argument
-; string had been frozen weeks earlier. The uninstall is invoked from [Code] instead.
+; No [UninstallRun] section, for the same reason [Run] is absent above, plus one more: Inno
+; evaluates {code:...} in [UninstallRun] parameters at install time and freezes the result in
+; unins000.dat, so an uninstall-time switch such as /PURGEDATA never reaches the script. The
+; uninstall is invoked from [Code] instead.
 
 [Code]
 const
@@ -119,15 +99,14 @@ const
   ExitInstallFailed = 4;
   CheckCount = 10;
 
-  // How long to keep waiting for the adapter before giving up on it. Generous on purpose: the
-  // longest legitimate run measured is about three minutes, and the only thing this guards against
-  // is an adapter killed from Task Manager, where result.ini never appears and the loop would
-  // otherwise wait forever.
+  // How long to wait for the adapter before giving up. Generous on purpose: the only case this
+  // guards against is an adapter killed from Task Manager, where result.ini never appears and the
+  // loop would otherwise wait forever.
   AdapterTimeoutMs = 2700000;   // 45 minutes
   AdapterPollMs = 250;
 
-  // Status glyphs. Written as character codes so this file stays pure ASCII on disk - a .iss
-  // that needs a specific encoding to compile is a trap for the next editor.
+  // Status glyphs. Written as character codes so this file stays pure ASCII on disk; a .iss that
+  // needs a specific encoding to compile is easy to break when editing.
   MarkPass = #$2713;  // check mark
   MarkFail = #$2717;  // ballot X
   MarkWarn = '!';
@@ -152,39 +131,37 @@ var
   CheckLabels: array[0..CheckCount - 1] of TNewStaticText;
   CheckMarks: array[0..CheckCount - 1] of TNewStaticText;
   CheckFixes: array[0..CheckCount - 1] of TNewCheckBox;
-  // Whether a fix that arrives pre-ticked has already had its default applied. Applied ONCE per
-  // run, never re-applied: a probe runs again after every fix attempt, and a default that came
-  // back each time would re-tick a box the operator had just cleared - Next would then run the
-  // same failing fix again and never leave the page.
+  // Whether a pre-ticked fix has already had its default applied. Applied once per run: a probe
+  // runs again after every fix attempt, and re-applying the default would re-tick a box the
+  // operator just cleared, so Next would run the same failing fix again.
   CheckFixDefaulted: array[0..CheckCount - 1] of Boolean;
   RemediationBox: TNewMemo;
   RemediationText: String;
   RecheckButton: TNewButton;
   SaveButton: TNewButton;
 
-  // Certificate picker on the TLS page. The thumbprint of a certificate already installed on the
-  // machine is otherwise only reachable through the certificate MMC, whose copy button prepends an
-  // invisible U+200E - which is why the installer strips non-hex characters before measuring the
-  // length. Picking one here skips that trip entirely.
+  // Certificate picker on the TLS page. A thumbprint of an installed certificate is otherwise only
+  // reachable through the certificate MMC, whose copy button prepends an invisible U+200E, which is
+  // why the installer strips non-hex characters before measuring the length.
   CertCombo: TNewComboBox;
   CertThumbprints: array of String;
 
-  // Whether the bundled psql client has been extracted to {tmp} yet. Extraction is idempotent but
-  // not free, and it is attempted at most once per run whether or not this build carries one.
+  // Whether the bundled psql client has been extracted to {tmp} yet. Extraction is attempted at
+  // most once per run, whether or not this build carries a client.
   PgClientExtracted: Boolean;
 
-  // The runtime installer is a dontcopy payload too. Interactive auto-fix runs before
-  // PrepareToInstall, so extraction cannot be deferred to that later phase. Keep the operation
-  // idempotent because silent and interactive provisioning share the same helper.
+  // The runtime installer is a dontcopy payload as well. Interactive auto-fix runs before
+  // PrepareToInstall, so extraction cannot wait for that phase. The helper is shared by the silent
+  // and interactive paths and stays idempotent.
   RuntimePayloadExtracted: Boolean;
 
-  // Drawn while the adapter installs. The wizard used to sit on "Preparing to Install" for the
-  // whole run - measured 136 s healthy, 187 s when the health probe is lost - showing nothing.
+  // Drawn while the adapter installs, so the wizard does not sit on "Preparing to Install" with no
+  // feedback for the whole run.
   ProgressPage: TOutputProgressWizardPage;
 
-  // Finish page. The values here exist nowhere else the operator can reach: the API key is
-  // generated by the adapter and printed to a console that does not exist under a hidden Exec,
-  // and install-report.txt omits it by design.
+  // Finish page. The values here are reachable nowhere else: the API key is generated by the
+  // adapter and printed to a console that does not exist under a hidden Exec, and
+  // install-report.txt omits it by design.
   FinishMemo: TNewMemo;
   FinishSaveButton: TNewButton;
   FinishSummary: String;
@@ -213,30 +190,27 @@ begin
     Result := 'NodePilot';
 end;
 
-// Always the {tmp} copy, never {app}\deploy: the wizard's readiness page runs before any file has
-// been installed, and using two different locations depending on the phase is how one of them
-// rots. {app}\deploy\ still ships, for the uninstaller and for later manual use.
+// Always the {tmp} copy, never {app}\deploy: the readiness page runs before any file is installed,
+// and two locations depending on the phase would drift apart. {app}\deploy\ still ships, for the
+// uninstaller and for later manual use.
 function AdapterPath(): String;
 begin
   Result := ExpandConstant('{tmp}\Invoke-NodePilotSetup.ps1');
 end;
 
-// -PayloadRoot passed explicitly rather than derived from the script's own location. It happens to
-// be the same directory today, but "the payload is wherever this script happens to sit" is the kind
-// of assumption that survives right up until someone moves one of them.
+// -PayloadRoot is passed explicitly rather than derived from the script's own location. The two
+// are the same directory today, but that is not guaranteed if either one moves.
 function AdapterArguments(const Arguments: String): String;
 begin
   Result := '-NoProfile -ExecutionPolicy Bypass -File "' + AdapterPath() + '"' +
     ' -PayloadRoot "' + ExpandConstant('{tmp}') + '" ' + Arguments;
 end;
 
-// The bundled psql client, extracted on first need rather than at startup: it is eight megabytes
-// that an installation onto SQL Server never touches, and the wizard has to stay responsive on the
-// page where it is first wanted.
+// The bundled psql client, extracted on first need rather than at startup: it is several megabytes
+// an installation onto SQL Server never touches, and the wizard has to stay responsive.
 //
-// The build script's -PgBinariesPath is OPTIONAL, so a setup with no client in it is a normal
-// build, not a broken one - hence the try/except rather than a check. The adapter decides what to
-// do about it by looking for the file, so nothing here has to report anything.
+// The build script's -PgBinariesPath is optional, so a setup without a client is a normal build,
+// hence try/except rather than a check. The adapter decides what to do by looking for the file.
 procedure EnsurePgClient();
 begin
   if PgClientExtracted then Exit;
@@ -262,9 +236,9 @@ begin
     ewWaitUntilTerminated, ResultCode);
 end;
 
-// Same call, returning immediately. ResultCode is meaningless here by definition - the process has
-// not finished - so the only thing worth reading from it is whether the process started at all.
-// The caller learns the outcome from the adapter's result file instead.
+// Same call, returning immediately. ResultCode is meaningless here because the process has not
+// finished, so it only says whether the process started. The caller reads the outcome from the
+// adapter's result file.
 function StartPowerShell(const Arguments: String): Boolean;
 var
   Ignored: Integer;
@@ -272,10 +246,10 @@ begin
   Result := Exec('powershell.exe', AdapterArguments(Arguments), '', SW_HIDE, ewNoWait, Ignored);
 end;
 
-// The adapter writes the session path with Set-Content -Encoding UTF8, which on Windows
-// PowerShell 5.1 means a byte-order mark. LoadStringFromFile hands back raw bytes as an
-// AnsiString, so the BOM arrives as three leading characters and Trim() does not touch them -
-// producing a path that looks right in a log and resolves to nothing. Stripped on both sides.
+// The adapter writes the session path with Set-Content -Encoding UTF8, which on Windows PowerShell
+// 5.1 adds a byte-order mark. LoadStringFromFile returns raw bytes as an AnsiString, so the BOM
+// arrives as leading characters that Trim() does not remove, giving a path that resolves to
+// nothing. Stripped in both encodings.
 function StripBom(const Value: String): String;
 begin
   Result := Value;
@@ -286,9 +260,8 @@ begin
   Result := Trim(Result);
 end;
 
-// Escapes a string for embedding in JSON. The whole Pascal-side JSON surface is this one
-// function, which is why the answer file is written here and parsed - strictly - on the
-// PowerShell side.
+// Escapes a string for embedding in JSON. This is the whole Pascal-side JSON surface, which is why
+// the answer file is written here and parsed strictly on the PowerShell side.
 function JsonString(const Value: String): String;
 var
   I: Integer;
@@ -362,9 +335,8 @@ begin
   end;
 end;
 
-// Locates the uninstaller this setup family registered. Empty when the installation came from
-// the zip package: that path leaves the HKLM marker DetectExistingInstallation reads, but no
-// unins000.exe, and offering a button that cannot work is worse than saying so.
+// Locates the uninstaller this setup family registered. Empty when the installation came from the
+// zip package: that leaves the HKLM marker DetectExistingInstallation reads, but no unins000.exe.
 function UninstallerPath(): String;
 var
   Raw: String;
@@ -396,15 +368,11 @@ end;
 
 // Built as a line array rather than one concatenated string so it can be written with
 // SaveStringsToUTF8File. This Inno version has no SaveStringToUTF8File, and the AnsiString-based
-// SaveStringToFile would encode a password or host name containing non-ASCII characters in the
-// system codepage - which the adapter, reading UTF-8, would then reject or mangle.
-// Which auto-fix the operator ticked, looked up by check id rather than by position.
+// SaveStringToFile would encode non-ASCII passwords or host names in the system codepage, which
+// the adapter, reading UTF-8, would reject or mangle.
 //
-// It used to read CheckFixes[5] for the database fix, and that was correct exactly until the port
-// check was inserted at index 2 and pushed every later check down by one. The tick then landed on
-// the checkbox of a row that offers no fix at all, the answer file said false, provisioning did
-// nothing, and the wizard re-probed to the same red line - "I tick it, I press Next, nothing
-// happens", with no error anywhere because nothing had failed.
+// Which auto-fix the operator ticked, looked up by check id rather than by position: inserting a
+// check shifts every later index, and the tick would then be read off the wrong row.
 function IsFixRequested(const Id: String): Boolean;
 var
   I: Integer;
@@ -413,8 +381,7 @@ begin
   for I := 0 to CheckCount - 1 do
     if CheckIds[I] = Id then
     begin
-      // Visible as well as checked: a hidden box can still carry a tick from an earlier probe, and
-      // acting on one the operator cannot currently see is not what they asked for.
+      // Visible as well as checked: a hidden box can still carry a tick from an earlier probe.
       Result := CheckFixes[I].Visible and CheckFixes[I].Checked;
       Exit;
     end;
@@ -497,10 +464,9 @@ begin
   AddLine(Lines, Count, '    "thumbprint": ' + JsonString(Trim(NetworkPage.Values[4])) + ',');
   AddLine(Lines, Count, '    "source": "existing"');
 
-  // The probe file carries no fix flags - it is a question, not an instruction. It DOES carry the
-  // PostgreSQL superuser, because whether those credentials exist is what decides if the Postgres
-  // row may offer a fix at all, and a probe that cannot see them would never show the checkbox
-  // that makes them useful.
+  // The probe file carries no fix flags - it asks a question rather than giving an instruction. It
+  // does carry the PostgreSQL superuser, because whether those credentials exist decides if the
+  // Postgres row may offer a fix at all.
   if ForProbe and (not IsSqlServerSelected()) and (Trim(PostgresAuthPage.Values[3]) <> '') then
   begin
     AddLine(Lines, Count, '  },');
@@ -517,11 +483,10 @@ begin
     AddLine(Lines, Count, '  "provisioning": {');
     AddLine(Lines, Count, '    "installDotnetRuntime": ' + JsonBool(IsFixRequested('dotnet')) + ',');
     AddLine(Lines, Count, '    "generateSelfSignedCertificate": ' + JsonBool(IsFixRequested('certificate')) + ',');
-    // Two rows, one key: Provision-NodePilotDatabase.ps1 is existence-guarded end to end, so the
-    // same run covers "nothing exists yet" and "everything exists except the service identity's
-    // grant" without being told which it is. On the Postgres path the same key routes to
-    // Provision-NodePilotPostgres.ps1 - which script runs follows from the provider, not from a
-    // second flag that could contradict the first.
+    // Two rows, one key: Provision-NodePilotDatabase.ps1 is existence-guarded end to end, so one
+    // run covers both "nothing exists yet" and "everything exists except the service identity's
+    // grant". On the Postgres path the same key routes to Provision-NodePilotPostgres.ps1; the
+    // script follows from the provider, not from a second flag that could contradict the first.
     AddLine(Lines, Count, '    "createDatabaseAndLogin": ' +
       JsonBool(IsFixRequested('database') or IsFixRequested('databaseServiceLogin')) + ',');
     if not IsSqlServerSelected() then
@@ -540,13 +505,11 @@ end;
 
 procedure WriteAnswerFile(const AnswerMode: String; const ForProbe: Boolean);
 begin
-  // /ANSWERFILE wins over the pages. This is the unattended path - SCCM, GPO, a golden image -
-  // and it is why the answer file exists as a file rather than as a command line in the first
-  // place: -PostgresPassword is a [SecureString] and cannot be passed as an argument at all.
+  // /ANSWERFILE wins over the pages. This is the unattended path, and the reason the answer file
+  // is a file rather than a command line: -PostgresPassword is a [SecureString].
   //
-  // The supplied file is COPIED into the session directory rather than used where it lies, so it
-  // inherits that directory's restrictive DACL and gets shredded with it. The operator's original
-  // is left alone; managing that one is their business.
+  // The supplied file is copied into the session directory rather than used where it lies, so it
+  // inherits that directory's restrictive DACL and is shredded with it. The original is left alone.
   if AnswerFileOverride <> '' then
   begin
     if not FileCopy(AnswerFileOverride, AnswerFilePath(), False) then

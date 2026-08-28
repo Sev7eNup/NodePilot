@@ -1399,7 +1399,7 @@ public static class SettingsSectionAdapters
         Format = configRoot["Logging:Format"] ?? "text",
         LogLevel = new LogLevelsDto
         {
-            Default = configRoot["Logging:LogLevel:Default"] ?? "Warning",
+            Default = configRoot["Logging:LogLevel:Default"] ?? "Information",
             AspNetCore = configRoot["Logging:LogLevel:Microsoft.AspNetCore"] ?? "Warning",
             EfCoreCommand = configRoot["Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command"] ?? "Warning",
             EfCoreConnection = configRoot["Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Connection"] ?? "Warning",
@@ -1473,7 +1473,7 @@ public static class SettingsSectionAdapters
             Format = section["Format"]?.GetValue<string>() ?? "text",
             LogLevel = new LogLevelsDto
             {
-                Default = levels["Default"]?.GetValue<string>() ?? "Warning",
+                Default = levels["Default"]?.GetValue<string>() ?? "Information",
                 AspNetCore = levels["Microsoft.AspNetCore"]?.GetValue<string>() ?? "Warning",
                 EfCoreCommand = levels["Microsoft.EntityFrameworkCore.Database.Command"]?.GetValue<string>() ?? "Warning",
                 EfCoreConnection = levels["Microsoft.EntityFrameworkCore.Database.Connection"]?.GetValue<string>() ?? "Warning",

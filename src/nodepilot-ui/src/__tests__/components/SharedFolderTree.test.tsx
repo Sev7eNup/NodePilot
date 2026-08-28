@@ -64,7 +64,7 @@ function makeFolder(overrides: Partial<SharedFolder>): SharedFolder {
     createdAt: new Date().toISOString(),
     createdByUserId: null,
     workflowCount: 0,
-    capabilities: { canRead: true, canRun: false, canEdit: false, canAdmin: false },
+    capabilities: { canRead: true, canRun: false, canEdit: false, canDelete: false, canAdmin: false },
     ...overrides,
   };
 }
@@ -110,7 +110,7 @@ describe('SharedFolderTree', () => {
     mockApi.list.mockResolvedValue([
       makeFolder({
         id: ROOT_FOLDER_ID, parentFolderId: null, name: 'Root', path: '/', depth: 0,
-        capabilities: { canRead: true, canRun: false, canEdit: false, canAdmin: false },
+        capabilities: { canRead: true, canRun: false, canEdit: false, canDelete: false, canAdmin: false },
       }),
     ]);
 
@@ -126,12 +126,12 @@ describe('SharedFolderTree', () => {
     mockApi.list.mockResolvedValueOnce([
       makeFolder({
         id: ROOT_FOLDER_ID, parentFolderId: null, name: 'Root', path: '/', depth: 0,
-        capabilities: { canRead: true, canRun: true, canEdit: true, canAdmin: true },
+        capabilities: { canRead: true, canRun: true, canEdit: true, canDelete: true, canAdmin: true },
       }),
     ]);
     mockApi.list.mockResolvedValue([
       makeFolder({ id: ROOT_FOLDER_ID, parentFolderId: null, name: 'Root', path: '/', depth: 0,
-        capabilities: { canRead: true, canRun: true, canEdit: true, canAdmin: true } }),
+        capabilities: { canRead: true, canRun: true, canEdit: true, canDelete: true, canAdmin: true } }),
       makeFolder({ id: 'new', parentFolderId: ROOT_FOLDER_ID, name: 'NewFolder', path: '/NewFolder', depth: 1 }),
     ]);
     mockApi.create.mockResolvedValue({});
@@ -158,15 +158,15 @@ describe('SharedFolderTree', () => {
   describe('context menu', () => {
     const editableFolder = makeFolder({
       id: 'finance', parentFolderId: ROOT_FOLDER_ID, name: 'Finance', path: '/Finance', depth: 1,
-      capabilities: { canRead: true, canRun: true, canEdit: true, canAdmin: true },
+      capabilities: { canRead: true, canRun: true, canEdit: true, canDelete: true, canAdmin: true },
     });
     const readOnlyFolder = makeFolder({
       id: 'reports', parentFolderId: ROOT_FOLDER_ID, name: 'Reports', path: '/Reports', depth: 1,
-      capabilities: { canRead: true, canRun: false, canEdit: false, canAdmin: false },
+      capabilities: { canRead: true, canRun: false, canEdit: false, canDelete: false, canAdmin: false },
     });
     const rootFolder = makeFolder({
       id: ROOT_FOLDER_ID, parentFolderId: null, name: 'Root', path: '/', depth: 0,
-      capabilities: { canRead: true, canRun: true, canEdit: true, canAdmin: true },
+      capabilities: { canRead: true, canRun: true, canEdit: true, canDelete: true, canAdmin: true },
     });
 
     it('opens menu on right-click of an editable non-root folder', async () => {
@@ -331,7 +331,7 @@ describe('SharedFolderTree', () => {
     it('hides the permissions entry when the caller has canEdit but not canAdmin', async () => {
       const editorOnly = makeFolder({
         id: 'ops', parentFolderId: ROOT_FOLDER_ID, name: 'Ops', path: '/Ops', depth: 1,
-        capabilities: { canRead: true, canRun: true, canEdit: true, canAdmin: false },
+        capabilities: { canRead: true, canRun: true, canEdit: true, canDelete: false, canAdmin: false },
       });
       mockApi.list.mockResolvedValue([rootFolder, editorOnly]);
 
@@ -346,6 +346,7 @@ describe('SharedFolderTree', () => {
       await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByText('Ops') });
 
       expect(screen.getByTestId('shared-folder-menu-rename')).toBeInTheDocument();
+      expect(screen.queryByTestId('shared-folder-menu-delete')).not.toBeInTheDocument();
       expect(screen.queryByTestId('shared-folder-menu-permissions')).not.toBeInTheDocument();
     });
 
@@ -385,7 +386,7 @@ describe('SharedFolderTree', () => {
 
   describe('bulk selection', () => {
     // The tree is also the designer's folder browser, so every affordance here is opt-in.
-    const editable = { canRead: true, canRun: true, canEdit: true, canAdmin: true };
+    const editable = { canRead: true, canRun: true, canEdit: true, canDelete: true, canAdmin: true };
     const rootFolder = makeFolder({
       id: ROOT_FOLDER_ID, parentFolderId: null, name: 'Root', path: '/', depth: 0,
       capabilities: editable,

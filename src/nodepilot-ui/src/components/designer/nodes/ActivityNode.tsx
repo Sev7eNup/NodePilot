@@ -1120,7 +1120,7 @@ function DisabledBadge({ iconBox, positionOverride }: Readonly<{ iconBox: number
   );
 }
 
-/* ---- Fan-in Badge (auto Junction indicator) ---- */
+/* ---- Fan-in Badge (Junction mode or invalid direct fan-in) ---- */
 
 function FanInBadge({ count, activityType, config, iconBox, positionOverride }: Readonly<{
   count: number;
@@ -1160,10 +1160,10 @@ function FanInBadge({ count, activityType, config, iconBox, positionOverride }: 
       textCls: 'text-white',
     },
     implicit: {
-      label: String(count),
+      label: `!${count}`,
       tip: t('nodes.fanIn.implicit', { count }),
-      bgCls: 'bg-slate-500',
-      textCls: 'text-slate-100',
+      bgCls: 'bg-red-600',
+      textCls: 'text-white',
     },
   };
 

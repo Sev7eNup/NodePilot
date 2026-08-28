@@ -32,6 +32,11 @@ _Avoid_: Host row, target record
 An Activity that can act as a Workflow entry point.
 _Avoid_: Schedule, listener, webhook
 
+**Junction**:
+A control-flow Activity that explicitly joins multiple incoming branches. It is the only Activity
+allowed to have more than one incoming edge; its mode is `waitAll`, `waitAny`, or `waitNofM`.
+_Avoid_: Implicit join, ordinary Activity with multiple inputs
+
 **Workflow Execution**:
 One run of a Workflow, including its status, input parameters, step results, audit-relevant ownership, and parent-child lineage.
 _Avoid_: Run, job instance
@@ -73,6 +78,7 @@ _Avoid_: circuit breaker tripped/reset terminology in user-facing copy - the UI 
 - A **Workflow** contains exactly one **Workflow Definition**.
 - A **Workflow Definition** contains zero or more **Activities** and edges.
 - A **Trigger** is an **Activity** that can become a root of the runtime graph.
+- A **Junction** is the only **Activity** that can receive multiple incoming edges.
 - An **Activity Catalog** describes static facts about every executable **Activity**, including whether it is a **Remote Activity** (the `IsRemote` flag).
 - A **Remote Activity** executes against one **Managed Machine** over WinRM.
 - A **Dispatch Intent** creates one **Pending Execution**.

@@ -55,6 +55,14 @@ keep it simple, prefer the `condition` shortcut where possible. `sourceHandle` /
 `targetHandle` pin which port an edge attaches to — preserve them on edges you are
 not re-routing. `data.disabled: true` skips an edge.
 
+## Fan-in topology
+
+An ordinary Activity may have at most one incoming edge. Whenever two or more
+branches converge, route every branch into an explicit `junction` Activity and
+connect that Junction to the downstream Activity. Choose its `config.mode`
+deliberately: `waitAll`, `waitAny`, or `waitNofM` (with `requiredCount`). Never
+generate an implicit fan-in directly on a non-Junction Activity.
+
 <!--ACTIVITY_CATALOG-->
 
 ## Variable substitution

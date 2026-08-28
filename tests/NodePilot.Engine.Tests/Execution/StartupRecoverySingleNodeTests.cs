@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
@@ -106,6 +107,37 @@ public sealed class StartupRecoverySingleNodeTests : IDisposable
         runningRow.ErrorMessage.Should().Contain("orphaned by an API process restart");
         pendingRow.ErrorMessage.Should().Contain("queued but not dispatched");
         pausedRow.ErrorMessage.Should().Contain("Paused execution lost in-memory debug state");
+    }
+
+    [Fact]
+    public async Task SingleNode_ReleasesIdempotencyReservation_ForNeverStartedPendingOnly()
+    {
+        var wf = SeedWorkflow();
+        var pending = AddExecution(wf.Id, ExecutionStatus.Pending);
+        var running = AddExecution(wf.Id, ExecutionStatus.Running);
+        _db.IdempotencyKeys.AddRange(
+            new IdempotencyKey
+            {
+                Id = Guid.NewGuid(), Key = "pending-key", WorkflowId = wf.Id,
+                ExecutionId = pending, ExpiresAt = DateTime.UtcNow.AddHours(1)
+            },
+            new IdempotencyKey
+            {
+                Id = Guid.NewGuid(), Key = "running-key", WorkflowId = wf.Id,
+                ExecutionId = running, ExpiresAt = DateTime.UtcNow.AddHours(1)
+            });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        await StartupRecovery.RecoverOrphanedExecutionsAsync(_db, NullLogger.Instance);
+
+        var keys = await _db.IdempotencyKeys.AsNoTracking().OrderBy(k => k.Key).ToListAsync();
+        keys.Should().ContainSingle().Which.Key.Should().Be("running-key",
+            "an in-flight execution has an ambiguous external side effect and must remain deduplicated");
+        (await _db.WorkflowExecutions.FindAsync(pending))!.CancelledBy
+            .Should().Be("reconciler-pending");
+        (await _db.WorkflowExecutions.FindAsync(running))!.CancelledBy
+            .Should().Be("reconciler");
     }
 
     [Fact]

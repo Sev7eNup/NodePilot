@@ -47,6 +47,7 @@ export interface LintResult {
  *
  * Rules:
  *   error:   Isolated node (no incoming or outgoing edge, and not a trigger)
+ *   error:   Multiple incoming edges on a non-junction activity
  *   error:   Duplicate outputVariable in the workflow (downstream references would resolve
  *            to whichever of the two happens to win)
  *   warning: Orphan root (a non-trigger node with no incoming edges but some outgoing ones,
@@ -113,11 +114,27 @@ export function lintWorkflow(
   // otherwise disabled edges would feed downstream paths that shouldn't actually run.
   const rawIn = new Map<string, number>();
   const rawOut = new Map<string, number>();
+  const incomingSources = new Map<string, Set<string>>();
   for (const n of liveNodes) { rawIn.set(n.id, 0); rawOut.set(n.id, 0); }
   for (const e of edges) {
     if (!liveNodeIds.has(e.source) || !liveNodeIds.has(e.target)) continue;
     rawOut.set(e.source, (rawOut.get(e.source) ?? 0) + 1);
     rawIn.set(e.target, (rawIn.get(e.target) ?? 0) + 1);
+    const sources = incomingSources.get(e.target) ?? new Set<string>();
+    sources.add(e.source);
+    incomingSources.set(e.target, sources);
+  }
+
+  for (const n of liveNodes) {
+    const activityType = (n.data as Record<string, unknown>)?.activityType as string | undefined;
+    if ((incomingSources.get(n.id)?.size ?? 0) > 1 && activityType?.toLowerCase() !== 'junction') {
+      errors.push({
+        severity: 'error',
+        nodeId: n.id,
+        code: 'fan-in-requires-junction',
+        message: `"${getLabel(n)}" hat mehrere eingehende Verbindungen. Füge davor eine Junction ein.`,
+      });
+    }
   }
 
   // Roots are EXCLUSIVELY (non-disabled) trigger nodes — exactly matching the engine. There is

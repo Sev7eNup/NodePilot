@@ -14,7 +14,12 @@ public record SharedFolderResponse(
     int WorkflowCount,
     SharedFolderCapabilities Capabilities);
 
-public record SharedFolderCapabilities(bool CanRead, bool CanRun, bool CanEdit, bool CanAdmin);
+public record SharedFolderCapabilities(
+    bool CanRead,
+    bool CanRun,
+    bool CanEdit,
+    bool CanDelete,
+    bool CanAdmin);
 
 public record CreateSharedFolderRequest(Guid? ParentFolderId, string Name);
 

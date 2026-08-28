@@ -29,7 +29,7 @@ function folder(id: string, parentFolderId: string | null, workflowCount = 0): S
     createdAt: '2026-01-01T00:00:00Z',
     createdByUserId: null,
     workflowCount,
-    capabilities: { canRead: true, canRun: true, canEdit: true, canAdmin: false },
+    capabilities: { canRead: true, canRun: true, canEdit: true, canDelete: false, canAdmin: false },
   };
 }
 

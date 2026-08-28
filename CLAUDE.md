@@ -270,6 +270,7 @@ Contract-Derivation: `GET /{id}/contract` liefert Inputs aus `manualTrigger.para
 ## WorkflowEngine — Execution-Modell
 
 - **Event-driven:** Queue + `inFlight`-Dict. Roots = **ausschließlich Trigger-Nodes** (`manualTrigger`/`scheduleTrigger`/`webhookTrigger`/`fileWatcherTrigger`/`databaseTrigger`/`eventLogTrigger`); ohne (aktiven) Trigger → 0 Roots → Execution `Failed`. **Kein** `inDegree==0`-Fallback. Disabled Trigger nie Root. Orphan-/Nicht-Trigger-Activities ohne eingehende Edge laufen **nie** → `Skipped`.
+- **Expliziter Fan-in:** Nur eine `junction` darf mehrere eingehende Edges haben; jede andere Activity hat maximal eine. Designer und SCOrch-Import fügen bei Bedarf eine `waitAll`-Junction ein, die Strukturvalidierung schützt Save/Publish/API. Junction-Conditions werden über alle relevanten Eingänge ausgewertet, nicht über die zuletzt abgeschlossene Edge.
 - **Cancellation:** `_runningExecutions` Dict (Guid → CTS).
 - **Per-Step-DI-Scope:** eigener Scope pro Step → scope-lokaler `DbContext`.
 - **Startup-Reconciler:** hängende `Running`/`Pending`/`Paused` → `Cancelled`.
@@ -357,16 +358,16 @@ Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pf
 | `GET\|POST\|PUT /api/credentials` | ✓ | ✓ | ✗ |
 | `POST /api/executions/{id}/cancel` | ✓ | ✓ | ✗ |
 | `DELETE /{workflows,machines,credentials}/{id}` | ✓ | ✗ | ✗ |
-| `DELETE /api/shared-workflow-folders/{id}[?recursive=true]` | Folder-`Edit` — **auch mit Inhalt** | | |
+| `DELETE /api/shared-workflow-folders/{id}` | Folder-`Edit`, nur leer | Folder-`Edit`, nur leer | ✗ |
+| `DELETE /api/shared-workflow-folders/{id}?recursive=true` | ✓ | ✗ | ✗ |
 | `GET /api/alerting/rules`, `POST /preview-filter` | ✓ | ✓ | ✗ |
 | `POST/PUT/DELETE /api/alerting/rules`, `POST /{id}/enable\|disable\|test-fire` | ✓ | ✗ | ✗ |
 | `POST /api/trigger/{name}` | API-Key via `X-Api-Key`-Header |
 
-**Ordner-Löschen weicht bewusst ab:** es hängt an Folder-`Edit`, nicht an Admin — auch mit
-`?recursive=true`, das Unterordner und die darin liegenden Workflows mitnimmt. Ein FolderEditor
-kann darüber also Workflows löschen, die ihm `DELETE /api/workflows/{id}` (Admin-only) verwehrt.
-Produkt-Entscheidung, kein Versehen: der Ordner ist die Einheit, die ein Team verwaltet. Die
-Rechte auf dem Subtree sind dabei gedeckt, weil Grants über die Ahnenkette wirken.
+**Ordner-Löschen hat zwei Sicherheitsgrenzen:** Ein leerer Ordner bleibt eine Folder-`Edit`-
+Mutation. `?recursive=true` entfernt dagegen auch Workflows und deren Execution-Historie und ist
+deshalb wie `DELETE /api/workflows/{id}` global Admin-only. Die Folder-Capabilities liefern dafür
+`canDelete` getrennt von `canEdit`; die UI darf den rekursiven Delete nicht aus `canEdit` ableiten.
 
 **Der Global-Variablen-Ordnerbaum kennt dieselbe Mechanik, bleibt aber Admin-only.**
 `DELETE /api/global-variable-folders/{id}[?recursive=true]` löscht Unterordner samt Variablen,
@@ -434,7 +435,7 @@ Getrennt vom Workflow-Export: voller DR-Snapshot der Konfiguration (Workflows+Fo
 - **Kein Root (trigger-los oder nur Zyklen):** Nodes vorhanden, aber kein (aktiver) Trigger → 0 Roots → Execution `Failed` (ErrorMessage nennt den fehlenden Trigger/Start). **Leerer** Workflow (0 Nodes) → läuft mit 0 Steps durch (`Succeeded`).
 - **`POST /execute`:** asynchron, 202 + ExecutionId. Fortschritt via SignalR.
 - **Workflow-Version-History:** `Update`/`Rollback` snapshotten vorherige Definition.
-- **Idempotency-Keys:** `POST /api/trigger/{name}` akzeptiert `Idempotency-Key`-Header; Replay/Reservation gilt nur innerhalb desselben authentifizierten External-Trigger-Key-Principals und Workflows.
+- **Idempotency-Keys:** `POST /api/trigger/{name}` akzeptiert `Idempotency-Key`-Header; Replay/Reservation gilt nur innerhalb desselben authentifizierten External-Trigger-Key-Principals und Workflows. Startup/Failover cancelt nicht gestartete Pending Executions und gibt nur deren Reservation frei (`reconciler-pending`/`failover-pending`), damit derselbe Key neu zustellen kann. Für bereits gestartete Executions bleibt die Reservation wegen unbekannter externer Seiteneffekte bestehen.
 - **Node-Level `disabled`:** `data.disabled: true` → Node wird `Skipped`, Downstream ohne andere Quellen auch.
 - **Step-Debugger:** `POST /execute` mit `debug: true` → Breakpoints, SignalR `StepPaused`, Resume via `POST /executions/{id}/resume`.
 

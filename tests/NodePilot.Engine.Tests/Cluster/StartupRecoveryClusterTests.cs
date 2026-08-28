@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
@@ -131,14 +132,33 @@ public sealed class StartupRecoveryClusterTests : IDisposable
         var wf = SeedWorkflow();
         var pending = SeedExecution(wf.Id, ExecutionStatus.Pending, ownerNodeId: "dead-leader");
         var paused = SeedExecution(wf.Id, ExecutionStatus.Paused, ownerNodeId: "dead-leader");
+        _db.IdempotencyKeys.AddRange(
+            new IdempotencyKey
+            {
+                Id = Guid.NewGuid(), Key = "pending-key", WorkflowId = wf.Id,
+                ExecutionId = pending, ExpiresAt = DateTime.UtcNow.AddHours(1)
+            },
+            new IdempotencyKey
+            {
+                Id = Guid.NewGuid(), Key = "paused-key", WorkflowId = wf.Id,
+                ExecutionId = paused, ExpiresAt = DateTime.UtcNow.AddHours(1)
+            });
+        await _db.SaveChangesAsync();
         SetLease("node-a", 2);
 
         var recovered = await StartupRecovery.RecoverOrphanedExecutionsAsync(
             _db, NullLogger.Instance, ourNodeId: "node-a", leaseEpoch: 2);
 
         recovered.Should().Be(2);
-        (await _db.WorkflowExecutions.FindAsync(pending))!.Status.Should().Be(ExecutionStatus.Cancelled);
-        (await _db.WorkflowExecutions.FindAsync(paused))!.Status.Should().Be(ExecutionStatus.Cancelled);
+        var pendingRow = (await _db.WorkflowExecutions.FindAsync(pending))!;
+        pendingRow.Status.Should().Be(ExecutionStatus.Cancelled);
+        pendingRow.CancelledBy.Should().Be("failover-pending");
+        var pausedRow = (await _db.WorkflowExecutions.FindAsync(paused))!;
+        pausedRow.Status.Should().Be(ExecutionStatus.Cancelled);
+        pausedRow.CancelledBy.Should().Be("failover");
+        var keys = await _db.IdempotencyKeys.AsNoTracking().OrderBy(key => key.Key).ToListAsync();
+        keys.Should().ContainSingle().Which.Key.Should().Be("paused-key",
+            "paused work may already have external side effects and must remain deduplicated");
     }
 
     [Fact]

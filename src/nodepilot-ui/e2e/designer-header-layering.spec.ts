@@ -2,8 +2,8 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
 
 /**
- * Regression for the editor header stacking context: header popovers must sit above
- * canvas-local overlays such as the folder path breadcrumb.
+ * Covers the editor header stacking context: header popovers must sit above canvas-local
+ * overlays such as the folder path breadcrumb.
  */
 
 const WF_ID = 'eeeeeeee-4545-4545-4545-454545454545';
@@ -59,7 +59,7 @@ function folder(id: string, parentFolderId: string | null, name: string, path: s
     createdAt: NOW,
     createdByUserId: MOCK_USER.id,
     workflowCount: id === CM_ID ? 1 : 0,
-    capabilities: { canRead: true, canRun: true, canEdit: true, canAdmin: true },
+    capabilities: { canRead: true, canRun: true, canEdit: true, canDelete: true, canAdmin: true },
   };
 }
 
@@ -100,12 +100,9 @@ test.describe('Designer header layering', () => {
   test('header popovers stack above the canvas folder-path breadcrumb layer', async ({ page }) => {
     await openEditor(page);
 
-    // Open a header popover (the skin switcher) so a `[role="menu"]` is present. The skin
-    // switcher now lives in the right toolbar zone, so it no longer geometrically overlaps
-    // the top-left breadcrumb — but the layering INVARIANT still must hold: the header is its
-    // own stacking context (z-45) sitting above the canvas breadcrumb layer (z-30), and its
-    // popovers (z-50) render above it. That ordering is what the original stacking-context
-    // regression was about.
+    // Open a header popover (the skin switcher) so a `[role="menu"]` is present. The layering
+    // invariant holds regardless of geometry: the header is its own stacking context (z-45)
+    // above the canvas breadcrumb layer (z-30), and its popovers (z-50) render above it.
     await page.getByTestId('toggle-skin').click();
     await expect(page.getByRole('menu')).toBeVisible();
 

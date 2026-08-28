@@ -251,9 +251,9 @@
     "disabledTooltip": "Step ist deaktiviert — wird bei der Ausführung übersprungen",
     "fanIn": {
       "waitAll": "Junction · waitAll — löst erst aus, wenn ALLE {{count}} eingehenden Branches abgeschlossen sind",
-      "waitAny": "Junction · waitAny — löst aus, sobald der ERSTE von {{count}} eingehenden Branches abgeschlossen ist",
+      "waitAny": "Junction · waitAny — löst aus, sobald der ERSTE passende Branch erfolgreich abgeschlossen ist",
       "waitNofM": "Junction · waitNofM — löst aus, wenn {{n}} von {{count}} eingehenden Branches erfolgreich sind",
-      "implicit": "{{count}} eingehende Branches laufen hier zusammen (implizites waitAll)"
+      "implicit": "Ungültiger Fan-in: Vor diesem Node ist eine Junction erforderlich"
     },
     "lint": {
       "errors_one": "{{count}} Konfigurationsfehler — Eigenschaften-Panel prüfen",

@@ -52,9 +52,10 @@ Why the alternatives lose:
   2. a real need for **active/active** execution scaling beyond today's active/passive model, or
   3. a compliance requirement to run the WinRM/PowerShell tier under a separate identity or
      network segment from the internet-facing API.
-  A future split would take the shape *API service + worker service* and reuse the existing
-  durable `Pending` `WorkflowExecution` row (already stamped with `OwnerNodeId`) as the
-  API→worker handoff — the in-memory queue is only an optimization on top of that row.
+  A future split would take the shape *API service + worker service*. Today's `Pending`
+  `WorkflowExecution` row (already stamped with `OwnerNodeId`) is durable evidence of accepted
+  work, but not a replayable handoff: the complete Dispatch Intent remains in the in-memory queue.
+  A split therefore requires a durable outbox/broker that persists the full protected intent.
 - This ADR documents an **existing** state; it introduces no new runtime invariant and no guard
   test to enforce.
 

@@ -10,6 +10,7 @@ using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.ExecutionDispatch;
 using NodePilot.Api.Security;
+using NodePilot.Core.Enums;
 using NodePilot.Core.ExecutionDispatch;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
@@ -104,9 +105,16 @@ public class ExternalTriggerController : ControllerBase
             .FirstOrDefaultAsync(k => k.Key == idempotencyStorageKey && k.WorkflowId == workflowId && k.ExpiresAt > now, ct);
         if (existing is null) return null;
 
-        return await db.WorkflowExecutions.AsNoTracking()
+        var execution = await db.WorkflowExecutions.AsNoTracking()
             .FirstOrDefaultAsync(e => e.Id == existing.ExecutionId, ct);
+        return execution is not null && !IsNeverStartedRecoveryCancellation(execution)
+            ? execution
+            : null;
     }
+
+    private static bool IsNeverStartedRecoveryCancellation(WorkflowExecution execution)
+        => execution.Status == ExecutionStatus.Cancelled
+           && execution.CancelledBy is "reconciler-pending" or "failover-pending";
 
     private static async Task RemoveIdempotencyKeyAsync(
         NodePilotDbContext db,
@@ -347,9 +355,13 @@ public class ExternalTriggerController : ControllerBase
                     {
                         var cached = await _db.WorkflowExecutions.AsNoTracking()
                             .FirstOrDefaultAsync(e => e.Id == existingKey.ExecutionId, ct);
-                        if (cached is not null)
+                        if (cached is not null && !IsNeverStartedRecoveryCancellation(cached))
                             return (cached, null);
 
+                        // Missing executions and executions proven never to have crossed engine
+                        // ownership are stale reservations. Replacing the row inside this
+                        // transaction lets the same caller retry after restart without weakening
+                        // deduplication for in-flight executions with ambiguous side effects.
                         _db.IdempotencyKeys.Remove(existingKey);
                     }
                     else if (existingKey is not null)

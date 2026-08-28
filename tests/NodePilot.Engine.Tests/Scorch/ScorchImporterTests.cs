@@ -110,6 +110,36 @@ public class ScorchImporterTests
     }
 
     [Fact]
+    public void Parse_FanIn_InsertsRequiredJunctionBeforeTarget()
+    {
+        var sourceA = Guid.NewGuid();
+        var sourceB = Guid.NewGuid();
+        var target = Guid.NewGuid();
+        var xml = BuildExport(PolicyWith("Fan in", objects: new[]
+        {
+            ActivityXml(sourceA, "A", "Run .Net Script", props: new[] { ("ScriptBody", "a") }),
+            ActivityXml(sourceB, "B", "Run .Net Script", props: new[] { ("ScriptBody", "b") }),
+            ActivityXml(target, "Target", "Run .Net Script", props: new[] { ("ScriptBody", "target") }),
+            LinkXml(Guid.NewGuid(), sourceA, target),
+            LinkXml(Guid.NewGuid(), sourceB, target),
+        }));
+
+        var result = Importer.Parse(xml);
+        var definition = JsonSerializer.Deserialize<JsonElement>(result.Workflows[0].DefinitionJson);
+        var nodes = definition.GetProperty("nodes").EnumerateArray().ToList();
+        var edges = definition.GetProperty("edges").EnumerateArray().ToList();
+        var junction = nodes.Single(n =>
+            n.GetProperty("data").GetProperty("activityType").GetString() == "junction");
+        var junctionId = junction.GetProperty("id").GetString();
+
+        edges.Count(e => e.GetProperty("target").GetString() == target.ToString()).Should().Be(1);
+        edges.Single(e => e.GetProperty("target").GetString() == target.ToString())
+            .GetProperty("source").GetString().Should().Be(junctionId);
+        edges.Count(e => e.GetProperty("target").GetString() == junctionId).Should().Be(2);
+        result.Warnings.Should().Contain(w => w.Contains("Fan in") && w.Contains("junction"));
+    }
+
+    [Fact]
     public void Parse_LinkWithTrigger_EmitsConditionExpression()
     {
         var srcId = Guid.NewGuid();

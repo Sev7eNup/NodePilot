@@ -7,6 +7,7 @@ using NodePilot.Api.Hubs;
 using NodePilot.Api.Security;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
+using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -97,7 +98,7 @@ public class SharedWorkflowFoldersController : ControllerBase
                 f.Id, f.ParentFolderId, f.Name, f.Path, f.Depth,
                 f.CreatedAt, f.CreatedByUserId,
                 counts.GetValueOrDefault(f.Id, 0),
-                new SharedFolderCapabilities(caps.CanRead, caps.CanRun, caps.CanEdit, caps.CanAdmin)));
+                new SharedFolderCapabilities(caps.CanRead, caps.CanRun, caps.CanEdit, caps.CanDelete, caps.CanAdmin)));
         }
         return Ok(results);
     }
@@ -154,7 +155,7 @@ public class SharedWorkflowFoldersController : ControllerBase
         return CreatedAtAction(nameof(GetAll), null,
             new SharedFolderResponse(folder.Id, folder.ParentFolderId, folder.Name, folder.Path,
                 folder.Depth, folder.CreatedAt, folder.CreatedByUserId, 0,
-                new SharedFolderCapabilities(caps.CanRead, caps.CanRun, caps.CanEdit, caps.CanAdmin)));
+                new SharedFolderCapabilities(caps.CanRead, caps.CanRun, caps.CanEdit, caps.CanDelete, caps.CanAdmin)));
     }
 
     [HttpPut("{id:guid}")]
@@ -268,6 +269,12 @@ public class SharedWorkflowFoldersController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct, [FromQuery] bool recursive = false)
     {
+        // Recursive deletion crosses the same destructive boundary as workflow DELETE: it removes
+        // every Workflow in the subtree plus its execution history. Folder Edit remains sufficient
+        // for deleting an empty folder, but must never be an indirect workflow-delete capability.
+        if (recursive && !User.IsInRole(nameof(UserRole.Admin)))
+            return Forbid();
+
         if (id == SharedWorkflowFolder.RootFolderId)
             return BadRequest(new { message = "Root folder cannot be deleted" });
 
@@ -295,10 +302,9 @@ public class SharedWorkflowFoldersController : ControllerBase
     }
 
     /// <summary>
-    /// Subtree delete. Edit on <paramref name="folder"/> is already established by the caller and
-    /// covers every descendant: grants resolve along the ancestry chain with highest-role-wins, so
-    /// a grant on an ancestor applies all the way down. `SharedFolderDelete_RecursiveInheritedEdit_*`
-    /// pins that — if the resolution ever changes, a hole opens exactly here.
+    /// Subtree delete. Global Admin has already been established by the caller; Folder Edit is
+    /// checked as a second resource-level guard so a future role model cannot accidentally turn
+    /// an unrelated folder into a deletion target.
     ///
     /// Concurrency is the reason this is not "check locks, then delete". Under ReadCommitted
     /// somebody can check a workflow out between the two, and it would be deleted despite a

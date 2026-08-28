@@ -61,6 +61,7 @@ import {
   renameVariableInNodeData,
   renameVariableInEdge,
 } from '../lib/editorGraphHelpers';
+import { insertJunctionForFanIn, requiresJunctionForConnection } from '../lib/junctionFanIn';
 import {
   DEFAULT_SOURCE_PORT,
   DEFAULT_TARGET_PORT,
@@ -401,10 +402,47 @@ function WorkflowEditorInner() {
     [hasDuplicateConnection],
   );
 
+  const offerRequiredJunction = useCallback(
+    async (connection: Connection, movingEdge?: Edge) => {
+      if (!connection.target) return;
+      const target = nodes.find((node) => node.id === connection.target);
+      const targetLabel = ((target?.data as Record<string, unknown> | undefined)?.label as string | undefined)
+        ?? connection.target;
+      const accepted = await confirmDialog({
+        title: t('editor:fanIn.title'),
+        message: t('editor:fanIn.message', { target: targetLabel }),
+        confirmLabel: t('editor:fanIn.insert'),
+      });
+      if (!accepted) {
+        showConnectionNotice(t('editor:fanIn.cancelled'));
+        return;
+      }
+
+      const result = insertJunctionForFanIn(nodes, edges, connection, {
+        junctionId: `step-${randomUuid()}`,
+        incomingEdgeId: `edge-${randomUuid()}`,
+        outgoingEdgeId: `edge-${randomUuid()}`,
+        label: t('editor:fanIn.defaultLabel'),
+        movingEdge,
+      });
+      commitHistory(movingEdge ? 'Move edge with junction' : 'Add edge with junction');
+      markDirty();
+      setNodes(result.nodes);
+      setEdges(result.edges);
+      setSelected({ type: 'node', id: result.junctionId });
+      showConnectionNotice(t('editor:fanIn.inserted'));
+    },
+    [nodes, edges, t, commitHistory, markDirty, setNodes, setEdges, setSelected, showConnectionNotice],
+  );
+
   const onConnect = useCallback(
     (params: Connection) => {
       if (hasDuplicateConnection(params.source, params.target)) {
         showConnectionNotice('Diese Verbindung existiert bereits. Bearbeite die bestehende Edge oder passe deren Bedingung an.');
+        return;
+      }
+      if (requiresJunctionForConnection(params.target, nodes, edges)) {
+        void offerRequiredJunction(params);
         return;
       }
       commitHistory('Add edge');
@@ -417,7 +455,7 @@ function WorkflowEditorInner() {
         data: { label: '', condition: '', disabled: false },
       }, eds));
     },
-    [setEdges, commitHistory, hasDuplicateConnection, showConnectionNotice, markDirty],
+    [nodes, edges, setEdges, commitHistory, hasDuplicateConnection, showConnectionNotice, markDirty, offerRequiredJunction],
   );
 
   // Endpunkt einer existierenden Edge auf andere Source/Target ziehen — Detach-und-Reattach.
@@ -437,6 +475,10 @@ function WorkflowEditorInner() {
           showConnectionNotice('Diese Verbindung existiert bereits.');
           return;
         }
+        if (requiresJunctionForConnection(newConnection.target, nodes, edges, oldEdge.id)) {
+          void offerRequiredJunction(newConnection, oldEdge);
+          return;
+        }
       }
       commitHistory('Move edge');
       markDirty();
@@ -452,7 +494,7 @@ function WorkflowEditorInner() {
         ),
       );
     },
-    [edges, setEdges, commitHistory, showConnectionNotice, markDirty],
+    [nodes, edges, setEdges, commitHistory, showConnectionNotice, markDirty, offerRequiredJunction],
   );
 
   const onSelectionChange = useCallback(({ nodes: sn, edges: se }: OnSelectionChangeParams) => {

@@ -32,7 +32,7 @@ function makeFolder(over: Partial<SharedFolder>): SharedFolder {
   return {
     id: 'folder-id', parentFolderId: null, name: 'Folder', path: '/Folder', depth: 1,
     createdAt: '2024-01-01T00:00:00Z', createdByUserId: null, workflowCount: 0,
-    capabilities: { canRead: true, canRun: true, canEdit: false, canAdmin: false },
+    capabilities: { canRead: true, canRun: true, canEdit: false, canDelete: false, canAdmin: false },
     ...over,
   };
 }

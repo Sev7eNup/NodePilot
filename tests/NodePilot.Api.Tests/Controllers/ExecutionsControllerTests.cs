@@ -337,6 +337,52 @@ public class ExecutionsControllerTests
     }
 
     [Fact]
+    public async Task Retry_RedactedInput_Returns400WithoutDispatch()
+    {
+        var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
+        var original = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Failed,
+            StartedAt = DateTime.UtcNow.AddMinutes(-5), CompletedAt = DateTime.UtcNow,
+            InputParametersJson = """{"password":"***"}""",
+        };
+        db.AddRange(workflow, original);
+        await db.SaveChangesAsync();
+        var queue = new CountingNoopExecutionDispatchQueue();
+
+        var result = await NewController(db, Mock.Of<IWorkflowEngine>(), queue)
+            .Retry(original.Id, CancellationToken.None);
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+        queue.EnqueueCount.Should().Be(0);
+        (await db.WorkflowExecutions.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Retry_TruncatedInput_Returns400WithoutDispatch()
+    {
+        var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
+        var original = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Failed,
+            StartedAt = DateTime.UtcNow.AddMinutes(-5), CompletedAt = DateTime.UtcNow,
+            InputParametersJson = "{\"payload\":\"incomplete... [truncated]",
+        };
+        db.AddRange(workflow, original);
+        await db.SaveChangesAsync();
+        var queue = new CountingNoopExecutionDispatchQueue();
+
+        var result = await NewController(db, Mock.Of<IWorkflowEngine>(), queue)
+            .Retry(original.Id, CancellationToken.None);
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+        queue.EnqueueCount.Should().Be(0);
+        (await db.WorkflowExecutions.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
     public async Task Cancel_ExistingExecution_Returns204()
     {
         // Arrange
@@ -1189,6 +1235,41 @@ public class ExecutionsControllerTests
             It.IsAny<Guid?>(),
             It.IsAny<int>(),
             It.IsAny<Guid?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_IdempotencyKey_RecoveredPending_AllowsFreshAttempt()
+    {
+        var db = CreateContext();
+        var workflow = ExternalWorkflow("RecoveredPending");
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var queue = new CountingNoopExecutionDispatchQueue();
+        var config = ConfigWithKey(LongKey, workflow.Id);
+
+        var first = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        first.HttpContext.Request.Headers["Idempotency-Key"] = "restart-retry";
+        var firstResult = await first.ExternalTrigger(
+            workflow.Name, null, config, TriggerLogger, CancellationToken.None);
+        var original = firstResult.Result.Should().BeOfType<AcceptedResult>().Subject.Value
+            .Should().BeOfType<ExecutionResponse>().Subject;
+
+        var abandoned = (await db.WorkflowExecutions.FindAsync(original.Id))!;
+        abandoned.Status = ExecutionStatus.Cancelled;
+        abandoned.CancelledBy = "reconciler-pending";
+        abandoned.CompletedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        var replay = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        replay.HttpContext.Request.Headers["Idempotency-Key"] = "restart-retry";
+        var replayResult = await replay.ExternalTrigger(
+            workflow.Name, null, config, TriggerLogger, CancellationToken.None);
+
+        var accepted = replayResult.Result.Should().BeOfType<AcceptedResult>().Subject.Value
+            .Should().BeOfType<ExecutionResponse>().Subject;
+        accepted.Id.Should().NotBe(original.Id);
+        queue.EnqueueCount.Should().Be(2);
+        (await db.IdempotencyKeys.SingleAsync()).ExecutionId.Should().Be(accepted.Id);
     }
 
     [Fact]

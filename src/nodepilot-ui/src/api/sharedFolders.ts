@@ -13,6 +13,8 @@ export interface SharedFolderCapabilities {
   canRead: boolean;
   canRun: boolean;
   canEdit: boolean;
+  /** Recursive folder deletion also deletes Workflows and their history, so it is Admin-only. */
+  canDelete: boolean;
   canAdmin: boolean;
 }
 

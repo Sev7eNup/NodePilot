@@ -59,6 +59,12 @@ the state.
 - The terminal workflow CAS waits as well, until recovery or host shutdown. User cancellation does
   not abort the final persistence attempt.
 - The dispatcher only re-queues failures that provably happened before the engine started.
+- Process restart and HA failover remain **at-most-once automatic dispatch**, not durable replay:
+  a queued `Pending Execution` is cancelled because its complete Dispatch Intent is not persisted.
+  Recovery marks this distinct from an in-flight cancellation and releases only that execution's
+  external-trigger idempotency reservation. The original caller can then retry the same key.
+- Reservations for `Running` or `Paused` executions remain intact because an external side effect
+  may already have happened; NodePilot never converts that ambiguity into an automatic duplicate.
 - Database-dependent hosted services park on the shared availability signal. Support events are
   dropped with a counter during the outage and summarised once after recovery.
 - Trigger fires that active sources observe during the outage are dropped with a counter and never
@@ -98,3 +104,5 @@ Signals that matter:
 - Commands already running and blocked inside the provider are not aborted globally when the
   breaker opens later. New access, by contrast, is gated immediately.
 - Triggers deliberately have no catch-up; notification recipients must support deduplication.
+- The restart contract is therefore explicit: accepted-but-not-started work needs caller retry;
+  in-flight work needs operator reconciliation; observed trigger events are not replayed.

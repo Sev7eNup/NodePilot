@@ -62,7 +62,12 @@ public sealed record ReencryptResult(
 
 // ---- Shared workflow folders (RBAC) -----------------------------------------
 
-public sealed record SharedFolderCapabilities(bool CanRead, bool CanRun, bool CanEdit, bool CanAdmin);
+public sealed record SharedFolderCapabilities(
+    bool CanRead,
+    bool CanRun,
+    bool CanEdit,
+    bool CanDelete,
+    bool CanAdmin);
 
 public sealed record SharedFolderResponse(
     Guid Id,
