@@ -71,7 +71,7 @@ ist nicht nötig. **Immer erst `pg_ctl start`, dann `dotnet run`.**
 `src\NodePilot.Api\admin-setup.token` (ContentRoot). Login-Maske zeigt beim ersten Versuch ein
 **Setup-Token**-Feld; erst damit entsteht der Admin-Account.
 
-**Für Claude:** Dev-Mode verwenden. **API-Neustarts (stop+rebuild+start) sind jederzeit ohne Rückfrage erlaubt** — DLL-Locks sind normal. Vorab PID via `Get-NetTCPConnection -LocalPort 5000` finden, dann `Stop-Process` + Rebuild + Start. `npm run dev` kaputt → `npm install`. Deploy-Skripte unter `deploy/` **niemals** ausführen.
+**Für Claude:** Dev-Mode verwenden. **API-Neustarts (stop+rebuild+start) sind jederzeit ohne Rückfrage erlaubt** — DLL-Locks sind normal. Vorab PID via `Get-NetTCPConnection -LocalPort 5000` finden, dann `Stop-Process` + Rebuild + Start. `npm run dev` kaputt → `npm install`. Deploy-Skripte unter `deploy/` laufen **nur auf ausdrückliche Aufforderung** — sie installieren, aktualisieren oder paketieren echte Instanzen. Von selbst greift Claude sie nicht an; die Freigabe gilt jeweils nur für den einen Vorgang.
 
 **Langlaufende Prozesse (API + Vite):** detached/als Background-Prozess starten (z. B. `Start-Process` mit umgeleiteten Logs), damit sie Tool-Call-Grenzen überleben. „Läuft" erst melden nach vollem Port-Check (`Get-NetTCPConnection -LocalPort 5000` **ohne** `-First N` — Truncation hat schon zu Fehldiagnosen geführt) **und** HTTP-Health-Probe. Vor jedem Kill verifizieren, dass es die Dev-Instanz ist — **nie** den installierten Windows-Dienst treffen.
 
@@ -453,6 +453,6 @@ Getrennt vom Workflow-Export: portables Konfigurations-Backup (Workflows+Folders
 
 ## Production Deployment
 
-Produktiv-Rollout über `deploy/`-Skripte — Claude führt sie **nicht** aus. Vollständige Doku: `deploy/README.md`. Architektur (gMSA, Kestrel-HTTPS, Install-Dir-Split, Config-Keys, Stolperfallen): siehe `docs/claude-reference.md`.
+Produktiv-Rollout über `deploy/`-Skripte — Claude führt sie **nur auf ausdrückliche Aufforderung** aus (Release-Artefakte über `deploy/Build-Artifact.ps1` sind der übliche Anlass; ein Rollout auf eine laufende Instanz braucht dieselbe eigene Freigabe). Vollständige Doku: `deploy/README.md`. Architektur (gMSA, Kestrel-HTTPS, Install-Dir-Split, Config-Keys, Stolperfallen): siehe `docs/claude-reference.md`.
 
 **Desktop-App (Electron, `deploy/desktop/`):** zweites Shipping-Ziel — offline Win-11-x64-Installer, alles als Boot-Start-Dienste. Posture `Deployment:Mode` (`Server`|`Desktop`, default `Server`): Desktop relaxiert **nur** loopback-DB-TLS + Kestrel-`ListenLocalhost`; Rest bleibt Production-gehärtet. (Das Warten auf die DB vor dem Migration-Bootstrap ist **kein** Desktop-Sonderfall mehr — `DatabaseReadinessGate` läuft in beiden Modi, Details in `docs/claude-reference.md`.) Icons kommen aus `scripts/generate-desktop-icons.ps1` (Default blau, Fenster-/Tray-Icon folgt zur Laufzeit dem SPA-Skin über `page-favicon-updated`). Volle Doku (Architektur, Dienste-Identitäten, First-Run-Admin-Handoff): `deploy/desktop/README.md`.
