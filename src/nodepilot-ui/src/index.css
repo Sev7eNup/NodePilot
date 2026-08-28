@@ -64,7 +64,7 @@
 
   /* Canvas dot grid for light skins; dark skins declare their own further down. Kept light
      and ink-tinted rather than black: the grid is an orientation aid, not a texture. */
-  --np-canvas-dot: rgba(23, 26, 31, 0.16);
+  --np-canvas-dot: rgba(23, 26, 31, 0.26);
 
   /* MiniMap mask: the dimmed area outside the viewport. Declared for both light and dark
      bases so the component never has to fall back to a hardcoded literal. */
@@ -278,7 +278,7 @@ html.dark {
      instead of every dark skin sharing one hardcoded value. These are the shared dark
      defaults. Consumers: WorkflowEditorPage.tsx (<Background color>, <MiniMap maskColor>)
      and ActivityNode.tsx (premium node fill). */
-  --np-canvas-dot:          rgba(255, 255, 255, 0.22);
+  --np-canvas-dot:          rgba(255, 255, 255, 0.34);
   --np-minimap-mask:        rgba(17, 18, 20, 0.55);
   --np-minimap-mask-atelier: rgba(14, 16, 19, 0.62);
   --np-node-bg:             rgba(13, 17, 22, 0.92);
@@ -3556,7 +3556,7 @@ html.dark[data-skin="dark"] {
   /* Lifting the canvas floor eats into the dot grid's contrast, so the alpha goes
      up with it — the grid has to stay clearly countable, it is the scale reference
      for the whole graph. */
-  --np-canvas-dot:           rgba(190, 210, 255, 0.30);
+  --np-canvas-dot:           rgba(190, 210, 255, 0.42);
   --np-minimap-mask:         rgba(13, 14, 17, 0.58);
   --np-minimap-mask-atelier: rgba(11, 12, 15, 0.64);
   --np-node-bg:              rgba(22, 24, 29, 0.94);
