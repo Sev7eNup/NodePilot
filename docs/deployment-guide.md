@@ -318,6 +318,19 @@ is available on a machine with no browser.
 
 ## Troubleshooting
 
+Three files carry the evidence, and the rows below refer to them by name:
+
+| Referred to as | File |
+|---|---|
+| the log, the Application log, the boot log | `C:\ProgramData\NodePilot\logs\nodepilot-<date>.log` — full diagnostics. Keeps **7 files**, rolling daily and again at 100 MB, so it reaches back fewer than seven days on a talkative system |
+| the support log | `C:\ProgramData\NodePilot\logs\nodepilot-support-<date>.log` — a curated extract, 90 files. Also readable in the browser at `/support-log` without a file share |
+| the installer log | `%TEMP%\nodepilot-server-setup.log` — a transcript of the install/update run, appended across runs |
+
+Two access notes: `C:\ProgramData\NodePilot` is readable by administrators only, so use an elevated
+shell; and `%TEMP%` belongs to the account that *elevated* the installer, which is not necessarily
+the one that started it. The full inventory — including what NodePilot deliberately does not log —
+is at [Logs & diagnostics](https://sev7enup.github.io/NodePilot/#/en/deployment/logs).
+
 | Symptom | Cause | Fix |
 |---|---|---|
 | Build: `npm ci failed with exit code N` | real npm failure; commonly an `EPERM` file lock in `node_modules` | close the Vite dev server / editor / AV scan and retry, or `-SkipNpmCi` to reuse warm `node_modules` |

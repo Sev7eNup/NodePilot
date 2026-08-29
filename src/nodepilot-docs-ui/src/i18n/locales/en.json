@@ -74,6 +74,7 @@
       "deployment/production": "Windows Server",
       "deployment/desktop": "Desktop app",
       "deployment/av-exclusions": "Antivirus exclusions",
+      "deployment/logs": "Logs & diagnostics",
       "ai-features": "AI features",
       "alerting": "Alerting",
       "observability": "Observability",

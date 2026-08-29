@@ -157,8 +157,9 @@ instead of assuming its own profile.
 
 If the provisioning fails, the installer reports it with a pointer to its log at
 `%TEMP%\nodepilot-provision.log` and does not start the shell — rather than reporting a successful
-installation that then does not start. Causes and remedies:
-[Desktop troubleshooting](https://github.com/Sev7eNup/NodePilot/blob/main/docs/desktop-troubleshooting.md).
+installation that then does not start. Causes and remedies are in
+[desktop troubleshooting](https://github.com/Sev7eNup/NodePilot/blob/main/docs/desktop-troubleshooting.md),
+and an overview of every log file is under [Logs & diagnostics](logs).
 
 ## The documentation on the machine
 
