@@ -149,6 +149,16 @@ Der Installer:
 - erstellt `desktop.json`,
 - übergibt den einmaligen Setup-Token geschützt an die Electron-Shell.
 
+## Dokumentation auf dem Gerät
+
+Das Paket bringt diese Dokumentation mit; die API liefert sie unter `/docs` aus. Das Fragezeichen
+in der Kopfzeile der Anwendung öffnet sie in einem eigenen Fenster — ohne Anmeldung und ohne
+Internetzugang, passend zur installierten Version. Links aus der Dokumentation nach außen
+(GitHub, Releases) öffnet die Shell im Systembrowser; sie stellt selbst keine fremden Inhalte dar.
+
+Sie ist verfügbar, solange der Dienst `NodePilot` läuft — auch dann noch, wenn die Datenbank
+gerade nicht erreichbar ist. Startet der Dienst gar nicht, hilft nur das Provisionierungslog.
+
 ## Installation prüfen
 
 ```powershell

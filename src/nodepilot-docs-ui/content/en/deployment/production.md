@@ -479,6 +479,20 @@ The external-trigger API key is shown only once and has to be stored in a secret
 | `C:\Program Files\NodePilot\` | The API, DLLs and `wwwroot` | Read |
 | `C:\Program Files\NodePilot\appsettings.Production.json` | The production configuration | Read |
 | `C:\ProgramData\NodePilot\` | Keys, the setup token, logs and operational data | Modify |
+| `C:\Program Files\NodePilot\wwwroot\docs\` | This documentation, served at `/docs` | Read |
+
+## The documentation on the server
+
+The installer places the same documentation that the public website carries under
+`wwwroot\docs`. It is reachable at `https://<host>/docs` — **without signing in**, so that it is
+available when signing in is itself the problem, and without internet access. The shipped copy
+belongs to the installed version, whereas the website always shows the current development
+state. In the interface, the question mark in the header leads there.
+
+The documentation does not depend on the database and therefore stays readable during a database
+outage. It is, however, **only available while the service is running** — if the service does not
+start at all, the setup transcript under `%TEMP%` and the application log under
+`C:\ProgramData\NodePilot\logs` remain the source.
 
 ## Update and automatic rollback
 

@@ -478,6 +478,21 @@ Der External-Trigger-API-Key wird nur einmal angezeigt und muss in einem Secret-
 | `C:\Program Files\NodePilot\` | API, DLLs und `wwwroot` | Lesen |
 | `C:\Program Files\NodePilot\appsettings.Production.json` | Produktionskonfiguration | Lesen |
 | `C:\ProgramData\NodePilot\` | Schlüssel, Setup-Token, Logs und Betriebsdaten | Ändern |
+| `C:\Program Files\NodePilot\wwwroot\docs\` | Diese Dokumentation, ausgeliefert unter `/docs` | Lesen |
+
+## Dokumentation auf dem Server
+
+Der Installer legt dieselbe Dokumentation, die auch auf der öffentlichen Website steht, unter
+`wwwroot\docs` ab. Sie ist über `https://<host>/docs` erreichbar — **ohne Anmeldung**, damit sie
+auch dann zur Verfügung steht, wenn gerade die Anmeldung das Problem ist, und ohne
+Internetzugang. Die ausgelieferte Fassung gehört zur installierten Version, während die Website
+immer den aktuellen Entwicklungsstand zeigt. In der Oberfläche führt das Fragezeichen in der
+Kopfzeile dorthin.
+
+Die Dokumentation hängt nicht an der Datenbank und bleibt deshalb auch während einer
+Datenbankstörung lesbar. Sie steht allerdings **nur zur Verfügung, solange der Dienst läuft** —
+startet er gar nicht erst, bleiben das Setup-Transkript unter `%TEMP%` und das Anwendungslog
+unter `C:\ProgramData\NodePilot\logs` die Quelle.
 
 ## Update und automatischer Rollback
 

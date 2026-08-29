@@ -132,6 +132,8 @@ The release notes must contain:
 - Download the artifacts **from the release page** and re-run the checks in step 5 against those
   copies. A file that was never uploaded, or was uploaded truncated, looks fine locally.
 - The docs site redeploys itself on push to `main` (`.github/workflows/docs-pages.yml`); it does
-  not need anything here.
+  not need anything here. Its **second** copy does ride along in the artifacts, though: after
+  installing, check `GET /docs` answers 301 to `/docs/` and that `/docs/` renders the site
+  without signing in. A missing bundle fails the install, but a broken one does not.
 - Bump `Directory.Build.props` and the three `package.json` files to the next patch version so
   `main` is never sitting on a version that is already published.

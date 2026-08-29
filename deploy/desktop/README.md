@@ -138,8 +138,16 @@ The build generates the icons via `scripts/generate-desktop-icons.ps1` (see **Ic
 publishes the API self-contained (`-r win-x64 --self-contained true`, no single-file — the PowerShell
 SDK is folder-deployed), publishes the operator clients (`np`, `nodepilot-mcp`) self-contained to
 `tools\np` and `tools\mcp` (self-contained because the desktop package promises zero prerequisites),
-builds the SPA into `app\wwwroot`, packages the Electron shell with Electron Packager, stages the
-Postgres server runtime + scripts, and compiles the installer.
+builds the SPA into `app\wwwroot` and the documentation site into `app\wwwroot\docs`, packages the
+Electron shell with Electron Packager, stages the Postgres server runtime + scripts, and compiles
+the installer.
+
+The documentation is why the package needs no internet to be usable: the API serves it at `/docs`,
+and the question mark in the application header opens it. Because the shell has no menu bar and no
+back gesture, it gets a window of its own rather than replacing the app view — that window is
+pinned to `/docs` for navigations *and* redirects, so it cannot become a second, chrome-less view
+of the application. Links that lead out of the documentation are handed to the system browser
+(`https:` only); the shell never renders foreign content itself. See `src/security.ts`.
 
 Two build steps are load-bearing and easy to break by accident:
 
@@ -241,6 +249,12 @@ app is just files plus two services, so day-to-day changes have much shorter loo
 Use the sync script when the *packaging* matters — service identity is LocalSystem, the DB is the
 bundled Postgres, TLS is the pinned loopback cert — none of which dev mode reproduces. It never
 mirrors over `app\Modules` or `app\wwwroot`, so the PowerShell modules and SPA stay intact.
+
+The `spa` component syncs two bundles, and the order matters: the SPA mirror runs against
+`app\wwwroot` with `/MIR`, which deletes whatever the source lacks, so it excludes
+`app\wwwroot\docs` (`/XD`) and the documentation is mirrored separately afterwards. Without that
+exclusion every sync would silently remove the documentation, and `/docs` would 404 long after the
+cause. `DocsSiteDeploymentTests` guards it.
 
 Quit the installed shell first (tray → *Quit Electron*) before `npm start`: both resolve to the same
 `productName`, so the single-instance lock makes the second one focus the first and exit. Shell

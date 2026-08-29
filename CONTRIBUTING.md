@@ -82,7 +82,15 @@ cd src/nodepilot-docs-ui && npm run test:run    # docs-site tests incl. the de/e
 `src/nodepilot-docs-ui` is a standalone Vite SPA published to
 [sev7enup.github.io/NodePilot](https://sev7enup.github.io/NodePilot/) by
 `.github/workflows/docs-pages.yml` on every push to `main` that touches the package. `npm run dev`
-serves it locally.
+serves it locally on port 5174.
+
+It has a **second deployment**: `deploy/Build-Artifact.ps1` and `deploy/desktop/Build-DesktopInstaller.ps1`
+build it as well and stage it into `wwwroot/docs`, which the API serves at `/docs` so a
+disconnected installation has the runbooks. `-SkipFrontend` skips both npm builds, `-SkipNpmCi`
+applies to both. Two consequences for anyone editing this package: `index.html` must not contain
+an inline `<script>` (the API serves it under `script-src 'self'`; `src/lib/document-head.test.ts`
+guards it), and the Vite base stays relative so the bundle works under a subdirectory. The main
+UI's dev server does not proxy `/docs` — use the docs dev server directly.
 
 It ships **its own curated markdown corpus** under `content/` — it does not render `docs/`, so a
 change to `docs/` reaches the site only if you mirror it deliberately.

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, dialog, ipcMain, nativeImage, net, session } from 'electron';
+import { app, BrowserWindow, Tray, Menu, dialog, ipcMain, nativeImage, net, session, shell } from 'electron';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -248,7 +248,9 @@ function openMainWindow(): void {
     webPreferences: baseWebPreferences(),
   });
   mainWindow.removeMenu();
-  hardenWindow(mainWindow, config.origin);
+  // openExternal lets the bundled documentation's outbound links (GitHub, releases, SECURITY.md)
+  // reach the system browser; the shell itself still refuses to render anything foreign.
+  hardenWindow(mainWindow, config.origin, { openExternal: (url) => void shell.openExternal(url) });
   mainWindow.webContents.on('page-favicon-updated', (_event, favicons) => applySkinIcons(favicons));
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.on('close', (event) => {

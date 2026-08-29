@@ -35,7 +35,7 @@ src/
   NodePilot.Cli/        The `np` command-line tool
   NodePilot.Mcp/        The `nodepilot-mcp` MCP server
   nodepilot-ui/         Product interface
-  nodepilot-docs-ui/    Documentation interface
+  nodepilot-docs-ui/    Documentation interface (also shipped, served at /docs)
 tests/
   ...                   Unit, integration and load tests
 ```

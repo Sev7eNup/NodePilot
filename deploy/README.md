@@ -388,7 +388,7 @@ The installer does everything else:
 
 1. Pre-flight (admin, .NET 10, certificate present with a private key, gMSA available, SQL reachable)
 2. Stop and remove the old service (if present)
-3. Empty and repopulate `C:\Program Files\NodePilot`
+3. Empty and repopulate `C:\Program Files\NodePilot` (including `wwwroot\docs`, the documentation site the API serves at `/docs`)
 4. Create `C:\ProgramData\NodePilot\logs`
 5. Generate `appsettings.Production.json` from the template
 6. Set ACLs (service identity = the gMSA, or `NT AUTHORITY\SYSTEM` under LocalSystem):
@@ -613,6 +613,7 @@ overwritten. Settings are written last (a service restart may be needed for them
 | After an update the service does not see the configuration | ACL on `appsettings.Production.json` — the update script re-applies Read for the current service account. After manual intervention: `icacls "<Install>\appsettings.Production.json" /grant "<gMSA$>:(R)"`. |
 | Port 443 already in use | `Get-NetTCPConnection -LocalPort 443` shows the PID. Often the IIS default site or the WinRM HTTPS listener. The installer binds through a Kestrel socket, not http.sys — but a conflict is still a conflict. |
 | A ticket was raised, where do I look? | The **support log** — two sub-sinks from the same filter: (1) the plain-text file `C:\ProgramData\NodePilot\logs\nodepilot-support-*.log` (90-day retention) for RDP/tail diagnosis, (2) the structured database table `SupportEvents` (90-day retention via `Retention:SupportEvents`) for the web viewer with filtering, cursor and export. In the browser: Admin settings → "Support log" tab → toggle "Table (DB) \| Plain text (file)". Full diagnostics remain in `nodepilot-*.log` alongside. |
+| Where is the manual on a machine with no internet? | The installation serves it at `https://<host>/docs` — the same site as sev7enup.github.io, staged into `wwwroot\docs`, at the version actually installed. No login required, and it stays readable during a database outage. It is gone only if the service itself will not start. |
 
 ## What the installer does NOT do
 

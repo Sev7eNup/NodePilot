@@ -713,6 +713,11 @@ app.MapFallback("/api/{**rest}", (HttpContext http) =>
             extensions: new Dictionary<string, object?> { ["code"] = "NOT_FOUND" }))
     .AllowAnonymous();
 
+// The bundled documentation at /docs. Registered before the SPA fallback, which would otherwise
+// answer both of its routes with the app shell. Anonymous and independent of the database, so the
+// runbooks stay readable during an outage and when signing in is itself the problem.
+app.MapNodePilotDocsSite();
+
 // SPA fallback
 app.MapFallbackToFile("index.html");
 

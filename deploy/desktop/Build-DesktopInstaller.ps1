@@ -5,7 +5,8 @@
 
 .DESCRIPTION
     Stages four payloads and compiles them with Inno Setup:
-      app\     : self-contained .NET 10 API publish (win-x64) + the built SPA under wwwroot
+      app\     : self-contained .NET 10 API publish (win-x64) + the built SPA under wwwroot,
+                 including the documentation site under wwwroot\docs (served at /docs)
       desktop\ : the packaged Electron 43.4.1 shell (Chromium + Node, shipped in full)
       pgsql\   : the bundled PostgreSQL binaries (from -PgBinariesPath)
       deploy\  : the provisioning / update / uninstall scripts + the appsettings template
@@ -33,6 +34,7 @@ $RepoRoot     = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $Stage        = Join-Path $OutputRoot 'stage'
 $DesktopDir   = Join-Path $RepoRoot 'src\nodepilot-desktop'
 $UiDir        = Join-Path $RepoRoot 'src\nodepilot-ui'
+$DocsUiDir    = Join-Path $RepoRoot 'src\nodepilot-docs-ui'
 $ApiCsproj    = Join-Path $RepoRoot 'src\NodePilot.Api\NodePilot.Api.csproj'
 $PublishSettingsHygieneScript = Join-Path $RepoRoot 'deploy\Assert-PublishSettingsHygiene.ps1'
 $DesktopRuntimeVersion = '10.0.11'
@@ -148,7 +150,7 @@ foreach ($client in @(
     }
 }
 
-# --- 2. SPA -> wwwroot -----------------------------------------------------------------------
+# --- 2. SPA + docs site -> wwwroot ------------------------------------------------------------
 if (-not $SkipSpaBuild) {
     Write-Step 'Building SPA'
     Push-Location $UiDir
@@ -160,12 +162,29 @@ if (-not $SkipSpaBuild) {
         }
         Invoke-Tool { & npm.cmd run build } 'npm run build (ui) failed.'
     } finally { Pop-Location }
+
+    Write-Step 'Building documentation site'
+    Push-Location $DocsUiDir
+    try {
+        if (-not (Test-Path -LiteralPath (Join-Path $DocsUiDir 'node_modules'))) {
+            Invoke-Tool { & npm.cmd ci } 'npm ci (docs-ui) failed.'
+        }
+        Invoke-Tool { & npm.cmd run build } 'npm run build (docs-ui) failed.'
+    } finally { Pop-Location }
 }
 $spaDist = Join-Path $UiDir 'dist'
 if (-not (Test-Path -LiteralPath (Join-Path $spaDist 'index.html'))) { throw "SPA build missing: $spaDist\index.html" }
 $wwwroot = Join-Path $Stage 'app\wwwroot'
 New-Item -ItemType Directory -Force -Path $wwwroot | Out-Null
 Copy-Item -Path (Join-Path $spaDist '*') -Destination $wwwroot -Recurse -Force
+
+# The documentation site ships alongside the app so an offline installation has its runbooks;
+# the API serves it at /docs. Built with a relative base, so a subdirectory needs no rewriting.
+$docsDist = Join-Path $DocsUiDir 'dist'
+if (-not (Test-Path -LiteralPath (Join-Path $docsDist 'index.html'))) { throw "Docs site build missing: $docsDist\index.html" }
+$docsWwwroot = Join-Path $wwwroot 'docs'
+New-Item -ItemType Directory -Force -Path $docsWwwroot | Out-Null
+Copy-Item -Path (Join-Path $docsDist '*') -Destination $docsWwwroot -Recurse -Force
 
 # --- 3. Electron shell -----------------------------------------------------------------------
 Write-Step 'Packaging Electron shell'

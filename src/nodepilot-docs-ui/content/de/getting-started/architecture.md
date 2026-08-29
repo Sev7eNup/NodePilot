@@ -35,7 +35,7 @@ src/
   NodePilot.Cli/        Kommandozeilenwerkzeug `np`
   NodePilot.Mcp/        MCP-Server `nodepilot-mcp`
   nodepilot-ui/         Produktoberfläche
-  nodepilot-docs-ui/    Dokumentationsoberfläche
+  nodepilot-docs-ui/    Dokumentationsoberfläche (auch mitausgeliefert, unter /docs)
 tests/
   ...                   Unit-, Integrations- und Lasttests
 ```

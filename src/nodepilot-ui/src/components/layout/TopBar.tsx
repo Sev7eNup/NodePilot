@@ -1,4 +1,4 @@
-import { BareMetalServer, ChevronRight, Menu, Plug } from '@carbon/icons-react';
+import { BareMetalServer, ChevronRight, Help, Menu, Plug } from '@carbon/icons-react';
 import { useMemo } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -69,10 +69,39 @@ export function TopBar({ onOpenMenu }: Readonly<{ onOpenMenu?: () => void }> = {
         )}
       </div>
       <div className="flex items-center gap-3 shrink-0">
+        <DocsLink />
         <HostIdentityInfo />
         <BackendStatus />
       </div>
     </header>
+  );
+}
+
+/**
+ * Entry point into the documentation, which the API serves from wwwroot/docs at /docs. Shipping
+ * it with the product is what makes it readable on a disconnected installation.
+ *
+ * A plain anchor, deliberately not a react-router `Link`: /docs is a second, independent document
+ * on the same origin. A `Link` would keep this SPA mounted, push /docs into its history and
+ * render the not-found page, because no route claims that path — the request would never reach
+ * the server. For the same reason there is no `navGroups` entry, which also feeds the breadcrumb.
+ *
+ * The trailing slash is load-bearing: the docs bundle resolves its assets against the document
+ * url, and /docs without the slash answers 301 to /docs/ anyway.
+ */
+function DocsLink() {
+  const { t } = useTranslation(['nav']);
+  return (
+    <a
+      href="/docs/"
+      target="_blank"
+      rel="noopener noreferrer"
+      title={t('nav:documentation')}
+      aria-label={t('nav:documentation')}
+      className="p-1.5 rounded text-on-surface-variant hover:bg-surface-highest hover:text-on-surface transition-colors"
+    >
+      <Help size={16} />
+    </a>
   );
 }
 
