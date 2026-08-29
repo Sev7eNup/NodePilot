@@ -434,6 +434,8 @@ Erwartete Ergebnisse:
 
 Bei aktivierter Verzeichnisanbindung ist `/healthz/directory` separat zu prüfen. Die allgemeine Readiness bleibt absichtlich auf die Datenbank beschränkt.
 
+Schlägt eine der Prüfungen fehl, steht die Ursache im Anwendungslog unter `C:\ProgramData\NodePilot\logs\nodepilot-<Datum>.log`. Welche Datei bei welchem Störungsbild weiterhilft — inklusive des Setup-Transkripts unter `%TEMP%`, das ein Abbruch der Installation hinterlässt —, steht unter [Logs & Diagnose](logs).
+
 ### Verhalten bei Datenbank-Ausfall im laufenden Betrieb
 
 Bei einem Laufzeit-Ausfall bleibt der Dienst oben; DB-abhängige HTTP-Aufrufe antworten schnell mit
@@ -479,6 +481,9 @@ Der External-Trigger-API-Key wird nur einmal angezeigt und muss in einem Secret-
 | `C:\Program Files\NodePilot\appsettings.Production.json` | Produktionskonfiguration | Lesen |
 | `C:\ProgramData\NodePilot\` | Schlüssel, Setup-Token, Logs und Betriebsdaten | Ändern |
 | `C:\Program Files\NodePilot\wwwroot\docs\` | Diese Dokumentation, ausgeliefert unter `/docs` | Lesen |
+| `C:\ProgramData\NodePilot\logs\` | Anwendungslog `nodepilot-JJJJMMTT.log` und Support-Log `nodepilot-support-JJJJMMTT.log` | Ändern |
+
+Der Log-Ordner ist nur für Administratoren lesbar. Aufbewahrung und Auswahl der richtigen Datei: [Logs & Diagnose](logs).
 
 ## Dokumentation auf dem Server
 

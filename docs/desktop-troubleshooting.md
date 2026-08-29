@@ -9,7 +9,8 @@ is written for the Windows-service install and its steps do not apply here.
 | What | Path |
 |---|---|
 | Installation log (one run of the installer) | `%TEMP%\nodepilot-provision.log` |
-| Application logs | `C:\ProgramData\NodePilot\logs` |
+| Application log (full diagnostics, 7 files) | `C:\ProgramData\NodePilot\logs\nodepilot-<date>.log` |
+| Support log (curated extract, 90 files) | `C:\ProgramData\NodePilot\logs\nodepilot-support-<date>.log` |
 | Database cluster | `C:\ProgramData\NodePilot\pgdata` |
 | Shell configuration (origin + pinned certificate) | `C:\ProgramData\NodePilot\desktop.json` |
 | Services | `NodePilot` (API) and `NodePilotDb` (PostgreSQL) |
@@ -138,5 +139,9 @@ a downloaded installer — that is SmartScreen, which ignores antivirus exclusio
 
 Open an issue at [github.com/Sev7eNup/NodePilot/issues](https://github.com/Sev7eNup/NodePilot/issues)
 with the version, the last ~50 lines of `%TEMP%\nodepilot-provision.log`, and the output of
-`Get-Service NodePilot, NodePilotDb`. For anything security-relevant use the private channel in
-[SECURITY.md](../SECURITY.md) instead.
+`Get-Service NodePilot, NodePilotDb`. If the app started at all, attach the application log around
+the time of the problem as well — it keeps only seven files and rolls again at 100 MB, so secure it
+before it ages out. The full inventory, including what NodePilot deliberately does not log, is at
+[Logs & diagnostics](https://sev7enup.github.io/NodePilot/#/en/deployment/logs).
+
+For anything security-relevant use the private channel in [SECURITY.md](../SECURITY.md) instead.

@@ -31,7 +31,7 @@ Für strukturierte Log-Aufnahme in Elastic, Sentinel oder Splunk ist `Logging:Fo
 
 ## Support-Diagnostics
 
-Für Betriebs- und Ticketdiagnose stehen `GET /api/diagnostics/support-log|support-log/download|support-events|support-events/export` für Admins bereit. Details: [Logging](configuration/logging).
+Für Betriebs- und Ticketdiagnose stehen `GET /api/diagnostics/support-log|support-log/download|support-events|support-events/export` für Admins bereit. Details: [Logging](configuration/logging). Welche Logdateien es gibt, wo sie liegen und welche bei welchem Störungsbild weiterhilft: [Logs & Diagnose](deployment/logs).
 
 ## Metrics (Auszug)
 

@@ -9,6 +9,23 @@ NodePilot writes application logs through Serilog. `Logging:Format` determines t
 | `json` | JSON (CLEF) | Generic structured ingest |
 | `ecs-json` | ECS 1.x | SIEM — see [SIEM logging](../enterprise/siem-logging) |
 
+## Where the files live
+
+Two file sinks, both in the same folder:
+
+| Sink | Pattern | Key | Without the key |
+|---|---|---|---|
+| Application log | `nodepilot-YYYYMMDD.log` | `Logging:File:Path` | `{ContentRoot}\logs\nodepilot-.log` |
+| Support log | `nodepilot-support-YYYYMMDD.log` | `Logging:SupportLog:Path` | `{ContentRoot}\logs\nodepilot-support-.log` |
+
+A relative value is resolved against the content root, an absolute one is taken as it is. The installers set both keys to `C:\ProgramData\NodePilot\logs\`; a development instance started from source writes to `src\NodePilot.Api\logs\` accordingly.
+
+The application log rolls daily and additionally at `Logging:File:FileSizeLimitBytes` (100 MB by default, suffix `_001`, `_002` …). `Logging:File:RetainedFileCountLimit` (**7** by default) limits the **number** of retained files: on a talkative system seven files are fewer than seven days.
+
+What ships is `Logging:Format=cmtrace`, not the code default `text`. The section is not hot-reloadable — a format change takes effect only after a service restart.
+
+Which file helps with which failure mode is covered under [Logs & diagnostics](../deployment/logs).
+
 ## Output redaction
 
 `OutputRedactor` masks secrets. **Always active.** Custom patterns via `Logging:Redaction:Patterns`.

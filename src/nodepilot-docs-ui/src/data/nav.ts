@@ -1,7 +1,7 @@
 import type { CarbonIconType } from '@carbon/icons-react'
 import {
   Api, Apps, Archive, BareMetalServer, Catalog, ChartLine,
-  ChartRelationship, Chat, CloudMonitoring, DataBase, DecisionTree, Deploy, Document,
+  ChartRelationship, Chat, CloudMonitoring, DataBase, Debug, DecisionTree, Deploy, Document,
   Download, Draw, Firewall, Flow, FlowModeler, Folder, Group, Idea, Json, Laptop,
   Layers, Lightning, ListChecked, Meter, Notification, Password, PlayFilledAlt, Plug,
   Replicate, Rocket, Screen, Security, SecurityServices, Settings, SettingsAdjust,
@@ -104,6 +104,7 @@ export const navGroups: NavGroup[] = [
       { path: 'deployment/production', icon: BareMetalServer },
       { path: 'deployment/desktop', icon: Laptop },
       { path: 'deployment/av-exclusions', icon: SecurityServices },
+      { path: 'deployment/logs', icon: Debug },
       { path: 'ai-features', icon: Chat },
       { path: 'alerting', icon: Notification },
       { path: 'observability', icon: ChartLine },

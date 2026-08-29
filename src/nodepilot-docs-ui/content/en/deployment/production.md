@@ -435,6 +435,8 @@ Expected results:
 
 With the directory integration enabled, `/healthz/directory` has to be checked separately. General readiness deliberately stays limited to the database.
 
+If one of the checks fails, the cause is in the application log under `C:\ProgramData\NodePilot\logs\nodepilot-<date>.log`. Which file helps with which failure mode — including the setup transcript under `%TEMP%` that an aborted installation leaves behind — is covered under [Logs & diagnostics](logs).
+
 ### Behaviour during a database outage in operation
 
 During a runtime outage the service stays up; database-dependent HTTP calls answer quickly with the
@@ -480,6 +482,9 @@ The external-trigger API key is shown only once and has to be stored in a secret
 | `C:\Program Files\NodePilot\appsettings.Production.json` | The production configuration | Read |
 | `C:\ProgramData\NodePilot\` | Keys, the setup token, logs and operational data | Modify |
 | `C:\Program Files\NodePilot\wwwroot\docs\` | This documentation, served at `/docs` | Read |
+| `C:\ProgramData\NodePilot\logs\` | The application log `nodepilot-YYYYMMDD.log` and the support log `nodepilot-support-YYYYMMDD.log` | Modify |
+
+The log folder is readable by administrators only. Retention and how to pick the right file: [Logs & diagnostics](logs).
 
 ## The documentation on the server
 

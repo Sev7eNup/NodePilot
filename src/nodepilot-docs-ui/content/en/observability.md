@@ -31,7 +31,7 @@ For structured log ingest into Elastic, Sentinel or Splunk, set `Logging:Format=
 
 ## Support diagnostics
 
-For operations and ticket diagnosis, `GET /api/diagnostics/support-log|support-log/download|support-events|support-events/export` are available to admins. Details: [Logging](configuration/logging).
+For operations and ticket diagnosis, `GET /api/diagnostics/support-log|support-log/download|support-events|support-events/export` are available to admins. Details: [Logging](configuration/logging). Which log files exist, where they live and which one helps with which failure mode: [Logs & diagnostics](deployment/logs).
 
 ## Metrics (excerpt)
 
