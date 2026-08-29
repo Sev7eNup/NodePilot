@@ -65,6 +65,27 @@ public sealed class ApiNotFoundFallbackTests
         response.Content.Headers.ContentType?.MediaType.Should().NotBe("application/problem+json");
     }
 
+    /// <summary>
+    /// /docs carries the bundled documentation. In the real pipeline it must be reachable
+    /// without a session and must not be claimed by the /api guard — the runbooks are there for
+    /// the case where signing in is itself the problem.
+    /// </summary>
+    [Fact]
+    public async Task DocsPath_IsAnonymousAndNotClaimedByTheApiFallback()
+    {
+        using var factory = new ApiPipelineFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/docs");
+
+        response.StatusCode.Should().NotBe(HttpStatusCode.Unauthorized);
+        response.StatusCode.Should().NotBe(HttpStatusCode.Forbidden);
+        // The test host stages no docs bundle, so the endpoint is not mapped and the request
+        // falls through to the SPA fallback. Either way it must never be the API problem
+        // response, which would mean /api had claimed the path.
+        response.Content.Headers.ContentType?.MediaType.Should().NotBe("application/problem+json");
+    }
+
     /// <summary>A path that a real endpoint owns must not be shadowed by the fallback.</summary>
     [Fact]
     public async Task MatchedApiPath_IsUnaffected()

@@ -1288,6 +1288,8 @@ $ApiExe = Join-Path $InstallPath 'NodePilot.Api.exe'
 if (-not (Test-Path $ApiExe)) { throw "Artifact did not contain NodePilot.Api.exe at $ApiExe" }
 $SpaIndex = Join-Path (Join-Path $InstallPath 'wwwroot') 'index.html'
 if (-not (Test-Path $SpaIndex)) { throw "Artifact did not contain wwwroot\index.html. SPA fallback will 404." }
+$DocsIndex = Join-Path (Join-Path $InstallPath 'wwwroot') 'docs\index.html'
+if (-not (Test-Path $DocsIndex)) { throw "Artifact did not contain wwwroot\docs\index.html. /docs will 404." }
 $TemplateArtifact = Join-Path $InstallPath 'appsettings.Production.json.template'
 $TemplateScript   = Join-Path $PSScriptRoot 'templates\appsettings.Production.json.template'
 $Template = if (Test-Path $TemplateArtifact) { $TemplateArtifact } else { $TemplateScript }

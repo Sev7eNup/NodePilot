@@ -40,18 +40,12 @@
     <link rel="canonical" href="https://sev7enup.github.io/NodePilot/" />
     <meta name="robots" content="index, follow, max-image-preview:large" />
     <!-- Resolve the theme before first paint, otherwise dark-mode users see a white flash.
-         Must stay a classic (non-module) inline script; a module would be deferred and the
-         flash returns. useTheme seeds its state from the class this sets. -->
-    <script>
-      try {
-        var t =
-          localStorage.getItem('np-docs-theme') ||
-          (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        document.documentElement.classList.toggle('dark', t === 'dark');
-      } catch (e) {
-        /* private mode / storage disabled — fall through to the light default */
-      }
-    </script>
+         Must stay a classic, non-deferred script; a module (or defer/async) runs after parsing
+         and the flash returns. It is a file rather than inline because the API serves this
+         bundle at /docs under a `script-src 'self'` CSP with no nonce, which blocks inline
+         script — see src/lib/document-head.test.ts. useTheme seeds its state from the class it
+         sets. -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

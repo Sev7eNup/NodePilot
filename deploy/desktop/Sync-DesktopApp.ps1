@@ -43,6 +43,7 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot  = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $UiDir     = Join-Path $RepoRoot 'src\nodepilot-ui'
+$DocsUiDir = Join-Path $RepoRoot 'src\nodepilot-docs-ui'
 $ApiCsproj = Join-Path $RepoRoot 'src\NodePilot.Api\NodePilot.Api.csproj'
 $AppDir    = Join-Path $InstallPath 'app'
 $PublishTmp = Join-Path $env:TEMP 'nodepilot-sync-publish'
@@ -95,10 +96,23 @@ if ($Component -in @('spa', 'all')) {
     if (-not (Test-Path -LiteralPath (Join-Path $dist 'index.html'))) { throw "SPA build produced no index.html in $dist." }
 
     Write-Step 'Syncing SPA into the installation'
-    # /MIR is safe here: wwwroot holds nothing but SPA output, and mirroring removes stale
-    # content-hashed chunks from previous builds.
-    Invoke-Tool { & robocopy.exe $dist (Join-Path $AppDir 'wwwroot') /MIR /NFL /NDL /NJH /NJS /NP } `
-        'robocopy (SPA) failed.' -OkExitCodes @(0, 1, 2, 3)
+    # /MIR removes stale content-hashed chunks from previous builds, which is why it is used.
+    # wwwroot\docs is a second bundle built from its own project, so it is excluded here and
+    # mirrored separately below - without /XD, every sync would delete it.
+    Invoke-Tool {
+        & robocopy.exe $dist (Join-Path $AppDir 'wwwroot') /MIR /XD (Join-Path $AppDir 'wwwroot\docs') /NFL /NDL /NJH /NJS /NP
+    } 'robocopy (SPA) failed.' -OkExitCodes @(0, 1, 2, 3)
+
+    Write-Step 'Building documentation site'
+    Push-Location $DocsUiDir
+    try { Invoke-Tool { & npm.cmd run build } 'npm run build (docs-ui) failed.' } finally { Pop-Location }
+
+    $docsDist = Join-Path $DocsUiDir 'dist'
+    if (-not (Test-Path -LiteralPath (Join-Path $docsDist 'index.html'))) { throw "Docs site build produced no index.html in $docsDist." }
+
+    Write-Step 'Syncing documentation site into the installation'
+    Invoke-Tool { & robocopy.exe $docsDist (Join-Path $AppDir 'wwwroot\docs') /MIR /NFL /NDL /NJH /NJS /NP } `
+        'robocopy (docs) failed.' -OkExitCodes @(0, 1, 2, 3)
     Write-Host '    done - reload the NodePilot window (Ctrl+R), no service restart needed.'
 }
 

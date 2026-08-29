@@ -4,7 +4,8 @@
     Builds a production-ready NodePilot artifact zip (backend + SPA + template), and
     optionally the desktop installer alongside it.
 .DESCRIPTION
-    Runs "dotnet publish" on NodePilot.Api, builds the React SPA, merges wwwroot,
+    Runs "dotnet publish" on NodePilot.Api, builds the React SPA and the documentation site,
+    merges both into wwwroot (the docs land in wwwroot\docs, which the API serves at /docs),
     copies the appsettings.Production.json.template, and packs everything into
     NodePilot-<version>.zip under .\out\.
 
@@ -20,11 +21,12 @@
 .PARAMETER RuntimeIdentifier
     .NET RID. Defaults to win-x64.
 .PARAMETER SkipFrontend
-    Skip the npm build entirely (useful when only the backend changed and dist/ is warm).
+    Skip both npm builds entirely - the app SPA and the documentation site (useful when only
+    the backend changed and both dist/ directories are warm).
 .PARAMETER SkipNpmCi
-    Skip "npm ci" (which wipes node_modules). Use when a running Vite dev-server or
-    antivirus is holding file locks inside node_modules - the build then reuses the
-    already-installed dependencies and just runs "npm run build".
+    Skip "npm ci" (which wipes node_modules) for both npm builds. Use when a running Vite
+    dev-server or antivirus is holding file locks inside node_modules - the build then reuses
+    the already-installed dependencies and just runs "npm run build".
 .PARAMETER SigningCertificateThumbprint
     Code Signing certificate used for the detached CMS signature over the artifact manifest.
     Required unless AllowUnsignedDevelopmentArtifact is explicitly selected.
@@ -102,6 +104,7 @@ $CliCsproj = Join-Path $RepoRoot 'src\NodePilot.Cli\NodePilot.Cli.csproj'
 $McpCsproj = Join-Path $RepoRoot 'src\NodePilot.Mcp\NodePilot.Mcp.csproj'
 $SwitcherCsproj = Join-Path $RepoRoot 'src\NodePilot.ServiceSwitcher\NodePilot.ServiceSwitcher.csproj'
 $UiDir = Join-Path $RepoRoot 'src\nodepilot-ui'
+$DocsUiDir = Join-Path $RepoRoot 'src\nodepilot-docs-ui'
 $OutDir = Join-Path $RepoRoot 'out'
 $StageDir = Join-Path $OutDir 'artifact'
 $TemplateSrc = Join-Path $PSScriptRoot 'templates\appsettings.Production.json.template'
@@ -179,6 +182,9 @@ if (-not (Test-Path $CliCsproj)) { throw "CLI csproj not found at $CliCsproj" }
 if (-not (Test-Path $McpCsproj)) { throw "MCP csproj not found at $McpCsproj" }
 if (-not $SkipFrontend -and -not (Test-Path (Join-Path $UiDir 'package.json'))) {
     throw "UI project not found at $UiDir"
+}
+if (-not $SkipFrontend -and -not (Test-Path (Join-Path $DocsUiDir 'package.json'))) {
+    throw "Docs site project not found at $DocsUiDir"
 }
 if (-not (Test-Path $TemplateSrc)) { throw "Template missing: $TemplateSrc" }
 if (-not (Test-Path $DeploymentTemplateTest)) { throw "Deployment template test missing: $DeploymentTemplateTest" }
@@ -347,20 +353,26 @@ if ($InstallerSigningCertificateThumbprint) {
 $standaloneSwitcher = Join-Path $OutDir "NodePilot-ServiceSwitcher-$Version-win-x64.exe"
 Copy-Item -LiteralPath $switcherExe -Destination $standaloneSwitcher -Force
 
-if (-not $SkipFrontend) {
+# Builds one npm workspace. Two of them ship: the app SPA and the documentation site, which the
+# API serves at /docs so a disconnected installation still has its runbooks.
+function Invoke-NodePilotWebBuild {
+    param(
+        [Parameter(Mandatory)][string]$ProjectDir,
+        [Parameter(Mandatory)][string]$Label
+    )
     # Invoke npm through cmd.exe to dodge the PS-shim (npm.ps1), which under PS 7 +
     # StrictMode throws PropertyNotFoundStrict on a ".Statement" property lookup
     # before the actual npm process is even started.
-    Push-Location $UiDir
+    Push-Location $ProjectDir
     try {
         if ($SkipNpmCi) {
-            $nodeModules = Join-Path $UiDir 'node_modules'
+            $nodeModules = Join-Path $ProjectDir 'node_modules'
             if (-not (Test-Path $nodeModules)) {
                 throw "-SkipNpmCi was passed but $nodeModules does not exist. Drop the switch or run 'npm install' once."
             }
-            Write-Host "[build] npm run build (skipping npm ci)" -ForegroundColor Cyan
+            Write-Host "[build] $Label - npm run build (skipping npm ci)" -ForegroundColor Cyan
         } else {
-            Write-Host "[build] npm ci" -ForegroundColor Cyan
+            Write-Host "[build] $Label - npm ci" -ForegroundColor Cyan
             # Same stderr guard as `npm run build` below: npm emits warnings (e.g. EBADENGINE
             # from transitive deps) on stderr, which PS 5.1 turns into a terminating
             # NativeCommandError under Stop mode even though npm exits 0. Worse, the abort
@@ -371,11 +383,11 @@ if (-not $SkipFrontend) {
             $npmCiExit = $LASTEXITCODE
             $ErrorActionPreference = $prevEap
             if ($npmCiExit -ne 0) {
-                throw ("npm ci failed with exit code $npmCiExit. If this is a file lock (EPERM on " +
-                       "node_modules), stop any running Vite dev server / editor and retry, or re-run " +
-                       "with -SkipNpmCi to reuse the current node_modules.")
+                throw ("npm ci failed for $Label with exit code $npmCiExit. If this is a file lock " +
+                       "(EPERM on node_modules), stop any running Vite dev server / editor and retry, " +
+                       "or re-run with -SkipNpmCi to reuse the current node_modules.")
             }
-            Write-Host "[build] npm run build" -ForegroundColor Cyan
+            Write-Host "[build] $Label - npm run build" -ForegroundColor Cyan
         }
         # Temporarily lower ErrorActionPreference so that Vite/Rolldown warnings on stderr
         # (e.g. the harmless [EVAL] warning from @protobufjs/inquire) don't trigger
@@ -385,10 +397,15 @@ if (-not $SkipFrontend) {
         cmd.exe /c 'npm run build'
         $npmBuildExit = $LASTEXITCODE
         $ErrorActionPreference = $prevEap
-        if ($npmBuildExit -ne 0) { throw "npm run build failed with exit code $npmBuildExit" }
+        if ($npmBuildExit -ne 0) { throw "npm run build failed for $Label with exit code $npmBuildExit" }
     } finally {
         Pop-Location
     }
+}
+
+if (-not $SkipFrontend) {
+    Invoke-NodePilotWebBuild -ProjectDir $UiDir -Label 'app SPA'
+    Invoke-NodePilotWebBuild -ProjectDir $DocsUiDir -Label 'docs site'
 }
 
 $DistDir = Join-Path $UiDir 'dist'
@@ -399,6 +416,17 @@ $WwwRoot = Join-Path $StageDir 'wwwroot'
 New-Item -ItemType Directory -Path $WwwRoot -Force | Out-Null
 Write-Host "[build] Copy SPA → wwwroot" -ForegroundColor Cyan
 Copy-Item (Join-Path $DistDir '*') $WwwRoot -Recurse -Force
+
+# The docs bundle is built with a relative Vite base and routes in the URL fragment, so it drops
+# into a subdirectory as-is. Install-NodePilot.ps1 verifies it arrived.
+$DocsDistDir = Join-Path $DocsUiDir 'dist'
+if (-not (Test-Path $DocsDistDir)) {
+    throw "Docs site build output not found at $DocsDistDir. Run without -SkipFrontend or verify vite config."
+}
+$DocsWwwRoot = Join-Path $WwwRoot 'docs'
+New-Item -ItemType Directory -Path $DocsWwwRoot -Force | Out-Null
+Write-Host "[build] Copy docs site → wwwroot\docs" -ForegroundColor Cyan
+Copy-Item (Join-Path $DocsDistDir '*') $DocsWwwRoot -Recurse -Force
 
 # Ship a git-tracked source snapshot into knowledge\source so the global "AI Chat" knowledge
 # assistant can serve source-code questions on a production Windows-service install. `git archive
@@ -442,6 +470,10 @@ if (-not (Test-Path $ApiExe)) {
 $IndexHtml = Join-Path $WwwRoot 'index.html'
 if (-not (Test-Path $IndexHtml)) {
     throw "Expected wwwroot\index.html in staging, but it's missing. Check Vite build."
+}
+$DocsIndexHtml = Join-Path $DocsWwwRoot 'index.html'
+if (-not (Test-Path $DocsIndexHtml)) {
+    throw "Expected wwwroot\docs\index.html in staging, but it's missing. Check the docs-ui Vite build."
 }
 
 Write-Host "[build] Generate extracted-file manifest" -ForegroundColor Cyan

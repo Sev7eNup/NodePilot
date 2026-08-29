@@ -24,6 +24,14 @@ exhaustive.
   unlisted active job. NodePilot cancellation is driven by a live operations snapshot instead of
   launching one redundant command for every inactive workflow, and an open SCOrch Runbook Designer
   now blocks a NodePilot switch before service mutation because it restarts `omanagement`.
+- The documentation site now ships with the product. Both installers stage it into
+  `wwwroot/docs`, and the API serves it at `/docs` — without a login, independent of the
+  database, and at the version actually installed. NodePilot installs offline on both paths,
+  while its own deployment and troubleshooting guides pointed at a site on the internet; on a
+  disconnected server that left no manual. GitHub Pages continues to serve the same site for
+  everyone who has not installed anything yet. A question mark in the application header opens
+  the local copy; in the desktop shell it gets its own window, pinned to `/docs`, with outbound
+  links handed to the system browser.
 
 ## [1.2.19] - 2026-08-28
 

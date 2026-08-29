@@ -48,6 +48,20 @@ describe('TopBar', () => {
     expect(screen.getByText('Globals')).toBeInTheDocument();
   });
 
+  // /docs is a second document served by the API, not a route of this SPA. It has to be a real
+  // anchor: a react-router Link would navigate client-side, match no route and render the
+  // not-found page, so the request would never reach the server. The trailing slash matters too
+  // — the docs bundle resolves its assets against the document url.
+  it('links to the bundled documentation as a real document navigation', () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }));
+    renderAt('/workflows');
+
+    const link = screen.getByRole('link', { name: 'Documentation' });
+    expect(link).toHaveAttribute('href', '/docs/');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
   // The BackendStatus pill shows a compact "API" label and a colour-coded plug icon. The
   // connection state lives only in the accessible name (aria-label "API: <state>"), so the
   // tests assert against that label. The pill renders whatever the app-wide database-health

@@ -160,6 +160,16 @@ If the provisioning fails, the installer reports it with a pointer to its log at
 installation that then does not start. Causes and remedies:
 [Desktop troubleshooting](https://github.com/Sev7eNup/NodePilot/blob/main/docs/desktop-troubleshooting.md).
 
+## The documentation on the machine
+
+The package ships this documentation with it; the API serves it at `/docs`. The question mark in
+the application header opens it in a window of its own — without signing in and without internet
+access, matching the installed version. Links that lead out of the documentation (GitHub,
+releases) are handed to the system browser; the shell never renders foreign content itself.
+
+It is available while the `NodePilot` service is running — including when the database is
+temporarily unreachable. If the service does not start at all, only the provisioning log helps.
+
 ## Verifying the installation
 
 ```powershell
