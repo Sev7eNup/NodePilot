@@ -12,6 +12,19 @@ exhaustive.
 
 ## [Unreleased]
 
+### Added
+
+- **NodePilot Engine Switcher.** A small elevated WPF utility switches a local machine exclusively
+  between NodePilot and the installed System Center Orchestrator services, persists the selected
+  side across reboots, handles stuck SCOrch service processes through verified SCM process IDs, and
+  fails closed when a transition cannot complete. The server installer adds its Start-menu entry;
+  release builds also ship it as a self-contained single-file executable. Local- or UNC-backed exact
+  allowlists extend the switch to workloads: NodePilot permanently enables only listed workflows
+  and cancels unlisted executions, while SCOrch starts only listed runbooks and stops every
+  unlisted active job. NodePilot cancellation is driven by a live operations snapshot instead of
+  launching one redundant command for every inactive workflow, and an open SCOrch Runbook Designer
+  now blocks a NodePilot switch before service mutation because it restarts `omanagement`.
+
 ## [1.2.19] - 2026-08-28
 
 A workflow can now cap how many of its executions run at once, trigger deliveries survive a

@@ -83,6 +83,9 @@ Source: "{#StageDir}\payload\*";    Flags: dontcopy
 ; Install-NodePilot.ps1 wipes its install directory before repopulating it.
 Source: "{#StageDir}\deploy\*";     DestDir: "{app}\deploy"; Flags: recursesubdirs createallsubdirs ignoreversion
 
+[Icons]
+Name: "{group}\NodePilot Engine Switcher"; Filename: "{app}\tools\service-switcher\NodePilot.ServiceSwitcher.exe"; WorkingDir: "{app}\tools\service-switcher"
+
 [UninstallDelete]
 ; Inno decides whether {app} is empty before it removes its own uninstaller from inside it, so
 ; the uninstall would otherwise leave an empty directory behind. This entry runs last and

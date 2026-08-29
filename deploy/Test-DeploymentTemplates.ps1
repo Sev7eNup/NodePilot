@@ -364,6 +364,9 @@ $requiredBuildContracts = [ordered]@{
     'signing is verified rather than trusted to signtool exit code' = 'Get-AuthenticodeSignature'
     'build script accepts the server-setup switch' = '\[switch\]\$IncludeServerInstaller'
     'the produced server setup is copied next to the server zip' = 'NodePilot-Server-Setup-\$Version\.exe'
+    'the engine switcher is published self-contained' = '(?s)dotnet publish \$SwitcherCsproj.*?--self-contained true'
+    'the engine switcher is published as a single file' = '(?s)dotnet publish \$SwitcherCsproj.*?PublishSingleFile=true'
+    'the standalone switcher is covered by release checksums' = '(?s)\$artifacts\s*=\s*@\([^\r\n]*\$standaloneSwitcher'
     # One signing loop covering every installer, not a hand-maintained block per target: a second
     # copy is how the two drift apart, and the ordering check below only pins one place.
     'signing iterates over every installer this run produced' = '(?s)foreach \(\$target in \$installersToSign\)'
@@ -1031,6 +1034,8 @@ Assert-TextMatches -Name 'a failed setup leaves a log behind' `
     -Text $serverIss -Pattern '(?m)^SetupLogging=yes\s*$'
 Assert-TextMatches -Name 'the setup requires elevation' `
     -Text $serverIss -Pattern '(?m)^PrivilegesRequired=admin\s*$'
+Assert-TextMatches -Name 'the server setup installs a Start Menu shortcut for the engine switcher' `
+    -Text $serverIss -Pattern '(?m)^Name:\s*"\{group\}\\NodePilot Engine Switcher";\s*Filename:\s*"\{app\}\\tools\\service-switcher\\NodePilot\.ServiceSwitcher\.exe"'
 # The controls on the network and prerequisites pages are positioned once, at wizard construction,
 # and carry no anchors. A resizable window would grow around them - the picker would stay where it
 # was while the page around it got taller.

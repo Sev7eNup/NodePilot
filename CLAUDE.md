@@ -48,7 +48,7 @@ Diese Datei ist der Index; die Tiefe liegt in `docs/`:
 
 Projekt-Layout unter `src/` + `tests/` — nicht hier gespiegelt, direkt nachsehen. Bindend ist die Abhaengigkeitsrichtung:
 
-**Dep-Graph:** `Api -> Ai, Engine, Scheduler, Data, Remote, Core, Telemetry` | `Engine -> Ai, Data, Remote, Core, Telemetry` | `Scheduler -> Engine, Data, Core` (Application-Tier: konsumiert Engine-Notifications/-Conditions/-Security) | `Ai -> Core` (LLM-Stack, sitzt unter Engine, damit Api+Engine ihn teilen) | `Data -> Core` | `Remote -> Core` | `Telemetry -> Core` | `Cli -> Core` (HTTP-only) | `Mcp -> Core` (HTTP-only, MCP-Server). Maschinell erzwungen durch `DependencyDirectionTests` (Api.Tests/Architecture) — Graph-Änderung heißt: csproj + diese Zeile + der Test ändern sich gemeinsam.
+**Dep-Graph:** `Api -> Ai, Engine, Scheduler, Data, Remote, Core, Telemetry` | `Engine -> Ai, Data, Remote, Core, Telemetry` | `Scheduler -> Engine, Data, Core` (Application-Tier: konsumiert Engine-Notifications/-Conditions/-Security) | `Ai -> Core` (LLM-Stack, sitzt unter Engine, damit Api+Engine ihn teilen) | `Data -> Core` | `Remote -> Core` | `Telemetry -> Core` | `Cli -> Core` (HTTP-only) | `Mcp -> Core` (HTTP-only, MCP-Server) | `ServiceSwitcher -> ∅` (lokale Windows-SCM-WPF-App). Maschinell erzwungen durch `DependencyDirectionTests` (Api.Tests/Architecture) — Graph-Änderung heißt: csproj + diese Zeile + der Test ändern sich gemeinsam.
 
 ## Projekt starten
 
