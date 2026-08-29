@@ -110,13 +110,19 @@ When starting a runbook, the switcher reads the available runbook servers from
 `Running` or `InProgress`; a stale `Pending`/`Queued` job is stopped and restarted on an available
 runbook server.
 
-Before the first NodePilot switch, authenticate the configured CLI profile once under the same
-Windows account that runs the switcher:
+The configured NodePilot CLI profile can be authenticated once under the same Windows account that
+runs the switcher:
 
 ```powershell
 & 'C:\Program Files\NodePilot\tools\np\np.exe' auth login `
   --profile service-switcher --server https://nodepilot.example.test
 ```
+
+If that session later reaches its absolute server lifetime, the switcher opens an in-app NodePilot
+sign-in dialog and automatically retries the interrupted reconciliation after a successful login.
+It invokes `np auth login --username <name> --password-stdin`; the password is never placed in the
+process arguments, configuration, activity history, or persistent switcher log, and is not stored by
+the switcher.
 
 Example list contents:
 
@@ -132,6 +138,8 @@ newest action first. Its Copy action copies the complete visible history. The pe
 log is stored under `%ProgramData%\NodePilot\ServiceSwitcher` and is restricted to Administrators
 and SYSTEM.
 The title-bar toggle switches between light and dark mode; the selected theme is stored per user.
+Engine activation confirmations use the same themed in-app dialog design as NodePilot reauthentication
+and show the services that will be stopped and activated before the switch begins.
 
 The server installer adds **NodePilot Engine Switcher** to the Start menu. In a scripted ZIP
 installation, run:

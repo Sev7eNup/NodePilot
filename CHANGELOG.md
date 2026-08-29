@@ -23,7 +23,10 @@ exhaustive.
   and cancels unlisted executions, while SCOrch starts only listed runbooks and stops every
   unlisted active job. NodePilot cancellation is driven by a live operations snapshot instead of
   launching one redundant command for every inactive workflow, and an open SCOrch Runbook Designer
-  now blocks a NodePilot switch before service mutation because it restarts `omanagement`.
+  now blocks a NodePilot switch before service mutation because it restarts `omanagement`. An
+  expired NodePilot CLI session can be renewed in the switcher without abandoning the transition;
+  the interrupted command is retried and the password is passed only through standard input. Engine
+  activation confirmations now use the switcher's themed dialog design instead of system message boxes.
 - The documentation site now ships with the product. Both installers stage it into
   `wwwroot/docs`, and the API serves it at `/docs` — without a login, independent of the
   database, and at the version actually installed. NodePilot installs offline on both paths,

@@ -10,6 +10,15 @@ internal sealed record NodePilotWorkflow(Guid Id, string Name, bool IsEnabled);
 internal sealed record NodePilotOperationsGraph(IReadOnlyList<NodePilotOperationsNode> Nodes);
 internal sealed record NodePilotOperationsNode(Guid WorkflowId, int RunningCount);
 internal sealed record CommandResult(int ExitCode, string StandardOutput, string StandardError);
+internal sealed record NodePilotCredentials(string Username, string Password);
+
+internal interface INodePilotCredentialPrompt
+{
+    Task<NodePilotCredentials?> PromptAsync(
+        string profile,
+        string? previousError,
+        CancellationToken cancellationToken);
+}
 
 internal interface ICommandRunner
 {
@@ -17,7 +26,8 @@ internal interface ICommandRunner
         string executable,
         IReadOnlyList<string> arguments,
         TimeSpan timeout,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? standardInput = null);
 }
 
 internal sealed class ProcessCommandRunner : ICommandRunner
@@ -26,7 +36,8 @@ internal sealed class ProcessCommandRunner : ICommandRunner
         string executable,
         IReadOnlyList<string> arguments,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? standardInput = null)
     {
         var startInfo = new ProcessStartInfo(executable)
         {
@@ -34,11 +45,18 @@ internal sealed class ProcessCommandRunner : ICommandRunner
             CreateNoWindow = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = standardInput is not null,
         };
         foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
 
         using var process = new Process { StartInfo = startInfo };
         if (!process.Start()) throw new InvalidOperationException($"Could not start '{executable}'.");
+        if (standardInput is not null)
+        {
+            await process.StandardInput.WriteLineAsync(
+                standardInput.AsMemory(), cancellationToken).ConfigureAwait(false);
+            process.StandardInput.Close();
+        }
         var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
         using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -75,11 +93,16 @@ internal sealed class NodePilotWorkflowReconciler
 {
     private readonly ICommandRunner _runner;
     private readonly IActivityLogger _logger;
+    private readonly INodePilotCredentialPrompt? _credentialPrompt;
 
-    public NodePilotWorkflowReconciler(ICommandRunner runner, IActivityLogger logger)
+    public NodePilotWorkflowReconciler(
+        ICommandRunner runner,
+        IActivityLogger logger,
+        INodePilotCredentialPrompt? credentialPrompt = null)
     {
         _runner = runner;
         _logger = logger;
+        _credentialPrompt = credentialPrompt;
     }
 
     public async Task ReconcileAsync(
@@ -250,30 +273,89 @@ internal sealed class NodePilotWorkflowReconciler
         IReadOnlyList<string> commandArguments,
         CancellationToken cancellationToken)
     {
-        var arguments = commandArguments.ToList();
-        arguments.Add("--profile");
-        arguments.Add(configuration.Profile);
-        if (!string.IsNullOrWhiteSpace(configuration.ServerUrl))
+        var arguments = WithConnectionArguments(configuration, commandArguments);
+        var result = await RunCommandAsync(configuration, arguments, cancellationToken).ConfigureAwait(false);
+        if (result.ExitCode == 3 && _credentialPrompt is not null)
         {
-            arguments.Add("--server");
-            arguments.Add(configuration.ServerUrl);
-            if (Uri.TryCreate(configuration.ServerUrl, UriKind.Absolute, out var uri)
-                && uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback)
-                arguments.Add("--allow-insecure");
+            _logger.Info("NodePilot CLI session expired; interactive sign-in is required to continue.");
+            await ReauthenticateAsync(configuration, Detail(result), cancellationToken).ConfigureAwait(false);
+            result = await RunCommandAsync(configuration, arguments, cancellationToken).ConfigureAwait(false);
         }
 
-        var result = await _runner.RunAsync(
+        if (result.ExitCode != 0)
+            throw CommandFailure(result);
+        return result;
+    }
+
+    private async Task ReauthenticateAsync(
+        NodePilotWorkloadConfiguration configuration,
+        string? previousError,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            var credentials = await _credentialPrompt!
+                .PromptAsync(configuration.Profile, previousError, cancellationToken)
+                .ConfigureAwait(false);
+            if (credentials is null)
+                throw new InvalidOperationException("NodePilot sign-in was cancelled; the switch cannot continue safely.");
+
+            var loginArguments = WithConnectionArguments(configuration,
+                ["auth", "login", "--username", credentials.Username, "--password-stdin"]);
+            var login = await RunCommandAsync(
+                    configuration,
+                    loginArguments,
+                    cancellationToken,
+                    credentials.Password)
+                .ConfigureAwait(false);
+            if (login.ExitCode == 0)
+            {
+                _logger.Success($"NodePilot CLI profile '{configuration.Profile}' signed in; continuing the switch.");
+                return;
+            }
+
+            previousError = Detail(login);
+            if (login.ExitCode != 3)
+                throw CommandFailure(login, "NodePilot CLI sign-in failed");
+        }
+    }
+
+    private Task<CommandResult> RunCommandAsync(
+        NodePilotWorkloadConfiguration configuration,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken,
+        string? standardInput = null) =>
+        _runner.RunAsync(
             configuration.CliPath,
             arguments,
             TimeSpan.FromSeconds(configuration.CommandTimeoutSeconds),
-            cancellationToken).ConfigureAwait(false);
-        if (result.ExitCode != 0)
-        {
-            var detail = string.IsNullOrWhiteSpace(result.StandardError)
-                ? result.StandardOutput.Trim()
-                : result.StandardError.Trim();
-            throw new InvalidOperationException($"NodePilot CLI failed with exit code {result.ExitCode}: {detail}");
-        }
-        return result;
+            cancellationToken,
+            standardInput);
+
+    private static IReadOnlyList<string> WithConnectionArguments(
+        NodePilotWorkloadConfiguration configuration,
+        IReadOnlyList<string> commandArguments)
+    {
+        var arguments = commandArguments.ToList();
+        arguments.Add("--profile");
+        arguments.Add(configuration.Profile);
+        if (string.IsNullOrWhiteSpace(configuration.ServerUrl)) return arguments;
+
+        arguments.Add("--server");
+        arguments.Add(configuration.ServerUrl);
+        if (Uri.TryCreate(configuration.ServerUrl, UriKind.Absolute, out var uri)
+            && uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback)
+            arguments.Add("--allow-insecure");
+        return arguments;
     }
+
+    private static InvalidOperationException CommandFailure(
+        CommandResult result,
+        string prefix = "NodePilot CLI failed") =>
+        new($"{prefix} with exit code {result.ExitCode}: {Detail(result)}");
+
+    private static string Detail(CommandResult result) =>
+        (string.IsNullOrWhiteSpace(result.StandardError)
+            ? result.StandardOutput
+            : result.StandardError).Trim();
 }

@@ -26,17 +26,18 @@ public partial class MainWindow : Window
         var gateway = new WindowsServiceControlGateway();
         var discovery = new ServiceDiscovery(gateway);
         var logger = new ActivityLogger();
+        var interaction = new DialogUserInteraction(_strings);
         var workloads = new WorkloadReconciler(
             new SwitcherConfigurationLoader(),
             new AllowListReader(),
-            new NodePilotWorkflowReconciler(new ProcessCommandRunner(), logger),
+            new NodePilotWorkflowReconciler(new ProcessCommandRunner(), logger, interaction),
             new ScorchRunbookReconciler(new ScorchApiClientFactory(), logger),
             logger);
         var coordinator = new SwitchCoordinator(gateway, discovery, logger, workloads);
         _viewModel = new MainWindowViewModel(
             coordinator,
             logger,
-            new MessageBoxUserInteraction(_strings),
+            interaction,
             _strings);
         DataContext = _viewModel;
         UpdateThemeToggle(light);

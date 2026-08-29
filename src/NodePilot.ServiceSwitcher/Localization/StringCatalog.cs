@@ -17,6 +17,7 @@ internal sealed class StringCatalog
     public string OrchestratorInstallationFound => Text("Orchestrator-Installation gefunden", "Orchestrator installation found");
     public string Yes => Text("Ja", "Yes");
     public string No => Text("Nein", "No");
+    public string NoServices => Text("Keine", "None");
     public string SwitchToDarkMode => Text("Zum Dark Mode wechseln", "Switch to dark mode");
     public string SwitchToLightMode => Text("Zum Light Mode wechseln", "Switch to light mode");
     public string LastActivities => Text("Aktivitätsverlauf", "Activity history");
@@ -41,6 +42,18 @@ internal sealed class StringCatalog
     public string Unavailable => Text("Nicht verfügbar", "Unavailable");
     public string Refreshing => Text("Dienststatus wird gelesen …", "Reading service status…");
     public string NoActivity => Text("Noch keine Umschaltaktivität.", "No switch activity yet.");
+    public string NodePilotSignInTitle => Text("Bei NodePilot anmelden", "Sign in to NodePilot");
+    public string Username => Text("Benutzername", "Username");
+    public string Password => Text("Kennwort", "Password");
+    public string SignIn => Text("Anmelden und fortfahren", "Sign in and continue");
+    public string Cancel => Text("Abbrechen", "Cancel");
+    public string CredentialsRequired => Text(
+        "Benutzername und Kennwort sind erforderlich.",
+        "Username and password are required.");
+
+    public string NodePilotSignInExplanation(string profile) => Text(
+        $"Die gespeicherte Sitzung für das CLI-Profil '{profile}' ist abgelaufen. Melden Sie sich erneut an; der laufende Wechsel wird danach automatisch fortgesetzt. Das Kennwort wird nicht gespeichert.",
+        $"The saved session for CLI profile '{profile}' has expired. Sign in again and the current switch will resume automatically. The password is not stored.");
 
     public string StateTitle(EnvironmentState state) => state switch
     {
@@ -77,16 +90,25 @@ internal sealed class StringCatalog
         $"Last successful switch: {timestamp:HH:mm}");
 
     public string ConfirmTitle => Text("Orchestrator wechseln?", "Switch orchestrator?");
-    public string ConfirmMessage(SwitchTarget target, IEnumerable<string> stop, IEnumerable<string> start) =>
-        Text(
-            $"Ziel: {Target(target)}\n\nStoppen: {Join(stop)}\nStarten: {Join(start)}\n\nDie Allowlist wird exakt angewendet: Nicht gelistete NodePilot-Workflows werden deaktiviert und abgebrochen; nicht gelistete SCOrch-Jobs werden gestoppt. Nicht sauber stoppende Dienste dürfen nach 30 Sekunden gezielt beendet werden. Die Auswahl bleibt nach einem Neustart aktiv.",
-            $"Target: {Target(target)}\n\nStop: {Join(stop)}\nStart: {Join(start)}\n\nThe allowlist is applied exactly: unlisted NodePilot workflows are disabled and cancelled; unlisted SCOrch jobs are stopped. Services that do not stop cleanly may be terminated after 30 seconds. The selection persists after restart.");
+    public string ConfirmExplanation => Text(
+        "Es ist immer nur eine Orchestrierungs-Engine aktiv.",
+        "Only one orchestration engine is active at a time.");
+    public string ServicesToStop => Text("WIRD GESTOPPT", "WILL BE STOPPED");
+    public string ServicesToStart => Text("WIRD AKTIVIERT", "WILL BE ACTIVATED");
+    public string ConfirmSwitchNotice => Text(
+        "Die Allowlist wird exakt angewendet. Nicht gelistete Workflows oder Runbooks werden beendet. Die Auswahl bleibt nach einem Neustart aktiv.",
+        "The allowlist is applied exactly. Unlisted workflows or runbooks are stopped. The selection remains active after a restart.");
+    public string ConfirmSwitchHeading(SwitchTarget target) => Text(
+        $"{Target(target)} aktivieren?",
+        $"Activate {Target(target)}?");
+    public string ActivateTarget(SwitchTarget target) => Text(
+        target == SwitchTarget.NodePilot ? "NodePilot aktivieren" : "Orchestrator aktivieren",
+        target == SwitchTarget.NodePilot ? "Activate NodePilot" : "Activate Orchestrator");
     public string ErrorTitle => Text("Wechsel fehlgeschlagen", "Switch failed");
     public string ErrorMessage(string error) => Text(
         $"Der Wechsel wurde abgebrochen. Bei einem Fehler nach Beginn des Dienstwechsels werden alle erreichbaren verwalteten Dienste gestoppt und auf manuellen Start gesetzt. Ein Fehler in der Vorprüfung verändert keine Dienste.\n\n{error}",
         $"The switch was aborted. A failure after service switching begins stops all reachable managed services and sets them to manual start. A preflight failure does not change any service.\n\n{error}");
 
     private string Target(SwitchTarget target) => target == SwitchTarget.NodePilot ? NodePilot : SystemCenter;
-    private string Join(IEnumerable<string> names) => string.Join(", ", names.DefaultIfEmpty(Text("keine", "none")));
     private string Text(string german, string english) => _german ? german : english;
 }
