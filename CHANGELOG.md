@@ -12,6 +12,11 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.20] - 2026-08-30
+
+A machine can now be switched between NodePilot and System Center Orchestrator, and the
+documentation travels with the product instead of living only on the internet.
+
 ### Added
 
 - **NodePilot Engine Switcher.** A small elevated WPF utility switches a local machine exclusively
@@ -35,6 +40,20 @@ exhaustive.
   everyone who has not installed anything yet. A question mark in the application header opens
   the local copy; in the desktop shell it gets its own window, pinned to `/docs`, with outbound
   links handed to the system browser.
+
+### Changed
+
+- **The documentation now says which log files exist, where they are, and which one to read when.**
+  A new page carries the inventory — every artifact with its pattern, its location on server,
+  desktop and a development instance, its contents and its retention — plus a symptom-to-source
+  table and what belongs in a support ticket. It also states what NodePilot deliberately does *not*
+  write, because time was being lost searching there too: the Electron shell, `np` and
+  `nodepilot-mcp` keep no log files, the bundled desktop PostgreSQL runs without a logging
+  collector, and the service redirects no standard output. Three facts had never been written down
+  anywhere: the application log keeps seven files and rolls again at 100 MB, so an incident older
+  than a few days may already have aged out; the server setup writes a transcript to `%TEMP%`; and
+  the retention archives are not logs. The deployment guide's troubleshooting table, which referred
+  to "the log" about twenty times without naming a file, now names them.
 
 ## [1.2.19] - 2026-08-28
 
