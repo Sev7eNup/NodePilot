@@ -100,6 +100,7 @@ $ApiCsproj = Join-Path $RepoRoot 'src\NodePilot.Api\NodePilot.Api.csproj'
 # installation.
 $CliCsproj = Join-Path $RepoRoot 'src\NodePilot.Cli\NodePilot.Cli.csproj'
 $McpCsproj = Join-Path $RepoRoot 'src\NodePilot.Mcp\NodePilot.Mcp.csproj'
+$SwitcherCsproj = Join-Path $RepoRoot 'src\NodePilot.ServiceSwitcher\NodePilot.ServiceSwitcher.csproj'
 $UiDir = Join-Path $RepoRoot 'src\nodepilot-ui'
 $OutDir = Join-Path $RepoRoot 'out'
 $StageDir = Join-Path $OutDir 'artifact'
@@ -131,6 +132,35 @@ function Assert-RequiredTool {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
         throw "Required tool '$Name' not found on PATH. $HowToInstall"
     }
+}
+
+function Invoke-NodePilotAuthenticodeSign {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Description,
+        [Parameter(Mandatory)][string]$Thumbprint
+    )
+    $signTool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter 'signtool.exe' -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match '\\x64\\' } |
+        Sort-Object FullName -Descending | Select-Object -First 1
+    if (-not $signTool) {
+        throw 'signtool.exe not found - install the Windows SDK or omit the Authenticode signing thumbprint.'
+    }
+
+    Write-Host "[build] Authenticode-sign $(Split-Path $Path -Leaf)" -ForegroundColor Cyan
+    $previous = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try {
+        & $signTool.FullName sign /sha1 $Thumbprint /fd SHA256 /td SHA256 `
+            /tr 'http://timestamp.digicert.com' /d $Description $Path
+        $exitCode = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $previous }
+    if ($exitCode -ne 0) { throw "signtool failed with exit code $exitCode." }
+
+    $signature = Get-AuthenticodeSignature -LiteralPath $Path
+    if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $Thumbprint) {
+        throw "$(Split-Path $Path -Leaf) is not signed by the requested certificate after signtool reported success."
+    }
+    Write-Host "         Signed by $($signature.SignerCertificate.Subject)" -ForegroundColor DarkGray
 }
 
 Write-Host "[build] Pre-flight checks" -ForegroundColor Cyan
@@ -291,6 +321,31 @@ foreach ($client in @(
         throw "Expected $($client.Exe) in $clientOut, but it is missing. Check publish output."
     }
 }
+
+# The engine switcher is a local WPF utility and must remain runnable on the server install even
+# though that installer provisions only the ASP.NET Core runtime. Publish it self-contained and
+# single-file, then use the exact same bytes inside the server artifact and as the standalone drop.
+Write-Host "[build] dotnet publish engine switcher (self-contained)" -ForegroundColor Cyan
+$switcherOut = Join-Path $StageDir 'tools\service-switcher'
+& dotnet publish $SwitcherCsproj `
+    --configuration $Configuration `
+    --runtime $RuntimeIdentifier `
+    --self-contained true `
+    --output $switcherOut `
+    -p:PublishSingleFile=true `
+    -p:IncludeNativeLibrariesForSelfExtract=true `
+    -p:DebugType=embedded
+if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $SwitcherCsproj with exit code $LASTEXITCODE" }
+$switcherExe = Join-Path $switcherOut 'NodePilot.ServiceSwitcher.exe'
+if (-not (Test-Path -LiteralPath $switcherExe -PathType Leaf)) {
+    throw "Expected NodePilot.ServiceSwitcher.exe in $switcherOut, but it is missing."
+}
+if ($InstallerSigningCertificateThumbprint) {
+    Invoke-NodePilotAuthenticodeSign -Path $switcherExe -Description 'NodePilot Engine Switcher' `
+        -Thumbprint $InstallerSigningCertificateThumbprint
+}
+$standaloneSwitcher = Join-Path $OutDir "NodePilot-ServiceSwitcher-$Version-win-x64.exe"
+Copy-Item -LiteralPath $switcherExe -Destination $standaloneSwitcher -Force
 
 if (-not $SkipFrontend) {
     # Invoke npm through cmd.exe to dodge the PS-shim (npm.ps1), which under PS 7 +
@@ -479,30 +534,9 @@ if ($desktopInstaller) { $installersToSign += @{ Path = $desktopInstaller; Descr
 if ($serverInstaller) { $installersToSign += @{ Path = $serverInstaller; Description = 'NodePilot Server Setup' } }
 
 if ($InstallerSigningCertificateThumbprint -and $installersToSign.Count -gt 0) {
-    $signTool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter 'signtool.exe' -Recurse -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -match '\\x64\\' } |
-        Sort-Object FullName -Descending | Select-Object -First 1
-    if (-not $signTool) {
-        throw ("signtool.exe not found - install the Windows SDK, or drop " +
-               "-InstallerSigningCertificateThumbprint to produce unsigned installers.")
-    }
     foreach ($target in $installersToSign) {
-        Write-Host "[build] Authenticode-sign $(Split-Path $target.Path -Leaf)" -ForegroundColor Cyan
-        $prevSignEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-        try {
-            & $signTool.FullName sign /sha1 $InstallerSigningCertificateThumbprint /fd SHA256 /td SHA256 `
-                /tr 'http://timestamp.digicert.com' /d $target.Description $target.Path
-            $signExit = $LASTEXITCODE
-        } finally { $ErrorActionPreference = $prevSignEap }
-        if ($signExit -ne 0) { throw "signtool failed with exit code $signExit." }
-
-        # Verified, not trusted to signtool's exit code.
-        $signature = Get-AuthenticodeSignature -LiteralPath $target.Path
-        if (-not $signature.SignerCertificate -or
-            $signature.SignerCertificate.Thumbprint -ne $InstallerSigningCertificateThumbprint) {
-            throw "$(Split-Path $target.Path -Leaf) is not signed by the requested certificate after signtool reported success."
-        }
-        Write-Host "         Signed by $($signature.SignerCertificate.Subject)" -ForegroundColor DarkGray
+        Invoke-NodePilotAuthenticodeSign -Path $target.Path -Description $target.Description `
+            -Thumbprint $InstallerSigningCertificateThumbprint
     }
 }
 
@@ -575,7 +609,7 @@ if (-not $AllowUnsignedDevelopmentArtifact) {
 # One file covering everything this run produced, so a downloader can verify the drop without
 # knowing which pieces are supposed to exist.
 Write-Host "[build] Write SHA256SUMS" -ForegroundColor Cyan
-$artifacts = @($ZipPath, $DeployScriptsZip)
+$artifacts = @($ZipPath, $DeployScriptsZip, $standaloneSwitcher)
 if (-not $AllowUnsignedDevelopmentArtifact) {
     $artifacts += "$ZipPath.manifest.json"
     $artifacts += "$ZipPath.manifest.json.p7s"
@@ -596,6 +630,7 @@ Write-Host ""
 Write-Host "[build] Done - version $Version" -ForegroundColor Green
 Write-Host "         $(Split-Path $ZipPath -Leaf) ($sizeMb MB)"
 Write-Host "         $(Split-Path $DeployScriptsZip -Leaf)"
+Write-Host "         $(Split-Path $standaloneSwitcher -Leaf)"
 if (-not $AllowUnsignedDevelopmentArtifact) {
     Write-Host "         $(Split-Path $ZipPath -Leaf).manifest.json + .p7s"
     Write-Host "         nodepilot-release-signing.cer (attach to the release; its thumbprint goes in the notes)"
