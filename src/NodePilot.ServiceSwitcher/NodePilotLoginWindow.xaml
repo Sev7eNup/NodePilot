@@ -1,0 +1,71 @@
+<Window x:Class="NodePilot.ServiceSwitcher.NodePilotLoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:ClassModifier="internal"
+        Width="440" SizeToContent="Height"
+        ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="{DynamicResource UiFont}"
+        Background="{DynamicResource PageBrush}"
+        Foreground="{DynamicResource TextBrush}"
+        Icon="{DynamicResource BrandIcon}">
+  <Window.Resources>
+    <Style TargetType="TextBox">
+      <Setter Property="Height" Value="38" />
+      <Setter Property="Padding" Value="10,7" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+      <Setter Property="Background" Value="{DynamicResource ControlBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+      <Setter Property="CaretBrush" Value="{DynamicResource TextBrush}" />
+    </Style>
+    <Style TargetType="PasswordBox">
+      <Setter Property="Height" Value="38" />
+      <Setter Property="Padding" Value="10,7" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+      <Setter Property="Background" Value="{DynamicResource ControlBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+    </Style>
+  </Window.Resources>
+
+  <Grid Margin="26,22,26,24">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <TextBlock x:Name="HeadingText" FontSize="22" FontWeight="SemiBold" />
+    <TextBlock x:Name="ExplanationText" Grid.Row="1" Margin="0,7,0,18"
+               Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
+
+    <StackPanel Grid.Row="2">
+      <TextBlock x:Name="UsernameLabel" Margin="0,0,0,6" FontWeight="SemiBold" />
+      <TextBox x:Name="UsernameInput" AutomationProperties.AutomationId="NodePilotUsername" />
+    </StackPanel>
+
+    <StackPanel Grid.Row="3" Margin="0,14,0,0">
+      <TextBlock x:Name="PasswordLabel" Margin="0,0,0,6" FontWeight="SemiBold" />
+      <PasswordBox x:Name="PasswordInput" AutomationProperties.AutomationId="NodePilotPassword" />
+    </StackPanel>
+
+    <TextBlock x:Name="ErrorText" Grid.Row="4" Margin="0,12,0,0"
+               Foreground="{DynamicResource ErrorBrush}" TextWrapping="Wrap"
+               Visibility="Collapsed" />
+
+    <StackPanel Grid.Row="5" Margin="0,22,0,0" Orientation="Horizontal"
+                HorizontalAlignment="Right">
+      <Button x:Name="CancelButton" Margin="0,0,10,0" IsCancel="True"
+              Click="OnCancelClick" />
+      <Button x:Name="SignInButton" IsDefault="True"
+              Background="{DynamicResource AccentBrush}"
+              Foreground="{DynamicResource OnAccentBrush}"
+              BorderBrush="{DynamicResource AccentBrush}"
+              Click="OnSignInClick" />
+    </StackPanel>
+  </Grid>
+</Window>

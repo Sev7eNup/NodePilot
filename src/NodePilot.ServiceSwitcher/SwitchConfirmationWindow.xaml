@@ -1,0 +1,99 @@
+<Window x:Class="NodePilot.ServiceSwitcher.SwitchConfirmationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:ClassModifier="internal"
+        Width="520" SizeToContent="Height"
+        ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        FontFamily="{DynamicResource UiFont}"
+        Background="{DynamicResource PageBrush}"
+        Foreground="{DynamicResource TextBrush}"
+        Icon="{DynamicResource BrandIcon}">
+  <Grid Margin="28,24,28,26">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="46" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <Border Width="38" Height="38" CornerRadius="8"
+              Background="{DynamicResource SurfaceVariantBrush}"
+              VerticalAlignment="Top">
+        <TextBlock Text="↔" FontSize="23" FontWeight="SemiBold"
+                   Foreground="{DynamicResource AccentTextBrush}"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+      </Border>
+      <StackPanel Grid.Column="1">
+        <TextBlock x:Name="HeadingText" FontSize="22" FontWeight="SemiBold" />
+        <TextBlock x:Name="ExplanationText" Margin="0,5,0,0"
+                   Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
+      </StackPanel>
+    </Grid>
+
+    <Grid Grid.Row="1" Margin="0,22,0,0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="14" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <Border Padding="15,13" CornerRadius="6"
+              Background="{DynamicResource SurfaceContainerLowBrush}"
+              BorderBrush="{DynamicResource DividerBrush}" BorderThickness="1">
+        <StackPanel>
+          <TextBlock x:Name="StopLabel" FontSize="11" FontWeight="SemiBold"
+                     Foreground="{DynamicResource MutedTextBrush}" />
+          <TextBlock x:Name="StopServicesText" Margin="0,7,0,0"
+                     TextWrapping="Wrap" FontSize="14" />
+        </StackPanel>
+      </Border>
+      <Border Grid.Column="2" Padding="15,13" CornerRadius="6"
+              Background="{DynamicResource SurfaceContainerLowBrush}"
+              BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1">
+        <StackPanel>
+          <TextBlock x:Name="StartLabel" FontSize="11" FontWeight="SemiBold"
+                     Foreground="{DynamicResource AccentTextBrush}" />
+          <TextBlock x:Name="StartServicesText" Margin="0,7,0,0"
+                     TextWrapping="Wrap" FontSize="14" FontWeight="SemiBold" />
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <Border Grid.Row="2" Margin="0,16,0,0" Padding="14,12" CornerRadius="6"
+            Background="{DynamicResource SurfaceContainerBrush}">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="25" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Text="i" Width="18" Height="18" FontWeight="Bold"
+                   Foreground="{DynamicResource AccentTextBrush}"
+                   HorizontalAlignment="Left" VerticalAlignment="Top"
+                   TextAlignment="Center" />
+        <TextBlock x:Name="NoticeText" Grid.Column="1"
+                   Foreground="{DynamicResource MutedTextBrush}"
+                   TextWrapping="Wrap" />
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="3" Margin="0,18,0,0" Height="1"
+            Background="{DynamicResource DividerBrush}" />
+
+    <StackPanel Grid.Row="4" Margin="0,18,0,0" Orientation="Horizontal"
+                HorizontalAlignment="Right">
+      <Button x:Name="CancelButton" Margin="0,0,10,0" IsCancel="True"
+              Click="OnCancelClick" />
+      <Button x:Name="ConfirmButton" IsDefault="True"
+              Background="{DynamicResource AccentBrush}"
+              Foreground="{DynamicResource OnAccentBrush}"
+              BorderBrush="{DynamicResource AccentBrush}"
+              Click="OnConfirmClick" />
+    </StackPanel>
+  </Grid>
+</Window>
