@@ -16,7 +16,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <Version>1.2.20</Version>
+    <Version>1.2.21</Version>
   </PropertyGroup>
 
   <!--
