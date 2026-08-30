@@ -108,8 +108,14 @@ public sealed class AppSettingsHygieneTests
         launchPort.Success.Should().BeTrue($"launchSettings applicationUrl '{applicationUrl}' should be an http://localhost:<port> URL");
 
         var viteConfig = File.ReadAllText(Path.Combine(repoRoot, "src", "nodepilot-ui", "vite.config.ts"));
-        var proxyPorts = LocalhostPort.Matches(viteConfig)
-            .Select(m => m.Groups[1].Value)
+
+        // /docs is the one proxy that does not target the backend: the documentation site is a
+        // second dev server. It is checked against that project's own port below, and pinned from
+        // the frontend side by docsSiteRouting.test.ts.
+        var viteLines = viteConfig.Split('\n');
+        var proxyPorts = viteLines
+            .Where(line => !line.Contains("'/docs'"))
+            .SelectMany(line => LocalhostPort.Matches(line).Select(m => m.Groups[1].Value))
             .Distinct()
             .ToArray();
 
@@ -117,6 +123,23 @@ public sealed class AppSettingsHygieneTests
         proxyPorts.Should().AllBe(launchPort.Groups[1].Value,
             "a bare `dotnet run` must land on the port the Vite dev server proxies to, otherwise " +
             "every API call from the frontend fails with no visible cause");
+
+        var docsProxyLine = viteLines.SingleOrDefault(line => line.Contains("'/docs'"));
+        docsProxyLine.Should().NotBeNull(
+            "without the /docs proxy the header's help button lands on the SPA's not-found page in dev");
+
+        var docsProxyPort = LocalhostPort.Match(docsProxyLine!);
+        docsProxyPort.Success.Should().BeTrue("the /docs proxy must name a localhost target");
+        docsProxyPort.Groups[1].Value.Should().NotBe(launchPort.Groups[1].Value,
+            "the documentation dev server is a separate app; pointing /docs at the backend would " +
+            "serve the API's own wwwroot, which is empty in a source checkout");
+
+        var docsViteConfig = File.ReadAllText(
+            Path.Combine(repoRoot, "src", "nodepilot-docs-ui", "vite.config.ts"));
+        var docsServerPort = Regex.Match(docsViteConfig, @"port:\s*(\d+)");
+        docsServerPort.Success.Should().BeTrue("nodepilot-docs-ui must pin its dev server port");
+        docsProxyPort.Groups[1].Value.Should().Be(docsServerPort.Groups[1].Value,
+            "the proxy target and the documentation dev server have to agree on the port");
     }
 
     private static string FindRepoRoot()

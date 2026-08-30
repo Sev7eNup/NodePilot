@@ -14,6 +14,13 @@ exhaustive.
 
 ### Fixed
 
+- **The help button reaches the documentation on a development server.** In production the API
+  serves the documentation site from `wwwroot/docs` at `/docs`; in development nothing answered
+  that path, so it fell through to the application's own index.html and the router replied with
+  its not-found screen — the question mark in the header led into an error page. The app dev
+  server now proxies `/docs` to the documentation dev server, which serves under `/docs/` itself
+  so its entry module stays inside the proxied prefix. Nothing changes for an installation, where
+  the path was already served correctly.
 - **An update no longer dead-ends on an install directory that someone widened.** The install
   directory must not grant write access to anyone but SYSTEM, Administrators and TrustedInstaller,
   because the service executes those binaries — but the updater only *verified* that, and refused
