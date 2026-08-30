@@ -12,8 +12,33 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.21] - 2026-08-30
+
+A `runScript` step now publishes exactly the values its own script assigned, and a generated test
+suite exercises every activity variation against a running engine on a cadence.
+
 ### Added
 
+- **A generated test suite that runs every activity variation against the engine.** 46 workflows in
+  a `Test_Workflows` folder cover 356 manifest cases on a staggered 5/10/15/30-minute cadence, and
+  replace three earlier generations that had stopped doing the job: one was never imported, one only
+  ever ran through `manualTrigger`, and one started its children fire-and-forget, so a failing child
+  left its orchestrator green. Coverage was thin exactly where the variants live — `scheduledTask`
+  exercised one of seven actions, `powerManagement` one of five — and nothing checked a *result*.
+  The generator is the source and the workflow JSON is an artefact, so layout, cadence and the
+  coverage manifest cannot drift apart. Two contracts, because the engine has no handled failure: a
+  positive workflow asserts inside itself and must end `Succeeded`, a negative one must end `Failed`
+  with exactly the set of failed step ids the manifest declares, so a run that fails for a different
+  reason is reported as a defect rather than counted as a pass. `suite-manifest.json` is the
+  coverage source rather than the files themselves: four profiles decide what runs where, and the
+  cases that cannot run in-product — `delay > 86400`, four `powerManagement` actions,
+  `scheduledTask runLevel: highest` — are named there together with the unit test that covers them
+  instead of being quietly absent. The five passive triggers are fired for real by a driver that
+  pokes each source with a correlation id and waits for an acknowledgement file, with no
+  authenticated callback involved. `TestSuiteCoverageTests` guards reachability rather than
+  presence: it walks the graph from an active trigger, refuses disabled nodes and edges, and
+  requires that something actually reads each case's output. It found around thirty cases in this
+  very suite where a variant ran but nothing read its result.
 - **The product source code is optional at install time.** The server artifact carries a snapshot
   of the source under `knowledge\source` (~2500 files, 27 MB) for the AI assistant's source-code
   knowledge source. The setup now offers a checkbox for it, ticked by default so an operator who
@@ -24,6 +49,57 @@ exhaustive.
   hold exactly its contents, so removing files earlier would fail the install and weakening that
   check was not worth the few seconds the files exist. An update preserves the choice by
   reproducing the state it finds on disk, so a declined source tree never comes back.
+
+### Changed
+
+- **A published value now has exactly one owner.** When two activities publish the same name, the
+  engine binds no unqualified variable at all instead of picking a winner. The winner used to come
+  out of `HashSet` enumeration over the ancestor set, and because .NET randomises string hashing per
+  process, it could change between restarts. This is how System Center Orchestrator subscribes to
+  published data — through the activity that produced it — and the qualified form
+  `{{step.param.name}}` has always resolved at every descendant, not only at the direct successor.
+  The canvas linter reports the collision as `dup-published-param`. Static catalog outputs are
+  exempt, since every `runScript` publishes `exitCode` and flagging that would fire on nearly every
+  workflow. **Breaking:** `{{stepB.param.x}}` where `x` was produced by `stepA` no longer resolves —
+  for `log`, `restApi`, `sql` and edge conditions that is a fatal unresolved-template error, and the
+  fix is to reference the producing step. Bare `$output` and `$success`, and step-scoped short keys
+  in `$Params`, are gone; `$Params['stepA.param.x']` replaces them, and templating
+  `{{stepA.param.x}}` into the script text was already the documented way.
+  `PowerShellReservedVariables` in Core is now the shared contract for the automatic and preference
+  variables an upstream value may never bind: an upstream parameter named `error` used to replace
+  `$Error` for the whole script, and one named `VerbosePreference` would have rewritten how every
+  cmdlet behaved.
+- **The server setup's command line is documented.** Everything is configurable through the answer
+  file, which is a superset of the wizard's pages — every value they collect, plus seven keys the
+  wizard never offers. There are deliberately no per-setting switches, because a second way to say
+  the same thing is a second thing that can disagree with the first, and the answer file is
+  validated strictly enough that a misspelled key is rejected before anything is installed. The
+  three switches that do exist decide which run this is rather than how it is configured. The `/DIR`
+  trap is written down as well: under `/ANSWERFILE` the directory page never runs, so pointing
+  `/DIR` and `installPath` at different places leaves the uninstaller sitting apart from the product
+  it removes.
+
+### Fixed
+
+- **A step could report an exit code produced by an unrelated execution.** `$LASTEXITCODE` and
+  `$Error` live in the runspace's global session state, which the script wrapper's child scope did
+  not isolate, and pool runspaces are never recycled. Measured: a workflow containing no native
+  command at all reported `exitCode 3`, left behind by `cmd /c exit 3` in a *different* workflow —
+  and `successExitCodes` gates on exactly that value, so a step could go red because of another
+  workflow's command. Both variables are now reset before the user script, which is what the engine
+  already claimed to do. The transcript preamble clears `$Error` a second time, because its guarded
+  `Stop-Transcript` records an entry before the author's script begins. The fix sits in the one
+  place where every engine builds its script, so it reaches the runspace pool, the process engine,
+  the isolated path and WinRM alike.
+- **A step published its ancestors' values as its own.** The capture sweep exported every injected
+  upstream parameter as an output of the step that had merely received it. Those outputs are
+  re-injected downstream, so the set compounded along the chain: measured on one run, a step stored
+  24 parameters, three of which it had produced. Beyond the wrong attribution and the growth in
+  stored data, it meant `{{stepB.param.hostName}}` resolved although `stepB` never set it. Injection
+  and capture now sit in two nested scopes — a PowerShell assignment in a child scope creates a new
+  local rather than writing through, so the captured set is exactly what the script assigned. No
+  value comparison is involved, so a case-only edit or a deliberate re-assignment of the same value
+  still publishes.
 
 ## [1.2.20] - 2026-08-30
 
@@ -978,7 +1054,9 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.17...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.21...main
+[1.2.21]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.21
+[1.2.20]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.20
 [1.2.19]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.19
 [1.2.18]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.18
 [1.2.17]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.17
