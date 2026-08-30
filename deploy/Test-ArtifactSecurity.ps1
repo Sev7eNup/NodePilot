@@ -303,6 +303,52 @@ try {
     Assert-ArtifactRejected -Name 'a signature without the signer certificate is rejected' `
         -ArtifactPath $noCertArtifact -Thumbprint $good.Thumbprint -MessagePattern '.'
 
+    # An untrusted ACE on the install directory is what an update finds when someone was granted
+    # access after the installation was laid down. Refusing there strands the operator mid-update,
+    # with the binaries already replaced, so the updater repairs first - and the repair only counts
+    # because a second check follows it.
+    $repairRoot = Join-Path $testRoot 'install-root-repair'
+    New-Item -ItemType Directory -Path $repairRoot -Force | Out-Null
+    $me = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $elevated = (New-Object System.Security.Principal.WindowsPrincipal($me)).IsInRole(
+        [System.Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $elevated) {
+        Write-Host '  SKIP install-root repair (setting the owner to Administrators needs elevation)' -ForegroundColor DarkGray
+    } else {
+        $acl = Get-Acl -LiteralPath $repairRoot
+        $acl.SetAccessRuleProtection($true, $false)
+        foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRule($rule) }
+        foreach ($sid in @('S-1-5-18', 'S-1-5-32-544')) {
+            $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+                (New-Object System.Security.Principal.SecurityIdentifier($sid)),
+                'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+        }
+        # Neither SYSTEM, Administrators nor TrustedInstaller, so write-shaped and untrusted.
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $me.User, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+        Set-Acl -LiteralPath $repairRoot -AclObject $acl
+
+        $refused = $false
+        try { Assert-NodePilotInstallRootHardened -Path $repairRoot } catch { $refused = $true }
+        if (-not $refused) {
+            throw 'The install-root check accepted a directory an untrusted principal can write to.'
+        }
+
+        Assert-NodePilotInstallRootHardenedOrRepair -Path $repairRoot `
+            -ServiceAccount 'NT AUTHORITY\SYSTEM' -WarningAction SilentlyContinue
+
+        foreach ($rule in @((Get-Acl -LiteralPath $repairRoot).Access)) {
+            $sid = $rule.IdentityReference.Translate(
+                [System.Security.Principal.SecurityIdentifier]).Value
+            if ($sid -eq $me.User.Value) {
+                throw 'The repair left the untrusted ACE on the install directory.'
+            }
+        }
+        # Redundant on purpose: the repair must leave a directory the plain check accepts.
+        Assert-NodePilotInstallRootHardened -Path $repairRoot
+        Write-Host '  OK  an untrusted install-root ACE is repaired and re-checked' -ForegroundColor DarkGray
+    }
+
     Write-Host 'Artifact security checks passed (manifest, tamper detection, staging ACL, atomic file ACL and signature verification).' -ForegroundColor Green
 }
 finally {

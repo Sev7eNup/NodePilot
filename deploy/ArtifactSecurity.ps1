@@ -543,6 +543,55 @@ function Test-NodePilotSourceSnapshotPresent {
     return (Test-Path -LiteralPath (Join-Path $InstallPath 'knowledge\source'))
 }
 
+function Set-DirectoryAclForService {
+    <#
+      $DataPath must be writable by the service account and readable by Administrators/SYSTEM
+      only. Inheritance is disabled so nothing from Program Files or ProgramData parent ACLs
+      leaks in.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ServiceAccount,
+        [switch]$ReadOnlyForService,
+        [switch]$SkipServiceRule
+    )
+
+    $acl = Get-Acl $Path
+    $acl.SetAccessRuleProtection($true, $false)
+
+    # Set the owner, not just the ACEs. The API refuses to read its bootstrap token when any
+    # directory on the way to it has an owner it does not trust, and a reused data directory
+    # carries whoever last took ownership of it (the uninstaller's -PurgeData takes ownership to
+    # delete owner-only files). A fresh directory is already owned by Administrators.
+    $acl.SetOwner([System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
+
+    # Wipe inherited ACEs that SetAccessRuleProtection preserved-as-explicit.
+    $acl.Access | ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null }
+
+    $sysAdmin = @(
+        [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18'),
+        [System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
+    )
+    foreach ($id in $sysAdmin) {
+        $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $id, 'FullControl',
+            'ContainerInherit,ObjectInherit', 'None', 'Allow')
+        $acl.AddAccessRule($rule)
+    }
+
+    # LocalSystem is already covered by the SYSTEM FullControl ACE above - adding a second ACE
+    # for the same SID is redundant, so the caller passes -SkipServiceRule in that case.
+    if (-not $SkipServiceRule) {
+        $svcRights = if ($ReadOnlyForService) { 'ReadAndExecute' } else { 'Modify' }
+        $svcRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $ServiceAccount, $svcRights,
+            'ContainerInherit,ObjectInherit', 'None', 'Allow')
+        $acl.AddAccessRule($svcRule)
+    }
+
+    Set-Acl -Path $Path -AclObject $acl
+}
+
 function Assert-NodePilotInstallRootHardened {
     <#
       Checks that only trusted principals can write to the install directory. It is the image path
@@ -597,6 +646,40 @@ function Assert-NodePilotInstallRootHardened {
                    "SYSTEM/Administrators FullControl plus read-and-execute for the service account.")
         }
     }
+}
+
+function Assert-NodePilotInstallRootHardenedOrRepair {
+    <#
+      Verify, repair once, verify again, then fail. An untrusted ACE on the install directory is a
+      condition an update can fix, and refusing outright would leave an operator with no route to
+      the new binaries at all. The repair is Set-DirectoryAclForService, which drops inheritance,
+      wipes every explicit ACE and forces the owner back to Administrators, so it clears whatever
+      was granted after the installation was laid down.
+
+      The second check is not optional: it is what keeps this a hardening step rather than a
+      bypass. If the directory still grants an untrusted principal write access, this throws and
+      the caller rolls back.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ServiceAccount
+    )
+
+    try {
+        Assert-NodePilotInstallRootHardened -Path $Path
+        return
+    } catch {
+        Write-Warning "Install directory is not hardened yet: $($_.Exception.Message)"
+    }
+
+    Write-Warning "Repairing the install directory ACL (owner, inheritance and ACEs), then re-checking."
+    # The service executes these binaries, it never rewrites them. LocalSystem is already covered
+    # by the SYSTEM ACE the repair writes, so it gets no second rule.
+    $isLocalSystem = $ServiceAccount -eq 'NT AUTHORITY\SYSTEM'
+    Set-DirectoryAclForService -Path $Path -ServiceAccount $ServiceAccount `
+        -ReadOnlyForService -SkipServiceRule:$isLocalSystem
+
+    Assert-NodePilotInstallRootHardened -Path $Path
 }
 
 function Assert-NodePilotCodeSigningCertificate {

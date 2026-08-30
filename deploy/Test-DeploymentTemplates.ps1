@@ -688,13 +688,16 @@ if ($assertIndex -gt $stagingIndex) {
 # owner-only files. Repairing the ACEs and leaving that owner behind produced an installation that
 # looked perfect, showed its token, and could never create a first admin: every correct token was
 # refused because the directory holding it had an untrusted owner.
-$aclFunctionStart = $installerScript.IndexOf('function Set-DirectoryAclForService')
-$aclFunctionEnd = $installerScript.IndexOf('function Set-FileAclForService', $aclFunctionStart)
+# Set-DirectoryAclForService lives in ArtifactSecurity.ps1 because the updater applies the same
+# DACL the installer applies, and both dot-source that file.
+$artifactSecurityRaw = Get-Content -LiteralPath $ArtifactSecurityPath -Raw
+$aclFunctionStart = $artifactSecurityRaw.IndexOf('function Set-DirectoryAclForService')
+$aclFunctionEnd = $artifactSecurityRaw.IndexOf('function Assert-NodePilotInstallRootHardened', $aclFunctionStart)
 if ($aclFunctionStart -lt 0 -or $aclFunctionEnd -le $aclFunctionStart) {
-    throw 'Deployment template check failed: could not delimit Set-DirectoryAclForService in the installer.'
+    throw 'Deployment template check failed: could not delimit Set-DirectoryAclForService in ArtifactSecurity.ps1.'
 }
 Assert-TextMatches -Name 'the data directory gets a trusted owner, not just trusted ACEs' `
-    -Text $installerScript.Substring($aclFunctionStart, $aclFunctionEnd - $aclFunctionStart) `
+    -Text $artifactSecurityRaw.Substring($aclFunctionStart, $aclFunctionEnd - $aclFunctionStart) `
     -Pattern 'SetOwner\('
 
 # Applying the ACL and assuming it landed is not the same as the service being able to use it. A
@@ -753,7 +756,13 @@ Assert-TextMatches -Name 'the install directory is re-verified after the artifac
 # An installation predating the hardening keeps its inherited ACL forever unless the updater looks.
 Assert-TextMatches -Name 'the updater re-verifies the install directory it just refilled' `
     -Text $updateScript `
-    -Pattern '(?s)Assert-NodePilotExtractedFiles -RootPath \$InstallPath[\s\S]{0,600}Assert-NodePilotInstallRootHardened -Path \$InstallPath'
+    -Pattern '(?s)Assert-NodePilotExtractedFiles -RootPath \$InstallPath[\s\S]{0,900}Assert-NodePilotInstallRootHardenedOrRepair -Path \$InstallPath'
+
+# Verifying without repairing turns a fixable ACE into a dead end, and it does so after the
+# binaries have already been replaced - so the operator gets a rollback instead of an update.
+Assert-TextMatches -Name 'the updater repairs the install-directory ACL instead of giving up' `
+    -Text $updateScript `
+    -Pattern 'Assert-NodePilotInstallRootHardenedOrRepair -Path \$InstallPath -ServiceAccount \$svcAccount'
 
 # The optional source snapshot is dropped only AFTER the manifest check. Removing it earlier would
 # fail that check, which requires the directory to hold exactly the signed contents - so the
@@ -792,7 +801,13 @@ Assert-TextMatches -Name 'the setup adapter only omits the snapshot on an explic
 
 Assert-TextMatches -Name 'the install-root check refuses write access by untrusted principals' `
     -Text (Get-Content -LiteralPath $ArtifactSecurityPath -Raw) `
-    -Pattern '(?s)function Assert-NodePilotInstallRootHardened[\s\S]{0,4000}trusted -notcontains \$sid'
+    -Pattern '(?s)function Assert-NodePilotInstallRootHardened \{[\s\S]{0,4000}trusted -notcontains \$sid'
+
+# The repair is only a hardening step because a second check follows it. Without that check it
+# would be a way to walk past the gate, so the order repair -> verify is the contract.
+Assert-TextMatches -Name 'the ACL repair is followed by a second check, not trusted blindly' `
+    -Text (Get-Content -LiteralPath $ArtifactSecurityPath -Raw) `
+    -Pattern '(?s)function Assert-NodePilotInstallRootHardenedOrRepair[\s\S]{0,2000}Set-DirectoryAclForService -Path \$Path[\s\S]{0,400}Assert-NodePilotInstallRootHardened -Path \$Path'
 
 # Everything the SERVICE writes at runtime has to live under DataPath, or the read-only install
 # DACL above turns into an outage on first save. These four are the ones that would break.
