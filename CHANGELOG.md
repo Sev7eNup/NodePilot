@@ -12,6 +12,19 @@ exhaustive.
 
 ## [Unreleased]
 
+### Added
+
+- **The product source code is optional at install time.** The server artifact carries a snapshot
+  of the source under `knowledge\source` (~2500 files, 27 MB) for the AI assistant's source-code
+  knowledge source. The setup now offers a checkbox for it, ticked by default so an operator who
+  clicks through gets what every earlier version installed; unattended the same choice is
+  `"includeSourceSnapshot": false` in the answer file or `-OmitSourceSnapshot` on
+  `Install-NodePilot.ps1`. The snapshot is deleted *after* the artifact has been verified rather
+  than skipped while copying — the installation is checked against the signed manifest and has to
+  hold exactly its contents, so removing files earlier would fail the install and weakening that
+  check was not worth the few seconds the files exist. An update preserves the choice by
+  reproducing the state it finds on disk, so a declined source tree never comes back.
+
 ## [1.2.20] - 2026-08-30
 
 A machine can now be switched between NodePilot and System Center Orchestrator, and the

@@ -127,6 +127,13 @@
     Skip Test-ADServiceAccount. Use when the ActiveDirectory module is unavailable on the
     install host (rare - usually a sign of missing RSAT).
 
+.PARAMETER OmitSourceSnapshot
+    Do not keep the product source snapshot (knowledge\source, about 27 MB) on this machine.
+    It is removed after the artifact has been verified, so the signature check still runs
+    against the complete signed contents. The AI assistant's source-code knowledge source is
+    then empty on this installation; nothing else changes. An update preserves the choice,
+    because the updater goes by what it finds on disk.
+
 .EXAMPLE
     # SQL Server (default)
     .\deploy\Install-NodePilot.ps1 `
@@ -192,7 +199,8 @@ param(
     [string]$AllowedHosts,
     [string[]]$KnownProxyIps = @(),
     [switch]$SkipSqlConnectivityCheck,
-    [switch]$SkipGmsaCheck
+    [switch]$SkipGmsaCheck,
+    [switch]$OmitSourceSnapshot
 )
 
 $ErrorActionPreference = 'Stop'
@@ -1284,6 +1292,15 @@ Assert-NodePilotExtractedFiles -RootPath $InstallPath
 # directory does not re-introduce inheritance, but the result is verified rather than assumed.
 Assert-NodePilotInstallRootHardened -Path $InstallPath -RequireProtectedRules
 
+# Only now, with every file checked against the signed manifest, may a declared subtree be
+# dropped. Doing it earlier would fail the check above, which requires the directory to hold
+# exactly the signed contents.
+if ($OmitSourceSnapshot) {
+    if (Remove-NodePilotSourceSnapshot -InstallPath $InstallPath) {
+        Write-Info "  Removed knowledge\source - the AI assistant's source-code knowledge source will be empty."
+    }
+}
+
 $ApiExe = Join-Path $InstallPath 'NodePilot.Api.exe'
 if (-not (Test-Path $ApiExe)) { throw "Artifact did not contain NodePilot.Api.exe at $ApiExe" }
 $SpaIndex = Join-Path (Join-Path $InstallPath 'wwwroot') 'index.html'
@@ -1684,6 +1701,9 @@ try {
         Version     = [string]$verifiedArtifact.Version
         DbProvider  = $DbProvider
         HttpsPort   = $HttpsPort
+        # Recorded for diagnostics, not read back: the updater preserves what it finds on disk,
+        # because this key is machine-wide and a second instance on the same host overwrites it.
+        SourceSnapshot = if ($OmitSourceSnapshot) { 'Omitted' } else { 'Included' }
     }
     foreach ($marker in $markerValues.GetEnumerator()) {
         $markerType = if ($marker.Value -is [int]) { 'DWord' } else { 'String' }

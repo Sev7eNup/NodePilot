@@ -755,6 +755,41 @@ Assert-TextMatches -Name 'the updater re-verifies the install directory it just 
     -Text $updateScript `
     -Pattern '(?s)Assert-NodePilotExtractedFiles -RootPath \$InstallPath[\s\S]{0,600}Assert-NodePilotInstallRootHardened -Path \$InstallPath'
 
+# The optional source snapshot is dropped only AFTER the manifest check. Removing it earlier would
+# fail that check, which requires the directory to hold exactly the signed contents - so the
+# ordering is what keeps the opt-out from weakening the trust chain.
+Assert-TextMatches -Name 'the installer drops the source snapshot only after the manifest check' `
+    -Text $installerScript `
+    -Pattern '(?s)Assert-NodePilotExtractedFiles -RootPath \$InstallPath[\s\S]{0,900}if \(\$OmitSourceSnapshot\)[\s\S]{0,200}Remove-NodePilotSourceSnapshot'
+
+Assert-TextMatches -Name 'the updater drops the source snapshot only after the manifest check' `
+    -Text $updateScript `
+    -Pattern '(?s)Assert-NodePilotExtractedFiles -RootPath \$InstallPath[\s\S]{0,900}Remove-NodePilotSourceSnapshot'
+
+# An update must not hand back a snapshot the operator chose not to have. The state has to be read
+# while the old installation is still on disk - the wipe below would otherwise erase the answer.
+$snapshotProbeAt = $updateScript.IndexOf('Test-NodePilotSourceSnapshotPresent -InstallPath $InstallPath')
+$installWipeAt = $updateScript.IndexOf("Write-Step 'Installing verified artifact'")
+if ($snapshotProbeAt -lt 0) { throw "Deployment template check failed: the updater never reads the existing snapshot state" }
+if ($installWipeAt -lt 0) { throw "Deployment template check failed: cannot locate the updater's install step" }
+if ($snapshotProbeAt -gt $installWipeAt) {
+    throw "Deployment template check failed: the updater reads the snapshot state after wiping the directory"
+}
+Write-Host "  OK  the updater reads the existing snapshot state before wiping the directory" -ForegroundColor DarkGray
+
+Assert-TextMatches -Name 'the setup offers the source snapshot and ticks it by default' `
+    -Text (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'server\NodePilotServer.iss') -Raw) `
+    -Pattern '(?s)ContentPage\.Add\(''Install the product source code[\s\S]{0,400}ContentPage\.Values\[0\] := True'
+
+Assert-TextMatches -Name 'the setup writes the source-snapshot choice into the answer file' `
+    -Text (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'server\NodePilotServer.iss') -Raw) `
+    -Pattern '(?s)if ContentPage\.Values\[0\] then[\s\S]{0,200}"includeSourceSnapshot": false'
+
+# Absent has to keep meaning "include", or an older answer file would silently start dropping it.
+Assert-TextMatches -Name 'the setup adapter only omits the snapshot on an explicit false' `
+    -Text (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Invoke-NodePilotSetup.ps1') -Raw) `
+    -Pattern "(?s)Contains\('includeSourceSnapshot'\) -and -not \[bool\]\`$answers\['includeSourceSnapshot'\][\s\S]{0,200}OmitSourceSnapshot"
+
 Assert-TextMatches -Name 'the install-root check refuses write access by untrusted principals' `
     -Text (Get-Content -LiteralPath $ArtifactSecurityPath -Raw) `
     -Pattern '(?s)function Assert-NodePilotInstallRootHardened[\s\S]{0,4000}trusted -notcontains \$sid'

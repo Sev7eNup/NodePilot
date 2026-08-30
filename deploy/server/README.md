@@ -62,11 +62,33 @@ by the installer.
 | 6a | SQL Server | Server, database, certificate host name (empty = derived from the server) |
 | 6b | PostgreSQL | Host/port/database, then user, password, root certificate — optionally superuser + password so role and database can be created |
 | 7 | Network and TLS | Public hostname, HTTPS port, HTTP port (**`0`** = no redirect), allowed hosts, thumbprint — the list below fills the field, **empty** means "I don't have one yet" |
-| 8 | Prerequisites | Ten check rows; red blocking rows disable "Next". Where a checkbox appears: tick it, "Next" runs the fix and **re-checks** |
-| 9 | Installation | Runs with a progress bar and phase text, 2–3 minutes |
-| 10 | Finish | URL, credentials or setup token, paths, certificate — and the **external-trigger API key, which appears only here** |
+| 8 | Optional content | Whether to install the product source code (~27 MB). Ticked by default; see below |
+| 9 | Prerequisites | Ten check rows; red blocking rows disable "Next". Where a checkbox appears: tick it, "Next" runs the fix and **re-checks** |
+| 10 | Installation | Runs with a progress bar and phase text, 2–3 minutes |
+| 11 | Finish | URL, credentials or setup token, paths, certificate — and the **external-trigger API key, which appears only here** |
 
 First login: enter the setup token in the field the sign-in form reveals on the first attempt.
+
+### The source-code option
+
+The server artifact carries a snapshot of the product source under `knowledge\source` — around
+2500 files and 27 MB — which the AI assistant reads for source-code questions. Untick the box on
+page 8 and it is not kept on the machine. Everything else is unchanged; only that one knowledge
+source ends up empty, and it is off by default anyway (`AiKnowledge:SourceCodeEnabled`).
+
+The snapshot is removed **after** the artifact has been verified, not skipped during the copy:
+`Assert-NodePilotExtractedFiles` requires the install directory to hold exactly the signed
+contents, so dropping files earlier would fail the installation. The signature check therefore
+still runs against the complete artifact, and only then is the declared subtree deleted.
+
+An update keeps the choice. `Update-NodePilot.ps1` looks at whether the installation currently has
+the snapshot and reproduces that state afterwards, so an update never hands back a source tree the
+operator chose not to have. It goes by the directory rather than the installation marker on
+purpose: the marker is machine-wide and a second instance on the same host overwrites it.
+
+Unattended: `"includeSourceSnapshot": false` in the answer file, or `-OmitSourceSnapshot` on
+`Install-NodePilot.ps1`. The key is optional and **absent means include**, so an answer file
+written before this option existed behaves exactly as it did.
 
 ### Unattended
 

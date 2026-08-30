@@ -153,6 +153,15 @@ try {
         throw "No appsettings.Production.json at $settingsPath. Refusing to upgrade a non-installer layout."
     }
 
+    # An operator who installed without the source snapshot must not get it back through an
+    # update. Read before the wipe, applied after the new artifact has been verified. The
+    # installation on disk is the source of truth here rather than the installation marker, which
+    # is machine-wide and would be wrong for a second instance on the same host.
+    $keepSourceSnapshot = Test-NodePilotSourceSnapshotPresent -InstallPath $InstallPath
+    if (-not $keepSourceSnapshot) {
+        Write-Info "  This installation carries no knowledge\source; the update will not add one."
+    }
+
     $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     if (-not $svc) { throw "Service '$ServiceName' not found. Nothing to update." }
     $serviceWasRunning = $svc.Status -ne 'Stopped'
@@ -244,6 +253,8 @@ try {
         # -RequireProtectedRules here: inheriting a safe ACL from Program Files is fine, only
         # effective write access by an untrusted principal is not.
         Assert-NodePilotInstallRootHardened -Path $InstallPath
+        # After the manifest check, never before it - see Remove-NodePilotSourceSnapshot.
+        if (-not $keepSourceSnapshot) { [void](Remove-NodePilotSourceSnapshot -InstallPath $InstallPath) }
         Write-RestrictedSettings -Path $settingsPath -Content $settingsBytes -ServiceAccount $svcAccount
 
         # Normalise the start type. Older installations carry start= delayed-auto, which idles

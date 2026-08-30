@@ -131,6 +131,7 @@ try {
             knownProxyIps  = @('10.0.1.5', '2001:db8::5')
         }
         certificate   = @{ thumbprint = 'A1B2C3D4E5F600112233445566778899AABBCCDD'; source = 'existing' }
+        includeSourceSnapshot = $false
     } | ConvertTo-Json -Depth 6
 
     $tortureFile = New-AnswerFile -Json $torture
@@ -147,6 +148,10 @@ try {
         -Condition (@($answers['network.knownProxyIps']).Count -eq 2)
     Assert-True -Name 'a zero HTTP port survives as zero rather than being dropped' `
         -Condition ([int]$answers['network.httpPort'] -eq 0)
+    # The key is optional, so a false has to survive as a false rather than being dropped like an
+    # empty value - dropping it would silently reinstate the source snapshot.
+    Assert-True -Name 'an explicit false for the source snapshot survives' `
+        -Condition ($answers.Contains('includeSourceSnapshot') -and -not [bool]$answers['includeSourceSnapshot'])
 
     # --- schema enforcement -------------------------------------------------------------------
     Assert-Throws -Name 'an unknown key is rejected by name' -MessagePattern "unknown key 'network\.htpsPort'" -Action {
