@@ -63,10 +63,20 @@ cd src\NodePilot.Api; dotnet run
 
 # Frontend (Port 5173, Proxy auf Backend)
 cd src\nodepilot-ui; npm run dev
+
+# Doku-Website (Port 5174) — nur nötig, wenn /docs im Dev erreichbar sein soll
+cd src\nodepilot-docs-ui; npm run dev
 ```
 
 Port 5000 kommt aus `launchSettings.json` und ist derselbe, auf den der Vite-Proxy zeigt — `--urls`
 ist nicht nötig. **Immer erst `pg_ctl start`, dann `dotnet run`.**
+
+**`/docs` im Dev:** In Produktion bedient die API die Doku aus `wwwroot/docs`; im Dev proxyt der
+Vite-Server `/docs` auf 5174. Läuft der Doku-Dev-Server nicht, führt der Fragezeichen-Button ins
+Leere — das ist erwartet, kein Defekt. Der Doku-Dev-Server läuft selbst unter `/docs/`
+(`--base=/docs/` im dev-Skript, weil Vite 8 das `base` aus der Config im Dev ignoriert); ohne das
+liefert er seinen Entry absolut unter `/src/main.tsx` und der App-Dev-Server beantwortet den mit
+*seinem* Entry — man landet in der App statt in der Doku.
 
 **Erster Login braucht das Setup-Token**, nicht nur leere DB: die API schreibt es nach
 `src\NodePilot.Api\admin-setup.token` (ContentRoot). Login-Maske zeigt beim ersten Versuch ein
