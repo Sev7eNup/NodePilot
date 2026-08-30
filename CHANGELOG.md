@@ -12,15 +12,13 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.22] - 2026-08-30
+
+An update can now repair an install directory it would previously have refused, and the help
+button reaches the documentation on a development server.
+
 ### Fixed
 
-- **The help button reaches the documentation on a development server.** In production the API
-  serves the documentation site from `wwwroot/docs` at `/docs`; in development nothing answered
-  that path, so it fell through to the application's own index.html and the router replied with
-  its not-found screen — the question mark in the header led into an error page. The app dev
-  server now proxies `/docs` to the documentation dev server, which serves under `/docs/` itself
-  so its entry module stays inside the proxied prefix. Nothing changes for an installation, where
-  the path was already served correctly.
 - **An update no longer dead-ends on an install directory that someone widened.** The install
   directory must not grant write access to anyone but SYSTEM, Administrators and TrustedInstaller,
   because the service executes those binaries — but the updater only *verified* that, and refused
@@ -33,6 +31,14 @@ exhaustive.
   a host whose install directory had picked up a `FullControl` entry for an administrator account
   some time after it was installed; nothing reads that ACL between updates, so it stayed invisible
   until the next one.
+
+- **The help button reaches the documentation on a development server.** In production the API
+  serves the documentation site from `wwwroot/docs` at `/docs`; in development nothing answered
+  that path, so it fell through to the application's own index.html and the router replied with
+  its not-found screen — the question mark in the header led into an error page. The app dev
+  server now proxies `/docs` to the documentation dev server, which serves under `/docs/` itself
+  so its entry module stays inside the proxied prefix. Nothing changes for an installation, where
+  the path was already served correctly.
 
 ## [1.2.21] - 2026-08-30
 
@@ -1076,7 +1082,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.21...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.22...main
+[1.2.22]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.22
 [1.2.21]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.21
 [1.2.20]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.20
 [1.2.19]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.19
