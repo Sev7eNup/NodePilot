@@ -45,7 +45,9 @@ script engine and no new backend execution path.
 - Declared **outputs** are surfaced downstream as `{{node.param.<name>}}`. The PowerShell wrapper
   runs in a **capture allow-list** mode for custom activities: it captures **only** the declared
   output variables (plus the always-present `exitCode`). Injected inputs and undeclared helper
-  locals therefore never leak as `param.*`.
+  locals therefore never leak as `param.*`. Plain `runScript` reaches the same guarantee by a
+  different route: it publishes whatever the script assigns, and the wrapper's scope split keeps
+  read-only upstream parameters out.
 - Parameter names must match `[A-Za-z0-9_]+` (PowerShell variable grammar). Input and output names
   must be **disjoint**; `exitCode` is reserved.
 

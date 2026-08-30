@@ -17,11 +17,73 @@ public sealed class WorkflowAnalyzerFrontendParityTests
         "duplicate-edge",
         "fan-in-requires-junction",
         "dup-output-variable",
+        "dup-published-param",
         "unknown-template-ref",
         "startjob-in-runspace",
     ];
 
     private static JsonElement E(string json) => JsonDocument.Parse(json).RootElement;
+
+    /// <summary>
+    /// Two activities publishing the same name is the one case where the engine deliberately
+    /// binds nothing: a published value has exactly one owner, so awarding the unqualified form
+    /// to whichever activity the runtime enumerated first would make the workflow depend on
+    /// dictionary order. The author has to be told, because the failure is otherwise silent —
+    /// `$hostName` is simply `$null` inside the script.
+    /// </summary>
+    [Fact]
+    public void AnalyzeWorkflow_TwoActivitiesPublishingTheSameName_IsWarning()
+    {
+        var result = WorkflowAnalyzer.Analyze(E("""
+        {"nodes":[
+          {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"Start","config":{}}},
+          {"id":"a","type":"activity","data":{"activityType":"runScript","label":"Collect A","config":{"script":"$hostName = 'web01'"}}},
+          {"id":"b","type":"activity","data":{"activityType":"runScript","label":"Collect B","config":{"script":"$hostName = 'web02'"}}},
+          {"id":"c","type":"activity","data":{"activityType":"log","label":"Report","config":{"message":"x"}}}],
+         "edges":[
+          {"id":"e1","source":"t","target":"a"},
+          {"id":"e2","source":"a","target":"b"},
+          {"id":"e3","source":"b","target":"c"}]}
+        """));
+
+        result.Findings.Should().Contain(f =>
+            f.Code == "dup-published-param" && f.Severity == "warning" && f.NodeId == "b");
+        result.Ok.Should().BeTrue("the qualified form still resolves, so this is a hint, not a blocker");
+    }
+
+    [Fact]
+    public void AnalyzeWorkflow_SameNameOnBranchesThatNeverMeet_IsNotReported()
+    {
+        // Neither branch is an ancestor of the other, so no step ever sees both publishers.
+        var result = WorkflowAnalyzer.Analyze(E("""
+        {"nodes":[
+          {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"Start","config":{}}},
+          {"id":"a","type":"activity","data":{"activityType":"runScript","label":"Left","config":{"script":"$hostName = 'web01'"}}},
+          {"id":"b","type":"activity","data":{"activityType":"runScript","label":"Right","config":{"script":"$hostName = 'web02'"}}}],
+         "edges":[
+          {"id":"e1","source":"t","target":"a"},
+          {"id":"e2","source":"t","target":"b"}]}
+        """));
+
+        result.Findings.Should().NotContain(f => f.Code == "dup-published-param");
+    }
+
+    [Fact]
+    public void AnalyzeWorkflow_StaticCatalogOutputsSharedByType_AreNotReported()
+    {
+        // Every runScript publishes exitCode. Reporting that would fire on nearly every workflow.
+        var result = WorkflowAnalyzer.Analyze(E("""
+        {"nodes":[
+          {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"Start","config":{}}},
+          {"id":"a","type":"activity","data":{"activityType":"runScript","label":"One","config":{"script":"$a = 1"}}},
+          {"id":"b","type":"activity","data":{"activityType":"runScript","label":"Two","config":{"script":"$b = 2"}}}],
+         "edges":[
+          {"id":"e1","source":"t","target":"a"},
+          {"id":"e2","source":"a","target":"b"}]}
+        """));
+
+        result.Findings.Should().NotContain(f => f.Code == "dup-published-param");
+    }
 
     [Fact]
     public void FrontendLintCodes_MirroredByAnalyzer_StayPresentInFrontendSource()

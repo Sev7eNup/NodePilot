@@ -150,7 +150,7 @@ A complete inventory of every feature in the NodePilot workflow designer (React 
 - **Inline autocomplete:** typing `{{` opens a dropdown (`useVariableAutocomplete`); keyboard navigation (↑/↓, Enter/Tab selects, Esc closes). Can be switched on or off per field via the zap toggle (mirrored into localStorage).
 - **Variable sources:** upstream outputs of every ancestor step, globals (`{{globals.NAME}}`), manual and trigger data (`{{manual.NAME}}`).
 - **Tail types:** `.output`, `.error`, `.success`, `.param.X`.
-- **Derived outputs (`describeNodeOutputs`):** every step provides `.output`; additional `.param.*` entries are derived per type — `runScript` by regex from `$var = …` assignments, `returnData` from the data keys, `decision` → `param.case`, `wmiQuery` from captureProperties (plus `param.count`), `registryOperation` depending on the operation (value/exists/created and so on), `manualTrigger` from the declared parameters.
+- **Derived outputs (`describeNodeOutputs`):** every step provides `.output`; additional `.param.*` entries are derived per type — `runScript` by regex from `$var = …` assignments (reserved PowerShell names excluded, matching what the runtime publishes), `returnData` from the data keys, `decision` → `param.case`, `wmiQuery` from captureProperties (plus `param.count`), `registryOperation` depending on the operation (value/exists/created and so on), `manualTrigger` from the declared parameters.
 - **VariableInsertField:** a unified input with a picker tray (variable picker, global picker with a secret lock, options picker), drag and drop of variables into text areas, template validation (unbalanced `{{}}`, invalid identifiers), and an SQL-injection warning on dynamic queries.
 - **Live preview tooltip:** hovering a variable shows the last runtime value from the most recent execution (250 ms delay, a "[Truncated]" badge, anchored to the right).
 - **AvailableVariablesList** (input-variables section): grouped by step, with type badges, click-to-copy and drag and drop.
@@ -263,6 +263,7 @@ Each activity type has its own config component (`properties/activities/`, regis
 - **Lint panel** (`Ctrl+Shift+L`): lists every error and warning with its code, the target node or edge, and click-to-jump. Lint runs live on every graph change; a node badge shows the count.
 - **Rules detected (excerpt):**
   - **Errors (block publishing):** `no-trigger`, `isolated-node`, `dup-output-variable`, `duplicate-edge`, `missing-required-config`, `missing-target-machine`.
+  - **Warning `dup-published-param`:** two activities on one path publish the same name. A published value has exactly one owner, so the unqualified `$name` is not bound at all — reference it as `{{stepA.param.name}}`.
   - **Warnings:** `orphan-root`, `unreachable-node`, `unknown-template-ref`, `startjob-in-runspace`, `unknown-workflow-ref`, `edge-to-disabled`, `disabled-with-downstream`, `edge-occluded`, `edge-crowded`.
 - **Pre-publish checklist modal:** shown before publishing — blocked on errors (publish disabled), "publish anyway" on warnings, straight through when clean; every issue is clickable to its node or edge.
 

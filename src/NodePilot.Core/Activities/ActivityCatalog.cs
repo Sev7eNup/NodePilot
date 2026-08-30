@@ -40,8 +40,10 @@ public static class ActivityCatalog
         Action("runScript", "runScript", "terminal",
             isRemote: true,
             timeout: ActivityTimeoutKind.Always,
-            // exitCode is the only static output: the wrapper always captures $LASTEXITCODE.
-            // Params from user `$var = ...` assignments are dynamic and scanned client-side.
+            // exitCode is the only static output: the wrapper always captures $LASTEXITCODE,
+            // reset per script so it means "this script's last native command".
+            // Params from user `$var = ...` assignments are dynamic and scanned client-side;
+            // reserved names (PowerShellReservedVariables) are never published.
             outputs:
             [
                 Output("exitCode", "number"),

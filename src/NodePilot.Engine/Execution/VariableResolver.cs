@@ -54,8 +54,9 @@ internal static class VariableResolver
     ///   1. <c>manual.*</c> — input parameters from manual trigger
     ///   2. <c>globals.*</c> — admin-managed shared constants (read-only)
     ///   3. previous-step OutputParameters: fully-qualified <c>{stepVar}.param.{key}</c>
-    ///      always wins; the short-name alias is only added if not already present and
-    ///      not in <see cref="DenylistedShortParamNames"/>.
+    ///      always wins; the unqualified short-name alias is added only when exactly one
+    ///      ancestor publishes that name, it is not already present, and it is not in
+    ///      <see cref="DenylistedShortParamNames"/>.
     ///
     /// Callers pass the output-name index they already built once per execution
     /// (see <see cref="WorkflowEngine"/>) so nothing rescans the node list per call.
@@ -67,6 +68,7 @@ internal static class VariableResolver
         IReadOnlyDictionary<string, string> outputNameByStepId)
     {
         var variables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var shortNameCandidates = new Dictionary<string, ShortNameCandidate>(StringComparer.OrdinalIgnoreCase);
         if (inputParameters is not null)
         {
             foreach (var (key, val) in inputParameters)
@@ -109,22 +111,40 @@ internal static class VariableResolver
                 variables[$"{prevVarName}.param.{paramKey}"] = paramVal;
                 if (configuredName is not null && !string.Equals(configuredName, stepId, StringComparison.OrdinalIgnoreCase))
                     variables[$"{stepId}.param.{paramKey}"] = paramVal;
-                // Short-name alias (`{{paramKey}}`, no step prefix): convenient for the
-                // common single-upstream case, but it makes the namespace attacker-reachable
-                // since an upstream `Authorization` output would shadow a downstream
-                // `Authorization` header template. An existing short-name wins on collision
-                // (qualified form still resolves); denylisted auth-bearing names are never
-                // aliased — use `{{step.param.Authorization}}` instead.
-                if (!variables.ContainsKey(paramKey)
-                    && !DenylistedShortParamNames.Contains(paramKey))
-                {
-                    variables[paramKey] = paramVal;
-                }
+
+                // Count producers per name; the short-name alias is decided afterwards, once
+                // every ancestor has been seen.
+                if (shortNameCandidates.TryGetValue(paramKey, out var seen))
+                    shortNameCandidates[paramKey] = seen with { ProducerCount = seen.ProducerCount + 1 };
+                else
+                    shortNameCandidates[paramKey] = new ShortNameCandidate(paramVal, 1);
             }
+        }
+
+        // Short-name alias (`hostName`, no step prefix): a convenience for the common
+        // single-producer case. It is only created when exactly ONE ancestor publishes that
+        // name. Two producers used to race for it — the winner came from HashSet enumeration
+        // order over the ancestor set, which is hash-based and, because .NET randomises string
+        // hashing per process, could change from one API restart to the next. A published value
+        // has one owner, so an ambiguous name gets no owner-less alias; the qualified
+        // `{{step.param.hostName}}` form stays available and is what the canvas linter tells the
+        // author to use (finding `dup-published-param`).
+        //
+        // Denylisted auth-bearing names are never aliased at all, ambiguous or not.
+        foreach (var (paramKey, candidate) in shortNameCandidates)
+        {
+            if (candidate.ProducerCount != 1) continue;
+            if (DenylistedShortParamNames.Contains(paramKey)) continue;
+            if (variables.ContainsKey(paramKey)) continue;
+            variables[paramKey] = candidate.Value;
         }
 
         return variables;
     }
+
+    /// <summary>One candidate for the unqualified short-name alias, plus how many ancestors
+    /// published that name. Only a count of exactly one earns the alias.</summary>
+    private readonly record struct ShortNameCandidate(string Value, int ProducerCount);
 
 
     /// <summary>

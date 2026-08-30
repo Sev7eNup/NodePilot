@@ -118,6 +118,17 @@ public static class WorkflowDataBusAnalyzer
         return names.Distinct(StringComparer.Ordinal).ToList();
     }
 
+    /// <summary>
+    /// Only the names this node publishes because of how it is configured — the variables a
+    /// script assigns, the keys a returnData carries, the properties a wmiQuery captures.
+    ///
+    /// <para>Excludes the static catalog outputs every instance of a type emits. Those collide by
+    /// construction (two runScript steps both publish <c>exitCode</c>), so reporting them as an
+    /// authoring problem would fire on nearly every workflow and drown the cases that are one.</para>
+    /// </summary>
+    public static IReadOnlyList<string> AuthoredParameters(WorkflowNode node) =>
+        DynamicParams(node).Distinct(StringComparer.Ordinal).ToList();
+
     // Mirrors the FE describeNodeOutputs: the full set of {{name.…}} expressions a node exposes.
     private static IEnumerable<string> DescribeNode(WorkflowNode node, string name)
     {
@@ -163,11 +174,18 @@ public static class WorkflowDataBusAnalyzer
         }
     }
 
-    private static readonly HashSet<string> RunScriptIgnored = new(StringComparer.Ordinal)
-    {
-        "ErrorActionPreference", "ProgressPreference", "Params", "_", "null", "true", "false",
-        "input", "PSScriptRoot", "PSCommandPath", "exitCode", // exitCode comes from the static catalog
-    };
+    /// <summary>
+    /// Names the runtime never publishes, so the picker must not offer them either. Seeded from
+    /// the same contract the script wrapper enforces
+    /// (<see cref="Activities.PowerShellReservedVariables"/>) — an assignment to a reserved name
+    /// changes engine state rather than producing an output.
+    /// </summary>
+    private static readonly HashSet<string> RunScriptIgnored =
+        new(Activities.PowerShellReservedVariables.All, StringComparer.OrdinalIgnoreCase)
+        {
+            "Params",
+            "exitCode", // comes from the static catalog
+        };
 
     private static IEnumerable<string> RunScriptVars(WorkflowNode node)
     {
@@ -176,7 +194,12 @@ public static class WorkflowDataBusAnalyzer
         foreach (Match m in PsAssignRx.Matches(script!))
         {
             var v = m.Groups[1].Value;
-            if (RunScriptIgnored.Contains(v) || !seen.Add(v)) continue;
+            if (RunScriptIgnored.Contains(v)
+                || v.StartsWith(Activities.PowerShellReservedVariables.InternalPrefix, StringComparison.OrdinalIgnoreCase)
+                || !seen.Add(v))
+            {
+                continue;
+            }
             yield return v;
         }
     }
