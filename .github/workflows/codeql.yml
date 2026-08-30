@@ -17,6 +17,14 @@ on:
     # Weekly, so newly published queries reach an unchanged main branch too.
     - cron: '17 4 * * 1'
 
+# Within one branch the newest run wins. A pull request and a push to main key on different
+# groups, so main keeps the run that updates the code-scanning dashboard.
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  # Only superseded pull request runs are cancelled, matching ci.yml: a push to main runs to
+  # completion so the release commit keeps its own analysis.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 

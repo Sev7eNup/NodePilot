@@ -14,6 +14,14 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Within one branch the newest run wins; the PR/main duplication above is unaffected, because a
+# pull request and a push to main key on different groups.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # Only superseded pull request runs are cancelled. A push to main always finishes, so a release
+  # commit keeps its own green result even when the version bump lands minutes later.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Decides whether the code-only jobs have anything to do, so a documentation-only pull
   # request does not spend job-minutes proving that nothing changed.
