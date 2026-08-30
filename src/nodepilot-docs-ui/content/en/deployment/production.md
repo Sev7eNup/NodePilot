@@ -486,6 +486,22 @@ The external-trigger API key is shown only once and has to be stored in a secret
 
 The log folder is readable by administrators only. Retention and how to pick the right file: [Logs & diagnostics](logs).
 
+## The product source code is optional
+
+The server artifact carries a snapshot of the product source under `knowledge\source` — around
+2500 files and 27 MB — which the AI assistant reads for source-code questions. The setup offers a
+checkbox for it on the "Optional content" page; unticking it keeps the source off the machine.
+Unattended, the same choice is `"includeSourceSnapshot": false` in the answer file or
+`-OmitSourceSnapshot` on `Install-NodePilot.ps1`.
+
+Only the assistant's source-code knowledge source is affected, and that source is off by default
+(`AiKnowledge:SourceCodeEnabled`). Nothing else about the installation changes.
+
+The snapshot is deleted **after** the artifact has been verified rather than skipped while
+copying: the installation is checked against the signed manifest and has to hold exactly its
+contents, so removing files earlier would fail the installation. An update preserves the choice —
+the updater reproduces the state it found, so a source tree that was declined never comes back.
+
 ## The documentation on the server
 
 The installer places the same documentation that the public website carries under

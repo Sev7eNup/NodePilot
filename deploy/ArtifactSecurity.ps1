@@ -509,6 +509,40 @@ function Assert-NodePilotExtractedFiles {
     }
 }
 
+function Remove-NodePilotSourceSnapshot {
+    <#
+      Drops knowledge\source from an installation whose operator asked not to keep the product
+      source on the machine. The AI assistant's source-code knowledge source reads that directory;
+      without it, that one source is empty and the rest of the assistant is unaffected.
+
+      Ordering is load-bearing: this must run AFTER Assert-NodePilotExtractedFiles. That check
+      requires the directory to hold exactly the signed artifact, so removing anything first fails
+      the install outright. Running it afterwards keeps the trust chain whole - every file was
+      verified against the signed manifest, and only then is a declared subtree dropped.
+
+      Returns $true when something was removed, so the caller can report it.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$InstallPath)
+
+    $snapshot = Join-Path $InstallPath 'knowledge\source'
+    if (-not (Test-Path -LiteralPath $snapshot)) { return $false }
+    Remove-Item -LiteralPath $snapshot -Recurse -Force -ErrorAction Stop
+    return $true
+}
+
+function Test-NodePilotSourceSnapshotPresent {
+    <#
+      Whether an installation currently carries the source snapshot. The updater uses this to
+      preserve the operator's choice across an update without depending on the machine-wide
+      installation marker, which a second instance on the same host would overwrite.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$InstallPath)
+
+    return (Test-Path -LiteralPath (Join-Path $InstallPath 'knowledge\source'))
+}
+
 function Assert-NodePilotInstallRootHardened {
     <#
       Checks that only trusted principals can write to the install directory. It is the image path

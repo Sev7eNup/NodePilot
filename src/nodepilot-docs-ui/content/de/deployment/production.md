@@ -485,6 +485,23 @@ Der External-Trigger-API-Key wird nur einmal angezeigt und muss in einem Secret-
 
 Der Log-Ordner ist nur für Administratoren lesbar. Aufbewahrung und Auswahl der richtigen Datei: [Logs & Diagnose](logs).
 
+## Der Produkt-Quellcode ist optional
+
+Das Server-Artefakt trägt unter `knowledge\source` einen Schnappschuss des Produkt-Quellcodes —
+rund 2500 Dateien und 27 MB —, aus dem der KI-Assistent Quellcode-Fragen beantwortet. Das Setup
+bietet dafür auf der Seite „Optionale Inhalte" ein Häkchen; abgewählt bleibt der Quellcode von der
+Maschine fern. Unbeaufsichtigt lautet dieselbe Wahl `"includeSourceSnapshot": false` in der
+Antwortdatei oder `-OmitSourceSnapshot` an `Install-NodePilot.ps1`.
+
+Betroffen ist ausschließlich die Quellcode-Wissensquelle des Assistenten, und die ist ohnehin
+standardmäßig aus (`AiKnowledge:SourceCodeEnabled`). An der Installation ändert sich sonst nichts.
+
+Der Schnappschuss wird **nach** der Artefakt-Prüfung gelöscht, nicht beim Kopieren übersprungen:
+Die Installation wird gegen das signierte Manifest geprüft und muss exakt dessen Inhalt tragen —
+ein früheres Weglassen würde die Installation scheitern lassen. Ein Update erhält die Wahl: der
+Updater stellt den vorgefundenen Zustand wieder her, ein abgelehnter Quellcode kommt also nicht
+zurück.
+
 ## Dokumentation auf dem Server
 
 Der Installer legt dieselbe Dokumentation, die auch auf der öffentlichen Website steht, unter

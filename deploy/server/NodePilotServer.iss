@@ -132,6 +132,7 @@ var
   PostgresPage: TInputQueryWizardPage;
   PostgresAuthPage: TInputQueryWizardPage;
   NetworkPage: TInputQueryWizardPage;
+  ContentPage: TInputOptionWizardPage;
   ReadinessPage: TWizardPage;
 
   CheckIds: array[0..CheckCount - 1] of String;
@@ -425,6 +426,11 @@ begin
   AddLine(Lines, Count, '  "installPath": ' + JsonString(ExpandConstant('{app}')) + ',');
   AddLine(Lines, Count, '  "dataPath": ' + JsonString(ExpandConstant('{commonappdata}\NodePilot')) + ',');
   AddLine(Lines, Count, '  "serviceName": ' + JsonString('NodePilot') + ',');
+  // Absent means include on the PowerShell side, so this only ever has to say "false" clearly.
+  if ContentPage.Values[0] then
+    AddLine(Lines, Count, '  "includeSourceSnapshot": true,')
+  else
+    AddLine(Lines, Count, '  "includeSourceSnapshot": false,');
   AddLine(Lines, Count, '  "identity": {');
   if IsLocalSystemSelected() then
     AddLine(Lines, Count, '    "type": "localSystem"')
@@ -990,7 +996,7 @@ procedure CreateReadinessPage();
 var
   I: Integer;
 begin
-  ReadinessPage := CreateCustomPage(NetworkPage.ID, 'Prerequisites',
+  ReadinessPage := CreateCustomPage(ContentPage.ID, 'Prerequisites',
     'NodePilot checks what it needs before anything is changed.');
 
   for I := 0 to CheckCount - 1 do
@@ -1189,6 +1195,18 @@ begin
   CertCombo.OnChange := @CertComboChange;
   // Last, because it measures the controls above to place this one.
   CompactNetworkPage();
+
+  // Checkboxes, not radio buttons: the third argument to CreateInputOptionPage being False is
+  // what makes them independent, and this page is expected to grow another option one day.
+  ContentPage := CreateInputOptionPage(NetworkPage.ID,
+    'Optional content',
+    'What should be installed alongside the product?',
+    'These affect what is placed on this machine, not how NodePilot runs.', False, False);
+  ContentPage.Add('Install the product source code (about 27 MB)');
+  // Ticked by default so an operator who clicks through gets what every earlier version
+  // installed. Unticking it removes the snapshot after the artifact has been verified, so the
+  // signature check still runs against the complete, signed contents.
+  ContentPage.Values[0] := True;
 
   CreateReadinessPage();
 

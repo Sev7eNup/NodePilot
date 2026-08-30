@@ -24,6 +24,9 @@ $script:NodePilotAnswerFileKeys = @{
         )
         Optional = @(
             'serviceDisplayName',
+            # Absent means include, so an answer file written before this option existed keeps the
+            # behaviour it had. Only an explicit false drops knowledge\source.
+            'includeSourceSnapshot',
             'identity.account',
             'database.sqlServer', 'database.sqlDatabase', 'database.sqlCertificateHostName',
             'database.postgresHost', 'database.postgresPort', 'database.postgresDatabase',

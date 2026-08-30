@@ -388,7 +388,7 @@ The installer does everything else:
 
 1. Pre-flight (admin, .NET 10, certificate present with a private key, gMSA available, SQL reachable)
 2. Stop and remove the old service (if present)
-3. Empty and repopulate `C:\Program Files\NodePilot` (including `wwwroot\docs`, the documentation site the API serves at `/docs`)
+3. Empty and repopulate `C:\Program Files\NodePilot` (including `wwwroot\docs`, the documentation site the API serves at `/docs`). With `-OmitSourceSnapshot` the source snapshot under `knowledge\source` (~27 MB) is deleted again immediately afterwards — after the manifest check, which requires the complete signed contents. An update preserves that choice by going on what it finds on disk.
 4. Create `C:\ProgramData\NodePilot\logs`
 5. Generate `appsettings.Production.json` from the template
 6. Set ACLs (service identity = the gMSA, or `NT AUTHORITY\SYSTEM` under LocalSystem):

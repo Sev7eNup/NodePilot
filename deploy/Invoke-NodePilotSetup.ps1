@@ -622,6 +622,12 @@ function Invoke-SetupInstall {
 
     $splat['ArtifactPath'] = $ArtifactPath
     $splat['TrustedArtifactSignerThumbprint'] = $TrustedArtifactSignerThumbprint
+
+    # Absent means include, so an older answer file keeps the behaviour it had. Only an explicit
+    # false drops the source snapshot.
+    if ($answers.Contains('includeSourceSnapshot') -and -not [bool]$answers['includeSourceSnapshot']) {
+        $splat['OmitSourceSnapshot'] = $true
+    }
     # Generated here, not by the installer: the installer prints the key once to a console that
     # does not exist under a hidden Exec, and install-report.txt omits it. This is the only way
     # the wizard can show it to the operator.
