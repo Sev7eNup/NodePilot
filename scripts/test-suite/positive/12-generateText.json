@@ -1,0 +1,365 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] generateText",
+      "description": "All seven modes, both length clamps, excludeAmbiguous and the silent fallback an unrecognised mode takes.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 2/5 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 2/5 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "v0",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "gen: alphanumeric",
+              "activityType": "generateText",
+              "config": {
+                "mode": "alphanumeric",
+                "length": 16
+              },
+              "outputVariable": "v0"
+            }
+          },
+          {
+            "id": "v1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "gen: alphabetic",
+              "activityType": "generateText",
+              "config": {
+                "mode": "alphabetic",
+                "length": 12
+              },
+              "outputVariable": "v1"
+            }
+          },
+          {
+            "id": "v2",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "gen: numeric",
+              "activityType": "generateText",
+              "config": {
+                "mode": "numeric",
+                "length": 8
+              },
+              "outputVariable": "v2"
+            }
+          },
+          {
+            "id": "v3",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "gen: hex",
+              "activityType": "generateText",
+              "config": {
+                "mode": "hex",
+                "length": 32
+              },
+              "outputVariable": "v3"
+            }
+          },
+          {
+            "id": "v4",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "gen: guid",
+              "activityType": "generateText",
+              "config": {
+                "mode": "guid"
+              },
+              "outputVariable": "v4"
+            }
+          },
+          {
+            "id": "v5",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "gen: password",
+              "activityType": "generateText",
+              "config": {
+                "mode": "password",
+                "length": 24,
+                "excludeAmbiguous": true
+              },
+              "outputVariable": "v5"
+            }
+          },
+          {
+            "id": "v6",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "gen: custom charset",
+              "activityType": "generateText",
+              "config": {
+                "mode": "custom",
+                "customCharset": "ABCDEF",
+                "length": 10
+              },
+              "outputVariable": "v6"
+            }
+          },
+          {
+            "id": "v7",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 500
+            },
+            "data": {
+              "label": "gen: length clamped low",
+              "activityType": "generateText",
+              "config": {
+                "mode": "alphanumeric",
+                "length": 0
+              },
+              "outputVariable": "v7"
+            }
+          },
+          {
+            "id": "v8",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "gen: length clamped high",
+              "activityType": "generateText",
+              "config": {
+                "mode": "alphanumeric",
+                "length": 4096
+              },
+              "outputVariable": "v8"
+            }
+          },
+          {
+            "id": "v9",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 500
+            },
+            "data": {
+              "label": "gen: unknown mode falls back",
+              "activityType": "generateText",
+              "config": {
+                "mode": "not-a-mode",
+                "length": 9
+              },
+              "outputVariable": "v9"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 500
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$an   = {{v0.param.text}}\n$al   = {{v1.param.text}}\n$nu   = {{v2.param.text}}\n$hx   = {{v3.param.text}}\n$gu   = {{v4.param.text}}\n$pw   = {{v5.param.text}}\n$cu   = {{v6.param.text}}\n$low  = {{v7.param.text}}\n$high = {{v8.param.text}}\n$unk  = {{v9.param.text}}\n\nif ($an.Length -ne 16) { throw \"alphanumeric length: $($an.Length)\" }\nif ($an -notmatch '^[A-Za-z0-9]+$') { throw \"alphanumeric charset: '$an'\" }\nif ($al.Length -ne 12 -or $al -notmatch '^[A-Za-z]+$') { throw \"alphabetic: '$al'\" }\nif ($nu.Length -ne 8  -or $nu -notmatch '^[0-9]+$')    { throw \"numeric: '$nu'\" }\nif ($hx.Length -ne 32 -or $hx -cnotmatch '^[0-9a-f]+$') { throw \"hex must be lowercase: '$hx'\" }\nif ($gu -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') {\n  throw \"guid shape: '$gu'\"\n}\nif ($pw.Length -ne 24) { throw \"password length: $($pw.Length)\" }\nif ($pw -cmatch '[0Oo1lIi5Ss2Zz8B6Gg9q|]') { throw \"excludeAmbiguous leaked: '$pw'\" }\nif ($cu.Length -ne 10 -or $cu -cnotmatch '^[ABCDEF]+$') { throw \"custom charset: '$cu'\" }\nif ($low.Length -ne 1) { throw \"length 0 should clamp to 1, got $($low.Length)\" }\nif ($high.Length -ne 1024) { throw \"length 4096 should clamp to 1024, got $($high.Length)\" }\nif ($unk.Length -ne 9 -or $unk -notmatch '^[A-Za-z0-9]+$') {\n  throw \"unknown mode should fall back to alphanumeric: '$unk'\"\n}\n$assertOk = 'generateText'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 500
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "generateText",
+                  "asserted": "{{assert.success}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-v0",
+            "source": "trg",
+            "target": "v0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v0-v1",
+            "source": "v0",
+            "target": "v1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v1-v2",
+            "source": "v1",
+            "target": "v2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v2-v3",
+            "source": "v2",
+            "target": "v3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v3-v4",
+            "source": "v3",
+            "target": "v4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v4-v5",
+            "source": "v4",
+            "target": "v5",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v5-v6",
+            "source": "v5",
+            "target": "v6",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v6-v7",
+            "source": "v6",
+            "target": "v7",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-v7-v8",
+            "source": "v7",
+            "target": "v8",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v8-v9",
+            "source": "v8",
+            "target": "v9",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v9-assert",
+            "source": "v9",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

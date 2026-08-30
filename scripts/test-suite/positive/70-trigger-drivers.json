@@ -1,0 +1,387 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] trigger drivers",
+      "description": "Pokes the three passive sources with one correlation id and waits for their acknowledgement files. A single missed round is tolerated because a database source re-baselines after a restart; two in a row fail the run.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 3/10 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 3/10 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "cid",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Correlation id",
+              "activityType": "generateText",
+              "config": {
+                "mode": "guid"
+              },
+              "outputVariable": "cid"
+            }
+          },
+          {
+            "id": "pokeFile",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Poke: drop a watched file",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$cid = {{cid.param.text}}\n$watch = 'C:\\Temp\\NP-TestSuite\\runtime\\watch'\nNew-Item -ItemType Directory -Path $watch -Force | Out-Null\nSet-Content -LiteralPath (Join-Path $watch \"$cid.txt\") -Value 'suite'\n$pokedFile = $cid\n"
+              },
+              "outputVariable": "pokeFile",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "prepDb",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Poke: ensure the sentinel database",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$cid = {{cid.param.text}}\n$dbDir = Split-Path -Parent 'C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite'\nNew-Item -ItemType Directory -Path $dbDir -Force | Out-Null\n$pokedDb = $cid\n"
+              },
+              "outputVariable": "prepDb",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ddl",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "Poke: sentinel table",
+              "activityType": "sql",
+              "config": {
+                "provider": "sqlite",
+                "dataSource": "C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite",
+                "timeoutSeconds": 15,
+                "query": "CREATE TABLE IF NOT EXISTS suite_sentinel (id INTEGER PRIMARY KEY, sentinel TEXT)"
+              },
+              "outputVariable": "ddl"
+            }
+          },
+          {
+            "id": "seedRow",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "Poke: sentinel row",
+              "activityType": "sql",
+              "config": {
+                "provider": "sqlite",
+                "dataSource": "C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite",
+                "timeoutSeconds": 15,
+                "query": "INSERT OR IGNORE INTO suite_sentinel (id, sentinel) VALUES (1, 'initial')"
+              },
+              "outputVariable": "seedRow"
+            }
+          },
+          {
+            "id": "pokeDb",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "Poke: move the sentinel",
+              "activityType": "sql",
+              "config": {
+                "provider": "sqlite",
+                "dataSource": "C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite",
+                "timeoutSeconds": 15,
+                "query": "UPDATE suite_sentinel SET sentinel = @cid WHERE id = 1",
+                "parameters": {
+                  "cid": "{{cid.param.text}}"
+                }
+              },
+              "outputVariable": "pokeDb"
+            }
+          },
+          {
+            "id": "pokeHook",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "Poke: post the webhook",
+              "activityType": "restApi",
+              "config": {
+                "url": "{{globals.NP_TESTSUITE_WEBHOOK_URL}}",
+                "method": "POST",
+                "timeoutSeconds": 15,
+                "headers": {
+                  "Content-Type": "application/json",
+                  "X-Webhook-Secret": "{{globals.NP_TESTSUITE_WEBHOOK_SECRET}}"
+                },
+                "body": "{\"cid\":\"{{cid.param.text}}\"}"
+              },
+              "outputVariable": "pokeHook"
+            }
+          },
+          {
+            "id": "pokeManual",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 500
+            },
+            "data": {
+              "label": "Poke: start the manual-trigger workflow",
+              "activityType": "startWorkflow",
+              "config": {
+                "workflowNameOrId": "[TestSuite] trigger: manual",
+                "waitForCompletion": true,
+                "timeoutSeconds": 60,
+                "parameters": {
+                  "probe": "{{cid.param.text}}"
+                }
+              },
+              "outputVariable": "pokeManual"
+            }
+          },
+          {
+            "id": "settle",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "Wait for the sources to pick up",
+              "activityType": "delay",
+              "config": {
+                "seconds": 60
+              },
+              "outputVariable": "settle"
+            }
+          },
+          {
+            "id": "check",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 500
+            },
+            "data": {
+              "label": "Collect acknowledgements",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$cid = {{cid.param.text}}\n$ackRoot = 'C:\\Temp\\NP-TestSuite\\runtime\\acks'\n$missRecord = Join-Path $ackRoot 'consecutive-misses.txt'\n$missing = @()\nforeach ($kind in @('filewatcher', 'database', 'webhook')) {\n  if (-not (Test-Path -LiteralPath (Join-Path (Join-Path $ackRoot $kind) $cid))) {\n    $missing += $kind\n  }\n}\n# Prune acknowledgements so the fixture directory does not grow without bound.\nforeach ($kind in @('filewatcher', 'database', 'webhook', 'eventlog')) {\n  $dir = Join-Path $ackRoot $kind\n  if (Test-Path -LiteralPath $dir) {\n    Get-ChildItem -LiteralPath $dir -File |\n      Where-Object { $_.LastWriteTime -lt (Get-Date).AddHours(-2) } |\n      Remove-Item -Force -ErrorAction SilentlyContinue\n  }\n}\nGet-ChildItem -LiteralPath 'C:\\Temp\\NP-TestSuite\\runtime\\watch' -File -ErrorAction SilentlyContinue |\n  Where-Object { $_.LastWriteTime -lt (Get-Date).AddHours(-2) } |\n  Remove-Item -Force -ErrorAction SilentlyContinue\n\n$previous = 0\nif (Test-Path -LiteralPath $missRecord) { $previous = [int](Get-Content -LiteralPath $missRecord -Raw) }\nif ($missing.Count -eq 0) {\n  Set-Content -LiteralPath $missRecord -Value '0'\n  $acknowledged = 'all'\n} else {\n  $now = $previous + 1\n  Set-Content -LiteralPath $missRecord -Value $now.ToString()\n  # A database source re-baselines its first observation after every start, so one missed\n  # round right after an API restart is expected. Two in a row is a dead trigger.\n  if ($now -ge 2) {\n    throw \"no acknowledgement from: $($missing -join ', ') (two rounds in a row)\"\n  }\n  $acknowledged = \"missed once: $($missing -join ', ')\"\n}\n"
+              },
+              "outputVariable": "check",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 500
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$state = {{check.param.acknowledged}}\nif ([string]::IsNullOrWhiteSpace($state)) { throw \"the acknowledgement check produced no verdict\" }\n$assertOk = 'trigger-drivers'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 500
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "trigger-drivers",
+                  "asserted": "{{assert.success}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-cid",
+            "source": "trg",
+            "target": "cid",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cid-pokeFile",
+            "source": "cid",
+            "target": "pokeFile",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-pokeFile-prepDb",
+            "source": "pokeFile",
+            "target": "prepDb",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-prepDb-ddl",
+            "source": "prepDb",
+            "target": "ddl",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-ddl-seedRow",
+            "source": "ddl",
+            "target": "seedRow",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-seedRow-pokeDb",
+            "source": "seedRow",
+            "target": "pokeDb",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-pokeDb-pokeHook",
+            "source": "pokeDb",
+            "target": "pokeHook",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-pokeHook-pokeManual",
+            "source": "pokeHook",
+            "target": "pokeManual",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-pokeManual-settle",
+            "source": "pokeManual",
+            "target": "settle",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-settle-check",
+            "source": "settle",
+            "target": "check",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-check-assert",
+            "source": "check",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,152 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] emailNotification",
+      "description": "Both body types against a real SMTP sink. Point Smtp:* at a local catcher such as smtp4dev; without one the workflow stays disabled rather than red.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 22/30 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 22/30 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "v0",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "email: plain text",
+              "activityType": "emailNotification",
+              "config": {
+                "to": "{{globals.NP_TESTSUITE_MAIL_TO}}",
+                "subject": "[TestSuite] plain",
+                "body": "Plain body from the suite.",
+                "isHtml": false,
+                "timeoutSeconds": 20
+              },
+              "outputVariable": "v0"
+            }
+          },
+          {
+            "id": "v1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "email: HTML",
+              "activityType": "emailNotification",
+              "config": {
+                "to": "{{globals.NP_TESTSUITE_MAIL_TO}}",
+                "subject": "[TestSuite] html",
+                "body": "<b>HTML</b> body from the suite.",
+                "isHtml": true,
+                "timeoutSeconds": 20
+              },
+              "outputVariable": "v1"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$plain = {{v0.success}}\n$html  = {{v1.success}}\nif ($plain -ne 'true') { throw \"plain-text mail did not send\" }\nif ($html  -ne 'true') { throw \"HTML mail did not send\" }\n$assertOk = 'emailNotification'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "emailNotification",
+                  "asserted": "{{assert.success}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-v0",
+            "source": "trg",
+            "target": "v0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v0-v1",
+            "source": "v0",
+            "target": "v1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v1-assert",
+            "source": "v1",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

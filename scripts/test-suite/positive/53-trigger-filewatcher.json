@@ -1,0 +1,150 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] trigger: file watcher",
+      "description": "Watches the long-lived runtime/watch fixture. The driver drops one file per cadence whose name is the correlation id.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "File Watcher",
+              "activityType": "fileWatcherTrigger",
+              "config": {
+                "directory": "C:\\Temp\\NP-TestSuite\\runtime\\watch",
+                "filter": "*.txt",
+                "watchType": "Created",
+                "includeSubdirectories": false
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "ack",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Acknowledge: filewatcher",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$cid = {{trg.param.fileNameWithoutExtension}}\n$action = {{trg.param.fileAction}}\nif ($action -ne 'Created') { throw \"unexpected fileAction '$action'\" }\nif ([string]::IsNullOrWhiteSpace($cid)) { throw 'trigger fired without a correlation id' }\n$ackDir = Join-Path 'C:\\Temp\\NP-TestSuite\\runtime\\acks' 'filewatcher'\nNew-Item -ItemType Directory -Path $ackDir -Force | Out-Null\nSet-Content -LiteralPath (Join-Path $ackDir $cid) -Value (Get-Date -Format o)\n$ackedCid = $cid\n"
+              },
+              "outputVariable": "ack",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "read",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Read the file event",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "action={{trg.param.fileAction}} name={{trg.param.fileName}} dir={{trg.param.fileDirectory}}"
+              },
+              "outputVariable": "read"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$msg   = {{read.param.message}}\n$acked = {{ack.param.ackedCid}}\nif ($msg -match '\\{\\{') { throw \"file watcher parameters left unresolved: '$msg'\" }\nif ($msg -notmatch 'action=Created') { throw \"fileAction: '$msg'\" }\nif ($msg -notmatch '\\.txt') { throw \"the filter should only admit .txt files: '$msg'\" }\nif ([string]::IsNullOrWhiteSpace($acked)) { throw \"no correlation id was acknowledged\" }\n$assertOk = 'fileWatcherTrigger'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "trigger": "filewatcher",
+                  "cid": "{{trg.param.fileNameWithoutExtension}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-ack",
+            "source": "trg",
+            "target": "ack",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-ack-read",
+            "source": "ack",
+            "target": "read",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-read-assert",
+            "source": "read",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

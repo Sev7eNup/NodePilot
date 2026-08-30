@@ -1,0 +1,492 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] folderOperation",
+      "description": "All seven operations including the nested create, both outcomes of exists and the list projection.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 2/5 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 2/5 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "janitor",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Janitor: stale run residue",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$root = 'C:\\Temp\\NP-TestSuite'\nforeach ($d in @('runs', 'runtime\\watch', 'runtime\\db', 'runtime\\acks')) {\n  New-Item -ItemType Directory -Path (Join-Path $root $d) -Force | Out-Null\n}\n$cutoff = (Get-Date).AddHours(-1)\nGet-ChildItem -LiteralPath (Join-Path $root 'runs') -Directory -ErrorAction SilentlyContinue |\n  Where-Object { $_.LastWriteTime -lt $cutoff } |\n  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue\n$janitorSweep = 'ok'\n"
+              },
+              "outputVariable": "janitor",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "cid",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Correlation id",
+              "activityType": "generateText",
+              "config": {
+                "mode": "guid"
+              },
+              "outputVariable": "cid"
+            }
+          },
+          {
+            "id": "mkrun",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Sandbox: create run dir",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "create",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}"
+              },
+              "outputVariable": "mkrun",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v0",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "folderOp: create",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "create",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\fold"
+              },
+              "outputVariable": "v0",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v1",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "folderOp: create nested",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "create",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\fold\\deep\\deeper"
+              },
+              "outputVariable": "v1",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v2",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "folderOp: exists (true)",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "exists",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\fold"
+              },
+              "outputVariable": "v2",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v3",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "folderOp: list",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "list",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\fold"
+              },
+              "outputVariable": "v3",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v4",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 500
+            },
+            "data": {
+              "label": "folderOp: copy",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "copy",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\fold",
+                "destination": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\fold-copy"
+              },
+              "outputVariable": "v4",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v5",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "folderOp: rename",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "rename",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\fold-copy",
+                "newName": "fold-ren"
+              },
+              "outputVariable": "v5",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v6",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 500
+            },
+            "data": {
+              "label": "folderOp: move",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "move",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\fold-ren",
+                "destination": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\fold-moved"
+              },
+              "outputVariable": "v6",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v7",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 500
+            },
+            "data": {
+              "label": "folderOp: exists (false)",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "exists",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\fold-ren"
+              },
+              "outputVariable": "v7",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v8",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 500
+            },
+            "data": {
+              "label": "folderOp: delete",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "delete",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\fold-moved"
+              },
+              "outputVariable": "v8",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v9",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 500
+            },
+            "data": {
+              "label": "folderOp: exists after delete",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "exists",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\fold-moved"
+              },
+              "outputVariable": "v9",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "cleanup",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 500
+            },
+            "data": {
+              "label": "Cleanup: run sandbox",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$cid = {{cid.param.text}}\n$dir = Join-Path 'C:\\Temp\\NP-TestSuite\\runs' $cid\nRemove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue\n\n$cleanupDone = 'ok'\n"
+              },
+              "outputVariable": "cleanup",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 500
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$existsBase   = {{v2.param.exists}}\n$listCount    = {{v3.param.count}}\n$listItems    = {{v3.param.items}}\n$existsMoved  = {{v7.param.exists}}\n$goneAfterDel = {{v9.param.exists}}\n\nif ($existsBase -ne 'True' -and $existsBase -ne 'true') {\n  throw \"folderOperation exists after create: '$existsBase'\"\n}\nif ([int]$listCount -lt 1) { throw \"folderOperation list count: expected the nested child, got '$listCount'\" }\nif ($listItems -notmatch 'deep') { throw \"folderOperation list items: '$listItems'\" }\nif ($existsMoved -eq 'True' -or $existsMoved -eq 'true') {\n  throw \"folderOperation: the source should be gone after a move\"\n}\nif ($goneAfterDel -eq 'True' -or $goneAfterDel -eq 'true') {\n  throw \"folderOperation: the folder should be gone after delete\"\n}\n$assertOk = 'folderOperation'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 740
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "folderOperation",
+                  "asserted": "{{assert.success}}",
+                  "cid": "{{cid.param.text}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-janitor",
+            "source": "trg",
+            "target": "janitor",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-janitor-cid",
+            "source": "janitor",
+            "target": "cid",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cid-mkrun",
+            "source": "cid",
+            "target": "mkrun",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-mkrun-v0",
+            "source": "mkrun",
+            "target": "v0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v0-v1",
+            "source": "v0",
+            "target": "v1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v1-v2",
+            "source": "v1",
+            "target": "v2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v2-v3",
+            "source": "v2",
+            "target": "v3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v3-v4",
+            "source": "v3",
+            "target": "v4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-v4-v5",
+            "source": "v4",
+            "target": "v5",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v5-v6",
+            "source": "v5",
+            "target": "v6",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v6-v7",
+            "source": "v6",
+            "target": "v7",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v7-v8",
+            "source": "v7",
+            "target": "v8",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v8-v9",
+            "source": "v8",
+            "target": "v9",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v9-cleanup",
+            "source": "v9",
+            "target": "cleanup",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cleanup-assert",
+            "source": "cleanup",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          }
+        ]
+      }
+    }
+  ]
+}

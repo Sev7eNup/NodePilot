@@ -1,0 +1,140 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] Child: Echo Item",
+      "description": "Shared child for forEach and startWorkflow. Echoes its inputs back through returnData so the parent can assert the parameter round-trip.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "item",
+                    "type": "string",
+                    "required": false,
+                    "default": ""
+                  },
+                  {
+                    "name": "index",
+                    "type": "string",
+                    "required": false,
+                    "default": ""
+                  },
+                  {
+                    "name": "extra",
+                    "type": "string",
+                    "required": false,
+                    "default": ""
+                  }
+                ]
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "guard",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Fail on the item named boom",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$item = {{trg.param.item}}\nif ($item -eq 'boom') { throw \"child failed on purpose for item 'boom'\" }\n$echoedItem = $item\n"
+              },
+              "outputVariable": "guard",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "echo",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Log: echo item",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "child item={{trg.param.item}} index={{trg.param.index}}"
+              },
+              "outputVariable": "echo"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "item": "{{trg.param.item}}",
+                  "index": "{{trg.param.index}}",
+                  "extra": "{{trg.param.extra}}",
+                  "echoed": "yes"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-guard",
+            "source": "trg",
+            "target": "guard",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-guard-echo",
+            "source": "guard",
+            "target": "echo",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-echo-ret",
+            "source": "echo",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

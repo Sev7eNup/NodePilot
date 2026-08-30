@@ -1,0 +1,231 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] variable resolution",
+      "description": "Every tail the resolver knows, the globals namespace, an outputVariable alias, several templates inside one value and the unknown tail that is deliberately left as literal text. The trigger's own parameters are covered by the trigger workflows, because a manually started run has none.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 3/5 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 3/5 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "seed",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Seed: every tail",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$namedValue = 'from-param'\nWrite-Output 'from-output'\n"
+              },
+              "outputVariable": "seed",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "aliased",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Seed under an outputVariable",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$aliasProbe = 'via-alias'\nWrite-Output 'aliased'\n"
+              },
+              "outputVariable": "myAlias",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "globalRead",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Read a global variable",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "self url = {{globals.NP_TESTSUITE_SELF_URL}}"
+              },
+              "outputVariable": "globalRead"
+            }
+          },
+          {
+            "id": "embedded",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "Embedded templates in one string",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "out={{seed.output}}|param={{seed.param.namedValue}}|ok={{seed.success}}"
+              },
+              "outputVariable": "embedded"
+            }
+          },
+          {
+            "id": "literal",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "Unknown tail stays literal",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "tail={{seed.notatail}}"
+              },
+              "outputVariable": "literal"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$out    = {{seed.output}}\n$param  = {{seed.param.namedValue}}\n$ok     = {{seed.success}}\n$alias  = {{myAlias.param.aliasProbe}}\n$glob   = {{globalRead.param.message}}\n$emb    = {{embedded.param.message}}\n$lit    = {{literal.param.message}}\n\nif ($out -notmatch 'from-output') { throw \"{{step.output}} resolved to '$out'\" }\nif ($param -ne 'from-param')      { throw \"{{step.param.x}} resolved to '$param'\" }\nif ($ok -ne 'true')               { throw \"{{step.success}} resolved to '$ok'\" }\nif ($alias -ne 'via-alias')       { throw \"outputVariable reference resolved to '$alias'\" }\nif ($glob -notmatch 'http')       { throw \"globals namespace resolved to '$glob'\" }\nif ($emb -notmatch 'out=from-output') { throw \"embedded output template: '$emb'\" }\nif ($emb -notmatch 'param=from-param') { throw \"embedded param template: '$emb'\" }\nif ($emb -notmatch 'ok=true')     { throw \"embedded success template: '$emb'\" }\n# Only four tails exist; anything else is deliberately left alone rather than blanked.\nif ($lit -notmatch 'notatail')    { throw \"an unknown tail should stay literal, got '$lit'\" }\n$assertOk = 'variable-resolution'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "variable-resolution",
+                  "asserted": "{{assert.success}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-seed",
+            "source": "trg",
+            "target": "seed",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-seed-aliased",
+            "source": "seed",
+            "target": "aliased",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-aliased-globalRead",
+            "source": "aliased",
+            "target": "globalRead",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-globalRead-embedded",
+            "source": "globalRead",
+            "target": "embedded",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-embedded-literal",
+            "source": "embedded",
+            "target": "literal",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-literal-assert",
+            "source": "literal",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

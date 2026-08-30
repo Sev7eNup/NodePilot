@@ -1,0 +1,681 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] registryOperation",
+      "description": "All eight operations including both shapes of read and exists, and all six value types, under a per-run key below HKCU.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 0/5 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 0/5 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "janitor",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Janitor: stale run residue",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$root = 'C:\\Temp\\NP-TestSuite'\nforeach ($d in @('runs', 'runtime\\watch', 'runtime\\db', 'runtime\\acks')) {\n  New-Item -ItemType Directory -Path (Join-Path $root $d) -Force | Out-Null\n}\n$cutoff = (Get-Date).AddHours(-1)\nGet-ChildItem -LiteralPath (Join-Path $root 'runs') -Directory -ErrorAction SilentlyContinue |\n  Where-Object { $_.LastWriteTime -lt $cutoff } |\n  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue\n$janitorSweep = 'ok'\n"
+              },
+              "outputVariable": "janitor",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "cid",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Correlation id",
+              "activityType": "generateText",
+              "config": {
+                "mode": "guid"
+              },
+              "outputVariable": "cid"
+            }
+          },
+          {
+            "id": "v0",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: createKey",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "createKey",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}"
+              },
+              "outputVariable": "v0",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v1",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: write String",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "write",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}",
+                "valueName": "Str",
+                "value": "suite",
+                "valueType": "String"
+              },
+              "outputVariable": "v1",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v2",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: write ExpandString",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "write",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}",
+                "valueName": "Expand",
+                "value": "%SystemRoot%\\System32",
+                "valueType": "ExpandString"
+              },
+              "outputVariable": "v2",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v3",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: write DWord",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "write",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}",
+                "valueName": "Num",
+                "value": "42",
+                "valueType": "DWord"
+              },
+              "outputVariable": "v3",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v4",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "reg: write QWord",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "write",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}",
+                "valueName": "Big",
+                "value": "1234567890123",
+                "valueType": "QWord"
+              },
+              "outputVariable": "v4",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v5",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 500
+            },
+            "data": {
+              "label": "reg: write Binary",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "write",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}",
+                "valueName": "Bin",
+                "value": "DEADBEEF",
+                "valueType": "Binary"
+              },
+              "outputVariable": "v5",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v6",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 500
+            },
+            "data": {
+              "label": "reg: write MultiString",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "write",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}",
+                "valueName": "Multi",
+                "value": "one\ntwo",
+                "valueType": "MultiString"
+              },
+              "outputVariable": "v6",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v7",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 500
+            },
+            "data": {
+              "label": "reg: read one value",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "read",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}",
+                "valueName": "Str"
+              },
+              "outputVariable": "v7",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v8",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 500
+            },
+            "data": {
+              "label": "reg: read all values",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "read",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}"
+              },
+              "outputVariable": "v8",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v9",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 500
+            },
+            "data": {
+              "label": "reg: exists value",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "exists",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}",
+                "valueName": "Num"
+              },
+              "outputVariable": "v9",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v10",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 500
+            },
+            "data": {
+              "label": "reg: exists key",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "exists",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}"
+              },
+              "outputVariable": "v10",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v11",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 740
+            },
+            "data": {
+              "label": "reg: listValues",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "listValues",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}"
+              },
+              "outputVariable": "v11",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v12",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 740
+            },
+            "data": {
+              "label": "reg: listSubKeys",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "listSubKeys",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite"
+              },
+              "outputVariable": "v12",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v13",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 740
+            },
+            "data": {
+              "label": "reg: deleteValue",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "deleteValue",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}",
+                "valueName": "Str"
+              },
+              "outputVariable": "v13",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v14",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 740
+            },
+            "data": {
+              "label": "reg: exists after deleteValue",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "exists",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}",
+                "valueName": "Str"
+              },
+              "outputVariable": "v14",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v15",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 740
+            },
+            "data": {
+              "label": "reg: deleteKey",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "deleteKey",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}"
+              },
+              "outputVariable": "v15",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v16",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 740
+            },
+            "data": {
+              "label": "reg: exists after deleteKey",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "exists",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite\\{{cid.param.text}}"
+              },
+              "outputVariable": "v16",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "cleanup",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 740
+            },
+            "data": {
+              "label": "Cleanup: run sandbox",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$cid = {{cid.param.text}}\n$dir = Join-Path 'C:\\Temp\\NP-TestSuite\\runs' $cid\nRemove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue\n$regKey = Join-Path 'HKCU:\\SOFTWARE\\NP-TestSuite' $cid\nRemove-Item -LiteralPath $regKey -Recurse -Force -ErrorAction SilentlyContinue\n\n$cleanupDone = 'ok'\n"
+              },
+              "outputVariable": "cleanup",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 980
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$readOne   = {{v7.param.value}}\n$readType  = {{v7.param.type}}\n$allValues = {{v8.param.values}}\n$allCount  = {{v8.param.count}}\n$existsVal = {{v9.param.exists}}\n$existsKey = {{v10.param.exists}}\n$listCount = {{v11.param.count}}\n$subKeys   = {{v12.param.subKeys}}\n$goneAfterDelete = {{v14.param.exists}}\n$keyGone         = {{v16.param.exists}}\n\nif ($readOne -ne 'suite') { throw \"registry read: expected 'suite', got '$readOne'\" }\nif ($readType -notmatch 'String') { throw \"registry read type: '$readType'\" }\nif ([int]$allCount -ne 6) { throw \"read without valueName should return all 6 values, got $allCount\" }\nforeach ($name in @('Str','Expand','Num','Big','Bin','Multi')) {\n  if ($allValues -notmatch $name) { throw \"registry read-all is missing '$name'\" }\n}\nif ($existsVal -ne 'True' -and $existsVal -ne 'true') { throw \"exists(value): '$existsVal'\" }\nif ($existsKey -ne 'True' -and $existsKey -ne 'true') { throw \"exists(key): '$existsKey'\" }\nif ([int]$listCount -ne 6) { throw \"listValues count: $listCount\" }\nif ([string]::IsNullOrWhiteSpace($subKeys)) { throw \"listSubKeys returned nothing\" }\nif ($goneAfterDelete -eq 'True' -or $goneAfterDelete -eq 'true') {\n  throw \"the value should be gone after deleteValue\"\n}\nif ($keyGone -eq 'True' -or $keyGone -eq 'true') { throw \"the key should be gone after deleteKey\" }\n$assertOk = 'registryOperation'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 980
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "registryOperation",
+                  "asserted": "{{assert.success}}",
+                  "cid": "{{cid.param.text}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-janitor",
+            "source": "trg",
+            "target": "janitor",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-janitor-cid",
+            "source": "janitor",
+            "target": "cid",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cid-v0",
+            "source": "cid",
+            "target": "v0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v0-v1",
+            "source": "v0",
+            "target": "v1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v1-v2",
+            "source": "v1",
+            "target": "v2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v2-v3",
+            "source": "v2",
+            "target": "v3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v3-v4",
+            "source": "v3",
+            "target": "v4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-v4-v5",
+            "source": "v4",
+            "target": "v5",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v5-v6",
+            "source": "v5",
+            "target": "v6",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v6-v7",
+            "source": "v6",
+            "target": "v7",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v7-v8",
+            "source": "v7",
+            "target": "v8",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v8-v9",
+            "source": "v8",
+            "target": "v9",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v9-v10",
+            "source": "v9",
+            "target": "v10",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v10-v11",
+            "source": "v10",
+            "target": "v11",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-v11-v12",
+            "source": "v11",
+            "target": "v12",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v12-v13",
+            "source": "v12",
+            "target": "v13",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v13-v14",
+            "source": "v13",
+            "target": "v14",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v14-v15",
+            "source": "v14",
+            "target": "v15",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v15-v16",
+            "source": "v15",
+            "target": "v16",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v16-cleanup",
+            "source": "v16",
+            "target": "cleanup",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cleanup-assert",
+            "source": "cleanup",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,255 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] log",
+      "description": "All three levels plus the absent-level default, template resolution in the message and CR/LF sanitisation.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 0/5 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 0/5 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "v0",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "log: default level",
+              "activityType": "log",
+              "config": {
+                "message": "TestSuite log without an explicit level"
+              },
+              "outputVariable": "v0"
+            }
+          },
+          {
+            "id": "v1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "log: info",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "TestSuite info"
+              },
+              "outputVariable": "v1"
+            }
+          },
+          {
+            "id": "v2",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "log: warning",
+              "activityType": "log",
+              "config": {
+                "level": "warning",
+                "message": "TestSuite warning"
+              },
+              "outputVariable": "v2"
+            }
+          },
+          {
+            "id": "v3",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "log: error",
+              "activityType": "log",
+              "config": {
+                "level": "error",
+                "message": "TestSuite error"
+              },
+              "outputVariable": "v3"
+            }
+          },
+          {
+            "id": "v4",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "log: template resolution",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "resolved level={{v1.param.level}} ok={{v1.success}}"
+              },
+              "outputVariable": "v4"
+            }
+          },
+          {
+            "id": "v5",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "log: CRLF sanitisation",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "line1\nline2\rline3"
+              },
+              "outputVariable": "v5"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$lvlDefault = {{v0.param.level}}\n$lvlInfo    = {{v1.param.level}}\n$lvlWarn    = {{v2.param.level}}\n$lvlError   = {{v3.param.level}}\n$templated  = {{v4.param.message}}\n$sanitised  = {{v5.param.message}}\n\nif ($lvlDefault -ne 'info')    { throw \"log default level: expected info, got '$lvlDefault'\" }\nif ($lvlInfo    -ne 'info')    { throw \"log info: got '$lvlInfo'\" }\nif ($lvlWarn    -ne 'warning') { throw \"log warning: got '$lvlWarn'\" }\nif ($lvlError   -ne 'error')   { throw \"log error: got '$lvlError'\" }\nif ($templated -notmatch 'level=info') { throw \"log template unresolved: '$templated'\" }\nif ($templated -notmatch 'ok=true')    { throw \"log success template unresolved: '$templated'\" }\nif ($sanitised -match '[\\r\\n]')        { throw \"log did not strip CR/LF: '$sanitised'\" }\nif ($sanitised -notmatch 'line1.line2.line3') { throw \"log lost content: '$sanitised'\" }\n$assertOk = 'log'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 500
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "log",
+                  "asserted": "{{assert.success}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-v0",
+            "source": "trg",
+            "target": "v0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v0-v1",
+            "source": "v0",
+            "target": "v1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v1-v2",
+            "source": "v1",
+            "target": "v2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v2-v3",
+            "source": "v2",
+            "target": "v3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v3-v4",
+            "source": "v3",
+            "target": "v4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v4-v5",
+            "source": "v4",
+            "target": "v5",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v5-assert",
+            "source": "v5",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,232 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite-Inv] serviceManagement (cycle)",
+      "description": "Stops, starts and restarts a service the host owner nominates, then checks it is running again. Deliberately not pointed at Spooler or any other service the suite picked on its own.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 22/30 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 22/30 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "pre",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "svc: status before",
+              "activityType": "serviceManagement",
+              "config": {
+                "action": "status",
+                "serviceName": "{{globals.NP_TESTSUITE_SERVICE_TARGET}}"
+              },
+              "outputVariable": "pre",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v0",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "svc: stop",
+              "activityType": "serviceManagement",
+              "config": {
+                "action": "stop",
+                "serviceName": "{{globals.NP_TESTSUITE_SERVICE_TARGET}}"
+              },
+              "outputVariable": "v0",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v1",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "svc: start",
+              "activityType": "serviceManagement",
+              "config": {
+                "action": "start",
+                "serviceName": "{{globals.NP_TESTSUITE_SERVICE_TARGET}}"
+              },
+              "outputVariable": "v1",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v2",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "svc: restart",
+              "activityType": "serviceManagement",
+              "config": {
+                "action": "restart",
+                "serviceName": "{{globals.NP_TESTSUITE_SERVICE_TARGET}}"
+              },
+              "outputVariable": "v2",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "post",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "svc: status after",
+              "activityType": "serviceManagement",
+              "config": {
+                "action": "status",
+                "serviceName": "{{globals.NP_TESTSUITE_SERVICE_TARGET}}"
+              },
+              "outputVariable": "post",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$before = {{pre.param.status}}\n$after  = {{post.param.status}}\nif ([string]::IsNullOrWhiteSpace($before)) { throw \"could not read the target service before the cycle\" }\nif ($after -notmatch 'Running') { throw \"the target service is '$after' after restart, expected Running\" }\n$assertOk = 'serviceManagement-cycle'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "serviceManagement-cycle",
+                  "asserted": "{{assert.success}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-pre",
+            "source": "trg",
+            "target": "pre",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-pre-v0",
+            "source": "pre",
+            "target": "v0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v0-v1",
+            "source": "v0",
+            "target": "v1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v1-v2",
+            "source": "v1",
+            "target": "v2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v2-post",
+            "source": "v2",
+            "target": "post",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-post-assert",
+            "source": "post",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

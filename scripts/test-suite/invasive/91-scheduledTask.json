@@ -1,0 +1,802 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite-Inv] scheduledTask",
+      "description": "Registers a disposable task under its own task path, walks get / disable / enable / start / stop, re-registers it once per trigger type and unregisters it.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 7/30 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 7/30 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "janitor",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Janitor: stale run residue",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$root = 'C:\\Temp\\NP-TestSuite'\nforeach ($d in @('runs', 'runtime\\watch', 'runtime\\db', 'runtime\\acks')) {\n  New-Item -ItemType Directory -Path (Join-Path $root $d) -Force | Out-Null\n}\n$cutoff = (Get-Date).AddHours(-1)\nGet-ChildItem -LiteralPath (Join-Path $root 'runs') -Directory -ErrorAction SilentlyContinue |\n  Where-Object { $_.LastWriteTime -lt $cutoff } |\n  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue\n$janitorSweep = 'ok'\n\nGet-Service -Name 'NPTestSvc_*' -ErrorAction SilentlyContinue | ForEach-Object {\n  & sc.exe delete $_.Name | Out-Null\n}\nGet-ScheduledTask -TaskPath '\\NodePilot-TestSuite\\' -ErrorAction SilentlyContinue |\n  Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue\n$invasiveSweep = 'ok'\n"
+              },
+              "outputVariable": "janitor",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "cid",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Correlation id",
+              "activityType": "generateText",
+              "config": {
+                "mode": "guid"
+              },
+              "outputVariable": "cid"
+            }
+          },
+          {
+            "id": "names",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Derive per-run fixture names",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$cid = {{cid.param.text}}\n$short = $cid.Substring(0, 8)\n$svcName = \"NPTestSvc_$short\"\n$taskName = \"NPTestTask_$short\"\n"
+              },
+              "outputVariable": "names",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v0",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "task: register once",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "register",
+                "taskName": "{{names.param.taskName}}",
+                "program": "C:\\Windows\\System32\\cmd.exe",
+                "arguments": "/c rem nodepilot-testsuite",
+                "description": "Disposable task created by the NodePilot test suite.",
+                "runLevel": "limited",
+                "force": true,
+                "triggerType": "once",
+                "startTime": "23:55"
+              },
+              "outputVariable": "v0",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v1",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "task: get",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "get",
+                "taskName": "{{names.param.taskName}}"
+              },
+              "outputVariable": "v1",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v2",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "task: disable",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "disable",
+                "taskName": "{{names.param.taskName}}"
+              },
+              "outputVariable": "v2",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v3",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "task: get while disabled",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "get",
+                "taskName": "{{names.param.taskName}}"
+              },
+              "outputVariable": "v3",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v4",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 500
+            },
+            "data": {
+              "label": "task: enable",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "enable",
+                "taskName": "{{names.param.taskName}}"
+              },
+              "outputVariable": "v4",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v4b",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 500
+            },
+            "data": {
+              "label": "task: get after enable",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "get",
+                "taskName": "{{names.param.taskName}}"
+              },
+              "outputVariable": "v4b",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v5",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 500
+            },
+            "data": {
+              "label": "task: start",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "start",
+                "taskName": "{{names.param.taskName}}"
+              },
+              "outputVariable": "v5",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v6",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 500
+            },
+            "data": {
+              "label": "task: stop",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "stop",
+                "taskName": "{{names.param.taskName}}"
+              },
+              "outputVariable": "v6",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v6b",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 500
+            },
+            "data": {
+              "label": "task: get after start/stop",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "get",
+                "taskName": "{{names.param.taskName}}"
+              },
+              "outputVariable": "v6b",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v7",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 500
+            },
+            "data": {
+              "label": "task: re-register daily",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "register",
+                "taskName": "{{names.param.taskName}}",
+                "program": "C:\\Windows\\System32\\cmd.exe",
+                "arguments": "/c rem nodepilot-testsuite",
+                "description": "Disposable task created by the NodePilot test suite.",
+                "runLevel": "limited",
+                "force": true,
+                "triggerType": "daily",
+                "startTime": "23:56",
+                "daysInterval": 2
+              },
+              "outputVariable": "v7",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v7b",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 740
+            },
+            "data": {
+              "label": "task: get after re-register",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "get",
+                "taskName": "{{names.param.taskName}}"
+              },
+              "outputVariable": "v7b",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v8",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 740
+            },
+            "data": {
+              "label": "task: re-register weekly",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "register",
+                "taskName": "{{names.param.taskName}}",
+                "program": "C:\\Windows\\System32\\cmd.exe",
+                "arguments": "/c rem nodepilot-testsuite",
+                "description": "Disposable task created by the NodePilot test suite.",
+                "runLevel": "limited",
+                "force": true,
+                "triggerType": "weekly",
+                "startTime": "23:57",
+                "daysOfWeek": [
+                  "Monday",
+                  "Thursday"
+                ],
+                "weeksInterval": 2
+              },
+              "outputVariable": "v8",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v8b",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 740
+            },
+            "data": {
+              "label": "task: get after re-register",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "get",
+                "taskName": "{{names.param.taskName}}"
+              },
+              "outputVariable": "v8b",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v9",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 740
+            },
+            "data": {
+              "label": "task: re-register atLogon",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "register",
+                "taskName": "{{names.param.taskName}}",
+                "program": "C:\\Windows\\System32\\cmd.exe",
+                "arguments": "/c rem nodepilot-testsuite",
+                "description": "Disposable task created by the NodePilot test suite.",
+                "runLevel": "limited",
+                "force": true,
+                "triggerType": "atLogon"
+              },
+              "outputVariable": "v9",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v9b",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 740
+            },
+            "data": {
+              "label": "task: get after re-register",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "get",
+                "taskName": "{{names.param.taskName}}"
+              },
+              "outputVariable": "v9b",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v10",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 740
+            },
+            "data": {
+              "label": "task: re-register atStartup",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "register",
+                "taskName": "{{names.param.taskName}}",
+                "program": "C:\\Windows\\System32\\cmd.exe",
+                "arguments": "/c rem nodepilot-testsuite",
+                "description": "Disposable task created by the NodePilot test suite.",
+                "runLevel": "limited",
+                "force": true,
+                "triggerType": "atStartup"
+              },
+              "outputVariable": "v10",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v10b",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 740
+            },
+            "data": {
+              "label": "task: get after re-register",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "get",
+                "taskName": "{{names.param.taskName}}"
+              },
+              "outputVariable": "v10b",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v11",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 980
+            },
+            "data": {
+              "label": "task: unregister",
+              "activityType": "scheduledTask",
+              "config": {
+                "taskPath": "\\NodePilot-TestSuite\\",
+                "action": "unregister",
+                "taskName": "{{names.param.taskName}}"
+              },
+              "outputVariable": "v11",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v12",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 980
+            },
+            "data": {
+              "label": "Confirm the task is gone",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$taskName = {{names.param.taskName}}\n$still = Get-ScheduledTask -TaskName $taskName -TaskPath '\\NodePilot-TestSuite\\' -ErrorAction SilentlyContinue\n$taskGone = if ($still) { 'no' } else { 'yes' }\n"
+              },
+              "outputVariable": "v12",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "teardown",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 980
+            },
+            "data": {
+              "label": "Teardown: remove fixtures",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$cid = {{cid.param.text}}\n$short = $cid.Substring(0, 8)\n& sc.exe delete \"NPTestSvc_$short\" | Out-Null\nGet-ScheduledTask -TaskName \"NPTestTask_$short\" -TaskPath '\\NodePilot-TestSuite\\' -ErrorAction SilentlyContinue |\n  Unregister-ScheduledTask -Confirm:$false -ErrorAction SilentlyContinue\n$teardownDone = 'ok'\n"
+              },
+              "outputVariable": "teardown",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 980
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$taskName  = {{names.param.taskName}}\n$gotName   = {{v1.param.taskName}}\n$stateOn   = {{v1.param.state}}\n$stateOff  = {{v3.param.state}}\n$stateOn2  = {{v4b.param.state}}\n$afterRun  = {{v6b.param.lastRunTime}}\n$daily     = {{v7b.param.state}}\n$weekly    = {{v8b.param.state}}\n$atLogon   = {{v9b.param.state}}\n$atStartup = {{v10b.param.state}}\n$gone      = {{v12.param.taskGone}}\n\nif ($gotName -notmatch $taskName) { throw \"get returned task '$gotName'\" }\nif ([string]::IsNullOrWhiteSpace($stateOn)) { throw \"get did not report a state\" }\nif ($stateOff -ne 'Disabled') { throw \"state after disable was '$stateOff'\" }\nif ($stateOn2 -eq 'Disabled') { throw \"enable did not take: state is still '$stateOn2'\" }\n# A task that was started leaves a run timestamp behind; a start that did nothing does not.\nif ([string]::IsNullOrWhiteSpace($afterRun)) { throw \"start/stop left no lastRunTime\" }\nforeach ($pair in @(@('daily',$daily), @('weekly',$weekly), @('atLogon',$atLogon), @('atStartup',$atStartup))) {\n  if ([string]::IsNullOrWhiteSpace($pair[1])) { throw \"re-register $($pair[0]) left no readable task\" }\n}\nif ($gone -ne 'yes') { throw \"the fixture task still exists after unregister\" }\n$assertOk = 'scheduledTask'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 980
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "scheduledTask",
+                  "asserted": "{{assert.success}}",
+                  "cid": "{{cid.param.text}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-janitor",
+            "source": "trg",
+            "target": "janitor",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-janitor-cid",
+            "source": "janitor",
+            "target": "cid",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cid-names",
+            "source": "cid",
+            "target": "names",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-names-v0",
+            "source": "names",
+            "target": "v0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v0-v1",
+            "source": "v0",
+            "target": "v1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v1-v2",
+            "source": "v1",
+            "target": "v2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v2-v3",
+            "source": "v2",
+            "target": "v3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-v3-v4",
+            "source": "v3",
+            "target": "v4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v4-v4b",
+            "source": "v4",
+            "target": "v4b",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v4b-v5",
+            "source": "v4b",
+            "target": "v5",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v5-v6",
+            "source": "v5",
+            "target": "v6",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v6-v6b",
+            "source": "v6",
+            "target": "v6b",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v6b-v7",
+            "source": "v6b",
+            "target": "v7",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v7-v7b",
+            "source": "v7",
+            "target": "v7b",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-v7b-v8",
+            "source": "v7b",
+            "target": "v8",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v8-v8b",
+            "source": "v8",
+            "target": "v8b",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v8b-v9",
+            "source": "v8b",
+            "target": "v9",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v9-v9b",
+            "source": "v9",
+            "target": "v9b",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v9b-v10",
+            "source": "v9b",
+            "target": "v10",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v10-v10b",
+            "source": "v10",
+            "target": "v10b",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v10b-v11",
+            "source": "v10b",
+            "target": "v11",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-v11-v12",
+            "source": "v11",
+            "target": "v12",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v12-teardown",
+            "source": "v12",
+            "target": "teardown",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-teardown-assert",
+            "source": "teardown",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

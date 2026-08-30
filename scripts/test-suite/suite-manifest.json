@@ -1,0 +1,5009 @@
+{
+  "schemaVersion": 1,
+  "profiles": {
+    "continuous": {
+      "description": "Runs on every host, no external prerequisite.",
+      "cronTiers": [
+        "A",
+        "B"
+      ]
+    },
+    "integration": {
+      "description": "Needs an external dependency. Installed but left disabled when the prerequisite is absent.",
+      "cronTiers": [
+        "C"
+      ]
+    },
+    "invasive": {
+      "description": "Mutates the host. Opt-in per machine.",
+      "cronTiers": [
+        "C"
+      ],
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE"
+      ]
+    },
+    "excluded": {
+      "description": "Deliberately not exercised at runtime. Every entry carries a reason and, where one exists, the unit test that covers it instead."
+    }
+  },
+  "workflows": [
+    {
+      "name": "[TestSuite] Child: Echo Item",
+      "file": "positive/00-child-echo.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": null,
+      "cron": null,
+      "maxRuntimeSeconds": 20,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] log",
+      "file": "positive/10-log.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 0/5 * * * ? *",
+      "maxRuntimeSeconds": 30,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] delay",
+      "file": "positive/11-delay.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 1/5 * * * ? *",
+      "maxRuntimeSeconds": 40,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] generateText",
+      "file": "positive/12-generateText.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 2/5 * * * ? *",
+      "maxRuntimeSeconds": 30,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] jsonQuery",
+      "file": "positive/13-jsonQuery.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 3/5 * * * ? *",
+      "maxRuntimeSeconds": 60,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] xmlQuery",
+      "file": "positive/14-xmlQuery.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 4/5 * * * ? *",
+      "maxRuntimeSeconds": 60,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] runScript",
+      "file": "positive/15-runScript.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 0/5 * * * ? *",
+      "maxRuntimeSeconds": 120,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] fileOperation",
+      "file": "positive/16-fileOperation.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 1/5 * * * ? *",
+      "maxRuntimeSeconds": 90,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] folderOperation",
+      "file": "positive/17-folderOperation.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 2/5 * * * ? *",
+      "maxRuntimeSeconds": 90,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] fileHash",
+      "file": "positive/18-fileHash.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 3/5 * * * ? *",
+      "maxRuntimeSeconds": 60,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] zipOperation",
+      "file": "positive/19-zipOperation.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "B",
+      "cron": "0 5/15 * * * ? *",
+      "maxRuntimeSeconds": 120,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] decision",
+      "file": "positive/20-decision.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 4/5 * * * ? *",
+      "maxRuntimeSeconds": 60,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] junction",
+      "file": "positive/21-junction.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 0/5 * * * ? *",
+      "maxRuntimeSeconds": 120,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] forEach",
+      "file": "positive/22-forEach.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 1/5 * * * ? *",
+      "maxRuntimeSeconds": 120,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] startWorkflow",
+      "file": "positive/23-startWorkflow.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 2/5 * * * ? *",
+      "maxRuntimeSeconds": 90,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] returnData",
+      "file": "positive/24-returnData.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 3/5 * * * ? *",
+      "maxRuntimeSeconds": 45,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] textFileEdit",
+      "file": "positive/25-textFileEdit.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 4/5 * * * ? *",
+      "maxRuntimeSeconds": 120,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] registryOperation",
+      "file": "positive/26-registryOperation.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 0/5 * * * ? *",
+      "maxRuntimeSeconds": 120,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] wmiQuery",
+      "file": "positive/27-wmiQuery.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 1/5 * * * ? *",
+      "maxRuntimeSeconds": 90,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] startProgram",
+      "file": "positive/28-startProgram.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 2/5 * * * ? *",
+      "maxRuntimeSeconds": 90,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] waitForCondition",
+      "file": "positive/29-waitForCondition.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 3/5 * * * ? *",
+      "maxRuntimeSeconds": 120,
+      "judgeBy": "run",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL"
+      ]
+    },
+    {
+      "name": "[TestSuite] restApi",
+      "file": "positive/30-restApi.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 4/5 * * * ? *",
+      "maxRuntimeSeconds": 90,
+      "judgeBy": "run",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL",
+        "config:RestApi:AllowedHosts includes the probe host"
+      ]
+    },
+    {
+      "name": "[TestSuite] sql",
+      "file": "positive/31-sql.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "B",
+      "cron": "0 10/15 * * * ? *",
+      "maxRuntimeSeconds": 120,
+      "judgeBy": "run",
+      "requires": [
+        "config:SqlActivity:RequireConnectionRef=false for the inline data source"
+      ]
+    },
+    {
+      "name": "[TestSuite] sql (named connection)",
+      "file": "positive/32-sql-integration.json",
+      "contract": "positive",
+      "profile": "integration",
+      "tier": "C",
+      "cron": "0 7/30 * * * ? *",
+      "maxRuntimeSeconds": 60,
+      "judgeBy": "run",
+      "requires": [
+        "globals:NP_TESTSUITE_SQL_CONNREF",
+        "config:SqlActivity:ConnectionStrings:<name>"
+      ]
+    },
+    {
+      "name": "[TestSuite] powerManagement",
+      "file": "positive/33-powerManagement.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "B",
+      "cron": "0 5/15 * * * ? *",
+      "maxRuntimeSeconds": 45,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] emailNotification",
+      "file": "positive/34-emailNotification.json",
+      "contract": "positive",
+      "profile": "integration",
+      "tier": "C",
+      "cron": "0 22/30 * * * ? *",
+      "maxRuntimeSeconds": 60,
+      "judgeBy": "run",
+      "requires": [
+        "globals:NP_TESTSUITE_MAIL_TO",
+        "config:Smtp:Host"
+      ]
+    },
+    {
+      "name": "[TestSuite] llmQuery",
+      "file": "positive/35-llmQuery.json",
+      "contract": "positive",
+      "profile": "integration",
+      "tier": "C",
+      "cron": "0 7/30 * * * ? *",
+      "maxRuntimeSeconds": 180,
+      "judgeBy": "run",
+      "requires": [
+        "config:Llm:Enabled=true",
+        "config:Llm:ActiveProfileId"
+      ]
+    },
+    {
+      "name": "[TestSuite] custom activity",
+      "file": "positive/36-custom-activity.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 0/5 * * * ? *",
+      "maxRuntimeSeconds": 90,
+      "judgeBy": "run",
+      "requires": [
+        "custom activity 'testsuite-probe' created and enabled by the installer"
+      ]
+    },
+    {
+      "name": "[TestSuite] trigger: schedule",
+      "file": "positive/50-trigger-schedule.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 1/5 * * * ? *",
+      "maxRuntimeSeconds": 45,
+      "judgeBy": "cadence",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] trigger: manual",
+      "file": "positive/51-trigger-manual.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": null,
+      "cron": null,
+      "maxRuntimeSeconds": 45,
+      "judgeBy": "cadence",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] trigger: webhook",
+      "file": "positive/52-trigger-webhook.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": null,
+      "cron": null,
+      "maxRuntimeSeconds": 45,
+      "judgeBy": "cadence",
+      "requires": [
+        "globals:NP_TESTSUITE_WEBHOOK_URL",
+        "globals:NP_TESTSUITE_WEBHOOK_SECRET"
+      ]
+    },
+    {
+      "name": "[TestSuite] trigger: file watcher",
+      "file": "positive/53-trigger-filewatcher.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": null,
+      "cron": null,
+      "maxRuntimeSeconds": 45,
+      "judgeBy": "cadence",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] trigger: database",
+      "file": "positive/54-trigger-database.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": null,
+      "cron": null,
+      "maxRuntimeSeconds": 45,
+      "judgeBy": "cadence",
+      "requires": [
+        "config:Trigger:Database:RequireConnectionRef=false, or a connectionRef pointing at runtime/db/sentinel.sqlite"
+      ]
+    },
+    {
+      "name": "[TestSuite] trigger: event log",
+      "file": "positive/55-trigger-eventlog.json",
+      "contract": "positive",
+      "profile": "integration",
+      "tier": null,
+      "cron": null,
+      "maxRuntimeSeconds": 45,
+      "judgeBy": "cadence",
+      "requires": [
+        "event source NodePilot-TestSuite registered (one-time, elevated)"
+      ]
+    },
+    {
+      "name": "[TestSuite] edge conditions",
+      "file": "positive/60-edge-conditions.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 2/5 * * * ? *",
+      "maxRuntimeSeconds": 90,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite] variable resolution",
+      "file": "positive/62-variable-resolution.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "A",
+      "cron": "0 3/5 * * * ? *",
+      "maxRuntimeSeconds": 60,
+      "judgeBy": "run",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL"
+      ]
+    },
+    {
+      "name": "[TestSuite] trigger drivers",
+      "file": "positive/70-trigger-drivers.json",
+      "contract": "positive",
+      "profile": "continuous",
+      "tier": "D",
+      "cron": "0 3/10 * * * ? *",
+      "maxRuntimeSeconds": 180,
+      "judgeBy": "run",
+      "requires": [
+        "globals:NP_TESTSUITE_WEBHOOK_URL",
+        "globals:NP_TESTSUITE_WEBHOOK_SECRET"
+      ]
+    },
+    {
+      "name": "[TestSuite] trigger driver: event log",
+      "file": "positive/71-trigger-driver-eventlog.json",
+      "contract": "positive",
+      "profile": "integration",
+      "tier": "C",
+      "cron": "0 22/30 * * * ? *",
+      "maxRuntimeSeconds": 180,
+      "judgeBy": "run",
+      "requires": [
+        "event source NodePilot-TestSuite registered (one-time, elevated)"
+      ]
+    },
+    {
+      "name": "[TestSuite-Neg] filesystem",
+      "file": "negative/80-filesystem.json",
+      "contract": "negative",
+      "profile": "continuous",
+      "tier": "B",
+      "cron": "0 10/15 * * * ? *",
+      "maxRuntimeSeconds": 90,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite-Neg] remote",
+      "file": "negative/81-remote.json",
+      "contract": "negative",
+      "profile": "continuous",
+      "tier": "B",
+      "cron": "0 5/15 * * * ? *",
+      "maxRuntimeSeconds": 90,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite-Neg] engine-local",
+      "file": "negative/82-engine-local.json",
+      "contract": "negative",
+      "profile": "continuous",
+      "tier": "B",
+      "cron": "0 10/15 * * * ? *",
+      "maxRuntimeSeconds": 90,
+      "judgeBy": "run",
+      "requires": [
+        "globals:NP_TESTSUITE_API_URL",
+        "globals:NP_TESTSUITE_SELF_URL"
+      ]
+    },
+    {
+      "name": "[TestSuite-Neg] controlflow",
+      "file": "negative/83-controlflow.json",
+      "contract": "negative",
+      "profile": "continuous",
+      "tier": "B",
+      "cron": "0 5/15 * * * ? *",
+      "maxRuntimeSeconds": 120,
+      "judgeBy": "run",
+      "requires": []
+    },
+    {
+      "name": "[TestSuite-Neg] production guards",
+      "file": "negative/85-hardening.json",
+      "contract": "negative",
+      "profile": "integration",
+      "tier": "C",
+      "cron": "0 7/30 * * * ? *",
+      "maxRuntimeSeconds": 90,
+      "judgeBy": "run",
+      "requires": [
+        "config:FileSystemOperation:RejectTraversal=true",
+        "config:StartProgram:DisallowShellExecute=true",
+        "config:SqlActivity:RequireConnectionRef=true"
+      ]
+    },
+    {
+      "name": "[TestSuite-Inv] serviceManagement",
+      "file": "invasive/90-serviceManagement.json",
+      "contract": "invasive",
+      "profile": "invasive",
+      "tier": "C",
+      "cron": "0 22/30 * * * ? *",
+      "maxRuntimeSeconds": 180,
+      "judgeBy": "run",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ]
+    },
+    {
+      "name": "[TestSuite-Inv] scheduledTask",
+      "file": "invasive/91-scheduledTask.json",
+      "contract": "invasive",
+      "profile": "invasive",
+      "tier": "C",
+      "cron": "0 7/30 * * * ? *",
+      "maxRuntimeSeconds": 300,
+      "judgeBy": "run",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ]
+    },
+    {
+      "name": "[TestSuite-Inv] serviceManagement (cycle)",
+      "file": "invasive/92-serviceManagement-cycle.json",
+      "contract": "invasive",
+      "profile": "invasive",
+      "tier": "C",
+      "cron": "0 22/30 * * * ? *",
+      "maxRuntimeSeconds": 240,
+      "judgeBy": "run",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "globals:NP_TESTSUITE_SERVICE_TARGET"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "log.level.default",
+      "dimension": "log.level",
+      "value": "(absent)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] log",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "log.level.info",
+      "dimension": "log.level",
+      "value": "info",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] log",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "log.level.warning",
+      "dimension": "log.level",
+      "value": "warning",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] log",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "log.level.error",
+      "dimension": "log.level",
+      "value": "error",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] log",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "log.message.template",
+      "dimension": "log.message",
+      "value": "template",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] log",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "log.message.crlf",
+      "dimension": "log.message",
+      "value": "embedded CR/LF",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] log",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "log.message.truncation",
+      "dimension": "log.message",
+      "value": ">8 KiB",
+      "reason": "Pure boundary in LogActivity; an 8 KiB literal in the workflow JSON buys nothing a unit test does not already prove.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/LogActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] log"
+    },
+    {
+      "id": "log.message.redaction",
+      "dimension": "log.message",
+      "value": "secret",
+      "reason": "Redaction is asserted against OutputRedactor directly; feeding a real secret through a scheduled workflow would persist it to the support log on every run.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/LogActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] log"
+    },
+    {
+      "id": "delay.seconds.zero",
+      "dimension": "delay.seconds",
+      "value": "0",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] delay",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 40
+    },
+    {
+      "id": "delay.seconds.typical",
+      "dimension": "delay.seconds",
+      "value": "2",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] delay",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 40
+    },
+    {
+      "id": "delay.seconds.non-number",
+      "dimension": "delay.seconds",
+      "value": "string -> default 5",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] delay",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 40
+    },
+    {
+      "id": "delay.seconds.above-max",
+      "dimension": "delay.seconds",
+      "value": ">86400",
+      "reason": "Clamped to 86400 s; the step would pin a runner slot for 24 hours and no cadence can contain that.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/NonRemoteActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] delay"
+    },
+    {
+      "id": "generateText.mode.alphanumeric",
+      "dimension": "generateText.mode",
+      "value": "alphanumeric",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] generateText",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "generateText.mode.alphabetic",
+      "dimension": "generateText.mode",
+      "value": "alphabetic",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] generateText",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "generateText.mode.numeric",
+      "dimension": "generateText.mode",
+      "value": "numeric",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] generateText",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "generateText.mode.hex",
+      "dimension": "generateText.mode",
+      "value": "hex",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] generateText",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "generateText.mode.guid",
+      "dimension": "generateText.mode",
+      "value": "guid",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] generateText",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "generateText.mode.password",
+      "dimension": "generateText.mode",
+      "value": "password",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] generateText",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "generateText.excludeAmbiguous.true",
+      "dimension": "generateText.excludeAmbiguous",
+      "value": "true",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] generateText",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "generateText.mode.custom",
+      "dimension": "generateText.mode",
+      "value": "custom",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] generateText",
+      "nodeId": "v6",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "generateText.length.clamp-low",
+      "dimension": "generateText.length",
+      "value": "0 -> 1",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] generateText",
+      "nodeId": "v7",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "generateText.length.clamp-high",
+      "dimension": "generateText.length",
+      "value": "4096 -> 1024",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] generateText",
+      "nodeId": "v8",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "generateText.mode.unknown",
+      "dimension": "generateText.mode",
+      "value": "unknown -> alphanumeric",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] generateText",
+      "nodeId": "v9",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 30
+    },
+    {
+      "id": "jsonQuery.source.inline",
+      "dimension": "jsonQuery.source",
+      "value": "inline",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] jsonQuery",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "jsonQuery.resultMode.single",
+      "dimension": "jsonQuery.resultMode",
+      "value": "single",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] jsonQuery",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "jsonQuery.resultMode.all",
+      "dimension": "jsonQuery.resultMode",
+      "value": "all",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] jsonQuery",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "jsonQuery.jsonPath.filter",
+      "dimension": "jsonQuery.jsonPath",
+      "value": "filter expression",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] jsonQuery",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "jsonQuery.jsonPath.no-match",
+      "dimension": "jsonQuery.jsonPath",
+      "value": "no match -> count 0",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] jsonQuery",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "jsonQuery.source.file",
+      "dimension": "jsonQuery.source",
+      "value": "file",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] jsonQuery",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "xmlQuery.source.inline",
+      "dimension": "xmlQuery.source",
+      "value": "inline",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] xmlQuery",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "xmlQuery.resultMode.single",
+      "dimension": "xmlQuery.resultMode",
+      "value": "single",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] xmlQuery",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "xmlQuery.resultMode.all",
+      "dimension": "xmlQuery.resultMode",
+      "value": "all",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] xmlQuery",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "xmlQuery.namespaces.prefix",
+      "dimension": "xmlQuery.namespaces",
+      "value": "prefix map",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] xmlQuery",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "xmlQuery.source.file",
+      "dimension": "xmlQuery.source",
+      "value": "file",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] xmlQuery",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "xmlQuery.resultMode.single-first-match",
+      "dimension": "xmlQuery.resultMode",
+      "value": "single with several matches -> first, count 1",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] xmlQuery",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "xmlQuery.resultMode.single-no-match",
+      "dimension": "xmlQuery.resultMode",
+      "value": "single with no match -> empty, count 0",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] xmlQuery",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "runScript.output.params",
+      "dimension": "runScript.output",
+      "value": "declared variables captured as param.*",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] runScript",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "runScript.engine.runspace",
+      "dimension": "runScript.engine",
+      "value": "runspace",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] runScript",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "runScript.engine.powershell",
+      "dimension": "runScript.engine",
+      "value": "powershell (5.1)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] runScript",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "runScript.isolated.true",
+      "dimension": "runScript.isolated",
+      "value": "true",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] runScript",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "runScript.memoryLimitMb",
+      "dimension": "runScript.memoryLimitMb",
+      "value": "512 (isolated only)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] runScript",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "runScript.maxProcesses",
+      "dimension": "runScript.maxProcesses",
+      "value": "8 (isolated only)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] runScript",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "runScript.successExitCodes.non-zero-ok",
+      "dimension": "runScript.successExitCodes",
+      "value": "0,3",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] runScript",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "runScript.transcript.true",
+      "dimension": "runScript.transcript",
+      "value": "true",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] runScript",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "retry.backoff.fixed",
+      "dimension": "retry.backoff",
+      "value": "fixed",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] runScript",
+      "nodeId": "v6",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "retry.backoff.linear",
+      "dimension": "retry.backoff",
+      "value": "linear",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] runScript",
+      "nodeId": "v7",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "retry.backoff.exponential",
+      "dimension": "retry.backoff",
+      "value": "exponential",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] runScript",
+      "nodeId": "v8",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "runScript.engine.pwsh",
+      "dimension": "runScript.engine",
+      "value": "pwsh",
+      "reason": "Spawns an external PowerShell 7. A host without pwsh.exe would carry a permanently red step, so the engine choice is asserted in unit tests rather than in the cadence.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/RunScriptExecutionTargetTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] runScript"
+    },
+    {
+      "id": "fileOperation.operation.create",
+      "dimension": "fileOperation.operation",
+      "value": "create",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] fileOperation",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "assertedVia": "v1",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "fileOperation.operation.exists-true",
+      "dimension": "fileOperation.operation",
+      "value": "exists (present)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] fileOperation",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "fileOperation.operation.copy",
+      "dimension": "fileOperation.operation",
+      "value": "copy",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] fileOperation",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "fileOperation.operation.rename",
+      "dimension": "fileOperation.operation",
+      "value": "rename",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] fileOperation",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "fileOperation.operation.move",
+      "dimension": "fileOperation.operation",
+      "value": "move",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] fileOperation",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "assertedVia": "v5",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "fileOperation.operation.exists-false",
+      "dimension": "fileOperation.operation",
+      "value": "exists (absent)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] fileOperation",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "fileOperation.operation.delete",
+      "dimension": "fileOperation.operation",
+      "value": "delete",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] fileOperation",
+      "nodeId": "v6",
+      "assertedBy": "assert",
+      "assertedVia": "v7",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "folderOperation.operation.create",
+      "dimension": "folderOperation.operation",
+      "value": "create",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] folderOperation",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "assertedVia": "v2",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "folderOperation.operation.create-nested",
+      "dimension": "folderOperation.operation",
+      "value": "create (nested path)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] folderOperation",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "assertedVia": "v3",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "folderOperation.operation.exists-true",
+      "dimension": "folderOperation.operation",
+      "value": "exists (present)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] folderOperation",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "folderOperation.operation.list",
+      "dimension": "folderOperation.operation",
+      "value": "list",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] folderOperation",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "folderOperation.operation.copy",
+      "dimension": "folderOperation.operation",
+      "value": "copy",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] folderOperation",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "assertedVia": "v7",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "folderOperation.operation.rename",
+      "dimension": "folderOperation.operation",
+      "value": "rename",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] folderOperation",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "assertedVia": "v7",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "folderOperation.operation.move",
+      "dimension": "folderOperation.operation",
+      "value": "move",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] folderOperation",
+      "nodeId": "v6",
+      "assertedBy": "assert",
+      "assertedVia": "v7",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "folderOperation.operation.exists-false",
+      "dimension": "folderOperation.operation",
+      "value": "exists (absent)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] folderOperation",
+      "nodeId": "v7",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "folderOperation.operation.delete",
+      "dimension": "folderOperation.operation",
+      "value": "delete",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] folderOperation",
+      "nodeId": "v8",
+      "assertedBy": "assert",
+      "assertedVia": "v9",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "folderOperation.list.truncation",
+      "dimension": "folderOperation.operation",
+      "value": "list over 5000 entries",
+      "reason": "Creating 5001 files every five minutes to observe a truncation flag is not a proportionate cadence cost.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/FolderOperationActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] folderOperation"
+    },
+    {
+      "id": "fileHash.algorithm.SHA256",
+      "dimension": "fileHash.algorithm",
+      "value": "SHA256",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] fileHash",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "fileHash.algorithm.SHA1",
+      "dimension": "fileHash.algorithm",
+      "value": "SHA1",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] fileHash",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "fileHash.algorithm.MD5",
+      "dimension": "fileHash.algorithm",
+      "value": "MD5",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] fileHash",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "fileHash.algorithm.SHA384",
+      "dimension": "fileHash.algorithm",
+      "value": "SHA384",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] fileHash",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "fileHash.algorithm.SHA512",
+      "dimension": "fileHash.algorithm",
+      "value": "SHA512",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] fileHash",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "fileHash.algorithm.default",
+      "dimension": "fileHash.algorithm",
+      "value": "(absent) -> SHA256",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] fileHash",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "fileHash.expected.match",
+      "dimension": "fileHash.expected",
+      "value": "matching hash",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] fileHash",
+      "nodeId": "v6",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "zipOperation.operation.compress",
+      "dimension": "zipOperation.operation",
+      "value": "compress",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] zipOperation",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "zipOperation.compressionLevel.Optimal",
+      "dimension": "zipOperation.compressionLevel",
+      "value": "Optimal",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] zipOperation",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "zipOperation.compressionLevel.Fastest",
+      "dimension": "zipOperation.compressionLevel",
+      "value": "Fastest",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] zipOperation",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "zipOperation.compressionLevel.NoCompression",
+      "dimension": "zipOperation.compressionLevel",
+      "value": "NoCompression",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] zipOperation",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "zipOperation.source.wildcard",
+      "dimension": "zipOperation.source",
+      "value": "wildcard in the final segment",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] zipOperation",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "zipOperation.operation.default",
+      "dimension": "zipOperation.operation",
+      "value": "(absent) -> compress",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] zipOperation",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "zipOperation.force.true",
+      "dimension": "zipOperation.force",
+      "value": "true (overwrite)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] zipOperation",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "assertedVia": "check",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "zipOperation.operation.extract",
+      "dimension": "zipOperation.operation",
+      "value": "extract",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] zipOperation",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "assertedVia": "check",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "decision.operator.eq",
+      "dimension": "decision.operator",
+      "value": "==",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d01",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.operator.ne",
+      "dimension": "decision.operator",
+      "value": "!=",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d02",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.operator.lt",
+      "dimension": "decision.operator",
+      "value": "<",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d03",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.operator.gt",
+      "dimension": "decision.operator",
+      "value": ">",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d04",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.operator.le",
+      "dimension": "decision.operator",
+      "value": "<=",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d05",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.operator.ge",
+      "dimension": "decision.operator",
+      "value": ">=",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d06",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.operator.contains",
+      "dimension": "decision.operator",
+      "value": "contains",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d07",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.operator.startsWith",
+      "dimension": "decision.operator",
+      "value": "startsWith",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d08",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.operator.endsWith",
+      "dimension": "decision.operator",
+      "value": "endsWith",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d09",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.operator.matches",
+      "dimension": "decision.operator",
+      "value": "matches",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d10",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.operator.isEmpty",
+      "dimension": "decision.operator",
+      "value": "isEmpty",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d11",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.operator.isNotEmpty",
+      "dimension": "decision.operator",
+      "value": "isNotEmpty",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d12",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.operator.isTrue",
+      "dimension": "decision.operator",
+      "value": "isTrue",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d13",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.operator.isFalse",
+      "dimension": "decision.operator",
+      "value": "isFalse",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d14",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.structure.andGroup",
+      "dimension": "decision.condition.type",
+      "value": "group AND",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d15",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.structure.orGroup",
+      "dimension": "decision.condition.type",
+      "value": "group OR",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d16",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.structure.notGroup",
+      "dimension": "decision.condition.type",
+      "value": "not",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d17",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.defaultCase",
+      "dimension": "decision.cases",
+      "value": "no match -> defaultCaseName",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d18",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "decision.cases.first-match-wins",
+      "dimension": "decision.cases",
+      "value": "first match wins",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] decision",
+      "nodeId": "d19",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "junction.mode.waitAll",
+      "dimension": "junction.mode",
+      "value": "waitAll",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] junction",
+      "nodeId": "jAll",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "junction.mode.waitAny",
+      "dimension": "junction.mode",
+      "value": "waitAny",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] junction",
+      "nodeId": "jAny",
+      "assertedBy": "assert",
+      "assertedVia": "b1",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "junction.mode.waitNofM",
+      "dimension": "junction.mode",
+      "value": "waitNofM",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] junction",
+      "nodeId": "jNofM",
+      "assertedBy": "assert",
+      "assertedVia": "c1",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "junction.requiredCount.two",
+      "dimension": "junction.requiredCount",
+      "value": "2",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] junction",
+      "nodeId": "jNofM",
+      "assertedBy": "assert",
+      "assertedVia": "c2",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "forEach.itemsFormat.json",
+      "dimension": "forEach.itemsFormat",
+      "value": "json",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] forEach",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "forEach.maxParallelism.serial",
+      "dimension": "forEach.maxParallelism",
+      "value": "1",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] forEach",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "forEach.itemsFormat.lines",
+      "dimension": "forEach.itemsFormat",
+      "value": "lines",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] forEach",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "forEach.maxParallelism.parallel",
+      "dimension": "forEach.maxParallelism",
+      "value": "4",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] forEach",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "forEach.itemsFormat.auto-json",
+      "dimension": "forEach.itemsFormat",
+      "value": "auto (JSON)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] forEach",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "forEach.itemsFormat.auto-lines",
+      "dimension": "forEach.itemsFormat",
+      "value": "auto (lines)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] forEach",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "forEach.items.empty",
+      "dimension": "forEach.items",
+      "value": "empty -> 0 iterations",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] forEach",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "forEach.parameters.static",
+      "dimension": "forEach.parameters",
+      "value": "static inputs",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] forEach",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "forEach.continueOnError.true",
+      "dimension": "forEach.continueOnError",
+      "value": "true",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] forEach",
+      "nodeId": "v6",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "startWorkflow.waitForCompletion.true",
+      "dimension": "startWorkflow.waitForCompletion",
+      "value": "true",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] startWorkflow",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "startWorkflow.parameters.roundtrip",
+      "dimension": "startWorkflow.parameters",
+      "value": "mirrored back as param.*",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] startWorkflow",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "startWorkflow.timeoutSeconds",
+      "dimension": "startWorkflow.timeoutSeconds",
+      "value": "60",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] startWorkflow",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "startWorkflow.waitForCompletion.false",
+      "dimension": "startWorkflow.waitForCompletion",
+      "value": "false",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] startWorkflow",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "returnData.data.static",
+      "dimension": "returnData.data",
+      "value": "static constant",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] returnData",
+      "nodeId": "ret",
+      "assertedBy": "verifier:returnData",
+      "expectedReturnData": {
+        "static": "constant"
+      },
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "returnData.data.multi-source",
+      "dimension": "returnData.data",
+      "value": "templates from two upstream steps",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] returnData",
+      "nodeId": "ret",
+      "assertedBy": "verifier:returnData",
+      "expectedReturnData": {
+        "fromA": "first-source",
+        "fromB": "second-source"
+      },
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "returnData.data.embedded",
+      "dimension": "returnData.data",
+      "value": "embedded template",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] returnData",
+      "nodeId": "ret",
+      "assertedBy": "verifier:returnData",
+      "expectedReturnData": {
+        "embedded": "a=first-source|b=second-source"
+      },
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "returnData.data.success-tail",
+      "dimension": "returnData.data",
+      "value": "{{step.success}}",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] returnData",
+      "nodeId": "ret",
+      "assertedBy": "verifier:returnData",
+      "expectedReturnData": {
+        "successFlag": "true"
+      },
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "returnData.data.per-value-truncation",
+      "dimension": "returnData.data",
+      "value": "value over 8 KiB",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] returnData",
+      "nodeId": "ret",
+      "assertedBy": "verifier:returnData",
+      "expectedReturnData": {
+        "oversized": "*(truncated)"
+      },
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "textFileEdit.operation.append",
+      "dimension": "textFileEdit.operation",
+      "value": "append",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.operation.prepend",
+      "dimension": "textFileEdit.operation",
+      "value": "prepend",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.operation.insert",
+      "dimension": "textFileEdit.operation",
+      "value": "insert",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.lineNumber",
+      "dimension": "textFileEdit.lineNumber",
+      "value": "1-based line",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.operation.replaceLine",
+      "dimension": "textFileEdit.operation",
+      "value": "replaceLine",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.operation.replace",
+      "dimension": "textFileEdit.operation",
+      "value": "replace",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.occurrences.all",
+      "dimension": "textFileEdit.occurrences",
+      "value": "all",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.occurrences.first",
+      "dimension": "textFileEdit.occurrences",
+      "value": "first",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.ignoreCase.true",
+      "dimension": "textFileEdit.ignoreCase",
+      "value": "true",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.useRegex.true",
+      "dimension": "textFileEdit.useRegex",
+      "value": "true",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v6",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.operation.delete-line",
+      "dimension": "textFileEdit.operation",
+      "value": "delete (lineNumber)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v7",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.lineRange",
+      "dimension": "textFileEdit.lineRange",
+      "value": "[from,to] delete selector",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v8",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.operation.delete-pattern",
+      "dimension": "textFileEdit.operation",
+      "value": "delete (matchPattern)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v9",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.appendIfMissing.true",
+      "dimension": "textFileEdit.appendIfMissing",
+      "value": "true",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v10",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.appendIfMissingExact.true",
+      "dimension": "textFileEdit.appendIfMissingExact",
+      "value": "true",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v11",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.backupSuffix",
+      "dimension": "textFileEdit.backupSuffix",
+      "value": ".bak",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v12",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.dryRun.true",
+      "dimension": "textFileEdit.dryRun",
+      "value": "true",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "v12",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.encoding.utf8",
+      "dimension": "textFileEdit.encoding",
+      "value": "utf8",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "e0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.createIfMissing.true",
+      "dimension": "textFileEdit.createIfMissing",
+      "value": "true",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "e0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.encoding.utf8-bom",
+      "dimension": "textFileEdit.encoding",
+      "value": "utf8-bom",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "e1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.encoding.utf16le",
+      "dimension": "textFileEdit.encoding",
+      "value": "utf16le",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "e2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.encoding.utf16be",
+      "dimension": "textFileEdit.encoding",
+      "value": "utf16be",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "e3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.encoding.ascii",
+      "dimension": "textFileEdit.encoding",
+      "value": "ascii",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "e4",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.encoding.auto",
+      "dimension": "textFileEdit.encoding",
+      "value": "auto (detect + preserve)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "e5",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.lineEnding.crlf",
+      "dimension": "textFileEdit.lineEnding",
+      "value": "crlf",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "l0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.lineEnding.lf",
+      "dimension": "textFileEdit.lineEnding",
+      "value": "lf",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "l1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.lineEnding.preserve",
+      "dimension": "textFileEdit.lineEnding",
+      "value": "preserve",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] textFileEdit",
+      "nodeId": "l2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "textFileEdit.maxFileSizeMB",
+      "dimension": "textFileEdit.maxFileSizeMB",
+      "value": "per-step size cap",
+      "reason": "Reaching the cap means writing a file of tens of megabytes on every cadence. The key is also missing from the config reference, which PR 5 fixes.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/TextFileEditActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] textFileEdit"
+    },
+    {
+      "id": "registryOperation.operation.createKey",
+      "dimension": "registryOperation.operation",
+      "value": "createKey",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "assertedVia": "v10",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "registryOperation.operation.write",
+      "dimension": "registryOperation.operation",
+      "value": "write",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "registryOperation.valueType.String",
+      "dimension": "registryOperation.valueType",
+      "value": "String",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "registryOperation.valueType.ExpandString",
+      "dimension": "registryOperation.valueType",
+      "value": "ExpandString",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "assertedVia": "v8",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "registryOperation.valueType.DWord",
+      "dimension": "registryOperation.valueType",
+      "value": "DWord",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "assertedVia": "v8",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "registryOperation.valueType.QWord",
+      "dimension": "registryOperation.valueType",
+      "value": "QWord",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "assertedVia": "v8",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "registryOperation.valueType.Binary",
+      "dimension": "registryOperation.valueType",
+      "value": "Binary",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "assertedVia": "v8",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "registryOperation.valueType.MultiString",
+      "dimension": "registryOperation.valueType",
+      "value": "MultiString",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v6",
+      "assertedBy": "assert",
+      "assertedVia": "v8",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "registryOperation.operation.read-single",
+      "dimension": "registryOperation.operation",
+      "value": "read (with valueName)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v7",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "registryOperation.operation.read-all",
+      "dimension": "registryOperation.operation",
+      "value": "read (without valueName)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v8",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "registryOperation.operation.exists-value",
+      "dimension": "registryOperation.operation",
+      "value": "exists (with valueName)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v9",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "registryOperation.operation.exists-key",
+      "dimension": "registryOperation.operation",
+      "value": "exists (without valueName)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v10",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "registryOperation.operation.listValues",
+      "dimension": "registryOperation.operation",
+      "value": "listValues",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v11",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "registryOperation.operation.listSubKeys",
+      "dimension": "registryOperation.operation",
+      "value": "listSubKeys",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v12",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "registryOperation.operation.deleteValue",
+      "dimension": "registryOperation.operation",
+      "value": "deleteValue",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v13",
+      "assertedBy": "assert",
+      "assertedVia": "v14",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "registryOperation.operation.deleteKey",
+      "dimension": "registryOperation.operation",
+      "value": "deleteKey",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] registryOperation",
+      "nodeId": "v15",
+      "assertedBy": "assert",
+      "assertedVia": "v16",
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "wmiQuery.mode.query",
+      "dimension": "wmiQuery.mode",
+      "value": "query",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] wmiQuery",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "wmiQuery.captureProperties",
+      "dimension": "wmiQuery.captureProperties",
+      "value": "JSON array of property names",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] wmiQuery",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "wmiQuery.filter",
+      "dimension": "wmiQuery.filter",
+      "value": "WHERE clause",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] wmiQuery",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "wmiQuery.mode.wql",
+      "dimension": "wmiQuery.mode",
+      "value": "wql",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] wmiQuery",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "wmiQuery.mode.invokeMethod-instance",
+      "dimension": "wmiQuery.mode",
+      "value": "invokeMethod (instance, filter scoped)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] wmiQuery",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "wmiQuery.mode.invokeMethod-static",
+      "dimension": "wmiQuery.mode",
+      "value": "invokeMethod (static)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] wmiQuery",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "wmiQuery.namespace.non-default",
+      "dimension": "wmiQuery.namespace",
+      "value": "root\\default",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] wmiQuery",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "wmiQuery.arguments",
+      "dimension": "wmiQuery.arguments",
+      "value": "JSON object -> PS hashtable",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] wmiQuery",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "wmiQuery.captureProperties.absent",
+      "dimension": "wmiQuery.captureProperties",
+      "value": "(absent) -> no param.* projection",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] wmiQuery",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "startProgram.waitForExit.true",
+      "dimension": "startProgram.waitForExit",
+      "value": "true",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] startProgram",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "startProgram.arguments",
+      "dimension": "startProgram.arguments",
+      "value": "command line",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] startProgram",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "startProgram.workingDirectory",
+      "dimension": "startProgram.workingDirectory",
+      "value": "absolute",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] startProgram",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "startProgram.successExitCodes.non-zero",
+      "dimension": "startProgram.successExitCodes",
+      "value": "0,3",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] startProgram",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "startProgram.stderr",
+      "dimension": "startProgram.output",
+      "value": "stderr captured",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] startProgram",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "startProgram.waitForExit.false",
+      "dimension": "startProgram.waitForExit",
+      "value": "false",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] startProgram",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "startProgram.useShellExecute.true",
+      "dimension": "startProgram.useShellExecute",
+      "value": "true",
+      "reason": "Blocked by StartProgram:DisallowShellExecute, which defaults to on in production. The rejection is exercised by the hardened negative workflow instead.",
+      "coveredBy": "scripts/test-suite/negative/85-hardening.json",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] startProgram"
+    },
+    {
+      "id": "waitForCondition.conditionType.script",
+      "dimension": "waitForCondition.conditionType",
+      "value": "script",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] waitForCondition",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "waitForCondition.intervalSeconds",
+      "dimension": "waitForCondition.intervalSeconds",
+      "value": "1",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] waitForCondition",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "waitForCondition.conditionType.pathExists",
+      "dimension": "waitForCondition.conditionType",
+      "value": "pathExists",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] waitForCondition",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "waitForCondition.conditionType.serviceRunning",
+      "dimension": "waitForCondition.conditionType",
+      "value": "serviceRunning",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] waitForCondition",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "waitForCondition.conditionType.portOpen",
+      "dimension": "waitForCondition.conditionType",
+      "value": "portOpen",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] waitForCondition",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "waitForCondition.conditionType.httpOk",
+      "dimension": "waitForCondition.conditionType",
+      "value": "httpOk",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] waitForCondition",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "restApi.method.GET",
+      "dimension": "restApi.method",
+      "value": "GET",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] restApi",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL",
+        "config:RestApi:AllowedHosts includes the probe host"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "restApi.headers.object",
+      "dimension": "restApi.headers",
+      "value": "JSON object",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] restApi",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL",
+        "config:RestApi:AllowedHosts includes the probe host"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "restApi.headers.lines",
+      "dimension": "restApi.headers",
+      "value": "multi-line string",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] restApi",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL",
+        "config:RestApi:AllowedHosts includes the probe host"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "restApi.retry",
+      "dimension": "restApi.retry",
+      "value": "retry block on an HTTP call",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] restApi",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL",
+        "config:RestApi:AllowedHosts includes the probe host"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "restApi.method.HEAD",
+      "dimension": "restApi.method",
+      "value": "HEAD",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] restApi",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL",
+        "config:RestApi:AllowedHosts includes the probe host"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "restApi.proxyMode.default",
+      "dimension": "restApi.proxyMode",
+      "value": "default",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] restApi",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL",
+        "config:RestApi:AllowedHosts includes the probe host"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "restApi.proxyMode.direct",
+      "dimension": "restApi.proxyMode",
+      "value": "direct",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] restApi",
+      "nodeId": "v6",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL",
+        "config:RestApi:AllowedHosts includes the probe host"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "restApi.proxyMode.custom",
+      "dimension": "restApi.proxyMode",
+      "value": "custom",
+      "reason": "Needs a reachable HTTP proxy. proxyAddress and noProxy are also missing from the config reference, which PR 5 fixes.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/RestApiProxyTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] restApi"
+    },
+    {
+      "id": "restApi.redirects",
+      "dimension": "restApi.url",
+      "value": "redirect chain",
+      "reason": "Needs an endpoint that redirects; the API offers none, and adding one for the suite would change the product.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/RestApiRedirectTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] restApi"
+    },
+    {
+      "id": "restApi.response.over-limit",
+      "dimension": "restApi.url",
+      "value": "response over 16 MiB",
+      "reason": "Moving 16 MiB through the engine on every cadence is not a proportionate cost.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/NonRemoteActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] restApi"
+    },
+    {
+      "id": "sql.provider.sqlite",
+      "dimension": "sql.provider",
+      "value": "sqlite",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] sql",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "config:SqlActivity:RequireConnectionRef=false for the inline data source"
+      ],
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "sql.dataSource.memory",
+      "dimension": "sql.dataSource",
+      "value": ":memory: (builder mode)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] sql",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "config:SqlActivity:RequireConnectionRef=false for the inline data source"
+      ],
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "sql.output.rowCount",
+      "dimension": "sql.output",
+      "value": "rowCount",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] sql",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "requires": [
+        "config:SqlActivity:RequireConnectionRef=false for the inline data source"
+      ],
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "sql.parameters.bound",
+      "dimension": "sql.parameters",
+      "value": "@name / :name binding",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] sql",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "requires": [
+        "config:SqlActivity:RequireConnectionRef=false for the inline data source"
+      ],
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "sql.dataSource.file",
+      "dimension": "sql.dataSource",
+      "value": "file-backed sqlite",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] sql",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "assertedVia": "v5",
+      "requires": [
+        "config:SqlActivity:RequireConnectionRef=false for the inline data source"
+      ],
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "sql.output.rowsAffected",
+      "dimension": "sql.output",
+      "value": "rowsAffected",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] sql",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "requires": [
+        "config:SqlActivity:RequireConnectionRef=false for the inline data source"
+      ],
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "sql.output.flat-projection",
+      "dimension": "sql.output",
+      "value": "row{i}_{col} projection",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] sql",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "requires": [
+        "config:SqlActivity:RequireConnectionRef=false for the inline data source"
+      ],
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "sql.output.truncated",
+      "dimension": "sql.output",
+      "value": "row cap at 1000 -> truncated",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] sql",
+      "nodeId": "v6",
+      "assertedBy": "assert",
+      "requires": [
+        "config:SqlActivity:RequireConnectionRef=false for the inline data source"
+      ],
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "sql.connectionRef",
+      "dimension": "sql.connection",
+      "value": "connectionRef (the production-safe mode)",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] sql (named connection)",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SQL_CONNREF",
+        "config:SqlActivity:ConnectionStrings:<name>"
+      ],
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "sql.provider.postgres",
+      "dimension": "sql.provider",
+      "value": "postgres",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] sql (named connection)",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SQL_CONNREF",
+        "config:SqlActivity:ConnectionStrings:<name>"
+      ],
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "sql.provider.sqlserver",
+      "dimension": "sql.provider",
+      "value": "sqlserver",
+      "reason": "No SQL Server instance is part of the development environment, and the suite must not depend on one being installed.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/SqlActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] sql (named connection)"
+    },
+    {
+      "id": "powerManagement.action.abort",
+      "dimension": "powerManagement.action",
+      "value": "abort",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] powerManagement",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "powerManagement.action.shutdown",
+      "dimension": "powerManagement.action",
+      "value": "shutdown",
+      "reason": "Would take the host down. Also blocked against localhost unless PowerManagement:AllowLocalSelfShutdown is set; that rejection is in the negative contract.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] powerManagement"
+    },
+    {
+      "id": "powerManagement.action.restart",
+      "dimension": "powerManagement.action",
+      "value": "restart",
+      "reason": "Would take the host down.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] powerManagement"
+    },
+    {
+      "id": "powerManagement.action.hibernate",
+      "dimension": "powerManagement.action",
+      "value": "hibernate",
+      "reason": "Would suspend the host.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] powerManagement"
+    },
+    {
+      "id": "powerManagement.action.logoff",
+      "dimension": "powerManagement.action",
+      "value": "logoff",
+      "reason": "Ends the interactive session the developer is working in; the self-shutdown guard does not cover logoff, so nothing would stop it.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] powerManagement"
+    },
+    {
+      "id": "powerManagement.delaySeconds",
+      "dimension": "powerManagement.delaySeconds",
+      "value": "delay before the action",
+      "reason": "Only meaningful together with shutdown or restart, which are excluded above.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] powerManagement"
+    },
+    {
+      "id": "powerManagement.message",
+      "dimension": "powerManagement.message",
+      "value": "message to logged-on users",
+      "reason": "Only meaningful together with shutdown or restart.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] powerManagement"
+    },
+    {
+      "id": "powerManagement.force",
+      "dimension": "powerManagement.force",
+      "value": "force applications closed",
+      "reason": "Only meaningful together with shutdown or restart.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/PowerManagementActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] powerManagement"
+    },
+    {
+      "id": "emailNotification.isHtml.false",
+      "dimension": "emailNotification.isHtml",
+      "value": "false",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] emailNotification",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_MAIL_TO",
+        "config:Smtp:Host"
+      ],
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "emailNotification.timeoutSeconds",
+      "dimension": "emailNotification.timeoutSeconds",
+      "value": "20",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] emailNotification",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_MAIL_TO",
+        "config:Smtp:Host"
+      ],
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "emailNotification.isHtml.true",
+      "dimension": "emailNotification.isHtml",
+      "value": "true",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] emailNotification",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_MAIL_TO",
+        "config:Smtp:Host"
+      ],
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "llmQuery.jsonMode.false",
+      "dimension": "llmQuery.jsonMode",
+      "value": "false",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] llmQuery",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "config:Llm:Enabled=true",
+        "config:Llm:ActiveProfileId"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "llmQuery.maxTokens",
+      "dimension": "llmQuery.maxTokens",
+      "value": "16",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] llmQuery",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "config:Llm:Enabled=true",
+        "config:Llm:ActiveProfileId"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "llmQuery.temperature",
+      "dimension": "llmQuery.temperature",
+      "value": "0",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] llmQuery",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "config:Llm:Enabled=true",
+        "config:Llm:ActiveProfileId"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "llmQuery.timeoutSeconds",
+      "dimension": "llmQuery.timeoutSeconds",
+      "value": "60",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] llmQuery",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "config:Llm:Enabled=true",
+        "config:Llm:ActiveProfileId"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "llmQuery.jsonMode.true",
+      "dimension": "llmQuery.jsonMode",
+      "value": "true",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] llmQuery",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "requires": [
+        "config:Llm:Enabled=true",
+        "config:Llm:ActiveProfileId"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "llmQuery.baseUrl.override",
+      "dimension": "llmQuery.baseUrl",
+      "value": "per-node endpoint override",
+      "reason": "Would pin the suite to one vendor's URL shape. The two wire dialects are resolved by LlmEndpointGuard and asserted there.",
+      "coveredBy": "tests/NodePilot.Ai.Tests",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] llmQuery"
+    },
+    {
+      "id": "llmQuery.apiKey.override",
+      "dimension": "llmQuery.apiKey",
+      "value": "per-node key",
+      "reason": "A key in workflow JSON is exactly what the product tells users not to do; the suite will not model it.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/LlmQueryActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] llmQuery"
+    },
+    {
+      "id": "custom.dispatch",
+      "dimension": "custom.activityType",
+      "value": "custom:<key> routed to the sentinel executor",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] custom activity",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "custom activity 'testsuite-probe' created and enabled by the installer"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "custom.inputs.declared",
+      "dimension": "custom.inputs",
+      "value": "declared inputs become config keys",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] custom activity",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "custom activity 'testsuite-probe' created and enabled by the installer"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "custom.outputs.declared",
+      "dimension": "custom.outputs",
+      "value": "declared outputs captured as param.*",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] custom activity",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "requires": [
+        "custom activity 'testsuite-probe' created and enabled by the installer"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "custom.inputs.boolean",
+      "dimension": "custom.inputs",
+      "value": "boolean input",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] custom activity",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "requires": [
+        "custom activity 'testsuite-probe' created and enabled by the installer"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "custom.inputs.default",
+      "dimension": "custom.inputs",
+      "value": "omitted input falls back to its declared default",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] custom activity",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "requires": [
+        "custom activity 'testsuite-probe' created and enabled by the installer"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "custom.timeoutSeconds",
+      "dimension": "custom.timeoutSeconds",
+      "value": "per-node override of the definition default",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] custom activity",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "requires": [
+        "custom activity 'testsuite-probe' created and enabled by the installer"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "custom.runsRemote",
+      "dimension": "custom.runsRemote",
+      "value": "true",
+      "reason": "RunsRemote comes from the definition, not the node, and a remote definition needs a registered WinRM target the suite does not have.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/CustomActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] custom activity"
+    },
+    {
+      "id": "custom.isolated",
+      "dimension": "custom.isolated",
+      "value": "true",
+      "reason": "Also a definition-level flag; process isolation itself is already exercised on the runScript path it shares.",
+      "coveredBy": "scripts/test-suite/positive/15-runScript.json",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] custom activity"
+    },
+    {
+      "id": "scheduleTrigger.cronExpression",
+      "dimension": "scheduleTrigger.cronExpression",
+      "value": "7-field Quartz cron",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: schedule",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "scheduleTrigger.output.firedAt",
+      "dimension": "scheduleTrigger.output",
+      "value": "firedAt / nextFireAt",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: schedule",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "manualTrigger.parameters.declared",
+      "dimension": "manualTrigger.parameters",
+      "value": "declared input",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: manual",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "manualTrigger.parameters.default",
+      "dimension": "manualTrigger.parameters",
+      "value": "default seeded when the caller omits it",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: manual",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "variable.namespace.manual",
+      "dimension": "variable.namespace",
+      "value": "{{manual.NAME}} and {{trg.param.NAME}} are the same value",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: manual",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "webhookTrigger.signatureMode.header",
+      "dimension": "webhookTrigger.signatureMode",
+      "value": "header (X-Webhook-Secret)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: webhook",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_WEBHOOK_URL",
+        "globals:NP_TESTSUITE_WEBHOOK_SECRET"
+      ],
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "webhookTrigger.fieldMappings",
+      "dimension": "webhookTrigger.fieldMappings",
+      "value": "JSONPath extraction into manual.*",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: webhook",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_WEBHOOK_URL",
+        "globals:NP_TESTSUITE_WEBHOOK_SECRET"
+      ],
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "webhookTrigger.output.body",
+      "dimension": "webhookTrigger.output",
+      "value": "webhookBody / webhookMethod / webhookPath",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: webhook",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_WEBHOOK_URL",
+        "globals:NP_TESTSUITE_WEBHOOK_SECRET"
+      ],
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "webhookTrigger.signatureMode.hmac-v2",
+      "dimension": "webhookTrigger.signatureMode",
+      "value": "nodepilot-hmac-v2",
+      "reason": "Needs a CSPRNG secret of at least 32 bytes plus a freshness timestamp and a unique delivery id computed per call. The driver covers the signing path; a second always-on webhook endpoint would add a second public surface for no extra coverage.",
+      "coveredBy": "tests/NodePilot.Api.Tests",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] trigger: webhook"
+    },
+    {
+      "id": "fileWatcherTrigger.watchType.created",
+      "dimension": "fileWatcherTrigger.watchType",
+      "value": "Created",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: file watcher",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "fileWatcherTrigger.filter",
+      "dimension": "fileWatcherTrigger.filter",
+      "value": "*.txt",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: file watcher",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "fileWatcherTrigger.output.file",
+      "dimension": "fileWatcherTrigger.output",
+      "value": "fileAction / filePath / fileName",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: file watcher",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "fileWatcherTrigger.watchType.other",
+      "dimension": "fileWatcherTrigger.watchType",
+      "value": "changed / deleted / renamed / any",
+      "reason": "One directory can only carry one watch configuration, and four more always-on watchers plus their driver legs would quadruple the fixture surface for one enum.",
+      "coveredBy": "tests/NodePilot.Engine.Tests",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] trigger: file watcher"
+    },
+    {
+      "id": "fileWatcherTrigger.includeSubdirectories",
+      "dimension": "fileWatcherTrigger.includeSubdirectories",
+      "value": "true",
+      "reason": "Same reason: it is a second watcher on the same fixture.",
+      "coveredBy": "tests/NodePilot.Engine.Tests",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] trigger: file watcher"
+    },
+    {
+      "id": "databaseTrigger.provider.sqlite",
+      "dimension": "databaseTrigger.provider",
+      "value": "sqlite",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: database",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "requires": [
+        "config:Trigger:Database:RequireConnectionRef=false, or a connectionRef pointing at runtime/db/sentinel.sqlite"
+      ],
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "databaseTrigger.pollingIntervalSeconds",
+      "dimension": "databaseTrigger.pollingIntervalSeconds",
+      "value": "10",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: database",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "requires": [
+        "config:Trigger:Database:RequireConnectionRef=false, or a connectionRef pointing at runtime/db/sentinel.sqlite"
+      ],
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "databaseTrigger.output.sentinel",
+      "dimension": "databaseTrigger.output",
+      "value": "dbSentinel / dbPrevious",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: database",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "requires": [
+        "config:Trigger:Database:RequireConnectionRef=false, or a connectionRef pointing at runtime/db/sentinel.sqlite"
+      ],
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "databaseTrigger.provider.sqlserver",
+      "dimension": "databaseTrigger.provider",
+      "value": "sqlserver",
+      "reason": "The source supports only sqlserver and sqlite, and no SQL Server instance is part of the development environment.",
+      "coveredBy": "tests/NodePilot.Engine.Tests",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] trigger: database"
+    },
+    {
+      "id": "databaseTrigger.connectionRef",
+      "dimension": "databaseTrigger.connectionRef",
+      "value": "named connection",
+      "reason": "Needs Trigger:Database:Connections:<name> in the host's configuration; the suite ships with the inline form that development permits.",
+      "coveredBy": "tests/NodePilot.Engine.Tests",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] trigger: database"
+    },
+    {
+      "id": "eventLogTrigger.logName.application",
+      "dimension": "eventLogTrigger.logName",
+      "value": "Application",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: event log",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "requires": [
+        "event source NodePilot-TestSuite registered (one-time, elevated)"
+      ],
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "eventLogTrigger.entryType.information",
+      "dimension": "eventLogTrigger.entryType",
+      "value": "Information",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: event log",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "requires": [
+        "event source NodePilot-TestSuite registered (one-time, elevated)"
+      ],
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "eventLogTrigger.source",
+      "dimension": "eventLogTrigger.source",
+      "value": "source filter",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: event log",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "requires": [
+        "event source NodePilot-TestSuite registered (one-time, elevated)"
+      ],
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "eventLogTrigger.messagePattern",
+      "dimension": "eventLogTrigger.messagePattern",
+      "value": "regex",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: event log",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "requires": [
+        "event source NodePilot-TestSuite registered (one-time, elevated)"
+      ],
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "eventLogTrigger.output.event",
+      "dimension": "eventLogTrigger.output",
+      "value": "eventSource / eventEntryType / eventId / eventMessage",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: event log",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "requires": [
+        "event source NodePilot-TestSuite registered (one-time, elevated)"
+      ],
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "eventLogTrigger.logName.system",
+      "dimension": "eventLogTrigger.logName",
+      "value": "System",
+      "reason": "The suite cannot write to the System log without impersonating a driver or service source.",
+      "coveredBy": "tests/NodePilot.Engine.Tests",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] trigger: event log"
+    },
+    {
+      "id": "eventLogTrigger.entryType.other",
+      "dimension": "eventLogTrigger.entryType",
+      "value": "Error / Warning / SuccessAudit / FailureAudit",
+      "reason": "Writing Error-level noise into the Application log every ten minutes would pollute the very log operators triage with; the audit types need a security-audit source the suite has no claim to.",
+      "coveredBy": "tests/NodePilot.Engine.Tests",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite] trigger: event log"
+    },
+    {
+      "id": "edge.condition.eq",
+      "dimension": "edge.condition.operator",
+      "value": "==",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_eq",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.ne",
+      "dimension": "edge.condition.operator",
+      "value": "!=",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_ne",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.lt",
+      "dimension": "edge.condition.operator",
+      "value": "<",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_lt",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.gt",
+      "dimension": "edge.condition.operator",
+      "value": ">",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_gt",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.le",
+      "dimension": "edge.condition.operator",
+      "value": "<=",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_le",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.ge",
+      "dimension": "edge.condition.operator",
+      "value": ">=",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_ge",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.contains",
+      "dimension": "edge.condition.operator",
+      "value": "contains",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_contains",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.startsWith",
+      "dimension": "edge.condition.operator",
+      "value": "startsWith",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_startsWith",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.endsWith",
+      "dimension": "edge.condition.operator",
+      "value": "endsWith",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_endsWith",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.matches",
+      "dimension": "edge.condition.operator",
+      "value": "matches",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_matches",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.isEmpty",
+      "dimension": "edge.condition.operator",
+      "value": "isEmpty",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_isEmpty",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.isNotEmpty",
+      "dimension": "edge.condition.operator",
+      "value": "isNotEmpty",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_isNotEmpty",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.isTrue",
+      "dimension": "edge.condition.operator",
+      "value": "isTrue",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_isTrue",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.isFalse",
+      "dimension": "edge.condition.operator",
+      "value": "isFalse",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_isFalse",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.andGroup",
+      "dimension": "edge.condition.structure",
+      "value": "group AND",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_andGroup",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.orGroup",
+      "dimension": "edge.condition.structure",
+      "value": "group OR",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_orGroup",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.notGroup",
+      "dimension": "edge.condition.structure",
+      "value": "not",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "op_notGroup",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.legacy-success",
+      "dimension": "edge.condition.legacy",
+      "value": "stepId.success",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "legacy_ok",
+      "assertedBy": "assert",
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.condition.legacy-failed",
+      "dimension": "edge.condition.legacy",
+      "value": "stepId.failed (not taken)",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "legacy_fail",
+      "assertedBy": "verifier:stepStatus",
+      "expectedStepStatus": {
+        "stepId": "legacy_fail",
+        "status": "Skipped"
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "edge.disabled",
+      "dimension": "edge.disabled",
+      "value": "true",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "edge_off",
+      "assertedBy": "verifier:stepStatus",
+      "expectedStepStatus": {
+        "stepId": "edge_off",
+        "status": "Skipped"
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "node.disabled",
+      "dimension": "node.disabled",
+      "value": "true",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] edge conditions",
+      "nodeId": "node_off",
+      "assertedBy": "verifier:stepStatus",
+      "expectedStepStatus": {
+        "stepId": "node_off",
+        "status": "Skipped"
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "variable.tail.output",
+      "dimension": "variable.tail",
+      "value": "{{step.output}}",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] variable resolution",
+      "nodeId": "seed",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "variable.tail.param",
+      "dimension": "variable.tail",
+      "value": "{{step.param.x}}",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] variable resolution",
+      "nodeId": "seed",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "variable.tail.success",
+      "dimension": "variable.tail",
+      "value": "{{step.success}}",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] variable resolution",
+      "nodeId": "seed",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "variable.outputVariable",
+      "dimension": "variable.reference",
+      "value": "outputVariable instead of the node id",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] variable resolution",
+      "nodeId": "aliased",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "variable.namespace.globals",
+      "dimension": "variable.namespace",
+      "value": "{{globals.NAME}}",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] variable resolution",
+      "nodeId": "globalRead",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "variable.embedded",
+      "dimension": "variable.reference",
+      "value": "several templates in one value",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] variable resolution",
+      "nodeId": "embedded",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "variable.tail.unknown",
+      "dimension": "variable.tail",
+      "value": "unknown tail is left as a literal",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] variable resolution",
+      "nodeId": "literal",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 60
+    },
+    {
+      "id": "fileWatcherTrigger.fires",
+      "dimension": "trigger.delivery",
+      "value": "fileWatcherTrigger fires and acknowledges",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger drivers",
+      "nodeId": "pokeFile",
+      "assertedBy": "assert",
+      "assertedVia": "check",
+      "requires": [
+        "globals:NP_TESTSUITE_WEBHOOK_URL",
+        "globals:NP_TESTSUITE_WEBHOOK_SECRET"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "databaseTrigger.fires",
+      "dimension": "trigger.delivery",
+      "value": "databaseTrigger fires and acknowledges",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger drivers",
+      "nodeId": "pokeDb",
+      "assertedBy": "assert",
+      "assertedVia": "check",
+      "requires": [
+        "globals:NP_TESTSUITE_WEBHOOK_URL",
+        "globals:NP_TESTSUITE_WEBHOOK_SECRET"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "webhookTrigger.fires",
+      "dimension": "trigger.delivery",
+      "value": "webhookTrigger fires and acknowledges",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger drivers",
+      "nodeId": "pokeHook",
+      "assertedBy": "assert",
+      "assertedVia": "check",
+      "requires": [
+        "globals:NP_TESTSUITE_WEBHOOK_URL",
+        "globals:NP_TESTSUITE_WEBHOOK_SECRET"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "manualTrigger.fires",
+      "dimension": "trigger.delivery",
+      "value": "manualTrigger driven through startWorkflow",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger drivers",
+      "nodeId": "pokeManual",
+      "assertedBy": "assert",
+      "assertedVia": "check",
+      "requires": [
+        "globals:NP_TESTSUITE_WEBHOOK_URL",
+        "globals:NP_TESTSUITE_WEBHOOK_SECRET"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "eventLogTrigger.fires",
+      "dimension": "trigger.delivery",
+      "value": "eventLogTrigger fires and acknowledges",
+      "profile": "integration",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger driver: event log",
+      "nodeId": "poke",
+      "assertedBy": "assert",
+      "assertedVia": "check",
+      "requires": [
+        "event source NodePilot-TestSuite registered (one-time, elevated)"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "fileOperation.guard.leaf-only",
+      "dimension": "fileOperation.path",
+      "value": "directory rejected by the file-only guard",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] filesystem",
+      "nodeId": "n0",
+      "expectedFailure": {
+        "stepId": "n0",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "fileOperation.guard.missing-source",
+      "dimension": "fileOperation.path",
+      "value": "missing source",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] filesystem",
+      "nodeId": "n1",
+      "expectedFailure": {
+        "stepId": "n1",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "folderOperation.guard.container-only",
+      "dimension": "folderOperation.path",
+      "value": "file rejected by the folder-only guard",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] filesystem",
+      "nodeId": "n2",
+      "expectedFailure": {
+        "stepId": "n2",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "fileHash.expected.mismatch",
+      "dimension": "fileHash.expected",
+      "value": "mismatching hash",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] filesystem",
+      "nodeId": "n3",
+      "expectedFailure": {
+        "stepId": "n3",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "zipOperation.force.false",
+      "dimension": "zipOperation.force",
+      "value": "false (target exists)",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] filesystem",
+      "nodeId": "n4",
+      "expectedFailure": {
+        "stepId": "n4",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "textFileEdit.delete.ambiguous-selector",
+      "dimension": "textFileEdit.operation",
+      "value": "delete with two selectors",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] filesystem",
+      "nodeId": "n5",
+      "expectedFailure": {
+        "stepId": "n5",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "startProgram.filePath.relative",
+      "dimension": "startProgram.filePath",
+      "value": "bare name (PATH is not searched)",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] remote",
+      "nodeId": "n0",
+      "expectedFailure": {
+        "stepId": "n0",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "startProgram.successExitCodes.rejected",
+      "dimension": "startProgram.successExitCodes",
+      "value": "exit outside the accepted set",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] remote",
+      "nodeId": "n1",
+      "expectedFailure": {
+        "stepId": "n1",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "registryOperation.guard.prefix",
+      "dimension": "registryOperation.keyPath",
+      "value": "path outside the registry-root whitelist",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] remote",
+      "nodeId": "n2",
+      "expectedFailure": {
+        "stepId": "n2",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "wmiQuery.captureProperties.reserved",
+      "dimension": "wmiQuery.captureProperties",
+      "value": "reserved name 'count'",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] remote",
+      "nodeId": "n3",
+      "expectedFailure": {
+        "stepId": "n3",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "wmiQuery.captureProperties.not-array",
+      "dimension": "wmiQuery.captureProperties",
+      "value": "comma-separated string instead of an array",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] remote",
+      "nodeId": "n4",
+      "expectedFailure": {
+        "stepId": "n4",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "wmiQuery.className.unknown",
+      "dimension": "wmiQuery.className",
+      "value": "unknown class",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] remote",
+      "nodeId": "n5",
+      "expectedFailure": {
+        "stepId": "n5",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "waitForCondition.script.template-rejected",
+      "dimension": "waitForCondition.script",
+      "value": "{{...}} rejected as an injection vector",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] remote",
+      "nodeId": "n6",
+      "expectedFailure": {
+        "stepId": "n6",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "waitForCondition.timeout",
+      "dimension": "waitForCondition.timeoutSeconds",
+      "value": "condition never becomes true",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] remote",
+      "nodeId": "n7",
+      "expectedFailure": {
+        "stepId": "n7",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "restApi.method.PUT",
+      "dimension": "restApi.method",
+      "value": "PUT (non-2xx)",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] engine-local",
+      "nodeId": "n0",
+      "expectedFailure": {
+        "stepId": "n0",
+        "errorContains": ""
+      },
+      "requires": [
+        "globals:NP_TESTSUITE_API_URL",
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "restApi.method.PATCH",
+      "dimension": "restApi.method",
+      "value": "PATCH (non-2xx)",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] engine-local",
+      "nodeId": "n1",
+      "expectedFailure": {
+        "stepId": "n1",
+        "errorContains": ""
+      },
+      "requires": [
+        "globals:NP_TESTSUITE_API_URL",
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "restApi.method.DELETE",
+      "dimension": "restApi.method",
+      "value": "DELETE (non-2xx)",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] engine-local",
+      "nodeId": "n2",
+      "expectedFailure": {
+        "stepId": "n2",
+        "errorContains": ""
+      },
+      "requires": [
+        "globals:NP_TESTSUITE_API_URL",
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "restApi.method.POST",
+      "dimension": "restApi.method",
+      "value": "POST (401 without a token)",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] engine-local",
+      "nodeId": "n3",
+      "expectedFailure": {
+        "stepId": "n3",
+        "errorContains": ""
+      },
+      "requires": [
+        "globals:NP_TESTSUITE_API_URL",
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "restApi.status.non-2xx",
+      "dimension": "restApi.url",
+      "value": "404 fails the step",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] engine-local",
+      "nodeId": "n4",
+      "expectedFailure": {
+        "stepId": "n4",
+        "errorContains": ""
+      },
+      "requires": [
+        "globals:NP_TESTSUITE_API_URL",
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "sql.query.template-rejected",
+      "dimension": "sql.query",
+      "value": "{{...}} rejected; bind through parameters instead",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] engine-local",
+      "nodeId": "n5",
+      "expectedFailure": {
+        "stepId": "n5",
+        "errorContains": ""
+      },
+      "requires": [
+        "globals:NP_TESTSUITE_API_URL",
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "sql.query.syntax-error",
+      "dimension": "sql.query",
+      "value": "malformed statement",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] engine-local",
+      "nodeId": "n6",
+      "expectedFailure": {
+        "stepId": "n6",
+        "errorContains": ""
+      },
+      "requires": [
+        "globals:NP_TESTSUITE_API_URL",
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "xmlQuery.guard.dtd",
+      "dimension": "xmlQuery.content",
+      "value": "DTD rejected (XXE / entity expansion)",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] engine-local",
+      "nodeId": "n7",
+      "expectedFailure": {
+        "stepId": "n7",
+        "errorContains": ""
+      },
+      "requires": [
+        "globals:NP_TESTSUITE_API_URL",
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "jsonQuery.content.malformed",
+      "dimension": "jsonQuery.content",
+      "value": "malformed JSON",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] engine-local",
+      "nodeId": "n8",
+      "expectedFailure": {
+        "stepId": "n8",
+        "errorContains": ""
+      },
+      "requires": [
+        "globals:NP_TESTSUITE_API_URL",
+        "globals:NP_TESTSUITE_SELF_URL"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "startWorkflow.child.missing",
+      "dimension": "startWorkflow.workflowNameOrId",
+      "value": "unresolvable child",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] controlflow",
+      "nodeId": "n0",
+      "expectedFailure": {
+        "stepId": "n0",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "forEach.continueOnError.false",
+      "dimension": "forEach.continueOnError",
+      "value": "false (a failing item fails the step)",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] controlflow",
+      "nodeId": "n1",
+      "expectedFailure": {
+        "stepId": "n1",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "forEach.itemParameterName.reserved",
+      "dimension": "forEach.itemParameterName",
+      "value": "__ prefix is reserved",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] controlflow",
+      "nodeId": "n2",
+      "expectedFailure": {
+        "stepId": "n2",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "returnData.envelope.over-limit",
+      "dimension": "returnData.data",
+      "value": "envelope over 32 KiB",
+      "profile": "continuous",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] controlflow",
+      "nodeId": "n3",
+      "expectedFailure": {
+        "stepId": "n3",
+        "errorContains": ""
+      },
+      "maxRuntimeSeconds": 120
+    },
+    {
+      "id": "fileOperation.guard.traversal",
+      "dimension": "fileOperation.path",
+      "value": "traversal rejected",
+      "profile": "integration",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] production guards",
+      "nodeId": "n0",
+      "expectedFailure": {
+        "stepId": "n0",
+        "errorContains": ""
+      },
+      "requires": [
+        "config:FileSystemOperation:RejectTraversal=true",
+        "config:StartProgram:DisallowShellExecute=true",
+        "config:SqlActivity:RequireConnectionRef=true"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "startProgram.useShellExecute.blocked",
+      "dimension": "startProgram.useShellExecute",
+      "value": "blocked by StartProgram:DisallowShellExecute",
+      "profile": "integration",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] production guards",
+      "nodeId": "n1",
+      "expectedFailure": {
+        "stepId": "n1",
+        "errorContains": ""
+      },
+      "requires": [
+        "config:FileSystemOperation:RejectTraversal=true",
+        "config:StartProgram:DisallowShellExecute=true",
+        "config:SqlActivity:RequireConnectionRef=true"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "sql.connectionString.blocked",
+      "dimension": "sql.connection",
+      "value": "raw connection string blocked by RequireConnectionRef",
+      "profile": "integration",
+      "expectedOutcome": "workflow-failure",
+      "workflow": "[TestSuite-Neg] production guards",
+      "nodeId": "n2",
+      "expectedFailure": {
+        "stepId": "n2",
+        "errorContains": ""
+      },
+      "requires": [
+        "config:FileSystemOperation:RejectTraversal=true",
+        "config:StartProgram:DisallowShellExecute=true",
+        "config:SqlActivity:RequireConnectionRef=true"
+      ],
+      "maxRuntimeSeconds": 90
+    },
+    {
+      "id": "serviceManagement.action.create",
+      "dimension": "serviceManagement.action",
+      "value": "create",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] serviceManagement",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "assertedVia": "v5",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "serviceManagement.action.setStartType",
+      "dimension": "serviceManagement.action",
+      "value": "setStartType",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] serviceManagement",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "assertedVia": "v5",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "serviceManagement.startupType.Automatic",
+      "dimension": "serviceManagement.startupType",
+      "value": "Automatic",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] serviceManagement",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "assertedVia": "v5",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "serviceManagement.startupType.AutomaticDelayedStart",
+      "dimension": "serviceManagement.startupType",
+      "value": "AutomaticDelayedStart",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] serviceManagement",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "assertedVia": "v5",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "serviceManagement.startupType.Manual",
+      "dimension": "serviceManagement.startupType",
+      "value": "Manual",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] serviceManagement",
+      "nodeId": "v3",
+      "assertedBy": "assert",
+      "assertedVia": "v5",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "serviceManagement.startupType.Disabled",
+      "dimension": "serviceManagement.startupType",
+      "value": "Disabled",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] serviceManagement",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "assertedVia": "v5",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "serviceManagement.action.status",
+      "dimension": "serviceManagement.action",
+      "value": "status",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] serviceManagement",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "serviceManagement.action.delete",
+      "dimension": "serviceManagement.action",
+      "value": "delete",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] serviceManagement",
+      "nodeId": "v6",
+      "assertedBy": "assert",
+      "assertedVia": "names",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 180
+    },
+    {
+      "id": "serviceManagement.action.start",
+      "dimension": "serviceManagement.action",
+      "value": "start",
+      "reason": "A cmd.exe-backed fixture never answers the service control manager, so start always ends in error 1053. Genuine start / stop / restart coverage needs a real service and lives in the opt-in cycle workflow.",
+      "coveredBy": "scripts/test-suite/invasive/92-serviceManagement-cycle.json",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite-Inv] serviceManagement"
+    },
+    {
+      "id": "serviceManagement.action.stop",
+      "dimension": "serviceManagement.action",
+      "value": "stop",
+      "reason": "Same as start: needs a service that actually runs.",
+      "coveredBy": "scripts/test-suite/invasive/92-serviceManagement-cycle.json",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite-Inv] serviceManagement"
+    },
+    {
+      "id": "serviceManagement.action.restart",
+      "dimension": "serviceManagement.action",
+      "value": "restart",
+      "reason": "Same as start: needs a service that actually runs.",
+      "coveredBy": "scripts/test-suite/invasive/92-serviceManagement-cycle.json",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite-Inv] serviceManagement"
+    },
+    {
+      "id": "scheduledTask.action.register",
+      "dimension": "scheduledTask.action",
+      "value": "register",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "assertedVia": "v1",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.triggerType.once",
+      "dimension": "scheduledTask.triggerType",
+      "value": "once",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "assertedVia": "v1",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.runLevel.limited",
+      "dimension": "scheduledTask.runLevel",
+      "value": "limited",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "assertedVia": "v1",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.force.true",
+      "dimension": "scheduledTask.force",
+      "value": "true",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "assertedVia": "v1",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.action.get",
+      "dimension": "scheduledTask.action",
+      "value": "get",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.action.disable",
+      "dimension": "scheduledTask.action",
+      "value": "disable",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "assertedVia": "v3",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.action.enable",
+      "dimension": "scheduledTask.action",
+      "value": "enable",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v4",
+      "assertedBy": "assert",
+      "assertedVia": "v4b",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.action.start",
+      "dimension": "scheduledTask.action",
+      "value": "start",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v5",
+      "assertedBy": "assert",
+      "assertedVia": "v6b",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.action.stop",
+      "dimension": "scheduledTask.action",
+      "value": "stop",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v6",
+      "assertedBy": "assert",
+      "assertedVia": "v6b",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.triggerType.daily",
+      "dimension": "scheduledTask.triggerType",
+      "value": "daily",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v7",
+      "assertedBy": "assert",
+      "assertedVia": "v7b",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.daysInterval",
+      "dimension": "scheduledTask.daysInterval",
+      "value": "2",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v7",
+      "assertedBy": "assert",
+      "assertedVia": "v7b",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.triggerType.weekly",
+      "dimension": "scheduledTask.triggerType",
+      "value": "weekly",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v8",
+      "assertedBy": "assert",
+      "assertedVia": "v8b",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.daysOfWeek",
+      "dimension": "scheduledTask.daysOfWeek",
+      "value": "array of day names",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v8",
+      "assertedBy": "assert",
+      "assertedVia": "v8b",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.weeksInterval",
+      "dimension": "scheduledTask.weeksInterval",
+      "value": "2",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v8",
+      "assertedBy": "assert",
+      "assertedVia": "v8b",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.triggerType.atLogon",
+      "dimension": "scheduledTask.triggerType",
+      "value": "atLogon",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v9",
+      "assertedBy": "assert",
+      "assertedVia": "v9b",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.triggerType.atStartup",
+      "dimension": "scheduledTask.triggerType",
+      "value": "atStartup",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v10",
+      "assertedBy": "assert",
+      "assertedVia": "v10b",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.action.unregister",
+      "dimension": "scheduledTask.action",
+      "value": "unregister",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] scheduledTask",
+      "nodeId": "v11",
+      "assertedBy": "assert",
+      "assertedVia": "v12",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "elevated service account"
+      ],
+      "maxRuntimeSeconds": 300
+    },
+    {
+      "id": "scheduledTask.runLevel.highest",
+      "dimension": "scheduledTask.runLevel",
+      "value": "highest",
+      "reason": "Not a deterministic outcome: under an elevated service account it succeeds, under an unprivileged one it fails. A case that flips with the host's privilege level cannot be a cadence assertion.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/ScheduledTaskActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite-Inv] scheduledTask"
+    },
+    {
+      "id": "scheduledTask.runAsUser",
+      "dimension": "scheduledTask.runAsUser",
+      "value": "explicit principal",
+      "reason": "Registering under a named account needs that account's rights on the host; the suite cannot assume one exists.",
+      "coveredBy": "tests/NodePilot.Engine.Tests/Activities/ScheduledTaskActivityTests.cs",
+      "profile": "excluded",
+      "expectedOutcome": "excluded",
+      "workflow": "[TestSuite-Inv] scheduledTask"
+    },
+    {
+      "id": "serviceManagement.action.stop.real",
+      "dimension": "serviceManagement.action",
+      "value": "stop (real service)",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] serviceManagement (cycle)",
+      "nodeId": "v0",
+      "assertedBy": "assert",
+      "assertedVia": "post",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "globals:NP_TESTSUITE_SERVICE_TARGET"
+      ],
+      "maxRuntimeSeconds": 240
+    },
+    {
+      "id": "serviceManagement.action.start.real",
+      "dimension": "serviceManagement.action",
+      "value": "start (real service)",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] serviceManagement (cycle)",
+      "nodeId": "v1",
+      "assertedBy": "assert",
+      "assertedVia": "post",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "globals:NP_TESTSUITE_SERVICE_TARGET"
+      ],
+      "maxRuntimeSeconds": 240
+    },
+    {
+      "id": "serviceManagement.action.restart.real",
+      "dimension": "serviceManagement.action",
+      "value": "restart (real service)",
+      "profile": "invasive",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite-Inv] serviceManagement (cycle)",
+      "nodeId": "v2",
+      "assertedBy": "assert",
+      "assertedVia": "post",
+      "requires": [
+        "globals:NP_TESTSUITE_INVASIVE",
+        "globals:NP_TESTSUITE_SERVICE_TARGET"
+      ],
+      "maxRuntimeSeconds": 240
+    }
+  ]
+}

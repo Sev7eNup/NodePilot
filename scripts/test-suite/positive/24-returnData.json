@@ -1,0 +1,125 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] returnData",
+      "description": "Static constants, templates from two upstream steps, an embedded template, a success tail and the per-value truncation at 8 KiB.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 3/5 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 3/5 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "a",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Seed A",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$alpha = 'first-source'\nWrite-Output 'a'\n"
+              },
+              "outputVariable": "a",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "b",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Seed B (oversized value)",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$beta = 'second-source'\n$blob = 'x' * 9000\nWrite-Output 'b'\n"
+              },
+              "outputVariable": "b",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Return: every value shape",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "static": "constant",
+                  "fromA": "{{a.param.alpha}}",
+                  "fromB": "{{b.param.beta}}",
+                  "embedded": "a={{a.param.alpha}}|b={{b.param.beta}}",
+                  "successFlag": "{{a.success}}",
+                  "oversized": "{{b.param.blob}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-a",
+            "source": "trg",
+            "target": "a",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-a-b",
+            "source": "a",
+            "target": "b",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-b-ret",
+            "source": "b",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,380 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite-Neg] filesystem",
+      "description": "Six filesystem guards that must reject: file-only and folder-only operations, a missing source, a hash mismatch, a refused overwrite and an ambiguous delete.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 10/15 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 10/15 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "janitor",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Janitor: stale run residue",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$root = 'C:\\Temp\\NP-TestSuite'\nforeach ($d in @('runs', 'runtime\\watch', 'runtime\\db', 'runtime\\acks')) {\n  New-Item -ItemType Directory -Path (Join-Path $root $d) -Force | Out-Null\n}\n$cutoff = (Get-Date).AddHours(-1)\nGet-ChildItem -LiteralPath (Join-Path $root 'runs') -Directory -ErrorAction SilentlyContinue |\n  Where-Object { $_.LastWriteTime -lt $cutoff } |\n  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue\n$janitorSweep = 'ok'\n"
+              },
+              "outputVariable": "janitor",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "cid",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Correlation id",
+              "activityType": "generateText",
+              "config": {
+                "mode": "guid"
+              },
+              "outputVariable": "cid"
+            }
+          },
+          {
+            "id": "mkrun",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Sandbox: create run dir",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "create",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}"
+              },
+              "outputVariable": "mkrun",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "seed",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "Seed: a file and an archive",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$cid = {{cid.param.text}}\n$dir = Join-Path 'C:\\Temp\\NP-TestSuite\\runs' $cid\nSet-Content -LiteralPath (Join-Path $dir 'plain.txt') -Value 'content'\nCompress-Archive -Path (Join-Path $dir 'plain.txt') -DestinationPath (Join-Path $dir 'taken.zip') -Force\n$seeded = 'ok'\n"
+              },
+              "outputVariable": "seed",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n0",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "fileOp: delete a directory",
+              "activityType": "fileOperation",
+              "config": {
+                "operation": "delete",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}"
+              },
+              "outputVariable": "n0",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n1",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "fileOp: copy a missing source",
+              "activityType": "fileOperation",
+              "config": {
+                "operation": "copy",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\absent.txt",
+                "destination": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\copy.txt"
+              },
+              "outputVariable": "n1",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n2",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "folderOp: delete a file",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "delete",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\plain.txt"
+              },
+              "outputVariable": "n2",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n3",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 500
+            },
+            "data": {
+              "label": "hash: expected mismatch",
+              "activityType": "fileHash",
+              "config": {
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\plain.txt",
+                "algorithm": "SHA256",
+                "expected": "0000000000000000000000000000000000000000000000000000000000000000"
+              },
+              "outputVariable": "n3",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n4",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "zip: refuse to overwrite",
+              "activityType": "zipOperation",
+              "config": {
+                "operation": "compress",
+                "source": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\plain.txt",
+                "destination": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\taken.zip",
+                "force": false
+              },
+              "outputVariable": "n4",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n5",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 500
+            },
+            "data": {
+              "label": "tfe: two delete selectors",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "delete",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\plain.txt",
+                "lineNumber": 1,
+                "matchPattern": "content"
+              },
+              "outputVariable": "n5",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "cleanup",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 500
+            },
+            "data": {
+              "label": "Cleanup: run sandbox",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$cid = {{cid.param.text}}\nRemove-Item -LiteralPath (Join-Path 'C:\\Temp\\NP-TestSuite\\runs' $cid) -Recurse -Force -ErrorAction SilentlyContinue\n$cleanupDone = 'ok'\n"
+              },
+              "outputVariable": "cleanup",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 500
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "contract": "negative",
+                  "area": "filesystem"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-janitor",
+            "source": "trg",
+            "target": "janitor",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-janitor-cid",
+            "source": "janitor",
+            "target": "cid",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cid-mkrun",
+            "source": "cid",
+            "target": "mkrun",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-mkrun-seed",
+            "source": "mkrun",
+            "target": "seed",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-seed-n0",
+            "source": "seed",
+            "target": "n0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n0-n1",
+            "source": "n0",
+            "target": "n1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n1-n2",
+            "source": "n1",
+            "target": "n2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n2-n3",
+            "source": "n2",
+            "target": "n3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-n3-n4",
+            "source": "n3",
+            "target": "n4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n4-n5",
+            "source": "n4",
+            "target": "n5",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n5-cleanup",
+            "source": "n5",
+            "target": "cleanup",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cleanup-ret",
+            "source": "cleanup",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,448 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] zipOperation",
+      "description": "Both operations, all three compression levels, a wildcard source, the absent operation default and a force overwrite, verified by a round trip.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 5/15 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 5/15 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "janitor",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Janitor: stale run residue",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$root = 'C:\\Temp\\NP-TestSuite'\nforeach ($d in @('runs', 'runtime\\watch', 'runtime\\db', 'runtime\\acks')) {\n  New-Item -ItemType Directory -Path (Join-Path $root $d) -Force | Out-Null\n}\n$cutoff = (Get-Date).AddHours(-1)\nGet-ChildItem -LiteralPath (Join-Path $root 'runs') -Directory -ErrorAction SilentlyContinue |\n  Where-Object { $_.LastWriteTime -lt $cutoff } |\n  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue\n$janitorSweep = 'ok'\n"
+              },
+              "outputVariable": "janitor",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "cid",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Correlation id",
+              "activityType": "generateText",
+              "config": {
+                "mode": "guid"
+              },
+              "outputVariable": "cid"
+            }
+          },
+          {
+            "id": "mkrun",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Sandbox: create run dir",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "create",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}"
+              },
+              "outputVariable": "mkrun",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "seed",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "Seed: files to archive",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$cid = {{cid.param.text}}\n$dir = Join-Path 'C:\\Temp\\NP-TestSuite\\runs' $cid\n$src = Join-Path $dir 'src'\nNew-Item -ItemType Directory -Path $src -Force | Out-Null\n1..3 | ForEach-Object { Set-Content -LiteralPath (Join-Path $src \"f$_.txt\") -Value ('content ' * 200) }\n$seeded = 'ok'\n"
+              },
+              "outputVariable": "seed",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v0",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "zip: compress Optimal",
+              "activityType": "zipOperation",
+              "config": {
+                "operation": "compress",
+                "source": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\src",
+                "destination": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\opt.zip",
+                "compressionLevel": "Optimal",
+                "force": true
+              },
+              "outputVariable": "v0",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v1",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "zip: compress Fastest",
+              "activityType": "zipOperation",
+              "config": {
+                "operation": "compress",
+                "source": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\src",
+                "destination": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\fast.zip",
+                "compressionLevel": "Fastest",
+                "force": true
+              },
+              "outputVariable": "v1",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v2",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "zip: compress NoCompression",
+              "activityType": "zipOperation",
+              "config": {
+                "operation": "compress",
+                "source": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\src",
+                "destination": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\store.zip",
+                "compressionLevel": "NoCompression",
+                "force": true
+              },
+              "outputVariable": "v2",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v3",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 500
+            },
+            "data": {
+              "label": "zip: compress wildcard",
+              "activityType": "zipOperation",
+              "config": {
+                "operation": "compress",
+                "source": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\src\\*.txt",
+                "destination": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\wild.zip",
+                "force": true
+              },
+              "outputVariable": "v3",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v4",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "zip: force overwrite",
+              "activityType": "zipOperation",
+              "config": {
+                "operation": "compress",
+                "source": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\src",
+                "destination": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\opt.zip",
+                "force": true
+              },
+              "outputVariable": "v4",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v5",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 500
+            },
+            "data": {
+              "label": "zip: extract",
+              "activityType": "zipOperation",
+              "config": {
+                "operation": "extract",
+                "source": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\opt.zip",
+                "destination": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\out",
+                "force": true
+              },
+              "outputVariable": "v5",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "check",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 500
+            },
+            "data": {
+              "label": "Verify round trip",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$cid = {{cid.param.text}}\n$dir = Join-Path 'C:\\Temp\\NP-TestSuite\\runs' $cid\n$out = Join-Path $dir 'out'\n$found = @(Get-ChildItem -LiteralPath $out -Recurse -File).Count\n$roundTripped = $found.ToString()\n"
+              },
+              "outputVariable": "check",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "cleanup",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 500
+            },
+            "data": {
+              "label": "Cleanup: run sandbox",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$cid = {{cid.param.text}}\n$dir = Join-Path 'C:\\Temp\\NP-TestSuite\\runs' $cid\nRemove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue\n\n$cleanupDone = 'ok'\n"
+              },
+              "outputVariable": "cleanup",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 500
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$optSize   = {{v0.param.sizeBytes}}\n$fastSize  = {{v1.param.sizeBytes}}\n$storeSize = {{v2.param.sizeBytes}}\n$wildSize  = {{v3.param.sizeBytes}}\n$extracted = {{check.param.roundTripped}}\n\nforeach ($pair in @(@('Optimal', $optSize), @('Fastest', $fastSize), @('NoCompression', $storeSize), @('wildcard', $wildSize))) {\n  if ([int]$pair[1] -le 0) { throw \"zipOperation $($pair[0]): archive size was $($pair[1])\" }\n}\n# Stored entries keep their full size, so no-compression must be the largest archive.\nif ([int]$storeSize -le [int]$optSize) {\n  throw \"NoCompression ($storeSize) should exceed Optimal ($optSize)\"\n}\nif ([int]$extracted -ne 3) { throw \"extract round trip: expected 3 files, found $extracted\" }\n$assertOk = 'zipOperation'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 500
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "zipOperation",
+                  "asserted": "{{assert.success}}",
+                  "cid": "{{cid.param.text}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-janitor",
+            "source": "trg",
+            "target": "janitor",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-janitor-cid",
+            "source": "janitor",
+            "target": "cid",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cid-mkrun",
+            "source": "cid",
+            "target": "mkrun",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-mkrun-seed",
+            "source": "mkrun",
+            "target": "seed",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-seed-v0",
+            "source": "seed",
+            "target": "v0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v0-v1",
+            "source": "v0",
+            "target": "v1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v1-v2",
+            "source": "v1",
+            "target": "v2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v2-v3",
+            "source": "v2",
+            "target": "v3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-v3-v4",
+            "source": "v3",
+            "target": "v4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v4-v5",
+            "source": "v4",
+            "target": "v5",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v5-check",
+            "source": "v5",
+            "target": "check",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-check-cleanup",
+            "source": "check",
+            "target": "cleanup",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cleanup-assert",
+            "source": "cleanup",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

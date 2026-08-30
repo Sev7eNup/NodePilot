@@ -1,0 +1,132 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] trigger: manual",
+      "description": "Both notations of a trigger input resolve to the same value, and a declared parameter the caller omits is seeded from its default.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "probe",
+                    "type": "string",
+                    "required": false,
+                    "default": ""
+                  },
+                  {
+                    "name": "withDefault",
+                    "type": "string",
+                    "required": false,
+                    "default": "seeded-default"
+                  }
+                ]
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "read",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Both notations of a trigger input",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "manual={{manual.probe}} param={{trg.param.probe}} defaulted={{manual.withDefault}}"
+              },
+              "outputVariable": "read"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$msg = {{read.param.message}}\nif ($msg -match '\\{\\{') { throw \"trigger input left unresolved: '$msg'\" }\nif ($msg -notmatch 'manual=(\\S+) param=\\1 ') {\n  throw \"manual.NAME and trg.param.NAME disagree: '$msg'\"\n}\n# A declared parameter with a default is seeded even when the caller leaves it out.\nif ($msg -notmatch 'defaulted=seeded-default') { throw \"declared default was not seeded: '$msg'\" }\n$assertOk = 'manualTrigger'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "manualTrigger",
+                  "asserted": "{{assert.success}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-read",
+            "source": "trg",
+            "target": "read",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-read-assert",
+            "source": "read",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

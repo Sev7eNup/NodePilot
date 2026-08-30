@@ -92,7 +92,8 @@ Keine Features, sondern Verstöße gegen Regeln, die im Repo bereits verbindlich
 10. *Ordner-Watcher* — `fileWatcherTrigger`→`fileHash`→`decision`→zip/move (Idempotenz per Hash)
 
 Abdeckung: 20 von 33 Katalog-Typen + alle fünf ControlFlow-Nodes. Bewusst draußen (invasiv oder
-umgebungsabhängig, gehören in `muster-einzeltests.json`): `registryOperation`, `powerManagement`,
+umgebungsabhängig, gehören in die Test-Suite unter `scripts/test-suite/`, siehe
+`docs/workflow-tests.md`): `registryOperation`, `powerManagement`,
 `scheduledTask`, `startProgram`, `xmlQuery`, `generateText`, `sql`, `eventLogTrigger`. Optional und
 gated: AI-Log-Triage (`llmQuery`, braucht `Llm:Enabled`), DB-Wächter (`databaseTrigger`).
 Leitplanken: `localhost` statt GUID, Sticky-Notes als Inline-Doku, externe Trigger kommen disabled

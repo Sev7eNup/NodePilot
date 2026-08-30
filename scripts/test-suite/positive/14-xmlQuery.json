@@ -1,0 +1,413 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] xmlQuery",
+      "description": "Both sources, both result modes and a namespace-prefixed XPath.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 4/5 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 4/5 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "janitor",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Janitor: stale run residue",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$root = 'C:\\Temp\\NP-TestSuite'\nforeach ($d in @('runs', 'runtime\\watch', 'runtime\\db', 'runtime\\acks')) {\n  New-Item -ItemType Directory -Path (Join-Path $root $d) -Force | Out-Null\n}\n$cutoff = (Get-Date).AddHours(-1)\nGet-ChildItem -LiteralPath (Join-Path $root 'runs') -Directory -ErrorAction SilentlyContinue |\n  Where-Object { $_.LastWriteTime -lt $cutoff } |\n  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue\n$janitorSweep = 'ok'\n"
+              },
+              "outputVariable": "janitor",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "cid",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Correlation id",
+              "activityType": "generateText",
+              "config": {
+                "mode": "guid"
+              },
+              "outputVariable": "cid"
+            }
+          },
+          {
+            "id": "mkrun",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Sandbox: create run dir",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "create",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}"
+              },
+              "outputVariable": "mkrun",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "seed",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "Seed: doc.xml",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$cid = {{cid.param.text}}\n$dir = Join-Path 'C:\\Temp\\NP-TestSuite\\runs' $cid\n$path = Join-Path $dir 'doc.xml'\nSet-Content -LiteralPath $path -Encoding utf8 -Value @'\n<?xml version=\"1.0\"?><root xmlns:np=\"urn:nodepilot:test\"><item id=\"1\">alpha</item><item id=\"2\">beta</item><np:tagged id=\"3\">gamma</np:tagged></root>\n'@\n$seeded = 'ok'\n"
+              },
+              "outputVariable": "seed",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v0",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "xml: inline single",
+              "activityType": "xmlQuery",
+              "config": {
+                "source": "inline",
+                "content": "<?xml version=\"1.0\"?><root xmlns:np=\"urn:nodepilot:test\"><item id=\"1\">alpha</item><item id=\"2\">beta</item><np:tagged id=\"3\">gamma</np:tagged></root>",
+                "xpath": "//item[@id='1']",
+                "resultMode": "single"
+              },
+              "outputVariable": "v0"
+            }
+          },
+          {
+            "id": "v1",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "xml: inline all",
+              "activityType": "xmlQuery",
+              "config": {
+                "source": "inline",
+                "content": "<?xml version=\"1.0\"?><root xmlns:np=\"urn:nodepilot:test\"><item id=\"1\">alpha</item><item id=\"2\">beta</item><np:tagged id=\"3\">gamma</np:tagged></root>",
+                "xpath": "//item",
+                "resultMode": "all"
+              },
+              "outputVariable": "v1"
+            }
+          },
+          {
+            "id": "v2",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "xml: namespaced xpath",
+              "activityType": "xmlQuery",
+              "config": {
+                "source": "inline",
+                "content": "<?xml version=\"1.0\"?><root xmlns:np=\"urn:nodepilot:test\"><item id=\"1\">alpha</item><item id=\"2\">beta</item><np:tagged id=\"3\">gamma</np:tagged></root>",
+                "xpath": "//np:tagged",
+                "resultMode": "single",
+                "namespaces": {
+                  "np": "urn:nodepilot:test"
+                }
+              },
+              "outputVariable": "v2"
+            }
+          },
+          {
+            "id": "v3",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 500
+            },
+            "data": {
+              "label": "xml: source file",
+              "activityType": "xmlQuery",
+              "config": {
+                "source": "file",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\doc.xml",
+                "xpath": "//item",
+                "resultMode": "all"
+              },
+              "outputVariable": "v3"
+            }
+          },
+          {
+            "id": "v4",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "xml: single with two matches",
+              "activityType": "xmlQuery",
+              "config": {
+                "source": "inline",
+                "content": "<?xml version=\"1.0\"?><root xmlns:np=\"urn:nodepilot:test\"><item id=\"1\">alpha</item><item id=\"2\">beta</item><np:tagged id=\"3\">gamma</np:tagged></root>",
+                "xpath": "//item",
+                "resultMode": "single"
+              },
+              "outputVariable": "v4"
+            }
+          },
+          {
+            "id": "v5",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 500
+            },
+            "data": {
+              "label": "xml: no match",
+              "activityType": "xmlQuery",
+              "config": {
+                "source": "inline",
+                "content": "<?xml version=\"1.0\"?><root xmlns:np=\"urn:nodepilot:test\"><item id=\"1\">alpha</item><item id=\"2\">beta</item><np:tagged id=\"3\">gamma</np:tagged></root>",
+                "xpath": "//nothing",
+                "resultMode": "single"
+              },
+              "outputVariable": "v5"
+            }
+          },
+          {
+            "id": "cleanup",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 500
+            },
+            "data": {
+              "label": "Cleanup: run sandbox",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$cid = {{cid.param.text}}\n$dir = Join-Path 'C:\\Temp\\NP-TestSuite\\runs' $cid\nRemove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue\n\n$cleanupDone = 'ok'\n"
+              },
+              "outputVariable": "cleanup",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 500
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$single = {{v0.param.result}}\n$all    = {{v1.param.result}}\n$allN   = {{v1.param.count}}\n$ns     = {{v2.param.result}}\n$fileN  = {{v3.param.count}}\n$firstOfMany = {{v4.param.result}}\n$firstCount  = {{v4.param.count}}\n$noneResult  = {{v5.param.result}}\n$noneCount   = {{v5.param.count}}\n\nif ($single -notmatch 'alpha') { throw \"xmlQuery single: '$single'\" }\nif ([int]$allN -ne 2) { throw \"xmlQuery //item count: expected 2, got '$allN'\" }\nif ($all -notmatch 'beta') { throw \"xmlQuery all missing beta: '$all'\" }\nif ($ns -notmatch 'gamma') { throw \"xmlQuery namespaced lookup: '$ns'\" }\nif ([int]$fileN -ne 2) { throw \"xmlQuery from file count: expected 2, got '$fileN'\" }\n# single mode narrows to the first hit instead of failing, and reports count 1.\nif ($firstOfMany -notmatch 'alpha') { throw \"single mode should return the first match, got '$firstOfMany'\" }\nif ([int]$firstCount -ne 1) { throw \"single mode count with several matches: $firstCount\" }\nif (-not [string]::IsNullOrEmpty($noneResult)) { throw \"single mode with no match returned '$noneResult'\" }\nif ([int]$noneCount -ne 0) { throw \"single mode count with no match: $noneCount\" }\n$assertOk = 'xmlQuery'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 500
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "xmlQuery",
+                  "asserted": "{{assert.success}}",
+                  "cid": "{{cid.param.text}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-janitor",
+            "source": "trg",
+            "target": "janitor",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-janitor-cid",
+            "source": "janitor",
+            "target": "cid",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cid-mkrun",
+            "source": "cid",
+            "target": "mkrun",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-mkrun-seed",
+            "source": "mkrun",
+            "target": "seed",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-seed-v0",
+            "source": "seed",
+            "target": "v0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v0-v1",
+            "source": "v0",
+            "target": "v1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v1-v2",
+            "source": "v1",
+            "target": "v2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v2-v3",
+            "source": "v2",
+            "target": "v3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-v3-v4",
+            "source": "v3",
+            "target": "v4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v4-v5",
+            "source": "v4",
+            "target": "v5",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v5-cleanup",
+            "source": "v5",
+            "target": "cleanup",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cleanup-assert",
+            "source": "cleanup",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
