@@ -366,6 +366,7 @@ Scoped Testing übersieht genau eine Fehlerklasse — die Parity-/Drift-Tests, d
 | Workflow-Analyzer (`WorkflowAnalyzer`/`WorkflowDataBusAnalyzer` in Core — MCP **und** AI-Chat) | `WorkflowAnalyzerFrontendParityTests` | Engine.Tests |
 | Template-Grammatik / Variable-Resolution | `TemplateGrammarParityTests` | Engine.Tests |
 | Metrics-Dashboard-Katalog | `MetricsDashboardCatalogTests` | Api.Tests |
+| `vite.config.ts`-Proxy / Dev-Ports | `AppSettingsHygieneTests` | Api.Tests |
 | `index.css` / `designer-atelier.css` designer-light tokens | `designerLightParity.test.ts` | nodepilot-ui |
 | Font-Tokens / Monaco-Stack | `fontTokens.test.ts` | nodepilot-ui |
 
