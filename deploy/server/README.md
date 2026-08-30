@@ -90,6 +90,9 @@ Unattended: `"includeSourceSnapshot": false` in the answer file, or `-OmitSource
 `Install-NodePilot.ps1`. The key is optional and **absent means include**, so an answer file
 written before this option existed behaves exactly as it did.
 
+There is deliberately no `/`-switch for it — see
+[What is configurable from the command line](#what-is-configurable-from-the-command-line).
+
 ### Unattended
 
 ```
@@ -108,6 +111,41 @@ The first creates the database and login (on PostgreSQL, also supply
 with a token nobody types in — the generated password lands in `<dataPath>\bootstrap-admin.json`
 under a restrictive ACL. To clone a reference instance instead, use `seed.backupPath`; see
 [Turnkey rollout](#turnkey-rollout-unattended-without-typing-a-token).
+
+### What is configurable from the command line
+
+For a packaged rollout the answer file **is** the configuration surface, and it is a superset of
+the wizard: every value the pages collect is expressible there, plus seven that the wizard never
+offers — `serviceDisplayName`, `bootstrap.adminUsername`, `bootstrap.credentialOutputPath`,
+`seed.backupPath`, `seed.passphrase`, `skips.databaseCheck` and `skips.gmsaCheck`. There is
+deliberately no per-setting `/SWITCH`: a second way to say the same thing is a second thing that
+can disagree with the first, and `SetupContract.ps1` validates the file strictly, so a misspelled
+key is rejected before anything is installed rather than halfway through.
+
+The setup's own switches are the ones that cannot be answer-file values, because they decide
+*which* run this is rather than how it is configured:
+
+| Switch | Effect |
+|---|---|
+| `/ANSWERFILE=<path>` | Unattended configuration. Replaces the wizard pages entirely |
+| `/FULLREINSTALL` | Set an existing installation up from scratch instead of updating it |
+| `/PURGEDATA` | Uninstall only: also remove the data directory |
+| `/DIR=<path>` | Inno's own — see the trap below |
+| `/VERYSILENT /SUPPRESSMSGBOXES /LOG=<path>` | Inno's own |
+
+**`/DIR` has to match `installPath`, and nothing enforces it.** Under `/ANSWERFILE` the directory
+page never runs, so Inno's `{app}` keeps `DefaultDirName` (`C:\Program Files\NodePilot`) while the
+adapter installs the product to the answer file's `installPath`. Point them at different places and
+the installation works, but `{app}` ends up holding only `unins000.exe` and `deploy\` — the
+uninstaller sits apart from the product it removes. The Apps-&-Features entry is corrected to the
+real path, so this is not visible there. Pass both:
+
+```
+NodePilot-Server-Setup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES ^
+  /ANSWERFILE=answers.json /DIR="D:\Apps\NodePilot"
+```
+
+Leave `/DIR` off whenever `installPath` is the default, which is the common case.
 
 ### Two stumbling blocks
 
