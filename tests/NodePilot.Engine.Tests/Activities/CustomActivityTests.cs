@@ -32,12 +32,13 @@ public class CustomActivityWrapperAllowlistTests
     }
 
     [Fact]
-    public void Wrap_WithoutAllowlist_KeepsLegacyCaptureAllBehaviour()
+    public void Wrap_WithoutAllowlist_SweepsTheUserScopeMinusReservedNames()
     {
         var wrapped = PowerShellScriptWrapper.Wrap("$x = 1", new Dictionary<string, string>(), NullLogger.Instance);
 
         wrapped.Should().NotContain("$__npOutAllow");
         wrapped.Should().Contain("-not $__npBuiltinVars.Contains($_.Name)");
+        wrapped.Should().Contain("-not $__npReserved.Contains($_.Name)");
     }
 }
 

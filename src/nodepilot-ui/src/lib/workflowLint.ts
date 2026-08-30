@@ -2,6 +2,7 @@ import type { Node, Edge } from '@xyflow/react';
 import { edgeSourcePort, edgeTargetPort, getPortPoint } from './edgePorts';
 import { REMOTE_ACTIVITY_TYPES, TRIGGER_ACTIVITY_TYPES } from './activityCatalog.generated';
 import { checkRequiredActivityConfig } from './activityConfigFacts';
+import { authoredParamNames } from './upstreamVariables';
 
 // Hybrid activities: without a target machine they run locally in the API process
 // (RunScriptActivity / WaitForConditionActivity). They stay listed in REMOTE_ACTIVITY_TYPES
@@ -239,6 +240,33 @@ export function lintWorkflow(
       });
     } else {
       seenOutputVar.set(ov, n.id);
+    }
+  }
+
+  // ---- Two activities publishing the same name ----------------------------
+  // A published value has exactly one owner. When two steps on one path publish the same name,
+  // the engine binds no unqualified variable for it at all rather than picking a winner, so the
+  // author has to reference it through its owner. Mirrors WorkflowAnalyzer's `dup-published-param`.
+  {
+    const publishersByName = new Map<string, string[]>();
+    for (const n of liveNodes) {
+      const d = (n.data as Record<string, unknown>) ?? {};
+      if (d.disabled === true) continue;
+      for (const pName of authoredParamNames(n)) {
+        const list = publishersByName.get(pName) ?? [];
+        list.push(n.id);
+        publishersByName.set(pName, list);
+      }
+    }
+    for (const [pName, publishers] of publishersByName) {
+      if (publishers.length < 2) continue;
+      const sorted = [...publishers].sort();
+      errors.push({
+        severity: 'warning',
+        nodeId: sorted[sorted.length - 1],
+        code: 'dup-published-param',
+        message: `Zwei Aktivitäten veröffentlichen "${pName}" — die unqualifizierte Form $${pName} wird nicht gebunden, weil ein veröffentlichter Wert genau einen Besitzer hat. Referenziere ihn als {{${sorted[0]}.param.${pName}}}.`,
+      });
     }
   }
 

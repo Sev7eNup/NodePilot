@@ -67,6 +67,7 @@ public static class WorkflowAnalyzer
             findings.Add(new Finding("error", "cycle", null, $"Cycle detected: {string.Join(" → ", cycle)} → {cycle[0]}. The engine has no inDegree fallback; cyclic graphs Fail."));
 
         AddDuplicateOutputVariableFindings(doc, findings);
+        AddDuplicatePublishedParamFindings(doc, findings);
         AddUnresolvedReferenceFindings(doc, definition, findings);
 
         // Remote activities without a target machine. Unknown activity types are not checked here:
@@ -91,6 +92,62 @@ public static class WorkflowAnalyzer
 
         var ok = !findings.Any(f => f.Severity == "error");
         return new AnalysisResult(ok, doc.Nodes.Count, doc.Edges.Count, rootIds, findings);
+    }
+
+    /// <summary>
+    /// Two activities on one path publishing the same name. The engine gives a published value
+    /// exactly one owner, so the unqualified short form (<c>$hostName</c> in a script) is withheld
+    /// rather than awarded to whichever activity the runtime happened to enumerate first.
+    /// Downstream references have to name the owner: <c>{{stepA.param.hostName}}</c>.
+    ///
+    /// <para>Only reported where it can actually bite — the two publishers must share a
+    /// descendant, otherwise no step ever sees both.</para>
+    /// </summary>
+    private static void AddDuplicatePublishedParamFindings(
+        WorkflowDefinitionDocument doc, List<Finding> findings)
+    {
+        var authoredByNode = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        foreach (var node in doc.Nodes)
+        {
+            if (doc.DisabledNodeIds.Contains(node.Id)) continue;
+            if (IsAnnotation(node.Type)) continue;
+            authoredByNode[node.Id] = WorkflowDataBusAnalyzer.AuthoredParameters(node);
+        }
+
+        // name -> the publisher sets already reported, so one clash is not repeated for every
+        // consumer downstream of it.
+        var reported = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var consumer in doc.Nodes)
+        {
+            if (doc.DisabledNodeIds.Contains(consumer.Id)) continue;
+
+            var publishersByName = new Dictionary<string, SortedSet<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var ancestorId in doc.FindAncestorNodeIds(consumer.Id))
+            {
+                if (!authoredByNode.TryGetValue(ancestorId, out var names)) continue;
+                foreach (var name in names)
+                {
+                    if (!publishersByName.TryGetValue(name, out var set))
+                        publishersByName[name] = set = new SortedSet<string>(StringComparer.Ordinal);
+                    set.Add(ancestorId);
+                }
+            }
+
+            foreach (var (name, publishers) in publishersByName)
+            {
+                if (publishers.Count < 2) continue;
+                var signature = name + "|" + string.Join(",", publishers);
+                if (!reported.Add(signature)) continue;
+
+                var labels = publishers.Select(id =>
+                    doc.NodesById.TryGetValue(id, out var n) ? $"'{Label(n)}'" : $"'{id}'");
+                findings.Add(new Finding("warning", "dup-published-param", publishers.Max,
+                    $"{string.Join(" and ", labels)} both publish \"{name}\" — the unqualified " +
+                    $"${name} is not bound, because a published value has exactly one owner. " +
+                    $"Reference it as {{{{{publishers.Min}.param.{name}}}}} instead."));
+            }
+        }
     }
 
     private static void AddDuplicateEdgeFindings(WorkflowDefinitionDocument doc, List<Finding> findings)

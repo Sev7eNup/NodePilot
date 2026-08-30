@@ -5,9 +5,9 @@
     "runScript": {
       "description": "Run a PowerShell script (hybrid: local engine, or remote via WinRM when targetMachineId is set).",
       "promptNotes": [
-        "Step success is ERROR-based: only a terminating PowerShell error (`throw`, or `Write-Error` under the wrapper's Stop preference) fails the step. An explicit `exit N` does NOT fail it — set `successExitCodes` to make a non-zero exit a failure. The exit code is always exposed as {{step.param.exitCode}}.",
+        "Step success is ERROR-based: only a terminating PowerShell error (`throw`, or `Write-Error` under the wrapper's Stop preference) fails the step. An explicit `exit N` does NOT fail it — set `successExitCodes` to make a non-zero exit a failure. The exit code is always exposed as {{step.param.exitCode}} and refers to the last native command of THIS script.",
         "Omit targetMachineId to run on the NodePilot host; set a non-local targetMachineId to run through the WinRM wrapper on that target. A local runScript may still use PowerShell remoting itself (Invoke-Command, New-PSSession).",
-        "Declare `$variableName = ...` at script scope to expose values downstream as {{thisStepId.param.variableName}}.",
+        "Declare `$variableName = ...` at script scope to expose values downstream as {{thisStepId.param.variableName}}. Only variables this script assigns are published - an upstream parameter the script merely reads stays the output of the step that produced it, and PowerShell automatic/preference variables are never published.",
         "Write real, working PowerShell — no placeholders or pseudo-code. PowerShell 5.1/7.x compatible, non-interactive (no Read-Host/Get-Credential), avoid Write-Host."
       ],
       "configKeys": [

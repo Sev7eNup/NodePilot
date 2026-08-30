@@ -228,6 +228,11 @@ public class RunScriptActivity : IActivityExecutor
         sb.AppendLine("try { Stop-Transcript -ErrorAction Stop | Out-Null } catch {}");
         sb.AppendLine("Start-Transcript -Path $__npTranscriptPath -IncludeInvocationHeader -Force | Out-Null");
         sb.AppendLine("$__npTranscriptContent = $null");
+        // The preamble above populates $Error even though every call is guarded: the defensive
+        // Stop-Transcript uses -ErrorAction Stop, and -ErrorAction SilentlyContinue suppresses
+        // the display, not the record. Clear again here so the author's script starts with an
+        // empty $Error on the transcript path too — the wrapper's own reset runs before this.
+        sb.AppendLine("if ($null -ne $global:Error) { $global:Error.Clear() }");
         sb.AppendLine("try {");
         sb.AppendLine("# === USER SCRIPT START ===");
         sb.AppendLine(userScript);
