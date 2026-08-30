@@ -1,0 +1,1150 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] edge conditions",
+      "description": "All 14 comparison operators plus group AND, group OR and not, each on its own edge, together with both legacy string conditions, a disabled edge and a disabled node. The three branches that must not run are checked by their step status, because a skipped step leaves no result to reference.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 1800
+            },
+            "data": {
+              "label": "Schedule: 0 2/5 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 2/5 * * * ? *",
+                "description": "TestSuite cadence"
+              }
+            }
+          },
+          {
+            "id": "seed",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 1800
+            },
+            "data": {
+              "label": "Seed: operands",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "\n$envName  = 'test-env'\n$cpuCount = '4'\n$hostname = 'WIN-PC01'\n$emptyStr = ''\n$isDomain = 'true'\n$falseVal = 'false'\nWrite-Output 'seeded'\n"
+              },
+              "outputVariable": "seed",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "op_eq",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 100
+            },
+            "data": {
+              "label": "Log: ==",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge == taken"
+              },
+              "outputVariable": "op_eq"
+            }
+          },
+          {
+            "id": "op_ne",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 280
+            },
+            "data": {
+              "label": "Log: !=",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge != taken"
+              },
+              "outputVariable": "op_ne"
+            }
+          },
+          {
+            "id": "op_lt",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 460
+            },
+            "data": {
+              "label": "Log: <",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge < taken"
+              },
+              "outputVariable": "op_lt"
+            }
+          },
+          {
+            "id": "op_gt",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 640
+            },
+            "data": {
+              "label": "Log: >",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge > taken"
+              },
+              "outputVariable": "op_gt"
+            }
+          },
+          {
+            "id": "op_le",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 820
+            },
+            "data": {
+              "label": "Log: <=",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge <= taken"
+              },
+              "outputVariable": "op_le"
+            }
+          },
+          {
+            "id": "op_ge",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 1000
+            },
+            "data": {
+              "label": "Log: >=",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge >= taken"
+              },
+              "outputVariable": "op_ge"
+            }
+          },
+          {
+            "id": "op_contains",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 1180
+            },
+            "data": {
+              "label": "Log: contains",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge contains taken"
+              },
+              "outputVariable": "op_contains"
+            }
+          },
+          {
+            "id": "op_startsWith",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 1360
+            },
+            "data": {
+              "label": "Log: startsWith",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge startsWith taken"
+              },
+              "outputVariable": "op_startsWith"
+            }
+          },
+          {
+            "id": "op_endsWith",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 1540
+            },
+            "data": {
+              "label": "Log: endsWith",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge endsWith taken"
+              },
+              "outputVariable": "op_endsWith"
+            }
+          },
+          {
+            "id": "op_matches",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 1720
+            },
+            "data": {
+              "label": "Log: matches",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge matches taken"
+              },
+              "outputVariable": "op_matches"
+            }
+          },
+          {
+            "id": "op_isEmpty",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 1900
+            },
+            "data": {
+              "label": "Log: isEmpty",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge isEmpty taken"
+              },
+              "outputVariable": "op_isEmpty"
+            }
+          },
+          {
+            "id": "op_isNotEmpty",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 2080
+            },
+            "data": {
+              "label": "Log: isNotEmpty",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge isNotEmpty taken"
+              },
+              "outputVariable": "op_isNotEmpty"
+            }
+          },
+          {
+            "id": "op_isTrue",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 2260
+            },
+            "data": {
+              "label": "Log: isTrue",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge isTrue taken"
+              },
+              "outputVariable": "op_isTrue"
+            }
+          },
+          {
+            "id": "op_isFalse",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 2440
+            },
+            "data": {
+              "label": "Log: isFalse",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge isFalse taken"
+              },
+              "outputVariable": "op_isFalse"
+            }
+          },
+          {
+            "id": "op_andGroup",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 2620
+            },
+            "data": {
+              "label": "Log: group AND",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge group AND taken"
+              },
+              "outputVariable": "op_andGroup"
+            }
+          },
+          {
+            "id": "op_orGroup",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 2800
+            },
+            "data": {
+              "label": "Log: group OR",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge group OR taken"
+              },
+              "outputVariable": "op_orGroup"
+            }
+          },
+          {
+            "id": "op_notGroup",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 2980
+            },
+            "data": {
+              "label": "Log: not",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "edge not taken"
+              },
+              "outputVariable": "op_notGroup"
+            }
+          },
+          {
+            "id": "legacy_ok",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 3160
+            },
+            "data": {
+              "label": "Log: legacy .success",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "legacy success edge taken"
+              },
+              "outputVariable": "legacy_ok"
+            }
+          },
+          {
+            "id": "legacy_fail",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 3340
+            },
+            "data": {
+              "label": "Log: legacy .failed (never)",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "must not run"
+              },
+              "outputVariable": "legacy_fail"
+            }
+          },
+          {
+            "id": "edge_off",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 3520
+            },
+            "data": {
+              "label": "Log: behind a DISABLED edge",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "must not run"
+              },
+              "outputVariable": "edge_off"
+            }
+          },
+          {
+            "id": "node_off",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 3700
+            },
+            "data": {
+              "label": "Log: DISABLED node",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "must not run"
+              },
+              "outputVariable": "node_off",
+              "disabled": true
+            }
+          },
+          {
+            "id": "join",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 1800
+            },
+            "data": {
+              "label": "Junction: waitAll (18)",
+              "activityType": "junction",
+              "config": {
+                "mode": "waitAll"
+              },
+              "outputVariable": "join"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 1800
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$op_eq = {{op_eq.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_eq)) { throw \"edge == did not run\" }\n$op_ne = {{op_ne.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_ne)) { throw \"edge != did not run\" }\n$op_lt = {{op_lt.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_lt)) { throw \"edge < did not run\" }\n$op_gt = {{op_gt.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_gt)) { throw \"edge > did not run\" }\n$op_le = {{op_le.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_le)) { throw \"edge <= did not run\" }\n$op_ge = {{op_ge.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_ge)) { throw \"edge >= did not run\" }\n$op_contains = {{op_contains.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_contains)) { throw \"edge contains did not run\" }\n$op_startsWith = {{op_startsWith.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_startsWith)) { throw \"edge startsWith did not run\" }\n$op_endsWith = {{op_endsWith.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_endsWith)) { throw \"edge endsWith did not run\" }\n$op_matches = {{op_matches.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_matches)) { throw \"edge matches did not run\" }\n$op_isEmpty = {{op_isEmpty.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_isEmpty)) { throw \"edge isEmpty did not run\" }\n$op_isNotEmpty = {{op_isNotEmpty.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_isNotEmpty)) { throw \"edge isNotEmpty did not run\" }\n$op_isTrue = {{op_isTrue.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_isTrue)) { throw \"edge isTrue did not run\" }\n$op_isFalse = {{op_isFalse.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_isFalse)) { throw \"edge isFalse did not run\" }\n$op_andGroup = {{op_andGroup.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_andGroup)) { throw \"edge group AND did not run\" }\n$op_orGroup = {{op_orGroup.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_orGroup)) { throw \"edge group OR did not run\" }\n$op_notGroup = {{op_notGroup.param.message}}\nif ([string]::IsNullOrWhiteSpace($op_notGroup)) { throw \"edge not did not run\" }\n$legacy = {{legacy_ok.param.message}}\nif ([string]::IsNullOrWhiteSpace($legacy)) { throw 'legacy .success edge did not run' }\n$assertOk = 'edge-conditions'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 1800
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "edge-conditions",
+                  "asserted": "{{assert.success}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-seed",
+            "source": "trg",
+            "target": "seed",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-seed-op_eq",
+            "source": "seed",
+            "target": "op_eq",
+            "type": "labeled",
+            "data": {
+              "label": "==",
+              "condition": "",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "seed",
+                  "field": "param",
+                  "paramName": "envName"
+                },
+                "op": "==",
+                "right": {
+                  "kind": "literal",
+                  "value": "test-env"
+                }
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_ne",
+            "source": "seed",
+            "target": "op_ne",
+            "type": "labeled",
+            "data": {
+              "label": "!=",
+              "condition": "",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "seed",
+                  "field": "param",
+                  "paramName": "envName"
+                },
+                "op": "!=",
+                "right": {
+                  "kind": "literal",
+                  "value": "prod"
+                }
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_lt",
+            "source": "seed",
+            "target": "op_lt",
+            "type": "labeled",
+            "data": {
+              "label": "<",
+              "condition": "",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "seed",
+                  "field": "param",
+                  "paramName": "cpuCount"
+                },
+                "op": "<",
+                "right": {
+                  "kind": "literal",
+                  "value": "8"
+                }
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_gt",
+            "source": "seed",
+            "target": "op_gt",
+            "type": "labeled",
+            "data": {
+              "label": ">",
+              "condition": "",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "seed",
+                  "field": "param",
+                  "paramName": "cpuCount"
+                },
+                "op": ">",
+                "right": {
+                  "kind": "literal",
+                  "value": "1"
+                }
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_le",
+            "source": "seed",
+            "target": "op_le",
+            "type": "labeled",
+            "data": {
+              "label": "<=",
+              "condition": "",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "seed",
+                  "field": "param",
+                  "paramName": "cpuCount"
+                },
+                "op": "<=",
+                "right": {
+                  "kind": "literal",
+                  "value": "4"
+                }
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_ge",
+            "source": "seed",
+            "target": "op_ge",
+            "type": "labeled",
+            "data": {
+              "label": ">=",
+              "condition": "",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "seed",
+                  "field": "param",
+                  "paramName": "cpuCount"
+                },
+                "op": ">=",
+                "right": {
+                  "kind": "literal",
+                  "value": "4"
+                }
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_contains",
+            "source": "seed",
+            "target": "op_contains",
+            "type": "labeled",
+            "data": {
+              "label": "contains",
+              "condition": "",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "seed",
+                  "field": "param",
+                  "paramName": "hostname"
+                },
+                "op": "contains",
+                "right": {
+                  "kind": "literal",
+                  "value": "PC"
+                }
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_startsWith",
+            "source": "seed",
+            "target": "op_startsWith",
+            "type": "labeled",
+            "data": {
+              "label": "startsWith",
+              "condition": "",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "seed",
+                  "field": "param",
+                  "paramName": "hostname"
+                },
+                "op": "startsWith",
+                "right": {
+                  "kind": "literal",
+                  "value": "WIN"
+                }
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_endsWith",
+            "source": "seed",
+            "target": "op_endsWith",
+            "type": "labeled",
+            "data": {
+              "label": "endsWith",
+              "condition": "",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "seed",
+                  "field": "param",
+                  "paramName": "hostname"
+                },
+                "op": "endsWith",
+                "right": {
+                  "kind": "literal",
+                  "value": "01"
+                }
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_matches",
+            "source": "seed",
+            "target": "op_matches",
+            "type": "labeled",
+            "data": {
+              "label": "matches",
+              "condition": "",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "seed",
+                  "field": "param",
+                  "paramName": "hostname"
+                },
+                "op": "matches",
+                "right": {
+                  "kind": "literal",
+                  "value": "^WIN-PC\\d+$"
+                }
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_isEmpty",
+            "source": "seed",
+            "target": "op_isEmpty",
+            "type": "labeled",
+            "data": {
+              "label": "isEmpty",
+              "condition": "",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "seed",
+                  "field": "param",
+                  "paramName": "emptyStr"
+                },
+                "op": "isEmpty"
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_isNotEmpty",
+            "source": "seed",
+            "target": "op_isNotEmpty",
+            "type": "labeled",
+            "data": {
+              "label": "isNotEmpty",
+              "condition": "",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "seed",
+                  "field": "param",
+                  "paramName": "hostname"
+                },
+                "op": "isNotEmpty"
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_isTrue",
+            "source": "seed",
+            "target": "op_isTrue",
+            "type": "labeled",
+            "data": {
+              "label": "isTrue",
+              "condition": "",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "seed",
+                  "field": "param",
+                  "paramName": "isDomain"
+                },
+                "op": "isTrue"
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_isFalse",
+            "source": "seed",
+            "target": "op_isFalse",
+            "type": "labeled",
+            "data": {
+              "label": "isFalse",
+              "condition": "",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "seed",
+                  "field": "param",
+                  "paramName": "falseVal"
+                },
+                "op": "isFalse"
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_andGroup",
+            "source": "seed",
+            "target": "op_andGroup",
+            "type": "labeled",
+            "data": {
+              "label": "group AND",
+              "condition": "",
+              "conditionExpression": {
+                "type": "group",
+                "op": "AND",
+                "children": [
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "seed",
+                      "field": "param",
+                      "paramName": "envName"
+                    },
+                    "op": "==",
+                    "right": {
+                      "kind": "literal",
+                      "value": "test-env"
+                    }
+                  },
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "seed",
+                      "field": "param",
+                      "paramName": "cpuCount"
+                    },
+                    "op": ">=",
+                    "right": {
+                      "kind": "literal",
+                      "value": "4"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_orGroup",
+            "source": "seed",
+            "target": "op_orGroup",
+            "type": "labeled",
+            "data": {
+              "label": "group OR",
+              "condition": "",
+              "conditionExpression": {
+                "type": "group",
+                "op": "OR",
+                "children": [
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "seed",
+                      "field": "param",
+                      "paramName": "envName"
+                    },
+                    "op": "==",
+                    "right": {
+                      "kind": "literal",
+                      "value": "prod"
+                    }
+                  },
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "seed",
+                      "field": "param",
+                      "paramName": "cpuCount"
+                    },
+                    "op": ">=",
+                    "right": {
+                      "kind": "literal",
+                      "value": "4"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "e-seed-op_notGroup",
+            "source": "seed",
+            "target": "op_notGroup",
+            "type": "labeled",
+            "data": {
+              "label": "not",
+              "condition": "",
+              "conditionExpression": {
+                "type": "not",
+                "child": {
+                  "type": "comparison",
+                  "left": {
+                    "kind": "variable",
+                    "stepId": "seed",
+                    "field": "param",
+                    "paramName": "hostname"
+                  },
+                  "op": "contains",
+                  "right": {
+                    "kind": "literal",
+                    "value": "PANIC"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "e-seed-legacy_ok",
+            "source": "seed",
+            "target": "legacy_ok",
+            "type": "labeled",
+            "data": {
+              "label": "On Success",
+              "condition": "seed.success"
+            }
+          },
+          {
+            "id": "e-seed-legacy_fail",
+            "source": "seed",
+            "target": "legacy_fail",
+            "type": "labeled",
+            "data": {
+              "label": "On Failure",
+              "condition": "seed.failed"
+            }
+          },
+          {
+            "id": "e-seed-edge_off",
+            "source": "seed",
+            "target": "edge_off",
+            "type": "labeled",
+            "data": {
+              "label": "DISABLED edge",
+              "condition": "",
+              "disabled": true
+            }
+          },
+          {
+            "id": "e-seed-node_off",
+            "source": "seed",
+            "target": "node_off",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_eq-join",
+            "source": "op_eq",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_ne-join",
+            "source": "op_ne",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_lt-join",
+            "source": "op_lt",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_gt-join",
+            "source": "op_gt",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_le-join",
+            "source": "op_le",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_ge-join",
+            "source": "op_ge",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_contains-join",
+            "source": "op_contains",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_startsWith-join",
+            "source": "op_startsWith",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_endsWith-join",
+            "source": "op_endsWith",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_matches-join",
+            "source": "op_matches",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_isEmpty-join",
+            "source": "op_isEmpty",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_isNotEmpty-join",
+            "source": "op_isNotEmpty",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_isTrue-join",
+            "source": "op_isTrue",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_isFalse-join",
+            "source": "op_isFalse",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_andGroup-join",
+            "source": "op_andGroup",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_orGroup-join",
+            "source": "op_orGroup",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-op_notGroup-join",
+            "source": "op_notGroup",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-legacy_ok-join",
+            "source": "legacy_ok",
+            "target": "join",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-join-assert",
+            "source": "join",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

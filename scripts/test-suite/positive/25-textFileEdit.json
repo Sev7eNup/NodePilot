@@ -1,0 +1,942 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] textFileEdit",
+      "description": "All six operations including both alternative delete selectors, all six encodings verified by the bytes on disk, all three line endings, both occurrence modes, regex matching, the idempotent append and a dry run.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 4/5 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 4/5 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "janitor",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Janitor: stale run residue",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$root = 'C:\\Temp\\NP-TestSuite'\nforeach ($d in @('runs', 'runtime\\watch', 'runtime\\db', 'runtime\\acks')) {\n  New-Item -ItemType Directory -Path (Join-Path $root $d) -Force | Out-Null\n}\n$cutoff = (Get-Date).AddHours(-1)\nGet-ChildItem -LiteralPath (Join-Path $root 'runs') -Directory -ErrorAction SilentlyContinue |\n  Where-Object { $_.LastWriteTime -lt $cutoff } |\n  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue\n$janitorSweep = 'ok'\n"
+              },
+              "outputVariable": "janitor",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "cid",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Correlation id",
+              "activityType": "generateText",
+              "config": {
+                "mode": "guid"
+              },
+              "outputVariable": "cid"
+            }
+          },
+          {
+            "id": "mkrun",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Sandbox: create run dir",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "create",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}"
+              },
+              "outputVariable": "mkrun",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "seed",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "Seed: three lines",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$cid = {{cid.param.text}}\n$dir = Join-Path 'C:\\Temp\\NP-TestSuite\\runs' $cid\n$path = Join-Path $dir 'edit.txt'\nSet-Content -LiteralPath $path -Value @('line1','line2','line3')\n$seeded = 'ok'\n"
+              },
+              "outputVariable": "seed",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v0",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "tfe: append",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\edit.txt",
+                "content": "appended"
+              },
+              "outputVariable": "v0",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v1",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "tfe: prepend",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "prepend",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\edit.txt",
+                "content": "prepended"
+              },
+              "outputVariable": "v1",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v2",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "tfe: insert at line 3",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "insert",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\edit.txt",
+                "content": "inserted",
+                "lineNumber": 3
+              },
+              "outputVariable": "v2",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v3",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 500
+            },
+            "data": {
+              "label": "tfe: replaceLine",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "replaceLine",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\edit.txt",
+                "content": "replaced-line",
+                "lineNumber": 2
+              },
+              "outputVariable": "v3",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v4",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 500
+            },
+            "data": {
+              "label": "tfe: replace all occurrences",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "replace",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\edit.txt",
+                "matchPattern": "line",
+                "replace": "LINE",
+                "occurrences": "all"
+              },
+              "outputVariable": "v4",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v5",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 500
+            },
+            "data": {
+              "label": "tfe: replace first only, ignoreCase",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "replace",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\edit.txt",
+                "matchPattern": "line",
+                "replace": "once",
+                "occurrences": "first",
+                "ignoreCase": true
+              },
+              "outputVariable": "v5",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v6",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 500
+            },
+            "data": {
+              "label": "tfe: regex replace",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "replace",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\edit.txt",
+                "matchPattern": "^LINE\\d$",
+                "replace": "regexed",
+                "useRegex": true
+              },
+              "outputVariable": "v6",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v7",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 500
+            },
+            "data": {
+              "label": "tfe: delete by lineNumber",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "delete",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\edit.txt",
+                "lineNumber": 1
+              },
+              "outputVariable": "v7",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v8",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 500
+            },
+            "data": {
+              "label": "tfe: delete by lineRange",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "delete",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\edit.txt",
+                "lineRange": [
+                  1,
+                  2
+                ]
+              },
+              "outputVariable": "v8",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v9",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 740
+            },
+            "data": {
+              "label": "tfe: delete by matchPattern",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "delete",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\edit.txt",
+                "matchPattern": "regexed"
+              },
+              "outputVariable": "v9",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v10",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 740
+            },
+            "data": {
+              "label": "tfe: appendIfMissing (twice, idempotent)",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\edit.txt",
+                "content": "only-once",
+                "appendIfMissing": true
+              },
+              "outputVariable": "v10",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v11",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 740
+            },
+            "data": {
+              "label": "tfe: appendIfMissing repeat",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\edit.txt",
+                "content": "only-once",
+                "appendIfMissing": true,
+                "appendIfMissingExact": true
+              },
+              "outputVariable": "v11",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "v12",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 740
+            },
+            "data": {
+              "label": "tfe: backup + dryRun",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\edit.txt",
+                "content": "never-written",
+                "backupSuffix": ".bak",
+                "dryRun": true
+              },
+              "outputVariable": "v12",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "e0",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 740
+            },
+            "data": {
+              "label": "tfe: encoding utf8",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\enc-utf8.txt",
+                "content": "abc",
+                "encoding": "utf8",
+                "createIfMissing": true
+              },
+              "outputVariable": "e0",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "e1",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 740
+            },
+            "data": {
+              "label": "tfe: encoding utf8-bom",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\enc-utf8bom.txt",
+                "content": "abc",
+                "encoding": "utf8-bom",
+                "createIfMissing": true
+              },
+              "outputVariable": "e1",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "e2",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 740
+            },
+            "data": {
+              "label": "tfe: encoding utf16le",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\enc-16le.txt",
+                "content": "abc",
+                "encoding": "utf16le",
+                "createIfMissing": true
+              },
+              "outputVariable": "e2",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "e3",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 980
+            },
+            "data": {
+              "label": "tfe: encoding utf16be",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\enc-16be.txt",
+                "content": "abc",
+                "encoding": "utf16be",
+                "createIfMissing": true
+              },
+              "outputVariable": "e3",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "e4",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 980
+            },
+            "data": {
+              "label": "tfe: encoding ascii",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\enc-ascii.txt",
+                "content": "abc",
+                "encoding": "ascii",
+                "createIfMissing": true
+              },
+              "outputVariable": "e4",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "e5",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 980
+            },
+            "data": {
+              "label": "tfe: encoding auto preserves the BOM",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\enc-utf8bom.txt",
+                "content": "def",
+                "encoding": "auto"
+              },
+              "outputVariable": "e5",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "l0",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 980
+            },
+            "data": {
+              "label": "tfe: lineEnding crlf",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\le-crlf.txt",
+                "content": "one",
+                "lineEnding": "crlf",
+                "createIfMissing": true
+              },
+              "outputVariable": "l0",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "l1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 980
+            },
+            "data": {
+              "label": "tfe: lineEnding lf",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\le-lf.txt",
+                "content": "one",
+                "lineEnding": "lf",
+                "createIfMissing": true
+              },
+              "outputVariable": "l1",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "l2",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 980
+            },
+            "data": {
+              "label": "tfe: lineEnding preserve",
+              "activityType": "textFileEdit",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}\\le-lf.txt",
+                "content": "two",
+                "lineEnding": "preserve"
+              },
+              "outputVariable": "l2",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "check",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 980
+            },
+            "data": {
+              "label": "Verify bytes on disk",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$cid = {{cid.param.text}}\n$dir = Join-Path 'C:\\Temp\\NP-TestSuite\\runs' $cid\n\nfunction Get-Head { param($name, $n) ,([IO.File]::ReadAllBytes((Join-Path $dir $name))[0..($n-1)]) }\n$utf8Head   = (Get-Head 'enc-utf8.txt' 3) -join ','\n$bomHead    = (Get-Head 'enc-utf8bom.txt' 3) -join ','\n$le16Head   = (Get-Head 'enc-16le.txt' 2) -join ','\n$be16Head   = (Get-Head 'enc-16be.txt' 2) -join ','\n$asciiHead  = (Get-Head 'enc-ascii.txt' 3) -join ','\n$bomText    = [IO.File]::ReadAllText((Join-Path $dir 'enc-utf8bom.txt'))\n$crlfRaw    = [IO.File]::ReadAllText((Join-Path $dir 'le-crlf.txt'))\n$lfRaw      = [IO.File]::ReadAllText((Join-Path $dir 'le-lf.txt'))\n$crlfHasCr  = if ($crlfRaw.Contains([string][char]13)) { 'yes' } else { 'no' }\n$lfHasCr    = if ($lfRaw.Contains([string][char]13)) { 'yes' } else { 'no' }\n$bakExists  = if (Test-Path -LiteralPath (Join-Path $dir 'edit.txt.bak')) { 'yes' } else { 'no' }\n$mainText   = [IO.File]::ReadAllText((Join-Path $dir 'edit.txt'))\n$onlyOnce   = ([regex]::Matches($mainText, 'only-once')).Count.ToString()\n$neverWritten = if ($mainText.Contains('never-written')) { 'yes' } else { 'no' }\n"
+              },
+              "outputVariable": "check",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "cleanup",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 1220
+            },
+            "data": {
+              "label": "Cleanup: run sandbox",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$cid = {{cid.param.text}}\n$dir = Join-Path 'C:\\Temp\\NP-TestSuite\\runs' $cid\nRemove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue\n\n$cleanupDone = 'ok'\n"
+              },
+              "outputVariable": "cleanup",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 1220
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$before_v0 = {{v0.param.linesBefore}}\n$after_v0  = {{v0.param.linesAfter}}\n$before_v1 = {{v1.param.linesBefore}}\n$after_v1  = {{v1.param.linesAfter}}\n$before_v2 = {{v2.param.linesBefore}}\n$after_v2  = {{v2.param.linesAfter}}\n$before_v3 = {{v3.param.linesBefore}}\n$after_v3  = {{v3.param.linesAfter}}\n$before_v4 = {{v4.param.linesBefore}}\n$after_v4  = {{v4.param.linesAfter}}\n$before_v5 = {{v5.param.linesBefore}}\n$after_v5  = {{v5.param.linesAfter}}\n$before_v6 = {{v6.param.linesBefore}}\n$after_v6  = {{v6.param.linesAfter}}\n$before_v7 = {{v7.param.linesBefore}}\n$after_v7  = {{v7.param.linesAfter}}\n$before_v8 = {{v8.param.linesBefore}}\n$after_v8  = {{v8.param.linesAfter}}\n$before_v9 = {{v9.param.linesBefore}}\n$after_v9  = {{v9.param.linesAfter}}\n$before_v10 = {{v10.param.linesBefore}}\n$after_v10  = {{v10.param.linesAfter}}\n$before_v11 = {{v11.param.linesBefore}}\n$after_v11  = {{v11.param.linesAfter}}\n$before_v12 = {{v12.param.linesBefore}}\n$after_v12  = {{v12.param.linesAfter}}\n$before_e0 = {{e0.param.linesBefore}}\n$after_e0  = {{e0.param.linesAfter}}\n$before_e1 = {{e1.param.linesBefore}}\n$after_e1  = {{e1.param.linesAfter}}\n$before_e2 = {{e2.param.linesBefore}}\n$after_e2  = {{e2.param.linesAfter}}\n$before_e3 = {{e3.param.linesBefore}}\n$after_e3  = {{e3.param.linesAfter}}\n$before_e4 = {{e4.param.linesBefore}}\n$after_e4  = {{e4.param.linesAfter}}\n$before_e5 = {{e5.param.linesBefore}}\n$after_e5  = {{e5.param.linesAfter}}\n$before_l0 = {{l0.param.linesBefore}}\n$after_l0  = {{l0.param.linesAfter}}\n$before_l1 = {{l1.param.linesBefore}}\n$after_l1  = {{l1.param.linesAfter}}\n$before_l2 = {{l2.param.linesBefore}}\n$after_l2  = {{l2.param.linesAfter}}\nif ([int]$after_v0 -ne [int]$before_v1) { throw \"v0 reported $after_v0 lines but v1 saw $before_v1\" }\nif ([int]$after_v1 -ne [int]$before_v2) { throw \"v1 reported $after_v1 lines but v2 saw $before_v2\" }\nif ([int]$after_v2 -ne [int]$before_v3) { throw \"v2 reported $after_v2 lines but v3 saw $before_v3\" }\nif ([int]$after_v3 -ne [int]$before_v4) { throw \"v3 reported $after_v3 lines but v4 saw $before_v4\" }\nif ([int]$after_v4 -ne [int]$before_v5) { throw \"v4 reported $after_v4 lines but v5 saw $before_v5\" }\nif ([int]$after_v5 -ne [int]$before_v6) { throw \"v5 reported $after_v5 lines but v6 saw $before_v6\" }\nif ([int]$after_v6 -ne [int]$before_v7) { throw \"v6 reported $after_v6 lines but v7 saw $before_v7\" }\nif ([int]$after_v7 -ne [int]$before_v8) { throw \"v7 reported $after_v7 lines but v8 saw $before_v8\" }\nif ([int]$after_v8 -ne [int]$before_v9) { throw \"v8 reported $after_v8 lines but v9 saw $before_v9\" }\nif ([int]$after_v9 -ne [int]$before_v10) { throw \"v9 reported $after_v9 lines but v10 saw $before_v10\" }\nif ([int]$after_v10 -ne [int]$before_v11) { throw \"v10 reported $after_v10 lines but v11 saw $before_v11\" }\nif ([int]$after_v11 -ne [int]$before_v12) { throw \"v11 reported $after_v11 lines but v12 saw $before_v12\" }\nif ([int]$after_e0 -lt 1) { throw \"e0 produced an empty file\" }\nif ([int]$after_e1 -lt 1) { throw \"e1 produced an empty file\" }\nif ([int]$after_e2 -lt 1) { throw \"e2 produced an empty file\" }\nif ([int]$after_e3 -lt 1) { throw \"e3 produced an empty file\" }\nif ([int]$after_e4 -lt 1) { throw \"e4 produced an empty file\" }\nif ([int]$after_e5 -lt 1) { throw \"e5 produced an empty file\" }\nif ([int]$after_l0 -lt 1) { throw \"l0 produced an empty file\" }\nif ([int]$after_l1 -lt 1) { throw \"l1 produced an empty file\" }\nif ([int]$after_l2 -lt 1) { throw \"l2 produced an empty file\" }\n\n$linesBefore = {{v0.param.linesBefore}}\n$linesAfter  = {{v0.param.linesAfter}}\n$encReported = {{e1.param.encoding}}\n$leReported  = {{l0.param.lineEnding}}\n$dryRun      = {{v12.param.dryRun}}\n$utf8Head    = {{check.param.utf8Head}}\n$bomHead     = {{check.param.bomHead}}\n$le16Head    = {{check.param.le16Head}}\n$be16Head    = {{check.param.be16Head}}\n$asciiHead   = {{check.param.asciiHead}}\n$bomText     = {{check.param.bomText}}\n$crlfHasCr   = {{check.param.crlfHasCr}}\n$lfHasCr     = {{check.param.lfHasCr}}\n$bakExists   = {{check.param.bakExists}}\n$onlyOnce    = {{check.param.onlyOnce}}\n$neverWritten = {{check.param.neverWritten}}\n\nif ([int]$linesAfter -ne ([int]$linesBefore + 1)) {\n  throw \"append should add exactly one line, went from $linesBefore to $linesAfter\"\n}\nif ($encReported -ne 'utf8-bom') { throw \"textFileEdit reported encoding '$encReported'\" }\nif ($leReported -ne 'crlf') { throw \"textFileEdit reported lineEnding '$leReported'\" }\nif ($dryRun -ne 'True' -and $dryRun -ne 'true') { throw \"dryRun flag not reported: '$dryRun'\" }\nif ($utf8Head -eq '239,187,191') { throw \"encoding utf8 must not write a BOM\" }\nif ($bomHead -ne '239,187,191') { throw \"encoding utf8-bom head was '$bomHead'\" }\nif ($le16Head -ne '255,254') { throw \"encoding utf16le head was '$le16Head'\" }\nif ($be16Head -ne '254,255') { throw \"encoding utf16be head was '$be16Head'\" }\nif ($asciiHead -eq '239,187,191') { throw \"encoding ascii must not write a BOM\" }\nif ($bomText -notmatch 'def') { throw \"encoding auto did not append to the BOM file\" }\nif ($crlfHasCr -ne 'yes') { throw \"lineEnding crlf produced no carriage return\" }\nif ($lfHasCr -ne 'no') { throw \"lineEnding lf leaked a carriage return\" }\nif ($bakExists -eq 'yes') { throw \"a dry run must not leave a backup behind\" }\nif ($neverWritten -ne 'no') { throw \"a dry run must not modify the file\" }\nif ([int]$onlyOnce -ne 1) { throw \"appendIfMissing wrote the line $onlyOnce times\" }\n$assertOk = 'textFileEdit'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 1220
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "textFileEdit",
+                  "asserted": "{{assert.success}}",
+                  "cid": "{{cid.param.text}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-janitor",
+            "source": "trg",
+            "target": "janitor",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-janitor-cid",
+            "source": "janitor",
+            "target": "cid",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cid-mkrun",
+            "source": "cid",
+            "target": "mkrun",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-mkrun-seed",
+            "source": "mkrun",
+            "target": "seed",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-seed-v0",
+            "source": "seed",
+            "target": "v0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v0-v1",
+            "source": "v0",
+            "target": "v1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v1-v2",
+            "source": "v1",
+            "target": "v2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-v2-v3",
+            "source": "v2",
+            "target": "v3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v3-v4",
+            "source": "v3",
+            "target": "v4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v4-v5",
+            "source": "v4",
+            "target": "v5",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v5-v6",
+            "source": "v5",
+            "target": "v6",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v6-v7",
+            "source": "v6",
+            "target": "v7",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v7-v8",
+            "source": "v7",
+            "target": "v8",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v8-v9",
+            "source": "v8",
+            "target": "v9",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-v9-v10",
+            "source": "v9",
+            "target": "v10",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v10-v11",
+            "source": "v10",
+            "target": "v11",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v11-v12",
+            "source": "v11",
+            "target": "v12",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v12-e0",
+            "source": "v12",
+            "target": "e0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-e0-e1",
+            "source": "e0",
+            "target": "e1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-e1-e2",
+            "source": "e1",
+            "target": "e2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-e2-e3",
+            "source": "e2",
+            "target": "e3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-e3-e4",
+            "source": "e3",
+            "target": "e4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-e4-e5",
+            "source": "e4",
+            "target": "e5",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-e5-l0",
+            "source": "e5",
+            "target": "l0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-l0-l1",
+            "source": "l0",
+            "target": "l1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-l1-l2",
+            "source": "l1",
+            "target": "l2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-l2-check",
+            "source": "l2",
+            "target": "check",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-check-cleanup",
+            "source": "check",
+            "target": "cleanup",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-cleanup-assert",
+            "source": "cleanup",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

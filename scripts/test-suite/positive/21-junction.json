@@ -1,0 +1,491 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] junction",
+      "description": "All three junction modes over real parallel branches, asserted through the output parameters the junction merges.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 700
+            },
+            "data": {
+              "label": "Schedule: 0 0/5 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 0/5 * * * ? *",
+                "description": "TestSuite cadence"
+              }
+            }
+          },
+          {
+            "id": "a1",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "branch A1",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "Start-Sleep -Seconds 0\n$branchA1 = 'reached'\nWrite-Output 'branchA1'\n"
+              },
+              "targetMachineId": "localhost",
+              "outputVariable": "a1"
+            }
+          },
+          {
+            "id": "a2",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 700
+            },
+            "data": {
+              "label": "branch A2",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "Start-Sleep -Seconds 0\n$branchA2 = 'reached'\nWrite-Output 'branchA2'\n"
+              },
+              "targetMachineId": "localhost",
+              "outputVariable": "a2"
+            }
+          },
+          {
+            "id": "a3",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 1140
+            },
+            "data": {
+              "label": "branch A3",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "Start-Sleep -Seconds 0\n$branchA3 = 'reached'\nWrite-Output 'branchA3'\n"
+              },
+              "targetMachineId": "localhost",
+              "outputVariable": "a3"
+            }
+          },
+          {
+            "id": "jAll",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 700
+            },
+            "data": {
+              "label": "Junction: waitAll (3)",
+              "activityType": "junction",
+              "config": {
+                "mode": "waitAll"
+              },
+              "outputVariable": "jAll"
+            }
+          },
+          {
+            "id": "b1",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "branch B1 (0s)",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "Start-Sleep -Seconds 0\n$branchB1 = 'reached'\nWrite-Output 'branchB1'\n"
+              },
+              "targetMachineId": "localhost",
+              "outputVariable": "b1"
+            }
+          },
+          {
+            "id": "b2",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 700
+            },
+            "data": {
+              "label": "branch B2 (4s)",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "Start-Sleep -Seconds 4\n$branchB2 = 'reached'\nWrite-Output 'branchB2'\n"
+              },
+              "targetMachineId": "localhost",
+              "outputVariable": "b2"
+            }
+          },
+          {
+            "id": "b3",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 1140
+            },
+            "data": {
+              "label": "branch B3 (6s)",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "Start-Sleep -Seconds 6\n$branchB3 = 'reached'\nWrite-Output 'branchB3'\n"
+              },
+              "targetMachineId": "localhost",
+              "outputVariable": "b3"
+            }
+          },
+          {
+            "id": "jAny",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 700
+            },
+            "data": {
+              "label": "Junction: waitAny (1 of 3)",
+              "activityType": "junction",
+              "config": {
+                "mode": "waitAny"
+              },
+              "outputVariable": "jAny"
+            }
+          },
+          {
+            "id": "c1",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "branch C1 (0s)",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "Start-Sleep -Seconds 0\n$branchC1 = 'reached'\nWrite-Output 'branchC1'\n"
+              },
+              "targetMachineId": "localhost",
+              "outputVariable": "c1"
+            }
+          },
+          {
+            "id": "c2",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 700
+            },
+            "data": {
+              "label": "branch C2 (1s)",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "Start-Sleep -Seconds 1\n$branchC2 = 'reached'\nWrite-Output 'branchC2'\n"
+              },
+              "targetMachineId": "localhost",
+              "outputVariable": "c2"
+            }
+          },
+          {
+            "id": "c3",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 1140
+            },
+            "data": {
+              "label": "branch C3 (6s)",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "Start-Sleep -Seconds 6\n$branchC3 = 'reached'\nWrite-Output 'branchC3'\n"
+              },
+              "targetMachineId": "localhost",
+              "outputVariable": "c3"
+            }
+          },
+          {
+            "id": "jNofM",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 700
+            },
+            "data": {
+              "label": "Junction: waitNofM (2/3)",
+              "activityType": "junction",
+              "config": {
+                "mode": "waitNofM",
+                "requiredCount": 2
+              },
+              "outputVariable": "jNofM"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 700
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n# The junction merges its upstream output parameters, so reading them off the junction\n# proves both that the branches ran and that the merge happened.\n$a1 = {{jAll.param.branchA1}}\n$a2 = {{jAll.param.branchA2}}\n$a3 = {{jAll.param.branchA3}}\nif ($a1 -ne 'reached' -or $a2 -ne 'reached' -or $a3 -ne 'reached') {\n  throw \"waitAll did not merge all three branches: '$a1' '$a2' '$a3'\"\n}\n$b1 = {{b1.param.branchB1}}\nif ($b1 -ne 'reached') { throw \"waitAny: fastest branch did not complete\" }\n$c1 = {{c1.param.branchC1}}\n$c2 = {{c2.param.branchC2}}\nif ($c1 -ne 'reached' -or $c2 -ne 'reached') {\n  throw \"waitNofM(2/3): the two fastest branches should both have run\"\n}\n$assertOk = 'junction'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 2620,
+              "y": 700
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "junction",
+                  "asserted": "{{assert.success}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-a1",
+            "source": "trg",
+            "target": "a1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-trg-a2",
+            "source": "trg",
+            "target": "a2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-trg-a3",
+            "source": "trg",
+            "target": "a3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-a1-jAll",
+            "source": "a1",
+            "target": "jAll",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-a2-jAll",
+            "source": "a2",
+            "target": "jAll",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-a3-jAll",
+            "source": "a3",
+            "target": "jAll",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-jAll-b1",
+            "source": "jAll",
+            "target": "b1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-jAll-b2",
+            "source": "jAll",
+            "target": "b2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-jAll-b3",
+            "source": "jAll",
+            "target": "b3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-b1-jAny",
+            "source": "b1",
+            "target": "jAny",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-b2-jAny",
+            "source": "b2",
+            "target": "jAny",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-b3-jAny",
+            "source": "b3",
+            "target": "jAny",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-jAny-c1",
+            "source": "jAny",
+            "target": "c1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-jAny-c2",
+            "source": "jAny",
+            "target": "c2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-jAny-c3",
+            "source": "jAny",
+            "target": "c3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-c1-jNofM",
+            "source": "c1",
+            "target": "jNofM",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-c2-jNofM",
+            "source": "c2",
+            "target": "jNofM",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-c3-jNofM",
+            "source": "c3",
+            "target": "jNofM",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-jNofM-assert",
+            "source": "jNofM",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,150 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] trigger: database",
+      "description": "Polls the long-lived sentinel database. The driver writes the correlation id into the sentinel itself, because that value is all the source forwards.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "DB Poll",
+              "activityType": "databaseTrigger",
+              "config": {
+                "provider": "sqlite",
+                "connectionString": "Data Source=C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite",
+                "query": "SELECT sentinel FROM suite_sentinel WHERE id = 1",
+                "pollingIntervalSeconds": 10
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "ack",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Acknowledge: database",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$cid = {{trg.param.dbSentinel}}\nif ([string]::IsNullOrWhiteSpace($cid)) { throw 'trigger fired without a correlation id' }\n$ackDir = Join-Path 'C:\\Temp\\NP-TestSuite\\runtime\\acks' 'database'\nNew-Item -ItemType Directory -Path $ackDir -Force | Out-Null\nSet-Content -LiteralPath (Join-Path $ackDir $cid) -Value (Get-Date -Format o)\n$ackedCid = $cid\n"
+              },
+              "outputVariable": "ack",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "read",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Read the sentinel change",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "now={{trg.param.dbSentinel}} before={{trg.param.dbPrevious}}"
+              },
+              "outputVariable": "read"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$msg   = {{read.param.message}}\n$now   = {{trg.param.dbSentinel}}\n$prev  = {{trg.param.dbPrevious}}\n$acked = {{ack.param.ackedCid}}\nif ($msg -match '\\{\\{') { throw \"database trigger parameters left unresolved: '$msg'\" }\nif ([string]::IsNullOrWhiteSpace($now)) { throw \"dbSentinel was empty\" }\nif ($now -eq $prev) { throw \"the source fired without the sentinel having moved\" }\nif ([string]::IsNullOrWhiteSpace($acked)) { throw \"no correlation id was acknowledged\" }\n$assertOk = 'databaseTrigger'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "trigger": "database",
+                  "cid": "{{trg.param.dbSentinel}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-ack",
+            "source": "trg",
+            "target": "ack",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-ack-read",
+            "source": "ack",
+            "target": "read",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-read-assert",
+            "source": "read",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

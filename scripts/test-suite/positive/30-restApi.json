@@ -1,0 +1,303 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] restApi",
+      "description": "The read verbs, both header shapes, a retry block and two proxy modes against the instance's own health endpoint. The write verbs only ever come back non-2xx here, and restApi treats any non-2xx as a failed step, so they are covered by the negative contract instead.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 4/5 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 4/5 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "v0",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "rest: GET",
+              "activityType": "restApi",
+              "config": {
+                "url": "{{globals.NP_TESTSUITE_SELF_URL}}",
+                "timeoutSeconds": 10,
+                "method": "GET"
+              },
+              "outputVariable": "v0"
+            }
+          },
+          {
+            "id": "v1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "rest: GET + header object",
+              "activityType": "restApi",
+              "config": {
+                "url": "{{globals.NP_TESTSUITE_SELF_URL}}",
+                "timeoutSeconds": 10,
+                "method": "GET",
+                "headers": {
+                  "X-Suite": "1",
+                  "Accept": "application/json"
+                }
+              },
+              "outputVariable": "v1"
+            }
+          },
+          {
+            "id": "v2",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "rest: GET + header lines",
+              "activityType": "restApi",
+              "config": {
+                "url": "{{globals.NP_TESTSUITE_SELF_URL}}",
+                "timeoutSeconds": 10,
+                "method": "GET",
+                "headers": "X-Suite: 2\nAccept: text/plain"
+              },
+              "outputVariable": "v2"
+            }
+          },
+          {
+            "id": "v3",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "rest: GET + retry",
+              "activityType": "restApi",
+              "config": {
+                "url": "{{globals.NP_TESTSUITE_SELF_URL}}",
+                "timeoutSeconds": 10,
+                "method": "GET",
+                "retry": {
+                  "maxAttempts": 3,
+                  "backoff": "exponential",
+                  "initialDelayMs": 200,
+                  "maxDelayMs": 2000
+                }
+              },
+              "outputVariable": "v3"
+            }
+          },
+          {
+            "id": "v4",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "rest: HEAD",
+              "activityType": "restApi",
+              "config": {
+                "url": "{{globals.NP_TESTSUITE_SELF_URL}}",
+                "timeoutSeconds": 10,
+                "method": "HEAD"
+              },
+              "outputVariable": "v4"
+            }
+          },
+          {
+            "id": "v5",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "rest: proxyMode default",
+              "activityType": "restApi",
+              "config": {
+                "url": "{{globals.NP_TESTSUITE_SELF_URL}}",
+                "timeoutSeconds": 10,
+                "method": "GET",
+                "proxyMode": "default"
+              },
+              "outputVariable": "v5"
+            }
+          },
+          {
+            "id": "v6",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "rest: proxyMode direct",
+              "activityType": "restApi",
+              "config": {
+                "url": "{{globals.NP_TESTSUITE_SELF_URL}}",
+                "timeoutSeconds": 10,
+                "method": "GET",
+                "proxyMode": "direct"
+              },
+              "outputVariable": "v6"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 500
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$get      = {{v0.param.statusCode}}\n$hdrObj   = {{v1.param.statusCode}}\n$hdrLines = {{v2.param.statusCode}}\n$retried  = {{v3.param.statusCode}}\n$head     = {{v4.param.statusCode}}\n$proxyDef = {{v5.param.statusCode}}\n$proxyDir = {{v6.param.statusCode}}\n$body     = {{v0.output}}\n\nforeach ($pair in @(@('GET',$get), @('header object',$hdrObj), @('header lines',$hdrLines),\n                    @('retry',$retried), @('HEAD',$head), @('proxyMode default',$proxyDef),\n                    @('proxyMode direct',$proxyDir))) {\n  if ($pair[1] -ne '200') { throw \"restApi $($pair[0]): expected 200, got '$($pair[1])'\" }\n}\nif ([string]::IsNullOrWhiteSpace($body)) { throw \"restApi GET returned an empty body\" }\n$assertOk = 'restApi'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "restApi",
+                  "asserted": "{{assert.success}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-v0",
+            "source": "trg",
+            "target": "v0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v0-v1",
+            "source": "v0",
+            "target": "v1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v1-v2",
+            "source": "v1",
+            "target": "v2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v2-v3",
+            "source": "v2",
+            "target": "v3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v3-v4",
+            "source": "v3",
+            "target": "v4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v4-v5",
+            "source": "v4",
+            "target": "v5",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v5-v6",
+            "source": "v5",
+            "target": "v6",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v6-assert",
+            "source": "v6",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

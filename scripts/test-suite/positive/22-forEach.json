@@ -1,0 +1,314 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] forEach",
+      "description": "All three item formats, serial and parallel fan-out, the empty collection, static child parameters and continueOnError with a deliberately failing item.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 1/5 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 1/5 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "v0",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "forEach: json, parallelism 1",
+              "activityType": "forEach",
+              "config": {
+                "items": "[\"a\",\"b\",\"c\"]",
+                "itemsFormat": "json",
+                "childWorkflowNameOrId": "[TestSuite] Child: Echo Item",
+                "itemParameterName": "item",
+                "indexParameterName": "index",
+                "maxParallelism": 1,
+                "continueOnError": false,
+                "timeoutSecondsPerItem": 60
+              },
+              "outputVariable": "v0"
+            }
+          },
+          {
+            "id": "v1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "forEach: lines, parallelism 4",
+              "activityType": "forEach",
+              "config": {
+                "items": "one\ntwo\nthree\nfour",
+                "itemsFormat": "lines",
+                "childWorkflowNameOrId": "[TestSuite] Child: Echo Item",
+                "maxParallelism": 4,
+                "continueOnError": false,
+                "timeoutSecondsPerItem": 60
+              },
+              "outputVariable": "v1"
+            }
+          },
+          {
+            "id": "v2",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "forEach: auto detects JSON",
+              "activityType": "forEach",
+              "config": {
+                "items": "[\"x\",\"y\"]",
+                "itemsFormat": "auto",
+                "childWorkflowNameOrId": "[TestSuite] Child: Echo Item",
+                "maxParallelism": 2,
+                "timeoutSecondsPerItem": 60
+              },
+              "outputVariable": "v2"
+            }
+          },
+          {
+            "id": "v3",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "forEach: auto detects lines",
+              "activityType": "forEach",
+              "config": {
+                "items": "p\nq\nr",
+                "itemsFormat": "auto",
+                "childWorkflowNameOrId": "[TestSuite] Child: Echo Item",
+                "maxParallelism": 2,
+                "timeoutSecondsPerItem": 60
+              },
+              "outputVariable": "v3"
+            }
+          },
+          {
+            "id": "v4",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "forEach: empty collection",
+              "activityType": "forEach",
+              "config": {
+                "items": "[]",
+                "itemsFormat": "json",
+                "childWorkflowNameOrId": "[TestSuite] Child: Echo Item",
+                "maxParallelism": 1,
+                "timeoutSecondsPerItem": 60
+              },
+              "outputVariable": "v4"
+            }
+          },
+          {
+            "id": "v5",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "forEach: custom names + static params",
+              "activityType": "forEach",
+              "config": {
+                "items": "[\"only\"]",
+                "itemsFormat": "json",
+                "childWorkflowNameOrId": "[TestSuite] Child: Echo Item",
+                "itemParameterName": "item",
+                "indexParameterName": "index",
+                "parameters": {
+                  "extra": "static-value"
+                },
+                "maxParallelism": 1,
+                "timeoutSecondsPerItem": 60
+              },
+              "outputVariable": "v5"
+            }
+          },
+          {
+            "id": "v6",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "forEach: continueOnError",
+              "activityType": "forEach",
+              "config": {
+                "items": "[\"ok1\",\"boom\",\"ok2\"]",
+                "itemsFormat": "json",
+                "childWorkflowNameOrId": "[TestSuite] Child: Echo Item",
+                "maxParallelism": 1,
+                "continueOnError": true,
+                "timeoutSecondsPerItem": 60
+              },
+              "outputVariable": "v6"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 500
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$t0 = {{v0.param.total}}\n$s0 = {{v0.param.succeeded}}\n$t1 = {{v1.param.total}}\n$s1 = {{v1.param.succeeded}}\n$t2 = {{v2.param.total}}\n$t3 = {{v3.param.total}}\n$t4 = {{v4.param.total}}\n$s5 = {{v5.param.succeeded}}\n$t6 = {{v6.param.total}}\n$f6 = {{v6.param.failed}}\n$s6 = {{v6.param.succeeded}}\n\nif ([int]$t0 -ne 3 -or [int]$s0 -ne 3) { throw \"forEach json: total/succeeded were $t0/$s0\" }\nif ([int]$t1 -ne 4 -or [int]$s1 -ne 4) { throw \"forEach lines: total/succeeded were $t1/$s1\" }\nif ([int]$t2 -ne 2) { throw \"forEach auto-json total: $t2\" }\nif ([int]$t3 -ne 3) { throw \"forEach auto-lines total: $t3\" }\nif ([int]$t4 -ne 0) { throw \"forEach empty should iterate 0 times, got $t4\" }\nif ([int]$s5 -ne 1) { throw \"forEach static params: child did not succeed\" }\nif ([int]$t6 -ne 3) { throw \"forEach continueOnError total: $t6\" }\nif ([int]$f6 -ne 1) { throw \"forEach continueOnError should record exactly one failed item, got $f6\" }\nif ([int]$s6 -ne 2) { throw \"forEach continueOnError should still run the items after the failure, got $s6\" }\n$assertOk = 'forEach'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "forEach",
+                  "asserted": "{{assert.success}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-v0",
+            "source": "trg",
+            "target": "v0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v0-v1",
+            "source": "v0",
+            "target": "v1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v1-v2",
+            "source": "v1",
+            "target": "v2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v2-v3",
+            "source": "v2",
+            "target": "v3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v3-v4",
+            "source": "v3",
+            "target": "v4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v4-v5",
+            "source": "v4",
+            "target": "v5",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v5-v6",
+            "source": "v5",
+            "target": "v6",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v6-assert",
+            "source": "v6",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

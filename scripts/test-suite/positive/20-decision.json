@@ -1,0 +1,1026 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] decision",
+      "description": "All 14 comparison operators, group AND, group OR, not, the default-case fallthrough and first-match-wins ordering.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 4/5 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 4/5 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "seed",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Seed: operands",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "\n$envName   = 'test-env'\n$cpuCount  = '4'\n$hostname  = 'WIN-PC01'\n$emptyStr  = ''\n$isDomain  = 'true'\n$falseVal  = 'false'\nWrite-Output 'seeded'\n"
+              },
+              "outputVariable": "seed",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "d01",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "decision: eq",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "eq",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "envName"
+                      },
+                      "op": "==",
+                      "right": {
+                        "kind": "literal",
+                        "value": "test-env"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d01"
+            }
+          },
+          {
+            "id": "d02",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "decision: ne",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "ne",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "envName"
+                      },
+                      "op": "!=",
+                      "right": {
+                        "kind": "literal",
+                        "value": "prod"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d02"
+            }
+          },
+          {
+            "id": "d03",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "decision: lt",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "lt",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "cpuCount"
+                      },
+                      "op": "<",
+                      "right": {
+                        "kind": "literal",
+                        "value": "8"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d03"
+            }
+          },
+          {
+            "id": "d04",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "decision: gt",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "gt",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "cpuCount"
+                      },
+                      "op": ">",
+                      "right": {
+                        "kind": "literal",
+                        "value": "1"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d04"
+            }
+          },
+          {
+            "id": "d05",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "decision: le",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "le",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "cpuCount"
+                      },
+                      "op": "<=",
+                      "right": {
+                        "kind": "literal",
+                        "value": "4"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d05"
+            }
+          },
+          {
+            "id": "d06",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "decision: ge",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "ge",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "cpuCount"
+                      },
+                      "op": ">=",
+                      "right": {
+                        "kind": "literal",
+                        "value": "4"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d06"
+            }
+          },
+          {
+            "id": "d07",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 500
+            },
+            "data": {
+              "label": "decision: contains",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "contains",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "hostname"
+                      },
+                      "op": "contains",
+                      "right": {
+                        "kind": "literal",
+                        "value": "PC"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d07"
+            }
+          },
+          {
+            "id": "d08",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 500
+            },
+            "data": {
+              "label": "decision: startsWith",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "startsWith",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "hostname"
+                      },
+                      "op": "startsWith",
+                      "right": {
+                        "kind": "literal",
+                        "value": "WIN"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d08"
+            }
+          },
+          {
+            "id": "d09",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 500
+            },
+            "data": {
+              "label": "decision: endsWith",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "endsWith",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "hostname"
+                      },
+                      "op": "endsWith",
+                      "right": {
+                        "kind": "literal",
+                        "value": "01"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d09"
+            }
+          },
+          {
+            "id": "d10",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 500
+            },
+            "data": {
+              "label": "decision: matches",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "matches",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "hostname"
+                      },
+                      "op": "matches",
+                      "right": {
+                        "kind": "literal",
+                        "value": "^WIN-PC\\d+$"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d10"
+            }
+          },
+          {
+            "id": "d11",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 500
+            },
+            "data": {
+              "label": "decision: isEmpty",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "isEmpty",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "emptyStr"
+                      },
+                      "op": "isEmpty"
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d11"
+            }
+          },
+          {
+            "id": "d12",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 500
+            },
+            "data": {
+              "label": "decision: isNotEmpty",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "isNotEmpty",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "hostname"
+                      },
+                      "op": "isNotEmpty"
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d12"
+            }
+          },
+          {
+            "id": "d13",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 740
+            },
+            "data": {
+              "label": "decision: isTrue",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "isTrue",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "isDomain"
+                      },
+                      "op": "isTrue"
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d13"
+            }
+          },
+          {
+            "id": "d14",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 740
+            },
+            "data": {
+              "label": "decision: isFalse",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "isFalse",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "falseVal"
+                      },
+                      "op": "isFalse"
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d14"
+            }
+          },
+          {
+            "id": "d15",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 740
+            },
+            "data": {
+              "label": "decision: andGroup",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "andGroup",
+                    "condition": {
+                      "type": "group",
+                      "op": "AND",
+                      "children": [
+                        {
+                          "type": "comparison",
+                          "left": {
+                            "kind": "variable",
+                            "stepId": "seed",
+                            "field": "param",
+                            "paramName": "envName"
+                          },
+                          "op": "==",
+                          "right": {
+                            "kind": "literal",
+                            "value": "test-env"
+                          }
+                        },
+                        {
+                          "type": "comparison",
+                          "left": {
+                            "kind": "variable",
+                            "stepId": "seed",
+                            "field": "param",
+                            "paramName": "cpuCount"
+                          },
+                          "op": ">=",
+                          "right": {
+                            "kind": "literal",
+                            "value": "4"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d15"
+            }
+          },
+          {
+            "id": "d16",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 740
+            },
+            "data": {
+              "label": "decision: orGroup",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "orGroup",
+                    "condition": {
+                      "type": "group",
+                      "op": "OR",
+                      "children": [
+                        {
+                          "type": "comparison",
+                          "left": {
+                            "kind": "variable",
+                            "stepId": "seed",
+                            "field": "param",
+                            "paramName": "envName"
+                          },
+                          "op": "==",
+                          "right": {
+                            "kind": "literal",
+                            "value": "prod"
+                          }
+                        },
+                        {
+                          "type": "comparison",
+                          "left": {
+                            "kind": "variable",
+                            "stepId": "seed",
+                            "field": "param",
+                            "paramName": "cpuCount"
+                          },
+                          "op": ">=",
+                          "right": {
+                            "kind": "literal",
+                            "value": "4"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d16"
+            }
+          },
+          {
+            "id": "d17",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 740
+            },
+            "data": {
+              "label": "decision: notGroup",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "notGroup",
+                    "condition": {
+                      "type": "not",
+                      "child": {
+                        "type": "comparison",
+                        "left": {
+                          "kind": "variable",
+                          "stepId": "seed",
+                          "field": "param",
+                          "paramName": "hostname"
+                        },
+                        "op": "contains",
+                        "right": {
+                          "kind": "literal",
+                          "value": "PANIC"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d17"
+            }
+          },
+          {
+            "id": "d18",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 740
+            },
+            "data": {
+              "label": "decision: neverMatches",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "neverMatches",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "envName"
+                      },
+                      "op": "==",
+                      "right": {
+                        "kind": "literal",
+                        "value": "no-such-env"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d18"
+            }
+          },
+          {
+            "id": "d19",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 740
+            },
+            "data": {
+              "label": "decision: first match wins",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "winner",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "cpuCount"
+                      },
+                      "op": ">=",
+                      "right": {
+                        "kind": "literal",
+                        "value": "1"
+                      }
+                    }
+                  },
+                  {
+                    "name": "loser",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "seed",
+                        "field": "param",
+                        "paramName": "cpuCount"
+                      },
+                      "op": ">=",
+                      "right": {
+                        "kind": "literal",
+                        "value": "2"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "default"
+              },
+              "outputVariable": "d19"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 980
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$d01 = {{d01.param.case}}\nif ($d01 -ne 'eq') { throw \"decision eq: expected eq, got '$d01'\" }\n$d02 = {{d02.param.case}}\nif ($d02 -ne 'ne') { throw \"decision ne: expected ne, got '$d02'\" }\n$d03 = {{d03.param.case}}\nif ($d03 -ne 'lt') { throw \"decision lt: expected lt, got '$d03'\" }\n$d04 = {{d04.param.case}}\nif ($d04 -ne 'gt') { throw \"decision gt: expected gt, got '$d04'\" }\n$d05 = {{d05.param.case}}\nif ($d05 -ne 'le') { throw \"decision le: expected le, got '$d05'\" }\n$d06 = {{d06.param.case}}\nif ($d06 -ne 'ge') { throw \"decision ge: expected ge, got '$d06'\" }\n$d07 = {{d07.param.case}}\nif ($d07 -ne 'contains') { throw \"decision contains: expected contains, got '$d07'\" }\n$d08 = {{d08.param.case}}\nif ($d08 -ne 'startsWith') { throw \"decision startsWith: expected startsWith, got '$d08'\" }\n$d09 = {{d09.param.case}}\nif ($d09 -ne 'endsWith') { throw \"decision endsWith: expected endsWith, got '$d09'\" }\n$d10 = {{d10.param.case}}\nif ($d10 -ne 'matches') { throw \"decision matches: expected matches, got '$d10'\" }\n$d11 = {{d11.param.case}}\nif ($d11 -ne 'isEmpty') { throw \"decision isEmpty: expected isEmpty, got '$d11'\" }\n$d12 = {{d12.param.case}}\nif ($d12 -ne 'isNotEmpty') { throw \"decision isNotEmpty: expected isNotEmpty, got '$d12'\" }\n$d13 = {{d13.param.case}}\nif ($d13 -ne 'isTrue') { throw \"decision isTrue: expected isTrue, got '$d13'\" }\n$d14 = {{d14.param.case}}\nif ($d14 -ne 'isFalse') { throw \"decision isFalse: expected isFalse, got '$d14'\" }\n$d15 = {{d15.param.case}}\nif ($d15 -ne 'andGroup') { throw \"decision andGroup: expected andGroup, got '$d15'\" }\n$d16 = {{d16.param.case}}\nif ($d16 -ne 'orGroup') { throw \"decision orGroup: expected orGroup, got '$d16'\" }\n$d17 = {{d17.param.case}}\nif ($d17 -ne 'notGroup') { throw \"decision notGroup: expected notGroup, got '$d17'\" }\n$d18 = {{d18.param.case}}\nif ($d18 -ne 'default') { throw \"decision neverMatches: expected default, got '$d18'\" }\n$d19 = {{d19.param.case}}\nif ($d19 -ne 'winner') { throw \"decision first-match-wins: got '$d19'\" }\n$matched = {{d01.param.matched}}\nif ($matched -ne 'true') { throw \"decision matched flag: got '$matched'\" }\n$assertOk = 'decision'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 980
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "decision",
+                  "asserted": "{{assert.success}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-seed",
+            "source": "trg",
+            "target": "seed",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-seed-d01",
+            "source": "seed",
+            "target": "d01",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d01-d02",
+            "source": "d01",
+            "target": "d02",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d02-d03",
+            "source": "d02",
+            "target": "d03",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d03-d04",
+            "source": "d03",
+            "target": "d04",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d04-d05",
+            "source": "d04",
+            "target": "d05",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d05-d06",
+            "source": "d05",
+            "target": "d06",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-d06-d07",
+            "source": "d06",
+            "target": "d07",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d07-d08",
+            "source": "d07",
+            "target": "d08",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d08-d09",
+            "source": "d08",
+            "target": "d09",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d09-d10",
+            "source": "d09",
+            "target": "d10",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d10-d11",
+            "source": "d10",
+            "target": "d11",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d11-d12",
+            "source": "d11",
+            "target": "d12",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d12-d13",
+            "source": "d12",
+            "target": "d13",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-d13-d14",
+            "source": "d13",
+            "target": "d14",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d14-d15",
+            "source": "d14",
+            "target": "d15",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d15-d16",
+            "source": "d15",
+            "target": "d16",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d16-d17",
+            "source": "d16",
+            "target": "d17",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d17-d18",
+            "source": "d17",
+            "target": "d18",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d18-d19",
+            "source": "d18",
+            "target": "d19",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-d19-assert",
+            "source": "d19",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,156 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] trigger: webhook",
+      "description": "Fired by the driver over HTTP with a shared secret; the correlation id arrives through a fieldMappings JSONPath extraction.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Webhook",
+              "activityType": "webhookTrigger",
+              "config": {
+                "path": "suite",
+                "method": "POST",
+                "secret": "__TESTSUITE_WEBHOOK_SECRET__",
+                "signatureMode": "header",
+                "fieldMappings": [
+                  {
+                    "name": "cid",
+                    "path": "$.cid"
+                  }
+                ]
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "ack",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Acknowledge: webhook",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$cid = {{manual.cid}}\nif ([string]::IsNullOrWhiteSpace($cid)) { throw 'trigger fired without a correlation id' }\n$ackDir = Join-Path 'C:\\Temp\\NP-TestSuite\\runtime\\acks' 'webhook'\nNew-Item -ItemType Directory -Path $ackDir -Force | Out-Null\nSet-Content -LiteralPath (Join-Path $ackDir $cid) -Value (Get-Date -Format o)\n$ackedCid = $cid\n"
+              },
+              "outputVariable": "ack",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "read",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Read the webhook payload",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "method={{trg.param.webhookMethod}} path={{trg.param.webhookPath}} cid={{manual.cid}}"
+              },
+              "outputVariable": "read"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$msg  = {{read.param.message}}\n$body = {{trg.param.webhookBody}}\n$acked = {{ack.param.ackedCid}}\nif ($msg -match '\\{\\{') { throw \"webhook parameters left unresolved: '$msg'\" }\nif ($msg -notmatch 'method=POST') { throw \"webhookMethod was not POST: '$msg'\" }\nif ($msg -notmatch 'path=suite') { throw \"webhookPath: '$msg'\" }\nif ($body -notmatch 'cid') { throw \"webhookBody did not carry the payload: '$body'\" }\nif ([string]::IsNullOrWhiteSpace($acked)) { throw \"no correlation id was acknowledged\" }\n$assertOk = 'webhookTrigger'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "trigger": "webhook",
+                  "cid": "{{manual.cid}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-ack",
+            "source": "trg",
+            "target": "ack",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-ack-read",
+            "source": "ack",
+            "target": "read",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-read-assert",
+            "source": "read",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

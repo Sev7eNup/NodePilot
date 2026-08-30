@@ -4,6 +4,14 @@ A curated, importable set of example workflows covering **every** one of the 27 
 triggers — individually and in combination. Import through the UI (`Import`) or
 `POST /api/workflows/import`.
 
+> **Looking for the test suite?** The `muster-*.json` bundles and
+> `continuous-test-1min/` described below are **samples**, not the regression suite. The suite
+> that actually runs on a cadence, asserts its results and is guarded in CI lives in
+> [`scripts/test-suite/`](test-suite/) — see [docs/workflow-tests.md](../docs/workflow-tests.md).
+> Unlike the samples it drives the passive triggers for real, splits expected failures into
+> their own contract, and exercises the invasive service and scheduled-task actions that the
+> samples deliberately leave out.
+
 ## The clean sample set
 
 | File | Contents |

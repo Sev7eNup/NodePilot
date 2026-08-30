@@ -1,0 +1,214 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite-Neg] controlflow",
+      "description": "An unresolvable child, forEach stopping on its first failing item, the reserved parameter prefix and a returnData envelope past its hard limit.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 5/15 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 5/15 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "n0",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "startWf: child does not exist",
+              "activityType": "startWorkflow",
+              "config": {
+                "workflowNameOrId": "[TestSuite] No Such Child",
+                "waitForCompletion": true,
+                "timeoutSeconds": 30
+              },
+              "outputVariable": "n0"
+            }
+          },
+          {
+            "id": "n1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "forEach: stop on first error",
+              "activityType": "forEach",
+              "config": {
+                "items": "[\"ok1\",\"boom\",\"ok2\"]",
+                "itemsFormat": "json",
+                "childWorkflowNameOrId": "[TestSuite] Child: Echo Item",
+                "maxParallelism": 1,
+                "continueOnError": false,
+                "timeoutSecondsPerItem": 60
+              },
+              "outputVariable": "n1"
+            }
+          },
+          {
+            "id": "n2",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "forEach: reserved parameter prefix",
+              "activityType": "forEach",
+              "config": {
+                "items": "[\"x\"]",
+                "itemsFormat": "json",
+                "childWorkflowNameOrId": "[TestSuite] Child: Echo Item",
+                "itemParameterName": "__callDepth",
+                "maxParallelism": 1,
+                "timeoutSecondsPerItem": 30
+              },
+              "outputVariable": "n2"
+            }
+          },
+          {
+            "id": "big",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "Seed: five oversized values",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$blobA = 'a' * 9000\n$blobB = 'b' * 9000\n$blobC = 'c' * 9000\n$blobD = 'd' * 9000\n$blobE = 'e' * 9000\n"
+              },
+              "outputVariable": "big",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n3",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "return: envelope over 32 KiB",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "a": "{{big.param.blobA}}",
+                  "b": "{{big.param.blobB}}",
+                  "c": "{{big.param.blobC}}",
+                  "d": "{{big.param.blobD}}",
+                  "e": "{{big.param.blobE}}"
+                }
+              },
+              "outputVariable": "n3"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "contract": "negative",
+                  "area": "controlflow"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-n0",
+            "source": "trg",
+            "target": "n0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n0-n1",
+            "source": "n0",
+            "target": "n1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n1-n2",
+            "source": "n1",
+            "target": "n2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n2-big",
+            "source": "n2",
+            "target": "big",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-big-n3",
+            "source": "big",
+            "target": "n3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n3-ret",
+            "source": "n3",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

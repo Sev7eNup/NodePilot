@@ -1,0 +1,48 @@
+{
+  "key": "testsuite-probe",
+  "name": "TestSuite Probe",
+  "description": "Disposable custom activity the NodePilot test suite exercises.",
+  "icon": "beaker",
+  "color": null,
+  "engine": "auto",
+  "runsRemote": false,
+  "isolated": false,
+  "memoryLimitMb": null,
+  "maxProcesses": null,
+  "defaultTimeoutSeconds": 30,
+  "successExitCodes": null,
+  "scriptTemplate": "$repeatCount = [int]$repeat\n$echoed = ($label * $repeatCount)\nif ($loud -eq 'true') { $echoed = $echoed.ToUpperInvariant() }\n$charCount = $echoed.Length.ToString()\n$undeclared = 'this must not be captured'\nWrite-Output $echoed\n",
+  "inputs": [
+    {
+      "name": "label",
+      "label": "Label",
+      "type": "string",
+      "required": true,
+      "default": "np"
+    },
+    {
+      "name": "repeat",
+      "label": "Repeat",
+      "type": "number",
+      "required": false,
+      "default": "2"
+    },
+    {
+      "name": "loud",
+      "label": "Upper case",
+      "type": "boolean",
+      "required": false,
+      "default": "false"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "echoed",
+      "type": "string"
+    },
+    {
+      "name": "charCount",
+      "type": "number"
+    }
+  ]
+}

@@ -1,0 +1,149 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] trigger: event log",
+      "description": "Listens for the suite's own Application-log source. Registering that source is a one-time elevated step, so this workflow ships disabled.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Event Log",
+              "activityType": "eventLogTrigger",
+              "config": {
+                "logName": "Application",
+                "entryType": "Information",
+                "source": "NodePilot-TestSuite",
+                "messagePattern": "cid=[0-9a-fA-F-]{36}"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "ack",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Acknowledge: eventlog",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$cid = $matched\n$message = {{trg.param.eventMessage}}\n$m = [regex]::Match($message, 'cid=([0-9a-fA-F-]{36})')\nif (-not $m.Success) { throw \"no correlation id in '$message'\" }\n$matched = $m.Groups[1].Value\nif ([string]::IsNullOrWhiteSpace($cid)) { throw 'trigger fired without a correlation id' }\n$ackDir = Join-Path 'C:\\Temp\\NP-TestSuite\\runtime\\acks' 'eventlog'\nNew-Item -ItemType Directory -Path $ackDir -Force | Out-Null\nSet-Content -LiteralPath (Join-Path $ackDir $cid) -Value (Get-Date -Format o)\n$ackedCid = $cid\n"
+              },
+              "outputVariable": "ack",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "read",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Read the event",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "source={{trg.param.eventSource}} type={{trg.param.eventEntryType}} id={{trg.param.eventId}}"
+              },
+              "outputVariable": "read"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$msg   = {{read.param.message}}\n$acked = {{ack.param.ackedCid}}\nif ($msg -match '\\{\\{') { throw \"event log parameters left unresolved: '$msg'\" }\nif ($msg -notmatch 'type=Information') { throw \"eventEntryType: '$msg'\" }\nif ($msg -notmatch 'source=NodePilot-TestSuite') { throw \"eventSource: '$msg'\" }\nif ([string]::IsNullOrWhiteSpace($acked)) { throw \"no correlation id was acknowledged\" }\n$assertOk = 'eventLogTrigger'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "trigger": "eventlog"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-ack",
+            "source": "trg",
+            "target": "ack",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-ack-read",
+            "source": "ack",
+            "target": "read",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-read-assert",
+            "source": "read",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

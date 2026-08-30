@@ -1,0 +1,153 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] llmQuery",
+      "description": "A plain completion and JSON mode with explicit token and temperature limits. Needs Llm:Enabled and a reachable endpoint, so it ships disabled.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 7/30 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 7/30 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "v0",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "llm: plain prompt",
+              "activityType": "llmQuery",
+              "config": {
+                "prompt": "Reply with exactly the word OK and nothing else.",
+                "systemPrompt": "",
+                "jsonMode": false,
+                "maxTokens": 16,
+                "temperature": 0,
+                "timeoutSeconds": 60
+              },
+              "outputVariable": "v0"
+            }
+          },
+          {
+            "id": "v1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "llm: json mode",
+              "activityType": "llmQuery",
+              "config": {
+                "prompt": "Return the JSON object {\"status\":\"ok\"}.",
+                "jsonMode": true,
+                "maxTokens": 64,
+                "temperature": 0,
+                "timeoutSeconds": 60
+              },
+              "outputVariable": "v1"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$plain  = {{v0.output}}\n$model  = {{v0.param.model}}\n$finish = {{v0.param.finishReason}}\n$json   = {{v1.output}}\n\nif ([string]::IsNullOrWhiteSpace($plain)) { throw \"llmQuery returned no text\" }\nif ([string]::IsNullOrWhiteSpace($model)) { throw \"llmQuery did not report a model\" }\nif ([string]::IsNullOrWhiteSpace($finish)) { throw \"llmQuery did not report finishReason\" }\n# jsonMode does not validate the answer, so this asserts the shape the caller relies on.\ntry { $null = $json | ConvertFrom-Json } catch { throw \"jsonMode did not return JSON: '$json'\" }\n$assertOk = 'llmQuery'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "llmQuery",
+                  "asserted": "{{assert.success}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-v0",
+            "source": "trg",
+            "target": "v0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v0-v1",
+            "source": "v0",
+            "target": "v1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v1-assert",
+            "source": "v1",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

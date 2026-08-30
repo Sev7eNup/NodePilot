@@ -1,0 +1,209 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] custom activity",
+      "description": "Dispatch through the sentinel executor, declared inputs and their defaults, the declared-output allow-list and a per-node timeout override.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 0/5 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 0/5 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "v0",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "custom: declared inputs",
+              "activityType": "custom:testsuite-probe",
+              "config": {
+                "__customDefinitionId": "__TESTSUITE_CUSTOM_DEFINITION_ID__",
+                "__customKey": "testsuite-probe",
+                "label": "ab",
+                "repeat": "3",
+                "loud": "false"
+              },
+              "outputVariable": "v0"
+            }
+          },
+          {
+            "id": "v1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "custom: boolean input",
+              "activityType": "custom:testsuite-probe",
+              "config": {
+                "__customDefinitionId": "__TESTSUITE_CUSTOM_DEFINITION_ID__",
+                "__customKey": "testsuite-probe",
+                "label": "xy",
+                "repeat": "2",
+                "loud": "true"
+              },
+              "outputVariable": "v1"
+            }
+          },
+          {
+            "id": "v2",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "custom: input defaults",
+              "activityType": "custom:testsuite-probe",
+              "config": {
+                "__customDefinitionId": "__TESTSUITE_CUSTOM_DEFINITION_ID__",
+                "__customKey": "testsuite-probe"
+              },
+              "outputVariable": "v2"
+            }
+          },
+          {
+            "id": "v3",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "custom: per-node timeout",
+              "activityType": "custom:testsuite-probe",
+              "config": {
+                "__customDefinitionId": "__TESTSUITE_CUSTOM_DEFINITION_ID__",
+                "__customKey": "testsuite-probe",
+                "label": "t",
+                "repeat": "1",
+                "timeoutSeconds": 45
+              },
+              "outputVariable": "v3"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$echoed   = {{v0.param.echoed}}\n$chars    = {{v0.param.charCount}}\n$exitCode = {{v0.param.exitCode}}\n$loud     = {{v1.param.echoed}}\n$defaults = {{v2.param.echoed}}\n$timed    = {{v3.param.echoed}}\n$leak     = \"{{v0.param.undeclared}}\"\n\nif ($echoed -ne 'ababab') { throw \"custom activity echoed '$echoed', expected 'ababab'\" }\nif ([int]$chars -ne 6) { throw \"declared numeric output charCount was '$chars'\" }\n# The script runs no native command, so its exit code is 0 — regardless of what any earlier\n# workflow left in the pooled runspace. This is the cadence guard for the $LASTEXITCODE reset.\nif ($exitCode -ne '0') { throw \"exitCode leaked from an earlier script: got '$exitCode'\" }\nif ($loud -ne 'XYXY') { throw \"boolean input did not take: '$loud'\" }\n# label and repeat were omitted, so both come from the definition's declared defaults.\nif ($defaults -ne 'npnp') { throw \"input defaults resolved to '$defaults'\" }\nif ($timed -ne 't') { throw \"per-node timeout variant produced '$timed'\" }\n# Output capture is allow-listed: a script variable the definition does not declare must\n# not reach the data bus, so this template stays an unresolved literal.\nif ($leak -notmatch 'undeclared') { throw \"an undeclared script variable was captured: '$leak'\" }\n$assertOk = 'custom-activity'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "custom-activity",
+                  "asserted": "{{assert.success}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-v0",
+            "source": "trg",
+            "target": "v0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v0-v1",
+            "source": "v0",
+            "target": "v1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v1-v2",
+            "source": "v1",
+            "target": "v2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v2-v3",
+            "source": "v2",
+            "target": "v3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v3-assert",
+            "source": "v3",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

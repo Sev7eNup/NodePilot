@@ -1,0 +1,308 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite-Neg] remote",
+      "description": "Eight rejections on the PowerShell-backed activities: path shape, exit-code policy, the registry-root whitelist, captureProperties validation, an unknown CIM class, the probe-script injection guard and a poll timeout.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 5/15 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 5/15 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "n0",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "prog: relative filePath",
+              "activityType": "startProgram",
+              "config": {
+                "filePath": "cmd.exe",
+                "arguments": "/c echo x",
+                "waitForExit": true,
+                "timeoutSeconds": 20
+              },
+              "outputVariable": "n0",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "prog: exit 1 not accepted",
+              "activityType": "startProgram",
+              "config": {
+                "filePath": "C:\\Windows\\System32\\cmd.exe",
+                "arguments": "/c exit 1",
+                "waitForExit": true,
+                "timeoutSeconds": 20,
+                "successExitCodes": "0"
+              },
+              "outputVariable": "n1",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n2",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: prefix outside the whitelist",
+              "activityType": "registryOperation",
+              "config": {
+                "operation": "createKey",
+                "keyPath": "C:\\Windows"
+              },
+              "outputVariable": "n2",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n3",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "wmi: reserved capture name",
+              "activityType": "wmiQuery",
+              "config": {
+                "mode": "query",
+                "className": "Win32_BIOS",
+                "namespace": "root\\cimv2",
+                "captureProperties": [
+                  "count"
+                ]
+              },
+              "outputVariable": "n3",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n4",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "wmi: captureProperties as a string",
+              "activityType": "wmiQuery",
+              "config": {
+                "mode": "query",
+                "className": "Win32_BIOS",
+                "namespace": "root\\cimv2",
+                "captureProperties": "Caption,Version"
+              },
+              "outputVariable": "n4",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n5",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "wmi: unknown class",
+              "activityType": "wmiQuery",
+              "config": {
+                "mode": "query",
+                "className": "Win32_NoSuchClassHere",
+                "namespace": "root\\cimv2",
+                "captureProperties": [
+                  "Name"
+                ]
+              },
+              "outputVariable": "n5",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n6",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "wait: template in the probe script",
+              "activityType": "waitForCondition",
+              "config": {
+                "conditionType": "script",
+                "script": "{{nosuchstep.output}} -eq 1",
+                "intervalSeconds": 1,
+                "timeoutSeconds": 10
+              },
+              "outputVariable": "n6",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "n7",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 500
+            },
+            "data": {
+              "label": "wait: never satisfied",
+              "activityType": "waitForCondition",
+              "config": {
+                "conditionType": "script",
+                "script": "$false",
+                "intervalSeconds": 1,
+                "timeoutSeconds": 5
+              },
+              "outputVariable": "n7",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "contract": "negative",
+                  "area": "remote"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-n0",
+            "source": "trg",
+            "target": "n0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n0-n1",
+            "source": "n0",
+            "target": "n1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n1-n2",
+            "source": "n1",
+            "target": "n2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n2-n3",
+            "source": "n2",
+            "target": "n3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n3-n4",
+            "source": "n3",
+            "target": "n4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n4-n5",
+            "source": "n4",
+            "target": "n5",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n5-n6",
+            "source": "n5",
+            "target": "n6",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-n6-n7",
+            "source": "n6",
+            "target": "n7",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-n7-ret",
+            "source": "n7",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
