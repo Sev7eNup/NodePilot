@@ -252,7 +252,11 @@ try {
         # non-administrator replace the binaries the service account then executes. No
         # -RequireProtectedRules here: inheriting a safe ACL from Program Files is fine, only
         # effective write access by an untrusted principal is not.
-        Assert-NodePilotInstallRootHardened -Path $InstallPath
+        #
+        # Repair once before giving up, the way the installer does: an untrusted ACE left by an
+        # earlier install is a condition an update can fix, and refusing would leave the operator
+        # with no route to the new binaries at all.
+        Assert-NodePilotInstallRootHardenedOrRepair -Path $InstallPath -ServiceAccount $svcAccount
         # After the manifest check, never before it - see Remove-NodePilotSourceSnapshot.
         if (-not $keepSourceSnapshot) { [void](Remove-NodePilotSourceSnapshot -InstallPath $InstallPath) }
         Write-RestrictedSettings -Path $settingsPath -Content $settingsBytes -ServiceAccount $svcAccount

@@ -12,6 +12,21 @@ exhaustive.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An update no longer dead-ends on an install directory that someone widened.** The install
+  directory must not grant write access to anyone but SYSTEM, Administrators and TrustedInstaller,
+  because the service executes those binaries — but the updater only *verified* that, and refused
+  when it did not hold. The refusal came after the binaries had already been replaced, so it cost
+  a rollback and left the host on the old version with no route forward, over a condition an
+  update can simply fix. The updater now repairs the directory once, using the same protected DACL
+  the installer applies — inheritance dropped, every explicit ACE wiped, owner forced back to
+  Administrators — and then checks again. The guarantee is unchanged: if the directory is still
+  writable by an untrusted principal after the repair, the update fails and rolls back. Observed on
+  a host whose install directory had picked up a `FullControl` entry for an administrator account
+  some time after it was installed; nothing reads that ACL between updates, so it stayed invisible
+  until the next one.
+
 ## [1.2.21] - 2026-08-30
 
 A `runScript` step now publishes exactly the values its own script assigned, and a generated test

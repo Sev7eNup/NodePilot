@@ -338,55 +338,6 @@ function ConvertTo-NormalizedThumbprint {
     ($Raw -replace '[^0-9A-Fa-f]', '').ToUpperInvariant()
 }
 
-function Set-DirectoryAclForService {
-    <#
-      $DataPath must be writable by the service account and readable by Administrators/SYSTEM
-      only. Inheritance is disabled so nothing from Program Files or ProgramData parent ACLs
-      leaks in.
-    #>
-    param(
-        [Parameter(Mandatory)][string]$Path,
-        [Parameter(Mandatory)][string]$ServiceAccount,
-        [switch]$ReadOnlyForService,
-        [switch]$SkipServiceRule
-    )
-
-    $acl = Get-Acl $Path
-    $acl.SetAccessRuleProtection($true, $false)
-
-    # Set the owner, not just the ACEs. The API refuses to read its bootstrap token when any
-    # directory on the way to it has an owner it does not trust, and a reused data directory
-    # carries whoever last took ownership of it (the uninstaller's -PurgeData takes ownership to
-    # delete owner-only files). A fresh directory is already owned by Administrators.
-    $acl.SetOwner([System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
-
-    # Wipe inherited ACEs that SetAccessRuleProtection preserved-as-explicit.
-    $acl.Access | ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null }
-
-    $sysAdmin = @(
-        [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18'),
-        [System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
-    )
-    foreach ($id in $sysAdmin) {
-        $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-            $id, 'FullControl',
-            'ContainerInherit,ObjectInherit', 'None', 'Allow')
-        $acl.AddAccessRule($rule)
-    }
-
-    # LocalSystem is already covered by the SYSTEM FullControl ACE above - adding a second ACE
-    # for the same SID is redundant, so the caller passes -SkipServiceRule in that case.
-    if (-not $SkipServiceRule) {
-        $svcRights = if ($ReadOnlyForService) { 'ReadAndExecute' } else { 'Modify' }
-        $svcRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-            $ServiceAccount, $svcRights,
-            'ContainerInherit,ObjectInherit', 'None', 'Allow')
-        $acl.AddAccessRule($svcRule)
-    }
-
-    Set-Acl -Path $Path -AclObject $acl
-}
-
 function Test-ServiceDirectoryAclTrust {
     <#
       Applies the same rule the service applies at start time:

@@ -157,6 +157,16 @@ on every upgrade would never notice. The updater calls it **without** `-RequireP
 an older installation under Program Files inherits a perfectly safe ACL, and failing that would
 block upgrades on hosts that are not actually exposed.
 
+The updater goes through `Assert-NodePilotInstallRootHardenedOrRepair`, which repairs once before
+it gives up. Verifying alone turned a fixable condition into a dead end, and at the worst moment:
+the check runs *after* the binaries have been replaced, so a refusal costs a rollback and leaves
+the host on the old version with no route forward. An ACE granted after the installation was laid
+down is exactly what an update should clear, and the same `Set-DirectoryAclForService` the
+installer uses clears it — inheritance dropped, every explicit ACE wiped, owner forced back to
+Administrators. The property is unchanged, because the repair is followed by a second
+`Assert-NodePilotInstallRootHardened`: if the directory is still writable by an untrusted
+principal, that throws and the caller rolls back. Repair-then-verify, never repair-and-hope.
+
 Prerequisite for the read-only DACL: everything the *service* writes at runtime already lives
 under `DataPath` (`Jwt:KeyPath`, `DataProtection:KeyRingPath`, `Setup:AdminSetupTokenPath`,
 `Settings:RuntimeOverridesPath`, logs, archives). `Test-DeploymentTemplates.ps1` pins all four
