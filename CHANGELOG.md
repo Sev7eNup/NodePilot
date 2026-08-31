@@ -12,6 +12,11 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.23] - 2026-08-31
+
+The Service Switcher became the Engine Switcher in more than its window title, and the utility got
+three fixes that came out of running it against a real System Center installation.
+
 ### Changed
 
 - **The Service Switcher is now the Engine Switcher everywhere, not just in its window title.** The
@@ -1119,7 +1124,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.22...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.23...main
+[1.2.23]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.23
 [1.2.22]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.22
 [1.2.21]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.21
 [1.2.20]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.20
