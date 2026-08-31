@@ -17,9 +17,15 @@
     state (Serilog's Log.Logger, Console.SetOut, environment variables, static hub and Quartz
     slots) and xunit enforces them WITHIN an assembly. Separate processes make that isolation
     stronger, not weaker.
+
+    Two, not 0 (one per core). xunit.v3 launches each assembly as its own process and gives that
+    process 60 seconds to answer discovery; run 33420635702 hit "Test process did not respond
+    within 60 seconds" on NodePilot.Data.Tests with no parallelism at all, so the four-vCPU CI
+    agent is already close to that limit. Saturating it would make the flake routine. Most of the
+    win is overlapping the seven per-assembly start-ups anyway, and two lanes get that.
   -->
   <RunConfiguration>
-    <MaxCpuCount>0</MaxCpuCount>
+    <MaxCpuCount>2</MaxCpuCount>
   </RunConfiguration>
 
   <!--
