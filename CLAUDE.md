@@ -49,7 +49,7 @@ Diese Datei ist der Index; die Tiefe liegt in `docs/`:
 
 Projekt-Layout unter `src/` + `tests/` — nicht hier gespiegelt, direkt nachsehen. Bindend ist die Abhaengigkeitsrichtung:
 
-**Dep-Graph:** `Api -> Ai, Engine, Scheduler, Data, Remote, Core, Telemetry` | `Engine -> Ai, Data, Remote, Core, Telemetry` | `Scheduler -> Engine, Data, Core` (Application-Tier: konsumiert Engine-Notifications/-Conditions/-Security) | `Ai -> Core` (LLM-Stack, sitzt unter Engine, damit Api+Engine ihn teilen) | `Data -> Core` | `Remote -> Core` | `Telemetry -> Core` | `Cli -> Core` (HTTP-only) | `Mcp -> Core` (HTTP-only, MCP-Server) | `ServiceSwitcher -> ∅` (lokale Windows-SCM-WPF-App). Maschinell erzwungen durch `DependencyDirectionTests` (Api.Tests/Architecture) — Graph-Änderung heißt: csproj + diese Zeile + der Test ändern sich gemeinsam.
+**Dep-Graph:** `Api -> Ai, Engine, Scheduler, Data, Remote, Core, Telemetry` | `Engine -> Ai, Data, Remote, Core, Telemetry` | `Scheduler -> Engine, Data, Core` (Application-Tier: konsumiert Engine-Notifications/-Conditions/-Security) | `Ai -> Core` (LLM-Stack, sitzt unter Engine, damit Api+Engine ihn teilen) | `Data -> Core` | `Remote -> Core` | `Telemetry -> Core` | `Cli -> Core` (HTTP-only) | `Mcp -> Core` (HTTP-only, MCP-Server) | `EngineSwitcher -> ∅` (lokale Windows-SCM-WPF-App). Maschinell erzwungen durch `DependencyDirectionTests` (Api.Tests/Architecture) — Graph-Änderung heißt: csproj + diese Zeile + der Test ändern sich gemeinsam.
 
 ## Projekt starten
 
@@ -72,7 +72,7 @@ Port 5000 kommt aus `launchSettings.json` und ist derselbe, auf den der Vite-Pro
 ist nicht nötig. **Immer erst `pg_ctl start`, dann `dotnet run`.**
 
 **`/docs` im Dev:** In Produktion bedient die API die Doku aus `wwwroot/docs`; im Dev proxyt der
-Vite-Server `/docs` auf 5174. Läuft der Doku-Dev-Server nicht, führt der Fragezeichen-Button ins
+Vite-Server `/docs` auf 5174. Läuft der Doku-Dev-Server nicht, führt der Doku-Button ins
 Leere — das ist erwartet, kein Defekt. Der Doku-Dev-Server läuft selbst unter `/docs/`
 (`--base=/docs/` im dev-Skript, weil Vite 8 das `base` aus der Config im Dev ignoriert); ohne das
 liefert er seinen Entry absolut unter `/src/main.tsx` und der App-Dev-Server beantwortet den mit

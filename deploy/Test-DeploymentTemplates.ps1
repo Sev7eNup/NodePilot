@@ -367,6 +367,11 @@ $requiredBuildContracts = [ordered]@{
     'the engine switcher is published self-contained' = '(?s)dotnet publish \$SwitcherCsproj.*?--self-contained true'
     'the engine switcher is published as a single file' = '(?s)dotnet publish \$SwitcherCsproj.*?PublishSingleFile=true'
     'the standalone switcher is covered by release checksums' = '(?s)\$artifacts\s*=\s*@\([^\r\n]*\$standaloneSwitcher'
+    # The switcher reads engine-switcher.json from next to itself. Shipping the bare exe left a
+    # machine without a NodePilot installation with no template to take, which is the whole point
+    # of the standalone drop.
+    'the standalone switcher ships as a zip' = '\$standaloneSwitcher\s*=\s*Join-Path \$OutDir "NodePilot-EngineSwitcher-\$Version-win-x64\.zip"'
+    'the standalone switcher zip carries the configuration template' = '(?s)Compress-Archive -Path \$switcherExe,\s*\$switcherTemplate -DestinationPath \$standaloneSwitcher'
     # One signing loop covering every installer, not a hand-maintained block per target: a second
     # copy is how the two drift apart, and the ordering check below only pins one place.
     'signing iterates over every installer this run produced' = '(?s)foreach \(\$target in \$installersToSign\)'
@@ -1085,7 +1090,7 @@ Assert-TextMatches -Name 'a failed setup leaves a log behind' `
 Assert-TextMatches -Name 'the setup requires elevation' `
     -Text $serverIss -Pattern '(?m)^PrivilegesRequired=admin\s*$'
 Assert-TextMatches -Name 'the server setup installs a Start Menu shortcut for the engine switcher' `
-    -Text $serverIss -Pattern '(?m)^Name:\s*"\{group\}\\NodePilot Engine Switcher";\s*Filename:\s*"\{app\}\\tools\\service-switcher\\NodePilot\.ServiceSwitcher\.exe"'
+    -Text $serverIss -Pattern '(?m)^Name:\s*"\{group\}\\NodePilot Engine Switcher";\s*Filename:\s*"\{app\}\\tools\\engine-switcher\\NodePilot\.EngineSwitcher\.exe"'
 # The controls on the network and prerequisites pages are positioned once, at wizard construction,
 # and carry no anchors. A resizable window would grow around them - the picker would stay where it
 # was while the page around it got taller.

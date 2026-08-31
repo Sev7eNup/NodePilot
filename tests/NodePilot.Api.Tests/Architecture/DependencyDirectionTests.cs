@@ -29,7 +29,7 @@ public sealed class DependencyDirectionTests
         ["NodePilot.Api"] = ["NodePilot.Ai", "NodePilot.Engine", "NodePilot.Scheduler", "NodePilot.Data", "NodePilot.Remote", "NodePilot.Core", "NodePilot.Telemetry"],
         ["NodePilot.Cli"] = ["NodePilot.Core"],
         ["NodePilot.Mcp"] = ["NodePilot.Core"],
-        ["NodePilot.ServiceSwitcher"] = [],
+        ["NodePilot.EngineSwitcher"] = [],
     };
 
     private static readonly Regex ProjectReferencePattern = new(

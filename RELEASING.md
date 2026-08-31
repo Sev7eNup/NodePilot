@@ -90,7 +90,7 @@ The build writes these, and **all of them belong in the release**:
 | `NodePilot-Deploy-Scripts-<version>.zip` | the install scripts, **separately** — a user must be able to get the verifying script without first extracting the archive they have not verified yet |
 | `NodePilot-Server-Setup-<version>.exe` | GUI installer |
 | `NodePilot-Desktop-Setup-<version>.exe` | desktop installer |
-| `NodePilot-ServiceSwitcher-<version>-win-x64.exe` | the engine switcher as a standalone, self-contained executable — the server artifact carries the same bytes under `tools\service-switcher`, this copy is for a machine that has no NodePilot installation to take it from |
+| `NodePilot-EngineSwitcher-<version>-win-x64.zip` | the engine switcher as a standalone, self-contained executable plus its configuration template — the server artifact carries the same bytes under `tools\engine-switcher`, this copy is for a machine that has no NodePilot installation to take it from, which is also why the template travels with it |
 | `nodepilot-release-signing.cer` | the publisher certificate the deployment guide tells people to compare against |
 | `NodePilot-<version>.SHA256SUMS.txt` | covers **every** file above, the certificate included |
 

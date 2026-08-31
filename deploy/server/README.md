@@ -8,10 +8,10 @@ and is still the reference; the setup calls exactly that script.
 > [`../desktop/README.md`](../desktop/README.md). It binds loopback only.
 
 The server artifact also contains the self-contained WPF **NodePilot Engine Switcher** under
-`tools\service-switcher`; the GUI installer adds its Start-menu shortcut. It controls only the
+`tools\engine-switcher`; the GUI installer adds its Start-menu shortcut. It controls only the
 validated local NodePilot service and the exact SCOrch allowlist `omanagement`, `oremoting`,
 `omonitor`, and `orunbook`. Database services are never included. See
-[`docs/service-switcher.md`](../../docs/service-switcher.md) for its fail-closed behavior and the
+[`docs/engine-switcher.md`](../../docs/engine-switcher.md) for its fail-closed behavior and the
 required absolute local or UNC workflow/runbook allowlist paths.
 
 ## Quick start
