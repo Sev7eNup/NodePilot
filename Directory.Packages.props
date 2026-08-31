@@ -76,8 +76,8 @@
     <PackageVersion Include="System.Management.Automation" Version="7.6.5" />
     <!-- Quartz + Quartz.Extensions.Hosting pinned to the same version so the Cron evaluator
          (Data, maintenance windows) and the scheduler host (Scheduler) never drift. -->
-    <PackageVersion Include="Quartz" Version="3.19.1" />
-    <PackageVersion Include="Quartz.Extensions.Hosting" Version="3.19.1" />
+    <PackageVersion Include="Quartz" Version="3.20.0" />
+    <PackageVersion Include="Quartz.Extensions.Hosting" Version="3.20.0" />
   </ItemGroup>
 
   <!-- Serilog logging -->
