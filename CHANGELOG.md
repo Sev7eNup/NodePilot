@@ -31,6 +31,11 @@ exhaustive.
   "No server URL configured". The installer writes the hostname and HTTPS port it just
   configured into the copy next to the executable; a machine-wide configuration under
   `%ProgramData%` still wins and is left untouched.
+- **Install and update now verify that `np` reached the machine PATH.** Every step in that block
+  is a warning at worst, so an entry that never landed left the operator reading "Installation
+  complete" and finding no `np` — which is how a line-break slip went unnoticed through 1.2.8 and
+  1.2.9. Both scripts read the value back, and the installer states the outcome in its closing
+  summary, including the reminder that an already-open console keeps its old environment.
 
 ## [1.2.24] - 2026-08-31
 

@@ -368,6 +368,15 @@ public class TrustAllCertsUpdate : ICertificatePolicy {
                         (Add-NodePilotPathEntry -PathValue $machinePath -Directory $toolsPath), 'Machine')
                     Write-Info "Added $toolsPath to the machine PATH (new shells will find 'np')."
                 }
+                # Read back rather than trust the write: everything here is a warning at worst, so
+                # an entry that never lands would otherwise leave no trace in the update output.
+                if (-not (Test-NodePilotPathContains `
+                        -PathValue ([Environment]::GetEnvironmentVariable('Path', 'Machine')) `
+                        -Directory $toolsPath)) {
+                    Write-Warn "The machine PATH still does not contain $toolsPath after the update."
+                }
+            } else {
+                Write-Warn "np.exe not found under $toolsPath - skipping the PATH entry."
             }
         } catch {
             Write-Warn "Could not update the machine PATH: $($_.Exception.Message)"

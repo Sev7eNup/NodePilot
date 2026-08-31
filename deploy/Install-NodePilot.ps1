@@ -1675,6 +1675,7 @@ try {
 # Idempotent - a re-install or upgrade must not grow the variable each time, and PATH has a
 # real length limit. nodepilot-mcp is deliberately NOT added: an MCP client is configured with
 # an absolute path in .mcp.json, so it gains nothing from PATH and would only add noise.
+$cliPathState = 'not registered'
 try {
     . (Join-Path $PSScriptRoot 'MachinePath.ps1')
     $toolsPath = Join-Path $InstallPath 'tools\np'
@@ -1686,6 +1687,15 @@ try {
             [Environment]::SetEnvironmentVariable('Path',
                 (Add-NodePilotPathEntry -PathValue $machinePath -Directory $toolsPath), 'Machine')
             Write-Info "  Added $toolsPath to the machine PATH (new shells will find 'np')."
+        }
+        # Read back rather than trust the write. Every failure below this line is a warning, so
+        # without a post-condition the operator reads "Installation complete" and finds no `np`.
+        if (Test-NodePilotPathContains `
+                -PathValue ([Environment]::GetEnvironmentVariable('Path', 'Machine')) `
+                -Directory $toolsPath) {
+            $cliPathState = 'on the machine PATH'
+        } else {
+            Write-Warn "  The machine PATH still does not contain $toolsPath after the update."
         }
     } else {
         Write-Warn "  np.exe not found under $toolsPath - skipping the PATH entry."
@@ -1733,6 +1743,15 @@ Write-Host "  URL         : https://$PublicHostname/" -ForegroundColor Green
 Write-Host "  API docs    : https://$PublicHostname/swagger (disabled when Swagger:DisableInNonDevelopment=true)" -ForegroundColor Gray
 Write-Host "  Health      : https://$PublicHostname/healthz/ready"   -ForegroundColor Gray
 Write-Host "  Logs        : $DataPath\logs"                          -ForegroundColor Gray
+Write-Host ("  CLI         : np - " + $cliPathState) `
+    -ForegroundColor $(if ($cliPathState -eq 'on the machine PATH') { 'Gray' } else { 'Yellow' })
+if ($cliPathState -eq 'on the machine PATH') {
+    # A running console keeps the environment it started with, so the operator who just ran setup
+    # will not find np in that window no matter what the registry says.
+    Write-Host "                open a NEW console to pick it up"    -ForegroundColor Gray
+} else {
+    Write-Host "                run np.exe from $InstallPath\tools\np" -ForegroundColor Yellow
+}
 Write-Host "  Install log : $reportPath"                             -ForegroundColor Gray
 Write-Host ""
 Write-Host "  External-Trigger API key (legacy; store it now, it won't be shown again):" -ForegroundColor Yellow

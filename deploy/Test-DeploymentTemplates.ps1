@@ -2272,6 +2272,19 @@ foreach ($pathConsumer in @(
         -Text $pathConsumer.Text -Pattern "Join-Path \`$InstallPath 'tools\\np'"
 }
 
+# Every failure in those blocks is a warning, so a PATH entry that never lands leaves the operator
+# reading "Installation complete" and finding no np. Install and update read the value back, and
+# the installer's closing summary states the outcome either way.
+foreach ($pathVerifier in @(
+        @{ Name = 'installer'; Text = $installer },
+        @{ Name = 'updater';   Text = $updateScript })) {
+    Assert-TextMatches -Name "$($pathVerifier.Name) reads the machine PATH back after writing it" `
+        -Text $pathVerifier.Text `
+        -Pattern '(?s)SetEnvironmentVariable.*?Test-NodePilotPathContains[^\r\n]*`?\s*-PathValue \(\[Environment\]::GetEnvironmentVariable'
+}
+Assert-TextMatches -Name 'installer reports the CLI PATH outcome in its summary' `
+    -Text $installer -Pattern '\$cliPathState'
+
 # The Engine Switcher drives NodePilot through np.exe. Without a server URL it falls back to the
 # CLI's own configuration, which is per-user and DPAPI-protected - the setup account is not the
 # account that later runs the switcher, so only the shipped configuration can carry it. Same
