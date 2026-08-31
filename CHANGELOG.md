@@ -31,6 +31,14 @@ exhaustive.
   "No server URL configured". The installer writes the hostname and HTTPS port it just
   configured into the copy next to the executable; a machine-wide configuration under
   `%ProgramData%` still wins and is left untouched.
+- **The GUI server setup puts `np` on the machine PATH again.** Setup runs the installer from a
+  payload staged by `deploy/server/Build-ServerInstaller.ps1`, and that script list was missing
+  `MachinePath.ps1` — the helper the PATH block dot-sources. The block is wrapped in `try/catch`,
+  so the failed dot-source degraded to a warning, the installation reported success, and `np.exe`
+  sat in `<install>	ools
+p` unreachable from cmd or PowerShell. Installations driven by the
+  deployment scripts shipped the helper and were never affected. A contract test now derives the
+  required helpers from the entry points, so the two staging lists cannot drift apart again.
 - **Install and update now verify that `np` reached the machine PATH.** Every step in that block
   is a warning at worst, so an entry that never landed left the operator reading "Installation
   complete" and finding no `np` — which is how a line-break slip went unnoticed through 1.2.8 and
