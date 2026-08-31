@@ -27,7 +27,7 @@ internal sealed record ScorchWorkloadConfiguration(
     string RunbooksPath = "api/runbooks",
     string RunbookServersPath = "api/runbookServers",
     string JobsPath = "api/jobs",
-    string ActiveJobsPath = "api/jobs?$filter=Status in ('Pending','Running')",
+    string ActiveJobsPath = "api/jobs?$select=Id,RunbookId,Status&$filter=Status eq 'Pending' or Status eq 'Running'",
     string StopJobPathTemplate = "api/jobs/{id}",
     string StopJobMethod = "PATCH",
     int RequestTimeoutSeconds = 30,

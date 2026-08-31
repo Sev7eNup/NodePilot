@@ -308,6 +308,8 @@ public sealed class SwitcherConfigurationLoaderTests : IDisposable
             .Be(@"C:\ProgramData\NodePilot\EngineSwitcher\nodepilot-workflows.txt");
         loaded.SystemCenterOrchestrator.RunbookAllowListPath.Should()
             .Be(@"\\server\share\scorch-runbooks.txt");
+        loaded.SystemCenterOrchestrator.ActiveJobsPath.Should().Be(
+            "api/jobs?$select=Id,RunbookId,Status&$filter=Status eq 'Pending' or Status eq 'Running'");
     }
 
     private static string FindRepoRoot()

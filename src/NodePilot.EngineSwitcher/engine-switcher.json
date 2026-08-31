@@ -12,7 +12,7 @@
     "runbooksPath": "api/runbooks",
     "runbookServersPath": "api/runbookServers",
     "jobsPath": "api/jobs",
-    "activeJobsPath": "api/jobs?$filter=Status in ('Pending','Running')",
+    "activeJobsPath": "api/jobs?$select=Id,RunbookId,Status&$filter=Status eq 'Pending' or Status eq 'Running'",
     "stopJobPathTemplate": "api/jobs/{id}",
     "stopJobMethod": "PATCH",
     "requestTimeoutSeconds": 30,
