@@ -105,6 +105,27 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Cache NuGet packages
+        # setup-dotnet's built-in `cache: true` is not usable here: it requires a
+        # packages.lock.json, and Directory.Packages.props deliberately keeps floating
+        # latest-in-band pins that a lock file would freeze.
+        #
+        # The same key is used in codeql.yml. Caches are repository-wide, so one warm entry
+        # serves both workflows — the CodeQL C# build currently pays for its own cold restore.
+        #
+        # Explicit globs rather than '**/*.csproj': a '**' would also walk out/ and every
+        # bin/obj tree that happens to be in the checkout.
+        #
+        # Consequence worth naming: when a floating pin resolves to a new minor, restore pulls
+        # just that package over the network and the cache is not rewritten (the key still
+        # hits). Bump the v1 epoch to discard the cache.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-v1-${{ runner.os }}-${{ hashFiles('global.json', 'dotnet-tools.json', 'Directory.Packages.props', 'Directory.Build.props', 'src/**/*.csproj', 'tests/**/*.csproj') }}
+          restore-keys: |
+            nuget-v1-${{ runner.os }}-
+
       - name: Enforce patched .NET SDK policy
         shell: pwsh
         run: |
@@ -345,13 +366,97 @@ jobs:
         run: npm run test:run
 
   e2e:
-    name: Frontend E2E (Playwright)
+    name: Frontend E2E (Playwright) ${{ matrix.shard }}/4
     # Hermetic specs against the built SPA with every API mocked; nothing here reads a
     # documentation file. It is the longest job in the workflow, so the one worth gating.
+    #
+    # Playwright shards by test GROUP (file), not by individual test. Files hold between one
+    # and sixteen tests, so expect the shards to come out uneven; the slowest one sets the job
+    # duration.
+    #
+    # Each shard builds the SPA itself via the webServer block. That looks wasteful next to the
+    # `frontend` job, but the four builds run CONCURRENTLY — together they cost one build of
+    # wall-clock. A shared build job would serialise its own `npm ci` in front of all of them
+    # and come out slower.
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      # Load-bearing for ci-gate: with fail-fast the surviving shards report `cancelled`
+      # instead of their own result, and the gate could not tell a real failure from a
+      # cascade.
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    defaults:
+      run:
+        working-directory: src/nodepilot-ui
+    env:
+      # Two workers per shard on a four-vCPU runner. The specs carry no shared state: every API
+      # call is intercepted per test with page.route(), and no spec uses serial mode or a
+      # beforeAll fixture. Set to '1' if parallelism ever shows up as flake.
+      PW_WORKERS: '2'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: src/nodepilot-ui/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Resolve Playwright version
+        id: pw
+        # The resolved version from node_modules, not the ^-range in package.json: the cache
+        # key has to change when the actual browser build does.
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        # setup-node's npm cache does not cover ~/.cache/ms-playwright.
+        id: pw-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright OS dependencies
+        # The cache holds the browser, not the apt packages it links against.
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Run E2E tests (shard ${{ matrix.shard }}/4)
+        # blob instead of html: a single shard's HTML report is useless on its own, blob files
+        # can be merged. `github` stays — those are the inline PR annotations.
+        run: npm run test:e2e -- --shard=${{ matrix.shard }}/4 --reporter=blob,github
+
+      - name: Upload blob report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: blob-report-${{ matrix.shard }}
+          path: src/nodepilot-ui/blob-report/
+          retention-days: 3
+
+  e2e-report:
+    name: Playwright report (merged)
+    # Deliberately NOT in ci-gate.needs, and listed in the gate's exemption list: this job
+    # renders no verdict, it only assembles an artifact. Inside the gate it would add its own
+    # runtime to the critical path and hold up auto-merge for a report nobody reads on a green
+    # run.
+    needs: e2e
+    if: ${{ !cancelled() && needs.e2e.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: src/nodepilot-ui
@@ -368,14 +473,15 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Install Playwright browsers
-        # The browser is downloaded on every run: there is no cache step, because setup-node's
-        # npm cache does not cover ~/.cache/ms-playwright. Add actions/cache keyed on the
-        # playwright version if this ever becomes the bottleneck.
-        run: npx playwright install --with-deps chromium
+      - name: Download blob reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: src/nodepilot-ui/all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
 
-      - name: Run E2E tests
-        run: npm run test:e2e
+      - name: Merge into one HTML report
+        run: npx playwright merge-reports --reporter html ./all-blob-reports
 
       - name: Upload Playwright report
         if: always()
@@ -426,7 +532,7 @@ jobs:
         # its failure cannot fail the gate.
         run: |
           set -euo pipefail
-          exempt='^(ci-gate)$'
+          exempt='^(ci-gate|e2e-report)$'
           declared="$(yq -r '.jobs | keys | .[]' .github/workflows/ci.yml | grep -Ev "$exempt" | sort)"
           wired="$(yq -r '.jobs.ci-gate.needs[]' .github/workflows/ci.yml | sort)"
           if [[ "$declared" != "$wired" ]]; then
