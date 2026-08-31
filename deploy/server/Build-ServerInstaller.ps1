@@ -135,8 +135,14 @@ foreach ($file in $ArtifactPath, "$ArtifactPath.manifest.json", "$ArtifactPath.m
 Write-Step 'Staging the deployment scripts'
 # Everything the wizard's adapter dot-sources or shells out to, and nothing else. Test-* scripts
 # and the build scripts are development-host only.
+# Every helper the entry points dot-source has to be here too. A missing one does not fail the
+# install: install, update and uninstall all wrap their PATH handling in a try/catch, so the
+# absent MachinePath.ps1 turned into a warning and `np` silently never reached the machine PATH
+# on every GUI installation. Test-DeploymentTemplates.ps1 derives the required set from the
+# $PSScriptRoot references in the entry points and fails when the lists drift apart again.
 $deployScripts = @(
     'ArtifactSecurity.ps1'
+    'MachinePath.ps1'
     'Preflight.ps1'
     'ServiceControl.ps1'
     'SetupContract.ps1'

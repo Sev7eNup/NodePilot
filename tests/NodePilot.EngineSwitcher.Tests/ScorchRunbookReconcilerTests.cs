@@ -73,8 +73,41 @@ public sealed class ScorchRunbookReconcilerTests
         client.Jobs.Should().ContainSingle(job => job.RunbookId == allowed.Id && job.Status == "Running");
     }
 
-    private static ScorchWorkloadConfiguration Configuration() =>
-        new(@"\\server\share\scorch.txt", "http://localhost:81");
+    // An allowlist of ordinary runbooks finishes in seconds. Demanding that every one of them is
+    // running at the same moment could only ever be satisfied by long-lived monitor runbooks.
+    [Fact]
+    public async Task Reconcile_WhenAStartedRunbookFinishesImmediately_Settles()
+    {
+        var allowed = new ScorchRunbook(Guid.NewGuid(), "Start");
+        var client = new StatefulScorchClient([allowed]) { StartedJobStatus = "Completed" };
+        var reconciler = new ScorchRunbookReconciler(new FixedScorchFactory(client), new RecordingLogger());
+
+        await reconciler.ReconcileAsync(
+            Configuration(reconciliationTimeoutSeconds: 5), [allowed.Name], null, CancellationToken.None);
+
+        client.Started.Should().ContainSingle().Which.Should().Be(allowed.Id);
+    }
+
+    // The deadline used to surface as a bare TaskCanceledException, which the coordinator let
+    // through and the async void command handler turned into a process crash.
+    [Fact]
+    public async Task Reconcile_WhenAnAllowedRunbookNeverLeavesPending_FailsWithATimeoutNamingIt()
+    {
+        var allowed = new ScorchRunbook(Guid.NewGuid(), "Start");
+        var client = new StatefulScorchClient([allowed]) { StartedJobStatus = "Pending" };
+        var reconciler = new ScorchRunbookReconciler(new FixedScorchFactory(client), new RecordingLogger());
+
+        var action = () => reconciler.ReconcileAsync(
+            Configuration(reconciliationTimeoutSeconds: 1), [allowed.Name], null, CancellationToken.None);
+
+        (await action.Should().ThrowAsync<TimeoutException>()).Which.Message
+            .Should().Contain("did not settle within 1 seconds")
+            .And.Contain(allowed.Id.ToString());
+    }
+
+    private static ScorchWorkloadConfiguration Configuration(int reconciliationTimeoutSeconds = 60) =>
+        new(@"\\server\share\scorch.txt", "http://localhost:81",
+            ReconciliationTimeoutSeconds: reconciliationTimeoutSeconds);
 
     private sealed class FixedScorchFactory(IScorchApiClient client) : IScorchApiClientFactory
     {
@@ -90,6 +123,7 @@ public sealed class ScorchRunbookReconcilerTests
         public List<Guid> Started { get; } = [];
         public List<IReadOnlyList<string>> StartedOn { get; } = [];
         public List<Guid> Stopped { get; } = [];
+        public string StartedJobStatus { get; init; } = "Running";
         public void Dispose() { }
         public Task<IReadOnlyList<ScorchRunbook>> ListRunbooksAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<ScorchRunbook>>(Runbooks.ToArray());
@@ -104,7 +138,7 @@ public sealed class ScorchRunbookReconcilerTests
         {
             Started.Add(runbookId);
             StartedOn.Add(runbookServers);
-            Jobs.Add(new ScorchJob(Guid.NewGuid(), runbookId, "Running"));
+            Jobs.Add(new ScorchJob(Guid.NewGuid(), runbookId, StartedJobStatus));
             return Task.CompletedTask;
         }
         public Task StopJobAsync(Guid jobId, CancellationToken cancellationToken)

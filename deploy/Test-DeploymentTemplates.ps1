@@ -2272,6 +2272,55 @@ foreach ($pathConsumer in @(
         -Text $pathConsumer.Text -Pattern "Join-Path \`$InstallPath 'tools\\np'"
 }
 
+# Every failure in those blocks is a warning, so a PATH entry that never lands leaves the operator
+# reading "Installation complete" and finding no np. Install and update read the value back, and
+# the installer's closing summary states the outcome either way.
+foreach ($pathVerifier in @(
+        @{ Name = 'installer'; Text = $installer },
+        @{ Name = 'updater';   Text = $updateScript })) {
+    Assert-TextMatches -Name "$($pathVerifier.Name) reads the machine PATH back after writing it" `
+        -Text $pathVerifier.Text `
+        -Pattern '(?s)SetEnvironmentVariable.*?Test-NodePilotPathContains[^\r\n]*`?\s*-PathValue \(\[Environment\]::GetEnvironmentVariable'
+}
+Assert-TextMatches -Name 'installer reports the CLI PATH outcome in its summary' `
+    -Text $installer -Pattern '\$cliPathState'
+
+# Both staging lists must carry every helper the entry points dot-source. Neither list is derived
+# from the code, and the server installer's copy was missing MachinePath.ps1: the PATH block is
+# wrapped in try/catch, so the failed dot-source became a warning and `np` silently never reached
+# the machine PATH on any GUI installation, while script installs worked. Derive the requirement
+# instead of maintaining a third hand-written list.
+$entryPointHelpers = [System.Collections.Generic.SortedSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($entryPoint in 'Install-NodePilot.ps1', 'Update-NodePilot.ps1', 'Uninstall-NodePilot.ps1') {
+    $text = Get-Content -LiteralPath (Join-Path $scriptDirectory $entryPoint) -Raw
+    foreach ($match in [regex]::Matches($text, '\$PSScriptRoot[^\r\n)]*?''([A-Za-z0-9.\-]+\.ps1)''')) {
+        [void]$entryPointHelpers.Add($match.Groups[1].Value)
+    }
+}
+if ($entryPointHelpers.Count -eq 0) {
+    throw 'No $PSScriptRoot helper references found in the entry points - the extraction pattern has gone stale.'
+}
+$serverBuildScript = Get-Content -LiteralPath $ServerBuildScriptPath -Raw
+foreach ($helper in $entryPointHelpers) {
+    Assert-TextMatches -Name "the deploy-scripts zip ships $helper" `
+        -Text $buildScript -Pattern ([regex]::Escape("'$helper'"))
+    Assert-TextMatches -Name "the server setup payload ships $helper" `
+        -Text $serverBuildScript -Pattern ([regex]::Escape("'$helper'"))
+}
+
+# The Engine Switcher drives NodePilot through np.exe. Without a server URL it falls back to the
+# CLI's own configuration, which is per-user and DPAPI-protected - the setup account is not the
+# account that later runs the switcher, so only the shipped configuration can carry it. Same
+# one-line rule as the PATH directory above, for the same reason.
+Assert-TextMatches -Name 'installer names the switcher configuration on one line' `
+    -Text $installer -Pattern "Join-Path \`$InstallPath 'tools\\engine-switcher\\engine-switcher\.json'"
+Assert-TextMatches -Name 'installer seeds the switcher server URL from the public hostname' `
+    -Text $installer -Pattern '\$serverUrl\s*=.*https://\$PublicHostname'
+Assert-TextMatches -Name 'installer refuses to write a switcher configuration that will not parse' `
+    -Text $installer -Pattern '(?s)\$updated \| ConvertFrom-Json.*?WriteAllText'
+Assert-TextMatches -Name 'installer writes the switcher configuration without a BOM' `
+    -Text $installer -Pattern 'New-Object System\.Text\.UTF8Encoding \$false'
+
 # --- desktop installer contracts ----------------------------------------------------------------
 # Two defects that both looked like a successful installation and were only visible to the user as
 # "the app does not work". Neither had any automated coverage before.

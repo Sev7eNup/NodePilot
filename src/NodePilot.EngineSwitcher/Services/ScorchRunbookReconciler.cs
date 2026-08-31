@@ -248,6 +248,7 @@ internal sealed class ScorchRunbookReconciler
             .Where(job => allowedIds.Contains(job.RunbookId!.Value) && RunningStates.Contains(job.Status))
             .Select(job => job.RunbookId!.Value)
             .ToHashSet();
+        var startedRunbookIds = new HashSet<Guid>();
         foreach (var runbook in allowed.Where(runbook => !runningAllowedIds.Contains(runbook.Id)))
         {
             foreach (var pendingJob in jobs.Where(job =>
@@ -257,29 +258,67 @@ internal sealed class ScorchRunbookReconciler
                 _logger.Info($"Stale SCOrch job stopped before restart: {pendingJob.Id} (runbook {runbook.Id}).");
             }
             await client.StartRunbookAsync(runbook.Id, runbookServers, deadline.Token).ConfigureAwait(false);
+            startedRunbookIds.Add(runbook.Id);
             _logger.Info(
                 $"Allowed SCOrch runbook started: {runbook.Name} ({runbook.Id}) on {string.Join(", ", runbookServers)}.");
         }
 
-        ScorchJob[] unexpected;
-        Guid[] missing;
-        do
+        ScorchJob[] unexpected = [];
+        Guid[] missing = [];
+        try
         {
-            var verifiedJobs = (await client.ListJobsAsync(deadline.Token).ConfigureAwait(false))
-                .Where(job => ManagedStates.Contains(job.Status))
-                .ToArray();
-            if (verifiedJobs.Any(job => job.RunbookId is null))
-                throw new InvalidOperationException("SCOrch verification returned an active job without a runbook id.");
-            unexpected = verifiedJobs.Where(job => !allowedIds.Contains(job.RunbookId!.Value)).ToArray();
-            missing = allowedIds.Except(verifiedJobs
-                    .Where(job => RunningStates.Contains(job.Status))
-                    .Select(job => job.RunbookId!.Value))
-                .ToArray();
-            if (unexpected.Length == 0 && missing.Length == 0) break;
-            await Task.Delay(TimeSpan.FromMilliseconds(500), deadline.Token).ConfigureAwait(false);
-        } while (true);
+            while (true)
+            {
+                var verifiedJobs = (await client.ListJobsAsync(deadline.Token).ConfigureAwait(false))
+                    .Where(job => ManagedStates.Contains(job.Status))
+                    .ToArray();
+                if (verifiedJobs.Any(job => job.RunbookId is null))
+                    throw new InvalidOperationException("SCOrch verification returned an active job without a runbook id.");
+                unexpected = verifiedJobs.Where(job => !allowedIds.Contains(job.RunbookId!.Value)).ToArray();
+                missing = allowedIds.Except(Settled(verifiedJobs, startedRunbookIds)).ToArray();
+                if (unexpected.Length == 0 && missing.Length == 0) break;
+                await Task.Delay(TimeSpan.FromMilliseconds(500), deadline.Token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw ReconciliationTimeout(configuration, unexpected, missing);
+        }
 
-        _logger.Info($"SCOrch runbook allowlist verified: {allowedIds.Count} runbooks active, no unlisted jobs running.");
+        _logger.Info($"SCOrch runbook allowlist verified: {allowedIds.Count} runbooks settled, no unlisted jobs running.");
+    }
+
+    /// <summary>
+    /// The allowed runbooks that need no further action: one whose job is running, and one this
+    /// switch started whose job has since left the active set. A runbook that finishes in seconds
+    /// would otherwise never satisfy the check, because a completed job is no longer active.
+    /// </summary>
+    private static IEnumerable<Guid> Settled(
+        IReadOnlyList<ScorchJob> activeJobs,
+        IReadOnlySet<Guid> startedRunbookIds)
+    {
+        var active = activeJobs.Select(job => job.RunbookId!.Value).ToHashSet();
+        return activeJobs
+            .Where(job => RunningStates.Contains(job.Status))
+            .Select(job => job.RunbookId!.Value)
+            .Concat(startedRunbookIds.Where(id => !active.Contains(id)));
+    }
+
+    private static TimeoutException ReconciliationTimeout(
+        ScorchWorkloadConfiguration configuration,
+        IReadOnlyList<ScorchJob> unexpected,
+        IReadOnlyList<Guid> missing)
+    {
+        var detail = new List<string>();
+        if (missing.Count > 0)
+            detail.Add($"{missing.Count} allowed runbook(s) reached neither a running nor a finished job "
+                + $"({string.Join(", ", missing)})");
+        if (unexpected.Count > 0)
+            detail.Add($"{unexpected.Count} unlisted job(s) were still active "
+                + $"({string.Join(", ", unexpected.Select(job => job.Id))})");
+        return new TimeoutException(
+            $"SCOrch runbook reconciliation did not settle within {configuration.ReconciliationTimeoutSeconds} seconds: "
+            + (detail.Count == 0 ? "the job list could not be read." : string.Join("; ", detail) + "."));
     }
 
     /// <param name="onMutationStarted">
@@ -306,13 +345,23 @@ internal sealed class ScorchRunbookReconciler
             _logger.Info($"SCOrch source job stopped: {job.Id} (runbook {job.RunbookId}).");
         }
 
-        while (true)
+        ScorchJob[] remaining = [];
+        try
         {
-            var remaining = (await client.ListJobsAsync(deadline.Token).ConfigureAwait(false))
-                .Where(job => ManagedStates.Contains(job.Status))
-                .ToArray();
-            if (remaining.Length == 0) break;
-            await Task.Delay(TimeSpan.FromMilliseconds(500), deadline.Token).ConfigureAwait(false);
+            while (true)
+            {
+                remaining = (await client.ListJobsAsync(deadline.Token).ConfigureAwait(false))
+                    .Where(job => ManagedStates.Contains(job.Status))
+                    .ToArray();
+                if (remaining.Length == 0) break;
+                await Task.Delay(TimeSpan.FromMilliseconds(500), deadline.Token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                $"SCOrch jobs did not stop within {configuration.ReconciliationTimeoutSeconds} seconds: "
+                + $"{remaining.Length} job(s) still active ({string.Join(", ", remaining.Select(job => job.Id))}).");
         }
 
         _logger.Info($"SCOrch source jobs verified stopped: {jobs.Length} jobs deactivated.");

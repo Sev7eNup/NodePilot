@@ -1675,6 +1675,7 @@ try {
 # Idempotent - a re-install or upgrade must not grow the variable each time, and PATH has a
 # real length limit. nodepilot-mcp is deliberately NOT added: an MCP client is configured with
 # an absolute path in .mcp.json, so it gains nothing from PATH and would only add noise.
+$cliPathState = 'not registered'
 try {
     . (Join-Path $PSScriptRoot 'MachinePath.ps1')
     $toolsPath = Join-Path $InstallPath 'tools\np'
@@ -1687,12 +1688,52 @@ try {
                 (Add-NodePilotPathEntry -PathValue $machinePath -Directory $toolsPath), 'Machine')
             Write-Info "  Added $toolsPath to the machine PATH (new shells will find 'np')."
         }
+        # Read back rather than trust the write. Every failure below this line is a warning, so
+        # without a post-condition the operator reads "Installation complete" and finds no `np`.
+        if (Test-NodePilotPathContains `
+                -PathValue ([Environment]::GetEnvironmentVariable('Path', 'Machine')) `
+                -Directory $toolsPath) {
+            $cliPathState = 'on the machine PATH'
+        } else {
+            Write-Warn "  The machine PATH still does not contain $toolsPath after the update."
+        }
     } else {
         Write-Warn "  np.exe not found under $toolsPath - skipping the PATH entry."
     }
 } catch {
     Write-Warn "  Could not update the machine PATH: $($_.Exception.Message)"
     Write-Warn "  The installation works; call np.exe by its full path under $InstallPath\tools\np."
+}
+
+# The Engine Switcher drives NodePilot through np.exe. Without a server URL it falls back to the
+# CLI's own configuration, which is stored per user and DPAPI-protected - the setup account is not
+# the account that later runs the switcher, so seeding that would land in the wrong profile.
+# Writing serverUrl into the shipped template instead makes the switcher pass --server on every
+# call. Only the copy next to the executable is touched; a machine-wide configuration under
+# %ProgramData%\NodePilot\EngineSwitcher wins at load time and stays the operator's file.
+try {
+    $switcherConfig = Join-Path $InstallPath 'tools\engine-switcher\engine-switcher.json'
+    if (Test-Path -LiteralPath $switcherConfig) {
+        $serverUrl = if ($HttpsPort -eq 443) { "https://$PublicHostname" }
+                     else { "https://${PublicHostname}:$HttpsPort" }
+        # Rewritten in place rather than round-tripped through ConvertTo-Json: the file is
+        # documented as hand-editable, and re-serialising it would escape '&' and quotes in
+        # activeJobsPath and reflow every line.
+        $raw = Get-Content -LiteralPath $switcherConfig -Raw -Encoding UTF8
+        $pattern = '"serverUrl"\s*:\s*(?:null|"[^"]*")'
+        if ([regex]::Matches($raw, $pattern).Count -eq 1) {
+            $updated = [regex]::Replace($raw, $pattern, '"serverUrl": "' + $serverUrl + '"')
+            $null = $updated | ConvertFrom-Json   # refuse to write a file the switcher cannot load
+            [System.IO.File]::WriteAllText(
+                $switcherConfig, $updated, (New-Object System.Text.UTF8Encoding $false))
+            Write-Info "  Engine Switcher server URL set to $serverUrl."
+        } else {
+            Write-Warn "  serverUrl not found exactly once in $switcherConfig - left unchanged."
+        }
+    }
+} catch {
+    Write-Warn "  Could not set the Engine Switcher server URL: $($_.Exception.Message)"
+    Write-Warn "  Set nodePilot.serverUrl in $InstallPath\tools\engine-switcher\engine-switcher.json by hand."
 }
 
 Write-Host ""
@@ -1702,6 +1743,15 @@ Write-Host "  URL         : https://$PublicHostname/" -ForegroundColor Green
 Write-Host "  API docs    : https://$PublicHostname/swagger (disabled when Swagger:DisableInNonDevelopment=true)" -ForegroundColor Gray
 Write-Host "  Health      : https://$PublicHostname/healthz/ready"   -ForegroundColor Gray
 Write-Host "  Logs        : $DataPath\logs"                          -ForegroundColor Gray
+Write-Host ("  CLI         : np - " + $cliPathState) `
+    -ForegroundColor $(if ($cliPathState -eq 'on the machine PATH') { 'Gray' } else { 'Yellow' })
+if ($cliPathState -eq 'on the machine PATH') {
+    # A running console keeps the environment it started with, so the operator who just ran setup
+    # will not find np in that window no matter what the registry says.
+    Write-Host "                open a NEW console to pick it up"    -ForegroundColor Gray
+} else {
+    Write-Host "                run np.exe from $InstallPath\tools\np" -ForegroundColor Yellow
+}
 Write-Host "  Install log : $reportPath"                             -ForegroundColor Gray
 Write-Host ""
 Write-Host "  External-Trigger API key (legacy; store it now, it won't be shown again):" -ForegroundColor Yellow

@@ -56,12 +56,15 @@ After the target services are running:
   `cancel-all` process each. The switcher uses `np.exe` and its DPAPI-protected named session;
   the profile therefore needs an Admin or Operator login with access to every workflow.
 - SCOrch stops every pending or running job whose runbook is not listed, starts one job for each
-  listed runbook that has no active job, and verifies the resulting active job set. The calls use
+  listed runbook that has no active job, and verifies the result: no unlisted job is active, and
+  every listed runbook is either running or has finished the job this switch started. The calls use
   the current elevated Windows identity against the .NET Web API. Listed runbooks must be published
   and must not require input parameters, because the allowlist only supplies identities.
 
 Any reconciliation or verification failure occurs after service mutation has begun and therefore
-uses the same fail-closed cleanup as a service failure.
+uses the same fail-closed cleanup as a service failure. That includes reconciliation running out of
+`reconciliationTimeoutSeconds`: the switch fails with an error naming what did not settle, and the
+managed services are stopped and left on manual start.
 
 Before the source engine's services are touched, the switcher first stops the source workload's
 own jobs. That step begins with a query, and a failure up to the first stopped job changes nothing
@@ -90,6 +93,13 @@ marker `HKLM\SOFTWARE\NodePilot\Server` (`InstallPath` plus `tools\np`) and then
 PATH; a configured value wins and stays relative to the configuration file. The template ships
 without one because a relative path only points at the installation while the configuration sits
 inside it.
+
+`serverUrl` is filled in by the server installer from the hostname and HTTPS port it just
+configured, so the switcher passes `--server` on every `np` call. It is written only into the copy
+next to the executable; a machine-wide configuration under `%ProgramData%\NodePilot\EngineSwitcher`
+wins at load time and stays untouched. Left empty, `np` falls back to its own configuration, which
+is stored per user - the account that ran setup is not the account that runs the switcher, so that
+fallback usually fails with "No server URL configured".
 
 Both allowlist paths must be absolute paths and may point either to a local file (`C:\...`) or to a
 UNC share (`\\server\share\...`). Relative allowlist paths are rejected. The account that starts the
@@ -140,8 +150,12 @@ the error can then no longer be reported. The equivalent `eq`/`or` filter works 
 `$select` keeps the response to the three fields the switcher reads.
 
 When starting a runbook, the switcher reads the available runbook servers from
-`runbookServersPath` and sends their names with the job request. A job counts as started only in
-`Running` or `InProgress`; a stale `Pending`/`Queued` job is stopped and restarted on an available
+`runbookServersPath` and sends their names with the job request. A listed runbook is settled once
+its job is running, or once the job this switch started has finished - a runbook that completes in
+seconds would otherwise never satisfy the check, because a finished job is no longer active. A
+stale `Pending`/`Queued` job is stopped and restarted on an available runbook server, and a job
+that stays `Pending` until `reconciliationTimeoutSeconds` expires fails the switch and is named in
+the error.
 runbook server.
 
 The configured NodePilot CLI profile can be authenticated once under the same Windows account that

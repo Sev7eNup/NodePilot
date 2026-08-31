@@ -6,12 +6,17 @@ internal sealed class AsyncCommand : ICommand
 {
     private readonly Func<Task> _execute;
     private readonly Func<bool>? _canExecute;
+    private readonly Action<Exception>? _onError;
     private bool _executing;
 
-    public AsyncCommand(Func<Task> execute, Func<bool>? canExecute = null)
+    public AsyncCommand(
+        Func<Task> execute,
+        Func<bool>? canExecute = null,
+        Action<Exception>? onError = null)
     {
         _execute = execute;
         _canExecute = canExecute;
+        _onError = onError;
     }
 
     public event EventHandler? CanExecuteChanged;
@@ -23,6 +28,9 @@ internal sealed class AsyncCommand : ICommand
         _executing = true;
         RaiseCanExecuteChanged();
         try { await _execute(); }
+        // Execute is async void, so an exception that escapes here reaches the WPF dispatcher and
+        // terminates the process. Report it instead; the command must never take the app down.
+        catch (Exception exception) { _onError?.Invoke(exception); }
         finally
         {
             _executing = false;
