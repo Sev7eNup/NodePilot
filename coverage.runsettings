@@ -7,6 +7,33 @@
   executed only by Migrate), and anything marked GeneratedCode / ExcludeFromCodeCoverage.
 -->
 <RunSettings>
+  <!--
+    Run the test assemblies in parallel. VSTest starts up to MaxCpuCount testhost processes,
+    one per test container; 0 means one per logical core. Without this the nine assemblies run
+    one after another and each pays its own start-up cost (process launch, JIT, coverlet
+    instrumentation, discovery) with nothing overlapping it.
+
+    This does not weaken the six CollectionDefinitions in the repo. Those guard process-global
+    state (Serilog's Log.Logger, Console.SetOut, environment variables, static hub and Quartz
+    slots) and xunit enforces them WITHIN an assembly. Separate processes make that isolation
+    stronger, not weaker.
+  -->
+  <RunConfiguration>
+    <MaxCpuCount>0</MaxCpuCount>
+  </RunConfiguration>
+
+  <!--
+    The counterweight to MaxCpuCount. Each testhost otherwise spins up xunit's own thread pool
+    at core count, so four assemblies on a four-core agent contend for sixteen threads. The
+    timing-sensitive suites (retention services, FileWatcherTriggerSource with a real
+    FileSystemWatcher, Quartz schedule slots, WaitForConditionActivity) lose their timeouts
+    under that load. There is no xunit.runner.json in the repo, so xunit's default of one
+    thread per core would apply.
+  -->
+  <xUnit>
+    <maxParallelThreads>2</maxParallelThreads>
+  </xUnit>
+
   <DataCollectionRunSettings>
     <DataCollectors>
       <DataCollector friendlyName="XPlat Code Coverage">
