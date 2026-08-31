@@ -12,6 +12,43 @@ exhaustive.
 
 ## [Unreleased]
 
+### Changed
+
+- **The Service Switcher is now the Engine Switcher everywhere, not just in its window title.** The
+  project, its namespace, assembly, test project, documentation and build artifacts were renamed,
+  and so was every name it persists: the configuration file (`engine-switcher.json`), the data
+  directory (`%ProgramData%\NodePilot\EngineSwitcher`), the theme registry key, the installation
+  folder (`tools\engine-switcher`), the executable and the standalone drop. A machine installed
+  before the rename keeps its old files and needs a one-time rename — the steps are in
+  [docs/engine-switcher.md](docs/engine-switcher.md).
+
+### Fixed
+
+- **Windows paths in the configuration no longer have to be escaped, and a broken file is caught
+  before the switch.** JSON requires doubled backslashes, so a hand-edited
+  `"D:\Scripts\runbooks.txt"` aborted the switch with an invalid-escape message — while the system
+  check had reported success and both buttons stayed enabled, because the file was only read once a
+  switch had already started. The three path properties now accept single backslashes and restore a
+  UNC prefix written with one backslash per separator; the doubled form is unchanged and remains the
+  correct one, and a stray backslash outside those properties is still an error. The configuration
+  is loaded at every system check, an unusable file is reported with its path and disables both
+  buttons, and repairing it releases them without a restart.
+- **A failed SCOrch query no longer stops every managed service.** Deactivating the source workload
+  begins by reading the active jobs, but the fail-closed cleanup was armed before that read — a web
+  service that answered with a truncated body under HTTP 200 therefore took down all four services
+  although nothing had been changed. The cleanup is now armed by the first job that is actually
+  stopped. An unreadable SCOrch response is reported with the request URL and the beginning of the
+  body instead of a bare JSON parser message, which never said which call broke.
+- **The standalone Engine Switcher ships with its configuration template.** The release drop was
+  the bare executable, while the template stayed behind in the server artifact — so the one
+  audience the standalone copy exists for, a machine with no NodePilot installation to take a
+  template from, had nothing to configure and every switch aborted with "Switcher configuration not
+  found". It is now a zip carrying the executable and the template together. `cliPath` became
+  optional and resolves through the installation marker and the machine PATH, because a relative
+  path only points at `np.exe` while the configuration sits in the install directory. A missing
+  configuration now names every location that was searched instead of only the machine-wide one,
+  which is the single location nothing ever creates.
+
 ## [1.2.22] - 2026-08-30
 
 An update can now repair an install directory it would previously have refused, and the help

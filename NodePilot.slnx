@@ -10,7 +10,7 @@
     <Project Path="src/NodePilot.Telemetry/NodePilot.Telemetry.csproj" />
     <Project Path="src/NodePilot.Cli/NodePilot.Cli.csproj" />
     <Project Path="src/NodePilot.Mcp/NodePilot.Mcp.csproj" />
-    <Project Path="src/NodePilot.ServiceSwitcher/NodePilot.ServiceSwitcher.csproj" />
+    <Project Path="src/NodePilot.EngineSwitcher/NodePilot.EngineSwitcher.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/NodePilot.TestCommons/NodePilot.TestCommons.csproj" />
@@ -21,6 +21,6 @@
     <Project Path="tests/NodePilot.Cli.Tests/NodePilot.Cli.Tests.csproj" />
     <Project Path="tests/NodePilot.Mcp.Tests/NodePilot.Mcp.Tests.csproj" />
     <Project Path="tests/NodePilot.LoadTests/NodePilot.LoadTests.csproj" />
-    <Project Path="tests/NodePilot.ServiceSwitcher.Tests/NodePilot.ServiceSwitcher.Tests.csproj" />
+    <Project Path="tests/NodePilot.EngineSwitcher.Tests/NodePilot.EngineSwitcher.Tests.csproj" />
   </Folder>
 </Solution>
