@@ -38,6 +38,10 @@ jobs:
   changes:
     name: Detect what changed
     runs-on: ubuntu-latest
+    # Counted from job start, not from queue entry: a busy runner pool must not turn a pull
+    # request red. These are runaway guards, not budgets — each sits well above the measured
+    # runtime so only a hung step trips them.
+    timeout-minutes: 10
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
@@ -92,6 +96,7 @@ jobs:
   backend:
     name: Backend build + tests
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -206,7 +211,10 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: backend-test-results
-          path: '**/*.trx'
+          # Not '**/*.trx': on Windows that glob walks every bin/ and obj/ tree in the repo and
+          # picks up stale files from earlier local runs. The test step writes only into
+          # TestResults/ via --results-directory.
+          path: TestResults/**/*.trx
 
       - name: Upload coverage report
         if: always()
@@ -222,6 +230,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: src/nodepilot-ui
@@ -268,6 +277,7 @@ jobs:
   docs-ui:
     name: Docs UI build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: src/nodepilot-docs-ui
@@ -304,6 +314,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: src/nodepilot-desktop
@@ -340,6 +351,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: src/nodepilot-ui
@@ -372,3 +384,63 @@ jobs:
         with:
           name: playwright-report
           path: src/nodepilot-ui/playwright-report/
+
+  # The single required status check on main.
+  #
+  # Why an aggregator instead of requiring the jobs directly: frontend, desktop and e2e hang off
+  # `if: needs.changes.outputs.code == 'true'`. A skipped job reports no status at all, so a
+  # documentation-only pull request would leave those required checks on "Expected — waiting for
+  # status" forever and auto-merge would never fire. This job always runs and translates skipped
+  # into green.
+  #
+  # COUPLED TO REPO SETTINGS: the `name:` below is the context string the branch protection rule
+  # on main requires. Renaming it leaves every pull request waiting on a context that never
+  # appears again. Change the protection rule first, then this name.
+  ci-gate:
+    name: CI gate
+    if: ${{ always() }}
+    needs: [backend, changes, desktop, docs-ui, e2e, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Report every dependency result
+        shell: bash
+        # docs-ui needs bracket syntax: in a GitHub expression `needs.docs-ui` parses as a
+        # subtraction, not a property lookup.
+        run: |
+          echo 'changes  = ${{ needs.changes.result }}'
+          echo 'backend  = ${{ needs.backend.result }}'
+          echo 'frontend = ${{ needs.frontend.result }}'
+          echo "docs-ui  = ${{ needs['docs-ui'].result }}"
+          echo 'desktop  = ${{ needs.desktop.result }}'
+          echo 'e2e      = ${{ needs.e2e.result }}'
+
+      - name: Guard - every job in this workflow is wired into the gate
+        shell: bash
+        # Without this, a newly added job that nobody lists in `needs` is never checked and the
+        # required status check goes green anyway. yq v4 is preinstalled on ubuntu runners.
+        #
+        # Exemptions are only for jobs that render no verdict. Adding one means accepting that
+        # its failure cannot fail the gate.
+        run: |
+          set -euo pipefail
+          exempt='^(ci-gate)$'
+          declared="$(yq -r '.jobs | keys | .[]' .github/workflows/ci.yml | grep -Ev "$exempt" | sort)"
+          wired="$(yq -r '.jobs.ci-gate.needs[]' .github/workflows/ci.yml | sort)"
+          if [[ "$declared" != "$wired" ]]; then
+            echo "::error::ci-gate.needs is out of sync with the job list in ci.yml."
+            diff <(echo "$declared") <(echo "$wired") || true
+            exit 1
+          fi
+          echo "Every job is wired into the gate:"
+          printf '%s\n' "$wired" | sed 's/^/  /'
+
+      - name: Fail if any job failed or was cancelled
+        # `skipped` counts as success — that is the documentation-only path. Two things in the
+        # gated jobs are load-bearing for this to be correct: no `continue-on-error` on any of
+        # them (it would launder a failure into success), and `fail-fast: false` on any matrix,
+        # so a sibling shard reports its own failure instead of `cancelled`.
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: exit 1
