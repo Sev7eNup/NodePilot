@@ -12,6 +12,13 @@ exhaustive.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Engine Switcher no longer uses the OData `in` operator for active SCOrch jobs.** Some
+  SCOrch Web API builds begin an HTTP 200 collection response and then abort it before the first
+  job when this operator is used. The equivalent `eq`/`or` filter works across those builds, and
+  the request now selects only the three job fields the switcher consumes.
+
 ## [1.2.23] - 2026-08-31
 
 The Service Switcher became the Engine Switcher in more than its window title, and the utility got

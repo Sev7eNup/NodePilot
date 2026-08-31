@@ -120,7 +120,7 @@ file releases them without restarting the switcher.
     "runbooksPath": "api/runbooks",
     "runbookServersPath": "api/runbookServers",
     "jobsPath": "api/jobs",
-    "activeJobsPath": "api/jobs?$filter=Status in ('Pending','Running')",
+    "activeJobsPath": "api/jobs?$select=Id,RunbookId,Status&$filter=Status eq 'Pending' or Status eq 'Running'",
     "stopJobPathTemplate": "api/jobs/{id}",
     "stopJobMethod": "PATCH",
     "requestTimeoutSeconds": 30,
@@ -132,6 +132,12 @@ file releases them without restarting the switcher.
 SCOrch's Web API uses Windows Authentication. Plain HTTP is accepted only for a loopback API URL;
 a remote URL must use HTTPS. The endpoint fields are configurable because supported SCOrch web
 component builds publish their exact contract in the OpenAPI file shipped with the Web API.
+
+`activeJobsPath` deliberately avoids the OData `in` operator. Some Web API builds answer
+`$filter=Status in ('Pending','Running')` with an HTTP 200 whose body ends after `"value":[`,
+because the collection query is only evaluated once the response has already been committed and
+the error can then no longer be reported. The equivalent `eq`/`or` filter works across builds, and
+`$select` keeps the response to the three fields the switcher reads.
 
 When starting a runbook, the switcher reads the available runbook servers from
 `runbookServersPath` and sends their names with the job request. A job counts as started only in

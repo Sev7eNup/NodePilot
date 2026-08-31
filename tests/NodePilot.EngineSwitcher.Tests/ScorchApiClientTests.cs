@@ -63,6 +63,18 @@ public sealed class ScorchApiClientTests
         jobs.Should().ContainSingle().Which.Should().Be(new ScorchJob(id, runbookId, "Running"));
     }
 
+    [Fact]
+    public async Task ListJobs_WithDefaultConfiguration_UsesPortableMinimalQuery()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, """{"value":[]}""");
+        using var client = Client(handler);
+
+        await client.ListJobsAsync(CancellationToken.None);
+
+        Uri.UnescapeDataString(handler.RequestUri!.Query).Should().Be(
+            "?$select=Id,RunbookId,Status&$filter=Status eq 'Pending' or Status eq 'Running'");
+    }
+
     private static ScorchApiClient Client(HttpMessageHandler handler) =>
         new(
             new ScorchWorkloadConfiguration(@"C:\lists\scorch.txt", "http://localhost:81"),
@@ -70,13 +82,18 @@ public sealed class ScorchApiClientTests
 
     private sealed class StubHandler(HttpStatusCode status, string body) : HttpMessageHandler
     {
+        public Uri? RequestUri { get; private set; }
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(status)
+            CancellationToken cancellationToken)
+        {
+            RequestUri = request.RequestUri;
+            return Task.FromResult(new HttpResponseMessage(status)
             {
                 Content = new StringContent(body),
                 RequestMessage = request,
             });
+        }
     }
 }
