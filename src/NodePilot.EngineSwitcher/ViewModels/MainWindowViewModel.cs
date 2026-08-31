@@ -53,11 +53,16 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         _uiContext = SynchronizationContext.Current;
         SwitchToNodePilotCommand = new AsyncCommand(
             () => SwitchAsync(SwitchTarget.NodePilot),
-            () => CanSwitchToNodePilot);
+            () => CanSwitchToNodePilot,
+            ReportCommandFailure);
         SwitchToSystemCenterCommand = new AsyncCommand(
             () => SwitchAsync(SwitchTarget.SystemCenterOrchestrator),
-            () => CanSwitchToSystemCenter);
-        CopyActivityCommand = new AsyncCommand(CopyActivityAsync, () => ActivityItems.Count > 0);
+            () => CanSwitchToSystemCenter,
+            ReportCommandFailure);
+        CopyActivityCommand = new AsyncCommand(
+            CopyActivityAsync,
+            () => ActivityItems.Count > 0,
+            ReportCommandFailure);
         _logger.EntryWritten += OnEntryWritten;
     }
 
@@ -162,6 +167,17 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         if (_initialRefreshLogged) return;
         _initialRefreshLogged = true;
         _logger.Info(Strings.SystemCheckCompleted);
+    }
+
+    /// <summary>
+    /// Last resort for a command that faulted anyway. The switch itself reports its own failures;
+    /// anything reaching here would otherwise be an unhandled exception on the dispatcher.
+    /// </summary>
+    internal void ReportCommandFailure(Exception exception)
+    {
+        _logger.Error($"{Strings.SwitchFailedStatus}: {exception.Message}");
+        _interaction.ShowError(exception.Message);
+        RefreshActivityHistory();
     }
 
     internal async Task SwitchAsync(SwitchTarget target)

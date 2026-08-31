@@ -12,6 +12,26 @@ exhaustive.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A stalled SCOrch reconciliation no longer terminates the Engine Switcher.** The switch
+  runs the workload reconciliation under its own deadline. When that deadline expired the
+  resulting cancellation passed straight through the coordinator, which excluded every
+  `OperationCanceledException` from its error handling, and then out of an `async void`
+  command handler — so the process died without a dialog, without the fail-closed cleanup, and
+  with the target services left running. The deadline is now reported like any other failure,
+  names the runbooks or jobs that did not settle, and runs the cleanup.
+- **A listed SCOrch runbook that finishes quickly no longer blocks the switch.** Verification
+  required every listed runbook to be running at the same moment, which only a long-lived
+  monitor runbook can satisfy; an ordinary runbook completed within seconds, left the active
+  job set, and was counted as missing until the deadline expired. A runbook now settles once
+  its job is running or once the job this switch started has finished.
+- **The server installer fills in the Engine Switcher server URL.** `serverUrl` shipped empty,
+  so `np` fell back to its own per-user configuration and the switch to NodePilot failed with
+  "No server URL configured". The installer writes the hostname and HTTPS port it just
+  configured into the copy next to the executable; a machine-wide configuration under
+  `%ProgramData%` still wins and is left untouched.
+
 ## [1.2.24] - 2026-08-31
 
 A single fix, found by running the Engine Switcher against a System Center Orchestrator

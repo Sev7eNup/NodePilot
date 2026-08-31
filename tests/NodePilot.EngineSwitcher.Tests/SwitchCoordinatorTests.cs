@@ -189,6 +189,37 @@ public sealed class SwitchCoordinatorTests
         gateway.Services.Values.Should().OnlyContain(service => service.StartMode == ServiceStartMode.Manual);
     }
 
+    // Workload reconciliation cancels its own linked token when its deadline expires. That is a
+    // failure like any other and must be reported; it used to escape the catch filter and crash
+    // the process from the async void command handler.
+    [Fact]
+    public async Task ReconciliationDeadline_IsReportedAndRunsFailClosedCleanup()
+    {
+        var gateway = StandardGateway();
+        var coordinator = Coordinator(gateway, new DeadlineReconciler());
+
+        var result = await coordinator.SwitchAsync(
+            SwitchTarget.SystemCenterOrchestrator, progress: null, CancellationToken.None);
+
+        result.Succeeded.Should().BeFalse();
+        result.Error.Should().Contain("did not settle");
+        gateway.Services.Values.Should().OnlyContain(service => service.StartMode == ServiceStartMode.Manual);
+    }
+
+    // The caller's own cancellation still propagates rather than turning into a failed result.
+    [Fact]
+    public async Task CallerCancellation_PropagatesInsteadOfBecomingAFailedSwitch()
+    {
+        var gateway = StandardGateway();
+        using var source = new CancellationTokenSource();
+        var coordinator = Coordinator(gateway, new CancellingReconciler(source));
+
+        var action = () => coordinator.SwitchAsync(
+            SwitchTarget.SystemCenterOrchestrator, progress: null, source.Token);
+
+        await action.Should().ThrowAsync<OperationCanceledException>();
+    }
+
     private static SwitchCoordinator Coordinator(FakeServiceControlGateway gateway) =>
         Coordinator(gateway, new NoOpWorkloadReconciler());
 
@@ -204,6 +235,53 @@ public sealed class SwitchCoordinatorTests
             workloads,
             TestServices.FastOptions,
             processes: new FakeProcessPresenceProbe());
+    }
+
+    private sealed class CancellingReconciler(CancellationTokenSource source) : IWorkloadReconciler
+    {
+        private static readonly SwitcherConfiguration Configuration = new(
+            new NodePilotWorkloadConfiguration(string.Empty, string.Empty),
+            new ScorchWorkloadConfiguration(string.Empty, "http://localhost"));
+
+        public Task<WorkloadSwitchPlan> PreflightAsync(SwitchTarget target, CancellationToken cancellationToken) =>
+            Task.FromResult(new WorkloadSwitchPlan(target, Configuration, []));
+
+        public Task DeactivateSourceAsync(
+            WorkloadSwitchPlan plan,
+            IProgress<SwitchProgress>? progress,
+            Action onMutationStarted,
+            CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task ReconcileAsync(
+            WorkloadSwitchPlan plan,
+            IProgress<SwitchProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            source.Cancel();
+            throw new OperationCanceledException(source.Token);
+        }
+    }
+
+    private sealed class DeadlineReconciler : IWorkloadReconciler
+    {
+        private static readonly SwitcherConfiguration Configuration = new(
+            new NodePilotWorkloadConfiguration(string.Empty, string.Empty),
+            new ScorchWorkloadConfiguration(string.Empty, "http://localhost"));
+
+        public Task<WorkloadSwitchPlan> PreflightAsync(SwitchTarget target, CancellationToken cancellationToken) =>
+            Task.FromResult(new WorkloadSwitchPlan(target, Configuration, []));
+
+        public Task DeactivateSourceAsync(
+            WorkloadSwitchPlan plan,
+            IProgress<SwitchProgress>? progress,
+            Action onMutationStarted,
+            CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task ReconcileAsync(
+            WorkloadSwitchPlan plan,
+            IProgress<SwitchProgress>? progress,
+            CancellationToken cancellationToken) =>
+            throw new TimeoutException("SCOrch runbook reconciliation did not settle within 60 seconds.");
     }
 
     private sealed class FailingDeactivationReconciler(bool reportMutation) : IWorkloadReconciler

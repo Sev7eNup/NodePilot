@@ -1695,6 +1695,37 @@ try {
     Write-Warn "  The installation works; call np.exe by its full path under $InstallPath\tools\np."
 }
 
+# The Engine Switcher drives NodePilot through np.exe. Without a server URL it falls back to the
+# CLI's own configuration, which is stored per user and DPAPI-protected - the setup account is not
+# the account that later runs the switcher, so seeding that would land in the wrong profile.
+# Writing serverUrl into the shipped template instead makes the switcher pass --server on every
+# call. Only the copy next to the executable is touched; a machine-wide configuration under
+# %ProgramData%\NodePilot\EngineSwitcher wins at load time and stays the operator's file.
+try {
+    $switcherConfig = Join-Path $InstallPath 'tools\engine-switcher\engine-switcher.json'
+    if (Test-Path -LiteralPath $switcherConfig) {
+        $serverUrl = if ($HttpsPort -eq 443) { "https://$PublicHostname" }
+                     else { "https://${PublicHostname}:$HttpsPort" }
+        # Rewritten in place rather than round-tripped through ConvertTo-Json: the file is
+        # documented as hand-editable, and re-serialising it would escape '&' and quotes in
+        # activeJobsPath and reflow every line.
+        $raw = Get-Content -LiteralPath $switcherConfig -Raw -Encoding UTF8
+        $pattern = '"serverUrl"\s*:\s*(?:null|"[^"]*")'
+        if ([regex]::Matches($raw, $pattern).Count -eq 1) {
+            $updated = [regex]::Replace($raw, $pattern, '"serverUrl": "' + $serverUrl + '"')
+            $null = $updated | ConvertFrom-Json   # refuse to write a file the switcher cannot load
+            [System.IO.File]::WriteAllText(
+                $switcherConfig, $updated, (New-Object System.Text.UTF8Encoding $false))
+            Write-Info "  Engine Switcher server URL set to $serverUrl."
+        } else {
+            Write-Warn "  serverUrl not found exactly once in $switcherConfig - left unchanged."
+        }
+    }
+} catch {
+    Write-Warn "  Could not set the Engine Switcher server URL: $($_.Exception.Message)"
+    Write-Warn "  Set nodePilot.serverUrl in $InstallPath\tools\engine-switcher\engine-switcher.json by hand."
+}
+
 Write-Host ""
 Write-Ok "Installation complete."
 Write-Host ""

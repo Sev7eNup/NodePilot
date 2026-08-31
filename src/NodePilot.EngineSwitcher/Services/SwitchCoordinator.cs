@@ -135,7 +135,11 @@ internal sealed class SwitchCoordinator
             _logger.Success($"Switch to {TargetName(target)} completed successfully.");
             return new SwitchResult(true, final);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        // Only the caller's cancellation is passed on. Workload reconciliation cancels its own
+        // linked token when its deadline expires, and that failure must run the fail-closed
+        // cleanup like any other - it used to escape as a bare OperationCanceledException and
+        // terminate the process from the async void command handler.
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.Error($"Switch failed: {exception.Message}");
             if (initial is not null && serviceMutationStarted)

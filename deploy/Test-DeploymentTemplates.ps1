@@ -2272,6 +2272,19 @@ foreach ($pathConsumer in @(
         -Text $pathConsumer.Text -Pattern "Join-Path \`$InstallPath 'tools\\np'"
 }
 
+# The Engine Switcher drives NodePilot through np.exe. Without a server URL it falls back to the
+# CLI's own configuration, which is per-user and DPAPI-protected - the setup account is not the
+# account that later runs the switcher, so only the shipped configuration can carry it. Same
+# one-line rule as the PATH directory above, for the same reason.
+Assert-TextMatches -Name 'installer names the switcher configuration on one line' `
+    -Text $installer -Pattern "Join-Path \`$InstallPath 'tools\\engine-switcher\\engine-switcher\.json'"
+Assert-TextMatches -Name 'installer seeds the switcher server URL from the public hostname' `
+    -Text $installer -Pattern '\$serverUrl\s*=.*https://\$PublicHostname'
+Assert-TextMatches -Name 'installer refuses to write a switcher configuration that will not parse' `
+    -Text $installer -Pattern '(?s)\$updated \| ConvertFrom-Json.*?WriteAllText'
+Assert-TextMatches -Name 'installer writes the switcher configuration without a BOM' `
+    -Text $installer -Pattern 'New-Object System\.Text\.UTF8Encoding \$false'
+
 # --- desktop installer contracts ----------------------------------------------------------------
 # Two defects that both looked like a successful installation and were only visible to the user as
 # "the app does not work". Neither had any automated coverage before.
