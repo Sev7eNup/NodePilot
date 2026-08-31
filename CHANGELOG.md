@@ -12,6 +12,12 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.24] - 2026-08-31
+
+A single fix, found by running the Engine Switcher against a System Center Orchestrator
+installation whose Web API build rejects the OData `in` operator in a way that cannot be
+reported as an error.
+
 ### Fixed
 
 - **The Engine Switcher no longer uses the OData `in` operator for active SCOrch jobs.** Some
@@ -1132,6 +1138,7 @@ multi-step automation in the browser, with no agents on the targets.
 - Licensed under Apache-2.0
 
 [Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.23...main
+[1.2.24]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.24
 [1.2.23]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.23
 [1.2.22]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.22
 [1.2.21]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.21
