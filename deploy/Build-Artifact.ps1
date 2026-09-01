@@ -606,6 +606,7 @@ $deployScriptFiles = @(
     'Preflight.ps1'                      # dot-sourced by install
     'ServiceControl.ps1'                 # dot-sourced by install + update
     'MachinePath.ps1'                    # dot-sourced by install + update + uninstall
+    'SwitcherConfig.ps1'                 # dot-sourced by install + update
     'Provision-NodePilotDatabase.ps1'    # optional: create the SQL Server login/database
     'Provision-NodePilotPostgres.ps1'    # optional: same for PostgreSQL
     'New-NodePilotSelfSignedCertificate.ps1'  # optional: lab certificates

@@ -1712,20 +1712,11 @@ try {
 # call. Only the copy next to the executable is touched; a machine-wide configuration under
 # %ProgramData%\NodePilot\EngineSwitcher wins at load time and stays the operator's file.
 try {
+    . (Join-Path $PSScriptRoot 'SwitcherConfig.ps1')
     $switcherConfig = Join-Path $InstallPath 'tools\engine-switcher\engine-switcher.json'
     if (Test-Path -LiteralPath $switcherConfig) {
-        $serverUrl = if ($HttpsPort -eq 443) { "https://$PublicHostname" }
-                     else { "https://${PublicHostname}:$HttpsPort" }
-        # Rewritten in place rather than round-tripped through ConvertTo-Json: the file is
-        # documented as hand-editable, and re-serialising it would escape '&' and quotes in
-        # activeJobsPath and reflow every line.
-        $raw = Get-Content -LiteralPath $switcherConfig -Raw -Encoding UTF8
-        $pattern = '"serverUrl"\s*:\s*(?:null|"[^"]*")'
-        if ([regex]::Matches($raw, $pattern).Count -eq 1) {
-            $updated = [regex]::Replace($raw, $pattern, '"serverUrl": "' + $serverUrl + '"')
-            $null = $updated | ConvertFrom-Json   # refuse to write a file the switcher cannot load
-            [System.IO.File]::WriteAllText(
-                $switcherConfig, $updated, (New-Object System.Text.UTF8Encoding $false))
+        $serverUrl = Get-NodePilotSwitcherServerUrlFor -Hostname $PublicHostname -HttpsPort $HttpsPort
+        if (Set-NodePilotSwitcherServerUrl -ConfigPath $switcherConfig -ServerUrl $serverUrl) {
             Write-Info "  Engine Switcher server URL set to $serverUrl."
         } else {
             Write-Warn "  serverUrl not found exactly once in $switcherConfig - left unchanged."

@@ -240,6 +240,12 @@ try {
 
         Write-Step 'Installing verified artifact'
         $installTouched = $true
+        # The wipe below takes tools\engine-switcher with it, so the switcher's server URL has to
+        # be carried across or every upgrade silently reverts it to the shipped template and the
+        # switch to NodePilot fails again with "No server URL configured".
+        . (Join-Path $PSScriptRoot 'SwitcherConfig.ps1')
+        $switcherConfigPath = Join-Path $InstallPath 'tools\engine-switcher\engine-switcher.json'
+        $previousSwitcherServerUrl = Get-NodePilotSwitcherServerUrl -ConfigPath $switcherConfigPath
         # appsettings.Production.json last: if the wipe aborts midway (locked file, antivirus)
         # the config must still be on disk - the backup excludes it and the in-memory copy dies
         # with this process.
@@ -380,6 +386,32 @@ public class TrustAllCertsUpdate : ICertificatePolicy {
             }
         } catch {
             Write-Warn "Could not update the machine PATH: $($_.Exception.Message)"
+        }
+
+        # Restore the switcher's server URL the wipe removed. An installation that predates the
+        # setting has none to carry, so fall back to the first real entry of AllowedHosts - the
+        # same file this script already reads the Kestrel port from.
+        try {
+            if (Test-Path -LiteralPath $switcherConfigPath) {
+                $serverUrl = $previousSwitcherServerUrl
+                if (-not $serverUrl) {
+                    $allowed = ([Text.Encoding]::UTF8.GetString($settingsBytes) | ConvertFrom-Json).AllowedHosts
+                    $hostname = ($allowed -split ';' | ForEach-Object { $_.Trim() } |
+                        Where-Object { $_ -and $_ -ne '*' -and $_ -ne 'localhost' } | Select-Object -First 1)
+                    if ($hostname) {
+                        $serverUrl = Get-NodePilotSwitcherServerUrlFor -Hostname $hostname -HttpsPort $HttpsPort
+                    }
+                }
+                if ($serverUrl -and (Set-NodePilotSwitcherServerUrl `
+                            -ConfigPath $switcherConfigPath -ServerUrl $serverUrl)) {
+                    Write-Info "Engine Switcher server URL set to $serverUrl."
+                } elseif (-not $serverUrl) {
+                    Write-Warn ('No Engine Switcher server URL could be determined; set ' +
+                                "nodePilot.serverUrl in $switcherConfigPath by hand.")
+                }
+            }
+        } catch {
+            Write-Warn "Could not set the Engine Switcher server URL: $($_.Exception.Message)"
         }
 
         Write-Ok 'Update complete.'

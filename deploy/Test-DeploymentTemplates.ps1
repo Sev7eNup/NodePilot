@@ -2312,14 +2312,27 @@ foreach ($helper in $entryPointHelpers) {
 # CLI's own configuration, which is per-user and DPAPI-protected - the setup account is not the
 # account that later runs the switcher, so only the shipped configuration can carry it. Same
 # one-line rule as the PATH directory above, for the same reason.
-Assert-TextMatches -Name 'installer names the switcher configuration on one line' `
-    -Text $installer -Pattern "Join-Path \`$InstallPath 'tools\\engine-switcher\\engine-switcher\.json'"
-Assert-TextMatches -Name 'installer seeds the switcher server URL from the public hostname' `
-    -Text $installer -Pattern '\$serverUrl\s*=.*https://\$PublicHostname'
-Assert-TextMatches -Name 'installer refuses to write a switcher configuration that will not parse' `
-    -Text $installer -Pattern '(?s)\$updated \| ConvertFrom-Json.*?WriteAllText'
-Assert-TextMatches -Name 'installer writes the switcher configuration without a BOM' `
-    -Text $installer -Pattern 'New-Object System\.Text\.UTF8Encoding \$false'
+$switcherConfigHelper = Get-Content -LiteralPath (Join-Path $scriptDirectory 'SwitcherConfig.ps1') -Raw
+foreach ($switcherConsumer in @(
+        @{ Name = 'installer'; Text = $installer },
+        @{ Name = 'updater';   Text = $updateScript })) {
+    Assert-TextMatches -Name "$($switcherConsumer.Name) names the switcher configuration on one line" `
+        -Text $switcherConsumer.Text `
+        -Pattern "Join-Path \`$InstallPath 'tools\\engine-switcher\\engine-switcher\.json'"
+    Assert-TextMatches -Name "$($switcherConsumer.Name) uses the shared switcher-config helper" `
+        -Text $switcherConsumer.Text -Pattern 'SwitcherConfig\.ps1'
+    Assert-TextMatches -Name "$($switcherConsumer.Name) writes the server URL through the helper" `
+        -Text $switcherConsumer.Text -Pattern 'Set-NodePilotSwitcherServerUrl'
+}
+# The update wipes and repopulates the install directory, so it has to carry the previous value
+# across - otherwise every upgrade silently reverts serverUrl to the shipped template.
+Assert-TextMatches -Name 'the updater reads the previous server URL before wiping the directory' `
+    -Text $updateScript `
+    -Pattern '(?s)Get-NodePilotSwitcherServerUrl -ConfigPath.*?Remove-Item -Recurse -Force'
+Assert-TextMatches -Name 'the switcher-config helper refuses to write a file that will not parse' `
+    -Text $switcherConfigHelper -Pattern '(?s)\$updated \| ConvertFrom-Json.*?WriteAllText'
+Assert-TextMatches -Name 'the switcher-config helper writes without a BOM' `
+    -Text $switcherConfigHelper -Pattern 'New-Object System\.Text\.UTF8Encoding \$false'
 
 # --- desktop installer contracts ----------------------------------------------------------------
 # Two defects that both looked like a successful installation and were only visible to the user as
