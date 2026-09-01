@@ -12,6 +12,16 @@ exhaustive.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An update no longer reverts the Engine Switcher's server URL.** The update wipes and
+  repopulates the install directory, so `tools\engine-switcher\engine-switcher.json` fell back
+  to the shipped template on every upgrade and the switch to NodePilot failed again with "No
+  server URL configured" — the 1.2.25 fix only covered a fresh install. The update now carries
+  the previous value across, and derives one from the installed `AllowedHosts` and Kestrel port
+  when upgrading an installation that predates the setting. Install and update share one
+  implementation (`deploy/SwitcherConfig.ps1`) rather than two copies of the same string surgery.
+
 ## [1.2.25] - 2026-09-01
 
 Four defects from running the Engine Switcher against a real System Center Orchestrator
