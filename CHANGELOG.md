@@ -12,6 +12,12 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.25] - 2026-09-01
+
+Four defects from running the Engine Switcher against a real System Center Orchestrator
+installation, and from installing NodePilot with the GUI setup rather than the deployment
+scripts. Two of them ended a switch that had already started services.
+
 ### Fixed
 
 - **A stalled SCOrch reconciliation no longer terminates the Engine Switcher.** The switch
@@ -1171,6 +1177,7 @@ multi-step automation in the browser, with no agents on the targets.
 - Licensed under Apache-2.0
 
 [Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.23...main
+[1.2.25]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.25
 [1.2.24]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.24
 [1.2.23]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.23
 [1.2.22]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.22
