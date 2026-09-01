@@ -12,6 +12,11 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.26] - 2026-09-01
+
+One fix, found while installing 1.2.25 on the lab machine: that release covered a fresh install
+but not an upgrade.
+
 ### Fixed
 
 - **An update no longer reverts the Engine Switcher's server URL.** The update wipes and
@@ -1187,6 +1192,7 @@ multi-step automation in the browser, with no agents on the targets.
 - Licensed under Apache-2.0
 
 [Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.23...main
+[1.2.26]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.26
 [1.2.25]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.25
 [1.2.24]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.24
 [1.2.23]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.23
