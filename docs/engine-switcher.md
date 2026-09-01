@@ -156,7 +156,6 @@ seconds would otherwise never satisfy the check, because a finished job is no lo
 stale `Pending`/`Queued` job is stopped and restarted on an available runbook server, and a job
 that stays `Pending` until `reconciliationTimeoutSeconds` expires fails the switch and is named in
 the error.
-runbook server.
 
 The configured NodePilot CLI profile can be authenticated once under the same Windows account that
 runs the switcher:
