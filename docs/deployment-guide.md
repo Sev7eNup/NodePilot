@@ -281,8 +281,8 @@ the transfer.
 
 Whichever way you bring the scripts across, `Install-NodePilot.ps1` needs the helpers it
 dot-sources next to it — `ArtifactSecurity.ps1`, `Preflight.ps1`, `ServiceControl.ps1`,
-`MachinePath.ps1` — plus `templates\`. The deploy-scripts archive contains exactly that set;
-copying the single `.ps1` on its own fails at the first dot-source.
+`MachinePath.ps1`, `SwitcherConfig.ps1` — plus `templates\`. The deploy-scripts archive contains
+exactly that set; copying the single `.ps1` on its own fails at the first dot-source.
 
 ## Step 2 — Install
 
