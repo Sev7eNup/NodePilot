@@ -530,7 +530,7 @@ Der Updater:
 - prüft das neue Artefakt,
 - sichert die vorhandenen Binaries,
 - wartet nach dem Dienststopp bis zu 30 Sekunden auf das Ende von Prozessen aus dem Installationsverzeichnis und beendet Verbliebene erzwungen; nur wenn das nicht greift, bricht der Updater mit Prozessname und PID **vor der ersten Dateilöschung** ab (ein gestoppter Dienst genügt nicht: verwaiste Worker halten ihre DLLs weiterhin gemappt),
-- erhält Datenbank, Dienstkonto und Produktionskonfiguration,
+- erhält Datenbank, Dienstkonto, Produktionskonfiguration und die Server-URL des Engine Switchers,
 - startet den Dienst neu,
 - prüft den Health-Endpunkt auf dem Port aus der installierten Konfiguration (`-HttpsPort` ist nur zum Überschreiben nötig),
 - stellt bei einem fehlgeschlagenen Health-Check die vorherigen Binaries wieder her und lässt den Dienst im Zustand vor dem Update.

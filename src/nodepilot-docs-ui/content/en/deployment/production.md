@@ -529,7 +529,7 @@ The updater:
 - verifies the new artifact,
 - backs up the existing binaries,
 - waits up to 30 seconds after stopping the service for processes from the installation directory to exit and then terminates any that remain; only if that does not help does the updater abort with the process name and PID **before the first file deletion** (a stopped service is not enough: orphaned workers keep their DLLs mapped),
-- preserves the database, the service account and the production configuration,
+- preserves the database, the service account, the production configuration and the Engine Switcher's server URL,
 - restarts the service,
 - checks the health endpoint on the port from the installed configuration (`-HttpsPort` is only needed to override it),
 - restores the previous binaries on a failed health check and leaves the service in the state it was in before the update.
