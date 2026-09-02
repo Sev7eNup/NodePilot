@@ -28,6 +28,7 @@ The service runs under one of:
 | [ArtifactSecurity.ps1](ArtifactSecurity.ps1) | Shared signing/verification logic (manifest + `.p7s`); dot-sourced by build/install/update |
 | [Preflight.ps1](Preflight.ps1) | Shared **side-effect-free** readiness checks (runtime, certificate, **HTTP/HTTPS ports bindable**, gMSA, database reachability, TDS 8.0 version, service identity, domain membership); dot-sourced by install |
 | [ServiceControl.ps1](ServiceControl.ps1) | After stopping the service, waits for the processes in the install directory to exit and terminates stragglers; dot-sourced by install and update |
+| [SwitcherConfig.ps1](SwitcherConfig.ps1) | Reads and writes the Engine Switcher's `serverUrl`, shared by install and update — install seeds it from the hostname and port it just configured, update carries the previous value across the directory wipe |
 | [SetupContract.ps1](SetupContract.ps1) | The GUI setup's answer-file contract: schema, splat mapping onto `Install-NodePilot.ps1`, SecureString construction, INI result file |
 | [Invoke-NodePilotSetup.ps1](Invoke-NodePilotSetup.ps1) | Adapter between the wizard and the scripts (`InitSession`/`Probe`/`Provision`/`Apply`/`Cleanup`) |
 | [Provision-NodePilotDatabase.ps1](Provision-NodePilotDatabase.ps1) | Opt-in: create the SQL login + database. Permission gate **before** any mutation, otherwise DDL output only. SQL Server only |
