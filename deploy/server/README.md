@@ -7,11 +7,11 @@ and is still the reference; the setup calls exactly that script.
 > For **a single machine with no network access**, the desktop app is the faster route — see
 > [`../desktop/README.md`](../desktop/README.md). It binds loopback only.
 
-The server artifact also contains the self-contained WPF **NodePilot Engine Switcher** under
-`tools\engine-switcher`; the GUI installer adds its Start-menu shortcut. It controls only the
+The server artifact also contains the self-contained WPF **NodePilot Switcher** under
+`tools\switcher`; the GUI installer adds its Start-menu shortcut. It controls only the
 validated local NodePilot service and the exact SCOrch allowlist `omanagement`, `oremoting`,
 `omonitor`, and `orunbook`. Database services are never included. See
-[`docs/engine-switcher.md`](../../docs/engine-switcher.md) for its fail-closed behavior and the
+[`docs/switcher.md`](../../docs/switcher.md) for its fail-closed behavior and the
 required absolute local or UNC workflow/runbook allowlist paths.
 
 ## Quick start

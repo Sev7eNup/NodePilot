@@ -473,7 +473,7 @@ src/
   NodePilot.Api/          ASP.NET Core host, controllers, SignalR hub, security middleware
   NodePilot.Cli/          `np` — operations CLI (Spectre.Console.Cli), shipped in both installers under tools\np
   NodePilot.Mcp/          `nodepilot-mcp` — MCP server for AI agents (ModelContextProtocol), shipped under tools\mcp
-  NodePilot.EngineSwitcher/  WPF utility for exclusive local NodePilot/SCOrch service control
+  NodePilot.Switcher/     WPF utility for exclusive local NodePilot/SCOrch service control
   nodepilot-ui/           React 19 SPA (Vite 8 + Tailwind CSS 4 + React Flow 12)
   nodepilot-docs-ui/      Documentation website (Vite + React SPA) — its OWN curated markdown corpus under content/{de,en}/, maintained alongside docs/ (not a 1:1 render)
   nodepilot-desktop/      Electron shell for the desktop app — thin hardened viewer, no business logic
@@ -486,7 +486,7 @@ tests/
   NodePilot.Cli.Tests/      xUnit + WireMock.Net — CLI ApiClient + DPAPI TokenStore
   NodePilot.Mcp.Tests/      xUnit + WireMock.Net — MCP tools + stdio-process smoke test
   NodePilot.LoadTests/      Standalone load harness (Console EXE, HdrHistogram)
-  NodePilot.EngineSwitcher.Tests/  xUnit — discovery, state machine, fail-closed switching
+  NodePilot.Switcher.Tests/ xUnit — discovery, state machine, fail-closed switching
   NodePilot.TestCommons/    Shared test infrastructure (TestDbFactory, FakeLlmClient, fixtures)
 
 grafana/                  Docker-compose stack: Prometheus + Grafana + 10 dashboards
@@ -583,6 +583,6 @@ NodePilot is licensed under the [Apache License 2.0](LICENSE). You are free to u
 - **[docs/roadmap.md](docs/roadmap.md)** — the roadmap: what is committed, what is trigger-gated, what was deliberately ruled out and why.
 - **[grafana/README.md](grafana/README.md)** — Prometheus + Grafana stack walk-through.
 - **[deploy/README.md](deploy/README.md)** — production deployment operator manual (Windows Service, external DB).
-- **[docs/engine-switcher.md](docs/engine-switcher.md)** — local NodePilot/System Center engine switcher behavior and safety model.
+- **[docs/switcher.md](docs/switcher.md)** — local NodePilot/System Center switcher behavior and safety model.
 - **[deploy/desktop/README.md](deploy/desktop/README.md)** — desktop app: offline one-click installer with bundled PostgreSQL, plus the fast dev loop for iterating without rebuilding the installer.
 - **[docs/desktop-troubleshooting.md](docs/desktop-troubleshooting.md)** — desktop app troubleshooting: log locations, first-run setup recovery, port conflicts, and how to remove it completely.

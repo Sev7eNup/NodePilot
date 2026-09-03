@@ -240,11 +240,11 @@ try {
 
         Write-Step 'Installing verified artifact'
         $installTouched = $true
-        # The wipe below takes tools\engine-switcher with it, so the switcher's server URL has to
+        # The wipe below takes tools\switcher with it, so the switcher's server URL has to
         # be carried across or every upgrade silently reverts it to the shipped template and the
         # switch to NodePilot fails again with "No server URL configured".
         . (Join-Path $PSScriptRoot 'SwitcherConfig.ps1')
-        $switcherConfigPath = Join-Path $InstallPath 'tools\engine-switcher\engine-switcher.json'
+        $switcherConfigPath = Join-Path $InstallPath 'tools\switcher\switcher.json'
         $previousSwitcherServerUrl = Get-NodePilotSwitcherServerUrl -ConfigPath $switcherConfigPath
         # appsettings.Production.json last: if the wipe aborts midway (locked file, antivirus)
         # the config must still be on disk - the backup excludes it and the in-memory copy dies
@@ -404,14 +404,14 @@ public class TrustAllCertsUpdate : ICertificatePolicy {
                 }
                 if ($serverUrl -and (Set-NodePilotSwitcherServerUrl `
                             -ConfigPath $switcherConfigPath -ServerUrl $serverUrl)) {
-                    Write-Info "Engine Switcher server URL set to $serverUrl."
+                    Write-Info "Switcher server URL set to $serverUrl."
                 } elseif (-not $serverUrl) {
-                    Write-Warn ('No Engine Switcher server URL could be determined; set ' +
+                    Write-Warn ('No Switcher server URL could be determined; set ' +
                                 "nodePilot.serverUrl in $switcherConfigPath by hand.")
                 }
             }
         } catch {
-            Write-Warn "Could not set the Engine Switcher server URL: $($_.Exception.Message)"
+            Write-Warn "Could not set the Switcher server URL: $($_.Exception.Message)"
         }
 
         Write-Ok 'Update complete.'
