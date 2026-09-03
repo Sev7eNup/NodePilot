@@ -57,7 +57,8 @@ public sealed class LlmQueryActivity : IActivityExecutor
 
             if (!TryReadPositiveInt(config, "maxTokens", out var maxTokens, out var maxTokensError))
                 return Fail(maxTokensError!);
-            if (!TryReadPositiveInt(config, "timeoutSeconds", out var timeoutSeconds, out var timeoutError))
+            if (!TryReadPositiveInt(config, "timeoutSeconds", out var timeoutSeconds, out var timeoutError,
+                    zeroMeansUnset: true))
                 return Fail(timeoutError!);
             if (!TryReadTemperature(config, out var temperature, out var temperatureError))
                 return Fail(temperatureError!);
@@ -111,17 +112,29 @@ public sealed class LlmQueryActivity : IActivityExecutor
     private static string IntOrEmpty(int? value)
         => value?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
 
-    private static bool TryReadPositiveInt(JsonElement config, string key, out int? value, out string? error)
+    /// <summary>
+    /// Reads an optional positive override.
+    /// </summary>
+    /// <param name="zeroMeansUnset">
+    /// Set for <c>timeoutSeconds</c> only. The shared Timeout field writes a literal 0 for an
+    /// emptied input and its hint documents 0 as "no timeout", so rejecting it failed every run of
+    /// a node whose timeout the author had simply cleared. Other keys keep 0 as an error, where it
+    /// is a genuine misconfiguration rather than an empty field.
+    /// </param>
+    private static bool TryReadPositiveInt(
+        JsonElement config, string key, out int? value, out string? error, bool zeroMeansUnset = false)
     {
         value = null;
         error = null;
         if (!config.TryGetProperty(key, out var el) || el.ValueKind == JsonValueKind.Null)
             return true;
-        if (el.ValueKind != JsonValueKind.Number || !el.TryGetInt32(out var v) || v <= 0)
+        if (el.ValueKind != JsonValueKind.Number || !el.TryGetInt32(out var v)
+            || v < 0 || (v == 0 && !zeroMeansUnset))
         {
             error = $"LLM Query: '{key}' must be a positive integer.";
             return false;
         }
+        if (v == 0) return true;
         value = v;
         return true;
     }

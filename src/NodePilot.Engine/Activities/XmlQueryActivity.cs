@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Xml;
 using System.Xml.XPath;
 using Microsoft.Extensions.Configuration;
+using NodePilot.Core.Activities;
 using NodePilot.Core.Interfaces;
 using NodePilot.Engine.Security;
 
@@ -125,7 +126,9 @@ public class XmlQueryActivity : IActivityExecutor
         return result switch
         {
             XPathNodeIterator nodeIter => ExtractNodes(nodeIter, resultMode),
-            double doubleVal => (doubleVal.ToString("G"), 1),
+            // Invariant: an XPath sum()/count() feeding an edge condition must not change
+            // meaning with the host locale.
+            double doubleVal => (DataBusScalar.ToInvariantString(doubleVal), 1),
             bool boolVal => (boolVal.ToString().ToLowerInvariant(), 1),
             _ => ExtractString(result),
         };
@@ -136,13 +139,12 @@ public class XmlQueryActivity : IActivityExecutor
         var nodes = new List<string?>();
         while (nodeIter.MoveNext())
         {
-            if (resultMode == "all")
-                nodes.Add(nodeIter.Current?.InnerXml);
-            else
-            {
-                nodes.Add(nodeIter.Current?.Value);
-                break;
-            }
+            // Value in both modes, matching this class's documented contract. `all` used to read
+            // InnerXml, so the mode dropdown — presented as a pure cardinality switch — changed
+            // the TYPE of every element: markup instead of text, entity-escaped, and with
+            // newlines injected between child elements.
+            nodes.Add(nodeIter.Current?.Value);
+            if (resultMode != "all") break;
         }
         var count = resultMode == "all" ? nodes.Count : (nodes.Count > 0 ? 1 : 0);
         var output = resultMode == "all"
@@ -153,7 +155,7 @@ public class XmlQueryActivity : IActivityExecutor
 
     private static (string Output, int Count) ExtractString(object? result)
     {
-        var output = result?.ToString() ?? "";
+        var output = DataBusScalar.ToInvariantString(result);
         return (output, string.IsNullOrEmpty(output) ? 0 : 1);
     }
 

@@ -174,6 +174,9 @@ Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Pa
 
 - **Config:** `source`, `path`/`content`, `xpath`, `namespaces`, `resultMode`
 - **Outputs:** `param.result`, `param.count`
+- `resultMode` schaltet nur die Kardinalität. Beide Modi liefern den Elementtext, `all` als
+  JSON-Array. Numerische XPath-Ergebnisse verwenden einen invarianten Dezimalpunkt — ein
+  Vergleich bedeutet damit auf jedem Host dasselbe.
 
 ## `jsonQuery`
 
@@ -181,6 +184,9 @@ Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Pa
 
 - **Config:** `source`, `path`/`content`, `jsonPath`, `resultMode`
 - **Outputs:** `param.result`, `param.count`
+- Skalare werden invariant veröffentlicht: `9.99`, Booleans klein geschrieben. Ein
+  ISO-8601-Zeitstempel bleibt der Originaltext — er wird nie in ein host-formatiertes Datum
+  umgewandelt.
 
 ## `log`
 

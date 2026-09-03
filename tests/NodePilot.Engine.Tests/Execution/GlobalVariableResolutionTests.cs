@@ -172,4 +172,70 @@ public class GlobalVariableResolutionTests
         services.AddScoped<IGlobalVariableStore, GlobalVariableStore>();
         return services.BuildServiceProvider();
     }
+
+    /// <summary>
+    /// The condition builder's "Globals" dropdown writes a structured operand
+    /// ({"kind":"variable","source":"global","name":"ENV"}), not a template. The per-run globals
+    /// load was armed by a scan for the literal "{{globals." only, so such a workflow ran with an
+    /// empty dict: the operand resolved to "", the comparison was false on arrival and the branch
+    /// never fired — while the identical reference typed as a literal template worked.
+    /// </summary>
+    [Fact]
+    public async Task StructuredGlobalOperand_OnEdgeCondition_ResolvesWithoutATemplateElsewhere()
+    {
+        var branchRan = false;
+        var passThrough = new Mock<IActivityExecutor>();
+        passThrough.Setup(e => e.ActivityType).Returns("restApi");
+        passThrough.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityResult { Success = true, Output = "ok" });
+
+        var branch = new Mock<IActivityExecutor>();
+        branch.Setup(e => e.ActivityType).Returns("log");
+        branch.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
+            .Callback(() => branchRan = true)
+            .ReturnsAsync(new ActivityResult { Success = true, Output = "logged" });
+
+        var manualTriggerExecutor = new Mock<IActivityExecutor>();
+        manualTriggerExecutor.Setup(e => e.ActivityType).Returns("manualTrigger");
+        manualTriggerExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityResult { Success = true, Output = "{}" });
+
+        var registry = new ActivityRegistry(new[] { passThrough.Object, branch.Object, manualTriggerExecutor.Object });
+        var (db, _, conn) = TestDbContext.CreateWithScopedServices(registry);
+        try
+        {
+            var store = new GlobalVariableStore(db,
+                new NodePilot.Data.Security.DpapiSecretProtector(System.Security.Cryptography.DataProtectionScope.CurrentUser));
+            await store.CreateAsync("ENV", "production", isSecret: false, description: null,
+                folderId: GlobalVariableFolder.RootFolderId, updatedBy: "test", ct: CancellationToken.None);
+
+            var sp2 = WireGlobalStoreInto(conn, registry);
+
+            // Deliberately no "{{globals." anywhere in the definition — the structured operand is
+            // the only reference to a global.
+            var def = """
+                {"nodes":[{"id":"trigger-1","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"manualTrigger","config":{}}},
+                  {"id":"s1","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"restApi","config":{"url":"https://api.example.com","method":"GET"}}},
+                  {"id":"s2","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"log","config":{"message":"prod only"}}}],
+                 "edges":[{"id":"te","source":"trigger-1","target":"s1"},
+                  {"id":"e1","source":"s1","target":"s2","data":{"conditionExpression":
+                    {"type":"comparison","left":{"kind":"variable","source":"global","name":"ENV"},
+                     "op":"==","right":{"kind":"literal","value":"production"}}}}]}
+                """;
+            var workflow = new Workflow { Id = Guid.NewGuid(), Name = "StructuredGlobal", DefinitionJson = def };
+            db.Workflows.Add(workflow);
+            await db.SaveChangesAsync();
+
+            var engine = new WorkflowEngine(db, NullLogger<WorkflowEngine>.Instance, sp2, Mock.Of<IExecutionNotifier>());
+            var execution = await engine.ExecuteAsync(workflow, "test", CancellationToken.None);
+
+            execution.Status.Should().Be(ExecutionStatus.Succeeded);
+            branchRan.Should().BeTrue(
+                "the globals dict must be loaded for a structured operand too, not only for a {{globals.}} template");
+        }
+        finally { conn.Dispose(); }
+    }
 }

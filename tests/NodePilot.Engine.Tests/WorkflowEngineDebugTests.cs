@@ -301,3 +301,84 @@ public class WorkflowEngineDebugTests
         final.Status.Should().Be(ExecutionStatus.Cancelled);
     }
 }
+
+/// <summary>
+/// Debug overrides must reach the activities that consume the RESOLVED config, not only the
+/// PowerShell-backed ones that re-resolve their own templates. StepRunner baked the config before
+/// the pause, so for every other activity type — restApi, sql, emailNotification, log, … — the
+/// edited value was silently discarded: the resume returned 204, the inspector cleared its dirty
+/// markers, and the step ran green against the pre-edit value.
+/// </summary>
+[Collection("SerialEngineTests")]
+public class WorkflowEngineDebugOverrideTests
+{
+    private readonly NodePilotDbContext _db;
+    private readonly WorkflowEngine _engine;
+    private JsonElement? _capturedConfig;
+
+    public WorkflowEngineDebugOverrideTests()
+    {
+        // "log" stands in for every activity that consumes the resolved JsonElement.
+        var logExecutor = new Mock<IActivityExecutor>();
+        logExecutor.Setup(e => e.ActivityType).Returns("log");
+        logExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
+            .Callback<StepExecutionContext, JsonElement, CancellationToken>((_, cfg, _) => _capturedConfig = cfg.Clone())
+            .ReturnsAsync(new ActivityResult { Success = true, Output = "logged" });
+
+        var manualTriggerExecutor = new Mock<IActivityExecutor>();
+        manualTriggerExecutor.Setup(e => e.ActivityType).Returns("manualTrigger");
+        manualTriggerExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityResult { Success = true, Output = "{}" });
+
+        var registry = new ActivityRegistry(new[] { logExecutor.Object, manualTriggerExecutor.Object });
+        (_db, var sp, _) = TestDbContext.CreateWithScopedServices(registry);
+        _engine = new WorkflowEngine(_db, NullLogger<WorkflowEngine>.Instance, sp, Mock.Of<IExecutionNotifier>());
+    }
+
+    private static async Task WaitFor(Func<bool> predicate, int timeoutMs = 5000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (predicate()) return;
+            await Task.Delay(20);
+        }
+        throw new TimeoutException($"Predicate didn't become true within {timeoutMs}ms");
+    }
+
+    [Fact]
+    public async Task Resume_WithOverride_ReResolvesTheConfigForAConfigDrivenActivity()
+    {
+        const string definition =
+            "{\"nodes\":[" +
+            "{\"id\":\"trigger-1\",\"type\":\"activity\",\"position\":{\"x\":0,\"y\":0},\"data\":{\"activityType\":\"manualTrigger\",\"config\":{}}}," +
+            "{\"id\":\"step-2\",\"type\":\"activity\",\"position\":{\"x\":0,\"y\":0}," +
+            "\"data\":{\"activityType\":\"log\",\"config\":{\"message\":\"target={{manual.target}}\"},\"breakpoint\":true}}" +
+            "],\"edges\":[{\"id\":\"te\",\"source\":\"trigger-1\",\"target\":\"step-2\"}]}";
+
+        var wf = new Workflow { Id = Guid.NewGuid(), Name = "OverrideWF", DefinitionJson = definition };
+        _db.Workflows.Add(wf);
+        await _db.SaveChangesAsync();
+
+        var runTask = _engine.ExecuteAsync(wf, "debug", CancellationToken.None,
+            inputParameters: new Dictionary<string, string> { ["target"] = "BADHOST" },
+            debugEnabled: true);
+
+        await WaitFor(() => _db.WorkflowExecutions.AsNoTracking().FirstOrDefault() is { } exec
+                            && _engine.GetPausedSteps(exec.Id).Contains("step-2"));
+
+        var execution = _db.WorkflowExecutions.AsNoTracking().First();
+        _engine.Resume(execution.Id, "step-2", DebugResumeCommand.Continue,
+            new Dictionary<string, string> { ["manual.target"] = "GOODHOST" }).Should().BeTrue();
+
+        var final = await runTask.WaitAsync(TimeSpan.FromSeconds(10));
+
+        final.Status.Should().Be(ExecutionStatus.Succeeded);
+        _capturedConfig.Should().NotBeNull();
+        _capturedConfig!.Value.GetProperty("message").GetString()
+            .Should().Be("target=GOODHOST",
+                "the config is resolved before the pause, so an override has to trigger a re-resolve");
+    }
+}

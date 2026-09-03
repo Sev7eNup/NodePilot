@@ -16,7 +16,11 @@ export interface TemplateValidationResult {
 
 // manual.* is injected at runtime (trigger data, forEach child params like {{manual.item}}) and
 // must be tolerated like globals.*, matching workflowLint's runtimePrefixes.
-const ENGINE_REFERENCE_RE = /^(globals\.[A-Za-z_][\w.-]*|manual\.[A-Za-z0-9_-][\w.-]*|[A-Za-z0-9_-]+\.(output|error|errorOutput|success|param\.[\w-]+))$/;
+// Mirrors VariableResolver's grammar exactly. A shape this accepts but the engine does not
+// resolve is worse than a false warning: the placeholder survives, no unresolved-template
+// check sees it (that check scans for the engine's own patterns), and the step reports success
+// having written the literal `{{...}}` wherever the value belonged.
+const ENGINE_REFERENCE_RE = /^(globals\.[A-Za-z0-9_-]+|manual\.[A-Za-z0-9_-]+|[A-Za-z0-9_-]+\.(output|error|success|param\.[\w-]+))$/;
 
 // Namespaces resolved at runtime whose members cannot be enumerated at lint time.
 // These never produce a "not in upstream" warning.

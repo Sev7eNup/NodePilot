@@ -259,11 +259,31 @@ internal sealed class StepRunner
             {
                 var shouldPause = ShouldPauseForDebug(node, previousResults, outputVariableToStepId, globalVariables, debug);
                 if (shouldPause)
-                    await _debugCoordinator.HandlePauseAsync(execution, node, stepExecution, stepDb, variables, debug, executionCts, ct);
+                {
+                    var overrides = await _debugCoordinator.HandlePauseAsync(
+                        execution, node, stepExecution, stepDb, variables, debug, executionCts, ct);
+
+                    // Re-resolve with the edited values. configForExecution was baked above, before
+                    // the pause, and only runScript / custom activities read the live variable dict
+                    // at execute time — so without this every other activity ran with the pre-edit
+                    // value while the resume returned 204 and the step reported success.
+                    if (overrides is { Count: > 0 })
+                    {
+                        var (overriddenResults, overriddenInputs) = ApplyDebugOverrides(
+                            previousResults, inputParameters, overrides, outputVariableToStepId);
+                        configForExecution = ResolveConfigForExecution(
+                            node.Type, node.Data.Config, overriddenResults, outputVariableToStepId,
+                            globalVariables, overriddenInputs);
+                    }
+                }
             }
 
-            var (result, attemptsUsed) = await RunWithRetryAsync(node, executor, context, configForExecution, resolvedTargetMachine, retryPolicies, ct);
-            stepExecution.AttemptCount = attemptsUsed;
+            // stepExecution is passed in so AttemptCount is recorded per attempt: when the final
+            // attempt throws, the assignment below is never reached and the row claimed one
+            // attempt for a step that made several.
+            var (result, _) = await RunWithRetryAsync(
+                node, executor, context, configForExecution, resolvedTargetMachine, retryPolicies,
+                stepExecution, ct);
 
             var sanitized = _redactor.Redact(result);
             stepExecution.Status = result.Success ? ExecutionStatus.Succeeded : ExecutionStatus.Failed;
@@ -508,6 +528,7 @@ internal sealed class StepRunner
         JsonElement configForExecution,
         string? resolvedTargetMachine,
         IReadOnlyDictionary<string, RetryPolicy> retryPolicies,
+        StepExecution stepExecution,
         CancellationToken ct)
     {
         var retryPolicy = retryPolicies.TryGetValue(node.Id, out var p) ? p : RetryPolicy.Disabled;
@@ -540,7 +561,25 @@ internal sealed class StepRunner
             }
 
             attemptsUsed = attempt;
-            result = await executor.ExecuteAsync(context, configForExecution, ct);
+            stepExecution.AttemptCount = attempt;
+            try
+            {
+                result = await executor.ExecuteAsync(context, configForExecution, ct);
+            }
+            // The whole remote half of the catalogue signals failure by THROWING, not by returning
+            // Success=false: BaseRemoteActivity awaits CreateSessionAsync without a catch, and the
+            // WinRM session factory rethrows every connect/auth/SSL failure. Without this the retry
+            // policy did nothing for exactly the transient failures an operator enables it for —
+            // a rebooting target, a restarting WinRM service, a network blip.
+            catch (Exception ex) when (ex is not OperationCanceledException && attempt < retryPolicy.MaxAttempts)
+            {
+                _logger.LogWarning(ex,
+                    "Step {StepId} ({ActivityType}) attempt {Attempt}/{Max} threw; retrying.",
+                    node.Id, node.Type, attempt, retryPolicy.MaxAttempts);
+                result = new ActivityResult { Success = false, ErrorOutput = ex.Message };
+                continue;
+            }
+
             if (result.Success) break;
         }
 
@@ -692,6 +731,92 @@ internal sealed class StepRunner
     /// placeholder reached PowerShell verbatim on exactly the runs where it was hardest to spot.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Builds an overridden view of the step results and trigger inputs from the values a user
+    /// edited at a debug pause, so the node config can be resolved again against them.
+    ///
+    /// <para>Only the qualified template shapes are honoured — <c>{{step.output}}</c>,
+    /// <c>{{step.error}}</c>, <c>{{step.success}}</c>, <c>{{step.param.x}}</c> and
+    /// <c>{{manual.x}}</c> — because those are the forms a config can contain. An unqualified
+    /// short name exists only for the PowerShell injection path, which reads the live dict and so
+    /// already sees the edit. <c>globals.*</c> never appears here; the coordinator rejects it.</para>
+    ///
+    /// <para>The copy is taken from the caller's already ancestor-scoped view, so scoping is
+    /// preserved: a non-predecessor step is not in the source map and cannot be introduced.</para>
+    /// </summary>
+    private static (IReadOnlyDictionary<string, ActivityResult> Results, Dictionary<string, string>? Inputs)
+        ApplyDebugOverrides(
+            IReadOnlyDictionary<string, ActivityResult> previousResults,
+            Dictionary<string, string>? inputParameters,
+            IReadOnlyDictionary<string, string> overrides,
+            IReadOnlyDictionary<string, string> outputVariableToStepId)
+    {
+        Dictionary<string, ActivityResult>? results = null;
+        Dictionary<string, string>? inputs = null;
+
+        foreach (var (key, value) in overrides)
+        {
+            if (key.StartsWith("manual.", StringComparison.OrdinalIgnoreCase))
+            {
+                inputs ??= inputParameters is null
+                    ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, string>(inputParameters, StringComparer.OrdinalIgnoreCase);
+                inputs[key["manual.".Length..]] = value;
+                continue;
+            }
+
+            var dot = key.IndexOf('.');
+            if (dot <= 0) continue;
+
+            var name = key[..dot];
+            var tail = key[(dot + 1)..];
+            var stepId = outputVariableToStepId.TryGetValue(name, out var mapped) ? mapped : name;
+
+            results ??= new Dictionary<string, ActivityResult>(previousResults, StringComparer.OrdinalIgnoreCase);
+            if (!results.TryGetValue(stepId, out var current)) continue;
+
+            var overridden = OverrideResultTail(current, tail, value);
+            if (!ReferenceEquals(overridden, current))
+                results[stepId] = overridden;
+        }
+
+        return (results ?? previousResults, inputs ?? inputParameters);
+    }
+
+    /// <summary>
+    /// Returns a copy of <paramref name="source"/> with one tail replaced, or the original when
+    /// the tail is not one the template grammar knows.
+    /// </summary>
+    private static ActivityResult OverrideResultTail(ActivityResult source, string tail, string value)
+    {
+        var parameters = new Dictionary<string, string>(source.OutputParameters, StringComparer.OrdinalIgnoreCase);
+        var output = source.Output;
+        var error = source.ErrorOutput;
+        var success = source.Success;
+
+        if (tail.StartsWith("param.", StringComparison.OrdinalIgnoreCase))
+            parameters[tail["param.".Length..]] = value;
+        else if (string.Equals(tail, "output", StringComparison.OrdinalIgnoreCase))
+            output = value;
+        else if (string.Equals(tail, "error", StringComparison.OrdinalIgnoreCase))
+            error = value;
+        else if (string.Equals(tail, "success", StringComparison.OrdinalIgnoreCase))
+            success = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+        else
+            return source;
+
+        return new ActivityResult
+        {
+            Success = success,
+            Output = output,
+            ErrorOutput = error,
+            Duration = source.Duration,
+            OutputParameters = parameters,
+            TraceOutput = source.TraceOutput,
+            CustomActivity = source.CustomActivity,
+        };
+    }
+
     internal static List<string> FindOutOfScopeReferences(
         IEnumerable<string> unresolved,
         IReadOnlyDictionary<string, ActivityResult> previousResults,

@@ -4,7 +4,7 @@ import type { CarbonIconType } from '@carbon/icons-react';
 import {
   Screen, Settings, Logout, Light, Contrast, Asleep, ColorPalette,
   ChevronLeft, ChevronRight, Close, Building, BankVault, Checkmark,
-  Star, Search, OverflowMenuHorizontal,
+  Star, Search, OverflowMenuHorizontal, Catalog,
 } from '@carbon/icons-react';
 import { useTranslation } from 'react-i18next';
 import { useAiCapabilities } from '../../hooks/useAiCapabilities';
@@ -55,6 +55,34 @@ function NavBadge({ kind, badges, liveLabel }: { kind: BadgeKind; badges: Sideba
   if ((kind === 'running' || kind === 'alerts') && value <= 0) return null;
   const cls = kind === 'running' ? ' is-running' : kind === 'alerts' ? ' is-alerts' : '';
   return <span className={`np-nav-badge${cls}`}>{value}</span>;
+}
+
+/**
+ * Entry point into the documentation, which the API serves from wwwroot/docs at /docs. Shipping
+ * it with the product is what makes it readable on a disconnected installation. Sits with the
+ * skin and language controls at the bottom of the rail.
+ *
+ * A plain anchor, deliberately not a react-router `Link`: /docs is a second, independent document
+ * on the same origin. A `Link` would keep this SPA mounted, push /docs into its history and
+ * render the not-found page, because no route claims that path — the request would never reach
+ * the server. For the same reason there is no `navGroups` entry, which also feeds the breadcrumb.
+ *
+ * The trailing slash is load-bearing: the docs bundle resolves its assets against the document
+ * url, and /docs without the slash answers 301 to /docs/ anyway.
+ */
+function DocsButton({ label, className }: Readonly<{ label: string; className: string }>) {
+  return (
+    <a
+      href="/docs/"
+      target="_blank"
+      rel="noopener noreferrer"
+      title={label}
+      aria-label={label}
+      className={className}
+    >
+      <Catalog size={16} />
+    </a>
+  );
 }
 
 /** Gradient avatar tile. Size and shape come from the caller so the same treatment serves
@@ -325,6 +353,10 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
             >
               {lang.toUpperCase()}
             </button>
+            <DocsButton
+              label={t('nav:documentation')}
+              className="w-full flex justify-center py-1.5 rounded text-on-surface-variant hover:bg-surface-highest hover:text-on-surface transition-colors"
+            />
             <div className="border-t border-outline-variant/40 my-0.5" />
             <button
               onClick={logout}
@@ -418,6 +450,7 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
                   </button>
                 ))}
               </div>
+              <DocsButton label={t('nav:documentation')} className="np-skin-btn" />
             </div>
 
             <button onClick={logout} className="np-logout-btn mt-[7px]">

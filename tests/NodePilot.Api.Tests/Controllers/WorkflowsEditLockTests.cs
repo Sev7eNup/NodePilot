@@ -619,6 +619,10 @@ public class WorkflowsEditLockTests
         copy.ActivityCount.Should().Be(expectedMetadata.ActivityCount);
         copy.TriggerTypesJson.Should().Be(expectedMetadata.TriggerTypesJson);
         copy.Version.Should().Be(1, "a duplicate starts a distinct monotonically-versioned history");
+        copy.PublishedByUserId.Should().NotBeNull(
+            "every automated dispatch resolves its principal from this column and /enable never "
+            + "writes it, so a copy without one had every trigger fire rejected as "
+            + "missing_effective_principal while the workflow displayed itself as active");
     }
 
     private sealed class CallbackAuthorizationService(

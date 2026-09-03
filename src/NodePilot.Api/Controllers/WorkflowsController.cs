@@ -560,6 +560,16 @@ public class WorkflowsController : WorkflowsControllerBase
                 message = hmacError,
             });
         }
+        // Enable is the last author-facing gate before the orchestrator registers the trigger, and
+        // a cron Quartz rejects would otherwise fail there silently and retry forever.
+        if (NodePilot.Api.Security.ScheduleCronValidation.ValidateDefinition(workflow.DefinitionJson) is { } cronError)
+        {
+            return BadRequest(new
+            {
+                code = "invalid_cron_expression",
+                message = cronError,
+            });
+        }
         return await SetEnabled(workflow, true, requireUnlocked: true, ct);
     }
 
@@ -741,6 +751,12 @@ public class WorkflowsController : WorkflowsControllerBase
             // Copied: the limit protects whatever the workflow talks to, and the copy talks to
             // the same thing. Unlike IsEnabled it cannot make the copy do more than the source.
             MaxConcurrentExecutions = source.MaxConcurrentExecutions,
+            // Runtime authority for the copy, set the way the import paths set it. Every automated
+            // dispatch resolves its principal from this column, and /enable never writes it — so a
+            // copy the operator reviewed and enabled had every trigger fire rejected with
+            // "missing_effective_principal" and terminalised as Cancelled, forever, while the
+            // workflow displayed itself as active.
+            PublishedByUserId = this.GetCurrentUserId(),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
         };

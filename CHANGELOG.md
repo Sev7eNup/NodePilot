@@ -12,6 +12,49 @@ exhaustive.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Numbers no longer change meaning with the server's locale.** Activities rendered scalars with
+  the host culture while edge conditions parsed them invariantly with `NumberStyles.Any`, where
+  `,` is the group separator — so a `sql`, `jsonQuery`, `xmlQuery` or webhook value of `1.5`
+  became `"1,5"` on a German host and was read back as `15`, silently taking the wrong branch.
+  Producers now format invariantly, the condition parser no longer accepts group separators, and
+  an ISO-8601 timestamp survives as the text it was.
+- **A `runScript` step that never ran no longer reports success.** The out-of-process engines
+  decided success from the absence of an error marker, but PowerShell parses a whole script before
+  its first statement, so a syntax error left stdout empty and the step green. The wrapper now
+  emits a start marker whose absence means "did not execute".
+- **Threshold conditions no longer fire on missing data.** `<`, `<=` and `isFalse` fell back to a
+  string comparison against the empty string, which sorts before every digit — the guarded branch
+  ran precisely when the measured value was absent.
+- **A global picked from the condition builder resolves.** The per-run load was armed by a text
+  scan for `{{globals.`, which the structured operand does not contain, so the comparison was
+  false on arrival.
+- **A join is re-evaluated when a predecessor is skipped late.** A `waitAll` junction whose second
+  input was skipped after the first had finished was never asked again, so it and everything
+  behind it were written off as Skipped while the run reported success — decided by edge order.
+- **A database outage no longer stops the API.** The dispatch worker answered a failure with a
+  second, unguarded write to the same database; the escaping exception faulted the worker task and
+  ended the process instead of shedding load.
+- **A `SELECT` that matches nothing keeps the SELECT shape** (`[]`, no `rowsAffected`), rather than
+  reporting itself as a DML statement.
+- **`serviceManagement` fails when `sc.exe` fails.** Its exit code was never checked, and it
+  reports errors on stdout, so a refused delete reported success and the next step ran.
+- **A registry `MultiString` keeps its entries** instead of collapsing into one joined value.
+- **A sub-workflow's `returnData` survives redaction.** The redactor ran over the finished JSON and
+  could swallow every key after the masked one; it now redacts per value before serialization.
+- **Debug overrides reach every activity**, not only the PowerShell-backed ones.
+- **`config.retry` applies to remote activities**, which signal failure by throwing — every WinRM
+  connect or authentication failure previously bypassed the policy.
+- **An invalid cron is refused at publish and enable**, by the scheduler's own parser, instead of
+  looking valid everywhere and never firing.
+- **A duplicated or restored workflow can fire its triggers.** Neither path set the runtime
+  principal, so every automated start was rejected while the workflow displayed itself as active.
+- **`restApi` can send a non-JSON body**, `xmlQuery`'s `resultMode` changes only the cardinality,
+  a cleared timeout field no longer breaks `llmQuery` or shortens `waitForCondition` to one second,
+  a templated `"false"` is no longer read as true, and maintenance-window timestamps are stored as
+  the UTC instants they claim to be.
+
 ## [1.2.26] - 2026-09-01
 
 One fix, found while installing 1.2.25 on the lab machine: that release covered a fresh install

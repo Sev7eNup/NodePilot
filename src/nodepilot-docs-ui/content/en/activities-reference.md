@@ -174,6 +174,9 @@ rejected; the target ACL remains the boundary against concurrent parent renames.
 
 - **Config:** `source`, `path`/`content`, `xpath`, `namespaces`, `resultMode`
 - **Outputs:** `param.result`, `param.count`
+- `resultMode` switches cardinality only. Both modes publish the element text; `all` returns it
+  as a JSON array. Numeric XPath results use an invariant decimal point, so a comparison means
+  the same thing on every host locale.
 
 ## `jsonQuery`
 
@@ -181,6 +184,9 @@ rejected; the target ACL remains the boundary against concurrent parent renames.
 
 - **Config:** `source`, `path`/`content`, `jsonPath`, `resultMode`
 - **Outputs:** `param.result`, `param.count`
+- Scalars are published invariantly: `9.99`, and `true`/`false` in lower case. An ISO-8601
+  timestamp is passed through as the original text — it is never re-parsed into a
+  host-formatted date.
 
 ## `log`
 

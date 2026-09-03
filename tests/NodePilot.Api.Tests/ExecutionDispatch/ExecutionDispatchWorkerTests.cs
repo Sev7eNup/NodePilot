@@ -234,4 +234,93 @@ public class ExecutionDispatchWorkerTests
         (await verifyDb.ExecutionDispatchOutbox.CountAsync(item => item.WorkflowId == blockedWorkflowId))
             .Should().Be(8);
     }
+
+    /// <summary>
+    /// The database dying mid-dispatch must not take the worker down with it. The failure handler
+    /// answers a processing error with a second database write (releasing the lease); unguarded,
+    /// that write threw out of the catch block, faulted the worker task and — because
+    /// BackgroundServiceExceptionBehavior is deliberately StopHost — ended the API process,
+    /// instead of shedding load and recovering as ADR 0011 requires.
+    /// </summary>
+    [Fact]
+    public async Task DurableWorker_DatabaseDiesMidDispatch_WorkerKeepsRunning()
+    {
+        var connection = new SqliteConnection("DataSource=:memory:");
+        await connection.OpenAsync();
+        var cluster = new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider();
+        var signal = new ExecutionDispatchSignal();
+        var callbacks = new ExecutionDispatchCallbackRegistry();
+        var engineCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var engine = new Mock<IWorkflowEngine>();
+        engine.Setup(candidate => candidate.ExecuteAsync(
+                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
+                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
+                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(),
+                It.IsAny<bool>()))
+            .Returns<Workflow, string, CancellationToken, Dictionary<string, string>?, int?, bool,
+                Guid?, Guid?, int, Guid?, bool>((_, _, _, _, _, _, _, _, _, _, _) =>
+            {
+                // Kill the database first, so the failure handler's own write fails too.
+                connection.Close();
+                engineCalled.TrySetResult();
+                throw new InvalidOperationException("engine blew up");
+            });
+
+        var concurrencyGate = new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddDbContext<NodePilotDbContext>(options => options.UseSqlite(connection));
+        services.AddSingleton<IWorkflowEngine>(engine.Object);
+        services.AddSingleton<IClusterStateProvider>(cluster);
+        services.AddSingleton<IMaintenanceWindowEvaluator>(
+            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll);
+        services.AddSingleton(new OutputRedactor(null));
+        services.AddSingleton(signal);
+        services.AddSingleton(callbacks);
+        services.AddSingleton<IDatabaseAvailability>(
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
+        services.AddSingleton<IWorkflowConcurrencyGate>(concurrencyGate);
+        services.AddScoped<ExecutionDispatchService>();
+        await using var provider = services.BuildServiceProvider();
+
+        await using (var setupScope = provider.CreateAsyncScope())
+        {
+            var db = setupScope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+            await db.Database.EnsureCreatedAsync();
+            var workflow = new Workflow
+            {
+                Id = Guid.NewGuid(), Name = "Doomed", DefinitionJson = "{}", IsEnabled = true,
+            };
+            db.Workflows.Add(workflow);
+            await db.SaveChangesAsync();
+            var dispatcher = setupScope.ServiceProvider.GetRequiredService<ExecutionDispatchService>();
+            await dispatcher.DispatchAsync(
+                new WorkflowDispatchIntent(workflow.Id, "manual", null), CancellationToken.None);
+        }
+
+        var worker = new ExecutionDispatchWorker(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            signal,
+            Options.Create(new ExecutionDispatchOptions { WorkerCount = 1 }),
+            cluster,
+            concurrencyGate,
+            NullLogger<ExecutionDispatchWorker>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
+        using var stopCts = new CancellationTokenSource();
+        await worker.StartAsync(stopCts.Token);
+
+        await engineCalled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        // Long enough for the failure handler and at least one further poll to run.
+        await Task.Delay(TimeSpan.FromSeconds(2));
+
+        worker.ExecuteTask.Should().NotBeNull();
+        worker.ExecuteTask!.IsFaulted.Should().BeFalse(
+            "a faulted worker task stops the host under BackgroundServiceExceptionBehavior.StopHost");
+        worker.ExecuteTask.IsCompleted.Should().BeFalse("the worker pool must still be polling");
+
+        await stopCts.CancelAsync();
+        await worker.StopAsync(CancellationToken.None);
+        await connection.DisposeAsync();
+    }
 }

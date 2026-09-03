@@ -85,7 +85,9 @@ public static class ProvisioningSeeder
         BackupRestoreResult result;
         try
         {
-            result = await restore.RestoreAsync(content, passphrase, policies, ct);
+            // No principal: this runs at first boot, before anyone has logged in. A restored
+            // workflow that is enabled therefore needs one Publish before its triggers can fire.
+            result = await restore.RestoreAsync(content, passphrase, policies, restoredByUserId: null, ct);
         }
         catch (BackupRestoreException ex)
         {

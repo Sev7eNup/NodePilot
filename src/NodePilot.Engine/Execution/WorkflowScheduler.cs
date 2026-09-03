@@ -198,8 +198,15 @@ public static class WorkflowScheduler
             if (!result.Success)
                 logger.LogWarning("Step {StepId} failed; see the STEP_FAILED event for the redacted reason.", node.Id);
 
-            foreach (var successor in adjacency[node.Id])
+            // A work list, not a plain foreach: skipping a subtree changes the readiness of any
+            // join below it, because a skipped input counts as resolved. This loop is the only
+            // place readiness is ever evaluated, so a join that answered Wait before the skip was
+            // never asked again — it and its whole downstream were written off as Skipped once the
+            // queue drained. Which branch finished first decided the outcome.
+            var successorsToEvaluate = new Queue<string>(adjacency[node.Id]);
+            while (successorsToEvaluate.Count > 0)
             {
+                var successor = successorsToEvaluate.Dequeue();
                 if (enqueued.Contains(successor) || skipped.Contains(successor)) continue;
 
                 var successorNode = nodesById[successor];
@@ -210,7 +217,10 @@ public static class WorkflowScheduler
                 if (decision == SuccessorDecision.Wait) continue;
                 if (decision == SuccessorDecision.Skip)
                 {
-                    MarkSubtreeSkipped(successor, skipped, adjacency, reverseAdjacency);
+                    // Re-queue the joins the walk refused to skip: each Skip strictly grows
+                    // `skipped`, so the loop still terminates.
+                    foreach (var reopened in MarkSubtreeSkipped(successor, skipped, adjacency, reverseAdjacency))
+                        successorsToEvaluate.Enqueue(reopened);
                     continue;
                 }
 
@@ -388,13 +398,19 @@ public static class WorkflowScheduler
     /// Marks rootId as skipped and propagates downwards. A descendant is only skipped if
     /// all its predecessors are already skipped, so live alternative paths are preserved.
     /// </summary>
-    internal static void MarkSubtreeSkipped(
+    /// <returns>
+    /// The nodes the walk declined to skip because they still have a live (non-skipped)
+    /// predecessor — typically a join whose other branch has already completed. Their readiness
+    /// just changed, and the caller re-evaluates them; nothing else in the run does.
+    /// </returns>
+    internal static List<string> MarkSubtreeSkipped(
         string rootId,
         HashSet<string> skipped,
         Dictionary<string, List<string>> adjacency,
         Dictionary<string, List<string>>? reverseAdjacency = null,
         string? stopAtNode = null)
     {
+        var blockedByLivePredecessor = new List<string>();
         var stack = new Stack<string>();
         stack.Push(rootId);
         while (stack.Count > 0)
@@ -406,6 +422,7 @@ public static class WorkflowScheduler
                 && reverseAdjacency.TryGetValue(current, out var preds) && preds.Count > 0
                 && preds.Any(p => !skipped.Contains(p)))
             {
+                blockedByLivePredecessor.Add(current);
                 continue;
             }
 
@@ -417,5 +434,7 @@ public static class WorkflowScheduler
                 stack.Push(next);
             }
         }
+
+        return blockedByLivePredecessor;
     }
 }

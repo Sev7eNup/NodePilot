@@ -228,8 +228,10 @@ public class WorkflowEngine : IWorkflowEngine
 
     /// <summary>
     /// Resolves global variables for a single run. Optimised for the common case where the
-    /// workflow definition does not reference <c>{{globals.…}}</c> at all — a cheap substring
-    /// scan skips the DB hit + decryption entirely. Returns both the resolved dict and the
+    /// workflow definition references no global at all — a cheap substring scan skips the DB hit
+    /// + decryption entirely. The scan covers both reference spellings, the
+    /// <c>{{globals.…}}</c> template and the structured condition operand. Returns both the
+    /// resolved dict and the
     /// set of variables that exist in the DB but couldn't be decrypted; the caller decides
     /// whether to fail loudly when the workflow actually references one of the broken ones.
     /// Infrastructure errors (DB unreachable, etc.) are still tolerated as "no globals" so
@@ -244,7 +246,15 @@ public class WorkflowEngine : IWorkflowEngine
         var empty = new NodePilot.Core.Interfaces.GlobalVariableResolutionResult(
             new Dictionary<string, string>(0), new HashSet<string>(StringComparer.Ordinal));
 
-        if (!definitionJson.Contains("{{globals.", StringComparison.Ordinal))
+        // Two spellings reference a global and both must arm the load. The template form
+        // {{globals.X}} appears verbatim in the definition, but the condition/decision builder
+        // writes a structured operand instead —
+        // {"kind":"variable","source":"global","name":"ENV"} — which carries no template text.
+        // Gating on the template alone left the run with an empty dict, so the structured operand
+        // resolved to "" and its comparison was false on arrival, while the same reference typed
+        // as a literal worked. A false positive here only costs one skipped optimisation.
+        if (!definitionJson.Contains("{{globals.", StringComparison.Ordinal)
+            && !definitionJson.Contains("\"global\"", StringComparison.Ordinal))
             return empty;
 
         try
@@ -567,7 +577,7 @@ public class WorkflowEngine : IWorkflowEngine
             // H-8 (security-audit finding): input parameter JSON may contain values
             // resolved from secrets/globals — run it through the redactor and cap it to
             // 32 KiB so a runaway caller can't blow up the DB row or the audit log.
-            InputParametersJson = _redactor.RedactAndCap(SerializeInputParameters(inputParameters), 32 * 1024),
+            InputParametersJson = CapInputParameters(SerializeInputParameters(inputParameters, _redactor)),
             StartedByUserId = startedByUserId,
             ParentExecutionId = parentExecutionId,
             CallDepth = callDepth,
@@ -587,7 +597,7 @@ public class WorkflowEngine : IWorkflowEngine
             execution.ErrorMessage = null;
             execution.TraceId = activity?.TraceId.ToString();
             execution.SpanId = activity?.SpanId.ToString();
-            execution.InputParametersJson = _redactor.RedactAndCap(SerializeInputParameters(inputParameters), 32 * 1024);
+            execution.InputParametersJson = CapInputParameters(SerializeInputParameters(inputParameters, _redactor));
             execution.StartedByUserId = startedByUserId;
             execution.ParentExecutionId = parentExecutionId;
             execution.CallDepth = callDepth;
@@ -1439,13 +1449,26 @@ public class WorkflowEngine : IWorkflowEngine
         return seeded ?? inputParameters;
     }
 
-    private static string? SerializeInputParameters(Dictionary<string, string>? inputParameters)
+    /// <summary>
+    /// Serializes the run's input parameters with each value redacted individually.
+    /// Redacting the finished document instead let a pattern whose value class does not stop at a
+    /// quote (<c>Password=([^;]+)</c>) consume the closing quote and every remaining property,
+    /// leaving a column that no longer parses — and this column is replayed on retry.
+    /// The name-aware overload is used because a split key/value pair no longer looks like a
+    /// secret to a value-only regex.
+    /// </summary>
+    private static string? SerializeInputParameters(
+        Dictionary<string, string>? inputParameters, NodePilot.Engine.Security.OutputRedactor redactor)
     {
         if (inputParameters is null || inputParameters.Count == 0) return null;
         var filtered = inputParameters
             .Where(kv => !kv.Key.StartsWith("__", StringComparison.Ordinal))
-            .ToDictionary(kv => kv.Key, kv => kv.Value);
+            .ToDictionary(kv => kv.Key, kv => redactor.RedactNamedValue(kv.Key, kv.Value) ?? kv.Value);
         if (filtered.Count == 0) return null;
         return JsonSerializer.Serialize(filtered);
     }
+
+    /// <summary>Length guard only — the values are already redacted.</summary>
+    private static string? CapInputParameters(string? json)
+        => json is null ? null : NodePilot.Engine.Security.OutputRedactor.Cap(json, 32 * 1024);
 }

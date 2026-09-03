@@ -508,8 +508,8 @@ Der Installer legt dieselbe Dokumentation, die auch auf der öffentlichen Websit
 `wwwroot\docs` ab. Sie ist über `https://<host>/docs` erreichbar — **ohne Anmeldung**, damit sie
 auch dann zur Verfügung steht, wenn gerade die Anmeldung das Problem ist, und ohne
 Internetzugang. Die ausgelieferte Fassung gehört zur installierten Version, während die Website
-immer den aktuellen Entwicklungsstand zeigt. In der Oberfläche führt das Fragezeichen in der
-Kopfzeile dorthin.
+immer den aktuellen Entwicklungsstand zeigt. In der Oberfläche führt der Dokumentations-Knopf
+unten links in der Seitenleiste dorthin.
 
 Die Dokumentation hängt nicht an der Datenbank und bleibt deshalb auch während einer
 Datenbankstörung lesbar. Sie steht allerdings **nur zur Verfügung, solange der Dienst läuft** —

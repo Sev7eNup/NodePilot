@@ -114,7 +114,7 @@ public class ServiceManagementActivity : BaseRemoteActivity
         if (string.Equals(startupType, "AutomaticDelayedStart", StringComparison.OrdinalIgnoreCase))
         {
             sb.Append(" -StartupType Automatic");
-            sb.Append("; & sc.exe config ").Append(qServiceName).Append(" start= delayed-auto | Out-Null");
+            sb.Append("; ").Append(ScGuarded("config", $"config {qServiceName} start= delayed-auto", emitOutput: false));
         }
         else
         {
@@ -132,7 +132,25 @@ public class ServiceManagementActivity : BaseRemoteActivity
         return
             $"if (Get-Service -Name {qServiceName} -ErrorAction SilentlyContinue) " +
             $"{{ Stop-Service -Name {qServiceName} -Force -ErrorAction SilentlyContinue }}; " +
-            $"& sc.exe delete {qServiceName}";
+            ScGuarded("delete", $"delete {qServiceName}", emitOutput: true);
+    }
+
+    /// <summary>
+    /// Emits an sc.exe invocation whose non-zero exit becomes a terminating PowerShell error.
+    /// sc.exe writes its failures to stdout and leaves the error stream empty, so a bare call
+    /// keeps <c>HadErrors</c> false and a failed delete/config would report the step as
+    /// succeeded. <paramref name="emitOutput"/> re-emits the captured text so it still reaches
+    /// <c>{{step.output}}</c>.
+    /// </summary>
+    private static string ScGuarded(string verb, string arguments, bool emitOutput)
+    {
+        var sb = new StringBuilder();
+        sb.Append("$__npSc = & sc.exe ").Append(arguments).Append("; ");
+        sb.Append("if ($LASTEXITCODE -ne 0) { throw \"sc.exe ").Append(verb)
+          .Append(" failed with exit code $LASTEXITCODE: $($__npSc -join ' ')\" }");
+        if (emitOutput)
+            sb.Append("; $__npSc");
+        return sb.ToString();
     }
 
     private static string BuildSetStartTypeScript(JsonElement config, string qServiceName)
@@ -149,7 +167,7 @@ public class ServiceManagementActivity : BaseRemoteActivity
         // instead — `start= delayed-auto` sets the delayed-auto flag directly.
         if (string.Equals(startupType, "AutomaticDelayedStart", StringComparison.OrdinalIgnoreCase))
         {
-            return $"& sc.exe config {qServiceName} start= delayed-auto | Out-Null; " +
+            return ScGuarded("config", $"config {qServiceName} start= delayed-auto", emitOutput: false) + "; " +
                    $"& sc.exe qc {qServiceName} | Select-String 'START_TYPE'";
         }
 

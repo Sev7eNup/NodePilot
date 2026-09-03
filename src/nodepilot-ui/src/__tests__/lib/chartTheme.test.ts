@@ -50,4 +50,11 @@ describe('chartTheme categorical palette', () => {
     expect(DEFAULT_CHART_TOKENS.grid).toBeTruthy();
     expect(DEFAULT_CHART_TOKENS.series).toHaveLength(8);
   });
+
+  it('gridFallback_keepsItsAlpha', () => {
+    // The probe normalises the values it reads to 6-digit hex, but the fallbacks are handed
+    // through verbatim: hexifying this one would turn every recessive gridline into a solid
+    // slab.
+    expect(DEFAULT_CHART_TOKENS.grid).toBe('rgba(148,163,184,.16)');
+  });
 });

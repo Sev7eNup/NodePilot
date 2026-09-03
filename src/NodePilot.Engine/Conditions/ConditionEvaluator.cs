@@ -91,7 +91,10 @@ public static class ConditionEvaluator
             case "isEmpty": return string.IsNullOrEmpty(left);
             case "isNotEmpty": return !string.IsNullOrEmpty(left);
             case "isTrue": return IsTruthy(left);
-            case "isFalse": return !IsTruthy(left);
+            // An unresolved operand is "", which is not truthy — without the length check
+            // `isFalse` would be true for a value that never arrived, the same fail-open
+            // inversion CompareNumeric guards against.
+            case "isFalse": return left.Length > 0 && !IsTruthy(left);
         }
 
         var right = cmp.TryGetProperty("right", out var r) ? ResolveOperand(r, ctx) : "";
@@ -179,19 +182,36 @@ public static class ConditionEvaluator
         };
     }
 
+    /// <summary>
+    /// Number styles for operand parsing. Deliberately excludes <c>AllowThousands</c>, which
+    /// <c>NumberStyles.Any</c> includes: the invariant group separator is "," and .NET does not
+    /// validate group placement, so a locale-formatted "1,5" parses as 15 instead of failing.
+    /// Without the flag such a value falls through to the string path, which is wrong but visible,
+    /// rather than comparing as a number two orders of magnitude off.
+    /// </summary>
+    private const NumberStyles OperandNumberStyles = NumberStyles.Float;
+
     private static bool CompareEquals(string a, string b)
     {
-        if (decimal.TryParse(a, NumberStyles.Any, CultureInfo.InvariantCulture, out var da)
-            && decimal.TryParse(b, NumberStyles.Any, CultureInfo.InvariantCulture, out var db))
+        if (decimal.TryParse(a, OperandNumberStyles, CultureInfo.InvariantCulture, out var da)
+            && decimal.TryParse(b, OperandNumberStyles, CultureInfo.InvariantCulture, out var db))
             return da == db;
         return string.Equals(a, b, StringComparison.Ordinal);
     }
 
     private static bool CompareNumeric(string a, string b, Func<decimal, decimal, bool> cmp)
     {
-        if (decimal.TryParse(a, NumberStyles.Any, CultureInfo.InvariantCulture, out var da)
-            && decimal.TryParse(b, NumberStyles.Any, CultureInfo.InvariantCulture, out var db))
+        if (decimal.TryParse(a, OperandNumberStyles, CultureInfo.InvariantCulture, out var da)
+            && decimal.TryParse(b, OperandNumberStyles, CultureInfo.InvariantCulture, out var db))
             return cmp(da, db);
+
+        // Safe-fail on a missing operand. An unresolved variable resolves to "", which sorts
+        // before every digit, so the ordinal fallback below would make "value < threshold" true
+        // exactly when the value is absent — firing the guarded branch on missing data. The
+        // policy documented on this class is that comparisons against an unresolved operand are
+        // false.
+        if (a.Length == 0 || b.Length == 0) return false;
+
         // String ordering fallback
         var c = string.Compare(a, b, StringComparison.Ordinal);
         return cmp(c, 0);

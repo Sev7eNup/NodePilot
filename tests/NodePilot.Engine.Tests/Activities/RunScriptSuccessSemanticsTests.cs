@@ -131,4 +131,34 @@ public class RunScriptSuccessSemanticsTests
         result.Success.Should().BeFalse();
         (result.Output ?? "").Should().NotContain("###NODEPILOT_", "all control markers must be stripped even on a throw-with-transcript");
     }
+
+    [Theory]
+    [InlineData("runspace")]
+    [InlineData("powershell")]
+    public async Task ParseError_FailsTheStep_OnEveryEngine(string engine)
+    {
+        // PowerShell parses a whole -File script before running a statement, so a syntax error
+        // leaves stdout empty and the wrapper's catch block unreached. The out-of-process engine
+        // read that as "no error marker, therefore success" and reported a script that never ran
+        // as green, firing the On-Success edge. A parse error is a terminating error and must be
+        // red on every engine.
+        var result = await _activity.ExecuteAsync(
+            Ctx(), Config("if ($true) { Write-Output 'never runs'", engine), CancellationToken.None);
+
+        result.Success.Should().BeFalse($"a script the {engine} engine cannot parse never executed");
+        (result.ErrorOutput ?? "").Should().NotBeNullOrWhiteSpace("the step must say why it failed");
+    }
+
+    [Theory]
+    [InlineData("runspace")]
+    [InlineData("powershell")]
+    public async Task StartMarker_IsStrippedFromOutput(string engine)
+    {
+        var result = await _activity.ExecuteAsync(
+            Ctx(), Config("Write-Output 'visible'", engine), CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        (result.Output ?? "").Should().Contain("visible");
+        (result.Output ?? "").Should().NotContain("###NODEPILOT_", "control markers never reach the data bus");
+    }
 }

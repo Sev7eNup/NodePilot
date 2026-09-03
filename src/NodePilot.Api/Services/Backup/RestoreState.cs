@@ -15,6 +15,14 @@ internal sealed class RestoreState
 {
     public BackupFileReader Reader { get; }
     public PassphraseSecretProtector Protector { get; }
+
+    /// <summary>
+    /// The user performing the restore. Becomes the runtime principal of every restored workflow,
+    /// the same rule Publish and Import follow — an automated trigger fire is rejected without one.
+    /// Null only for first-boot provisioning, where nobody is acting.
+    /// </summary>
+    public Guid? RestoredByUserId { get; }
+
     private readonly IReadOnlyDictionary<string, RestoreConflictPolicy> _policies;
 
     // By-natural-key lookups into the target DB (and freshly-created rows), filled during restore.
@@ -55,11 +63,13 @@ internal sealed class RestoreState
     private readonly HashSet<Guid> _backupGlobalFolderIds;
 
     public RestoreState(BackupFileReader reader, PassphraseSecretProtector protector,
-        IReadOnlyDictionary<string, RestoreConflictPolicy> policies)
+        IReadOnlyDictionary<string, RestoreConflictPolicy> policies,
+        Guid? restoredByUserId)
     {
         Reader = reader;
         Protector = protector;
         _policies = policies;
+        RestoredByUserId = restoredByUserId;
         _backupCredentialIds = SourceIds(reader, BackupSections.Credentials, "items");
         _backupMachineIds = SourceIds(reader, BackupSections.Machines, "items");
         _backupCustomActivityIds = SourceIds(reader, BackupSections.CustomActivities, "items");

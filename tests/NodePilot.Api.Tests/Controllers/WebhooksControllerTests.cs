@@ -965,6 +965,74 @@ public class WebhooksControllerTests
         parameters.Should().NotContainKey("__callDepth", "__-prefixed names are engine-reserved");
     }
 
+    private const string ScalarMappingWebhookDefinition = """
+    {
+      "nodes": [
+        { "id": "t1", "data": { "activityType": "webhookTrigger", "config": {
+            "path": "hook", "method": "POST", "secret": "s3cret",
+            "fieldMappings": [
+              { "name": "amount", "path": "$.order.amount" },
+              { "name": "paid", "path": "$.order.paid" },
+              { "name": "placedAt", "path": "$.order.placedAt" }
+            ] } } }
+      ]
+    }
+    """;
+
+    [Fact]
+    public void Hit_FieldMappings_RenderScalarsInvariantlyUnderGermanCulture()
+    {
+        // Mapped values are read back by the invariant condition parser, so a comma decimal
+        // separator would be re-read as a group separator ("950,5" -> 9505). The timestamp must
+        // also survive as the text the caller sent rather than being date-parsed and re-rendered.
+        var parameters = RunInCulture("de-DE", async () =>
+        {
+            var db = CreateContext();
+            var wfId = Guid.NewGuid();
+            db.Workflows.Add(new Workflow
+            {
+                Id = wfId, Name = "Scalars", DefinitionJson = ScalarMappingWebhookDefinition,
+            });
+            await db.SaveChangesAsync();
+
+            const string body = """{"order":{"amount":950.5,"paid":true,"placedAt":"2026-09-02T10:00:00Z"}}""";
+            var controller = CreateController(db, body: body,
+                headers: new Dictionary<string, string> { ["X-Webhook-Secret"] = "s3cret" });
+
+            var result = await controller.Hit("Scalars", "hook", CancellationToken.None);
+            result.Should().BeOfType<AcceptedResult>();
+
+            var row = await db.WorkflowExecutions.SingleAsync(e => e.WorkflowId == wfId);
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(row.InputParametersJson!)!;
+        });
+
+        parameters["amount"].Should().Be("950.5");
+        parameters["paid"].Should().Be("true", "the data bus spells booleans lowercase");
+        parameters["placedAt"].Should().Be("2026-09-02T10:00:00Z", "an ISO timestamp is passed through as text");
+    }
+
+    /// <summary>
+    /// Runs the work on a dedicated thread pinned to <paramref name="culture"/>, so a parallel
+    /// test never observes the switch.
+    /// </summary>
+    private static T RunInCulture<T>(string culture, Func<Task<T>> work)
+    {
+        T value = default!;
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            var ci = new System.Globalization.CultureInfo(culture);
+            System.Globalization.CultureInfo.CurrentCulture = ci;
+            System.Globalization.CultureInfo.CurrentUICulture = ci;
+            try { value = work().GetAwaiter().GetResult(); }
+            catch (Exception ex) { failure = ex; }
+        });
+        thread.Start();
+        thread.Join();
+        if (failure is not null) throw failure;
+        return value;
+    }
+
     [Fact]
     public async Task Hit_FieldMappings_NonJsonBody_StillFiresWithoutMappedFields()
     {

@@ -92,7 +92,7 @@ vi.mock('../../lib/monacoSetup', () => ({
   MONO_FONT_STACK:
     "'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, 'SFMono-Regular', Menlo, monospace",
   monaco: {
-    editor: { defineTheme: () => {}, setModelMarkers: () => {} },
+    editor: { defineTheme: () => {}, setTheme: () => {}, setModelMarkers: () => {} },
     languages: {
       registerCompletionItemProvider: () => ({ dispose: () => {} }),
       CompletionItemKind: { Variable: 4 },

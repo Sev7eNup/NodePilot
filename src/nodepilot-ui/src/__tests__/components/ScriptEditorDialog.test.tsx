@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 import { ScriptEditorDialog } from '../../components/designer/ScriptEditorDialog';
+import { monaco } from '../../lib/monacoSetup';
 
 describe('ScriptEditorDialog', () => {
   it('renders title bar, PS badge and the (mocked) Monaco editor', () => {
@@ -265,5 +266,66 @@ describe('ScriptEditorDialog', () => {
     // The dialog is already closed, so the error appears in the editor's banner rather than
     // in the dialog.
     expect(screen.queryByText(/^generate script with ai$/i)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The production CSS minifier shortens colors inside custom properties, so design tokens reach
+ * the theme bridge in notations the stylesheet never contained. Monaco accepts only 6- or
+ * 8-digit hex for token colors and throws on anything else.
+ */
+describe('ScriptEditorDialog Monaco theme bridge', () => {
+  const MINIFIED: Record<string, string> = {
+    '--color-surface-low': '#222',
+    '--color-surface-lowest': '#fff',
+    '--color-surface-container': '#fff8',
+    '--color-on-surface': 'red',
+    '--color-primary': '#e00',
+    '--color-outline': 'oklch(0.7 0.1 200)',
+  };
+
+  afterEach(() => {
+    for (const name of Object.keys(MINIFIED)) document.documentElement.style.removeProperty(name);
+    vi.restoreAllMocks();
+  });
+
+  function setMinifiedTokens() {
+    for (const [name, value] of Object.entries(MINIFIED)) {
+      document.documentElement.style.setProperty(name, value);
+    }
+  }
+
+  it('hands Monaco only hex, whatever notation the tokens arrive in', () => {
+    setMinifiedTokens();
+    const defineTheme = vi.spyOn(monaco.editor, 'defineTheme');
+    render(<ScriptEditorDialog value="" onChange={() => {}} onClose={() => {}} />);
+
+    expect(defineTheme).toHaveBeenCalled();
+    const colors = defineTheme.mock.calls.flatMap(([, data]) => Object.values(data.colors ?? {}));
+    expect(colors.length).toBeGreaterThan(0);
+    // The optional trailing pair covers the alpha the caller concatenates onto `primary`.
+    for (const color of colors) expect(color).toMatch(/^#[0-9a-f]{6}([0-9a-f]{2})?$/i);
+  });
+
+  it('falls back to the built-in theme when defineTheme rejects a value', () => {
+    vi.spyOn(monaco.editor, 'defineTheme').mockImplementation(() => {
+      throw new Error('Illegal value for token color: #fff');
+    });
+    render(<ScriptEditorDialog value="" onChange={() => {}} onClose={() => {}} />);
+
+    expect(screen.getByText('PowerShell Script Editor')).toBeInTheDocument();
+    expect(screen.getByTestId('monaco-editor-mock')).toHaveAttribute('data-theme', 'vs');
+  });
+
+  // Monaco parses a theme's colors on activation, not on definition, so this is the edge a
+  // defineTheme-only test misses: the definition succeeds and setTheme throws.
+  it('falls back when the definition succeeds but activation throws', () => {
+    vi.spyOn(monaco.editor, 'setTheme').mockImplementation((name: string) => {
+      if (name.startsWith('nodepilot-')) throw new Error('Illegal value for token color: #fff');
+    });
+    render(<ScriptEditorDialog value="" onChange={() => {}} onClose={() => {}} />);
+
+    expect(screen.getByText('PowerShell Script Editor')).toBeInTheDocument();
+    expect(screen.getByTestId('monaco-editor-mock')).toHaveAttribute('data-theme', 'vs');
   });
 });

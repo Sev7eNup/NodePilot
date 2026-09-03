@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
  *
  * In production the API serves it from `wwwroot/docs` at `/docs`. In development nothing served
  * that path, so `/docs/` fell through to this SPA's index.html and the data router answered with
- * its not-found screen — the header's help button led straight into an error page.
+ * its not-found screen — the documentation button led straight into an error page.
  *
  * Three pieces have to agree for the link to work, and none of them fails loudly on its own:
  * the link is a real navigation, the app dev server proxies `/docs` to the docs dev server, and
@@ -21,7 +21,8 @@ const uiRoot = join(__dirname, '..', '..', '..');
 const docsRoot = join(uiRoot, '..', 'nodepilot-docs-ui');
 
 const viteConfig = readFileSync(join(uiRoot, 'vite.config.ts'), 'utf8');
-const topBar = readFileSync(join(uiRoot, 'src', 'components', 'layout', 'TopBar.tsx'), 'utf8');
+// The documentation entry point lives in the sidebar; the header's help icon shows the version.
+const docsLinkHost = readFileSync(join(uiRoot, 'src', 'components', 'layout', 'Sidebar.tsx'), 'utf8');
 const docsPackageJson = JSON.parse(readFileSync(join(docsRoot, 'package.json'), 'utf8'));
 const docsViteConfig = readFileSync(join(docsRoot, 'vite.config.ts'), 'utf8');
 
@@ -29,13 +30,13 @@ describe('documentation site routing', () => {
   it('links to /docs/ with a plain anchor, not a router Link', () => {
     // A `Link` would keep this SPA mounted and push /docs into its own history, so the request
     // would never reach the server that holds the documentation.
-    expect(topBar).toContain('href="/docs/"');
-    expect(topBar).not.toMatch(/<Link[^>]*to=["']\/docs/);
+    expect(docsLinkHost).toContain('href="/docs/"');
+    expect(docsLinkHost).not.toMatch(/<Link[^>]*to=["']\/docs/);
   });
 
   it('keeps the trailing slash, which the docs bundle resolves its assets against', () => {
-    expect(topBar).toContain('href="/docs/"');
-    expect(topBar).not.toContain('href="/docs"');
+    expect(docsLinkHost).toContain('href="/docs/"');
+    expect(docsLinkHost).not.toContain('href="/docs"');
   });
 
   it('proxies /docs to the docs dev server so development matches production', () => {

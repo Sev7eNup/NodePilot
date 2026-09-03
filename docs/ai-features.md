@@ -53,7 +53,7 @@ Neu-Eintippen.
         "BaseUrl": "https://api.openai.com/v1",
         "ApiKey": null,
         "Model": "gpt-4o-mini",
-        "MaxTokens": 4096,
+        "MaxTokens": 256000,
         "TimeoutSeconds": 90,
         "EnableToolCalling": false,
         "ToolCallMaxDepth": 6
@@ -105,7 +105,7 @@ ausgehenden Proxy, damit Prompt und API-Key den Host nicht im Klartext verlassen
 | `BaseUrl` | OpenAI Cloud | Adresse des OpenAI-kompatiblen Endpunkts. Der Pfad bestimmt den Wire-Dialekt — siehe „Wire-Dialekt" unten. Für lokale Modelle siehe Tabelle weiter unten. |
 | `ApiKey` | `null` | OpenAI-Cloud verlangt einen Key; lokale Endpoints meist nicht. **Empfohlener Weg: Env-Var `Llm__Profiles__<id>__ApiKey`** — Klartext in der Settings-Datei löst eine Startup-Hardening-Warnung aus. |
 | `Model` | `gpt-4o-mini` | Wird für Script-, Workflow-Generierung und beide Chats verwendet. |
-| `MaxTokens` | `4096` | Cap der LLM-Antwort. Reicht für ein typisches Script und einen mittelgroßen Workflow. Bei großen Modellen (32k+ Context) gerne erhöhen; gültig ist `256`–`1000000`. Die Obergrenze ist **keine** Modell-Prüfung — sie fängt nur die verrutschte Stelle ab; was der Endpunkt wirklich akzeptiert, sagt der Endpunkt. |
+| `MaxTokens` | `256000` | Cap der LLM-Antwort. Der Default ist auf heutige Long-Context-Modelle ausgelegt; für kleinere Endpunkte herunterstellen, sonst antwortet der Anbieter mit HTTP 400 wegen überschrittener Context-Länge. Gültig ist `256`–`1000000`. Die Obergrenze ist **keine** Modell-Prüfung — sie fängt nur die verrutschte Stelle ab; was der Endpunkt wirklich akzeptiert, sagt der Endpunkt. |
 | `TimeoutSeconds` | `90` | **Antwort**-Budget: wie lange das Modell denken darf. Deckt ausdrücklich **nicht** den Verbindungsaufbau — der hat seine eigenen, kurzen Fristen (siehe unten). Großzügig setzen ist deshalb gefahrlos: ein unerreichbarer Endpunkt scheitert trotzdem in Sekunden. |
 | `EnableToolCalling` | `false` | Opt-in. Lässt die Chat-Assistenten read-only Analyse-Tools per OpenAI-Function-Calling callen (`tool_choice: auto`). Braucht ein Modell, das Function-Calling zuverlässig kann — viele kleine lokale Modelle nicht. **Pro Profil**, weil das eine Eigenschaft des Modells ist, nicht der Installation: beim Umschalten auf ein kleines lokales Modell wandert die Fähigkeit mit. |
 | `ToolCallMaxDepth` | `6` | Max LLM-Runden mit Tool-Calls pro Chat-Turn (Loop-Guard, gültig 1–10). Lässt bei text2sql nach Schema-Discovery noch Raum für SQL-Korrekturen. In der letzten erlaubten Runde sendet der Server **keine** `tools` → erzwingt eine Text-Antwort. |
