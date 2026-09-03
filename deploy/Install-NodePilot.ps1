@@ -1705,26 +1705,26 @@ try {
     Write-Warn "  The installation works; call np.exe by its full path under $InstallPath\tools\np."
 }
 
-# The Engine Switcher drives NodePilot through np.exe. Without a server URL it falls back to the
+# The Switcher drives NodePilot through np.exe. Without a server URL it falls back to the
 # CLI's own configuration, which is stored per user and DPAPI-protected - the setup account is not
 # the account that later runs the switcher, so seeding that would land in the wrong profile.
 # Writing serverUrl into the shipped template instead makes the switcher pass --server on every
 # call. Only the copy next to the executable is touched; a machine-wide configuration under
-# %ProgramData%\NodePilot\EngineSwitcher wins at load time and stays the operator's file.
+# %ProgramData%\NodePilot\Switcher wins at load time and stays the operator's file.
 try {
     . (Join-Path $PSScriptRoot 'SwitcherConfig.ps1')
-    $switcherConfig = Join-Path $InstallPath 'tools\engine-switcher\engine-switcher.json'
+    $switcherConfig = Join-Path $InstallPath 'tools\switcher\switcher.json'
     if (Test-Path -LiteralPath $switcherConfig) {
         $serverUrl = Get-NodePilotSwitcherServerUrlFor -Hostname $PublicHostname -HttpsPort $HttpsPort
         if (Set-NodePilotSwitcherServerUrl -ConfigPath $switcherConfig -ServerUrl $serverUrl) {
-            Write-Info "  Engine Switcher server URL set to $serverUrl."
+            Write-Info "  Switcher server URL set to $serverUrl."
         } else {
             Write-Warn "  serverUrl not found exactly once in $switcherConfig - left unchanged."
         }
     }
 } catch {
-    Write-Warn "  Could not set the Engine Switcher server URL: $($_.Exception.Message)"
-    Write-Warn "  Set nodePilot.serverUrl in $InstallPath\tools\engine-switcher\engine-switcher.json by hand."
+    Write-Warn "  Could not set the Switcher server URL: $($_.Exception.Message)"
+    Write-Warn "  Set nodePilot.serverUrl in $InstallPath\tools\switcher\switcher.json by hand."
 }
 
 Write-Host ""

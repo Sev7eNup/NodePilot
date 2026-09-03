@@ -1,9 +1,9 @@
 #requires -Version 5.1
 <#
 .SYNOPSIS
-    Reads and writes the Engine Switcher's server URL, shared by install and update.
+    Reads and writes the Switcher's server URL, shared by install and update.
 .DESCRIPTION
-    The Engine Switcher drives NodePilot through np.exe. Without a server URL it falls back to the
+    The Switcher drives NodePilot through np.exe. Without a server URL it falls back to the
     CLI's own configuration, which is per-user and DPAPI-protected - the setup account is not the
     account that later runs the switcher, so only the shipped configuration can carry the value.
 

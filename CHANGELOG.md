@@ -12,6 +12,16 @@ exhaustive.
 
 ## [Unreleased]
 
+### Changed
+
+- **The Engine Switcher is now simply the Switcher.** The name moved everywhere it is persisted:
+  the project and assembly (`NodePilot.Switcher`), the executable, the installation folder
+  (`tools\switcher`), the configuration file (`switcher.json`), the data directory
+  (`%ProgramData%\NodePilot\Switcher`), the theme registry key, the shipped CLI profile
+  (`switcher`) and the standalone drop (`NodePilot-Switcher-<version>-win-x64.zip`). A machine
+  installed under either older name keeps its old state until it is moved by hand — the one-time
+  steps are in [docs/switcher.md](docs/switcher.md).
+
 ### Fixed
 
 - **Numbers no longer change meaning with the server's locale.** Activities rendered scalars with
@@ -135,7 +145,7 @@ three fixes that came out of running it against a real System Center installatio
   directory (`%ProgramData%\NodePilot\EngineSwitcher`), the theme registry key, the installation
   folder (`tools\engine-switcher`), the executable and the standalone drop. A machine installed
   before the rename keeps its old files and needs a one-time rename — the steps are in
-  [docs/engine-switcher.md](docs/engine-switcher.md).
+  [docs/switcher.md](docs/switcher.md).
 
 ### Fixed
 

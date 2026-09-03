@@ -102,7 +102,7 @@ $ApiCsproj = Join-Path $RepoRoot 'src\NodePilot.Api\NodePilot.Api.csproj'
 # installation.
 $CliCsproj = Join-Path $RepoRoot 'src\NodePilot.Cli\NodePilot.Cli.csproj'
 $McpCsproj = Join-Path $RepoRoot 'src\NodePilot.Mcp\NodePilot.Mcp.csproj'
-$SwitcherCsproj = Join-Path $RepoRoot 'src\NodePilot.EngineSwitcher\NodePilot.EngineSwitcher.csproj'
+$SwitcherCsproj = Join-Path $RepoRoot 'src\NodePilot.Switcher\NodePilot.Switcher.csproj'
 $UiDir = Join-Path $RepoRoot 'src\nodepilot-ui'
 $DocsUiDir = Join-Path $RepoRoot 'src\nodepilot-docs-ui'
 $OutDir = Join-Path $RepoRoot 'out'
@@ -328,11 +328,11 @@ foreach ($client in @(
     }
 }
 
-# The engine switcher is a local WPF utility and must remain runnable on the server install even
+# The switcher is a local WPF utility and must remain runnable on the server install even
 # though that installer provisions only the ASP.NET Core runtime. Publish it self-contained and
 # single-file, then use the exact same bytes inside the server artifact and as the standalone drop.
-Write-Host "[build] dotnet publish engine switcher (self-contained)" -ForegroundColor Cyan
-$switcherOut = Join-Path $StageDir 'tools\engine-switcher'
+Write-Host "[build] dotnet publish switcher (self-contained)" -ForegroundColor Cyan
+$switcherOut = Join-Path $StageDir 'tools\switcher'
 & dotnet publish $SwitcherCsproj `
     --configuration $Configuration `
     --runtime $RuntimeIdentifier `
@@ -342,22 +342,22 @@ $switcherOut = Join-Path $StageDir 'tools\engine-switcher'
     -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:DebugType=embedded
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $SwitcherCsproj with exit code $LASTEXITCODE" }
-$switcherExe = Join-Path $switcherOut 'NodePilot.EngineSwitcher.exe'
+$switcherExe = Join-Path $switcherOut 'NodePilot.Switcher.exe'
 if (-not (Test-Path -LiteralPath $switcherExe -PathType Leaf)) {
-    throw "Expected NodePilot.EngineSwitcher.exe in $switcherOut, but it is missing."
+    throw "Expected NodePilot.Switcher.exe in $switcherOut, but it is missing."
 }
 if ($InstallerSigningCertificateThumbprint) {
-    Invoke-NodePilotAuthenticodeSign -Path $switcherExe -Description 'NodePilot Engine Switcher' `
+    Invoke-NodePilotAuthenticodeSign -Path $switcherExe -Description 'NodePilot Switcher' `
         -Thumbprint $InstallerSigningCertificateThumbprint
 }
-# The standalone drop is a zip, not the bare exe: the switcher reads engine-switcher.json from
+# The standalone drop is a zip, not the bare exe: the switcher reads switcher.json from
 # next to itself, and a machine without a NodePilot installation has nowhere else to take the
 # template from. Signing happens above, so the zip carries the signed bytes.
-$switcherTemplate = Join-Path $switcherOut 'engine-switcher.json'
+$switcherTemplate = Join-Path $switcherOut 'switcher.json'
 if (-not (Test-Path -LiteralPath $switcherTemplate -PathType Leaf)) {
-    throw "Expected engine-switcher.json in $switcherOut, but it is missing."
+    throw "Expected switcher.json in $switcherOut, but it is missing."
 }
-$standaloneSwitcher = Join-Path $OutDir "NodePilot-EngineSwitcher-$Version-win-x64.zip"
+$standaloneSwitcher = Join-Path $OutDir "NodePilot-Switcher-$Version-win-x64.zip"
 if (Test-Path -LiteralPath $standaloneSwitcher) { Remove-Item -LiteralPath $standaloneSwitcher -Force }
 Compress-Archive -Path $switcherExe, $switcherTemplate -DestinationPath $standaloneSwitcher -Force
 

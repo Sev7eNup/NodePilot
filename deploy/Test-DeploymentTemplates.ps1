@@ -364,13 +364,13 @@ $requiredBuildContracts = [ordered]@{
     'signing is verified rather than trusted to signtool exit code' = 'Get-AuthenticodeSignature'
     'build script accepts the server-setup switch' = '\[switch\]\$IncludeServerInstaller'
     'the produced server setup is copied next to the server zip' = 'NodePilot-Server-Setup-\$Version\.exe'
-    'the engine switcher is published self-contained' = '(?s)dotnet publish \$SwitcherCsproj.*?--self-contained true'
-    'the engine switcher is published as a single file' = '(?s)dotnet publish \$SwitcherCsproj.*?PublishSingleFile=true'
+    'the switcher is published self-contained' = '(?s)dotnet publish \$SwitcherCsproj.*?--self-contained true'
+    'the switcher is published as a single file' = '(?s)dotnet publish \$SwitcherCsproj.*?PublishSingleFile=true'
     'the standalone switcher is covered by release checksums' = '(?s)\$artifacts\s*=\s*@\([^\r\n]*\$standaloneSwitcher'
-    # The switcher reads engine-switcher.json from next to itself. Shipping the bare exe left a
+    # The switcher reads switcher.json from next to itself. Shipping the bare exe left a
     # machine without a NodePilot installation with no template to take, which is the whole point
     # of the standalone drop.
-    'the standalone switcher ships as a zip' = '\$standaloneSwitcher\s*=\s*Join-Path \$OutDir "NodePilot-EngineSwitcher-\$Version-win-x64\.zip"'
+    'the standalone switcher ships as a zip' = '\$standaloneSwitcher\s*=\s*Join-Path \$OutDir "NodePilot-Switcher-\$Version-win-x64\.zip"'
     'the standalone switcher zip carries the configuration template' = '(?s)Compress-Archive -Path \$switcherExe,\s*\$switcherTemplate -DestinationPath \$standaloneSwitcher'
     # One signing loop covering every installer, not a hand-maintained block per target: a second
     # copy is how the two drift apart, and the ordering check below only pins one place.
@@ -1089,8 +1089,8 @@ Assert-TextMatches -Name 'a failed setup leaves a log behind' `
     -Text $serverIss -Pattern '(?m)^SetupLogging=yes\s*$'
 Assert-TextMatches -Name 'the setup requires elevation' `
     -Text $serverIss -Pattern '(?m)^PrivilegesRequired=admin\s*$'
-Assert-TextMatches -Name 'the server setup installs a Start Menu shortcut for the engine switcher' `
-    -Text $serverIss -Pattern '(?m)^Name:\s*"\{group\}\\NodePilot Engine Switcher";\s*Filename:\s*"\{app\}\\tools\\engine-switcher\\NodePilot\.EngineSwitcher\.exe"'
+Assert-TextMatches -Name 'the server setup installs a Start Menu shortcut for the switcher' `
+    -Text $serverIss -Pattern '(?m)^Name:\s*"\{group\}\\NodePilot Switcher";\s*Filename:\s*"\{app\}\\tools\\switcher\\NodePilot\.Switcher\.exe"'
 # The controls on the network and prerequisites pages are positioned once, at wizard construction,
 # and carry no anchors. A resizable window would grow around them - the picker would stay where it
 # was while the page around it got taller.
@@ -2308,7 +2308,7 @@ foreach ($helper in $entryPointHelpers) {
         -Text $serverBuildScript -Pattern ([regex]::Escape("'$helper'"))
 }
 
-# The Engine Switcher drives NodePilot through np.exe. Without a server URL it falls back to the
+# The Switcher drives NodePilot through np.exe. Without a server URL it falls back to the
 # CLI's own configuration, which is per-user and DPAPI-protected - the setup account is not the
 # account that later runs the switcher, so only the shipped configuration can carry it. Same
 # one-line rule as the PATH directory above, for the same reason.
@@ -2318,7 +2318,7 @@ foreach ($switcherConsumer in @(
         @{ Name = 'updater';   Text = $updateScript })) {
     Assert-TextMatches -Name "$($switcherConsumer.Name) names the switcher configuration on one line" `
         -Text $switcherConsumer.Text `
-        -Pattern "Join-Path \`$InstallPath 'tools\\engine-switcher\\engine-switcher\.json'"
+        -Pattern "Join-Path \`$InstallPath 'tools\\switcher\\switcher\.json'"
     Assert-TextMatches -Name "$($switcherConsumer.Name) uses the shared switcher-config helper" `
         -Text $switcherConsumer.Text -Pattern 'SwitcherConfig\.ps1'
     Assert-TextMatches -Name "$($switcherConsumer.Name) writes the server URL through the helper" `
