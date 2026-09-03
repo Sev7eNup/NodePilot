@@ -36,12 +36,11 @@ public class LlmProfileOptions
     public string Model { get; set; } = "gpt-4o-mini";
 
     /// <summary>
-    /// Cap on the LLM response length. The default is conservative so that response plus
-    /// workflow-generation input still fits the small context window of a local model. Models with
-    /// a larger context can take a higher value, but on smaller ones that provokes an upstream
-    /// HTTP 400 for exceeded context length.
+    /// Cap on the LLM response length. The default is sized for current long-context models. A
+    /// smaller endpoint rejects an oversized cap with an upstream HTTP 400 for exceeded context
+    /// length, so a local model usually needs a lower value.
     /// </summary>
-    public int MaxTokens { get; set; } = 4096;
+    public int MaxTokens { get; set; } = 256_000;
 
     /// <summary>
     /// HTTP timeout in seconds. Long enough for local models, short enough to not hang.

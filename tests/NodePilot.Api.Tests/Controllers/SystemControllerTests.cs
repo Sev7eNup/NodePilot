@@ -36,6 +36,18 @@ public sealed class SystemControllerTests
         body.Domain.Should().Be("corp.example.local");
     }
 
+    // The SPA header shows this next to the host, so it has to be a plain three-part product
+    // version — not the four-part assembly version and not an empty string.
+    [Fact]
+    public void GetHostInfo_ReportsThreePartAppVersion()
+    {
+        var controller = new SystemController(
+            new FakeHostIdentity(new HostIdentity("NPSRV01", "NPSRV01", null)));
+
+        var body = ((OkObjectResult)controller.GetHostInfo().Result!).Value as HostInfoResponse;
+        body!.AppVersion.Should().MatchRegex(@"^\d+\.\d+\.\d+$");
+    }
+
     [Fact]
     public void GetHostInfo_WorkgroupHostHasNullDomain()
     {

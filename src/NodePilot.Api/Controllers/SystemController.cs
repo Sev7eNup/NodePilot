@@ -28,6 +28,13 @@ public sealed class SystemController : ControllerBase
     public ActionResult<HostInfoResponse> GetHostInfo()
     {
         var id = _hostIdentity.Current;
-        return Ok(new HostInfoResponse(id.MachineName, id.Fqdn, id.Domain));
+        return Ok(new HostInfoResponse(id.MachineName, id.Fqdn, id.Domain, AppVersion));
     }
+
+    /// <summary>
+    /// Product version of the running API, three-part: the build never sets a revision, so the
+    /// fourth ".0" would only be noise in the header.
+    /// </summary>
+    internal static string AppVersion =>
+        typeof(SystemController).Assembly.GetName().Version?.ToString(3) ?? "unknown";
 }

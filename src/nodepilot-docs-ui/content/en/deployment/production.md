@@ -508,7 +508,8 @@ The installer places the same documentation that the public website carries unde
 `wwwroot\docs`. It is reachable at `https://<host>/docs` — **without signing in**, so that it is
 available when signing in is itself the problem, and without internet access. The shipped copy
 belongs to the installed version, whereas the website always shows the current development
-state. In the interface, the question mark in the header leads there.
+state. In the interface, the documentation button at the bottom left of the sidebar leads
+there.
 
 The documentation does not depend on the database and therefore stays readable during a database
 outage. It is, however, **only available while the service is running** — if the service does not

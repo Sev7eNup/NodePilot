@@ -81,6 +81,10 @@
     "fqdn": "FQDN",
     "tooltip": "API server this session is connected to"
   },
+  "version": {
+    "tooltip": "NodePilot version",
+    "unknown": "unknown"
+  },
   "databaseOutage": {
     "title": "Database unreachable",
     "reconnecting": "NodePilot keeps checking and resumes on its own as soon as the database answers.",

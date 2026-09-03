@@ -23,6 +23,7 @@ export const MOCK_HOST = {
   machineName: 'NPSRV01',
   fqdn: 'npsrv01.corp.example.local',
   domain: 'corp.example.local',
+  appVersion: '1.2.3',
 };
 
 /** Frontend mirror of GET /api/ai/knowledge/capabilities, inline to avoid importing src/.

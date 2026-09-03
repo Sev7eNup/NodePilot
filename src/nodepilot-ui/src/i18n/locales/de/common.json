@@ -81,6 +81,10 @@
     "fqdn": "FQDN",
     "tooltip": "API-Server, mit dem diese Sitzung verbunden ist"
   },
+  "version": {
+    "tooltip": "NodePilot-Version",
+    "unknown": "unbekannt"
+  },
   "databaseOutage": {
     "title": "Datenbank nicht erreichbar",
     "reconnecting": "NodePilot prüft weiter und nimmt den Betrieb automatisch wieder auf, sobald die Datenbank antwortet.",

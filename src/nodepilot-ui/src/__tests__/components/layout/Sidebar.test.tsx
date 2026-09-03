@@ -122,6 +122,19 @@ describe('Sidebar', () => {
     expect(logout).toHaveBeenCalled();
   });
 
+  // /docs is a second document served by the API, not a route of this SPA. It has to be a real
+  // anchor: a react-router Link would navigate client-side, match no route and render the
+  // not-found page, so the request would never reach the server. The trailing slash matters too
+  // — the docs bundle resolves its assets against the document url.
+  it('links to the bundled documentation from the footer controls', async () => {
+    renderSidebar('Admin');
+
+    const link = await screen.findByRole('link', { name: 'Documentation' });
+    expect(link).toHaveAttribute('href', '/docs/');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
   it('hides admin-only items and the alerts badge for a Viewer', async () => {
     renderSidebar('Viewer');
     // dashboard-stats is open to every role, so the workflows badge still resolves.
