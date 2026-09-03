@@ -34,6 +34,15 @@
     "(CVE-2026-56876 / GHSA-jmr9-qjv8-65gv). Packager 20.3.0 uses Electron's hardened native",
     "@electron-internal/extract-zip instead. Both are pinned exactly and exercised by security tests."
   ],
+  "//xmldom-security": [
+    "@electron/packager -> plist -> @xmldom/xmldom 0.9.11 carries GHSA-6gmq-8vp8-gcm6 (XML",
+    "fragment injection via an invalid EntityReference during requireWellFormed serialization).",
+    "plist has no release that moves off the affected range, so the transitive dependency is",
+    "overridden to the patched 0.9.12. Packaging is the only consumer; nothing ships it at runtime."
+  ],
+  "overrides": {
+    "@xmldom/xmldom": "0.9.12"
+  },
   "devDependencies": {
     "@electron-internal/extract-zip": "1.0.5",
     "@electron/packager": "20.3.0",
