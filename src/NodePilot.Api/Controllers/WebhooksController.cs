@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using NodePilot.Core.Activities;
 using NodePilot.Core.Audit;
 using NodePilot.Api.ExecutionDispatch;
 using NodePilot.Api.Security;
@@ -489,7 +490,14 @@ public class WebhooksController : ControllerBase
         Newtonsoft.Json.Linq.JToken root;
         try
         {
-            using var reader = new Newtonsoft.Json.JsonTextReader(new StringReader(body)) { MaxDepth = 64 };
+            // DateParseHandling.None: Newtonsoft otherwise turns any ISO-8601-shaped body string
+            // into a DateTime, and the mapped value would reach the workflow re-formatted in the
+            // host's format instead of the text the caller sent. Mirrors jsonQuery.
+            using var reader = new Newtonsoft.Json.JsonTextReader(new StringReader(body))
+            {
+                MaxDepth = 64,
+                DateParseHandling = Newtonsoft.Json.DateParseHandling.None,
+            };
             root = Newtonsoft.Json.Linq.JToken.ReadFrom(reader);
         }
         catch (Newtonsoft.Json.JsonException)
@@ -529,6 +537,9 @@ public class WebhooksController : ControllerBase
                     Newtonsoft.Json.Linq.JValue { Type: Newtonsoft.Json.Linq.JTokenType.String } v =>
                         v.Value as string ?? "",
                     Newtonsoft.Json.Linq.JContainer c => c.ToString(Newtonsoft.Json.Formatting.None),
+                    // Numbers and booleans render invariantly and lowercase, matching jsonQuery
+                    // and what the invariant condition parser expects to read back.
+                    Newtonsoft.Json.Linq.JValue scalar => DataBusScalar.ToInvariantString(scalar.Value),
                     _ => token.ToString(),
                 };
             }

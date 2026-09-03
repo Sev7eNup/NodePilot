@@ -38,7 +38,13 @@ internal sealed class DebugCoordinator
     /// to the next step. Throws <see cref="OperationCanceledException"/> if the max-pause
     /// guard fires or the execution gets cancelled while paused.
     /// </summary>
-    internal async Task HandlePauseAsync(
+    /// <returns>
+    /// The overrides the user applied, or null when they resumed without editing anything. The
+    /// caller needs them because the activity config was already resolved before the pause: only
+    /// the PowerShell-backed activities read the live variable dict at execute time, so every
+    /// other activity has to have its config re-resolved against the edited values.
+    /// </returns>
+    internal async Task<IReadOnlyDictionary<string, string>?> HandlePauseAsync(
         WorkflowExecution execution, WorkflowNode node, StepExecution stepExecution,
         NodePilotDbContext stepDb, Dictionary<string, string> variables,
         DebugHandle debug, CancellationTokenSource executionCts, CancellationToken ct)
@@ -115,6 +121,7 @@ internal sealed class DebugCoordinator
         }
 
         // Merge in overrides — the user edited variable values before clicking Resume.
+        IReadOnlyDictionary<string, string>? appliedOverrides = null;
         if (resume.Overrides is { Count: > 0 })
         {
             // Reject attempts to poison globals (read-only by design) or reserved engine
@@ -141,8 +148,11 @@ internal sealed class DebugCoordinator
             }
             foreach (var (k, v) in resume.Overrides)
                 variables[k] = v;
-            // Context.Variables points at this same dict (by reference), so overrides are
-            // immediately visible to the executor too, no rebuild needed.
+            // Context.Variables points at this same dict (by reference), so the PowerShell-backed
+            // activities (runScript, custom:*) see the edit when they resolve their own templates.
+            // Every other activity consumes the JsonElement StepRunner resolved BEFORE this pause,
+            // so StepRunner re-resolves it from the returned overrides.
+            appliedOverrides = resume.Overrides;
         }
 
         if (resume.Command == ResumeCommand.Stop)
@@ -163,5 +173,6 @@ internal sealed class DebugCoordinator
         await stepDb.SaveChangesAsync(ct);
 
         await _notifier.StepResumedAsync(execution.Id, execution.WorkflowId, node.Id);
+        return appliedOverrides;
     }
 }

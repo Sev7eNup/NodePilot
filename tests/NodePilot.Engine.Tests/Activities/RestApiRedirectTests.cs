@@ -77,6 +77,48 @@ public class RestApiRedirectTests
     }
 
     [Fact]
+    public async Task AuthorSuppliedContentType_LandsOnTheEntity()
+    {
+        // The entity's media type was hard-coded to application/json and author headers went to
+        // req.Headers (the REQUEST-header collection), which cannot override a content header. A
+        // form-encoded token request or a SOAP call was therefore unsendable — while the designer's
+        // headers placeholder tells authors to set Content-Type exactly there.
+        var (activity, handler) = CreateActivity([Ok()]);
+
+        var result = await activity.ExecuteAsync(
+            CreateContext(),
+            ParseConfig(
+                "{\"url\": \"https://192.0.2.10/token\", \"method\": \"POST\", " +
+                "\"headers\": \"Content-Type: application/x-www-form-urlencoded\", " +
+                "\"body\": \"grant_type=client_credentials\"}"),
+            CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        var sent = handler.Requests.Single();
+        sent.Content!.Headers.ContentType!.MediaType.Should().Be("application/x-www-form-urlencoded");
+        // NonValidated, because Contains() rejects a content-header name outright. Before the fix
+        // TryAddWithoutValidation stored it here as a custom header, emitting a second,
+        // conflicting Content-Type field on the wire.
+        sent.Headers.NonValidated.Contains("Content-Type").Should().BeFalse(
+            "a content header must not also be emitted in the request-header block");
+    }
+
+    [Fact]
+    public async Task WithoutAContentTypeHeader_TheBodyStaysJson()
+    {
+        var (activity, handler) = CreateActivity([Ok()]);
+
+        var result = await activity.ExecuteAsync(
+            CreateContext(),
+            ParseConfig(
+                "{\"url\": \"https://192.0.2.10/api\", \"method\": \"POST\", \"body\": \"{}\"}"),
+            CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        handler.Requests.Single().Content!.Headers.ContentType!.MediaType.Should().Be("application/json");
+    }
+
+    [Fact]
     public async Task Redirect_302_FollowsToFinalLocation()
     {
         var (activity, handler) = CreateActivity(

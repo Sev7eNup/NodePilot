@@ -89,9 +89,19 @@ public class RestApiActivity : IActivityExecutor
             using var req = new HttpRequestMessage(currentMethod, currentUrl);
             if (!string.IsNullOrEmpty(currentBody)
                 && currentMethod != HttpMethod.Get && currentMethod != HttpMethod.Head)
+            {
                 req.Content = new StringContent(currentBody, System.Text.Encoding.UTF8, "application/json");
+                // Content-Type is a CONTENT header. Adding it to req.Headers below leaves the
+                // entity declared as application/json and emits a second, conflicting field, so a
+                // form-encoded token request or a SOAP call could not be sent at all — even though
+                // the designer's headers placeholder tells authors to set it there.
+                ApplyContentType(req.Content, effectiveHeaders);
+            }
             foreach (var (name, value) in effectiveHeaders)
+            {
+                if (IsContentTypeHeader(name)) continue;
                 req.Headers.TryAddWithoutValidation(name, value);
+            }
 
             var response = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
 
@@ -245,6 +255,22 @@ public class RestApiActivity : IActivityExecutor
             }
         }
         return list;
+    }
+
+    private static bool IsContentTypeHeader(string name)
+        => string.Equals(name, "Content-Type", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Moves an author-supplied Content-Type onto the entity, where it belongs. An unparsable
+    /// value is left alone so the request still goes out as JSON rather than failing on a typo.
+    /// </summary>
+    private static void ApplyContentType(HttpContent content, List<(string Name, string Value)> headers)
+    {
+        var declared = headers.LastOrDefault(h => IsContentTypeHeader(h.Name)).Value;
+        if (string.IsNullOrWhiteSpace(declared)) return;
+
+        if (System.Net.Http.Headers.MediaTypeHeaderValue.TryParse(declared, out var parsed))
+            content.Headers.ContentType = parsed;
     }
 
     private static bool SameAuthority(Uri a, Uri b)

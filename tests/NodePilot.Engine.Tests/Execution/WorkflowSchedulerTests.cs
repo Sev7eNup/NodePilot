@@ -707,6 +707,64 @@ public class WorkflowSchedulerTests
     /// the child execution only finishes after the sibling step has run, which can only happen
     /// if forEach gave up its gate slot.
     /// </summary>
+    /// <summary>
+    /// A waitAll junction whose second input is skipped only AFTER the first one has completed.
+    /// Readiness is evaluated in one place — the successor loop of a node that just finished — so
+    /// the join answered Wait, was never asked again, and it plus everything behind it were
+    /// written off as Skipped once the queue drained. Edge order decided the outcome, which is
+    /// what makes this deterministic to reproduce.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RunAsync_WaitAllJunction_IsReEvaluatedWhenAPredecessorIsSkippedLater(bool joinEdgeFirst)
+    {
+        var a = Node("a");
+        var b = Node("b");
+        var join = Node("join", "junction", """{"mode":"waitAll"}""");
+        var last = Node("last");
+        var nodes = new[] { a, b, join, last };
+
+        var joinEdge = new WorkflowEdge { Id = "e-join", Source = "a", Target = "join" };
+        // "a" succeeds, so this condition is false and "b" is skipped.
+        var branchEdge = new WorkflowEdge { Id = "e-branch", Source = "a", Target = "b", Condition = "a.failed" };
+        var edges = new List<WorkflowEdge>
+        {
+            joinEdgeFirst ? joinEdge : branchEdge,
+            joinEdgeFirst ? branchEdge : joinEdge,
+            new() { Id = "e3", Source = "b", Target = "join" },
+            new() { Id = "e4", Source = "join", Target = "last" },
+        };
+
+        var adjacency = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var reverse = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var incoming = nodes.ToDictionary(n => n.Id, _ => new List<WorkflowEdge>());
+        var byEndpoints = new Dictionary<(string Source, string Target), WorkflowEdge>();
+        foreach (var edge in edges)
+        {
+            adjacency[edge.Source].Add(edge.Target);
+            reverse[edge.Target].Add(edge.Source);
+            incoming[edge.Target].Add(edge);
+            byEndpoints[(edge.Source, edge.Target)] = edge;
+        }
+
+        var results = new ConcurrentDictionary<string, ActivityResult>();
+        var completed = new HashSet<string>();
+        var skipped = new HashSet<string>();
+
+        await WorkflowScheduler.RunAsync(
+            [a], nodes.ToDictionary(n => n.Id), adjacency, reverse, incoming, byEndpoints,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            results, completed, skipped,
+            (node, _) => Task.FromResult(new ActivityResult { Success = true, Output = node.Id }),
+            NullLogger.Instance, CancellationToken.None);
+
+        skipped.Should().Contain("b", "its only incoming edge required a.failed");
+        completed.Should().Contain(["join", "last"],
+            "a skipped input is resolved, so the join is satisfied by its remaining input regardless of edge order");
+        skipped.Should().NotContain(["join", "last"]);
+    }
+
     private sealed class GateProbeEngine(Task siblingRan) : IWorkflowEngine
     {
         public async Task<WorkflowExecution> ExecuteAsync(

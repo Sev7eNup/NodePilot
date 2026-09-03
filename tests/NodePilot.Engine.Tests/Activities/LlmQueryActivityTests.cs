@@ -227,4 +227,33 @@ public sealed class LlmQueryActivityTests
         result.Success.Should().BeFalse();
         result.ErrorOutput.Should().Contain("No active LLM profile");
     }
+
+    [Fact]
+    public async Task ExecuteAsync_TimeoutSecondsZero_IsTreatedAsUnsetNotAsAnError()
+    {
+        // The shared Timeout field writes a literal 0 for an emptied input and its own hint reads
+        // "0 = no timeout (default)". Rejecting it failed every run of a node whose timeout the
+        // author had simply cleared, with the LLM never called.
+        var client = new FakeLlmClient().EnqueueContent("answer", "m");
+        var (activity, _) = Build(client);
+
+        var result = await activity.ExecuteAsync(
+            Ctx(), Cfg(new { prompt = "hi", timeoutSeconds = 0 }), CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Be("answer");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_NegativeTimeoutSeconds_StillFails()
+    {
+        var client = new FakeLlmClient().EnqueueContent("answer", "m");
+        var (activity, _) = Build(client);
+
+        var result = await activity.ExecuteAsync(
+            Ctx(), Cfg(new { prompt = "hi", timeoutSeconds = -5 }), CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.ErrorOutput.Should().Contain("timeoutSeconds");
+    }
 }

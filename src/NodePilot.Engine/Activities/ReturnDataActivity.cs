@@ -45,6 +45,9 @@ public class ReturnDataActivity : IActivityExecutor
 
     public string ActivityType => "returnData";
 
+    private static string Cap(string value) =>
+        value.Length > MaxPerValueChars ? value[..MaxPerValueChars] + PerValueTruncationMarker : value;
+
     public async Task<ActivityResult> ExecuteAsync(StepExecutionContext context, JsonElement config, CancellationToken ct)
     {
         if (!config.TryGetProperty("data", out var dataEl) || dataEl.ValueKind != JsonValueKind.Object)
@@ -61,20 +64,23 @@ public class ReturnDataActivity : IActivityExecutor
         // Per-value cap is applied here so each value stays small enough that the envelope as a
         // whole almost always fits inside MaxReturnDataChars.
         var outputParams = new Dictionary<string, string>();
+        var persistParams = new Dictionary<string, string>();
         foreach (var prop in dataEl.EnumerateObject())
         {
-            var raw = PowerShellOperation.JsonElementToScalarString(prop.Value);
-            outputParams[prop.Name] = raw.Length > MaxPerValueChars
-                ? raw[..MaxPerValueChars] + PerValueTruncationMarker
-                : raw;
+            var raw = Cap(PowerShellOperation.JsonElementToScalarString(prop.Value));
+            outputParams[prop.Name] = raw;
+            // Redact per value, never across the finished document. A careless workflow that
+            // echoes a secret here would otherwise persist it unmasked and hand it to any
+            // startWorkflow parent — but several default patterns have value classes that do not
+            // stop at a quote or a brace (Password=([^;]+), Authorization:([^\r\n]+)). Applied to
+            // the single-line envelope they swallowed the closing quote and every remaining
+            // property, so the parent's JsonDocument.Parse threw into a bare catch and the child's
+            // whole returnData contract disappeared while both runs stayed green.
+            persistParams[prop.Name] = Cap(_redactor?.Redact(raw) ?? raw);
         }
 
         var json = JsonSerializer.Serialize(outputParams);
-
-        // Run ReturnData through the redactor — a careless workflow that echoes a secret
-        // into returnData would otherwise persist it unmasked to the WorkflowExecution.ReturnData
-        // column and flow it up to any startWorkflow parent.
-        var persistJson = _redactor?.Redact(json) ?? json;
+        var persistJson = JsonSerializer.Serialize(persistParams);
 
         // Hard envelope cap: even with per-value capping, a workflow with thousands of keys
         // can still exceed the column budget. Failing with a clear error beats silently

@@ -469,6 +469,14 @@ public class WorkflowEditingController : WorkflowsControllerBase
                 message = hmacError,
             });
         }
+        if (NodePilot.Api.Security.ScheduleCronValidation.ValidateDefinition(request.DefinitionJson) is { } cronError)
+        {
+            return BadRequest(new
+            {
+                code = "invalid_cron_expression",
+                message = cronError,
+            });
+        }
         LintAndLogWarnings(request.DefinitionJson);
 
         // Pre-publish values captured for the history snapshot (the live row is untracked).

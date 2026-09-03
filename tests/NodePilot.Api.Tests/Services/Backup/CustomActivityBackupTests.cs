@@ -23,6 +23,10 @@ namespace NodePilot.Api.Tests.Services.Backup;
 public sealed class CustomActivityBackupTests : IDisposable
 {
     private const string Passphrase = "a-strong-backup-pass";
+
+    /// <summary>The admin performing the restore; becomes the runtime principal of every
+    /// restored workflow, the same rule Publish and Import follow.</summary>
+    private static readonly Guid RestoreActor = Guid.Parse("0bd7f0a1-4c3e-4a6b-9f21-6c2f5d8e4b70");
     private static readonly List<string> Sections = [BackupSections.CustomActivities, BackupSections.Workflows];
     private readonly AesGcmSecretProtector _atRest = new(Key());
     private readonly List<string> _tempFiles = [];
@@ -105,7 +109,7 @@ public sealed class CustomActivityBackupTests : IDisposable
         serialized.Should().NotContain("inline-custom-default-secret");
 
         using var dst = TestDbFactory.Create();
-        await Restore(dst).RestoreAsync(backup, Passphrase, new Dictionary<string, RestoreConflictPolicy>(), CancellationToken.None);
+        await Restore(dst).RestoreAsync(backup, Passphrase, new Dictionary<string, RestoreConflictPolicy>(), RestoreActor, CancellationToken.None);
 
         var restored = await new CustomActivityDefinitionStore(dst).GetByKeyAsync("disk_check", CancellationToken.None);
         restored.Should().NotBeNull();
@@ -137,7 +141,7 @@ public sealed class CustomActivityBackupTests : IDisposable
         {
             [BackupSections.CustomActivities] = RestoreConflictPolicy.Overwrite,
             [BackupSections.Workflows] = RestoreConflictPolicy.Overwrite,
-        }, CancellationToken.None);
+        }, RestoreActor, CancellationToken.None);
 
         var wf = dst.Workflows.Single();
         CustomDefIdInFirstNode(wf.DefinitionJson).Should().Be(dstDef.Id.ToString(),
@@ -173,7 +177,7 @@ public sealed class CustomActivityBackupTests : IDisposable
         SeedAdmin(dst);
 
         var act = () => Restore(dst).RestoreAsync(
-            backup, Passphrase, new Dictionary<string, RestoreConflictPolicy>(), CancellationToken.None);
+            backup, Passphrase, new Dictionary<string, RestoreConflictPolicy>(), RestoreActor, CancellationToken.None);
         await act.Should().ThrowAsync<BackupRestoreException>()
             .WithMessage("*__customDefinitionId*");
         dst.Workflows.Should().BeEmpty();
@@ -219,7 +223,7 @@ public sealed class CustomActivityBackupTests : IDisposable
         using var dst = TestDbFactory.Create();
         SeedAdmin(dst, adminId);
         await Restore(dst).RestoreAsync(
-            backup, Passphrase, new Dictionary<string, RestoreConflictPolicy>(), CancellationToken.None);
+            backup, Passphrase, new Dictionary<string, RestoreConflictPolicy>(), RestoreActor, CancellationToken.None);
 
         var restored = JsonNode.Parse(dst.Workflows.Single().DefinitionJson)!;
         restored["nodes"]![0]!["data"]!["config"]!["parameters"]!["credentialId"]!

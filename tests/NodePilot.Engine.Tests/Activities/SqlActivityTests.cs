@@ -84,6 +84,23 @@ public sealed class SqlActivityTests : IDisposable
     }
 
     [Fact]
+    public async Task Select_WithNoMatchingRows_KeepsTheSelectResultShape()
+    {
+        // Branching on the row count made the published shape depend on the data: an empty result
+        // took the DML path, so Output carried prose instead of "[]", `truncated` disappeared and
+        // a rowsAffected of -1 was published for a read. Downstream jsonQuery/forEach steps then
+        // failed only on the runs where the query happened to match nothing.
+        var result = await ActDefault().ExecuteAsync(Ctx(),
+            Cfg("SELECT Id, Name, Price FROM Widgets WHERE Name = 'nope'"), CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Be("[]");
+        result.OutputParameters["rowCount"].Should().Be("0");
+        result.OutputParameters["truncated"].Should().Be("false");
+        result.OutputParameters.Should().NotContainKey("rowsAffected", "a SELECT does not affect rows");
+    }
+
+    [Fact]
     public async Task Insert_ReportsRowsAffected()
     {
         var result = await ActDefault().ExecuteAsync(Ctx(),

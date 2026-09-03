@@ -210,4 +210,61 @@ public class ConditionEvaluatorTests
         var globals = new Dictionary<string, string>(StringComparer.Ordinal) { ["ENV"] = "production" };
         ConditionEvaluator.Evaluate(expr, MakeResults(), null, globals).Should().BeTrue();
     }
+
+    [Theory]
+    [InlineData("<")]
+    [InlineData("<=")]
+    [InlineData(">")]
+    [InlineData(">=")]
+    public void Evaluate_OrderingAgainstMissingOperand_IsFalse(string op)
+    {
+        // The empty string sorts before every digit, so an ordinal fallback made "value < 5"
+        // true precisely when the value was absent — firing the guarded branch on missing data.
+        var expr = Expr($@"{{""type"":""comparison"",""left"":{{""kind"":""variable"",""stepId"":""stepA"",""field"":""param"",""paramName"":""freeGb""}},""op"":""{op}"",""right"":{{""kind"":""literal"",""value"":""5""}}}}");
+        ConditionEvaluator.Evaluate(expr, MakeResults()).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Evaluate_IsFalse_OnMissingOperand_IsFalse()
+    {
+        // Same inversion as the ordering operators: "" is not truthy, so isFalse used to hold
+        // for a value that never arrived.
+        var expr = Expr(@"{""type"":""comparison"",""left"":{""kind"":""variable"",""stepId"":""stepA"",""field"":""param"",""paramName"":""missing""},""op"":""isFalse""}");
+        ConditionEvaluator.Evaluate(expr, MakeResults()).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Evaluate_IsFalse_OnPresentFalsyValue_IsTrue()
+    {
+        var results = MakeResults();
+        results["stepA"].OutputParameters["flag"] = "false";
+        var expr = Expr(@"{""type"":""comparison"",""left"":{""kind"":""variable"",""stepId"":""stepA"",""field"":""param"",""paramName"":""flag""},""op"":""isFalse""}");
+        ConditionEvaluator.Evaluate(expr, results).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("<")]
+    [InlineData(">")]
+    public void Evaluate_LocaleFormattedNumber_IsNotParsedAsGroupedDigits(string op)
+    {
+        // "9,99" must not parse as 999. Without AllowThousands it fails the numeric parse and
+        // falls through to the string comparison, so neither ordering claims the value is large.
+        var results = MakeResults();
+        results["stepA"].OutputParameters["price"] = "9,99";
+        var expr = Expr($@"{{""type"":""comparison"",""left"":{{""kind"":""variable"",""stepId"":""stepA"",""field"":""param"",""paramName"":""price""}},""op"":""{op}"",""right"":{{""kind"":""literal"",""value"":""10""}}}}");
+
+        // Ordinal: "9,99" sorts after "10" because '9' > '1'. The point of the assertion is the
+        // absence of the numeric misparse (999 > 10), not the string ordering itself.
+        var expected = op == ">";
+        ConditionEvaluator.Evaluate(expr, results).Should().Be(expected);
+    }
+
+    [Fact]
+    public void Evaluate_InvariantDecimal_StillComparesNumerically()
+    {
+        var results = MakeResults();
+        results["stepA"].OutputParameters["price"] = "9.99";
+        var expr = Expr(@"{""type"":""comparison"",""left"":{""kind"":""variable"",""stepId"":""stepA"",""field"":""param"",""paramName"":""price""},""op"":""<"",""right"":{""kind"":""literal"",""value"":""10""}}");
+        ConditionEvaluator.Evaluate(expr, results).Should().BeTrue();
+    }
 }

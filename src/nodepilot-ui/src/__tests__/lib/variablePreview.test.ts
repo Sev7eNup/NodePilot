@@ -3,7 +3,7 @@ import { resolveVariablePreview, PREVIEW_MAX_CHARS } from '../../lib/variablePre
 import type { StepExecution } from '../../types/api';
 
 /**
- * resolveVariablePreview backs the hover-preview tooltip. `.output`/`.error`/`.errorOutput`
+ * resolveVariablePreview backs the hover-preview tooltip. `.output`/`.error`
  * read the matching step field; `.param.X` extracts via $-form or colon-form and falls back
  * to full stdout; a bare alias is treated as `.output`. Returns null when the channel is
  * empty or step is undefined. Long values are truncated to PREVIEW_MAX_CHARS.
@@ -40,10 +40,13 @@ describe('resolveVariablePreview', () => {
     expect(result?.value).toBe('boom');
   });
 
-  it('errorOutputSuffix_alias_alsoReadsErrorOutput', () => {
+  it('errorOutputSuffix_hasNoPreview_becauseTheEngineHasNoSuchTail', () => {
+    // VariableResolver's grammar knows output|error|success|param.X only. Previewing an
+    // `errorOutput` tail made an unresolvable reference look live: at run time the placeholder
+    // survives, the unresolved-template check never sees it, and the step reports success having
+    // written the literal `{{...}}` wherever the value belonged.
     const result = resolveVariablePreview(step({ errorOutput: 'boom' }), '{{disk.errorOutput}}');
-    expect(result?.channel).toBe('stderr');
-    expect(result?.value).toBe('boom');
+    expect(result).toBeNull();
   });
 
   it('paramSuffix_dollarFormInOutput_extractsValue', () => {

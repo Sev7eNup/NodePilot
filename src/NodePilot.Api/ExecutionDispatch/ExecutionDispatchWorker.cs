@@ -62,59 +62,96 @@ public sealed class ExecutionDispatchWorker : BackgroundService
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                if (!_cluster.IsLeader)
-                {
-                    await _signal.WaitAsync(PollInterval, stoppingToken);
-                    continue;
-                }
-
-                if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
-
-                Guid? executionId;
                 try
                 {
-                    executionId = await TryClaimAsync(leaseOwner, stoppingToken);
-                }
-                catch (Exception ex) when (DbErrorClassifier.Classify(ex) is not DbFailureKind.None)
-                {
-                    _logger.LogWarning(ex, "Durable dispatch worker {WorkerId} could not poll the outbox.", workerId);
-                    await _signal.WaitAsync(PollInterval, stoppingToken);
-                    continue;
-                }
-
-                if (executionId is null)
-                {
-                    await _signal.WaitAsync(PollInterval, stoppingToken);
-                    continue;
-                }
-
-                try
-                {
-                    await using var scope = _scopeFactory.CreateAsyncScope();
-                    var dispatcher = scope.ServiceProvider.GetRequiredService<ExecutionDispatchService>();
-                    var outcome = await dispatcher.ProcessOutboxAsync(executionId.Value, stoppingToken);
-                    // Every non-Completed outcome keeps its durable intent and must have its
-                    // lease released, or the item sits idle for the full lease duration. Tags
-                    // and back-off are per outcome so queueing and failed handoff stay apart.
-                    switch (outcome)
+                    if (!_cluster.IsLeader)
                     {
-                        case ExecutionDispatchOutcome.RetryBeforeStart:
-                            await ReleaseForRetryAsync(
-                                executionId.Value, leaseOwner, RetryDelay, countAttempt: true, stoppingToken);
-                            ApiMetrics.DispatchItemsProcessed.Add(1,
-                                new KeyValuePair<string, object?>("result", "retry_before_start"));
-                            break;
-                        case ExecutionDispatchOutcome.DeferredByConcurrencyLimit:
-                            await ReleaseForRetryAsync(
-                                executionId.Value, leaseOwner, ConcurrencyDeferralDelay, countAttempt: false, stoppingToken);
-                            ApiMetrics.DispatchItemsProcessed.Add(1,
-                                new KeyValuePair<string, object?>("result", "deferred_workflow_concurrency"));
-                            break;
-                        default:
-                            ApiMetrics.DispatchItemsProcessed.Add(1,
-                                new KeyValuePair<string, object?>("result", "success"));
-                            break;
+                        await _signal.WaitAsync(PollInterval, stoppingToken);
+                        continue;
                     }
+
+                    if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
+
+                    Guid? executionId;
+                    try
+                    {
+                        executionId = await TryClaimAsync(leaseOwner, stoppingToken);
+                    }
+                    // Every claim failure backs off, not just the ones the classifier recognises as a
+                    // database fault. A deadlock victim (Postgres 40P01 / SQL Server 1205) classifies
+                    // as None by design, and many workers issuing overlapping claims against the same
+                    // outbox rows is exactly the workload that produces one — the narrower filter
+                    // re-threw it out of the worker.
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        _logger.LogWarning(ex, "Durable dispatch worker {WorkerId} could not poll the outbox.", workerId);
+                        await _signal.WaitAsync(PollInterval, stoppingToken);
+                        continue;
+                    }
+
+                    if (executionId is null)
+                    {
+                        await _signal.WaitAsync(PollInterval, stoppingToken);
+                        continue;
+                    }
+
+                    try
+                    {
+                        await using var scope = _scopeFactory.CreateAsyncScope();
+                        var dispatcher = scope.ServiceProvider.GetRequiredService<ExecutionDispatchService>();
+                        var outcome = await dispatcher.ProcessOutboxAsync(executionId.Value, stoppingToken);
+                        // Every non-Completed outcome keeps its durable intent and must have its
+                        // lease released, or the item sits idle for the full lease duration. Tags
+                        // and back-off are per outcome so queueing and failed handoff stay apart.
+                        switch (outcome)
+                        {
+                            case ExecutionDispatchOutcome.RetryBeforeStart:
+                                await ReleaseForRetryAsync(
+                                    executionId.Value, leaseOwner, RetryDelay, countAttempt: true, stoppingToken);
+                                ApiMetrics.DispatchItemsProcessed.Add(1,
+                                    new KeyValuePair<string, object?>("result", "retry_before_start"));
+                                break;
+                            case ExecutionDispatchOutcome.DeferredByConcurrencyLimit:
+                                await ReleaseForRetryAsync(
+                                    executionId.Value, leaseOwner, ConcurrencyDeferralDelay, countAttempt: false, stoppingToken);
+                                ApiMetrics.DispatchItemsProcessed.Add(1,
+                                    new KeyValuePair<string, object?>("result", "deferred_workflow_concurrency"));
+                                break;
+                            default:
+                                ApiMetrics.DispatchItemsProcessed.Add(1,
+                                    new KeyValuePair<string, object?>("result", "success"));
+                                break;
+                        }
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        ApiMetrics.DispatchItemsProcessed.Add(1,
+                            new KeyValuePair<string, object?>("result", "failure"));
+                        _logger.LogError(ex,
+                            "Execution dispatch worker {WorkerId} failed processing outbox execution {ExecutionId}.",
+                            workerId, executionId);
+                        // The release is a second database write against the database that just
+                        // failed. Unguarded it threw out of this catch block, past the loop, and
+                        // faulted the worker task. The item keeps its durable intent, so losing the
+                        // release only delays the retry until the lease expires.
+                        try
+                        {
+                            await ReleaseForRetryAsync(
+                                executionId.Value, leaseOwner, RetryDelay, countAttempt: true, CancellationToken.None);
+                        }
+                        catch (Exception releaseEx)
+                        {
+                            _logger.LogWarning(releaseEx,
+                                "Execution dispatch worker {WorkerId} could not release the lease for {ExecutionId}; it will be retried when the lease expires.",
+                                workerId, executionId);
+                        }
+                    }
+
+                    _signal.Pulse();
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -122,16 +159,17 @@ public sealed class ExecutionDispatchWorker : BackgroundService
                 }
                 catch (Exception ex)
                 {
-                    ApiMetrics.DispatchItemsProcessed.Add(1,
-                        new KeyValuePair<string, object?>("result", "failure"));
+                    // Last-resort net. HostOptions.BackgroundServiceExceptionBehavior is deliberately
+                    // left at StopHost, so anything escaping this loop takes the whole API process
+                    // down — the opposite of the shed-load-and-recover contract in ADR 0011. Log,
+                    // back off, keep the pool alive.
                     _logger.LogError(ex,
-                        "Execution dispatch worker {WorkerId} failed processing outbox execution {ExecutionId}.",
-                        workerId, executionId);
-                    await ReleaseForRetryAsync(
-                        executionId.Value, leaseOwner, RetryDelay, countAttempt: true, CancellationToken.None);
-                }
-
-                _signal.Pulse();
+                          "Durable dispatch worker {WorkerId} hit an unexpected error; the worker continues.",
+                          workerId);
+                    ApiMetrics.DispatchItemsProcessed.Add(1,
+                          new KeyValuePair<string, object?>("result", "worker_error"));
+                  await _signal.WaitAsync(PollInterval, CancellationToken.None);
+              }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

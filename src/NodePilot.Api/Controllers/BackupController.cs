@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using NodePilot.Api.Audit;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Services.Backup;
 using NodePilot.Core.Audit;
@@ -128,7 +129,7 @@ public sealed class BackupController : ControllerBase
         BackupRestoreResult result;
         try
         {
-            result = await _restore.RestoreAsync(bytes, passphrase, policies, ct);
+            result = await _restore.RestoreAsync(bytes, passphrase, policies, this.GetCurrentUserId(), ct);
         }
         catch (BackupFormatException ex)
         {

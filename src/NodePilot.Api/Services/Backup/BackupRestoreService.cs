@@ -130,8 +130,14 @@ public sealed class BackupRestoreService(
         BackupSections.CustomActivities, BackupSections.Workflows, BackupSections.Alerting,
     ];
 
+    /// <param name="restoredByUserId">
+    /// Becomes the runtime principal of every restored workflow, mirroring Publish and Import.
+    /// Null only where no user is acting — first-boot provisioning — and a workflow restored that
+    /// way needs one Publish before its triggers can fire.
+    /// </param>
     public async Task<BackupRestoreResult> RestoreAsync(
-        byte[] content, string passphrase, IReadOnlyDictionary<string, RestoreConflictPolicy> policies, CancellationToken ct)
+        byte[] content, string passphrase, IReadOnlyDictionary<string, RestoreConflictPolicy> policies,
+        Guid? restoredByUserId, CancellationToken ct)
     {
         var reader = BackupFileReader.Parse(content);
         var protector = reader.TryUnlock(passphrase)
@@ -165,7 +171,7 @@ public sealed class BackupRestoreService(
         {
             db.ChangeTracker.Clear();
             results.Clear();
-            var ctx = new RestoreState(reader, protector, policies);
+            var ctx = new RestoreState(reader, protector, policies, restoredByUserId);
             await LoadExistingAsync(ctx, ct);
             ValidateReferences(ctx); // K12 — abort before any write
 
@@ -880,6 +886,12 @@ public sealed class BackupRestoreService(
                         existing.FolderId = folderTarget;
                         existing.UpdatedAt = now;
                         existing.UpdatedBy = "restore";
+                        // Restore establishes runtime authority the same way Publish and Import do.
+                        // The backup carries IsEnabled, so an overwritten row is re-armed here —
+                        // and every automated dispatch resolves its principal from this column.
+                        // Without it the workflow shows as active and each trigger fire is
+                        // terminalised as Cancelled with "missing_effective_principal".
+                        existing.PublishedByUserId = s.RestoredByUserId ?? existing.PublishedByUserId;
                         WorkflowMetadata.PopulateComputedColumns(existing);
                     },
                     (id, finalName) =>
@@ -889,6 +901,9 @@ public sealed class BackupRestoreService(
                             Id = id, Name = finalName, Description = description, DefinitionJson = definitionJson,
                             Version = Math.Max(1, version), IsEnabled = isEnabled, FolderId = folderTarget,
                             MaxConcurrentExecutions = maxConcurrent,
+                            // See the overwrite branch: the restoring user becomes the runtime
+                            // principal, mirroring the import path.
+                            PublishedByUserId = s.RestoredByUserId,
                             CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
                         };
                         WorkflowMetadata.PopulateComputedColumns(created);

@@ -76,8 +76,12 @@ public class WaitForConditionActivity : BaseRemoteActivity
             return new ActivityResult { Success = false, ErrorOutput = ex.Message };
         }
 
-        var interval = Math.Max(1, config.TryGetProperty("intervalSeconds", out var iv) && iv.TryGetInt32(out var ivi) ? ivi : 5);
-        var timeout = Math.Max(1, config.TryGetProperty("timeoutSeconds", out var to) && to.TryGetInt32(out var toi) ? toi : 300);
+        // "Missing or <= 0 means the default", the convention every other activity follows via
+        // GetOptionalPositiveInt. The shared Timeout field writes a literal 0 for an emptied input
+        // and labels it "no timeout", and Math.Max(1, 0) turned that into a ONE-second deadline —
+        // a single probe, then a failed step on every run.
+        var interval = config.GetOptionalPositiveInt("intervalSeconds") ?? 5;
+        var timeout = config.GetOptionalPositiveInt("timeoutSeconds") ?? 300;
 
         // Wrapper that casts the expression to a boolean and writes it out behind a marker.
         // The script may also produce diagnostic output on the side; that output is carried
