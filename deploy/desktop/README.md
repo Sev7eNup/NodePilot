@@ -143,8 +143,9 @@ Electron shell with Electron Packager, stages the Postgres server runtime + scri
 the installer.
 
 The documentation is why the package needs no internet to be usable: the API serves it at `/docs`,
-and the question mark in the application header opens it. Because the shell has no menu bar and no
-back gesture, it gets a window of its own rather than replacing the app view — that window is
+and the documentation button at the bottom left of the sidebar, next to the skin and language
+controls, opens it. Because the shell has no menu bar and no back gesture, it gets a window of its
+own rather than replacing the app view — that window is
 pinned to `/docs` for navigations *and* redirects, so it cannot become a second, chrome-less view
 of the application. Links that lead out of the documentation are handed to the system browser
 (`https:` only); the shell never renders foreign content itself. See `src/security.ts`.

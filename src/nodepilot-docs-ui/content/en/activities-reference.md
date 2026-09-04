@@ -118,6 +118,10 @@ rejected; the target ACL remains the boundary against concurrent parent renames.
 
 - **Config:** `provider` (sqlserver/sqlite/postgres), `query`, `timeoutSeconds`. Connection options: (a) the builder — SQL Server: `server`/`database`/`authentication`/`username`/`password`/`encrypt`/`trustServerCertificate`; Postgres: `host`/`port`/`database`/`username`/`password`/`sslMode` (`VerifyFull` + `Trust Server Certificate=false` by default; weaker modes only for literal loopback hosts); SQLite: `dataSource`; (b) a raw `connectionString`; (c) a named `connectionRef` from `SqlActivity:ConnectionStrings:{name}`. The Postgres TLS policy applies to raw and ref as well.
 - **Outputs:** SELECT → `param.rowCount` + the first row's columns as `param.<col>` + `param.row{i}_{col}` (the first 20 rows) + `param.truncated`/`param.flatKeysTruncated`. DML/DDL → `param.rowsAffected` + `param.rowCount`
+- The shape follows the statement, not the number of hits: a `SELECT` that matches nothing still
+  publishes the SELECT shape (`[]`, `param.rowCount` of 0) and no `rowsAffected`. Scalar columns
+  are published invariantly — `1.5`, never `1,5` — so a comparison means the same thing on every
+  host locale.
 
 ## `emailNotification`
 
