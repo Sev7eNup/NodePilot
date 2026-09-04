@@ -118,6 +118,10 @@ Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Pa
 
 - **Config:** `provider` (sqlserver/sqlite/postgres), `query`, `timeoutSeconds`. Connection-Optionen: (a) Builder — SQL Server: `server`/`database`/`authentication`/`username`/`password`/`encrypt`/`trustServerCertificate`; Postgres: `host`/`port`/`database`/`username`/`password`/`sslMode` (`VerifyFull` + `Trust Server Certificate=false` default; schwächere Modi nur für literale Loopback-Hosts); SQLite: `dataSource`; (b) raw `connectionString`; (c) named `connectionRef` aus `SqlActivity:ConnectionStrings:{name}`. Die Postgres-TLS-Policy gilt auch für raw/ref.
 - **Outputs:** SELECT → `param.rowCount` + erste-Row-Spalten als `param.<col>` + `param.row{i}_{col}` (erste 20 Rows) + `param.truncated`/`param.flatKeysTruncated`. DML/DDL → `param.rowsAffected` + `param.rowCount`
+- Die Form hängt am Statement, nicht an der Trefferzahl: ein `SELECT` ohne Treffer liefert
+  weiterhin die SELECT-Form (`[]`, `param.rowCount` von 0) und kein `rowsAffected`. Skalare
+  Spalten werden invariant veröffentlicht — `1.5`, nie `1,5` — ein Vergleich bedeutet damit auf
+  jedem Host dasselbe.
 
 ## `emailNotification`
 
