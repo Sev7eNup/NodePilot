@@ -4,11 +4,9 @@ namespace NodePilot.Core.Clients;
 
 /// <summary>
 /// Shared facts for the two HTTP-only clients (the <c>np</c> CLI and the
-/// <c>nodepilot-mcp</c> server). Both deliberately copy their HTTP plumbing
-/// (ADR 0005), but they have to agree on the DPAPI session-blob format: the MCP
-/// server reads the same <c>%APPDATA%\NodePilot\session-&lt;profile&gt;.dat</c>
-/// file that <c>np auth login</c> writes. Holding these values in one place keeps
-/// the two executables from drifting apart without any visible error.
+/// <c>nodepilot-mcp</c> server). The MCP server reads the same
+/// <c>%APPDATA%\NodePilot\session-&lt;profile&gt;.dat</c> file that <c>np auth login</c>
+/// writes, through the same <see cref="TokenStore"/> and <see cref="TokenRefreshHandler"/>.
 /// </summary>
 public static class ClientSessionSecurity
 {
@@ -18,6 +16,23 @@ public static class ClientSessionSecurity
     /// so it stays "NodePilot.Cli/v1" even though two executables share the blob.
     /// </summary>
     public const string DpapiSessionEntropy = "NodePilot.Cli/v1";
+
+    /// <summary>
+    /// True when both URLs name the same scheme, host and port. A stored session is only ever
+    /// presented to the origin it was issued for; paths may differ.
+    /// </summary>
+    public static bool HasSameServerOrigin(string? left, string? right)
+    {
+        if (!Uri.TryCreate(left?.Trim(), UriKind.Absolute, out var leftUri)
+            || !Uri.TryCreate(right?.Trim(), UriKind.Absolute, out var rightUri))
+        {
+            return false;
+        }
+
+        return string.Equals(leftUri.Scheme, rightUri.Scheme, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(leftUri.IdnHost, rightUri.IdnHost, StringComparison.OrdinalIgnoreCase)
+               && leftUri.Port == rightUri.Port;
+    }
 
     /// <summary>
     /// Bearer clients rotate a still-valid token shortly before the server-side absolute

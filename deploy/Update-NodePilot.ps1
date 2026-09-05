@@ -7,7 +7,9 @@
     Verifies and pre-extracts the signed artifact before stopping the service. The current
     binaries are backed up while the service is still running; appsettings.Production.json is
     never copied to a backup and remains only in memory. Any failure after mutation starts rolls
-    binaries and configuration back before the old service is restarted.
+    binaries and configuration back before the old service is restarted. The database schema is
+    not rolled back: the new version migrates it forward on its first start, so a database backup
+    taken before the update is the operator's way back.
 
     A successful update leaves the service running, regardless of whether it was running when the
     script was invoked. A failed update restores the pre-update state instead.
@@ -120,6 +122,46 @@ function Stop-ServiceAndVerify {
     throw "Service '$Name' did not stop within ${TimeoutSeconds}s; installed files were not changed."
 }
 
+# The localhost probe is the only operation that bypasses certificate validation. On Windows
+# PowerShell 5.1 that is a process-global policy, restored by the finally block at the end.
+function Enable-LocalhostProbeTrust {
+    if ($PSVersionTable.PSVersion.Major -ge 6 -or $script:certificatePolicyChanged) { return }
+    if (-not ('TrustAllCertsUpdate' -as [type])) {
+        Add-Type @"
+using System.Net; using System.Security.Cryptography.X509Certificates;
+public class TrustAllCertsUpdate : ICertificatePolicy {
+  public bool CheckValidationResult(ServicePoint s, X509Certificate c, WebRequest r, int p) { return true; }
+}
+"@
+    }
+    $script:previousCertificatePolicy = [System.Net.ServicePointManager]::CertificatePolicy
+    $script:previousSecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol
+    [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsUpdate
+    [System.Net.ServicePointManager]::SecurityProtocol = 'Tls12, Tls13'
+    $script:certificatePolicyChanged = $true
+}
+
+# Polls /healthz/ready on localhost until it answers 200 or the budget is used up.
+function Wait-NodePilotReady {
+    param([Parameter(Mandatory)][int]$Port, [int]$TimeoutSeconds = 60)
+    Enable-LocalhostProbeTrust
+    $probeUrl = "https://localhost:$Port/healthz/ready"
+    Write-Info "Probing $probeUrl (up to ${TimeoutSeconds}s)..."
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $response = if ($PSVersionTable.PSVersion.Major -ge 6) {
+                Invoke-WebRequest -Uri $probeUrl -UseBasicParsing -SkipCertificateCheck -TimeoutSec 5
+            } else {
+                Invoke-WebRequest -Uri $probeUrl -UseBasicParsing -TimeoutSec 5
+            }
+            if ($response.StatusCode -eq 200) { return $true }
+        }
+        catch { Start-Sleep -Seconds 2 }
+    }
+    return $false
+}
+
 $artifactLock = $null
 $artifactStage = $null
 $settingsBytes = $null
@@ -217,6 +259,8 @@ try {
         -Destination $backupDir `
         -ExcludedFileName 'appsettings.Production.json'
     Write-Info "Binary-only backup: $backupDir"
+    Write-Info ('The database is not part of this backup. The new version migrates the schema on its ' +
+                'first start and a rollback restores binaries only, so keep a database backup from before this update.')
 
     try {
         Write-Step "Stopping service '$ServiceName'"
@@ -277,40 +321,9 @@ try {
         Write-Step "Starting service '$ServiceName'"
         Start-Service -Name $ServiceName -ErrorAction Stop
 
-        # The localhost probe is the only operation that bypasses certificate validation. Restore
-        # the process-global Windows PowerShell 5.1 policy when the script exits.
-        if ($PSVersionTable.PSVersion.Major -lt 6) {
-            if (-not ('TrustAllCertsUpdate' -as [type])) {
-                Add-Type @"
-using System.Net; using System.Security.Cryptography.X509Certificates;
-public class TrustAllCertsUpdate : ICertificatePolicy {
-  public bool CheckValidationResult(ServicePoint s, X509Certificate c, WebRequest r, int p) { return true; }
-}
-"@
-            }
-            $previousCertificatePolicy = [System.Net.ServicePointManager]::CertificatePolicy
-            $previousSecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol
-            [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsUpdate
-            [System.Net.ServicePointManager]::SecurityProtocol = 'Tls12, Tls13'
-            $certificatePolicyChanged = $true
+        if (-not (Wait-NodePilotReady -Port $HttpsPort -TimeoutSeconds 60)) {
+            throw 'Service did not become ready after upgrade.'
         }
-
-        $probeUrl = "https://localhost:$HttpsPort/healthz/ready"
-        Write-Info "Probing $probeUrl (up to 60s)..."
-        $deadline = (Get-Date).AddSeconds(60)
-        $healthy = $false
-        while ((Get-Date) -lt $deadline) {
-            try {
-                $response = if ($PSVersionTable.PSVersion.Major -ge 6) {
-                    Invoke-WebRequest -Uri $probeUrl -UseBasicParsing -SkipCertificateCheck -TimeoutSec 5
-                } else {
-                    Invoke-WebRequest -Uri $probeUrl -UseBasicParsing -TimeoutSec 5
-                }
-                if ($response.StatusCode -eq 200) { $healthy = $true; break }
-            }
-            catch { Start-Sleep -Seconds 2 }
-        }
-        if (-not $healthy) { throw 'Service did not become ready after upgrade.' }
         Write-Ok '/healthz/ready returned 200 OK'
 
         # A successful update leaves the service running, whatever its state was before.
@@ -434,6 +447,16 @@ public class TrustAllCertsUpdate : ICertificatePolicy {
             if ($serviceWasRunning -and
                 (Get-Service -Name $ServiceName -ErrorAction Stop).Status -eq 'Stopped') {
                 Start-Service -Name $ServiceName -ErrorAction Stop
+                # A rollback swaps binaries only. If the new version already migrated the database,
+                # the restored binary can start and still fail against the changed schema, so the
+                # rollback is not reported as complete on the strength of a service start alone.
+                if (Wait-NodePilotReady -Port $HttpsPort -TimeoutSeconds 60) {
+                    Write-Ok 'Rolled-back service answered /healthz/ready.'
+                } else {
+                    Write-Warn ('The rolled-back service did not become ready within 60s. A binary rollback ' +
+                                'does not roll back the database schema; if the new version had migrated ' +
+                                'it, restore the database from the backup taken before this update.')
+                }
             }
             if ($installTouched) {
                 Write-Host "[update] Rollback complete. Restored $backupDir" -ForegroundColor Yellow

@@ -285,18 +285,27 @@ public sealed class EndpointClientCoverageTests
 
     private static readonly Regex ApiUrlLiteralPattern = new(@"""(/?api/[^""]*)""", RegexOptions.Compiled);
 
+    /// <summary>
+    /// Both clients also reach the API through the plumbing they share in
+    /// <c>NodePilot.Core.Clients</c> (the token refresh handler posts to <c>api/auth/refresh</c>),
+    /// so that directory counts as a call site of either client.
+    /// </summary>
+    private static readonly string[] SharedClientDirs = ["src/NodePilot.Core/Clients"];
+
     private static HashSet<string> DiscoverClientUrls(string relativeProjectDir)
     {
         var urls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var dir = Path.Combine(RepoRoot(), relativeProjectDir.Replace('/', Path.DirectorySeparatorChar));
-
-        foreach (var file in Directory.EnumerateFiles(dir, "*.cs", SearchOption.AllDirectories))
+        foreach (var relativeDir in SharedClientDirs.Prepend(relativeProjectDir))
         {
-            if (file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
-                || file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")) continue;
+            var dir = Path.Combine(RepoRoot(), relativeDir.Replace('/', Path.DirectorySeparatorChar));
+            foreach (var file in Directory.EnumerateFiles(dir, "*.cs", SearchOption.AllDirectories))
+            {
+                if (file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                    || file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")) continue;
 
-            foreach (Match m in ApiUrlLiteralPattern.Matches(File.ReadAllText(file)))
-                urls.Add(NormalizeRoute(m.Groups[1].Value));
+                foreach (Match m in ApiUrlLiteralPattern.Matches(File.ReadAllText(file)))
+                    urls.Add(NormalizeRoute(m.Groups[1].Value));
+            }
         }
 
         return urls;

@@ -2,21 +2,22 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.Versioning;
-using NodePilot.Cli.Api.Dtos;
-using NodePilot.Cli.Auth;
-using NodePilot.Core.Clients;
+using System.Text.Json;
 
-namespace NodePilot.Cli.Api;
+namespace NodePilot.Core.Clients;
 
 /// <summary>
-/// Keeps the profile's bearer credential current. A still-valid token is rotated shortly
-/// before its absolute expiry, concurrent requests share one refresh, and every request
-/// reads the latest profile-bound token before it is sent. An expired or rejected refresh
-/// clears the unusable local session so callers receive the normal re-login path.
+/// Keeps a profile's DPAPI-backed bearer credential current for the <c>np</c> CLI and the
+/// <c>nodepilot-mcp</c> server. A still-valid token is rotated shortly before its absolute
+/// expiry, concurrent requests share one refresh, and every request reads the latest
+/// profile-bound token before it is sent. An expired or rejected refresh clears the unusable
+/// local session so callers receive the normal re-login path.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class TokenRefreshHandler : DelegatingHandler
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     private readonly TokenStore _tokens;
     private readonly string _profile;
     private readonly Action<string>? _onTokenRefreshed;
@@ -27,6 +28,10 @@ public sealed class TokenRefreshHandler : DelegatingHandler
     private string? _transientRefreshFailureToken;
     private DateTimeOffset _transientRefreshRetryAfter;
 
+    /// <param name="onTokenRefreshed">
+    /// Called with every rotated token, so a client that caches the bearer outside the store
+    /// can follow the rotation.
+    /// </param>
     public TokenRefreshHandler(
         TokenStore tokens,
         string profile,
@@ -84,7 +89,7 @@ public sealed class TokenRefreshHandler : DelegatingHandler
     {
         var session = _tokens.Load(_profile);
         return session is not null
-               && SessionContext.HasSameServerOrigin(session.Server, request.RequestUri?.AbsoluteUri)
+               && ClientSessionSecurity.HasSameServerOrigin(session.Server, request.RequestUri?.AbsoluteUri)
             ? session
             : null;
     }
@@ -111,10 +116,10 @@ public sealed class TokenRefreshHandler : DelegatingHandler
             using var profileLock = await ClientSessionFileCoordinator.AcquireRefreshLockAsync(
                 _tokens.PathFor(_profile), requestUri.AbsoluteUri, cancellationToken);
             var current = _tokens.Load(_profile);
-            if (current is null || !SessionContext.HasSameServerOrigin(current.Server, requestUri.AbsoluteUri))
+            if (current is null || !ClientSessionSecurity.HasSameServerOrigin(current.Server, requestUri.AbsoluteUri))
                 return null;
 
-            // Another CLI/MCP process won the origin-bound refresh lease and persisted its
+            // Another CLI or MCP process won the origin-bound refresh lease and persisted its
             // rotation while this request was waiting. Reuse that generation.
             if (!string.Equals(current.Token, observedToken, StringComparison.Ordinal))
             {
@@ -152,8 +157,8 @@ public sealed class TokenRefreshHandler : DelegatingHandler
                 return LoadUsableSession(requestUri);
             }
 
-            var rotated = await refreshRes.Content.ReadFromJsonAsync<LoginResponse>(
-                NodePilotApiClient.JsonOptions, cancellationToken);
+            var rotated = await refreshRes.Content.ReadFromJsonAsync<RefreshedSession>(
+                JsonOptions, cancellationToken);
             if (rotated is null
                 || !ClientSessionSecurity.TryResolveExpiration(
                     rotated.Token, rotated.ExpiresAt, out var rotatedExpiresAt)
@@ -196,7 +201,7 @@ public sealed class TokenRefreshHandler : DelegatingHandler
                 _tokens.PathFor(_profile), requestUri.AbsoluteUri, cancellationToken);
             var current = _tokens.Load(_profile);
             if (current is null
-                || !SessionContext.HasSameServerOrigin(current.Server, requestUri.AbsoluteUri))
+                || !ClientSessionSecurity.HasSameServerOrigin(current.Server, requestUri.AbsoluteUri))
             {
                 return null;
             }
@@ -221,7 +226,7 @@ public sealed class TokenRefreshHandler : DelegatingHandler
     {
         var latest = _tokens.Load(_profile);
         if (latest is null
-            || !SessionContext.HasSameServerOrigin(latest.Server, requestUri.AbsoluteUri))
+            || !ClientSessionSecurity.HasSameServerOrigin(latest.Server, requestUri.AbsoluteUri))
         {
             return null;
         }
@@ -241,7 +246,7 @@ public sealed class TokenRefreshHandler : DelegatingHandler
     {
         var latest = _tokens.Load(_profile);
         if (latest is null
-            || !SessionContext.HasSameServerOrigin(latest.Server, requestUri.AbsoluteUri))
+            || !ClientSessionSecurity.HasSameServerOrigin(latest.Server, requestUri.AbsoluteUri))
         {
             return null;
         }
@@ -312,4 +317,13 @@ public sealed class TokenRefreshHandler : DelegatingHandler
             RequestMessage = request,
             ReasonPhrase = "Authentication session expired",
         };
+
+    /// <summary>The fields of the API's login response the rotation needs; the clients keep
+    /// their full DTO copies.</summary>
+    private sealed record RefreshedSession(
+        string Token,
+        Guid UserId,
+        string Username,
+        string Role,
+        DateTimeOffset? ExpiresAt = null);
 }

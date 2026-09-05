@@ -114,6 +114,22 @@ exhaustive.
 - **An oversized LLM stream is cut off at the byte cap while it is read.** The streaming reader
   checked the cap only after a complete line had been buffered, so a line-less response was held
   in memory in full first.
+- **Two folder moves can no longer form a cycle together.** Each move checked the tree it had
+  read and then wrote, so two concurrent moves of A under B and B under A both passed and
+  committed a parent cycle, after which the next rename or move in that subtree walked the cycle
+  forever. Structural changes to a folder tree are now serialised within the process, and every
+  tree walk skips a folder it has already visited. Both the workflow-folder and the
+  global-variable-folder tree.
+- **An edited credential takes effect on the next remote step.** The WinRM session pool keyed
+  its sessions by credential id only, and a reused session's idle timer restarted on every use,
+  so a rotated password, username or domain kept running under the previous identity for as long
+  as the target stayed busy. The pool key now carries a fingerprint of the credential; sessions
+  opened under the old one idle out and are never handed out again.
+- **The updater's rollback reports what it verified.** After restoring the previous binaries it
+  now probes `/healthz/ready` again and warns when the service does not come up, instead of
+  reporting the rollback as complete on the strength of a service start. A binary rollback does
+  not roll back the database schema; the update scripts and the deployment guide say so and point
+  to the database backup taken before the update.
 
 ## [1.2.26] - 2026-09-01
 
