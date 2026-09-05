@@ -91,14 +91,15 @@ public class RestApiActivity : IActivityExecutor
                 && currentMethod != HttpMethod.Get && currentMethod != HttpMethod.Head)
             {
                 req.Content = new StringContent(currentBody, System.Text.Encoding.UTF8, "application/json");
-                // Content-Type is a CONTENT header. Adding it to req.Headers below leaves the
-                // entity declared as application/json and emits a second, conflicting field, so a
-                // form-encoded token request or a SOAP call could not be sent at all — even though
-                // the designer's headers placeholder tells authors to set it there.
+                // Content-Type is a content header: req.Headers rejects it, so an author-supplied
+                // value only takes effect on the entity. The designer's headers placeholder tells
+                // authors to set it there.
                 ApplyContentType(req.Content, effectiveHeaders);
             }
             foreach (var (name, value) in effectiveHeaders)
             {
+                // Already applied to the entity above; a bodyless request has no entity and
+                // therefore carries no Content-Type.
                 if (IsContentTypeHeader(name)) continue;
                 req.Headers.TryAddWithoutValidation(name, value);
             }

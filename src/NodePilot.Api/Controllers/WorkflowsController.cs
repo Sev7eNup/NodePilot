@@ -540,6 +540,11 @@ public class WorkflowsController : WorkflowsControllerBase
     /// Idempotent: returning 204 whether the workflow was already enabled or just flipped.
     /// Rejects with 423 if any user (including the caller) currently has the workflow
     /// checked out for editing — Enable-while-locked is semantically nonsense (locked = disabled).
+    /// <para>
+    /// Establishes the runtime principal (<see cref="Workflow.PublishedByUserId"/>) when the
+    /// workflow has none, so a never-published workflow can actually fire; an existing publisher
+    /// is never replaced. 401 if the caller has no user id and the column is still unset.
+    /// </para>
     /// </summary>
     [HttpPost("{id:guid}/enable")]
     [Authorize(Roles = "Admin,Operator")]
@@ -646,6 +651,18 @@ public class WorkflowsController : WorkflowsControllerBase
         if (workflow.IsEnabled == enabled)
             return NoContent(); // already in desired state; don't audit a no-op
 
+        // A workflow going live needs a runtime principal: every automated dispatch resolves it
+        // from PublishedByUserId, and a null one gets each fire cancelled as
+        // "missing_effective_principal". Refuse rather than enable a workflow that can never fire.
+        var actorId = this.GetCurrentUserId();
+        if (enabled && workflow.PublishedByUserId is null && actorId is null)
+            return Unauthorized();
+
+        // Filled only when unset, in the same statement as the flip; an enable must never move
+        // authority away from the publisher. Null on disable, so the COALESCE keeps the column.
+        Guid? principalFill = enabled ? actorId : null;
+        var establishedPrincipal = enabled && workflow.PublishedByUserId is null && actorId is not null;
+
         var updatedAt = DateTime.UtcNow;
         var updatedBy = this.GetCurrentUsername();
         var query = _db.Workflows.Where(w => w.Id == workflow.Id
@@ -656,6 +673,7 @@ public class WorkflowsController : WorkflowsControllerBase
 
         var affected = await query.ExecuteUpdateAsync(setters => setters
             .SetProperty(w => w.IsEnabled, enabled)
+            .SetProperty(w => w.PublishedByUserId, w => w.PublishedByUserId ?? principalFill)
             .SetProperty(w => w.UpdatedAt, updatedAt)
             .SetProperty(w => w.UpdatedBy, updatedBy), ct);
 
@@ -677,10 +695,13 @@ public class WorkflowsController : WorkflowsControllerBase
 
         _db.ChangeTracker.Clear();
 
+        // The established flag records that this call silently assigned runtime authority.
         await _audit.LogAsync(
             enabled ? AuditActions.WorkflowEnabled : AuditActions.WorkflowDisabled,
             "Workflow", workflow.Id,
-            AuditDetails.Json(("name", workflow.Name)), ct);
+            AuditDetails.Json(
+                ("name", workflow.Name),
+                ("effectivePrincipalEstablished", establishedPrincipal)), ct);
 
         ApiMetrics.WorkflowOperations.Add(1,
             new(TelemetryConstants.Attributes.WorkflowOperation, enabled ? "enable" : "disable"),
@@ -751,11 +772,9 @@ public class WorkflowsController : WorkflowsControllerBase
             // Copied: the limit protects whatever the workflow talks to, and the copy talks to
             // the same thing. Unlike IsEnabled it cannot make the copy do more than the source.
             MaxConcurrentExecutions = source.MaxConcurrentExecutions,
-            // Runtime authority for the copy, set the way the import paths set it. Every automated
-            // dispatch resolves its principal from this column, and /enable never writes it — so a
-            // copy the operator reviewed and enabled had every trigger fire rejected with
-            // "missing_effective_principal" and terminalised as Cancelled, forever, while the
-            // workflow displayed itself as active.
+            // Runtime authority for the copy: every automated dispatch resolves its principal from
+            // this column. Stamped here so the copy carries the duplicating user rather than
+            // whoever later enables it.
             PublishedByUserId = this.GetCurrentUserId(),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,

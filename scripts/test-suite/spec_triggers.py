@@ -30,10 +30,11 @@ EVENT_SOURCE = "NodePilot-TestSuite"
 
 def _ack(kind, cid_expression, extra=""):
     """Writes runtime/acks/<kind>/<cid>. The cid expression differs per trigger because
-    each source hands its payload over in a different shape."""
+    each source hands its payload over in a different shape. The extra block is emitted
+    first because a caller may compute the cid there."""
     script = (
+        extra +
         "$cid = " + cid_expression + "\n"
-        + extra +
         "if ([string]::IsNullOrWhiteSpace($cid)) { throw 'trigger fired without a correlation id' }\n"
         "$ackDir = Join-Path '" + ACK_DIR + "' '" + kind + "'\n"
         "New-Item -ItemType Directory -Path $ackDir -Force | Out-Null\n"

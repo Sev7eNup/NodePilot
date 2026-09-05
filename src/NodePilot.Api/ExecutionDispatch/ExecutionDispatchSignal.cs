@@ -14,7 +14,7 @@ public class ExecutionDispatchSignal
 
     public virtual void Pulse() => _channel.Writer.TryWrite(true);
 
-    public async Task WaitAsync(TimeSpan pollInterval, CancellationToken ct)
+    public virtual async Task WaitAsync(TimeSpan pollInterval, CancellationToken ct)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(pollInterval);

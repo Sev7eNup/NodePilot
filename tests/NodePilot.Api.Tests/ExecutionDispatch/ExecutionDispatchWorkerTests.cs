@@ -323,4 +323,62 @@ public class ExecutionDispatchWorkerTests
         await worker.StopAsync(CancellationToken.None);
         await connection.DisposeAsync();
     }
+
+    /// <summary>
+    /// The last-resort back-off must wait on the stopping token. On CancellationToken.None an
+    /// error in the final loop iteration holds shutdown for the full poll interval.
+    /// </summary>
+    [Fact]
+    public async Task DurableWorker_UnexpectedLoopError_BacksOffOnTheStoppingToken()
+    {
+        var signal = new TokenRecordingDispatchSignal();
+        var cluster = new Mock<IClusterStateProvider>();
+        cluster.SetupGet(candidate => candidate.NodeId).Returns("test-node");
+        // IsLeader is the first statement inside the loop's try, so every back-off the worker
+        // performs comes from the last-resort catch.
+        cluster.SetupGet(candidate => candidate.IsLeader)
+            .Throws(new InvalidOperationException("cluster read blew up"));
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        await using var provider = services.BuildServiceProvider();
+
+        var worker = new ExecutionDispatchWorker(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            signal,
+            Options.Create(new ExecutionDispatchOptions { WorkerCount = 1 }),
+            cluster.Object,
+            new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate(),
+            NullLogger<ExecutionDispatchWorker>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
+        using var stopCts = new CancellationTokenSource();
+        await worker.StartAsync(stopCts.Token);
+
+        await signal.FirstWait.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        signal.LastToken.CanBeCanceled.Should().BeTrue(
+            "the last-resort back-off must observe the stopping token, or shutdown waits a full poll interval");
+
+        await stopCts.CancelAsync();
+        await worker.StopAsync(CancellationToken.None);
+        worker.ExecuteTask!.Status.Should().Be(TaskStatus.RanToCompletion,
+            "the cancelled back-off must be absorbed by the host-shutdown catch, not fault the worker");
+    }
+
+    /// <summary>
+    /// Records the token of every back-off. The worker loops, so later iterations rewrite
+    /// <see cref="LastToken"/> with the same value.
+    /// </summary>
+    private sealed class TokenRecordingDispatchSignal : ExecutionDispatchSignal
+    {
+        public CancellationToken LastToken { get; private set; }
+
+        public TaskCompletionSource FirstWait { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override Task WaitAsync(TimeSpan pollInterval, CancellationToken ct)
+        {
+            LastToken = ct;
+            FirstWait.TrySetResult();
+            return base.WaitAsync(pollInterval, ct);
+        }
+    }
 }

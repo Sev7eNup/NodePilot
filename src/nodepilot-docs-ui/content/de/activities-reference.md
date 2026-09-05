@@ -8,7 +8,7 @@ Diese Referenz beschreibt Konfiguration und Ausgaben jedes Activity-Typs.
 | **Engine-local** | NodePilot-API-Prozess |
 | **Hybrid** | Abhängig von der Konfiguration remote oder engine-local |
 
-Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDelayMs` und `maxDelayMs`. `config.timeoutSeconds` begrenzt einen Step. Der Execute-Request kann zusätzlich die gesamte Execution begrenzen.
+Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDelayMs` und `maxDelayMs`. Dauerhafte Remote-Fehler sind davon ausgenommen: ein abgelehnter WinRM-Logon, eine per SSL-Policy geblockte Session und ein nicht entschlüsselbares Credential lassen den Step beim ersten Versuch scheitern — Wiederholen hilft dort nicht, und wiederholte Fehl-Logons können ein Domänenkonto sperren. `config.timeoutSeconds` begrenzt einen Step. Der Execute-Request kann zusätzlich die gesamte Execution begrenzen.
 
 ---
 
@@ -48,7 +48,7 @@ Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDel
 
 **Remote.**
 
-- **Config:** `serviceName`, `action` (start/stop/restart/status/create/delete/setStartType; `create`/`setStartType` nehmen `binaryPath`/`displayName`/`description`/`startupType`; `delete` stoppt den Dienst und entfernt ihn dauerhaft via `sc.exe delete`)
+- **Config:** `serviceName`, `action` (start/stop/restart/status/create/delete/setStartType; `create`/`setStartType` nehmen `binaryPath`/`displayName`/`description`/`startupType`; `delete` stoppt den Dienst und entfernt ihn dauerhaft via `sc.exe delete`). `sc.exe` meldet Fehler auf stdout und lässt den Error-Stream leer, deshalb wird der Exit-Code der `sc.exe`-Aufrufe hinter `delete` und hinter einem `AutomaticDelayedStart`-Startup-Type geprüft und ein Non-Zero-Exit lässt den Step scheitern — ein abgelehnter Delete oder Startup-Type-Wechsel wird nie als Erfolg gemeldet.
 - **Outputs:** `param.name`, `param.status`, `param.startType`
 
 ## `registryOperation`
@@ -109,7 +109,7 @@ Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Pa
 
 **Engine-local.**
 
-- **Config:** `url`, `method`, `body`, `headers`, `timeoutSeconds`, `proxyMode` (`default`/`direct`/`custom`), `proxyAddress`, `noProxy`
+- **Config:** `url`, `method`, `body`, `headers` (bei einem Request mit Body wandert ein hier gesetzter `Content-Type` auf die Entity — kein zweites, widersprüchliches Feld auf der Leitung; ein unparsbarer Wert bleibt unbeachtet und der Body geht weiter als `application/json` raus. Ein Request ohne Body und jedes GET/HEAD hat keine Entity, ein dort gesetzter `Content-Type` fällt weg), `timeoutSeconds`, `proxyMode` (`default`/`direct`/`custom`), `proxyAddress`, `noProxy`
 - **Outputs:** `param.statusCode` (Response-Body in `output` als `HTTP {code}\n{body}`; Headers nicht als `param`)
 
 ## `sql`

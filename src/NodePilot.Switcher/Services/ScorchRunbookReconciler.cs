@@ -248,7 +248,9 @@ internal sealed class ScorchRunbookReconciler
             .Where(job => allowedIds.Contains(job.RunbookId!.Value) && RunningStates.Contains(job.Status))
             .Select(job => job.RunbookId!.Value)
             .ToHashSet();
-        var startedRunbookIds = new HashSet<Guid>();
+        // A runbook that was already running settles like one this switch started: its job can finish
+        // while the loop still waits for another runbook. Copied, because the filter below is lazy.
+        var accountedRunbookIds = new HashSet<Guid>(runningAllowedIds);
         foreach (var runbook in allowed.Where(runbook => !runningAllowedIds.Contains(runbook.Id)))
         {
             foreach (var pendingJob in jobs.Where(job =>
@@ -258,7 +260,7 @@ internal sealed class ScorchRunbookReconciler
                 _logger.Info($"Stale SCOrch job stopped before restart: {pendingJob.Id} (runbook {runbook.Id}).");
             }
             await client.StartRunbookAsync(runbook.Id, runbookServers, deadline.Token).ConfigureAwait(false);
-            startedRunbookIds.Add(runbook.Id);
+            accountedRunbookIds.Add(runbook.Id);
             _logger.Info(
                 $"Allowed SCOrch runbook started: {runbook.Name} ({runbook.Id}) on {string.Join(", ", runbookServers)}.");
         }
@@ -275,7 +277,7 @@ internal sealed class ScorchRunbookReconciler
                 if (verifiedJobs.Any(job => job.RunbookId is null))
                     throw new InvalidOperationException("SCOrch verification returned an active job without a runbook id.");
                 unexpected = verifiedJobs.Where(job => !allowedIds.Contains(job.RunbookId!.Value)).ToArray();
-                missing = allowedIds.Except(Settled(verifiedJobs, startedRunbookIds)).ToArray();
+                missing = allowedIds.Except(Settled(verifiedJobs, accountedRunbookIds)).ToArray();
                 if (unexpected.Length == 0 && missing.Length == 0) break;
                 await Task.Delay(TimeSpan.FromMilliseconds(500), deadline.Token).ConfigureAwait(false);
             }
@@ -289,19 +291,19 @@ internal sealed class ScorchRunbookReconciler
     }
 
     /// <summary>
-    /// The allowed runbooks that need no further action: one whose job is running, and one this
-    /// switch started whose job has since left the active set. A runbook that finishes in seconds
-    /// would otherwise never satisfy the check, because a completed job is no longer active.
+    /// The allowed runbooks that need no further action: one whose job is running, and one whose
+    /// job left the active set after this switch found or started it. A runbook that finishes in
+    /// seconds would otherwise never satisfy the check, because a completed job is no longer active.
     /// </summary>
     private static IEnumerable<Guid> Settled(
         IReadOnlyList<ScorchJob> activeJobs,
-        IReadOnlySet<Guid> startedRunbookIds)
+        IReadOnlySet<Guid> accountedRunbookIds)
     {
         var active = activeJobs.Select(job => job.RunbookId!.Value).ToHashSet();
         return activeJobs
             .Where(job => RunningStates.Contains(job.Status))
             .Select(job => job.RunbookId!.Value)
-            .Concat(startedRunbookIds.Where(id => !active.Contains(id)));
+            .Concat(accountedRunbookIds.Where(id => !active.Contains(id)));
     }
 
     private static TimeoutException ReconciliationTimeout(

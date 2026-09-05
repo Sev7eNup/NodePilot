@@ -62,8 +62,12 @@ caller reach an authenticated surface.
 
 ## What NodePilot does on its own behalf
 
-For context, not as a promise that it is sufficient — every PR runs CodeQL (C# and TypeScript),
-Gitleaks over the full reachable history, a transitive NuGet vulnerability gate, and
-`npm audit` across three workspaces. Resolved findings are registered in
+For context, not as a promise that it is sufficient — every PR runs Gitleaks over the full
+reachable history and a transitive NuGet vulnerability gate, and `npm audit` covers the three Node
+workspaces on every PR that touches code. CodeQL is scoped per language: C# sources and the build
+inputs that shape their compilation trigger the C# analysis, TS/JS sources and `package-lock.json`
+trigger the TypeScript one, and a PR that changes neither triggers no analysis. Every failure path
+inside that detection step ends at analysing both languages, and every push to `main` that touches
+code, plus a weekly schedule, analyses both. Resolved findings are registered in
 [`docs/security-findings.md`](docs/security-findings.md); the security roadmap lives in
 [`docs/roadmap.md`](docs/roadmap.md).

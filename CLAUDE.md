@@ -137,7 +137,7 @@ Routen + Rollen-Gating stehen an den Controllern in `src/NodePilot.Api/Controlle
 | Endpoint | Semantik |
 |---|---|
 | `POST /execute` | Startet Lauf. Body: `{"parameters": {}, "timeoutSeconds": N, "debug": bool}`. 202 + ExecutionId. |
-| `POST /enable` / `/disable` | Kill-Switch. `enable` verlangt einen lock-freien Workflow — jeder bestehende Lock (auch der eigene) → 423. `disable` ignoriert Locks. |
+| `POST /enable` / `/disable` | Kill-Switch. `enable` verlangt einen lock-freien Workflow — jeder bestehende Lock (auch der eigene) → 423. `enable` prüft zusätzlich die **gespeicherte** Definition (schwaches Webhook-HMAC-Secret → `400 weak_webhook_hmac_secret`, für Quartz ungültige Cron-Expression an einem `scheduleTrigger` → `400 invalid_cron_expression`) und füllt den Runtime-Principal (`PublishedByUserId`), falls er unbesetzt ist — ein vorhandener wird nie überschrieben. Ein bereits aktiver Workflow ist ein No-Op (`204`) und wird dabei **nicht** gestempelt: dafür Disable-dann-Enable oder einmal Publish. `disable` ignoriert Locks. |
 | `POST /cancel-all` | Cancelt alle `Running`- **und** `Pending`-Executions des Workflows. |
 | `PUT /concurrency-limit` | Setzt `MaxConcurrentExecutions` (1..1000, `null` = unbegrenzt). Body: `{"maxConcurrentExecutions": N}` — Property ist **Pflicht** (fehlend → 400, sonst würde `{}` das Limit still löschen). `0` wird abgelehnt. Operativ: kein Edit-Lock, kein Version-Bump, kein History-Snapshot. |
 | `POST /executions/{id}/cancel\|retry\|resume` | Einzelner Lauf. Resume-Body: `{"stepId": "<node-id>", "mode": "continue"\|"stepOver"\|"stop", "overrides": {}}` — `stepId` ist **Pflicht** (`ResumeDebugRequest`), ohne ihn 400. |
@@ -162,7 +162,7 @@ Workflows haben einen per-User-Edit-Lock (`CheckedOutByUserId` + `CheckedOutAt`)
 |---|---|
 | `POST /lock` | Atomar `IsEnabled=false` + Lock-Fields setzen. 409 wenn schon gelockt. |
 | `POST /unlock` | Lock-Fields auf null. `IsEnabled` bleibt unverändert. |
-| `POST /publish` | Atomar: Save + `IsEnabled=true` + Unlock. |
+| `POST /publish` | Atomar: Save + `IsEnabled=true` + Unlock. Validiert den **übergebenen** Body vorher — schwaches Webhook-HMAC-Secret → `400 weak_webhook_hmac_secret`, für Quartz ungültige Cron-Expression an einem `scheduleTrigger` → `400 invalid_cron_expression`. |
 | `POST /force-unlock` | Admin-only. Bricht fremden Lock. |
 
 UX-Flow und Button-State-Matrix: siehe `docs/claude-reference.md`. Kurz: `canWrite = role !== 'Viewer' && checkedOutByUserId === currentUserId`.
@@ -177,7 +177,7 @@ UX-Flow und Button-State-Matrix: siehe `docs/claude-reference.md`. Kurz: `canWri
 
 Config-Keys & Output-Semantik pro Activity: siehe `docs/claude-reference.md`.
 
-**Retry pro Step:** `config.retry` mit `maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayMs`.
+**Retry pro Step:** `config.retry` mit `maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayMs`. Nicht wiederholt werden dauerhafte Remote-Fehler (abgelehnter WinRM-Logon, per Policy geblockte HTTP-Session, nicht entschlüsselbares Credential) — sonst erzeugt ein Step mehrere Fehl-Logons und kann ein Konto sperren.
 **Execution-Timeout:** `timeoutSeconds` im Execute-Body + per-Step `config.timeoutSeconds`.
 **Prozess-Isolation (`runScript`, nur lokal):** `config.isolated: true` → eigener Prozess in einem Windows Job Object (Crash-/Leak-Containment, keine verwaisten Prozesse), opt-in Caps `memoryLimitMb`/`maxProcesses`; No-Op auf dem Remote/WinRM-Pfad. Inheritable-Pipe-Handles gegen Cross-Inheritance geschützt (`ProcessSpawnCoordinator` serialisiert alle inheritable Spawns) + Bounded stdout/stderr-Drain nach Prozess-Exit (`Engine:IsolatedDrainGraceSeconds`, default 5 s) — verhindert „Execution hängt in Running" durch geleakte Pipe-Handles. Details: `docs/claude-reference.md`.
 
@@ -325,7 +325,7 @@ Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.js
 
 **Der Nightly ist kein verlässlicher zweiter Boden.** Er läuft als Windows-Task um 22:00 gegen den ausgecheckten Baum und wird verpasst, sobald die Maschine dann aus ist — gemessen am 2026-08-31: letzter Lauf 2026-08-22, acht verpasste Läufe. Wer sich auf ihn beruft, prüft vorher `C:\temp\nodepilot-nightly\latest.md` auf sein Datum.
 
-**Ausnahme, seit 2026-08-20:** Ein PR, der **ausschließlich** `*.md` oder `docs/images/**` anfasst, überspringt Frontend, Desktop und E2E — der vorgeschaltete `changes`-Job entscheidet das. **Backend und docs-ui laufen immer**, weil Markdown für sie eine Eingabe ist: `DocumentationCountsTests` liest README, CLAUDE.md, `docs/mcp-server.md` und sechs Seiten der Doku-Website, `MonitoringDeploymentSecurityTests` liest README + `grafana/README.md`, der Sprach-Parity-Guard liest `content/{de,en}`. Ein pauschales `paths-ignore: ['**/*.md']` hätte genau die README-Brüche durchgelassen, die CI beim Kürzen gefangen hat. Pushes auf `main` laufen **immer** vollständig; jeder Fehlerpfad der Erkennung endet bei „alles ausführen". CodeQL filtert separat über `paths-ignore` — es analysiert nur C#/TS, dort ist Markdown wirklich irrelevant.
+**Ausnahme, seit 2026-08-20:** Ein PR, der **ausschließlich** `*.md` oder `docs/images/**` anfasst, überspringt Frontend, Desktop und E2E — der vorgeschaltete `changes`-Job entscheidet das. **Backend und docs-ui laufen immer**, weil Markdown für sie eine Eingabe ist: `DocumentationCountsTests` liest README, CLAUDE.md, `docs/mcp-server.md` und sechs Seiten der Doku-Website, `MonitoringDeploymentSecurityTests` liest README + `grafana/README.md`, der Sprach-Parity-Guard liest `content/{de,en}`. Ein pauschales `paths-ignore: ['**/*.md']` hätte genau die README-Brüche durchgelassen, die CI beim Kürzen gefangen hat. Pushes auf `main` laufen **immer** vollständig; jeder Fehlerpfad der Erkennung endet bei „alles ausführen". CodeQL filtert separat über `paths-ignore` — es analysiert nur C#/TS, dort ist Markdown wirklich irrelevant. Innerhalb von CodeQL entscheidet ein vorgeschalteter `scope`-Job pro Sprache: C#-Analyse nur bei `.cs`/Build-Dateien, TS-Analyse nur bei TS/JS oder `package-lock.json`; jeder Fehlerpfad *innerhalb* des `scope`-Skripts, jeder Push auf `main` mit Code-Änderung und der Wochenlauf analysieren beides. Scheitert der `scope`-Job selbst, laufen beide Analysen mangels erfülltem `needs` gar nicht.
 
 Default bei Feature-Arbeit:
 
@@ -368,6 +368,8 @@ Scoped Testing übersieht genau eine Fehlerklasse — die Parity-/Drift-Tests, d
 | Workflow-Analyzer (`WorkflowAnalyzer`/`WorkflowDataBusAnalyzer` in Core — MCP **und** AI-Chat) | `WorkflowAnalyzerFrontendParityTests` | Engine.Tests |
 | Template-Grammatik / Variable-Resolution | `TemplateGrammarParityTests` | Engine.Tests |
 | Metrics-Dashboard-Katalog | `MetricsDashboardCatalogTests` | Api.Tests |
+| `RequestSizeLimit` an `/import`/`/import-scorch` oder die Upload-Gates in `WorkflowsPage.tsx` | `ImportSizeLimitFrontendSyncTests` | Api.Tests |
+| LLM-Profil-Defaults (`LlmProfileOptions`, `LlmProfileSettingsDto`, `SettingsSections.cs`, `IntegrationsSection.tsx`) | `LlmProfileDefaultsTests` | Api.Tests |
 | `vite.config.ts`-Proxy / Dev-Ports | `AppSettingsHygieneTests` | Api.Tests |
 | `index.css` / `designer-atelier.css` designer-light tokens | `designerLightParity.test.ts` | nodepilot-ui |
 | Font-Tokens / Monaco-Stack | `fontTokens.test.ts` | nodepilot-ui |

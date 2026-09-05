@@ -164,12 +164,12 @@ public sealed class ExecutionDispatchWorker : BackgroundService
                     // down — the opposite of the shed-load-and-recover contract in ADR 0011. Log,
                     // back off, keep the pool alive.
                     _logger.LogError(ex,
-                          "Durable dispatch worker {WorkerId} hit an unexpected error; the worker continues.",
-                          workerId);
+                        "Durable dispatch worker {WorkerId} hit an unexpected error; the worker continues.",
+                        workerId);
                     ApiMetrics.DispatchItemsProcessed.Add(1,
-                          new KeyValuePair<string, object?>("result", "worker_error"));
-                  await _signal.WaitAsync(PollInterval, CancellationToken.None);
-              }
+                        new KeyValuePair<string, object?>("result", "worker_error"));
+                    await _signal.WaitAsync(PollInterval, stoppingToken);
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

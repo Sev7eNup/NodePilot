@@ -168,7 +168,9 @@ die alte Suite zerfallen:
    ausdrücklich benannten Zeugen (`assertedVia`), etwa das `exists` nach einem `create`;
 4. ausgeschlossene Fälle tragen einen Grund, und ein angegebenes `coveredBy` existiert;
 5. genau ein Trigger je Workflow, Cron aus der Stufenliste, Laufzeitbudget eingehalten,
-   Namensschema, keine hängenden Kanten, Fan-in nur auf `junction`, Positionen auf dem 20-px-Raster.
+   Namensschema, keine hängenden Kanten, Fan-in nur auf `junction`, Positionen auf dem 20-px-Raster;
+6. kein `ack`-Skript liest eine eigene Variable, bevor es sie zuweist — ein vor der Zuweisung
+   gelesener Name ist immer `$null`, und die Quittung wird dann nie geschrieben.
 
 Fälle, die ausdrücklich `Skipped` erwarten (deaktivierte Kante, deaktivierter Knoten, nicht
 erfüllte `.failed`-Bedingung), sind von Punkt 2 ausgenommen — dort ist die Unerreichbarkeit

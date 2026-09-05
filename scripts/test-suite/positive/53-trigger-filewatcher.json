@@ -40,7 +40,7 @@
               "config": {
                 "engine": "auto",
                 "timeoutSeconds": 30,
-                "script": "$cid = {{trg.param.fileNameWithoutExtension}}\n$action = {{trg.param.fileAction}}\nif ($action -ne 'Created') { throw \"unexpected fileAction '$action'\" }\nif ([string]::IsNullOrWhiteSpace($cid)) { throw 'trigger fired without a correlation id' }\n$ackDir = Join-Path 'C:\\Temp\\NP-TestSuite\\runtime\\acks' 'filewatcher'\nNew-Item -ItemType Directory -Path $ackDir -Force | Out-Null\nSet-Content -LiteralPath (Join-Path $ackDir $cid) -Value (Get-Date -Format o)\n$ackedCid = $cid\n"
+                "script": "$action = {{trg.param.fileAction}}\nif ($action -ne 'Created') { throw \"unexpected fileAction '$action'\" }\n$cid = {{trg.param.fileNameWithoutExtension}}\nif ([string]::IsNullOrWhiteSpace($cid)) { throw 'trigger fired without a correlation id' }\n$ackDir = Join-Path 'C:\\Temp\\NP-TestSuite\\runtime\\acks' 'filewatcher'\nNew-Item -ItemType Directory -Path $ackDir -Force | Out-Null\nSet-Content -LiteralPath (Join-Path $ackDir $cid) -Value (Get-Date -Format o)\n$ackedCid = $cid\n"
               },
               "outputVariable": "ack",
               "targetMachineId": "localhost"
