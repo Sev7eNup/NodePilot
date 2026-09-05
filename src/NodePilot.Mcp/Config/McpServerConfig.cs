@@ -1,6 +1,5 @@
 using System.Runtime.Versioning;
 using NodePilot.Core.Clients;
-using NodePilot.Mcp.Auth;
 
 namespace NodePilot.Mcp.Config;
 
@@ -68,7 +67,7 @@ public sealed class McpServerConfig
             if (session is not null && !string.IsNullOrWhiteSpace(session.Token))
             {
                 server ??= session.Server; // fall back to the server the session was minted against
-                if (SessionContext.HasSameServerOrigin(session.Server, server))
+                if (ClientSessionSecurity.HasSameServerOrigin(session.Server, server))
                 {
                     token = session.Token;
                     usesRefreshableSession = true;

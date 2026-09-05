@@ -533,9 +533,12 @@ Der Updater:
 - erhält Datenbank, Dienstkonto und Produktionskonfiguration,
 - startet den Dienst neu,
 - prüft den Health-Endpunkt auf dem Port aus der installierten Konfiguration (`-HttpsPort` ist nur zum Überschreiben nötig),
-- stellt bei einem fehlgeschlagenen Health-Check die vorherigen Binaries wieder her und lässt den Dienst im Zustand vor dem Update.
+- stellt bei einem fehlgeschlagenen Health-Check die vorherigen Binaries wieder her und lässt den Dienst im Zustand vor dem Update,
+- prüft den Health-Endpunkt nach einem Rollback erneut und warnt, wenn der wiederhergestellte Dienst nicht antwortet.
 
 Ein **erfolgreicher** Update lässt den Dienst immer **laufen**, unabhängig davon, ob er vorher gestoppt war. Nur ein fehlgeschlagener Update stellt den Ausgangszustand wieder her.
+
+Ein Rollback stellt **nur die Binaries** wieder her. Die neue Version migriert das Datenbankschema beim ersten Start vorwärts, und der Rollback macht das nicht rückgängig. Vor dem Update ein Datenbank-Backup anlegen und es zurückspielen, falls ein zurückgerolltes Binary das migrierte Schema ablehnt.
 
 Workflow-History wird beim Start absichtlich noch nicht umgeschlüsselt, damit der unmittelbare
 Health-Check-Rollback sicher bleibt. Während eines gemischten HA-Upgrades Workflow-Edits und
