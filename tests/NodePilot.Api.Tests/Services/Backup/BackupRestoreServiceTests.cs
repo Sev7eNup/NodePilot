@@ -340,6 +340,167 @@ public sealed class BackupRestoreServiceTests : IDisposable
         dst.Credentials.Count(c => c.Name == "svc").Should().Be(1);
     }
 
+    // ---- workflow identity: id first, then name within the target folder ----
+    // Workflow.Name has no unique index, so a backup can carry two distinct "Deploy" workflows.
+
+    private static readonly List<string> FoldersUsersWorkflows =
+        [BackupSections.Folders, BackupSections.Users, BackupSections.Workflows];
+
+    private const string EmptyDefinition = "{\"nodes\":[],\"edges\":[]}";
+
+    private static string Definition(string label) =>
+        "{\"nodes\":[{\"id\":\"step-1\",\"type\":\"activity\",\"data\":{\"activityType\":\"log\",\"label\":\""
+        + label + "\",\"config\":{}}}],\"edges\":[]}";
+
+    private static SharedWorkflowFolder Folder(string name) => new()
+    {
+        Id = Guid.NewGuid(), ParentFolderId = SharedWorkflowFolder.RootFolderId, Name = name, Path = "/" + name, Depth = 1,
+    };
+
+    private static async Task<(Guid first, Guid second)> SeedSameNamedWorkflowsAsync(NodePilotDbContext db, bool sameFolder)
+    {
+        var team = Folder("team");
+        var ops = Folder("ops");
+        db.SharedWorkflowFolders.AddRange(team, ops);
+        db.Users.Add(new User { Id = Guid.NewGuid(), Username = "admin", Role = UserRole.Admin, PasswordHash = "$2a$hash", IsActive = true, IsBreakGlass = true });
+        var first = new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "Deploy", DefinitionJson = Definition("first"), FolderId = team.Id,
+            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+        };
+        var second = new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "Deploy", DefinitionJson = Definition("second"), FolderId = sameFolder ? team.Id : ops.Id,
+            CreatedAt = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc),
+        };
+        db.Workflows.AddRange(first, second);
+        await db.SaveChangesAsync();
+        return (first.Id, second.Id);
+    }
+
+    private static BackupPreviewSection WorkflowPreview(BackupPreviewResult preview) =>
+        preview.Sections.Single(s => s.Section == BackupSections.Workflows);
+
+    private static SectionRestoreResult WorkflowResult(BackupRestoreResult result) =>
+        result.Sections.Single(r => r.Section == BackupSections.Workflows);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Restore_SameNamedWorkflows_RestoresEveryOneWithItsId(bool sameFolder)
+    {
+        using var src = TestDbFactory.Create();
+        var (first, second) = await SeedSameNamedWorkflowsAsync(src, sameFolder);
+        var backup = await ExportAsync(src, FoldersUsersWorkflows);
+
+        using var dst = TestDbFactory.Create();
+        var preview = await Restore(dst).PreviewAsync(backup, Passphrase, CancellationToken.None);
+        var result = await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
+
+        var section = WorkflowPreview(preview);
+        (section.InBackup, section.New, section.Conflicts).Should().Be((2, 2, 0));
+        WorkflowResult(result).Created.Should().Be(2);
+        var restored = dst.Workflows.Where(w => w.Name == "Deploy").ToList();
+        restored.Select(w => w.Id).Should().BeEquivalentTo([first, second]);
+        restored.Single(w => w.Id == first).DefinitionJson.Should().Contain("first");
+        restored.Single(w => w.Id == second).DefinitionJson.Should().Contain("second");
+    }
+
+    [Fact]
+    public async Task Restore_SkipPolicy_MatchesATargetWorkflowByIdBeforeName()
+    {
+        using var src = TestDbFactory.Create();
+        var (first, _) = await SeedSameNamedWorkflowsAsync(src, sameFolder: false);
+        var backup = await ExportAsync(src, FoldersUsersWorkflows);
+
+        using var dst = TestDbFactory.Create();
+        // The same workflow, renamed and moved on the target.
+        dst.Workflows.Add(new Workflow { Id = first, Name = "Deploy (renamed)", DefinitionJson = EmptyDefinition, FolderId = SharedWorkflowFolder.RootFolderId });
+        await dst.SaveChangesAsync();
+
+        var preview = await Restore(dst).PreviewAsync(backup, Passphrase, CancellationToken.None);
+        var result = await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
+
+        WorkflowPreview(preview).Conflicts.Should().Be(1);
+        var section = WorkflowResult(result);
+        (section.Created, section.Skipped).Should().Be((1, 1));
+        dst.Workflows.Single(w => w.Id == first).Name.Should().Be("Deploy (renamed)", "skip leaves the target row untouched");
+        dst.Workflows.Count().Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Restore_SkipPolicy_TreatsTheSameNameInAnotherFolderAsANewWorkflow()
+    {
+        using var src = TestDbFactory.Create();
+        await SeedSameNamedWorkflowsAsync(src, sameFolder: false);
+        var backup = await ExportAsync(src, FoldersUsersWorkflows);
+
+        using var dst = TestDbFactory.Create();
+        var unrelated = new Workflow { Id = Guid.NewGuid(), Name = "Deploy", DefinitionJson = EmptyDefinition, FolderId = SharedWorkflowFolder.RootFolderId };
+        dst.Workflows.Add(unrelated);
+        await dst.SaveChangesAsync();
+
+        var preview = await Restore(dst).PreviewAsync(backup, Passphrase, CancellationToken.None);
+        var result = await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
+
+        WorkflowPreview(preview).Conflicts.Should().Be(0);
+        WorkflowResult(result).Created.Should().Be(2);
+        dst.Workflows.Count(w => w.Name == "Deploy").Should().Be(3);
+        dst.Workflows.Single(w => w.Id == unrelated.Id).DefinitionJson.Should().Be(EmptyDefinition);
+    }
+
+    [Fact]
+    public async Task Restore_OverwritePolicy_UpdatesTheSameNamedWorkflowInTheSameFolder()
+    {
+        using var src = TestDbFactory.Create();
+        await SeedSameNamedWorkflowsAsync(src, sameFolder: false);
+        var backup = await ExportAsync(src, FoldersUsersWorkflows);
+
+        using var dst = TestDbFactory.Create();
+        // Same folder path as the backup's /team, fresh ids on both rows: matched by folder + name.
+        var team = Folder("team");
+        var existing = new Workflow { Id = Guid.NewGuid(), Name = "Deploy", DefinitionJson = EmptyDefinition, FolderId = team.Id };
+        dst.SharedWorkflowFolders.Add(team);
+        dst.Workflows.Add(existing);
+        await dst.SaveChangesAsync();
+
+        var preview = await Restore(dst).PreviewAsync(backup, Passphrase, CancellationToken.None);
+        var result = await Restore(dst).RestoreAsync(
+            backup, Passphrase, Policy(BackupSections.Workflows, RestoreConflictPolicy.Overwrite), RestoreActor, CancellationToken.None);
+
+        WorkflowPreview(preview).Conflicts.Should().Be(1);
+        var section = WorkflowResult(result);
+        (section.Created, section.Overwritten).Should().Be((1, 1));
+        var after = dst.Workflows.Single(w => w.Id == existing.Id);
+        after.DefinitionJson.Should().Contain("first");
+        after.FolderId.Should().Be(team.Id);
+        dst.Workflows.Count(w => w.FolderId == team.Id).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Restore_RenamePolicy_OnAnIdConflict_CreatesASuffixedCopyWithAFreshId()
+    {
+        using var src = TestDbFactory.Create();
+        var (first, _) = await SeedSameNamedWorkflowsAsync(src, sameFolder: false);
+        var backup = await ExportAsync(src, FoldersUsersWorkflows);
+
+        using var dst = TestDbFactory.Create();
+        var team = Folder("team");
+        dst.SharedWorkflowFolders.Add(team);
+        dst.Workflows.Add(new Workflow { Id = first, Name = "Deploy", DefinitionJson = EmptyDefinition, FolderId = team.Id });
+        await dst.SaveChangesAsync();
+
+        var result = await Restore(dst).RestoreAsync(
+            backup, Passphrase, Policy(BackupSections.Workflows, RestoreConflictPolicy.Rename), RestoreActor, CancellationToken.None);
+
+        var section = WorkflowResult(result);
+        (section.Created, section.Renamed).Should().Be((1, 1));
+        dst.Workflows.Single(w => w.Id == first).DefinitionJson.Should().Be(EmptyDefinition, "rename leaves the target row intact");
+        var copy = dst.Workflows.Single(w => w.FolderId == team.Id && w.Id != first);
+        copy.Name.Should().Be("Deploy (Restored 2)");
+        copy.DefinitionJson.Should().Contain("first");
+    }
+
     [Fact]
     public async Task Restore_Overwrite_UpdatesExistingAndBumpsUserSecurityStamp()
     {

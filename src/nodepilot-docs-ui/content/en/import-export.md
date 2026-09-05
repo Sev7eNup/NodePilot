@@ -101,7 +101,7 @@ The complete configuration payload, including its metadata and section list, is 
 - Validates references (aborting on unresolvable ones).
 - Runs in a transaction wrapped by the EF execution strategy, in dependency order, with ID remapping.
 - Aborts and rolls back the complete restore if any selected part produces a warning or cannot be restored completely; settings-file changes are compensated if the database commit fails.
-- Conflict policy: `skip` / `rename` / `overwrite`.
+- Conflict policy: `skip` / `rename` / `overwrite`. Most sections match by name; workflows match by id first and then by name within their target folder, because workflow names are not unique.
 - Last-admin protection.
 
 ### Endpoints & CLI

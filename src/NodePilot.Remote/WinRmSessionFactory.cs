@@ -177,8 +177,9 @@ public class WinRmSessionFactory : IRemoteSessionFactory
         catch (Exception ex)
         {
             connectStopwatch.Stop();
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.AddException(ex);
+            // Spans leave the process unredacted, so they carry the failure class, never its text.
+            activity?.SetStatus(ActivityStatusCode.Error, "connect_failed");
+            activity?.SetTag("exception.type", ex.GetType().FullName);
             var failTag = new KeyValuePair<string, object?>("result", "fail");
             RemoteMetrics.SessionsOpened.Add(1, failTag, authTag);
             RemoteMetrics.SessionOpenDuration.Record(connectStopwatch.Elapsed.TotalMilliseconds, failTag, authTag);

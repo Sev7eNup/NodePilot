@@ -1224,11 +1224,12 @@ public class WorkflowEngine : IWorkflowEngine
     private async Task<WorkflowExecution> CompleteAsFailedAsync(ExecutionRun run, Exception ex)
     {
         var execution = run.Execution;
-        _logger.LogError(ex, "Workflow execution {ExecutionId} failed", execution.Id);
-        // H-8/H-9 (security-audit findings): redact + cap — the exception may carry a
-        // leaked secret from a child activity (e.g. an HTTP body echoed back in a
-        // deserialization error).
+        // The exception may carry a secret from a child activity (an HTTP body echoed back in a
+        // deserialization error, for example), so the log, the row and the span all get the
+        // redacted text. The stack trace is kept for the log; the span records the type only.
         var errorMessage = _redactor.RedactAndCap(ex.Message, 32 * 1024);
+        _logger.LogError("Workflow execution {ExecutionId} failed: {Error}",
+            execution.Id, _redactor.RedactAndCap(ex.ToString(), 32 * 1024));
         await PersistTerminalStateResilientAsync(
             run,
             ExecutionStatus.Failed,
@@ -1238,8 +1239,8 @@ public class WorkflowEngine : IWorkflowEngine
         await NotifyTerminalStateAsync(run);
         run.Activity?.SetTag(TelemetryConstants.Attributes.ExecutionStatus, execution.Status.ToString());
         run.Activity?.SetStatus(ActivityStatusCode.Error,
-            execution.Status == ExecutionStatus.Cancelled ? "cancelled" : ex.Message);
-        run.Activity?.AddException(ex);
+            execution.Status == ExecutionStatus.Cancelled ? "cancelled" : errorMessage);
+        run.Activity?.SetTag("exception.type", ex.GetType().FullName);
         if (run.CallDepth == 0 && IsTerminalStatus(execution.Status))
             LogExecutionTerminatedAsSupport(execution, run.Workflow, run.Stopwatch.Elapsed, 0, 1, 0);
         return execution;

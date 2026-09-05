@@ -97,8 +97,9 @@ public class WinRmSession : IRemoteSession
         catch (Exception ex)
         {
             sw.Stop();
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.AddException(ex);
+            // Spans leave the process unredacted, so they carry the failure class, never its text.
+            activity?.SetStatus(ActivityStatusCode.Error, "invoke_failed");
+            activity?.SetTag("exception.type", ex.GetType().FullName);
             RemoteMetrics.ScriptDuration.Record(sw.Elapsed.TotalMilliseconds,
                 new KeyValuePair<string, object?>("result", "fail"));
             return new RemoteExecutionResult
@@ -135,7 +136,7 @@ public class WinRmSession : IRemoteSession
             if (success)
                 activity?.SetStatus(ActivityStatusCode.Ok);
             else
-                activity?.SetStatus(ActivityStatusCode.Error, stderr);
+                activity?.SetStatus(ActivityStatusCode.Error, "script_failed");
 
             RemoteMetrics.ScriptDuration.Record(sw.Elapsed.TotalMilliseconds,
                 new KeyValuePair<string, object?>("result", success ? "ok" : "fail"));
@@ -176,8 +177,8 @@ public class WinRmSession : IRemoteSession
         catch (Exception ex)
         {
             sw.Stop();
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.AddException(ex);
+            activity?.SetStatus(ActivityStatusCode.Error, "execute_failed");
+            activity?.SetTag("exception.type", ex.GetType().FullName);
             RemoteMetrics.ScriptDuration.Record(sw.Elapsed.TotalMilliseconds,
                 new KeyValuePair<string, object?>("result", "fail"));
             return new RemoteExecutionResult

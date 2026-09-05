@@ -89,6 +89,31 @@ exhaustive.
   a cleared timeout field no longer breaks `llmQuery` or shortens `waitForCondition` to one second,
   a templated `"false"` is no longer read as true, and maintenance-window timestamps are stored as
   the UTC instants they claim to be.
+- **A step that fails to persist no longer leaves its siblings running.** When a step's terminal
+  write failed, the scheduler propagated the error while the other in-flight steps kept running:
+  the execution was finalised and its capacity released with steps still active, and their rows
+  landed in a terminal execution nobody could cancel. The scheduler now cancels and awaits every
+  started step before the error propagates.
+- **A backup that carries two workflows of the same name restores both.** Workflow names are not
+  unique, but restore matched workflows by name alone, so the second one was skipped under the
+  default policy or overwrote the first under `overwrite`, and references to it were silently
+  rewired to the first. A backup workflow now stands for a target row by id first, then by name
+  within its target folder; the preview counts conflicts the same way.
+- **Trace spans and the engine log carry no unredacted error text.** The remote span carried the
+  raw PowerShell error stream, the activity span the unredacted step error, and an engine-level
+  failure logged and traced the raw exception. Spans now name the failure class and the exception
+  type; the engine log and the root span carry the redacted message.
+- **The desktop tray's restart item works.** Its elevated PowerShell command nested single quotes
+  and never parsed, so the item did nothing; a restart that fails is now reported. The readiness
+  probe also bounds every request, so a backend that accepts the connection but never answers no
+  longer holds the splash screen past its deadline.
+- **`forEach` children record their parent execution.** The loop started each item without the
+  parent id and call depth, so the children showed as top-level runs in the execution list, the
+  operations timeline and the alerting classifier, and the support log wrote start and end lines
+  per item.
+- **An oversized LLM stream is cut off at the byte cap while it is read.** The streaming reader
+  checked the cap only after a complete line had been buffered, so a line-less response was held
+  in memory in full first.
 
 ## [1.2.26] - 2026-09-01
 
