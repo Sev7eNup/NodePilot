@@ -86,10 +86,7 @@ public sealed class BackupRestoreService(
                 return DiffByName(key, Items(reader, key), "key", keys);
             }
             case BackupSections.Workflows:
-            {
-                var names = await db.Workflows.Select(w => w.Name).ToListAsync(ct);
-                return DiffByName(key, Items(reader, key), "name", names);
-            }
+                return await PreviewWorkflowsAsync(reader, ct);
             case BackupSections.Folders:
             {
                 var paths = await db.SharedWorkflowFolders.Select(f => f.Path).ToListAsync(ct);
@@ -117,6 +114,49 @@ public sealed class BackupRestoreService(
             if (name is not null && existingSet.Contains(name)) conflicts++;
         }
         return new BackupPreviewSection(key, items.Count, items.Count - conflicts, conflicts);
+    }
+
+    /// <summary>
+    /// Mirrors the restore's workflow identity rule: a backup workflow conflicts when its id
+    /// exists in the target, or when a target workflow with its name sits in the folder it would
+    /// land in. Folders are matched by path, then by id, the way the folder section restores
+    /// them; a folder the restore would create holds no target rows to conflict with.
+    /// </summary>
+    private async Task<BackupPreviewSection> PreviewWorkflowsAsync(BackupFileReader reader, CancellationToken ct)
+    {
+        var existingIds = (await db.Workflows.Select(w => w.Id).ToListAsync(ct)).ToHashSet();
+        var existingByFolderAndName = (await db.Workflows.Select(w => new { w.FolderId, w.Name }).ToListAsync(ct))
+            .Select(w => (w.FolderId, w.Name))
+            .ToHashSet();
+        var targetFolderIdByPath = await db.SharedWorkflowFolders
+            .ToDictionaryAsync(f => f.Path, f => f.Id, StringComparer.Ordinal, ct);
+        var existingFolderIds = targetFolderIdByPath.Values.ToHashSet();
+        var backupFolderPathById = new Dictionary<Guid, string>();
+        var structure = (reader.Sections[BackupSections.Folders] as JsonObject)?["structure"] as JsonArray ?? [];
+        foreach (var folder in structure)
+        {
+            if (folder?["path"]?.GetValue<string>() is { } path)
+                backupFolderPathById[Gid(folder["sourceId"])] = path;
+        }
+
+        var items = Items(reader, BackupSections.Workflows);
+        var conflicts = 0;
+        foreach (var item in items)
+        {
+            if (existingIds.Contains(Gid(item!["sourceId"]))) { conflicts++; continue; }
+
+            var sourceFolderId = GidN(item["folderId"]) ?? SharedWorkflowFolder.RootFolderId;
+            Guid? targetFolderId =
+                sourceFolderId == SharedWorkflowFolder.RootFolderId ? SharedWorkflowFolder.RootFolderId
+                : backupFolderPathById.TryGetValue(sourceFolderId, out var path)
+                  && targetFolderIdByPath.TryGetValue(path, out var byPath) ? byPath
+                : existingFolderIds.Contains(sourceFolderId) ? sourceFolderId
+                : null;
+            if (targetFolderId is { } folderId
+                && existingByFolderAndName.Contains((folderId, item["name"]!.GetValue<string>())))
+                conflicts++;
+        }
+        return new BackupPreviewSection(BackupSections.Workflows, items.Count, items.Count - conflicts, conflicts);
     }
 
     // ---- Restore ------------------------------------------------------------
@@ -833,84 +873,119 @@ public sealed class BackupRestoreService(
         def.Version = item["version"]?.GetValue<int>() ?? 1;
     }
 
-    private Task<SectionRestoreResult> RestoreWorkflowsAsync(RestoreState s, CancellationToken ct) =>
-        RestoreNamedSectionAsync(
-            s,
-            BackupSections.Workflows,
-            s.Workflows,
-            workflow => workflow.Id,
-            s.ExistingWorkflowIds,
-            s.WorkflowMap,
-            workflow => db.Workflows.Add(workflow),
-            item =>
-            {
-                var sourceId = Gid(item["sourceId"]);
-                var name = item["name"]!.GetValue<string>();
-                var description = item["description"]?.GetValue<string>();
-                var isEnabled = item["isEnabled"]?.GetValue<bool>() ?? false;
-                var version = item["version"]?.GetValue<int>() ?? 1;
-                // Absent in backups written before the column existed, which reads as unlimited.
-                // Validated because restore writes the entity directly, bypassing the endpoint.
-                var maxConcurrent = item["maxConcurrentExecutions"]?.GetValue<int?>();
-                if (WorkflowConcurrency.Validate(maxConcurrent) is not null) maxConcurrent = null;
-                var folderTarget = s.ResolveFolder(GidN(item["folderId"]) ?? SharedWorkflowFolder.RootFolderId)
-                    ?? SharedWorkflowFolder.RootFolderId;
-                var definitionJson = RestoreDefinitionJson(item["definition"], s);
-                return new NamedRestoreItem<Workflow>(
-                    name,
-                    sourceId,
-                    existing =>
-                    {
-                        if (existing.CheckedOutByUserId is not null)
-                            throw new BackupRestoreException(
-                                $"Restore aborted: workflow '{existing.Name}' is locked for editing. Publish, unlock, or force-unlock it before overwrite restore.");
-                        var now = DateTime.UtcNow;
-                        db.WorkflowVersions.Add(new WorkflowVersion
-                        {
-                            Id = Guid.NewGuid(),
-                            WorkflowId = existing.Id,
-                            Version = existing.Version,
-                            Name = existing.Name,
-                            Description = existing.Description,
-                            DefinitionJson = versionDefinitions.Protect(existing.DefinitionJson),
-                            CreatedAt = now,
-                            CreatedBy = existing.UpdatedBy ?? existing.CreatedBy ?? "restore",
-                            ChangeNote = "Superseded by system backup restore",
-                        });
+    /// <summary>
+    /// Workflows do not go through <see cref="RestoreNamedSectionAsync{TEntity}"/>: their names are
+    /// not unique, and a by-name match would merge two distinct workflows that share one. A backup
+    /// row stands for a target row by id first, then by name within its target folder; two backup
+    /// rows never stand for each other, so a backup that carries same-named workflows restores all
+    /// of them with their ids intact.
+    /// </summary>
+    private async Task<SectionRestoreResult> RestoreWorkflowsAsync(RestoreState s, CancellationToken ct)
+    {
+        var policy = s.Policy(BackupSections.Workflows);
+        int created = 0, overwritten = 0, skipped = 0, renamed = 0;
 
-                        existing.Description = description;
-                        existing.DefinitionJson = definitionJson;
-                        existing.Version = checked(existing.Version + 1);
-                        existing.IsEnabled = isEnabled;
-                        existing.MaxConcurrentExecutions = maxConcurrent;
-                        existing.FolderId = folderTarget;
-                        existing.UpdatedAt = now;
-                        existing.UpdatedBy = "restore";
-                        // Restore establishes runtime authority the same way Publish and Import do.
-                        // The backup carries IsEnabled, so an overwritten row is re-armed here —
-                        // and every automated dispatch resolves its principal from this column.
-                        // Without it the workflow shows as active and each trigger fire is
-                        // terminalised as Cancelled with "missing_effective_principal".
-                        existing.PublishedByUserId = s.RestoredByUserId ?? existing.PublishedByUserId;
-                        WorkflowMetadata.PopulateComputedColumns(existing);
-                    },
-                    (id, finalName) =>
-                    {
-                        var created = new Workflow
-                        {
-                            Id = id, Name = finalName, Description = description, DefinitionJson = definitionJson,
-                            Version = Math.Max(1, version), IsEnabled = isEnabled, FolderId = folderTarget,
-                            MaxConcurrentExecutions = maxConcurrent,
-                            // See the overwrite branch: the restoring user becomes the runtime
-                            // principal, mirroring the import path.
-                            PublishedByUserId = s.RestoredByUserId,
-                            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
-                        };
-                        WorkflowMetadata.PopulateComputedColumns(created);
-                        return created;
-                    });
+        foreach (var node in Items(s.Reader, BackupSections.Workflows))
+        {
+            var (item, folderTarget) = ReadWorkflowItem(node!, s);
+            var existing = s.FindWorkflowConflict(item.SourceId, folderTarget, item.Name);
+            if (existing is not null && policy == RestoreConflictPolicy.Skip)
+            {
+                s.WorkflowMap[item.SourceId] = existing.Id;
+                skipped++; continue;
+            }
+            if (existing is not null && policy == RestoreConflictPolicy.Overwrite)
+            {
+                item.Overwrite(existing);
+                s.WorkflowMap[item.SourceId] = existing.Id;
+                overwritten++; continue;
+            }
+
+            var name = existing is null ? item.Name : UniqueName(item.Name, s.TakenWorkflowNames(folderTarget));
+            // The backup id is kept unless a different target row already owns it (K3).
+            var id = s.ExistingWorkflowIds.Contains(item.SourceId) ? Guid.NewGuid() : item.SourceId;
+            var entity = item.Create(id, name);
+            db.Workflows.Add(entity);
+            s.AddRestoredWorkflow(entity);
+            s.WorkflowMap[item.SourceId] = id;
+            if (existing is null) created++; else renamed++;
+        }
+        await db.SaveChangesAsync(ct);
+        return new SectionRestoreResult(BackupSections.Workflows, created, overwritten, skipped, renamed);
+    }
+
+    private (NamedRestoreItem<Workflow> Item, Guid FolderTarget) ReadWorkflowItem(JsonNode item, RestoreState s)
+    {
+        var sourceId = Gid(item["sourceId"]);
+        var name = item["name"]!.GetValue<string>();
+        var description = item["description"]?.GetValue<string>();
+        var isEnabled = item["isEnabled"]?.GetValue<bool>() ?? false;
+        var version = item["version"]?.GetValue<int>() ?? 1;
+        // Absent in backups written before the column existed, which reads as unlimited.
+        // Validated because restore writes the entity directly, bypassing the endpoint.
+        var maxConcurrent = item["maxConcurrentExecutions"]?.GetValue<int?>();
+        if (WorkflowConcurrency.Validate(maxConcurrent) is not null) maxConcurrent = null;
+        var folderTarget = s.ResolveFolder(GidN(item["folderId"]) ?? SharedWorkflowFolder.RootFolderId)
+            ?? SharedWorkflowFolder.RootFolderId;
+        var definitionJson = RestoreDefinitionJson(item["definition"], s);
+        var restoreItem = new NamedRestoreItem<Workflow>(
+            name,
+            sourceId,
+            existing =>
+            {
+                if (existing.CheckedOutByUserId is not null)
+                    throw new BackupRestoreException(
+                        $"Restore aborted: workflow '{existing.Name}' is locked for editing. Publish, unlock, or force-unlock it before overwrite restore.");
+                var now = DateTime.UtcNow;
+                db.WorkflowVersions.Add(new WorkflowVersion
+                {
+                    Id = Guid.NewGuid(),
+                    WorkflowId = existing.Id,
+                    Version = existing.Version,
+                    Name = existing.Name,
+                    Description = existing.Description,
+                    DefinitionJson = versionDefinitions.Protect(existing.DefinitionJson),
+                    CreatedAt = now,
+                    CreatedBy = existing.UpdatedBy ?? existing.CreatedBy ?? "restore",
+                    ChangeNote = "Superseded by system backup restore",
+                });
+
+                // A row matched by id may carry a different name in the target; overwrite
+                // restores the backup's name with the rest of the row.
+                existing.Name = name;
+                existing.Description = description;
+                existing.DefinitionJson = definitionJson;
+                existing.Version = checked(existing.Version + 1);
+                existing.IsEnabled = isEnabled;
+                existing.MaxConcurrentExecutions = maxConcurrent;
+                existing.FolderId = folderTarget;
+                existing.UpdatedAt = now;
+                existing.UpdatedBy = "restore";
+                // Restore establishes runtime authority the same way Publish and Import do.
+                // The backup carries IsEnabled, so an overwritten row is re-armed here —
+                // and every automated dispatch resolves its principal from this column.
+                // Without it the workflow shows as active and each trigger fire is
+                // terminalised as Cancelled with "missing_effective_principal".
+                existing.PublishedByUserId = s.RestoredByUserId ?? existing.PublishedByUserId;
+                WorkflowMetadata.PopulateComputedColumns(existing);
             },
-            ct);
+            (id, finalName) =>
+            {
+                var created = new Workflow
+                {
+                    Id = id, Name = finalName, Description = description, DefinitionJson = definitionJson,
+                    Version = Math.Max(1, version), IsEnabled = isEnabled, FolderId = folderTarget,
+                    MaxConcurrentExecutions = maxConcurrent,
+                    // See the overwrite branch: the restoring user becomes the runtime
+                    // principal, mirroring the import path.
+                    PublishedByUserId = s.RestoredByUserId,
+                    CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+                };
+                WorkflowMetadata.PopulateComputedColumns(created);
+                return created;
+            });
+        return (restoreItem, folderTarget);
+    }
 
     // Alerting rules carry no source-id map: a restored rule always gets a fresh id, and nothing
     // in the envelope references a rule by id.
@@ -1255,7 +1330,10 @@ public sealed class BackupRestoreService(
         foreach (var v in await db.GlobalVariables.ToListAsync(ct)) s.Globals[v.Name] = v;
         foreach (var d in await db.CustomActivityDefinitions.Where(d => !d.IsDeleted).ToListAsync(ct))
         { s.CustomActivities[d.Key] = d; s.ExistingCustomActivityIds.Add(d.Id); }
-        foreach (var w in await db.Workflows.ToListAsync(ct)) { s.Workflows[w.Name] = w; s.ExistingWorkflowIds.Add(w.Id); }
+        // Oldest first, so a target folder that already holds two same-named workflows resolves
+        // a by-name conflict to the same row on every run.
+        foreach (var w in await db.Workflows.OrderBy(w => w.CreatedAt).ThenBy(w => w.Id).ToListAsync(ct))
+            s.AddExistingWorkflow(w);
         foreach (var r in await db.NotificationRules.ToListAsync(ct)) { s.NotificationRules[r.Name] = r; s.ExistingNotificationRuleIds.Add(r.Id); }
     }
 

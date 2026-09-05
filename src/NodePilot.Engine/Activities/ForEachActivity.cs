@@ -94,7 +94,8 @@ public class ForEachActivity : IActivityExecutor
             EffectiveParallelism: parsed.MaxParallelism <= 0
                 ? MaxParallelismHardCap
                 : Math.Min(parsed.MaxParallelism, MaxParallelismHardCap),
-            StepId: context.StepId);
+            StepId: context.StepId,
+            WorkflowExecutionId: context.WorkflowExecutionId);
 
         // Releases the global step-gate slot for the iterations, like StartWorkflowActivity does
         // for a synchronous child: both wait on children drawing from the same gate, so holding
@@ -349,7 +350,16 @@ public class ForEachActivity : IActivityExecutor
             await _workflowConcurrency.AcquireAsync(rctx.ChildWorkflow.Id, limit, linkedCts.Token);
             concurrencySlotHeld = true;
 
-            var childExec = await engine.ExecuteAsync(rctx.ChildWorkflow, $"forEach:{rctx.StepId}[{index}]", linkedCts.Token, childParams);
+            // Lineage is persisted from these two arguments, not from __callDepth in the params:
+            // without them the child row shows as a top-level run in the UI, the ops timeline and
+            // the alerting classifier, and the support log writes start/end lines per item.
+            var childExec = await engine.ExecuteAsync(
+                rctx.ChildWorkflow,
+                $"forEach:{rctx.StepId}[{index}]",
+                linkedCts.Token,
+                childParams,
+                parentExecutionId: rctx.WorkflowExecutionId,
+                callDepth: rctx.CurrentDepth + 1);
             return (childExec, null);
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
@@ -433,7 +443,8 @@ public class ForEachActivity : IActivityExecutor
         bool ContinueOnError,
         int CurrentDepth,
         int EffectiveParallelism,
-        string StepId);
+        string StepId,
+        Guid WorkflowExecutionId);
 
     private static List<string> ParseItems(string raw, string format)
     {

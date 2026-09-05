@@ -408,7 +408,7 @@ internal sealed class StepRunner
 
             stepActivity?.SetTag(TelemetryConstants.Attributes.StepStatus, "Failed");
             stepActivity?.SetStatus(ActivityStatusCode.Error, sanitizedError);
-            stepActivity?.AddException(ex);
+            stepActivity?.SetTag("exception.type", ex.GetType().FullName);
             finalStatus = "Failed";
 
             LogStepDetail(execution, node,
@@ -599,10 +599,11 @@ internal sealed class StepRunner
             }
         }
 
+        // The result is still unredacted here; the parent step span gets the redacted text.
         if (result.Success)
             activitySpan?.SetStatus(ActivityStatusCode.Ok);
         else
-            activitySpan?.SetStatus(ActivityStatusCode.Error, result.ErrorOutput);
+            activitySpan?.SetStatus(ActivityStatusCode.Error, "activity_failed");
 
         return (result, attemptsUsed);
     }

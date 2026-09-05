@@ -169,7 +169,10 @@ restored 1:1.
 | `POST /api/backup/restore` | multipart `file` + `passphrase` + `policy{}` | applies it |
 
 **Conflict policy** (by-name match, as with import; default `skip`): `skip` / `rename` (suffix) /
-`overwrite`.
+`overwrite`. Workflows are the exception: their names are not unique, so a backup workflow stands
+for a target row by id first, then by name within its target folder. Two backup rows never stand
+for each other, so a backup that carries same-named workflows restores all of them. The preview
+counts conflicts by the same rule.
 
 ### K11 — Last-admin protection
 A restore must **not** be able to leave the system with no active admin. Before committing,

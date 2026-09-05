@@ -110,6 +110,21 @@ public sealed class ForEachActivityExecutionTests : IDisposable
     }
 
     [Fact]
+    public async Task ExecuteAsync_HandsTheParentExecutionAndCallDepthToTheEngine()
+    {
+        // The engine persists lineage from these arguments, not from the __callDepth parameter;
+        // without them every item shows up as a top-level run.
+        var engine = new FakeEngine();
+        var parent = Guid.NewGuid();
+
+        await Run(engine, "one", executionId: parent);
+
+        var call = engine.Calls.Single();
+        call.ParentExecutionId.Should().Be(parent);
+        call.CallDepth.Should().Be(1);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ResultsJson_CarriesPerItemDetail()
     {
         var engine = new FakeEngine();
@@ -297,7 +312,8 @@ public sealed class ForEachActivityExecutionTests : IDisposable
         FakeEngine engine,
         string items,
         Dictionary<string, object?>? extraConfig = null,
-        IWorkflowConcurrencyGate? concurrency = null)
+        IWorkflowConcurrencyGate? concurrency = null,
+        Guid? executionId = null)
     {
         var config = new Dictionary<string, object?>
         {
@@ -316,7 +332,7 @@ public sealed class ForEachActivityExecutionTests : IDisposable
             concurrency ?? new InMemoryWorkflowConcurrencyGate());
 
         return await activity.ExecuteAsync(
-            new StepExecutionContext { WorkflowExecutionId = Guid.NewGuid(), StepId = "fe1" },
+            new StepExecutionContext { WorkflowExecutionId = executionId ?? Guid.NewGuid(), StepId = "fe1" },
             JsonDocument.Parse(JsonSerializer.Serialize(config)).RootElement,
             TestContext.Current.CancellationToken);
     }
@@ -326,7 +342,7 @@ public sealed class ForEachActivityExecutionTests : IDisposable
         private int _running;
         private readonly Lock _sync = new();
 
-        public List<(Workflow Workflow, Dictionary<string, string>? Parameters)> Calls { get; } = [];
+        public List<(Workflow Workflow, Dictionary<string, string>? Parameters, Guid? ParentExecutionId, int CallDepth)> Calls { get; } = [];
 
         /// <summary>Index from which every child execution reports Failed. Null = all
         /// succeed.</summary>
@@ -353,7 +369,7 @@ public sealed class ForEachActivityExecutionTests : IDisposable
             lock (_sync)
             {
                 index = Calls.Count;
-                Calls.Add((workflow, inputParameters));
+                Calls.Add((workflow, inputParameters, parentExecutionId, callDepth));
                 MaxObservedConcurrency = Math.Max(MaxObservedConcurrency, ++_running);
             }
 
