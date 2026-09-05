@@ -8,7 +8,7 @@ This reference describes the configuration and outputs of every activity type.
 | **Engine-local** | The NodePilot API process |
 | **Hybrid** | Remote or engine-local depending on the configuration |
 
-Every step supports `config.retry` with `maxAttempts`, `backoff`, `initialDelayMs` and `maxDelayMs`. `config.timeoutSeconds` bounds a single step. The execute request can additionally bound the whole execution.
+Every step supports `config.retry` with `maxAttempts`, `backoff`, `initialDelayMs` and `maxDelayMs`. Permanent remote failures are exempt from it: a denied WinRM logon, a session blocked by the SSL policy and a credential that cannot be decrypted fail the step on the first attempt — repeating them cannot help, and repeated failed logons can lock a domain account out. `config.timeoutSeconds` bounds a single step. The execute request can additionally bound the whole execution.
 
 ---
 
@@ -48,7 +48,7 @@ Every step supports `config.retry` with `maxAttempts`, `backoff`, `initialDelayM
 
 **Remote.**
 
-- **Config:** `serviceName`, `action` (start/stop/restart/status/create/delete/setStartType; `create`/`setStartType` take `binaryPath`/`displayName`/`description`/`startupType`; `delete` stops the service and removes it permanently via `sc.exe delete`)
+- **Config:** `serviceName`, `action` (start/stop/restart/status/create/delete/setStartType; `create`/`setStartType` take `binaryPath`/`displayName`/`description`/`startupType`; `delete` stops the service and removes it permanently via `sc.exe delete`). `sc.exe` reports its failures on stdout and leaves the error stream empty, so the exit code of the `sc.exe` calls behind `delete` and behind an `AutomaticDelayedStart` startup type is checked and a non-zero exit fails the step — a refused delete or startup-type change is never reported as success.
 - **Outputs:** `param.name`, `param.status`, `param.startType`
 
 ## `registryOperation`
@@ -109,7 +109,7 @@ rejected; the target ACL remains the boundary against concurrent parent renames.
 
 **Engine-local.**
 
-- **Config:** `url`, `method`, `body`, `headers`, `timeoutSeconds`, `proxyMode` (`default`/`direct`/`custom`), `proxyAddress`, `noProxy`
+- **Config:** `url`, `method`, `body`, `headers` (on a request that carries a body, a `Content-Type` set here moves onto the entity — no second, conflicting field on the wire; an unparsable value is left alone and the body still goes out as `application/json`. A request without a body, and every GET/HEAD, has no entity, so a `Content-Type` set there is dropped), `timeoutSeconds`, `proxyMode` (`default`/`direct`/`custom`), `proxyAddress`, `noProxy`
 - **Outputs:** `param.statusCode` (the response body in `output` as `HTTP {code}\n{body}`; headers are not exposed as `param`)
 
 ## `sql`

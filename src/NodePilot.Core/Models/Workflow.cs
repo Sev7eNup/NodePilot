@@ -26,8 +26,9 @@ public class Workflow
 
     /// <summary>
     /// Stable principal whose permissions govern trigger-driven cross-folder sub-workflow
-    /// calls. Set only by Publish; routine moves, locks and enable/disable operations must
-    /// not silently change runtime authority.
+    /// calls. Established once - by publish, import, duplicate, restore, or by the user who
+    /// enables a never-published workflow - and never moved afterwards, so routine moves and
+    /// locks cannot lend a different user's authority to a scheduled run.
     /// </summary>
     public Guid? PublishedByUserId { get; set; }
 

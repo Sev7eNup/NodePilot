@@ -97,7 +97,9 @@ umgebungsabhängig, gehören in die Test-Suite unter `scripts/test-suite/`, sieh
 `scheduledTask`, `startProgram`, `xmlQuery`, `generateText`, `sql`, `eventLogTrigger`. Optional und
 gated: AI-Log-Triage (`llmQuery`, braucht `Llm:Enabled`), DB-Wächter (`databaseTrigger`).
 Leitplanken: `localhost` statt GUID, Sticky-Notes als Inline-Doku, externe Trigger kommen disabled
-an und brauchen *Publish* (nicht nur Enable), sonst `missing_effective_principal`.
+an und werden per *Publish* oder *Enable* scharfgeschaltet — beide setzen `PublishedByUserId`, wenn
+die Spalte leer ist. Ein Workflow, der ohne einen dieser Wege auf `IsEnabled=true` kommt, endet in
+`missing_effective_principal`.
 
 ### Welle 5 — KI-Ausbaustufe 1
 
@@ -190,7 +192,7 @@ Jeder Posten trägt seine Auslösebedingung. Ohne Trigger wird nicht gestartet.
 - Trigger-Sources dürfen nicht in den Root-DI-Container lecken (siehe Commit `34f7874b`).
 - Im HA-Passive-Knoten darf nichts doppelt feuern → externe Trigger leader-gaten.
 - Trigger-Daten landen als `manual.*` (+ `param.*` des Trigger-Nodes) — **kein** `trigger.*`-Namespace.
-- Trigger-Läufe brauchen `Workflow.PublishedByUserId` → der Workflow muss *published* sein, nicht nur enabled.
+- Trigger-Läufe brauchen `Workflow.PublishedByUserId`. Publish, Import, Duplicate, Restore und `/enable` setzen die Spalte, wenn sie leer ist (`/enable` überschreibt nie einen bestehenden Publisher). Nicht abgedeckt bleiben ein Workflow, der ohne einen dieser Wege auf `IsEnabled=true` kommt (First-Boot-Provisioning → `missing_effective_principal`), und ein deaktivierter Publisher (`effective_principal_inactive`); beide brauchen einmal Publish.
 - **`Health` beantworten.** Der Orchestrator wertet es sequenziell für *jeden* Trigger im 5-s-Pass
   aus → **reiner In-Memory-Read**, kein I/O, kein Lock. Wer echtes I/O braucht, probt auf eigenem
   Timer und cached das Urteil. Konstant `Healthy` ist erlaubt, aber nur mit Kommentar, der die

@@ -60,6 +60,31 @@ exhaustive.
   looking valid everywhere and never firing.
 - **A duplicated or restored workflow can fire its triggers.** Neither path set the runtime
   principal, so every automated start was rejected while the workflow displayed itself as active.
+- **A workflow that was never published can fire its triggers.** The runtime principal was written
+  only by publish, import, duplicate and restore, so a workflow created and enabled without a
+  publish went live without one and every automated fire was cancelled as
+  `missing_effective_principal` while the workflow displayed itself as active. Enable now
+  establishes the principal when none is set, and never moves it away from an existing publisher.
+  A workflow that is *already* enabled without one is not repaired by this — disable and re-enable
+  it, or publish once. A fire can still be cancelled over its principal: when the publisher's
+  account is deactivated (`effective_principal_inactive`), and when a first-boot provisioning
+  restore brings a workflow up enabled and unstamped.
+- **A step retry no longer repeats a permanent remote failure.** A denied WinRM logon (rejected
+  password, expired or locked-out account), a credential that cannot be decrypted and a session
+  refused by the SSL policy are now raised as non-retryable, so `config.retry` stops after the
+  first attempt instead of producing one failed logon per attempt — enough of them to trip an
+  account-lockout policy on the target. Transient rejections stay retryable, WinRM's own shell
+  quota among them.
+- **A SCOrch runbook that was already running when the switch began can settle.** Verification
+  accounted only for the jobs this switch started itself, so a runbook that was already active and
+  whose job left the active set during verification was counted as missing until
+  `reconciliationTimeoutSeconds` expired and failed the switch. A listed runbook now settles once
+  its job is running, or once the job this switch found running or started has left the active set
+  — the active-job list cannot tell a finished job from one that failed or was cancelled
+  elsewhere, so either counts.
+- **A dispatch worker error no longer delays shutdown.** The last-resort back-off in the durable
+  dispatch loop waited on a token that shutdown cannot cancel, so an unexpected error in the final
+  iteration held the host for the full poll interval; it now observes the stopping token.
 - **`restApi` can send a non-JSON body**, `xmlQuery`'s `resultMode` changes only the cardinality,
   a cleared timeout field no longer breaks `llmQuery` or shortens `waitForCondition` to one second,
   a templated `"false"` is no longer read as true, and maintenance-window timestamps are stored as
@@ -109,8 +134,7 @@ scripts. Two of them ended a switch that had already started services.
   payload staged by `deploy/server/Build-ServerInstaller.ps1`, and that script list was missing
   `MachinePath.ps1` — the helper the PATH block dot-sources. The block is wrapped in `try/catch`,
   so the failed dot-source degraded to a warning, the installation reported success, and `np.exe`
-  sat in `<install>	ools
-p` unreachable from cmd or PowerShell. Installations driven by the
+  sat in `<install>\tools\np` unreachable from cmd or PowerShell. Installations driven by the
   deployment scripts shipped the helper and were never affected. A contract test now derives the
   required helpers from the entry points, so the two staging lists cannot drift apart again.
 - **Install and update now verify that `np` reached the machine PATH.** Every step in that block

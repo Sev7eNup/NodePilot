@@ -168,6 +168,7 @@ jobs:
           .\deploy\Test-ArtifactSecurity.ps1
           .\deploy\Test-SetupAdapter.ps1
           .\deploy\Test-MachinePath.ps1
+          .\deploy\Test-SwitcherConfig.ps1
 
       - name: Deployment security contracts (PowerShell 7)
         shell: pwsh
@@ -175,6 +176,7 @@ jobs:
           .\deploy\Test-ArtifactSecurity.ps1
           .\deploy\Test-SetupAdapter.ps1
           .\deploy\Test-MachinePath.ps1
+          .\deploy\Test-SwitcherConfig.ps1
 
       - name: Build
         run: dotnet build --configuration Release --no-restore

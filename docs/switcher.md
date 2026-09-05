@@ -57,7 +57,8 @@ After the target services are running:
   the profile therefore needs an Admin or Operator login with access to every workflow.
 - SCOrch stops every pending or running job whose runbook is not listed, starts one job for each
   listed runbook that has no active job, and verifies the result: no unlisted job is active, and
-  every listed runbook is either running or has finished the job this switch started. The calls use
+  every listed runbook is either running or the job this switch found running or started has left
+  the active set. The calls use
   the current elevated Windows identity against the .NET Web API. Listed runbooks must be published
   and must not require input parameters, because the allowlist only supplies identities.
 
@@ -151,12 +152,12 @@ the error can then no longer be reported. The equivalent `eq`/`or` filter works 
 
 When starting a runbook, the switcher reads the available runbook servers from
 `runbookServersPath` and sends their names with the job request. A listed runbook is settled once
-its job is running, or once the job this switch started has finished - a runbook that completes in
-seconds would otherwise never satisfy the check, because a finished job is no longer active. A
-stale `Pending`/`Queued` job is stopped and restarted on an available runbook server, and a job
-that stays `Pending` until `reconciliationTimeoutSeconds` expires fails the switch and is named in
-the error.
-runbook server.
+its job is running, or once the job this switch found running or started has left the active set -
+a runbook that completes in seconds would otherwise never satisfy the check, because a finished job
+is no longer active. The active-jobs query cannot tell a completed job from one that failed or was
+cancelled elsewhere, so a job that leaves the set for any reason counts as settled. A stale
+`Pending`/`Queued` job is stopped and restarted on an available runbook server, and a job that stays
+`Pending` until `reconciliationTimeoutSeconds` expires fails the switch and is named in the error.
 
 The configured NodePilot CLI profile can be authenticated once under the same Windows account that
 runs the switcher:

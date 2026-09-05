@@ -96,11 +96,9 @@ public class RestApiRedirectTests
         result.Success.Should().BeTrue();
         var sent = handler.Requests.Single();
         sent.Content!.Headers.ContentType!.MediaType.Should().Be("application/x-www-form-urlencoded");
-        // NonValidated, because Contains() rejects a content-header name outright. Before the fix
-        // TryAddWithoutValidation stored it here as a custom header, emitting a second,
-        // conflicting Content-Type field on the wire.
+        // NonValidated, because Contains() rejects a content-header name outright.
         sent.Headers.NonValidated.Contains("Content-Type").Should().BeFalse(
-            "a content header must not also be emitted in the request-header block");
+            "HttpRequestHeaders cannot hold a content header, so the entity is the only place it can land");
     }
 
     [Fact]

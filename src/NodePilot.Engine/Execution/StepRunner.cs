@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NodePilot.Core.Activities;
 using NodePilot.Core.Enums;
+using NodePilot.Core.Exceptions;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -566,12 +567,13 @@ internal sealed class StepRunner
             {
                 result = await executor.ExecuteAsync(context, configForExecution, ct);
             }
-            // The whole remote half of the catalogue signals failure by THROWING, not by returning
-            // Success=false: BaseRemoteActivity awaits CreateSessionAsync without a catch, and the
-            // WinRM session factory rethrows every connect/auth/SSL failure. Without this the retry
-            // policy did nothing for exactly the transient failures an operator enables it for —
-            // a rebooting target, a restarting WinRM service, a network blip.
-            catch (Exception ex) when (ex is not OperationCanceledException && attempt < retryPolicy.MaxAttempts)
+            // Remote activities signal failure by throwing, not by returning Success=false, so the
+            // retry policy only covers them if the loop catches. NonRetryableRemoteException is
+            // excluded: a denied logon or an unusable credential cannot be fixed by repeating, and
+            // repeated logons against a domain account can lock it out.
+            catch (Exception ex) when (ex is not OperationCanceledException
+                                       && ex is not NonRetryableRemoteException
+                                       && attempt < retryPolicy.MaxAttempts)
             {
                 _logger.LogWarning(ex,
                     "Step {StepId} ({ActivityType}) attempt {Attempt}/{Max} threw; retrying.",
@@ -714,24 +716,6 @@ internal sealed class StepRunner
     }
 
     /// <summary>
-    /// Scans a resolved config element for step-pattern placeholders that were not substituted.
-    /// Returns a deduplicated list of remaining <c>{{step.output}}</c>-style patterns.
-    /// Fields listed in <see cref="FieldsNotToResolve"/> for this activity type are skipped \u2014
-    /// their raw SQL / query text is intentionally left unresolved and validated by the executor.
-    /// </summary>
-    /// <summary>
-    /// Narrows a set of unresolved template tokens to those naming a node of this workflow that is
-    /// not on the referencing step's predecessor path. Those are the ones the databus deliberately
-    /// hid — never legitimate leftover text, and therefore fatal even for the activities that
-    /// otherwise tolerate unresolved placeholders.
-    ///
-    /// <para>Membership comes from the compiled graph, not from "has it produced a result yet".
-    /// The result-map test made the gate a race: the identical reference on the identical graph
-    /// was fatal when the sibling branch happened to finish first and tolerated otherwise, so the
-    /// placeholder reached PowerShell verbatim on exactly the runs where it was hardest to spot.
-    /// </para>
-    /// </summary>
-    /// <summary>
     /// Builds an overridden view of the step results and trigger inputs from the values a user
     /// edited at a debug pause, so the node config can be resolved again against them.
     ///
@@ -817,6 +801,18 @@ internal sealed class StepRunner
         };
     }
 
+    /// <summary>
+    /// Narrows a set of unresolved template tokens to those naming a node of this workflow that is
+    /// not on the referencing step's predecessor path. Those are the ones the databus deliberately
+    /// hid — never legitimate leftover text, and therefore fatal even for the activities that
+    /// otherwise tolerate unresolved placeholders.
+    ///
+    /// <para>Membership comes from the compiled graph, not from "has it produced a result yet".
+    /// The result-map test made the gate a race: the identical reference on the identical graph
+    /// was fatal when the sibling branch happened to finish first and tolerated otherwise, so the
+    /// placeholder reached PowerShell verbatim on exactly the runs where it was hardest to spot.
+    /// </para>
+    /// </summary>
     internal static List<string> FindOutOfScopeReferences(
         IEnumerable<string> unresolved,
         IReadOnlyDictionary<string, ActivityResult> previousResults,
@@ -839,6 +835,12 @@ internal sealed class StepRunner
         return outOfScope;
     }
 
+    /// <summary>
+    /// Scans a resolved config element for step-pattern placeholders that were not substituted.
+    /// Returns a deduplicated list of remaining <c>{{step.output}}</c>-style patterns.
+    /// Fields listed in <see cref="FieldsNotToResolve"/> for this activity type are skipped —
+    /// their raw SQL / query text is intentionally left unresolved and validated by the executor.
+    /// </summary>
     internal static List<string> FindUnresolvedStepReferences(string? activityType, JsonElement config)
     {
         FieldsNotToResolve.TryGetValue(activityType ?? string.Empty, out var protectedFields);

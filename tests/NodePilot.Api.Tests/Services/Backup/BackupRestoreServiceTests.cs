@@ -267,10 +267,10 @@ public sealed class BackupRestoreServiceTests : IDisposable
     [Fact]
     public async Task Restore_CreatedWorkflow_GetsTheRestoringUserAsRuntimePrincipal()
     {
-        // Every automated dispatch resolves its principal from Workflow.PublishedByUserId, and
-        // /enable never writes it. A restored workflow without one shows as active while each
-        // trigger fire is terminalised as Cancelled with "missing_effective_principal" — the
-        // disaster-recovery case: restore succeeds, nothing ever runs.
+        // Every automated dispatch resolves its principal from Workflow.PublishedByUserId, and a
+        // restored workflow arrives enabled, so the fill in /enable never runs for it. Without a
+        // principal here the disaster-recovery case breaks: restore succeeds, the workflow shows
+        // as active, and every trigger fire is cancelled as "missing_effective_principal".
         using var src = TestDbFactory.Create();
         await SeedFullAsync(src);
         var backup = await ExportAsync(src, AllSections);

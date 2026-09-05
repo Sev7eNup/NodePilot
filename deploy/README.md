@@ -24,6 +24,7 @@ The service runs under one of:
 |---|---|
 | [Build-Artifact.ps1](Build-Artifact.ps1) | Builds `out\NodePilot-<version>.zip` from the repository (dotnet publish + PowerShell module staging into `<stage>\Modules` + operator clients into `<stage>\tools\{np,mcp}` + npm build + template) and signs the manifest (detached CMS) |
 | [MachinePath.ps1](MachinePath.ps1) | Pure PATH string helpers, shared by install/update/uninstall — idempotently appends `<install>\tools\np` to the machine PATH and removes it again. Tests: `Test-MachinePath.ps1` |
+| [SwitcherConfig.ps1](SwitcherConfig.ps1) | Reads and writes the Switcher's `serverUrl` in `switcher.json`, shared by install and update — an in-place text rewrite, not a `ConvertTo-Json` round-trip, so the rest of the template survives untouched. Tests: `Test-SwitcherConfig.ps1` |
 | [Install-NodePilot.ps1](Install-NodePilot.ps1) | The main installer — service, ACLs, firewall, certificate key access |
 | [ArtifactSecurity.ps1](ArtifactSecurity.ps1) | Shared signing/verification logic (manifest + `.p7s`); dot-sourced by build/install/update |
 | [Preflight.ps1](Preflight.ps1) | Shared **side-effect-free** readiness checks (runtime, certificate, **HTTP/HTTPS ports bindable**, gMSA, database reachability, TDS 8.0 version, service identity, domain membership); dot-sourced by install |

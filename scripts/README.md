@@ -75,9 +75,14 @@ engine-local configurations (log/returnData). `{{manual.<key>}}` is a flat runSc
 stays literal in configurations — which is why all trigger samples use `{{trg.param.X}}`.
 
 > **Important:** trigger-fired runs need an *effective principal* (`Workflow.PublishedByUserId`),
-> otherwise they are aborted with `missing_effective_principal` (enterprise SSO hardening). Import does
-> not set it — **publish** the workflow (not just enable it), or set `PublishedByUserId`, and then
-> trigger runs go through cleanly.
+> otherwise they are aborted with `missing_effective_principal` (enterprise SSO hardening). Publish,
+> import, duplicate, restore and `/enable` all establish one — `/enable` stamps the enabling user
+> when the column is still empty and never overwrites an existing publisher, so enabling an imported
+> sample is enough. Two cases still need a hand. A workflow that reached `IsEnabled=true` without
+> passing any of those paths (first-boot provisioning) is not repaired by pressing enable, because
+> enable on an already-enabled workflow is a no-op: **publish** it once, or disable and re-enable it.
+> And a workflow whose publisher was deactivated keeps failing as `effective_principal_inactive`
+> until it is published again.
 
 ## Reference / anchor (not part of the import set)
 

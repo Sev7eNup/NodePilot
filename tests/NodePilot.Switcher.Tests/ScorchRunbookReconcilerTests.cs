@@ -105,6 +105,63 @@ public sealed class ScorchRunbookReconcilerTests
             .And.Contain(allowed.Id.ToString());
     }
 
+    // A runbook that was already running when the switch began settles the same way: its job may
+    // leave the active set before the first verification read, and must not count as missing.
+    [Fact]
+    public async Task Reconcile_WhenAPreExistingRunningJobFinishesBeforeVerification_Settles()
+    {
+        var allowed = new ScorchRunbook(Guid.NewGuid(), "Keep");
+        var inventoryRead = false;
+        var client = new StatefulScorchClient([allowed])
+        {
+            // The inventory read still sees the job; it is gone from every read after it.
+            BeforeJobListRead = self =>
+            {
+                if (inventoryRead) self.Jobs.Clear();
+                inventoryRead = true;
+            },
+        };
+        client.Jobs.Add(new ScorchJob(Guid.NewGuid(), allowed.Id, "Running"));
+        var reconciler = new ScorchRunbookReconciler(new FixedScorchFactory(client), new RecordingLogger());
+
+        await reconciler.ReconcileAsync(
+            Configuration(reconciliationTimeoutSeconds: 5), [allowed.Name], null, CancellationToken.None);
+
+        client.Started.Should().BeEmpty();
+        client.Stopped.Should().BeEmpty();
+    }
+
+    // The pre-existing job finishes while the loop still waits for a second runbook to reach
+    // Running, so the settled set has to survive across polls.
+    [Fact]
+    public async Task Reconcile_WhenAPreExistingRunningJobFinishesWhileAnotherStarts_Settles()
+    {
+        var alreadyRunning = new ScorchRunbook(Guid.NewGuid(), "Keep");
+        var started = new ScorchRunbook(Guid.NewGuid(), "Start");
+        var client = new StatefulScorchClient([alreadyRunning, started])
+        {
+            StartedJobStatus = "Pending",
+            BeforeJobListRead = self =>
+            {
+                if (self.Started.Count == 0) return; // the inventory read, before anything is started
+                if (self.Jobs.RemoveAll(job => job.RunbookId == alreadyRunning.Id) > 0) return;
+                var index = self.Jobs.FindIndex(job => job.RunbookId == started.Id);
+                self.Jobs[index] = self.Jobs[index] with { Status = "Running" };
+            },
+        };
+        client.Jobs.Add(new ScorchJob(Guid.NewGuid(), alreadyRunning.Id, "Running"));
+        var reconciler = new ScorchRunbookReconciler(new FixedScorchFactory(client), new RecordingLogger());
+
+        await reconciler.ReconcileAsync(
+            Configuration(reconciliationTimeoutSeconds: 5),
+            [alreadyRunning.Name, started.Name],
+            null,
+            CancellationToken.None);
+
+        client.Started.Should().Equal(started.Id);
+        client.Stopped.Should().BeEmpty();
+    }
+
     private static ScorchWorkloadConfiguration Configuration(int reconciliationTimeoutSeconds = 60) =>
         new(@"\\server\share\scorch.txt", "http://localhost:81",
             ReconciliationTimeoutSeconds: reconciliationTimeoutSeconds);
@@ -124,13 +181,18 @@ public sealed class ScorchRunbookReconcilerTests
         public List<IReadOnlyList<string>> StartedOn { get; } = [];
         public List<Guid> Stopped { get; } = [];
         public string StartedJobStatus { get; init; } = "Running";
+        // Lets a test change SCOrch state between the reconciler's job-list reads.
+        public Action<StatefulScorchClient>? BeforeJobListRead { get; init; }
         public void Dispose() { }
         public Task<IReadOnlyList<ScorchRunbook>> ListRunbooksAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<ScorchRunbook>>(Runbooks.ToArray());
         public Task<IReadOnlyList<ScorchRunbookServer>> ListRunbookServersAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<ScorchRunbookServer>>(RunbookServers.ToArray());
-        public Task<IReadOnlyList<ScorchJob>> ListJobsAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<ScorchJob>>(Jobs.ToArray());
+        public Task<IReadOnlyList<ScorchJob>> ListJobsAsync(CancellationToken cancellationToken)
+        {
+            BeforeJobListRead?.Invoke(this);
+            return Task.FromResult<IReadOnlyList<ScorchJob>>(Jobs.ToArray());
+        }
         public Task StartRunbookAsync(
             Guid runbookId,
             IReadOnlyList<string> runbookServers,

@@ -15,7 +15,7 @@ Fortschritt via SignalR. Mit `debug: true` → Breakpoints, `StepPaused`, Resume
 | Endpoint | Semantik |
 |---|---|
 | `POST /execute` | Startet Lauf |
-| `POST /enable` / `/disable` | Kill-Switch. `enable` verlangt einen **lock-freien** Workflow — ein bestehender Lock (auch der eigene) liefert `423`; aus dem Edit-Modus heraus wird stattdessen publiziert. `disable` ignoriert Locks. |
+| `POST /enable` / `/disable` | Kill-Switch. `enable` verlangt einen **lock-freien** Workflow — ein bestehender Lock (auch der eigene) liefert `423`; aus dem Edit-Modus heraus wird stattdessen publiziert. `enable` prüft zusätzlich die gespeicherte Definition: ein schwaches Webhook-HMAC-Secret liefert `400 weak_webhook_hmac_secret`, ein `scheduleTrigger`, dessen Cron Quartz nicht parst, liefert `400 invalid_cron_expression`. Dabei wird das Runtime-Principal (`PublishedByUserId`) mit dem aktivierenden User gefüllt, falls der Workflow keines hat; ein vorhandenes wird nie ersetzt — ein Caller ohne User-Id bekommt `401` statt eines Workflows, der nie feuern könnte. Ein bereits aktiver Workflow ist ein No-Op (`204`) und wird deshalb **nicht** gestempelt: dafür Disable-dann-Enable oder einmal Publish. `disable` ignoriert Locks und schreibt das Principal nie. |
 | `POST /cancel-all` | Cancelt alle Running-Executions des Workflows |
 | `PUT /concurrency-limit` | Begrenzt, wie viele Ausführungen gleichzeitig laufen. Body: `{"maxConcurrentExecutions": 5}`, oder `null` für unbegrenzt. Die Property ist Pflicht — ein leerer Body ist ein `400`, damit ein Client das Limit nie durch Weglassen löscht. `0` wird abgelehnt; dafür den Workflow deaktivieren. |
 | `POST /executions/{id}/cancel|retry|resume` | Einzelner Lauf |
@@ -51,7 +51,7 @@ Workflows haben einen per-User Edit-Lock (`CheckedOutByUserId` + `CheckedOutAt`)
 |---|---|
 | `POST /lock` | Atomar `IsEnabled=false` + Lock-Fields setzen. 409 wenn schon gelockt. |
 | `POST /unlock` | Lock-Fields auf null. `IsEnabled` bleibt unverändert. |
-| `POST /publish` | Atomar: Save + `IsEnabled=true` + Unlock. |
+| `POST /publish` | Atomar: Save + `IsEnabled=true` + Unlock. Die übergebene Definition wird vorher validiert: ein schwaches Webhook-HMAC-Secret liefert `400 weak_webhook_hmac_secret`, eine für Quartz ungültige Cron-Expression liefert `400 invalid_cron_expression`. |
 | `POST /force-unlock` | Admin-only. Bricht fremden Lock. |
 
 ## UX-Flow

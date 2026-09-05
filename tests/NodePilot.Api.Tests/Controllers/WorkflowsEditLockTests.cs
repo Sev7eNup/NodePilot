@@ -237,6 +237,114 @@ public class WorkflowsEditLockTests
         workflow.IsEnabled.Should().BeFalse();
     }
 
+    // --- Enable establishes the runtime principal ---------------------------------------------
+
+    private const string ManualTriggerDefinition =
+        """{"nodes":[{"id":"t","type":"activity","data":{"activityType":"manualTrigger"}}],"edges":[]}""";
+
+    [Fact]
+    public async Task Enable_WorkflowWithoutPublisher_StampsEnablingUserAsEffectivePrincipal()
+    {
+        var db = CreateContext();
+        await SeedUserAsync(db, OwnerId, "alice");
+        var audit = new CapturingAuditWriter();
+        var h = NewHarness(db, audit);
+
+        var created = await h.Workflows.Create(
+            new CreateWorkflowRequest("W", null, ManualTriggerDefinition), CancellationToken.None);
+        var id = ((WorkflowResponse)((CreatedAtActionResult)created.Result!).Value!).Id;
+
+        db.ChangeTracker.Clear();
+        var draft = await db.Workflows.AsNoTracking().SingleAsync(w => w.Id == id);
+        draft.PublishedByUserId.Should().BeNull("create is a draft and must not claim runtime authority");
+        draft.CheckedOutByUserId.Should().Be(OwnerId);
+
+        (await h.Editing.Unlock(id, CancellationToken.None)).Result.Should().BeOfType<OkObjectResult>();
+        (await h.Workflows.Enable(id, CancellationToken.None)).Should().BeOfType<NoContentResult>();
+
+        db.ChangeTracker.Clear();
+        var saved = await db.Workflows.AsNoTracking().SingleAsync(w => w.Id == id);
+        saved.IsEnabled.Should().BeTrue();
+        saved.PublishedByUserId.Should().Be(OwnerId,
+            "an enabled workflow without an effective principal has every automated fire "
+            + "terminalised as missing_effective_principal");
+        audit.Calls.Should().Contain(c => c.Action == "WORKFLOW_ENABLED"
+                                          && c.Details!.Contains("\"effectivePrincipalEstablished\":true"));
+    }
+
+    [Fact]
+    public async Task Enable_WorkflowWithExistingPublisher_KeepsOriginalEffectivePrincipal()
+    {
+        var db = CreateContext();
+        var publisher = Guid.NewGuid();
+        var w = NewWorkflow(enabled: false, lockedBy: null);
+        w.PublishedByUserId = publisher;
+        db.Workflows.Add(w);
+        await db.SaveChangesAsync();
+
+        var audit = new CapturingAuditWriter();
+        var h = NewHarness(db, audit, userId: OtherUserId);
+        var result = await h.Workflows.Enable(w.Id, CancellationToken.None);
+
+        result.Should().BeOfType<NoContentResult>();
+        db.ChangeTracker.Clear();
+        var saved = await db.Workflows.AsNoTracking().SingleAsync(x => x.Id == w.Id);
+        saved.IsEnabled.Should().BeTrue();
+        saved.PublishedByUserId.Should().Be(publisher,
+            "re-enabling is an operational action and must not move runtime authority to the enabling user");
+        audit.Calls.Should().Contain(c => c.Action == "WORKFLOW_ENABLED"
+                                          && c.Details!.Contains("\"effectivePrincipalEstablished\":false"));
+    }
+
+    [Fact]
+    public async Task Enable_WorkflowWithoutPublisherAndNoCallerId_ReturnsUnauthorized()
+    {
+        var db = CreateContext();
+        var w = NewWorkflow(enabled: false, lockedBy: null);
+        db.Workflows.Add(w);
+        await db.SaveChangesAsync();
+
+        var h = NewHarness(db);
+        // Principal without a NameIdentifier claim: GetCurrentUserId() is null, so no principal
+        // could be stamped. Fail closed instead of enabling a workflow that can never fire.
+        h.Workflows.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext
+            {
+                User = new System.Security.Claims.ClaimsPrincipal(
+                    new System.Security.Claims.ClaimsIdentity(
+                        new[] { new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, "Admin") },
+                        "TestAuth")),
+            },
+        };
+
+        var result = await h.Workflows.Enable(w.Id, CancellationToken.None);
+
+        result.Should().BeOfType<UnauthorizedResult>();
+        db.ChangeTracker.Clear();
+        var saved = await db.Workflows.AsNoTracking().SingleAsync(x => x.Id == w.Id);
+        saved.IsEnabled.Should().BeFalse();
+        saved.PublishedByUserId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Disable_WorkflowWithoutPublisher_LeavesEffectivePrincipalUnset()
+    {
+        var db = CreateContext();
+        var w = NewWorkflow(enabled: true, lockedBy: null);
+        db.Workflows.Add(w);
+        await db.SaveChangesAsync();
+
+        var h = NewHarness(db);
+        var result = await h.Workflows.Disable(w.Id, CancellationToken.None);
+
+        result.Should().BeOfType<NoContentResult>();
+        db.ChangeTracker.Clear();
+        var saved = await db.Workflows.AsNoTracking().SingleAsync(x => x.Id == w.Id);
+        saved.IsEnabled.Should().BeFalse();
+        saved.PublishedByUserId.Should().BeNull("the kill switch never stamps runtime authority");
+    }
+
     [Fact]
     public async Task Disable_WhenWorkflowMovesAfterAuthorization_Returns409AndKeepsCurrentState()
     {
@@ -620,9 +728,8 @@ public class WorkflowsEditLockTests
         copy.TriggerTypesJson.Should().Be(expectedMetadata.TriggerTypesJson);
         copy.Version.Should().Be(1, "a duplicate starts a distinct monotonically-versioned history");
         copy.PublishedByUserId.Should().NotBeNull(
-            "every automated dispatch resolves its principal from this column and /enable never "
-            + "writes it, so a copy without one had every trigger fire rejected as "
-            + "missing_effective_principal while the workflow displayed itself as active");
+            "every automated dispatch resolves its principal from this column; stamping the "
+            + "duplicating user keeps the copy's runtime authority off whoever later enables it");
     }
 
     private sealed class CallbackAuthorizationService(
