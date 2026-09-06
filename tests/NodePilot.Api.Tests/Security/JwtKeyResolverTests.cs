@@ -44,10 +44,13 @@ public class JwtKeyResolverTests
             return root;
         }
 
+        // Only the DACL is written, never the owner. Setting the owner needs a privilege the
+        // caller may not hold — under a scheduled task it fails with UnauthorizedAccessException
+        // — and it is redundant anyway: RestrictedFileWriter.BuildTrustedSids accepts both
+        // identities Windows assigns here, the creating user and BUILTIN\Administrators.
         var owner = WindowsIdentity.GetCurrent().User
             ?? throw new InvalidOperationException("Current Windows identity has no SID.");
         var acl = new DirectorySecurity();
-        acl.SetOwner(owner);
         acl.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
         acl.AddAccessRule(new FileSystemAccessRule(
             owner,
