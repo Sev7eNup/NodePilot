@@ -163,8 +163,9 @@ public static class NotificationRuleSemantics
             return ConditionEvaluator.Evaluate(doc.RootElement,
                 new ConditionContext(EmptyResults, null, null, null, ctx.ToFieldMap()));
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or ConditionEvaluationException)
         {
+            // A filter that cannot be evaluated matches nothing.
             return false;
         }
     }

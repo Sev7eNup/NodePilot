@@ -23,19 +23,29 @@ public class DashboardController : ControllerBase
     private readonly IClusterStateProvider? _cluster;
     private readonly IOptionsMonitor<LlmOptions>? _llmOptions;
     private readonly IMaintenanceWindowEvaluator? _maintenance;
+    private readonly IConfiguration? _configuration;
 
     public DashboardController(NodePilotDbContext db,
         IResourceAuthorizationService authz,
         IClusterStateProvider? cluster = null,
         IOptionsMonitor<LlmOptions>? llmOptions = null,
-        IMaintenanceWindowEvaluator? maintenance = null)
+        IMaintenanceWindowEvaluator? maintenance = null,
+        IConfiguration? configuration = null)
     {
         _db = db;
         _authz = authz;
         _cluster = cluster;
         _llmOptions = llmOptions;
         _maintenance = maintenance;
+        _configuration = configuration;
     }
+
+    /// <summary>
+    /// The same "long-running" threshold the operations console and the alerting collector use
+    /// (<c>Alerting:LongRunningSeconds</c>), read per request because the section is hot-reloadable.
+    /// </summary>
+    private int LongRunningSeconds()
+        => Math.Max(1, _configuration?.GetValue("Alerting:LongRunningSeconds", 600) ?? 600);
 
     [HttpGet("dashboard")]
     public async Task<ActionResult<DashboardStats>> Get(CancellationToken ct, [FromQuery] int windowHours = 24)
@@ -47,7 +57,7 @@ public class DashboardController : ControllerBase
         var now = DateTime.UtcNow;
         var sinceWindow = now.AddHours(-windowHours);
         var since7d = now.AddDays(-7);
-        var longRunningCutoff = now.AddMinutes(-30);
+        var longRunningCutoff = now.AddSeconds(-LongRunningSeconds());
 
         // RBAC: dashboard aggregates must respect folder permissions. Compute the
         // accessible-folder set once and reuse for every workflow + execution query

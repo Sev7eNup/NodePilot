@@ -236,7 +236,7 @@ public sealed class SystemAlertEvaluator
             using var doc = JsonDocument.Parse(filterJson);
             return ConditionEvaluator.Evaluate(doc.RootElement, new ConditionContext(EmptyResults, null, null, null, fields));
         }
-        catch (JsonException) { return false; }
+        catch (Exception ex) when (ex is JsonException or ConditionEvaluationException) { return false; }
     }
 
     /// <summary>Flattens an observation's fields (plus its <c>sourceId</c>) to the string map

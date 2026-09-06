@@ -8,6 +8,8 @@ Ein Workflow ist ein gerichteter Ablauf. Nodes stellen Trigger und Activities da
 - **Activity-Nodes** sind die Arbeitsschritte. Jede Activity hat einen `activityType`, optional ein `targetMachineId` (Remote) und ein `config`-Objekt.
 - **Edges** verbinden Nodes und tragen **Conditions**, die entscheiden, ob der Target-Node ausgeführt wird.
 
+Conditions sind fail-closed. Eine Condition, die sich nicht auswerten lässt — unbekannter Typ oder Operator, fehlender Operand, ein Kurzausdruck außer `<step>.success|failed`, ein Verweis auf einen Step, den es nicht gibt — wird beim Speichern und Veröffentlichen abgelehnt, und ein Lauf, der trotzdem auf eine trifft, scheitert und nennt die Kante. Ein Vergleich, dessen Variable in diesem Lauf keinen Wert hat (Step ohne Ergebnis, fehlender Output-Parameter, nicht vorhandenes Global oder Trigger-Input), trifft nie zu, auch nicht hinter `not`.
+
 ## Activity-Scopes
 
 | Scope | Ausführung |

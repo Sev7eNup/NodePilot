@@ -60,25 +60,42 @@ public class EvaluateConditionTests
     }
 
     [Fact]
-    public void EvaluateCondition_UnknownStep_ReturnsTrue()
+    public void EvaluateCondition_UnknownStep_ReturnsFalse()
     {
+        // A step without a result in this run neither succeeded nor failed — the edge stays shut.
         var results = new Dictionary<string, ActivityResult>();
 
-        var result = ConditionEvaluator.EvaluateLegacy("nonexistent.success", results);
-
-        result.Should().BeTrue();
+        ConditionEvaluator.EvaluateLegacy("nonexistent.success", results).Should().BeFalse();
+        ConditionEvaluator.EvaluateLegacy("nonexistent.failed", results).Should().BeFalse();
     }
 
-    [Fact]
-    public void EvaluateCondition_MalformedCondition_ReturnsTrue()
+    [Theory]
+    [InlineData("malformed-no-dot")]
+    [InlineData("step1.done")]
+    [InlineData(".success")]
+    public void EvaluateCondition_MalformedCondition_Throws(string condition)
     {
         var results = new Dictionary<string, ActivityResult>
         {
             ["step1"] = new() { Success = true }
         };
 
-        var result = ConditionEvaluator.EvaluateLegacy("malformed-no-dot", results);
+        var act = () => ConditionEvaluator.EvaluateLegacy(condition, results);
 
-        result.Should().BeTrue();
+        act.Should().Throw<ConditionEvaluationException>()
+            .WithMessage("*must have the form <stepId>.success or <stepId>.failed*");
+    }
+
+    [Fact]
+    public void EvaluateCondition_OutputVariableAlias_ResolvesToTheStep()
+    {
+        var results = new Dictionary<string, ActivityResult>
+        {
+            ["step-1"] = new() { Success = false }
+        };
+        var aliases = new Dictionary<string, string> { ["hostInfo"] = "step-1" };
+
+        ConditionEvaluator.EvaluateLegacy("hostInfo.failed", results, aliases).Should().BeTrue();
+        ConditionEvaluator.EvaluateLegacy("hostInfo.success", results, aliases).Should().BeFalse();
     }
 }

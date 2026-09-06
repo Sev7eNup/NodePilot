@@ -26,9 +26,13 @@ Read-Mode akzeptiert genau ein read-only SQL-Statement. PostgreSQL nutzt zusaetz
 READ-ONLY-Transaktion; SQL Server und SQLite verlassen sich auf Single-Statement-Guard,
 Rollback und den DB-Principal.
 
-Der NodePilot-DB-Login muss deshalb least-privilege bleiben: kein `sysadmin`, kein `db_owner`,
-keine Rechte auf `xp_cmdshell`, OLE Automation oder SQL-Agent/OS-Command-Prozeduren. DbAdmin
-Read-Mode ist Defense-in-Depth, kein Ersatz fuer einen gehaerteten Datenbank-Principal.
+Der NodePilot-DB-Login muss deshalb auf Server-Ebene least-privilege bleiben: kein `sysadmin`
+und keine andere Serverrolle, keine Rechte auf `xp_cmdshell`, OLE Automation oder
+SQL-Agent/OS-Command-Prozeduren, kein Zugriff auf fremde Datenbanken. Innerhalb der
+NodePilot-Datenbank braucht der Login dagegen `db_owner` — der Migrations-Bootstrapper wendet
+das Schema beim Start an (siehe [Produktions-Deployment](../deployment/production)); die Rolle ist
+datenbankgebunden und gewaehrt nichts auf dem Server. DbAdmin Read-Mode ist Defense-in-Depth,
+kein Ersatz fuer einen gehaerteten Datenbank-Principal.
 
 ## File Path Roots
 

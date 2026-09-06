@@ -26,9 +26,13 @@ Read mode accepts exactly one read-only SQL statement. PostgreSQL additionally u
 transaction; SQL Server and SQLite rely on the single-statement guard, a rollback, and the database
 principal.
 
-The NodePilot database login therefore has to stay least-privilege: no `sysadmin`, no `db_owner`, no
-rights on `xp_cmdshell`, OLE Automation or SQL Agent/OS command procedures. Database-admin read mode
-is defence in depth, not a substitute for a hardened database principal.
+The NodePilot database login therefore has to stay least-privilege at the server level: no
+`sysadmin` or other server role, no rights on `xp_cmdshell`, OLE Automation or SQL Agent/OS command
+procedures, and no access to databases other than its own. Inside the NodePilot database the login
+does need `db_owner` — the migration bootstrapper applies the schema at start-up (see
+[Production deployment](../deployment/production)); that role is database-scoped and grants nothing
+on the server. Database-admin read mode is defence in depth, not a substitute for a hardened
+database principal.
 
 ## File path roots
 

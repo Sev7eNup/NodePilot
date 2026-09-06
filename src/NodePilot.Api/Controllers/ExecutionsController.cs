@@ -504,14 +504,9 @@ public class ExecutionsController : ControllerBase
 
             if (transitioned == 1)
             {
-                await _db.StepExecutions
-                    .Where(step => step.WorkflowExecutionId == id
-                        && step.Status == ExecutionStatus.Running)
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(step => step.Status, ExecutionStatus.Cancelled)
-                        .SetProperty(step => step.CompletedAt, DateTime.UtcNow)
-                        .SetProperty(step => step.ErrorOutput, step => step.ErrorOutput
-                            ?? "Step force-cancelled (parent execution was orphaned)."), ct);
+                await ExecutionStateLifecycle.CancelOrphanedStepsAsync(
+                    _db.StepExecutions, id, DateTime.UtcNow,
+                    "Step force-cancelled (parent execution was orphaned).", ct);
             }
         }
 
@@ -551,15 +546,22 @@ public class ExecutionsController : ControllerBase
             {
                 // Zombie row left over from a previous process — reconcile in DB so it
                 // doesn't stay Running forever. Single UPDATE statement, no load round-trip.
-                await _db.WorkflowExecutions
+                var now = DateTime.UtcNow;
+                var transitioned = await _db.WorkflowExecutions
                     .Where(e => e.Id == execId
                                 && (e.Status == ExecutionStatus.Running || e.Status == ExecutionStatus.Pending))
                     .ExecuteUpdateAsync(s => s
                         .SetProperty(e => e.Status, ExecutionStatus.Cancelled)
                         .SetProperty(e => e.CancelledBy, "cancelAll")
-                        .SetProperty(e => e.CompletedAt, DateTime.UtcNow)
+                        .SetProperty(e => e.CompletedAt, now)
                         .SetProperty(e => e.ErrorMessage, e => e.ErrorMessage ?? "Force-cancelled via /cancel-all (orphaned from a previous API process).")
                     , ct);
+                if (transitioned == 1)
+                {
+                    await ExecutionStateLifecycle.CancelOrphanedStepsAsync(
+                        _db.StepExecutions, execId, now,
+                        "Step force-cancelled via /cancel-all (parent execution was orphaned).", ct);
+                }
             }
         }
 

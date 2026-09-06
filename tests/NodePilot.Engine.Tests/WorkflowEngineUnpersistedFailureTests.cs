@@ -655,6 +655,15 @@ public class WorkflowEngineUnpersistedFailureTests
             "a non-database persistence error must escape StepRunner and remain diagnosable");
         successorCalls.Should().Be(0,
             "the scheduler must abort rather than reinterpret persistence failure as an activity result");
+
+        // The step whose terminal write failed is still Running in the database at this point.
+        // Nothing revisits steps of a finished execution, so the engine's terminal write sweeps it.
+        db.ChangeTracker.Clear();
+        var orphan = await db.StepExecutions.SingleAsync(s => s.WorkflowExecutionId == execution.Id && s.StepId == "step-1");
+        orphan.Status.Should().Be(ExecutionStatus.Cancelled,
+            "a step must not stay Running under a terminal execution");
+        orphan.CompletedAt.Should().NotBeNull();
+        orphan.ErrorOutput.Should().Contain("did not reach a terminal state");
     }
 
     [Theory]

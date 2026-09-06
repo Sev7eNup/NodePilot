@@ -57,10 +57,11 @@ public class ConditionEvaluatorTests
     }
 
     [Fact]
-    public void Evaluate_IsEmpty_OnMissingVariable()
+    public void Evaluate_IsEmpty_OnMissingVariable_IsUndecidable()
     {
+        // A step without a result is not "empty output"; the comparison cannot be decided.
         var expr = Expr(@"{""type"":""comparison"",""left"":{""kind"":""variable"",""stepId"":""ghost"",""field"":""output""},""op"":""isEmpty""}");
-        ConditionEvaluator.Evaluate(expr, MakeResults()).Should().BeTrue();
+        ConditionEvaluator.Evaluate(expr, MakeResults()).Should().BeFalse();
     }
 
     [Fact]
@@ -202,13 +203,74 @@ public class ConditionEvaluatorTests
     }
 
     [Fact]
-    public void Evaluate_GlobalSource_MissingName_ReturnsEmpty()
+    public void Evaluate_GlobalSource_MissingName_IsUndecidable()
     {
-        // Safe-fail: a reference to an undeclared global returns "" rather than throwing,
-        // matching the existing behaviour for missing step variables.
+        // A global that does not exist is not "empty" — the comparison cannot be decided, so
+        // the condition does not hold.
         var expr = Expr(@"{""type"":""comparison"",""left"":{""kind"":""variable"",""source"":""global"",""name"":""NOPE""},""op"":""isEmpty""}");
         var globals = new Dictionary<string, string>(StringComparer.Ordinal) { ["ENV"] = "production" };
-        ConditionEvaluator.Evaluate(expr, MakeResults(), null, globals).Should().BeTrue();
+        ConditionEvaluator.Evaluate(expr, MakeResults(), null, globals).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(@"{""type"":""comparison"",""left"":{""kind"":""variable"",""stepId"":""ghost"",""field"":""output""},""op"":""!="",""right"":{""kind"":""literal"",""value"":""X""}}")]
+    [InlineData(@"{""type"":""comparison"",""left"":{""kind"":""variable"",""stepId"":""ghost"",""field"":""output""},""op"":""isEmpty""}")]
+    [InlineData(@"{""type"":""comparison"",""left"":{""kind"":""variable"",""stepId"":""ghost"",""field"":""output""},""op"":""contains"",""right"":{""kind"":""literal"",""value"":""""}}")]
+    [InlineData(@"{""type"":""comparison"",""left"":{""kind"":""variable"",""stepId"":""stepA"",""field"":""param"",""paramName"":""missing""},""op"":""!="",""right"":{""kind"":""literal"",""value"":""0""}}")]
+    [InlineData(@"{""type"":""not"",""child"":{""type"":""comparison"",""left"":{""kind"":""variable"",""stepId"":""ghost"",""field"":""output""},""op"":""=="",""right"":{""kind"":""literal"",""value"":""X""}}}")]
+    [InlineData(@"{""type"":""group"",""op"":""OR"",""children"":[{""type"":""comparison"",""left"":{""kind"":""variable"",""stepId"":""ghost"",""field"":""output""},""op"":""isEmpty""}]}")]
+    public void Evaluate_UnresolvedOperand_NeverSatisfiesTheCondition(string json)
+    {
+        // != / isEmpty / contains "" used to be true for a value that never arrived, and `not`
+        // turned every fail-closed answer back into fail-open. An undecidable comparison stays
+        // undecidable through negation and groups.
+        ConditionEvaluator.Evaluate(Expr(json), MakeResults()).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Evaluate_UnresolvedOperand_DoesNotDecideAnAndGroupThatIsAlreadyFalse()
+    {
+        var expr = Expr(@"{""type"":""group"",""op"":""AND"",""children"":[
+            {""type"":""comparison"",""left"":{""kind"":""variable"",""stepId"":""ghost"",""field"":""output""},""op"":""isEmpty""},
+            {""type"":""comparison"",""left"":{""kind"":""literal"",""value"":""a""},""op"":""=="",""right"":{""kind"":""literal"",""value"":""b""}}]}");
+        ConditionEvaluator.Evaluate(expr, MakeResults()).Should().BeFalse();
+
+        var orWithTrue = Expr(@"{""type"":""group"",""op"":""OR"",""children"":[
+            {""type"":""comparison"",""left"":{""kind"":""variable"",""stepId"":""ghost"",""field"":""output""},""op"":""isEmpty""},
+            {""type"":""comparison"",""left"":{""kind"":""literal"",""value"":""a""},""op"":""=="",""right"":{""kind"":""literal"",""value"":""a""}}]}");
+        ConditionEvaluator.Evaluate(orWithTrue, MakeResults()).Should().BeTrue(
+            "a decided true input satisfies OR regardless of an undecidable sibling");
+    }
+
+    [Fact]
+    public void Evaluate_EventSource_MissingField_ReadsAsEmpty()
+    {
+        // Alerting filters run against a declared field catalog: an absent field is empty, not
+        // undecidable, so `isEmpty` guards keep working for rule authors.
+        var expr = Expr(@"{""type"":""comparison"",""left"":{""kind"":""variable"",""source"":""event"",""name"":""errorMessage""},""op"":""isEmpty""}");
+        var fields = new Dictionary<string, string>(StringComparer.Ordinal) { ["status"] = "Failed" };
+        ConditionEvaluator.Evaluate(expr, new ConditionContext(MakeResults(), null, null, null, fields)).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(@"""just a string""", "condition must be an object")]
+    [InlineData(@"{""op"":""AND"",""children"":[]}", "condition has no 'type'")]
+    [InlineData(@"{""type"":""maybe""}", "unknown condition type 'maybe'")]
+    [InlineData(@"{""type"":""group"",""op"":""XOR"",""children"":[]}", "group 'op' must be AND or OR")]
+    [InlineData(@"{""type"":""group"",""op"":""AND""}", "group requires a 'children' array")]
+    [InlineData(@"{""type"":""not""}", "'not' requires a child condition")]
+    [InlineData(@"{""type"":""comparison"",""left"":{""kind"":""literal"",""value"":""a""}}", "comparison has no 'op'")]
+    [InlineData(@"{""type"":""comparison"",""op"":""like"",""left"":{""kind"":""literal"",""value"":""a""}}", "unknown comparison operator 'like'")]
+    [InlineData(@"{""type"":""comparison"",""op"":""==""}", "comparison has no left operand")]
+    [InlineData(@"{""type"":""comparison"",""op"":""contains"",""left"":{""kind"":""literal"",""value"":""a""}}", "operator 'contains' requires a right operand")]
+    [InlineData(@"{""type"":""comparison"",""op"":""isEmpty"",""left"":{""kind"":""variable""}}", "step operand requires a 'stepId'")]
+    [InlineData(@"{""type"":""comparison"",""op"":""isEmpty"",""left"":{""kind"":""variable"",""stepId"":""stepA"",""field"":""param""}}", "operand field 'param' requires a 'paramName'")]
+    [InlineData(@"{""type"":""comparison"",""op"":""isEmpty"",""left"":{""kind"":""variable"",""source"":""global""}}", "global operand requires a 'name'")]
+    public void Evaluate_MalformedExpression_Throws(string json, string expectedMessage)
+    {
+        // Every one of these used to evaluate to true and open the edge.
+        var act = () => ConditionEvaluator.Evaluate(Expr(json), MakeResults());
+        act.Should().Throw<ConditionEvaluationException>().WithMessage(expectedMessage);
     }
 
     [Theory]

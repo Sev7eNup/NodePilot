@@ -15,7 +15,7 @@ Activities can make results available to subsequent activities. They are accesse
 
 `hostInfo` is the **output variable** of the preceding activity. Without an output variable, the node ID is used.
 
-A `{{manual.NAME}}` the run does not carry makes the step fail with "Unknown trigger input(s)" — the placeholder does not silently travel on as text.
+A `{{manual.NAME}}` the run does not carry makes the step fail with "Unknown trigger input(s)" — the placeholder does not silently travel on as text. The same holds for a `{{globals.NAME}}` that does not exist ("Unknown global variable(s)"), including inside a `runScript`. If the global variables cannot be loaded at all, a workflow that references them fails before its first step instead of running with placeholder text.
 
 ## Visibility: predecessors only
 

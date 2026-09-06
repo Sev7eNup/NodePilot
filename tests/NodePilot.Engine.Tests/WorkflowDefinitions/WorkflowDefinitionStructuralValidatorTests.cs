@@ -379,6 +379,92 @@ public class WorkflowDefinitionStructuralValidatorTests
         result.IsValid.Should().BeTrue();
     }
 
+    // ---------- edge conditions ----------
+
+    private static string TwoNodes(string edgeData) => $$"""
+        { "nodes": [
+            { "id": "n1", "type": "activity", "data": { "activityType": "runScript", "outputVariable": "hostInfo" } },
+            { "id": "n2", "type": "activity", "data": { "activityType": "log" } }
+        ], "edges": [ { "id": "e1", "source": "n1", "target": "n2", "data": {{edgeData}} } ] }
+        """;
+
+    [Theory]
+    [InlineData("n1.success")]
+    [InlineData("n1.failed")]
+    [InlineData("hostInfo.failed")]
+    public void Validate_LegacyConditionOnKnownStepOrAlias_IsValid(string condition)
+    {
+        Validate(TwoNodes($$"""{ "condition": "{{condition}}" }""")).IsValid.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("ghost.success", "edges[0].data.condition references unknown step 'ghost'")]
+    [InlineData("n1.done", "edges[0].data.condition must have the form <stepId>.success or <stepId>.failed")]
+    [InlineData("garbage", "edges[0].data.condition must have the form <stepId>.success or <stepId>.failed")]
+    public void Validate_LegacyConditionMalformedOrUnknownStep_IsInvalid(string condition, string expectedError)
+    {
+        var result = Validate(TwoNodes($$"""{ "condition": "{{condition}}" }"""));
+        result.IsValid.Should().BeFalse();
+        result.Error.Should().Be(expectedError);
+        result.Code.Should().Be("invalid-edge-condition");
+        result.NodeId.Should().Be("n1");
+    }
+
+    [Fact]
+    public void Validate_ConditionNotAString_IsInvalid()
+    {
+        var result = Validate(TwoNodes("""{ "condition": 5 }"""));
+        result.IsValid.Should().BeFalse();
+        result.Error.Should().Be("edges[0].data.condition must be a string");
+    }
+
+    [Fact]
+    public void Validate_WellFormedConditionExpression_IsValid()
+    {
+        var result = Validate(TwoNodes("""
+            { "condition": null, "conditionExpression": { "type": "group", "op": "and", "children": [
+                { "type": "comparison", "op": "==",
+                  "left": { "kind": "variable", "stepId": "hostInfo", "field": "param", "paramName": "exitCode" },
+                  "right": { "kind": "literal", "value": "0" } },
+                { "type": "not", "child": { "type": "comparison", "op": "isEmpty",
+                  "left": { "kind": "variable", "source": "global", "name": "ENV" } } },
+                { "type": "comparison", "op": "isTrue", "left": { "kind": "variable", "source": "manual", "name": "force" } }
+            ] } }
+            """));
+        result.IsValid.Should().BeTrue();
+        result.Error.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("""{ "type": "maybe" }""", "edges[0].data.conditionExpression.type 'maybe' is not a condition type")]
+    [InlineData("""{ "op": "AND", "children": [] }""", "edges[0].data.conditionExpression.type is required")]
+    [InlineData("""{ "type": "group", "op": "XOR", "children": [] }""", "edges[0].data.conditionExpression.op must be AND or OR")]
+    [InlineData("""{ "type": "group", "op": "AND" }""", "edges[0].data.conditionExpression.children must be an array")]
+    [InlineData("""{ "type": "not" }""", "edges[0].data.conditionExpression.child is required")]
+    [InlineData("""{ "type": "comparison", "left": { "kind": "literal", "value": "a" } }""", "edges[0].data.conditionExpression.op is required")]
+    [InlineData("""{ "type": "comparison", "op": "like", "left": { "kind": "literal", "value": "a" } }""", "edges[0].data.conditionExpression.op 'like' is not a comparison operator")]
+    [InlineData("""{ "type": "comparison", "op": "==" }""", "edges[0].data.conditionExpression.left is required")]
+    [InlineData("""{ "type": "comparison", "op": "contains", "left": { "kind": "literal", "value": "a" } }""", "edges[0].data.conditionExpression.right is required for operator 'contains'")]
+    [InlineData("""{ "type": "comparison", "op": "isEmpty", "left": { "kind": "variable", "stepId": "ghost" } }""", "edges[0].data.conditionExpression.left.stepId references unknown step 'ghost'")]
+    [InlineData("""{ "type": "comparison", "op": "isEmpty", "left": { "kind": "variable", "stepId": "n1", "field": "param" } }""", "edges[0].data.conditionExpression.left.paramName is required for field 'param'")]
+    [InlineData("""{ "type": "comparison", "op": "isEmpty", "left": { "kind": "variable", "stepId": "n1", "field": "stdout" } }""", "edges[0].data.conditionExpression.left.field 'stdout' is not an operand field")]
+    [InlineData("""{ "type": "comparison", "op": "isEmpty", "left": { "kind": "variable", "source": "event", "name": "status" } }""", "edges[0].data.conditionExpression.left.source 'event' is not available on a workflow edge")]
+    [InlineData("""{ "type": "group", "op": "OR", "children": [ { "type": "comparison", "op": "==", "left": { "kind": "literal", "value": "a" }, "right": "b" } ] }""", "edges[0].data.conditionExpression.children[0].right must be an object")]
+    public void Validate_MalformedConditionExpression_IsInvalid(string expression, string expectedError)
+    {
+        var result = Validate(TwoNodes($$"""{ "conditionExpression": {{expression}} }"""));
+        result.IsValid.Should().BeFalse();
+        result.Error.Should().Be(expectedError);
+        result.Code.Should().Be("invalid-edge-condition");
+        result.NodeId.Should().Be("n1");
+    }
+
+    [Fact]
+    public void Validate_NullConditionExpression_IsValid()
+    {
+        Validate(TwoNodes("""{ "conditionExpression": null }""")).IsValid.Should().BeTrue();
+    }
+
     // ---------- full happy path ----------
 
     [Fact]

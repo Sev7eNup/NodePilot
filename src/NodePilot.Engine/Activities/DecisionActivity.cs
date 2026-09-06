@@ -69,10 +69,8 @@ public class DecisionActivity : IActivityExecutor
                 continue;
             }
 
-            // Stricter than edge conditions: there, a condition object without `type` means
-            // "always pass" (the default for unconditional edges). Here that would be a
-            // foot-gun — a case mangled by an editor bug would unintentionally override every
-            // other case. So a `type` is mandatory on every decision case.
+            // A case without a `type` is skipped rather than failing the step: a sibling case
+            // can still match. (An edge with such a condition fails the run instead.)
             if (!condEl.TryGetProperty("type", out var typeEl)
                 || typeEl.ValueKind != JsonValueKind.String
                 || string.IsNullOrWhiteSpace(typeEl.GetString()))

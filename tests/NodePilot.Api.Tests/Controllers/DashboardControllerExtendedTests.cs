@@ -2,6 +2,7 @@ using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Core.Enums;
@@ -22,9 +23,11 @@ public class DashboardControllerExtendedTests
     private static DashboardController NewController(
         NodePilot.Data.NodePilotDbContext db,
         string role = "Admin",
-        IClusterStateProvider? cluster = null)
+        IClusterStateProvider? cluster = null,
+        IConfiguration? configuration = null)
     {
-        var controller = new DashboardController(db, new AlwaysAllowAuthorizationService(), cluster);
+        var controller = new DashboardController(db, new AlwaysAllowAuthorizationService(), cluster,
+            configuration: configuration);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
             new[] { new Claim(ClaimTypes.Role, role) }, "TestAuth"));
         controller.ControllerContext = new ControllerContext
@@ -317,16 +320,18 @@ public class DashboardControllerExtendedTests
     }
 
     [Fact]
-    public async Task Get_LongRunning_OnlyCountsRunningOlderThan30min()
+    public async Task Get_LongRunning_OnlyCountsRunningOlderThanTheDefaultAlertingThreshold()
     {
+        // Default Alerting:LongRunningSeconds is 600 — the same threshold the operations console
+        // and the long-running alert use.
         var db = TestDbFactory.Create();
         var wfId = Guid.NewGuid();
         db.Workflows.Add(new Workflow { Id = wfId, Name = "LR", DefinitionJson = "{}", UpdatedAt = DateTime.UtcNow });
         db.WorkflowExecutions.AddRange(
             // Recent Running — not long-running yet
             new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = wfId, Status = ExecutionStatus.Running, StartedAt = DateTime.UtcNow.AddMinutes(-5) },
-            // 35min old Running -> long-running
-            new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = wfId, Status = ExecutionStatus.Running, StartedAt = DateTime.UtcNow.AddMinutes(-35) },
+            // 15min old Running -> long-running
+            new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = wfId, Status = ExecutionStatus.Running, StartedAt = DateTime.UtcNow.AddMinutes(-15) },
             // 35min old but Succeeded -> not long-running (must be Running)
             new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = wfId, Status = ExecutionStatus.Succeeded, StartedAt = DateTime.UtcNow.AddMinutes(-35) });
         await db.SaveChangesAsync();
@@ -334,6 +339,25 @@ public class DashboardControllerExtendedTests
         var stats = Unwrap(await NewController(db).Get(CancellationToken.None));
 
         stats.LongRunningCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Get_LongRunning_HonoursTheConfiguredAlertingThreshold()
+    {
+        var db = TestDbFactory.Create();
+        var wfId = Guid.NewGuid();
+        db.Workflows.Add(new Workflow { Id = wfId, Name = "LR", DefinitionJson = "{}", UpdatedAt = DateTime.UtcNow });
+        db.WorkflowExecutions.AddRange(
+            new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = wfId, Status = ExecutionStatus.Running, StartedAt = DateTime.UtcNow.AddMinutes(-5) },
+            new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = wfId, Status = ExecutionStatus.Running, StartedAt = DateTime.UtcNow.AddMinutes(-15) });
+        await db.SaveChangesAsync();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Alerting:LongRunningSeconds"] = "1800" })
+            .Build();
+
+        var stats = Unwrap(await NewController(db, configuration: configuration).Get(CancellationToken.None));
+
+        stats.LongRunningCount.Should().Be(0, "with a 30 minute threshold neither run is overdue");
     }
 
     [Fact]

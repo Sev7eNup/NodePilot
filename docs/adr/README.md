@@ -23,6 +23,7 @@ than rewriting it (amend in place only for small corrections, as ADR 0007 does).
 | [0012](0012-setup-answer-file-contract-and-artifact-trust.md) | Setup Answer-File Contract and Pinned-Signer Artifact Trust | Implemented |
 | [0013](0013-explicit-junction-fan-in.md) | Explicit Junction Fan-In | Implemented |
 | [0014](0014-durable-execution-dispatch.md) | Durable Execution Dispatch | Implemented |
+| [0015](0015-fail-closed-edge-conditions.md) | Fail-Closed Edge Conditions | Implemented |
 
 ## When does a decision warrant an ADR?
 

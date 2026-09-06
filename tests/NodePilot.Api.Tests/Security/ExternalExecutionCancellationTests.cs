@@ -40,7 +40,12 @@ public sealed class ExternalExecutionCancellationTests : IDisposable
             Status = ExecutionStatus.Pending, StartedAt = DateTime.UtcNow,
             TriggeredBy = "scheduleTrigger",
         };
-        _db.AddRange(user, workflow, execution);
+        var orphanStep = new StepExecution
+        {
+            Id = Guid.NewGuid(), WorkflowExecutionId = execution.Id, StepId = "s1", StepType = "runScript",
+            Status = ExecutionStatus.Running, StartedAt = DateTime.UtcNow,
+        };
+        _db.AddRange(user, workflow, execution, orphanStep);
         await _db.SaveChangesAsync();
 
         var signalCount = 0;
@@ -72,6 +77,10 @@ public sealed class ExternalExecutionCancellationTests : IDisposable
                 candidate.Status == ExecutionStatus.Cancelled
                 && candidate.CancelledBy == "directory-offboarding"
                 && candidate.CompletedAt == now);
+        (await _db.StepExecutions.SingleAsync(candidate => candidate.Id == orphanStep.Id))
+            .Should().Match<StepExecution>(candidate =>
+                candidate.Status == ExecutionStatus.Cancelled && candidate.CompletedAt == now,
+                "a step of a durably cancelled execution has no writer left and must not stay Running");
 
         await ExternalExecutionCancellation.SignalAfterCommitAsync(
             engine.Object,

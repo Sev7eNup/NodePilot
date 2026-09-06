@@ -8,6 +8,8 @@ A workflow is a directed process. Nodes represent triggers and activities. Edges
 - **Activity nodes** are the work steps. Every activity has an `activityType`, optionally a `targetMachineId` (remote) and a `config` object.
 - **Edges** connect nodes and carry **conditions** that decide whether the target node is executed.
 
+Conditions fail closed. A condition that cannot be evaluated — unknown type or operator, missing operand, a shortcut other than `<step>.success|failed`, a reference to a step that does not exist — is rejected when the workflow is saved or published, and a run that still meets one fails and names the edge. A comparison whose variable has no value in this run (a step without a result, a missing output parameter, a global or trigger input that does not exist) never holds, not even behind `not`.
+
 ## Activity scopes
 
 | Scope | Execution |

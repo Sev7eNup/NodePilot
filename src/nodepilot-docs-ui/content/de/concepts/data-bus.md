@@ -15,7 +15,7 @@ Activities können Ergebnisse für nachfolgende Activities bereitstellen. Ein Zu
 
 `hostInfo` ist die **Output Variable** der vorherigen Activity. Ohne Output Variable wird die Node-ID verwendet.
 
-Ein `{{manual.NAME}}`, das der Lauf nicht führt, lässt den Schritt mit „Unknown trigger input(s)" fehlschlagen — der Platzhalter läuft nicht still als Text mit.
+Ein `{{manual.NAME}}`, das der Lauf nicht führt, lässt den Schritt mit „Unknown trigger input(s)" fehlschlagen — der Platzhalter läuft nicht still als Text mit. Dasselbe gilt für ein `{{globals.NAME}}`, das es nicht gibt („Unknown global variable(s)"), auch innerhalb eines `runScript`. Lassen sich die globalen Variablen gar nicht laden, scheitert ein Workflow, der sie referenziert, vor seinem ersten Schritt, statt mit Platzhaltertext zu laufen.
 
 ## Sichtbarkeit: nur Vorgänger
 

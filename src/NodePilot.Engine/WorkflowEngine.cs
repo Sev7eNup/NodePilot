@@ -234,11 +234,11 @@ public class WorkflowEngine : IWorkflowEngine
     /// resolved dict and the
     /// set of variables that exist in the DB but couldn't be decrypted; the caller decides
     /// whether to fail loudly when the workflow actually references one of the broken ones.
-    /// Infrastructure errors (DB unreachable, etc.) are still tolerated as "no globals" so
-    /// a brief outage in the variables table can't poison unrelated workflows that don't
-    /// use them.
+    /// A load failure (store unreachable, etc.) is returned as <c>LoadError</c>: a workflow that
+    /// references globals must not run with placeholder text in place of the values.
     /// </summary>
-    private async Task<NodePilot.Core.Interfaces.GlobalVariableResolutionResult> ResolveGlobalVariablesAsync(
+    private async Task<(NodePilot.Core.Interfaces.GlobalVariableResolutionResult Result, string? LoadError)>
+        ResolveGlobalVariablesAsync(
         string definitionJson,
         Guid executionId,
         CancellationToken ct)
@@ -255,22 +255,27 @@ public class WorkflowEngine : IWorkflowEngine
         // as a literal worked. A false positive here only costs one skipped optimisation.
         if (!definitionJson.Contains("{{globals.", StringComparison.Ordinal)
             && !definitionJson.Contains("\"global\"", StringComparison.Ordinal))
-            return empty;
+            return (empty, null);
 
         try
         {
             await using var scope = _serviceProvider.CreateAsyncScope();
             var store = scope.ServiceProvider.GetService<IGlobalVariableStore>();
-            return store is null
-                ? empty
-                : await store.GetAllResolvedDetailedAsync(ct);
+            return (store is null ? empty : await store.GetAllResolvedDetailedAsync(ct), null);
+        }
+        catch (OperationCanceledException)
+        {
+            // The run's own cancellation; the graph loop turns it into Cancelled.
+            return (empty, null);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex,
-                "Failed to resolve global variables for execution {ExecutionId} — workflow will run without them.",
+            _logger.LogError(ex,
+                "Failed to load global variables for execution {ExecutionId}; the workflow references them, so the run is failed.",
                 executionId);
-            return empty;
+            return (empty,
+                "Global variables could not be loaded for this run, and the workflow references them: "
+                + ex.Message + ". The run was not started so that no step runs with a placeholder in place of a value.");
         }
     }
 
@@ -524,9 +529,9 @@ public class WorkflowEngine : IWorkflowEngine
         // still masks them before Output/ErrorOutput leaves the activity. See
         // ResolveGlobalVariablesAsync for the optimisation that skips the DB + DPAPI work
         // when the workflow definition contains no `{{globals.` reference.
-        var globalsResult = await ResolveGlobalVariablesAsync(workflow.DefinitionJson, execution.Id, ct);
+        var (globalsResult, globalsLoadError) = await ResolveGlobalVariablesAsync(workflow.DefinitionJson, execution.Id, ct);
 
-        if (await FailIfUnresolvableGlobalsAsync(run, globalsResult.Unresolvable))
+        if (await FailIfUnresolvableGlobalsAsync(run, globalsResult.Unresolvable, globalsLoadError))
             return execution;
 
         var debug = CreateDebugHandle(debugEnabled, timeoutSeconds);
@@ -612,16 +617,16 @@ public class WorkflowEngine : IWorkflowEngine
     }
 
     /// <summary>
-    /// Phase 2: fail loudly when the workflow references a global that exists in the DB but
-    /// can't be decrypted on this host — without this check the literal placeholder would
-    /// silently leak into the activity's request payload (e.g. as the literal string
-    /// "{{globals.STRIPE_KEY}}" in an Authorization header). Returns true when the run was
-    /// failed and persisted (caller returns the execution as-is).
+    /// Phase 2: fail loudly when the globals could not be loaded at all, or when the workflow
+    /// references a global that exists in the DB but can't be decrypted on this host — without
+    /// this check the literal placeholder would silently leak into the activity's request payload
+    /// (e.g. as the literal string "{{globals.STRIPE_KEY}}" in an Authorization header). Returns
+    /// true when the run was failed and persisted (caller returns the execution as-is).
     /// </summary>
     private async Task<bool> FailIfUnresolvableGlobalsAsync(
-        ExecutionRun run, IReadOnlySet<string> unresolvable)
+        ExecutionRun run, IReadOnlySet<string> unresolvable, string? loadError)
     {
-        var brokenRefError = FindUnresolvableGlobalReferences(run.Workflow.DefinitionJson, unresolvable);
+        var brokenRefError = loadError ?? FindUnresolvableGlobalReferences(run.Workflow.DefinitionJson, unresolvable);
         if (brokenRefError is null) return false;
 
         var execution = run.Execution;
@@ -690,7 +695,30 @@ public class WorkflowEngine : IWorkflowEngine
         // makes the returned object reflect the committed values; on CAS loss it imports the
         // externally committed Cancelled state and prevents a later SaveChanges from reviving it.
         await executionEntry.ReloadAsync(CancellationToken.None);
+        if (updated == 1)
+            await CancelOrphanedStepsAsync(_db, execution.Id, desiredStatus, completedAt, ct);
         return updated == 1;
+    }
+
+    // Every started step has been awaited by the time the execution goes terminal, so a step row
+    // still Running here is one whose terminal write failed. Nothing else ever revisits it. The
+    // sweep is best-effort: the execution row is already terminal, and a failure here must not
+    // turn a finished run into a Failed one or re-enter the terminal-write retry.
+    private async Task CancelOrphanedStepsAsync(
+        NodePilotDbContext db, Guid executionId, ExecutionStatus executionStatus, DateTime completedAt, CancellationToken ct)
+    {
+        try
+        {
+            await ExecutionStateLifecycle.CancelOrphanedStepsAsync(
+                db.StepExecutions, executionId, completedAt,
+                $"Step did not reach a terminal state before the execution ended ({executionStatus}).", ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "Could not sweep non-terminal steps of execution {ExecutionId}; the execution itself is terminal.",
+                executionId);
+        }
     }
 
     /// <summary>
@@ -762,6 +790,7 @@ public class WorkflowEngine : IWorkflowEngine
                     run.Execution.CompletedAt = completedAt;
                     run.Execution.ErrorMessage = errorMessage;
                     run.Execution.CancelledBy = cancelledBy;
+                    await CancelOrphanedStepsAsync(freshDb, run.Execution.Id, desiredStatus, completedAt, CancellationToken.None);
                 }
                 else
                 {

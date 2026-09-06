@@ -71,7 +71,7 @@ internal static class ExternalExecutionCancellation
                     .SetProperty(execution => execution.CompletedAt, now)
                     .SetProperty(execution => execution.ErrorMessage, message), ct);
 
-            cancelledExecutionIds.AddRange(await db.WorkflowExecutions
+            var cancelledInBatch = await db.WorkflowExecutions
                 .AsNoTracking()
                 .Where(execution => executionIdBatch.Contains(execution.Id)
                                  && execution.Status == ExecutionStatus.Cancelled
@@ -79,7 +79,16 @@ internal static class ExternalExecutionCancellation
                                  && execution.CompletedAt == now
                                  && execution.ErrorMessage == message)
                 .Select(execution => execution.Id)
-                .ToListAsync(ct));
+                .ToListAsync(ct);
+            cancelledExecutionIds.AddRange(cancelledInBatch);
+
+            // The in-memory signal after commit lets a live run write its own step rows; steps
+            // of a run that no engine owns any more would stay Running otherwise.
+            if (cancelledInBatch.Count > 0)
+            {
+                await ExecutionStateLifecycle.CancelOrphanedStepsAsync(
+                    db.StepExecutions, cancelledInBatch, now, message, ct);
+            }
         }
 
         return cancelledExecutionIds;
