@@ -245,8 +245,10 @@ internal sealed class StepRunner
                     string.Equals(node.Type, "runScript", StringComparison.OrdinalIgnoreCase)
                     || CustomActivityType.IsCustomType(node.Type);
 
-                var fatal = resolvesItsOwnTemplates
-                    ? FindOutOfScopeReferences(unresolved, previousResults, outputVariableToStepId)
+                // A global that does not exist is never legitimate script text either.
+                List<string> fatal = resolvesItsOwnTemplates
+                    ? [.. FindOutOfScopeReferences(unresolved, previousResults, outputVariableToStepId),
+                       .. FindMissingGlobalReferences(unresolved, globalVariables)]
                     : unresolved;
 
                 if (fatal.Count > 0)
@@ -837,10 +839,11 @@ internal sealed class StepRunner
     }
 
     /// <summary>
-    /// Scans a resolved config element for step-pattern placeholders that were not substituted.
-    /// Returns a deduplicated list of remaining <c>{{step.output}}</c>-style patterns.
-    /// Fields listed in <see cref="FieldsNotToResolve"/> for this activity type are skipped —
-    /// their raw SQL / query text is intentionally left unresolved and validated by the executor.
+    /// Scans a resolved config element for placeholders that were not substituted: step
+    /// patterns, trigger inputs and globals. Returns a deduplicated list of the remaining
+    /// <c>{{...}}</c> tokens. Fields listed in <see cref="FieldsNotToResolve"/> for this
+    /// activity type are skipped — their raw SQL / query text is intentionally left unresolved
+    /// and validated by the executor.
     /// </summary>
     internal static List<string> FindUnresolvedStepReferences(string? activityType, JsonElement config)
     {
@@ -854,10 +857,7 @@ internal sealed class StepRunner
                 if (protectedFields.Contains(prop.Name)) continue;
                 var raw = prop.Value.GetRawText();
                 if (!raw.Contains("{{")) continue;
-                foreach (Match m in VariableResolver.StepPattern.Matches(raw))
-                    unresolved.Add(m.Value);
-                foreach (Match m in VariableResolver.ManualPattern.Matches(raw))
-                    unresolved.Add(m.Value);
+                CollectUnresolved(raw, unresolved);
             }
             return [..unresolved];
         }
@@ -865,14 +865,39 @@ internal sealed class StepRunner
         var fullRaw = config.GetRawText();
         if (!fullRaw.Contains("{{")) return [];
         var set = new HashSet<string>(StringComparer.Ordinal);
-        foreach (Match m in VariableResolver.StepPattern.Matches(fullRaw))
-            set.Add(m.Value);
-        // A surviving {{manual.X}} means the run carries no such trigger input. Left unchecked
-        // it renders as its own placeholder and the step still reports success, which is the
-        // one outcome the T-7.1 check exists to prevent.
-        foreach (Match m in VariableResolver.ManualPattern.Matches(fullRaw))
-            set.Add(m.Value);
+        CollectUnresolved(fullRaw, set);
         return [..set];
+    }
+
+    // A surviving {{manual.X}} or {{globals.X}} means the run carries no such value. Left
+    // unchecked it renders as its own placeholder and the step still reports success, which is
+    // the one outcome the T-7.1 check exists to prevent.
+    private static void CollectUnresolved(string raw, HashSet<string> into)
+    {
+        foreach (Match m in VariableResolver.StepPattern.Matches(raw))
+            into.Add(m.Value);
+        foreach (Match m in VariableResolver.ManualPattern.Matches(raw))
+            into.Add(m.Value);
+        foreach (Match m in VariableResolver.GlobalsPattern.Matches(raw))
+            into.Add(m.Value);
+    }
+
+    /// <summary>
+    /// The <c>{{globals.X}}</c> tokens among <paramref name="unresolved"/> whose name is not a
+    /// known global of this run. Used for activities that resolve their own templates, where a
+    /// known global still shows up as unresolved at this point.
+    /// </summary>
+    internal static List<string> FindMissingGlobalReferences(
+        IEnumerable<string> unresolved, IReadOnlyDictionary<string, string> globalVariables)
+    {
+        var missing = new List<string>();
+        foreach (var token in unresolved)
+        {
+            var match = VariableResolver.GlobalsPattern.Match(token);
+            if (match.Success && !globalVariables.ContainsKey(match.Groups[1].Value))
+                missing.Add(token);
+        }
+        return missing;
     }
 
     /// <summary>
@@ -912,16 +937,21 @@ internal sealed class StepRunner
         var paramMissing = new List<(string token, string step, string param)>();
         var valueEmpty = new List<(string token, string step, string tail)>();
         var manualMissing = new List<string>();
+        var globalsMissing = new List<string>();
 
         foreach (var token in unresolved)
         {
-            // Trigger inputs have their own namespace and their own failure mode: the name was
-            // never seeded into this run. Reporting it as a missing STEP would send the author
-            // looking for a node that was never meant to exist.
-            var manualMatch = VariableResolver.ManualPattern.Match(token);
-            if (manualMatch.Success)
+            // Trigger inputs and globals have their own namespaces and their own failure modes:
+            // the name was never seeded into this run. Reporting either as a missing STEP would
+            // send the author looking for a node that was never meant to exist.
+            if (VariableResolver.ManualPattern.IsMatch(token))
             {
                 manualMissing.Add(token);
+                continue;
+            }
+            if (VariableResolver.GlobalsPattern.IsMatch(token))
+            {
+                globalsMissing.Add(token);
                 continue;
             }
 
@@ -986,6 +1016,13 @@ internal sealed class StepRunner
               .Append(string.Join(", ", manualMissing))
               .Append(". Declare the parameter on the trigger node (manualTrigger) or check the name against ")
               .Append("the keys the firing trigger seeds.");
+        }
+
+        if (globalsMissing.Count > 0)
+        {
+            sb.Append(" Unknown global variable(s) — no global with this name exists: ")
+              .Append(string.Join(", ", globalsMissing))
+              .Append(". Create it under Global Variables or correct the name.");
         }
 
         if (outOfScope.Count > 0)

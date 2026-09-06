@@ -1130,7 +1130,18 @@ public class WorkflowEngineTests
                     "branchSlow" => 5000,
                     _ => 5,
                 };
-                await Task.Delay(ms, ct);
+                try
+                {
+                    await Task.Delay(ms, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    // This harness shares one SQLite connection between all step contexts, and
+                    // SQLite rejects a context initialising while another statement is active on
+                    // it. Let the join and final steps start before the loser's stand-down write.
+                    await Task.Delay(100, CancellationToken.None);
+                    throw;
+                }
                 return new ActivityResult { Success = true, Output = ctx.StepId };
             });
 
@@ -1174,7 +1185,8 @@ public class WorkflowEngineTests
 
         steps.Should().NotContain(s => s.Status == ExecutionStatus.Failed,
             "standing a losing branch down is the junction working, not a step failing");
-        execution.Status.Should().Be(ExecutionStatus.Succeeded);
+        execution.Status.Should().Be(ExecutionStatus.Succeeded,
+            "the run must not fail (error: {0})", execution.ErrorMessage ?? "none");
 
         var loser = steps.SingleOrDefault(s => s.StepId == "branchSlow");
         loser.Should().NotBeNull("the losing branch must still leave a row, so the run is explicable");

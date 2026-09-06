@@ -7,6 +7,7 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using System.Collections.Concurrent;
 using NodePilot.Engine.Activities;
+using NodePilot.Engine.Conditions;
 using NodePilot.Engine.Execution;
 using NodePilot.TestCommons;
 using Xunit;
@@ -156,6 +157,53 @@ public class WorkflowSchedulerTests
 
         completed.Should().Contain(["join", "final"]);
         skipped.Should().NotContain(["join", "final"]);
+    }
+
+    [Fact]
+    public async Task RunAsync_EdgeWithInvalidCondition_FailsTheRunAndNamesTheEdge()
+    {
+        // A condition nobody can evaluate must neither open nor silently close the edge: the
+        // run fails with a message that points at the edge, so the author fixes the definition.
+        var first = Node("first");
+        var guarded = Node("guarded");
+        var nodes = new[] { first, guarded };
+        var edges = new[]
+        {
+            new WorkflowEdge { Id = "e-guard", Source = "first", Target = "guarded", Condition = "first.done" },
+        };
+        var adjacency = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var reverse = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var incoming = nodes.ToDictionary(n => n.Id, _ => new List<WorkflowEdge>());
+        var byEndpoints = new Dictionary<(string Source, string Target), WorkflowEdge>();
+        foreach (var edge in edges)
+        {
+            adjacency[edge.Source].Add(edge.Target);
+            reverse[edge.Target].Add(edge.Source);
+            incoming[edge.Target].Add(edge);
+            byEndpoints[(edge.Source, edge.Target)] = edge;
+        }
+
+        var results = new ConcurrentDictionary<string, ActivityResult>();
+        var completed = new HashSet<string>();
+        var skipped = new HashSet<string>();
+        var guardedRan = false;
+
+        var act = () => WorkflowScheduler.RunAsync(
+            [first], nodes.ToDictionary(n => n.Id), adjacency, reverse, incoming, byEndpoints,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            results, completed, skipped,
+            (node, _) =>
+            {
+                if (node.Id == "guarded") guardedRan = true;
+                return Task.FromResult(new ActivityResult { Success = true, Output = node.Id });
+            },
+            NullLogger.Instance, CancellationToken.None);
+
+        var thrown = await act.Should().ThrowAsync<InvalidOperationException>();
+        thrown.Which.Message.Should().Contain("Edge 'e-guard' (first -> guarded) has an invalid condition")
+            .And.Contain("first.done");
+        thrown.Which.InnerException.Should().BeOfType<ConditionEvaluationException>();
+        guardedRan.Should().BeFalse("an undecidable guard must not open the edge");
     }
 
     [Fact]

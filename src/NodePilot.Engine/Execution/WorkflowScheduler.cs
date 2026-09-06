@@ -421,9 +421,20 @@ public static class WorkflowScheduler
 
             resolved++;
             completedInputs++;
-            if (!ConditionEvaluator.EvaluateEdge(
-                    edge, results, outputVariableToStepId, globalVariables, inputParameters))
-                continue;
+            bool edgeMatches;
+            try
+            {
+                edgeMatches = ConditionEvaluator.EvaluateEdge(
+                    edge, results, outputVariableToStepId, globalVariables, inputParameters);
+            }
+            catch (ConditionEvaluationException ex)
+            {
+                // Propagates out of the run loop: the engine fails the run and names the edge,
+                // rather than taking or skipping it on a condition nobody can evaluate.
+                throw new InvalidOperationException(
+                    $"Edge '{edge.Id}' ({edge.Source} -> {edge.Target}) has an invalid condition: {ex.Message}", ex);
+            }
+            if (!edgeMatches) continue;
 
             matchingInputs++;
             if (results.TryGetValue(edge.Source, out var result) && result.Success)

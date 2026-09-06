@@ -98,15 +98,49 @@ public class StepRunnerUnresolvedVariableTests
         StepRunner.FindUnresolvedStepReferences("databaseTrigger", config).Should().BeEmpty();
     }
 
-    // ---- Patterns that look like {{...}} but do not match StepPattern ----
+    // ---- Globals ----
 
     [Fact]
-    public void FindUnresolvedStepReferences_GlobalsPattern_IsNotFlagged()
+    public void FindUnresolvedStepReferences_GlobalsPattern_IsFlagged()
     {
-        // {{globals.NAME}} is a different pattern resolved by GlobalsPattern — StepRunner
-        // only checks step-reference patterns (output / error / param.xxx).
+        // A surviving {{globals.X}} means no such global exists in this run. Left unchecked it
+        // travels on as text — the same silent success the manual.* check closed.
         var config = Parse("""{"level":"info","message":"{{globals.UNKNOWN_KEY}}"}""");
-        StepRunner.FindUnresolvedStepReferences("log", config).Should().BeEmpty();
+        StepRunner.FindUnresolvedStepReferences("log", config)
+            .Should().ContainSingle().Which.Should().Be("{{globals.UNKNOWN_KEY}}");
+    }
+
+    [Fact]
+    public void FindUnresolvedStepReferences_GlobalsInUnprotectedSqlField_IsFlagged()
+    {
+        var config = Parse("""{"query":"SELECT 1","connectionRef":"{{globals.DB_REF}}"}""");
+        StepRunner.FindUnresolvedStepReferences("sql", config)
+            .Should().ContainSingle().Which.Should().Be("{{globals.DB_REF}}");
+    }
+
+    [Fact]
+    public void FindMissingGlobalReferences_KeepsOnlyUnknownGlobals()
+    {
+        // runScript resolves its own templates, so a known global is still unresolved at this
+        // point and must not be reported; an unknown one must.
+        var globals = new Dictionary<string, string> { ["KNOWN"] = "v" };
+        var unresolved = new[] { "{{globals.KNOWN}}", "{{globals.MISSING}}", "{{step.output}}", "{{manual.x}}" };
+
+        StepRunner.FindMissingGlobalReferences(unresolved, globals)
+            .Should().ContainSingle().Which.Should().Be("{{globals.MISSING}}");
+    }
+
+    [Fact]
+    public void FormatUnresolvedDiagnostic_GlobalMissing_HasItsOwnBucket()
+    {
+        var diag = StepRunner.FormatUnresolvedDiagnostic(
+            unresolved: new[] { "{{globals.API_TOKEN}}" },
+            previousResults: new Dictionary<string, ActivityResult>(),
+            outputVariableToStepId: new Dictionary<string, string>());
+
+        diag.Should().Contain("Unknown global variable(s)");
+        diag.Should().Contain("{{globals.API_TOKEN}}");
+        diag.Should().NotContain("Missing step", "a global is not a step and must not send the author looking for a node");
     }
 
     // ---- .success tail ----

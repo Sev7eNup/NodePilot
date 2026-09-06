@@ -24,6 +24,29 @@ exhaustive.
 
 ### Fixed
 
+- **A missing global variable fails the step instead of travelling on as text.** A
+  `{{globals.NAME}}` with no such global left the literal placeholder in the config — in a REST
+  header, a mail body, a `runScript` — and the step reported success, the same silent outcome
+  closed for `{{manual.NAME}}` in 1.2.7. The unresolved-template check now covers globals with its
+  own diagnostic, and a workflow that references globals fails before its first step when the
+  variable store cannot be loaded at all.
+- **Edge conditions fail closed.** An unknown condition type or operator, a group without
+  children, a shortcut other than `<step>.success|failed` and a reference to a step that does not
+  exist all evaluated to `true` and opened the edge; `!=`, `isEmpty` and `contains` against a value
+  that never arrived did the same. Save, publish and import now reject such conditions
+  (`invalid-edge-condition`), a run that still meets one fails and names the edge, and a comparison
+  on a missing value never holds, not even behind `not` (ADR 0015).
+- **A step no longer stays Running under a finished execution.** When a step's terminal write
+  failed, or a zombie execution was force-cancelled through `/cancel-all` or user offboarding, its
+  step rows kept `Running` forever: the execution panel spun, the live timeline kept ticking and the
+  machine page's active-run badge stayed inflated. Every terminal execution write now sweeps the
+  execution's non-terminal steps to `Cancelled`.
+- **The dashboard's long-running count uses the alerting threshold.** It counted runs older than a
+  fixed 30 minutes while the operations console and the long-running alert used
+  `Alerting:LongRunningSeconds`, so the two surfaces disagreed.
+- **The hardening page no longer contradicts the deployment guide on `db_owner`.** It asked for a
+  login without `db_owner` while the installer and the migration bootstrapper require it on the
+  NodePilot database; the least-privilege boundary is the server level.
 - **Numbers no longer change meaning with the server's locale.** Activities rendered scalars with
   the host culture while edge conditions parsed them invariantly with `NumberStyles.Any`, where
   `,` is the group separator — so a `sql`, `jsonQuery`, `xmlQuery` or webhook value of `1.5`

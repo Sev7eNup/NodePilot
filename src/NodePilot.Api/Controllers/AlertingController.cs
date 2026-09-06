@@ -266,6 +266,10 @@ public class AlertingController : ControllerBase
         {
             return Ok(new PreviewFilterResponse(false, $"invalid filter JSON: {ex.Message}"));
         }
+        catch (ConditionEvaluationException ex)
+        {
+            return Ok(new PreviewFilterResponse(false, $"invalid filter: {ex.Message}"));
+        }
     }
 
     [HttpPost("preview-rule")]

@@ -9,23 +9,6 @@ using NodePilot.Engine.Execution;
 namespace NodePilot.Engine.Conditions;
 
 /// <summary>
-/// Evaluates structured edge condition expressions. Schema:
-///   group:      { "type": "group", "op": "AND|OR", "children": [...] }
-///   not:        { "type": "not", "child": {...} }
-///   comparison: { "type": "comparison", "left": OPERAND, "op": OP, "right": OPERAND? }
-/// operand: { "kind": "variable", "stepId": "...", "field": "output|error|param", "paramName"?:
-/// "..." }
-///             | { "kind": "literal", "value": "..." }
-///
-/// Supported ops:
-///   comparison: == != &lt; &gt; &lt;= &gt;= (numeric if both parseable, else string)
-///   string:     contains startsWith endsWith matches (regex)
-///   unary:      isEmpty isNotEmpty isTrue isFalse (right omitted)
-///
-/// Safe-fail policy: unresolved variables evaluate to empty string; all comparisons
-/// against them return false (except != and isEmpty/isNotEmpty).
-/// </summary>
-/// <summary>
 /// Run-time inputs available to an edge condition. Bundles the three substitution sources
 /// — previous step results, workflow globals, and manual-trigger parameters — into a single
 /// parameter so call sites don't grow extra optional args every time a new source lands.
@@ -39,67 +22,131 @@ public readonly record struct ConditionContext(
     // conditions, which never use that source — so this is fully backward-compatible.
     IReadOnlyDictionary<string, string>? EventFields = null);
 
+/// <summary>
+/// Evaluates structured edge condition expressions. Schema:
+///   group:      { "type": "group", "op": "AND|OR", "children": [...] }
+///   not:        { "type": "not", "child": {...} }
+///   comparison: { "type": "comparison", "left": OPERAND, "op": OP, "right": OPERAND? }
+/// operand: { "kind": "variable", "stepId": "...", "field": "output|error|success|param", "paramName"?:
+/// "..." }
+///             | { "kind": "variable", "source": "global|manual|event", "name": "..." }
+///             | { "kind": "literal", "value": "..." }
+///
+/// Supported ops:
+///   comparison: == != &lt; &gt; &lt;= &gt;= (numeric if both parseable, else string)
+///   string:     contains startsWith endsWith matches (regex)
+///   unary:      isEmpty isNotEmpty isTrue isFalse (right omitted)
+///
+/// Fail-closed policy: a malformed expression (unknown type, operator, source or field, missing
+/// operand or child) throws <see cref="ConditionEvaluationException"/>. A variable operand
+/// without a value (step without a result, missing param, global or trigger input) makes its
+/// comparison undecidable, and an undecidable result never satisfies the condition, not even
+/// through <c>not</c>. Event fields come from a declared catalog, so an absent one reads as "".
+/// </summary>
 public static class ConditionEvaluator
 {
+    /// <summary>Three-valued result: a comparison on a missing value is neither true nor false.</summary>
+    private enum Outcome { False, True, Unknown }
+
+    private static readonly HashSet<string> UnaryOps = ["isEmpty", "isNotEmpty", "isTrue", "isFalse"];
+    private static readonly HashSet<string> BinaryOps =
+        ["==", "!=", "<", ">", "<=", ">=", "contains", "startsWith", "endsWith", "matches"];
+
     public static bool Evaluate(JsonElement expression, IReadOnlyDictionary<string, ActivityResult> results,
         IReadOnlyDictionary<string, string>? outputVariableToStepId = null,
         IReadOnlyDictionary<string, string>? globalVariables = null,
         IReadOnlyDictionary<string, string>? inputParameters = null)
         => Evaluate(expression, new ConditionContext(results, outputVariableToStepId, globalVariables, inputParameters));
 
+    /// <summary>True only when the expression is decidable and holds.</summary>
+    /// <exception cref="ConditionEvaluationException">The expression is malformed.</exception>
     public static bool Evaluate(JsonElement expression, ConditionContext ctx)
-    {
-        if (expression.ValueKind != JsonValueKind.Object) return true;
-        var type = expression.TryGetProperty("type", out var t) ? t.GetString() : null;
+        => EvaluateOutcome(expression, ctx) == Outcome.True;
 
+    private static Outcome EvaluateOutcome(JsonElement expression, ConditionContext ctx)
+    {
+        if (expression.ValueKind != JsonValueKind.Object)
+            throw new ConditionEvaluationException("condition must be an object");
+
+        var type = GetString(expression, "type");
         return type switch
         {
             "group" => EvaluateGroup(expression, ctx),
-            "not" => !(expression.TryGetProperty("child", out var c)
-                        && Evaluate(c, ctx)),
+            "not" => expression.TryGetProperty("child", out var child)
+                ? Negate(EvaluateOutcome(child, ctx))
+                : throw new ConditionEvaluationException("'not' requires a child condition"),
             "comparison" => EvaluateComparison(expression, ctx),
-            _ => true,
+            null => throw new ConditionEvaluationException("condition has no 'type'"),
+            _ => throw new ConditionEvaluationException($"unknown condition type '{type}'"),
         };
     }
 
-    private static bool EvaluateGroup(JsonElement group, ConditionContext ctx)
+    private static Outcome Negate(Outcome outcome) => outcome switch
     {
-        var op = (group.TryGetProperty("op", out var o) ? o.GetString() : "AND")?.ToUpperInvariant() ?? "AND";
-        if (!group.TryGetProperty("children", out var children) || children.ValueKind != JsonValueKind.Array)
-            return true;
+        Outcome.True => Outcome.False,
+        Outcome.False => Outcome.True,
+        _ => Outcome.Unknown,
+    };
 
+    private static Outcome EvaluateGroup(JsonElement group, ConditionContext ctx)
+    {
+        var op = GetString(group, "op")?.ToUpperInvariant();
+        if (op is not ("AND" or "OR"))
+            throw new ConditionEvaluationException("group 'op' must be AND or OR");
+        if (!group.TryGetProperty("children", out var children) || children.ValueKind != JsonValueKind.Array)
+            throw new ConditionEvaluationException("group requires a 'children' array");
+
+        var undecided = false;
         if (op == "OR")
         {
             foreach (var child in children.EnumerateArray())
-                if (Evaluate(child, ctx)) return true;
-            return false;
+            {
+                var outcome = EvaluateOutcome(child, ctx);
+                if (outcome == Outcome.True) return Outcome.True;
+                if (outcome == Outcome.Unknown) undecided = true;
+            }
+            return undecided ? Outcome.Unknown : Outcome.False;
         }
-        // default AND
+
         foreach (var child in children.EnumerateArray())
-            if (!Evaluate(child, ctx)) return false;
-        return true;
+        {
+            var outcome = EvaluateOutcome(child, ctx);
+            if (outcome == Outcome.False) return Outcome.False;
+            if (outcome == Outcome.Unknown) undecided = true;
+        }
+        return undecided ? Outcome.Unknown : Outcome.True;
     }
 
-    private static bool EvaluateComparison(JsonElement cmp, ConditionContext ctx)
+    private static Outcome EvaluateComparison(JsonElement cmp, ConditionContext ctx)
     {
-        var op = (cmp.TryGetProperty("op", out var o) ? o.GetString() : null) ?? "==";
-        var left = cmp.TryGetProperty("left", out var l) ? ResolveOperand(l, ctx) : "";
+        var op = GetString(cmp, "op")
+                 ?? throw new ConditionEvaluationException("comparison has no 'op'");
+        var unary = UnaryOps.Contains(op);
+        if (!unary && !BinaryOps.Contains(op))
+            throw new ConditionEvaluationException($"unknown comparison operator '{op}'");
+        if (!cmp.TryGetProperty("left", out var l))
+            throw new ConditionEvaluationException("comparison has no left operand");
 
-        // Unary operators
-        switch (op)
+        var (left, leftResolved) = ResolveOperand(l, ctx);
+
+        if (unary)
         {
-            case "isEmpty": return string.IsNullOrEmpty(left);
-            case "isNotEmpty": return !string.IsNullOrEmpty(left);
-            case "isTrue": return IsTruthy(left);
-            // An unresolved operand is "", which is not truthy — without the length check
-            // `isFalse` would be true for a value that never arrived, the same fail-open
-            // inversion CompareNumeric guards against.
-            case "isFalse": return left.Length > 0 && !IsTruthy(left);
+            if (!leftResolved) return Outcome.Unknown;
+            return ToOutcome(op switch
+            {
+                "isEmpty" => string.IsNullOrEmpty(left),
+                "isNotEmpty" => !string.IsNullOrEmpty(left),
+                "isTrue" => IsTruthy(left),
+                _ => !IsTruthy(left),
+            });
         }
 
-        var right = cmp.TryGetProperty("right", out var r) ? ResolveOperand(r, ctx) : "";
+        if (!cmp.TryGetProperty("right", out var r))
+            throw new ConditionEvaluationException($"operator '{op}' requires a right operand");
+        var (right, rightResolved) = ResolveOperand(r, ctx);
+        if (!leftResolved || !rightResolved) return Outcome.Unknown;
 
-        return op switch
+        return ToOutcome(op switch
         {
             "==" => CompareEquals(left, right),
             "!=" => !CompareEquals(left, right),
@@ -110,10 +157,14 @@ public static class ConditionEvaluator
             "contains" => left.Contains(right, StringComparison.Ordinal),
             "startsWith" => left.StartsWith(right, StringComparison.Ordinal),
             "endsWith" => left.EndsWith(right, StringComparison.Ordinal),
-            "matches" => TryRegexMatch(left, right),
-            _ => false,
-        };
+            _ => TryRegexMatch(left, right),
+        });
     }
+
+    private static Outcome ToOutcome(bool value) => value ? Outcome.True : Outcome.False;
+
+    private static string? GetString(JsonElement obj, string property)
+        => obj.TryGetProperty(property, out var el) && el.ValueKind == JsonValueKind.String ? el.GetString() : null;
 
     // Step-output and globals templates reuse VariableResolver's compiled patterns — this
     // evaluator already depends on Engine.Execution (see EvaluateEdge below), so keeping a
@@ -121,65 +172,95 @@ public static class ConditionEvaluator
     // counterpart there and runs as its own pre-pass; like globals it carries no step-shaped tail.
     private static readonly Regex ManualTemplateRegex = new(@"\{\{manual\.([A-Za-z0-9_\-]+)\}\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
-    private static string ResolveOperand(JsonElement operand, ConditionContext ctx)
+    /// <summary>
+    /// Resolves an operand to its string value. <c>Resolved</c> is false when a variable operand
+    /// has no value in this run; literals always resolve.
+    /// </summary>
+    private static (string Value, bool Resolved) ResolveOperand(JsonElement operand, ConditionContext ctx)
     {
-        if (operand.ValueKind != JsonValueKind.Object) return "";
-        var kind = operand.TryGetProperty("kind", out var k) ? k.GetString() : "literal";
+        if (operand.ValueKind != JsonValueKind.Object)
+            throw new ConditionEvaluationException("operand must be an object");
+        var kind = GetString(operand, "kind") ?? "literal";
 
         if (kind == "literal")
         {
             var raw = operand.TryGetProperty("value", out var v)
                 ? (v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : v.GetRawText())
                 : "";
-            return ResolveTemplates(raw, ctx);
+            return (ResolveTemplates(raw, ctx), true);
         }
 
-        if (kind != "variable") return "";
+        if (kind != "variable")
+            throw new ConditionEvaluationException($"unknown operand kind '{kind}'");
 
         // Source discriminator, defaults to "step" for operands that omit it. When source
-        // is "global" / "manual", the operand carries a flat `name` instead of stepId/field.
-        var source = operand.TryGetProperty("source", out var srcEl) ? srcEl.GetString() : "step";
+        // is "global" / "manual" / "event", the operand carries a flat `name` instead of stepId/field.
+        var source = GetString(operand, "source") ?? "step";
         if (string.Equals(source, "global", StringComparison.OrdinalIgnoreCase))
         {
-            var name = operand.TryGetProperty("name", out var nEl) ? nEl.GetString() : null;
-            if (string.IsNullOrEmpty(name) || ctx.GlobalVariables is null) return "";
-            return ctx.GlobalVariables.TryGetValue(name, out var gv) ? gv : "";
+            var name = RequireName(operand, source);
+            return ctx.GlobalVariables is not null && ctx.GlobalVariables.TryGetValue(name, out var gv)
+                ? (gv, true)
+                : ("", false);
         }
         if (string.Equals(source, "manual", StringComparison.OrdinalIgnoreCase))
         {
-            var name = operand.TryGetProperty("name", out var nEl) ? nEl.GetString() : null;
-            if (string.IsNullOrEmpty(name) || ctx.InputParameters is null) return "";
-            return ctx.InputParameters.TryGetValue(name, out var mv) ? mv : "";
+            var name = RequireName(operand, source);
+            return ctx.InputParameters is not null && ctx.InputParameters.TryGetValue(name, out var mv)
+                ? (mv, true)
+                : ("", false);
         }
         if (string.Equals(source, "event", StringComparison.OrdinalIgnoreCase))
         {
             // Alerting rule filters: the operand carries a flat event-field `name` resolved
-            // against the NotificationContext field map.
-            var name = operand.TryGetProperty("name", out var nEl) ? nEl.GetString() : null;
-            if (string.IsNullOrEmpty(name) || ctx.EventFields is null) return "";
-            return ctx.EventFields.TryGetValue(name, out var ev) ? ev : "";
+            // against the NotificationContext field map. The map is a declared catalog, so a
+            // field that is not present on this event reads as empty rather than undecidable.
+            var name = RequireName(operand, source);
+            if (ctx.EventFields is null) return ("", false);
+            return (ctx.EventFields.TryGetValue(name, out var ev) ? ev : "", true);
         }
+        if (!string.Equals(source, "step", StringComparison.OrdinalIgnoreCase))
+            throw new ConditionEvaluationException($"unknown operand source '{source}'");
 
-        var stepId = operand.TryGetProperty("stepId", out var sid) ? sid.GetString() : null;
-        if (string.IsNullOrEmpty(stepId)) return "";
+        var stepId = GetString(operand, "stepId");
+        if (string.IsNullOrEmpty(stepId))
+            throw new ConditionEvaluationException("step operand requires a 'stepId'");
 
         // Resolve via outputVariable alias if stepId is actually a variable name
         if (!ctx.Results.ContainsKey(stepId) && ctx.OutputVariableToStepId is not null
             && ctx.OutputVariableToStepId.TryGetValue(stepId, out var mapped))
             stepId = mapped;
 
-        if (!ctx.Results.TryGetValue(stepId, out var result)) return "";
+        var field = GetString(operand, "field") ?? "output";
+        string? paramName = null;
+        if (field == "param")
+        {
+            paramName = GetString(operand, "paramName");
+            if (string.IsNullOrEmpty(paramName))
+                throw new ConditionEvaluationException("operand field 'param' requires a 'paramName'");
+        }
+        else if (field is not ("output" or "error" or "success"))
+        {
+            throw new ConditionEvaluationException($"unknown operand field '{field}'");
+        }
 
-        var field = operand.TryGetProperty("field", out var f) ? f.GetString() : "output";
+        if (!ctx.Results.TryGetValue(stepId, out var result)) return ("", false);
+
         return field switch
         {
-            "output" => result.Output ?? "",
-            "error" => result.ErrorOutput ?? "",
-            "success" => result.Success ? "true" : "false",
-            "param" => operand.TryGetProperty("paramName", out var pn) && pn.GetString() is { } name
-                        && result.OutputParameters.TryGetValue(name, out var pv) ? pv : "",
-            _ => "",
+            "output" => (result.Output ?? "", true),
+            "error" => (result.ErrorOutput ?? "", true),
+            "success" => (result.Success ? "true" : "false", true),
+            _ => result.OutputParameters.TryGetValue(paramName!, out var pv) ? (pv, true) : ("", false),
         };
+    }
+
+    private static string RequireName(JsonElement operand, string source)
+    {
+        var name = GetString(operand, "name");
+        if (string.IsNullOrEmpty(name))
+            throw new ConditionEvaluationException($"{source} operand requires a 'name'");
+        return name;
     }
 
     /// <summary>
@@ -205,11 +286,8 @@ public static class ConditionEvaluator
             && decimal.TryParse(b, OperandNumberStyles, CultureInfo.InvariantCulture, out var db))
             return cmp(da, db);
 
-        // Safe-fail on a missing operand. An unresolved variable resolves to "", which sorts
-        // before every digit, so the ordinal fallback below would make "value < threshold" true
-        // exactly when the value is absent — firing the guarded branch on missing data. The
-        // policy documented on this class is that comparisons against an unresolved operand are
-        // false.
+        // An empty operand sorts before every digit, so the ordinal fallback would make
+        // "value < threshold" true exactly when the value is empty. Ordering needs two values.
         if (a.Length == 0 || b.Length == 0) return false;
 
         // String ordering fallback
@@ -319,22 +397,28 @@ public static class ConditionEvaluator
            && !string.Equals(v, "0", StringComparison.Ordinal);
 
     /// <summary>
-    /// Legacy string-shaped condition: "stepId.success" or "stepId.failed". Any other
-    /// shape or unknown step falls through to true so non-gated edges keep working.
+    /// Legacy string-shaped condition: "stepId.success" or "stepId.failed", where the step part
+    /// is a node id or an output-variable alias. Any other shape throws; a referenced step
+    /// without a result in this run is false.
     /// </summary>
-    internal static bool EvaluateLegacy(string condition, IReadOnlyDictionary<string, ActivityResult> results)
+    internal static bool EvaluateLegacy(string condition, IReadOnlyDictionary<string, ActivityResult> results,
+        IReadOnlyDictionary<string, string>? outputVariableToStepId = null)
     {
-        var parts = condition.Split('.');
-        if (parts.Length == 2 && results.TryGetValue(parts[0], out var result))
+        var dot = condition.LastIndexOf('.');
+        var suffix = dot > 0 ? condition[(dot + 1)..].ToLowerInvariant() : null;
+        if (dot <= 0 || suffix is not ("success" or "failed"))
         {
-            return parts[1].ToLowerInvariant() switch
-            {
-                "success" => result.Success,
-                "failed" => !result.Success,
-                _ => true
-            };
+            throw new ConditionEvaluationException(
+                $"condition '{condition}' must have the form <stepId>.success or <stepId>.failed");
         }
-        return true;
+
+        var stepId = condition[..dot];
+        if (!results.ContainsKey(stepId) && outputVariableToStepId is not null
+            && outputVariableToStepId.TryGetValue(stepId, out var mapped))
+            stepId = mapped;
+
+        if (!results.TryGetValue(stepId, out var result)) return false;
+        return suffix == "success" ? result.Success : !result.Success;
     }
 
     /// <summary>
@@ -356,7 +440,7 @@ public static class ConditionEvaluator
             return Evaluate(expr, new ConditionContext(results, outputVariableToStepId, globalVariables, inputParameters));
 
         if (!string.IsNullOrEmpty(edge.Condition))
-            return EvaluateLegacy(edge.Condition, results);
+            return EvaluateLegacy(edge.Condition, results, outputVariableToStepId);
 
         return true;
     }

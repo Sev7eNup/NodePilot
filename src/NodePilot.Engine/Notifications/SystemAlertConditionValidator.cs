@@ -11,17 +11,13 @@ public sealed record SystemAlertValidationError(string Path, string Message);
 
 /// <summary>
 /// Strict validator for a System-alert policy's condition AST (see ADR 0008, the design
-/// decision that introduced system-alert policies as a single alerting pipeline). Unlike the
-/// permissive
-/// workflow-edge <c>ConditionEvaluator</c> (which fails open — unknown nodes evaluate to true),
-/// this rejects
-/// a malformed or nonsensical policy filter at save time with field-level errors: it checks the AST
-/// shape,
-/// that every referenced field is one the source declares, operator/type compatibility, the
-/// presence/absence
-/// of a right operand per operator arity, numeric-literal parseability, and depth/node/regex caps.
-/// It does
-/// NOT change the evaluator's runtime semantics — it only gates what a policy may persist.
+/// decision that introduced system-alert policies as a single alerting pipeline). The
+/// workflow-edge counterpart is <c>EdgeConditionValidator</c> in Core. This one rejects a
+/// malformed or nonsensical policy filter at save time with field-level errors: it checks the AST
+/// shape, that every referenced field is one the source declares, operator/type compatibility,
+/// the presence/absence of a right operand per operator arity, numeric-literal parseability, and
+/// depth/node/regex caps. It does NOT change the evaluator's runtime semantics — it only gates
+/// what a policy may persist.
 /// </summary>
 public static class SystemAlertConditionValidator
 {

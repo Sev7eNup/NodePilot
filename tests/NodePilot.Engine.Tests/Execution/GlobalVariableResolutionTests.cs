@@ -148,6 +148,108 @@ public class GlobalVariableResolutionTests
         finally { conn.Dispose(); }
     }
 
+    /// <summary>
+    /// A global that simply does not exist (typo, renamed, not yet created after an import) must
+    /// fail the step with its own diagnostic. Before, the literal stayed in the config and the
+    /// activity ran with "{{globals.X}}" where the value belonged, reporting success.
+    /// </summary>
+    [Theory]
+    [InlineData("restApi", """{"url":"https://api.example.com","headers":{"Authorization":"Bearer {{globals.API_TOKEN}}"}}""")]
+    [InlineData("runScript", """{"script":"$token = {{globals.API_TOKEN}}; Invoke-Thing $token"}""")]
+    public async Task MissingGlobalReference_FailsTheStep_WithItsOwnDiagnostic(string activityType, string config)
+    {
+        var (registry, executorCalls) = CountingRegistry(activityType);
+        var (db, _, conn) = TestDbContext.CreateWithScopedServices(registry);
+        try
+        {
+            var store = new GlobalVariableStore(db,
+                new NodePilot.Data.Security.DpapiSecretProtector(System.Security.Cryptography.DataProtectionScope.CurrentUser));
+            await store.CreateAsync("OTHER", "value", isSecret: false, description: null,
+                folderId: GlobalVariableFolder.RootFolderId, updatedBy: "test", ct: CancellationToken.None);
+            var sp2 = WireGlobalStoreInto(conn, registry);
+
+            var workflow = WorkflowWithStep(db, activityType, config);
+            var engine = new WorkflowEngine(db, NullLogger<WorkflowEngine>.Instance, sp2, Mock.Of<IExecutionNotifier>());
+
+            var execution = await engine.ExecuteAsync(workflow, "test", CancellationToken.None);
+
+            execution.Status.Should().Be(ExecutionStatus.Failed);
+            executorCalls.Value.Should().Be(0, "the activity must not run with a placeholder in place of the value");
+            var step = db.StepExecutions.First(s => s.WorkflowExecutionId == execution.Id && s.StepId == "s1");
+            step.ErrorOutput.Should().Contain("Unknown global variable(s)");
+            step.ErrorOutput.Should().Contain("{{globals.API_TOKEN}}");
+        }
+        finally { conn.Dispose(); }
+    }
+
+    /// <summary>
+    /// If the store cannot be read at all, a workflow that references globals must not start:
+    /// running it with an empty dict would put the placeholder text everywhere a value belongs.
+    /// </summary>
+    [Fact]
+    public async Task GlobalStoreFailure_FailsTheRun_BeforeAnyStep()
+    {
+        var (registry, executorCalls) = CountingRegistry("restApi");
+        var (db, _, conn) = TestDbContext.CreateWithScopedServices(registry);
+        try
+        {
+            var brokenStore = new Mock<IGlobalVariableStore>();
+            brokenStore.Setup(s => s.GetAllResolvedDetailedAsync(It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("variables table unreachable"));
+            var services = new ServiceCollection();
+            services.AddDbContext<NodePilotDbContext>(opts => opts.UseSqlite(conn));
+            services.AddScoped(_ => registry);
+            services.AddScoped(_ => brokenStore.Object);
+            var sp2 = services.BuildServiceProvider();
+
+            var workflow = WorkflowWithStep(db, "restApi",
+                """{"url":"https://api.example.com","headers":{"Authorization":"Bearer {{globals.API_TOKEN}}"}}""");
+            var engine = new WorkflowEngine(db, NullLogger<WorkflowEngine>.Instance, sp2, Mock.Of<IExecutionNotifier>());
+
+            var execution = await engine.ExecuteAsync(workflow, "test", CancellationToken.None);
+
+            execution.Status.Should().Be(ExecutionStatus.Failed);
+            execution.ErrorMessage.Should().Contain("Global variables could not be loaded")
+                .And.Contain("variables table unreachable");
+            executorCalls.Value.Should().Be(0);
+            db.StepExecutions.Where(s => s.WorkflowExecutionId == execution.Id && s.StepId == "s1")
+                .Should().BeEmpty("the run fails before the first step");
+        }
+        finally { conn.Dispose(); }
+    }
+
+    private static (ActivityRegistry Registry, Box<int> ExecutorCalls) CountingRegistry(string activityType)
+    {
+        var calls = new Box<int>();
+        var executor = new Mock<IActivityExecutor>();
+        executor.Setup(e => e.ActivityType).Returns(activityType);
+        executor.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
+            .Callback(() => calls.Value++)
+            .ReturnsAsync(new ActivityResult { Success = true, Output = "ok" });
+
+        var trigger = new Mock<IActivityExecutor>();
+        trigger.Setup(e => e.ActivityType).Returns("manualTrigger");
+        trigger.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(), It.IsAny<JsonElement>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityResult { Success = true, Output = "{}" });
+
+        return (new ActivityRegistry(new[] { executor.Object, trigger.Object }), calls);
+    }
+
+    private static Workflow WorkflowWithStep(NodePilotDbContext db, string activityType, string config)
+    {
+        var def = "{\"nodes\":[{\"id\":\"trigger-1\",\"type\":\"activity\",\"position\":{\"x\":0,\"y\":0},\"data\":{\"activityType\":\"manualTrigger\",\"config\":{}}},"
+                + "{\"id\":\"s1\",\"type\":\"activity\",\"position\":{\"x\":0,\"y\":0},\"data\":{\"activityType\":\"" + activityType + "\",\"config\":" + config + "}}],"
+                + "\"edges\":[{\"id\":\"te\",\"source\":\"trigger-1\",\"target\":\"s1\"}]}";
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "MissingGlobal", DefinitionJson = def };
+        db.Workflows.Add(workflow);
+        db.SaveChanges();
+        return workflow;
+    }
+
+    private sealed class Box<T> { public T? Value { get; set; } }
+
     private static IServiceProvider BuildScopedSpWithProtector(SqliteConnection conn, ActivityRegistry registry, ISecretProtector protector)
     {
         var services = new ServiceCollection();

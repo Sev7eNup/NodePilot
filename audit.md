@@ -3,6 +3,8 @@
 - Stand der Prüfung: 26. August 2026
 - Geprüfter Commit: `fa1a760` auf `chore/comment-cleanup-pass` plus bereits vorhandener Working Tree mit 243 geänderten Einträgen
 - Prüfmodus: read-only; während des Audits wurden keine Repository-Dateien verändert
+- Nachtrag: Architektur-Audit vom 5. September 2026 mit Umsetzung am 6. September 2026 (PR #305
+  und #306) — eigener Abschnitt vor dem Executive Summary
 
 ## Umsetzungsnachtrag zu Priority 1 (26. August 2026)
 
@@ -86,6 +88,11 @@ Die anschließend angeforderten offenen Punkte 3, 5, 6 und 7 wurden umgesetzt:
    EventKey erzeugt höchstens eine persistierte Execution. Physisch nicht rekonstruierbare
    Zwischenereignisse einer Polling-/Watcher-Quelle benötigen weiterhin eine externe Queue oder
    ein Journal; diese Grenze ist jetzt ausdrücklich dokumentiert.
+   **Überholt seit 28. August 2026 (#265):** Das Nachholen nach Neustart oder Failover wurde
+   bewusst abgeschafft. Jede Quelle spult ihren Cursor beim Start ohne Feuern vor und meldet das
+   übersprungene Fenster (Log-Zeile plus `nodepilot.scheduler.triggers.fires_skipped`);
+   Deduplizierung und Retry im laufenden Betrieb bleiben. Maßgeblich ist `CLAUDE.md`, Abschnitt
+   „Trigger".
 7. **Backup vermittelt keine Vollsicherheit mehr:** Schema v4 verschlüsselt und authentifiziert den
    kompletten Payload statt nur einzelner Secret-Felder. Exportwarnungen verhindern die Ausgabe
    eines unvollständigen Archivs; Restorewarnungen rollen die gesamte Wiederherstellung zurück.
@@ -96,6 +103,199 @@ Die anschließend angeforderten offenen Punkte 3, 5, 6 und 7 wurden umgesetzt:
 Abschlussverifikation: Solution-Release-Build ohne Fehler; Engine/Trigger 223/223,
 Data/Migration 33/33, API Backup/Import 115/115, CLI 120/120, MCP 11/11 und UI
 Backup/Import 89/89 bestanden; TypeScript- und Vite-Produktionsbuild erfolgreich.
+
+## Architektur-Audit vom 5. September 2026
+
+- Stand der Prüfung: 5. September 2026, Arbeitsbaum einschließlich lokaler Änderungen; read-only,
+  keine Builds, Tests oder Deployments durch den Prüfer
+- Gesamtbewertung des Prüfers: **7/10**; vier Befunde mit hohem Impact (weiterlaufende Activities
+  nach einem Engine-Fehler, konkurrierend erzeugbare Ordnerzyklen, zusammengeführte Workflows beim
+  Restore, unredigierte Fehlertexte in Logs und Traces)
+- Jeder High- und Medium-Befund wurde vor der Umsetzung am Code gegengeprüft; das Ergebnis steht
+  bei den Posten unten
+
+| Dimension | Wert | Begründung des Prüfers |
+|---|---:|---|
+| Projektstruktur | 8/10 | Klare Projekte und überprüfter Abhängigkeitsgraph; innerhalb großer Module verbleiben Verantwortungsschwerpunkte. |
+| Codequalität | 7/10 | Aussagekräftige Fachbegriffe und defensive Prüfungen; konkrete Duplikate, Fehlerbehandlungs- und Ressourcenprobleme. |
+| Architektur | 8/10 | Kohärenter modularer Monolith; komplexer Ausführungskern mit teilweise statischem Zustand. |
+| Robustheit | 6/10 | Gute Schutzmechanismen für Normalbetrieb und DB-Ausfälle, aber vier kritische Randfälle (im Nachtrag umgesetzt). |
+| Testarchitektur | 7/10 | Umfangreiche Tests und CI-Gates; reale Produktionsprovider und vollständige Browser→API-Verträge bleiben unzureichend abgesichert (deckt sich mit 4.15). |
+| Wartbarkeit | 7/10 | Zentrale Konfiguration und Dokumentation; mehrfach implementierte Sicherheitslogik und große Orchestrierungsklassen. |
+
+Als Stärken hielt der Prüfer fest: die Projektgrenzen entsprechen dem in `DependencyDirectionTests`
+erzwungenen Graphen (Abschnitt 2), CLI und MCP greifen ausschließlich über HTTP auf das Backend zu;
+`StepRunner` schreibt den Step-Start vor der externen Ausführung und den terminalen Zustand vor der
+Ergebnisweitergabe dauerhaft, die Engine beansprucht wartende Ausführungen über bedingte Updates;
+Autorisierung ist mehrstufig (JWT-Validierung, `TokenValidityMiddleware` mit Session, Widerruf,
+SecurityStamp und Rolle, Folder-Grants unter der globalen Rolle, CSRF auf mutierenden
+Cookie-Anfragen); der Frontend-Zustand ist gegen veraltete Antworten geschützt (Save-Snapshots,
+Verwerfen nach Benutzerwechsel, Bereinigung an der Auth-Grenze);
+`RuntimeOverridesWriter.TryUpdateSectionAtomic` kombiniert Mutex, ETag und Dateiaustausch; CI
+erzwingt das Coverage-Gate von 85 % Zeilen / 70 % Branches und die Deploy-Skripte prüfen Signatur
+und Manifest vor dem Austausch.
+
+### Umsetzungsnachtrag (6. September 2026, PR #305 und #306)
+
+Alle High-Befunde und die verifizierten Medium-Befunde mit Code-Bezug sind umgesetzt:
+
+1. **H1 – Activities liefen nach einem Engine-Fehler weiter: behoben.** `WorkflowScheduler.RunAsync`
+   fing nur den Junction-Race; jede andere Exception — praktisch ein Persistenzfehler beim Step, der
+   kein bestätigter Ausfall ist, etwa Command-Timeout oder Deadlock — verließ die Schleife, die
+   Engine finalisierte den Lauf und gab Slot und Concurrency-Gate frei, während Geschwister-Steps
+   als Waisen weiterliefen und ihre Zeilen in eine terminale Execution schrieben, die niemand mehr
+   canceln konnte. Der Scheduler cancelt und awaitet jetzt jeden gestarteten Step, bevor die
+   Exception propagiert; der Debug-Pause-Guard hängt am Step-Token und blockiert das nicht.
+2. **H2 – Ordnerzyklen durch konkurrierende Moves: behoben.** Prozessweiter
+   `FolderTreeMutationLock` je Baum (ausreichend, weil mutierende Requests im Cluster leader-gated
+   sind) plus Besuchsmengen in `RecomputePathsRecursive` und `DescendantMaxDepth` beider Bäume. Die
+   Eintrittswahrscheinlichkeit war im Bericht überzeichnet — zwei Edit-berechtigte Benutzer im
+   selben DB-Roundtrip-Fenster —, die Folge aber real (Endlosschleife mit wachsenden Path-Strings,
+   Teilbaum verschwindet aus der Baumansicht). Authz-Ahnenkette und `IsDescendant` waren bereits
+   tiefen-gebunden, ein API-weiter Hang trat nicht ein.
+3. **H3 – Restore behandelte den Workflow-Namen als Identität: behoben.** `Workflow.Name` hat
+   keinen Unique-Index, gleichnamige Workflows sind ein unterstützter Zustand
+   (`WorkflowNameResolver` liefert bei Mehrdeutigkeit 409). Der zweite „Deploy" wurde bei `skip`
+   verworfen, bei `overwrite` überschrieb er den ersten, und seine Source-Id wurde auf den ersten
+   gemappt — Referenzen wurden still umgebogen. Ein Backup-Workflow matcht eine Zielzeile jetzt
+   zuerst per Id, dann per Name im Zielordner; Backup-Zeilen matchen einander nie, die Preview zählt
+   nach derselben Regel, `overwrite` stellt bei Id-Match auch den Namen her. ADR 0001 ergänzt.
+4. **H4 – Fehlertexte umgingen die Redaktion: behoben.** Neben `WinRmSession` (roher
+   PowerShell-Fehlerstrom als Span-Status) und `WorkflowEngine.CompleteAsFailedAsync` (rohe
+   Exception in Log und Trace) trug auch der Activity-Span in `StepRunner` den unredigierten
+   Step-Fehler — das hatte der Bericht übersehen. Remote-, Activity- und Engine-Spans nennen jetzt
+   Fehlerklasse und Exception-Typ; Engine-Log und Root-Span tragen die redigierte Nachricht. Wirkt
+   nur mit `OpenTelemetry:Enabled=true` (default `false`), der Log-Pfad immer.
+5. **M3 – Credential-Rotation und WinRM-Pool: behoben**, Roadmap-R2-Posten vorgezogen. Der
+   Pool-Key trägt einen Fingerprint aus Benutzername, Domäne und gespeichertem Passwort; Sessions
+   unter dem alten Key laufen per TTL aus, ausgeliehene beenden ihren Step unter der Identität, mit
+   der sie geöffnet wurden. Die Prüfung verschärfte den Befund: die Idle-TTL startete bei jeder
+   Wiederverwendung neu, unter Dauerlast lief eine alte Identität unbegrenzt weiter, und auch
+   Benutzername- oder Domänenänderungen blieben unbeachtet.
+6. **M4 – SSE-Größenprüfung kam zu spät: behoben.** Der Stream läuft durch den vorhandenen
+   `LengthLimitedStream`. Die Exposition war enger als beschrieben: durch das 90-s-Budget begrenzt,
+   nur vom admin-konfigurierten HTTPS-Endpunkt erreichbar, `llmQuery` streamt nicht.
+7. **M5/M6 – Desktop: behoben.** Der Restart-Befehl parste nie (per PowerShell-Parser bestätigt:
+   ein Fehler vorher, keiner nachher); er liegt jetzt quotefrei in `backendRestart.ts`, ein
+   Fehlschlag wird gemeldet, jede Readiness-Anfrage hat eine Frist (`http.ts`), beides mit Tests.
+8. **M7 – CLI/MCP duplizierten Session-Rotation und Token-Speicherung: behoben.** `TokenStore`,
+   `StoredSession` und `TokenRefreshHandler` liegen einmal in `NodePilot.Core.Clients` (Core trägt
+   dafür die `ProtectedData`-Paketreferenz); `CliSessionInteropTests` verhindert eine Rückkehr der
+   Kopien, `EndpointClientCoverageTests` zählt das gemeinsame Verzeichnis als Call-Site beider
+   Clients.
+9. **TD1 – Binär-Rollback stellte das Schema nicht zurück: behoben, soweit sinnvoll.** Der Updater
+   probt `/healthz/ready` nach dem Rollback und warnt statt „Rollback complete" zu melden; Skript,
+   `deploy/README.md` und Doku-Website sagen, dass ein Binär-Rollback das Schema nicht zurückstellt
+   und ein DB-Backup vor dem Update gehört. Automatisches Down-Migrieren wurde bewusst nicht gebaut
+   (riskanter als der Status quo).
+10. **TD2 – Nightly beendete Prozesse nach Port und Name: behoben.** Nur Prozesse aus dem eigenen
+    Checkout (Pfad oder Kommandozeile unter `RepoRoot`) werden beendet. Der Befund war nur teilweise
+    bestätigt: Dev-Skript, nicht elevated, der installierte Dienst lauscht auf 47000, nicht 5000.
+11. **TD3 – forEach-Kinder verloren die Eltern-Zuordnung: behoben.** Kinder tragen
+    `parentExecutionId` und `callDepth`; vorher erschienen sie als Top-Level-Läufe in
+    Executions-Liste, Ops-Timeline und Alerting-Klassifizierung, und das Support-Log schrieb
+    Start- und Endzeile pro Item.
+12. **T2 – `TestDbFactory.Create()` schloss die Connection nie: behoben.** `Create()` übergibt die
+    Connection an den Context (`contextOwnsConnection`), `CreateWithConnection()` bewusst nicht.
+
+Verifikation: Engine 66 (Scheduler, Telemetry, ForEach, WinRmSession) und 12 (Pool), API 87
+(Backup) und 55 (Ordner, Dep-Graph), AI 78, Data 299 (komplett) und 25 (Ordner-Store), CLI 513 und
+MCP 172 (jeweils komplett), Desktop 107 plus `tsc`; beide PowerShell-Skripte parsen fehlerfrei;
+CI beider PRs grün, CodeQL ohne neue Befunde außer Style-Notes in Testdateien.
+
+### Zweiter Umsetzungsnachtrag (6. September 2026, Restposten aus dem August-Bericht)
+
+Eine Durchsicht der gesamten Datei gegen den Stand nach #305/#306 ergab vier Posten, die in
+keinem Nachtrag als erledigt standen und sich am Code als offen bestätigten. Alle vier sind
+umgesetzt:
+
+1. **4.7 – Fehlende Globals liefen als Text weiter: behoben.** Die T-7.1-Prüfung im `StepRunner`
+   scannte nur Step- und Manual-Muster; ein Test pinnte fest, dass `{{globals.X}}` **nicht**
+   gemeldet wird. Ein fehlendes oder umbenanntes Global blieb wörtlich in REST-Header, Mailtext
+   oder Skript stehen, der Step meldete Erfolg. Der Scan kennt jetzt das Globals-Muster mit
+   eigenem Befund („Unknown global variable(s)"), auch für `runScript`/Custom Activities; scheitert
+   das Laden des Stores, wird ein Lauf, der Globals referenziert, vor dem ersten Step als `Failed`
+   beendet statt mit leerem Dictionary zu laufen.
+2. **4.6 – Conditions liefen fail-open: behoben (ADR 0015).** Am 3. September waren nur `<`,
+   `<=` und `isFalse` bei leerem Operanden geschlossen worden. Unbekannter Typ, Gruppe mit
+   unbekanntem Operator oder ohne Kinder, kaputte Legacy-Strings und Verweise auf nicht
+   vorhandene Steps ergaben weiterhin `true`; `!=`, `isEmpty` und `contains ""` hielten für einen
+   Wert, der nie ankam, und `not` drehte jede geschlossene Antwort wieder auf. Jetzt: neuer
+   `EdgeConditionValidator` in Core, eingehängt in die Strukturvalidierung, also an Save, Publish,
+   Rollback, nativem und SCOrch-Import, MCP und AI-Merge (`400 invalid-edge-condition` mit
+   JSON-Pfad). Zur Laufzeit wirft der Evaluator `ConditionEvaluationException`, der Scheduler
+   bricht den Lauf mit Kantenbezug ab. Die Auswertung ist dreiwertig: ein Operand ohne Wert macht
+   den Vergleich unentscheidbar, unentscheidbar erfüllt nie, auch nicht hinter `not`.
+   Legacy-Kurzformen akzeptieren jetzt auch den `outputVariable`-Alias, den der Designer beim
+   Umbenennen schreibt und der vorher nie auflöste. Alerting-Filter behalten ihre Semantik.
+3. **4.12 – Step blieb unter terminaler Execution `Running`: behoben, soweit sinnvoll.** Bestätigt
+   erreichbar über einen gescheiterten terminalen Step-Write (Lauf `Failed`, Step für immer
+   `Running`), den Zombie-Pfad von `/cancel-all` und das User-Offboarding; kein Reconciler besuchte
+   solche Steps je wieder. Sichtbar als endloser Spinner im Execution-Panel, tickende Live-Timeline
+   und dauerhaft zu hoher „aktive Läufe"-Badge auf der Maschinenseite. Jede terminale
+   Execution-Schreibung (Engine-CAS in beiden Pfaden, `/cancel`, `/cancel-all`, Offboarding) setzt
+   jetzt die noch offenen Steps auf `Cancelled` (`ExecutionStateLifecycle.CancelOrphanedStepsAsync`).
+   Das DB-seitige Fencing der Step-Writes im HA-Betrieb bleibt bewusst offen: `ClusterFencingHost`
+   cancelt kooperativ, und der sichtbare Schaden ist mit dem Sweep beseitigt. Mitgenommen: das
+   Dashboard zählte „long-running" fest ab 30 Minuten, Operations und Alerting ab
+   `Alerting:LongRunningSeconds`; jetzt eine Quelle.
+4. **Doku-Widerspruch zu `db_owner`: behoben.** Die Hardening-Seite verlangte einen Login ohne
+   `db_owner`, Installer, Provisioning und Deploy-README verlangen die Rolle auf der
+   NodePilot-Datenbank für den Migrations-Bootstrap. Die Seite sagt jetzt: least-privilege auf
+   Server-Ebene, `db_owner` datenbankgebunden erforderlich. Die Trennung der Migrations- von der
+   Laufzeit-Identität (Priority 2) bleibt ein Feature für den Fall, dass ein Kunden-DBA sie fordert.
+
+Korrekturen an diesem Dokument aus derselben Durchsicht: Nachtrag vom 27. August Nr. 6 beschreibt
+ein Nachholen, das #265 abgeschafft hat (Vermerk dort); das September-Low zum Desktop-README war ein
+Fehlbefund (Vermerk in der Tabelle); der Pattern-Punkt „Alert-Tests mit `All()`" ist im heutigen
+Testbestand nicht mehr auffindbar.
+
+Verifikation: Engine 584 (Conditions, Validator, Scheduler, StepRunner, Globals, Unpersisted
+Failure, Decision, SCOrch, Manual-Parameter, Grammatik-Parität, Engine-Tests), Data
+(Lifecycle), API (Executions, Offboarding, Dashboard, Alerting, Workflow-Controller,
+Import/Export, Dep-Graph) — Zahlen siehe PR.
+
+### Verbleibende Posten
+
+Nicht umgesetzt, jeweils mit Einordnung. M1, M2 sowie die beiden Testgrenzen sind bewusste
+Entscheidungen und bei einem nächsten Audit nicht neu zu bewerten.
+
+| Prio | Befund des Prüfers | Einordnung |
+|---|---|---|
+| Medium | **M1 – Workflow-Listen enden bei 500 Einträgen.** `GET /api/workflows` liefert keine Fortsetzung; UI-Teilstringsuche und Ordnerfilter arbeiten lokal, MCP meldet die abgeschnittene Anzahl als `totalAvailable`. Vorschlag: serverseitige Filter und Pagination, Listen als Zusammenfassungen ohne Definition; UI, CLI und MCP müssen Seiten verarbeiten. | Bewusster DoS-Guard, auf der Doku-Website dokumentiert und per `GetAll_CapsResultSetAt500_EvenWhenMoreWorkflowsExist` gepinnt. Bis 500 zugängliche Workflows folgenlos; darüber verschwinden die am längsten unberührten aus Listen und Pickern, Deep-Links und `/export` bleiben. Wenn, dann als Feature über alle drei Clients — die Executions-Pagination (Priority 2 Nr. 5) ist das Vorbild. Kleiner Zwischenschritt: `totalAvailable` im MCP durch ein `truncated`-Flag ersetzen. |
+| Medium | **M2 – Rechteberechnung verursacht eine Query je Ordner.** `ResourceAuthorizationService.GetAncestryGrantsAsync` bündelt unterschiedliche Ordner nicht; bei F Ordnern bis zu F zusätzliche Abfragen. Vorschlag: Grants einmal je Request laden und effektive Rollen daraus berechnen. | Kleine indexierte Lookups, nur für Non-Admins, durch das 500er-Cap begrenzt; die Grants liegen aus `GetAccessibleFolderIdsAsync` bereits im Speicher, das Bündeln wäre ein In-Memory-Refactoring. Roadmap-Regel: N+1 nur bei gemessener Latenz. Der Folder-Tree-Endpoint skaliert mit der Gesamtordnerzahl und wäre der Kandidat, falls es misst. |
+| Medium | **T1 – Die Browser-E2E-Fixture antwortet nicht gemockten `/api/`-Aufrufen mit `200 []`.** Ein falscher oder neuer Endpoint muss keinen Testfehler auslösen. Vorschlag: unerwartete Aufrufe sammeln und im Teardown fehlschlagen lassen. | Dokumentierte Konvention (`e2e/README.md`, `src/nodepilot-ui/CLAUDE.md`); die Suite ist bewusst hermetisch, 48 von 74 Specs prüfen Request-Verträge in Route-Handlern, Objekt-Endpoints scheitern mit `[]` sichtbar. Verbleibende Lücke: Read-only-Endpoints, deren Payload keine Spec inspiziert. Eine strikte Variante wäre billig, verlangt aber vorher die Durchsicht aller 74 Specs auf beiläufige Aufrufe. Deckt sich mit 4.15. |
+| Medium | **T3 – Die Migrationskette wird auf PostgreSQL und SQL Server nur als Text geprüft.** `MigrationDriftTests` generieren Skripte und führen sie dort nicht aus; 33 Migrationen verzweigen auf `ActiveProvider`. Vorschlag: isolierter Integrationstest-Job gegen echte Container. | Bekannt und eingeplant: Roadmap R1 Posten 26. Deckt sich mit 4.15. |
+| Low | `GlobalVariableFoldersController.MapError`: `_ => throw ex` setzt den Stacktrace am Wurfpunkt neu, und `InvalidOperationException` wird pauschal als Eingabefehler klassifiziert, obwohl der Typ auch Infrastrukturfehler beschreibt. Vorschlag: gezielte Catch-Blöcke oder fachliche Exception-Typen. | Offen; klein, ohne Betriebsauswirkung. |
+| Low | Das Desktop-README nennt 120 Sekunden Readiness-Wartezeit, `main.ts` setzt 240. | **Fehlbefund.** Die 120 s im README sind `Database:StartupWaitSeconds` (Warten der API auf die Datenbank), die 240 s in `main.ts` die Readiness-Frist der Electron-Shell — zwei verschiedene Timeouts, beide korrekt dokumentiert. |
+| Low | `ActivityLogger` des Switchers hält die Historie unbegrenzt im Speicher, die Oberfläche baut sie wiederholt vollständig auf. Vorschlag: Ringpuffer und inkrementelle Aktualisierung. | Offen. |
+| Low | Doku-Website: das Inhaltsverzeichnis (`Toc.tsx`) reagiert nicht auf einen Sprachwechsel derselben Seite, und seitenübergreifende Links verlieren ihr Fragment (`DocPage.tsx`). | Offen; vom Prüfer benannt, nicht gegengeprüft. |
+
+Strukturvorschläge des Prüfers, die über die Fixes hinausgehen und offen bleiben:
+
+- Reine Baumalgorithmen (Zyklusprüfung, Tiefe, Pfadberechnung) einmal implementieren statt doppelt
+  in `SharedWorkflowFoldersController` und `GlobalVariableFolderStore`; die unterschiedlichen
+  Autorisierungsregeln rechtfertigen getrennte Services, nicht doppelte Algorithmen. Lock und
+  Besuchsmengen wurden in beide Kopien eingebaut.
+- Den prozessweiten Zustand der `WorkflowEngine` (statische Dictionaries, Kapazitätszähler) in
+  einen DI-Singleton mit testbarer Lebensdauer überführen; heute serialisieren die Engine-Tests
+  deshalb ihre Ausführung (`SerialEngineTestCollection`).
+- `BackupRestoreService` (rund 1.400 Zeilen) entlang eines Restore-Planers zerlegen — der Restore
+  ist jetzt korrekt, die Größe der Klasse gehört weiter zu Priority 3 „Große Dateien zerlegen".
+- Audit-Schreibfehler brechen normale Mutationen bewusst nicht ab (`AuditWriter`); eine
+  erfolgreiche Mutation garantiert deshalb keinen Audit-Datensatz. Gewollt, siehe Priority 2
+  „Audit- und SIEM-Zustellung über Outbox absichern".
+- Der Installer bündelt ACLs, Zertifikatrechte, SCM-Anlage und Rollback; der vorhandene
+  `SetupContract` ist die Grenze für eine Zerlegung.
+
+Offene Fragen des Prüfers, aus dem Code nicht beurteilbar: Zielgrößen für Workflows, Ordner,
+gleichzeitige Steps und Ergebnisgrößen; ob PostgreSQL, SQL Server, WinRM und HA unter realen
+Ausfällen abgenommen wurden (siehe 4.15 und Abschnitt 12); welche Update- und Restore-Garantien
+produktiv gelten (Restore-Drill, siehe 4.14); ob die Desktop-App Exporte ermöglichen soll — sie
+blockiert Downloads (`security.ts`), während die SPA Download-basierte Exporte anbietet; der
+aktuelle Advisory-Stand der Abhängigkeiten. Das Vertrauensmodell, nach dem ein Operator Workflow-Code
+unter der Dienstidentität ausführen darf und Folder-RBAC keine Sandbox ist, hat der Prüfer als
+dokumentierte Produktentscheidung bestätigt (siehe Abschnitt 7, „Operator").
 
 ## 1. Executive Summary
 
@@ -236,6 +436,10 @@ Impact: Eine fehlerhafte Schutzbedingung kann den destruktiven Pfad freigeben, d
 
 Empfehlung: Conditions beim Publish validieren und zur Laufzeit fail-closed behandeln. Bis dahin jede Bedingung manuell prüfen und negativ testen.
 
+**Umsetzungsstatus 6. September 2026: behoben** (ADR 0015; Details im zweiten Umsetzungsnachtrag
+zum September-Audit). Der Teilschritt vom 3. September (`<`, `<=`, `isFalse` bei leerem Operanden)
+war davor die einzige Änderung.
+
 ### 4.7 P1 – Fehlende Globals werden als Text weitergereicht
 
 Ist der Global Store nicht erreichbar oder eine Variable fehlt, bleibt `{{globals.API_KEY}}` stehen. Die Unresolved-Prüfung erkennt Step- und Manual-Variablen, aber keine Globals.
@@ -245,6 +449,10 @@ Evidenz: `WorkflowEngine.cs:238-263`, `VariableResolver.cs:250-260`, `StepRunner
 Impact: REST-, Mail- oder Script-Aktivitäten können mit einem literalisierten Secret-Platzhalter laufen und trotzdem Erfolg melden.
 
 Empfehlung: Alle referenzierten Globals vor Start auflösbar machen und fehlende Globals als harten Fehler behandeln.
+
+**Umsetzungsstatus 6. September 2026: behoben** (Details im zweiten Umsetzungsnachtrag zum
+September-Audit). Bis dahin unverändert offen; der Nachtrag vom 26. August hatte den Punkt nur als
+manuelle Abnahme geführt.
 
 ### 4.8 P1 – SCOrch-UTF-16-Import ist clientseitig beschädigt
 
@@ -292,6 +500,11 @@ Empfehlung: Für relevante Trigger externe durable Queue oder Reconciliation-Job
 **Umsetzungsstatus 27. August 2026:** Die ersten drei Punkte sind durch Durable Outbox, DB-Priorität
 und CAS-Terminalisierung behoben. Die beiden Step-State-Punkte gehören zu Priority 2 Nr. 2 und waren
 nicht Teil dieses Fixauftrags; sie bleiben offen.
+
+**Umsetzungsstatus 6. September 2026:** Der vierte Punkt ist behoben — jede terminale
+Execution-Schreibung setzt offene Steps auf `Cancelled` (zweiter Umsetzungsnachtrag zum
+September-Audit, Nr. 3). Der fünfte Punkt (DB-seitiges Fencing der Step-Writes) bleibt bewusst
+offen.
 
 ### 4.13 P1 – Produktionslogging verletzt den Observability-Vertrag
 
@@ -364,16 +577,25 @@ API Admission Transaction
 - `FolderEditor` enthält indirekt eine destruktive Admin-Funktion.
 - „Healthy“ beim EventLog-Trigger sagt nichts über Replayfähigkeit oder einen gestorbenen Watcher aus.
 - README nennt `POST /api/import`; tatsächlich ist die Route `/api/workflows/import`.
+  **Behoben 6. September 2026 (#309).**
 
 ## 8. Pattern Inconsistencies
 
 - TLS und Secret-Schutz sind überwiegend fail-closed; Workflow-Conditions sind fail-open.
+  **Behoben 6. September 2026 (ADR 0015), siehe 4.6.**
 - Execution-Terminalwrites verwenden CAS/Lease-Prädikate; Step- und Cancel-Writes teilweise normales `SaveChanges`.
+  **Teilweise behoben 6. September 2026:** verwaiste Steps werden bei jeder terminalen
+  Execution-Schreibung mitgezogen (4.12); ein DB-seitiges Fencing der Step-Writes bleibt offen.
 - SCOrch-Import ist serverseitig raw-byte-orientiert, clientseitig stringorientiert.
 - Backend- und UI-Importlimits unterscheiden sich stark.
 - Alert-Tests können wegen `All()` auf einer leeren Route grün melden.
+  **Nicht mehr auffindbar (6. September 2026):** keine Alerting-Testdatei enthält heute eine
+  `All()`-Zusicherung.
 - Long-running Threshold ist in Operations konfigurierbar, im Dashboard aber fest kodiert.
+  **Behoben 6. September 2026:** beide lesen `Alerting:LongRunningSeconds`.
 - Credential-Rotation invalidiert den bestehenden WinRM-Sessionpool nicht sofort.
+  **Behoben 6. September 2026 (#306): Credential-Fingerprint im Pool-Key, siehe Audit vom
+  5. September, M3.**
 
 ## 9. AI-Code / Contributor-Drift Indicators
 
@@ -414,13 +636,18 @@ NodePilot sollte auf fünf verbindliche Verträge konvergieren:
 ### Priority 2 – Structural Cleanup
 
 - Durable Outbox und zentralen Execution-State-Lifecycle einführen.
-- Step-Writes mit Execution-Lease und Concurrency-Token fencen.
+- Step-Writes mit Execution-Lease und Concurrency-Token fencen. Der sichtbare Teil (verwaiste
+  `Running`-Steps) ist seit 6. September 2026 durch den Sweep bei jeder terminalen
+  Execution-Schreibung erledigt; das DB-seitige Fencing bleibt bewusst offen.
 - Queue-Deadlock, Capacity-Ghost-States und Cancellation-Race korrigieren.
 - Backupwarnungen im UI sichtbar und als Fehler behandelbar machen.
-- Server-seitige Pagination mit echtem Total statt stiller 500er-Grenze.
+- Server-seitige Pagination mit echtem Total statt stiller 500er-Grenze. Für Executions umgesetzt
+  (Priority 2 Nr. 5); die Workflow-Liste bleibt bewusst bei 500, siehe Audit vom 5. September, M1.
 - Capability-, Settings- und Clientverträge vereinheitlichen.
 - Audit- und SIEM-Zustellung bei Bedarf über Outbox absichern.
-- Datenbankmigration langfristig von der Runtime-`db_owner`-Identität trennen.
+- Datenbankmigration langfristig von der Runtime-`db_owner`-Identität trennen. Der
+  Doku-Widerspruch dazu (Hardening-Seite „kein `db_owner`" gegen Installer und Deploy-README) ist
+  seit 6. September 2026 bereinigt; die Trennung selbst bleibt ein Feature auf Anforderung.
 
 ### Priority 3 – Nice-to-Have Improvements
 

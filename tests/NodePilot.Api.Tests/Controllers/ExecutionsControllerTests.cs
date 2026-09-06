@@ -537,6 +537,46 @@ public class ExecutionsControllerTests
         result.Should().BeOfType<NotFoundResult>();
     }
 
+    [Fact]
+    public async Task CancelAllForWorkflow_ZombieExecution_CancelsItsRunningSteps()
+    {
+        // A row no engine owns any more is force-cancelled in the database. Its steps have no
+        // writer either, so they must not stay Running under the cancelled execution.
+        var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
+        var zombie = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Running, TriggeredBy = "manual",
+        };
+        var runningStep = new StepExecution
+        {
+            Id = Guid.NewGuid(), WorkflowExecutionId = zombie.Id, StepId = "s1", StepType = "runScript",
+            Status = ExecutionStatus.Running, StartedAt = DateTime.UtcNow,
+        };
+        var finishedStep = new StepExecution
+        {
+            Id = Guid.NewGuid(), WorkflowExecutionId = zombie.Id, StepId = "s0", StepType = "runScript",
+            Status = ExecutionStatus.Succeeded, StartedAt = DateTime.UtcNow, CompletedAt = DateTime.UtcNow,
+        };
+        db.AddRange(workflow, zombie, runningStep, finishedStep);
+        await db.SaveChangesAsync();
+
+        var engine = new Mock<IWorkflowEngine>();
+        engine.Setup(e => e.CancelAsync(zombie.Id, It.IsAny<string?>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        var controller = NewController(db, engine.Object);
+
+        var result = await controller.CancelAllForWorkflow(workflow.Id, CancellationToken.None);
+
+        result.Result.Should().BeOfType<OkObjectResult>();
+        db.ChangeTracker.Clear();
+        (await db.WorkflowExecutions.SingleAsync(e => e.Id == zombie.Id)).Status.Should().Be(ExecutionStatus.Cancelled);
+        var steps = await db.StepExecutions.Where(s => s.WorkflowExecutionId == zombie.Id).ToListAsync();
+        steps.Single(s => s.StepId == "s1").Status.Should().Be(ExecutionStatus.Cancelled);
+        steps.Single(s => s.StepId == "s1").ErrorOutput.Should().Contain("cancel-all");
+        steps.Single(s => s.StepId == "s0").Status.Should().Be(ExecutionStatus.Succeeded,
+            "only steps without a terminal state are swept");
+    }
+
     // ---- ExternalTrigger ----
     // The endpoint enforces a minimum API-key length of 32 bytes.
     // Tests for the "correct key" path use a long key; short-key tests exercise the rejection

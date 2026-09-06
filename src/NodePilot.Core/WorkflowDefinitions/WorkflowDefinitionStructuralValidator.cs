@@ -18,6 +18,7 @@ public static class WorkflowDefinitionStructuralValidator
             return WorkflowDefinitionValidationResult.Invalid("root must be a JSON object");
 
         var nodeIds = new HashSet<string>(StringComparer.Ordinal);
+        var outputVariables = new HashSet<string>(StringComparer.Ordinal);
         var activityTypeByNodeId = new Dictionary<string, string?>(StringComparer.Ordinal);
         if (definition.TryGetProperty("nodes", out var nodes))
         {
@@ -28,7 +29,7 @@ public static class WorkflowDefinitionStructuralValidator
             foreach (var node in nodes.EnumerateArray())
             {
                 var path = $"nodes[{index}]";
-                var nodeResult = ValidateNode(node, path, nodeIds, activityTypeByNodeId);
+                var nodeResult = ValidateNode(node, path, nodeIds, outputVariables, activityTypeByNodeId);
                 if (!nodeResult.IsValid) return nodeResult;
                 index++;
             }
@@ -46,7 +47,7 @@ public static class WorkflowDefinitionStructuralValidator
             foreach (var edge in edges.EnumerateArray())
             {
                 var path = $"edges[{index}]";
-                var edgeResult = ValidateEdge(edge, path, edgeIds, nodeIds);
+                var edgeResult = ValidateEdge(edge, path, edgeIds, nodeIds, outputVariables);
                 if (!edgeResult.IsValid) return edgeResult;
 
                 var source = edge.GetProperty("source").GetString()!;
@@ -81,6 +82,7 @@ public static class WorkflowDefinitionStructuralValidator
         JsonElement node,
         string path,
         HashSet<string> nodeIds,
+        HashSet<string> outputVariables,
         Dictionary<string, string?> activityTypeByNodeId)
     {
         if (node.ValueKind != JsonValueKind.Object)
@@ -147,6 +149,9 @@ public static class WorkflowDefinitionStructuralValidator
             return WorkflowDefinitionValidationResult.Invalid(error!);
         }
 
+        if (data.TryGetProperty("outputVariable", out var outputVariable) && IsNonEmptyString(outputVariable))
+            outputVariables.Add(outputVariable.GetString()!);
+
         return WorkflowDefinitionValidationResult.Valid;
     }
 
@@ -154,7 +159,8 @@ public static class WorkflowDefinitionStructuralValidator
         JsonElement edge,
         string path,
         HashSet<string> edgeIds,
-        HashSet<string> nodeIds)
+        HashSet<string> nodeIds,
+        HashSet<string> outputVariables)
     {
         if (edge.ValueKind != JsonValueKind.Object)
             return WorkflowDefinitionValidationResult.Invalid($"{path} must be an object");
@@ -174,11 +180,34 @@ public static class WorkflowDefinitionStructuralValidator
         if (!nodeIds.Contains(target))
             return WorkflowDefinitionValidationResult.Invalid($"{path}.target references unknown node '{target}'");
 
-        if (edge.TryGetProperty("data", out var data)
-            && data.ValueKind == JsonValueKind.Object
-            && !ValidateOptionalString(data, "label", $"{path}.data.label", allowNull: true, out var error))
+        if (!edge.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
+            return WorkflowDefinitionValidationResult.Valid;
+
+        if (!ValidateOptionalString(data, "label", $"{path}.data.label", allowNull: true, out var error)
+            || !ValidateOptionalString(data, "condition", $"{path}.data.condition", allowNull: true, out error))
         {
             return WorkflowDefinitionValidationResult.Invalid(error!);
+        }
+
+        // A condition that saves must also evaluate: the engine fails the run on a malformed
+        // one instead of opening the edge, so the author hears about it here first.
+        if (data.TryGetProperty("condition", out var condition)
+            && condition.ValueKind == JsonValueKind.String
+            && !string.IsNullOrEmpty(condition.GetString()))
+        {
+            var conditionError = EdgeConditionValidator.ValidateLegacy(
+                condition.GetString()!, $"{path}.data.condition", nodeIds, outputVariables);
+            if (conditionError is not null)
+                return WorkflowDefinitionValidationResult.Invalid(conditionError, "invalid-edge-condition", source);
+        }
+
+        if (data.TryGetProperty("conditionExpression", out var expression)
+            && expression.ValueKind != JsonValueKind.Null)
+        {
+            var expressionError = EdgeConditionValidator.ValidateExpression(
+                expression, $"{path}.data.conditionExpression", nodeIds, outputVariables);
+            if (expressionError is not null)
+                return WorkflowDefinitionValidationResult.Invalid(expressionError, "invalid-edge-condition", source);
         }
 
         return WorkflowDefinitionValidationResult.Valid;
