@@ -1,5 +1,4 @@
 using NodePilot.Mcp.Api;
-using NodePilot.Mcp.Auth;
 using NodePilot.Mcp.Config;
 using WireMock.Server;
 using NodePilot.Core.Clients;

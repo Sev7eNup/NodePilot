@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using FluentAssertions;
 using Xunit;
 
@@ -27,6 +28,12 @@ public class TestSuiteCoverageTests
     {
         ["A"] = 300, ["B"] = 900, ["C"] = 1800, ["D"] = 600
     };
+
+    private static readonly Regex ScriptAssignment = new(
+        @"\$(?<n>[A-Za-z_][A-Za-z0-9_]*)\s*(?:\+=|-=|\*=|/=|=)(?!=)", RegexOptions.Compiled);
+
+    private static readonly Regex ScriptVariableRef = new(
+        @"\$(?<n>[A-Za-z_][A-Za-z0-9_]*)", RegexOptions.Compiled);
 
     [Fact]
     public void EveryCatalogActivity_HasSuiteCoverage()
@@ -191,7 +198,66 @@ public class TestSuiteCoverageTests
         problems.Should().BeEmpty(string.Join(Environment.NewLine, problems));
     }
 
+    // An ack script derives the run's correlation id from its own trigger parameters, so a
+    // variable it reads before assigning is always $null - nothing upstream publishes one
+    // under that name, and the ack file is then never written. The check is lexical over the
+    // raw script, so a name mentioned in a comment or a literal above its assignment would
+    // also be flagged; reword the ack script rather than loosen the rule.
+    [Fact]
+    public void EveryAckScript_AssignsALocalVariableBeforeReadingIt()
+    {
+        var suite = LoadSuite();
+        var problems = new List<string>();
+        var scanned = 0;
+
+        foreach (var (workflow, def) in suite.Definitions)
+        {
+            foreach (var node in def.Nodes.Where(n => n.Id == "ack"))
+            {
+                var script = ReadScript(node);
+                if (script is null) continue;
+                scanned++;
+
+                var firstAssign = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (Match m in ScriptAssignment.Matches(script))
+                {
+                    var name = m.Groups["n"].Value;
+                    if (!firstAssign.TryGetValue(name, out var at) || m.Index < at)
+                        firstAssign[name] = m.Index;
+                }
+
+                var firstRead = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (Match m in ScriptVariableRef.Matches(script))
+                {
+                    var name = m.Groups["n"].Value;
+                    if (!firstRead.ContainsKey(name)) firstRead[name] = m.Index;
+                }
+
+                foreach (var (name, at) in firstAssign.Where(a => firstRead[a.Key] < a.Value))
+                    problems.Add($"{workflow}/{node.Id}: ${name} is read at {firstRead[name]} but assigned at {at}");
+            }
+        }
+
+        scanned.Should().BeGreaterThan(0,
+            "every passive trigger workflow carries an 'ack' runScript node; if the generator " +
+            "renamed it this guard is silently checking nothing");
+        problems.Should().BeEmpty(string.Join(Environment.NewLine, problems));
+    }
+
     // --- loading -------------------------------------------------------------------
+
+    /// <summary>The node's <c>config.script</c>, or null when the node runs no script.</summary>
+    private static string? ReadScript(SuiteNode node)
+    {
+        if (string.IsNullOrEmpty(node.Data.ConfigText)) return null;
+
+        using var config = JsonDocument.Parse(node.Data.ConfigText);
+        if (config.RootElement.ValueKind != JsonValueKind.Object) return null;
+        return config.RootElement.TryGetProperty("script", out var script)
+            && script.ValueKind == JsonValueKind.String
+                ? script.GetString()
+                : null;
+    }
 
     private static SuiteModel LoadSuite()
     {

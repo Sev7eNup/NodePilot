@@ -18,7 +18,8 @@ namespace NodePilot.Api.Security;
 /// <item><description>Manual run: <see
 /// cref="WorkflowExecution.StartedByUserId"/>.</description></item>
 ///   <item><description>Trigger-driven: parent workflow's stable
-///   <see cref="Workflow.PublishedByUserId"/>. Routine metadata mutations cannot lend
+///   <see cref="Workflow.PublishedByUserId"/> - the publisher, or the user who enabled a
+///   never-published workflow. Once set it is never moved, so a later re-enable cannot lend
 ///   a different user's privileges to a scheduled run.</description></item>
 /// </list>
 /// </para>
@@ -53,7 +54,7 @@ public sealed class SubWorkflowAuthorizationResolver : ISubWorkflowAuthorization
         var effectiveUserId = parentExecution.StartedByUserId
             ?? parentWorkflow.PublishedByUserId;
         if (effectiveUserId is null)
-            return $"sub-workflow call to '{childWorkflow.Name}' in a different folder requires an effective principal — none could be resolved (no StartedByUserId on the run and no PublishedByUserId on the parent workflow; re-publish it)";
+            return $"sub-workflow call to '{childWorkflow.Name}' in a different folder requires an effective principal — none could be resolved (no StartedByUserId on the run and no PublishedByUserId on the parent workflow; publish it once, or disable and re-enable it)";
 
         // Apply the same account-state and global-role cap as the HTTP authorization
         // service. A retained folder grant must never outlive deactivation or a global

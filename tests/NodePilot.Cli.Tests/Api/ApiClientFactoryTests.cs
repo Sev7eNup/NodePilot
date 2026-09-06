@@ -1,6 +1,7 @@
 using FluentAssertions;
 using NodePilot.Cli.Api;
 using NodePilot.Cli.Auth;
+using NodePilot.Core.Clients;
 using Xunit;
 
 namespace NodePilot.Cli.Tests.Api;

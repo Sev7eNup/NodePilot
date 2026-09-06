@@ -38,9 +38,12 @@ beforeEach(async () => {
 // ScriptEditorDialog renders + behaves like a basic input in tests. Real Monaco is only
 // exercised in the browser (Playwright e2e or manual).
 vi.mock('@monaco-editor/react', () => {
-  const Editor = ({ value, onChange }: { value?: string; onChange?: (v: string | undefined) => void }) =>
+  // `theme` is mirrored onto the element so a test can tell the NodePilot theme from the
+  // built-in fallback the dialog switches to when Monaco rejects a skin color.
+  const Editor = ({ value, onChange, theme }: { value?: string; onChange?: (v: string | undefined) => void; theme?: string }) =>
     React.createElement('textarea', {
       'data-testid': 'monaco-editor-mock',
+      'data-theme': theme ?? '',
       value: value ?? '',
       onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => onChange?.(e.target.value),
     });
@@ -57,7 +60,7 @@ vi.mock('../lib/monacoSetup', () => ({
   MONO_FONT_STACK:
     "'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, 'SFMono-Regular', Menlo, monospace",
   monaco: {
-    editor: { defineTheme: () => {}, setModelMarkers: () => {} },
+    editor: { defineTheme: () => {}, setTheme: () => {}, setModelMarkers: () => {} },
     languages: {
       registerCompletionItemProvider: () => ({ dispose: () => {} }),
       CompletionItemKind: { Variable: 4 },

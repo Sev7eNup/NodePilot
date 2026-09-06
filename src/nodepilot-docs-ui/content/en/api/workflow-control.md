@@ -15,7 +15,7 @@ Progress through SignalR. With `debug: true` → breakpoints, `StepPaused`, resu
 | Endpoint | Semantics |
 |---|---|
 | `POST /execute` | Starts a run |
-| `POST /enable` / `/disable` | The kill switch. `enable` requires a **lock-free** workflow — an existing lock (including your own) returns `423`; from edit mode you publish instead. `disable` ignores locks. |
+| `POST /enable` / `/disable` | The kill switch. `enable` requires a **lock-free** workflow — an existing lock (including your own) returns `423`; from edit mode you publish instead. `enable` also revalidates the stored definition: a weak webhook HMAC secret returns `400 weak_webhook_hmac_secret`, a `scheduleTrigger` whose cron Quartz cannot parse returns `400 invalid_cron_expression`. It fills the runtime principal (`PublishedByUserId`) with the enabling user when the workflow has none, and never replaces an existing one — a caller without a user id gets `401` rather than a workflow that could never fire. An already-enabled workflow is a no-op (`204`) and is therefore **not** stamped: disable and re-enable it, or publish once. `disable` ignores locks and never writes the principal. |
 | `POST /cancel-all` | Cancels every running execution of the workflow |
 | `PUT /concurrency-limit` | Caps how many executions run at once. Body: `{"maxConcurrentExecutions": 5}`, or `null` for unlimited. The property is required — an empty body is a `400`, so a client can never clear the limit by omission. `0` is rejected; disable the workflow instead. |
 | `POST /executions/{id}/cancel|retry|resume` | A single run |
@@ -49,7 +49,7 @@ Workflows have a per-user edit lock (`CheckedOutByUserId` + `CheckedOutAt`). Mut
 |---|---|
 | `POST /lock` | Atomically sets `IsEnabled=false` + the lock fields. 409 if already locked. |
 | `POST /unlock` | Sets the lock fields to null. `IsEnabled` stays as it is. |
-| `POST /publish` | Atomically: save + `IsEnabled=true` + unlock. |
+| `POST /publish` | Atomically: save + `IsEnabled=true` + unlock. The submitted definition is validated first: a weak webhook HMAC secret returns `400 weak_webhook_hmac_secret`, an invalid Quartz cron returns `400 invalid_cron_expression`. |
 | `POST /force-unlock` | Admin only. Breaks someone else's lock. |
 
 ## The UX flow

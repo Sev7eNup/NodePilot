@@ -8,7 +8,7 @@ This reference describes the configuration and outputs of every activity type.
 | **Engine-local** | The NodePilot API process |
 | **Hybrid** | Remote or engine-local depending on the configuration |
 
-Every step supports `config.retry` with `maxAttempts`, `backoff`, `initialDelayMs` and `maxDelayMs`. `config.timeoutSeconds` bounds a single step. The execute request can additionally bound the whole execution.
+Every step supports `config.retry` with `maxAttempts`, `backoff`, `initialDelayMs` and `maxDelayMs`. Permanent remote failures are exempt from it: a denied WinRM logon, a session blocked by the SSL policy and a credential that cannot be decrypted fail the step on the first attempt — repeating them cannot help, and repeated failed logons can lock a domain account out. `config.timeoutSeconds` bounds a single step. The execute request can additionally bound the whole execution.
 
 ---
 
@@ -48,7 +48,7 @@ Every step supports `config.retry` with `maxAttempts`, `backoff`, `initialDelayM
 
 **Remote.**
 
-- **Config:** `serviceName`, `action` (start/stop/restart/status/create/delete/setStartType; `create`/`setStartType` take `binaryPath`/`displayName`/`description`/`startupType`; `delete` stops the service and removes it permanently via `sc.exe delete`)
+- **Config:** `serviceName`, `action` (start/stop/restart/status/create/delete/setStartType; `create`/`setStartType` take `binaryPath`/`displayName`/`description`/`startupType`; `delete` stops the service and removes it permanently via `sc.exe delete`). `sc.exe` reports its failures on stdout and leaves the error stream empty, so the exit code of the `sc.exe` calls behind `delete` and behind an `AutomaticDelayedStart` startup type is checked and a non-zero exit fails the step — a refused delete or startup-type change is never reported as success.
 - **Outputs:** `param.name`, `param.status`, `param.startType`
 
 ## `registryOperation`
@@ -109,7 +109,7 @@ rejected; the target ACL remains the boundary against concurrent parent renames.
 
 **Engine-local.**
 
-- **Config:** `url`, `method`, `body`, `headers`, `timeoutSeconds`, `proxyMode` (`default`/`direct`/`custom`), `proxyAddress`, `noProxy`
+- **Config:** `url`, `method`, `body`, `headers` (on a request that carries a body, a `Content-Type` set here moves onto the entity — no second, conflicting field on the wire; an unparsable value is left alone and the body still goes out as `application/json`. A request without a body, and every GET/HEAD, has no entity, so a `Content-Type` set there is dropped), `timeoutSeconds`, `proxyMode` (`default`/`direct`/`custom`), `proxyAddress`, `noProxy`
 - **Outputs:** `param.statusCode` (the response body in `output` as `HTTP {code}\n{body}`; headers are not exposed as `param`)
 
 ## `sql`
@@ -118,6 +118,10 @@ rejected; the target ACL remains the boundary against concurrent parent renames.
 
 - **Config:** `provider` (sqlserver/sqlite/postgres), `query`, `timeoutSeconds`. Connection options: (a) the builder — SQL Server: `server`/`database`/`authentication`/`username`/`password`/`encrypt`/`trustServerCertificate`; Postgres: `host`/`port`/`database`/`username`/`password`/`sslMode` (`VerifyFull` + `Trust Server Certificate=false` by default; weaker modes only for literal loopback hosts); SQLite: `dataSource`; (b) a raw `connectionString`; (c) a named `connectionRef` from `SqlActivity:ConnectionStrings:{name}`. The Postgres TLS policy applies to raw and ref as well.
 - **Outputs:** SELECT → `param.rowCount` + the first row's columns as `param.<col>` + `param.row{i}_{col}` (the first 20 rows) + `param.truncated`/`param.flatKeysTruncated`. DML/DDL → `param.rowsAffected` + `param.rowCount`
+- The shape follows the statement, not the number of hits: a `SELECT` that matches nothing still
+  publishes the SELECT shape (`[]`, `param.rowCount` of 0) and no `rowsAffected`. Scalar columns
+  are published invariantly — `1.5`, never `1,5` — so a comparison means the same thing on every
+  host locale.
 
 ## `emailNotification`
 
@@ -174,6 +178,9 @@ rejected; the target ACL remains the boundary against concurrent parent renames.
 
 - **Config:** `source`, `path`/`content`, `xpath`, `namespaces`, `resultMode`
 - **Outputs:** `param.result`, `param.count`
+- `resultMode` switches cardinality only. Both modes publish the element text; `all` returns it
+  as a JSON array. Numeric XPath results use an invariant decimal point, so a comparison means
+  the same thing on every host locale.
 
 ## `jsonQuery`
 
@@ -181,6 +188,9 @@ rejected; the target ACL remains the boundary against concurrent parent renames.
 
 - **Config:** `source`, `path`/`content`, `jsonPath`, `resultMode`
 - **Outputs:** `param.result`, `param.count`
+- Scalars are published invariantly: `9.99`, and `true`/`false` in lower case. An ISO-8601
+  timestamp is passed through as the original text — it is never re-parsed into a
+  host-formatted date.
 
 ## `log`
 

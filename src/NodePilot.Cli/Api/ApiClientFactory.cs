@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Runtime.Versioning;
 using NodePilot.Cli.Auth;
+using NodePilot.Core.Clients;
 
 namespace NodePilot.Cli.Api;
 

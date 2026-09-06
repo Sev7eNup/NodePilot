@@ -515,7 +515,7 @@ public static class SettingsSectionAdapters
                     BaseUrl = p["BaseUrl"]?.GetValue<string>() ?? "",
                     ApiKey = HasNonNullValue(p, "ApiKey") ? SettingsSchema.MaskedSecretDisplay : null,
                     Model = p["Model"]?.GetValue<string>() ?? "",
-                    MaxTokens = p["MaxTokens"]?.GetValue<int>() ?? 4096,
+                    MaxTokens = p["MaxTokens"]?.GetValue<int>() ?? 256_000,
                     TimeoutSeconds = p["TimeoutSeconds"]?.GetValue<int>() ?? 90,
                     EnableToolCalling = p["EnableToolCalling"]?.GetValue<bool>() ?? false,
                     ToolCallMaxDepth = p["ToolCallMaxDepth"]?.GetValue<int>() ?? 6,

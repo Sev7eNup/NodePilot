@@ -97,7 +97,9 @@ umgebungsabhängig, gehören in die Test-Suite unter `scripts/test-suite/`, sieh
 `scheduledTask`, `startProgram`, `xmlQuery`, `generateText`, `sql`, `eventLogTrigger`. Optional und
 gated: AI-Log-Triage (`llmQuery`, braucht `Llm:Enabled`), DB-Wächter (`databaseTrigger`).
 Leitplanken: `localhost` statt GUID, Sticky-Notes als Inline-Doku, externe Trigger kommen disabled
-an und brauchen *Publish* (nicht nur Enable), sonst `missing_effective_principal`.
+an und werden per *Publish* oder *Enable* scharfgeschaltet — beide setzen `PublishedByUserId`, wenn
+die Spalte leer ist. Ein Workflow, der ohne einen dieser Wege auf `IsEnabled=true` kommt, endet in
+`missing_effective_principal`.
 
 ### Welle 5 — KI-Ausbaustufe 1
 
@@ -190,7 +192,7 @@ Jeder Posten trägt seine Auslösebedingung. Ohne Trigger wird nicht gestartet.
 - Trigger-Sources dürfen nicht in den Root-DI-Container lecken (siehe Commit `34f7874b`).
 - Im HA-Passive-Knoten darf nichts doppelt feuern → externe Trigger leader-gaten.
 - Trigger-Daten landen als `manual.*` (+ `param.*` des Trigger-Nodes) — **kein** `trigger.*`-Namespace.
-- Trigger-Läufe brauchen `Workflow.PublishedByUserId` → der Workflow muss *published* sein, nicht nur enabled.
+- Trigger-Läufe brauchen `Workflow.PublishedByUserId`. Publish, Import, Duplicate, Restore und `/enable` setzen die Spalte, wenn sie leer ist (`/enable` überschreibt nie einen bestehenden Publisher). Nicht abgedeckt bleiben ein Workflow, der ohne einen dieser Wege auf `IsEnabled=true` kommt (First-Boot-Provisioning → `missing_effective_principal`), und ein deaktivierter Publisher (`effective_principal_inactive`); beide brauchen einmal Publish.
 - **`Health` beantworten.** Der Orchestrator wertet es sequenziell für *jeden* Trigger im 5-s-Pass
   aus → **reiner In-Memory-Read**, kein I/O, kein Lock. Wer echtes I/O braucht, probt auf eigenem
   Timer und cached das Urteil. Konstant `Healthy` ist erlaubt, aber nur mit Kommentar, der die
@@ -263,7 +265,7 @@ Beschreibung, Nutzerproblem und Sicherheitsgrenzen je Idee: [`ai-feature-ideas.m
 | Backend-Line-Coverage 89 % → 90 % | Die Ratsche steht in `ci.yml` auf 85 % Line / 70 % Branch. Anheben, wenn ohnehin breit getestet wird — kein Selbstzweck. |
 | `IWorkflowDefinitionMutator` — ein Mutations-Pfad für Workflow-Definitionen | Aus dem Audit 2026-08-15 (P1). Version, `UpdatedAt`, berechnete Metadaten, History und Trigger-Sync liegen heute mehrfach nebeneinander in Create/Publish/Duplicate/Restore. Auslöser: der nächste Bug, der nur einen dieser Pfade trifft. |
 | Custom-Activity-Invarianten DB-seitig erzwingen | Aus dem Audit 2026-08-15 (P2). Heute nur App-Level-`ConcurrencyToken` in `CustomActivityDefinitionStore`; DB-seitig fehlen `IsConcurrencyToken()` und Live-Key-Eindeutigkeit. Braucht EF-Migration + Parallel-Test mit zwei DbContexts. Auslöser: erste beobachtete Race in der Praxis. |
-| Credential-Rotation an den WinRM-Pool koppeln | Aus dem Audit 2026-08-15 (P2). Pool-Key um Credential-Fingerprint erweitern, Idle-Sessions bei Update invalidieren, Semantik für ausgeliehene Sessions dokumentieren. Auslöser: erste Rotation, nach der eine alte Identität weiterlief. |
+| ~~Credential-Rotation an den WinRM-Pool koppeln~~ **Erledigt (2026-09-06)** | Aus dem Audit 2026-08-15 (P2). Der Pool-Key trägt einen Fingerprint aus Benutzername, Domäne und gespeichertem Passwort; ein bearbeitetes Credential bekommt sofort eine frische Session, Idle-Sessions unter dem alten Key laufen per TTL aus, ausgeliehene Sessions beenden ihren Step unter der Identität, mit der sie geöffnet wurden. Vorgezogen, weil die Idle-TTL bei jeder Wiederverwendung neu startete und eine alte Identität unter Dauerlast unbegrenzt weiterlief. |
 | N+1 bei Notifications und Workflow-Statistiken bündeln | Aus dem Audit 2026-08-15 (P2). Ziel-Größenordnung laut Betreiber: ~100 parallele Läufe. Auslöser: gemessene Latenz, nicht Verdacht — vorher `docs/performance-improvements.md` gegenlesen. |
 | Reale Integrationsgrenzen (Container-Migrationen, Browser↔echte API, Electron-Smoke) | Aus dem Audit 2026-08-15 (P2). Alle bestehenden Suiten sind hermetisch gemockt. Größter Einzelposten der Liste; sinnvoll nur stückweise. |
 | `WorkflowEditorPage` in Hooks zerlegen + Gzip-Budgets in CI | Aus dem Audit 2026-08-15 (P2). Die Seite ist zuletzt weiter gewachsen. Monaco und ELK bleiben erlaubte Lazy-Ausnahmen. Auslöser: wenn der Initial-Chunk spürbar wird. |

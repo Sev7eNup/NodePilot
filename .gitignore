@@ -195,6 +195,9 @@ src/nodepilot-ui/coverage-sonar/
 # Codex CLI scratch artifacts
 .codex-artifacts/
 
+# Scratch bodies handed to `gh pr create --body-file` — never part of the repo
+/pr*-body.md
+
 # Local presentations / slide decks (not part of the product)
 presentations/
 # ...except the one deliberately published deck

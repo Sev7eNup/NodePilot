@@ -6,8 +6,8 @@ namespace NodePilot.Cli.Settings;
 
 /// <summary>
 /// Plain-JSON config under %APPDATA%\NodePilot\config.json. Holds non-secret connection
-/// settings only — tokens live in <c>Auth/TokenStore</c> (DPAPI-encrypted) so a config
-/// backup never carries a usable session. The CLI is the only writer; the read side
+/// settings only — tokens live in the shared <see cref="TokenStore"/> (DPAPI-encrypted) so a
+/// config backup never carries a usable session. The CLI is the only writer; the read side
 /// (path, <c>Load</c>, <c>CliConfig</c>) lives in <see cref="ClientConfigStore"/> so the
 /// MCP server reads exactly the same file the same way.
 /// </summary>

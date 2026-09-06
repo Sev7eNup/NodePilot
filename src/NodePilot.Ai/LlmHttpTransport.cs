@@ -206,18 +206,18 @@ internal sealed class LlmHttpTransport
     /// <summary>
     /// Yields the payload of every <c>data:</c> line of an SSE response, skipping blank lines and
     /// stopping at the <c>[DONE]</c> sentinel (Chat Completions sends it; the Responses API simply
-    /// ends the stream). Enforces the response byte cap across the whole stream, which
-    /// <see cref="LengthLimitedStream"/> does not cover here.
+    /// ends the stream). The byte cap sits below the line reader, so a single oversized line
+    /// trips it while it is being read rather than after it has been buffered.
     /// </summary>
     public async IAsyncEnumerable<string> ReadSseDataAsync(
         HttpResponseMessage resp,
         [EnumeratorCancellation] CancellationToken io,
         CancellationToken caller)
     {
-        await using var stream = await resp.Content.ReadAsStreamAsync(io);
+        await using var rawStream = await resp.Content.ReadAsStreamAsync(io);
+        await using var stream = new LengthLimitedStream(rawStream, MaxResponseBytes);
         using var reader = new StreamReader(stream);
 
-        long totalBytes = 0;
         while (true)
         {
             string? line;
@@ -230,12 +230,12 @@ internal sealed class LlmHttpTransport
                 throw new LlmException(LlmErrorKind.Timeout,
                     $"LLM stream stalled for more than {_config.TimeoutSeconds}s ({_config.Endpoint.PostUrl}).");
             }
-            if (line is null) break;
-
-            totalBytes += line.Length;
-            if (totalBytes > MaxResponseBytes)
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Body-Limit", StringComparison.Ordinal))
+            {
                 throw new LlmException(LlmErrorKind.MalformedResponse,
-                    $"LLM-Stream überschreitet das Body-Limit ({MaxResponseBytes} bytes).");
+                    $"LLM-Stream überschreitet das Body-Limit ({MaxResponseBytes} bytes).", inner: ex);
+            }
+            if (line is null) break;
 
             if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
             var data = line[5..].Trim();

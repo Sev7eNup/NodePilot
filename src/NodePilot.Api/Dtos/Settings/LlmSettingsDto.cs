@@ -55,7 +55,7 @@ public sealed class LlmProfileSettingsDto
     /// today's largest context would make NodePilot the thing blocking tomorrow's model.
     /// </summary>
     [Range(256, 1_000_000)]
-    public int MaxTokens { get; set; } = 4096;
+    public int MaxTokens { get; set; } = 256_000;
 
     [Range(5, 3600)]
     public int TimeoutSeconds { get; set; } = 90;

@@ -48,7 +48,7 @@ durable queue in front of it rather than relying on the trigger.
 
 ## Retry & timeout
 
-- **Retry per step:** `config.retry` with `maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayMs`.
+- **Retry per step:** `config.retry` with `maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayMs`. Permanent remote failures are not retried — a denied WinRM logon, a session blocked by the SSL policy and a credential that cannot be decrypted fail the step on the first attempt, so a step never produces a series of failed logons that could lock an account out.
 - **Execution timeout:** `timeoutSeconds` in the execute body + per-step `config.timeoutSeconds`.
 
 ## Disabled nodes & edges
