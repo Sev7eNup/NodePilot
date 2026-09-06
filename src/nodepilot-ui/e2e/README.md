@@ -29,23 +29,30 @@ alongside `dotnet test` and `npm run test:run`.
   combination keeps the pre-existing DOM of every spec (buttons visible, nav entry hidden) —
   do NOT change it to all-true, or the AI-Chat nav appears suite-wide. Override per test with
   `mockCaps(page, capsJson({...}))` (both exported from `fixtures/mockApi.ts`).
-- `installDefaultMocks` also **pins the designer to the CLASSIC look and the SMALL node scale**
-  (localStorage seed `designerTheme: 'classic'`, `nodeScaleIndex: 1`, `version: 2`) — both are
-  geometry knobs the existing visual assertions were written against. The Atelier design (default
-  for fresh real profiles) re-tokenises colors/geometry; the node scale (default `3` = `lg`) changes
-  how much room a node takes, and `fitView` turns that into a different pan/zoom for the same seeded
-  positions — at `lg` a node can slide under the bottom-right minimap and lose its clicks. The
-  seeded `version` must match the store's persist version, or the store's own migration reads the
-  pinned `sm` as "still on the old default" and lifts it back to `lg`. The seed is skipped once the
-  app itself persisted a full designStore state (so mid-test toggles survive `page.reload`).
-  Atelier-path specs live in `designer-atelier.spec.ts` and seed `'atelier'` explicitly.
-  **Any seed that replaces the whole `nodepilot-design` key must re-assert both pins** — that is why
-  `seedExpertMode` and `seedAtelier` repeat them.
+- `installDefaultMocks` also **pins the SMALL node scale** (localStorage seed
+  `nodeScaleIndex: 1`, `version: 4`) — a geometry knob the existing visual assertions were written
+  against. The node scale (default `3` = `lg`) changes how much room a node takes, and `fitView`
+  turns that into a different pan/zoom for the same seeded positions — at `lg` a node can slide
+  under the bottom-right minimap and lose its clicks. The seeded `version` must match the store's
+  persist version, or the store's own migration reads the pinned `sm` as "still on the old default"
+  and lifts it back to `lg`. The seed is skipped once the app itself persisted a full designStore
+  state (so mid-test toggles survive `page.reload`).
+  **Any seed that replaces the whole `nodepilot-design` key must re-assert that pin** — that is why
+  `seedExpertMode` repeats it.
 - **The preview build renders the UI in English** (i18n falls back to EN). All
   activity- and trigger-config panels are translated for both DE and EN. Prefer
   language-agnostic selectors anyway — `getByRole` with bilingual regex
   (`/save|speichern/i`), input attributes, `getByText(/…/i)` — since a few
   non-config editor strings may still render German under EN.
+- **The right slot (properties / edge inspector / AI chat) is a fixed 450 px and narrows the
+  canvas.** React Flow keeps its viewport transform when the pane shrinks, so nodes that `fitView`
+  centred on the full-width canvas end up beside the pane and `onlyRenderVisibleElements` unmounts
+  them — a locator for such a node then hangs. `refitCanvas(page)` from `fixtures/canvas.ts` fits
+  the graph back into what is left; pass `'panel'` when a chat or inspector holds the caret, so the
+  fit goes through the React Flow control instead of the `Home` shortcut. Where the test needs the
+  *original* zoom (aiming at a single port, or keeping clear of the minimap, which sits bottom-right
+  **inside** the pane and covers the middle of a narrow one), give that test its own wider viewport
+  via a nested `test.describe` + `test.use` instead — see `designer-edges.spec.ts` 4.9.
 - Editor in **State B (editable)**: mock `**/api/workflows/<id>` with
   `checkedOutByUserId: MOCK_USER.id` and the `definitionJson` you need; seed nodes clustered
   top-left (React Flow virtualizes off-screen nodes and the bottom-right minimap intercepts
@@ -131,7 +138,7 @@ every main screen into `__screens__/*.png`; it documents visuals, it asserts not
 | 83 | Live-Ops Mission Control: real-time execution timeline (running + recently-finished bars), bar drill-down with failed-step names and the incident actions (cancel / retry / cancel-all / quarantine incl. disable-before-cancel ordering and per-node RBAC gating), stuck strip + overdue bar treatment for long-running runs, step-activity (finished count / last progress, no percentage), window selector 30 m / 1 h with display freeze and the density histogram that fills a window the individual bars cannot cover (columns on a per-lane baseline, below-baseline failure marker), next-fires departure board incl. maintenance-window blackout marking, folder scoping | `operations.spec.ts` |
 | 78 | Alerting rules (list/create/test-fire/secret-redaction/role-gating/gauge-scope-gate/deliveries-modal/cancelledBy-filter) | `alerting.spec.ts` |
 | 79 | Toolbar-layout toggle: compact ⇄ classic toolbar, persisted in designStore, toggle reachable from both layouts | `toolbar-layout.spec.ts` |
-| — (new) | Atelier-Designsprache: Scope-Klassen + Token-Adaption, Skin-Adaption (helle Skins: weiße Chrome-Platte auf dem Shell-Grund, dunkle: Chrome hebt vom tieferen Canvas ab), Header-Umschalter (role=switch), Persistenz über Reload, Classic-Suite-Pin | `designer-atelier.spec.ts` |
+| — (new) | Atelier-Designsprache (einzige Designer-Ansicht): Scope-Klassen + Token-Adaption, Skin-Adaption (helle Skins: weiße Chrome-Platte auf dem Shell-Grund, dunkle: Chrome hebt vom tieferen Canvas ab), kein Umschalter mehr, Persistenz über Reload | `designer-atelier.spec.ts` |
 | 80 | Global AI Chat (`/ai-chat`) — SSE Q&A over docs, operational context, source code, DB/text2sql; tool-call indicators, thread persistence, export-to-Markdown, regenerate, role-gated source badges (DB global-Admin only; source Admin/Operator) | `ai-chat.spec.ts` |
 | 81 | Custom Activities (`/custom-activities`) — CRUD lifecycle: create/edit/delete (Admin+Operator while disabled), enable/disable (Admin only), export/import, rollback; draft-state enforcement, role-gating | `custom-activities.spec.ts` |
 | 82 | Database outage (runtime) — banner appears/escalates, no toast storm, recovery clears + refetches + success toast, banner visible in the bare-Outlet designer route; driven via `**/healthz/database` + `DATABASE_*` 503 mocks | `database-outage.spec.ts` |

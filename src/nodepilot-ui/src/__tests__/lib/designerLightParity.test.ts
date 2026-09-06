@@ -69,27 +69,26 @@ describe('designer light-skin parity', () => {
     });
   }
 
-  it('the classic look gets the same light relationship, and only in light', () => {
-    // Atelier carries this in its own palette; classic inherits the app tokens and the
-    // components choose `bg-surface` for the canvas and `bg-surface-low` for the docks, which
-    // in a light skin is the app's reading upside down. index.css re-points it.
-    const rule = blockAfter(indexCss, 'html:not(.dark) .np-designer:not(.wd-atelier) .wd-dock');
-    expect(rule).toContain('var(--color-surface-lowest)');
-
-    const ground = blockAfter(indexCss, 'html:not(.dark) .np-designer:not(.wd-atelier),');
+  it('the mobile read-only graph gets the same light ground, and only in light', () => {
+    // The mobile view borrows the `.np-designer` token scope but has no Atelier palette of its
+    // own, so it would pick `bg-surface` for the canvas — the app's light reading upside down.
+    // `html:not(.dark)` keeps the re-point out of the dark skins, where a deeper canvas floor
+    // is the intended reading.
+    const ground = blockAfter(indexCss, 'html:not(.dark) .np-mobile-canvas');
     expect(ground).toContain('var(--color-surface-low)');
 
-    // `html:not(.dark)` keeps this out of the dark skins, where the chrome lifting off a
-    // deeper canvas floor is the intended reading.
+    const mobile = readFileSync(join(CSS_DIR, 'pages', 'MobileWorkflowView.tsx'), 'utf8');
+    expect(mobile, 'the mobile canvas needs its stable hook').toContain('np-mobile-canvas');
+
     const editor = readFileSync(join(CSS_DIR, 'pages', 'WorkflowEditorPage.tsx'), 'utf8');
     expect(editor, 'the canvas needs its stable hook').toContain('np-canvas flex-1');
   });
 
-  it('the canvas dot grid and minimap masks are tokens in BOTH bases, not literals', () => {
+  it('the canvas dot grid and minimap mask are tokens in BOTH bases, not literals', () => {
     // A hardcoded rgba() in WorkflowEditorPage.tsx would pin the grid to one shade, so it would
     // no longer follow the active skin.
     const darkBase = blockAfter(indexCss, 'html.dark {', '--color-surface:');
-    for (const token of ['--np-canvas-dot', '--np-minimap-mask', '--np-minimap-mask-atelier']) {
+    for (const token of ['--np-canvas-dot', '--np-minimap-mask']) {
       expect(blockAfter(indexCss, '@theme'), `light ${token}`).toContain(token);
       expect(darkBase, `dark ${token}`).toContain(token);
     }

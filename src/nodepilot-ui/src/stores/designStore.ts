@@ -1,10 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-/** Visual language of the workflow designer. `atelier` is the skin-independent light-first
- *  workbench (floating chrome, paper/graphite canvas, cobalt accent); `classic` follows the
- *  app skin. Both share the same components and functionality. */
-export type DesignerTheme = 'atelier' | 'classic';
 export type NodeStyle = 'classic' | 'card';
 /** Classic-only: how an activity node draws its icon. `shape` is a clip-path silhouette with a
  *  small centered glyph; `glyph` is the bare palette icon, large and accent-coloured, as shown
@@ -58,10 +54,6 @@ interface DesignState {
    * preference, never a permission or part of the persisted Workflow Definition. */
   designerMode: DesignerMode;
   setDesignerMode: (mode: DesignerMode) => void;
-  /** Visual language of the designer (Atelier redesign vs. classic look). */
-  designerTheme: DesignerTheme;
-  setDesignerTheme: (theme: DesignerTheme) => void;
-  toggleDesignerTheme: () => void;
   /** Editor-header toolbar arrangement (compact grouped toolbar vs. classic inline-button row). */
   toolbarLayout: ToolbarLayout;
   setToolbarLayout: (layout: ToolbarLayout) => void;
@@ -126,10 +118,6 @@ export const useDesignStore = create<DesignState>()(
     (set) => ({
       designerMode: 'standard' as DesignerMode,
       setDesignerMode: (designerMode: DesignerMode) => set({ designerMode }),
-      designerTheme: 'atelier' as DesignerTheme,
-      setDesignerTheme: (designerTheme: DesignerTheme) => set({ designerTheme }),
-      toggleDesignerTheme: () =>
-        set((s) => ({ designerTheme: s.designerTheme === 'atelier' ? 'classic' : 'atelier' })),
       toolbarLayout: 'compact' as ToolbarLayout,
       setToolbarLayout: (toolbarLayout: ToolbarLayout) => set({ toolbarLayout }),
       nodeStyle: 'classic',
@@ -185,7 +173,7 @@ export const useDesignStore = create<DesignState>()(
     }),
     {
       name: 'nodepilot-design',
-      version: 3,
+      version: 4,
       // Profiles that already used the full designer keep the expert surface. Fresh
       // profiles use the standard-mode default above.
       migrate: (persisted, version) => {
@@ -200,6 +188,13 @@ export const useDesignStore = create<DesignState>()(
         // orphaned entry would be copied into runtime state and written back on every save.
         if (version < 3 && 'flexiblePortsEnabled' in state) {
           const { flexiblePortsEnabled: _dropped, ...rest } = state as Partial<DesignState> & { flexiblePortsEnabled?: boolean };
+          void _dropped;
+          state = rest;
+        }
+        // v4 drops the classic designer look; Atelier is the only design language. Same reason
+        // as v3: an orphaned key would be merged into runtime state and written back on save.
+        if (version < 4 && 'designerTheme' in state) {
+          const { designerTheme: _dropped, ...rest } = state as Partial<DesignState> & { designerTheme?: string };
           void _dropped;
           state = rest;
         }

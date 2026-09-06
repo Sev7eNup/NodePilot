@@ -107,7 +107,7 @@ function MobileWorkflowViewInner({ workflowId }: Readonly<{ workflowId: string }
         <Screen size={13} className="shrink-0" />
         <span>{t('workflows:mobileReadonlyHint')}</span>
       </div>
-      <section className="np-designer flex-1 relative bg-surface overflow-hidden">
+      <section className="np-designer np-mobile-canvas flex-1 relative bg-surface overflow-hidden">
         {isLoading ? (
           <div className="absolute inset-0 flex items-center justify-center text-on-surface-variant text-sm">
             {t('common:loadingDots')}

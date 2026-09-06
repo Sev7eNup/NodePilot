@@ -68,8 +68,7 @@
 
   /* MiniMap mask: the dimmed area outside the viewport. Declared for both light and dark
      bases so the component never has to fall back to a hardcoded literal. */
-  --np-minimap-mask:         rgba(23, 26, 31, 0.10);
-  --np-minimap-mask-atelier: rgba(23, 26, 31, 0.12);
+  --np-minimap-mask:         rgba(23, 26, 31, 0.12);
   --color-inverse-surface: #2e3132;
   --color-inverse-on-surface: #f0f1f3;
 
@@ -279,8 +278,7 @@ html.dark {
      defaults. Consumers: WorkflowEditorPage.tsx (<Background color>, <MiniMap maskColor>)
      and ActivityNode.tsx (premium node fill). */
   --np-canvas-dot:          rgba(255, 255, 255, 0.34);
-  --np-minimap-mask:        rgba(17, 18, 20, 0.55);
-  --np-minimap-mask-atelier: rgba(14, 16, 19, 0.62);
+  --np-minimap-mask:        rgba(14, 16, 19, 0.62);
   --np-node-bg:             rgba(13, 17, 22, 0.92);
 
   /* Status tokens, dark. Skins do not override them; see the @theme comment above. */
@@ -974,29 +972,18 @@ html.dark[data-skin="dark-nebula"] .np-execution-panel {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   CLASSIC DESIGNER, LIGHT BASE: the same ground-to-chrome relationship as the shell.
+   MOBILE READ-ONLY GRAPH, LIGHT BASE: the canvas is the shell's page ground.
 
-   Atelier carries this in its own palette (`designer-atelier.css`), but the classic look
-   inherits the app tokens verbatim, and its components pick `bg-surface` for the canvas and
-   `bg-surface-low` for the docks. Under a light skin that inverts the app's reading: the
-   canvas becomes the brightest surface with the chrome a step darker, where every other
-   page is white plates on a grey ground.
+   The mobile view borrows the `.np-designer` token scope for the node components but has no
+   floating chrome of its own, so it picks `bg-surface` for the canvas. Under a light skin that
+   inverts the app's reading — the canvas becomes the brightest surface where every other page
+   is white plates on a grey ground. The designer itself gets this from the Atelier palette
+   (`--wd-canvas` in `designer-atelier.css`); the mobile view is re-pointed here.
 
-   So the classic designer is re-pointed, in light only: the canvas drops to the page ground
-   and the floating chrome lifts to the plate. Dark is excluded, because there the chrome
-   lifting off a deeper canvas floor is correct and `--color-surface` in
-   `html.dark .np-designer` is already tuned one step below the shell.
-
-   Written as background-color on the chrome rather than a token override, because
-   `--color-surface-low` also feeds hovers and table rows inside these panels, which must
-   keep stepping off the plate rather than turning white with it. ───────────────────────── */
-html:not(.dark) .np-designer:not(.wd-atelier),
-html:not(.dark) .np-designer:not(.wd-atelier) .np-canvas {
+   Dark is excluded, because there a deeper canvas floor is correct and `--color-surface` in
+   `html.dark .np-designer` is already tuned one step below the shell. ───────────────────── */
+html:not(.dark) .np-mobile-canvas {
   background-color: var(--color-surface-low);
-}
-html:not(.dark) .np-designer:not(.wd-atelier) .wd-dock,
-html:not(.dark) .np-designer:not(.wd-atelier) .np-anim-panel {
-  background-color: var(--color-surface-lowest);
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -3557,8 +3544,7 @@ html.dark[data-skin="dark"] {
      up with it — the grid has to stay clearly countable, it is the scale reference
      for the whole graph. */
   --np-canvas-dot:           rgba(190, 210, 255, 0.42);
-  --np-minimap-mask:         rgba(13, 14, 17, 0.58);
-  --np-minimap-mask-atelier: rgba(11, 12, 15, 0.64);
+  --np-minimap-mask:         rgba(11, 12, 15, 0.64);
   --np-node-bg:              rgba(22, 24, 29, 0.94);
 }
 

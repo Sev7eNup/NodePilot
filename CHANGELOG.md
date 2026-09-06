@@ -22,6 +22,14 @@ exhaustive.
   installed under either older name keeps its old state until it is moved by hand — the one-time
   steps are in [docs/switcher.md](docs/switcher.md).
 
+### Removed
+
+- **The classic workflow-designer look is gone; Atelier is the only design language.** The header
+  switch (`Brush` icon) and the `designerTheme` setting were removed, and a persisted profile drops
+  the key on migration. Colour skins adapt Atelier exactly as before, so a skin choice is
+  unaffected; the toolbar-layout switch (compact versus the classic inline button row) is a
+  separate setting and stays.
+
 ### Fixed
 
 - **A missing global variable fails the step instead of travelling on as text.** A

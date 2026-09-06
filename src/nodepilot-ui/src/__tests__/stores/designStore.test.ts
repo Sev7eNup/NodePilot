@@ -60,31 +60,16 @@ describe('useDesignStore', () => {
     localStorage.removeItem('nodepilot-design');
   });
 
-  it('designerTheme_defaultsToAtelier_andToggleAlternates', () => {
-    expect(useDesignStore.getState().designerTheme).toBe('atelier');
-    useDesignStore.getState().toggleDesignerTheme();
-    expect(useDesignStore.getState().designerTheme).toBe('classic');
-    useDesignStore.getState().toggleDesignerTheme();
-    expect(useDesignStore.getState().designerTheme).toBe('atelier');
-  });
-
-  it('designerTheme_setterSetsExactValue_idempotent', () => {
-    useDesignStore.getState().setDesignerTheme('classic');
-    useDesignStore.getState().setDesignerTheme('classic');
-    expect(useDesignStore.getState().designerTheme).toBe('classic');
-    useDesignStore.getState().setDesignerTheme('atelier');
-    expect(useDesignStore.getState().designerTheme).toBe('atelier');
-  });
-
-  it('designerTheme_hydratesToAtelier_whenAbsentFromAPersistedV1Profile', async () => {
-    // Profiles persisted before the Atelier design carry no `designerTheme` key. After
-    // rehydration the merged state must fall back to the Atelier default (never undefined).
+  it('migrate_dropsDesignerTheme_fromAPersistedV3Profile', async () => {
+    // v4 removed the classic designer look. Zustand merges persisted state over runtime state,
+    // so an orphaned `designerTheme` key would be copied back in and re-persisted on every save.
     localStorage.setItem('nodepilot-design', JSON.stringify({
-      state: { designerMode: 'expert', nodeStyle: 'classic' },
-      version: 1,
+      state: { designerMode: 'expert', nodeStyle: 'classic', designerTheme: 'classic' },
+      version: 3,
     }));
     await useDesignStore.persist.rehydrate();
-    expect(useDesignStore.getState().designerTheme).toBe('atelier');
+    expect(useDesignStore.getState()).not.toHaveProperty('designerTheme');
+    expect(useDesignStore.getState().designerMode).toBe('expert');
     localStorage.removeItem('nodepilot-design');
   });
 

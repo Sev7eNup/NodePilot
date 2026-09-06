@@ -1,4 +1,4 @@
-import { Concept, Fire, FlowModeler, Network_3, Roadmap, type CarbonIconType } from '@carbon/icons-react';
+import { Concept, Fire, FlowModeler, Roadmap, Screen, type CarbonIconType } from '@carbon/icons-react';
 import { useDesignStore } from '../../../stores/designStore';
 
 type DesignState = ReturnType<typeof useDesignStore.getState>;
@@ -23,7 +23,9 @@ export interface OverlayDef {
 
 export const OVERLAY_DEFS: readonly OverlayDef[] = [
   {
-    key: 'machineColoring', testId: 'toggle-machine-coloring', icon: Network_3,
+    // Screen is the app's machine icon (sidebar /machines). Network_3 already means network/LAN
+    // here, and read as a near-twin of FlowModeler next to it in the toolbar.
+    key: 'machineColoring', testId: 'toggle-machine-coloring', icon: Screen,
     labelKey: 'overlays.machineColoring', onTitleKey: 'machineColoringOn', offTitleKey: 'machineColoringOff',
     selectEnabled: (s) => s.machineColoringEnabled, selectToggle: (s) => s.toggleMachineColoring,
   },

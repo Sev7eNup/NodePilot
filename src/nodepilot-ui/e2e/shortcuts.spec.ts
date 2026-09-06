@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
+import { refitCanvas } from './fixtures/canvas';
 
 /**
  * Covers E2ETests.md parts 12 and 55: designer keyboard shortcuts. Both target
@@ -119,6 +120,7 @@ test.describe('Keyboard-Shortcuts & Productivity (Teil 12 + 55)', () => {
     await expect.poll(() => nodeCount(page)).toBe(3);
 
     await page.locator('.react-flow__node[data-id="step-aaaa1111"]').click();
+    await refitCanvas(page);
     await expect(page.locator('.react-flow__node[data-id="step-aaaa1111"].selected')).toHaveCount(1);
     // Ctrl+D = copy+paste in one.
     await fireClipboard(page, 'Control+d');
@@ -139,6 +141,7 @@ test.describe('Keyboard-Shortcuts & Productivity (Teil 12 + 55)', () => {
     await expect.poll(() => nodeCount(page)).toBe(3);
 
     await page.locator('.react-flow__node[data-id="step-aaaa1111"]').click();
+    await refitCanvas(page);
     await expect(page.locator('.react-flow__node[data-id="step-aaaa1111"].selected')).toHaveCount(1);
     await page.keyboard.press('Control+c');
     await page.waitForTimeout(200);
@@ -218,6 +221,7 @@ test.describe('Keyboard-Shortcuts & Productivity (Teil 12 + 55)', () => {
 
     // Make the workflow dirty (nudge a selected node) so Ctrl+S has something to persist.
     await page.locator('.react-flow__node[data-id="step-aaaa1111"]').click();
+    await refitCanvas(page);
     await expect(page.locator('.react-flow__node[data-id="step-aaaa1111"].selected')).toHaveCount(1);
     await page.keyboard.press('ArrowRight'); // nudge -> dirty
     await page.keyboard.press('Control+s');
@@ -239,6 +243,7 @@ test.describe('Keyboard-Shortcuts & Productivity (Teil 12 + 55)', () => {
     await expect.poll(() => nodeCount(page)).toBe(3);
 
     await page.locator('.react-flow__node[data-id="step-cccc3333"]').click();
+    await refitCanvas(page);
     await expect(page.locator('.react-flow__node[data-id="step-cccc3333"].selected')).toHaveCount(1);
     await page.keyboard.press('Delete');
     await expect(page.locator('.react-flow__node[data-id="step-cccc3333"]')).toHaveCount(0, { timeout: 10_000 });

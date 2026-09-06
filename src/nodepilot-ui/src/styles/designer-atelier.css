@@ -1,10 +1,10 @@
 /* ════════════════════════════════════════════════════════════════════════════
    ATELIER — the workflow designer's own design language.
 
-   Activated by `designStore.designerTheme === 'atelier'`, which puts
-   `.wd-atelier` on the `.np-designer` root and `.wd-atelier-on` on <html>
-   (the latter so body-portaled designer UI — activity tooltips — can be
-   re-tokenised, since portals escape the scope).
+   The designer's only look. `WorkflowEditorPage` puts `.wd-atelier` on the
+   `.np-designer` root and `.wd-atelier-on` on <html> for as long as the editor
+   is mounted (the latter so body-portaled designer UI — activity tooltips —
+   can be re-tokenised, since portals escape the scope).
 
    Design: the designer as a bright, modern workbench. A paper (light) /
    graphite (dark) ground keeps the familiar crosshatch grid; all chrome floats above it
@@ -12,11 +12,10 @@
    Everything data-ish reads in mono with tabular figures. No glow, no glass,
    no hairline noise — depth comes from layered shadows and spacing.
 
-   SKIN ADAPTATION: the app's colour skins carry into Atelier exactly like
-   they do into the classic look — via the `--wd-*` palette layer below. The
-   Atelier geometry (radii, shadows, spacing, canvas grid) is universal; each
-   skin only re-points the accent family and tints the ground/chrome. Status
-   colours stay skin-stable on purpose (same rule as classic).
+   SKIN ADAPTATION: the app's colour skins carry into the designer via the
+   `--wd-*` palette layer below. The Atelier geometry (radii, shadows, spacing,
+   canvas grid) is universal; each skin only re-points the accent family and
+   tints the ground/chrome. Status colours stay skin-stable on purpose.
 
    Mechanism: `--wd-*` palette variables are declared per skin, and the SAME
    `--color-*` design tokens the whole app consumes (Tailwind utilities
@@ -26,8 +25,7 @@
    scope root (so the very first paint — before the <html> marker effect ran —
    already has them). Selectors are written to TIE with the per-skin
    `.np-designer` overrides in index.css on specificity; this file is imported
-   after index.css, so source order lets Atelier win. The classic look
-   (toggle off) is byte-identical to before.
+   after index.css, so source order lets Atelier win.
    ──────────────────────────────────────────────────────────────────────────── */
 
 /* ── A. Palette — base LIGHT (default skin: cobalt on warm paper) ──────────── */

@@ -20,19 +20,6 @@ beforeEach(async () => {
   if (i18n.language !== 'en') await i18n.changeLanguage('en');
 });
 
-// Pin the designer to the 'classic' look for the whole unit suite. The component-test
-// corpus asserts DOM produced by the classic rendering (canvas background variant, minimap
-// chrome, root scope class). The Atelier design (designStore default 'atelier') has its own
-// dedicated tests that set the store state explicitly.
-// Some suites mock the designStore module with a bare hook, so there is no real zustand
-// store to pin; only call setState when the store actually exists.
-beforeEach(async () => {
-  const { useDesignStore } = await import('../stores/designStore');
-  if (typeof useDesignStore?.setState === 'function') {
-    useDesignStore.setState({ designerTheme: 'classic' });
-  }
-});
-
 // Monaco Editor depends on canvas, web workers, and ResizeObserver internals that jsdom
 // can't provide cheaply. Replace the React wrapper with a minimal `<textarea>` so
 // ScriptEditorDialog renders + behaves like a basic input in tests. Real Monaco is only

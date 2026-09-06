@@ -22,7 +22,6 @@ import { ToolbarSection } from './ToolbarSection';
 import { EditorIdentity } from './EditorIdentity';
 import { SkinSwitcher } from './SkinSwitcher';
 import { ToolbarLayoutToggle } from './ToolbarLayoutToggle';
-import { AtelierThemeToggle } from './AtelierThemeToggle';
 import { RunControls } from './RunControls';
 import { LifecycleControls } from './LifecycleControls';
 import { StandardMoreMenu } from './StandardMoreMenu';
@@ -230,9 +229,8 @@ export function ClassicEditorHeader({
           </ToolbarSection>
         </ToolbarGlow>
 
-        {/* Atelier switch, layout toggle, and skin switcher — last group, reachable when wrapped. */}
+        {/* Layout toggle and skin switcher — last group, reachable when wrapped. */}
         <div className="flex items-center gap-1">
-          <AtelierThemeToggle />
           <ToolbarLayoutToggle />
           <SkinSwitcher />
         </div>
