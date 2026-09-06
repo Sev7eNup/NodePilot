@@ -124,6 +124,24 @@ describe('JunctionConfig', () => {
     expect(screen.getByText('Required Count (N)')).toBeInTheDocument();
   });
 
+  it('switchingToWaitNofM_persistsTheSeededRequiredCount', () => {
+    // The number field used to show 2 as a display-only fallback and write it only on change,
+    // so a node saved without touching it ran as 1-of-M while the panel claimed 2.
+    const onUpdate = vi.fn();
+    wrap(<JunctionConfig config={{ mode: 'waitAll' }} onUpdate={onUpdate} upstreamVars={[]} />);
+
+    // waitAll renders the mode select only, so it is the single combobox on screen.
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'waitNofM' } });
+
+    expect(onUpdate).toHaveBeenCalledWith({ mode: 'waitNofM', requiredCount: 2 });
+  });
+
+  it('waitNofM_withoutRequiredCount_showsTheEngineDefault', () => {
+    // Displaying 2 for a config the engine reads as 1 is the divergence itself.
+    wrap(<JunctionConfig config={{ mode: 'waitNofM' }} onUpdate={vi.fn()} upstreamVars={[]} />);
+    expect(screen.getByDisplayValue('1')).toBeInTheDocument();
+  });
+
   it('waitAny_showsSkipWarning', () => {
     // The warning banner tells the user that "wait for any" skips the sibling branches
     // instead of completing them.

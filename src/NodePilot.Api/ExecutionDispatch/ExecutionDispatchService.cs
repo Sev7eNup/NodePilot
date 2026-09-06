@@ -121,7 +121,8 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
             // dead leader's. In single-node mode this is just the machine name; the
             // recovery filter still works (the local node is the only one writing).
             OwnerNodeId = _cluster.NodeId,
-            InputParametersJson = RedactAndCap(SerializeInputParameters(intent.Parameters), 32 * 1024),
+            // Values are already redacted per key; this is the length guard only.
+            InputParametersJson = CapOnly(SerializeInputParameters(intent.Parameters), 32 * 1024),
         };
     }
 
@@ -395,12 +396,19 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
         }
     }
 
-    private static string? SerializeInputParameters(Dictionary<string, string>? inputParameters)
+    /// <summary>
+    /// Serializes the intent's parameters with each value redacted individually. Redacting the
+    /// finished document let a pattern whose value class does not stop at a quote
+    /// (<c>Password=([^;]+)</c>) swallow the closing quote and the remaining properties, leaving a
+    /// column that no longer parses — and it is replayed on retry. Mirrors
+    /// <c>WorkflowEngine.SerializeInputParameters</c>.
+    /// </summary>
+    private string? SerializeInputParameters(Dictionary<string, string>? inputParameters)
     {
         if (inputParameters is null || inputParameters.Count == 0) return null;
         var filtered = inputParameters
             .Where(kv => !kv.Key.StartsWith("__", StringComparison.Ordinal))
-            .ToDictionary(kv => kv.Key, kv => kv.Value);
+            .ToDictionary(kv => kv.Key, kv => _redactor.RedactNamedValue(kv.Key, kv.Value) ?? kv.Value);
         return filtered.Count == 0 ? null : JsonSerializer.Serialize(filtered);
     }
 
@@ -465,9 +473,13 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
     {
         if (string.IsNullOrEmpty(value)) return value;
         var redacted = _redactor.Redact(value) ?? value;
-        return redacted.Length > maxChars
-            ? redacted[..maxChars] + "... [truncated]"
-            : redacted;
+        return CapOnly(redacted, maxChars);
+    }
+
+    private static string? CapOnly(string? value, int maxChars)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        return value.Length > maxChars ? value[..maxChars] + "... [truncated]" : value;
     }
 
     private static async Task<bool> IsPendingExecutionAsync(

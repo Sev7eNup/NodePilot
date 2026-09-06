@@ -646,10 +646,12 @@ Directory-Healthcheck prüft alle DCs und meldet einen nicht erreichbaren DC als
 nicht erreichbaren DC fail-closed (siehe Konsens-Hinweis oben). Sobald ein externer Provider aktiv ist, verweigert eine bestehende Datenbank
 ohne aktiven lokalen Break-Glass-Admin den Start.
 
-Automatisierte Ausführungen tragen den Publisher als effektiven Principal. Vor Worker-Start
-werden Aktivität, Tombstone, externe Freshness und aktuelle Folder-Run-Berechtigung erneut
-geprüft. Ein Sync mit Autorisierungsverlust widerruft Sessions und beendet betroffene
-Ausführungen.
+Automatisierte Ausführungen tragen den effektiven Principal aus `Workflow.PublishedByUserId` —
+den Publisher, oder bei einem nie publizierten Workflow den Benutzer, der ihn scharfgeschaltet
+hat (`/enable` füllt die Spalte nur, wenn sie leer ist, und überschreibt einen bestehenden
+Publisher nie). Vor Worker-Start werden Aktivität, Tombstone, externe Freshness und aktuelle
+Folder-Run-Berechtigung erneut geprüft. Ein Sync mit Autorisierungsverlust widerruft Sessions
+und beendet betroffene Ausführungen.
 
 ---
 

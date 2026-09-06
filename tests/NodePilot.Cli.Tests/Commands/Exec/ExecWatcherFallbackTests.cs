@@ -5,6 +5,7 @@ using NodePilot.Cli.Commands.Exec;
 using NodePilot.Cli.Output;
 using NodePilot.Cli.Settings;
 using NodePilot.Cli.Tests.Infra;
+using NodePilot.Core.Clients;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using WireMock.Server;

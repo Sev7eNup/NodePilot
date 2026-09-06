@@ -67,6 +67,23 @@ public sealed class RegistryActivityTests : IDisposable
 
     private static JsonElement Cfg(string json) => JsonDocument.Parse(json).RootElement;
 
+    [Fact]
+    public async Task WriteMultiString_DoesNotWrapTheSplitLinesInAnExtraArray()
+    {
+        // A leading comma in an ASSIGNMENT wraps the split array in a one-element array, and the
+        // registry provider then joins the inner array with $OFS — "a\nb" became the single
+        // REG_MULTI_SZ entry "a b", silently, with a green step.
+        var activity = CreateActivity();
+        _capturedScript = null;
+        await activity.ExecuteAsync(Ctx(),
+            Cfg("{\"operation\": \"write\", \"keyPath\": \"HKCU:\\\\SOFTWARE\\\\NP\", " +
+                "\"valueName\": \"Paths\", \"valueType\": \"MultiString\", \"value\": \"a\\nb\"}"),
+            CancellationToken.None);
+
+        _capturedScript.Should().Contain("$__typed = @($__rawValue -split");
+        _capturedScript.Should().NotContain("$__typed = ,@(");
+    }
+
     // ---- Error cases ----
 
     [Fact]

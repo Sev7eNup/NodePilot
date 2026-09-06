@@ -138,6 +138,7 @@ every main screen into `__screens__/*.png`; it documents visuals, it asserts not
 | — (new) | Maintenance windows CRUD (Blackout / AllowOnly, weekly schedule, create/edit/delete, Admin-only gate) | `maintenance-windows.spec.ts` |
 | — (new) | Editor-header stacking-context regression: header popovers above canvas-local breadcrumb overlay | `designer-header-layering.spec.ts` |
 | — (new) | SPA smoke: unauthenticated redirect → /login, authenticated landing → dashboard | `smoke.spec.ts` |
+| — (new) | Script editor against the MINIFIED bundle: opens a runScript node's Monaco editor under the `dark-bank` skin and asserts no uncaught error and no theme rejection. Production CSS shortens token colors (`#ffffff` → `#fff`), which Monaco refuses — the dev-server config cannot reproduce it | `script-editor.spec.ts` |
 
 ## Not covered as UI e2e (by design)
 

@@ -29,54 +29,151 @@ permissions:
   contents: read
 
 jobs:
-  analyze:
-    name: Analyze (${{ matrix.language }})
-    # C# needs the Windows toolchain: the projects target net10.0-windows and do not build
-    # on ubuntu. JS/TS has no build step for CodeQL, so it takes the cheaper runner.
-    runs-on: ${{ matrix.language == 'csharp' && 'windows-latest' || 'ubuntu-latest' }}
+  # Per-language gate. `paths-ignore` above only decides whether the WHOLE workflow runs; it
+  # cannot skip one language, and a single matrix leg cannot be dropped with `if:` either. That
+  # is why the language matrix is spelled out as two named jobs below: the C# analysis is by far
+  # the most expensive job in the repository and has nothing to do on a frontend-only change.
+  scope:
+    name: Detect which languages changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      cs: ${{ steps.filter.outputs.cs }}
+      js: ${{ steps.filter.outputs.js }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Classify the changed files
+        id: filter
+        shell: bash
+        run: |
+          # Fail open, like the `changes` job in ci.yml: a broken detection must never remove
+          # analysis. Every failure path below analyses both languages.
+          set -uo pipefail
+
+          both() {
+            echo "cs=true" >> "$GITHUB_OUTPUT"
+            echo "js=true" >> "$GITHUB_OUTPUT"
+            echo "=> $1"
+            exit 0
+          }
+
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            both "not a pull request (push, schedule or manual) — analysing both languages"
+          fi
+
+          if ! git fetch --no-tags --prune origin \
+                 "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"; then
+            both "could not fetch the base branch — analysing both languages"
+          fi
+
+          base="$(git merge-base HEAD "origin/${{ github.base_ref }}" 2>/dev/null || true)"
+          [[ -n "$base" ]] || both "no merge base against ${{ github.base_ref }} — analysing both languages"
+
+          changed="$(git diff --name-only "$base" HEAD 2>/dev/null || true)"
+          [[ -n "$changed" ]] || both "could not determine the changed files — analysing both languages"
+
+          echo "Changed files:"
+          printf '%s\n' "$changed" | sed 's/^/  /'
+
+          # C#: sources plus everything that can change the compilation CodeQL analyses.
+          cs=false
+          if printf '%s\n' "$changed" \
+               | grep -qE '(\.cs$|\.csproj$|\.props$|\.targets$|\.slnx$|^global\.json$|^dotnet-tools\.json$)'; then
+            cs=true
+          fi
+
+          js=false
+          if printf '%s\n' "$changed" | grep -qE '(\.(ts|tsx|js|jsx|mjs|cjs)$|package-lock\.json$)'; then
+            js=true
+          fi
+
+          echo "cs=$cs" >> "$GITHUB_OUTPUT"
+          echo "js=$js" >> "$GITHUB_OUTPUT"
+          echo "=> csharp=$cs javascript-typescript=$js"
+
+  analyze-csharp:
+    name: Analyze (csharp)
+    needs: scope
+    if: needs.scope.outputs.cs == 'true'
+    # The projects target net10.0-windows and do not build on ubuntu.
+    runs-on: windows-latest
+    timeout-minutes: 45
     permissions:
       security-events: write
       packages: read
       actions: read
       contents: read
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - language: csharp
-            build-mode: manual
-          - language: javascript-typescript
-            build-mode: none
-
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup .NET 10
-        if: matrix.language == 'csharp'
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
+      - name: Cache NuGet packages
+        # Same key as the backend job in ci.yml. Caches are repository-wide, so whichever
+        # workflow runs first warms the entry for the other.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-v1-${{ runner.os }}-${{ hashFiles('global.json', 'dotnet-tools.json', 'Directory.Packages.props', 'Directory.Build.props', 'src/**/*.csproj', 'tests/**/*.csproj') }}
+          restore-keys: |
+            nuget-v1-${{ runner.os }}-
+
       - name: Enforce patched .NET SDK policy
-        if: matrix.language == 'csharp'
         shell: pwsh
         run: |
           . ./scripts/Assert-DotnetSdkPolicy.ps1
           Assert-NodePilotDotnetSdkPolicy -RepoRoot $PWD
 
+      - name: Restore
+        # Before codeql/init on purpose: restore is not a compilation, so the tracer does not
+        # need to observe it. The build below then runs --no-restore and traces only the
+        # compiler invocations CodeQL actually wants.
+        run: dotnet restore
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v3
         with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
+          languages: csharp
+          build-mode: manual
           queries: security-and-quality
 
       - name: Build
-        if: matrix.language == 'csharp'
-        run: dotnet build NodePilot.slnx --configuration Release
+        run: dotnet build NodePilot.slnx --configuration Release --no-restore
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v3
         with:
-          category: "/language:${{ matrix.language }}"
+          category: "/language:csharp"
+
+  analyze-javascript:
+    name: Analyze (javascript-typescript)
+    needs: scope
+    if: needs.scope.outputs.js == 'true'
+    # No build step for CodeQL, so it takes the cheaper runner.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v3
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          queries: security-and-quality
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v3
+        with:
+          category: "/language:javascript-typescript"

@@ -47,6 +47,7 @@ describe('TopBar host-identity chip', () => {
       machineName: 'NPSRV01',
       fqdn: 'npsrv01.corp.example.local',
       domain: 'corp.example.local',
+      appVersion: '1.2.3',
     });
     renderTopBar();
 
@@ -59,7 +60,7 @@ describe('TopBar host-identity chip', () => {
   });
 
   it('falls back to the machine name when no FQDN is available', async () => {
-    mockGetHostInfo.mockResolvedValue({ machineName: 'KEMPISPC', fqdn: 'KempisPC', domain: null });
+    mockGetHostInfo.mockResolvedValue({ machineName: 'KEMPISPC', fqdn: 'KempisPC', domain: null, appVersion: '1.2.3' });
     renderTopBar();
 
     expect(await screen.findByText('KEMPISPC')).toBeInTheDocument();

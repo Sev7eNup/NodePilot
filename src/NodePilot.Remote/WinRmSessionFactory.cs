@@ -3,6 +3,7 @@ using System.Management.Automation.Runspaces;
 using System.Security;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using NodePilot.Core.Exceptions;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 
@@ -47,7 +48,7 @@ public class WinRmSessionFactory : IRemoteSessionFactory
                 && (string.IsNullOrWhiteSpace(raw)
                     || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase));
             if (requireSsl)
-                throw new InvalidOperationException(
+                throw new NonRetryableRemoteException(
                     $"WinRM over HTTP is blocked by configuration for machine '{machine.Name}' ({machine.Hostname}). " +
                     "Enable SSL on the target (winrm quickconfig -transport:https) and set machine.UseSsl=true, " +
                     "or set Remote:RequireWinRmSsl=false (e.g. in appsettings.Development.json) to accept plaintext sessions.");
@@ -94,7 +95,7 @@ public class WinRmSessionFactory : IRemoteSessionFactory
                     "DPAPI decrypt failed for credential {CredentialId} (name={Name}). " +
                     "Likely cause: DPAPI scope mismatch — re-enter the credential after a service-account or host change.",
                     credential.Id, credential.Name);
-                throw new InvalidOperationException(
+                throw new NonRetryableRemoteException(
                     $"Credential decrypt failed (id={credential.Id}). Check the server log for details.");
             }
 
@@ -176,13 +177,21 @@ public class WinRmSessionFactory : IRemoteSessionFactory
         catch (Exception ex)
         {
             connectStopwatch.Stop();
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            activity?.AddException(ex);
+            // Spans leave the process unredacted, so they carry the failure class, never its text.
+            activity?.SetStatus(ActivityStatusCode.Error, "connect_failed");
+            activity?.SetTag("exception.type", ex.GetType().FullName);
             var failTag = new KeyValuePair<string, object?>("result", "fail");
             RemoteMetrics.SessionsOpened.Add(1, failTag, authTag);
             RemoteMetrics.SessionOpenDuration.Record(connectStopwatch.Elapsed.TotalMilliseconds, failTag, authTag);
             RemoteMetrics.AuthFailures.Add(1, authTag, new KeyValuePair<string, object?>("reason", ex.GetType().Name));
             runspace.Dispose();
+            // A rejected credential does not become valid on the next attempt, and repeating it
+            // costs another bad logon against the domain — mark it so the step retry loop stops.
+            if (ex is System.Management.Automation.Remoting.PSRemotingTransportException transport
+                && WinRmErrorCodes.IsLogonDenied(transport.ErrorCode))
+                throw new NonRetryableRemoteException(
+                    $"WinRM logon denied for '{machine.Name}' ({machine.Hostname}); not retried to avoid locking the account.",
+                    ex);
             throw;
         }
 

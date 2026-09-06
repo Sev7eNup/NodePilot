@@ -127,6 +127,88 @@ public sealed class SharedWorkflowFoldersControllerMoveTests
     }
 
     [Fact]
+    public async Task Move_ConcurrentInverseMoves_LeaveTheTreeAcyclic()
+    {
+        // A under B and B under A, each checked against the same old tree, together form a
+        // cycle that no row constraint rejects. The process-wide tree lock serialises them, so
+        // the second one sees the first one's result and refuses.
+        var (conn, db) = TestDbFactory.CreateWithConnection();
+        using (conn)
+        using (db)
+        {
+            var root = SharedWorkflowFolder.RootFolderId;
+            var a = AddFolder(db, root, "A", "/A", 1);
+            var b = AddFolder(db, root, "B", "/B", 1);
+            await db.SaveChangesAsync();
+            var options = new DbContextOptionsBuilder<NodePilotDbContext>().UseSqlite(conn).Options;
+            await using var first = new NodePilotDbContext(options);
+            await using var second = new NodePilotDbContext(options);
+
+            var results = await Task.WhenAll(
+                NewCtrl(first).Move(a, new MoveSharedFolderRequest(b), CancellationToken.None),
+                NewCtrl(second).Move(b, new MoveSharedFolderRequest(a), CancellationToken.None));
+
+            results.Count(r => r is NoContentResult).Should().Be(1, "exactly one of the two moves may succeed");
+            results.Single(r => r is not NoContentResult).Should().BeOfType<BadRequestObjectResult>();
+
+            var folders = await db.SharedWorkflowFolders.AsNoTracking().ToListAsync();
+            ParentChainReachesRoot(folders, a).Should().BeTrue();
+            ParentChainReachesRoot(folders, b).Should().BeTrue();
+        }
+    }
+
+    [Fact]
+    public async Task Move_WaitsForTheTreeLock()
+    {
+        await using var db = TestDbFactory.Create();
+        var root = SharedWorkflowFolder.RootFolderId;
+        var a = AddFolder(db, root, "A", "/A", 1);
+        var b = AddFolder(db, root, "B", "/B", 1);
+        await db.SaveChangesAsync();
+
+        Task<IActionResult> move;
+        using (await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(CancellationToken.None))
+        {
+            move = NewCtrl(db).Move(a, new MoveSharedFolderRequest(b), CancellationToken.None);
+            await Task.Delay(200);
+            move.IsCompleted.Should().BeFalse("a move must wait for the tree lock");
+        }
+
+        (await move.WaitAsync(TimeSpan.FromSeconds(10))).Should().BeOfType<NoContentResult>();
+    }
+
+    [Fact]
+    public async Task Rename_OnACorruptedParentCycle_Terminates()
+    {
+        // Whatever is left in a tree that carries a parent cycle, a path recompute must end
+        // instead of walking the cycle forever.
+        await using var db = TestDbFactory.Create();
+        var root = SharedWorkflowFolder.RootFolderId;
+        var a = AddFolder(db, root, "A", "/A", 1);
+        var b = AddFolder(db, a, "B", "/A/B", 2);
+        await db.SaveChangesAsync();
+        (await db.SharedWorkflowFolders.FindAsync(a))!.ParentFolderId = b;
+        await db.SaveChangesAsync();
+
+        var rename = NewCtrl(db).Rename(a, new UpdateSharedFolderRequest("A2"), CancellationToken.None);
+
+        (await rename.WaitAsync(TimeSpan.FromSeconds(10))).Should().BeOfType<NoContentResult>();
+    }
+
+    private static bool ParentChainReachesRoot(IReadOnlyList<SharedWorkflowFolder> all, Guid start)
+    {
+        var byId = all.ToDictionary(f => f.Id);
+        var current = start;
+        for (var hops = 0; hops <= SharedWorkflowFolder.MaxDepth + 1; hops++)
+        {
+            var folder = byId[current];
+            if (folder.ParentFolderId is null) return true;
+            current = folder.ParentFolderId.Value;
+        }
+        return false;
+    }
+
+    [Fact]
     public async Task Move_WhenDescendantContainsForeignLockedWorkflow_Returns423AndKeepsTree()
     {
         await using var db = TestDbFactory.Create();

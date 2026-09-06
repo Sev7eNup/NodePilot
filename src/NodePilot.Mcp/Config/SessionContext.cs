@@ -15,17 +15,4 @@ public sealed record SessionContext(string? Server, string Profile, string? Toke
 {
     public bool HasServer => !string.IsNullOrWhiteSpace(Server);
     public bool HasToken => !string.IsNullOrWhiteSpace(Token);
-
-    internal static bool HasSameServerOrigin(string? left, string? right)
-    {
-        if (!Uri.TryCreate(left?.Trim(), UriKind.Absolute, out var leftUri)
-            || !Uri.TryCreate(right?.Trim(), UriKind.Absolute, out var rightUri))
-        {
-            return false;
-        }
-
-        return string.Equals(leftUri.Scheme, rightUri.Scheme, StringComparison.OrdinalIgnoreCase)
-               && string.Equals(leftUri.IdnHost, rightUri.IdnHost, StringComparison.OrdinalIgnoreCase)
-               && leftUri.Port == rightUri.Port;
-    }
 }

@@ -152,6 +152,54 @@ public sealed class ServiceManagementActivityTests : IDisposable
         _capturedScript.Should().NotContain("O'Brian Service'");
     }
 
+    // ---- sc.exe failures must fail the step ----
+
+    [Fact]
+    public async Task Delete_GuardsScExeExitCode()
+    {
+        // sc.exe reports failures on stdout and leaves the error stream empty, so without an
+        // explicit exit-code check the step's !HadErrors verdict stays true and a refused delete
+        // reports success while the On-Success edge fires.
+        var activity = CreateActivity();
+        _capturedScript = null;
+        await activity.ExecuteAsync(Ctx(),
+            Cfg("{\"serviceName\": \"Spooler\", \"action\": \"delete\"}"),
+            CancellationToken.None);
+
+        _capturedScript.Should().Contain("sc.exe delete");
+        _capturedScript.Should().Contain("$LASTEXITCODE -ne 0");
+        _capturedScript.Should().Contain("throw");
+    }
+
+    [Fact]
+    public async Task SetStartType_DelayedAuto_GuardsScExeExitCodeAndDoesNotSwallowOutput()
+    {
+        var activity = CreateActivity();
+        _capturedScript = null;
+        await activity.ExecuteAsync(Ctx(),
+            Cfg("{\"serviceName\": \"Spooler\", \"action\": \"setStartType\", \"startupType\": \"AutomaticDelayedStart\"}"),
+            CancellationToken.None);
+
+        _capturedScript.Should().Contain("start= delayed-auto");
+        _capturedScript.Should().Contain("$LASTEXITCODE -ne 0");
+        _capturedScript.Should().NotContain("| Out-Null",
+            "swallowing the output hid sc.exe's own error text as well as its exit code");
+    }
+
+    [Fact]
+    public async Task Create_DelayedAuto_GuardsScExeExitCode()
+    {
+        var activity = CreateActivity();
+        _capturedScript = null;
+        await activity.ExecuteAsync(Ctx(),
+            Cfg("{\"serviceName\": \"Agent\", \"action\": \"create\", \"binaryPath\": \"C:\\\\svc\\\\a.exe\", \"startupType\": \"AutomaticDelayedStart\"}"),
+            CancellationToken.None);
+
+        _capturedScript.Should().Contain("New-Service");
+        _capturedScript.Should().Contain("start= delayed-auto");
+        _capturedScript.Should().Contain("$LASTEXITCODE -ne 0");
+    }
+
     // ---- PostProcess: status action OutputParameters ----
 
     [Fact]

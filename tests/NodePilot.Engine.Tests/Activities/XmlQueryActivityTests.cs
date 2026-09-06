@@ -33,6 +33,47 @@ public class XmlQueryActivityTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_AllMode_ReturnsElementTextNotMarkup()
+    {
+        // `all` used to read InnerXml while `single` read Value, so the resultMode dropdown —
+        // presented as a pure cardinality switch — changed the TYPE of every element. A forEach
+        // fed from it received "<name>db1</name><port>5432</port>" instead of a usable value.
+        const string servers =
+            "<servers><server><name>db1</name><port>5432</port></server>" +
+            "<server><name>db2</name><port>5433</port></server></servers>";
+        var cfg = Cfg(new { source = "inline", content = servers, xpath = "//server", resultMode = "all" });
+
+        var result = await _activity.ExecuteAsync(Ctx(), cfg, CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().NotContain("<name>", "all-mode publishes text, matching single-mode and the documented contract");
+        result.Output.Should().Contain("db1").And.Contain("5432");
+        result.OutputParameters["count"].Should().Be("2");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_AllMode_DecodesEntitiesLikeSingleMode()
+    {
+        // InnerXml left leaf text entity-escaped, so even a leaf query diverged between modes as
+        // soon as the text contained an ampersand.
+        var cfg = Cfg(new
+        {
+            source = "inline",
+            content = "<items><item>A &amp; B</item></items>",
+            xpath = "//item",
+            resultMode = "all",
+        });
+
+        var result = await _activity.ExecuteAsync(Ctx(), cfg, CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        // The array is JSON-encoded (System.Text.Json escapes '&'), so assert on the decoded
+        // element rather than the wire form.
+        using var doc = JsonDocument.Parse(result.Output!);
+        doc.RootElement[0].GetString().Should().Be("A & B");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_InlineXml_AllMode_ReturnsJsonArrayOfMatches()
     {
         var cfg = Cfg(new { source = "inline", content = BooksXml, xpath = "//title", resultMode = "all" });

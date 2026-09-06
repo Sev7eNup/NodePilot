@@ -1,6 +1,6 @@
 using System.Net.Http.Headers;
 using System.Runtime.Versioning;
-using NodePilot.Mcp.Auth;
+using NodePilot.Core.Clients;
 using NodePilot.Mcp.Config;
 
 namespace NodePilot.Mcp.Api;

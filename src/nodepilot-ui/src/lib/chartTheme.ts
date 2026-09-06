@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { cssColorToHex } from './cssColor';
 
 /**
  * Shared chart theming for every ECharts surface (Dashboard, Metrics).
@@ -88,7 +89,11 @@ export function useChartTokens(): { probeRef: React.RefObject<HTMLDivElement | n
       const el = probeRef.current;
       if (!el) return;
       const cs = getComputedStyle(el);
-      const g = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback;
+      // Tokens arrive in whatever notation the minified production CSS carries, and zrender's
+      // numeric color interpolation (heatmap ramps, gradients) understands neither oklch() nor
+      // color-mix(). The FALLBACK values stay verbatim — `grid` is deliberately translucent and
+      // a hex conversion would drop its alpha.
+      const g = (name: string, fallback: string) => cssColorToHex(cs.getPropertyValue(name)) ?? fallback;
       const isDark = document.documentElement.classList.contains('dark');
       setTokens({
         isDark,

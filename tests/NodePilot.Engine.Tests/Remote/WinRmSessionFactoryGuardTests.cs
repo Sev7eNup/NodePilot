@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
+using NodePilot.Core.Exceptions;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Remote;
@@ -11,7 +12,8 @@ namespace NodePilot.Engine.Tests.Remote;
 /// The guards <see cref="WinRmSessionFactory"/> applies before it opens a session. Both are
 /// security-relevant: plaintext WinRM is refused unless an operator explicitly opted out, and a
 /// failed DPAPI decrypt must not leak the raw CryptographicException (which carries paths and
-/// stack frames a Viewer can read back through the step-output API).
+/// stack frames a Viewer can read back through the step-output API). Both throw
+/// <see cref="NonRetryableRemoteException"/> so the step retry loop does not repeat them.
 /// </summary>
 public sealed class WinRmSessionFactoryGuardTests
 {
@@ -24,7 +26,7 @@ public sealed class WinRmSessionFactoryGuardTests
         var act = () => factory.CreateSessionAsync(
             Machine(useSsl: false), null, TestContext.Current.CancellationToken);
 
-        (await act.Should().ThrowAsync<InvalidOperationException>())
+        (await act.Should().ThrowAsync<NonRetryableRemoteException>())
             .Which.Message.Should().Contain("blocked by configuration");
     }
 
@@ -39,7 +41,7 @@ public sealed class WinRmSessionFactoryGuardTests
         var act = () => factory.CreateSessionAsync(
             Machine(useSsl: false), null, TestContext.Current.CancellationToken);
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        await act.Should().ThrowAsync<NonRetryableRemoteException>();
     }
 
     [Fact]
@@ -76,7 +78,7 @@ public sealed class WinRmSessionFactoryGuardTests
         var act = () => factory.CreateSessionAsync(
             Machine(useSsl: false), credential, TestContext.Current.CancellationToken);
 
-        var thrown = (await act.Should().ThrowAsync<InvalidOperationException>()).Which;
+        var thrown = (await act.Should().ThrowAsync<NonRetryableRemoteException>()).Which;
         thrown.Message.Should().Contain("Credential decrypt failed");
         thrown.Message.Should().Contain(credential.Id.ToString());
         thrown.Message.Should().NotContain("C:\\keys\\dpapi",
@@ -96,7 +98,7 @@ public sealed class WinRmSessionFactoryGuardTests
             Machine(useSsl: false),
             new Credential { Id = Guid.NewGuid(), Name = "svc", Username = "u", EncryptedPassword = [1] },
             TestContext.Current.CancellationToken);
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        await act.Should().ThrowAsync<NonRetryableRemoteException>();
 
         store.LastActor.Should().Be("winrm:srv-01.contoso.test",
             "the audit trail records which target a decrypt was performed for");

@@ -34,6 +34,7 @@ public class GlobalVariableFolderStore(NodePilotDbContext db) : IGlobalVariableF
     public async Task<GlobalVariableFolder> CreateAsync(Guid? parentFolderId, string name, Guid? createdByUserId, CancellationToken ct)
     {
         name = ValidateName(name);
+        using var treeLock = await FolderTreeMutationLock.GlobalVariableFolders.AcquireAsync(ct);
         var parentId = parentFolderId ?? GlobalVariableFolder.RootFolderId;
         var parent = await db.GlobalVariableFolders.AsNoTracking().FirstOrDefaultAsync(f => f.Id == parentId, ct)
             ?? throw new ArgumentException("Parent folder not found");
@@ -64,6 +65,7 @@ public class GlobalVariableFolderStore(NodePilotDbContext db) : IGlobalVariableF
         if (id == GlobalVariableFolder.RootFolderId)
             throw new InvalidOperationException("Root folder cannot be renamed");
         name = ValidateName(name);
+        using var treeLock = await FolderTreeMutationLock.GlobalVariableFolders.AcquireAsync(ct);
 
         var folder = await db.GlobalVariableFolders.FirstOrDefaultAsync(f => f.Id == id, ct)
             ?? throw new KeyNotFoundException($"Folder {id} not found");
@@ -82,6 +84,9 @@ public class GlobalVariableFolderStore(NodePilotDbContext db) : IGlobalVariableF
     {
         if (id == GlobalVariableFolder.RootFolderId)
             throw new InvalidOperationException("Root folder cannot be moved");
+        // Taken before the first read: the cycle and depth checks below are only valid against
+        // a tree nobody else is changing at the same time.
+        using var treeLock = await FolderTreeMutationLock.GlobalVariableFolders.AcquireAsync(ct);
 
         var folder = await db.GlobalVariableFolders.FirstOrDefaultAsync(f => f.Id == id, ct)
             ?? throw new KeyNotFoundException($"Folder {id} not found");
@@ -112,6 +117,7 @@ public class GlobalVariableFolderStore(NodePilotDbContext db) : IGlobalVariableF
     {
         if (id == GlobalVariableFolder.RootFolderId)
             throw new InvalidOperationException("Root folder cannot be deleted");
+        using var treeLock = await FolderTreeMutationLock.GlobalVariableFolders.AcquireAsync(ct);
 
         var folder = await db.GlobalVariableFolders.FirstOrDefaultAsync(f => f.Id == id, ct)
             ?? throw new KeyNotFoundException($"Folder {id} not found");
@@ -137,6 +143,7 @@ public class GlobalVariableFolderStore(NodePilotDbContext db) : IGlobalVariableF
     {
         if (id == GlobalVariableFolder.RootFolderId)
             throw new InvalidOperationException("Root folder cannot be deleted");
+        using var treeLock = await FolderTreeMutationLock.GlobalVariableFolders.AcquireAsync(ct);
 
         var all = await db.GlobalVariableFolders.AsNoTracking().ToListAsync(ct);
         if (all.All(f => f.Id != id))
@@ -231,10 +238,13 @@ public class GlobalVariableFolderStore(NodePilotDbContext db) : IGlobalVariableF
     {
         var byParent = all.GroupBy(f => f.ParentFolderId).ToDictionary(g => g.Key ?? Guid.Empty, g => g.ToList());
         var stack = new Stack<GlobalVariableFolder>();
+        var visited = new HashSet<Guid>();
         stack.Push(folder);
         while (stack.Count > 0)
         {
             var current = stack.Pop();
+            // A corrupted tree (a parent cycle) must not turn this walk into an endless loop.
+            if (!visited.Add(current.Id)) continue;
             if (current.ParentFolderId is null)
                 current.Path = "/";
             else
@@ -289,10 +299,12 @@ public class GlobalVariableFolderStore(NodePilotDbContext db) : IGlobalVariableF
         var byParent = all.GroupBy(f => f.ParentFolderId).ToDictionary(g => g.Key ?? Guid.Empty, g => g.ToList());
         var max = 0;
         var stack = new Stack<(Guid id, int depth)>();
+        var visited = new HashSet<Guid>();
         stack.Push((rootId, 0));
         while (stack.Count > 0)
         {
             var (id, d) = stack.Pop();
+            if (!visited.Add(id)) continue;
             if (d > max) max = d;
             if (byParent.TryGetValue(id, out var children))
                 foreach (var c in children) stack.Push((c.Id, d + 1));

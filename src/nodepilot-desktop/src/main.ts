@@ -2,7 +2,9 @@ import { app, BrowserWindow, Tray, Menu, dialog, ipcMain, nativeImage, net, sess
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
+import { restartServiceCommand } from './backendRestart';
 import { loadDesktopConfig, type DesktopConfig } from './config';
+import { requestStatus } from './http';
 import { hardenSession, hardenWindow } from './security';
 import { defaultIcons, skinIconsForFavicons, type SkinIcons } from './skins';
 
@@ -24,6 +26,9 @@ const HANDOFF_PATH = join(process.env.LOCALAPPDATA ?? '', 'NodePilot', 'admin-se
  *  backend that is still running the first EF migration against a fresh cluster is not reported
  *  as dead. */
 const READY_TIMEOUT_MS = 240_000;
+
+/** Deadline for one HTTP exchange with the backend. */
+const REQUEST_TIMEOUT_MS = 30_000;
 
 let config: DesktopConfig;
 let mainWindow: BrowserWindow | null = null;
@@ -99,25 +104,24 @@ async function bootstrap(): Promise<void> {
 // -------------------------------------------------------------------------------------------
 // Health gate
 // -------------------------------------------------------------------------------------------
-function httpStatus(url: string, method: 'GET' | 'POST', headers?: Record<string, string>, body?: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const request = net.request({ url, method, session: appSession() });
-    if (headers) for (const [k, v] of Object.entries(headers)) request.setHeader(k, v);
-    request.on('response', (response) => {
-      response.on('data', () => { /* drain */ });
-      response.on('end', () => resolve(response.statusCode));
-    });
-    request.on('error', reject);
-    if (body !== undefined) request.write(body);
-    request.end();
-  });
+function httpStatus(
+  url: string,
+  method: 'GET' | 'POST',
+  headers?: Record<string, string>,
+  body?: string,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
+): Promise<number> {
+  return requestStatus(net.request({ url, method, session: appSession() }), { headers, body, timeoutMs });
 }
 
 async function waitForReady(origin: string, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
+    // Each probe is bounded by what is left of the overall budget, so a request that never
+    // answers cannot outlive the deadline.
+    const remaining = Math.min(deadline - Date.now(), REQUEST_TIMEOUT_MS);
     try {
-      if (await httpStatus(`${origin}/healthz/ready`, 'GET') === 200) return true;
+      if (await httpStatus(`${origin}/healthz/ready`, 'GET', undefined, undefined, remaining) === 200) return true;
     } catch { /* service still starting */ }
     await delay(2000);
   }
@@ -331,12 +335,21 @@ function createTray(): void {
  * elevated (UAC) PowerShell. The background Postgres service is untouched.
  */
 function restartBackend(): void {
-  const service = config.serviceName; // validated to ^[A-Za-z0-9_.-]{1,64}$ in config.ts
-  const inner = `Restart-Service -Name '${service}' -Force`;
-  const outer = `Start-Process powershell -Verb RunAs -WindowStyle Hidden -ArgumentList @('-NoProfile','-Command','${inner}')`;
+  const service = config.serviceName;
+  const report = (): void => {
+    dialog.showErrorBox('NodePilot', `Could not restart the "${service}" service. Restart it manually from the Services console.`);
+  };
   try {
-    spawn('powershell.exe', ['-NoProfile', '-Command', outer], { detached: true, stdio: 'ignore' }).unref();
+    const child = spawn('powershell.exe', ['-NoProfile', '-Command', restartServiceCommand(service)], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    // A refused UAC prompt or a failed Restart-Service surfaces as a non-zero exit of the
+    // launcher; without these listeners the item would fail silently.
+    child.on('error', report);
+    child.on('exit', (code) => { if (code !== 0) report(); });
+    child.unref();
   } catch {
-    dialog.showErrorBox('NodePilot', 'Could not launch the elevated restart. Restart the "NodePilot" service manually.');
+    report();
   }
 }

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
+using NodePilot.Core.Activities;
 using NodePilot.Core.Interfaces;
 using Npgsql;
 
@@ -106,6 +107,11 @@ public class SqlActivity : IActivityExecutor
             BindParameters(cmd, config);
 
             await using var reader = await cmd.ExecuteReaderAsync(ct);
+            // "Did this statement return a result set", asked before any row is read. Branching on
+            // the row count instead made the published shape depend on the data: a SELECT that
+            // matched nothing reported itself as DML, so Output carried prose instead of "[]" and
+            // the SELECT-only params disappeared for that run only.
+            var hasResultSet = reader.FieldCount > 0;
             var rows = new List<Dictionary<string, object?>>();
             while (rows.Count < MaxRowsReturned && await reader.ReadAsync(ct))
             {
@@ -123,7 +129,7 @@ public class SqlActivity : IActivityExecutor
             var outputParams = new Dictionary<string, string>();
             string output;
 
-            if (rows.Count > 0)
+            if (hasResultSet)
             {
                 // SELECT-style result
                 outputParams["rowCount"] = rows.Count.ToString();
@@ -134,12 +140,18 @@ public class SqlActivity : IActivityExecutor
                 // downstream steps and the persisted OutputParametersJson. The cap applies
                 // across both projections combined (first-row scalars + multi-row flat).
                 var flatKeyBudget = MaxFlatOutputKeys;
-                // First row's scalar columns as plain keys (single-row-query ergonomics)
-                foreach (var (col, val) in rows[0])
+                // First row's scalar columns as plain keys (single-row-query ergonomics).
+                // Skipped for an empty result set — there is no first row to project.
+                if (rows.Count > 0)
                 {
-                    if (flatKeyBudget <= 0) break;
-                    outputParams[col] = val?.ToString() ?? "";
-                    flatKeyBudget--;
+                    foreach (var (col, val) in rows[0])
+                    {
+                        if (flatKeyBudget <= 0) break;
+                        // Invariant, not CurrentCulture: a decimal column rendered as "1,5" is
+                        // read back by the invariant condition parser as 15.
+                        outputParams[col] = DataBusScalar.ToInvariantString(val);
+                        flatKeyBudget--;
+                    }
                 }
                 // First 20 rows as row{i}_{col} for multi-row access
                 for (int i = 0; i < Math.Min(MaxRowsForFlatProjection, rows.Count); i++)
@@ -148,7 +160,7 @@ public class SqlActivity : IActivityExecutor
                     foreach (var (col, val) in rows[i])
                     {
                         if (flatKeyBudget <= 0) break;
-                        outputParams[$"row{i}_{col}"] = val?.ToString() ?? "";
+                        outputParams[$"row{i}_{col}"] = DataBusScalar.ToInvariantString(val);
                         flatKeyBudget--;
                     }
                 }
