@@ -93,9 +93,15 @@ NodePilot is a **drop-in modern alternative** for organizations stuck on legacy 
 
 ## Coming from System Center Orchestrator
 
-SCOrch went out of mainstream support and its successor story is "rewrite everything in something
-else". NodePilot is built for the case that leaves behind: the same agentless model, the same job,
-the same people — on a stack that is still maintained.
+SCOrch is not going anywhere: [System Center 2025 Orchestrator](https://learn.microsoft.com/en-us/lifecycle/products/system-center-2025-orchestrator)
+shipped in November 2024 with mainstream support to January 2030 and extended support to
+January 2035. If you run it today, you are not on a deadline — so this is not a migration pitch.
+
+What has not moved is authoring. The web console added in 2022 runs and monitors runbooks; it
+cannot build them. Writing one still means the desktop Runbook Designer, on a machine with the
+client installed — and once it is written, there is no version history, no diff between two
+states, and no rollback. NodePilot is built for that gap: the same agentless model, the same job,
+the same people, with the editor, the debugger and the version history in a browser.
 
 **Your runbooks come with you.** NodePilot reads SCOrch's native `.ois_export` XML directly
 (exports from 2012, 2016 and 2019 all parse) and turns runbooks into workflows:
@@ -158,15 +164,16 @@ start from your actual runbooks instead of a blank canvas.
 
 | | System Center Orchestrator | NodePilot |
 |---|---|---|
+| **Support lifecycle** | System Center 2025: mainstream to 2030, extended to 2035 | rolling releases, no end-of-life date — and no vendor behind it either |
 | **Agents on targets** | none (agentless) | none (agentless) — same WinRM model |
-| **Designer** | Windows MMC-era desktop client | browser, live canvas, real-time step status over SignalR |
-| **Debugging** | run and read the log | breakpoints, step-over, live variable inspector with runtime overrides, time-scrubbing replay |
-| **Parallelism** | limited | event-driven fan-out/fan-in, three junction modes (`waitAll` / `waitAny` / `waitNofM`) |
-| **Runbook authoring** | manual | manual, plus optional AI generation from natural language (local models supported) |
-| **Automation API** | limited web service | full REST API, an `np` CLI, and an MCP server for AI agents |
+| **Authoring** | desktop Runbook Designer only — the 2022 web console runs and monitors, but cannot build a runbook | browser, live canvas, real-time step status over SignalR |
+| **Debugging** | Runbook Tester in the designer — breakpoints, step, published data per activity | same in the real engine, plus conditional breakpoints, runtime variable overrides and time-scrubbing replay |
+| **Parallelism** | parallel branches; junction waits for all or for any | event-driven fan-out/fan-in, three junction modes (`waitAll` / `waitAny` / `waitNofM`) |
+| **Authoring assistance** | none | optional AI generation of scripts and whole workflows from natural language (local models supported) |
+| **Automation API** | JSON web API since 2022 — starts and monitors jobs | full REST API covering every operation, an `np` CLI, and an MCP server for AI agents |
 | **Check-out / publish** | per-user check-out | same model, kept deliberately — atomic lock/publish, `423 Locked` on every mutating endpoint, admin force-unlock with audit |
 | **Versioning** | none built in | every edit snapshotted, visual diff, one-click rollback |
-| **Observability** | none built in | opt-in OpenTelemetry + Prometheus, 10 pre-provisioned Grafana dashboards |
+| **Observability** | job history in the database, shown in the console; no metrics or tracing | opt-in OpenTelemetry + Prometheus, 10 pre-provisioned Grafana dashboards |
 | **Platform** | Windows Server | Windows Server *or* a single desktop machine (offline installer) |
 | **Database** | SQL Server | PostgreSQL or SQL Server |
 | **Licence** | commercial, per-managed-host | Apache-2.0, no per-host cost |
