@@ -110,6 +110,7 @@ public class SharedWorkflowFoldersController : ControllerBase
             return BadRequest(new { message = "Name is required" });
         if (req.Name.Length > 120)
             return BadRequest(new { message = "Name max length is 120 characters" });
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
 
         // Parent defaults to Root. Caller needs FolderEditor on the parent, since creating
         // a child is a parent-edit. Root carries the global Admin + bootstrap-default grants,
@@ -164,6 +165,7 @@ public class SharedWorkflowFoldersController : ControllerBase
             return BadRequest(new { message = "Root folder cannot be renamed" });
         if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length > 120)
             return BadRequest(new { message = "Name is required and max 120 chars" });
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
 
         var folder = await _db.SharedWorkflowFolders.FirstOrDefaultAsync(f => f.Id == id, ct);
         if (folder is null) return NotFound();
@@ -193,6 +195,9 @@ public class SharedWorkflowFoldersController : ControllerBase
     {
         if (id == SharedWorkflowFolder.RootFolderId)
             return BadRequest(new { message = "Root folder cannot be moved" });
+        // Taken before the first read: the cycle and depth checks below are only valid against
+        // a tree nobody else is changing at the same time.
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
 
         var folder = await _db.SharedWorkflowFolders.FirstOrDefaultAsync(f => f.Id == id, ct);
         if (folder is null) return NotFound();
@@ -275,6 +280,7 @@ public class SharedWorkflowFoldersController : ControllerBase
 
         if (id == SharedWorkflowFolder.RootFolderId)
             return BadRequest(new { message = "Root folder cannot be deleted" });
+        using var treeLock = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
 
         var folder = await _db.SharedWorkflowFolders.FirstOrDefaultAsync(f => f.Id == id, ct);
         if (folder is null) return NotFound();
@@ -524,10 +530,13 @@ public class SharedWorkflowFoldersController : ControllerBase
     {
         var byParent = all.GroupBy(f => f.ParentFolderId).ToDictionary(g => g.Key ?? Guid.Empty, g => g.ToList());
         var stack = new Stack<SharedWorkflowFolder>();
+        var visited = new HashSet<Guid>();
         stack.Push(folder);
         while (stack.Count > 0)
         {
             var current = stack.Pop();
+            // A corrupted tree (a parent cycle) must not turn this walk into an endless loop.
+            if (!visited.Add(current.Id)) continue;
             // Recompute current.Path from parent.Path + Name.
             if (current.ParentFolderId is null)
                 current.Path = "/";
@@ -565,10 +574,12 @@ public class SharedWorkflowFoldersController : ControllerBase
         var byParent = all.GroupBy(f => f.ParentFolderId).ToDictionary(g => g.Key ?? Guid.Empty, g => g.ToList());
         var max = 0;
         var stack = new Stack<(Guid id, int depth)>();
+        var visited = new HashSet<Guid>();
         stack.Push((rootId, 0));
         while (stack.Count > 0)
         {
             var (id, d) = stack.Pop();
+            if (!visited.Add(id)) continue;
             if (d > max) max = d;
             if (byParent.TryGetValue(id, out var children))
                 foreach (var c in children) stack.Push((c.Id, d + 1));

@@ -5,10 +5,8 @@ namespace NodePilot.Engine.Activities;
 /// <summary>
 /// Extension helpers for reading values out of the <see cref="JsonElement"/> config blob every
 /// activity receives. <see cref="GetStringOrNull"/> throws if the property exists but holds a
-/// non-string value. <see cref="GetBool"/> supports both defaulting directions activities use:
-/// with <c>defaultValue: false</c> it mirrors <c>TryGetProperty &amp;&amp; ValueKind == True</c>,
-/// with <c>defaultValue: true</c> it mirrors <c>!(TryGetProperty &amp;&amp; ValueKind ==
-/// False)</c>.
+/// non-string value. <see cref="GetBool"/> reads a real JSON boolean, and also the quoted form a
+/// resolved template produces; anything else falls back to the caller's default.
 /// Int extraction is not wrapped here because activities mix strict (<c>GetInt32()</c>, throws on
 /// non-int) and lenient (<c>TryGetInt32</c>, falls back) reads, and a single helper would have to
 /// pick one.
@@ -24,9 +22,17 @@ internal static class ConfigExtensions
     public static bool GetBool(this JsonElement config, string key, bool defaultValue)
     {
         if (!config.TryGetProperty(key, out var p)) return defaultValue;
-        return defaultValue
-            ? p.ValueKind != JsonValueKind.False
-            : p.ValueKind == JsonValueKind.True;
+        return p.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            // A templated value can only sit inside a JSON string, so `"force": "{{manual.force}}"`
+            // always resolves to text. Deciding by ValueKind alone made a resolved "false" read as
+            // TRUE for every knob whose default is true — force, waitForExit, encrypt,
+            // waitForCompletion — i.e. the dangerous direction.
+            JsonValueKind.String when bool.TryParse(p.GetString(), out var parsed) => parsed,
+            _ => defaultValue,
+        };
     }
 
     /// <summary>

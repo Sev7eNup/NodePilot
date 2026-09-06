@@ -15,8 +15,9 @@ namespace NodePilot.Api.Tests.Controllers;
 
 /// <summary>
 /// Exhaustive validation-branch coverage for <see cref="MaintenanceWindowsController"/>'s
-/// draft builder (scope/recurrence/timezone/one-time/weekly/target checks) plus the
-/// affecting-lookup 404 path — the branches not reached by the create-happy-path or CRUD suites.
+/// draft builder (scope/recurrence/timezone/one-time/weekly/target checks), its one-time UTC
+/// normalisation, plus the affecting-lookup 404 path — the branches not reached by the
+/// create-happy-path or CRUD suites.
 /// </summary>
 public class MaintenanceWindowsControllerValidationTests
 {
@@ -119,6 +120,57 @@ public class MaintenanceWindowsControllerValidationTests
         var start = new DateTime(2026, 7, 8, 10, 0, 0, DateTimeKind.Utc);
         var req = Weekly("Maint") with { Recurrence = "OneTime", OneTimeStartUtc = start, OneTimeEndUtc = start.AddHours(2) };
         (await CreateResult(Build(db), req)).Should().BeOfType<CreatedAtActionResult>();
+    }
+
+    [Fact]
+    public async Task Create_OneTimeBoundsWithUnspecifiedKind_TaggedUtcWithoutShiftingClock()
+    {
+        await using var db = TestDbFactory.Create();
+        // An offset-less ISO string — what `np maintenance ... --one-time-start` and the HTTP
+        // body both produce — deserializes to Kind=Unspecified. It must be tagged UTC without
+        // moving the clock, because Npgsql rejects a non-UTC Kind on timestamptz.
+        var start = new DateTime(2026, 7, 8, 10, 0, 0, DateTimeKind.Unspecified);
+        var req = Weekly("UnspecifiedKind") with
+        {
+            Recurrence = "OneTime", OneTimeStartUtc = start, OneTimeEndUtc = start.AddHours(2),
+        };
+
+        var created = (await CreateResult(Build(db), req)).Should().BeOfType<CreatedAtActionResult>().Subject;
+        var resp = (MaintenanceWindowResponse)created.Value!;
+
+        // Asserted on the create response, not a read-back: the DbContext tags every DateTime
+        // as UTC on read, so a re-read cannot tell normalised from unnormalised. The Kind
+        // assertion stays separate because FluentAssertions compares DateTime by ticks.
+        resp.OneTimeStartUtc!.Value.Kind.Should().Be(DateTimeKind.Utc);
+        resp.OneTimeStartUtc!.Value.Should().Be(DateTime.SpecifyKind(start, DateTimeKind.Utc));
+        resp.OneTimeEndUtc!.Value.Kind.Should().Be(DateTimeKind.Utc);
+        resp.OneTimeEndUtc!.Value.Should().Be(DateTime.SpecifyKind(start.AddHours(2), DateTimeKind.Utc));
+    }
+
+    [Fact]
+    public async Task Create_OneTimeBoundsWithLocalKind_ConvertedToUtcInstant()
+    {
+        await using var db = TestDbFactory.Create();
+        // An offset-bearing ISO string deserializes to Kind=Local and must be converted, not
+        // relabelled — relabelling would shift the blackout window by the host's offset.
+        var start = new DateTime(2026, 7, 8, 10, 0, 0, DateTimeKind.Local);
+        var req = Weekly("LocalKind") with
+        {
+            Recurrence = "OneTime", OneTimeStartUtc = start, OneTimeEndUtc = start.AddHours(2),
+        };
+
+        var created = (await CreateResult(Build(db), req)).Should().BeOfType<CreatedAtActionResult>().Subject;
+        var resp = (MaintenanceWindowResponse)created.Value!;
+
+        resp.OneTimeStartUtc!.Value.Kind.Should().Be(DateTimeKind.Utc);
+        resp.OneTimeStartUtc!.Value.Should().Be(start.ToUniversalTime());
+        resp.OneTimeEndUtc!.Value.Kind.Should().Be(DateTimeKind.Utc);
+        resp.OneTimeEndUtc!.Value.Should().Be(start.AddHours(2).ToUniversalTime());
+
+        // On a UTC host both conversions are tick-identical, so only the Kind assertions above
+        // discriminate there; off UTC the value must actually move.
+        if (TimeZoneInfo.Local.GetUtcOffset(start) != TimeSpan.Zero)
+            resp.OneTimeStartUtc!.Value.Should().NotBe(DateTime.SpecifyKind(start, DateTimeKind.Utc));
     }
 
     [Theory]

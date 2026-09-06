@@ -5,6 +5,7 @@ export type HostInfo = {
   machineName: string;
   fqdn: string;
   domain: string | null;
+  appVersion: string;
 };
 
 export const systemApi = {

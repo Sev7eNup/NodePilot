@@ -1,7 +1,6 @@
 using System.Net;
 using FluentAssertions;
 using NodePilot.Mcp.Api;
-using NodePilot.Mcp.Auth;
 using NodePilot.Mcp.Config;
 using NodePilot.Mcp.Mapping;
 using WireMock.RequestBuilders;

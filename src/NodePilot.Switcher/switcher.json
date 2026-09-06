@@ -1,0 +1,21 @@
+{
+  "nodePilot": {
+    "workflowAllowListPath": "C:\\ProgramData\\NodePilot\\Switcher\\nodepilot-workflows.txt",
+    "cliPath": null,
+    "profile": "switcher",
+    "serverUrl": null,
+    "commandTimeoutSeconds": 30
+  },
+  "systemCenterOrchestrator": {
+    "runbookAllowListPath": "\\\\server\\share\\scorch-runbooks.txt",
+    "apiBaseUrl": "http://localhost:81",
+    "runbooksPath": "api/runbooks",
+    "runbookServersPath": "api/runbookServers",
+    "jobsPath": "api/jobs",
+    "activeJobsPath": "api/jobs?$select=Id,RunbookId,Status&$filter=Status eq 'Pending' or Status eq 'Running'",
+    "stopJobPathTemplate": "api/jobs/{id}",
+    "stopJobMethod": "PATCH",
+    "requestTimeoutSeconds": 30,
+    "reconciliationTimeoutSeconds": 60
+  }
+}

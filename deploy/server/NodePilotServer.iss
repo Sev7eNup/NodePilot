@@ -84,7 +84,7 @@ Source: "{#StageDir}\payload\*";    Flags: dontcopy
 Source: "{#StageDir}\deploy\*";     DestDir: "{app}\deploy"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
-Name: "{group}\NodePilot Engine Switcher"; Filename: "{app}\tools\engine-switcher\NodePilot.EngineSwitcher.exe"; WorkingDir: "{app}\tools\engine-switcher"
+Name: "{group}\NodePilot Switcher"; Filename: "{app}\tools\switcher\NodePilot.Switcher.exe"; WorkingDir: "{app}\tools\switcher"
 
 [UninstallDelete]
 ; Inno decides whether {app} is empty before it removes its own uninstaller from inside it, so

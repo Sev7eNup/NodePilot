@@ -20,7 +20,11 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // CI runs four shards (see the `e2e` job in .github/workflows/ci.yml). PW_WORKERS sets the
+  // workers per shard from the workflow, so the width is tunable without touching TypeScript;
+  // drop it to '1' if parallelism ever makes the specs flaky. Without the variable the old
+  // serial CI behaviour applies.
+  workers: process.env.PW_WORKERS ? Number(process.env.PW_WORKERS) : process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [['html', { open: 'never' }], ['github']] : 'html',
   use: {
     baseURL: 'http://localhost:4173',

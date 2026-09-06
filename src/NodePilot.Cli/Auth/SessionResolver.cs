@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using NodePilot.Cli.Settings;
+using NodePilot.Core.Clients;
 
 namespace NodePilot.Cli.Auth;
 
@@ -26,7 +27,7 @@ public sealed class SessionResolver
         // redirect its bearer token to another origin; paths may differ, but
         // scheme + normalized host + effective port must match exactly.
         if (session is not null
-            && !SessionContext.HasSameServerOrigin(session.Server, server))
+            && !ClientSessionSecurity.HasSameServerOrigin(session.Server, server))
         {
             session = null;
         }

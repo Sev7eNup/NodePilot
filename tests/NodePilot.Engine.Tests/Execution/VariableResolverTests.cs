@@ -8,9 +8,10 @@ namespace NodePilot.Engine.Tests.Execution;
 
 /// <summary>
 /// Pins down the contract of <see cref="VariableResolver.ResolveVariablesExcept"/> — the
-/// H-1 field-guard introduced in the 2026-05-15 security audit. The integration test in
-/// <c>SqlActivityTests</c> covers user-visible behavior; this file isolates the resolver
-/// so a future refactor that breaks the wiring fails here first.
+/// H-1 field-guard introduced in the 2026-05-15 security audit — and of
+/// <c>BuildStepVariables</c>, which assembles the databus dict handed to an activity. The
+/// integration test in <c>SqlActivityTests</c> covers user-visible behavior; this file
+/// isolates the resolver so a future refactor that breaks the wiring fails here first.
 /// </summary>
 public class VariableResolverTests
 {
@@ -235,5 +236,51 @@ public class VariableResolverTests
 
         vars["diskCheck.param.host"].Should().Be("server01");
         vars["step-1.param.host"].Should().Be("server01");
+        // The alias writes two qualified keys but there is still only one producer, so the
+        // unqualified short name is minted.
+        vars["host"].Should().Be("server01", "an alias must not make one producer count as two");
+    }
+
+    [Fact]
+    public void BuildStepVariables_AncestorsPublishDistinctNames_AddsUnqualifiedAliasPerName()
+    {
+        // Producers are counted per name, so two ancestors publishing different names each
+        // earn their own unqualified alias.
+        var previousResults = new Dictionary<string, ActivityResult>
+        {
+            ["step-1"] = new ActivityResult { Success = true, OutputParameters = { ["host"] = "server01" } },
+            ["step-2"] = new ActivityResult { Success = true, OutputParameters = { ["port"] = "5985" } },
+        };
+
+        var vars = VariableResolver.BuildStepVariables(
+            inputParameters: null,
+            globalVariables: new Dictionary<string, string>(),
+            previousResults: previousResults,
+            outputNameByStepId: new Dictionary<string, string>());
+
+        vars["host"].Should().Be("server01");
+        vars["port"].Should().Be("5985");
+    }
+
+    [Fact]
+    public void BuildStepVariables_TwoAncestorsPublishSameName_OmitsUnqualifiedAlias()
+    {
+        // A published value has exactly one owner: with two producers no winner is picked,
+        // and only the qualified forms stay available.
+        var previousResults = new Dictionary<string, ActivityResult>
+        {
+            ["step-1"] = new ActivityResult { Success = true, OutputParameters = { ["host"] = "server01" } },
+            ["step-2"] = new ActivityResult { Success = true, OutputParameters = { ["host"] = "server02" } },
+        };
+
+        var vars = VariableResolver.BuildStepVariables(
+            inputParameters: null,
+            globalVariables: new Dictionary<string, string>(),
+            previousResults: previousResults,
+            outputNameByStepId: new Dictionary<string, string>());
+
+        vars.Should().NotContainKey("host", "an ambiguous name gets no unqualified alias");
+        vars["step-1.param.host"].Should().Be("server01");
+        vars["step-2.param.host"].Should().Be("server02");
     }
 }

@@ -145,7 +145,7 @@ NodePilot stores any number of **LLM profiles**. A profile describes exactly one
         "BaseUrl": "https://api.openai.com/v1",
         "ApiKey": null,
         "Model": "gpt-4o-mini",
-        "MaxTokens": 4096,
+        "MaxTokens": 256000,
         "TimeoutSeconds": 90,
         "EnableToolCalling": false,
         "ToolCallMaxDepth": 6

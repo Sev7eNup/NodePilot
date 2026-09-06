@@ -364,13 +364,13 @@ $requiredBuildContracts = [ordered]@{
     'signing is verified rather than trusted to signtool exit code' = 'Get-AuthenticodeSignature'
     'build script accepts the server-setup switch' = '\[switch\]\$IncludeServerInstaller'
     'the produced server setup is copied next to the server zip' = 'NodePilot-Server-Setup-\$Version\.exe'
-    'the engine switcher is published self-contained' = '(?s)dotnet publish \$SwitcherCsproj.*?--self-contained true'
-    'the engine switcher is published as a single file' = '(?s)dotnet publish \$SwitcherCsproj.*?PublishSingleFile=true'
+    'the switcher is published self-contained' = '(?s)dotnet publish \$SwitcherCsproj.*?--self-contained true'
+    'the switcher is published as a single file' = '(?s)dotnet publish \$SwitcherCsproj.*?PublishSingleFile=true'
     'the standalone switcher is covered by release checksums' = '(?s)\$artifacts\s*=\s*@\([^\r\n]*\$standaloneSwitcher'
-    # The switcher reads engine-switcher.json from next to itself. Shipping the bare exe left a
+    # The switcher reads switcher.json from next to itself. Shipping the bare exe left a
     # machine without a NodePilot installation with no template to take, which is the whole point
     # of the standalone drop.
-    'the standalone switcher ships as a zip' = '\$standaloneSwitcher\s*=\s*Join-Path \$OutDir "NodePilot-EngineSwitcher-\$Version-win-x64\.zip"'
+    'the standalone switcher ships as a zip' = '\$standaloneSwitcher\s*=\s*Join-Path \$OutDir "NodePilot-Switcher-\$Version-win-x64\.zip"'
     'the standalone switcher zip carries the configuration template' = '(?s)Compress-Archive -Path \$switcherExe,\s*\$switcherTemplate -DestinationPath \$standaloneSwitcher'
     # One signing loop covering every installer, not a hand-maintained block per target: a second
     # copy is how the two drift apart, and the ordering check below only pins one place.
@@ -1089,8 +1089,8 @@ Assert-TextMatches -Name 'a failed setup leaves a log behind' `
     -Text $serverIss -Pattern '(?m)^SetupLogging=yes\s*$'
 Assert-TextMatches -Name 'the setup requires elevation' `
     -Text $serverIss -Pattern '(?m)^PrivilegesRequired=admin\s*$'
-Assert-TextMatches -Name 'the server setup installs a Start Menu shortcut for the engine switcher' `
-    -Text $serverIss -Pattern '(?m)^Name:\s*"\{group\}\\NodePilot Engine Switcher";\s*Filename:\s*"\{app\}\\tools\\engine-switcher\\NodePilot\.EngineSwitcher\.exe"'
+Assert-TextMatches -Name 'the server setup installs a Start Menu shortcut for the switcher' `
+    -Text $serverIss -Pattern '(?m)^Name:\s*"\{group\}\\NodePilot Switcher";\s*Filename:\s*"\{app\}\\tools\\switcher\\NodePilot\.Switcher\.exe"'
 # The controls on the network and prerequisites pages are positioned once, at wizard construction,
 # and carry no anchors. A resizable window would grow around them - the picker would stay where it
 # was while the page around it got taller.
@@ -2271,6 +2271,68 @@ foreach ($pathConsumer in @(
     Assert-TextMatches -Name "$($pathConsumer.Name) names the tools\np directory on one line" `
         -Text $pathConsumer.Text -Pattern "Join-Path \`$InstallPath 'tools\\np'"
 }
+
+# Every failure in those blocks is a warning, so a PATH entry that never lands leaves the operator
+# reading "Installation complete" and finding no np. Install and update read the value back, and
+# the installer's closing summary states the outcome either way.
+foreach ($pathVerifier in @(
+        @{ Name = 'installer'; Text = $installer },
+        @{ Name = 'updater';   Text = $updateScript })) {
+    Assert-TextMatches -Name "$($pathVerifier.Name) reads the machine PATH back after writing it" `
+        -Text $pathVerifier.Text `
+        -Pattern '(?s)SetEnvironmentVariable.*?Test-NodePilotPathContains[^\r\n]*`?\s*-PathValue \(\[Environment\]::GetEnvironmentVariable'
+}
+Assert-TextMatches -Name 'installer reports the CLI PATH outcome in its summary' `
+    -Text $installer -Pattern '\$cliPathState'
+
+# Both staging lists must carry every helper the entry points dot-source. Neither list is derived
+# from the code, and the server installer's copy was missing MachinePath.ps1: the PATH block is
+# wrapped in try/catch, so the failed dot-source became a warning and `np` silently never reached
+# the machine PATH on any GUI installation, while script installs worked. Derive the requirement
+# instead of maintaining a third hand-written list.
+$entryPointHelpers = [System.Collections.Generic.SortedSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($entryPoint in 'Install-NodePilot.ps1', 'Update-NodePilot.ps1', 'Uninstall-NodePilot.ps1') {
+    $text = Get-Content -LiteralPath (Join-Path $scriptDirectory $entryPoint) -Raw
+    foreach ($match in [regex]::Matches($text, '\$PSScriptRoot[^\r\n)]*?''([A-Za-z0-9.\-]+\.ps1)''')) {
+        [void]$entryPointHelpers.Add($match.Groups[1].Value)
+    }
+}
+if ($entryPointHelpers.Count -eq 0) {
+    throw 'No $PSScriptRoot helper references found in the entry points - the extraction pattern has gone stale.'
+}
+$serverBuildScript = Get-Content -LiteralPath $ServerBuildScriptPath -Raw
+foreach ($helper in $entryPointHelpers) {
+    Assert-TextMatches -Name "the deploy-scripts zip ships $helper" `
+        -Text $buildScript -Pattern ([regex]::Escape("'$helper'"))
+    Assert-TextMatches -Name "the server setup payload ships $helper" `
+        -Text $serverBuildScript -Pattern ([regex]::Escape("'$helper'"))
+}
+
+# The Switcher drives NodePilot through np.exe. Without a server URL it falls back to the
+# CLI's own configuration, which is per-user and DPAPI-protected - the setup account is not the
+# account that later runs the switcher, so only the shipped configuration can carry it. Same
+# one-line rule as the PATH directory above, for the same reason.
+$switcherConfigHelper = Get-Content -LiteralPath (Join-Path $scriptDirectory 'SwitcherConfig.ps1') -Raw
+foreach ($switcherConsumer in @(
+        @{ Name = 'installer'; Text = $installer },
+        @{ Name = 'updater';   Text = $updateScript })) {
+    Assert-TextMatches -Name "$($switcherConsumer.Name) names the switcher configuration on one line" `
+        -Text $switcherConsumer.Text `
+        -Pattern "Join-Path \`$InstallPath 'tools\\switcher\\switcher\.json'"
+    Assert-TextMatches -Name "$($switcherConsumer.Name) uses the shared switcher-config helper" `
+        -Text $switcherConsumer.Text -Pattern 'SwitcherConfig\.ps1'
+    Assert-TextMatches -Name "$($switcherConsumer.Name) writes the server URL through the helper" `
+        -Text $switcherConsumer.Text -Pattern 'Set-NodePilotSwitcherServerUrl'
+}
+# The update wipes and repopulates the install directory, so it has to carry the previous value
+# across - otherwise every upgrade silently reverts serverUrl to the shipped template.
+Assert-TextMatches -Name 'the updater reads the previous server URL before wiping the directory' `
+    -Text $updateScript `
+    -Pattern '(?s)Get-NodePilotSwitcherServerUrl -ConfigPath.*?Remove-Item -Recurse -Force'
+Assert-TextMatches -Name 'the switcher-config helper refuses to write a file that will not parse' `
+    -Text $switcherConfigHelper -Pattern '(?s)\$updated \| ConvertFrom-Json.*?WriteAllText'
+Assert-TextMatches -Name 'the switcher-config helper writes without a BOM' `
+    -Text $switcherConfigHelper -Pattern 'New-Object System\.Text\.UTF8Encoding \$false'
 
 # --- desktop installer contracts ----------------------------------------------------------------
 # Two defects that both looked like a successful installation and were only visible to the user as

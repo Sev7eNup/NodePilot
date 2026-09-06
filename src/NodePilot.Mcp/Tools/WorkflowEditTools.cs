@@ -172,7 +172,7 @@ public sealed class WorkflowEditTools
     }
 
     [McpServerTool(Name = "enable_workflow", Idempotent = true)]
-    [Description("Enable a workflow (arms its triggers). Requires you hold the lock if one is set.")]
+    [Description("Enable a workflow (arms its triggers). Requires a lock-free workflow - any lock, including your own, returns 423; from edit mode use publish_workflow instead.")]
     public async Task<object> EnableWorkflow(
         [Description("The workflow GUID or exact name.")] string idOrName,
         CancellationToken cancellationToken = default)
