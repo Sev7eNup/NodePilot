@@ -779,3 +779,66 @@ describe('lintWorkflow — disabled node tolerance', () => {
     expect(errors.some((e) => e.code === 'isolated-node' && e.nodeId === 'truly-orphan')).toBe(true);
   });
 });
+
+describe('lintWorkflow — dup-published-param', () => {
+  const trigger = () => node('trig', 0, 0, { activityType: 'manualTrigger', config: {} });
+  const script = (id: string, x: number, body: string) => node(id, x, 0, { config: { script: body } });
+  const registryRead = (id: string, x: number, keyPath: string) =>
+    node(id, x, 0, {
+      activityType: 'registryOperation',
+      config: { operation: 'read', keyPath, valueName: 'Str' },
+    });
+  const codes = (r: ReturnType<typeof lintWorkflow>) =>
+    [...r.errors, ...r.warnings].filter((i) => i.code === 'dup-published-param');
+
+  it('reports a genuine clash as a warning, never as a publish-blocking error', () => {
+    // The rule is advisory — the qualified form still resolves. It used to land in `errors`,
+    // which disables the confirm button in the pre-publish modal.
+    const nodes: Node[] = [
+      trigger(),
+      script('a', 200, "$hostName = 'web01'"),
+      script('b', 400, "$hostName = 'web02'"),
+      node('c', 600, 0, { activityType: 'log', config: { message: 'x' } }),
+    ];
+    const edges: Edge[] = [edge('e1', 'trig', 'a'), edge('e2', 'a', 'b'), edge('e3', 'b', 'c')];
+    const { errors, warnings } = lintWorkflow(nodes, edges);
+    expect(warnings.some((w) => w.code === 'dup-published-param' && w.nodeId === 'b')).toBe(true);
+    expect(errors.some((e) => e.code === 'dup-published-param')).toBe(false);
+  });
+
+  it('stays silent for two registry reads — `value` comes from the operation, not the author', () => {
+    const nodes: Node[] = [
+      trigger(),
+      registryRead('r1', 200, 'HKCU:\\SOFTWARE\\A'),
+      registryRead('r2', 400, 'HKCU:\\SOFTWARE\\B'),
+      node('use', 600, 0, { activityType: 'log', config: { message: 'x' } }),
+    ];
+    const edges: Edge[] = [edge('e1', 'trig', 'r1'), edge('e2', 'r1', 'r2'), edge('e3', 'r2', 'use')];
+    expect(codes(lintWorkflow(nodes, edges))).toHaveLength(0);
+  });
+
+  it('still reports a script variable clashing with a registry output', () => {
+    // Here the author has a fix: rename `$value` in the script.
+    const nodes: Node[] = [
+      trigger(),
+      script('init', 200, '$value = 1'),
+      registryRead('reg', 400, 'HKCU:\\SOFTWARE\\A'),
+      node('use', 600, 0, { activityType: 'log', config: { message: 'x' } }),
+    ];
+    const edges: Edge[] = [edge('e1', 'trig', 'init'), edge('e2', 'init', 'reg'), edge('e3', 'reg', 'use')];
+    const { warnings } = lintWorkflow(nodes, edges);
+    expect(warnings.some((w) => w.code === 'dup-published-param' && w.nodeId === 'reg')).toBe(true);
+  });
+
+  it('ignores publishers on branches that never meet', () => {
+    // No step is downstream of both, so neither ever sees the other's value. Mirrors the
+    // analyzer's SameNameOnBranchesThatNeverMeet_IsNotReported.
+    const nodes: Node[] = [
+      trigger(),
+      script('left', 200, "$hostName = 'web01'"),
+      node('right', 200, 400, { config: { script: "$hostName = 'web02'" } }),
+    ];
+    const edges: Edge[] = [edge('e1', 'trig', 'left'), edge('e2', 'trig', 'right')];
+    expect(codes(lintWorkflow(nodes, edges))).toHaveLength(0);
+  });
+});

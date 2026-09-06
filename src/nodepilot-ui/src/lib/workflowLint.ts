@@ -2,7 +2,7 @@ import type { Node, Edge } from '@xyflow/react';
 import { edgeSourcePort, edgeTargetPort, getPortPoint } from './edgePorts';
 import { REMOTE_ACTIVITY_TYPES, TRIGGER_ACTIVITY_TYPES } from './activityCatalog.generated';
 import { checkRequiredActivityConfig } from './activityConfigFacts';
-import { authoredParamNames } from './upstreamVariables';
+import { authoredParamNames, typeDerivedParamNames } from './upstreamVariables';
 
 // Hybrid activities: without a target machine they run locally in the API process
 // (RunScriptActivity / WaitForConditionActivity). They stay listed in REMOTE_ACTIVITY_TYPES
@@ -246,27 +246,73 @@ export function lintWorkflow(
   // ---- Two activities publishing the same name ----------------------------
   // A published value has exactly one owner. When two steps on one path publish the same name,
   // the engine binds no unqualified variable for it at all rather than picking a winner, so the
-  // author has to reference it through its owner. Mirrors WorkflowAnalyzer's `dup-published-param`.
+  // author has to reference it through its owner. Mirrors WorkflowAnalyzer's `dup-published-param`:
+  // scoped to publishers that share a descendant, and reported only where at least one of them
+  // named the value itself — two registryOperation reads both publishing `value` take that name
+  // from their `operation` and cannot be renamed.
   {
-    const publishersByName = new Map<string, string[]>();
-    for (const n of liveNodes) {
-      const d = (n.data as Record<string, unknown>) ?? {};
-      if (d.disabled === true) continue;
-      for (const pName of authoredParamNames(n)) {
-        const list = publishersByName.get(pName) ?? [];
-        list.push(n.id);
-        publishersByName.set(pName, list);
+    // Backwards walk over the live graph, mirroring FindAncestorNodeIds. Disabled edges are
+    // already out of `incoming`, so a path that only runs through one does not count.
+    const ancestorCache = new Map<string, Set<string>>();
+    const ancestorsOf = (nodeId: string): Set<string> => {
+      const cached = ancestorCache.get(nodeId);
+      if (cached) return cached;
+      const seen = new Set<string>();
+      const queue = [...(incoming.get(nodeId) ?? [])];
+      while (queue.length > 0) {
+        const cur = queue.shift()!;
+        if (seen.has(cur)) continue;
+        seen.add(cur);
+        for (const prev of incoming.get(cur) ?? []) queue.push(prev);
       }
+      ancestorCache.set(nodeId, seen);
+      return seen;
+    };
+
+    const isLive = (n: Node) => ((n.data as Record<string, unknown>) ?? {}).disabled !== true;
+    const authoredByNode = new Map<string, string[]>();
+    const typeDerivedByNode = new Map<string, string[]>();
+    for (const n of liveNodes) {
+      if (!isLive(n)) continue;
+      authoredByNode.set(n.id, authoredParamNames(n));
+      typeDerivedByNode.set(n.id, typeDerivedParamNames(n));
     }
-    for (const [pName, publishers] of publishersByName) {
-      if (publishers.length < 2) continue;
-      const sorted = [...publishers].sort();
-      errors.push({
-        severity: 'warning',
-        nodeId: sorted[sorted.length - 1],
-        code: 'dup-published-param',
-        message: `Zwei Aktivitäten veröffentlichen "${pName}" — die unqualifizierte Form $${pName} wird nicht gebunden, weil ein veröffentlichter Wert genau einen Besitzer hat. Referenziere ihn als {{${sorted[0]}.param.${pName}}}.`,
-      });
+
+    // One clash is reported once, not again for every consumer downstream of it.
+    const reported = new Set<string>();
+    for (const consumer of liveNodes) {
+      if (!isLive(consumer)) continue;
+
+      const publishersByName = new Map<string, Set<string>>();
+      const authoredNames = new Set<string>();
+      const addPublisher = (name: string, nodeId: string) => {
+        const set = publishersByName.get(name) ?? new Set<string>();
+        set.add(nodeId);
+        publishersByName.set(name, set);
+      };
+      for (const ancestorId of ancestorsOf(consumer.id)) {
+        for (const pName of authoredByNode.get(ancestorId) ?? []) {
+          addPublisher(pName, ancestorId);
+          authoredNames.add(pName);
+        }
+        for (const pName of typeDerivedByNode.get(ancestorId) ?? []) addPublisher(pName, ancestorId);
+      }
+
+      for (const [pName, publishers] of publishersByName) {
+        if (publishers.size < 2) continue;
+        // Every publisher took the name from its activity type: nothing to rename.
+        if (!authoredNames.has(pName)) continue;
+        const sorted = [...publishers].sort();
+        const signature = `${pName} ${sorted.join(',')}`;
+        if (reported.has(signature)) continue;
+        reported.add(signature);
+        warnings.push({
+          severity: 'warning',
+          nodeId: sorted[sorted.length - 1],
+          code: 'dup-published-param',
+          message: `Zwei Aktivitäten veröffentlichen "${pName}" — die unqualifizierte Form $${pName} wird nicht gebunden, weil ein veröffentlichter Wert genau einen Besitzer hat. Referenziere ihn als {{${sorted[0]}.param.${pName}}}.`,
+        });
+      }
     }
   }
 

@@ -102,16 +102,23 @@ public static class WorkflowAnalyzer
     ///
     /// <para>Only reported where it can actually bite — the two publishers must share a
     /// descendant, otherwise no step ever sees both.</para>
+    ///
+    /// <para>And only where the author can act on it: at least one publisher must have named the
+    /// value itself. Two registryOperation reads both publishing <c>value</c> take that name from
+    /// their <c>operation</c> and cannot be renamed, so flagging them is noise — but a script
+    /// assigning <c>$value</c> next to one of them is a real clash with a real fix.</para>
     /// </summary>
     private static void AddDuplicatePublishedParamFindings(
         WorkflowDefinitionDocument doc, List<Finding> findings)
     {
         var authoredByNode = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        var typeDerivedByNode = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         foreach (var node in doc.Nodes)
         {
             if (doc.DisabledNodeIds.Contains(node.Id)) continue;
             if (IsAnnotation(node.Type)) continue;
             authoredByNode[node.Id] = WorkflowDataBusAnalyzer.AuthoredParameters(node);
+            typeDerivedByNode[node.Id] = WorkflowDataBusAnalyzer.TypeDerivedParameters(node);
         }
 
         // name -> the publisher sets already reported, so one clash is not repeated for every
@@ -123,20 +130,36 @@ public static class WorkflowAnalyzer
             if (doc.DisabledNodeIds.Contains(consumer.Id)) continue;
 
             var publishersByName = new Dictionary<string, SortedSet<string>>(StringComparer.OrdinalIgnoreCase);
+            var authoredNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void AddPublisher(string name, string nodeId)
+            {
+                if (!publishersByName.TryGetValue(name, out var set))
+                    publishersByName[name] = set = new SortedSet<string>(StringComparer.Ordinal);
+                set.Add(nodeId);
+            }
+
             foreach (var ancestorId in doc.FindAncestorNodeIds(consumer.Id))
             {
-                if (!authoredByNode.TryGetValue(ancestorId, out var names)) continue;
-                foreach (var name in names)
+                if (authoredByNode.TryGetValue(ancestorId, out var authored))
                 {
-                    if (!publishersByName.TryGetValue(name, out var set))
-                        publishersByName[name] = set = new SortedSet<string>(StringComparer.Ordinal);
-                    set.Add(ancestorId);
+                    foreach (var name in authored)
+                    {
+                        AddPublisher(name, ancestorId);
+                        authoredNames.Add(name);
+                    }
                 }
+
+                if (typeDerivedByNode.TryGetValue(ancestorId, out var derived))
+                    foreach (var name in derived)
+                        AddPublisher(name, ancestorId);
             }
 
             foreach (var (name, publishers) in publishersByName)
             {
                 if (publishers.Count < 2) continue;
+                // Every publisher took the name from its activity type: nothing to rename.
+                if (!authoredNames.Contains(name)) continue;
                 var signature = name + "|" + string.Join(",", publishers);
                 if (!reported.Add(signature)) continue;
 
