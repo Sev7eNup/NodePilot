@@ -227,7 +227,8 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
                 <h1 className="font-headline text-[16px] font-bold leading-none truncate bg-gradient-to-r from-primary to-primary-container bg-clip-text text-transparent">NodePilot</h1>
                 <span className="np-brand-edition shrink-0">{t('nav:enterprise')}</span>
               </div>
-              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.09em] text-on-surface-variant/70 leading-none truncate">{t('nav:appTagline')}</p>
+              {/* Tagline is long enough to clip in the rail; small type plus wrapping keeps it fully readable. */}
+              <p className="mt-1 text-[8px] font-semibold uppercase tracking-[0.02em] text-on-surface-variant/70 leading-[1.25]">{t('nav:appTagline')}</p>
             </div>
           </div>
           {isMobile ? (
