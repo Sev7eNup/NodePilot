@@ -182,17 +182,14 @@ start from your actual runbooks instead of a blank canvas.
 The last row is the honest one: NodePilot gives you the source, not a support contract. Judge it
 on that basis.
 
-**Need to make the case to someone else?** Two ready-made slide decks live in
-[`presentations/`](presentations/), both self-contained HTML — download and open in a browser:
+**Need to make the case to someone else?** A ready-made slide deck lives in
+[`presentations/`](presentations/), self-contained HTML — download and open in a browser:
 
-- **[NodePilot vs. System Center Orchestrator 2022](presentations/nodepilot-management-presentation.html)**
-  (11 slides) — the decision case: starting position, architecture and footprint, operation and UX,
-  cost.
 - **[NodePilot — technical deck](presentations/nodepilot-presentation.html)** (39 slides) — overall
   architecture, the activity model, migrating from SCOrch, operational practice.
 
-Both decks are in **German**. They predate this README and are not maintained in step with it —
-treat them as a starting point for your own slides rather than as current reference material.
+The deck is in **German**. It predates this README and is not maintained in step with it — treat
+it as a starting point for your own slides rather than as current reference material.
 
 ---
 
@@ -548,10 +545,12 @@ Found a security problem? Do not open a public issue — [SECURITY.md](SECURITY.
 reporting path. Everyone taking part is expected to follow the
 [Code of Conduct](CODE_OF_CONDUCT.md).
 
-`CLAUDE.md` and `.agents/` in this repository are working notes for AI coding assistants, not
-contributor documentation. They are checked in on purpose — NodePilot is developed with AI
-assistance and does not hide it — but [CONTRIBUTING.md](CONTRIBUTING.md) is the file written for
-people.
+`CLAUDE.md` and `.agents/` are working notes for AI coding agents, not contributor documentation.
+They are checked in deliberately: NodePilot is built with agentic engineering, so the context an
+agent needs to work on this codebase belongs in the repository rather than in someone's private
+setup. What that does not change is the bar every change has to clear — behaviour changes ship
+with tests, and CI enforces the coverage gate on every pull request.
+[CONTRIBUTING.md](CONTRIBUTING.md) is the file written for people.
 
 ---
 
