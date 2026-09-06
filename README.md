@@ -413,7 +413,7 @@ them at a junction, and routes a decision to an alert or an all-green log:
 scripts/readme-showcase-workflow.json
 ```
 
-Import it via the **Workflows** page → *Import* (or `POST /api/import`). It exercises
+Import it via the **Workflows** page → *Import* (or `POST /api/workflows/import`). It exercises
 every shape you'll meet in production — schedule trigger, `runScript`, `log`, `junction`
 (waitAll), `decision`, `emailNotification`, `returnData`, plus three phase sticky-notes —
 laid out to fill the canvas width and run top-to-bottom.
