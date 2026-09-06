@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockApi';
+import { refitCanvas } from './fixtures/canvas';
 
 /**
  * E2ETests.md part 4 - edges (connections) and conditions.
@@ -352,6 +353,9 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     await page.mouse.click(pt.x, pt.y, { button: 'right' });
     await page.getByText(/detach target|ziel lösen/i).click();
     await expect(page.getByTestId('edge-detach-hint')).toBeVisible();
+    // Selecting the edge opened the inspector, which narrows the pane; refit so the target nodes
+    // stay mounted and clickable.
+    await refitCanvas(page);
   }
 
   test('4.6 — "Detach target" re-routes to the clicked node, picks the nearest port, keeps condition + label', async ({ page }) => {
@@ -424,8 +428,9 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     await waitForCanvas(page, 3);
     await openDetach(page);
 
-    // The locator actionability check ensures the click reaches the pane instead of an overlay.
-    await page.locator('.react-flow__pane').click({ button: 'right' });
+    // Top-left corner of the pane: the floating minimap sits bottom-right and would swallow a
+    // click aimed at the pane's centre.
+    await page.locator('.react-flow__pane').click({ button: 'right', position: { x: 10, y: 10 } });
 
     await expect(page.getByTestId('edge-detach-hint')).toHaveCount(0);
     // Detachment cancellation consumes the right-click without opening a context menu.
@@ -437,6 +442,13 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     await expect(panel.getByText('Consumer')).toBeVisible();
     expect(putSeen).toBe(false);
   });
+
+  // A wider viewport than the suite default, for this test only: the edge inspector is a fixed
+  // 450px, and the target node has to stay inside the pane left over, at the zoom fitView chose
+  // before the inspector opened. Re-fitting instead would shrink the node until a click can no
+  // longer pick one port over another.
+  test.describe('4.9', () => {
+    test.use({ viewport: { width: 2400, height: 900 } });
 
   test('4.9 — re-attaching to the CURRENT target node just moves the port', async ({ page }) => {
     // The current target remains valid so the port can change without recreating the edge.
@@ -468,6 +480,7 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     expect(def.edges[0].target).toBe(NODE_B);        // Target node stays unchanged.
     expect(def.edges[0].targetHandle).toBe('bottom'); // Only the port changes.
     expect(def.edges[0].data?.condition).toBe(`${NODE_A}.success`);
+  });
   });
 
   test('4.8 — undoing a re-route restores the old target AND leaves the edge clickable', async ({ page }) => {

@@ -334,12 +334,13 @@ Depending on the selection it shows: bulk edit (2 or more nodes, Expert), proper
 
 ## 20. Visual overlays & display options
 
+The designer has one design language, **Atelier**: its own workbench look — paper and graphite ground with the familiar squared grid, floating card chrome, one accent. `styles/designer-atelier.css` maps the `--color-*` tokens through a `--wd-*` palette layer, scoped by `.wd-atelier` on the editor root and `.wd-atelier-on` on `<html>` (the latter re-tokenises body-portaled tooltips). **Colour skins adapt it:** each skin re-points the accent family and the base tone (`--wd-accent*`, `--wd-canvas`/`--wd-panel`) while the Atelier geometry stays universal; status colours remain skin-stable.
+
 Every display setting lives in the **`designStore`** (Zustand plus persist, key `nodepilot-design`) and applies editor-wide:
 
 | Setting | Default | Values / range | Effect |
 |---|---|---|---|
 | `designerMode` | `standard` | standard / expert | Unlocks the extended toolbar, overlays and shortcuts |
-| `designerTheme` | `atelier` | atelier / classic | The designer's design language: **Atelier** (its own workbench look — paper and graphite ground with the familiar squared grid, floating card chrome, one accent; `styles/designer-atelier.css` maps the `--color-*` tokens through a `--wd-*` palette layer) versus **Classic** (the previous look, byte-identical). **Colour skins adapt both looks:** in Atelier each skin re-points the accent family and the base tone (`--wd-accent*`, `--wd-canvas`/`--wd-panel`) while the Atelier geometry stays universal; status colours remain skin-stable in both. The switch (`Brush` icon, `role="switch"`, `data-testid="toggle-atelier-theme"`) is in both header layouts |
 | `toolbarLayout` | `compact` | compact / classic | Header layout: compact (grouped popover menus, a green "run") versus the classic inline row (every toggle and tool as an individual button, icon-only play). The switch button exists in both layouts |
 | `nodeStyle` | `classic` | classic / card | Node rendering (`Ctrl+Shift+N`) |
 | `nodeScaleIndex` | 3 | 0–7 (XS … 4XL) | Node size |
@@ -347,7 +348,6 @@ Every display setting lives in the **`designStore`** (Zustand plus persist, key 
 | `edgesAnimated` | true | bool | Flow animation on edges (`A`) |
 | `edgeWidthIndex` | 2 | 1.5/2/2.5/3.5/5/7 px | Edge width (`Ctrl+]`/`[`) |
 | `edgeRouting` | `smart` | smart / curved / straight | Routing (`R`) |
-| `flexiblePortsEnabled` | false | bool | All four node sides as ports |
 | `snapToGrid` | false | bool | Grid snapping (`G`) |
 | `snapGridSize` | 20 | 10/20/30/40/60 px | Grid spacing |
 | `layoutMode` | `LR` | LR / TB / Compact / ELK | Auto-layout algorithm |

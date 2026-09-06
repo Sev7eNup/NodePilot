@@ -40,11 +40,11 @@ export function EditorIdentity({ aiChatOpen, onToggleAiChat }: Readonly<{
         <ArrowLeft size={20} />
       </button>
       <WorkflowDesignerIcon className="shrink-0 h-6 w-6 xl:h-8 xl:w-8 drop-shadow-[0_3px_10px_color-mix(in_srgb,var(--color-primary)_45%,transparent)]" />
-      {/* The wordmark disappears below xl so the centered name has room; the logo stays as a
-          brand anchor. Colors follow the active skin: primary to primary-container. */}
-      <h2 className="hidden xl:block font-headline leading-none">
-        <span className="font-black text-xl bg-gradient-to-r from-primary to-primary-container bg-clip-text text-transparent">Workflow</span>
-        <span className="block font-semibold text-[9px] tracking-[0.35em] uppercase text-primary-container ml-0.5">Designer</span>
+      {/* A quiet workflow label sits above the designer title. Below xl the wordmark yields
+          space to the centered workflow name; the logo stays visible. */}
+      <h2 className="hidden xl:block font-headline text-left">
+        <span className="block text-[12px] leading-[14px] font-medium tracking-[0.04em] text-primary">Workflow</span>
+        <span className="block text-[19px] leading-[21px] font-semibold tracking-[-0.035em] text-on-surface">Designer</span>
       </h2>
       <div
         className="flex items-center rounded-md bg-surface-high p-0.5 shrink-0"

@@ -123,6 +123,12 @@ test.describe('KI-Workflow-Assistent', () => {
     await expect(panel.getByText(/applied/i)).toBeVisible();
   });
 
+  // Wider than the suite default, for this test only: the assistant shares the right slot with
+  // the properties panel, and the node it hands back to has to stay inside the pane that is left
+  // over. In a narrow pane the floating minimap covers its middle, where the node would sit.
+  test.describe('panel handover', () => {
+    test.use({ viewport: { width: 2400, height: 900 } });
+
   test('clicking a node hands the right panel back to the properties', async ({ page }) => {
     await mockChat(page, false);
     await openEditor(page);
@@ -139,6 +145,7 @@ test.describe('KI-Workflow-Assistent', () => {
     // Reopening the assistant overlays the properties again.
     await page.getByTestId('toggle-ai-assistant').click();
     await expect(panel).toBeVisible();
+  });
   });
 
   test('viewer can ask but cannot apply a proposal', async ({ page }) => {

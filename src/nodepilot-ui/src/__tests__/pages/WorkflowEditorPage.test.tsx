@@ -241,22 +241,15 @@ describe('WorkflowEditorPage — smoke + toolbar', () => {
 
   // The Atelier design language rides two class hooks: `.wd-atelier` on the editor root
   // (scopes the designer-atelier.css token re-declaration) and `.wd-atelier-on` on <html>
-  // (re-tokenises body-portaled tooltips that escape the scope). The suite-wide setup pins
-  // classic, so this test flips the store explicitly and checks both directions.
-  it('applies + removes the Atelier scope classes with designStore.designerTheme', async () => {
-    useDesignStore.setState({ designerTheme: 'atelier' });
+  // (re-tokenises body-portaled tooltips that escape the scope). The root marker is bound to
+  // the editor's lifetime, so it must be gone again after unmount.
+  it('applies the Atelier scope classes and cleans the root marker on unmount', async () => {
     const { container, unmount } = renderPage();
     await waitFor(() => expect(screen.getByDisplayValue('Smoke Workflow')).toBeInTheDocument());
     expect(container.querySelector('.np-designer.wd-atelier')).not.toBeNull();
     expect(document.documentElement.classList.contains('wd-atelier-on')).toBe(true);
 
-    act(() => { useDesignStore.setState({ designerTheme: 'classic' }); });
-    await waitFor(() => expect(container.querySelector('.np-designer.wd-atelier')).toBeNull());
-    expect(document.documentElement.classList.contains('wd-atelier-on')).toBe(false);
-
     // Unmount must clean the <html> marker so other routes never render "atelier-tinted".
-    useDesignStore.setState({ designerTheme: 'atelier' });
-    await waitFor(() => expect(document.documentElement.classList.contains('wd-atelier-on')).toBe(true));
     unmount();
     expect(document.documentElement.classList.contains('wd-atelier-on')).toBe(false);
   });

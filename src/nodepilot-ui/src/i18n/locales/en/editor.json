@@ -298,10 +298,6 @@
     "classic": "classic",
     "toggleTitle": "Switch to the {{layout}} toolbar"
   },
-  "atelierTheme": {
-    "switchToClassic": "Switch to the classic designer look",
-    "switchToAtelier": "Switch to the Atelier design"
-  },
   "bulkEdit": {
     "title": "Bulk edit ({{count}})",
     "selectedCount": "{{count}} nodes selected",

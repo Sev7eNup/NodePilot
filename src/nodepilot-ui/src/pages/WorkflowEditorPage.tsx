@@ -195,17 +195,15 @@ function WorkflowEditorInner() {
   const { canWrite: roleCanWrite, isAdmin, isViewer } = useRole();
   const currentUserId = useAuthStore((s) => s.userId);
   const designerMode = useDesignStore((s) => s.designerMode);
-  const designerTheme = useDesignStore((s) => s.designerTheme);
-  const isAtelier = designerTheme === 'atelier';
   // Atelier marker on <html>: designer UI portaled to body (activity tooltips via
   // .np-tooltip-portal) escapes the .np-designer token scope, so the root marker lets
-  // designer-atelier.css re-assert the Atelier surface tokens on those portals too.
+  // designer-atelier.css re-assert the Atelier surface tokens on those portals too. Bound to
+  // the editor's lifetime, so other routes never render Atelier-tinted.
   useEffect(() => {
     const rootEl = document.documentElement;
-    if (isAtelier) rootEl.classList.add('wd-atelier-on');
-    else rootEl.classList.remove('wd-atelier-on');
+    rootEl.classList.add('wd-atelier-on');
     return () => rootEl.classList.remove('wd-atelier-on');
-  }, [isAtelier]);
+  }, []);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [tidyingWorkflowId, setTidyingWorkflowId] = useState<string | null>(null);
@@ -1303,7 +1301,7 @@ function WorkflowEditorInner() {
 
   return (
     <SubWorkflowPreviewContext.Provider value={subWorkflowPreviewContextValue}>
-    <div className={`np-designer${isAtelier ? ' wd-atelier' : ''} h-screen flex flex-col bg-surface overflow-hidden`}>
+    <div className="np-designer wd-atelier h-screen flex flex-col bg-surface overflow-hidden">
       {/* Header — bleibt im Fullscreen (F11) sichtbar; nur Sidebar / Properties / Bottom-Panel
           und die optionalen Banner werden versteckt, damit der Canvas-Workspace maximiert
           wird, der User aber die Toolbar (Save / Test / Run / Bearbeiten / Publish …) weiterhin
@@ -1568,13 +1566,11 @@ function WorkflowEditorInner() {
               </Panel>
             )}
             <MiniMap
-              className={isAtelier
-                ? '!bg-surface-lowest/90 !backdrop-blur-md !border !border-outline-variant/40 !rounded-xl !shadow-lg'
-                : '!bg-surface-lowest/80 !backdrop-blur-md !border !border-outline-variant/20 !rounded-lg !shadow-sm'}
+              className="!bg-surface-lowest/90 !backdrop-blur-md !border !border-outline-variant/40 !rounded-xl !shadow-lg"
               pannable
               zoomable
               nodeStrokeWidth={3}
-              maskColor={isAtelier ? 'var(--np-minimap-mask-atelier)' : 'var(--np-minimap-mask)'}
+              maskColor="var(--np-minimap-mask)"
               // Use semantic border colors so activity types remain distinguishable in the minimap.
               nodeColor={(n) => {
                 const d = n.data as Record<string, unknown>;

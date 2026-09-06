@@ -2,13 +2,11 @@ import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
 
 /**
- * Atelier design language: the designer's own skin-independent look.
+ * Atelier design language: the designer's only look, skin-independent.
  *
- * `designStore.designerTheme` ('atelier' default | 'classic') puts `.wd-atelier` on the
- * `.np-designer` root and `.wd-atelier-on` on <html>; a `role="switch"` header button
- * (`toggle-atelier-theme`) flips it. installDefaultMocks pins the rest of the hermetic suite to
- * classic, so these specs are the only ones covering the Atelier path: fresh-profile default,
- * scope classes, canvas dot grid, toggle round-trip and persistence.
+ * `WorkflowEditorPage` puts `.wd-atelier` on the `.np-designer` root and `.wd-atelier-on` on
+ * <html> for as long as the editor is mounted. These specs cover the scope classes, the canvas
+ * dot grid, the per-skin token adaptation and the light-skin ground/chrome relationship.
  * The SPA renders English under Playwright; all APIs are page.route mocks.
  */
 
@@ -35,25 +33,6 @@ function workflowJson() {
   });
 }
 
-/** Seed the designer into the Atelier look, overriding the suite-wide classic pin that
- *  installDefaultMocks applies. Like that pin, it only seeds while no full app-persisted state
- *  exists, so a mid-test toggle survives page.reload and persistence stays testable. */
-async function seedAtelier(page: Page) {
-  await page.addInitScript(() => {
-    const raw = localStorage.getItem('nodepilot-design');
-    let appWritten = false;
-    try { appWritten = !!raw && JSON.parse(raw).state?.nodeStyle !== undefined; } catch { /* reseed */ }
-    if (!appWritten) {
-      // Repeats the node-scale pin from installDefaultMocks: this seed replaces the whole key,
-      // so without it these specs would run at the `lg` default and drift away from the canvas
-      // geometry the rest of the suite uses.
-      localStorage.setItem('nodepilot-design', JSON.stringify({
-        state: { designerTheme: 'atelier', nodeScaleIndex: 1 }, version: 2,
-      }));
-    }
-  });
-}
-
 async function openEditor(page: Page) {
   await page.route(`**/api/workflows/${WF_ID}`, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson() }),
@@ -67,15 +46,14 @@ test.describe('Atelier-Designsprache', () => {
     await installDefaultMocks(page);
   });
 
-  test('atelier.1 — Atelier-Modus setzt Scope-Klassen und rendert das Punktraster', async ({ page }) => {
-    await seedAtelier(page);
+  test('atelier.1 — der Designer setzt die Scope-Klassen und rendert das Punktraster', async ({ page }) => {
     await openEditor(page);
 
     // Scope classes: designer root + <html> portal marker.
     await expect(page.locator('.np-designer.wd-atelier')).toBeVisible();
     await expect(page.locator('html.wd-atelier-on')).toHaveCount(1);
 
-    // Canvas grid: free mode renders the dot grid, which the Premium and Classic looks share.
+    // Canvas grid: free mode renders the dot grid, which the Premium look shares.
     await expect(page.locator('pattern[id$="np-bg-dots"]')).toHaveCount(1);
 
     // Token proof: the editor header resolves the Atelier cobalt accent, not the base blue.
@@ -86,7 +64,6 @@ test.describe('Atelier-Designsprache', () => {
   });
 
   test('atelier.5 — Farb-Skins adaptieren den Atelier-Look (Akzent + Grundton je Skin)', async ({ page }) => {
-    await seedAtelier(page);
     await openEditor(page);
 
     // Custom properties come back as authored rather than as a normalised colour, and the
@@ -155,51 +132,28 @@ test.describe('Atelier-Designsprache', () => {
     expect(success).toBe('#4cc38a');
   });
 
-  test('atelier.2 — Umschalter wechselt zu Classic und zurück (Switch, kein Checkbox)', async ({ page }) => {
-    await seedAtelier(page);
+  test('atelier.2 — Umschalter ist weg: der Designer kennt nur noch den Atelier-Look', async ({ page }) => {
+    // The classic designer look was removed. Nothing may re-introduce a second design language:
+    // no header switch, and the scope class is unconditional.
     await openEditor(page);
-
-    const toggle = page.getByTestId('toggle-atelier-theme');
-    await expect(toggle).toHaveAttribute('role', 'switch');
-    await expect(toggle).toHaveAttribute('aria-checked', 'true');
-
-    await toggle.click();
-    await expect(page.locator('.np-designer.wd-atelier')).toHaveCount(0);
-    await expect(page.locator('html.wd-atelier-on')).toHaveCount(0);
-    await expect(toggle).toHaveAttribute('aria-checked', 'false');
-
-    await toggle.click();
-    await expect(page.locator('.np-designer.wd-atelier')).toHaveCount(1);
-    await expect(toggle).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('toggle-atelier-theme')).toHaveCount(0);
+    await expect(page.locator('.np-designer:not(.wd-atelier)')).toHaveCount(0);
   });
 
-  test('atelier.3 — Wahl überlebt den Reload (persistiertes designStore)', async ({ page }) => {
-    await seedAtelier(page);
+  test('atelier.3 — der Look überlebt den Reload', async ({ page }) => {
     await openEditor(page);
-
-    await page.getByTestId('toggle-atelier-theme').click();
-    await expect(page.locator('.np-designer.wd-atelier')).toHaveCount(0);
+    await expect(page.locator('.np-designer.wd-atelier')).toHaveCount(1);
 
     await page.reload();
     await expect(page.locator('.react-flow__node[data-id="step-a"]')).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('.np-designer.wd-atelier')).toHaveCount(0);
-    await expect(page.getByTestId('toggle-atelier-theme')).toHaveAttribute('aria-checked', 'false');
+    await expect(page.locator('.np-designer.wd-atelier')).toHaveCount(1);
+    await expect(page.locator('html.wd-atelier-on')).toHaveCount(1);
   });
 
-  test('atelier.4 — Suite-Pin: ohne Atelier-Seed rendert der Editor klassisch', async ({ page }) => {
-    // installDefaultMocks pins classic for the whole hermetic suite. If that pin broke, the
-    // visual assertions in every other spec would silently run against the Atelier tokens.
+  test('atelier.6 — helle Skins zeigen weisse Chrome auf dem Seitengrund', async ({ page }) => {
+    // The token-level rule is pinned in atelier.5; this checks what actually gets painted on
+    // the canvas, the docks and the inspector.
     await openEditor(page);
-    await expect(page.locator('.np-designer')).toBeVisible();
-    await expect(page.locator('.np-designer.wd-atelier')).toHaveCount(0);
-    await expect(page.locator('pattern[id$="np-bg-dots"]')).toHaveCount(1);
-  });
-
-  test('atelier.6 — auch klassisch: helle Skins zeigen weisse Chrome auf dem Seitengrund', async ({ page }) => {
-    // The ground/chrome relationship belongs to the light base, not to the Atelier look, so it
-    // has to hold with the toggle off as well.
-    await openEditor(page);
-    await expect(page.locator('.np-designer.wd-atelier')).toHaveCount(0);
 
     const read = () => page.evaluate(() => {
       const bg = (sel: string) => {

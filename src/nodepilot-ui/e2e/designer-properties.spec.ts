@@ -189,7 +189,9 @@ test.describe('Designer Properties Panel & Variablen (Teil 5)', () => {
             label: 'Collect', activityType: 'runScript', outputVariable: 'collect',
             config: { script: "$hostName = 'SERVER01'\n$version = '1.0.5'\nWrite-Host \"$hostName $version\"" },
           } },
-        { id: 'step-return', type: 'activity', position: { x: 320, y: 60 },
+        // Stacked, not side by side: fitView spreads a horizontal pair across the pane and the
+        // right-hand node lands under the floating minimap, which swallows the click.
+        { id: 'step-return', type: 'activity', position: { x: 60, y: 300 },
           data: {
             label: 'Return', activityType: 'returnData',
             config: { data: { host: '{{collect.param.hostName}}', version: '{{collect.param.version}}' } },

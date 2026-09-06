@@ -52,14 +52,12 @@ export async function mockCaps(page: Page, caps: KnowledgeCapabilities) {
 }
 
 export async function installDefaultMocks(page: Page) {
-  // Pin the designer to the classic look and the small node scale for the whole hermetic suite.
-  // Both are geometry knobs the canvas assertions rely on:
-  //  - designerTheme re-tokenises colors and geometry; the Atelier look has its own specs
-  //    (designer-atelier.spec.ts) that seed 'atelier' explicitly.
-  //  - nodeScaleIndex changes how much room a node occupies, and `fitView` turns that into a
-  //    different pan/zoom for the same seeded positions, which can move nodes under the minimap.
-  //    The scale itself is covered by unit tests (designStore.test.ts, CanvasSettings.test.tsx).
-  // `version: 3` matches the store's current persist version, so the seed is taken as-is
+  // Pin the small node scale for the whole hermetic suite. It is a geometry knob the canvas
+  // assertions rely on: nodeScaleIndex changes how much room a node occupies, and `fitView`
+  // turns that into a different pan/zoom for the same seeded positions, which can move nodes
+  // under the minimap. The scale itself is covered by unit tests (designStore.test.ts,
+  // CanvasSettings.test.tsx).
+  // `version: 4` matches the store's current persist version, so the seed is taken as-is
   // instead of being migrated back to the current default.
   //
   // Init scripts re-run on every navigation, page.reload included, so an unconditional setItem
@@ -72,7 +70,7 @@ export async function installDefaultMocks(page: Page) {
     try { appWritten = !!raw && JSON.parse(raw).state?.nodeStyle !== undefined; } catch { /* reseed */ }
     if (!appWritten) {
       localStorage.setItem('nodepilot-design', JSON.stringify({
-        state: { designerTheme: 'classic', nodeScaleIndex: 1 }, version: 3,
+        state: { nodeScaleIndex: 1 }, version: 4,
       }));
     }
   });
@@ -183,15 +181,14 @@ function emptyArray(route: Route) {
  */
 export async function seedExpertMode(page: Page) {
   // Init scripts run in addition order and the LAST setItem wins — this seed replaces the
-  // whole 'nodepilot-design' key, so it must re-assert BOTH pins from installDefaultMocks
-  // (classic look + small node scale) or expert-mode specs would silently flip to the Atelier
-  // design and the large node geometry.
+  // whole 'nodepilot-design' key, so it must re-assert the node-scale pin from
+  // installDefaultMocks or expert-mode specs would silently run at the large node geometry.
   await page.addInitScript(() =>
     localStorage.setItem(
       'nodepilot-design',
       JSON.stringify({
-        state: { designerMode: 'expert', designerTheme: 'classic', nodeScaleIndex: 1 },
-        version: 3,
+        state: { designerMode: 'expert', nodeScaleIndex: 1 },
+        version: 4,
       }),
     ),
   );

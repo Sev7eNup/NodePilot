@@ -147,11 +147,12 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
 
     const node = page.locator(`.react-flow__node[data-id="${NODE_ID}"]`);
 
-    // Outside-click close: open the menu, then click empty canvas. Click near the top of the
-    // pane because the editor's bottom output panel overlays the lower canvas region.
+    // Outside-click close: open the menu, then click empty canvas. Click the top-LEFT corner of
+    // the pane: the bottom output panel overlays the lower canvas region, and the bottom-right
+    // minimap swallows clicks aimed at the right half.
     await node.click({ button: 'right' });
     await expect(page.getByRole('button', { name: /^duplicate$/i })).toBeVisible({ timeout: 10_000 });
-    await page.locator('.react-flow__pane').click({ position: { x: 700, y: 90 } });
+    await page.locator('.react-flow__pane').click({ position: { x: 10, y: 10 } });
     await expect(page.getByRole('button', { name: /^duplicate$/i })).toHaveCount(0);
 
     // Select the node so the properties panel reflects its state (pill shows "Active").
