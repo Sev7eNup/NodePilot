@@ -5,7 +5,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NodePilot.Core.Clients;
 using NodePilot.Mcp.Api;
-using NodePilot.Mcp.Auth;
 using NodePilot.Mcp.Config;
 using NodePilot.Mcp.Resources;
 using NodePilot.Mcp.Tools;

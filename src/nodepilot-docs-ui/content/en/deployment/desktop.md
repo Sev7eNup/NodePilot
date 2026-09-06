@@ -163,8 +163,9 @@ and an overview of every log file is under [Logs & diagnostics](logs).
 
 ## The documentation on the machine
 
-The package ships this documentation with it; the API serves it at `/docs`. The question mark in
-the application header opens it in a window of its own — without signing in and without internet
+The package ships this documentation with it; the API serves it at `/docs`. The documentation
+button at the bottom left of the sidebar, next to the skin and language controls, opens it in a
+window of its own — without signing in and without internet
 access, matching the installed version. Links that lead out of the documentation (GitHub,
 releases) are handed to the system browser; the shell never renders foreign content itself.
 

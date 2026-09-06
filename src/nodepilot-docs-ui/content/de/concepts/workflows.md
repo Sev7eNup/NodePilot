@@ -48,7 +48,7 @@ das nicht verlieren darf, gehört eine durable Queue davor statt eines Triggers.
 
 ## Retry & Timeout
 
-- **Retry pro Step:** `config.retry` mit `maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayMs`.
+- **Retry pro Step:** `config.retry` mit `maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayMs`. Dauerhafte Remote-Fehler werden nicht wiederholt — ein abgelehnter WinRM-Logon, eine per SSL-Policy geblockte Session und ein nicht entschlüsselbares Credential lassen den Step beim ersten Versuch scheitern, damit ein Step keine Serie von Fehl-Logons erzeugt, die ein Konto sperren kann.
 - **Execution-Timeout:** `timeoutSeconds` im Execute-Body + per-Step `config.timeoutSeconds`.
 
 ## Disabled Nodes & Edges

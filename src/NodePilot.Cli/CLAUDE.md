@@ -6,4 +6,4 @@ Reiner HTTP-Client gegen die REST-Endpoints (Spectre.Console.Cli), mit beiden In
 
 **Architektur-Konvention:** Neuer API-Endpoint → parallel Methode in `NodePilotApiClient.cs` + Command anlegen. DTOs in `Cli/Api/Dtos/` duplizieren (kein ProjectReference).
 
-**Geteilte Client-Infrastruktur:** `ApiException`, das Response-Plumbing (`ApiResponseReader`) und die Lese-Seite der `config.json` (`ClientConfigStore` + `CliConfig`) liegen in `NodePilot.Core.Clients` — gemeinsam mit dem MCP-Server. **Nur die DTOs bleiben bewusst dupliziert** (siehe oben, `ApiDtoParityTests`); neue Infrastruktur nicht erneut kopieren.
+**Geteilte Client-Infrastruktur:** `ApiException`, das Response-Plumbing (`ApiResponseReader`), die Lese-Seite der `config.json` (`ClientConfigStore` + `CliConfig`) sowie der DPAPI-Session-Store und die Token-Rotation (`TokenStore`, `StoredSession`, `TokenRefreshHandler`) liegen in `NodePilot.Core.Clients` — gemeinsam mit dem MCP-Server. **Nur die DTOs bleiben bewusst dupliziert** (siehe oben, `ApiDtoParityTests`); neue Infrastruktur nicht erneut kopieren (Guard: `CliSessionInteropTests` in Mcp.Tests).

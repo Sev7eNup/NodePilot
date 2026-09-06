@@ -229,7 +229,41 @@ public class WinRmSessionPoolTests
     }
 
     private static WinRmSessionPool.PoolKey KeyFor(ManagedMachine m) =>
-        new(m.Id, Guid.Empty, m.Hostname ?? string.Empty, m.WinRmPort, m.UseSsl);
+        new(m.Id, Guid.Empty, string.Empty, m.Hostname ?? string.Empty, m.WinRmPort, m.UseSsl);
+
+    [Theory]
+    [InlineData("password")]
+    [InlineData("username")]
+    [InlineData("domain")]
+    public async Task CreateSessionAsync_AfterCredentialRotation_OpensAFreshSession(string rotatedField)
+    {
+        // The pool key carries a fingerprint of the credential, so a session opened under the
+        // previous password, username or domain is never handed to a step that runs after the
+        // credential was edited. The stale session stays idle until the TTL sweep closes it.
+        var (pool, factory) = BuildPool();
+        await using var _ = pool;
+        var machine = Machine();
+        var credentialId = Guid.NewGuid();
+        var original = new Credential { Id = credentialId, Username = "svc", Domain = "CORP", EncryptedPassword = [1, 2, 3] };
+
+        var first = await pool.CreateSessionAsync(machine, original, CancellationToken.None);
+        await first.DisposeAsync();
+        var reused = await pool.CreateSessionAsync(machine, original, CancellationToken.None);
+        await reused.DisposeAsync();
+        factory.CreateCount.Should().Be(1, "an unchanged credential reuses the parked session");
+
+        var rotated = new Credential
+        {
+            Id = credentialId,
+            Username = rotatedField == "username" ? "svc2" : original.Username,
+            Domain = rotatedField == "domain" ? "CORP2" : original.Domain,
+            EncryptedPassword = rotatedField == "password" ? [9, 9, 9] : original.EncryptedPassword,
+        };
+        var fresh = await pool.CreateSessionAsync(machine, rotated, CancellationToken.None);
+        await fresh.DisposeAsync();
+
+        factory.CreateCount.Should().Be(2, "the rotated credential must not reuse the old session");
+    }
 
     [Fact]
     public async Task Return_SurplusBeyondIdleCap_DisposesSurplusSession()

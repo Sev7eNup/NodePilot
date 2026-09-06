@@ -36,7 +36,9 @@ export function resolveVariablePreview(step: StepExecution | undefined, expressi
     if (!raw) return null;
     return preview('stdout', raw, i18n.t('properties:variablePreview.stdoutLastRun'));
   }
-  if (tail === 'error' || tail === 'errorOutput') {
+  // Only `.error` — the engine grammar has no `errorOutput` tail, and previewing one made an
+  // unresolvable reference look live.
+  if (tail === 'error') {
     const raw = step.errorOutput ?? '';
     if (!raw) return null;
     return preview('stderr', raw, i18n.t('properties:variablePreview.stderrLastRun'));

@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NodePilot.Core.Activities;
 using NodePilot.Core.Enums;
+using NodePilot.Core.Exceptions;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -259,11 +260,31 @@ internal sealed class StepRunner
             {
                 var shouldPause = ShouldPauseForDebug(node, previousResults, outputVariableToStepId, globalVariables, debug);
                 if (shouldPause)
-                    await _debugCoordinator.HandlePauseAsync(execution, node, stepExecution, stepDb, variables, debug, executionCts, ct);
+                {
+                    var overrides = await _debugCoordinator.HandlePauseAsync(
+                        execution, node, stepExecution, stepDb, variables, debug, executionCts, ct);
+
+                    // Re-resolve with the edited values. configForExecution was baked above, before
+                    // the pause, and only runScript / custom activities read the live variable dict
+                    // at execute time — so without this every other activity ran with the pre-edit
+                    // value while the resume returned 204 and the step reported success.
+                    if (overrides is { Count: > 0 })
+                    {
+                        var (overriddenResults, overriddenInputs) = ApplyDebugOverrides(
+                            previousResults, inputParameters, overrides, outputVariableToStepId);
+                        configForExecution = ResolveConfigForExecution(
+                            node.Type, node.Data.Config, overriddenResults, outputVariableToStepId,
+                            globalVariables, overriddenInputs);
+                    }
+                }
             }
 
-            var (result, attemptsUsed) = await RunWithRetryAsync(node, executor, context, configForExecution, resolvedTargetMachine, retryPolicies, ct);
-            stepExecution.AttemptCount = attemptsUsed;
+            // stepExecution is passed in so AttemptCount is recorded per attempt: when the final
+            // attempt throws, the assignment below is never reached and the row claimed one
+            // attempt for a step that made several.
+            var (result, _) = await RunWithRetryAsync(
+                node, executor, context, configForExecution, resolvedTargetMachine, retryPolicies,
+                stepExecution, ct);
 
             var sanitized = _redactor.Redact(result);
             stepExecution.Status = result.Success ? ExecutionStatus.Succeeded : ExecutionStatus.Failed;
@@ -387,7 +408,7 @@ internal sealed class StepRunner
 
             stepActivity?.SetTag(TelemetryConstants.Attributes.StepStatus, "Failed");
             stepActivity?.SetStatus(ActivityStatusCode.Error, sanitizedError);
-            stepActivity?.AddException(ex);
+            stepActivity?.SetTag("exception.type", ex.GetType().FullName);
             finalStatus = "Failed";
 
             LogStepDetail(execution, node,
@@ -508,6 +529,7 @@ internal sealed class StepRunner
         JsonElement configForExecution,
         string? resolvedTargetMachine,
         IReadOnlyDictionary<string, RetryPolicy> retryPolicies,
+        StepExecution stepExecution,
         CancellationToken ct)
     {
         var retryPolicy = retryPolicies.TryGetValue(node.Id, out var p) ? p : RetryPolicy.Disabled;
@@ -540,7 +562,26 @@ internal sealed class StepRunner
             }
 
             attemptsUsed = attempt;
-            result = await executor.ExecuteAsync(context, configForExecution, ct);
+            stepExecution.AttemptCount = attempt;
+            try
+            {
+                result = await executor.ExecuteAsync(context, configForExecution, ct);
+            }
+            // Remote activities signal failure by throwing, not by returning Success=false, so the
+            // retry policy only covers them if the loop catches. NonRetryableRemoteException is
+            // excluded: a denied logon or an unusable credential cannot be fixed by repeating, and
+            // repeated logons against a domain account can lock it out.
+            catch (Exception ex) when (ex is not OperationCanceledException
+                                       && ex is not NonRetryableRemoteException
+                                       && attempt < retryPolicy.MaxAttempts)
+            {
+                _logger.LogWarning(ex,
+                    "Step {StepId} ({ActivityType}) attempt {Attempt}/{Max} threw; retrying.",
+                    node.Id, node.Type, attempt, retryPolicy.MaxAttempts);
+                result = new ActivityResult { Success = false, ErrorOutput = ex.Message };
+                continue;
+            }
+
             if (result.Success) break;
         }
 
@@ -558,10 +599,11 @@ internal sealed class StepRunner
             }
         }
 
+        // The result is still unredacted here; the parent step span gets the redacted text.
         if (result.Success)
             activitySpan?.SetStatus(ActivityStatusCode.Ok);
         else
-            activitySpan?.SetStatus(ActivityStatusCode.Error, result.ErrorOutput);
+            activitySpan?.SetStatus(ActivityStatusCode.Error, "activity_failed");
 
         return (result, attemptsUsed);
     }
@@ -675,11 +717,91 @@ internal sealed class StepRunner
     }
 
     /// <summary>
-    /// Scans a resolved config element for step-pattern placeholders that were not substituted.
-    /// Returns a deduplicated list of remaining <c>{{step.output}}</c>-style patterns.
-    /// Fields listed in <see cref="FieldsNotToResolve"/> for this activity type are skipped \u2014
-    /// their raw SQL / query text is intentionally left unresolved and validated by the executor.
+    /// Builds an overridden view of the step results and trigger inputs from the values a user
+    /// edited at a debug pause, so the node config can be resolved again against them.
+    ///
+    /// <para>Only the qualified template shapes are honoured — <c>{{step.output}}</c>,
+    /// <c>{{step.error}}</c>, <c>{{step.success}}</c>, <c>{{step.param.x}}</c> and
+    /// <c>{{manual.x}}</c> — because those are the forms a config can contain. An unqualified
+    /// short name exists only for the PowerShell injection path, which reads the live dict and so
+    /// already sees the edit. <c>globals.*</c> never appears here; the coordinator rejects it.</para>
+    ///
+    /// <para>The copy is taken from the caller's already ancestor-scoped view, so scoping is
+    /// preserved: a non-predecessor step is not in the source map and cannot be introduced.</para>
     /// </summary>
+    private static (IReadOnlyDictionary<string, ActivityResult> Results, Dictionary<string, string>? Inputs)
+        ApplyDebugOverrides(
+            IReadOnlyDictionary<string, ActivityResult> previousResults,
+            Dictionary<string, string>? inputParameters,
+            IReadOnlyDictionary<string, string> overrides,
+            IReadOnlyDictionary<string, string> outputVariableToStepId)
+    {
+        Dictionary<string, ActivityResult>? results = null;
+        Dictionary<string, string>? inputs = null;
+
+        foreach (var (key, value) in overrides)
+        {
+            if (key.StartsWith("manual.", StringComparison.OrdinalIgnoreCase))
+            {
+                inputs ??= inputParameters is null
+                    ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, string>(inputParameters, StringComparer.OrdinalIgnoreCase);
+                inputs[key["manual.".Length..]] = value;
+                continue;
+            }
+
+            var dot = key.IndexOf('.');
+            if (dot <= 0) continue;
+
+            var name = key[..dot];
+            var tail = key[(dot + 1)..];
+            var stepId = outputVariableToStepId.TryGetValue(name, out var mapped) ? mapped : name;
+
+            results ??= new Dictionary<string, ActivityResult>(previousResults, StringComparer.OrdinalIgnoreCase);
+            if (!results.TryGetValue(stepId, out var current)) continue;
+
+            var overridden = OverrideResultTail(current, tail, value);
+            if (!ReferenceEquals(overridden, current))
+                results[stepId] = overridden;
+        }
+
+        return (results ?? previousResults, inputs ?? inputParameters);
+    }
+
+    /// <summary>
+    /// Returns a copy of <paramref name="source"/> with one tail replaced, or the original when
+    /// the tail is not one the template grammar knows.
+    /// </summary>
+    private static ActivityResult OverrideResultTail(ActivityResult source, string tail, string value)
+    {
+        var parameters = new Dictionary<string, string>(source.OutputParameters, StringComparer.OrdinalIgnoreCase);
+        var output = source.Output;
+        var error = source.ErrorOutput;
+        var success = source.Success;
+
+        if (tail.StartsWith("param.", StringComparison.OrdinalIgnoreCase))
+            parameters[tail["param.".Length..]] = value;
+        else if (string.Equals(tail, "output", StringComparison.OrdinalIgnoreCase))
+            output = value;
+        else if (string.Equals(tail, "error", StringComparison.OrdinalIgnoreCase))
+            error = value;
+        else if (string.Equals(tail, "success", StringComparison.OrdinalIgnoreCase))
+            success = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+        else
+            return source;
+
+        return new ActivityResult
+        {
+            Success = success,
+            Output = output,
+            ErrorOutput = error,
+            Duration = source.Duration,
+            OutputParameters = parameters,
+            TraceOutput = source.TraceOutput,
+            CustomActivity = source.CustomActivity,
+        };
+    }
+
     /// <summary>
     /// Narrows a set of unresolved template tokens to those naming a node of this workflow that is
     /// not on the referencing step's predecessor path. Those are the ones the databus deliberately
@@ -714,6 +836,12 @@ internal sealed class StepRunner
         return outOfScope;
     }
 
+    /// <summary>
+    /// Scans a resolved config element for step-pattern placeholders that were not substituted.
+    /// Returns a deduplicated list of remaining <c>{{step.output}}</c>-style patterns.
+    /// Fields listed in <see cref="FieldsNotToResolve"/> for this activity type are skipped —
+    /// their raw SQL / query text is intentionally left unresolved and validated by the executor.
+    /// </summary>
     internal static List<string> FindUnresolvedStepReferences(string? activityType, JsonElement config)
     {
         FieldsNotToResolve.TryGetValue(activityType ?? string.Empty, out var protectedFields);

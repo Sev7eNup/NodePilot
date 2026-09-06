@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using NodePilot.Core.Activities;
 using NodePilot.Core.Interfaces;
 using NodePilot.Engine.Security;
 
@@ -83,6 +84,11 @@ public class JsonQueryActivity : IActivityExecutor
             var reader = new JsonTextReader(new StringReader(json))
             {
                 MaxDepth = MaxJsonDepth,
+                // Newtonsoft defaults to DateParseHandling.DateTime, which converts any
+                // ISO-8601-shaped string into a DateTime before the query runs. The extracted
+                // value would then be re-rendered in the host's format, losing the original text
+                // and the UTC marker. Keep JSON strings as strings.
+                DateParseHandling = DateParseHandling.None,
             };
             return (JToken.ReadFrom(reader), null);
         }
@@ -117,7 +123,12 @@ public class JsonQueryActivity : IActivityExecutor
                 JTokenType.String => token.Value<string>() ?? "",
                 JTokenType.Null => "",
                 JTokenType.Object or JTokenType.Array => token.ToString(Formatting.None),
-                _ => token.ToString(),
+                // JValue.ToString() formats the boxed CLR value with the current culture and
+                // gives booleans .NET casing ("True"). Render numbers/bools/timestamps the way
+                // the rest of the data bus does instead.
+                _ => token is JValue scalar
+                    ? DataBusScalar.ToInvariantString(scalar.Value)
+                    : token.ToString(),
             };
         return (output, token is null ? 0 : 1, null);
     }

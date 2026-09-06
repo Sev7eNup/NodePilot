@@ -8,4 +8,5 @@ namespace NodePilot.Api.Dtos;
 /// <param name="MachineName">Windows machine (NetBIOS) name.</param>
 /// <param name="Fqdn">Fully-qualified DNS name (or bare host label in a workgroup).</param>
 /// <param name="Domain">DNS domain, or <c>null</c> when the host is not domain-joined.</param>
-public sealed record HostInfoResponse(string MachineName, string Fqdn, string? Domain);
+/// <param name="AppVersion">Product version of the running API, e.g. <c>1.2.23</c>.</param>
+public sealed record HostInfoResponse(string MachineName, string Fqdn, string? Domain, string AppVersion);

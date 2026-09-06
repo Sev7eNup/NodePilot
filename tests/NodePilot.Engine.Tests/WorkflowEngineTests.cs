@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NodePilot.Core.Enums;
+using NodePilot.Core.Exceptions;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -1282,6 +1283,117 @@ public class WorkflowEngineTests
         var execution = await _engine.ExecuteAsync(workflow, "test", CancellationToken.None);
         var step = await _db.StepExecutions.FirstOrDefaultAsync(s => s.WorkflowExecutionId == execution.Id);
         step!.AttemptCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RetryPolicy_ExecutorThrowsThenSucceeds_RetriesAndRecordsAttemptCount()
+    {
+        // Remote activities report failure by throwing, so the retry loop only helps them if it
+        // catches. Anything short of that leaves the whole remote catalogue without retry.
+        int call = 0;
+        _mockExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(),
+                It.IsAny<System.Text.Json.JsonElement>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(() =>
+            {
+                call++;
+                if (call < 3) throw new InvalidOperationException("winrm connect failed");
+                return Task.FromResult(new ActivityResult { Success = true, Output = "ok" });
+            });
+
+        var def = """{"nodes":[{"id":"trigger-1","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"manualTrigger","config":{}}},{"id":"s","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"runScript","config":{"retry":{"maxAttempts":5,"backoff":"fixed","initialDelayMs":0}}}}],"edges":[{"id":"te","source":"trigger-1","target":"s"}]}""";
+        var workflow = CreateWorkflow(def);
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+
+        var execution = await _engine.ExecuteAsync(workflow, "test", CancellationToken.None);
+
+        call.Should().Be(3, "a thrown failure must be retried like a returned one");
+        execution.Status.Should().Be(ExecutionStatus.Succeeded);
+        var step = await _db.StepExecutions.FirstOrDefaultAsync(s => s.WorkflowExecutionId == execution.Id && s.StepId == "s");
+        step!.AttemptCount.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RetryPolicy_ExecutorThrowsOnEveryAttempt_FailsWithAttemptCountAtMax()
+    {
+        _mockExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(),
+                It.IsAny<System.Text.Json.JsonElement>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("winrm connect failed"));
+
+        var def = """{"nodes":[{"id":"trigger-1","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"manualTrigger","config":{}}},{"id":"s","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"runScript","config":{"retry":{"maxAttempts":3,"backoff":"fixed","initialDelayMs":0}}}}],"edges":[{"id":"te","source":"trigger-1","target":"s"}]}""";
+        var workflow = CreateWorkflow(def);
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+
+        var execution = await _engine.ExecuteAsync(workflow, "test", CancellationToken.None);
+
+        execution.Status.Should().Be(ExecutionStatus.Failed);
+        var step = await _db.StepExecutions.FirstOrDefaultAsync(s => s.WorkflowExecutionId == execution.Id && s.StepId == "s");
+        step!.AttemptCount.Should().Be(3, "the row must show the whole budget, not the one attempt it survived");
+        step.Status.Should().Be(ExecutionStatus.Failed);
+        step.ErrorOutput.Should().Contain("winrm connect failed",
+            "the last attempt escapes the retry filter and is rendered by the outer step catch");
+        _mockExecutor.Verify(e => e.ExecuteAsync(
+            It.IsAny<StepExecutionContext>(),
+            It.IsAny<System.Text.Json.JsonElement>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(3));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_NoRetryConfig_ExecutorThrows_RunsOnce()
+    {
+        _mockExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(),
+                It.IsAny<System.Text.Json.JsonElement>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("winrm connect failed"));
+
+        var workflow = CreateWorkflow(BuildSingleNodeWorkflow());
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+
+        var execution = await _engine.ExecuteAsync(workflow, "test", CancellationToken.None);
+
+        execution.Status.Should().Be(ExecutionStatus.Failed);
+        var step = await _db.StepExecutions.FirstOrDefaultAsync(s => s.WorkflowExecutionId == execution.Id && s.StepId == "step-1");
+        step!.AttemptCount.Should().Be(1);
+        _mockExecutor.Verify(e => e.ExecuteAsync(
+            It.IsAny<StepExecutionContext>(),
+            It.IsAny<System.Text.Json.JsonElement>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(1),
+            "without a retry block a throwing step must still run exactly once");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RetryPolicy_NonRetryableRemoteFailure_RunsOnce()
+    {
+        _mockExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(),
+                It.IsAny<System.Text.Json.JsonElement>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new NonRetryableRemoteException(
+                "WinRM logon denied", new InvalidOperationException("logon failure")));
+
+        var def = """{"nodes":[{"id":"trigger-1","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"manualTrigger","config":{}}},{"id":"s","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"runScript","config":{"retry":{"maxAttempts":5,"backoff":"fixed","initialDelayMs":0}}}}],"edges":[{"id":"te","source":"trigger-1","target":"s"}]}""";
+        var workflow = CreateWorkflow(def);
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+
+        var execution = await _engine.ExecuteAsync(workflow, "test", CancellationToken.None);
+
+        execution.Status.Should().Be(ExecutionStatus.Failed);
+        var step = await _db.StepExecutions.FirstOrDefaultAsync(s => s.WorkflowExecutionId == execution.Id && s.StepId == "s");
+        step!.AttemptCount.Should().Be(1);
+        step.ErrorOutput.Should().Contain("logon failure");
+        _mockExecutor.Verify(e => e.ExecuteAsync(
+            It.IsAny<StepExecutionContext>(),
+            It.IsAny<System.Text.Json.JsonElement>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(1),
+            "a denied logon must not be repeated — five attempts per step can trip a domain account-lockout policy");
     }
 
     [Fact]

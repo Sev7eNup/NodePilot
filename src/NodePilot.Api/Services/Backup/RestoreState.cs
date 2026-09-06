@@ -15,6 +15,14 @@ internal sealed class RestoreState
 {
     public BackupFileReader Reader { get; }
     public PassphraseSecretProtector Protector { get; }
+
+    /// <summary>
+    /// The user performing the restore. Becomes the runtime principal of every restored workflow,
+    /// the same rule Publish and Import follow — an automated trigger fire is rejected without one.
+    /// Null only for first-boot provisioning, where nobody is acting.
+    /// </summary>
+    public Guid? RestoredByUserId { get; }
+
     private readonly IReadOnlyDictionary<string, RestoreConflictPolicy> _policies;
 
     // By-natural-key lookups into the target DB (and freshly-created rows), filled during restore.
@@ -26,8 +34,14 @@ internal sealed class RestoreState
     public Dictionary<string, GlobalVariableFolder> GlobalFolders { get; } = new(StringComparer.Ordinal); // by Path
     public Dictionary<string, GlobalVariable> Globals { get; } = new(StringComparer.Ordinal);
     public Dictionary<string, CustomActivityDefinition> CustomActivities { get; } = new(StringComparer.Ordinal); // by Key
-    public Dictionary<string, Workflow> Workflows { get; } = new(StringComparer.Ordinal);
     public Dictionary<string, NotificationRule> NotificationRules { get; } = new(StringComparer.Ordinal); // by Name
+
+    // Workflows carry no unique name, so their conflict key is the id first and the name within
+    // the target folder second. Only rows that existed before the restore can be a conflict; two
+    // backup rows are distinct workflows by id even when they share a name.
+    private readonly Dictionary<Guid, Workflow> _targetWorkflowsById = [];
+    private readonly Dictionary<(Guid FolderId, string Name), Workflow> _targetWorkflowsByFolderAndName = [];
+    private readonly Dictionary<Guid, HashSet<string>> _takenWorkflowNamesByFolder = [];
 
     public HashSet<Guid> ExistingUserIds { get; } = [];
     public HashSet<Guid> ExistingFolderIds { get; } = [];
@@ -55,11 +69,13 @@ internal sealed class RestoreState
     private readonly HashSet<Guid> _backupGlobalFolderIds;
 
     public RestoreState(BackupFileReader reader, PassphraseSecretProtector protector,
-        IReadOnlyDictionary<string, RestoreConflictPolicy> policies)
+        IReadOnlyDictionary<string, RestoreConflictPolicy> policies,
+        Guid? restoredByUserId)
     {
         Reader = reader;
         Protector = protector;
         _policies = policies;
+        RestoredByUserId = restoredByUserId;
         _backupCredentialIds = SourceIds(reader, BackupSections.Credentials, "items");
         _backupMachineIds = SourceIds(reader, BackupSections.Machines, "items");
         _backupCustomActivityIds = SourceIds(reader, BackupSections.CustomActivities, "items");
@@ -69,6 +85,39 @@ internal sealed class RestoreState
 
     public RestoreConflictPolicy Policy(string section) =>
         _policies.TryGetValue(section, out var p) ? p : RestoreConflictPolicy.Skip;
+
+    // ---- workflows ----
+
+    /// <summary>Registers a row that existed in the target before the restore.</summary>
+    public void AddExistingWorkflow(Workflow workflow)
+    {
+        _targetWorkflowsById[workflow.Id] = workflow;
+        _targetWorkflowsByFolderAndName.TryAdd((workflow.FolderId, workflow.Name), workflow);
+        TrackWorkflow(workflow);
+    }
+
+    /// <summary>Registers a row this restore created, so later names and ids stay unique.</summary>
+    public void AddRestoredWorkflow(Workflow workflow) => TrackWorkflow(workflow);
+
+    /// <summary>The pre-existing target row a backup workflow stands for, or null for a new one.</summary>
+    public Workflow? FindWorkflowConflict(Guid sourceId, Guid targetFolderId, string name) =>
+        _targetWorkflowsById.TryGetValue(sourceId, out var byId) ? byId
+        : _targetWorkflowsByFolderAndName.TryGetValue((targetFolderId, name), out var byName) ? byName
+        : null;
+
+    /// <summary>Names already used in a target folder, by existing and by restored rows.</summary>
+    public HashSet<string> TakenWorkflowNames(Guid targetFolderId)
+    {
+        if (!_takenWorkflowNamesByFolder.TryGetValue(targetFolderId, out var names))
+            _takenWorkflowNamesByFolder[targetFolderId] = names = new HashSet<string>(StringComparer.Ordinal);
+        return names;
+    }
+
+    private void TrackWorkflow(Workflow workflow)
+    {
+        ExistingWorkflowIds.Add(workflow.Id);
+        TakenWorkflowNames(workflow.FolderId).Add(workflow.Name);
+    }
 
     // ---- resolvability (validation, before any write) ----
     public bool CredentialResolvable(Guid g) => _backupCredentialIds.Contains(g) || ExistingCredentialIds.Contains(g);

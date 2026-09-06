@@ -102,6 +102,9 @@ public static class WorkflowScheduler
     /// <summary>
     /// Event-driven scheduling loop: dequeues ready nodes, starts them as tasks, waits
     /// for any to complete, evaluates successors. Supports junction modes and waitAny racing.
+    /// Returns only after every step it started has finished: when the loop fails or is
+    /// cancelled, the steps still in flight are cancelled and awaited before the exception
+    /// propagates, so the engine never finalises an execution whose steps are still running.
     /// </summary>
     internal static async Task RunAsync(
         IReadOnlyCollection<WorkflowNode> rootNodes,
@@ -120,9 +123,66 @@ public static class WorkflowScheduler
         IReadOnlyDictionary<string, string>? globalVariables = null,
         IReadOnlyDictionary<string, string>? inputParameters = null)
     {
+        var inFlight = new Dictionary<Task<ActivityResult>, InFlightStep>();
+        try
+        {
+            await RunLoopAsync(rootNodes, nodesById, adjacency, reverseAdjacency, incomingEdgesByTarget,
+                activeEdgeByEndpoints, outputVariableToStepId, results, completed, skipped, executeStepAsync,
+                logger, ct, globalVariables, inputParameters, inFlight);
+        }
+        catch
+        {
+            await AbandonInFlightAsync(inFlight);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Cancels the steps the loop left running and waits for them to wind down. Their own
+    /// outcome is already recorded by StepRunner; the exception that ended the loop is the one
+    /// that propagates.
+    /// </summary>
+    private static async Task AbandonInFlightAsync(Dictionary<Task<ActivityResult>, InFlightStep> inFlight)
+    {
+        if (inFlight.Count == 0) return;
+        foreach (var step in inFlight.Values)
+        {
+            if (!step.Cancellation.IsCancellationRequested)
+                await step.Cancellation.CancelAsync();
+        }
+        try
+        {
+            await Task.WhenAll(inFlight.Keys);
+        }
+        catch
+        {
+            // Cancelled or failed steps surface here; the loop's exception is the verdict.
+        }
+        foreach (var step in inFlight.Values)
+            step.Cancellation.Dispose();
+        inFlight.Clear();
+    }
+
+    private static async Task RunLoopAsync(
+        IReadOnlyCollection<WorkflowNode> rootNodes,
+        IReadOnlyDictionary<string, WorkflowNode> nodesById,
+        Dictionary<string, List<string>> adjacency,
+        Dictionary<string, List<string>> reverseAdjacency,
+        IReadOnlyDictionary<string, List<WorkflowEdge>> incomingEdgesByTarget,
+        IReadOnlyDictionary<(string Source, string Target), WorkflowEdge> activeEdgeByEndpoints,
+        IReadOnlyDictionary<string, string> outputVariableToStepId,
+        ConcurrentDictionary<string, ActivityResult> results,
+        HashSet<string> completed,
+        HashSet<string> skipped,
+        Func<WorkflowNode, CancellationToken, Task<ActivityResult>> executeStepAsync,
+        ILogger logger,
+        CancellationToken ct,
+        IReadOnlyDictionary<string, string>? globalVariables,
+        IReadOnlyDictionary<string, string>? inputParameters,
+        Dictionary<Task<ActivityResult>, InFlightStep> inFlight)
+    {
         var queue = new Queue<WorkflowNode>(rootNodes);
         var enqueued = new HashSet<string>(rootNodes.Select(n => n.Id));
-        var inFlight = new Dictionary<Task<ActivityResult>, InFlightStep>();
         var gate = GetSemaphore();
 
         while (queue.Count > 0 || inFlight.Count > 0)
@@ -198,8 +258,15 @@ public static class WorkflowScheduler
             if (!result.Success)
                 logger.LogWarning("Step {StepId} failed; see the STEP_FAILED event for the redacted reason.", node.Id);
 
-            foreach (var successor in adjacency[node.Id])
+            // A work list, not a plain foreach: skipping a subtree changes the readiness of any
+            // join below it, because a skipped input counts as resolved. This loop is the only
+            // place readiness is ever evaluated, so a join that answered Wait before the skip was
+            // never asked again — it and its whole downstream were written off as Skipped once the
+            // queue drained. Which branch finished first decided the outcome.
+            var successorsToEvaluate = new Queue<string>(adjacency[node.Id]);
+            while (successorsToEvaluate.Count > 0)
             {
+                var successor = successorsToEvaluate.Dequeue();
                 if (enqueued.Contains(successor) || skipped.Contains(successor)) continue;
 
                 var successorNode = nodesById[successor];
@@ -210,7 +277,10 @@ public static class WorkflowScheduler
                 if (decision == SuccessorDecision.Wait) continue;
                 if (decision == SuccessorDecision.Skip)
                 {
-                    MarkSubtreeSkipped(successor, skipped, adjacency, reverseAdjacency);
+                    // Re-queue the joins the walk refused to skip: each Skip strictly grows
+                    // `skipped`, so the loop still terminates.
+                    foreach (var reopened in MarkSubtreeSkipped(successor, skipped, adjacency, reverseAdjacency))
+                        successorsToEvaluate.Enqueue(reopened);
                     continue;
                 }
 
@@ -388,13 +458,19 @@ public static class WorkflowScheduler
     /// Marks rootId as skipped and propagates downwards. A descendant is only skipped if
     /// all its predecessors are already skipped, so live alternative paths are preserved.
     /// </summary>
-    internal static void MarkSubtreeSkipped(
+    /// <returns>
+    /// The nodes the walk declined to skip because they still have a live (non-skipped)
+    /// predecessor — typically a join whose other branch has already completed. Their readiness
+    /// just changed, and the caller re-evaluates them; nothing else in the run does.
+    /// </returns>
+    internal static List<string> MarkSubtreeSkipped(
         string rootId,
         HashSet<string> skipped,
         Dictionary<string, List<string>> adjacency,
         Dictionary<string, List<string>>? reverseAdjacency = null,
         string? stopAtNode = null)
     {
+        var blockedByLivePredecessor = new List<string>();
         var stack = new Stack<string>();
         stack.Push(rootId);
         while (stack.Count > 0)
@@ -406,6 +482,7 @@ public static class WorkflowScheduler
                 && reverseAdjacency.TryGetValue(current, out var preds) && preds.Count > 0
                 && preds.Any(p => !skipped.Contains(p)))
             {
+                blockedByLivePredecessor.Add(current);
                 continue;
             }
 
@@ -417,5 +494,7 @@ public static class WorkflowScheduler
                 stack.Push(next);
             }
         }
+
+        return blockedByLivePredecessor;
     }
 }

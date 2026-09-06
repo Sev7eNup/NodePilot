@@ -7,6 +7,7 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Engine.Tests.Helpers;
+using NodePilot.TestCommons;
 using Xunit;
 using NodePilot.Core.Telemetry;
 
@@ -29,6 +30,7 @@ public class TelemetryEmissionTests
     private readonly NodePilotDbContext _db;
     private readonly Mock<IActivityExecutor> _mockExecutor;
     private readonly ActivityRegistry _registry;
+    private readonly IServiceProvider _serviceProvider;
     private readonly WorkflowEngine _engine;
 
     public TelemetryEmissionTests()
@@ -53,10 +55,10 @@ public class TelemetryEmissionTests
             .ReturnsAsync(new ActivityResult { Success = true, Output = "{}" });
 
         _registry = new ActivityRegistry(new[] { _mockExecutor.Object, manualTriggerExecutor.Object });
-        (_db, var sp, _) = TestDbContext.CreateWithScopedServices(_registry);
+        (_db, _serviceProvider, _) = TestDbContext.CreateWithScopedServices(_registry);
         var logger = NullLogger<WorkflowEngine>.Instance;
         var notifier = new Mock<IExecutionNotifier>();
-        _engine = new WorkflowEngine(_db, logger, sp, notifier.Object);
+        _engine = new WorkflowEngine(_db, logger, _serviceProvider, notifier.Object);
     }
 
     private static Workflow CreateWorkflow(string definitionJson) => new()
@@ -305,6 +307,71 @@ public class TelemetryEmissionTests
         var activity = traces.Where("activity.runScript")
             .SingleOrDefault(a => a.Parent == step);
         activity.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_FailedStep_SpansCarryTheRedactedErrorOnly()
+    {
+        using var traces = new TraceCollector(
+            TelemetryConstants.Sources.Engine,
+            TelemetryConstants.Sources.EngineActivities);
+
+        _mockExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(),
+                It.IsAny<JsonElement>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityResult { Success = false, ErrorOutput = "login failed: password=hunter2" });
+
+        var workflow = CreateWorkflow(SingleNode);
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+
+        var execution = await _engine.ExecuteAsync(workflow, "manual", CancellationToken.None);
+        execution.Status.Should().Be(ExecutionStatus.Failed);
+        var executionId = execution.Id.ToString();
+
+        var step = traces.Where("workflow.step")
+            .Single(a =>
+                a.GetTagItem(TelemetryConstants.Attributes.ExecutionId)?.ToString() == executionId &&
+                a.GetTagItem(TelemetryConstants.Attributes.StepActivityType)?.ToString() == "runScript");
+        step.StatusDescription.Should().Contain("password").And.NotContain("hunter2");
+
+        // The activity span is set while the result is still unredacted, so it names the class only.
+        var activity = traces.Where("activity.runScript").Single(a => a.Parent == step);
+        activity.StatusDescription.Should().Be("activity_failed");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_EngineFailure_RedactsTheExceptionEverywhereItIsRecorded()
+    {
+        using var traces = new TraceCollector(TelemetryConstants.Sources.Engine);
+        var logger = new CapturingLogger<WorkflowEngine>();
+        // Fails the initial Running notification, which escapes the scheduler as an engine-level
+        // failure; the terminal notification must still go through.
+        var notifier = new Mock<IExecutionNotifier>();
+        notifier.Setup(n => n.ExecutionStatusChangedAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), ExecutionStatus.Running, It.IsAny<string?>(), It.IsAny<DateTime?>()))
+            .ThrowsAsync(new InvalidOperationException("upstream rejected token=abc123secret"));
+        var engine = new WorkflowEngine(_db, logger, _serviceProvider, notifier.Object);
+
+        var workflow = CreateWorkflow(SingleNode);
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+
+        var execution = await engine.ExecuteAsync(workflow, "manual", CancellationToken.None);
+
+        execution.Status.Should().Be(ExecutionStatus.Failed);
+        execution.ErrorMessage.Should().Contain("token").And.NotContain("abc123secret");
+
+        var failureLine = logger.Entries.Should().ContainSingle(e => e.Message.Contains(execution.Id.ToString())).Subject;
+        failureLine.Message.Should().Contain(nameof(InvalidOperationException)).And.NotContain("abc123secret");
+        failureLine.Exception.Should().BeNull("the raw exception object would carry the secret into the sink");
+
+        var root = traces.Where("workflow.execute")
+            .Single(a => a.GetTagItem(TelemetryConstants.Attributes.ExecutionId)?.ToString() == execution.Id.ToString());
+        root.StatusDescription.Should().Contain("token").And.NotContain("abc123secret");
+        root.Events.Should().BeEmpty();
+        root.GetTagItem("exception.type").Should().Be(typeof(InvalidOperationException).FullName);
     }
 
     [Fact]

@@ -508,7 +508,8 @@ The installer places the same documentation that the public website carries unde
 `wwwroot\docs`. It is reachable at `https://<host>/docs` — **without signing in**, so that it is
 available when signing in is itself the problem, and without internet access. The shipped copy
 belongs to the installed version, whereas the website always shows the current development
-state. In the interface, the question mark in the header leads there.
+state. In the interface, the documentation button at the bottom left of the sidebar leads
+there.
 
 The documentation does not depend on the database and therefore stays readable during a database
 outage. It is, however, **only available while the service is running** — if the service does not
@@ -532,9 +533,12 @@ The updater:
 - preserves the database, the service account and the production configuration,
 - restarts the service,
 - checks the health endpoint on the port from the installed configuration (`-HttpsPort` is only needed to override it),
-- restores the previous binaries on a failed health check and leaves the service in the state it was in before the update.
+- restores the previous binaries on a failed health check and leaves the service in the state it was in before the update,
+- probes the health endpoint again after a rollback and warns when the restored service does not answer.
 
 A **successful** update always leaves the service **running**, whether or not it was stopped before. Only a failed update restores the original state.
+
+A rollback restores **binaries only**. The new version migrates the database schema forward on its first start, and the rollback does not undo that. Take a database backup before updating and restore it if a rolled-back binary refuses the migrated schema.
 
 Workflow history is deliberately not re-encrypted at startup, so that the immediate health-check
 rollback stays safe. During a mixed HA upgrade, pause workflow edits and rollbacks (or, after the

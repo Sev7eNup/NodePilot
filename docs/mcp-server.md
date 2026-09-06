@@ -223,7 +223,8 @@ dotnet test  tests/NodePilot.Mcp.Tests          # xUnit + WireMock + stdio-proce
 ```
 
 Architecture mirrors the CLI: `Api/NodePilotApiClient.cs` (one method per endpoint, every non-2xx →
-`ApiException`), `Auth/TokenStore.cs` (DPAPI, shared with the CLI), `Config/` (env-first
+`ApiException`), the DPAPI session store and token refresh from `NodePilot.Core.Clients`
+(`TokenStore`, `TokenRefreshHandler`, one implementation for both clients), `Config/` (env-first
 resolution). Tools live in `Tools/`, in-process graph/databus analysis in `Analysis/`, mapping
 helpers (error mapping, redaction, payload shaping, patch engine) in `Mapping/`.
 
