@@ -119,15 +119,38 @@ public static class WorkflowDataBusAnalyzer
     }
 
     /// <summary>
-    /// Only the names this node publishes because of how it is configured — the variables a
-    /// script assigns, the keys a returnData carries, the properties a wmiQuery captures.
+    /// Only the names the author chose — the variables a script assigns, the keys a returnData
+    /// carries, the properties a wmiQuery captures. Renaming one of them resolves a clash.
     ///
-    /// <para>Excludes the static catalog outputs every instance of a type emits. Those collide by
-    /// construction (two runScript steps both publish <c>exitCode</c>), so reporting them as an
-    /// authoring problem would fire on nearly every workflow and drown the cases that are one.</para>
+    /// <para>Excludes every name that follows from the activity type instead: the static catalog
+    /// outputs each instance emits (two runScript steps both publish <c>exitCode</c>) and the
+    /// ones in <see cref="TypeDerivedParameters"/>. Those collide by construction, so reporting
+    /// them as an authoring problem would fire on nearly every workflow and drown the cases that
+    /// are one.</para>
     /// </summary>
-    public static IReadOnlyList<string> AuthoredParameters(WorkflowNode node) =>
-        DynamicParams(node).Distinct(StringComparer.Ordinal).ToList();
+    public static IReadOnlyList<string> AuthoredParameters(WorkflowNode node) => node.Type switch
+    {
+        "registryOperation" => [],
+        "wmiQuery" => WmiCaptureParams(node)
+            .Where(n => !string.Equals(n, WmiAutoCount, StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal).ToList(),
+        _ => DynamicParams(node).Distinct(StringComparer.Ordinal).ToList(),
+    };
+
+    /// <summary>
+    /// The names a node publishes because of its type and operation rather than because someone
+    /// named them: every registryOperation output follows from <c>operation</c>, and wmiQuery
+    /// emits <c>count</c> alongside whatever it captures.
+    ///
+    /// <para>Tracked separately rather than dropped: a clash between two of these is not
+    /// actionable (there is nothing to rename), but a clash with an authored name still is.</para>
+    /// </summary>
+    public static IReadOnlyList<string> TypeDerivedParameters(WorkflowNode node) => node.Type switch
+    {
+        "registryOperation" => RegistryParams(node).Distinct(StringComparer.Ordinal).ToList(),
+        "wmiQuery" => WmiCaptureParams(node).Any() ? [WmiAutoCount] : [],
+        _ => [],
+    };
 
     // Mirrors the FE describeNodeOutputs: the full set of {{name.…}} expressions a node exposes.
     private static IEnumerable<string> DescribeNode(WorkflowNode node, string name)
@@ -212,14 +235,17 @@ public static class WorkflowDataBusAnalyzer
                 if (!string.IsNullOrEmpty(p.Name)) yield return p.Name;
     }
 
+    // wmiQuery emits this next to the captured properties; it is not one of them.
+    private const string WmiAutoCount = "count";
+
     private static IEnumerable<string> WmiCaptureParams(WorkflowNode node)
     {
         if (node.Data.Config.ValueKind != JsonValueKind.Object
             || !node.Data.Config.TryGetProperty("captureProperties", out var caps) || caps.ValueKind != JsonValueKind.Array)
             yield break;
-        yield return "count";
+        yield return WmiAutoCount;
         foreach (var c in caps.EnumerateArray())
-            if (c.ValueKind == JsonValueKind.String && !string.Equals(c.GetString(), "count", StringComparison.OrdinalIgnoreCase))
+            if (c.ValueKind == JsonValueKind.String && !string.Equals(c.GetString(), WmiAutoCount, StringComparison.OrdinalIgnoreCase))
                 yield return c.GetString()!;
     }
 
