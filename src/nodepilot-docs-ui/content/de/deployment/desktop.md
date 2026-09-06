@@ -155,8 +155,9 @@ Scheitert die Provisionierung, meldet der Installer das mit einem Verweis auf se
 
 ## Dokumentation auf dem Gerät
 
-Das Paket bringt diese Dokumentation mit; die API liefert sie unter `/docs` aus. Das Fragezeichen
-in der Kopfzeile der Anwendung öffnet sie in einem eigenen Fenster — ohne Anmeldung und ohne
+Das Paket bringt diese Dokumentation mit; die API liefert sie unter `/docs` aus. Der
+Dokumentations-Knopf unten links in der Seitenleiste, neben Skin- und Sprachwahl, öffnet sie in
+einem eigenen Fenster — ohne Anmeldung und ohne
 Internetzugang, passend zur installierten Version. Links aus der Dokumentation nach außen
 (GitHub, Releases) öffnet die Shell im Systembrowser; sie stellt selbst keine fremden Inhalte dar.
 

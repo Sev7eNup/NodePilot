@@ -21,6 +21,10 @@ namespace NodePilot.Api.Tests.Services.Backup;
 public sealed class BackupAlertingTests : IDisposable
 {
     private const string Passphrase = "a-strong-backup-pass";
+
+    /// <summary>The admin performing the restore; becomes the runtime principal of every
+    /// restored workflow, the same rule Publish and Import follow.</summary>
+    private static readonly Guid RestoreActor = Guid.Parse("0bd7f0a1-4c3e-4a6b-9f21-6c2f5d8e4b70");
     private readonly AesGcmSecretProtector _atRest = new(Key());
     private readonly List<string> _tempFiles = [];
 
@@ -103,7 +107,7 @@ public sealed class BackupAlertingTests : IDisposable
         await using var dst = TestDbFactory.Create();
         // Fresh DB must contain the referenced workflow so the target remaps (the export's
         // DependsOn pulled it in).
-        var result = await Restore(dst).RestoreAsync(bytes, Passphrase, AllSkip(), CancellationToken.None);
+        var result = await Restore(dst).RestoreAsync(bytes, Passphrase, AllSkip(), RestoreActor, CancellationToken.None);
 
         result.Sections.Should().Contain(r => r.Section == BackupSections.Alerting && r.Created == 1);
         var restored = await dst.NotificationRules.Include(r => r.Routes).Include(r => r.Targets)
@@ -142,7 +146,7 @@ public sealed class BackupAlertingTests : IDisposable
         }
 
         await using var dst = TestDbFactory.Create();
-        await Restore(dst).RestoreAsync(bytes, Passphrase, AllSkip(), CancellationToken.None);
+        await Restore(dst).RestoreAsync(bytes, Passphrase, AllSkip(), RestoreActor, CancellationToken.None);
 
         var restored = await dst.NotificationRules.Include(r => r.Routes).SingleAsync(r => r.Name == "prod-failures");
         restored.Kind.Should().Be(NotificationRuleKind.Custom);

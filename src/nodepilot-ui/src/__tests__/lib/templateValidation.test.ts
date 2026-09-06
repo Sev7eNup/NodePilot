@@ -45,6 +45,22 @@ describe('validateTemplateExpression', () => {
     expect(result.status).toBe('error');
   });
 
+  it('errors on an errorOutput tail, which the engine grammar does not have', () => {
+    // Blessing it here was worse than a false warning: VariableResolver never substitutes the
+    // placeholder, and the unresolved-template abort only scans for the engine's own patterns, so
+    // the literal `{{x.errorOutput}}` reached the activity and the step reported success.
+    expect(validateTemplateExpression('{{alpha.errorOutput}}', upstream).status).toBe('error');
+  });
+
+  it('errors on a dotted globals or manual name, which the engine grammar does not have', () => {
+    expect(validateTemplateExpression('{{globals.app.apiKey}}', upstream).status).toBe('error');
+    expect(validateTemplateExpression('{{manual.a.b}}', upstream).status).toBe('error');
+  });
+
+  it('accepts the engine tails on a known producer', () => {
+    expect(validateTemplateExpression('{{alpha.error}} {{alpha.success}}', upstream).status).toBe('ok');
+  });
+
   it('tolerates a non-string value instead of crashing', () => {
     // Field values are typed `string`, but malformed node data can carry a non-string (e.g. a
     // restApi `headers` object). This must never throw `value.includes is not a function` and

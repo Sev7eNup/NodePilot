@@ -12,6 +12,233 @@ exhaustive.
 
 ## [Unreleased]
 
+### Changed
+
+- **The Engine Switcher is now simply the Switcher.** The name moved everywhere it is persisted:
+  the project and assembly (`NodePilot.Switcher`), the executable, the installation folder
+  (`tools\switcher`), the configuration file (`switcher.json`), the data directory
+  (`%ProgramData%\NodePilot\Switcher`), the theme registry key, the shipped CLI profile
+  (`switcher`) and the standalone drop (`NodePilot-Switcher-<version>-win-x64.zip`). A machine
+  installed under either older name keeps its old state until it is moved by hand — the one-time
+  steps are in [docs/switcher.md](docs/switcher.md).
+
+### Fixed
+
+- **Numbers no longer change meaning with the server's locale.** Activities rendered scalars with
+  the host culture while edge conditions parsed them invariantly with `NumberStyles.Any`, where
+  `,` is the group separator — so a `sql`, `jsonQuery`, `xmlQuery` or webhook value of `1.5`
+  became `"1,5"` on a German host and was read back as `15`, silently taking the wrong branch.
+  Producers now format invariantly, the condition parser no longer accepts group separators, and
+  an ISO-8601 timestamp survives as the text it was.
+- **A `runScript` step that never ran no longer reports success.** The out-of-process engines
+  decided success from the absence of an error marker, but PowerShell parses a whole script before
+  its first statement, so a syntax error left stdout empty and the step green. The wrapper now
+  emits a start marker whose absence means "did not execute".
+- **Threshold conditions no longer fire on missing data.** `<`, `<=` and `isFalse` fell back to a
+  string comparison against the empty string, which sorts before every digit — the guarded branch
+  ran precisely when the measured value was absent.
+- **A global picked from the condition builder resolves.** The per-run load was armed by a text
+  scan for `{{globals.`, which the structured operand does not contain, so the comparison was
+  false on arrival.
+- **A join is re-evaluated when a predecessor is skipped late.** A `waitAll` junction whose second
+  input was skipped after the first had finished was never asked again, so it and everything
+  behind it were written off as Skipped while the run reported success — decided by edge order.
+- **A database outage no longer stops the API.** The dispatch worker answered a failure with a
+  second, unguarded write to the same database; the escaping exception faulted the worker task and
+  ended the process instead of shedding load.
+- **A `SELECT` that matches nothing keeps the SELECT shape** (`[]`, no `rowsAffected`), rather than
+  reporting itself as a DML statement.
+- **`serviceManagement` fails when `sc.exe` fails.** Its exit code was never checked, and it
+  reports errors on stdout, so a refused delete reported success and the next step ran.
+- **A registry `MultiString` keeps its entries** instead of collapsing into one joined value.
+- **A sub-workflow's `returnData` survives redaction.** The redactor ran over the finished JSON and
+  could swallow every key after the masked one; it now redacts per value before serialization.
+- **Debug overrides reach every activity**, not only the PowerShell-backed ones.
+- **`config.retry` applies to remote activities**, which signal failure by throwing — every WinRM
+  connect or authentication failure previously bypassed the policy.
+- **An invalid cron is refused at publish and enable**, by the scheduler's own parser, instead of
+  looking valid everywhere and never firing.
+- **A duplicated or restored workflow can fire its triggers.** Neither path set the runtime
+  principal, so every automated start was rejected while the workflow displayed itself as active.
+- **A workflow that was never published can fire its triggers.** The runtime principal was written
+  only by publish, import, duplicate and restore, so a workflow created and enabled without a
+  publish went live without one and every automated fire was cancelled as
+  `missing_effective_principal` while the workflow displayed itself as active. Enable now
+  establishes the principal when none is set, and never moves it away from an existing publisher.
+  A workflow that is *already* enabled without one is not repaired by this — disable and re-enable
+  it, or publish once. A fire can still be cancelled over its principal: when the publisher's
+  account is deactivated (`effective_principal_inactive`), and when a first-boot provisioning
+  restore brings a workflow up enabled and unstamped.
+- **A step retry no longer repeats a permanent remote failure.** A denied WinRM logon (rejected
+  password, expired or locked-out account), a credential that cannot be decrypted and a session
+  refused by the SSL policy are now raised as non-retryable, so `config.retry` stops after the
+  first attempt instead of producing one failed logon per attempt — enough of them to trip an
+  account-lockout policy on the target. Transient rejections stay retryable, WinRM's own shell
+  quota among them.
+- **A SCOrch runbook that was already running when the switch began can settle.** Verification
+  accounted only for the jobs this switch started itself, so a runbook that was already active and
+  whose job left the active set during verification was counted as missing until
+  `reconciliationTimeoutSeconds` expired and failed the switch. A listed runbook now settles once
+  its job is running, or once the job this switch found running or started has left the active set
+  — the active-job list cannot tell a finished job from one that failed or was cancelled
+  elsewhere, so either counts.
+- **A dispatch worker error no longer delays shutdown.** The last-resort back-off in the durable
+  dispatch loop waited on a token that shutdown cannot cancel, so an unexpected error in the final
+  iteration held the host for the full poll interval; it now observes the stopping token.
+- **`restApi` can send a non-JSON body**, `xmlQuery`'s `resultMode` changes only the cardinality,
+  a cleared timeout field no longer breaks `llmQuery` or shortens `waitForCondition` to one second,
+  a templated `"false"` is no longer read as true, and maintenance-window timestamps are stored as
+  the UTC instants they claim to be.
+- **A step that fails to persist no longer leaves its siblings running.** When a step's terminal
+  write failed, the scheduler propagated the error while the other in-flight steps kept running:
+  the execution was finalised and its capacity released with steps still active, and their rows
+  landed in a terminal execution nobody could cancel. The scheduler now cancels and awaits every
+  started step before the error propagates.
+- **A backup that carries two workflows of the same name restores both.** Workflow names are not
+  unique, but restore matched workflows by name alone, so the second one was skipped under the
+  default policy or overwrote the first under `overwrite`, and references to it were silently
+  rewired to the first. A backup workflow now stands for a target row by id first, then by name
+  within its target folder; the preview counts conflicts the same way.
+- **Trace spans and the engine log carry no unredacted error text.** The remote span carried the
+  raw PowerShell error stream, the activity span the unredacted step error, and an engine-level
+  failure logged and traced the raw exception. Spans now name the failure class and the exception
+  type; the engine log and the root span carry the redacted message.
+- **The desktop tray's restart item works.** Its elevated PowerShell command nested single quotes
+  and never parsed, so the item did nothing; a restart that fails is now reported. The readiness
+  probe also bounds every request, so a backend that accepts the connection but never answers no
+  longer holds the splash screen past its deadline.
+- **`forEach` children record their parent execution.** The loop started each item without the
+  parent id and call depth, so the children showed as top-level runs in the execution list, the
+  operations timeline and the alerting classifier, and the support log wrote start and end lines
+  per item.
+- **An oversized LLM stream is cut off at the byte cap while it is read.** The streaming reader
+  checked the cap only after a complete line had been buffered, so a line-less response was held
+  in memory in full first.
+- **Two folder moves can no longer form a cycle together.** Each move checked the tree it had
+  read and then wrote, so two concurrent moves of A under B and B under A both passed and
+  committed a parent cycle, after which the next rename or move in that subtree walked the cycle
+  forever. Structural changes to a folder tree are now serialised within the process, and every
+  tree walk skips a folder it has already visited. Both the workflow-folder and the
+  global-variable-folder tree.
+- **An edited credential takes effect on the next remote step.** The WinRM session pool keyed
+  its sessions by credential id only, and a reused session's idle timer restarted on every use,
+  so a rotated password, username or domain kept running under the previous identity for as long
+  as the target stayed busy. The pool key now carries a fingerprint of the credential; sessions
+  opened under the old one idle out and are never handed out again.
+- **The updater's rollback reports what it verified.** After restoring the previous binaries it
+  now probes `/healthz/ready` again and warns when the service does not come up, instead of
+  reporting the rollback as complete on the strength of a service start. A binary rollback does
+  not roll back the database schema; the update scripts and the deployment guide say so and point
+  to the database backup taken before the update.
+
+## [1.2.26] - 2026-09-01
+
+One fix, found while installing 1.2.25 on the lab machine: that release covered a fresh install
+but not an upgrade.
+
+### Fixed
+
+- **An update no longer reverts the Engine Switcher's server URL.** The update wipes and
+  repopulates the install directory, so `tools\engine-switcher\engine-switcher.json` fell back
+  to the shipped template on every upgrade and the switch to NodePilot failed again with "No
+  server URL configured" — the 1.2.25 fix only covered a fresh install. The update now carries
+  the previous value across, and derives one from the installed `AllowedHosts` and Kestrel port
+  when upgrading an installation that predates the setting. Install and update share one
+  implementation (`deploy/SwitcherConfig.ps1`) rather than two copies of the same string surgery.
+
+## [1.2.25] - 2026-09-01
+
+Four defects from running the Engine Switcher against a real System Center Orchestrator
+installation, and from installing NodePilot with the GUI setup rather than the deployment
+scripts. Two of them ended a switch that had already started services.
+
+### Fixed
+
+- **A stalled SCOrch reconciliation no longer terminates the Engine Switcher.** The switch
+  runs the workload reconciliation under its own deadline. When that deadline expired the
+  resulting cancellation passed straight through the coordinator, which excluded every
+  `OperationCanceledException` from its error handling, and then out of an `async void`
+  command handler — so the process died without a dialog, without the fail-closed cleanup, and
+  with the target services left running. The deadline is now reported like any other failure,
+  names the runbooks or jobs that did not settle, and runs the cleanup.
+- **A listed SCOrch runbook that finishes quickly no longer blocks the switch.** Verification
+  required every listed runbook to be running at the same moment, which only a long-lived
+  monitor runbook can satisfy; an ordinary runbook completed within seconds, left the active
+  job set, and was counted as missing until the deadline expired. A runbook now settles once
+  its job is running or once the job this switch started has finished.
+- **The server installer fills in the Engine Switcher server URL.** `serverUrl` shipped empty,
+  so `np` fell back to its own per-user configuration and the switch to NodePilot failed with
+  "No server URL configured". The installer writes the hostname and HTTPS port it just
+  configured into the copy next to the executable; a machine-wide configuration under
+  `%ProgramData%` still wins and is left untouched.
+- **The GUI server setup puts `np` on the machine PATH again.** Setup runs the installer from a
+  payload staged by `deploy/server/Build-ServerInstaller.ps1`, and that script list was missing
+  `MachinePath.ps1` — the helper the PATH block dot-sources. The block is wrapped in `try/catch`,
+  so the failed dot-source degraded to a warning, the installation reported success, and `np.exe`
+  sat in `<install>\tools\np` unreachable from cmd or PowerShell. Installations driven by the
+  deployment scripts shipped the helper and were never affected. A contract test now derives the
+  required helpers from the entry points, so the two staging lists cannot drift apart again.
+- **Install and update now verify that `np` reached the machine PATH.** Every step in that block
+  is a warning at worst, so an entry that never landed left the operator reading "Installation
+  complete" and finding no `np` — which is how a line-break slip went unnoticed through 1.2.8 and
+  1.2.9. Both scripts read the value back, and the installer states the outcome in its closing
+  summary, including the reminder that an already-open console keeps its old environment.
+
+## [1.2.24] - 2026-08-31
+
+A single fix, found by running the Engine Switcher against a System Center Orchestrator
+installation whose Web API build rejects the OData `in` operator in a way that cannot be
+reported as an error.
+
+### Fixed
+
+- **The Engine Switcher no longer uses the OData `in` operator for active SCOrch jobs.** Some
+  SCOrch Web API builds begin an HTTP 200 collection response and then abort it before the first
+  job when this operator is used. The equivalent `eq`/`or` filter works across those builds, and
+  the request now selects only the three job fields the switcher consumes.
+
+## [1.2.23] - 2026-08-31
+
+The Service Switcher became the Engine Switcher in more than its window title, and the utility got
+three fixes that came out of running it against a real System Center installation.
+
+### Changed
+
+- **The Service Switcher is now the Engine Switcher everywhere, not just in its window title.** The
+  project, its namespace, assembly, test project, documentation and build artifacts were renamed,
+  and so was every name it persists: the configuration file (`engine-switcher.json`), the data
+  directory (`%ProgramData%\NodePilot\EngineSwitcher`), the theme registry key, the installation
+  folder (`tools\engine-switcher`), the executable and the standalone drop. A machine installed
+  before the rename keeps its old files and needs a one-time rename — the steps are in
+  [docs/switcher.md](docs/switcher.md).
+
+### Fixed
+
+- **Windows paths in the configuration no longer have to be escaped, and a broken file is caught
+  before the switch.** JSON requires doubled backslashes, so a hand-edited
+  `"D:\Scripts\runbooks.txt"` aborted the switch with an invalid-escape message — while the system
+  check had reported success and both buttons stayed enabled, because the file was only read once a
+  switch had already started. The three path properties now accept single backslashes and restore a
+  UNC prefix written with one backslash per separator; the doubled form is unchanged and remains the
+  correct one, and a stray backslash outside those properties is still an error. The configuration
+  is loaded at every system check, an unusable file is reported with its path and disables both
+  buttons, and repairing it releases them without a restart.
+- **A failed SCOrch query no longer stops every managed service.** Deactivating the source workload
+  begins by reading the active jobs, but the fail-closed cleanup was armed before that read — a web
+  service that answered with a truncated body under HTTP 200 therefore took down all four services
+  although nothing had been changed. The cleanup is now armed by the first job that is actually
+  stopped. An unreadable SCOrch response is reported with the request URL and the beginning of the
+  body instead of a bare JSON parser message, which never said which call broke.
+- **The standalone Engine Switcher ships with its configuration template.** The release drop was
+  the bare executable, while the template stayed behind in the server artifact — so the one
+  audience the standalone copy exists for, a machine with no NodePilot installation to take a
+  template from, had nothing to configure and every switch aborted with "Switcher configuration not
+  found". It is now a zip carrying the executable and the template together. `cliPath` became
+  optional and resolves through the installation marker and the machine PATH, because a relative
+  path only points at `np.exe` while the configuration sits in the install directory. A missing
+  configuration now names every location that was searched instead of only the machine-wide one,
+  which is the single location nothing ever creates.
+
 ## [1.2.22] - 2026-08-30
 
 An update can now repair an install directory it would previously have refused, and the help
@@ -1082,7 +1309,11 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.22...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.23...main
+[1.2.26]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.26
+[1.2.25]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.25
+[1.2.24]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.24
+[1.2.23]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.23
 [1.2.22]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.22
 [1.2.21]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.21
 [1.2.20]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.20

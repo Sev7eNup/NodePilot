@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using NodePilot.Core.Exceptions;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Remote;
@@ -15,10 +16,13 @@ namespace NodePilot.Engine.Tests.Remote;
 /// by integration smoke tests in the lab — here we pin the deterministic guards:
 ///
 ///   * <c>Remote:RequireWinRmSsl=true</c> rejects plaintext sessions early.
-///   * DPAPI decrypt failure surfaces a sanitised <see cref="InvalidOperationException"/>
+///   * DPAPI decrypt failure surfaces a sanitised <see cref="NonRetryableRemoteException"/>
 ///     (the raw <c>CryptographicException</c> would leak paths/stack frames into the
 ///     per-step error channel that a Viewer can read via the executions API).
 ///   * The credential store is called with an audit-friendly <c>actor</c> tag.
+///
+/// The logon-denied branch inside <c>CreateSessionAsync</c> needs a real WSMan endpoint, so the
+/// code predicate is factored into <c>WinRmErrorCodes</c> and tested there.
 /// </summary>
 public class WinRmSessionFactoryTests
 {
@@ -56,7 +60,7 @@ public class WinRmSessionFactoryTests
 
         var act = () => factory.CreateSessionAsync(Machine(ssl: false), credential: null, CancellationToken.None);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
+        await act.Should().ThrowAsync<NonRetryableRemoteException>()
             .WithMessage("*WinRM over HTTP is blocked*");
         // Strict mock would have failed if DecryptPassword had been called — we exited
         // before the credential branch.
@@ -78,7 +82,7 @@ public class WinRmSessionFactoryTests
 
         var act = () => factory.CreateSessionAsync(Machine(ssl: true), cred, CancellationToken.None);
 
-        var ex = await act.Should().ThrowAsync<InvalidOperationException>();
+        var ex = await act.Should().ThrowAsync<NonRetryableRemoteException>();
         ex.Which.Message.Should().Contain($"Credential decrypt failed (id={cred.Id})");
         ex.Which.Message.Should().NotContain("Key not valid",
             "the underlying CryptographicException message must NOT bubble into the user-visible error " +
@@ -101,10 +105,24 @@ public class WinRmSessionFactoryTests
         {
             await factory.CreateSessionAsync(Machine(hostname: "web01.corp", ssl: true), cred, CancellationToken.None);
         }
-        catch (InvalidOperationException) { /* expected — decrypt failed */ }
+        catch (NonRetryableRemoteException) { /* expected — decrypt failed */ }
 
         store.Verify(s => s.DecryptPassword(It.IsAny<Credential>(), "winrm:web01.corp"), Times.Once,
             "the actor tag must be 'winrm:<hostname>' so audit reviewers can scope by target machine");
+    }
+
+    [Fact]
+    public async Task CreateSessionAsync_DpapiDecryptFails_ThrowsNonRetryableSoTheStepDoesNotRetry()
+    {
+        var store = new Mock<ICredentialStore>();
+        store.Setup(s => s.DecryptPassword(It.IsAny<Credential>(), It.IsAny<string>()))
+             .Throws(new System.Security.Cryptography.CryptographicException("forced"));
+        var factory = new WinRmSessionFactory(store.Object, EmptyConfig(), NullLogger<WinRmSessionFactory>.Instance);
+
+        var act = () => factory.CreateSessionAsync(Machine(ssl: true), FakeCredential(), CancellationToken.None);
+
+        await act.Should().ThrowAsync<NonRetryableRemoteException>(
+            "a credential that cannot be decrypted will not decrypt on attempt two");
     }
 
     [Fact]

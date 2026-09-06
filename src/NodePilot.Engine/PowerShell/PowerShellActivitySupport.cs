@@ -368,6 +368,7 @@ internal static class PowerShellActivitySupport
             return (output, null, parameters);
 
         var work = StripMarkerLine(output, ErrorMarker);
+        work = StripMarkerLine(work, PowerShellScriptWrapper.StartMarker);
 
         string? capturedExitCode = null;
         var exitIdx = work.LastIndexOf(ExitCodeMarker, StringComparison.Ordinal);

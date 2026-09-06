@@ -34,9 +34,12 @@ namespace NodePilot.Remote;
 /// <see cref="PooledWinRmSession.DisposeAsync"/> — regardless of whether the session goes back
 /// into the pool or is actually closed.
 ///
-/// Security: the pool key includes the credential ID. Two calls against the same host with
-/// different credentials are guaranteed to get different sessions — reuse can never mix up
-/// credentials or lead to privilege escalation.
+/// Security: the pool key includes the credential ID and a fingerprint of the credential's
+/// username, domain and stored password. Two calls against the same host with different
+/// credentials are guaranteed to get different sessions, and a rotated credential never reuses
+/// a session opened under the previous one: its idle sessions sit under the old key until the
+/// TTL sweep closes them. A session already on loan finishes its step under the identity it was
+/// opened with.
 /// </summary>
 public sealed class WinRmSessionPool : IRemoteSessionFactory, IAsyncDisposable
 {
@@ -191,7 +194,26 @@ public sealed class WinRmSessionPool : IRemoteSessionFactory, IAsyncDisposable
     }
 
     private static PoolKey BuildKey(ManagedMachine machine, Credential? credential)
-        => new(machine.Id, credential?.Id ?? Guid.Empty, machine.Hostname ?? string.Empty, machine.WinRmPort, machine.UseSsl);
+        => new(machine.Id, credential?.Id ?? Guid.Empty, CredentialFingerprint(credential),
+            machine.Hostname ?? string.Empty, machine.WinRmPort, machine.UseSsl);
+
+    /// <summary>
+    /// Hash of the fields a logon depends on, so an edited credential changes the pool key. The
+    /// ciphertext stands in for the password: re-encrypting it also rotates the key, which only
+    /// costs one fresh logon.
+    /// </summary>
+    internal static string CredentialFingerprint(Credential? credential)
+    {
+        if (credential is null) return string.Empty;
+        using var hash = System.Security.Cryptography.IncrementalHash.CreateHash(
+            System.Security.Cryptography.HashAlgorithmName.SHA256);
+        hash.AppendData(System.Text.Encoding.UTF8.GetBytes(credential.Username));
+        hash.AppendData([0]);
+        hash.AppendData(System.Text.Encoding.UTF8.GetBytes(credential.Domain ?? string.Empty));
+        hash.AppendData([0]);
+        hash.AppendData(credential.EncryptedPassword);
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -208,7 +230,8 @@ public sealed class WinRmSessionPool : IRemoteSessionFactory, IAsyncDisposable
         _machineGates.Clear();
     }
 
-    internal readonly record struct PoolKey(Guid MachineId, Guid CredentialId, string Hostname, int Port, bool UseSsl);
+    internal readonly record struct PoolKey(
+        Guid MachineId, Guid CredentialId, string CredentialFingerprint, string Hostname, int Port, bool UseSsl);
     private sealed record PoolEntry(WinRmSession Inner, DateTime ReturnedAt);
 }
 

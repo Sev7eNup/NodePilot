@@ -8,7 +8,7 @@ Diese Referenz beschreibt Konfiguration und Ausgaben jedes Activity-Typs.
 | **Engine-local** | NodePilot-API-Prozess |
 | **Hybrid** | Abhängig von der Konfiguration remote oder engine-local |
 
-Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDelayMs` und `maxDelayMs`. `config.timeoutSeconds` begrenzt einen Step. Der Execute-Request kann zusätzlich die gesamte Execution begrenzen.
+Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDelayMs` und `maxDelayMs`. Dauerhafte Remote-Fehler sind davon ausgenommen: ein abgelehnter WinRM-Logon, eine per SSL-Policy geblockte Session und ein nicht entschlüsselbares Credential lassen den Step beim ersten Versuch scheitern — Wiederholen hilft dort nicht, und wiederholte Fehl-Logons können ein Domänenkonto sperren. `config.timeoutSeconds` begrenzt einen Step. Der Execute-Request kann zusätzlich die gesamte Execution begrenzen.
 
 ---
 
@@ -48,7 +48,7 @@ Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDel
 
 **Remote.**
 
-- **Config:** `serviceName`, `action` (start/stop/restart/status/create/delete/setStartType; `create`/`setStartType` nehmen `binaryPath`/`displayName`/`description`/`startupType`; `delete` stoppt den Dienst und entfernt ihn dauerhaft via `sc.exe delete`)
+- **Config:** `serviceName`, `action` (start/stop/restart/status/create/delete/setStartType; `create`/`setStartType` nehmen `binaryPath`/`displayName`/`description`/`startupType`; `delete` stoppt den Dienst und entfernt ihn dauerhaft via `sc.exe delete`). `sc.exe` meldet Fehler auf stdout und lässt den Error-Stream leer, deshalb wird der Exit-Code der `sc.exe`-Aufrufe hinter `delete` und hinter einem `AutomaticDelayedStart`-Startup-Type geprüft und ein Non-Zero-Exit lässt den Step scheitern — ein abgelehnter Delete oder Startup-Type-Wechsel wird nie als Erfolg gemeldet.
 - **Outputs:** `param.name`, `param.status`, `param.startType`
 
 ## `registryOperation`
@@ -109,7 +109,7 @@ Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Pa
 
 **Engine-local.**
 
-- **Config:** `url`, `method`, `body`, `headers`, `timeoutSeconds`, `proxyMode` (`default`/`direct`/`custom`), `proxyAddress`, `noProxy`
+- **Config:** `url`, `method`, `body`, `headers` (bei einem Request mit Body wandert ein hier gesetzter `Content-Type` auf die Entity — kein zweites, widersprüchliches Feld auf der Leitung; ein unparsbarer Wert bleibt unbeachtet und der Body geht weiter als `application/json` raus. Ein Request ohne Body und jedes GET/HEAD hat keine Entity, ein dort gesetzter `Content-Type` fällt weg), `timeoutSeconds`, `proxyMode` (`default`/`direct`/`custom`), `proxyAddress`, `noProxy`
 - **Outputs:** `param.statusCode` (Response-Body in `output` als `HTTP {code}\n{body}`; Headers nicht als `param`)
 
 ## `sql`
@@ -118,6 +118,10 @@ Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Pa
 
 - **Config:** `provider` (sqlserver/sqlite/postgres), `query`, `timeoutSeconds`. Connection-Optionen: (a) Builder — SQL Server: `server`/`database`/`authentication`/`username`/`password`/`encrypt`/`trustServerCertificate`; Postgres: `host`/`port`/`database`/`username`/`password`/`sslMode` (`VerifyFull` + `Trust Server Certificate=false` default; schwächere Modi nur für literale Loopback-Hosts); SQLite: `dataSource`; (b) raw `connectionString`; (c) named `connectionRef` aus `SqlActivity:ConnectionStrings:{name}`. Die Postgres-TLS-Policy gilt auch für raw/ref.
 - **Outputs:** SELECT → `param.rowCount` + erste-Row-Spalten als `param.<col>` + `param.row{i}_{col}` (erste 20 Rows) + `param.truncated`/`param.flatKeysTruncated`. DML/DDL → `param.rowsAffected` + `param.rowCount`
+- Die Form hängt am Statement, nicht an der Trefferzahl: ein `SELECT` ohne Treffer liefert
+  weiterhin die SELECT-Form (`[]`, `param.rowCount` von 0) und kein `rowsAffected`. Skalare
+  Spalten werden invariant veröffentlicht — `1.5`, nie `1,5` — ein Vergleich bedeutet damit auf
+  jedem Host dasselbe.
 
 ## `emailNotification`
 
@@ -174,6 +178,9 @@ Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Pa
 
 - **Config:** `source`, `path`/`content`, `xpath`, `namespaces`, `resultMode`
 - **Outputs:** `param.result`, `param.count`
+- `resultMode` schaltet nur die Kardinalität. Beide Modi liefern den Elementtext, `all` als
+  JSON-Array. Numerische XPath-Ergebnisse verwenden einen invarianten Dezimalpunkt — ein
+  Vergleich bedeutet damit auf jedem Host dasselbe.
 
 ## `jsonQuery`
 
@@ -181,6 +188,9 @@ Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Pa
 
 - **Config:** `source`, `path`/`content`, `jsonPath`, `resultMode`
 - **Outputs:** `param.result`, `param.count`
+- Skalare werden invariant veröffentlicht: `9.99`, Booleans klein geschrieben. Ein
+  ISO-8601-Zeitstempel bleibt der Originaltext — er wird nie in ein host-formatiertes Datum
+  umgewandelt.
 
 ## `log`
 

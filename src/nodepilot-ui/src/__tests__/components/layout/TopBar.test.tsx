@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { TopBar } from '../../../components/layout/TopBar';
+import { systemApi, type HostInfo } from '../../../api/system';
 import { useAuthStore } from '../../../stores/authStore';
 import { useDbHealthStore, resetDbHealth } from '../../../stores/dbHealthStore';
 
@@ -48,18 +49,35 @@ describe('TopBar', () => {
     expect(screen.getByText('Globals')).toBeInTheDocument();
   });
 
-  // /docs is a second document served by the API, not a route of this SPA. It has to be a real
-  // anchor: a react-router Link would navigate client-side, match no route and render the
-  // not-found page, so the request would never reach the server. The trailing slash matters too
-  // — the docs bundle resolves its assets against the document url.
-  it('links to the bundled documentation as a real document navigation', () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }));
+  // The help icon no longer opens the documentation (that button moved to the sidebar footer);
+  // it reveals the running server's version on hover and pins the card on click.
+  it('reveals the app version on hover and pins it on click', async () => {
+    vi.spyOn(systemApi, 'getHostInfo').mockResolvedValue({
+      machineName: 'NPSRV01', fqdn: 'NPSRV01', domain: null, appVersion: '9.8.7',
+    });
     renderAt('/workflows');
 
-    const link = screen.getByRole('link', { name: 'Documentation' });
-    expect(link).toHaveAttribute('href', '/docs/');
-    expect(link).toHaveAttribute('target', '_blank');
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    const button = screen.getByRole('button', { name: 'NodePilot version' });
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+
+    fireEvent.mouseEnter(button.parentElement!);
+    await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('9.8.7'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('NodePilot');
+
+    // Hover alone is transient; a click keeps the card open after the pointer leaves.
+    fireEvent.mouseLeave(button.parentElement!);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    fireEvent.click(button);
+    fireEvent.mouseLeave(button.parentElement!);
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+  });
+
+  it('shows a placeholder when the backend reports no version', async () => {
+    vi.spyOn(systemApi, 'getHostInfo').mockResolvedValue([] as unknown as HostInfo);
+    renderAt('/');
+
+    fireEvent.click(screen.getByRole('button', { name: 'NodePilot version' }));
+    await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('unknown'));
   });
 
   // The BackendStatus pill shows a compact "API" label and a colour-coded plug icon. The

@@ -275,10 +275,11 @@ export function WorkflowsPage() {
   type PerFileResult =
     | { kind: 'ok'; file: string; resp: ImportResponse }
     | { kind: 'fail'; file: string; message: string };
-  // Mirrors the backend MaxRequestBodyBytes guard (6 MiB on /api/workflows/import). Without an
-  // early check in the browser, a huge file is read into a string before the upload starts,
-  // which exhausts tab memory and crashes the tab instead of showing a "file too large" message.
-  const MAX_IMPORT_BYTES = 6 * 1024 * 1024;
+  // Mirrors the RequestSizeLimit on /api/workflows/import (40 MiB). Without an early check in
+  // the browser, a huge file is read into a string before the upload starts, which exhausts tab
+  // memory and crashes the tab instead of showing a "file too large" message. Below the server
+  // ceiling it would reject bulk exports the server would have accepted.
+  const MAX_IMPORT_BYTES = 40 * 1024 * 1024;
   const importMutation = useMutation({
     mutationFn: async ({ files, authBoundaryGeneration }: {
       files: File[];
@@ -379,10 +380,10 @@ export function WorkflowsPage() {
   // all of it instead of a plain alert().
   const scorchInputRef = useRef<HTMLInputElement>(null);
   const [scorchResult, setScorchResult] = useState<{ resp: ScorchImportResponse; filename: string } | null>(null);
-  // SCOrch imports allow a more generous 50 MiB (see ScorchImporter.cs on the backend) —
-  // mirrored here so the browser tab doesn't crash with an out-of-memory error if
-  // someone accidentally uploads a multi-gigabyte backup file instead.
-  const MAX_SCORCH_BYTES = 50 * 1024 * 1024;
+  // Mirrors the RequestSizeLimit on /api/workflows/import-scorch (300 MiB), capped here so the
+  // browser tab doesn't crash with an out-of-memory error if someone accidentally uploads a
+  // multi-gigabyte backup file instead.
+  const MAX_SCORCH_BYTES = 300 * 1024 * 1024;
   const scorchMutation = useMutation({
     mutationFn: async ({ file, authBoundaryGeneration }: {
       file: File;

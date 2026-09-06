@@ -144,6 +144,21 @@ public class MaintenanceWindowsController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// The column is a UTC instant, but System.Text.Json hands back Kind=Unspecified for an
+    /// offset-less ISO string and Kind=Local for an offset-bearing one. Npgsql refuses anything but
+    /// Kind=Utc for timestamptz, so the request failed with a 500; SQL Server accepted it and
+    /// stored a local wall clock that the read converter then relabelled UTC, shifting the whole
+    /// blackout window by the host's offset.
+    /// </summary>
+    private static DateTime? NormalizeToUtc(DateTime? value) => value switch
+    {
+        null => null,
+        { Kind: DateTimeKind.Utc } v => v,
+        { Kind: DateTimeKind.Unspecified } v => DateTime.SpecifyKind(v, DateTimeKind.Utc),
+        { } v => v.ToUniversalTime(),
+    };
+
     // Validates + maps a request into a MaintenanceWindow draft. Returns false + a message on
     // any user-input error so the controller can surface a clean 400.
     private static bool TryBuildDraft(
@@ -231,8 +246,8 @@ public class MaintenanceWindowsController : ControllerBase
             Mode = mode,
             ScopeKind = scope,
             Recurrence = recurrence,
-            OneTimeStartUtc = recurrence == MaintenanceRecurrenceKind.OneTime ? oneTimeStart : null,
-            OneTimeEndUtc = recurrence == MaintenanceRecurrenceKind.OneTime ? oneTimeEnd : null,
+            OneTimeStartUtc = recurrence == MaintenanceRecurrenceKind.OneTime ? NormalizeToUtc(oneTimeStart) : null,
+            OneTimeEndUtc = recurrence == MaintenanceRecurrenceKind.OneTime ? NormalizeToUtc(oneTimeEnd) : null,
             WeeklyDaysMask = recurrence == MaintenanceRecurrenceKind.Weekly ? (weeklyDaysMask & 0b111_1111) : 0,
             WeeklyStartMinuteOfDay = recurrence == MaintenanceRecurrenceKind.Weekly ? weeklyStart : null,
             WeeklyEndMinuteOfDay = recurrence == MaintenanceRecurrenceKind.Weekly ? weeklyEnd : null,

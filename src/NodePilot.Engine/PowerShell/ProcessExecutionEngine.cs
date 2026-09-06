@@ -146,14 +146,17 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             return new PowerShellExecutionResult
             {
                 // Error-based success: the script "failed" only if it raised a terminating error
-                // (the wrapper emits ErrorMarker on a throw). An explicit `exit N` is NOT a failure
-                // — consistent with the in-process runspace and WinRM (!HadErrors). The real exit
-                // code is still surfaced via ExitCode for {{step.param.exitCode}} /
-                // successExitCodes.
-                Success = !stdoutText.Contains(PowerShellScriptWrapper.ErrorMarker, StringComparison.Ordinal),
+                // (the wrapper emits ErrorMarker on a throw), OR never started at all. An explicit
+                // `exit N` is NOT a failure — consistent with the in-process runspace and WinRM
+                // (!HadErrors). The real exit code is still surfaced via ExitCode for
+                // {{step.param.exitCode}} / successExitCodes.
+                Success = DidExecute(stdoutText)
+                          && !stdoutText.Contains(PowerShellScriptWrapper.ErrorMarker, StringComparison.Ordinal),
                 ExitCode = process.ExitCode,
                 Output = stdoutText.TrimEnd(),
-                Error = stderr.ToString().TrimEnd(),
+                Error = DidExecute(stdoutText)
+                    ? stderr.ToString().TrimEnd()
+                    : DescribeMissingExecution(stderr.ToString().TrimEnd()),
                 TimedOut = false,
                 Duration = sw.Elapsed,
             };
@@ -275,10 +278,13 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             }
 
             var exitCode = launched.GetExitCode();
-            // Error-based success (see non-isolated path): fail only on a terminating error
-            // (ErrorMarker), not on `exit N`.
-            var success = !stdout.Contains(PowerShellScriptWrapper.ErrorMarker, StringComparison.Ordinal);
+            // Error-based success (see non-isolated path): fail on a terminating error
+            // (ErrorMarker) or on a script that never started, not on `exit N`.
+            var success = DidExecute(stdout)
+                          && !stdout.Contains(PowerShellScriptWrapper.ErrorMarker, StringComparison.Ordinal);
             var error = stderr.TrimEnd();
+            if (!DidExecute(stdout))
+                error = DescribeMissingExecution(error);
 
             // Heuristic-only attribution (no completion-port): if a cap was set and the script
             // actually FAILED (a terminating error — e.g. an OutOfMemory throw under a memory cap),
@@ -359,6 +365,27 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
         Error = error,
         Duration = duration,
     };
+
+    /// <summary>
+    /// True when the wrapper's start marker reached stdout, i.e. the script actually began
+    /// executing. It is absent when PowerShell rejected the file before running a statement — a
+    /// syntax error is a terminating error under the runScript contract — or when the host could
+    /// not read the temp script at all. The exit code cannot answer this: a deliberate
+    /// <c>exit N</c> also skips the completion markers and must stay a success.
+    /// </summary>
+    private static bool DidExecute(string stdout)
+        => stdout.Contains(PowerShellScriptWrapper.StartMarker, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Error text for a script that never started. stderr carries the parser error in the common
+    /// case; the fallback keeps the step from failing with an empty reason when the process was
+    /// killed before writing anything.
+    /// </summary>
+    private static string DescribeMissingExecution(string stderr) =>
+        string.IsNullOrWhiteSpace(stderr)
+            ? "Script did not execute: PowerShell produced no output and the wrapper never started. "
+              + "The script was likely rejected before its first statement (syntax error) or the process was terminated."
+            : stderr;
 
     /// <summary>
     /// Returns a completed read's text, or empty for a read still blocked by a leaked inherited

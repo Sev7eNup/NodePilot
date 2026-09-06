@@ -132,6 +132,45 @@ public sealed class ReturnDataActivityTests : IDisposable
         reloaded.ReturnData.Should().NotBeNullOrEmpty();
         reloaded.ReturnData.Should().Contain("\"status\":\"ok\"");
     }
+
+    [Fact]
+    public async Task ExecuteAsync_ValueMatchingAConnectionStringPattern_KeepsThePersistedJsonParsable()
+    {
+        // Redacting the finished envelope let patterns whose value class does not stop at a quote
+        // (Password=([^;]+)) consume the closing quote and every remaining property. The parent's
+        // JsonDocument.Parse then threw into a bare catch and the child's whole returnData
+        // contract disappeared, with both runs still reporting success.
+        var execId = Guid.NewGuid();
+        var wf = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
+        _db.Workflows.Add(wf);
+        _db.WorkflowExecutions.Add(new WorkflowExecution { Id = execId, WorkflowId = wf.Id });
+        await _db.SaveChangesAsync();
+
+        var redactor = new NodePilot.Engine.Security.OutputRedactor(
+            new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
+        var activity = new ReturnDataActivity(_db, redactor);
+        var ctx = new StepExecutionContext { WorkflowExecutionId = execId, StepId = "r1" };
+        var config = Parse(
+            "{\"data\":{\"connInfo\":\"Server=db1;Database=X;User Id=svc;Password=p@ss\",\"status\":\"ok\"}}");
+
+        var result = await activity.ExecuteAsync(ctx, config, CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+
+        var reloaded = await _db.WorkflowExecutions.AsNoTracking().FirstAsync(e => e.Id == execId);
+        var act = () => JsonDocument.Parse(reloaded.ReturnData!);
+        act.Should().NotThrow("the persisted envelope must stay parsable for the startWorkflow parent");
+
+        using var doc = JsonDocument.Parse(reloaded.ReturnData!);
+        doc.RootElement.GetProperty("status").GetString().Should().Be("ok",
+            "redaction must not delete sibling keys");
+        doc.RootElement.GetProperty("connInfo").GetString().Should().NotContain("p@ss",
+            "the secret itself is still masked");
+
+        // The data bus inside the child workflow keeps the real value; only the persisted
+        // envelope and the parent see the masked one.
+        result.OutputParameters["status"].Should().Be("ok");
+    }
 }
 
 public sealed class StartWorkflowActivityTests : IDisposable

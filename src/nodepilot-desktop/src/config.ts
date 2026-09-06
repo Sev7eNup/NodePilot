@@ -17,7 +17,8 @@ export interface DesktopConfig {
 }
 
 const HEX_SHA256 = /^[0-9A-F]{64}$/;
-const SERVICE_NAME = /^[A-Za-z0-9_.-]{1,64}$/;
+/** Quote-free charset, so the name can be interpolated bare into a PowerShell command line. */
+export const SERVICE_NAME = /^[A-Za-z0-9_.-]{1,64}$/;
 
 export function desktopConfigPath(): string {
   const programData = process.env.ProgramData ?? 'C:\\ProgramData';
