@@ -263,7 +263,8 @@ Each activity type has its own config component (`properties/activities/`, regis
 - **Lint panel** (`Ctrl+Shift+L`): lists every error and warning with its code, the target node or edge, and click-to-jump. Lint runs live on every graph change; a node badge shows the count.
 - **Rules detected (excerpt):**
   - **Errors (block publishing):** `no-trigger`, `isolated-node`, `dup-output-variable`, `duplicate-edge`, `missing-required-config`, `missing-target-machine`.
-  - **Warning `dup-published-param`:** two activities on one path publish the same name. A published value has exactly one owner, so the unqualified `$name` is not bound at all — reference it as `{{stepA.param.name}}`.  - **Warnings:** `orphan-root`, `unreachable-node`, `unknown-template-ref`, `startjob-in-runspace`, `unknown-workflow-ref`, `edge-to-disabled`, `disabled-with-downstream`, `edge-occluded`, `edge-crowded`.
+  - **Warning `dup-published-param`:** two activities on one path publish the same name. A published value has exactly one owner, so the unqualified `$name` is not bound at all — reference it as `{{stepA.param.name}}`. Reported only when at least one publisher named the value itself; names that follow from the activity type (`exitCode` on every `runScript`, a `registryOperation`'s operation-shaped outputs, a `wmiQuery`'s `count`) collide by construction and cannot be renamed, so a clash between two of those is not flagged.
+  - **Warnings:** `orphan-root`, `unreachable-node`, `unknown-template-ref`, `startjob-in-runspace`, `unknown-workflow-ref`, `edge-to-disabled`, `disabled-with-downstream`, `edge-occluded`, `edge-crowded`.
 - **Pre-publish checklist modal:** shown before publishing — blocked on errors (publish disabled), "publish anyway" on warnings, straight through when clean; every issue is clickable to its node or edge.
 
 ## 17. Editor chrome

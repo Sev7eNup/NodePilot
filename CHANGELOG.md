@@ -32,6 +32,16 @@ exhaustive.
 
 ### Fixed
 
+- **`dup-published-param` no longer fires on names the author cannot change, and no longer blocks
+  publishing.** A `registryOperation`'s outputs follow from its `operation` — nobody types
+  `value` — so two registry reads on one path collided by construction, exactly the way two
+  `runScript` steps collide on `exitCode`, which is exempt. The same held for the `count` a
+  `wmiQuery` emits next to its captured properties. The rule now reports a clash only where at
+  least one publisher named the value itself, so a script assigning `$value` next to a registry
+  read is still flagged and still has a fix. Two further defects in the canvas linter: the finding
+  went into the error bucket despite its warning severity, which disabled the confirm button in the
+  pre-publish modal, and publishers were collected across the whole graph instead of the ancestor
+  path, so two steps on branches that never meet were reported. The analyzer had neither.
 - **A missing global variable fails the step instead of travelling on as text.** A
   `{{globals.NAME}}` with no such global left the literal placeholder in the config — in a REST
   header, a mail body, a `runScript` — and the step reported success, the same silent outcome

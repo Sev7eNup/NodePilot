@@ -146,6 +146,9 @@ function addRunScriptParams(out: UpstreamVariable[], node: Node, nodeLabel: stri
   }
 }
 
+// wmiQuery emits this next to the captured properties; it is not one of them.
+const WMI_AUTO_COUNT = 'count';
+
 function addWmiCaptureParams(out: UpstreamVariable[], node: Node, nodeLabel: string, varName: string): void {
   // wmiQuery projects the user-listed CIM properties into param.<Name>, plus an always-present
   // param.count. Surface them to the variable picker so authors get autocomplete on
@@ -230,26 +233,12 @@ function toVariableType(type: unknown): VariableType {
     : 'string';
 }
 
-/**
- * Walks the graph backwards from the given node to collect all upstream nodes and their
- * declared output variables, plus the parameters exposed by ManualTrigger and RunScript
- * activities. The start node itself is not included.
- */
-/**
- * The param names a node publishes because of how it is configured — a script's assignments, a
- * returnData's keys, a wmiQuery's captured properties.
- *
- * Excludes the static catalog outputs every instance of a type emits: two runScript steps both
- * publish `exitCode`, which collides by construction and is not an authoring problem. Mirror of
- * NodePilot.Core WorkflowDataBusAnalyzer.AuthoredParameters; used by the canvas linter to flag
- * two activities claiming the same name.
- */
-export function authoredParamNames(node: Node): string[] {
+/** Every param name a node publishes because of how it is configured, whoever chose the name. */
+function configuredParamNames(node: Node, activityType: string): string[] {
   const out: UpstreamVariable[] = [];
   const nodeData = node.data as Record<string, unknown>;
   const varName = (nodeData.outputVariable as string) || node.id;
   const nodeLabel = (nodeData.label as string) || node.id;
-  const activityType = (nodeData.activityType as string) || '';
 
   if (activityType === 'manualTrigger') {
     addManualTriggerParams(out, node, nodeLabel, varName);
@@ -271,6 +260,47 @@ export function authoredParamNames(node: Node): string[] {
     .map((v) => v.expression.slice(prefix.length, -2));
 }
 
+function activityTypeOf(node: Node): string {
+  return ((node.data as Record<string, unknown>)?.activityType as string) || '';
+}
+
+/**
+ * The param names the author chose — a script's assignments, a returnData's keys, a wmiQuery's
+ * captured properties. Renaming one of them resolves a clash.
+ *
+ * Excludes every name that follows from the activity type instead: the static catalog outputs
+ * each instance emits (two runScript steps both publish `exitCode`) and the ones from
+ * `typeDerivedParamNames`. Mirror of NodePilot.Core WorkflowDataBusAnalyzer.AuthoredParameters;
+ * used by the canvas linter to flag two activities claiming the same name.
+ */
+export function authoredParamNames(node: Node): string[] {
+  const activityType = activityTypeOf(node);
+  if (activityType === 'registryOperation') return [];
+  const names = configuredParamNames(node, activityType);
+  return activityType === 'wmiQuery' ? names.filter((n) => n !== WMI_AUTO_COUNT) : names;
+}
+
+/**
+ * The names a node publishes because of its type and operation rather than because someone named
+ * them: every registryOperation output follows from `operation`, and wmiQuery emits `count`
+ * alongside whatever it captures. Two of these clashing is not actionable — there is nothing to
+ * rename — but a clash with an authored name still is, so the linter tracks them separately.
+ * Mirror of NodePilot.Core WorkflowDataBusAnalyzer.TypeDerivedParameters.
+ */
+export function typeDerivedParamNames(node: Node): string[] {
+  const activityType = activityTypeOf(node);
+  if (activityType === 'registryOperation') return configuredParamNames(node, activityType);
+  if (activityType === 'wmiQuery') {
+    return configuredParamNames(node, activityType).includes(WMI_AUTO_COUNT) ? [WMI_AUTO_COUNT] : [];
+  }
+  return [];
+}
+
+/**
+ * Walks the graph backwards from the given node to collect all upstream nodes and their
+ * declared output variables, plus the parameters exposed by ManualTrigger and RunScript
+ * activities. The start node itself is not included.
+ */
 export function getUpstreamVariables(nodeId: string, allNodes: Node[], edges: Edge[]): UpstreamVariable[] {
   const visited = new Set<string>();
   const queue: string[] = [];

@@ -85,6 +85,76 @@ public sealed class WorkflowAnalyzerFrontendParityTests
         result.Findings.Should().NotContain(f => f.Code == "dup-published-param");
     }
 
+    /// <summary>
+    /// A registryOperation's outputs follow from its <c>operation</c> — the author never types
+    /// "value" and cannot rename it, so two reads in one chain collide exactly the way two
+    /// runScript steps collide on <c>exitCode</c>. Reporting it produced a warning that blocked
+    /// publish in the canvas and that no author could clear.
+    /// </summary>
+    [Fact]
+    public void AnalyzeWorkflow_TwoRegistryReadsPublishingValue_IsNotReported()
+    {
+        var result = WorkflowAnalyzer.Analyze(E("""
+        {"nodes":[
+          {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"Start","config":{}}},
+          {"id":"r1","type":"activity","data":{"activityType":"registryOperation","label":"Read One",
+            "config":{"operation":"read","keyPath":"HKCU:\\SOFTWARE\\A","valueName":"Str"}}},
+          {"id":"r2","type":"activity","data":{"activityType":"registryOperation","label":"Read Two",
+            "config":{"operation":"read","keyPath":"HKCU:\\SOFTWARE\\B","valueName":"Str"}}}],
+         "edges":[
+          {"id":"e1","source":"t","target":"r1"},
+          {"id":"e2","source":"r1","target":"r2"}]}
+        """));
+
+        result.Findings.Should().NotContain(f => f.Code == "dup-published-param");
+    }
+
+    /// <summary>
+    /// The other half of the same rule: a script variable clashing with a type-derived name is a
+    /// real collision with a real fix, because the script is free to call its variable something
+    /// else. Suppressing registryOperation outright would have hidden it.
+    /// </summary>
+    [Fact]
+    public void AnalyzeWorkflow_ScriptVariableClashingWithRegistryOutput_IsReported()
+    {
+        var result = WorkflowAnalyzer.Analyze(E("""
+        {"nodes":[
+          {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"Start","config":{}}},
+          {"id":"init","type":"activity","data":{"activityType":"runScript","label":"Init","config":{"script":"$value = 1"}}},
+          {"id":"reg","type":"activity","data":{"activityType":"registryOperation","label":"Read",
+            "config":{"operation":"read","keyPath":"HKCU:\\SOFTWARE\\A","valueName":"Str"}}},
+          {"id":"use","type":"activity","data":{"activityType":"log","label":"Use","config":{"message":"x"}}}],
+         "edges":[
+          {"id":"e1","source":"t","target":"init"},
+          {"id":"e2","source":"init","target":"reg"},
+          {"id":"e3","source":"reg","target":"use"}]}
+        """));
+
+        result.Findings.Should().Contain(f =>
+            f.Code == "dup-published-param" && f.Severity == "warning" && f.NodeId == "reg");
+        result.Ok.Should().BeTrue("the qualified form still resolves, so this is a hint, not a blocker");
+    }
+
+    /// <summary>wmiQuery emits <c>count</c> next to whatever it captures, so it repeats on every
+    /// query — type-derived, not authored.</summary>
+    [Fact]
+    public void AnalyzeWorkflow_WmiAutoCountSharedByTwoQueries_IsNotReported()
+    {
+        var result = WorkflowAnalyzer.Analyze(E("""
+        {"nodes":[
+          {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"Start","config":{}}},
+          {"id":"w1","type":"activity","data":{"activityType":"wmiQuery","label":"OS",
+            "config":{"wmiClass":"Win32_OperatingSystem","captureProperties":["Caption"]}}},
+          {"id":"w2","type":"activity","data":{"activityType":"wmiQuery","label":"BIOS",
+            "config":{"wmiClass":"Win32_BIOS","captureProperties":["Manufacturer"]}}}],
+         "edges":[
+          {"id":"e1","source":"t","target":"w1"},
+          {"id":"e2","source":"w1","target":"w2"}]}
+        """));
+
+        result.Findings.Should().NotContain(f => f.Code == "dup-published-param");
+    }
+
     [Fact]
     public void FrontendLintCodes_MirroredByAnalyzer_StayPresentInFrontendSource()
     {
