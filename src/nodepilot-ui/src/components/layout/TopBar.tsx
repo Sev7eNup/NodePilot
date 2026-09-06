@@ -1,5 +1,5 @@
 import { BareMetalServer, ChevronRight, Help, Menu, Plug } from '@carbon/icons-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -69,7 +69,7 @@ export function TopBar({ onOpenMenu }: Readonly<{ onOpenMenu?: () => void }> = {
         )}
       </div>
       <div className="flex items-center gap-3 shrink-0">
-        <DocsLink />
+        <VersionInfo />
         <HostIdentityInfo />
         <BackendStatus />
       </div>
@@ -78,30 +78,71 @@ export function TopBar({ onOpenMenu }: Readonly<{ onOpenMenu?: () => void }> = {
 }
 
 /**
- * Entry point into the documentation, which the API serves from wwwroot/docs at /docs. Shipping
- * it with the product is what makes it readable on a disconnected installation.
- *
- * A plain anchor, deliberately not a react-router `Link`: /docs is a second, independent document
- * on the same origin. A `Link` would keep this SPA mounted, push /docs into its history and
- * render the not-found page, because no route claims that path — the request would never reach
- * the server. For the same reason there is no `navGroups` entry, which also feeds the breadcrumb.
- *
- * The trailing slash is load-bearing: the docs bundle resolves its assets against the document
- * url, and /docs without the slash answers 301 to /docs/ anyway.
+ * Host identity of the answering API. Shared by the two header components below; react-query
+ * dedupes them into a single request through the common key.
  */
-function DocsLink() {
-  const { t } = useTranslation(['nav']);
+function useHostInfo() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  return useQuery({
+    queryKey: ['host-info'],
+    queryFn: systemApi.getHostInfo,
+    // Host identity is fixed for a given backend: fetch once, never poll, never retry.
+    enabled: isAuthenticated === true,
+    staleTime: Infinity,
+    retry: false,
+  });
+}
+
+/**
+ * Product version of the running server, behind the header's help icon. Hovering reveals the
+ * card, clicking pins it open so the version can be selected and copied into a support ticket.
+ */
+function VersionInfo() {
+  const { t } = useTranslation(['common']);
+  const [pinned, setPinned] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const { data } = useHostInfo();
+
+  useEffect(() => {
+    if (!pinned) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setPinned(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [pinned]);
+
+  const version = typeof data?.appVersion === 'string' && data.appVersion.length > 0
+    ? data.appVersion
+    : t('common:version.unknown');
+
   return (
-    <a
-      href="/docs/"
-      target="_blank"
-      rel="noopener noreferrer"
-      title={t('nav:documentation')}
-      aria-label={t('nav:documentation')}
-      className="p-1.5 rounded text-on-surface-variant hover:bg-surface-highest hover:text-on-surface transition-colors"
+    <div
+      ref={ref}
+      className="relative"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
-      <Help size={16} />
-    </a>
+      <button
+        onClick={() => setPinned((p) => !p)}
+        aria-label={t('common:version.tooltip')}
+        aria-expanded={pinned || hovered}
+        className="p-1.5 rounded text-on-surface-variant hover:bg-surface-highest hover:text-on-surface transition-colors"
+      >
+        <Help size={16} />
+      </button>
+      {(pinned || hovered) && (
+        <div
+          role="tooltip"
+          className="absolute top-full right-0 mt-1 z-[60] whitespace-nowrap rounded-md border border-outline-variant/40 bg-surface-container px-2 py-1 text-[11px] leading-none shadow-md"
+        >
+          <span className="text-on-surface-variant">NodePilot</span>
+          {' '}
+          <span className="font-medium text-on-surface">{version}</span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -115,16 +156,7 @@ function DocsLink() {
  */
 function HostIdentityInfo() {
   const { t } = useTranslation(['common']);
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-
-  const { data } = useQuery({
-    queryKey: ['host-info'],
-    queryFn: systemApi.getHostInfo,
-    // Host identity is fixed for a given backend: fetch once, never poll, never retry.
-    enabled: isAuthenticated === true,
-    staleTime: Infinity,
-    retry: false,
-  });
+  const { data } = useHostInfo();
 
   // Only render once the response is a well-shaped object (guards against `[]` and undefined).
   if (!data || typeof data.machineName !== 'string') return null;

@@ -90,12 +90,40 @@ $results = @()
 #   (b) an orphaned testhost/vstest.console from an earlier `dotnet test`, locking np.dll etc.
 # Both are cleared before each backend attempt. The suites are hermetic, so nothing here needs
 # the API, and testhost/vstest.console are throwaway test runners.
-function Clear-BuildLocks {
-  Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue |
+#
+# Only processes that run out of this checkout are ended: the dev API from the repo's bin folder
+# and test runners whose image or command line names a path inside the repo. Anything else on the
+# same port or with the same image name belongs to someone else and is left alone.
+$repoPrefix = $RepoRoot.TrimEnd('\') + '\'
+function Test-RepoProcess {
+  param([Parameter(Mandatory)][int]$ProcessId)
+  $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
+  if (-not $proc) { return $false }
+  $comparison = [System.StringComparison]::OrdinalIgnoreCase
+  return (($proc.ExecutablePath -and $proc.ExecutablePath.StartsWith($repoPrefix, $comparison)) -or
+          ($proc.CommandLine -and $proc.CommandLine.IndexOf($repoPrefix, $comparison) -ge 0))
+}
+function Stop-RepoListener {
+  param([Parameter(Mandatory)][int]$Port)
+  Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
     Select-Object -ExpandProperty OwningProcess -Unique |
-    ForEach-Object { Write-Host "  freeing port 5000 (pid $_)"; Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
-  $stale = Get-Process -Name testhost, vstest.console -ErrorAction SilentlyContinue
-  if ($stale) { Write-Host "  killing $($stale.Count) stale testhost/vstest process(es)"; $stale | Stop-Process -Force -ErrorAction SilentlyContinue }
+    ForEach-Object {
+      if (Test-RepoProcess -ProcessId $_) {
+        Write-Host "  freeing port $Port (pid $_)"
+        Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue
+      } else {
+        Write-Host "  port $Port is held by pid $_ outside $RepoRoot - left running"
+      }
+    }
+}
+function Clear-BuildLocks {
+  Stop-RepoListener -Port 5000
+  $stale = @(Get-Process -Name testhost, vstest.console -ErrorAction SilentlyContinue |
+    Where-Object { Test-RepoProcess -ProcessId $_.Id })
+  if ($stale.Count -gt 0) {
+    Write-Host "  killing $($stale.Count) stale testhost/vstest process(es) from $RepoRoot"
+    $stale | Stop-Process -Force -ErrorAction SilentlyContinue
+  }
   Start-Sleep -Milliseconds 700
 }
 Clear-BuildLocks
@@ -123,9 +151,7 @@ $results += Invoke-Suite -Name 'desktop-vitest' -WorkDir $desktopDir -Action {
 #    and the GitHub reporter (Actions only).
 #    Port 4173 is freed first in case a previous preview is still listening.
 $results += Invoke-Suite -Name 'frontend-e2e' -WorkDir $uiDir -Action {
-  Get-NetTCPConnection -LocalPort 4173 -State Listen -ErrorAction SilentlyContinue |
-    Select-Object -ExpandProperty OwningProcess -Unique |
-    ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }
+  Stop-RepoListener -Port 4173
   $env:CI = 'true'
   npx playwright test --reporter=line
   $env:CI = $null

@@ -1,112 +1,74 @@
-using System.Text.RegularExpressions;
 using FluentAssertions;
+using NodePilot.Core.Clients;
+using NodePilot.Mcp.Config;
 using Xunit;
 
 namespace NodePilot.Mcp.Tests.Auth;
 
 /// <summary>
-/// The MCP server deliberately reuses the session that <c>np auth login</c> wrote, so the
-/// operator authenticates once (see <c>docs/mcp-server.md</c>). That interop rests on three
-/// values matching bit-for-bit across two independently maintained copies of
-/// <c>Auth/TokenStore.cs</c>: the DPAPI entropy, the DPAPI scope and the session file name.
-///
-/// <para>Until now the contract existed only as a code comment ("Must match the CLI's entropy")
-/// — a grep for <c>Entropy</c> across the whole test tree returned nothing. Change the CLI's
-/// constant and the MCP server silently stops finding the session, with a failure that looks
-/// like "not logged in" rather than like a broken contract.</para>
+/// The MCP server reuses the session that <c>np auth login</c> wrote, so the operator
+/// authenticates once (see <c>docs/mcp-server.md</c>). The session store and the refresh
+/// handler live once, in <c>NodePilot.Core.Clients</c>; this guard keeps a client from growing
+/// its own copy again and pins the on-disk facts a change would orphan existing sessions with.
 /// </summary>
 public sealed class CliSessionInteropTests
 {
-    private static readonly string CliTokenStore =
-        Path.Combine("src", "NodePilot.Cli", "Auth", "TokenStore.cs");
-
-    private static readonly string McpTokenStore =
-        Path.Combine("src", "NodePilot.Mcp", "Auth", "TokenStore.cs");
-
-    [Fact]
-    public void DpapiEntropy_ComesFromTheSharedCoreConstant_InBothStores()
+    [Theory]
+    [InlineData("src/NodePilot.Cli/Auth/TokenStore.cs")]
+    [InlineData("src/NodePilot.Cli/Api/TokenRefreshHandler.cs")]
+    [InlineData("src/NodePilot.Mcp/Auth/TokenStore.cs")]
+    [InlineData("src/NodePilot.Mcp/Api/TokenRefreshHandler.cs")]
+    public void SessionStoreAndRefreshHandler_HaveNoPerClientCopy(string relativePath)
     {
-        // Since the coherence-audit fix the entropy lives ONCE in Core
-        // (ClientSessionSecurity.DpapiSessionEntropy). Both stores must reference that
-        // constant — a hand-restored literal would reintroduce the silent-breakage coupling.
-        ExtractEntropyExpression(CliTokenStore).Should().Contain("ClientSessionSecurity.DpapiSessionEntropy",
-            "die CLI muss die geteilte Core-Konstante nutzen, kein eigenes Literal");
-        ExtractEntropyExpression(McpTokenStore).Should().Contain("ClientSessionSecurity.DpapiSessionEntropy",
-            "der MCP-Server muss die geteilte Core-Konstante nutzen, kein eigenes Literal");
-
-        // And the constant itself is part of the ON-DISK format: changing it orphans every
-        // existing `np auth login` session. Pin the value.
-        NodePilot.Core.Clients.ClientSessionSecurity.DpapiSessionEntropy.Should().Be("NodePilot.Cli/v1",
-            "die Entropie ist Teil des Session-Blob-Formats — eine Änderung macht alle " +
-            "bestehenden Sessions unlesbar (Symptom: irreführendes 'nicht angemeldet')");
+        File.Exists(Path.Combine(FindRepoRoot(), relativePath)).Should().BeFalse(
+            "the session store and the refresh handler are shared through NodePilot.Core.Clients; " +
+            "a per-client copy would drift from the other client without any visible error");
     }
 
     [Fact]
-    public void DpapiScope_IsIdenticalInBothStores()
+    public void McpAssembly_DefinesNoSessionTypesOfItsOwn()
     {
-        var cli = ExtractScope(CliTokenStore);
-        var mcp = ExtractScope(McpTokenStore);
-
-        cli.Should().NotBeEmpty();
-        mcp.Should().Be(cli, "ein abweichender DataProtectionScope macht den Blob unlesbar");
+        typeof(McpServerConfig).Assembly.GetTypes()
+            .Select(t => t.Name)
+            .Should().NotContain(["TokenStore", "TokenRefreshHandler", "StoredSession"]);
     }
 
     [Fact]
-    public void SessionFileName_IsIdenticalInBothStores()
+    public void DpapiEntropy_IsPartOfTheOnDiskFormat()
     {
-        var cli = ExtractPathPattern(CliTokenStore);
-        var mcp = ExtractPathPattern(McpTokenStore);
-
-        mcp.Should().Be(cli,
-            "beide Seiten müssen dieselbe Datei adressieren, sonst schreibt die CLI eine " +
-            "Session, die der MCP-Server nie findet");
+        // Changing it orphans every existing `np auth login` session, with a failure that looks
+        // like "not logged in" rather than like a broken contract.
+        ClientSessionSecurity.DpapiSessionEntropy.Should().Be("NodePilot.Cli/v1");
     }
 
     [Fact]
-    public void McpStoredSession_ReadsLegacyCliUtcDateTimeJson()
+    public void TokenStore_AddressesTheSessionFileTheCliWrites()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "np-mcp-interop-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            new TokenStore(dir).PathFor("prod").Should().Be(Path.Combine(dir, "session-prod.dat"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void StoredSession_ReadsLegacyCliUtcDateTimeJson()
     {
         const string legacyJson =
             """
             {"server":"https://np.example","token":"legacy","username":"admin","userId":"00000000-0000-0000-0000-000000000001","role":"Admin","expiresAt":"2026-08-15T12:34:56Z"}
             """;
 
-        var session = System.Text.Json.JsonSerializer.Deserialize<NodePilot.Mcp.Auth.StoredSession>(
+        var session = System.Text.Json.JsonSerializer.Deserialize<StoredSession>(
             legacyJson,
             new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
 
         session.Should().NotBeNull();
         session!.ExpiresAt.Should().Be(new DateTimeOffset(2026, 8, 15, 12, 34, 56, TimeSpan.Zero));
-    }
-
-    private static string ExtractEntropyExpression(string relativePath)
-    {
-        var source = ReadRepoFile(relativePath);
-        var match = Regex.Match(source, @"Entropy\s*=\s*Encoding\.UTF8\.GetBytes\((?<expr>[^)]+)\)");
-        match.Success.Should().BeTrue($"{relativePath} must declare the DPAPI entropy via Encoding.UTF8.GetBytes(…)");
-        return match.Groups["expr"].Value;
-    }
-
-    private static string ExtractScope(string relativePath)
-    {
-        var source = ReadRepoFile(relativePath);
-        var match = Regex.Match(source, @"DataProtectionScope\.(?<value>\w+)");
-        match.Success.Should().BeTrue($"{relativePath} must name a DataProtectionScope");
-        return match.Groups["value"].Value;
-    }
-
-    private static string ExtractPathPattern(string relativePath)
-    {
-        var source = ReadRepoFile(relativePath);
-        var match = Regex.Match(source, @"PathFor\([^)]*\)\s*=>\s*Path\.Combine\([^,]+,\s*\$""(?<value>[^""]+)""\)");
-        match.Success.Should().BeTrue($"{relativePath} must build the session path from a single interpolated literal");
-        return match.Groups["value"].Value;
-    }
-
-    private static string ReadRepoFile(string relativePath)
-    {
-        var path = Path.Combine(FindRepoRoot(), relativePath);
-        File.Exists(path).Should().BeTrue($"{path} must exist");
-        return File.ReadAllText(path);
     }
 
     private static string FindRepoRoot()

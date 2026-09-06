@@ -370,7 +370,9 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
     summarize: (config) => {
       const mode = (config.mode as string) || 'waitAll';
       if (mode === 'waitAny') return i18n.t('activities:summaries.junctionWaitAny');
-      if (mode === 'waitNofM') return i18n.t('activities:summaries.junctionWaitN', { count: (config.requiredCount as number) || 2 });
+      // Fall back to 1, the value the engine uses when the key is absent. Showing 2 here made the
+      // node summary claim a threshold the run would not apply.
+      if (mode === 'waitNofM') return i18n.t('activities:summaries.junctionWaitN', { count: (config.requiredCount as number) || 1 });
       return i18n.t('activities:summaries.junctionWaitAll');
     },
   },

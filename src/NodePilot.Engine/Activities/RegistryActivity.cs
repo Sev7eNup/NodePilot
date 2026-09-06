@@ -188,7 +188,10 @@ public class RegistryActivity : BaseRemoteActivity
                         }
                         $__typed = $bytes.ToArray()
                     }
-                    'MultiString' { $__typed = ,@($__rawValue -split "`r?`n") }
+                    # No leading comma: in an assignment it wraps the split array in a
+                    # single-element array, and the registry provider then joins the inner array
+                    # with $OFS — a two-entry REG_MULTI_SZ became one entry "a b".
+                    'MultiString' { $__typed = @($__rawValue -split "`r?`n") }
                     default       { $__typed = $__rawValue }
                 }
                 Set-ItemProperty -LiteralPath $__keyPath -Name $__valueName -Type {{typeToken}} -Value $__typed

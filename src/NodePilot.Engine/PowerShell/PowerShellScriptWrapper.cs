@@ -25,6 +25,17 @@ internal static class PowerShellScriptWrapper
     public const string ExitCodeMarker = "###NODEPILOT_EXITCODE###";
 
     /// <summary>
+    /// Emitted before any other statement, so an out-of-process engine can tell "the script never
+    /// ran" from "the script ran and exited". PowerShell parses a whole <c>-File</c> script before
+    /// executing its first statement, so a syntax error — a terminating error under the documented
+    /// contract — leaves stdout empty and the catch block unreached. Its absence is therefore the
+    /// only reliable "did not execute" signal; <see cref="ExitCodeMarker"/> cannot serve, since a
+    /// plain <c>exit N</c> skips it too and must stay a success.
+    /// Stripped from Output by <c>PowerShellActivitySupport.ExtractMarkers</c>.
+    /// </summary>
+    public const string StartMarker = "###NODEPILOT_START###";
+
+    /// <summary>
     /// Namespaces whose keys still earn a short alias. Names are unique inside each of them —
     /// two globals cannot share a name, nor can two trigger inputs — so flattening them cannot
     /// produce an owner-less variable.
@@ -89,6 +100,8 @@ internal static class PowerShellScriptWrapper
         //
         // The outer scope is discarded when the invocation ends, so the aliases never leak into
         // the pooled runspace.
+        // First statement in the file: proves execution began. See StartMarker.
+        scriptContent.AppendLine($"Write-Output '{StartMarker}'");
         scriptContent.AppendLine("& {");
         scriptContent.AppendLine("$ErrorActionPreference = 'Stop'");
         scriptContent.AppendLine("$ProgressPreference = 'SilentlyContinue'");

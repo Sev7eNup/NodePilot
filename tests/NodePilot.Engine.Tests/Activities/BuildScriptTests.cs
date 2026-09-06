@@ -166,9 +166,12 @@ public sealed class BuildScriptTests : IDisposable
 
         var script = await ExecuteAndCaptureScript(activity, config);
 
+        // The sc.exe call carries an exit-code guard: sc.exe reports failures on stdout with an
+        // empty error stream, so an unguarded call left the step green after a refused config.
         script.Should().Be(
             "New-Service -Name 'MySvc' -BinaryPathName 'C:\\Tools\\my.exe' -StartupType Automatic" +
-            "; & sc.exe config 'MySvc' start= delayed-auto | Out-Null");
+            "; $__npSc = & sc.exe config 'MySvc' start= delayed-auto" +
+            "; if ($LASTEXITCODE -ne 0) { throw \"sc.exe config failed with exit code $LASTEXITCODE: $($__npSc -join ' ')\" }");
     }
 
     [Fact]
@@ -206,7 +209,9 @@ public sealed class BuildScriptTests : IDisposable
         script.Should().Be(
             "if (Get-Service -Name 'MySvc' -ErrorAction SilentlyContinue) " +
             "{ Stop-Service -Name 'MySvc' -Force -ErrorAction SilentlyContinue }; " +
-            "& sc.exe delete 'MySvc'");
+            "$__npSc = & sc.exe delete 'MySvc'; " +
+            "if ($LASTEXITCODE -ne 0) { throw \"sc.exe delete failed with exit code $LASTEXITCODE: $($__npSc -join ' ')\" }; " +
+            "$__npSc");
     }
 
     [Theory]
@@ -234,7 +239,8 @@ public sealed class BuildScriptTests : IDisposable
         var script = await ExecuteAndCaptureScript(activity, config);
 
         script.Should().Be(
-            "& sc.exe config 'MySvc' start= delayed-auto | Out-Null; " +
+            "$__npSc = & sc.exe config 'MySvc' start= delayed-auto; " +
+            "if ($LASTEXITCODE -ne 0) { throw \"sc.exe config failed with exit code $LASTEXITCODE: $($__npSc -join ' ')\" }; " +
             "& sc.exe qc 'MySvc' | Select-String 'START_TYPE'");
     }
 

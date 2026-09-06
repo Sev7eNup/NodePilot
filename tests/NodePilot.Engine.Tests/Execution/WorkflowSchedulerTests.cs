@@ -578,6 +578,64 @@ public class WorkflowSchedulerTests
         }
     }
 
+    [Fact]
+    public async Task RunAsync_WhenAStepThrows_CancelsAndAwaitsTheOtherInFlightStepsBeforePropagating()
+    {
+        // A step-level exception (a terminal persistence failure, for example) ends the loop.
+        // The engine then finalises the execution, so every other started step must already
+        // have wound down — otherwise it keeps running in a terminal execution nobody can cancel.
+        WorkflowScheduler.ResetForTests();
+        WorkflowScheduler.Configure(0);
+        try
+        {
+            var roots = new List<WorkflowNode> { Node("throws"), Node("sibling") };
+            var nodesById = roots.ToDictionary(n => n.Id);
+            var adjacency = roots.ToDictionary(n => n.Id, _ => new List<string>());
+            var reverseAdjacency = roots.ToDictionary(n => n.Id, _ => new List<string>());
+            var incomingEdgesByTarget = roots.ToDictionary(n => n.Id, _ => new List<WorkflowEdge>());
+            var activeEdgeByEndpoints = new Dictionary<(string Source, string Target), WorkflowEdge>();
+            var results = new ConcurrentDictionary<string, ActivityResult>();
+            var completed = new HashSet<string>();
+            var skipped = new HashSet<string>();
+
+            var siblingStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var siblingObservedCancellation = false;
+            var siblingFinished = false;
+
+            var act = () => WorkflowScheduler.RunAsync(
+                roots, nodesById, adjacency, reverseAdjacency,
+                incomingEdgesByTarget, activeEdgeByEndpoints,
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                results, completed, skipped,
+                async (node, ct) =>
+                {
+                    if (node.Id == "sibling")
+                    {
+                        siblingStarted.SetResult();
+                        try { await Task.Delay(Timeout.Infinite, ct); }
+                        catch (OperationCanceledException) { siblingObservedCancellation = true; }
+                        // The wind-down after the cancel stands in for StepRunner's Cancelled write.
+                        await Task.Delay(50, CancellationToken.None);
+                        siblingFinished = true;
+                        return new ActivityResult { Success = false, ErrorOutput = "cancelled" };
+                    }
+                    await siblingStarted.Task;
+                    throw new InvalidOperationException("terminal persistence failed");
+                },
+                NullLogger.Instance,
+                CancellationToken.None)
+                .WaitAsync(TimeSpan.FromSeconds(30));
+
+            await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*terminal persistence failed*");
+            siblingObservedCancellation.Should().BeTrue("the in-flight sibling must be cancelled, not abandoned");
+            siblingFinished.Should().BeTrue("the exception must not propagate before every started step has finished");
+        }
+        finally
+        {
+            WorkflowScheduler.ResetForTests();
+        }
+    }
+
     /// <summary>
     /// Regression: <see cref="ForEachActivity"/> waits on child executions whose own steps draw
     /// from the same global step gate. It must therefore release its slot while waiting, exactly
@@ -707,6 +765,64 @@ public class WorkflowSchedulerTests
     /// the child execution only finishes after the sibling step has run, which can only happen
     /// if forEach gave up its gate slot.
     /// </summary>
+    /// <summary>
+    /// A waitAll junction whose second input is skipped only AFTER the first one has completed.
+    /// Readiness is evaluated in one place — the successor loop of a node that just finished — so
+    /// the join answered Wait, was never asked again, and it plus everything behind it were
+    /// written off as Skipped once the queue drained. Edge order decided the outcome, which is
+    /// what makes this deterministic to reproduce.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RunAsync_WaitAllJunction_IsReEvaluatedWhenAPredecessorIsSkippedLater(bool joinEdgeFirst)
+    {
+        var a = Node("a");
+        var b = Node("b");
+        var join = Node("join", "junction", """{"mode":"waitAll"}""");
+        var last = Node("last");
+        var nodes = new[] { a, b, join, last };
+
+        var joinEdge = new WorkflowEdge { Id = "e-join", Source = "a", Target = "join" };
+        // "a" succeeds, so this condition is false and "b" is skipped.
+        var branchEdge = new WorkflowEdge { Id = "e-branch", Source = "a", Target = "b", Condition = "a.failed" };
+        var edges = new List<WorkflowEdge>
+        {
+            joinEdgeFirst ? joinEdge : branchEdge,
+            joinEdgeFirst ? branchEdge : joinEdge,
+            new() { Id = "e3", Source = "b", Target = "join" },
+            new() { Id = "e4", Source = "join", Target = "last" },
+        };
+
+        var adjacency = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var reverse = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var incoming = nodes.ToDictionary(n => n.Id, _ => new List<WorkflowEdge>());
+        var byEndpoints = new Dictionary<(string Source, string Target), WorkflowEdge>();
+        foreach (var edge in edges)
+        {
+            adjacency[edge.Source].Add(edge.Target);
+            reverse[edge.Target].Add(edge.Source);
+            incoming[edge.Target].Add(edge);
+            byEndpoints[(edge.Source, edge.Target)] = edge;
+        }
+
+        var results = new ConcurrentDictionary<string, ActivityResult>();
+        var completed = new HashSet<string>();
+        var skipped = new HashSet<string>();
+
+        await WorkflowScheduler.RunAsync(
+            [a], nodes.ToDictionary(n => n.Id), adjacency, reverse, incoming, byEndpoints,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            results, completed, skipped,
+            (node, _) => Task.FromResult(new ActivityResult { Success = true, Output = node.Id }),
+            NullLogger.Instance, CancellationToken.None);
+
+        skipped.Should().Contain("b", "its only incoming edge required a.failed");
+        completed.Should().Contain(["join", "last"],
+            "a skipped input is resolved, so the join is satisfied by its remaining input regardless of edge order");
+        skipped.Should().NotContain(["join", "last"]);
+    }
+
     private sealed class GateProbeEngine(Task siblingRan) : IWorkflowEngine
     {
         public async Task<WorkflowExecution> ExecuteAsync(

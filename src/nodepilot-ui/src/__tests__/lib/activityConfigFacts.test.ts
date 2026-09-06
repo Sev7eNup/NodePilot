@@ -275,8 +275,10 @@ describe('summarizeActivityConfig', () => {
         .toBe('Wait for 3 branches');
     });
 
-    it('waitNofM_missingRequiredCount_defaultsTo2', () => {
-      expect(summarizeActivityConfig('junction', { mode: 'waitNofM' })).toBe('Wait for 2 branches');
+    it('waitNofM_missingRequiredCount_reportsTheEngineDefault', () => {
+      // The engine falls back to 1 when the key is absent, so a summary claiming 2 described a
+      // threshold the run would not apply.
+      expect(summarizeActivityConfig('junction', { mode: 'waitNofM' })).toBe('Wait for 1 branches');
     });
   });
 

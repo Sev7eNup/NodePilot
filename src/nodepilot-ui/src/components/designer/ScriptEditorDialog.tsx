@@ -20,10 +20,11 @@ import {
   TextWrap,
   Undo,
 } from '@carbon/icons-react';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import { useTranslation } from 'react-i18next';
+import { cssColorToHex } from '../../lib/cssColor';
 import { monaco, MONO_FONT_STACK } from '../../lib/monacoSetup';
 import { useThemeStore, resolveTheme } from '../../stores/themeStore';
 import { AiPromptDialog } from '../ai/AiPromptDialog';
@@ -89,6 +90,13 @@ const THEME_LIGHT = 'nodepilot-light';
 // resolved from the live designer scope or root and fed into defineTheme. A re-run on
 // theme switch picks up the new values.
 
+/**
+ * Reads a design token as `#rrggbb`. Monaco validates every token color against a 6- or 8-digit
+ * hex and rejects anything else, so the value goes through cssColorToHex — the minified
+ * production CSS delivers tokens in whatever notation is shortest, not the one they were
+ * written in. The fallbacks keep the same shape, which is what lets callers append their own
+ * alpha suffix.
+ */
 function readVar(name: string, fallback: string): string {
   if (typeof document === 'undefined') return fallback;
   const scopes = [
@@ -96,13 +104,22 @@ function readVar(name: string, fallback: string): string {
     document.documentElement,
   ].filter((scope): scope is Element => scope !== null);
   for (const scope of scopes) {
-    const raw = getComputedStyle(scope).getPropertyValue(name).trim();
-    if (raw.startsWith('#')) return raw;
+    const hex = cssColorToHex(getComputedStyle(scope).getPropertyValue(name));
+    if (hex) return hex;
   }
   return fallback;
 }
 
-function defineNodePilotThemes() {
+/**
+ * Defines both themes from the live tokens and activates the one for the current base, then
+ * returns the theme name the editor may use.
+ *
+ * The activation belongs inside the guard: Monaco parses a theme's colors only when it becomes
+ * active, so defineTheme on an inactive theme accepts a value it will later reject. Leaving that
+ * activation to the editor's `theme` prop would put the throw outside any catch of ours, where
+ * it reaches the error boundary and takes the whole designer page down.
+ */
+function applyNodePilotTheme(isDark: boolean): string {
   const lightColors = {
     editorSurface: readVar('--color-surface-low', '#f3f4f6'),
     gutterSurface: readVar('--color-surface-container', '#edeef0'),
@@ -121,53 +138,65 @@ function defineNodePilotThemes() {
     outline: readVar('--color-outline', '#8e9099'),
   };
 
-  monaco.editor.defineTheme(THEME_LIGHT, {
-    base: 'vs',
-    inherit: true,
-    rules: [
-      { token: 'variable.predefined.powershell', foreground: '0451A5' },
-      { token: 'variable.powershell', foreground: '0070C1' },
-      { token: 'type.powershell', foreground: '267F99' },
-      { token: 'string.powershell', foreground: 'A31515' },
-      { token: 'comment.powershell', foreground: '008000', fontStyle: 'italic' },
-      { token: 'keyword.powershell', foreground: 'AF00DB' },
-      { token: 'operator.powershell', foreground: '6F6F6F' },
-      { token: 'number.powershell', foreground: '098658' },
-    ],
-    colors: {
-      'editor.background': lightColors.editorSurface,
-      'editor.foreground': lightColors.onSurface,
-      'editorGutter.background': lightColors.gutterSurface,
-      'editorLineNumber.foreground': lightColors.outline,
-      'editorLineNumber.activeForeground': lightColors.primary,
-      'editor.selectionBackground': lightColors.primary + '33',
-      'editor.lineHighlightBackground': lightColors.primary + '0d',
-    },
-  });
+  const name = isDark ? THEME_DARK : THEME_LIGHT;
+  const builtin = isDark ? 'vs-dark' : 'vs';
 
-  monaco.editor.defineTheme(THEME_DARK, {
-    base: 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: 'variable.predefined.powershell', foreground: '4FC1FF' },
-      { token: 'variable.powershell', foreground: '9CDCFE' },
-      { token: 'type.powershell', foreground: '4EC9B0' },
-      { token: 'string.powershell', foreground: 'CE9178' },
-      { token: 'comment.powershell', foreground: '6A9955', fontStyle: 'italic' },
-      { token: 'keyword.powershell', foreground: 'C586C0' },
-      { token: 'operator.powershell', foreground: 'D4D4D4' },
-      { token: 'number.powershell', foreground: 'B5CEA8' },
-    ],
-    colors: {
-      'editor.background': darkColors.surfaceLowest,
-      'editor.foreground': darkColors.onSurface,
-      'editorGutter.background': darkColors.surfaceLow,
-      'editorLineNumber.foreground': darkColors.outline,
-      'editorLineNumber.activeForeground': darkColors.primary,
-      'editor.selectionBackground': darkColors.primary + '40',
-      'editor.lineHighlightBackground': darkColors.primary + '14',
-    },
-  });
+  try {
+    monaco.editor.defineTheme(THEME_LIGHT, {
+      base: 'vs',
+      inherit: true,
+      rules: [
+        { token: 'variable.predefined.powershell', foreground: '0451A5' },
+        { token: 'variable.powershell', foreground: '0070C1' },
+        { token: 'type.powershell', foreground: '267F99' },
+        { token: 'string.powershell', foreground: 'A31515' },
+        { token: 'comment.powershell', foreground: '008000', fontStyle: 'italic' },
+        { token: 'keyword.powershell', foreground: 'AF00DB' },
+        { token: 'operator.powershell', foreground: '6F6F6F' },
+        { token: 'number.powershell', foreground: '098658' },
+      ],
+      colors: {
+        'editor.background': lightColors.editorSurface,
+        'editor.foreground': lightColors.onSurface,
+        'editorGutter.background': lightColors.gutterSurface,
+        'editorLineNumber.foreground': lightColors.outline,
+        'editorLineNumber.activeForeground': lightColors.primary,
+        'editor.selectionBackground': lightColors.primary + '33',
+        'editor.lineHighlightBackground': lightColors.primary + '0d',
+      },
+    });
+
+    monaco.editor.defineTheme(THEME_DARK, {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: 'variable.predefined.powershell', foreground: '4FC1FF' },
+        { token: 'variable.powershell', foreground: '9CDCFE' },
+        { token: 'type.powershell', foreground: '4EC9B0' },
+        { token: 'string.powershell', foreground: 'CE9178' },
+        { token: 'comment.powershell', foreground: '6A9955', fontStyle: 'italic' },
+        { token: 'keyword.powershell', foreground: 'C586C0' },
+        { token: 'operator.powershell', foreground: 'D4D4D4' },
+        { token: 'number.powershell', foreground: 'B5CEA8' },
+      ],
+      colors: {
+        'editor.background': darkColors.surfaceLowest,
+        'editor.foreground': darkColors.onSurface,
+        'editorGutter.background': darkColors.surfaceLow,
+        'editorLineNumber.foreground': darkColors.outline,
+        'editorLineNumber.activeForeground': darkColors.primary,
+        'editor.selectionBackground': darkColors.primary + '40',
+        'editor.lineHighlightBackground': darkColors.primary + '14',
+      },
+    });
+    monaco.editor.setTheme(name);
+    return name;
+  } catch (err) {
+    console.warn('[ScriptEditorDialog] skin colors rejected by Monaco, using the built-in theme', err);
+    // The recovery must not throw either; nothing may escape this path.
+    try { monaco.editor.setTheme(builtin); } catch { /* keep whatever theme is active */ }
+    return builtin;
+  }
 }
 
 // --- Exposed-variable parser ---------------------------------------------------
@@ -444,12 +473,15 @@ export function ScriptEditorDialog({
 
   const theme = useThemeStore((s) => s.theme);
   const isDark = resolveTheme(theme) === 'dark';
-  const monacoTheme = isDark ? THEME_DARK : THEME_LIGHT;
+  // Starts on Monaco's built-in theme and only carries a NodePilot theme name once that theme
+  // has activated without being rejected, so the editor never activates one that throws.
+  const [monacoTheme, setMonacoTheme] = useState(isDark ? 'vs-dark' : 'vs');
 
   // Redefine the themes when the app theme switches so `editor.background` and
-  // `selectionBackground` pick up the freshly resolved CSS variable values.
-  useEffect(() => {
-    defineNodePilotThemes();
+  // `selectionBackground` pick up the freshly resolved CSS variable values. Layout effect, so
+  // the skin colors are in place before the first paint instead of flashing the built-in theme.
+  useLayoutEffect(() => {
+    setMonacoTheme(applyNodePilotTheme(isDark));
   }, [isDark]);
 
   // Variable completion provider: triggers on `{{` and offers all upstream refs. Registered
@@ -507,13 +539,13 @@ export function ScriptEditorDialog({
 
   const handleEditorMount: OnMount = useCallback((editor) => {
     editorRef.current = editor;
-    defineNodePilotThemes();
+    setMonacoTheme(applyNodePilotTheme(isDark));
     // Ctrl+S flushes the current buffer to onChange without closing the dialog.
     // editor.getValue() captures the latest text even while React state is mid-flush.
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       onChange(editor.getValue());
     });
-  }, [onChange]);
+  }, [onChange, isDark]);
 
   const exposedVars = parseExposedVars(code);
   const exposedPrefix = outputVariableName?.trim() ? outputVariableName.trim() : '<step>';

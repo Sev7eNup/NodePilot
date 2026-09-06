@@ -40,7 +40,7 @@
               "config": {
                 "engine": "auto",
                 "timeoutSeconds": 30,
-                "script": "$cid = $matched\n$message = {{trg.param.eventMessage}}\n$m = [regex]::Match($message, 'cid=([0-9a-fA-F-]{36})')\nif (-not $m.Success) { throw \"no correlation id in '$message'\" }\n$matched = $m.Groups[1].Value\nif ([string]::IsNullOrWhiteSpace($cid)) { throw 'trigger fired without a correlation id' }\n$ackDir = Join-Path 'C:\\Temp\\NP-TestSuite\\runtime\\acks' 'eventlog'\nNew-Item -ItemType Directory -Path $ackDir -Force | Out-Null\nSet-Content -LiteralPath (Join-Path $ackDir $cid) -Value (Get-Date -Format o)\n$ackedCid = $cid\n"
+                "script": "$message = {{trg.param.eventMessage}}\n$m = [regex]::Match($message, 'cid=([0-9a-fA-F-]{36})')\nif (-not $m.Success) { throw \"no correlation id in '$message'\" }\n$matched = $m.Groups[1].Value\n$cid = $matched\nif ([string]::IsNullOrWhiteSpace($cid)) { throw 'trigger fired without a correlation id' }\n$ackDir = Join-Path 'C:\\Temp\\NP-TestSuite\\runtime\\acks' 'eventlog'\nNew-Item -ItemType Directory -Path $ackDir -Force | Out-Null\nSet-Content -LiteralPath (Join-Path $ackDir $cid) -Value (Get-Date -Format o)\n$ackedCid = $cid\n"
               },
               "outputVariable": "ack",
               "targetMachineId": "localhost"

@@ -25,6 +25,10 @@ namespace NodePilot.Api.Tests.Services.Backup;
 public sealed class BackupRestoreServiceTests : IDisposable
 {
     private const string Passphrase = "a-strong-backup-pass";
+
+    /// <summary>The admin performing the restore; becomes the runtime principal of every
+    /// restored workflow, the same rule Publish and Import follow.</summary>
+    private static readonly Guid RestoreActor = Guid.Parse("0bd7f0a1-4c3e-4a6b-9f21-6c2f5d8e4b70");
     private static readonly List<string> AllSections =
     [
         BackupSections.Folders, BackupSections.Users, BackupSections.Credentials,
@@ -114,7 +118,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         var backup = await ExportAsync(src, AllSections);
 
         using var dst = TestDbFactory.Create();
-        var result = await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), CancellationToken.None);
+        var result = await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
 
         result.Sections.Should().Contain(r => r.Section == BackupSections.Workflows && r.Created == 1);
 
@@ -179,7 +183,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         var backup = await ExportAsync(src, [BackupSections.Users]);
 
         using var dst = TestDbFactory.Create();
-        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), CancellationToken.None);
+        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
 
         var restored = dst.Users.Single(u => u.Username == alice.Username);
         restored.LastDirectorySyncAt.Should().Be(alice.LastDirectorySyncAt);
@@ -224,7 +228,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         var backup = await ExportAsync(src, [BackupSections.Folders]);
 
         using var dst = TestDbFactory.Create();
-        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), CancellationToken.None);
+        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
 
         dst.SharedFolderPermissions.Should().ContainSingle(permission =>
             permission.PrincipalAuthority == issuer
@@ -250,7 +254,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         });
 
         using var dst = TestDbFactory.Create();
-        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), CancellationToken.None);
+        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
 
         // The nested tree is restored (a fresh DB reuses the backup source ids).
         var restoredProd = dst.GlobalVariableFolders.Single(f => f.Path == "/Environment/Prod");
@@ -261,6 +265,66 @@ public sealed class BackupRestoreServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Restore_CreatedWorkflow_GetsTheRestoringUserAsRuntimePrincipal()
+    {
+        // Every automated dispatch resolves its principal from Workflow.PublishedByUserId, and a
+        // restored workflow arrives enabled, so the fill in /enable never runs for it. Without a
+        // principal here the disaster-recovery case breaks: restore succeeds, the workflow shows
+        // as active, and every trigger fire is cancelled as "missing_effective_principal".
+        using var src = TestDbFactory.Create();
+        await SeedFullAsync(src);
+        var backup = await ExportAsync(src, AllSections);
+
+        using var dst = TestDbFactory.Create();
+        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
+
+        dst.Workflows.Single(w => w.Name == "wf1").PublishedByUserId.Should().Be(RestoreActor);
+    }
+
+    [Fact]
+    public async Task Restore_OverwrittenWorkflow_AlsoGetsTheRestoringUserAsRuntimePrincipal()
+    {
+        // The overwrite branch re-arms IsEnabled from the backup, so a row that had no principal
+        // needs one here too — otherwise the overwrite hands back a workflow that cannot fire.
+        using var src = TestDbFactory.Create();
+        await SeedFullAsync(src);
+        var sourceWorkflowId = src.Workflows.Single(w => w.Name == "wf1").Id;
+        var backup = await ExportAsync(src, [BackupSections.Workflows]);
+
+        using var dst = TestDbFactory.Create();
+        dst.Workflows.Add(new Workflow
+        {
+            Id = sourceWorkflowId,
+            Name = "wf1",
+            DefinitionJson = "{\"nodes\":[],\"edges\":[]}",
+            FolderId = SharedWorkflowFolder.RootFolderId,
+            PublishedByUserId = null,
+        });
+        await dst.SaveChangesAsync();
+
+        await Restore(dst).RestoreAsync(
+            backup, Passphrase, Policy(BackupSections.Workflows, RestoreConflictPolicy.Overwrite),
+            RestoreActor, CancellationToken.None);
+
+        dst.Workflows.Single(w => w.Name == "wf1").PublishedByUserId.Should().Be(RestoreActor);
+    }
+
+    [Fact]
+    public async Task Restore_WithoutAPrincipal_LeavesTheColumnNull()
+    {
+        // First-boot provisioning restores with no user acting. The workflow then needs one
+        // Publish before its triggers can fire — but nothing is silently attributed to a guess.
+        using var src = TestDbFactory.Create();
+        await SeedFullAsync(src);
+        var backup = await ExportAsync(src, AllSections);
+
+        using var dst = TestDbFactory.Create();
+        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), null, CancellationToken.None);
+
+        dst.Workflows.Single(w => w.Name == "wf1").PublishedByUserId.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Restore_Twice_WithSkipPolicy_DoesNotDuplicate()
     {
         using var src = TestDbFactory.Create();
@@ -268,12 +332,173 @@ public sealed class BackupRestoreServiceTests : IDisposable
         var backup = await ExportAsync(src, AllSections);
 
         using var dst = TestDbFactory.Create();
-        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), CancellationToken.None);
-        var second = await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), CancellationToken.None);
+        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
+        var second = await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
 
         second.Sections.Single(r => r.Section == BackupSections.Workflows).Skipped.Should().Be(1);
         dst.Workflows.Count(w => w.Name == "wf1").Should().Be(1);
         dst.Credentials.Count(c => c.Name == "svc").Should().Be(1);
+    }
+
+    // ---- workflow identity: id first, then name within the target folder ----
+    // Workflow.Name has no unique index, so a backup can carry two distinct "Deploy" workflows.
+
+    private static readonly List<string> FoldersUsersWorkflows =
+        [BackupSections.Folders, BackupSections.Users, BackupSections.Workflows];
+
+    private const string EmptyDefinition = "{\"nodes\":[],\"edges\":[]}";
+
+    private static string Definition(string label) =>
+        "{\"nodes\":[{\"id\":\"step-1\",\"type\":\"activity\",\"data\":{\"activityType\":\"log\",\"label\":\""
+        + label + "\",\"config\":{}}}],\"edges\":[]}";
+
+    private static SharedWorkflowFolder Folder(string name) => new()
+    {
+        Id = Guid.NewGuid(), ParentFolderId = SharedWorkflowFolder.RootFolderId, Name = name, Path = "/" + name, Depth = 1,
+    };
+
+    private static async Task<(Guid first, Guid second)> SeedSameNamedWorkflowsAsync(NodePilotDbContext db, bool sameFolder)
+    {
+        var team = Folder("team");
+        var ops = Folder("ops");
+        db.SharedWorkflowFolders.AddRange(team, ops);
+        db.Users.Add(new User { Id = Guid.NewGuid(), Username = "admin", Role = UserRole.Admin, PasswordHash = "$2a$hash", IsActive = true, IsBreakGlass = true });
+        var first = new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "Deploy", DefinitionJson = Definition("first"), FolderId = team.Id,
+            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+        };
+        var second = new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "Deploy", DefinitionJson = Definition("second"), FolderId = sameFolder ? team.Id : ops.Id,
+            CreatedAt = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc),
+        };
+        db.Workflows.AddRange(first, second);
+        await db.SaveChangesAsync();
+        return (first.Id, second.Id);
+    }
+
+    private static BackupPreviewSection WorkflowPreview(BackupPreviewResult preview) =>
+        preview.Sections.Single(s => s.Section == BackupSections.Workflows);
+
+    private static SectionRestoreResult WorkflowResult(BackupRestoreResult result) =>
+        result.Sections.Single(r => r.Section == BackupSections.Workflows);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Restore_SameNamedWorkflows_RestoresEveryOneWithItsId(bool sameFolder)
+    {
+        using var src = TestDbFactory.Create();
+        var (first, second) = await SeedSameNamedWorkflowsAsync(src, sameFolder);
+        var backup = await ExportAsync(src, FoldersUsersWorkflows);
+
+        using var dst = TestDbFactory.Create();
+        var preview = await Restore(dst).PreviewAsync(backup, Passphrase, CancellationToken.None);
+        var result = await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
+
+        var section = WorkflowPreview(preview);
+        (section.InBackup, section.New, section.Conflicts).Should().Be((2, 2, 0));
+        WorkflowResult(result).Created.Should().Be(2);
+        var restored = dst.Workflows.Where(w => w.Name == "Deploy").ToList();
+        restored.Select(w => w.Id).Should().BeEquivalentTo([first, second]);
+        restored.Single(w => w.Id == first).DefinitionJson.Should().Contain("first");
+        restored.Single(w => w.Id == second).DefinitionJson.Should().Contain("second");
+    }
+
+    [Fact]
+    public async Task Restore_SkipPolicy_MatchesATargetWorkflowByIdBeforeName()
+    {
+        using var src = TestDbFactory.Create();
+        var (first, _) = await SeedSameNamedWorkflowsAsync(src, sameFolder: false);
+        var backup = await ExportAsync(src, FoldersUsersWorkflows);
+
+        using var dst = TestDbFactory.Create();
+        // The same workflow, renamed and moved on the target.
+        dst.Workflows.Add(new Workflow { Id = first, Name = "Deploy (renamed)", DefinitionJson = EmptyDefinition, FolderId = SharedWorkflowFolder.RootFolderId });
+        await dst.SaveChangesAsync();
+
+        var preview = await Restore(dst).PreviewAsync(backup, Passphrase, CancellationToken.None);
+        var result = await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
+
+        WorkflowPreview(preview).Conflicts.Should().Be(1);
+        var section = WorkflowResult(result);
+        (section.Created, section.Skipped).Should().Be((1, 1));
+        dst.Workflows.Single(w => w.Id == first).Name.Should().Be("Deploy (renamed)", "skip leaves the target row untouched");
+        dst.Workflows.Count().Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Restore_SkipPolicy_TreatsTheSameNameInAnotherFolderAsANewWorkflow()
+    {
+        using var src = TestDbFactory.Create();
+        await SeedSameNamedWorkflowsAsync(src, sameFolder: false);
+        var backup = await ExportAsync(src, FoldersUsersWorkflows);
+
+        using var dst = TestDbFactory.Create();
+        var unrelated = new Workflow { Id = Guid.NewGuid(), Name = "Deploy", DefinitionJson = EmptyDefinition, FolderId = SharedWorkflowFolder.RootFolderId };
+        dst.Workflows.Add(unrelated);
+        await dst.SaveChangesAsync();
+
+        var preview = await Restore(dst).PreviewAsync(backup, Passphrase, CancellationToken.None);
+        var result = await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
+
+        WorkflowPreview(preview).Conflicts.Should().Be(0);
+        WorkflowResult(result).Created.Should().Be(2);
+        dst.Workflows.Count(w => w.Name == "Deploy").Should().Be(3);
+        dst.Workflows.Single(w => w.Id == unrelated.Id).DefinitionJson.Should().Be(EmptyDefinition);
+    }
+
+    [Fact]
+    public async Task Restore_OverwritePolicy_UpdatesTheSameNamedWorkflowInTheSameFolder()
+    {
+        using var src = TestDbFactory.Create();
+        await SeedSameNamedWorkflowsAsync(src, sameFolder: false);
+        var backup = await ExportAsync(src, FoldersUsersWorkflows);
+
+        using var dst = TestDbFactory.Create();
+        // Same folder path as the backup's /team, fresh ids on both rows: matched by folder + name.
+        var team = Folder("team");
+        var existing = new Workflow { Id = Guid.NewGuid(), Name = "Deploy", DefinitionJson = EmptyDefinition, FolderId = team.Id };
+        dst.SharedWorkflowFolders.Add(team);
+        dst.Workflows.Add(existing);
+        await dst.SaveChangesAsync();
+
+        var preview = await Restore(dst).PreviewAsync(backup, Passphrase, CancellationToken.None);
+        var result = await Restore(dst).RestoreAsync(
+            backup, Passphrase, Policy(BackupSections.Workflows, RestoreConflictPolicy.Overwrite), RestoreActor, CancellationToken.None);
+
+        WorkflowPreview(preview).Conflicts.Should().Be(1);
+        var section = WorkflowResult(result);
+        (section.Created, section.Overwritten).Should().Be((1, 1));
+        var after = dst.Workflows.Single(w => w.Id == existing.Id);
+        after.DefinitionJson.Should().Contain("first");
+        after.FolderId.Should().Be(team.Id);
+        dst.Workflows.Count(w => w.FolderId == team.Id).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Restore_RenamePolicy_OnAnIdConflict_CreatesASuffixedCopyWithAFreshId()
+    {
+        using var src = TestDbFactory.Create();
+        var (first, _) = await SeedSameNamedWorkflowsAsync(src, sameFolder: false);
+        var backup = await ExportAsync(src, FoldersUsersWorkflows);
+
+        using var dst = TestDbFactory.Create();
+        var team = Folder("team");
+        dst.SharedWorkflowFolders.Add(team);
+        dst.Workflows.Add(new Workflow { Id = first, Name = "Deploy", DefinitionJson = EmptyDefinition, FolderId = team.Id });
+        await dst.SaveChangesAsync();
+
+        var result = await Restore(dst).RestoreAsync(
+            backup, Passphrase, Policy(BackupSections.Workflows, RestoreConflictPolicy.Rename), RestoreActor, CancellationToken.None);
+
+        var section = WorkflowResult(result);
+        (section.Created, section.Renamed).Should().Be((1, 1));
+        dst.Workflows.Single(w => w.Id == first).DefinitionJson.Should().Be(EmptyDefinition, "rename leaves the target row intact");
+        var copy = dst.Workflows.Single(w => w.FolderId == team.Id && w.Id != first);
+        copy.Name.Should().Be("Deploy (Restored 2)");
+        copy.DefinitionJson.Should().Contain("first");
     }
 
     [Fact]
@@ -289,7 +514,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         dst.Users.Add(existing);
         await dst.SaveChangesAsync();
 
-        await Restore(dst).RestoreAsync(backup, Passphrase, Policy(BackupSections.Users, RestoreConflictPolicy.Overwrite), CancellationToken.None);
+        await Restore(dst).RestoreAsync(backup, Passphrase, Policy(BackupSections.Users, RestoreConflictPolicy.Overwrite), RestoreActor, CancellationToken.None);
 
         var after = dst.Users.Single(u => u.Username == "admin");
         after.Role.Should().Be(UserRole.Admin);              // overwritten from backup
@@ -330,7 +555,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         var act = () => Restore(dst).RestoreAsync(
             backup, Passphrase,
             Policy(BackupSections.Workflows, RestoreConflictPolicy.Overwrite),
-            CancellationToken.None);
+            RestoreActor, CancellationToken.None);
 
         await act.Should().ThrowAsync<BackupRestoreException>().WithMessage("*locked*");
         var after = await dst.Workflows.AsNoTracking().SingleAsync(w => w.Id == original.Id);
@@ -366,7 +591,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         await Restore(dst).RestoreAsync(
             backup, Passphrase,
             Policy(BackupSections.Workflows, RestoreConflictPolicy.Overwrite),
-            CancellationToken.None);
+            RestoreActor, CancellationToken.None);
 
         dst.ChangeTracker.Clear();
         var restored = await dst.Workflows.SingleAsync(w => w.Id == existing.Id);
@@ -397,7 +622,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         dst.Users.Add(new User { Id = sharedUserId, Username = "admin", Role = UserRole.Admin, PasswordHash = "h", IsActive = true });
         await dst.SaveChangesAsync();
 
-        var act = () => Restore(dst).RestoreAsync(backup, Passphrase, Policy(BackupSections.Users, RestoreConflictPolicy.Overwrite), CancellationToken.None);
+        var act = () => Restore(dst).RestoreAsync(backup, Passphrase, Policy(BackupSections.Users, RestoreConflictPolicy.Overwrite), RestoreActor, CancellationToken.None);
         await act.Should().ThrowAsync<BackupRestoreException>().WithMessage("*no active Admin*");
     }
 
@@ -442,7 +667,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         await dst.SaveChangesAsync();
 
         var act = () => Restore(dst).RestoreAsync(
-            backup, Passphrase, Policy(BackupSections.Users, policy), CancellationToken.None);
+            backup, Passphrase, Policy(BackupSections.Users, policy), RestoreActor, CancellationToken.None);
 
         await act.Should().ThrowAsync<BackupRestoreException>()
             .WithMessage("*different identity*never merged by username*");
@@ -493,7 +718,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         var act = () => Restore(dst).RestoreAsync(
             backup, Passphrase,
             Policy(BackupSections.Users, RestoreConflictPolicy.Overwrite),
-            CancellationToken.None);
+            RestoreActor, CancellationToken.None);
 
         await act.Should().ThrowAsync<BackupRestoreException>()
             .WithMessage("*different identity*never merged by username*");
@@ -540,7 +765,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         await dst.SaveChangesAsync();
 
         var act = () => Restore(dst).RestoreAsync(
-            backup, Passphrase, Policy(BackupSections.Users, policy), CancellationToken.None);
+            backup, Passphrase, Policy(BackupSections.Users, policy), RestoreActor, CancellationToken.None);
 
         await act.Should().ThrowAsync<BackupRestoreException>()
             .WithMessage($"*source id {sharedUserId} belongs to a different target identity*");
@@ -561,7 +786,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         var backup = await ExportAsync(src, [BackupSections.Workflows]);
 
         using var dst = TestDbFactory.Create();
-        var act = () => Restore(dst).RestoreAsync(backup, Passphrase, Empty(), CancellationToken.None);
+        var act = () => Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
         await act.Should().ThrowAsync<BackupRestoreException>().WithMessage("*unresolvable*");
     }
 
@@ -580,7 +805,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         var tampered = Encoding.UTF8.GetBytes(env.ToJsonString());
 
         using var dst = TestDbFactory.Create();
-        var act = () => Restore(dst).RestoreAsync(tampered, Passphrase, Empty(), CancellationToken.None);
+        var act = () => Restore(dst).RestoreAsync(tampered, Passphrase, Empty(), RestoreActor, CancellationToken.None);
         await act.Should().ThrowAsync<BackupFormatException>().WithMessage("*authentication*");
     }
 
@@ -592,7 +817,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         var backup = await ExportAsync(src, AllSections);
 
         using var dst = TestDbFactory.Create();
-        var act = () => Restore(dst).RestoreAsync(backup, "wrong-passphrase-x", Empty(), CancellationToken.None);
+        var act = () => Restore(dst).RestoreAsync(backup, "wrong-passphrase-x", Empty(), RestoreActor, CancellationToken.None);
         await act.Should().ThrowAsync<BackupRestoreException>().WithMessage("*assphrase*");
     }
 
@@ -612,7 +837,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
 
         using var dst = TestDbFactory.Create();
         var act = () => Restore(dst).RestoreAsync(
-            incomplete, Passphrase, Empty(), CancellationToken.None);
+            incomplete, Passphrase, Empty(), RestoreActor, CancellationToken.None);
 
         await act.Should().ThrowAsync<BackupRestoreException>()
             .WithMessage("*incomplete*");
@@ -637,7 +862,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         });
         await dst.SaveChangesAsync();
 
-        var act = () => Restore(dst).RestoreAsync(backup, Passphrase, Policy(BackupSections.Folders, RestoreConflictPolicy.Rename), CancellationToken.None);
+        var act = () => Restore(dst).RestoreAsync(backup, Passphrase, Policy(BackupSections.Folders, RestoreConflictPolicy.Rename), RestoreActor, CancellationToken.None);
         await act.Should().NotThrowAsync();
 
         var team = dst.SharedWorkflowFolders
@@ -668,7 +893,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         });
         await dst.SaveChangesAsync();
 
-        await Restore(dst).RestoreAsync(backup, Passphrase, Policy(BackupSections.Folders, RestoreConflictPolicy.Rename), CancellationToken.None);
+        await Restore(dst).RestoreAsync(backup, Passphrase, Policy(BackupSections.Folders, RestoreConflictPolicy.Rename), RestoreActor, CancellationToken.None);
 
         var renamedTeam = dst.SharedWorkflowFolders.Single(f => f.Name == "team (Restored 2)");
         renamedTeam.Path.Should().Be("/team (Restored 2)");
@@ -702,7 +927,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         await dst.SaveChangesAsync();
 
         await Restore(dst).RestoreAsync(backup, Passphrase,
-            Policy(BackupSections.GlobalVariableFolders, RestoreConflictPolicy.Rename), CancellationToken.None);
+            Policy(BackupSections.GlobalVariableFolders, RestoreConflictPolicy.Rename), RestoreActor, CancellationToken.None);
 
         var renamedEnv = dst.GlobalVariableFolders.Single(f => f.Name == "Environment (Restored 2)");
         renamedEnv.Path.Should().Be("/Environment (Restored 2)");
@@ -730,7 +955,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         using var dst = TestDbFactory.Create();
         var restore = new BackupRestoreService(
             dst, _atRest, dstWriter, NullLogger<BackupRestoreService>.Instance, VersionProtector());
-        await restore.RestoreAsync(backup, Passphrase, Empty(), CancellationToken.None);
+        await restore.RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
 
         var after = dstWriter.ReadOrEmpty();
         after.ContainsKey("Foo").Should().BeFalse("an override absent from the backup must be removed (replace, not merge)");
@@ -765,7 +990,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         var backup = await ExportAsync(src, [BackupSections.Workflows]);
 
         using var dst = TestDbFactory.Create();
-        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), CancellationToken.None);
+        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
 
         (await dst.Workflows.SingleAsync()).MaxConcurrentExecutions.Should().Be(5);
     }
@@ -793,7 +1018,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         await Restore(dst).RestoreAsync(
             backup, Passphrase,
             Policy(BackupSections.Workflows, RestoreConflictPolicy.Overwrite),
-            CancellationToken.None);
+            RestoreActor, CancellationToken.None);
 
         dst.ChangeTracker.Clear();
         (await dst.Workflows.SingleAsync()).MaxConcurrentExecutions.Should().Be(3);
@@ -817,7 +1042,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         });
 
         using var dst = TestDbFactory.Create();
-        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), CancellationToken.None);
+        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
 
         (await dst.Workflows.SingleAsync()).MaxConcurrentExecutions.Should().BeNull();
     }
@@ -840,7 +1065,7 @@ public sealed class BackupRestoreServiceTests : IDisposable
         });
 
         using var dst = TestDbFactory.Create();
-        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), CancellationToken.None);
+        await Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, CancellationToken.None);
 
         (await dst.Workflows.SingleAsync()).MaxConcurrentExecutions.Should().BeNull();
     }

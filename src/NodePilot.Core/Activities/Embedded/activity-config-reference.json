@@ -169,7 +169,7 @@
       "configKeys": [
         { "key": "url", "type": "string", "required": true, "description": "Request URL." },
         { "key": "method", "type": "string", "required": false, "description": "GET (default) | POST | PUT | PATCH | DELETE | HEAD." },
-        { "key": "headers", "type": "object", "required": false, "description": "Request headers map." },
+        { "key": "headers", "type": "object", "required": false, "description": "Request headers map. On a request that carries a body, a Content-Type set here is applied to the request entity; an unparsable value is ignored and the body still goes out as application/json. A bodyless request and every GET/HEAD has no entity, so a Content-Type set there is dropped." },
         { "key": "body", "type": "string", "required": false, "description": "Request body." },
         { "key": "timeoutSeconds", "type": "number", "required": false, "description": "Per-request timeout." },
         { "key": "proxyMode", "type": "string", "required": false, "description": "Per-step proxy override." }

@@ -145,6 +145,99 @@ public class GlobalVariableFolderStoreTests
     }
 
     [Fact]
+    public async Task Move_ConcurrentInverseMoves_LeaveTheTreeAcyclic()
+    {
+        // A under B and B under A, each checked against the same old tree, together form a
+        // cycle that no row constraint rejects. The process-wide tree lock serialises them, so
+        // the second one sees the first one's result and refuses.
+        var (conn, db) = TestDbFactory.CreateWithConnection();
+        using (conn)
+        using (db)
+        {
+            var a = await NewStore(db).CreateAsync(Root, "A", null, CancellationToken.None);
+            var b = await NewStore(db).CreateAsync(Root, "B", null, CancellationToken.None);
+            var options = new DbContextOptionsBuilder<NodePilotDbContext>().UseSqlite(conn).Options;
+            await using var first = new NodePilotDbContext(options);
+            await using var second = new NodePilotDbContext(options);
+
+            var outcomes = await Task.WhenAll(
+                Outcome(NewStore(first).MoveAsync(a.Id, b.Id, CancellationToken.None)),
+                Outcome(NewStore(second).MoveAsync(b.Id, a.Id, CancellationToken.None)));
+
+            outcomes.Count(o => o is null).Should().Be(1, "exactly one of the two moves may succeed");
+            outcomes.Single(o => o is not null).Should().BeOfType<InvalidOperationException>();
+
+            var folders = await db.GlobalVariableFolders.AsNoTracking().ToListAsync();
+            ParentChainReachesRoot(folders, a.Id).Should().BeTrue();
+            ParentChainReachesRoot(folders, b.Id).Should().BeTrue();
+        }
+    }
+
+    [Fact]
+    public async Task MoveAsync_WaitsForTheTreeLock()
+    {
+        using var db = TestDbFactory.Create();
+        var store = NewStore(db);
+        var a = await store.CreateAsync(Root, "A", null, CancellationToken.None);
+        var b = await store.CreateAsync(Root, "B", null, CancellationToken.None);
+
+        Task move;
+        using (await FolderTreeMutationLock.GlobalVariableFolders.AcquireAsync(CancellationToken.None))
+        {
+            move = store.MoveAsync(a.Id, b.Id, CancellationToken.None);
+            await Task.Delay(200);
+            move.IsCompleted.Should().BeFalse("a move must wait for the tree lock");
+        }
+
+        await move.WaitAsync(TimeSpan.FromSeconds(10));
+        db.ChangeTracker.Clear();
+        (await db.GlobalVariableFolders.FindAsync(a.Id))!.ParentFolderId.Should().Be(b.Id);
+    }
+
+    [Fact]
+    public async Task Rename_OnACorruptedParentCycle_Terminates()
+    {
+        // Whatever is left in a tree that carries a parent cycle, a path recompute must end
+        // instead of walking the cycle forever.
+        using var db = TestDbFactory.Create();
+        var store = NewStore(db);
+        var a = await store.CreateAsync(Root, "A", null, CancellationToken.None);
+        var b = await store.CreateAsync(a.Id, "B", null, CancellationToken.None);
+        a.ParentFolderId = b.Id;
+        await db.SaveChangesAsync();
+
+        var rename = store.RenameAsync(a.Id, "A2", CancellationToken.None);
+
+        await rename.WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    private static async Task<Exception?> Outcome(Task task)
+    {
+        try
+        {
+            await task;
+            return null;
+        }
+        catch (Exception ex)
+        {
+            return ex;
+        }
+    }
+
+    private static bool ParentChainReachesRoot(IReadOnlyList<GlobalVariableFolder> all, Guid start)
+    {
+        var byId = all.ToDictionary(f => f.Id);
+        var current = start;
+        for (var hops = 0; hops <= GlobalVariableFolder.MaxDepth + 1; hops++)
+        {
+            var folder = byId[current];
+            if (folder.ParentFolderId is null) return true;
+            current = folder.ParentFolderId.Value;
+        }
+        return false;
+    }
+
+    [Fact]
     public async Task Move_Reparents_AndRecomputesPaths()
     {
         using var db = TestDbFactory.Create();

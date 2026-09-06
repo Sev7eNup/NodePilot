@@ -108,7 +108,7 @@ Der komplette Konfigurations-Payload inklusive Metadaten und Sektionsliste wird 
 - Validiert Refs (Abbruch bei unresolvable).
 - Läuft in EF-Execution-Strategy-gekapselter Transaktion in Abhängigkeitsreihenfolge mit ID-Remap.
 - Bricht den gesamten Restore ab und rollt ihn zurück, wenn eine gewählte Sektion eine Warnung erzeugt oder nicht vollständig wiederhergestellt werden kann; Settings-Dateiänderungen werden bei einem fehlgeschlagenen DB-Commit kompensiert.
-- Konflikt-Policy: `skip` / `rename` / `overwrite`.
+- Konflikt-Policy: `skip` / `rename` / `overwrite`. Die meisten Sektionen matchen per Name; Workflows matchen zuerst per Id und dann per Name innerhalb ihres Zielordners, weil Workflow-Namen nicht eindeutig sind.
 - Last-Admin-Schutz.
 
 ### Endpoints & CLI
