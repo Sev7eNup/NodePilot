@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.Extensions.Logging;
 using NodePilot.Core.Activities;
+using NodePilot.Engine.Security;
 
 namespace NodePilot.Engine.PowerShell;
 
@@ -120,7 +121,7 @@ internal static class PowerShellScriptWrapper
         scriptContent.AppendLine("$Params = @{}");
         foreach (var (key, value) in parameters)
         {
-            var escaped = value.Replace("'", "''");
+            var escaped = PowerShellQuoter.EscapeSingleQuotedContent(value);
 
             if (!TryGetAliasName(key, out var shortName))
             {

@@ -1,3 +1,6 @@
+using System.Buffers;
+using System.Management.Automation.Language;
+
 namespace NodePilot.Engine.Security;
 
 /// <summary>
@@ -17,6 +20,13 @@ namespace NodePilot.Engine.Security;
 /// </summary>
 public static class PowerShellQuoter
 {
+    private static readonly SearchValues<char> SingleQuotes = SearchValues.Create("'\u2018\u2019\u201a\u201b");
+
+    internal static string EscapeSingleQuotedContent(string value)
+        => value.AsSpan().ContainsAny(SingleQuotes)
+            ? CodeGeneration.EscapeSingleQuotedStringContent(value)
+            : value;
+
     /// <summary>
     /// Returns a PowerShell single-quoted literal with embedded apostrophes doubled. Null input
     /// becomes the empty literal <c>''</c>. Use this instead of string concatenation every time
@@ -25,6 +35,6 @@ public static class PowerShellQuoter
     public static string Literal(string? value)
     {
         if (string.IsNullOrEmpty(value)) return "''";
-        return "'" + value.Replace("'", "''") + "'";
+        return "'" + EscapeSingleQuotedContent(value) + "'";
     }
 }
