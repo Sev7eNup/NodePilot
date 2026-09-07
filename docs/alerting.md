@@ -324,7 +324,7 @@ Delivered so far (foundation phase, non-destructive — the custom rules above a
 - A strict alert-specific AST validator (`SystemAlertConditionValidator`) gates a policy's condition at save:
   known fields, operator/type compatibility, operand arity, numeric-literal parseability, depth/node/regex
   caps — returning field-level RFC-7807 (`ValidationProblemDetails`) errors. It does **not** touch the
-  permissive workflow-edge `ConditionEvaluator`.
+  runtime evaluator; the workflow-edge counterpart is `EdgeConditionValidator` in Core (ADR 0015).
 - Source query parameters are descriptor-validated (declared names, required present, numeric bounds) and
   stored as `SourceParametersJson`. Enabling a policy stamps `ActivatedAt`; changing a policy's
   source/params/filter/scope/duration resets its transient state.
