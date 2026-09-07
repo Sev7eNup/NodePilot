@@ -15,7 +15,7 @@ const require = createRequire(path.join(root,'src/nodepilot-ui/package.json'));
 const { chromium } = require('playwright');
 const base = process.env.TOUR_BASE_URL || 'http://localhost:5173';
 if (!['localhost','127.0.0.1','[::1]'].includes(new URL(base).hostname)) throw new Error('Use a loopback frontend for this capture.');
-const out = path.resolve(root, process.env.TOUR_OUTPUT || 'out/product-tour-with-import');
+const out = path.resolve(root, process.env.TOUR_OUTPUT || 'out/product-tour-liveops-v2');
 const previousCapture=await readFile(path.join(out,'capture.json'),'utf8').then(JSON.parse).catch(()=>null);
 const preview = process.argv.includes('--preview');
 const only = process.argv.find(arg=>arg.startsWith('--only='))?.slice(7);
@@ -217,7 +217,7 @@ try{
   await go('/operations');
   await frame.getByTitle(/Nightly Backup · Running/).waitFor();
   await chapter(4,'Keep an eye on live operations.','Running now, recently completed and scheduled next. Open a run for details.');
-  await clip('04-liveops',11,async()=>{
+  await clip('04-liveops',7,async()=>{
     await pause(2800);
     await point(frame.getByTitle(/Nightly Backup · Running/),true);
     await frame.getByLabel('Execution details').waitFor();

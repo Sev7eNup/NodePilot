@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-OUT = ROOT / os.environ.get('TOUR_OUTPUT', 'out/product-tour-with-import')
+OUT = ROOT / os.environ.get('TOUR_OUTPUT', 'out/product-tour-liveops-v2')
 FFMPEG = os.environ.get('FFMPEG') or shutil.which('ffmpeg')
 if not FFMPEG:
     sys.path.insert(0, str(ROOT / '.tmp/nodepilot-video/tools'))

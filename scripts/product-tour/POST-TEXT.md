@@ -39,7 +39,7 @@ carrying the original type name and its full property list, and the import repor
 every lossy translation instead of quietly guessing. That takes evaluating this from
 "rebuild everything" down to about ten minutes.
 
-The 88-second tour below starts with a SCOrch `.ois_export` import and shows a health-check
+The 84-second tour below starts with a SCOrch `.ois_export` import and shows a health-check
 workflow with parallel branches, step timings and output, live operations, logs, the AI
 chat, and the identity settings preview.
 Fictional demo data and a scripted chat response throughout — it's a product tour, not a
@@ -63,7 +63,7 @@ you to move a production runbook onto something new?
 
 # GitHub description
 
-An 88-second tour of NodePilot, an agentless workflow orchestrator for Windows and an open
+An 84-second tour of NodePilot, an agentless workflow orchestrator for Windows and an open
 replacement for System Center Orchestrator: visual designer, PowerShell and service
 activities, File Copy, LLM queries, execution history, Live-Ops, logs, global AI Chat and
 the identity settings preview. It also imports SCOrch `.ois_export` runbooks directly.
@@ -71,7 +71,7 @@ Recorded against the real frontend with fictional demo data and a scripted chat 
 
 # Files
 
-- `NodePilot-Product-Tour.mp4`: full tour, 88.1 seconds, 2560 × 1440, H.264, 30 fps, silent.
+- `NodePilot-Product-Tour.mp4`: full tour, 84.1 seconds, 2560 × 1440, H.264, 30 fps, silent.
 - `NodePilot-Product-Tour-1080p.mp4`: 1920 × 1080 sharing copy.
 - `NodePilot-Preview.gif`: approximately 20-second looping preview, 960 × 540.
 - `NodePilot-Poster.png`: still preview of the workflow designer.
