@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ExportData>
+  <Policies><Folder><UniqueID>{00000000-0000-0000-0000-000000000000}</UniqueID><Name>Policies</Name>
+    <Policy>
+      <UniqueID>{70707070-7070-7070-7070-707070707070}</UniqueID>
+      <Name>Archive Daily Logs</Name>
+      <Description>Synthetic product-tour runbook: copy the daily operations log and verify the archive.</Description>
+      <Object>
+        <UniqueID>{70707070-0000-0000-0000-000000000001}</UniqueID>
+        <Name>Initialize Data</Name><ObjectTypeName>Initialize Data</ObjectTypeName>
+        <PositionX>0</PositionX><PositionY>150</PositionY><Enabled>TRUE</Enabled>
+      </Object>
+      <Object>
+        <UniqueID>{70707070-0000-0000-0000-000000000002}</UniqueID>
+        <Name>Copy Daily Log</Name><ObjectTypeName>Copy File</ObjectTypeName>
+        <PositionX>225</PositionX><PositionY>150</PositionY><Enabled>TRUE</Enabled>
+        <SourcePath>C:\NodePilot\logs\daily-health.log</SourcePath>
+        <Destination>D:\OpsArchive\daily-health.log</Destination>
+      </Object>
+      <Object>
+        <UniqueID>{70707070-0000-0000-0000-000000000003}</UniqueID>
+        <Name>Verify Archive</Name><ObjectTypeName>Run .Net Script</ObjectTypeName>
+        <PositionX>450</PositionX><PositionY>150</PositionY><Enabled>TRUE</Enabled>
+        <ScriptType>PowerShell</ScriptType>
+        <ScriptBody>$archive = 'D:\OpsArchive\daily-health.log'
+if (-not (Test-Path -LiteralPath $archive)) { throw 'Archive not found' }
+Get-Item -LiteralPath $archive | Select-Object Name, Length, LastWriteTime</ScriptBody>
+      </Object>
+      <Object>
+        <UniqueID>{70707070-0000-0000-0000-000000000011}</UniqueID>
+        <Name>Start archive</Name><ObjectTypeName>Link</ObjectTypeName>
+        <SourceObject>{70707070-0000-0000-0000-000000000001}</SourceObject>
+        <TargetObject>{70707070-0000-0000-0000-000000000002}</TargetObject>
+      </Object>
+      <Object>
+        <UniqueID>{70707070-0000-0000-0000-000000000012}</UniqueID>
+        <Name>Verify copy</Name><ObjectTypeName>Link</ObjectTypeName>
+        <SourceObject>{70707070-0000-0000-0000-000000000002}</SourceObject>
+        <TargetObject>{70707070-0000-0000-0000-000000000003}</TargetObject>
+      </Object>
+    </Policy>
+  </Folder></Policies>
+</ExportData>

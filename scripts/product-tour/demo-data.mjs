@@ -12,21 +12,21 @@ const node = (id, label, activityType, x, y, config = {}, extra = {}) => ({
 export const definition = {
   nodes: [
     node('schedule', 'Every morning', 'scheduleTrigger', 0, 180, { cronExpression: '0 7 * * 1-5', timeZoneId: 'UTC' }),
-    node('services', 'Check services', 'runScript', 240, 0, { script: "# Inspect critical Windows services\n$services = Get-Service -Name 'WinRM', 'W32Time', 'EventLog'\n$stopped = @($services | Where-Object Status -ne 'Running')\n\n$servicesHealthy = $stopped.Count -eq 0\n$services | Select-Object Name, Status, StartType\nWrite-Output \"All services healthy: $servicesHealthy\"" }, { targetMachineId: 'machine-web', outputVariable: 'services' }),
+    node('services', 'Check WinRM service', 'serviceManagement', 240, 0, { action: 'status', serviceName: 'WinRM' }, { targetMachineId: 'machine-web', outputVariable: 'services' }),
     node('disk', 'Check disk space', 'runScript', 240, 180, { script: "# Check free space on local fixed disks\n$disks = Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3'\n\n$diskReport = $disks | Select-Object DeviceID,\n    @{Name='FreeGB'; Expression={[math]::Round($_.FreeSpace / 1GB, 1)}},\n    @{Name='FreePercent'; Expression={\n        [math]::Round(100 * $_.FreeSpace / $_.Size, 1)\n    }}\n\n$diskHealthy = @($diskReport | Where-Object FreePercent -lt 15).Count -eq 0\n$diskReport | Format-Table -AutoSize\nWrite-Output \"Disk capacity healthy: $diskHealthy\"" }, { targetMachineId: 'machine-web', outputVariable: 'disk' }),
-    node('events', 'Scan event log', 'runScript', 240, 360, { script: "# Summarize recent system errors\n$since = (Get-Date).AddHours(-24)\n$events = Get-WinEvent -FilterHashtable @{\n    LogName = 'System'; Level = 2; StartTime = $since\n} -ErrorAction SilentlyContinue\n\n$errorCount = @($events).Count\nWrite-Output \"System errors in the last day: $errorCount\"" }, { targetMachineId: 'machine-web', outputVariable: 'events' }),
+    node('archive', 'File Copy · archive log', 'fileOperation', 240, 360, { operation: 'copy', path: 'C:\\NodePilot\\logs\\daily-health.log', destination: 'D:\\OpsArchive\\daily-health.log' }, { targetMachineId: 'machine-web', outputVariable: 'archive' }),
     node('join', 'Wait for all checks', 'junction', 500, 180, { mode: 'waitAll' }),
-    node('summary', 'Build health report', 'runScript', 730, 180, { script: "# Combine the published data from all three branches\nWrite-Output {{services.output}}\nWrite-Output {{disk.output}}\nWrite-Output {{events.output}}" }, { targetMachineId: 'localhost', outputVariable: 'report' }),
+    node('summary', 'LLM · health summary', 'llmQuery', 730, 180, { prompt: 'Write a concise operations brief from these results. Service: {{services.output}}. Disk: {{disk.output}}. Log archive: {{archive.output}}.', systemPrompt: 'Summarize the supplied results. Highlight any issue that needs attention.', temperature: 0.2, maxTokens: 512 }, { outputVariable: 'report' }),
     node('return', 'Return report', 'returnData', 960, 180, { data: { report: '{{report.output}}' } }),
   ],
-  edges: [['schedule','services'],['schedule','disk'],['schedule','events'],['services','join'],['disk','join'],['events','join'],['join','summary'],['summary','return']].map(([source,target],i) => ({
+  edges: [['schedule','services'],['schedule','disk'],['schedule','archive'],['services','join'],['disk','join'],['archive','join'],['join','summary'],['summary','return']].map(([source,target],i) => ({
     id: `edge-${i}`, source, target, type: 'labeled', sourceHandle: 'right', targetHandle: 'left', data: { condition: `${source}.success`, label: 'On Success' },
   })),
 };
 const names = ['Morning Fleet Health Check', 'Nightly Backup', 'Service Recovery', 'Certificate Watch', 'Temp File Cleanup', 'Inventory Sync'];
 export const workflows = names.map((name,i) => ({
   id: i === 0 ? WF : `workflow-${i}`, name,
-  description: i === 0 ? 'Check services, disk capacity and event logs in parallel. Collect one health report.' : 'Scheduled Windows operations with execution history.',
+  description: i === 0 ? 'Check a service and disk capacity, archive the daily log, then summarize the results with an LLM.' : 'Scheduled Windows operations with execution history.',
   definitionJson: JSON.stringify(definition), version: 4 + i, isEnabled: true,
   createdAt: iso(-30 * 86400000), updatedAt: iso(-(i + 1) * 60 * MIN), createdBy: USER.username, updatedBy: USER.username,
   activityCount: i === 0 ? 7 : 4 + i, triggerTypes: [i === 2 ? 'webhookTrigger' : 'scheduleTrigger'],
@@ -47,7 +47,7 @@ export const steps = definition.nodes.map((n,i) => {
   return { id: `step-${n.id}`, stepId: n.id, stepName: n.data.label, stepType: n.data.activityType,
     targetMachine: n.data.targetMachineId ? 'WEB-DEMO-01' : null, status: 'Succeeded',
     startedAt: iso(-3*MIN+timings[0]), completedAt: iso(-3*MIN+timings[1]),
-    output: ['Schedule accepted.','WinRM: Running\nW32Time: Running\nEventLog: Running','C: 142.6 GB free (57.1%)','System errors in the last day: 0','All three checks completed.','Fleet health report ready.','Report returned.'][i],
+    output: ['Schedule accepted.','WinRM: Running','C: 142.6 GB free (57.1%)','Copied daily-health.log to D:\\OpsArchive\\daily-health.log','All three branches completed.','WinRM is running, disk capacity is healthy, and the daily log was archived. No action required.','Report returned.'][i],
     errorOutput: null, traceOutput: null, outputParametersJson: null,
   };
 });
@@ -67,7 +67,7 @@ export const stats = {
   armedTriggers: workflows.filter((_,i)=>i!==2).map((w,i)=>({workflowId:w.id,workflowName:w.name,triggerTypes:['scheduleTrigger'],nextFireUtc:iso((i+1)*7*MIN),nextFireKind:'cron',pollIntervalSeconds:null,blockedByWindowName:null})),
   pendingCount:0,runningCount:2,longRunningCount:0,failingWorkflows:[{id:'workflow-2',name:'Service Recovery',failCount:1,runCount:24,lastFailureAt:iso(-9*60*MIN)}],editLocks:[],
   healthHeartbeats:['Scheduler','TriggerOrchestrator','NotificationDispatcher'].map(serviceName=>({serviceName,lastHeartbeatAt:iso(-1000),expectedIntervalSeconds:60,status:'ok',isStale:false})),
-  databaseProvider:'PostgreSQL',clusterRole:null,recentAudit:[],llmEnabled:false,
+  databaseProvider:'PostgreSQL',clusterRole:null,recentAudit:[],llmEnabled:true,
 };
 export const operations = {
   nodes: workflows.map((w,i)=>({workflowId:w.id,name:w.name,folderId:ROOT,folderPath:'/',isEnabled:true,runningCount:i===1||i===2?1:0,lastStatus:'Succeeded',callFrequency:12+i*3,canRun:true,canEdit:true})),
@@ -79,6 +79,7 @@ export const operations = {
 export function responseFor(url) {
   const p = url.pathname;
   if(p==='/api/auth/me') return USER;
+  if(p==='/api/ai/knowledge/capabilities') return {enabled:true,llm:true,docs:true,operational:true,sourceCode:false,db:true,scriptContextTargetHost:'localhost'};
   if(p==='/api/system/host-info') return {machineName:'NODEPILOT-DEMO',fqdn:'nodepilot.example.test',domain:'example.test',appVersion:'1.2.27'};
   if(p==='/api/stats/dashboard') return stats;
   if(p==='/api/workflows') return workflows;

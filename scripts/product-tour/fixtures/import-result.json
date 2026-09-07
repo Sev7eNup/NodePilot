@@ -1,0 +1,22 @@
+{
+  "workflows": [
+    {
+      "name": "Archive Daily Logs",
+      "description": "Synthetic product-tour runbook: copy the daily operations log and verify the archive.",
+      "definitionJson": "{\u0022nodes\u0022:[{\u0022id\u0022:\u002270707070-0000-0000-0000-000000000001\u0022,\u0022type\u0022:\u0022activity\u0022,\u0022position\u0022:{\u0022x\u0022:60,\u0022y\u0022:60},\u0022data\u0022:{\u0022label\u0022:\u0022Initialize Data\u0022,\u0022description\u0022:null,\u0022activityType\u0022:\u0022manualTrigger\u0022,\u0022config\u0022:{\u0022parameters\u0022:[]},\u0022outputVariable\u0022:\u0022Initialize_Data\u0022,\u0022targetMachineId\u0022:null,\u0022disabled\u0022:false}},{\u0022id\u0022:\u002270707070-0000-0000-0000-000000000002\u0022,\u0022type\u0022:\u0022activity\u0022,\u0022position\u0022:{\u0022x\u0022:280,\u0022y\u0022:60},\u0022data\u0022:{\u0022label\u0022:\u0022Copy Daily Log\u0022,\u0022description\u0022:null,\u0022activityType\u0022:\u0022fileOperation\u0022,\u0022config\u0022:{\u0022operation\u0022:\u0022copy\u0022,\u0022path\u0022:\u0022C:\\\\NodePilot\\\\logs\\\\daily-health.log\u0022,\u0022destination\u0022:\u0022D:\\\\OpsArchive\\\\daily-health.log\u0022},\u0022outputVariable\u0022:\u0022Copy_Daily_Log\u0022,\u0022targetMachineId\u0022:null,\u0022disabled\u0022:false}},{\u0022id\u0022:\u002270707070-0000-0000-0000-000000000003\u0022,\u0022type\u0022:\u0022activity\u0022,\u0022position\u0022:{\u0022x\u0022:520,\u0022y\u0022:60},\u0022data\u0022:{\u0022label\u0022:\u0022Verify Archive\u0022,\u0022description\u0022:null,\u0022activityType\u0022:\u0022runScript\u0022,\u0022config\u0022:{\u0022script\u0022:\u0022$archive = \\u0027D:\\\\OpsArchive\\\\daily-health.log\\u0027\\nif (-not (Test-Path -LiteralPath $archive)) { throw \\u0027Archive not found\\u0027 }\\nGet-Item -LiteralPath $archive | Select-Object Name, Length, LastWriteTime\u0022,\u0022engine\u0022:\u0022powershell\u0022,\u0022timeoutSeconds\u0022:300},\u0022outputVariable\u0022:\u0022Verify_Archive\u0022,\u0022targetMachineId\u0022:null,\u0022disabled\u0022:false}}],\u0022edges\u0022:[{\u0022id\u0022:\u0022e0-70707070-0000-0000-0000-000000000001-70707070-0000-0000-0000-000000000002\u0022,\u0022source\u0022:\u002270707070-0000-0000-0000-000000000001\u0022,\u0022target\u0022:\u002270707070-0000-0000-0000-000000000002\u0022,\u0022type\u0022:\u0022labeled\u0022,\u0022data\u0022:{\u0022label\u0022:\u0022Start archive\u0022,\u0022disabled\u0022:false,\u0022condition\u0022:null,\u0022conditionExpression\u0022:null}},{\u0022id\u0022:\u0022e1-70707070-0000-0000-0000-000000000002-70707070-0000-0000-0000-000000000003\u0022,\u0022source\u0022:\u002270707070-0000-0000-0000-000000000002\u0022,\u0022target\u0022:\u002270707070-0000-0000-0000-000000000003\u0022,\u0022type\u0022:\u0022labeled\u0022,\u0022data\u0022:{\u0022label\u0022:\u0022Verify copy\u0022,\u0022disabled\u0022:false,\u0022condition\u0022:null,\u0022conditionExpression\u0022:null}}]}",
+      "activityCount": 3,
+      "heuristicCount": 0,
+      "fallbackCount": 0,
+      "folderPath": [],
+      "childReferences": [],
+      "maxConcurrentExecutions": null
+    }
+  ],
+  "variables": [],
+  "warnings": [
+    "\u0027Archive Daily Logs\u0027 / \u0027Verify Archive\u0027: no target machine in the export \u2014 this step will run on the NodePilot host, not on a remote server.",
+    "\u0027Archive Daily Logs\u0027: 3 activities, 2 links. Heuristic mappings: 0, Placeholder fallbacks: 0.",
+    "\u0027Archive Daily Logs\u0027: [missing-target-machine] Remote activity \u0027fileOperation\u0027 on \u0027Copy Daily Log\u0027 has no targetMachineId \u2014 it cannot run against a host."
+  ],
+  "errors": []
+}
