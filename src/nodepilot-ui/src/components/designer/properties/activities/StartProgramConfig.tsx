@@ -1,16 +1,25 @@
 import { useTranslation } from 'react-i18next';
 import { Field, VariableInsertField, type ConfigProps } from '../shared';
+import { resolveKnownLauncher } from '../../../../lib/knownProgramLaunchers';
 
 export function StartProgramConfig({ config, onUpdate, upstreamVars = [] }: Readonly<ConfigProps>) {
   const { t } = useTranslation('properties');
   const useShell = (config.useShellExecute as boolean) || false;
   const waitForExit = config.waitForExit !== false;
+  // The engine needs an absolute path — it never searches the target's PATH. Complete the few
+  // unambiguous launcher names on blur rather than while typing, so the field does not rewrite
+  // itself mid-keystroke.
+  const completeLauncher = (value: string) => {
+    const resolved = resolveKnownLauncher(value);
+    if (resolved) onUpdate({ filePath: resolved });
+  };
   return (
     <>
       <VariableInsertField
         label={t('config.startProgram.filePath')}
         value={(config.filePath as string) || ''}
         onChange={(v) => onUpdate({ filePath: v })}
+        onBlur={completeLauncher}
         upstreamVars={upstreamVars}
         placeholder={'C:\\Program Files\\7-Zip\\7z.exe'}
         mono
@@ -44,9 +53,9 @@ export function StartProgramConfig({ config, onUpdate, upstreamVars = [] }: Read
           <div className="flex-1">
             <div className="text-sm font-medium text-on-surface">{t('config.startProgram.useShellExecute')}</div>
             <div className="text-[11px] text-on-surface-variant leading-snug">
-              {useShell
-                ? 'Über OS-Shell starten — nötig für Dateiassoziationen (.xlsx, .pdf) und UI-Apps. Stdout/Stderr werden NICHT eingefangen.'
-                : 'Direkt starten mit stdout/stderr-Capture. Für Konsolen-Programme (7z.exe, robocopy, powershell.exe).'}
+              {t(useShell
+                ? 'config.startProgram.useShellExecuteOnHint'
+                : 'config.startProgram.useShellExecuteOffHint')}
             </div>
           </div>
         </label>
@@ -61,12 +70,12 @@ export function StartProgramConfig({ config, onUpdate, upstreamVars = [] }: Read
           />
           <div className="flex-1">
             <div className="text-sm font-medium text-on-surface">
-              {waitForExit ? 'Auf Beendigung warten' : 'Fire-and-forget'}
+              {t(waitForExit ? 'config.startProgram.waitForExitOn' : 'config.startProgram.waitForExitOff')}
             </div>
             <div className="text-[11px] text-on-surface-variant leading-snug">
-              {waitForExit
-                ? 'Step blockiert bis Prozess fertig. ExitCode + Output stehen downstream zur Verfügung.'
-                : 'Prozess wird gestartet, Step succeedet sofort. Nur PID wird zurückgegeben.'}
+              {t(waitForExit
+                ? 'config.startProgram.waitForExitOnHint'
+                : 'config.startProgram.waitForExitOffHint')}
             </div>
           </div>
         </label>

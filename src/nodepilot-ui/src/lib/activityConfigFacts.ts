@@ -1,5 +1,6 @@
 import i18n from '../i18n';
 import { ACTIVITY_TYPES } from './activityTypes';
+import { isFullyQualifiedLocalPath, isUncPath, resolveKnownLauncher } from './knownProgramLaunchers';
 
 export type ActivityConfig = Record<string, unknown>;
 export type RequiredConfigChecker = (config: ActivityConfig) => string | null;
@@ -178,7 +179,16 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
     smartDefaults: inheritExecutionContext,
   },
   [ACTIVITY_TYPES.START_PROGRAM]: {
-    requiredConfig: (config) => !hasValueOrTemplate(config.filePath) ? 'Dateipfad (filePath) ist erforderlich.' : null,
+    requiredConfig: (config) => {
+      const filePath = config.filePath;
+      if (!hasValueOrTemplate(filePath)) return 'Dateipfad (filePath) ist erforderlich.';
+      // A template resolves at runtime; anything else has to satisfy the engine's path guard now
+      // rather than at the first run. resolveKnownLauncher covers what the field completes on blur.
+      if (isTemplate(filePath) || typeof filePath !== 'string') return null;
+      if (isUncPath(filePath)) return i18n.t('activities:validation.startProgramUncPath');
+      if (isFullyQualifiedLocalPath(filePath) || resolveKnownLauncher(filePath)) return null;
+      return i18n.t('activities:validation.startProgramNotAbsolute');
+    },
     smartDefaults: inheritExecutionContext,
   },
   [ACTIVITY_TYPES.POWER_MANAGEMENT]: {

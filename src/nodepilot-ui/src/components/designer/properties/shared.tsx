@@ -150,11 +150,14 @@ export function SwitchField({ label, stateText, checked, onChange, disabled = fa
 }
 
 export function VariableInsertField({
-  label, value, onChange, upstreamVars, multiline = false, rows = 3, placeholder, mono = false, compact = false, extraPickers,
+  label, value, onChange, onBlur, upstreamVars, multiline = false, rows = 3, placeholder, mono = false, compact = false, extraPickers,
 }: Readonly<{
   label: string;
   value: string;
   onChange: (val: string) => void;
+  /** Runs when the field loses focus, with the current value. For normalising what was typed
+   * (completing a bare launcher name to its absolute path) without fighting the keystrokes. */
+  onBlur?: (val: string) => void;
   upstreamVars: UpstreamVariable[];
   multiline?: boolean;
   rows?: number;
@@ -249,7 +252,7 @@ export function VariableInsertField({
             onSelect={autocomplete.refresh}
             onKeyUp={autocomplete.refresh}
             onKeyDown={autocomplete.handleKeyDown}
-            onBlur={() => setTimeout(autocomplete.close, 150) /* small delay so onMouseDown on the dropdown item still fires first */}
+            onBlur={(e) => { onBlur?.(e.target.value); setTimeout(autocomplete.close, 150) /* small delay so onMouseDown on the dropdown item still fires first */; }}
             className={`input-field ${mono ? 'font-mono text-xs' : ''}`}
             rows={rows}
             placeholder={placeholder}
@@ -263,7 +266,7 @@ export function VariableInsertField({
             onSelect={autocomplete.refresh}
             onKeyUp={autocomplete.refresh}
             onKeyDown={autocomplete.handleKeyDown}
-            onBlur={() => setTimeout(autocomplete.close, 150)}
+            onBlur={(e) => { onBlur?.(e.target.value); setTimeout(autocomplete.close, 150); }}
             className={`input-field ${mono ? 'font-mono text-xs' : ''}`}
             placeholder={placeholder}
           />

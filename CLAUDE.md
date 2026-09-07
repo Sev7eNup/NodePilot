@@ -360,6 +360,7 @@ Scoped Testing übersieht genau eine Fehlerklasse — die Parity-/Drift-Tests, d
 | Angefasst | Guard-Test | Projekt |
 |---|---|---|
 | Activity + `activity-config-reference.json` + Frontend-Katalog-Spiegel | `ActivityCatalogTests`, `ActivityConfigReferenceTests`, `ActivityCatalogFrontendSyncTests` | Engine.Tests |
+| `KnownProgramLaunchers` / `lib/knownProgramLaunchers.ts` | `KnownProgramLaunchersFrontendSyncTests` | Engine.Tests |
 | Neue EF-Migration / Designer-Postprocessing | `MigrationDriftTests` | Data.Tests |
 | `*.csproj`-Referenzen / Dep-Graph | `DependencyDirectionTests` | Api.Tests |
 | Neuer Audit-Code | `AuditActionsCatalogTests` | Api.Tests |

@@ -358,6 +358,14 @@ die den Typ verfälscht, und keine, die den Befehl verliert. Ein bekannter Launc
 bliebe ein Knoten stehen, den die Engine ablehnt (`PATH` wird nicht durchsucht). `filePath` verträgt
 Leerzeichen (PowerShell-Literal an `$psi.FileName`); verlangt ist Absolutheit.
 
+**Dieselbe Vervollständigung greift beim Autoren im Designer.** Die Launcher-Liste liegt einmal in
+`NodePilot.Core.Activities.KnownProgramLaunchers` (Spiegel `lib/knownProgramLaunchers.ts`, Guard
+`KnownProgramLaunchersFrontendSyncTests`); das `filePath`-Feld ersetzt einen blanken Namen **beim
+Verlassen des Feldes**, nicht beim Tippen, und alles andere Nicht-Absolute meldet
+`checkRequiredActivityConfig` sofort statt erst zur Laufzeit — UNC mit eigener Begründung, weil
+`PathGuard` es unabhängig von der Absolutheit ablehnt. Der Engine-Vertrag bleibt unverändert: die
+gespeicherte Definition trägt weiterhin ausschließlich absolute Pfade.
+
 **Zwei Fallen im Zerlegen, beide behoben.** (1) Die Endungssuche lief **typ-weise** — erst `.exe`
 über den ganzen String, dann `.cmd` —, also schlug ein `.exe` irgendwo hinten ein früheres `.cmd`:
 `C:\Tools\wrapper.cmd C:\Payload\setup.exe /S` trennte am Payload. Jetzt positionsweise, und eine

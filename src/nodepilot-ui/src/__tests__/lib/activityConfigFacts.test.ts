@@ -385,3 +385,42 @@ describe('summarizeActivityConfig', () => {
     });
   });
 });
+
+/**
+ * `startProgram` needs a fully qualified filePath: the engine launches through CreateProcess and
+ * never searches the target's PATH. The check runs while authoring so a bare name is not first
+ * discovered at runtime — except for the few launchers the field completes on blur.
+ */
+describe('checkRequiredActivityConfig / startProgram filePath', () => {
+  it('missingFilePath_reportsRequired', () => {
+    expect(checkRequiredActivityConfig('startProgram', {})).toContain('erforderlich');
+  });
+
+  it('absolutePath_accepted', () => {
+    expect(checkRequiredActivityConfig('startProgram', { filePath: 'C:\\Tools\\7z.exe' })).toBeNull();
+  });
+
+  it('knownLauncher_accepted_becauseTheFieldCompletesIt', () => {
+    expect(checkRequiredActivityConfig('startProgram', { filePath: 'cmd.exe' })).toBeNull();
+    expect(checkRequiredActivityConfig('startProgram', { filePath: 'powershell' })).toBeNull();
+  });
+
+  it('template_accepted_becauseItResolvesAtRuntime', () => {
+    expect(checkRequiredActivityConfig('startProgram', { filePath: '{{step-1.output}}' })).toBeNull();
+  });
+
+  it('bareName_reportsNotAbsolute', () => {
+    const message = checkRequiredActivityConfig('startProgram', { filePath: '7z.exe' });
+    expect(message).not.toBeNull();
+    expect(message).toMatch(/absolut/i);
+  });
+
+  it('relativePath_reportsNotAbsolute', () => {
+    expect(checkRequiredActivityConfig('startProgram', { filePath: '.\\tools\\7z.exe' })).not.toBeNull();
+  });
+
+  it('uncPath_reportsItsOwnReason', () => {
+    const message = checkRequiredActivityConfig('startProgram', { filePath: '\\\\srv\\share\\7z.exe' });
+    expect(message).toMatch(/UNC/i);
+  });
+});

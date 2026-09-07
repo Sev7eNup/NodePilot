@@ -67,5 +67,9 @@
     "junctionWaitAll": "Auf alle Branches warten",
     "junctionWaitAny": "Auf einen Branch warten",
     "junctionWaitN": "Auf {{count}} Branches warten"
+  },
+  "validation": {
+    "startProgramNotAbsolute": "Dateipfad muss ein absoluter lokaler Pfad sein, z. B. C:\\Tools\\app.exe — der PATH der Zielmaschine wird nicht durchsucht.",
+    "startProgramUncPath": "UNC-Pfade lehnt die Engine ab. Die Freigabe auf der Zielmaschine erst einbinden und den lokalen Pfad verwenden."
   }
 }

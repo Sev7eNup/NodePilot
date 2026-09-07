@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
+import i18n from '../../../../i18n';
 import { Field, VariableInsertField, type ConfigProps } from '../shared';
 import { FieldGrid } from '../panelChrome';
 
@@ -107,10 +108,12 @@ export function WmiQueryConfig({ config, onUpdate, upstreamVars = [] }: Readonly
             <p className="text-[11px] font-label text-red-600 dark:text-red-400 mt-1">{captureError}</p>
           ) : (
             <p className="text-[11px] font-label text-on-surface-variant mt-1">
-              Macht die ersten Zeile als <code className="font-mono">{'{{step.param.<Name>}}'}</code> verfügbar
-              (plus auto-emittiertes <code className="font-mono">param.count</code>). Property-Namen müssen
-              gültige CIM-Identifier sein. Ohne dieses Feld bleibt nur die formatierte Text-Ausgabe in
-              <code className="font-mono"> .output</code>.
+              <Trans
+                t={t}
+                i18nKey="config.wmiQuery.captureHint"
+                values={{ reference: '{{step.param.<Name>}}' }}
+                components={{ code: <code className="font-mono" /> }}
+              />
             </p>
           )}
         </Field>
@@ -127,7 +130,7 @@ export function WmiQueryConfig({ config, onUpdate, upstreamVars = [] }: Readonly
               placeholder="Create"
             />
             <VariableInsertField
-              label="Filter (für Instanz-Methoden)"
+              label={t('config.wmiQuery.methodFilter')}
               value={(config.filter as string) || ''}
               onChange={(v) => onUpdate({ filter: v })}
               upstreamVars={upstreamVars}
@@ -153,7 +156,7 @@ export function WmiQueryConfig({ config, onUpdate, upstreamVars = [] }: Readonly
               <p className="text-[11px] font-label text-red-600 dark:text-red-400 mt-1">{argumentsError}</p>
             ) : (
               <p className="text-[11px] font-label text-on-surface-variant mt-1">
-                Schlüssel = Methodenparameter (Buchstaben/Ziffern/_, nicht mit Ziffer beginnend). Werte: String, Zahl, true/false, null.
+                {t('config.wmiQuery.argumentsHint')}
               </p>
             )}
           </Field>
@@ -194,18 +197,18 @@ function validateCaptureList(raw: string): string | null {
   const seen = new Set<string>();
   for (const e of entries) {
     if (!CIM_IDENTIFIER.test(e)) {
-      return `Ungültiger Property-Name: "${e}" (Buchstaben/Ziffern/_, nicht mit Ziffer beginnend).`;
+      return i18n.t('properties:config.wmiQuery.errorInvalidProperty', { name: e });
     }
     if (e.toLowerCase() === 'count') {
-      return `"count" ist reserviert — die Activity emittiert es automatisch als Row-Total.`;
+      return i18n.t('properties:config.wmiQuery.errorCountReserved');
     }
     if (seen.has(e)) {
-      return `Doppelter Eintrag: "${e}".`;
+      return i18n.t('properties:config.wmiQuery.errorDuplicate', { name: e });
     }
     seen.add(e);
   }
   if (entries.length > 50) {
-    return `Zu viele Properties (${entries.length}); Limit ist 50.`;
+    return i18n.t('properties:config.wmiQuery.errorTooMany', { count: entries.length });
   }
   return null;
 }
@@ -217,14 +220,14 @@ function validateArgumentsJson(raw: string): string | null {
   try {
     parsed = JSON.parse(trimmed);
   } catch (e) {
-    return `Kein gültiges JSON: ${(e as Error).message}`;
+    return i18n.t('properties:config.wmiQuery.errorInvalidJson', { message: (e as Error).message });
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return 'Argumente müssen ein JSON-Objekt sein (Key/Value-Paare).';
+    return i18n.t('properties:config.wmiQuery.errorArgumentsNotObject');
   }
   for (const key of Object.keys(parsed as Record<string, unknown>)) {
     if (!/^[A-Za-z_]\w*$/.test(key)) {
-      return `Ungültiger Argument-Name: "${key}" (nur Buchstaben/Ziffern/_, nicht mit Ziffer beginnend).`;
+      return i18n.t('properties:config.wmiQuery.errorInvalidArgument', { name: key });
     }
   }
   return null;
