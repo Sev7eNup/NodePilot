@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { Field, VariableInsertField, type ConfigProps } from '../shared';
 import { FieldGrid } from '../panelChrome';
 
@@ -73,8 +73,7 @@ export function PowerManagementConfig({ config, onUpdate, upstreamVars = [] }: R
       {supportsDelay && (
         <>
           <p className="text-[11px] text-on-surface-variant leading-snug">
-            Bei Targets, auf denen NodePilot selbst läuft, empfiehlt sich ein Delay &gt; 0,
-            damit der Step sauber zurückkehren kann bevor das OS herunterfährt.
+            {t('config.powerManagement.delayHint')}
           </p>
 
           <Field label={t('config.powerManagement.forceClose')}>
@@ -84,7 +83,13 @@ export function PowerManagementConfig({ config, onUpdate, upstreamVars = [] }: R
                 checked={force}
                 onChange={(e) => onUpdate({ force: e.target.checked })}
               />
-              <span>Schließe offene Anwendungen ohne Rückfrage (<code className="font-mono text-xs">/f</code>)</span>
+              <span>
+                <Trans
+                  t={t}
+                  i18nKey="config.powerManagement.forceCloseHint"
+                  components={{ code: <code className="font-mono text-xs" /> }}
+                />
+              </span>
             </label>
           </Field>
 

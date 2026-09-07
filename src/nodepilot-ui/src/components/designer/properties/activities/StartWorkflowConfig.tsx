@@ -30,10 +30,10 @@ export function StartWorkflowConfig({ config, onUpdate, upstreamVars = [], onOpe
             type="button"
             onClick={onOpenWorkflowPicker}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary-fixed text-primary hover:bg-primary-fixed-dim text-xs font-label font-semibold transition-colors flex-1 justify-center"
-            title="Workflow aus der Library auswählen"
+            title={t('config.startWorkflow.pickFromLibraryTitle')}
           >
             <FolderTree size={13} />
-            Aus Library wählen
+            {t('config.startWorkflow.pickFromLibrary')}
           </button>
         )}
         <button
@@ -41,11 +41,11 @@ export function StartWorkflowConfig({ config, onUpdate, upstreamVars = [], onOpe
           onClick={() => onPreviewSubWorkflow(trimmed)}
           disabled={!isPreviewable}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 text-xs font-label font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-1 justify-center"
-          title={isPreviewable
-            ? 'Sub-Workflow als read-only Vorschau anzeigen'
+          title={t(isPreviewable
+            ? 'config.startWorkflow.previewAvailable'
             : trimmed.startsWith('{{')
-              ? 'Vorschau nicht möglich — Referenz ist eine Variable und löst sich erst zur Laufzeit auf'
-              : 'Setze zuerst einen Workflow-Namen oder eine GUID'}
+              ? 'config.startWorkflow.previewIsVariable'
+              : 'config.startWorkflow.previewNeedsTarget')}
           data-testid="subworkflow-preview-button"
         >
           <View size={13} />
@@ -69,12 +69,12 @@ export function StartWorkflowConfig({ config, onUpdate, upstreamVars = [], onOpe
           />
           <div className="flex-1">
             <div className="text-sm font-medium text-on-surface">
-              {waitForCompletion ? 'Synchron (warten)' : 'Fire-and-forget'}
+              {t(waitForCompletion ? 'config.startWorkflow.waitOn' : 'config.startWorkflow.waitOff')}
             </div>
             <div className="text-[11px] text-on-surface-variant leading-snug">
-              {waitForCompletion
-                ? 'Dieser Step wartet bis der Child-Workflow fertig ist. Dessen returnData steht downstream zur Verfügung. Timeout greift unten.'
-                : 'Child-Workflow wird angestoßen und läuft im Hintergrund weiter. Dieser Step succeedet sofort — nur executionId wird zurückgegeben.'}
+              {t(waitForCompletion
+                ? 'config.startWorkflow.waitOnHint'
+                : 'config.startWorkflow.waitOffHint')}
             </div>
           </div>
         </label>
@@ -110,8 +110,8 @@ export function StartWorkflowConfig({ config, onUpdate, upstreamVars = [], onOpe
             </div>
           )}
           <ParameterTable
-            label="Parameter"
-            emptyMessage="Keine Parameter. Der Child-Workflow erhält nur den call-depth-Zähler."
+            label={t('config.startWorkflow.parameters')}
+            emptyMessage={t('config.startWorkflow.parametersEmpty')}
             parameters={parameters}
             onChange={(next) => onUpdate({ parameters: next })}
             upstreamVars={upstreamVars}

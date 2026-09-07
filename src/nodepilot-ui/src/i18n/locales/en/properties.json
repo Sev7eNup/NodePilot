@@ -183,7 +183,11 @@
       "compressionLevel": "Compression Level",
       "source": "Source",
       "destination": "Destination",
-      "overwrite": "Overwrite"
+      "overwrite": "Overwrite",
+      "force": "Force (overwrites the destination)",
+      "forceOnHint": "An existing destination is overwritten.",
+      "forceOffHint": "Fails when the destination exists.",
+      "compressNote": "Note: <code>Compress-Archive</code> is limited to roughly 4 GB in total. Use an external tool for larger data. A source containing a literal <code>[</code> or <code>]</code> is read as a glob — avoid such paths."
     },
     "serviceManagement": {
       "serviceName": "Service name",
@@ -244,7 +248,15 @@
       "forceOff": "Fails if the task already exists.",
       "runAsHint": "Note: domain users work without a password only if resource-based constrained delegation is set up. Built-ins (<0>SYSTEM</0>, <1>NETWORK SERVICE</1>, <2>LOCAL SERVICE</2>) need no password.",
       "getOutputHint": "Output: <0 />, <1 /> (0 = success), <2 />.",
-      "weekdayShort": ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+      "weekdayShort": [
+        "Mo",
+        "Tu",
+        "We",
+        "Th",
+        "Fr",
+        "Sa",
+        "Su"
+      ]
     },
     "registry": {
       "operation": "Operation",
@@ -280,7 +292,17 @@
       "namespace": "Namespace",
       "filter": "Filter",
       "query": "Query",
-      "methodName": "Method name"
+      "methodName": "Method name",
+      "captureHint": "Exposes the first row as <code>{{reference}}</code> (plus an automatically emitted <code>param.count</code>). Property names must be valid CIM identifiers. Without this field only the formatted text output in <code>.output</code> remains.",
+      "methodFilter": "Filter (for instance methods)",
+      "argumentsHint": "Keys are method parameters (letters/digits/_, not starting with a digit). Values: string, number, true/false, null.",
+      "errorInvalidProperty": "Invalid property name: \"{{name}}\" (letters/digits/_, not starting with a digit).",
+      "errorCountReserved": "\"count\" is reserved — the activity emits it automatically as the row total.",
+      "errorDuplicate": "Duplicate entry: \"{{name}}\".",
+      "errorTooMany": "Too many properties ({{count}}); the limit is 50.",
+      "errorInvalidJson": "Not valid JSON: {{message}}",
+      "errorArgumentsNotObject": "Arguments must be a JSON object (key/value pairs).",
+      "errorInvalidArgument": "Invalid argument name: \"{{name}}\" (letters/digits/_ only, not starting with a digit)."
     },
     "startProgram": {
       "filePath": "File Path",
@@ -288,7 +310,13 @@
       "workingDirectory": "Working Directory (optional)",
       "waitForExit": "Wait for exit",
       "successExitCodes": "Success Exit Codes (comma-separated)",
-      "useShellExecute": "Use Shell Execute"
+      "useShellExecute": "Use Shell Execute",
+      "useShellExecuteOnHint": "Launch through the OS shell — needed for file associations (.xlsx, .pdf) and UI apps. Stdout/stderr are NOT captured.",
+      "useShellExecuteOffHint": "Launch directly with stdout/stderr capture. For console programs (7z.exe, robocopy, powershell.exe).",
+      "waitForExitOn": "Wait for exit",
+      "waitForExitOff": "Fire-and-forget",
+      "waitForExitOnHint": "The step blocks until the process finishes. Exit code and output are available downstream.",
+      "waitForExitOffHint": "The process is started and the step succeeds immediately. Only the PID is returned."
     },
     "powerManagement": {
       "action": "Action",
@@ -301,7 +329,9 @@
       "force": "Force",
       "forceClose": "Force close running apps",
       "message": "Message (optional)",
-      "messagePlaceholder": "Scheduled maintenance — please save your work"
+      "messagePlaceholder": "Scheduled maintenance — please save your work",
+      "delayHint": "On targets running NodePilot itself, a delay greater than 0 is advisable so the step can return cleanly before the OS shuts down.",
+      "forceCloseHint": "Close open applications without asking (<code>/f</code>)"
     },
     "waitForCondition": {
       "scriptLabel": "Condition script (PowerShell)",
@@ -315,7 +345,19 @@
       "snippetFileExists": "File exists",
       "snippetHttpOk": "HTTP 2xx",
       "maxAttempts": "Max attempts",
-      "engine": "Engine"
+      "engine": "Engine",
+      "conditionType": "Condition type",
+      "modeScript": "Free-form PowerShell expression (no templates)",
+      "modePathExists": "File/folder exists (Test-Path)",
+      "modeServiceRunning": "Service is running (Get-Service)",
+      "modePortOpen": "TCP port open (TcpClient)",
+      "modeHttpOk": "HTTP 2xx (Invoke-WebRequest)",
+      "modeHint": "Typed modes accept <code>{{reference}}</code> in the fields below — the engine quotes the values before the PowerShell call. Script mode is free-form but forbids templates, which would be an injection vector.",
+      "path": "Path",
+      "serviceName": "Service name",
+      "host": "Host",
+      "port": "Port (1..65535)",
+      "intervalHint": "Time between two polls. The timeout (total runtime) is set above in the <em>Timeout</em> field — 300 s by default."
     },
     "restApi": {
       "url": "URL",
@@ -528,7 +570,17 @@
         "multipleSourceTooltip": "Multiple returnData nodes contribute this key — only one wins per run",
         "staleKeysHeader": "Parameters being sent that are not in the contract — child will ignore them",
         "removeStaleKey": "remove"
-      }
+      },
+      "pickFromLibraryTitle": "Pick a workflow from the library",
+      "pickFromLibrary": "Pick from library",
+      "previewAvailable": "Show the sub-workflow as a read-only preview",
+      "previewIsVariable": "No preview — the reference is a variable and only resolves at runtime",
+      "previewNeedsTarget": "Set a workflow name or GUID first",
+      "waitOn": "Synchronous (wait)",
+      "waitOff": "Fire-and-forget",
+      "waitOnHint": "This step waits until the child workflow finishes. Its returnData is available downstream. The timeout below applies.",
+      "waitOffHint": "The child workflow is started and keeps running in the background. This step succeeds immediately — only the executionId is returned.",
+      "parametersEmpty": "No parameters. The child workflow receives only the call-depth counter."
     },
     "forEach": {
       "items": "Items",

@@ -14,6 +14,21 @@ exhaustive.
 
 ### Added
 
+- **Six activity property panels stop rendering German to English users.** The i18n sweep left
+  literals behind in the `startProgram`, `startWorkflow`, `waitForCondition`, `wmiQuery`,
+  `zipOperation` and `powerManagement` configs — checkbox explanations, condition-type options,
+  field labels and the WMI validation messages. All of them now go through translation keys, with
+  the markup-bearing hints using `Trans` so the inline `<code>` elements survive translation.
+
+- **`startProgram` accepts `cmd.exe` again — by completing it, not by loosening the rule.** The
+  engine launches through CreateProcess and never searches the target's PATH, so `filePath` has to
+  be absolute: a bare name would resolve differently per machine and could not be checked against
+  `FileSystemOperation:AllowedRoots`. That was only discoverable at runtime. The designer now
+  completes the four unambiguous system launchers (`cmd`, `powershell`, `cscript`, `wscript`) to
+  their absolute paths when the field loses focus — the same list and the same rule the SCOrch
+  import has always used — and reports anything else that is not absolute while authoring, with its
+  own message for a UNC path. The stored definition still carries nothing but absolute paths.
+
 - **`np auth login --windows` — and with it a Switcher that stops asking for a password.** The
   Kerberos endpoint existed but was reachable only from a browser, because it returns the JWT
   exclusively in the httpOnly session cookie. A native client can read that cookie, so the CLI now

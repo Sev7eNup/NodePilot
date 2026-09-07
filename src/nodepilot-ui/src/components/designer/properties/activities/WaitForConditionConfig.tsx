@@ -1,4 +1,4 @@
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { Field, VariableInsertField, type ConfigProps } from '../shared';
 
 type ConditionType = 'script' | 'pathExists' | 'serviceRunning' | 'portOpen' | 'httpOk';
@@ -18,22 +18,25 @@ export function WaitForConditionConfig({ config, onUpdate, upstreamVars = [] }: 
 
   return (
     <>
-      <Field label="Bedingungstyp">
+      <Field label={t('config.waitForCondition.conditionType')}>
         <select
           value={conditionType}
           onChange={(e) => onUpdate({ conditionType: e.target.value as ConditionType })}
           className="input-field"
         >
-          <option value="script">Free-form PowerShell-Ausdruck (keine Templates)</option>
-          <option value="pathExists">Datei/Ordner existiert (Test-Path)</option>
-          <option value="serviceRunning">Service läuft (Get-Service)</option>
-          <option value="portOpen">TCP-Port offen (TcpClient)</option>
-          <option value="httpOk">HTTP 2xx (Invoke-WebRequest)</option>
+          <option value="script">{t('config.waitForCondition.modeScript')}</option>
+          <option value="pathExists">{t('config.waitForCondition.modePathExists')}</option>
+          <option value="serviceRunning">{t('config.waitForCondition.modeServiceRunning')}</option>
+          <option value="portOpen">{t('config.waitForCondition.modePortOpen')}</option>
+          <option value="httpOk">{t('config.waitForCondition.modeHttpOk')}</option>
         </select>
         <p className="text-[11px] text-on-surface-variant mt-1">
-          Getypte Modi akzeptieren <code className="font-mono">{'{{upstream.param.x}}'}</code> in den Feldern darunter —
-          die Engine quotet die Werte vor dem PS-Aufruf. Der Script-Modus ist frei, verbietet aber Templates
-          (sonst Injection-Vektor).
+          <Trans
+            t={t}
+            i18nKey="config.waitForCondition.modeHint"
+            values={{ reference: '{{upstream.param.x}}' }}
+            components={{ code: <code className="font-mono" /> }}
+          />
         </p>
       </Field>
 
@@ -42,7 +45,7 @@ export function WaitForConditionConfig({ config, onUpdate, upstreamVars = [] }: 
       )}
       {conditionType === 'pathExists' && (
         <VariableInsertField
-          label="Pfad"
+          label={t('config.waitForCondition.path')}
           value={(config.path as string) || ''}
           onChange={(v) => onUpdate({ path: v })}
           upstreamVars={upstreamVars}
@@ -51,7 +54,7 @@ export function WaitForConditionConfig({ config, onUpdate, upstreamVars = [] }: 
       )}
       {conditionType === 'serviceRunning' && (
         <VariableInsertField
-          label="Service-Name"
+          label={t('config.waitForCondition.serviceName')}
           value={(config.serviceName as string) || ''}
           onChange={(v) => onUpdate({ serviceName: v })}
           upstreamVars={upstreamVars}
@@ -61,13 +64,13 @@ export function WaitForConditionConfig({ config, onUpdate, upstreamVars = [] }: 
       {conditionType === 'portOpen' && (
         <>
           <VariableInsertField
-            label="Host"
+            label={t('config.waitForCondition.host')}
             value={(config.host as string) || ''}
             onChange={(v) => onUpdate({ host: v })}
             upstreamVars={upstreamVars}
             placeholder="db.internal — oder {{discover.param.host}}"
           />
-          <Field label="Port (1..65535)">
+          <Field label={t('config.waitForCondition.port')}>
             <input
               type="number"
               min={1}
@@ -98,8 +101,11 @@ export function WaitForConditionConfig({ config, onUpdate, upstreamVars = [] }: 
           className="input-field"
         />
         <p className="text-[11px] text-on-surface-variant mt-1">
-          Abstand zwischen zwei Polls. Timeout (Gesamtlaufzeit) wird oben über das <em>Timeout</em>-Feld
-          gesetzt — Default 300 s.
+          <Trans
+            t={t}
+            i18nKey="config.waitForCondition.intervalHint"
+            components={{ em: <em /> }}
+          />
         </p>
       </Field>
     </>

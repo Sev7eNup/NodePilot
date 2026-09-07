@@ -429,7 +429,7 @@ internal static class ScorchActivityMapper
         var tokens = head.Split(WhitespaceSeparators, StringSplitOptions.RemoveEmptyEntries);
         if (tokens.Length is 0 or > 2) return false;
         if (tokens.Length == 2 && tokens[1][0] is not ('/' or '-')) return false;
-        return KnownLaunchers.ContainsKey(Path.GetFileNameWithoutExtension(Unquote(tokens[0])));
+        return KnownProgramLaunchers.ByName.ContainsKey(Path.GetFileNameWithoutExtension(Unquote(tokens[0])));
     }
 
     /// <summary>
@@ -441,10 +441,7 @@ internal static class ScorchActivityMapper
     private static string ResolveKnownLauncher(string program, List<string> notes)
     {
         if (program.Length == 0 || HoldsReference(program)) return program;
-        if (program.Contains('\\') || program.Contains('/') || program.Contains(':')) return program;
-
-        var name = Path.GetFileNameWithoutExtension(program);
-        if (!KnownLaunchers.TryGetValue(name, out var resolved)) return program;
+        if (!KnownProgramLaunchers.TryResolve(program, out var resolved)) return program;
 
         notes.Add($"SCOrch 'Run Program' named the launcher '{program}' without a path; imported as " +
                   $"'{resolved}'.");
@@ -521,22 +518,10 @@ internal static class ScorchActivityMapper
     private static bool HoldsReference(string value) =>
         value.Contains("{{", StringComparison.Ordinal) || value.Contains("`d.T.~", StringComparison.Ordinal);
 
-    private const string CmdExe = @"C:\Windows\System32\cmd.exe";
-    private const string PowerShellExe = @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe";
-    private const string CScriptExe = @"C:\Windows\System32\cscript.exe";
-
-    /// <summary>
-    /// Launchers whose bare name is unambiguous on every Windows installation. Deliberately short:
-    /// completing a path the export did not contain is only defensible where there is exactly one
-    /// right answer.
-    /// </summary>
-    private static readonly Dictionary<string, string> KnownLaunchers = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["cmd"] = CmdExe,
-        ["powershell"] = PowerShellExe,
-        ["cscript"] = CScriptExe,
-        ["wscript"] = @"C:\Windows\System32\wscript.exe",
-    };
+    // The launcher set lives in Core, so the designer completes the same names by the same rule.
+    private const string CmdExe = KnownProgramLaunchers.CmdExe;
+    private const string PowerShellExe = KnownProgramLaunchers.PowerShellExe;
+    private const string CScriptExe = KnownProgramLaunchers.CScriptExe;
 
     private static readonly char[] WhitespaceSeparators = [' ', '\t'];
 

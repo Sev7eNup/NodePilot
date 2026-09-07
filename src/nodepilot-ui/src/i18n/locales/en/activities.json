@@ -67,5 +67,9 @@
     "junctionWaitAll": "Wait for all branches",
     "junctionWaitAny": "Wait for any 1 branch",
     "junctionWaitN": "Wait for {{count}} branches"
+  },
+  "validation": {
+    "startProgramNotAbsolute": "File path must be an absolute local path such as C:\\Tools\\app.exe — the target's PATH is not searched.",
+    "startProgramUncPath": "UNC paths are rejected by the engine. Map the share on the target machine first and use the local path."
   }
 }

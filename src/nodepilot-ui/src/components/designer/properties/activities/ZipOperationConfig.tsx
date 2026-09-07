@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { Field, VariableInsertField, type ConfigProps } from '../shared';
 
 const COMPRESSION_LEVELS = ['Optimal', 'Fastest', 'NoCompression'] as const;
@@ -60,7 +60,7 @@ export function ZipOperationConfig({ config, onUpdate, upstreamVars = [] }: Read
         </Field>
       )}
 
-      <Field label="Force (überschreibt Ziel)">
+      <Field label={t('config.zipOperation.force')}>
         <label className="flex items-start gap-2 cursor-pointer select-none py-1">
           <input
             type="checkbox"
@@ -69,17 +69,18 @@ export function ZipOperationConfig({ config, onUpdate, upstreamVars = [] }: Read
             className="mt-0.5 w-4 h-4 rounded border-outline-variant accent-primary"
           />
           <div className="flex-1 text-sm text-on-surface">
-            {force ? 'Existierendes Ziel wird überschrieben.' : 'Schlägt fehl wenn Ziel existiert.'}
+            {t(force ? 'config.zipOperation.forceOnHint' : 'config.zipOperation.forceOffHint')}
           </div>
         </label>
       </Field>
 
       {operation === 'compress' && (
         <div className="text-[11px] text-on-surface-variant leading-snug">
-          Hinweis: <code className="bg-surface-high px-1 rounded">Compress-Archive</code> ist auf
-          {' '}~4&nbsp;GB Gesamtgröße limitiert. Für größere Datenmengen externes Tool nutzen.
-          Source mit literalen <code className="bg-surface-high px-1 rounded">[</code>/<code className="bg-surface-high px-1 rounded">]</code>
-          {' '}würde als Glob interpretiert — solche Pfade meiden.
+          <Trans
+            t={t}
+            i18nKey="config.zipOperation.compressNote"
+            components={{ code: <code className="bg-surface-high px-1 rounded" /> }}
+          />
         </div>
       )}
     </>

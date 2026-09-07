@@ -177,7 +177,7 @@ describe('StartProgramConfig', () => {
   // PropertiesPanel, which only shows when `config.waitForExit` is set.
   it('rendersWithEmptyConfig_waitForExitDefaultTrue', () => {
     wrap(<StartProgramConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} />);
-    expect(screen.getByText(/Auf Beendigung warten/i)).toBeInTheDocument();
+    expect(screen.getByText(/Wait for exit/i)).toBeInTheDocument();
     expect(screen.getByText(/Success Exit Codes/i)).toBeInTheDocument();
     expect(screen.queryByText('Timeout (Sekunden)')).not.toBeInTheDocument();
   });
@@ -195,6 +195,24 @@ describe('StartProgramConfig', () => {
     // First checkbox is useShellExecute, second is waitForExit.
     fireEvent.click(checkboxes[0]);
     expect(onUpdate).toHaveBeenCalledWith({ useShellExecute: true });
+  });
+
+  // The engine never searches the target's PATH, so a bare launcher name would fail at runtime.
+  // The field completes the unambiguous ones on blur rather than while typing.
+  it('bareLauncherName_completedToAbsolutePathOnBlur', () => {
+    const onUpdate = vi.fn();
+    wrap(<StartProgramConfig config={{ filePath: 'cmd.exe' }} onUpdate={onUpdate} upstreamVars={[]} />);
+
+    fireEvent.blur(screen.getByDisplayValue('cmd.exe'));
+    expect(onUpdate).toHaveBeenCalledWith({ filePath: 'C:\\Windows\\System32\\cmd.exe' });
+  });
+
+  it('otherProgram_leftUntouchedOnBlur', () => {
+    const onUpdate = vi.fn();
+    wrap(<StartProgramConfig config={{ filePath: 'D:\\Tools\\7z.exe' }} onUpdate={onUpdate} upstreamVars={[]} />);
+
+    fireEvent.blur(screen.getByDisplayValue('D:\\Tools\\7z.exe'));
+    expect(onUpdate).not.toHaveBeenCalled();
   });
 });
 
@@ -271,7 +289,7 @@ describe('StartWorkflowConfig', () => {
   // PropertiesPanel, which only shows when `config.waitForCompletion` is set.
   it('renders_waitForCompletionDefaultTrue', () => {
     wrap(<StartWorkflowConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} />);
-    expect(screen.getByText(/Synchron \(warten\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Synchronous \(wait\)/i)).toBeInTheDocument();
     expect(screen.queryByText('Timeout (Sekunden)')).not.toBeInTheDocument();
   });
 
@@ -284,7 +302,7 @@ describe('StartWorkflowConfig', () => {
   it('libraryPickerButton_callsCallback', () => {
     const onPicker = vi.fn();
     wrap(<StartWorkflowConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} onOpenWorkflowPicker={onPicker} />);
-    fireEvent.click(screen.getByRole('button', { name: /Aus Library wählen/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Pick from library/i }));
     expect(onPicker).toHaveBeenCalled();
   });
 });

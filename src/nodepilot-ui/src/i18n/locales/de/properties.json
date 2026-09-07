@@ -183,7 +183,11 @@
       "compressionLevel": "Kompressionsstufe",
       "source": "Quelle",
       "destination": "Ziel",
-      "overwrite": "Überschreiben"
+      "overwrite": "Überschreiben",
+      "force": "Force (überschreibt das Ziel)",
+      "forceOnHint": "Ein existierendes Ziel wird überschrieben.",
+      "forceOffHint": "Schlägt fehl, wenn das Ziel existiert.",
+      "compressNote": "Hinweis: <code>Compress-Archive</code> ist auf rund 4 GB Gesamtgröße limitiert. Für größere Datenmengen ein externes Tool nutzen. Eine Source mit literalem <code>[</code> oder <code>]</code> wird als Glob gelesen — solche Pfade meiden."
     },
     "serviceManagement": {
       "serviceName": "Dienst-Name",
@@ -244,7 +248,15 @@
       "forceOff": "Schlägt fehl wenn Task existiert.",
       "runAsHint": "Hinweis: Domain-User funktionieren nur ohne Passwort wenn Resource-Based-Constrained-Delegation eingerichtet ist. Built-ins (<0>SYSTEM</0>, <1>NETWORK SERVICE</1>, <2>LOCAL SERVICE</2>) brauchen kein Passwort.",
       "getOutputHint": "Output: <0 />, <1 /> (0 = Erfolg), <2 />.",
-      "weekdayShort": ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+      "weekdayShort": [
+        "Mo",
+        "Di",
+        "Mi",
+        "Do",
+        "Fr",
+        "Sa",
+        "So"
+      ]
     },
     "registry": {
       "operation": "Operation",
@@ -280,7 +292,17 @@
       "namespace": "Namespace",
       "filter": "Filter",
       "query": "Query",
-      "methodName": "Methoden-Name"
+      "methodName": "Methoden-Name",
+      "captureHint": "Macht die erste Zeile als <code>{{reference}}</code> verfügbar (plus automatisch emittiertes <code>param.count</code>). Property-Namen müssen gültige CIM-Identifier sein. Ohne dieses Feld bleibt nur die formatierte Text-Ausgabe in <code>.output</code>.",
+      "methodFilter": "Filter (für Instanz-Methoden)",
+      "argumentsHint": "Schlüssel sind Methodenparameter (Buchstaben/Ziffern/_, nicht mit Ziffer beginnend). Werte: String, Zahl, true/false, null.",
+      "errorInvalidProperty": "Ungültiger Property-Name: \"{{name}}\" (Buchstaben/Ziffern/_, nicht mit Ziffer beginnend).",
+      "errorCountReserved": "\"count\" ist reserviert — die Activity emittiert es automatisch als Row-Total.",
+      "errorDuplicate": "Doppelter Eintrag: \"{{name}}\".",
+      "errorTooMany": "Zu viele Properties ({{count}}); das Limit ist 50.",
+      "errorInvalidJson": "Kein gültiges JSON: {{message}}",
+      "errorArgumentsNotObject": "Argumente müssen ein JSON-Objekt sein (Key/Value-Paare).",
+      "errorInvalidArgument": "Ungültiger Argument-Name: \"{{name}}\" (nur Buchstaben/Ziffern/_, nicht mit Ziffer beginnend)."
     },
     "startProgram": {
       "filePath": "Datei-Pfad",
@@ -288,7 +310,13 @@
       "workingDirectory": "Arbeitsverzeichnis (optional)",
       "waitForExit": "Auf Beendigung warten",
       "successExitCodes": "Erfolgreiche Exit-Codes (kommagetrennt)",
-      "useShellExecute": "Shell-Execute verwenden"
+      "useShellExecute": "Shell-Execute verwenden",
+      "useShellExecuteOnHint": "Über die OS-Shell starten — nötig für Dateiassoziationen (.xlsx, .pdf) und UI-Apps. Stdout/Stderr werden NICHT eingefangen.",
+      "useShellExecuteOffHint": "Direkt starten mit stdout/stderr-Capture. Für Konsolen-Programme (7z.exe, robocopy, powershell.exe).",
+      "waitForExitOn": "Auf Beendigung warten",
+      "waitForExitOff": "Fire-and-forget",
+      "waitForExitOnHint": "Der Step blockiert, bis der Prozess fertig ist. Exit-Code und Output stehen downstream zur Verfügung.",
+      "waitForExitOffHint": "Der Prozess wird gestartet, der Step ist sofort erfolgreich. Nur die PID wird zurückgegeben."
     },
     "powerManagement": {
       "action": "Aktion",
@@ -301,7 +329,9 @@
       "force": "Erzwingen",
       "forceClose": "Laufende Apps zwangsweise schließen",
       "message": "Nachricht (optional)",
-      "messagePlaceholder": "Geplante Wartung — bitte speichern Sie Ihre Arbeit"
+      "messagePlaceholder": "Geplante Wartung — bitte speichern Sie Ihre Arbeit",
+      "delayHint": "Bei Targets, auf denen NodePilot selbst läuft, empfiehlt sich ein Delay größer 0, damit der Step sauber zurückkehren kann, bevor das OS herunterfährt.",
+      "forceCloseHint": "Offene Anwendungen ohne Rückfrage schließen (<code>/f</code>)"
     },
     "waitForCondition": {
       "scriptLabel": "Bedingungs-Skript (PowerShell)",
@@ -315,7 +345,19 @@
       "snippetFileExists": "Datei existiert",
       "snippetHttpOk": "HTTP 2xx",
       "maxAttempts": "Max. Versuche",
-      "engine": "Engine"
+      "engine": "Engine",
+      "conditionType": "Bedingungstyp",
+      "modeScript": "Free-form PowerShell-Ausdruck (keine Templates)",
+      "modePathExists": "Datei/Ordner existiert (Test-Path)",
+      "modeServiceRunning": "Service läuft (Get-Service)",
+      "modePortOpen": "TCP-Port offen (TcpClient)",
+      "modeHttpOk": "HTTP 2xx (Invoke-WebRequest)",
+      "modeHint": "Getypte Modi akzeptieren <code>{{reference}}</code> in den Feldern darunter — die Engine quotet die Werte vor dem PowerShell-Aufruf. Der Script-Modus ist frei, verbietet aber Templates, weil das ein Injection-Vektor wäre.",
+      "path": "Pfad",
+      "serviceName": "Service-Name",
+      "host": "Host",
+      "port": "Port (1..65535)",
+      "intervalHint": "Abstand zwischen zwei Polls. Das Timeout (Gesamtlaufzeit) wird oben über das <em>Timeout</em>-Feld gesetzt — Default 300 s."
     },
     "restApi": {
       "url": "URL",
@@ -528,7 +570,17 @@
         "multipleSourceTooltip": "Mehrere returnData-Nodes liefern diesen Key — pro Run wird nur einer gewinnen",
         "staleKeysHeader": "Parameter werden gesendet, sind aber nicht im Contract — Child wird sie ignorieren",
         "removeStaleKey": "entfernen"
-      }
+      },
+      "pickFromLibraryTitle": "Workflow aus der Library auswählen",
+      "pickFromLibrary": "Aus Library wählen",
+      "previewAvailable": "Sub-Workflow als read-only Vorschau anzeigen",
+      "previewIsVariable": "Keine Vorschau — die Referenz ist eine Variable und löst sich erst zur Laufzeit auf",
+      "previewNeedsTarget": "Zuerst einen Workflow-Namen oder eine GUID setzen",
+      "waitOn": "Synchron (warten)",
+      "waitOff": "Fire-and-forget",
+      "waitOnHint": "Dieser Step wartet, bis der Child-Workflow fertig ist. Dessen returnData steht downstream zur Verfügung. Das Timeout unten greift.",
+      "waitOffHint": "Der Child-Workflow wird angestoßen und läuft im Hintergrund weiter. Dieser Step ist sofort erfolgreich — nur die executionId wird zurückgegeben.",
+      "parametersEmpty": "Keine Parameter. Der Child-Workflow erhält nur den call-depth-Zähler."
     },
     "forEach": {
       "items": "Items",
