@@ -43,6 +43,12 @@ exhaustive.
 
 ### Fixed
 
+- **Workflow input data can no longer end up as PowerShell code.** The escaping on the way into a
+  generated script only handled the ASCII quote characters, while the PowerShell parser recognises
+  several typographic ones as well — a value carrying one could leave the literal it was placed in.
+  Quoting now goes through the parser's own escaper, and template substitution resolves each
+  placeholder for the string context it actually sits in. Admins and Operators remain trusted
+  automation authors; this concerns data those authors' workflows consume from elsewhere.
 - **`dup-published-param` no longer fires on names the author cannot change, and no longer blocks
   publishing.** A `registryOperation`'s outputs follow from its `operation` — nobody types
   `value` — so two registry reads on one path collided by construction, exactly the way two

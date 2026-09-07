@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using System.Management.Automation.Language;
 using Microsoft.Extensions.Logging;
 using NodePilot.Engine.Execution;
+using NodePilot.Engine.Security;
 
 namespace NodePilot.Engine.PowerShell;
 
@@ -28,8 +29,8 @@ internal static class PowerShellActivitySupport
     /// <summary>
     /// Resolves <c>{{globals.NAME}}</c>, <c>{{manual.NAME}}</c> and
     /// <c>{{varName.output|error|success|param.x}}</c> in script text. In code context textual
-    /// values become single-quoted PowerShell literals; inside an
-    /// existing PowerShell string/here-string only the string content is escaped. Booleans become
+    /// values become single-quoted PowerShell literals. String content is escaped for its
+    /// parser context; literal here-strings are re-emitted without altering their value. Booleans become
     /// <c>$true</c>/<c>$false</c>. Unresolved references are left verbatim.
     /// </summary>
     public static string ResolveScriptVariables(string script, Dictionary<string, string> variables)
@@ -44,7 +45,7 @@ internal static class PowerShellActivitySupport
         if (expressions.Count == 0)
             return script;
 
-        var contexts = AnalyzeTemplateContexts(script, expressions);
+        var contexts = AnalyzeTemplateContexts(script, expressions, out var coveringTokens, out var nestedStrings);
         var resolved = new StringBuilder(script);
         for (var i = expressions.Count - 1; i >= 0; i--)
         {
@@ -55,6 +56,63 @@ internal static class PowerShellActivitySupport
             // prevents a value containing a newline or comment terminator from becoming code.
             if (context == TemplateContext.Comment)
                 continue;
+
+            if (context == TemplateContext.SingleQuotedString && nestedStrings[i])
+            {
+                var token = coveringTokens[i];
+                var literalSource = script.Substring(token.Extent.StartOffset, token.Text.Length);
+                _ = Parser.ParseInput(literalSource, out var literalTokens, out _);
+                var literal = new StringBuilder(((StringToken)literalTokens[0]).Value);
+                var valueExpressions = FindTemplateExpressions(literal.ToString());
+                var changed = false;
+                foreach (var valueExpression in valueExpressions.AsEnumerable().Reverse())
+                {
+                    var value = ResolveTemplateExpression(valueExpression, variables, TemplateContext.SingleQuotedHereString);
+                    if (value is null) continue;
+                    literal.Remove(valueExpression.Index, valueExpression.Length);
+                    literal.Insert(valueExpression.Index, value);
+                    changed = true;
+                }
+                if (changed)
+                {
+                    resolved.Remove(token.Extent.StartOffset, token.Text.Length);
+                    resolved.Insert(token.Extent.StartOffset, $"({FormatEncodedExpression(literal.ToString())})");
+                }
+                while (i > 0 && ReferenceEquals(coveringTokens[i - 1], token)) i--;
+                continue;
+            }
+
+            if (context == TemplateContext.SingleQuotedHereString)
+            {
+                var token = (StringToken)coveringTokens[i];
+                var content = new StringBuilder(token.Value);
+                var headerLength = token.Text.IndexOfAny(['\r', '\n']) + 1;
+                if (token.Text[headerLength - 1] == '\r' && token.Text[headerLength] == '\n')
+                    headerLength++;
+                var changed = false;
+                // Re-emit the entire literal: here-string terminators cannot be escaped in
+                // place without changing the data. Parser offsets preserve surrounding text.
+                do
+                {
+                    expression = expressions[i];
+                    var value = ResolveTemplateExpression(expression, variables, context);
+                    changed |= value is not null;
+                    var offset = expression.Index - token.Extent.StartOffset - headerLength;
+                    content.Remove(offset, expression.Length);
+                    content.Insert(offset, value ?? expression.Match.Value);
+                    i--;
+                } while (i >= 0 && ReferenceEquals(coveringTokens[i], token));
+                i++;
+
+                if (changed)
+                {
+                    resolved.Remove(token.Extent.StartOffset, token.Text.Length);
+                    resolved.Insert(token.Extent.StartOffset, nestedStrings[i]
+                        ? $"({FormatEncodedExpression(content.ToString())})"
+                        : PowerShellQuoter.Literal(content.ToString()));
+                }
+                continue;
+            }
 
             var replacement = ResolveTemplateExpression(expression, variables, context);
             if (replacement is null)
@@ -132,7 +190,9 @@ internal static class PowerShellActivitySupport
 
     private static TemplateContext[] AnalyzeTemplateContexts(
         string script,
-        IReadOnlyList<TemplateExpression> expressions)
+        IReadOnlyList<TemplateExpression> expressions,
+        out Token[] coveringTokens,
+        out bool[] nestedStrings)
     {
         var surrogate = script.ToCharArray();
         foreach (var expression in expressions)
@@ -144,6 +204,9 @@ internal static class PowerShellActivitySupport
 
         _ = Parser.ParseInput(new string(surrogate), out var tokens, out var parseErrors);
         var contexts = new TemplateContext[expressions.Count];
+        coveringTokens = new Token[expressions.Count];
+        nestedStrings = new bool[expressions.Count];
+        var flattenedTokens = FlattenTokens(tokens).ToArray();
 
         for (var i = 0; i < expressions.Count; i++)
         {
@@ -162,7 +225,6 @@ internal static class PowerShellActivitySupport
             // Prefer the narrowest covering token. Expandable strings can contain nested
             // subexpression tokens; a template in `$()` is code, while a direct template in
             // the surrounding string is string content.
-            var flattenedTokens = FlattenTokens(tokens).ToArray();
             var token = flattenedTokens
                 .Where(candidate => candidate.Extent.StartOffset <= expression.Index
                                     && candidate.Extent.EndOffset >= end)
@@ -180,25 +242,28 @@ internal static class PowerShellActivitySupport
                 TokenKind.Comment => TemplateContext.Comment,
                 TokenKind.HereStringLiteral => TemplateContext.SingleQuotedHereString,
                 TokenKind.HereStringExpandable => TemplateContext.DoubleQuotedHereString,
-                TokenKind.StringLiteral when token.Text.StartsWith('\'') => TemplateContext.SingleQuotedString,
-                TokenKind.StringExpandable when token.Text.StartsWith('"') => TemplateContext.DoubleQuotedString,
+                TokenKind.StringLiteral when token.Text[0] is '\'' or '\u2018' or '\u2019' or '\u201a' or '\u201b'
+                    => TemplateContext.SingleQuotedString,
+                TokenKind.StringExpandable when token.Text[0] is '"' or '\u201c' or '\u201d' or '\u201e'
+                    => TemplateContext.DoubleQuotedString,
                 _ => TemplateContext.Code,
             };
 
             // Inside `$()`, single-quoting arbitrary content is not safe since a `)` in the
             // value can terminate PowerShell's nested parse early. Encode the value as base64
             // instead, so an attacker controls only the base64 literal, never PowerShell syntax.
-            if (context == TemplateContext.Code
-                && flattenedTokens.Any(candidate =>
+            nestedStrings[i] = flattenedTokens.Any(candidate =>
                     !ReferenceEquals(candidate, token)
                     && candidate.Extent.StartOffset <= expression.Index
                     && candidate.Extent.EndOffset >= end
-                    && candidate.Kind is TokenKind.StringExpandable or TokenKind.HereStringExpandable))
+                    && candidate.Kind is TokenKind.StringExpandable or TokenKind.HereStringExpandable);
+            if (context == TemplateContext.Code && nestedStrings[i])
             {
                 context = TemplateContext.ExpandableStringSubexpression;
             }
 
             contexts[i] = context;
+            coveringTokens[i] = token;
         }
 
         return contexts;
@@ -266,7 +331,7 @@ internal static class PowerShellActivitySupport
         {
             TemplateContext.SingleQuotedString => EscapeSingleQuotedContent(value),
             TemplateContext.DoubleQuotedString => EscapeDoubleQuotedContent(value),
-            TemplateContext.SingleQuotedHereString => EscapeSingleQuotedHereStringContent(value),
+            TemplateContext.SingleQuotedHereString => value,
             TemplateContext.DoubleQuotedHereString => EscapeDoubleQuotedContent(value),
             TemplateContext.ExpandableStringSubexpression => FormatEncodedExpression(value),
             _ => $"'{EscapeSingleQuotedContent(value)}'",
@@ -279,43 +344,16 @@ internal static class PowerShellActivitySupport
     }
 
     private static string EscapeSingleQuotedContent(string value)
-        => value.Replace("'", "''");
+        => PowerShellQuoter.EscapeSingleQuotedContent(value);
 
     private static string EscapeDoubleQuotedContent(string value)
         => value
             .Replace("`", "``")
             .Replace("$", "`$")
-            .Replace("\"", "`\"");
-
-    private static string EscapeSingleQuotedHereStringContent(string value)
-    {
-        if (!value.Contains("'@", StringComparison.Ordinal))
-            return value;
-
-        StringBuilder? sb = null;
-        for (var i = 0; i < value.Length; i++)
-        {
-            if (IsHereStringTerminatorInValue(value, i, '\''))
-            {
-                sb ??= new StringBuilder(value.Length + 4).Append(value, 0, i);
-                sb.Append(' ');
-            }
-
-            sb?.Append(value[i]);
-        }
-
-        return sb?.ToString() ?? value;
-    }
-
-    private static bool IsHereStringTerminatorInValue(string value, int index, char quote)
-        => IsAtLineStart(value, index)
-           && index + 1 < value.Length
-           && value[index] == quote
-           && value[index + 1] == '@'
-           && (index + 2 == value.Length || value[index + 2] is '\r' or '\n');
-
-    private static bool IsAtLineStart(string script, int index)
-        => index == 0 || script[index - 1] is '\r' or '\n';
+            .Replace("\"", "`\"")
+            .Replace("\u201c", "`\u201c")
+            .Replace("\u201d", "`\u201d")
+            .Replace("\u201e", "`\u201e");
 
     /// <summary>
     /// Resolves <c>{{...}}</c> references against the flat step-variables dict and returns the RAW
