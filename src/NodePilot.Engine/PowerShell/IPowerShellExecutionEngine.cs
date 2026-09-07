@@ -10,7 +10,8 @@ public sealed class PowerShellExecutionRequest
     /// <summary>
     /// Per-script timeout. Null = no timeout enforcement (script runs until it completes or
     /// the parent CancellationToken is signalled). When set, ps.Stop() is called via a CT
-    /// registration once the timeout elapses, which makes EndInvoke throw PipelineStoppedException.
+    /// registration once the timeout elapses. A stopped invocation can return normally from
+    /// EndInvoke when it was still waiting for a runspace; its terminal state must also be checked.
     /// </summary>
     public TimeSpan? Timeout { get; init; }
 

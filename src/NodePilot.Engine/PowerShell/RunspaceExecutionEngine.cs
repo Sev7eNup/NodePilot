@@ -148,11 +148,11 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
         if (request.Timeout is { } configuredTimeout)
             cts.CancelAfter(configuredTimeout);
 
-        // Real async via APM. BeginInvoke posts the script to PowerShell's internal
-        // pipeline thread and returns an IAsyncResult immediately — unlike
-        // Task.Run(() => ps.Invoke()) the awaiting Task does NOT park a ThreadPool
-        // worker for the script duration. Cancellation/timeout is handled by ps.Stop()
-        // via the CT registration, which makes EndInvoke throw PipelineStoppedException.
+        if (ct.IsCancellationRequested)
+            throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
+
+        // BeginInvoke queues work without parking a ThreadPool worker. Stop can complete a
+        // queued invocation without throwing, so both EndInvoke and the terminal state matter.
         IAsyncResult asyncResult;
         try
         {
@@ -178,6 +178,9 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
         try
         {
             var results = await Task.Factory.FromAsync(asyncResult, ps.EndInvoke);
+            var invocationState = ps.InvocationStateInfo;
+            if (invocationState.State == PSInvocationState.Stopped)
+                throw new PipelineStoppedException();
 
             foreach (var r in results)
                 output.AppendLine(SafeToString(r));
@@ -191,7 +194,10 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
             sw.Stop();
             // Non-terminating errors still indicate that the step did not complete cleanly.
             // Treating "any stdout" as success lets workflows continue after Write-Error.
-            var success = !ps.HadErrors;
+            var success = invocationState.State == PSInvocationState.Completed && !ps.HadErrors;
+            if (!success && errors.Length == 0)
+                errors.Append(invocationState.Reason?.Message
+                    ?? $"Script execution ended in state '{invocationState.State}'.");
             return new PowerShellExecutionResult
             {
                 Success = success,
@@ -203,26 +209,21 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
                 Duration = sw.Elapsed,
             };
         }
-        catch (PipelineStoppedException) when (cts.IsCancellationRequested)
+        catch (PipelineStoppedException)
         {
             sw.Stop();
-            // Distinguish caller-cancellation (parent ct) from our internal timeout firing.
-            // Without an explicit timeout the only way we end up here is via parent ct.
-            // A caller cancel is NOT a script failure: it is the losing branch of a waitAny /
-            // waitNofM junction being stood down, and StepRunner's OperationCanceledException
-            // handler is what records the Cancelled row for it. Returning Success=false here
-            // instead made the step Failed, and one Failed row fails the whole execution - so
-            // every junction race reported the run red even though it did exactly what it should.
-            // `delay` never had the problem because it lets the exception through.
-            // A timeout stays a failure and keeps its result.
+            // Caller cancellation reaches StepRunner as Cancelled; an internal timeout is Failed.
             if (ct.IsCancellationRequested)
                 throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
+            var timedOut = cts.IsCancellationRequested && request.Timeout.HasValue;
             return new PowerShellExecutionResult
             {
                 Success = false,
                 ExitCode = -1,
-                TimedOut = true,
-                Error = $"Script timed out after {request.Timeout!.Value.TotalSeconds:0}s",
+                TimedOut = timedOut,
+                Error = timedOut
+                    ? $"Script timed out after {request.Timeout!.Value.TotalSeconds:0}s"
+                    : "Script execution stopped before completion",
                 Duration = sw.Elapsed,
             };
         }
