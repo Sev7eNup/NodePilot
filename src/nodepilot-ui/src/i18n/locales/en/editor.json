@@ -637,7 +637,15 @@
     "exposedParams": "Exposed params ({{count}})",
     "lines": "{{count}} lines",
     "ctrlSToSave": "Ctrl+S to save",
-    "resize": "Resize"
+    "resize": "Resize",
+    "ai": "AI",
+    "toggleComment": "Comment / uncomment line (Ctrl+/)",
+    "runHint": "Test step using the last saved version from the database",
+    "unknownUpstreamVariable": "\"{{name}}\" is not available as an upstream variable in this step. Check the spelling and whether the previous step exposes it.",
+    "downstreamHint": "Downstream steps can reference this as {{reference}}.",
+    "autoQuotingLabel": "Auto-quoting:",
+    "autoQuotingHint": "<code>{{reference}}</code> is replaced with <code>'value'</code> at runtime — do not add quotes around it.",
+    "shortcuts": "Ctrl+F Find · Ctrl+H Replace · Ctrl+G Go to line · Ctrl+/ Comment · Ctrl+Space Autocomplete"
   },
   "overlays": {
     "title": "View",

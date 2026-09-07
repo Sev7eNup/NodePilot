@@ -1,3 +1,35 @@
 {
-  "subtitle": "Live tail of the support log plus structured support events from the DB projection — direct access when handling a support case."
+  "subtitle": "Live tail of the support log plus structured support events from the DB projection — direct access when handling a support case.",
+  "title": "Support log",
+  "tableView": "Table (DB)",
+  "plainView": "Plain-text (file)",
+  "allLevels": "All levels",
+  "allTypes": "All types",
+  "lines": "{{count}} lines",
+  "autoScroll": "Auto-scroll",
+  "resumePolling": "Resume polling",
+  "pausePolling": "Pause polling",
+  "pausePollingCopy": "Pause polling to copy text",
+  "fileLabel": "File:",
+  "noFile": "No file for today — support logging is disabled or no events have been recorded since midnight.",
+  "loading": "Loading…",
+  "visibleLines": "{{visible}} / {{total}} lines",
+  "noLines": "— no visible lines —",
+  "downloadDaily": "Download daily log:",
+  "events": "{{count}} events",
+  "moreEvents": "… more available (refine filters or increase the page size)",
+  "moreEventsCustomSort": "… more available (pagination is unavailable with custom sorting — refine filters)",
+  "sortBy": "Sort by {{column}}",
+  "noEvents": "— no events —",
+  "columns": {
+    "time": "Time",
+    "level": "Level",
+    "message": "Message",
+    "type": "Type",
+    "status": "Status",
+    "workflow": "Workflow",
+    "step": "Step / Activity",
+    "exec": "Exec",
+    "user": "User"
+  }
 }

@@ -319,7 +319,8 @@
     "proxyBypassList": "Bypass list (no proxy)",
     "proxyBypassListHint": "Hosts reached directly. Wildcards allowed, e.g. localhost or *.corp.local — this is how a local Ollama keeps working alongside a proxy.",
     "proxyUseDefaultCredentials": "Use the service account's Windows credentials",
-    "proxyUseDefaultCredentialsHint": "For domain-integrated proxies using NTLM/Kerberos. Replaces username and password."
+    "proxyUseDefaultCredentialsHint": "For domain-integrated proxies using NTLM/Kerberos. Replaces username and password.",
+    "llmTitle": "LLM (AI)"
   },
   "retention": {
     "auditLogCardTitle": "Audit Log",

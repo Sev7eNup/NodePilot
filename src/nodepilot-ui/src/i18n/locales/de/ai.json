@@ -33,7 +33,17 @@
     "validationFailed": "KI-Antwort hat das Schema nicht eingehalten. Versuche eine andere Beschreibung.",
     "regenerate": "Neu generieren",
     "retriedNonJson": "Erste LLM-Antwort war kein parsebares JSON, ein Retry hat funktioniert.",
-    "copyJson": "JSON in die Zwischenablage kopieren"
+    "copyJson": "JSON in die Zwischenablage kopieren",
+    "reviewTitle": "Generierten Workflow überprüfen",
+    "nameRequired": "Name darf nicht leer sein.",
+    "intro": "Beschreibe den gewünschten Workflow. Die KI baut Trigger, Aktivitäten und Verbindungen und schreibt PowerShell für <code>runScript</code>-Steps. Prüfe das Ergebnis und passe Name und Beschreibung an, bevor der Workflow angelegt wird.",
+    "reviewWarning": "Generierte Workflows starten <strong>deaktiviert</strong>. Aktiviere sie erst nach manueller Sichtprüfung — die KI kann Aktivitäts-Einstellungen falsch einschätzen.",
+    "modelLabel": "Modell:",
+    "generationTime": "Generierung: {{ms}} ms",
+    "back": "Zurück",
+    "discard": "Verwerfen",
+    "creating": "Erstelle…",
+    "createAndOpen": "Erstellen & öffnen"
   },
   "chat": {
     "title": "KI-Workflow-Assistent",

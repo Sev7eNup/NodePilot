@@ -19,25 +19,26 @@ const PLAIN_HEIGHT_STORAGE_KEY = 'nodepilot.supportLog.plainHeight.v2';
  * The file view remains available when database projection is disabled or raw output is needed.
  */
 export function SupportLogViewerSection() {
+  const { t } = useTranslation('supportLog');
   const [mode, setMode] = useState<ViewMode>('table');
   return (
     <div className="np-card p-4 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h3 className="font-semibold text-on-surface flex items-center gap-2">
-          <Help size={18} /> Support-Log
+          <Help size={18} /> {t('title')}
         </h3>
         <div className="inline-flex rounded border border-outline-variant overflow-hidden text-xs">
           <button type="button" onClick={() => setMode('table')}
             className={`flex items-center gap-1 px-3 py-1.5 ${
               mode === 'table' ? 'bg-blue-600 text-white' : 'hover:bg-surface-low'
             }`}>
-            <DataTable size={12} /> Tabelle (DB)
+            <DataTable size={12} /> {t('tableView')}
           </button>
           <button type="button" onClick={() => setMode('plain')}
             className={`flex items-center gap-1 px-3 py-1.5 border-l border-outline-variant ${
               mode === 'plain' ? 'bg-blue-600 text-white' : 'hover:bg-surface-low'
             }`}>
-            <Document size={12} /> Plain-Text (Datei)
+            <Document size={12} /> {t('plainView')}
           </button>
         </div>
       </div>
@@ -47,7 +48,7 @@ export function SupportLogViewerSection() {
 }
 
 function PlainTextTailView() {
-  const { t } = useTranslation('adminSettings');
+  const { t } = useTranslation(['adminSettings', 'supportLog']);
   const [lines, setLines] = useState(200);
   const [filter, setFilter] = useState<LevelFilter>('all');
   const [autoScroll, setAutoScroll] = useState(true);
@@ -111,25 +112,21 @@ function PlainTextTailView() {
       <div className="flex items-center justify-end gap-2 text-sm">
         <select value={filter} onChange={(e) => setFilter(e.target.value as LevelFilter)}
           className="px-2 py-1 border border-outline-variant rounded text-xs">
-          <option value="all">alle Level</option>
+          <option value="all">{t('supportLog:allLevels')}</option>
           <option value="info">INFO+</option>
           <option value="warn">WARN+</option>
           <option value="error">ERROR</option>
         </select>
         <select value={lines} onChange={(e) => setLines(Number.parseInt(e.target.value, 10))}
           className="px-2 py-1 border border-outline-variant rounded text-xs">
-          <option value="50">50 Zeilen</option>
-          <option value="100">100 Zeilen</option>
-          <option value="200">200 Zeilen</option>
-          <option value="500">500 Zeilen</option>
-          <option value="1000">1000 Zeilen</option>
+          {[50, 100, 200, 500, 1000].map(count => <option key={count} value={count}>{t('supportLog:lines', { count })}</option>)}
         </select>
         <label className="flex items-center gap-1 text-xs cursor-pointer">
           <input type="checkbox" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} />
-          Auto-Scroll
+          {t('supportLog:autoScroll')}
         </label>
         <button type="button" onClick={() => setPaused(!paused)}
-          title={paused ? 'Polling fortsetzen' : 'Polling pausieren (zum Kopieren)'}
+          title={t(paused ? 'supportLog:resumePolling' : 'supportLog:pausePollingCopy')}
           className="flex items-center gap-1 px-2 py-1 text-xs border border-outline-variant rounded hover:bg-surface-low">
           {paused ? <Play size={12} /> : <Pause size={12} />} {paused ? t('supportEvents.resume') : t('supportEvents.pause')}
         </button>
@@ -137,13 +134,13 @@ function PlainTextTailView() {
 
       <div className="text-xs text-on-surface-variant flex items-center gap-3">
         {data?.file ? (
-          <span>Datei: <code>{data.file}</code></span>
+          <span>{t('supportLog:fileLabel')} <code>{data.file}</code></span>
         ) : (
-          <span className="text-amber-700">Keine Datei für heute — entweder Support-Log disabled oder seit Mitternacht keine Events.</span>
+          <span className="text-amber-700">{t('supportLog:noFile')}</span>
         )}
-        {isLoading && <span>lädt …</span>}
+        {isLoading && <span>{t('supportLog:loading')}</span>}
         {error && <span className="text-red-700">{(error as Error).message}</span>}
-        <span className="ml-auto">{visibleLines.length} / {data?.lineCount ?? 0} Zeilen</span>
+        <span className="ml-auto">{t('supportLog:visibleLines', { visible: visibleLines.length, total: data?.lineCount ?? 0 })}</span>
       </div>
 
       {/* Match the database table frame and expose a bottom handle
@@ -153,7 +150,7 @@ function PlainTextTailView() {
           style={{ height: viewHeight }}
           className="bg-surface-lowest text-on-surface font-mono text-[11px] leading-tight p-3 overflow-auto whitespace-pre-wrap break-all">
           {visibleLines.length === 0
-            ? <span className="text-on-surface-variant">— keine Zeilen sichtbar —</span>
+            ? <span className="text-on-surface-variant">{t('supportLog:noLines')}</span>
             : visibleLines.map((l, i) => (
                 <div key={i} className={lineColor(l)}>{l || ' '}</div>
               ))}
@@ -170,7 +167,7 @@ function PlainTextTailView() {
       </div>
 
       <div className="flex items-center gap-2 text-sm pt-2 border-t border-outline-variant">
-        <label className="text-xs font-medium text-on-surface-variant">Tages-File downloaden:</label>
+        <label className="text-xs font-medium text-on-surface-variant">{t('supportLog:downloadDaily')}</label>
         <input type="date" value={downloadDate} onChange={(e) => setDownloadDate(e.target.value)}
           className="px-2 py-1 border border-outline-variant rounded text-xs" />
         <button type="button" onClick={() => diagnostics.downloadSupportLog(downloadDate)}

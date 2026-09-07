@@ -319,7 +319,8 @@
     "proxyBypassList": "Ausnahmen (kein Proxy)",
     "proxyBypassListHint": "Hosts, die direkt erreicht werden. Platzhalter erlaubt, z. B. localhost oder *.firma.local — so bleibt ein lokales Ollama am Proxy vorbei erreichbar.",
     "proxyUseDefaultCredentials": "Windows-Anmeldedaten des Dienstkontos verwenden",
-    "proxyUseDefaultCredentialsHint": "Für domänenintegrierte Proxies mit NTLM/Kerberos. Ersetzt Benutzername und Passwort."
+    "proxyUseDefaultCredentialsHint": "Für domänenintegrierte Proxies mit NTLM/Kerberos. Ersetzt Benutzername und Passwort.",
+    "llmTitle": "LLM (KI)"
   },
   "retention": {
     "auditLogCardTitle": "Audit-Log",

@@ -444,7 +444,7 @@ function LlmCard() {
 
   return (
     <>
-      <CompactCard headingMargin="mb-4" icon={Bot} title="LLM (KI)">
+      <CompactCard headingMargin="mb-4" icon={Bot} title={t('integrations.llmTitle')}>
         <HotReloadHint isHotReloadable={data.isHotReloadable} />
         <label className="flex items-center gap-2 text-sm cursor-pointer">
           <input
