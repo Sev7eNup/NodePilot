@@ -23,7 +23,7 @@ import {
 import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Editor, { type OnMount } from '@monaco-editor/react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { cssColorToHex } from '../../lib/cssColor';
 import { monaco, MONO_FONT_STACK } from '../../lib/monacoSetup';
 import { useThemeStore, resolveTheme } from '../../stores/themeStore';
@@ -529,13 +529,13 @@ export function ScriptEditorDialog({
       const end = model.getPositionAt(m.index + m[0].length);
       markers.push({
         severity: monaco.MarkerSeverity.Warning,
-        message: `"${inner}" ist in diesem Step nicht als Upstream-Variable verfügbar. Prüfe Schreibweise und ob der vorherige Step die Variable wirklich exponiert.`,
+        message: t('editor:scriptEditor.unknownUpstreamVariable', { name: inner }),
         startLineNumber: start.lineNumber, startColumn: start.column,
         endLineNumber: end.lineNumber, endColumn: end.column,
       });
     }
     monaco.editor.setModelMarkers(model, 'nodepilot-vars', markers);
-  }, [code, upstreamRefs]);
+  }, [code, upstreamRefs, t]);
 
   const handleEditorMount: OnMount = useCallback((editor) => {
     editorRef.current = editor;
@@ -608,7 +608,7 @@ export function ScriptEditorDialog({
             <ToolbarButton icon={Redo} label={t('editor:scriptEditor.redo')} onClick={() => editorRef.current?.trigger('toolbar', 'redo', null)} />
             <div className="w-px h-4 bg-outline-variant/30 mx-1.5" />
             <ToolbarButton icon={TextWrap} label={t('editor:scriptEditor.wordWrap')} onClick={() => setWordWrap(!wordWrap)} active={wordWrap} />
-            <ToolbarButton icon={Hashtag} label="Zeile kommentieren / entkommentieren (Ctrl+/)" onClick={handleToggleComment} />
+            <ToolbarButton icon={Hashtag} label={t('editor:scriptEditor.toggleComment')} onClick={handleToggleComment} />
             <ToolbarButton icon={Copy} label={t('editor:scriptEditor.copyAll')} onClick={() => navigator.clipboard.writeText(code)} />
             <div className="w-px h-4 bg-outline-variant/30 mx-1.5" />
             <ToolbarButton
@@ -635,7 +635,7 @@ export function ScriptEditorDialog({
                 title={aiDialogTitle}
                 ariaLabel={t('editor:scriptEditor.generateWithAi')}
               >
-                KI
+                {t('editor:scriptEditor.ai')}
               </ActionButton>
             )}
             {onRun && (
@@ -645,7 +645,7 @@ export function ScriptEditorDialog({
                 iconClassName={testing ? 'animate-spin' : undefined}
                 onClick={handleRun}
                 disabled={testing || aiBusy}
-                title="Step testen (nutzt den zuletzt gespeicherten Stand aus der DB)"
+                title={t('editor:scriptEditor.runHint')}
               >
                 {testing ? t('editor:scriptEditor.running') : t('editor:scriptEditor.run')}
               </ActionButton>
@@ -701,7 +701,7 @@ export function ScriptEditorDialog({
                       <div
                         key={name}
                         className="px-2.5 py-1.5 rounded-md"
-                        title={`Downstream-Steps können dies als {{${exposedPrefix}.param.${name}}} referenzieren.`}
+                        title={t('editor:scriptEditor.downstreamHint', { reference: `{{${exposedPrefix}.param.${name}}}` })}
                       >
                         <div className="text-xs font-mono text-green-700 truncate">${name}</div>
                         <div className="text-[9px] text-on-surface-variant font-mono truncate">→ {`{{${exposedPrefix}.param.${name}}}`}</div>
@@ -712,8 +712,8 @@ export function ScriptEditorDialog({
               )}
 
               <div className="border-t border-outline-variant/10 px-2.5 py-2 text-[9px] leading-snug text-on-surface-variant font-label mt-auto">
-                <div className="mb-1"><strong className="text-amber-700">Auto-Quoting:</strong> <code className="text-[9px]">{'{{var}}'}</code> wird zur Laufzeit als <code className="text-[9px]">'wert'</code> eingesetzt — keine Quotes drumherum schreiben.</div>
-                <div className="opacity-80">{t('editor:scriptEditor.shortcutsLabel')} Ctrl+F Suchen · Ctrl+H Ersetzen · Ctrl+G Zeile · Ctrl+/ Kommentar · Ctrl+Space Autocomplete</div>
+                <div className="mb-1"><strong className="text-amber-700">{t('editor:scriptEditor.autoQuotingLabel')}</strong>{' '}<Trans t={t} i18nKey="editor:scriptEditor.autoQuotingHint" values={{ reference: '{{var}}' }} components={{ code: <code className="text-[9px]" /> }} /></div>
+                <div className="opacity-80">{t('editor:scriptEditor.shortcutsLabel')} {t('editor:scriptEditor.shortcuts')}</div>
               </div>
             </div>
           )}

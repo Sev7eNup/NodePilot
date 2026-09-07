@@ -53,7 +53,8 @@ function page200(items: ReturnType<typeof eventRow>[], hasMore = false) {
 /** Navigate straight to the standalone Support-Log page and wait for the heading. */
 async function openSupportLog(page: Page) {
   await page.goto('/support-log');
-  await expect(page.getByRole('heading', { name: /support-log/i })).toBeVisible({ timeout: 15_000 });
+  // The heading is translated: "Support log" in English, "Support-Log" in German.
+  await expect(page.getByRole('heading', { name: /support[\s-]log/i })).toBeVisible({ timeout: 15_000 });
 }
 
 test.describe('Diagnostics / Support-Log (Teil 37)', () => {

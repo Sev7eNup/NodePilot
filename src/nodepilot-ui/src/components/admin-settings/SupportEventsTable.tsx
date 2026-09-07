@@ -49,17 +49,17 @@ type ColumnId = 'time' | 'level' | 'type' | 'status' | 'workflow' | 'exec' | 'st
 // The message appears before metadata so operators can read it without horizontal scrolling.
 // It is the only flexible column and fills the remaining width, so it is not pixel-resizable.
 const MESSAGE_COLUMN_ID: ColumnId = 'message';
-const COLUMNS: { id: ColumnId; label: string; defaultWidth: number; minWidth: number; sortKey: string | null }[] = [
-  { id: 'time',     label: 'Zeit',             defaultWidth: 170, minWidth: 120, sortKey: 'timestamp' },
-  { id: 'level',    label: 'Level',            defaultWidth: 60,  minWidth: 50,  sortKey: 'level' },
-  { id: 'message',  label: 'Message',          defaultWidth: 420, minWidth: 220, sortKey: 'message' },
-  { id: 'type',     label: 'Typ',              defaultWidth: 150, minWidth: 80,  sortKey: 'eventType' },
+const COLUMNS: { id: ColumnId; defaultWidth: number; minWidth: number; sortKey: string | null }[] = [
+  { id: 'time',     defaultWidth: 170, minWidth: 120, sortKey: 'timestamp' },
+  { id: 'level',    defaultWidth: 60,  minWidth: 50,  sortKey: 'level' },
+  { id: 'message',  defaultWidth: 420, minWidth: 220, sortKey: 'message' },
+  { id: 'type',     defaultWidth: 150, minWidth: 80,  sortKey: 'eventType' },
   // The backend sorts status by EventType to keep matching states together.
-  { id: 'status',   label: 'Status',           defaultWidth: 90,  minWidth: 60,  sortKey: 'status' },
-  { id: 'workflow', label: 'Workflow',         defaultWidth: 220, minWidth: 100, sortKey: 'workflowName' },
-  { id: 'step',     label: 'Step / Activity',  defaultWidth: 220, minWidth: 100, sortKey: 'stepLabel' },
-  { id: 'exec',     label: 'Exec',             defaultWidth: 90,  minWidth: 70,  sortKey: 'executionShort' },
-  { id: 'user',     label: 'User',             defaultWidth: 90,  minWidth: 60,  sortKey: 'userName' },
+  { id: 'status',   defaultWidth: 90,  minWidth: 60,  sortKey: 'status' },
+  { id: 'workflow', defaultWidth: 220, minWidth: 100, sortKey: 'workflowName' },
+  { id: 'step',     defaultWidth: 220, minWidth: 100, sortKey: 'stepLabel' },
+  { id: 'exec',     defaultWidth: 90,  minWidth: 70,  sortKey: 'executionShort' },
+  { id: 'user',     defaultWidth: 90,  minWidth: 60,  sortKey: 'userName' },
 ];
 
 const WIDTH_STORAGE_KEY = 'nodepilot.supportEvents.columnWidths.v1';
@@ -82,10 +82,9 @@ function loadColumnWidths(): Record<ColumnId, number> {
 }
 
 export function SupportEventsTable() {
-  const { t } = useTranslation(['adminSettings', 'common']);
-  // Only the step label needs translation; the other labels are German or language-neutral.
+  const { t } = useTranslation(['adminSettings', 'common', 'supportLog']);
   const columnLabel = useCallback(
-    (col: typeof COLUMNS[number]) => (col.id === 'step' ? t('supportEvents.stepActivityColumn') : col.label),
+    (col: typeof COLUMNS[number]) => t(`supportLog:columns.${col.id}`),
     [t]
   );
   // Match the backend default by sorting newest first. Header clicks toggle direction or select
@@ -218,14 +217,14 @@ export function SupportEventsTable() {
         <select value={filter.eventType ?? ''}
           onChange={(e) => setFilter((f) => ({ ...f, eventType: e.target.value || undefined }))}
           className="px-2 py-1 border border-outline-variant rounded text-xs">
-          {EVENT_TYPE_OPTIONS.map((t) => (
-            <option key={t || '__all'} value={t}>{t || 'alle Typen'}</option>
+          {EVENT_TYPE_OPTIONS.map((type) => (
+            <option key={type || '__all'} value={type}>{type || t('supportLog:allTypes')}</option>
           ))}
         </select>
         <select value={filter.level ?? ''}
           onChange={(e) => setFilter((f) => ({ ...f, level: e.target.value ? Number(e.target.value) : undefined }))}
           className="px-2 py-1 border border-outline-variant rounded text-xs">
-          <option value="">alle Level</option>
+          <option value="">{t('supportLog:allLevels')}</option>
           <option value="2">INFO+</option>
           <option value="3">WARN+</option>
           <option value="4">ERROR+</option>
@@ -240,7 +239,7 @@ export function SupportEventsTable() {
           onChange={(e) => setSearchInput(e.target.value)}
           className="px-2 py-1 border border-outline-variant rounded text-xs w-48" />
         <button type="button" onClick={() => setPaused(!paused)}
-          title={paused ? 'Polling fortsetzen' : 'Polling pausieren'}
+          title={t(paused ? 'supportLog:resumePolling' : 'supportLog:pausePolling')}
           className="flex items-center gap-1 px-2 py-1 text-xs border border-outline-variant rounded hover:bg-surface-low">
           {paused ? <Play size={12} /> : <Pause size={12} />} {paused ? t('supportEvents.resume') : t('supportEvents.pause')}
         </button>
@@ -278,12 +277,12 @@ export function SupportEventsTable() {
         </div>
       )}
       <div className="text-xs text-on-surface-variant flex items-center gap-3">
-        {isLoading && <span>lädt …</span>}
+        {isLoading && <span>{t('supportLog:loading')}</span>}
         {error && <span className="text-red-600 dark:text-red-400">{(error as Error).message}</span>}
-        <span>{rows.length} Events</span>
+        <span>{t('supportLog:events', { count: rows.length })}</span>
         {data?.hasMore && (
           <span className="text-amber-600 dark:text-amber-400">
-            … mehr verfügbar ({data.nextCursor ? 'Filter verfeinern oder Take erhöhen' : 'Cursor inaktiv bei Custom-Sort — Filter verfeinern'})
+            {t(data.nextCursor ? 'supportLog:moreEvents' : 'supportLog:moreEventsCustomSort')}
           </span>
         )}
       </div>
@@ -310,7 +309,7 @@ export function SupportEventsTable() {
                 className={`relative px-2 select-none truncate flex items-center gap-1 ${
                   sortable ? 'cursor-pointer hover:bg-surface-lowest hover:text-on-surface' : ''
                 } ${isActive ? 'text-blue-700' : ''}`}
-                title={sortable ? `Sortieren nach ${columnLabel(col)}` : columnLabel(col)}>
+                title={sortable ? t('supportLog:sortBy', { column: columnLabel(col) }) : columnLabel(col)}>
                 <span className="truncate">{columnLabel(col)}</span>
                 {sortable && (
                   isActive
@@ -379,7 +378,7 @@ export function SupportEventsTable() {
               );
             })}
             {rows.length === 0 && !isLoading && (
-              <div className="text-center text-on-surface-variant text-sm py-8">— keine Events —</div>
+              <div className="text-center text-on-surface-variant text-sm py-8">{t('supportLog:noEvents')}</div>
             )}
           </div>
         </div>

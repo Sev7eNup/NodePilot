@@ -1,3 +1,35 @@
 {
-  "subtitle": "Live-Tail des Support-Logs sowie strukturierte Support-Events aus der DB-Projektion — direkter Zugriff im Support-Fall."
+  "subtitle": "Live-Tail des Support-Logs sowie strukturierte Support-Events aus der DB-Projektion — direkter Zugriff im Support-Fall.",
+  "title": "Support-Log",
+  "tableView": "Tabelle (DB)",
+  "plainView": "Plain-Text (Datei)",
+  "allLevels": "alle Level",
+  "allTypes": "alle Typen",
+  "lines": "{{count}} Zeilen",
+  "autoScroll": "Auto-Scroll",
+  "resumePolling": "Polling fortsetzen",
+  "pausePolling": "Polling pausieren",
+  "pausePollingCopy": "Polling pausieren (zum Kopieren)",
+  "fileLabel": "Datei:",
+  "noFile": "Keine Datei für heute — entweder Support-Log deaktiviert oder seit Mitternacht keine Events.",
+  "loading": "lädt …",
+  "visibleLines": "{{visible}} / {{total}} Zeilen",
+  "noLines": "— keine Zeilen sichtbar —",
+  "downloadDaily": "Tages-Log herunterladen:",
+  "events": "{{count}} Events",
+  "moreEvents": "… mehr verfügbar (Filter verfeinern oder Seitengröße erhöhen)",
+  "moreEventsCustomSort": "… mehr verfügbar (Cursor inaktiv bei eigener Sortierung — Filter verfeinern)",
+  "sortBy": "Sortieren nach {{column}}",
+  "noEvents": "— keine Events —",
+  "columns": {
+    "time": "Zeit",
+    "level": "Level",
+    "message": "Nachricht",
+    "type": "Typ",
+    "status": "Status",
+    "workflow": "Workflow",
+    "step": "Step / Aktivität",
+    "exec": "Exec",
+    "user": "Benutzer"
+  }
 }

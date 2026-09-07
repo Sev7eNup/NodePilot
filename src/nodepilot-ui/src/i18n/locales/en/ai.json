@@ -33,7 +33,17 @@
     "validationFailed": "AI response did not match the schema. Try a different description.",
     "regenerate": "Regenerate",
     "retriedNonJson": "First LLM response wasn't parseable JSON — a retry succeeded.",
-    "copyJson": "Copy JSON to clipboard"
+    "copyJson": "Copy JSON to clipboard",
+    "reviewTitle": "Review generated workflow",
+    "nameRequired": "Name must not be empty.",
+    "intro": "Describe the workflow you want. AI builds the triggers, activities and connections, including PowerShell for any <code>runScript</code> steps. Review the result and edit its name and description before creating the workflow.",
+    "reviewWarning": "Generated workflows start <strong>disabled</strong>. Review them before enabling them — AI can get activity settings wrong.",
+    "modelLabel": "Model:",
+    "generationTime": "Generation: {{ms}} ms",
+    "back": "Back",
+    "discard": "Discard",
+    "creating": "Creating…",
+    "createAndOpen": "Create & open"
   },
   "chat": {
     "title": "AI workflow assistant",

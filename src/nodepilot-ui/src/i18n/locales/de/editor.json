@@ -637,7 +637,15 @@
     "exposedParams": "Bereitgestellte Parameter ({{count}})",
     "lines": "{{count}} Zeilen",
     "ctrlSToSave": "Ctrl+S zum Speichern",
-    "resize": "Größe ändern"
+    "resize": "Größe ändern",
+    "ai": "KI",
+    "toggleComment": "Zeile kommentieren / entkommentieren (Ctrl+/)",
+    "runHint": "Step testen (nutzt den zuletzt gespeicherten Stand aus der DB)",
+    "unknownUpstreamVariable": "\"{{name}}\" ist in diesem Step nicht als Upstream-Variable verfügbar. Prüfe Schreibweise und ob der vorherige Step die Variable wirklich exponiert.",
+    "downstreamHint": "Downstream-Steps können dies als {{reference}} referenzieren.",
+    "autoQuotingLabel": "Auto-Quoting:",
+    "autoQuotingHint": "<code>{{reference}}</code> wird zur Laufzeit als <code>'wert'</code> eingesetzt — keine Quotes drumherum schreiben.",
+    "shortcuts": "Ctrl+F Suchen · Ctrl+H Ersetzen · Ctrl+G Zeile · Ctrl+/ Kommentar · Ctrl+Space Autocomplete"
   },
   "overlays": {
     "title": "Ansicht",

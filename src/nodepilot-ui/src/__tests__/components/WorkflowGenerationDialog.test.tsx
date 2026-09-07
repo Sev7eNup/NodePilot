@@ -43,24 +43,24 @@ describe('WorkflowGenerationDialog', () => {
   it('renders prompt stage initially with autofocused textarea', () => {
     render(<WorkflowGenerationDialog onCreate={async () => {}} onClose={() => {}} />);
 
-    expect(screen.getByText(/Workflow per KI generieren/i)).toBeInTheDocument();
+    expect(screen.getByText(/Generate workflow with AI/i)).toBeInTheDocument();
     const textarea = screen.getByLabelText('Workflow prompt') as HTMLTextAreaElement;
     expect(document.activeElement).toBe(textarea);
-    expect(screen.getByRole('button', { name: /^generieren$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^generate$/i })).toBeDisabled();
   });
 
   it('Generate button enables when prompt has content', () => {
     render(<WorkflowGenerationDialog onCreate={async () => {}} onClose={() => {}} />);
 
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'do a thing' } });
-    expect(screen.getByRole('button', { name: /^generieren$/i })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /^generate$/i })).not.toBeDisabled();
   });
 
   it('Cancel calls onClose', () => {
     const onClose = vi.fn();
     render(<WorkflowGenerationDialog onCreate={async () => {}} onClose={onClose} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /abbrechen/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -79,9 +79,9 @@ describe('WorkflowGenerationDialog', () => {
     render(<WorkflowGenerationDialog onCreate={async () => {}} onClose={() => {}} />);
 
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'cleanup' } });
-    fireEvent.click(screen.getByRole('button', { name: /^generieren$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^generate$/i }));
 
-    expect(await screen.findByText(/Generierten Workflow überprüfen/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Review generated workflow/i)).toBeInTheDocument();
     expect((screen.getByLabelText('Workflow name') as HTMLInputElement).value).toBe('Disk Cleanup Daily');
     expect((screen.getByLabelText('Workflow description') as HTMLTextAreaElement).value)
       .toBe('Bereinigt täglich um 6 Uhr die Logs.');
@@ -93,10 +93,10 @@ describe('WorkflowGenerationDialog', () => {
     render(<WorkflowGenerationDialog onCreate={async () => {}} onClose={() => {}} />);
 
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'cleanup' } });
-    fireEvent.click(screen.getByRole('button', { name: /^generieren$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^generate$/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('LLM unreachable');
-    expect(screen.queryByText(/Generierten Workflow überprüfen/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Review generated workflow/i)).not.toBeInTheDocument();
     // The prompt textarea stays mounted so the user can retry.
     expect(screen.getByLabelText('Workflow prompt')).toBeInTheDocument();
   });
@@ -108,7 +108,7 @@ describe('WorkflowGenerationDialog', () => {
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'cleanup' } });
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter', ctrlKey: true });
 
-    expect(await screen.findByText(/Generierten Workflow überprüfen/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Review generated workflow/i)).toBeInTheDocument();
   });
 
   it('shows loading indicator while generate is pending', async () => {
@@ -118,13 +118,13 @@ describe('WorkflowGenerationDialog', () => {
 
     render(<WorkflowGenerationDialog onCreate={async () => {}} onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'cleanup' } });
-    fireEvent.click(screen.getByRole('button', { name: /^generieren$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^generate$/i }));
 
-    expect(await screen.findByRole('button', { name: /generiere/i })).toBeDisabled();
-    expect(screen.getByRole('button', { name: /abbrechen/i })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: /generating/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeDisabled();
 
     resolve(SAMPLE_RESPONSE);
-    await screen.findByText(/Generierten Workflow überprüfen/i);
+    await screen.findByText(/Review generated workflow/i);
   });
 
   // ---- Stage 2: Preview ----------------------------------------------------------
@@ -134,9 +134,9 @@ describe('WorkflowGenerationDialog', () => {
     render(<WorkflowGenerationDialog onCreate={async () => {}} onClose={() => {}} />);
 
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'cleanup' } });
-    fireEvent.click(screen.getByRole('button', { name: /^generieren$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^generate$/i }));
 
-    await screen.findByText(/Generierten Workflow überprüfen/i);
+    await screen.findByText(/Review generated workflow/i);
     expect(screen.getByText('Nodes')).toBeInTheDocument();
     expect(screen.getByText('Edges')).toBeInTheDocument();
     // The histogram counts every activity type in the generated definition.
@@ -150,7 +150,7 @@ describe('WorkflowGenerationDialog', () => {
     render(<WorkflowGenerationDialog onCreate={async () => {}} onClose={() => {}} />);
 
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'cleanup' } });
-    fireEvent.click(screen.getByRole('button', { name: /^generieren$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^generate$/i }));
 
     expect(await screen.findByText(/retried/i)).toBeInTheDocument();
   });
@@ -160,8 +160,8 @@ describe('WorkflowGenerationDialog', () => {
     render(<WorkflowGenerationDialog onCreate={async () => {}} onClose={() => {}} />);
 
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'cleanup' } });
-    fireEvent.click(screen.getByRole('button', { name: /^generieren$/i }));
-    await screen.findByText(/Generierten Workflow überprüfen/i);
+    fireEvent.click(screen.getByRole('button', { name: /^generate$/i }));
+    await screen.findByText(/Review generated workflow/i);
 
     expect(screen.queryByTestId('workflow-definition-json')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Definition JSON/i }));
@@ -177,12 +177,12 @@ describe('WorkflowGenerationDialog', () => {
     render(<WorkflowGenerationDialog onCreate={onCreate} onClose={() => {}} />);
 
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'cleanup' } });
-    fireEvent.click(screen.getByRole('button', { name: /^generieren$/i }));
-    await screen.findByText(/Generierten Workflow überprüfen/i);
+    fireEvent.click(screen.getByRole('button', { name: /^generate$/i }));
+    await screen.findByText(/Review generated workflow/i);
 
     fireEvent.change(screen.getByLabelText('Workflow name'), { target: { value: 'My Edited Name' } });
     fireEvent.change(screen.getByLabelText('Workflow description'), { target: { value: 'short desc' } });
-    fireEvent.click(screen.getByRole('button', { name: /erstellen & öffnen/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create & open/i }));
 
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith({
       name: 'My Edited Name',
@@ -196,11 +196,11 @@ describe('WorkflowGenerationDialog', () => {
     render(<WorkflowGenerationDialog onCreate={async () => {}} onClose={() => {}} />);
 
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'cleanup' } });
-    fireEvent.click(screen.getByRole('button', { name: /^generieren$/i }));
-    await screen.findByText(/Generierten Workflow überprüfen/i);
+    fireEvent.click(screen.getByRole('button', { name: /^generate$/i }));
+    await screen.findByText(/Review generated workflow/i);
 
     fireEvent.change(screen.getByLabelText('Workflow name'), { target: { value: '   ' } });
-    expect(screen.getByRole('button', { name: /erstellen & öffnen/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /create & open/i })).toBeDisabled();
   });
 
   it('create failure surfaces error and stays on preview stage', async () => {
@@ -209,13 +209,13 @@ describe('WorkflowGenerationDialog', () => {
     render(<WorkflowGenerationDialog onCreate={onCreate} onClose={() => {}} />);
 
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'cleanup' } });
-    fireEvent.click(screen.getByRole('button', { name: /^generieren$/i }));
-    await screen.findByText(/Generierten Workflow überprüfen/i);
+    fireEvent.click(screen.getByRole('button', { name: /^generate$/i }));
+    await screen.findByText(/Review generated workflow/i);
 
-    fireEvent.click(screen.getByRole('button', { name: /erstellen & öffnen/i }));
+    fireEvent.click(screen.getByRole('button', { name: /create & open/i }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Conflict: name in use');
     // Stage stays in preview
-    expect(screen.getByText(/Generierten Workflow überprüfen/i)).toBeInTheDocument();
+    expect(screen.getByText(/Review generated workflow/i)).toBeInTheDocument();
   });
 
   it('Zurück returns from preview to prompt stage and clears error', async () => {
@@ -223,11 +223,11 @@ describe('WorkflowGenerationDialog', () => {
     render(<WorkflowGenerationDialog onCreate={async () => {}} onClose={() => {}} />);
 
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'cleanup' } });
-    fireEvent.click(screen.getByRole('button', { name: /^generieren$/i }));
-    await screen.findByText(/Generierten Workflow überprüfen/i);
+    fireEvent.click(screen.getByRole('button', { name: /^generate$/i }));
+    await screen.findByText(/Review generated workflow/i);
 
-    fireEvent.click(screen.getByRole('button', { name: /^zurück$/i }));
-    expect(screen.getByText(/Workflow per KI generieren/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^back$/i }));
+    expect(screen.getByText(/Generate workflow with AI/i)).toBeInTheDocument();
     // Original prompt is still in the textarea
     expect((screen.getByLabelText('Workflow prompt') as HTMLTextAreaElement).value).toBe('cleanup');
   });
@@ -238,10 +238,10 @@ describe('WorkflowGenerationDialog', () => {
     render(<WorkflowGenerationDialog onCreate={async () => {}} onClose={onClose} />);
 
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'cleanup' } });
-    fireEvent.click(screen.getByRole('button', { name: /^generieren$/i }));
-    await screen.findByText(/Generierten Workflow überprüfen/i);
+    fireEvent.click(screen.getByRole('button', { name: /^generate$/i }));
+    await screen.findByText(/Review generated workflow/i);
 
-    fireEvent.click(screen.getByRole('button', { name: /^verwerfen$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^discard$/i }));
     expect(onClose).toHaveBeenCalled();
   });
 });

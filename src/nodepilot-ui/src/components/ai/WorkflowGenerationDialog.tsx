@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, CircleDash, Close, Copy, MagicWandFilled } from '@carbon/icons-react';
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { aiApi, type GenerateWorkflowResponse } from '../../api/ai';
 
 interface Props {
@@ -57,7 +57,7 @@ export function WorkflowGenerationDialog({ onCreate, onClose }: Readonly<Props>)
     if (!generated || creating) return;
     const trimmedName = editedName.trim();
     if (!trimmedName) {
-      setError('Name darf nicht leer sein.');
+      setError(t('ai:workflowDialog.nameRequired'));
       return;
     }
     setError(null);
@@ -75,7 +75,7 @@ export function WorkflowGenerationDialog({ onCreate, onClose }: Readonly<Props>)
       setError(msg);
       setCreating(false);
     }
-  }, [generated, editedName, editedDescription, onCreate, creating]);
+  }, [generated, editedName, editedDescription, onCreate, creating, t]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape' && !generating && !creating) onClose();
@@ -119,7 +119,7 @@ export function WorkflowGenerationDialog({ onCreate, onClose }: Readonly<Props>)
           <div className="flex items-center gap-2">
             <MagicWandFilled size={16} className="text-primary" />
             <span id="ai-workflow-dialog-title" className="text-sm font-headline font-bold text-on-surface">
-              {stage === 'prompt' ? 'Workflow per KI generieren' : 'Generierten Workflow überprüfen'}
+              {t(stage === 'prompt' ? 'ai:workflowDialog.title' : 'ai:workflowDialog.reviewTitle')}
             </span>
           </div>
           <button
@@ -137,17 +137,14 @@ export function WorkflowGenerationDialog({ onCreate, onClose }: Readonly<Props>)
           {stage === 'prompt' && (
             <>
               <p className="text-xs text-on-surface-variant font-label leading-snug">
-                Beschreibe den gewünschten Workflow. Die KI baut Trigger, Aktivitäten und Verbindungen
-                — wenn ein <code>runScript</code>-Step nötig ist, schreibt sie auch das PowerShell.
-                Im nächsten Schritt siehst du das Ergebnis und kannst Name/Beschreibung anpassen,
-                bevor der Workflow angelegt wird.
+                <Trans t={t} i18nKey="ai:workflowDialog.intro" components={{ code: <code /> }} />
               </p>
 
               <textarea
                 ref={textareaRef}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder={'z.B. Täglich um 06:00 prüft der Workflow den Disk-Space von ServerA. Wenn freier Speicher unter 10% fällt, wird ein Cleanup-Skript ausgeführt und eine Mail an ops@firma geschickt.'}
+                placeholder={t('ai:workflowDialog.promptPlaceholder')}
                 rows={8}
                 disabled={generating}
                 aria-label={t('ai:aria.prompt')}
@@ -161,8 +158,8 @@ export function WorkflowGenerationDialog({ onCreate, onClose }: Readonly<Props>)
               )}
 
               <p className="text-[10px] font-label text-on-surface-variant leading-snug">
-                <strong className="text-amber-700">Hinweis:</strong> Generierte Workflows starten als <strong>disabled</strong>.
-                Aktivieren erst nach manueller Sichtprüfung — die KI kann subtile Aktivitäts-Configs falsch raten.
+                <strong className="text-amber-700">{t('ai:scriptDialog.warningPrefix')}</strong>{' '}
+                <Trans t={t} i18nKey="ai:workflowDialog.reviewWarning" components={{ strong: <strong /> }} />
               </p>
             </>
           )}
@@ -193,7 +190,7 @@ export function WorkflowGenerationDialog({ onCreate, onClose }: Readonly<Props>)
               </div>
 
               <label className="block">
-                <span className="text-[10px] font-label font-bold text-on-surface-variant uppercase tracking-widest">Beschreibung</span>
+                <span className="text-[10px] font-label font-bold text-on-surface-variant uppercase tracking-widest">{t('ai:aria.description')}</span>
                 <textarea
                   value={editedDescription}
                   onChange={(e) => setEditedDescription(e.target.value)}
@@ -247,7 +244,7 @@ export function WorkflowGenerationDialog({ onCreate, onClose }: Readonly<Props>)
               </div>
 
               <p className="text-[10px] font-label text-on-surface-variant leading-snug">
-                Modell: <code>{generated.model}</code> · Generierung: {generated.durationMs} ms
+                {t('ai:workflowDialog.modelLabel')} <code>{generated.model}</code> · {t('ai:workflowDialog.generationTime', { ms: generated.durationMs })}
               </p>
 
               {error && (
@@ -268,7 +265,7 @@ export function WorkflowGenerationDialog({ onCreate, onClose }: Readonly<Props>)
                 disabled={generating}
                 className="px-3 py-1.5 text-xs font-label text-on-surface-variant hover:text-on-surface hover:bg-surface-high rounded-md transition-colors disabled:opacity-40"
               >
-                Abbrechen
+                {t('common:cancel')}
               </button>
               <button
                 onClick={handleGenerate}
@@ -276,7 +273,7 @@ export function WorkflowGenerationDialog({ onCreate, onClose }: Readonly<Props>)
                 className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-br from-primary to-primary-container text-on-primary text-xs font-label font-semibold rounded-md shadow-sm hover:shadow-lg hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
               >
                 {generating ? <CircleDash size={12} className="animate-spin" /> : <MagicWandFilled size={12} />}
-                {generating ? 'Generiere…' : 'Generieren'}
+                {t(generating ? 'ai:workflowDialog.generating' : 'ai:workflowDialog.generate')}
               </button>
             </>
           )}
@@ -287,14 +284,14 @@ export function WorkflowGenerationDialog({ onCreate, onClose }: Readonly<Props>)
                 disabled={creating}
                 className="px-3 py-1.5 text-xs font-label text-on-surface-variant hover:text-on-surface hover:bg-surface-high rounded-md transition-colors disabled:opacity-40"
               >
-                Zurück
+                {t('ai:workflowDialog.back')}
               </button>
               <button
                 onClick={onClose}
                 disabled={creating}
                 className="px-3 py-1.5 text-xs font-label text-on-surface-variant hover:text-on-surface hover:bg-surface-high rounded-md transition-colors disabled:opacity-40"
               >
-                Verwerfen
+                {t('ai:workflowDialog.discard')}
               </button>
               <button
                 onClick={handleCreate}
@@ -302,7 +299,7 @@ export function WorkflowGenerationDialog({ onCreate, onClose }: Readonly<Props>)
                 className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-br from-primary to-primary-container text-on-primary text-xs font-label font-semibold rounded-md shadow-sm hover:shadow-lg hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
               >
                 {creating ? <CircleDash size={12} className="animate-spin" /> : <MagicWandFilled size={12} />}
-                {creating ? 'Erstelle…' : 'Erstellen & öffnen'}
+                {t(creating ? 'ai:workflowDialog.creating' : 'ai:workflowDialog.createAndOpen')}
               </button>
             </>
           )}

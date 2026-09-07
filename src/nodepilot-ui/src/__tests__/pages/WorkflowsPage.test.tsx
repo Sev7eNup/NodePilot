@@ -946,7 +946,7 @@ describe('WorkflowsPage — AI workflow generation', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /New AI Workflow/i }));
 
-    expect(screen.getByText(/Workflow per KI generieren/i)).toBeInTheDocument();
+    expect(screen.getByText(/Generate workflow with AI/i)).toBeInTheDocument();
     expect(screen.getByLabelText('Workflow prompt')).toBeInTheDocument();
   });
 
@@ -981,10 +981,10 @@ describe('WorkflowsPage — AI workflow generation', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /New AI Workflow/i }));
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'a workflow' } });
-    fireEvent.click(screen.getByRole('button', { name: /^generieren$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^generate$/i }));
 
-    await screen.findByText(/Generierten Workflow überprüfen/i);
-    fireEvent.click(screen.getByRole('button', { name: /erstellen & öffnen/i }));
+    await screen.findByText(/Review generated workflow/i);
+    fireEvent.click(screen.getByRole('button', { name: /create & open/i }));
 
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/workflows/wf-new'));
     expect(createBody).toMatchObject({
@@ -1009,11 +1009,11 @@ describe('WorkflowsPage — AI workflow generation', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /New AI Workflow/i }));
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'a workflow' } });
-    fireEvent.click(screen.getByRole('button', { name: /^generieren$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^generate$/i }));
 
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     // Stays on prompt stage
-    expect(screen.queryByText(/Generierten Workflow überprüfen/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Review generated workflow/i)).not.toBeInTheDocument();
   });
 });
 
