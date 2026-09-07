@@ -30,7 +30,7 @@ public sealed class EndpointClientCoverageTests
     /// </summary>
     // Shared rationales — deliberate architectural gaps that apply to whole endpoint families.
     private const string ScimSurface = "DELIBERATE: SCIM is the IdP-facing wire protocol (Okta/Entra provisioning) — never a human client surface";
-    private const string BrowserAuthFlow = "DELIBERATE: browser redirect/Negotiate flow — impossible for a headless client; np auth login covers local/LDAP";
+    private const string BrowserAuthFlow = "DELIBERATE: browser redirect flow — impossible for a headless client; np auth login covers local, LDAP and Windows";
     private const string SpaBootstrap = "DELIBERATE: SPA-internal bootstrap/UI surface, not an automation target";
     private const string InteractiveAiSse = "DELIBERATE: interactive SSE surface for the designer/knowledge chat UI; clients have no streaming UX";
     private const string WebhookIngress = "DELIBERATE: external webhook ingress — callers are third-party systems, not our clients";
@@ -58,7 +58,6 @@ public sealed class EndpointClientCoverageTests
         ["api/audit/export"] = "np audit list exists but cannot download the CSV export",
         ["api/auth/oidc"] = BrowserAuthFlow,
         ["api/auth/oidc/callback"] = BrowserAuthFlow,
-        ["api/auth/windows"] = BrowserAuthFlow,
         ["api/custom-activities"] = CustomActivityGap,
         ["api/custom-activities/*"] = CustomActivityGap,
         ["api/custom-activities/*/disable"] = CustomActivityGap,
@@ -120,7 +119,7 @@ public sealed class EndpointClientCoverageTests
         ["api/auth/methods"] = "DELIBERATE: session lifecycle belongs to np auth",
         ["api/auth/oidc"] = BrowserAuthFlow,
         ["api/auth/oidc/callback"] = BrowserAuthFlow,
-        ["api/auth/windows"] = BrowserAuthFlow,
+        ["api/auth/windows"] = "DELIBERATE: the MCP server reuses the CLI's DPAPI session (np auth login) — it never logs in itself",
         ["api/backup/export"] = "system backup/restore is an operator (UI/CLI) task; no MCP backup tools",
         ["api/backup/manifest"] = "system backup/restore is an operator (UI/CLI) task; no MCP backup tools",
         ["api/backup/preview"] = "system backup/restore is an operator (UI/CLI) task; no MCP backup tools",

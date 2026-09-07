@@ -1,5 +1,6 @@
 using FluentAssertions;
 using NodePilot.Cli.Tests.Infra;
+using Spectre.Console.Cli;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using Xunit;
@@ -90,6 +91,113 @@ public class CommandIntegrationTests
 
         var result = h.Run("auth", "logout");
         result.ExitCode.Should().Be(ExitCodes.Success);
+        h.Tokens.Load("default").Should().BeNull();
+    }
+
+    [Fact]
+    public void AuthLoginWindows_TakesTheTokenFromTheSessionCookie()
+    {
+        using var h = new CommandTestHarness(authenticated: false);
+        var expiresAt = DateTimeOffset.UtcNow.AddHours(8);
+        var token = Jwt(DateTimeOffset.UtcNow, expiresAt);
+        var userId = Guid.NewGuid();
+        // The Windows path answers with identity only — the JWT is set in the httpOnly cookie,
+        // which a native client reads from its own jar.
+        h.Server.Given(Request.Create().WithPath("/api/auth/methods").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                local = false, ldap = false, windows = true, windowsEndpoint = "/api/auth/windows",
+            }));
+        h.Server.Given(Request.Create().WithPath("/api/auth/windows").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithHeader("Set-Cookie", $"np_auth={token}; path=/; httponly")
+                .WithBodyAsJson(new { userId, username = "LAB\\switcher", role = "Operator" }));
+
+        var result = h.Run("auth", "login", "--windows");
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        var stored = h.Tokens.Load("default")!;
+        stored.Token.Should().Be(token);
+        stored.Username.Should().Be("LAB\\switcher");
+        stored.Role.Should().Be("Operator");
+        stored.UserId.Should().Be(userId);
+        stored.ExpiresAt.Should().BeCloseTo(expiresAt, TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public void AuthLoginWindows_ServerWithoutWindowsAuth_ReturnsAuthRequiredWithoutCallingTheEndpoint()
+    {
+        using var h = new CommandTestHarness(authenticated: false);
+        // With Authentication:Windows:Enabled off the endpoint's auth scheme is not registered and
+        // ASP.NET answers 500 with an internal handler message, so the command asks the anonymous
+        // discovery endpoint first. The switcher reads exit code 3 as "fall back to the prompt".
+        h.Server.Given(Request.Create().WithPath("/api/auth/methods").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                local = true, ldap = false, windows = false, windowsEndpoint = (string?)null,
+            }));
+
+        var result = h.Run("auth", "login", "--windows");
+
+        result.ExitCode.Should().Be(ExitCodes.AuthRequired);
+        h.Tokens.Load("default").Should().BeNull();
+        h.Server.LogEntries.Should().NotContain(
+            entry => entry.RequestMessage.Path.Contains("/api/auth/windows"),
+            "a disabled scheme answers 500 — the command must not knock");
+    }
+
+    [Fact]
+    public void AuthLoginWindows_NtlmRejected_ReturnsAuthRequiredWithServerMessage()
+    {
+        using var h = new CommandTestHarness(authenticated: false);
+        h.Server.Given(Request.Create().WithPath("/api/auth/methods").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                local = false, ldap = false, windows = true, windowsEndpoint = "/api/auth/windows",
+            }));
+        h.Server.Given(Request.Create().WithPath("/api/auth/windows").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(401).WithBodyAsJson(new
+            {
+                message = "Kerberos required — NTLM fallback is disabled.",
+            }));
+
+        var result = h.Run("auth", "login", "--windows");
+
+        result.ExitCode.Should().Be(ExitCodes.AuthRequired);
+        result.AnyOutput.Should().Contain("Kerberos");
+        h.Tokens.Load("default").Should().BeNull();
+    }
+
+    [Fact]
+    public void AuthLoginWindows_WithoutSessionCookie_StoresNothing()
+    {
+        using var h = new CommandTestHarness(authenticated: false);
+        h.Server.Given(Request.Create().WithPath("/api/auth/methods").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                local = false, ldap = false, windows = true, windowsEndpoint = "/api/auth/windows",
+            }));
+        h.Server.Given(Request.Create().WithPath("/api/auth/windows").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                userId = Guid.NewGuid(), username = "LAB\\switcher", role = "Operator",
+            }));
+
+        var result = h.Run("auth", "login", "--windows");
+
+        result.ExitCode.Should().Be(ExitCodes.Error);
+        h.Tokens.Load("default").Should().BeNull();
+    }
+
+    [Fact]
+    public void AuthLoginWindows_CombinedWithAPassword_IsRejected()
+    {
+        using var h = new CommandTestHarness(authenticated: false);
+
+        var run = () => h.Run("auth", "login", "--windows", "--username", "admin", "--password", "pw12345678");
+
+        run.Should().Throw<CommandRuntimeException>().WithMessage("*--windows cannot be combined*");
+        h.Server.LogEntries.Should().BeEmpty("the combination is refused before any request");
         h.Tokens.Load("default").Should().BeNull();
     }
 

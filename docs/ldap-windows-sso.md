@@ -10,7 +10,7 @@ NodePilot supports four login paths and one provisioning path:
 |---|---|---:|---|
 | Local BCrypt | `POST /api/auth/login` | `BreakGlassOnly` | Bootstrap and explicitly marked recovery accounts |
 | AD over LDAPS | `POST /api/auth/login` | off | Password-based domain login |
-| Windows Kerberos | `POST /api/auth/windows` | off | Integrated browser SSO |
+| Windows Kerberos | `POST /api/auth/windows` | off | Integrated SSO for the browser and for `np auth login --windows` |
 | OIDC Code + PKCE | `GET /api/auth/oidc` | off | General enterprise IdP login |
 | SCIM 2.0 | `/api/scim/v2` | off | IdP-driven user and group provisioning |
 

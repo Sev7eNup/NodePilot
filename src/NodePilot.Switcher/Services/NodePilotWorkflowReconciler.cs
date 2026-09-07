@@ -275,16 +275,47 @@ internal sealed class NodePilotWorkflowReconciler
     {
         var arguments = WithConnectionArguments(configuration, commandArguments);
         var result = await RunCommandAsync(configuration, arguments, cancellationToken).ConfigureAwait(false);
-        if (result.ExitCode == 3 && _credentialPrompt is not null)
+        if (result.ExitCode == 3)
         {
-            _logger.Info("NodePilot CLI session expired; interactive sign-in is required to continue.");
-            await ReauthenticateAsync(configuration, Detail(result), cancellationToken).ConfigureAwait(false);
-            result = await RunCommandAsync(configuration, arguments, cancellationToken).ConfigureAwait(false);
+            _logger.Info("NodePilot CLI session expired; signing in again.");
+            var signedIn = await TrySignInWithWindowsIdentityAsync(configuration, cancellationToken)
+                .ConfigureAwait(false);
+            if (!signedIn && _credentialPrompt is not null)
+            {
+                // Throws when the user cancels or the sign-in fails permanently.
+                await ReauthenticateAsync(configuration, Detail(result), cancellationToken).ConfigureAwait(false);
+                signedIn = true;
+            }
+
+            if (signedIn)
+                result = await RunCommandAsync(configuration, arguments, cancellationToken).ConfigureAwait(false);
         }
 
         if (result.ExitCode != 0)
             throw CommandFailure(result);
         return result;
+    }
+
+    /// <summary>
+    /// Tries the current Windows account (Kerberos) before asking for a password. Where the server
+    /// has no Windows authentication the CLI fails immediately and the caller falls back to the
+    /// credential prompt, so this costs one np call and never blocks.
+    /// </summary>
+    private async Task<bool> TrySignInWithWindowsIdentityAsync(
+        NodePilotWorkloadConfiguration configuration,
+        CancellationToken cancellationToken)
+    {
+        var arguments = WithConnectionArguments(configuration, ["auth", "login", "--windows"]);
+        var login = await RunCommandAsync(configuration, arguments, cancellationToken).ConfigureAwait(false);
+        if (login.ExitCode == 0)
+        {
+            _logger.Success(
+                $"NodePilot CLI profile '{configuration.Profile}' signed in with the current Windows account.");
+            return true;
+        }
+
+        _logger.Info($"Windows sign-in unavailable: {Detail(login)}");
+        return false;
     }
 
     private async Task ReauthenticateAsync(

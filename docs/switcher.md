@@ -164,8 +164,19 @@ cancelled elsewhere, so a job that leaves the set for any reason counts as settl
 `Pending`/`Queued` job is stopped and restarted on an available runbook server, and a job that stays
 `Pending` until `reconciliationTimeoutSeconds` expires fails the switch and is named in the error.
 
-The configured NodePilot CLI profile can be authenticated once under the same Windows account that
-runs the switcher:
+Where the server has Windows authentication enabled (`Authentication:Windows:Enabled`, a
+registered SPN, Kerberos rather than NTLM), the switcher needs no stored session and no typing at
+all: whenever the CLI reports an expired session it first runs `np auth login --windows`, which
+authenticates the account the switcher runs under, and then retries the interrupted command. The
+attempt is logged in the activity panel; where Windows authentication is unavailable it fails
+immediately and the sign-in dialog below takes over.
+
+Note that the switcher requires elevation. Approving the UAC prompt with a *different* administrator
+account runs it as that account - Kerberos then authenticates that account, and `%APPDATA%`, where
+the CLI session lives, is that account's profile as well.
+
+Without Kerberos, the configured NodePilot CLI profile can be authenticated once under the same
+Windows account that runs the switcher:
 
 ```powershell
 & 'C:\Program Files\NodePilot\tools\np\np.exe' auth login `

@@ -63,7 +63,7 @@ np exec get 7e3f... --server https://np.internal:8443 -o yaml
 
 ## auth
 
-`np auth login` is interactive (it asks for the user name and password if they are not supplied through flags). Flags: `--username`, `--password` (a literal — avoid it in scripts), `--password-stdin` (one line from stdin), `--setup-token <T>` (bootstrapping the first admin).
+`np auth login` is interactive (it asks for the user name and password if they are not supplied through flags). Flags: `--username`, `--password` (a literal — avoid it in scripts), `--password-stdin` (one line from stdin), `--setup-token <T>` (bootstrapping the first admin), `--windows` (sign in with the current Windows account, no password).
 
 ```bash
 # Interactive (asks for user + password)
@@ -76,13 +76,16 @@ echo "S3cret!" | np auth login --username admin --password-stdin --server https:
 np auth login --username admin --password-stdin \
   --setup-token "$(cat admin-setup.token)" --server https://np.internal:8443
 
+# Kerberos: sign in as the current Windows account (needs Authentication:Windows:Enabled)
+np auth login --windows --server https://np.internal:8443
+
 # Discovery (anonymous, no session needed) + a profile check
 np auth methods --server https://np.internal:8443
 np auth whoami -o json
 np auth logout
 ```
 
-`np auth login` uses the password endpoint and therefore covers both local and LDAP sign-in. Windows Negotiate and OIDC are browser flows; the OIDC metadata is fully available through `GET /api/auth/methods` but is not yet surfaced by the current CLI DTO.
+Without `--windows`, `np auth login` uses the password endpoint and therefore covers both local and LDAP sign-in. `--windows` authenticates the process' own Windows account over Negotiate/Kerberos and needs no password; it requires `Authentication:Windows:Enabled` on the server, a registered SPN and a Kerberos ticket (NTLM is refused), and it fails with exit code `3` where any of that is missing. OIDC stays a browser flow; its metadata is fully available through `GET /api/auth/methods` but is not yet surfaced by the current CLI DTO.
 
 ## workflow
 

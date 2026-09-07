@@ -1,9 +1,17 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Runtime.Versioning;
 using NodePilot.Cli.Auth;
 using NodePilot.Core.Clients;
 
 namespace NodePilot.Cli.Api;
+
+/// <summary>
+/// A client wired for Windows SSO, plus the cookie jar that receives the session cookie.
+/// </summary>
+/// <param name="Api">The API client, without a bearer token.</param>
+/// <param name="Cookies">The jar the <c>np_auth</c> cookie lands in.</param>
+public sealed record WindowsSsoClient(NodePilotApiClient Api, CookieContainer Cookies);
 
 /// <summary>
 /// Builds a <see cref="NodePilotApiClient"/> wired with the right base address, bearer
@@ -62,6 +70,30 @@ public sealed class ApiClientFactory
         };
         http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("NodePilot.Cli", "1.0"));
         return new NodePilotApiClient(http);
+    }
+
+    /// <summary>
+    /// Build a client for `np auth login --windows`: no bearer, but the process' own Windows
+    /// identity for the Negotiate handshake and a cookie jar, because the Windows login path
+    /// returns the JWT only in the httpOnly <c>np_auth</c> cookie. Returns the jar alongside the
+    /// client so the command can read that cookie out.
+    /// </summary>
+    public WindowsSsoClient CreateForWindowsSso(string serverUrl, bool allowInsecureLoopback = false)
+    {
+        var cookies = new CookieContainer();
+        var handler = new HttpClientHandler
+        {
+            UseDefaultCredentials = true,
+            UseCookies = true,
+            CookieContainer = cookies,
+        };
+        var http = new HttpClient(handler, disposeHandler: true)
+        {
+            BaseAddress = NormalizeBaseUri(serverUrl, allowInsecureLoopback),
+            Timeout = TimeSpan.FromSeconds(60),
+        };
+        http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("NodePilot.Cli", "1.0"));
+        return new WindowsSsoClient(new NodePilotApiClient(http), cookies);
     }
 
     private static Uri NormalizeBaseUri(string raw, bool allowInsecureLoopback)
