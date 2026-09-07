@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
-OUT = ROOT / os.environ.get('TOUR_OUTPUT', 'out/product-tour')
+OUT = ROOT / os.environ.get('TOUR_OUTPUT', 'out/product-tour-with-import')
 FFMPEG = os.environ.get('FFMPEG') or shutil.which('ffmpeg')
 if not FFMPEG:
     sys.path.insert(0, str(ROOT / '.tmp/nodepilot-video/tools'))
@@ -61,14 +61,17 @@ run(['-i', str(master), '-vf', 'scale=1920:1080:flags=lanczos', '-an', '-c:v', '
      '-preset', 'slow', '-crf', '17', '-threads', '4', '-pix_fmt', 'yuv420p',
      '-movflags', '+faststart', str(share)], 'render-1080p')
 
-# A condensed README preview includes all seven product chapters.
-starts = []
+# Select by name so inserting an import scene preserves the existing excerpts.
+starts = {}
 cursor = 0
 for segment in segments:
-    starts.append(cursor)
+    starts[segment['name']] = cursor
     cursor += segment['duration'] - fade
-cuts = [(starts[i]+0.8, starts[i]+2.8) for i in range(1,5)]
-cuts += [(starts[5]+2.1, starts[5]+5.1), (starts[6]+0.5, starts[6]+2.5), (starts[7]+3.9, starts[7]+6.9)]
+excerpts = [('00-import',2.8,4.8)] if '00-import' in starts else []
+excerpts += [(name,0.8,2.8) for name in ['01-designer','02-history','03-dashboard','04-liveops']]
+excerpts += [('05-log',2.1,5.1),('06-chat',5,7),('07-ai',0.5,2.5),('08-auth',3.9,6.9)]
+cuts = [(starts[name]+start, starts[name]+stop) for name,start,stop in excerpts]
+gif_duration = sum(stop-start for _,start,stop in excerpts)
 gif_filters = [f'[0:v]fps=8,scale=960:-1:flags=lanczos,split={len(cuts)}' + ''.join(f'[s{i}]' for i in range(len(cuts)))]
 for i, (start, stop) in enumerate(cuts):
     gif_filters.append(f'[s{i}]trim=start={start}:end={stop},setpts=PTS-STARTPTS[c{i}]')
@@ -91,7 +94,7 @@ for video, label in [(master, 'verify-decode'), (share, 'verify-1080p-decode')]:
     if abs(actual_duration - end) > 0.05 or abs(int(timing['frame']) - round(end * 30)) > 1:
         raise SystemExit(f'{video.name} has an unexpected duration or frame count: {timing}')
 report = {'durationSeconds': round(actual_duration, 3), 'plannedDurationSeconds':round(end,3), 'width':capture['width'], 'height':capture['height'], 'fps':30,
-          'uiScale':capture['uiScale'], 'capture':'lossless PNG', 'crf':15, 'gifDurationSeconds':16,
+          'uiScale':capture['uiScale'], 'capture':'lossless PNG', 'crf':15, 'gifDurationSeconds':gif_duration,
           'codec':'H.264', 'pixelFormat':'yuv420p', 'audio':False, 'demoData':True,
           'files': {p.name: p.stat().st_size for p in [master, share, OUT/'NodePilot-Preview.gif', OUT/'NodePilot-Poster.png']},
           'frameCount':int(timing['frame']), 'decodeValidation':'passed', 'timingValidation':'passed', 'browserErrors':capture['errors']}

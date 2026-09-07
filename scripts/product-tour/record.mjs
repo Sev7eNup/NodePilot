@@ -5,6 +5,8 @@ import path from 'node:path';
 import { responseFor, WF, EXEC } from './demo-data.mjs';
 import { settingsAndLogResponse } from './settings-log-data.mjs';
 import { startFrameCapture } from './capture-frames.mjs';
+import { demoQuestion, demoChatStream } from './chat-data.mjs';
+import { createImportDemo, importFile, importedName } from './import-data.mjs';
 import { installDefaultMocks } from '../../src/nodepilot-ui/e2e/fixtures/mockApi.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -13,10 +15,11 @@ const require = createRequire(path.join(root,'src/nodepilot-ui/package.json'));
 const { chromium } = require('playwright');
 const base = process.env.TOUR_BASE_URL || 'http://localhost:5173';
 if (!['localhost','127.0.0.1','[::1]'].includes(new URL(base).hostname)) throw new Error('Use a loopback frontend for this capture.');
-const out = path.resolve(root, process.env.TOUR_OUTPUT || 'out/product-tour');
+const out = path.resolve(root, process.env.TOUR_OUTPUT || 'out/product-tour-with-import');
+const previousCapture=await readFile(path.join(out,'capture.json'),'utf8').then(JSON.parse).catch(()=>null);
 const preview = process.argv.includes('--preview');
 const only = process.argv.find(arg=>arg.startsWith('--only='))?.slice(7);
-if(only && !['00-intro','01-designer','02-history','03-dashboard','04-liveops','05-log','06-ai','07-auth','08-outro'].includes(only)) throw new Error('Unknown --only segment.');
+if(only && !['00-intro','00-import','01-designer','02-history','03-dashboard','04-liveops','05-log','06-chat','07-ai','08-auth','09-outro'].includes(only)) throw new Error('Unknown --only segment.');
 await mkdir(path.join(out,'raw'),{recursive:true});
 const browser = await chromium.launch({headless:true});
 const context = await browser.newContext({viewport:{width:2560,height:1440},deviceScaleFactor:1,locale:'en-US',colorScheme:'dark',serviceWorkers:'block'});
@@ -33,10 +36,20 @@ await context.route('**/*', async route=> {
   return route.continue();
 });
 await installDefaultMocks(page);
+const importDemo = createImportDemo();
 await page.route(u=>u.pathname.startsWith('/api/'), async route=>{
   const request=route.request();
+  if(request.method()==='POST' && new URL(request.url()).pathname==='/api/workflows/import-scorch') {
+    const body=importDemo.accept(request);
+    await page.waitForTimeout(preview?50:700);
+    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});
+  }
+  if(request.method()==='POST' && new URL(request.url()).pathname==='/api/ai/knowledge/ask') {
+    await page.waitForTimeout(preview?50:300);
+    return route.fulfill({status:200,contentType:'text/event-stream',body:demoChatStream(request.postDataJSON())});
+  }
   if(request.method()!=='GET') throw new Error(`Unexpected mutation during tour: ${request.method()} ${new URL(request.url()).pathname}`);
-  const u=new URL(request.url()); const body=settingsAndLogResponse(u) ?? responseFor(u);
+  const u=new URL(request.url()); const body=importDemo.response(u) ?? settingsAndLogResponse(u) ?? responseFor(u);
   if(body===undefined){unknown.add(u.pathname); return route.fallback();}
   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});
 });
@@ -86,22 +99,27 @@ async function chapter(i,title,description){
   await page.evaluate(({i,title,description})=>{
     document.getElementById('card').style.display='none';
     document.getElementById('pointer').style.opacity='0';
-    document.getElementById('eyebrow').textContent=['','01 · Design','02 · Inspect','03 · Observe','04 · Operate','05 · Logs','06 · AI settings','07 · Identity · Preview'][i];
+    document.getElementById('eyebrow').textContent=['','01 · Design','02 · Inspect','03 · Observe','04 · Operate','05 · Logs','06 · AI chat','07 · AI settings','08 · Identity · Preview'][i];
     document.getElementById('title').textContent=title;
     document.getElementById('description').textContent=description;
-    document.getElementById('counter').textContent=`0${i} / 07`;
-    document.getElementById('progress').style.width=(i*100/7)+'%';
+    document.getElementById('counter').textContent=`0${i} / 08`;
+    document.getElementById('progress').style.width=(i*100/8)+'%';
   },{i,title,description});
 }
 const segments=[];
-async function clip(name,duration,action){
-  if(only && name!==only){segments.push({name,duration});return;}
+async function clip(name,duration,action,{endAfterAction=false}={}){
+  if(only && name!==only){
+    const previous=previousCapture?.preview===false ? previousCapture.segments.find(segment=>segment.name===name) : null;
+    if(!previous) throw new Error(`Record a full tour before replacing one scene: missing ${name}`);
+    segments.push(previous);return;
+  }
   console.log(`Recording ${name}`);
   await page.screenshot({path:path.join(out,`raw/${name}-start.png`)});
   const capture=preview ? null : await startFrameCapture(page,out,name);
   const start=capture?.started ?? performance.now();
   if(action) await action();
   if(!preview && performance.now()-start > duration*1000) throw new Error(`${name}: interaction exceeded the planned duration`);
+  if(!preview && endAfterAction) duration=Math.ceil((performance.now()-start)/1000*30)/30;
   if(!preview) await page.waitForTimeout(Math.max(0,duration*1000-(performance.now()-start)));
   const recording = await capture?.stop(duration);
   await page.screenshot({path:path.join(out,`raw/${name}-end.png`)});
@@ -110,23 +128,54 @@ async function clip(name,duration,action){
 try{
   await page.evaluate(()=>document.getElementById('card').style.display='block');
   await clip('00-intro',4);
+  await go('/workflows');
+  await frame.getByRole('button',{name:'Import SCOrch',exact:true}).waitFor();
+  await chapter(0,'Import your SCOrch runbooks.','1. Choose Import SCOrch and select a .ois_export file.');
+  await page.evaluate(()=>{
+    document.getElementById('eyebrow').textContent='IMPORT · SCOrch';
+    document.getElementById('counter').textContent='.ois_export';
+  });
+  await clip('00-import',12,async()=>{
+    await pause(1000);
+    const chooserReady=page.waitForEvent('filechooser');
+    await point(frame.getByRole('button',{name:'Import SCOrch',exact:true}),true);
+    const chooser=await chooserReady;
+    await chooser.setFiles(fileURLToPath(importFile));
+    await frame.getByRole('heading',{name:'Imported 1 runbook from Daily-Log-Archive.ois_export',exact:true}).waitFor();
+    await page.evaluate(()=>document.getElementById('description').textContent='2. Review the imported activities. Workflows start disabled.');
+    await pause(3000);
+    await page.screenshot({path:path.join(out,'raw/00-import-review.png')});
+    const importModal=frame.getByRole('heading',{name:'Imported 1 runbook from Daily-Log-Archive.ois_export',exact:true}).locator('../..');
+    await point(importModal.getByRole('button',{name:importedName,exact:true}),true);
+    await frame.locator('.react-flow__node[data-id="70707070-0000-0000-0000-000000000002"]').waitFor();
+    await frame.getByRole('button',{name:'Collapse execution panel',exact:true}).click();
+    await frame.locator('.react-flow__controls-fitview').click();
+    await page.evaluate(()=>document.getElementById('description').textContent='3. Open the imported workflow to inspect the converted steps.');
+    await pause(2300);
+  });
   await go(`/workflows/${WF}`);
   await frame.locator('.react-flow__node[data-id="disk"]').waitFor();
   await frame.getByRole('button',{name:'Collapse execution panel',exact:true}).click();
   await frame.locator('.react-flow__controls-fitview').click();
   await page.waitForTimeout(700);
-  await chapter(1,'Build workflows visually.','Schedule → parallel PowerShell checks → one health report.');
-  await clip('01-designer',12.8,async()=>{
-    await pause(2200);
+  await chapter(1,'Combine the right tools for the job.','Service checks, PowerShell, File Copy and LLM summaries in one workflow.');
+  await clip('01-designer',15,async()=>{
+    await pause(1800);
+    await point(frame.locator('.react-flow__node[data-id="archive"]'),true);
+    await frame.locator('input[value$="daily-health.log"]').last().waitFor();
+    await frame.locator('.react-flow__controls-fitview').click();
+    await pause(1100);
+    await point(frame.locator('.react-flow__node[data-id="summary"]'),true);
+    await pause(1100);
     await point(frame.locator('.react-flow__node[data-id="disk"]'),true);
     await frame.getByRole('button',{name:'Open Editor',exact:true}).waitFor();
     await frame.locator('.react-flow__controls-fitview').click();
-    await pause(2600);
+    await pause(650);
     await point(frame.getByRole('button',{name:'Open Editor',exact:true}),true);
     await frame.locator('.monaco-editor').first().waitFor();
-    await pause(900);
-    await page.screenshot({path:path.join(out,'raw/script-editor.png')});
-  });
+    if(await frame.getByRole('button',{name:'Generate script with AI',exact:true}).innerText()!=='AI') throw new Error('English AI label missing');
+    await pause(3500);
+  },{endAfterAction:true});
   // Prepare History with the real shared Gantt component before the next clip.
   await go(`/workflows/${WF}`);
   await frame.getByRole('button',{name:/history/i}).click();
@@ -155,12 +204,15 @@ try{
   await go('/');
   await frame.getByText('Morning Fleet Health Check').first().waitFor();
   await chapter(3,'Know how your automation is doing.','Execution trends, workflow health and your Windows machines in one overview.');
-  await clip('03-dashboard',9,async()=>{
-    await pause(3500);
-    await frame.evaluate(()=>document.getElementById('np-main-scroll').scrollTo({top:430,behavior:'smooth'}));
-    await pause(1100);
-    await point(frame.getByText('Inventory Sync',{exact:true}).first());
-    await pause(2600);
+  await clip('03-dashboard',4,async()=>{
+    await pause(450);
+    await frame.evaluate(duration=>new Promise(resolve=>{
+      const scroller=document.getElementById('np-main-scroll');
+      const target=scroller.scrollHeight-scroller.clientHeight;
+      const start=performance.now();
+      const tick=now=>{const p=Math.min(1,(now-start)/duration);scroller.scrollTop=target*(p*p*(3-2*p));if(p<1)requestAnimationFrame(tick);else resolve();};
+      requestAnimationFrame(tick);
+    }),preview?250:2600);
   });
   await go('/operations');
   await frame.getByTitle(/Nightly Backup · Running/).waitFor();
@@ -174,24 +226,37 @@ try{
   const logLink = frame.locator('a[href="/support-log"]').first();
   await logLink.scrollIntoViewIfNeeded();
   await chapter(5,'Follow the details in your logs.','Structured events and a plain-text log view, directly from the main menu.');
-  await clip('05-log',8,async()=>{
+  await clip('05-log',10,async()=>{
     await pause(650);
     await point(logLink,true);
-    await frame.getByRole('heading',{name:'Support-Log',exact:true}).waitFor();
+    await frame.getByRole('heading',{name:'Support log',exact:true}).waitFor();
     await frame.getByText('All checks passed: services, disk capacity and event log.',{exact:true}).first().waitFor();
-    await pause(1700);
-    await point(frame.getByRole('button',{name:/Plain-Text/}),true);
+    await pause(3700);
+    await point(frame.getByRole('button',{name:/Plain-text/}),true);
     await frame.locator('pre').filter({hasText:'Health report published.'}).waitFor();
     await pause(1500);
   });
+  const chatLink=frame.locator('a[href="/ai-chat"]').first();
+  await chatLink.scrollIntoViewIfNeeded();
+  await chapter(6,'Ask your automation a question.','AI Chat brings workflow and operations context into the conversation.');
+  await clip('06-chat',8.5,async()=>{
+    await point(chatLink,true);
+    await frame.locator('#np-main-scroll').getByRole('heading',{name:'AI Chat',exact:true}).waitFor();
+    const input=frame.getByRole('textbox',{name:'Ask about NodePilot, your workflows, or the source code…',exact:true});
+    await pause(500);
+    await input.pressSequentially(demoQuestion,{delay:preview?1:22});
+    await point(frame.getByRole('button',{name:'Send',exact:true}),true);
+    await frame.getByText('No action required.',{exact:true}).waitFor();
+    await pause(2700);
+  });
   await go('/settings?tab=system&section=integrations');
-  const llm = frame.getByRole('heading',{name:'LLM (KI)',exact:true});
+  const llm = frame.getByRole('heading',{name:'LLM (AI)',exact:true});
   await llm.waitFor();
   await scrollMainTo(llm);
   await frame.getByRole('tab',{name:/Local Ollama/}).waitFor();
   await page.waitForTimeout(400);
-  await chapter(6,'Bring your own AI model.','Configure local or hosted models, profiles and tool calling.');
-  await clip('06-ai',6,async()=>{
+  await chapter(7,'Bring your own AI model.','Configure local or hosted models, profiles and tool calling.');
+  await clip('07-ai',6,async()=>{
     await pause(1400);
     await point(frame.getByRole('tab',{name:'Cloud API',exact:true}),true);
     await frame.locator('input[value="demo-model"]').waitFor();
@@ -200,8 +265,8 @@ try{
   });
   await go('/settings?tab=system&section=authentication');
   await frame.getByRole('heading',{name:'LDAP',exact:true}).waitFor();
-  await chapter(7,'Use your existing identity provider.','LDAP / LDAPS · Windows SSO (Kerberos) · OpenID Connect');
-  await clip('07-auth',9,async()=>{
+  await chapter(8,'Use your existing identity provider.','LDAP / LDAPS · Windows SSO (Kerberos) · OpenID Connect');
+  await clip('08-auth',9,async()=>{
     await pause(3000);
     await scrollMainTo(frame.getByRole('heading',{name:'Windows Integrated Auth (Negotiate)',exact:true}),'smooth');
     await pause(1000);
@@ -218,7 +283,7 @@ try{
     document.getElementById('url').textContent='github.com/Sev7eNup/NodePilot';
     document.getElementById('card-foot').textContent='Built for Windows operations';
   });
-  await clip('08-outro',5);
+  await clip('09-outro',5);
   await writeFile(path.join(out,'capture.json'),JSON.stringify({segments,errors,unhandledApi:[...unknown],preview,width:2560,height:1440,uiScale:.88},null,2));
   console.log(JSON.stringify({output:out,errors,unhandledApi:[...unknown]}));
   if(errors.length) process.exitCode=1;
