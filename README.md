@@ -21,7 +21,16 @@ Design, schedule, debug, and observe multi-step automation in your browser. Run 
 
 ---
 
-## Screenshots
+## Product tour
+
+[![Watch the NodePilot product tour — Workflow Designer with PowerShell, File Copy and an LLM summary](src/nodepilot-docs-ui/public/media/product-tour-poster.png)](https://sev7enup.github.io/NodePilot/media/nodepilot-product-tour.mp4)
+
+**[Watch product video](https://sev7enup.github.io/NodePilot/media/nodepilot-product-tour.mp4)**
+
+See SCOrch import, the Workflow Designer, execution history, Live Ops, logs and AI chat in action. English captions, no audio.
+
+<details>
+<summary><b>Browse screenshots</b></summary>
 
 <details open>
 <summary><b>🎨 Workflow Designer</b></summary>
@@ -51,10 +60,13 @@ Design, schedule, debug, and observe multi-step automation in your browser. Run 
 
 </details>
 
+</details>
+
 ---
 
 ## Table of Contents
 
+- [Product tour](#product-tour)
 - [Why NodePilot](#why-nodepilot)
 - [Coming from System Center Orchestrator](#coming-from-system-center-orchestrator)
 - [Install — pick one of three paths](#install--pick-one-of-three-paths)
