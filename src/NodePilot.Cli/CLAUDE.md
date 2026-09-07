@@ -6,4 +6,6 @@ Reiner HTTP-Client gegen die REST-Endpoints (Spectre.Console.Cli), mit beiden In
 
 **Architektur-Konvention:** Neuer API-Endpoint → parallel Methode in `NodePilotApiClient.cs` + Command anlegen. DTOs in `Cli/Api/Dtos/` duplizieren (kein ProjectReference).
 
+**Anmeldewege:** `np auth login` nutzt den Passwort-Endpunkt (lokal + LDAP); `--windows` meldet das eigene Windows-Konto per Negotiate/Kerberos an. Auf diesem Pfad liefert die API den JWT **nur** im httpOnly-Cookie `np_auth` (bewusst, siehe `AuthController.WindowsLogin`) — der Client baut deshalb einen Handler mit `UseDefaultCredentials` + `CookieContainer` (`ApiClientFactory.CreateForWindowsSso`) und liest den Token aus dem Jar statt aus dem Body. Die Ablaufzeit kommt aus dem `exp`-Claim über `ClientSessionSecurity.TryResolveExpiration`; die API wird dafür nicht angefasst.
+
 **Geteilte Client-Infrastruktur:** `ApiException`, das Response-Plumbing (`ApiResponseReader`), die Lese-Seite der `config.json` (`ClientConfigStore` + `CliConfig`) sowie der DPAPI-Session-Store und die Token-Rotation (`TokenStore`, `StoredSession`, `TokenRefreshHandler`) liegen in `NodePilot.Core.Clients` — gemeinsam mit dem MCP-Server. **Nur die DTOs bleiben bewusst dupliziert** (siehe oben, `ApiDtoParityTests`); neue Infrastruktur nicht erneut kopieren (Guard: `CliSessionInteropTests` in Mcp.Tests).

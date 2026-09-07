@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Net;
 using System.Runtime.Versioning;
 using NodePilot.Cli.Api;
 using NodePilot.Cli.Api.Dtos;
@@ -28,11 +29,30 @@ public sealed class LoginSettings : GlobalSettings
     [CommandOption("--setup-token <TOKEN>")]
     [Description("Bootstrap-only first-admin setup token (contents of admin-setup.token).")]
     public string? SetupToken { get; set; }
+
+    [CommandOption("--windows")]
+    [Description("Sign in with the current Windows identity (Kerberos/Negotiate) instead of a password.")]
+    public bool Windows { get; set; }
+
+    public override ValidationResult Validate()
+    {
+        if (!Windows) return ValidationResult.Success();
+        // Negotiate authenticates the process' own identity; any password-side option would be
+        // silently ignored, which is worse than refusing the combination.
+        if (Username is not null || Password is not null || PasswordStdin || SetupToken is not null)
+            return ValidationResult.Error(
+                "--windows cannot be combined with --username, --password, --password-stdin or --setup-token.");
+        return ValidationResult.Success();
+    }
 }
 
 [SupportedOSPlatform("windows")]
 public sealed class LoginCommand : AsyncCommand<LoginSettings>
 {
+    /// <summary>Session cookie set by the API (<c>AuthController.AuthCookieName</c>). The Windows
+    /// login path returns the JWT here and nowhere else.</summary>
+    private const string AuthCookieName = "np_auth";
+
     private readonly ConfigStore _config;
     private readonly TokenStore _tokens;
     private readonly ApiClientFactory _factory;
@@ -58,6 +78,9 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
             return ExitCodes.Error;
         }
 
+        if (settings.Windows)
+            return await LoginWithWindowsIdentityAsync(settings, cfg, profile, server, writer, ct);
+
         var username = settings.Username ?? await AnsiConsole.AskAsync<string>("Username:");
         string password;
         if (settings.PasswordStdin)
@@ -79,12 +102,7 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
                 return ExitCodes.Error;
             }
 
-            // Persist server URL into the active profile so subsequent calls don't need --server.
-            cfg.Profiles[profile] = new ProfileEntry { Server = server };
-            if (string.IsNullOrWhiteSpace(cfg.DefaultProfile)) cfg.DefaultProfile = profile;
-            _config.Save(cfg);
-
-            _tokens.Save(profile, new StoredSession
+            PersistSession(cfg, profile, server, new StoredSession
             {
                 Server = server,
                 Token = response.Token,
@@ -104,14 +122,112 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
         }
         catch (ApiException ex)
         {
-            writer.Error($"Login fehlgeschlagen: {ex.Message}");
+            writer.Error($"Login fehlgeschlagen: {Markup.Escape(ex.Message)}");
             return ExitCodes.Error;
         }
         catch (HttpRequestException ex)
         {
-            writer.Error($"Netzwerk-Fehler: {ex.Message}");
+            writer.Error($"Netzwerk-Fehler: {Markup.Escape(ex.Message)}");
             return ExitCodes.Error;
         }
+    }
+
+    /// <summary>
+    /// Signs in with the process' own Windows identity. The server answers this path with identity
+    /// only and puts the JWT in the httpOnly <c>np_auth</c> cookie, so the token is read from the
+    /// cookie jar rather than the body; the stored session is identical to the password path.
+    /// </summary>
+    private async Task<int> LoginWithWindowsIdentityAsync(
+        LoginSettings settings,
+        CliConfig cfg,
+        string profile,
+        string server,
+        OutputWriter writer,
+        CancellationToken ct)
+    {
+        try
+        {
+            // Ask before knocking: with Authentication:Windows:Enabled off, the endpoint's auth
+            // scheme is not registered and ASP.NET answers 500 with an internal handler message.
+            // The anonymous discovery endpoint gives a clean answer instead.
+            var methods = await _factory
+                .CreateAnonymous(server, settings.AllowInsecureLoopback)
+                .GetAuthMethodsAsync(ct);
+            if (!methods.Windows)
+            {
+                writer.Error("Windows-Anmeldung nicht verfügbar: Der Server hat Authentication:Windows:Enabled nicht gesetzt.");
+                return ExitCodes.AuthRequired;
+            }
+
+            var sso = _factory.CreateForWindowsSso(server, settings.AllowInsecureLoopback);
+            var identity = await sso.Api.WindowsLoginAsync(ct);
+            var token = sso.Cookies.GetCookies(sso.Api.BaseAddress!)[AuthCookieName]?.Value;
+            if (string.IsNullOrEmpty(token))
+            {
+                writer.Error("Windows-Anmeldung fehlgeschlagen: Der Server hat kein Sitzungs-Cookie gesetzt.");
+                return ExitCodes.Error;
+            }
+
+            // The Windows path carries no expiry in the body; the JWT's own exp claim is the only
+            // source. ClientSessionSecurity parses it without treating it as authorization.
+            if (!ClientSessionSecurity.TryResolveExpiration(token, advertisedExpiration: null, out var expiresAt)
+                || expiresAt <= DateTimeOffset.UtcNow)
+            {
+                writer.Error("Windows-Anmeldung fehlgeschlagen: Token ohne gültige Ablaufzeit.");
+                return ExitCodes.Error;
+            }
+
+            PersistSession(cfg, profile, server, new StoredSession
+            {
+                Server = server,
+                Token = token,
+                Username = identity.Username,
+                UserId = identity.UserId,
+                Role = identity.Role,
+                ExpiresAt = expiresAt,
+            });
+
+            writer.Success(
+                $"Per Windows-Anmeldung eingeloggt als [bold]{identity.Username}[/] ({identity.Role}) → {server}");
+            return ExitCodes.Success;
+        }
+        catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            writer.Error("Windows-Anmeldung nicht verfügbar: Der Server hat Authentication:Windows:Enabled nicht gesetzt.");
+            return ExitCodes.AuthRequired;
+        }
+        catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.ServiceUnavailable)
+        {
+            writer.Error($"Windows-Anmeldung nicht konfiguriert: {Markup.Escape(ex.Message)}");
+            return ExitCodes.AuthRequired;
+        }
+        catch (ApiException ex) when (ex.IsUnauthorized)
+        {
+            // No Kerberos ticket, missing SPN, or the server refused an NTLM fallback. The server
+            // message names which, so it is passed through verbatim.
+            writer.Error($"Windows-Anmeldung abgelehnt: {Markup.Escape(ex.Message)}");
+            return ExitCodes.AuthRequired;
+        }
+        catch (ApiException ex)
+        {
+            writer.Error($"Windows-Anmeldung fehlgeschlagen: {Markup.Escape(ex.Message)}");
+            return ExitCodes.Error;
+        }
+        catch (HttpRequestException ex)
+        {
+            writer.Error($"Netzwerk-Fehler: {Markup.Escape(ex.Message)}");
+            return ExitCodes.Error;
+        }
+    }
+
+    /// <summary>Writes the server URL into the active profile and stores the session.</summary>
+    private void PersistSession(CliConfig cfg, string profile, string server, StoredSession session)
+    {
+        // Persist server URL into the active profile so subsequent calls don't need --server.
+        cfg.Profiles[profile] = new ProfileEntry { Server = server };
+        if (string.IsNullOrWhiteSpace(cfg.DefaultProfile)) cfg.DefaultProfile = profile;
+        _config.Save(cfg);
+        _tokens.Save(profile, session);
     }
 }
 

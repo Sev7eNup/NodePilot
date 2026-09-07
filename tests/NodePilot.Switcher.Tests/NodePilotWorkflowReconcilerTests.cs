@@ -87,6 +87,8 @@ public sealed class NodePilotWorkflowReconcilerTests
 
         await reconciler.ReconcileAsync(Configuration(), [allowedId.ToString()], null, CancellationToken.None);
 
+        runner.WindowsLoginAttempts.Should().Be(1,
+            "Windows sign-in is tried once before the password prompt");
         prompt.RequestCount.Should().Be(1);
         runner.LoginAttempts.Should().Be(1);
         runner.LoginUsername.Should().Be("switcher-admin");
@@ -95,6 +97,56 @@ public sealed class NodePilotWorkflowReconcilerTests
             "the password must only be passed through standard input");
         runner.WorkflowListAttempts.Should().BeGreaterThan(1,
             "the command interrupted by the expired session must be retried after login");
+    }
+
+    [Fact]
+    public async Task Reconcile_ExpiredSessionSignsInWithWindowsIdentityWithoutPrompting()
+    {
+        var allowedId = Guid.NewGuid();
+        var runner = new ExpiredSessionNodePilotRunner([
+            new NodePilotWorkflow(allowedId, "Allowed", true),
+        ], windowsSignInSucceeds: true);
+        var prompt = new RecordingCredentialPrompt(new NodePilotCredentials("switcher-admin", "correct horse"));
+
+        await new NodePilotWorkflowReconciler(runner, new RecordingLogger(), prompt)
+            .ReconcileAsync(Configuration(), [allowedId.ToString()], null, CancellationToken.None);
+
+        runner.WindowsLoginAttempts.Should().Be(1);
+        runner.WindowsLoginArguments.Should().ContainInOrder("auth", "login", "--windows");
+        runner.WindowsLoginArguments.Should().ContainInOrder("--profile", "switcher");
+        prompt.RequestCount.Should().Be(0, "Kerberos already produced a session");
+        runner.LoginAttempts.Should().Be(0);
+        runner.WorkflowListAttempts.Should().BeGreaterThan(1,
+            "the command interrupted by the expired session must be retried after login");
+    }
+
+    [Fact]
+    public async Task Reconcile_WithoutCredentialPromptStillSignsInWithWindowsIdentity()
+    {
+        var allowedId = Guid.NewGuid();
+        var runner = new ExpiredSessionNodePilotRunner([
+            new NodePilotWorkflow(allowedId, "Allowed", true),
+        ], windowsSignInSucceeds: true);
+
+        await new NodePilotWorkflowReconciler(runner, new RecordingLogger())
+            .ReconcileAsync(Configuration(), [allowedId.ToString()], null, CancellationToken.None);
+
+        runner.WindowsLoginAttempts.Should().Be(1);
+        runner.WorkflowListAttempts.Should().BeGreaterThan(1);
+    }
+
+    [Fact]
+    public async Task Reconcile_WithoutCredentialPromptAndWithoutWindowsSignInFails()
+    {
+        var runner = new ExpiredSessionNodePilotRunner([
+            new NodePilotWorkflow(Guid.NewGuid(), "Allowed", true),
+        ]);
+
+        var action = () => new NodePilotWorkflowReconciler(runner, new RecordingLogger())
+            .ReconcileAsync(Configuration(), ["Allowed"], null, CancellationToken.None);
+
+        await action.Should().ThrowAsync<InvalidOperationException>().WithMessage("*exit code 3*");
+        runner.WindowsLoginAttempts.Should().Be(1);
     }
 
     [Fact]
@@ -213,17 +265,25 @@ public sealed class NodePilotWorkflowReconcilerTests
 
         public ExpiredSessionNodePilotRunner(
             IReadOnlyList<NodePilotWorkflow> workflows,
-            int rejectedLoginAttempts = 0)
+            int rejectedLoginAttempts = 0,
+            bool windowsSignInSucceeds = false)
         {
             _workflows = workflows;
             _remainingRejectedLogins = rejectedLoginAttempts;
+            WindowsSignInSucceeds = windowsSignInSucceeds;
         }
+
+        /// <summary>Models a server with Windows authentication enabled and a usable Kerberos
+        /// ticket. Off by default, which is what a machine without it looks like.</summary>
+        public bool WindowsSignInSucceeds { get; }
 
         public int WorkflowListAttempts { get; private set; }
         public int LoginAttempts { get; private set; }
+        public int WindowsLoginAttempts { get; private set; }
         public string? LoginUsername { get; private set; }
         public string? LoginPassword { get; private set; }
         public IReadOnlyList<string> LoginArguments { get; private set; } = [];
+        public IReadOnlyList<string> WindowsLoginArguments { get; private set; } = [];
 
         public Task<CommandResult> RunAsync(
             string executable,
@@ -232,6 +292,19 @@ public sealed class NodePilotWorkflowReconcilerTests
             CancellationToken cancellationToken,
             string? standardInput = null)
         {
+            if (arguments[0] == "auth" && arguments[1] == "login" && arguments.Contains("--windows"))
+            {
+                WindowsLoginAttempts++;
+                WindowsLoginArguments = arguments;
+                if (!WindowsSignInSucceeds)
+                    return Task.FromResult(new CommandResult(
+                        3,
+                        string.Empty,
+                        "Windows-Anmeldung nicht verfügbar: Der Server hat Authentication:Windows:Enabled nicht gesetzt."));
+                _authenticated = true;
+                return Task.FromResult(new CommandResult(0, "windows login ok", string.Empty));
+            }
+
             if (arguments[0] == "auth" && arguments[1] == "login")
             {
                 LoginAttempts++;

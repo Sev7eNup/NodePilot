@@ -63,7 +63,7 @@ np exec get 7e3f... --server https://np.internal:8443 -o yaml
 
 ## auth
 
-`np auth login` ist interaktiv (fragt Username + Passwort ab, falls nicht per Flag geliefert). Flags: `--username`, `--password` (Literal — in Scripts meiden), `--password-stdin` (eine Zeile von stdin), `--setup-token <T>` (Bootstrap First-Admin).
+`np auth login` ist interaktiv (fragt Username + Passwort ab, falls nicht per Flag geliefert). Flags: `--username`, `--password` (Literal — in Scripts meiden), `--password-stdin` (eine Zeile von stdin), `--setup-token <T>` (Bootstrap First-Admin), `--windows` (Anmeldung mit dem aktuellen Windows-Konto, ohne Passwort).
 
 ```bash
 # Interaktiv (fragt user + pw ab)
@@ -76,13 +76,16 @@ echo "S3cret!" | np auth login --username admin --password-stdin --server https:
 np auth login --username admin --password-stdin \
   --setup-token "$(cat admin-setup.token)" --server https://np.internal:8443
 
+# Kerberos: als aktuelles Windows-Konto anmelden (braucht Authentication:Windows:Enabled)
+np auth login --windows --server https://np.internal:8443
+
 # Discovery (anonym, keine Session nötig) + Profil-Check
 np auth methods --server https://np.internal:8443
 np auth whoami -o json
 np auth logout
 ```
 
-`np auth login` nutzt den Passwort-Endpunkt und deckt damit lokale sowie LDAP-Anmeldung ab. Windows Negotiate und OIDC sind Browserflows; OIDC-Metadaten stehen vollständig über `GET /api/auth/methods` zur Verfügung, werden vom aktuellen CLI-DTO aber noch nicht dargestellt.
+Ohne `--windows` nutzt `np auth login` den Passwort-Endpunkt und deckt damit lokale sowie LDAP-Anmeldung ab. `--windows` authentifiziert das eigene Windows-Konto per Negotiate/Kerberos und braucht kein Passwort; Voraussetzung sind `Authentication:Windows:Enabled` am Server, ein registrierter SPN und ein Kerberos-Ticket (NTLM wird abgelehnt) — fehlt eines davon, endet der Befehl mit Exit-Code `3`. OIDC bleibt ein Browserflow; die Metadaten stehen vollständig über `GET /api/auth/methods` zur Verfügung, werden vom aktuellen CLI-DTO aber noch nicht dargestellt.
 
 ## workflow
 

@@ -61,6 +61,19 @@ public sealed class NodePilotApiClient
         return await ParseAsync<LoginResponse>(res, ct);
     }
 
+    /// <summary>
+    /// Negotiate/Kerberos login. The endpoint answers with identity only — the JWT is set in the
+    /// httpOnly <c>np_auth</c> cookie and never returned in the body, so the caller must read it
+    /// from the handler's cookie jar (see <see cref="ApiClientFactory.CreateForWindowsSso"/>).
+    /// Requires a client built with <c>UseDefaultCredentials</c>; the handshake itself is done by
+    /// the handler before this request completes.
+    /// </summary>
+    public async Task<AuthIdentityResponse> WindowsLoginAsync(CancellationToken ct)
+    {
+        using var res = await _http.PostAsync("api/auth/windows", content: null, ct);
+        return await ParseAsync<AuthIdentityResponse>(res, ct);
+    }
+
     public async Task LogoutAsync(CancellationToken ct)
     {
         using var res = await _http.PostAsync("api/auth/logout", content: null, ct);

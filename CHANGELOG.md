@@ -12,6 +12,17 @@ exhaustive.
 
 ## [Unreleased]
 
+### Added
+
+- **`np auth login --windows` — and with it a Switcher that stops asking for a password.** The
+  Kerberos endpoint existed but was reachable only from a browser, because it returns the JWT
+  exclusively in the httpOnly session cookie. A native client can read that cookie, so the CLI now
+  signs in with the account it runs under, and the Switcher tries exactly that before it opens its
+  credential dialog: where Windows authentication is enabled, an expired session is renewed without
+  anyone typing anything. Where it is not, the attempt fails immediately and the dialog appears as
+  before. The API is unchanged — the browser hardening that withholds the token from the body stays
+  exactly as it was.
+
 ### Changed
 
 - **The Engine Switcher is now simply the Switcher.** The name moved everywhere it is persisted:
