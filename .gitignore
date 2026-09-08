@@ -167,6 +167,8 @@ tmp_*
 !src/nodepilot-docs-ui/src/assets/*.png
 # Docs site favicon (served from its public/ folder)
 !src/nodepilot-docs-ui/public/*.png
+# Pages-only marketing poster
+!src/nodepilot-docs-ui/pages-media/*.png
 # README screenshots (public repo landing page)
 !docs/images/*.png
 
