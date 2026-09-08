@@ -258,7 +258,7 @@ public class RenderersCoverageTests
             TopWorkflows: new() { new TopWorkflow(Guid.NewGuid(), "Nightly Backup", 50, 47, 3) },
             Running: new() { new RunningExecutionInfo(Guid.NewGuid(), Guid.NewGuid(), "Nightly Backup", "Running", DateTime.UtcNow, "schedule") },
             Recent: new(),
-            ArmedTriggers: new());
+            ArmedTriggers: new(), LongRunningSeconds: 600);
 
         var output = Render(c => Renderers.Dashboard(c, s));
 
@@ -275,7 +275,7 @@ public class RenderersCoverageTests
         var s = new DashboardStats(
             1, 1, 1, 1, 0,
             new ExecutionCounts(0, 0, 0, 0, 0),
-            new(), new(), new(), new(), new());
+            new(), new(), new(), new(), new(), LongRunningSeconds: 600);
 
         var output = Render(c => Renderers.Dashboard(c, s));
 
