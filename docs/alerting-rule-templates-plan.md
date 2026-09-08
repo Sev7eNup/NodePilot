@@ -234,8 +234,11 @@ Vertrag, explizit **validate-then-mutate**:
 - **Jedes Filter-Feld** `{kind:variable, source:event, name:X}` ∈ `NotificationContext.ToFieldMap().Keys`
   — ein getipptes `folderpath` ergäbe eine Regel, die korrekt aussieht und nie greift
 - **Positiv- und Negativ-Fixture je gefilterter Vorlage.** „Parst und wirft nicht" ist zu schwach: der
-  `ConditionEvaluator` schluckt unbekannte Strukturen teilweise als `true`, und ein nicht
-  kompilierbares Regex wird in `GetCachedRegex` verschluckt → ein Alarm, der nie feuert. Je Vorlage ein
+  Workflow-Edge-Evaluator ist seit [ADR 0015](adr/0015-fail-closed-edge-conditions.md) fail-closed.
+  Alerting behandelt fehlende deklarierte Event-Felder weiterhin als leer; bei einer ungültigen
+  Condition fängt `NotificationRuleSemantics` die `ConditionEvaluationException` ab und der Filter
+  matcht nichts. Ein syntaktisch gültiger, aber falsch formulierter Filter kann wiederum zu viel
+  matchen. Deshalb weiterhin je Vorlage ein
   `NotificationContext`, der matchen **muss**, und einer, der **nicht** matchen darf
 - Jeder `SupportedEventTypes`-Wert kommt in mindestens einer Vorlage vor (fängt ab, dass die Kuratierung
   eine Event-Art ganz verliert)

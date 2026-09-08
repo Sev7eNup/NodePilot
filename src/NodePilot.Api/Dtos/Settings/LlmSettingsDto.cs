@@ -45,7 +45,7 @@ public sealed class LlmProfileSettingsDto
 
     [Required(AllowEmptyStrings = false)]
     [StringLength(255)]
-    public string Model { get; set; } = "";
+    public string Model { get; set; } = "gpt-5.5";
 
     /// <summary>
     /// Output-token cap per LLM call. The lower bound catches the operator typo that actually
@@ -55,7 +55,7 @@ public sealed class LlmProfileSettingsDto
     /// today's largest context would make NodePilot the thing blocking tomorrow's model.
     /// </summary>
     [Range(256, 1_000_000)]
-    public int MaxTokens { get; set; } = 256_000;
+    public int MaxTokens { get; set; } = 128_000;
 
     [Range(5, 3600)]
     public int TimeoutSeconds { get; set; } = 90;

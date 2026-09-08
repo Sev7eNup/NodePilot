@@ -95,6 +95,9 @@ no backend i18n store to stand up.
 - A strict alerting-only AST validator (known fields, operator/type compatibility, depth/node/regex caps,
   field-level RFC-7807 errors) is added **without** changing the permissive workflow-edge
   `ConditionEvaluator` semantics.
+  **Subsequent decision:** [ADR 0015](0015-fail-closed-edge-conditions.md) supersedes this
+  statement about workflow edges: invalid edge conditions now fail closed. The alerting-specific
+  validator and declared event-field semantics remain in place.
 - New audit actions (`SYSTEM_ALERT_POLICY_*`), Admin-only mutation RBAC (reads Admin/Operator), and a
   rate-limit on the live-observation `preview` / outbound `test-fire` endpoints are required by the later
   phases.

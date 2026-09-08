@@ -39,8 +39,7 @@ internal sealed class RestoreState
     // Workflows carry no unique name, so their conflict key is the id first and the name within
     // the target folder second. Only rows that existed before the restore can be a conflict; two
     // backup rows are distinct workflows by id even when they share a name.
-    private readonly Dictionary<Guid, Workflow> _targetWorkflowsById = [];
-    private readonly Dictionary<(Guid FolderId, string Name), Workflow> _targetWorkflowsByFolderAndName = [];
+    private readonly WorkflowRestoreTargets _workflowTargets;
     private readonly Dictionary<Guid, HashSet<string>> _takenWorkflowNamesByFolder = [];
 
     public HashSet<Guid> ExistingUserIds { get; } = [];
@@ -75,6 +74,7 @@ internal sealed class RestoreState
         Reader = reader;
         Protector = protector;
         _policies = policies;
+        _workflowTargets = new WorkflowRestoreTargets(SourceIds(reader, BackupSections.Workflows, "items"));
         RestoredByUserId = restoredByUserId;
         _backupCredentialIds = SourceIds(reader, BackupSections.Credentials, "items");
         _backupMachineIds = SourceIds(reader, BackupSections.Machines, "items");
@@ -91,8 +91,7 @@ internal sealed class RestoreState
     /// <summary>Registers a row that existed in the target before the restore.</summary>
     public void AddExistingWorkflow(Workflow workflow)
     {
-        _targetWorkflowsById[workflow.Id] = workflow;
-        _targetWorkflowsByFolderAndName.TryAdd((workflow.FolderId, workflow.Name), workflow);
+        _workflowTargets.Add(workflow);
         TrackWorkflow(workflow);
     }
 
@@ -101,9 +100,8 @@ internal sealed class RestoreState
 
     /// <summary>The pre-existing target row a backup workflow stands for, or null for a new one.</summary>
     public Workflow? FindWorkflowConflict(Guid sourceId, Guid targetFolderId, string name) =>
-        _targetWorkflowsById.TryGetValue(sourceId, out var byId) ? byId
-        : _targetWorkflowsByFolderAndName.TryGetValue((targetFolderId, name), out var byName) ? byName
-        : null;
+        _workflowTargets.Match(sourceId, targetFolderId, name,
+            consume: Policy(BackupSections.Workflows) != RestoreConflictPolicy.Rename);
 
     /// <summary>Names already used in a target folder, by existing and by restored rows.</summary>
     public HashSet<string> TakenWorkflowNames(Guid targetFolderId)

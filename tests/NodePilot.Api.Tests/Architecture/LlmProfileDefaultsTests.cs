@@ -18,11 +18,26 @@ namespace NodePilot.Api.Tests.Architecture;
 public class LlmProfileDefaultsTests
 {
     [Fact]
+    public void DefaultModelAndOutputCap_AgreeAcrossProfileCreationPaths()
+    {
+        var profile = new LlmProfileOptions();
+        profile.Model.Should().Be("gpt-5.5");
+        profile.MaxTokens.Should().BeLessThanOrEqualTo(128_000,
+            "https://developers.openai.com/api/docs/models/gpt-5.5 declares a 128,000 output-token limit");
+        new LlmProfileSettingsDto().Model.Should().Be(profile.Model);
+        var root = FindRepoRoot();
+        File.ReadAllText(Path.Combine(root, "src/NodePilot.Api/Configuration/SettingsSections.cs"))
+            .Should().Contain("Model = p[\"Model\"]?.GetValue<string>() ?? \"gpt-5.5\"");
+        File.ReadAllText(Path.Combine(root, "src/nodepilot-ui/src/components/admin-settings/IntegrationsSection.tsx"))
+            .Should().Contain("model: 'gpt-5.5'");
+    }
+
+    [Fact]
     public void MaxTokensDefault_AgreesAcrossOptionsDtoAndSettingsFallback()
     {
         var expected = new LlmProfileOptions().MaxTokens;
 
-        expected.Should().Be(256_000);
+        expected.Should().Be(128_000);
         new LlmProfileSettingsDto().MaxTokens.Should().Be(expected);
         SettingsSectionsFallback("MaxTokens").Should().Be(expected);
     }

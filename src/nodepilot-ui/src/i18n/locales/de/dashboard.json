@@ -80,7 +80,7 @@
   "queueDepth": "Queue",
   "queueShort": "{{pending}}p · {{running}}r",
   "longRunning": "{{count}} lang",
-  "longRunningTitle": "Lang laufend (>30 Min)",
+  "longRunningTitle": "Lang laufend (> {{duration}})",
   "scheduler": "Scheduler",
   "schedulerOk": "OK",
   "schedulerStale": "Veraltet",

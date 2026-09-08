@@ -31,6 +31,11 @@ export default defineConfig([
     },
   },
   {
+    files: ['src/**/*.test.mjs'],
+    extends: [js.configs.recommended],
+    languageOptions: { ecmaVersion: 2022, globals: globals.node },
+  },
+  {
     files: ['vite.config.ts'],
     extends: [
       js.configs.recommended,

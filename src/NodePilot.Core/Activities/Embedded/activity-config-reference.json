@@ -125,7 +125,7 @@
     "startProgram": {
       "description": "Start a program/process (remote).",
       "configKeys": [
-        { "key": "filePath", "type": "string", "required": true, "description": "Absolute local path to the executable - a bare name like cmd.exe is rejected, PATH is not searched." },
+        { "key": "filePath", "type": "string", "required": true, "description": "The stored definition must contain an absolute local executable path; the engine rejects bare names and UNC paths and never searches PATH. The designer completes cmd, powershell, cscript and wscript (with or without .exe) to absolute paths on blur. API, MCP and generated definitions must supply the absolute path themselves." },
         { "key": "arguments", "type": "string", "required": false, "description": "Command-line arguments." },
         { "key": "workingDirectory", "type": "string", "required": false, "description": "Working directory." },
         { "key": "waitForExit", "type": "boolean", "required": false, "description": "Block until the process exits and capture stdout/stderr/exitCode." },

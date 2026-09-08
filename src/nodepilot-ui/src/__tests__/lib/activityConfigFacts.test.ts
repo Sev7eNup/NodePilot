@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { checkRequiredActivityConfig, summarizeActivityConfig } from '../../lib/activityConfigFacts';
+import i18n from '../../i18n';
 
 /**
  * Activity summaries are the one-line previews shown in the node header on the canvas,
@@ -312,17 +313,17 @@ describe('summarizeActivityConfig', () => {
 
     it('missingPath_returnsError', () => {
       expect(checkRequiredActivityConfig('textFileEdit', { operation: 'append', content: 'x' }))
-        .toContain('Pfad');
+        .toBe(i18n.t('activities:validation.pathRequired'));
     });
 
     it('unknownOperation_returnsError', () => {
       expect(checkRequiredActivityConfig('textFileEdit', { operation: 'truncate', path: 'C:\\f.txt' }))
-        .toContain('Unbekannte Operation');
+        .toContain('Unknown operation');
     });
 
     it('appendWithoutContent_returnsError', () => {
       expect(checkRequiredActivityConfig('textFileEdit', { operation: 'append', path: 'C:\\f.txt' }))
-        .toContain("'append' benötigt 'content'");
+        .toBe(i18n.t('activities:validation.contentRequired', { operation: 'append' }));
     });
 
     it('insertWithoutLineNumber_returnsError', () => {
@@ -332,13 +333,13 @@ describe('summarizeActivityConfig', () => {
 
     it('deleteWithoutSelector_returnsError', () => {
       expect(checkRequiredActivityConfig('textFileEdit', { operation: 'delete', path: 'C:\\f.txt' }))
-        .toContain('genau eines');
+        .toBe(i18n.t('activities:validation.deleteSelectorRequired'));
     });
 
     it('deleteWithMultipleSelectors_returnsError', () => {
       expect(checkRequiredActivityConfig('textFileEdit', {
         operation: 'delete', path: 'C:\\f.txt', lineNumber: 1, matchPattern: 'x',
-      })).toContain('nur eines');
+      })).toBe(i18n.t('activities:validation.deleteSelectorExclusive'));
     });
 
     it('replaceWithoutMatchPattern_returnsError', () => {
@@ -393,7 +394,7 @@ describe('summarizeActivityConfig', () => {
  */
 describe('checkRequiredActivityConfig / startProgram filePath', () => {
   it('missingFilePath_reportsRequired', () => {
-    expect(checkRequiredActivityConfig('startProgram', {})).toContain('erforderlich');
+    expect(checkRequiredActivityConfig('startProgram', {})).toBe(i18n.t('activities:validation.startProgramPathRequired'));
   });
 
   it('absolutePath_accepted', () => {
@@ -412,7 +413,7 @@ describe('checkRequiredActivityConfig / startProgram filePath', () => {
   it('bareName_reportsNotAbsolute', () => {
     const message = checkRequiredActivityConfig('startProgram', { filePath: '7z.exe' });
     expect(message).not.toBeNull();
-    expect(message).toMatch(/absolut/i);
+    expect(message).toBe(i18n.t('activities:validation.startProgramNotAbsolute'));
   });
 
   it('relativePath_reportsNotAbsolute', () => {

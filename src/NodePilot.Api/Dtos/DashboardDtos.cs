@@ -54,4 +54,5 @@ public record DashboardStats(
     string DatabaseProvider,
     string? ClusterRole,
     List<DashboardAuditEvent>? RecentAudit,
-    bool LlmEnabled);
+    bool LlmEnabled,
+    int LongRunningSeconds);

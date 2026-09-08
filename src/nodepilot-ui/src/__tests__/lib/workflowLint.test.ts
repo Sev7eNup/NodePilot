@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Node, Edge } from '@xyflow/react';
 import { lintWorkflow } from '../../lib/workflowLint';
+import i18n from '../../i18n';
 
 // Helper to build an activity node with explicit position + measured size.
 function node(id: string, x: number, y: number, opts: Partial<{ w: number; h: number; activityType: string; label: string; config: Record<string, unknown> }> = {}): Node {
@@ -482,7 +483,7 @@ describe('lintWorkflow — fileOperation required-config', () => {
     const { errors } = lintWorkflow(nodes, edges);
     const missing = errors.filter((e) => e.code === 'missing-required-config' && e.nodeId === 'op');
     expect(missing).toHaveLength(1);
-    expect(missing[0].message).toContain('Pfad');
+    expect(missing[0].message).toContain(i18n.t('activities:validation.pathRequired'));
   });
 
   it('flags copy without destination', () => {
@@ -512,7 +513,7 @@ describe('lintWorkflow — fileOperation required-config', () => {
     ];
     const edges: Edge[] = [edge('e1', 'trig', 'op')];
     const { errors } = lintWorkflow(nodes, edges);
-    const unknown = errors.filter((e) => e.code === 'missing-required-config' && e.message.toLowerCase().includes('unbekannte'));
+    const unknown = errors.filter((e) => e.code === 'missing-required-config');
     expect(unknown).toHaveLength(1);
     expect(unknown[0].message).toContain('list');
   });
@@ -578,7 +579,7 @@ describe('lintWorkflow — folderOperation required-config', () => {
     ];
     const edges: Edge[] = [edge('e1', 'trig', 'op')];
     const { errors } = lintWorkflow(nodes, edges);
-    expect(errors.some((e) => e.code === 'missing-required-config' && e.message.includes('Pfad'))).toBe(true);
+    expect(errors.some((e) => e.code === 'missing-required-config' && e.message.includes(i18n.t('activities:validation.pathRequired')))).toBe(true);
   });
 
   it('flags copy without destination', () => {
@@ -629,7 +630,7 @@ describe('lintWorkflow — folderOperation required-config', () => {
     ];
     const edges: Edge[] = [edge('e1', 'trig', 'op')];
     const { errors } = lintWorkflow(nodes, edges);
-    const unknown = errors.filter((e) => e.code === 'missing-required-config' && e.message.toLowerCase().includes('unbekannte'));
+    const unknown = errors.filter((e) => e.code === 'missing-required-config');
     expect(unknown).toHaveLength(1);
     expect(unknown[0].message).toContain('purge');
   });
