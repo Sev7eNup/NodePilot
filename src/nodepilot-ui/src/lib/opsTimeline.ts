@@ -36,6 +36,10 @@ export type OpsWindowMinutes = (typeof OPS_WINDOW_MINUTES)[number];
  * wider window a caller hands in.
  */
 export function tickStepFor(windowMs: number): number {
+  if (windowMs <= 10_000) return 1_000;
+  if (windowMs <= 30_000) return 5_000;
+  if (windowMs <= 2 * 60_000) return 15_000;
+  if (windowMs <= 5 * 60_000) return 60_000;
   if (windowMs <= 30 * 60_000) return 5 * 60_000;
   return 15 * 60_000;
 }
@@ -47,6 +51,16 @@ export interface TimelineWindow {
   endMs: number;
   nowMs: number;
   trackWidthPx: number;
+}
+
+/** Zoom around the pointer, bounded by the loaded window and a five-second detail view. */
+export function zoomTimelineWindow(current: TimelineWindow, bounds: TimelineWindow, fraction: number, deltaPixels: number): TimelineWindow {
+  const fullSpan = bounds.endMs - bounds.startMs;
+  const span = current.endMs - current.startMs;
+  const nextSpan = Math.max(Math.min(5_000, fullSpan), Math.min(fullSpan, span * Math.exp(Math.max(-1, Math.min(1, deltaPixels * 0.003)))));
+  const anchor = Math.max(0, Math.min(1, fraction));
+  const startMs = Math.max(bounds.startMs, Math.min(bounds.endMs - nextSpan, current.startMs + anchor * (span - nextSpan)));
+  return { ...bounds, startMs, endMs: startMs + nextSpan };
 }
 
 export interface TimelineBarInput {
@@ -86,6 +100,8 @@ export interface TimelineLane {
   hasActive: boolean;
   /** Call-hierarchy depth: 0 = top-level, >0 = sub-workflow lane indented under its caller. */
   depth: number;
+  /** Distinct caller workflows resolved from visible executions. */
+  callerCount: number;
   /** Concurrency exceeded OPS_MAX_SUB_ROWS, so some bars share a row and overlap there. */
   subRowsCapped: boolean;
 }
@@ -195,8 +211,8 @@ const ACTIVE_STATUSES = new Set(['Running', 'Pending', 'Paused']);
  * Deterministic lane + sub-row allocation. One lane per workflow; temporally overlapping
  * executions within a lane stack into sub-rows (greedy interval allocation on start order).
  *
- * Lane order is call-hierarchical: sub-workflow lanes (bars whose parentExecutionId points
- * into another visible lane) are indented directly under their caller's lane (depth+1).
+ * A lane nests under a caller only when all its bars resolve to that same caller workflow.
+ * Shared, standalone and unresolved calls remain top-level; connectors identify individual calls.
  * Top-level lanes sort active-first (latest start desc), then by latest completedAt desc;
  * ties broken by workflowId asc. Children keep the same comparator among siblings.
  */
@@ -223,8 +239,8 @@ export function assignLanes(
     workflowId: string;
     hasActive: boolean;
     sortKey: number; // active: latest startedAt; settled: latest completedAt
-    /** Dominant caller lane (from the most recent bar with a visible parent), if any. */
     parentWf: string | null;
+    callerCount: number;
   }
   const metas: LaneMeta[] = [];
   for (const [workflowId, list] of byWorkflow) {
@@ -233,15 +249,15 @@ export function assignLanes(
     const sortKey = hasActive
       ? Math.max(...active.map((b) => b.startedAtMs))
       : Math.max(...list.map((b) => b.completedAtMs ?? 0));
-    let parentWf: string | null = null;
-    let bestStart = Number.NEGATIVE_INFINITY;
+    const callers = new Set<string>();
+    let allHaveVisibleCaller = list.length > 0;
     for (const b of list) {
-      if (!b.parentExecutionId) continue;
-      const pwf = wfByExec.get(b.parentExecutionId);
-      if (!pwf || pwf === workflowId) continue;
-      if (b.startedAtMs > bestStart) { bestStart = b.startedAtMs; parentWf = pwf; }
+      const pwf = b.parentExecutionId ? wfByExec.get(b.parentExecutionId) : undefined;
+      if (!pwf || pwf === workflowId) allHaveVisibleCaller = false;
+      else callers.add(pwf);
     }
-    metas.push({ workflowId, hasActive, sortKey, parentWf });
+    const parentWf = allHaveVisibleCaller && callers.size === 1 ? [...callers][0] : null;
+    metas.push({ workflowId, hasActive, sortKey, parentWf, callerCount: callers.size });
   }
   metas.sort((a, b) => {
     if (a.hasActive !== b.hasActive) return a.hasActive ? -1 : 1;
@@ -314,6 +330,7 @@ export function assignLanes(
       subRowCount: Math.max(rowEnds.length, 1),
       hasActive: lane.hasActive,
       depth,
+      callerCount: lane.callerCount,
       subRowsCapped,
     });
   });
@@ -476,7 +493,7 @@ export function axisTicks(
 ): { xPx: number; atMs: number }[] {
   const ticks: { xPx: number; atMs: number }[] = [];
   const first = Math.ceil(w.startMs / stepMs) * stepMs;
-  for (let t = first; t <= w.nowMs; t += stepMs) {
+  for (let t = first; t <= Math.min(w.nowMs, w.endMs); t += stepMs) {
     ticks.push({ xPx: timeToX(t, w), atMs: t });
   }
   return ticks;

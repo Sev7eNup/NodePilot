@@ -2,6 +2,14 @@
 
 NodePilot provides metrics, traces and an observability API. OpenTelemetry is disabled by default and has to be configured explicitly.
 
+## Live-Ops: inspect short executions
+
+Over the execution bars, the mouse wheel zooms the timeline around the pointer. This makes short runs wider and easier to click; narrow bars also accept clicks immediately beside them. Over the workflow list, the wheel continues to scroll vertically.
+
+Zoom reaches a five-second detail view within the loaded 30- or 60-minute window. The selected time range stays fixed. **Back to live view** resets it; changing the time window also resets zoom.
+
+Multiple rows for one workflow are reusable **parallel tracks**. An empty space is not an error status. Shared child workflows appear independently with their visible caller count; only groups belonging exclusively to one caller are indented beneath it. The ID beside the name identifies the active or most recently started run on that track. Each bar opens its own execution.
+
 ## OpenTelemetry (opt-in)
 
 OpenTelemetry is opt-in. The setup is in `NodePilot.Telemetry` — constants, options, `PrometheusClient`.

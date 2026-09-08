@@ -105,6 +105,54 @@ test('timeline bars render from the snapshots', async ({ page }) => {
   await expect(page.getByText('(ex-2)')).toBeVisible();
 });
 
+test('mouse wheel enlarges a short run at the pointer and the run remains clickable', async ({ page }) => {
+  await mock(page);
+  const graph = GRAPH();
+  graph.running = [];
+  graph.recent = [{ ...graph.recent[0], startedAt: new Date(now() - 5 * MIN).toISOString(), completedAt: new Date(now() - 5 * MIN + 1000).toISOString() }];
+  await page.route('**/api/operations/graph*', r => json(r, graph));
+  await page.route('**/api/executions/ex-2', r => json(r, { ...EXEC_DETAIL, id: 'ex-2', workflowId: 'wf-2', status: 'Failed' }));
+  await page.goto('/operations');
+  const bar = page.locator('#ops-bar-ex-2');
+  await expect(bar).toBeVisible();
+  const before = (await bar.boundingBox())!;
+  await page.mouse.move(before.x + 0.1, before.y + before.height / 2);
+  for (let i = 0; i < 7; i++) {
+    const previous = await page.getByTestId('ops-track').getAttribute('data-window-start');
+    await page.mouse.wheel(0, -240);
+    await expect(page.getByTestId('ops-track')).not.toHaveAttribute('data-window-start', previous!);
+  }
+  await expect.poll(async () => (await bar.boundingBox())!.width).toBeGreaterThan(20);
+  const after = (await bar.boundingBox())!;
+  expect(Math.abs(after.x - before.x)).toBeLessThan(100);
+  await bar.click();
+  await expect(page.getByLabel('Execution details').getByText('ex-2')).toBeVisible();
+  await page.getByRole('button', { name: 'Back to live view' }).click();
+  await expect(page.getByTestId('ops-now-label')).toBeVisible();
+});
+
+test('wheel zoom does not scroll the lanes, while the workflow labels still scroll vertically', async ({ page }) => {
+  await mock(page);
+  const graph = GRAPH();
+  graph.running = [];
+  graph.nodes = Array.from({ length: 40 }, (_, i) => ({ ...graph.nodes[0], workflowId: `wf-${i}`, name: `Workflow ${i}` }));
+  graph.recent = graph.nodes.map(n => ({ ...graph.recent[0], workflowId: n.workflowId, executionId: `run-${n.workflowId}` }));
+  await page.route('**/api/operations/graph*', r => json(r, graph));
+  await page.goto('/operations');
+  const track = page.getByTestId('ops-track');
+  await expect(track).toBeVisible();
+  const rect = (await track.boundingBox())!;
+  await page.mouse.move(rect.x + rect.width / 2, rect.y + 20);
+  await page.mouse.wheel(0, -240);
+  await expect(page.getByRole('button', { name: 'Back to live view' })).toBeVisible();
+  expect(await track.evaluate(el => el.parentElement!.scrollTop)).toBe(0);
+  const start = await track.getAttribute('data-window-start');
+  await page.mouse.move(rect.x - 30, rect.y + 20);
+  await page.mouse.wheel(0, 400);
+  await expect.poll(() => track.evaluate(el => el.parentElement!.scrollTop)).toBeGreaterThan(0);
+  await expect(track).toHaveAttribute('data-window-start', start!);
+});
+
 test('timeline bar opens the drilldown with cancel + open-in-editor', async ({ page }) => {
   let cancelHit = false;
   await mock(page);

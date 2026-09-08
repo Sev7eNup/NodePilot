@@ -64,6 +64,57 @@ function translateXOf(el: HTMLElement): number {
 }
 
 describe('OpsTimeline', () => {
+  it('zooms short runs at the pointer, keeps historical detail steady and resets to live', () => {
+    const recent = [{ ...DEFAULT_RECENT[0], startedAt: new Date(NOW - 5 * MIN).toISOString(), completedAt: new Date(NOW - 5 * MIN + 1000).toISOString() }];
+    const { rerender } = renderTimeline({ running: [], recent });
+    const track = screen.getByTestId('ops-track');
+    const bar = document.getElementById('ops-bar-done-1')!;
+    const originalLeft = parseFloat(bar.style.left);
+    const originalWidth = parseFloat(bar.style.width);
+    for (let i = 0; i < 6; i++) {
+      expect(fireEvent.wheel(track, { deltaY: -240, clientX: originalLeft })).toBe(false);
+    }
+    expect(parseFloat(bar.style.left)).toBeCloseTo(originalLeft, 4);
+    expect(parseFloat(bar.style.width)).toBeGreaterThan(originalWidth * 3);
+    expect(screen.queryByTestId('ops-now-label')).not.toBeInTheDocument();
+    const start = track.dataset.windowStart;
+    rerender({ nowMs: NOW + 2000, recent: [...recent] });
+    expect(track.dataset.windowStart).toBe(start);
+    expect(parseFloat(bar.style.left)).toBeCloseTo(originalLeft, 4);
+    fireEvent.click(screen.getByRole('button', { name: 'Back to live view' }));
+    expect(screen.getByTestId('ops-now-label')).toBeInTheDocument();
+    expect(track.dataset.windowStart).toBe(String(NOW + 2000 - 30 * MIN));
+  });
+
+  it('leaves wheel scrolling over labels alone and resets zoom when the time window changes', () => {
+    const { rerender } = renderTimeline();
+    expect(fireEvent.wheel(screen.getByText('Nightly Backup'), { deltaY: -100 })).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Back to live view' })).not.toBeInTheDocument();
+    fireEvent.wheel(screen.getByTestId('ops-track'), { deltaY: -100, deltaMode: 1, clientX: 300 });
+    expect(screen.getByRole('button', { name: 'Back to live view' })).toBeInTheDocument();
+    rerender({ windowMs: 60 * MIN });
+    expect(screen.queryByRole('button', { name: 'Back to live view' })).not.toBeInTheDocument();
+  });
+
+  it('excludes offscreen runs when zoomed instead of stacking phantom bars on the left edge', () => {
+    renderTimeline();
+    for (let i = 0; i < 5; i++) fireEvent.wheel(screen.getByTestId('ops-track'), { deltaY: -240, clientX: 500 });
+    expect(document.getElementById('ops-bar-done-1')).toBeNull();
+  });
+
+  it('selects a short run from its click margin without changing its visible duration or selecting twice', () => {
+    const { onSelect } = renderTimeline({ running: [], recent: [{ ...DEFAULT_RECENT[0], completedAt: new Date(NOW - 10 * MIN + 100).toISOString() }] });
+    const bar = document.getElementById('ops-bar-done-1')!;
+    expect(bar.style.width).toBe('4px');
+    fireEvent.click(screen.getByTestId('ops-track'), { clientX: parseFloat(bar.style.left) - 5, clientY: 19 });
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith('done-1');
+    onSelect.mockClear();
+    fireEvent.click(bar);
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith('done-1');
+    onSelect.mockClear();
+    fireEvent.click(screen.getByTestId('ops-track'), { clientX: parseFloat(bar.style.left) - 20, clientY: 19 });
+    expect(onSelect).not.toHaveBeenCalled();
+  });
   it('renders a lane per workflow with name + folder and one bar per execution', () => {
     renderTimeline();
     expect(screen.getByTestId('ops-timeline')).toBeInTheDocument();
@@ -115,6 +166,25 @@ describe('OpsTimeline', () => {
     expect(screen.queryByText(/×2/)).not.toBeInTheDocument();
     expect(screen.getByText('(run-a)')).toBeInTheDocument();
     expect(screen.getByText('(run-b)')).toBeInTheDocument();
+    expect(screen.getByText('Parallel track 1/2')).toBeInTheDocument();
+    expect(screen.getByText('Parallel track 2/2')).toBeInTheDocument();
+    expect(screen.getAllByTitle(/An empty space means no execution ran/)).toHaveLength(2);
+  });
+
+  it('labels a child shared by multiple workflows without indenting it under either caller', () => {
+    const recent = [
+      { ...DEFAULT_RECENT[0], executionId: 'p1', workflowId: 'w1' },
+      { ...DEFAULT_RECENT[0], executionId: 'p3', workflowId: 'w3' },
+      { ...DEFAULT_RECENT[0], executionId: 'c1', parentExecutionId: 'p1' },
+      { ...DEFAULT_RECENT[0], executionId: 'c2', parentExecutionId: 'p3' },
+    ];
+    renderTimeline({ running: [], recent, scopedWorkflowIds: new Set(['w1', 'w2', 'w3']),
+      nodesById: new Map([...NODES, ['w3', node('w3', 'Showcase')]]) });
+    expect(screen.getAllByText(/2 callers in window/)).toHaveLength(2);
+    for (const label of screen.getAllByText('Report Gen')) {
+      expect(label.parentElement?.parentElement).toHaveStyle({ left: '0px' });
+    }
+    expect(screen.getAllByTitle(/ID of the most recently started execution/)).toHaveLength(4);
   });
 
   it('marks the selected bar', () => {

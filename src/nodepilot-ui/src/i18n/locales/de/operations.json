@@ -8,6 +8,13 @@
     "label": "Ordner"
   },
   "timeline": {
+    "zoomHint": "Mausrad über der Zeitachse: zoomen · Über der Workflow-Liste: scrollen",
+    "resetZoom": "Zur Live-Ansicht",
+    "parallelTrack": "Parallelspur {{index}}/{{total}}",
+    "parallelTrackHint": "Spuren werden für zeitlich überlappende Ausführungen wiederverwendet. Eine leere Stelle bedeutet: Auf dieser Spur lief zu diesem Zeitpunkt keine Ausführung.",
+    "sharedCallers": "{{count}} Aufrufer im Zeitfenster",
+    "activeExecutionId": "ID der aktiven Ausführung auf dieser Spur. Jeder Balken öffnet seine eigene Ausführung.",
+    "latestExecutionId": "ID der zuletzt gestarteten Ausführung auf dieser Spur. Jeder Balken öffnet seine eigene Ausführung.",
     "now": "Jetzt",
     "idle": "Gerade läuft nichts.",
     "idleHint": "Sobald ein Workflow startet, wächst hier live sein Balken.",
