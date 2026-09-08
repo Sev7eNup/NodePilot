@@ -8,6 +8,13 @@
     "label": "Folder"
   },
   "timeline": {
+    "zoomHint": "Wheel over the timeline to zoom · Over the workflow list to scroll",
+    "resetZoom": "Back to live view",
+    "parallelTrack": "Parallel track {{index}}/{{total}}",
+    "parallelTrackHint": "Tracks are reused for overlapping executions. An empty space means no execution ran on this track at that time.",
+    "sharedCallers": "{{count}} callers in window",
+    "activeExecutionId": "ID of the active execution on this track. Each bar opens its own execution.",
+    "latestExecutionId": "ID of the most recently started execution on this track. Each bar opens its own execution.",
     "now": "Now",
     "idle": "Nothing is running right now.",
     "idleHint": "As soon as a workflow starts, its bar grows here live.",

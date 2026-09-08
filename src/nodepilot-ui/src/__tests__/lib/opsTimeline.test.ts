@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { zoomTimelineWindow } from '../../lib/opsTimeline';
 import {
   windowFor, timeToX, buildTimelineBars, assignLanes, placeBar, axisTicks, isActiveBarStatus,
   pairCallConnectors, isOverdue, isStalled, tickStepFor, buildDensityCells, densityColumnHeight,
@@ -20,6 +21,34 @@ function iso(ms: number): string {
 function node(workflowId: string, name: string, folderPath = '/'): OpsNode {
   return { workflowId, name, folderId: 'f1', folderPath, isEnabled: true, runningCount: 0, lastStatus: null, callFrequency: null, canRun: true, canEdit: true };
 }
+
+describe('zoomTimelineWindow', () => {
+  it('widens short runs while preserving the time under the pointer', () => {
+    const bounds = windowFor(NOW, 60 * MIN, 1000);
+    const next = zoomTimelineWindow(bounds, bounds, 0.7, -240);
+    const anchor = bounds.startMs + 0.7 * (bounds.endMs - bounds.startMs);
+    expect(timeToX(anchor, next)).toBeCloseTo(700);
+    expect(next.endMs - next.startMs).toBeLessThan(bounds.endMs - bounds.startMs);
+  });
+
+  it('limits detail to five seconds and zoom-out to loaded history', () => {
+    const bounds = windowFor(NOW, 30 * MIN, 1000);
+    let view = bounds;
+    for (let i = 0; i < 30; i++) view = zoomTimelineWindow(view, bounds, 0, -1000);
+    expect(view.endMs - view.startMs).toBe(5000);
+    expect(view.startMs).toBe(bounds.startMs);
+    for (let i = 0; i < 30; i++) view = zoomTimelineWindow(view, bounds, 1, 1000);
+    expect(view).toEqual(bounds);
+  });
+
+  it('does not generate ticks beyond a historical detail window', () => {
+    const bounds = windowFor(NOW, 30 * MIN, 1000);
+    const view = { ...bounds, startMs: NOW - 10 * MIN, endMs: NOW - 10 * MIN + 5000 };
+    const ticks = axisTicks(view, tickStepFor(5000));
+    expect(ticks).toHaveLength(6);
+    expect(ticks.every(t => t.xPx >= 0 && t.xPx <= 1000)).toBe(true);
+  });
+});
 
 describe('windowFor / timeToX', () => {
   it('places NOW at the configured fraction of the track', () => {
@@ -175,6 +204,38 @@ describe('assignLanes', () => {
     const orphan = { ...bar('c1', 'w2', 3, null), parentExecutionId: 'gone' };
     const { lanes } = assignLanes([orphan], nodes);
     expect(lanes[0].depth).toBe(0);
+  });
+
+  it('keeps shared children top-level regardless of which caller ran most recently', () => {
+    const parents = [bar('p1', 'w1', 10, 1), bar('p3', 'w3', 10, 1)];
+    for (const callerIds of [['p1', 'p3'], ['p3', 'p1']]) {
+      const bars = [...parents,
+        { ...bar('c1', 'w2', 5, 2), parentExecutionId: callerIds[0] },
+        { ...bar('c2', 'w2', 3, 1), parentExecutionId: callerIds[1] },
+      ];
+      const result = assignLanes(bars, nodes);
+      expect(result.lanes.find(l => l.workflowId === 'w2')).toMatchObject({ depth: 0, callerCount: 2, subRowCount: 2 });
+      expect(assignLanes([...bars].reverse(), nodes)).toEqual(result);
+      expect(result.placed.filter(b => b.workflowId === 'w2').map(b => b.parentExecutionId)).toEqual(callerIds);
+    }
+  });
+
+  it.each([null, 'outside-window', 'self'])('does not nest a mixed lane with a standalone or unresolved run (%s)', parentExecutionId => {
+    const { lanes } = assignLanes([
+      bar('p1', 'w1', 10, 1),
+      { ...bar('c1', 'w2', 5, 3), parentExecutionId: 'p1' },
+      { ...bar('self', 'w2', 2, 1), parentExecutionId },
+    ], nodes);
+    expect(lanes.find(l => l.workflowId === 'w2')).toMatchObject({ depth: 0, callerCount: 1 });
+  });
+
+  it('still nests multiple child runs belonging to different executions of one caller workflow', () => {
+    const { lanes } = assignLanes([
+      bar('p1', 'w1', 10, 6), bar('p2', 'w1', 5, 1),
+      { ...bar('c1', 'w2', 9, 7), parentExecutionId: 'p1' },
+      { ...bar('c2', 'w2', 4, 2), parentExecutionId: 'p2' },
+    ], nodes);
+    expect(lanes.find(l => l.workflowId === 'w2')).toMatchObject({ depth: 1, callerCount: 1 });
   });
 
   it('gives a workflow with density but no bar a lane, sorted behind the ones that have bars', () => {

@@ -7,10 +7,10 @@ import { rawStatusLabelKey, STATUS_COLOR_VAR, STATUS_TEXT_CLASS } from '../../li
 import {
   windowFor, buildTimelineBars, assignLanes, placeBar, axisTicks, timeToX, pairCallConnectors,
   buildDensityCells, densityColumnHeight, isActiveBarStatus, isOverdue, isStalled, tickStepFor,
-  formatDuration, OPS_MAX_SUB_ROWS, type DensityCell, type PlacedBar,
+  formatDuration, OPS_MAX_SUB_ROWS, zoomTimelineWindow, type TimelineWindow, type DensityCell, type PlacedBar,
 } from '../../lib/opsTimeline';
 import { formatTime } from '../../lib/format';
-import { OpsTimelineBar, OPS_ROW_H, OPS_MIN_BAR_PX, OPS_INSIDE_LABEL_PX } from './OpsTimelineBar';
+import { OpsTimelineBar, OPS_ROW_H, OPS_BAR_H, OPS_MIN_BAR_PX, OPS_INSIDE_LABEL_PX } from './OpsTimelineBar';
 import { OpsStuckStrip } from './OpsStuckStrip';
 import { EmptyState } from '../common/EmptyState';
 import { CopyableId } from '../common/CopyableId';
@@ -99,7 +99,32 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
     return () => observer.disconnect();
   }, [trackEl]);
 
-  const w = useMemo(() => windowFor(nowMs, windowMs, trackWidth), [nowMs, windowMs, trackWidth]);
+  const [zoom, setZoom] = useState<{ windowMs: number; startMs: number; endMs: number } | null>(null);
+  if (zoom && zoom.windowMs !== windowMs) setZoom(null);
+  const detail = zoom?.windowMs === windowMs ? zoom : null;
+  const w = useMemo(() => detail
+    ? { startMs: detail.startMs, endMs: detail.endMs, nowMs, trackWidthPx: trackWidth }
+    : windowFor(nowMs, windowMs, trackWidth), [nowMs, windowMs, trackWidth, detail]);
+
+  useLayoutEffect(() => {
+    if (!trackEl) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.deltaY || !trackWidth) return;
+      // React wheel listeners are passive; a native listener prevents simultaneous page scrolling.
+      event.preventDefault();
+      const rect = trackEl.getBoundingClientRect();
+      const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1);
+      const bounds = windowFor(nowMs, windowMs, trackWidth);
+      setZoom(previous => {
+        const current: TimelineWindow = previous?.windowMs === windowMs ? { ...bounds, ...previous } : bounds;
+        const next = zoomTimelineWindow(current, bounds, (event.clientX - rect.left) / rect.width, pixels);
+        return next.endMs - next.startMs >= bounds.endMs - bounds.startMs - 1
+          ? null : { windowMs, startMs: next.startMs, endMs: next.endMs };
+      });
+    };
+    trackEl.addEventListener('wheel', onWheel, { passive: false });
+    return () => trackEl.removeEventListener('wheel', onWheel);
+  }, [trackEl, trackWidth, nowMs, windowMs]);
 
   // Local-clock timestamp of the snapshot currently on screen. Not the server's `recentSinceUtc`:
   // the anchored layer would inherit any browser/server clock skew as a raw pixel offset, which can
@@ -116,8 +141,9 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
   // and never on a clock tick, so settled bars keep their memoized geometry, and their DOM,
   // between ticks.
   const wAnchor = useMemo(
-    () => windowFor(snapshot.atMs, windowMs, trackWidth),
-    [snapshot.atMs, windowMs, trackWidth],
+    () => detail ? { startMs: detail.startMs, endMs: detail.endMs, nowMs: snapshot.atMs, trackWidthPx: trackWidth }
+      : windowFor(snapshot.atMs, windowMs, trackWidth),
+    [snapshot.atMs, windowMs, trackWidth, detail],
   );
 
   // How far the anchored layer has drifted since the snapshot, in px; at most one poll interval
@@ -159,8 +185,8 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
 
   // Anchor-space geometry for everything. Recomputed per snapshot, not per tick.
   const placedBars: PlacedBar[] = useMemo(
-    () => placed.map((p) => placeBar(p, wAnchor)),
-    [placed, wAnchor],
+    () => placed.filter(p => !detail || (p.startedAtMs <= wAnchor.endMs && (p.completedAtMs ?? Infinity) >= wAnchor.startMs)).map((p) => placeBar(p, wAnchor)),
+    [placed, wAnchor, detail],
   );
 
   // Live-space geometry for the only bars whose shape changes between ticks: a running bar grows
@@ -168,8 +194,8 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
   // right edge away from NOW instead of extending it. There are few of these, so recomputing them
   // every tick is cheap.
   const activeBars: PlacedBar[] = useMemo(
-    () => placed.filter((p) => isActiveBarStatus(p.status)).map((p) => placeBar(p, w)),
-    [placed, w],
+    () => placed.filter((p) => isActiveBarStatus(p.status) && (!detail || p.startedAtMs <= w.endMs)).map((p) => placeBar(p, w)),
+    [placed, w, detail],
   );
 
   const settledBars = useMemo(
@@ -243,7 +269,8 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
     return ids;
   }, [placedBars, trackWidth]);
 
-  const ticks = useMemo(() => axisTicks(w, tickStepFor(windowMs)), [w, windowMs]);
+  const tickStep = tickStepFor(detail ? w.endMs - w.startMs : windowMs);
+  const ticks = useMemo(() => axisTicks(w, tickStep), [w, tickStep]);
 
   // Density cells per lane, covering the stretch left of the bar/aggregate seam.
   //
@@ -318,6 +345,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
     return x > 2 ? Math.min(x, wAnchor.trackWidthPx) : 0;
   }, [historyFromMs, densityCellsByLane, wAnchor]);
   const nowX = timeToX(nowMs, w);
+  const nowVisible = nowX >= 0 && nowX <= trackWidth;
   // A wall-clock tick can land within a few pixels of NOW (for example 11:30 at 11:30:04).
   // Keep its gridline, but suppress that one label so the axis never renders "11:30NOW".
   const labelledTicks = useMemo(
@@ -396,6 +424,27 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
       default: return;
     }
     e.preventDefault();
+  };
+
+  // Pick the nearest short bar in a six-pixel margin; actual button clicks keep priority.
+  const onTrackClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if ((event.target as Element).closest('button, [role="button"]')) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    if (x < 0 || x > trackWidth) return;
+    let nearest: PlacedBar | undefined;
+    let distance = 6;
+    for (const bar of [...settledBars, ...activeBars]) {
+      const top = laneTops.tops[bar.laneIndex] + bar.subRow * OPS_ROW_H + (OPS_ROW_H - OPS_BAR_H) / 2;
+      if (y < top || y > top + OPS_BAR_H || bar.widthPx >= 16) continue;
+      const left = bar.leftPx + (isActiveBarStatus(bar.status) ? 0 : shiftPx);
+      const right = left + Math.max(bar.widthPx, OPS_MIN_BAR_PX);
+      if (right < 0 || left > trackWidth) continue;
+      const gap = Math.max(left - x, x - right, 0);
+      if (gap <= distance) { nearest = bar; distance = gap; }
+    }
+    if (nearest) onSelect(nearest.executionId);
   };
 
   /**
@@ -576,6 +625,11 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
 
   return (
     <div className="np-ops-timeline flex h-full min-h-0 flex-col gap-2" data-testid="ops-timeline">
+      <div className="flex shrink-0 items-center gap-2 text-xs text-on-surface-variant">
+        {detail && <button type="button" className="shrink-0 rounded border border-outline-variant px-2 py-1 text-primary"
+          onClick={() => setZoom(null)}>{t('operations:timeline.resetZoom')}</button>}
+        <span>{t('operations:timeline.zoomHint')}</span>
+      </div>
       <OpsStuckStrip
         bars={overdueBars}
         nowMs={nowMs}
@@ -622,7 +676,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
                         : lane.name}
                     >
                       {lane.depth > 0 && <span className="shrink-0 text-outline" aria-hidden="true">↳</span>}
-                      <span className="whitespace-nowrap">{lane.name}</span>
+                      <span className="min-w-0 truncate">{lane.name}</span>
                       {/* The lane ran out of sub-rows, so some bars share a row and overlap. The
                           marker says so instead of letting the layout misrepresent concurrency. */}
                       {lane.subRowsCapped && r === 0 && (
@@ -634,9 +688,22 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
                           ⋮
                         </span>
                       )}
-                      {rowExecId.has(idKey) && <CopyableId id={rowExecId.get(idKey)!.id} />}
+                      {rowExecId.has(idKey) && (
+                        <span className="shrink-0" title={t(rowExecId.get(idKey)!.active
+                          ? 'operations:timeline.activeExecutionId' : 'operations:timeline.latestExecutionId')}>
+                          <CopyableId id={rowExecId.get(idKey)!.id} />
+                        </span>
+                      )}
                     </div>
-                    {r === 0 && lane.folderPath !== '/' && (
+                    {(lane.subRowCount > 1 || lane.callerCount > 1) && (
+                      <div className="truncate text-[11px] leading-[14px] text-on-surface-variant"
+                        title={[lane.folderPath, t('operations:timeline.parallelTrackHint')].join(' · ')}>
+                        {lane.subRowCount > 1 && t('operations:timeline.parallelTrack', { index: r + 1, total: lane.subRowCount })}
+                        {lane.subRowCount > 1 && lane.callerCount > 1 && ' · '}
+                        {lane.callerCount > 1 && t('operations:timeline.sharedCallers', { count: lane.callerCount })}
+                      </div>
+                    )}
+                    {r === 0 && lane.subRowCount === 1 && lane.callerCount <= 1 && lane.folderPath !== '/' && (
                       <div className="truncate text-[11px] leading-[14px] text-on-surface-variant" title={lane.folderPath}>{lane.folderPath}</div>
                     )}
                   </div>
@@ -651,11 +718,14 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
           ref={setTrackEl}
           className="np-ops-track relative min-w-0 flex-1"
           data-testid="ops-track"
+          data-window-start={w.startMs}
+          data-window-end={w.endMs}
           role="grid"
           tabIndex={0}
           aria-label={t('operations:timeline.trackLabel')}
           aria-activedescendant={focusedBar ? `ops-bar-${focusedBar.executionId}` : undefined}
           onKeyDown={onTrackKeyDown}
+          onClick={onTrackClick}
         >
           <div className="relative" style={{ height: laneTops.totalHeight }}>
             {/* Zebra lane backgrounds: group parallel sub-rows visually under their lane */}
@@ -672,7 +742,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
               <div key={tick.atMs} className="np-ops-gridline" style={{ left: tick.xPx }} aria-hidden="true" />
             ))}
             {/* NOW line */}
-            <div className="np-ops-now" style={{ left: nowX }} aria-hidden="true" />
+            {nowVisible && <div className="np-ops-now" style={{ left: nowX }} aria-hidden="true" />}
 
             {/* Anchored layer: everything whose geometry was frozen at the snapshot. Between polls
                 the only thing that changes is the inner layer's translation; the subtree itself is
@@ -737,16 +807,16 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
             style={{ left: tick.xPx }}
             data-testid="ops-time-tick"
           >
-            {formatTime(tick.atMs, { hour: '2-digit', minute: '2-digit' })}
+            {formatTime(tick.atMs, { hour: '2-digit', minute: '2-digit', ...(tickStep < 60_000 ? { second: '2-digit' as const } : {}) })}
           </span>
         ))}
-        <span
+        {nowVisible && <span
           className="absolute -translate-x-1/2 text-[10px] font-semibold uppercase text-primary"
           style={{ left: nowX }}
           data-testid="ops-now-label"
         >
           {t('operations:timeline.now')}
-        </span>
+        </span>}
       </div>
     </div>
   );
