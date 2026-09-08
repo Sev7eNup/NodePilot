@@ -339,6 +339,7 @@ public class DashboardControllerExtendedTests
         var stats = Unwrap(await NewController(db).Get(CancellationToken.None));
 
         stats.LongRunningCount.Should().Be(1);
+        stats.LongRunningSeconds.Should().Be(600);
     }
 
     [Fact]
@@ -358,6 +359,11 @@ public class DashboardControllerExtendedTests
         var stats = Unwrap(await NewController(db, configuration: configuration).Get(CancellationToken.None));
 
         stats.LongRunningCount.Should().Be(0, "with a 30 minute threshold neither run is overdue");
+        stats.LongRunningSeconds.Should().Be(1800);
+        configuration["Alerting:LongRunningSeconds"] = "600";
+        stats = Unwrap(await NewController(db, configuration: configuration).Get(CancellationToken.None));
+        stats.LongRunningSeconds.Should().Be(600);
+        stats.LongRunningCount.Should().Be(1);
     }
 
     [Fact]

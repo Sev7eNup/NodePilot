@@ -69,6 +69,7 @@ const BASE_STATS = {
   pendingCount: 0,
   runningCount: 0,
   longRunningCount: 0,
+  longRunningSeconds: 600,
   failingWorkflows: [],
   editLocks: [],
   healthHeartbeats: [
@@ -94,6 +95,20 @@ const BASE_STATS = {
 };
 
 describe('DashboardPage', () => {
+  it.each([600, 1800])('uses the API threshold %s for the tooltip and running-duration warning', async (seconds) => {
+    useAuthStore.setState({ userId: 'admin', username: 'admin', role: 'Admin', isAuthenticated: true });
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+      ...BASE_STATS,
+      longRunningSeconds: seconds,
+      running: [{ id: 'running-1', workflowId: 'wf-1', workflowName: 'Threshold test',
+        status: 'Running', startedAt: new Date(Date.now() - 15 * 60_000).toISOString(), triggeredBy: 'manual' }],
+    })));
+    renderPage();
+    const row = (await screen.findByText('Threshold test')).closest('li')!;
+    expect(row.querySelector('span.text-red-600') !== null).toBe(seconds === 600);
+    expect(screen.getByTitle(`Long-running (> ${seconds / 60}m 0s)`)).toBeInTheDocument();
+  });
+
   it('shows loading state initially', () => {
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => new Promise(() => {})));
     renderPage();

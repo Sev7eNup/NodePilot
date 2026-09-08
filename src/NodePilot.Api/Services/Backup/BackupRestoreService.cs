@@ -124,10 +124,12 @@ public sealed class BackupRestoreService(
     /// </summary>
     private async Task<BackupPreviewSection> PreviewWorkflowsAsync(BackupFileReader reader, CancellationToken ct)
     {
-        var existingIds = (await db.Workflows.Select(w => w.Id).ToListAsync(ct)).ToHashSet();
-        var existingByFolderAndName = (await db.Workflows.Select(w => new { w.FolderId, w.Name }).ToListAsync(ct))
-            .Select(w => (w.FolderId, w.Name))
-            .ToHashSet();
+        var items = Items(reader, BackupSections.Workflows);
+        var targets = new WorkflowRestoreTargets(items.Select(item => Gid(item!["sourceId"])));
+        foreach (var workflow in await db.Workflows.AsNoTracking()
+                     .Select(w => new Workflow { Id = w.Id, Name = w.Name, FolderId = w.FolderId })
+                     .ToListAsync(ct))
+            targets.Add(workflow);
         var targetFolderIdByPath = await db.SharedWorkflowFolders
             .ToDictionaryAsync(f => f.Path, f => f.Id, StringComparer.Ordinal, ct);
         var existingFolderIds = targetFolderIdByPath.Values.ToHashSet();
@@ -139,21 +141,18 @@ public sealed class BackupRestoreService(
                 backupFolderPathById[Gid(folder["sourceId"])] = path;
         }
 
-        var items = Items(reader, BackupSections.Workflows);
         var conflicts = 0;
         foreach (var item in items)
         {
-            if (existingIds.Contains(Gid(item!["sourceId"]))) { conflicts++; continue; }
-
-            var sourceFolderId = GidN(item["folderId"]) ?? SharedWorkflowFolder.RootFolderId;
+            var sourceFolderId = GidN(item!["folderId"]) ?? SharedWorkflowFolder.RootFolderId;
             Guid? targetFolderId =
                 sourceFolderId == SharedWorkflowFolder.RootFolderId ? SharedWorkflowFolder.RootFolderId
                 : backupFolderPathById.TryGetValue(sourceFolderId, out var path)
                   && targetFolderIdByPath.TryGetValue(path, out var byPath) ? byPath
                 : existingFolderIds.Contains(sourceFolderId) ? sourceFolderId
                 : null;
-            if (targetFolderId is { } folderId
-                && existingByFolderAndName.Contains((folderId, item["name"]!.GetValue<string>())))
+            if (targets.Match(Gid(item["sourceId"]), targetFolderId ?? Guid.Empty,
+                    item["name"]!.GetValue<string>()) is not null)
                 conflicts++;
         }
         return new BackupPreviewSection(BackupSections.Workflows, items.Count, items.Count - conflicts, conflicts);
@@ -195,6 +194,11 @@ public sealed class BackupRestoreService(
         await using var adminMutation = restoresUsers
             ? await AdminAccountMutationGate.EnterLocalAsync(ct)
             : null;
+
+        // Hold both trees from the first snapshot through commit/rollback, including retries.
+        // All callers needing both gates acquire shared folders before global folders.
+        using var sharedTree = await FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(ct);
+        using var globalTree = await FolderTreeMutationLock.GlobalVariableFolders.AcquireAsync(ct);
 
         // The whole DB restore runs inside the provider's execution strategy. Postgres configures
         // a retrying strategy (NpgsqlRetryingExecutionStrategy), which forbids a user-initiated
@@ -897,6 +901,7 @@ public sealed class BackupRestoreService(
             if (existing is not null && policy == RestoreConflictPolicy.Overwrite)
             {
                 item.Overwrite(existing);
+                s.AddRestoredWorkflow(existing);
                 s.WorkflowMap[item.SourceId] = existing.Id;
                 overwritten++; continue;
             }

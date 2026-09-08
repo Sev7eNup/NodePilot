@@ -57,7 +57,8 @@ public class DashboardController : ControllerBase
         var now = DateTime.UtcNow;
         var sinceWindow = now.AddHours(-windowHours);
         var since7d = now.AddDays(-7);
-        var longRunningCutoff = now.AddSeconds(-LongRunningSeconds());
+        var longRunningSeconds = LongRunningSeconds();
+        var longRunningCutoff = now.AddSeconds(-longRunningSeconds);
 
         // RBAC: dashboard aggregates must respect folder permissions. Compute the
         // accessible-folder set once and reuse for every workflow + execution query
@@ -69,7 +70,7 @@ public class DashboardController : ControllerBase
         {
             // User has zero folder access — return an empty dashboard rather than a
             // potentially confusing partial one.
-            return Ok(EmptyStats(sinceWindow, windowHours, NormalizeProvider(_db.Database.ProviderName), GetClusterRole(), GetLlmEnabled()));
+            return Ok(EmptyStats(sinceWindow, windowHours, NormalizeProvider(_db.Database.ProviderName), GetClusterRole(), GetLlmEnabled(), longRunningSeconds));
         }
 
         // Select TriggerTypesJson, not DefinitionJson: the definition holds the whole graph and
@@ -440,7 +441,8 @@ public class DashboardController : ControllerBase
             dbProvider,
             clusterRole,
             recentAudit,
-            GetLlmEnabled());
+            GetLlmEnabled(),
+            longRunningSeconds);
 
         return Ok(stats);
     }
@@ -548,7 +550,7 @@ public class DashboardController : ControllerBase
         return _cluster.IsLeader ? "leader" : "standby";
     }
 
-    private static DashboardStats EmptyStats(DateTime sinceWindow, int windowHours, string dbProvider, string? clusterRole, bool llmEnabled)
+    private static DashboardStats EmptyStats(DateTime sinceWindow, int windowHours, string dbProvider, string? clusterRole, bool llmEnabled, int longRunningSeconds)
     {
         var bucketCount = Math.Min(windowHours, 24);
         var minutesPerBucket = windowHours * 60 / bucketCount;
@@ -560,6 +562,6 @@ public class DashboardController : ControllerBase
             [], [], [], [],
             0, 0, 0,
             [], [], [],
-            dbProvider, clusterRole, null, llmEnabled);
+            dbProvider, clusterRole, null, llmEnabled, longRunningSeconds);
     }
 }

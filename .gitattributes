@@ -2,3 +2,6 @@
 # marker bytes a real .ois_export contains. Keep git out of their line endings so the bytes are
 # identical on every checkout.
 *.ois_export -text
+
+# Marketing media is published only by the Pages workflow, never in knowledge/source.
+src/nodepilot-docs-ui/pages-media export-ignore

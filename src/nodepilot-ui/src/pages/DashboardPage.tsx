@@ -53,6 +53,7 @@ interface DashboardStats {
   pendingCount: number;
   runningCount: number;
   longRunningCount: number;
+  longRunningSeconds: number;
   failingWorkflows: FailingWorkflow[];
   editLocks: EditLockInfo[];
   healthHeartbeats: HealthHeartbeatInfo[];
@@ -100,7 +101,6 @@ interface RecentExecutionInfo {
   startedAt: string; completedAt: string | null; durationMs: number | null; triggeredBy: string | null;
 }
 
-const LONG_RUNNING_THRESHOLD_MS = 30 * 60 * 1000;
 const STALE_LOCK_THRESHOLD_MS = 24 * 3600 * 1000;
 
 // Selectable dashboard window (hours). WINDOW_KEY maps each value to its i18n label slug.
@@ -178,7 +178,7 @@ export function DashboardPage() {
         heartbeats={stats.healthHeartbeats}
         llmEnabled={stats.llmEnabled}
       />
-      <DashboardQuickActions longRunningCount={stats.longRunningCount} />
+      <DashboardQuickActions longRunningCount={stats.longRunningCount} longRunningSeconds={stats.longRunningSeconds} />
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="np-segmented">
           {WINDOW_OPTIONS.map((h) => (
@@ -217,7 +217,7 @@ export function DashboardPage() {
             {/* Keep the long list out of grid intrinsic sizing; it scrolls inside the row height. */}
             <div className="relative flex-1 min-h-[220px] xl:min-h-0">
               <div className="absolute inset-0 overflow-y-auto">
-                <RunningList items={stats.running} onOpen={(id) => navigate(`/executions?id=${id}`)} />
+                <RunningList items={stats.running} longRunningSeconds={stats.longRunningSeconds} onOpen={(id) => navigate(`/executions?id=${id}`)} />
               </div>
             </div>
           </div>
@@ -491,7 +491,7 @@ function KpiCard({
   );
 }
 
-function RunningList({ items, onOpen }: Readonly<{ items: RunningExecutionInfo[]; onOpen: (id: string) => void }>) {
+function RunningList({ items, onOpen, longRunningSeconds }: Readonly<{ items: RunningExecutionInfo[]; onOpen: (id: string) => void; longRunningSeconds: number }>) {
   const { t } = useTranslation(['dashboard']);
   if (items.length === 0) {
     return <EmptyState text={t('dashboard:nothingRunning')} />;
@@ -516,7 +516,7 @@ function RunningList({ items, onOpen }: Readonly<{ items: RunningExecutionInfo[]
               </p>
             </div>
           </div>
-          <LiveDuration startedAt={r.startedAt} />
+          <LiveDuration startedAt={r.startedAt} longRunningSeconds={longRunningSeconds} />
         </li>
       ))}
     </ul>
@@ -1089,7 +1089,7 @@ function P95WorkflowBars({ items, tokens }: Readonly<{ items: TopWorkflow[]; tok
   return <EChart option={option} className="h-40 w-full" ariaLabel={t('dashboard:p95TopWorkflows')} />;
 }
 
-function LiveDuration({ startedAt }: Readonly<{ startedAt: string }>) {
+function LiveDuration({ startedAt, longRunningSeconds }: Readonly<{ startedAt: string; longRunningSeconds: number }>) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -1098,7 +1098,7 @@ function LiveDuration({ startedAt }: Readonly<{ startedAt: string }>) {
   }, []);
 
   const ms = now - new Date(startedAt).getTime();
-  const isLong = ms > LONG_RUNNING_THRESHOLD_MS;
+  const isLong = ms > longRunningSeconds * 1000;
   return (
     <span className={`text-xs font-medium tabular-nums shrink-0 ml-2 flex items-center gap-1 ${isLong ? 'text-red-600' : 'text-blue-600'}`}>
       {isLong && <WarningAltFilled size={12} />}

@@ -69,8 +69,10 @@ Every step supports `config.retry` with `maxAttempts`, `backoff`, `initialDelayM
 
 **Remote.**
 
-- **Config:** `filePath`, `arguments`, `waitForExit`, `timeoutSeconds`, `successExitCodes`
+- **Config:** `filePath`, `arguments`, `workingDirectory`, `useShellExecute`, `waitForExit`, `timeoutSeconds`, `successExitCodes`
 - **Outputs:** `param.exitCode`, `param.processId`, `param.stdout`, `param.stderr`, `param.waited`
+
+The stored `filePath` must be an absolute local executable path on the target machine. The engine rejects UNC paths and bare names and never searches `PATH`. In the designer, `cmd`, `powershell`, `cscript` and `wscript` (with or without `.exe`) are completed to absolute paths when you leave the field. API/MCP clients and generated definitions must supply absolute paths themselves. `useShellExecute: true` is rejected when `StartProgram:DisallowShellExecute` is enabled.
 
 ## `powerManagement`
 

@@ -53,12 +53,12 @@ const summarizePathOperation = (config: ActivityConfig): string => {
 
 const requirePathOperation = (knownOps: string[]): RequiredConfigChecker => (config) => {
   const op = (config.operation as string) || 'copy';
-  if (!hasValueOrTemplate(config.path)) return 'Pfad ist erforderlich.';
+  if (!hasValueOrTemplate(config.path)) return i18n.t('activities:validation.pathRequired');
   if ((op === 'copy' || op === 'move') && !hasValueOrTemplate(config.destination))
-    return 'Ziel (destination) ist erforderlich.';
+    return i18n.t('activities:validation.destinationRequired');
   if (op === 'rename' && !hasValueOrTemplate(config.newName))
-    return 'Neuer Name (newName) ist erforderlich.';
-  if (!knownOps.includes(op)) return `Unbekannte Operation: ${op}. Erlaubt: ${knownOps.join(', ')}.`;
+    return i18n.t('activities:validation.newNameRequired');
+  if (!knownOps.includes(op)) return i18n.t('activities:validation.unknownOperationAllowed', { operation: op, allowed: knownOps.join(', ') });
   return null;
 };
 
@@ -86,7 +86,7 @@ export function extractBaseUrl(url: string): string {
 
 const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
   [ACTIVITY_TYPES.RUN_SCRIPT]: {
-    requiredConfig: (config) => !hasValueOrTemplate(config.script) ? 'Script darf nicht leer sein.' : null,
+    requiredConfig: (config) => !hasValueOrTemplate(config.script) ? i18n.t('activities:validation.scriptRequired') : null,
     summarize: (config) => {
       const script = (config.script as string) || '';
       if (!script) return i18n.t('activities:summaries.runScriptNoScript');
@@ -113,13 +113,13 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
   },
   [ACTIVITY_TYPES.SERVICE_MANAGEMENT]: {
     requiredConfig: (config) => {
-      if (!hasValueOrTemplate(config.serviceName)) return 'Service-Name ist erforderlich.';
-      if (!hasValueOrTemplate(config.action)) return 'Aktion ist erforderlich.';
+      if (!hasValueOrTemplate(config.serviceName)) return i18n.t('activities:validation.serviceNameRequired');
+      if (!hasValueOrTemplate(config.action)) return i18n.t('activities:validation.actionRequired');
       const action = (config.action as string) || '';
       if (action === 'create' && !hasValueOrTemplate(config.binaryPath))
-        return 'Binary-Pfad (binaryPath) ist erforderlich f\u00fcr Create.';
+        return i18n.t('activities:validation.binaryPathRequired');
       if (action === 'setStartType' && !hasValueOrTemplate(config.startupType))
-        return 'Startart (startupType) ist erforderlich f\u00fcr Set Startup Type.';
+        return i18n.t('activities:validation.startupTypeRequired');
       return null;
     },
     summarize: (config) => `${(config.action as string) || 'status'} "${(config.serviceName as string) || '...'}"`,
@@ -130,20 +130,20 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
   },
   [ACTIVITY_TYPES.REGISTRY_OPERATION]: {
     requiredConfig: (config) => {
-      if (!hasValueOrTemplate(config.keyPath)) return 'Registry-Pfad (keyPath) ist erforderlich.';
-      if (!hasValueOrTemplate(config.operation)) return 'Operation ist erforderlich.';
+      if (!hasValueOrTemplate(config.keyPath)) return i18n.t('activities:validation.registryPathRequired');
+      if (!hasValueOrTemplate(config.operation)) return i18n.t('activities:validation.operationRequired');
       const op = String(config.operation || '').toLowerCase();
       const knownOps = ['read', 'write', 'deletevalue', 'deletekey', 'createkey', 'exists', 'listsubkeys', 'listvalues'];
-      if (!knownOps.includes(op)) return `Unbekannte Operation: ${config.operation}`;
+      if (!knownOps.includes(op)) return i18n.t('activities:validation.unknownOperation', { operation: String(config.operation) });
       if (op === 'write') {
-        if (!hasValueOrTemplate(config.valueName)) return "Operation 'write' ben\u00f6tigt Value-Name.";
+        if (!hasValueOrTemplate(config.valueName)) return i18n.t('activities:validation.registryWriteValueRequired');
         if (config.valueType !== undefined && config.valueType !== '') {
           const allowedTypes = ['String', 'ExpandString', 'Binary', 'DWord', 'MultiString', 'QWord'];
-          if (!allowedTypes.includes(String(config.valueType))) return `Unbekannter Value-Typ: ${config.valueType}`;
+          if (!allowedTypes.includes(String(config.valueType))) return i18n.t('activities:validation.unknownValueType', { valueType: String(config.valueType) });
         }
       }
       if (op === 'deletevalue' && !hasValueOrTemplate(config.valueName)) {
-        return "Operation 'deleteValue' ben\u00f6tigt Value-Name.";
+        return i18n.t('activities:validation.registryDeleteValueRequired');
       }
       return null;
     },
@@ -154,14 +154,14 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
     requiredConfig: (config) => {
       const mode = ((config.mode as string) || 'query').toLowerCase();
       if (mode === 'wql') {
-        return !hasValueOrTemplate(config.query) ? 'WQL-Query ist im wql-Modus erforderlich.' : null;
+        return !hasValueOrTemplate(config.query) ? i18n.t('activities:validation.wqlQueryRequired') : null;
       }
       if (mode === 'invokemethod') {
-        if (!hasValueOrTemplate(config.className)) return 'WMI-Klassenname ist erforderlich.';
-        if (!hasValueOrTemplate(config.methodName)) return 'Methodenname ist im invokeMethod-Modus erforderlich.';
+        if (!hasValueOrTemplate(config.className)) return i18n.t('activities:validation.wmiClassRequired');
+        if (!hasValueOrTemplate(config.methodName)) return i18n.t('activities:validation.wmiMethodRequired');
         return null;
       }
-      return !hasValueOrTemplate(config.className) ? 'WMI-Klassenname ist erforderlich.' : null;
+      return !hasValueOrTemplate(config.className) ? i18n.t('activities:validation.wmiClassRequired') : null;
     },
     summarize: (config) => {
       const mode = ((config.mode as string) || 'query').toLowerCase();
@@ -181,7 +181,7 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
   [ACTIVITY_TYPES.START_PROGRAM]: {
     requiredConfig: (config) => {
       const filePath = config.filePath;
-      if (!hasValueOrTemplate(filePath)) return 'Dateipfad (filePath) ist erforderlich.';
+      if (!hasValueOrTemplate(filePath)) return i18n.t('activities:validation.startProgramPathRequired');
       // A template resolves at runtime; anything else has to satisfy the engine's path guard now
       // rather than at the first run. resolveKnownLauncher covers what the field completes on blur.
       if (isTemplate(filePath) || typeof filePath !== 'string') return null;
@@ -192,7 +192,7 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
     smartDefaults: inheritExecutionContext,
   },
   [ACTIVITY_TYPES.POWER_MANAGEMENT]: {
-    requiredConfig: (config) => !hasValueOrTemplate(config.action) ? 'Aktion ist erforderlich.' : null,
+    requiredConfig: (config) => !hasValueOrTemplate(config.action) ? i18n.t('activities:validation.actionRequired') : null,
     summarize: (config) => {
       const action = (config.action as string) || 'shutdown';
       const delay = (config.delaySeconds as number) ?? 0;
@@ -204,7 +204,7 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
     smartDefaults: inheritExecutionContext,
   },
   [ACTIVITY_TYPES.REST_API]: {
-    requiredConfig: (config) => !hasValueOrTemplate(config.url) ? 'URL ist erforderlich.' : null,
+    requiredConfig: (config) => !hasValueOrTemplate(config.url) ? i18n.t('activities:validation.urlRequired') : null,
     summarize: (config) => `${(config.method as string) || 'GET'} ${(config.url as string) || '...'}`,
     smartDefaults: ({ lastConfig }) => {
       const baseUrl = extractBaseUrl((lastConfig.url as string) || '');
@@ -217,8 +217,8 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
       const builderKey = provider === 'sqlite' ? 'dataSource' : provider === 'postgres' ? 'host' : 'server';
       const hasBuilder = hasValueOrTemplate(config[builderKey]);
       if (!hasValueOrTemplate(config.connectionRef) && !hasBuilder && !hasValueOrTemplate(config.connectionString))
-        return 'Connection-Daten fehlen - entweder Connection Ref, Builder-Felder (Server/Host/Datei) oder Connection String setzen.';
-      if (!hasValueOrTemplate(config.query)) return 'SQL-Query darf nicht leer sein.';
+        return i18n.t('activities:validation.sqlConnectionRequired');
+      if (!hasValueOrTemplate(config.query)) return i18n.t('activities:validation.sqlQueryRequired');
       return null;
     },
     summarize: (config) => {
@@ -236,17 +236,17 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
   [ACTIVITY_TYPES.TEXT_FILE_EDIT]: {
     requiredConfig: (config) => {
       const op = (config.operation as string) || 'append';
-      if (!hasValueOrTemplate(config.path)) return 'Pfad ist erforderlich.';
+      if (!hasValueOrTemplate(config.path)) return i18n.t('activities:validation.pathRequired');
       const knownOps = ['append', 'prepend', 'insert', 'replaceLine', 'delete', 'replace'];
-      if (!knownOps.includes(op)) return `Unbekannte Operation: ${op}. Erlaubt: ${knownOps.join(', ')}.`;
+      if (!knownOps.includes(op)) return i18n.t('activities:validation.unknownOperationAllowed', { operation: op, allowed: knownOps.join(', ') });
 
       const needsContent = op === 'append' || op === 'prepend' || op === 'insert' || op === 'replaceLine';
       if (needsContent && !hasValueOrTemplate(config.content))
-        return `Operation '${op}' benötigt 'content'.`;
+        return i18n.t('activities:validation.contentRequired', { operation: op });
 
       const needsLineNumber = op === 'insert' || op === 'replaceLine';
       if (needsLineNumber && !hasValue(config.lineNumber))
-        return `Operation '${op}' benötigt 'lineNumber' (≥ 1).`;
+        return i18n.t('activities:validation.lineNumberRequired', { operation: op });
 
       if (op === 'delete') {
         const hasLineNumber = hasValue(config.lineNumber);
@@ -254,18 +254,18 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
         const hasMatchPattern = hasValueOrTemplate(config.matchPattern);
         const selectorCount = (hasLineNumber ? 1 : 0) + (hasLineRange ? 1 : 0) + (hasMatchPattern ? 1 : 0);
         if (selectorCount === 0)
-          return "Operation 'delete' benötigt genau eines von: lineNumber, lineRange, matchPattern.";
+          return i18n.t('activities:validation.deleteSelectorRequired');
         if (selectorCount > 1)
-          return "Operation 'delete' akzeptiert nur eines von: lineNumber, lineRange, matchPattern.";
+          return i18n.t('activities:validation.deleteSelectorExclusive');
       }
 
       if (op === 'replace') {
         if (!hasValueOrTemplate(config.matchPattern))
-          return "Operation 'replace' benötigt 'matchPattern'.";
+          return i18n.t('activities:validation.matchPatternRequired');
         // An empty replacement is legal and deletes the matches, so only the key has to be
         // present; its value may be an empty string.
         if (config.replace === undefined || config.replace === null)
-          return "Operation 'replace' benötigt 'replace' (leerer String ist erlaubt = Löschen).";
+          return i18n.t('activities:validation.replacementRequired');
       }
 
       return null;
@@ -279,8 +279,8 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
   },
   [ACTIVITY_TYPES.EMAIL_NOTIFICATION]: {
     requiredConfig: (config) => {
-      if (!hasValueOrTemplate(config.to)) return 'Empf\u00e4nger (to) ist erforderlich.';
-      if (!hasValueOrTemplate(config.subject)) return 'Betreff (subject) ist erforderlich.';
+      if (!hasValueOrTemplate(config.to)) return i18n.t('activities:validation.recipientRequired');
+      if (!hasValueOrTemplate(config.subject)) return i18n.t('activities:validation.subjectRequired');
       return null;
     },
     summarize: (config) => `To: ${(config.to as string) || i18n.t('activities:summaries.emailNoRecipient')}`,
@@ -291,8 +291,8 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
   [ACTIVITY_TYPES.DELAY]: {
     requiredConfig: (config) => {
       const seconds = config.seconds;
-      if (!hasValueOrTemplate(seconds)) return 'Verz\u00f6gerung (seconds) ist erforderlich.';
-      if (typeof seconds === 'number' && seconds <= 0) return 'Verz\u00f6gerung muss > 0 sein.';
+      if (!hasValueOrTemplate(seconds)) return i18n.t('activities:validation.delayRequired');
+      if (typeof seconds === 'number' && seconds <= 0) return i18n.t('activities:validation.delayPositive');
       return null;
     },
     summarize: (config) => i18n.t('activities:summaries.delayWait', { seconds: (config.seconds as number) || 5 }),
@@ -302,7 +302,7 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
     // Every other mode has an implicit charset.
     requiredConfig: (config) =>
       config.mode === 'custom' && !hasValueOrTemplate(config.customCharset)
-        ? 'Eigener Zeichensatz (customCharset) ist erforderlich.'
+        ? i18n.t('activities:validation.customCharsetRequired')
         : null,
     summarize: (config) => i18n.t('activities:summaries.generateText', {
       length: (config.length as number) || 16,
@@ -311,19 +311,19 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
   },
   [ACTIVITY_TYPES.LLM_QUERY]: {
     requiredConfig: (config) => {
-      if (!hasValueOrTemplate(config.prompt)) return 'Prompt ist erforderlich.';
+      if (!hasValueOrTemplate(config.prompt)) return i18n.t('activities:validation.promptRequired');
       // baseUrl is optional; a literal value must be an absolute http/https URL.
       // Templates such as {{globals.LLM_BASE_URL}} are resolved by the StepRunner first.
       const baseUrl = config.baseUrl;
       if (hasValue(baseUrl) && !isTemplate(baseUrl) && !/^https?:\/\//i.test(String(baseUrl)))
-        return 'Endpunkt (baseUrl) muss eine absolute http/https-URL sein.';
+        return i18n.t('activities:validation.baseUrlAbsolute');
       if (hasValue(config.temperature)) {
         const temp = Number(config.temperature);
-        if (Number.isNaN(temp) || temp < 0 || temp > 2) return 'Temperature muss zwischen 0 und 2 liegen.';
+        if (Number.isNaN(temp) || temp < 0 || temp > 2) return i18n.t('activities:validation.temperatureRange');
       }
       if (hasValue(config.maxTokens)) {
         const mt = Number(config.maxTokens);
-        if (Number.isNaN(mt) || mt <= 0) return 'maxTokens muss eine positive Zahl sein.';
+        if (Number.isNaN(mt) || mt <= 0) return i18n.t('activities:validation.maxTokensPositive');
       }
       return null;
     },
@@ -336,15 +336,15 @@ const ACTIVITY_CONFIG_FACTS: Record<string, ActivityConfigFacts> = {
   },
   [ACTIVITY_TYPES.XML_QUERY]: {
     requiredConfig: (config) => {
-      if (!hasValueOrTemplate(config.path) && !hasValueOrTemplate(config.content)) return 'Pfad oder Inhalt (path/content) ist erforderlich.';
-      if (!hasValueOrTemplate(config.xpath)) return 'XPath-Ausdruck ist erforderlich.';
+      if (!hasValueOrTemplate(config.path) && !hasValueOrTemplate(config.content)) return i18n.t('activities:validation.pathOrContentRequired');
+      if (!hasValueOrTemplate(config.xpath)) return i18n.t('activities:validation.xpathRequired');
       return null;
     },
   },
   [ACTIVITY_TYPES.JSON_QUERY]: {
     requiredConfig: (config) => {
-      if (!hasValueOrTemplate(config.path) && !hasValueOrTemplate(config.content)) return 'Pfad oder Inhalt (path/content) ist erforderlich.';
-      if (!hasValueOrTemplate(config.jsonPath)) return 'JSONPath-Ausdruck ist erforderlich.';
+      if (!hasValueOrTemplate(config.path) && !hasValueOrTemplate(config.content)) return i18n.t('activities:validation.pathOrContentRequired');
+      if (!hasValueOrTemplate(config.jsonPath)) return i18n.t('activities:validation.jsonPathRequired');
       return null;
     },
   },

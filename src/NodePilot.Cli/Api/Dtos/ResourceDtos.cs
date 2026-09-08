@@ -145,6 +145,7 @@ public sealed record DashboardStats(
     List<RunningExecutionInfo> Running,
     List<RecentExecutionInfo> Recent,
     List<ArmedTriggerInfo> ArmedTriggers,
+    int LongRunningSeconds,
     int PendingCount = 0, int RunningCount = 0, int LongRunningCount = 0,
     List<FailingWorkflow>? FailingWorkflows = null,
     List<EditLockInfo>? EditLocks = null,

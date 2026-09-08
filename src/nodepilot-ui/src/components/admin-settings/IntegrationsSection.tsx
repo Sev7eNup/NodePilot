@@ -355,7 +355,7 @@ function LlmCard() {
     const profile: LlmProfileDto = {
       id, name,
       baseUrl: 'https://api.openai.com/v1',
-      apiKey: null, model: '', maxTokens: 256000, timeoutSeconds: 90,
+      apiKey: null, model: 'gpt-5.5', maxTokens: 128000, timeoutSeconds: 90,
       enableToolCalling: false, toolCallMaxDepth: 6, managedBy: null,
     };
     setForm((f) => ({

@@ -1,7 +1,9 @@
 using System.Text;
+using System.Data.Common;
 using System.Text.Json.Nodes;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Api.Configuration;
 using NodePilot.Api.Services.Backup;
@@ -426,6 +428,56 @@ public sealed class BackupRestoreServiceTests : IDisposable
         (section.Created, section.Skipped).Should().Be((1, 1));
         dst.Workflows.Single(w => w.Id == first).Name.Should().Be("Deploy (renamed)", "skip leaves the target row untouched");
         dst.Workflows.Count().Should().Be(2);
+    }
+
+    [Theory]
+    [InlineData(RestoreConflictPolicy.Skip, false)]
+    [InlineData(RestoreConflictPolicy.Skip, true)]
+    [InlineData(RestoreConflictPolicy.Overwrite, false)]
+    [InlineData(RestoreConflictPolicy.Overwrite, true)]
+    [InlineData(RestoreConflictPolicy.Rename, false)]
+    [InlineData(RestoreConflictPolicy.Rename, true)]
+    public async Task Restore_SharedTargetConflict_PreservesEachBackupWorkflow(
+        RestoreConflictPolicy policy, bool reverseOrder)
+    {
+        using var src = TestDbFactory.Create();
+        var (first, second) = await SeedSameNamedWorkflowsAsync(src, sameFolder: true);
+        var backup = await ExportAsync(src, FoldersUsersWorkflows);
+        if (reverseOrder)
+            backup = MutatePayload(backup, payload =>
+            {
+                var items = (JsonArray)payload["sections"]![BackupSections.Workflows]!["items"]!;
+                var reversed = items.Reverse().Select(item => item!.DeepClone()).ToArray();
+                items.Clear();
+                foreach (var item in reversed) items.Add(item);
+            });
+
+        using var dst = TestDbFactory.Create();
+        var team = Folder("team");
+        dst.SharedWorkflowFolders.Add(team);
+        dst.Workflows.Add(new Workflow { Id = first, Name = "Deploy", DefinitionJson = Definition("target"), FolderId = team.Id });
+        await dst.SaveChangesAsync();
+
+        var preview = await Restore(dst).PreviewAsync(backup, Passphrase, CancellationToken.None);
+        WorkflowPreview(preview).Conflicts.Should().Be(1);
+        var result = await Restore(dst).RestoreAsync(
+            backup, Passphrase, Policy(BackupSections.Workflows, policy), RestoreActor, CancellationToken.None);
+
+        var workflows = await dst.Workflows.ToListAsync();
+        workflows.Should().HaveCount(policy == RestoreConflictPolicy.Rename ? 3 : 2);
+        workflows.Single(w => w.Id == second).DefinitionJson.Should().Contain("second");
+        workflows.Single(w => w.Id == first).DefinitionJson.Should().Contain(
+            policy == RestoreConflictPolicy.Overwrite ? "first" : "target");
+        if (policy == RestoreConflictPolicy.Rename)
+        {
+            workflows.Select(w => w.Name).Should().OnlyHaveUniqueItems();
+            workflows.Should().Contain(w => w.Id != first && w.DefinitionJson.Contains("first"));
+        }
+        else
+        {
+            WorkflowResult(result).Created.Should().Be(1);
+            (WorkflowResult(result).Skipped + WorkflowResult(result).Overwritten).Should().Be(1);
+        }
     }
 
     [Fact]
@@ -1072,6 +1124,96 @@ public sealed class BackupRestoreServiceTests : IDisposable
 
     private static Dictionary<string, RestoreConflictPolicy> Policy(string section, RestoreConflictPolicy p)
         => new(StringComparer.Ordinal) { [section] = p };
+
+    [Fact]
+    public async Task Restore_CommitInProgress_HoldsBothTreeLocksUntilTransactionCompletes()
+    {
+        using var src = TestDbFactory.Create();
+        var backup = await ExportAsync(src, [BackupSections.Folders]);
+        var (connection, seed) = TestDbFactory.CreateWithConnection();
+        using (connection)
+        using (seed)
+        using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+        {
+            var interceptor = new PauseRestoreCommit();
+            using var dst = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+                .UseSqlite(connection).AddInterceptors(interceptor).Options);
+            var restore = Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, timeout.Token);
+            Task<IDisposable>? shared = null;
+            Task<IDisposable>? global = null;
+            try
+            {
+                await interceptor.Committing.Task.WaitAsync(timeout.Token);
+                shared = FolderTreeMutationLock.SharedWorkflowFolders.AcquireAsync(timeout.Token);
+                global = FolderTreeMutationLock.GlobalVariableFolders.AcquireAsync(timeout.Token);
+                shared.IsCompleted.Should().BeFalse();
+                global.IsCompleted.Should().BeFalse();
+            }
+            finally
+            {
+                interceptor.Continue.TrySetResult();
+                await restore;
+                if (shared is not null) (await shared).Dispose();
+                if (global is not null) (await global).Dispose();
+            }
+        }
+    }
+
+    private sealed class PauseRestoreCommit : DbTransactionInterceptor
+    {
+        public TaskCompletionSource Committing { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Continue { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async ValueTask<InterceptionResult> TransactionCommittingAsync(
+            DbTransaction transaction, TransactionEventData eventData, InterceptionResult result,
+            CancellationToken cancellationToken = default)
+        {
+            Committing.TrySetResult();
+            await Continue.Task.WaitAsync(cancellationToken);
+            return result;
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Restore_ConcurrentFolderCreation_ReadsTreeOnlyAfterAcquiringLock(bool global)
+    {
+        using var src = TestDbFactory.Create();
+        void AddFolder(NodePilotDbContext context)
+        {
+            if (global)
+                context.GlobalVariableFolders.Add(new GlobalVariableFolder
+                {
+                    Id = Guid.NewGuid(), Name = "team", Path = "/team", Depth = 1,
+                    ParentFolderId = GlobalVariableFolder.RootFolderId,
+                });
+            else context.SharedWorkflowFolders.Add(Folder("team"));
+        }
+        AddFolder(src);
+        await src.SaveChangesAsync();
+        var section = global ? BackupSections.GlobalVariableFolders : BackupSections.Folders;
+        var backup = await ExportAsync(src, [section]);
+        var (connection, dst) = TestDbFactory.CreateWithConnection();
+        using (connection)
+        using (dst)
+        using (var writer = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>().UseSqlite(connection).Options))
+        using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15)))
+        {
+            var gate = global ? FolderTreeMutationLock.GlobalVariableFolders : FolderTreeMutationLock.SharedWorkflowFolders;
+            Task<BackupRestoreResult> restore;
+            using (await gate.AcquireAsync(timeout.Token))
+            {
+                restore = Restore(dst).RestoreAsync(backup, Passphrase, Empty(), RestoreActor, timeout.Token);
+                restore.IsCompleted.Should().BeFalse("restore must wait before reading the target tree");
+                AddFolder(writer);
+                await writer.SaveChangesAsync(timeout.Token);
+            }
+            var result = await restore;
+            result.Sections.Single(s => s.Section == section).Created.Should().Be(0,
+                "the folder committed while restore waited must be visible to conflict detection");
+        }
+    }
 
     public void Dispose()
     {

@@ -24,6 +24,11 @@ npm run preview  # Build lokal vorschauen
 
 ## Struktur
 
+Marketingmedien liegen in `pages-media/`. Der normale Build für Server und Desktop enthält sie
+nicht. Nur `.github/workflows/docs-pages.yml` kopiert sie nach dem Build nach `dist/media/`.
+Der README-Video-Link bleibt dadurch stabil. `.gitattributes` schließt `pages-media/` per
+`export-ignore` aus dem `git archive`-Snapshot für `knowledge/source` aus.
+
 - `src/data/nav.ts` — Seitenbaum, Gruppierung, Sidebar-Icon je Seite, Prev/Next-Logik, `groupOf()` für den Breadcrumb. Das `icon`-Feld ist **required**: `tsc -b` schlägt fehl, sobald eine neue Seite ohne Icon eingetragen wird.
 - `src/lib/content.ts` — lädt via `import.meta.glob` alle `content/**/*.md` als Raw-Strings
 - `src/lib/useTheme.ts` — Light/Dark-Toggle (LocalStorage). Die Erstauflösung passiert im Inline-Script in `index.html` **vor** dem ersten Paint (kein Theme-Flash); der Hook seedet aus der gesetzten `html.dark`-Klasse.

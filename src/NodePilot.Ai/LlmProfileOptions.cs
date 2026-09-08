@@ -33,14 +33,13 @@ public class LlmProfileOptions
     public string? ApiKey { get; set; }
 
     /// <summary>Model name used for every feature while this profile is active.</summary>
-    public string Model { get; set; } = "gpt-4o-mini";
+    public string Model { get; set; } = "gpt-5.5";
 
     /// <summary>
-    /// Cap on the LLM response length. The default is sized for current long-context models. A
-    /// smaller endpoint rejects an oversized cap with an upstream HTTP 400 for exceeded context
-    /// length, so a local model usually needs a lower value.
+    /// Cap on the LLM response length, matching the default model's output-token limit.
+    /// Smaller models may require a lower value; context size is a separate limit.
     /// </summary>
-    public int MaxTokens { get; set; } = 256_000;
+    public int MaxTokens { get; set; } = 128_000;
 
     /// <summary>
     /// HTTP timeout in seconds. Long enough for local models, short enough to not hang.

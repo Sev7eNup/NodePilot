@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api } from '../../api/client';
+import { formatDuration } from '../../lib/format';
 import { useRole } from '../../lib/rbac';
 import { toast } from '../../stores/toastStore';
 
@@ -28,7 +29,8 @@ interface WorkflowCreated { id: string }
  */
 export function DashboardQuickActions({
   longRunningCount,
-}: Readonly<{ longRunningCount: number }>) {
+  longRunningSeconds,
+}: Readonly<{ longRunningCount: number; longRunningSeconds: number }>) {
   const { t } = useTranslation(['dashboard']);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -125,7 +127,7 @@ export function DashboardQuickActions({
             className={`np-btn np-btn-sm ${longRunningCount > 0 ? 'np-btn-attention' : 'np-btn-secondary'}`}
             onClick={reviewLongRunning}
             disabled={longRunningCount === 0}
-            title={longRunningCount === 0 ? t('dashboard:longRunningTitle') : undefined}
+            title={t('dashboard:longRunningTitle', { duration: formatDuration(longRunningSeconds * 1000) })}
           >
             <WarningAltFilled size={15} /> {t('dashboard:quickActions.reviewLongRunning')}
             {longRunningCount > 0 && <span className="tabular-nums">({longRunningCount})</span>}

@@ -23,7 +23,7 @@ Design, schedule, debug, and observe multi-step automation in your browser. Run 
 
 ## Product tour
 
-[![Watch the NodePilot product tour — Workflow Designer with PowerShell, File Copy and an LLM summary](src/nodepilot-docs-ui/public/media/product-tour-poster.png)](https://sev7enup.github.io/NodePilot/media/nodepilot-product-tour.mp4)
+[![Watch the NodePilot product tour — Workflow Designer with PowerShell, File Copy and an LLM summary](src/nodepilot-docs-ui/pages-media/product-tour-poster.png)](https://sev7enup.github.io/NodePilot/media/nodepilot-product-tour.mp4)
 
 **[Watch product video](https://sev7enup.github.io/NodePilot/media/nodepilot-product-tour.mp4)**
 
