@@ -10,7 +10,7 @@ This page describes central sign-in and provisioning. All external sign-in paths
 |---|---|---|---|
 | A local password (BCrypt) | `POST /api/auth/login` | `BreakGlassOnly` | Explicitly marked emergency accounts |
 | LDAP simple bind over LDAPS | `POST /api/auth/login` | off | Domain sign-in with a user name and password |
-| Windows Negotiate/Kerberos | `POST /api/auth/windows` | off | Browser SSO for domain-joined Windows clients |
+| Windows Negotiate/Kerberos | `POST /api/auth/windows` | off | Integrated SSO for domain-joined Windows clients — in the browser and through `np auth login --windows` |
 | OpenID Connect | `GET /api/auth/oidc` | off, release-gated | The general enterprise IdP path with authorization code + PKCE |
 
 All paths create the same server-side revocable session. The JWT cookie contains no group list; the absolute session lifetime is eight hours by default.

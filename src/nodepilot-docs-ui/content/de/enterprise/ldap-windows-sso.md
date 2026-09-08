@@ -10,7 +10,7 @@ Diese Seite beschreibt zentrale Anmeldung und Provisionierung. Alle externen Anm
 |---|---|---|---|
 | Lokales Passwort (BCrypt) | `POST /api/auth/login` | `BreakGlassOnly` | explizit markierte Notfallkonten |
 | LDAP Simple Bind über LDAPS | `POST /api/auth/login` | aus | Domänen-Login mit Benutzername und Passwort |
-| Windows Negotiate/Kerberos | `POST /api/auth/windows` | aus | Browser-SSO für domänengebundene Windows-Clients |
+| Windows Negotiate/Kerberos | `POST /api/auth/windows` | aus | Integriertes SSO für domänengebundene Windows-Clients — im Browser und über `np auth login --windows` |
 | OpenID Connect | `GET /api/auth/oidc` | aus, release-gated | allgemeiner Enterprise-IdP-Pfad mit Authorization Code + PKCE |
 
 Alle Wege erzeugen dieselbe serverseitig widerrufbare Session. Das JWT-Cookie enthält keine Gruppenliste; die absolute Session-Lebensdauer beträgt standardmäßig acht Stunden.
