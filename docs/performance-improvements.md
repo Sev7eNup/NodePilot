@@ -706,15 +706,19 @@ Eine lokale Probe mit 30 erfolgreichen Aufrufen ergab 60 verbliebene Jobs. Diese
 belegt nicht die Ursache des gemeldeten VM-Ausfalls vom 08.09.; dafür fehlen Prozessmessungen
 aus dem Vorfallszeitraum.
 
-Die Bereinigung liegt jetzt in `finally`: eigene Abonnements abmelden, eigene Jobs mit
-`Remove-Job -Force` entfernen und das `Process`-Objekt freigeben. Hintergrundstarts
-(`waitForExit=false`) legen keine Ausgabeumleitung oder Ereignisjobs an, damit der
-weiterlaufende Prozess keine bereits geschlossenen Ausgabepipes verwendet.
+Die Ausgabeerfassung liest jetzt beide Pipes gleichzeitig mit begrenzten Puffern und ohne
+PowerShell-Ereignisjobs. Das verhindert auch verlorene oder vertauschte Ausgabezeilen durch
+verzögerte Ereignisaktionen. Nach Erreichen des Ausgabelimits werden die Pipes weiter geleert;
+das Timeout umfasst auch das Leeren der Pipes. `finally` gibt das `Process`-Objekt frei und
+beendet bei einem Abbruch einen noch laufenden Prozess im Wartemodus. Hintergrundstarts
+(`waitForExit=false`) legen keine Ausgabeumleitung an, damit der weiterlaufende Prozess
+keine bereits geschlossenen Ausgabepipes verwendet.
 
 `StartProgramResourceCleanupTests` führt das gerenderte Activity-Skript im echten,
 wiederverwendeten Runspace aus. Abgedeckt sind wiederholter Erfolg mit stdout/stderr,
 fremde Abonnements, Startfehler, Timeout, Abbruch und ein nach Rückkehr weiterlaufender
-Hintergrundprozess. Eine zusätzliche Probe prüft die Bereinigung unter Windows PowerShell 5.1.
+Hintergrundprozess. Weitere Proben prüfen die vollständige Ausgabereihenfolge, das Leeren
+beider Pipes jenseits des Ausgabelimits und die Kompatibilität mit Windows PowerShell 5.1.
 
 ---
 

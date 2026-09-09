@@ -76,6 +76,8 @@ The stored `filePath` must be an absolute local executable path on the target ma
 
 With `waitForExit: false`, the activity returns the process ID while the program continues running; stdout and stderr are not captured. Use `waitForExit: true` to collect the exit code, and keep `useShellExecute: false` to capture output.
 
+The timeout also applies while collecting remaining output. Once a stream reaches its capture limit, further output is discarded while the process continues; `stdoutTruncated` or `stderrTruncated` reports this.
+
 ## `powerManagement`
 
 **Remote.**

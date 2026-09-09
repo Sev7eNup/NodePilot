@@ -41,8 +41,8 @@ public class StartProgramActivity : BaseRemoteActivity
     // Default kill timeout for wait mode, matching the documented catalog default.
     internal const int DefaultTimeoutSeconds = 300;
 
-    // Cap stdout/stderr at 1 MiB each. Beyond this the StringBuilder stops accepting new
-    // lines but the pipe keeps draining, so the producer doesn't block. Callers learn via
+    // Cap stdout/stderr at 1,048,576 characters each. Beyond this the buffers stop growing
+    // but the pipes keep draining, so the producer doesn't block. Callers learn via
     // `OutputParameters["stdoutTruncated"|"stderrTruncated"]`.
     internal const int MaxOutputBytesPerStream = 1024 * 1024;
 
@@ -144,23 +144,8 @@ public class StartProgramActivity : BaseRemoteActivity
             $stdoutBuf = New-Object System.Text.StringBuilder
             $stderrBuf = New-Object System.Text.StringBuilder
             $__npOutputCap = {{MaxOutputBytesPerStream}}
-            $registered = @()
             $launchError = $null
             try {
-                if ($__capture) {
-                    # Keep draining after the output cap so a full pipe cannot block the child.
-                    $registered += Register-ObjectEvent -InputObject $proc -EventName OutputDataReceived -MessageData @{ Buf = $stdoutBuf; Cap = $__npOutputCap } -Action {
-                        if ($null -ne $EventArgs.Data -and $Event.MessageData.Buf.Length -lt $Event.MessageData.Cap) {
-                            [void]$Event.MessageData.Buf.AppendLine($EventArgs.Data)
-                        }
-                    }
-                    $registered += Register-ObjectEvent -InputObject $proc -EventName ErrorDataReceived -MessageData @{ Buf = $stderrBuf; Cap = $__npOutputCap } -Action {
-                        if ($null -ne $EventArgs.Data -and $Event.MessageData.Buf.Length -lt $Event.MessageData.Cap) {
-                            [void]$Event.MessageData.Buf.AppendLine($EventArgs.Data)
-                        }
-                    }
-                }
-
                 try {
                     [void]$proc.Start()
                 } catch {
@@ -168,32 +153,62 @@ public class StartProgramActivity : BaseRemoteActivity
                 }
                 if ($null -eq $launchError) {
                     $processId = $proc.Id
-                    if ($__capture) {
-                        $proc.BeginOutputReadLine()
-                        $proc.BeginErrorReadLine()
-                    }
-
                     $exitCode = $null
                     $timedOut = $false
-                    if ($__wait) {
-                        $exited = $proc.WaitForExit($__timeoutMs)
-                        if (-not $exited) {
-                            $timedOut = $true
-                            try { $proc.Kill() } catch {}
-                            $proc.WaitForExit(2000) | Out-Null
-                        } else {
-                            # Drain any async output readers.
-                            $proc.WaitForExit()
+                    if ($__capture) {
+                        # Read both pipes concurrently, preserving order within each stream.
+                        $streams = @(
+                            @{ Reader = $proc.StandardOutput; Buffer = [char[]]::new(4096); Output = $stdoutBuf; Pending = $null },
+                            @{ Reader = $proc.StandardError; Buffer = [char[]]::new(4096); Output = $stderrBuf; Pending = $null }
+                        )
+                        foreach ($stream in $streams) {
+                            $stream.Pending = $stream.Reader.ReadAsync($stream.Buffer, 0, $stream.Buffer.Length)
                         }
+                        $drainClock = [System.Diagnostics.Stopwatch]::StartNew()
+                        while ($true) {
+                            foreach ($stream in $streams) {
+                                if ($null -ne $stream.Pending -and $stream.Pending.IsCompleted) {
+                                    $count = $stream.Pending.GetAwaiter().GetResult()
+                                    if ($count -eq 0) {
+                                        $stream.Pending = $null
+                                    } else {
+                                        # Keep draining after the cap so the child cannot block on a full pipe.
+                                        $take = [Math]::Min($count, $__npOutputCap - $stream.Output.Length)
+                                        if ($take -gt 0) { [void]$stream.Output.Append($stream.Buffer, 0, $take) }
+                                        $stream.Pending = $stream.Reader.ReadAsync($stream.Buffer, 0, $stream.Buffer.Length)
+                                    }
+                                }
+                            }
+                            $pending = @($streams | Where-Object { $null -ne $_.Pending } | ForEach-Object { $_.Pending })
+                            if ($proc.HasExited -and $pending.Count -eq 0) { break }
+                            if ($drainClock.ElapsedMilliseconds -ge $__timeoutMs) {
+                                $timedOut = $true
+                                break
+                            }
+                            if ($pending.Count -gt 0) {
+                                [void][System.Threading.Tasks.Task]::WaitAny([System.Threading.Tasks.Task[]]$pending, 50)
+                            } else {
+                                [void]$proc.WaitForExit(50)
+                            }
+                        }
+                    } elseif ($__wait) {
+                        $timedOut = -not $proc.WaitForExit($__timeoutMs)
+                    }
+                    if ($timedOut) {
+                        try { $proc.Kill() } catch {}
+                        [void]$proc.WaitForExit(2000)
+                    }
+                    if ($__wait -and $proc.HasExited) {
                         $exitCode = $proc.ExitCode
                     }
                 }
             } finally {
-                # Unsubscribing stops an event job but does not remove it from the runspace.
-                foreach ($r in $registered) {
-                    try { Unregister-Event -SourceIdentifier $r.Name -ErrorAction SilentlyContinue } catch {}
-                    try { Remove-Job -Job $r -Force -ErrorAction SilentlyContinue } catch {}
-                }
+                try {
+                    if ($__wait -and -not $proc.HasExited) {
+                        $proc.Kill()
+                        [void]$proc.WaitForExit(2000)
+                    }
+                } catch {}
                 $proc.Dispose()
             }
 
@@ -279,7 +294,7 @@ public class StartProgramActivity : BaseRemoteActivity
         if (parsed.TimedOut == true)
         {
             success = false;
-            errorOutput = $"Process timed out and was killed. Partial stderr: {stdErr}";
+            errorOutput = $"Process or output capture timed out. Partial stderr: {stdErr}";
         }
         else if (parsed.Waited != true)
         {

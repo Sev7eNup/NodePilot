@@ -59,6 +59,44 @@ public class StartProgramResourceCleanupTests
     }
 
     [Fact]
+    public async Task FastProcessExit_PreservesAllOutputInOrder()
+    {
+        using var engine = CreateEngine();
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            var result = await Execute(engine, new {
+                filePath = CmdPath,
+                arguments = "/d /c \"(for /l %i in (1,1,128) do @echo out-%i) & (for /l %i in (1,1,128) do @echo err-%i 1>&2)\"",
+                timeoutSeconds = 5
+            });
+            result.Success.Should().BeTrue(result.ErrorOutput);
+            var stdout = result.OutputParameters["stdout"].Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim());
+            var stderr = result.OutputParameters["stderr"].Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim());
+            stdout.Should().Equal(Enumerable.Range(1, 128).Select(i => $"out-{i}"));
+            stderr.Should().Equal(Enumerable.Range(1, 128).Select(i => $"err-{i}"));
+        }
+        await AssertResources(engine);
+    }
+
+    [Fact]
+    public async Task OutputBeyondCap_DrainsBothPipesAndReportsTruncation()
+    {
+        using var engine = CreateEngine();
+        var count = StartProgramActivity.MaxOutputBytesPerStream + 4096;
+        var result = await Execute(engine, new {
+            filePath = PowerShellPath,
+            arguments = EncodedCommand($"[Console]::Out.Write(('x' * {count})); [Console]::Error.Write(('y' * {count}))"),
+            timeoutSeconds = 10
+        });
+        result.Success.Should().BeTrue(result.ErrorOutput);
+        result.OutputParameters["stdout"].Length.Should().Be(StartProgramActivity.MaxOutputBytesPerStream);
+        result.OutputParameters["stderr"].Length.Should().Be(StartProgramActivity.MaxOutputBytesPerStream);
+        result.OutputParameters["stdoutTruncated"].Should().Be("true");
+        result.OutputParameters["stderrTruncated"].Should().Be("true");
+        await AssertResources(engine);
+    }
+
+    [Fact]
     public async Task WindowsPowerShell51_ReleasesJobsAcrossSuccessfulAndFailedCalls()
     {
         var activity = new Accessor();
