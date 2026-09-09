@@ -121,6 +121,7 @@ public class StartProgramActivity : BaseRemoteActivity
             $__workingDir = {{pDir}}
             $__useShell = {{useShellPs}}
             $__wait = {{waitPs}}
+            $__capture = -not $__useShell -and $__wait
             $__timeoutMs = {{timeoutMs}}
             {{targetPathGuard}}
 
@@ -129,9 +130,11 @@ public class StartProgramActivity : BaseRemoteActivity
             if ($__arguments.Length -gt 0) { $psi.Arguments = $__arguments }
             if ($__workingDir.Length -gt 0) { $psi.WorkingDirectory = $__workingDir }
             $psi.UseShellExecute = $__useShell
-            if (-not $__useShell) {
+            if ($__capture) {
                 $psi.RedirectStandardOutput = $true
                 $psi.RedirectStandardError = $true
+            }
+            if (-not $__useShell) {
                 $psi.CreateNoWindow = $true
             }
 
@@ -142,29 +145,56 @@ public class StartProgramActivity : BaseRemoteActivity
             $stderrBuf = New-Object System.Text.StringBuilder
             $__npOutputCap = {{MaxOutputBytesPerStream}}
             $registered = @()
-            if (-not $__useShell) {
-                # D7: cap each stream so a chatty process (npm install -verbose, robocopy /v, …)
-                # cannot pin the PS host's managed heap. Once the StringBuilder reaches the cap
-                # we silently drop subsequent lines but keep draining the pipe so the producer
-                # doesn't block on a full buffer. Truncation is detected post-hoc by comparing
-                # the builder length to the cap.
-                $registered += Register-ObjectEvent -InputObject $proc -EventName OutputDataReceived -MessageData @{ Buf = $stdoutBuf; Cap = $__npOutputCap } -Action {
-                    if ($null -ne $EventArgs.Data -and $Event.MessageData.Buf.Length -lt $Event.MessageData.Cap) {
-                        [void]$Event.MessageData.Buf.AppendLine($EventArgs.Data)
-                    }
-                }
-                $registered += Register-ObjectEvent -InputObject $proc -EventName ErrorDataReceived -MessageData @{ Buf = $stderrBuf; Cap = $__npOutputCap } -Action {
-                    if ($null -ne $EventArgs.Data -and $Event.MessageData.Buf.Length -lt $Event.MessageData.Cap) {
-                        [void]$Event.MessageData.Buf.AppendLine($EventArgs.Data)
-                    }
-                }
-            }
-
             $launchError = $null
             try {
-                [void]$proc.Start()
-            } catch {
-                $launchError = $_.Exception.Message
+                if ($__capture) {
+                    # Keep draining after the output cap so a full pipe cannot block the child.
+                    $registered += Register-ObjectEvent -InputObject $proc -EventName OutputDataReceived -MessageData @{ Buf = $stdoutBuf; Cap = $__npOutputCap } -Action {
+                        if ($null -ne $EventArgs.Data -and $Event.MessageData.Buf.Length -lt $Event.MessageData.Cap) {
+                            [void]$Event.MessageData.Buf.AppendLine($EventArgs.Data)
+                        }
+                    }
+                    $registered += Register-ObjectEvent -InputObject $proc -EventName ErrorDataReceived -MessageData @{ Buf = $stderrBuf; Cap = $__npOutputCap } -Action {
+                        if ($null -ne $EventArgs.Data -and $Event.MessageData.Buf.Length -lt $Event.MessageData.Cap) {
+                            [void]$Event.MessageData.Buf.AppendLine($EventArgs.Data)
+                        }
+                    }
+                }
+
+                try {
+                    [void]$proc.Start()
+                } catch {
+                    $launchError = $_.Exception.Message
+                }
+                if ($null -eq $launchError) {
+                    $processId = $proc.Id
+                    if ($__capture) {
+                        $proc.BeginOutputReadLine()
+                        $proc.BeginErrorReadLine()
+                    }
+
+                    $exitCode = $null
+                    $timedOut = $false
+                    if ($__wait) {
+                        $exited = $proc.WaitForExit($__timeoutMs)
+                        if (-not $exited) {
+                            $timedOut = $true
+                            try { $proc.Kill() } catch {}
+                            $proc.WaitForExit(2000) | Out-Null
+                        } else {
+                            # Drain any async output readers.
+                            $proc.WaitForExit()
+                        }
+                        $exitCode = $proc.ExitCode
+                    }
+                }
+            } finally {
+                # Unsubscribing stops an event job but does not remove it from the runspace.
+                foreach ($r in $registered) {
+                    try { Unregister-Event -SourceIdentifier $r.Name -ErrorAction SilentlyContinue } catch {}
+                    try { Remove-Job -Job $r -Force -ErrorAction SilentlyContinue } catch {}
+                }
+                $proc.Dispose()
             }
 
             if ($null -ne $launchError) {
@@ -174,32 +204,6 @@ public class StartProgramActivity : BaseRemoteActivity
                     Waited = $__wait
                 }
             } else {
-                $processId = $proc.Id
-                if (-not $__useShell) {
-                    $proc.BeginOutputReadLine()
-                    $proc.BeginErrorReadLine()
-                }
-
-                $exitCode = $null
-                $timedOut = $false
-                if ($__wait) {
-                    $exited = $proc.WaitForExit($__timeoutMs)
-                    if (-not $exited) {
-                        $timedOut = $true
-                        try { $proc.Kill() } catch {}
-                        $proc.WaitForExit(2000) | Out-Null
-                    } else {
-                        # Drain any async output readers
-                        $proc.WaitForExit()
-                    }
-                    $exitCode = $proc.ExitCode
-                }
-
-                # Unregister events and flush buffers
-                foreach ($r in $registered) {
-                    try { Unregister-Event -SourceIdentifier $r.Name -ErrorAction SilentlyContinue } catch {}
-                }
-
                 $result = @{
                     Launched = $true
                     ProcessId = $processId

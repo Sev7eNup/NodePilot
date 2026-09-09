@@ -697,6 +697,27 @@ Die vier Hebel dieser Session (`MaxConcurrentSteps` 1500, `ChildSemaphore` 600, 
 
 ---
 
+## startProgram — Ereignisjobs im Runspace (2026-09-09)
+
+`startProgram` hinterließ mit dem Code aus 1.2.26 bei jedem Aufruf mit Ausgabeumleitung
+zwei PowerShell-Ereignisjobs im wiederverwendeten Runspace. `Unregister-Event` entfernte
+die Abonnements, aber nicht die Jobs; bei Startfehlern wurde selbst das Abmelden übersprungen.
+Eine lokale Probe mit 30 erfolgreichen Aufrufen ergab 60 verbliebene Jobs. Diese Ansammlung
+belegt nicht die Ursache des gemeldeten VM-Ausfalls vom 08.09.; dafür fehlen Prozessmessungen
+aus dem Vorfallszeitraum.
+
+Die Bereinigung liegt jetzt in `finally`: eigene Abonnements abmelden, eigene Jobs mit
+`Remove-Job -Force` entfernen und das `Process`-Objekt freigeben. Hintergrundstarts
+(`waitForExit=false`) legen keine Ausgabeumleitung oder Ereignisjobs an, damit der
+weiterlaufende Prozess keine bereits geschlossenen Ausgabepipes verwendet.
+
+`StartProgramResourceCleanupTests` führt das gerenderte Activity-Skript im echten,
+wiederverwendeten Runspace aus. Abgedeckt sind wiederholter Erfolg mit stdout/stderr,
+fremde Abonnements, Startfehler, Timeout, Abbruch und ein nach Rückkehr weiterlaufender
+Hintergrundprozess. Eine zusätzliche Probe prüft die Bereinigung unter Windows PowerShell 5.1.
+
+---
+
 ## WinPSCompat-Session-Leak im In-Process-Pool (Session 2026-07-30)
 
 Die Dev-API wuchs unter der 2-min-Dauertest-Batterie auf **10,05 GB committed / gen2 7,49 GB
