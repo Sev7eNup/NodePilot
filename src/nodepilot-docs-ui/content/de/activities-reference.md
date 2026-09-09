@@ -74,6 +74,10 @@ Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDel
 
 Der gespeicherte `filePath` muss ein absoluter lokaler Programmpfad auf dem Zielrechner sein. Die Engine lehnt UNC-Pfade und bloße Programmnamen ab und durchsucht `PATH` nicht. Im Designer werden `cmd`, `powershell`, `cscript` und `wscript` (jeweils auch mit `.exe`) beim Verlassen des Felds zu absoluten Pfaden ergänzt. API/MCP-Clients und generierte Definitionen müssen absolute Pfade selbst liefern. `useShellExecute: true` wird abgelehnt, wenn `StartProgram:DisallowShellExecute` aktiviert ist.
 
+Mit `waitForExit: false` liefert die Activity die Prozess-ID, während das Programm weiterläuft; stdout und stderr werden nicht erfasst. Für den Exit-Code muss `waitForExit: true` gesetzt sein, für die Ausgabeerfassung zusätzlich `useShellExecute: false`.
+
+Das Timeout gilt auch beim Einsammeln verbleibender Ausgaben. Erreicht ein Ausgabestrom sein Erfassungslimit, wird weitere Ausgabe verworfen, während der Prozess weiterläuft; `stdoutTruncated` beziehungsweise `stderrTruncated` zeigt das an.
+
 ## `powerManagement`
 
 **Remote.**
