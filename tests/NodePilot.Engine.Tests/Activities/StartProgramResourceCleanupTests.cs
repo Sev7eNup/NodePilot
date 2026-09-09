@@ -12,8 +12,8 @@ namespace NodePilot.Engine.Tests.Activities;
 
 public class StartProgramResourceCleanupTests
 {
-    private static string CmdPath => Path.Combine(Environment.SystemDirectory, "cmd.exe");
-    private static string PowerShellPath => Path.Combine(Environment.SystemDirectory,
+    private static string CmdPath => Path.Join(Environment.SystemDirectory, "cmd.exe");
+    private static string PowerShellPath => Path.Join(Environment.SystemDirectory,
         "WindowsPowerShell", "v1.0", "powershell.exe");
 
     [Fact]
@@ -48,7 +48,7 @@ public class StartProgramResourceCleanupTests
     public async Task LaunchFailure_ReleasesJobsAndSubscribers()
     {
         using var engine = CreateEngine();
-        var missing = Path.Combine(Path.GetTempPath(), $"np-missing-{Guid.NewGuid():N}.exe");
+        var missing = Path.Join(Path.GetTempPath(), $"np-missing-{Guid.NewGuid():N}.exe");
         for (var i = 0; i < 3; i++)
         {
             var result = await Execute(engine, new { filePath = missing, timeoutSeconds = 5 });
@@ -104,7 +104,7 @@ public class StartProgramResourceCleanupTests
             filePath = CmdPath, arguments = "/c echo legacy-out", timeoutSeconds = 5
         }));
         var failure = activity.Render(JsonSerializer.SerializeToElement(new {
-            filePath = Path.Combine(Path.GetTempPath(), $"np-missing-{Guid.NewGuid():N}.exe")
+            filePath = Path.Join(Path.GetTempPath(), $"np-missing-{Guid.NewGuid():N}.exe")
         }));
         var script = "1..3 | ForEach-Object { & {\n" + success + "\n}; & {\n" + failure + "\n} }\n"
             + "Write-Output ('resources jobs={0}; subscribers={1}; events={2}' -f @(Get-Job).Count,@(Get-EventSubscriber).Count,@(Get-Event).Count)";
@@ -164,7 +164,7 @@ public class StartProgramResourceCleanupTests
         {
             await cts.CancelAsync();
             try { await execution.WaitAsync(TimeSpan.FromSeconds(15), CancellationToken.None); }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException ex) { ex.CancellationToken.Should().Be(cts.Token); }
         }
     }
 
@@ -174,9 +174,8 @@ public class StartProgramResourceCleanupTests
         using var engine = CreateEngine();
         var suffix = Guid.NewGuid().ToString("N");
         var eventName = "np-program-release-" + suffix;
-        var marker = Path.Combine(Path.GetTempPath(), $"np-program-{suffix}.txt");
+        var marker = Path.Join(Path.GetTempPath(), $"np-program-{suffix}.txt");
         using var release = new EventWaitHandle(false, EventResetMode.ManualReset, eventName);
-        Process? child = null;
         var childScript = $"$gate=[System.Threading.EventWaitHandle]::OpenExisting('{eventName}'); if (-not $gate.WaitOne(15000)) {{ exit 17 }}; $gate.Dispose(); [Console]::Out.WriteLine('late-out'); [Console]::Error.WriteLine('late-err'); [System.IO.File]::WriteAllText('{marker.Replace("'", "''")}', 'finished')";
         try
         {
@@ -186,24 +185,27 @@ public class StartProgramResourceCleanupTests
             });
             result.Success.Should().BeTrue(result.ErrorOutput);
             result.OutputParameters["waited"].Should().Be("false");
-            child = Process.GetProcessById(int.Parse(result.OutputParameters["processId"]));
-            child.HasExited.Should().BeFalse("fire-and-forget must leave the child running");
-            await AssertResources(engine);
-            release.Set();
-            await child.WaitForExitAsync(TestContext.Current.CancellationToken)
-                .WaitAsync(TimeSpan.FromSeconds(15), TestContext.Current.CancellationToken);
-            child.ExitCode.Should().Be(0);
-            File.ReadAllText(marker).Should().Be("finished");
+            using var child = Process.GetProcessById(int.Parse(result.OutputParameters["processId"]));
+            try
+            {
+                child.HasExited.Should().BeFalse("fire-and-forget must leave the child running");
+                await AssertResources(engine);
+                release.Set();
+                await child.WaitForExitAsync(TestContext.Current.CancellationToken)
+                    .WaitAsync(TimeSpan.FromSeconds(15), TestContext.Current.CancellationToken);
+                child.ExitCode.Should().Be(0);
+                File.ReadAllText(marker).Should().Be("finished");
+            }
+            finally
+            {
+                release.Set();
+                if (!child.HasExited) child.Kill(entireProcessTree: true);
+                await child.WaitForExitAsync(CancellationToken.None);
+            }
         }
         finally
         {
             release.Set();
-            if (child is not null)
-            {
-                if (!child.HasExited) child.Kill(entireProcessTree: true);
-                await child.WaitForExitAsync(CancellationToken.None);
-                child.Dispose();
-            }
             File.Delete(marker);
         }
     }
