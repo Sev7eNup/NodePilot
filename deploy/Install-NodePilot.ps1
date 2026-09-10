@@ -1711,13 +1711,19 @@ try {
 # Writing serverUrl into the shipped template instead makes the switcher pass --server on every
 # call. Only the copy next to the executable is touched; a machine-wide configuration under
 # %ProgramData%\NodePilot\Switcher wins at load time and stays the operator's file.
+
+# One address for the switcher and everything printed below. The port is part of it: an
+# installation that does not use 443 is unreachable under the bare host name. Seeded first so the
+# summary still has an address if the helper fails to load.
+$PublicUrl = "https://$PublicHostname"
+
 try {
     . (Join-Path $PSScriptRoot 'SwitcherConfig.ps1')
+    $PublicUrl = Get-NodePilotSwitcherServerUrlFor -Hostname $PublicHostname -HttpsPort $HttpsPort
     $switcherConfig = Join-Path $InstallPath 'tools\switcher\switcher.json'
     if (Test-Path -LiteralPath $switcherConfig) {
-        $serverUrl = Get-NodePilotSwitcherServerUrlFor -Hostname $PublicHostname -HttpsPort $HttpsPort
-        if (Set-NodePilotSwitcherServerUrl -ConfigPath $switcherConfig -ServerUrl $serverUrl) {
-            Write-Info "  Switcher server URL set to $serverUrl."
+        if (Set-NodePilotSwitcherServerUrl -ConfigPath $switcherConfig -ServerUrl $PublicUrl) {
+            Write-Info "  Switcher server URL set to $PublicUrl."
         } else {
             Write-Warn "  serverUrl not found exactly once in $switcherConfig - left unchanged."
         }
@@ -1730,9 +1736,9 @@ try {
 Write-Host ""
 Write-Ok "Installation complete."
 Write-Host ""
-Write-Host "  URL         : https://$PublicHostname/" -ForegroundColor Green
-Write-Host "  API docs    : https://$PublicHostname/swagger (disabled when Swagger:DisableInNonDevelopment=true)" -ForegroundColor Gray
-Write-Host "  Health      : https://$PublicHostname/healthz/ready"   -ForegroundColor Gray
+Write-Host "  URL         : $PublicUrl/" -ForegroundColor Green
+Write-Host "  API docs    : $PublicUrl/swagger (disabled when Swagger:DisableInNonDevelopment=true)" -ForegroundColor Gray
+Write-Host "  Health      : $PublicUrl/healthz/ready"   -ForegroundColor Gray
 Write-Host "  Logs        : $DataPath\logs"                          -ForegroundColor Gray
 Write-Host ("  CLI         : np - " + $cliPathState) `
     -ForegroundColor $(if ($cliPathState -eq 'on the machine PATH') { 'Gray' } else { 'Yellow' })
@@ -1752,7 +1758,7 @@ Write-Host ""
 if ($tokenContent) {
     Write-Host "  FIRST-LOGIN ADMIN BOOTSTRAP" -ForegroundColor Yellow
     Write-Host "  ---------------------------"
-    Write-Host "  Go to:   https://$PublicHostname/"
+    Write-Host "  Go to:   $PublicUrl/"
     Write-Host "  Sign in with your desired admin username + password. The sign-in page reveals a"
     Write-Host "  'Setup token' field on the first attempt - paste the value below. After successful"
     Write-Host "  admin creation the token file is deleted and this bootstrap window closes."
@@ -1763,7 +1769,7 @@ if ($tokenContent) {
 } elseif ($tokenUnreadable) {
     Write-Host "  FIRST-LOGIN ADMIN BOOTSTRAP" -ForegroundColor Yellow
     Write-Host "  ---------------------------"
-    Write-Host "  Go to:   https://$PublicHostname/"
+    Write-Host "  Go to:   $PublicUrl/"
     Write-Host "  Sign in with your desired admin username + password. The sign-in page reveals a"
     Write-Host "  'Setup token' field on the first attempt. The token lives in"
     Write-Host "  $tokenPath, which is ACL-restricted to the service account -"

@@ -62,6 +62,12 @@ exhaustive.
 
 ### Fixed
 
+- **The installer's closing summary prints an address that works.** The app, the API documentation,
+  the health probe and the first-login bootstrap were all printed as `https://<host>/`, so on an
+  installation that does not listen on 443 — the documented example uses 8443 — none of them could
+  be opened as printed. All four now come from one public URL that carries the port the service was
+  configured with.
+
 - **Workflow input data can no longer end up as PowerShell code.** The escaping on the way into a
   generated script only handled the ASCII quote characters, while the PowerShell parser recognises
   several typographic ones as well — a value carrying one could leave the literal it was placed in.
