@@ -70,7 +70,7 @@ Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDel
 **Remote.**
 
 - **Config:** `filePath`, `arguments`, `workingDirectory`, `useShellExecute`, `waitForExit`, `timeoutSeconds`, `successExitCodes`
-- **Outputs:** `param.exitCode`, `param.processId`, `param.stdout`, `param.stderr`, `param.waited`
+- **Outputs:** `param.exitCode`, `param.processId`, `param.stdout`, `param.stderr`, `param.stdoutTruncated`, `param.stderrTruncated`, `param.waited`
 
 Der gespeicherte `filePath` muss ein absoluter lokaler Programmpfad auf dem Zielrechner sein. Die Engine lehnt UNC-Pfade und bloße Programmnamen ab und durchsucht `PATH` nicht. Im Designer werden `cmd`, `powershell`, `cscript` und `wscript` (jeweils auch mit `.exe`) beim Verlassen des Felds zu absoluten Pfaden ergänzt. API/MCP-Clients und generierte Definitionen müssen absolute Pfade selbst liefern. `useShellExecute: true` wird abgelehnt, wenn `StartProgram:DisallowShellExecute` aktiviert ist.
 
