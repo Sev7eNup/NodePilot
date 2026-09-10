@@ -807,6 +807,17 @@ nennen bei einem TLS-Fehler das präsentierte Zertifikat samt SHA-256 (der Wert,
 Abbruch vor der Zertifikatsprüfung) entfällt der Zertifikatsblock, statt ein fremdes Zertifikat zu
 zeigen.
 
+**Abhilfe passt zur Ursache.** `TlsFailureKind` nennt weiterhin **eine** primäre Ursache, aber .NET
+setzt Namens- und Kettenfehler unabhängig — deshalb trägt `NetworkFailureInfo.HasNameMismatch` den
+Namensbefund getrennt, und beide werden gemeldet, wenn beide anliegen (vorher verschluckte der
+Kettenfehler den Namensfehler, und `IsExpired` beide). Der Abhilfe-Block wird daraus komponiert
+statt statisch gedruckt: Ein Root-Import erscheint nur beim Kettenfehler, weil er weder einen
+Namens-Mismatch noch ein abgelaufenes Zertifikat behebt. Beim Namens-Mismatch führt
+`PresentedCertificateInfo.SuggestedServerUrl` (erster nicht-Wildcard-Name ≠ `localhost` + der
+versuchte Port, `:443` entfällt) — CLI druckt `np config set server <url>`, MCP
+`NODEPILOT_MCP_SERVER=<url>`. Der Port kommt aus der Beobachtung, nicht aus dem Server-String: der
+Renderer wird auch ohne ihn gerufen (`Program.cs`).
+
 **Architektur-Konvention:** Wer einen neuen API-Endpoint hinzufügt, der für Operatoren-Workflows relevant ist, legt parallel eine Methode in [NodePilotApiClient.cs](../src/NodePilot.Cli/Api/NodePilotApiClient.cs) + ein Command unter `Commands/<Bereich>/` an. DTOs werden in `Cli/Api/Dtos/` **dupliziert** (kein ProjectReference auf `NodePilot.Api`).
 
 ---

@@ -24,6 +24,8 @@ public static class NetworkErrorRenderer
 
         var cause = DescribeCause(info);
         if (cause is not null) text.AppendLine($"  Ursache: {cause}");
+        if (info.HasNameMismatch && info.Tls != TlsFailureKind.NameMismatch)
+            text.AppendLine($"           Zusätzlich: {NameMismatchCause(info)}");
         foreach (var line in info.CauseChain) text.AppendLine($"  → {line}");
 
         var certificate = info.Certificate;
@@ -48,14 +50,16 @@ public static class NetworkErrorRenderer
             "Der konfigurierte TLS-Pin passt nicht zum präsentierten Zertifikat.",
         TlsFailureKind.UntrustedChain =>
             $"Serverzertifikat auf diesem Client nicht vertrauenswürdig{ChainSuffix(info)}.",
-        TlsFailureKind.NameMismatch =>
-            $"Der Hostname steht nicht in den Zertifikatsnamen{DnsSuffix(info)}.",
+        TlsFailureKind.NameMismatch => NameMismatchCause(info),
         TlsFailureKind.Expired => "Das Serverzertifikat ist abgelaufen oder noch nicht gültig.",
         TlsFailureKind.NoCertificate => "Der Server hat kein Zertifikat präsentiert.",
         TlsFailureKind.ProtocolOrCipher =>
             "Der TLS-Handshake scheiterte vor der Zertifikatsprüfung (Protokoll oder Cipher).",
         _ => null,
     };
+
+    private static string NameMismatchCause(NetworkFailureInfo info)
+        => $"Der Hostname steht nicht in den Zertifikatsnamen{DnsSuffix(info)}.";
 
     private static string ChainSuffix(NetworkFailureInfo info)
         => string.IsNullOrEmpty(info.Certificate?.ChainStatus) ? "" : $" ({info.Certificate.ChainStatus})";
@@ -66,6 +70,11 @@ public static class NetworkErrorRenderer
         return names.Count == 0 ? "" : $" (DNS: {string.Join(", ", names)})";
     }
 
+    /// <summary>
+    /// Collects the remedies that address what was actually diagnosed. A remedy for a cause the
+    /// server does not have sends the operator down the wrong path — a root import fixes neither a
+    /// name mismatch nor an expired certificate.
+    /// </summary>
     private static void AppendRemedies(StringBuilder text, NetworkFailureInfo info)
     {
         if (info.Tls == TlsFailureKind.PinMismatch)
@@ -77,10 +86,48 @@ public static class NetworkErrorRenderer
             return;
         }
 
-        if (info.Certificate is not { HasCertificate: true }) return;
+        var certificate = info.Certificate;
+        if (certificate is not { HasCertificate: true }) return;
 
-        text.AppendLine("  Abhilfe: np auth login --tls-thumbprint <SHA-256 oben>   (dauerhaft im Profil)");
-        text.AppendLine(@"           oder Zertifikat nach Cert:\LocalMachine\Root importieren (systemweit)");
-        text.AppendLine("           einmalig ohne Prüfung: --insecure-tls");
+        var remedies = new List<string>();
+        var combined = info.HasNameMismatch && info.Tls != TlsFailureKind.NameMismatch;
+
+        if (info.HasNameMismatch)
+        {
+            if (certificate.SuggestedServerUrl is { } url)
+            {
+                remedies.Add(combined
+                    ? $"np config set server {url}   (Host muss im Zertifikat stehen)"
+                    : $"np config set server {url}");
+                if (!combined)
+                    remedies.Add("Der Host muss ein Name aus dem Zertifikat sein; ein Root-Import ändert daran nichts.");
+            }
+            else
+            {
+                remedies.Add("Das Zertifikat nennt keinen verwendbaren Hostnamen — neu ausstellen mit dem Namen,");
+                remedies.Add("unter dem der Server erreichbar ist.");
+            }
+        }
+
+        switch (info.Tls)
+        {
+            case TlsFailureKind.UntrustedChain or TlsFailureKind.Unknown:
+                remedies.Add("np auth login --tls-thumbprint <SHA-256 oben>   (dauerhaft im Profil)");
+                remedies.Add(@"oder Zertifikat nach Cert:\LocalMachine\Root importieren (systemweit)");
+                break;
+            case TlsFailureKind.Expired:
+                remedies.Add("Zertifikat erneuern — ein Root-Import hilft bei einem abgelaufenen Zertifikat nicht.");
+                break;
+            case TlsFailureKind.NameMismatch when certificate.SuggestedServerUrl is not null:
+                // A pin also gets past a name mismatch, and an alias or reverse-proxy host is a
+                // legitimate reason to keep the URL as it is.
+                remedies.Add("Muss der Host so bleiben (Alias, Reverse-Proxy): np auth login --tls-thumbprint <SHA-256 oben>");
+                break;
+        }
+
+        remedies.Add("einmalig ohne Prüfung: --insecure-tls");
+
+        text.AppendLine($"  Abhilfe: {remedies[0]}");
+        foreach (var line in remedies.Skip(1)) text.AppendLine($"           {line}");
     }
 }

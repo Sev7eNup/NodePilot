@@ -50,7 +50,9 @@ der nicht passt, wird auch mit gesetztem Bypass abgelehnt. Ein Pin aus dem CLI-P
 den Server, den dieses Profil nennt. Ist der Pin kein SHA-256-Fingerprint, startet der Server zwar,
 lehnt aber jeden Tool-Aufruf mit einem reparierbaren Konfigurationsfehler ab
 (`np config set tls-thumbprint <SHA256>` bzw. `none` zum Löschen). Die generischen
-`NODEPILOT_TLS_*`-Variablen teilen sich CLI und MCP-Server.
+`NODEPILOT_TLS_*`-Variablen teilen sich CLI und MCP-Server. Ein Namens-Mismatch wird als eigene
+Störung gemeldet und verweist auf `NODEPILOT_MCP_SERVER=<url>` mit einem Namen aus dem Zertifikat —
+Vertrauen oder Pinnen behebt einen Host nicht, den das Zertifikat nicht nennt.
 
 Transport ist **stdio** (Streamable HTTP ist als spätere Option vorgesehen). Windows-only
 (`net10.0-windows`, DPAPI).

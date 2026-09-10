@@ -440,6 +440,25 @@ np config set tls-thumbprint A1B2...8F90   # 'none' löscht den Pin wieder
 
 ## TLS: nicht vertrauenswürdige Serverzertifikate
 
+Hinter „TLS geht nicht" stecken zwei verschiedene Störungen, die verschiedene Abhilfen brauchen.
+
+**Der Host ist keiner der Namen des Zertifikats.** Die Meldung lautet „Der Hostname steht nicht in
+den Zertifikatsnamen" und listet die Namen auf, die das Zertifikat trägt. Vertrauen ist hier nicht
+das Problem, sondern die URL. Die CLI auf einen Namen zeigen lassen, den das Zertifikat wirklich
+nennt — die Meldung druckt den Befehl mit:
+
+```powershell
+np config set server https://nodepilot.contoso.local:8443
+```
+
+Das ist der übliche Ausgang, wenn `np` **auf dem Server selbst** gegen `https://localhost` läuft:
+Das Zertifikat nennt den öffentlichen Hostnamen, nicht `localhost`. Ein Import in einen Root-Store
+hilft nicht — ein Namens-Mismatch ist kein Vertrauensproblem. Pinnen nur dann, wenn der Host so
+bleiben muss, etwa hinter einem Reverse-Proxy oder einem Alias.
+
+**Die Kette validiert nicht.** Die Meldung lautet „Serverzertifikat auf diesem Client nicht
+vertrauenswürdig". Diesen Fall decken die beiden Optionen unten ab.
+
 Die CLI prüft die Zertifikatskette wie jeder andere Client — anders als ein Browser lässt sie sich
 nicht durchklicken. Schlägt der Handshake fehl, nennt die Fehlermeldung die Ursache, das vom Server
 präsentierte Zertifikat und dessen SHA-256-Fingerprint.

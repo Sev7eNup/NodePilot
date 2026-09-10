@@ -440,6 +440,24 @@ np config set tls-thumbprint A1B2...8F90   # 'none' clears the pin again
 
 ## TLS: server certificates this machine does not trust
 
+Two different failures hide behind "TLS does not work", and they need different fixes.
+
+**The host is not one of the certificate's names.** The error says *"Der Hostname steht nicht in
+den Zertifikatsnamen"* and lists the names the certificate carries. Trust is not the problem here —
+the URL is. Point the CLI at a name the certificate actually names; the error prints the command:
+
+```powershell
+np config set server https://nodepilot.contoso.local:8443
+```
+
+This is the usual outcome of running `np` **on the server itself** against `https://localhost`,
+because the certificate names the public host name, not `localhost`. Importing the certificate into
+a root store does not help — a name mismatch is not a trust problem. Pin it only when the host has
+to stay as it is, for instance behind a reverse proxy or an alias.
+
+**The chain does not validate.** The error says *"Serverzertifikat auf diesem Client nicht
+vertrauenswürdig"*. That is the case the two options below address.
+
 The CLI validates the certificate chain like any other client — unlike a browser, it cannot be
 clicked through. When the handshake fails, the error names the cause, the certificate the server
 presented and its SHA-256 fingerprint.

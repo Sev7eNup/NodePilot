@@ -42,6 +42,26 @@ public sealed class TlsPinningHandshakeTests
     }
 
     [Fact]
+    public async Task HttpClient_SelfSignedListenerWithAnotherName_ReportsBothChainAndNameProblems()
+    {
+        // The listener answers on localhost while the certificate names something else, so the
+        // runtime raises the chain and the name policy error together.
+        var certificate = TestCertificates.CreateSelfSigned("other.test", "other.test");
+        using var server = new TestTlsServer(certificate);
+        using var http = CreateClient(server, ClientTlsOptions.None);
+
+        var act = () => http.GetAsync("api/ping", TestContext.Current.CancellationToken);
+
+        var failure = (await act.Should().ThrowAsync<HttpRequestException>()).Which;
+        var info = NetworkFailureAnalyzer.Analyze(failure);
+        info.Tls.Should().Be(TlsFailureKind.UntrustedChain);
+        info.HasNameMismatch.Should().BeTrue();
+        info.Certificate!.DnsNames.Should().Contain("other.test");
+        info.Certificate.RequestPort.Should().Be(server.BaseAddress.Port);
+        info.Certificate.SuggestedServerUrl.Should().Be($"https://other.test:{server.BaseAddress.Port}");
+    }
+
+    [Fact]
     public async Task HttpClient_SelfSignedListenerWithWrongPin_ReportsPinMismatch()
     {
         var certificate = TestCertificates.CreateSelfSigned("localhost", "localhost");

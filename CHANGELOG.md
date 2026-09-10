@@ -12,6 +12,17 @@ exhaustive.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A TLS error no longer suggests a remedy that cannot help it.** The `np` CLI and the MCP server
+  printed the same three remedies for every certificate failure, so a host that is simply not among
+  the certificate's names was answered with a `LocalMachine\Root` import, which does not fix a name
+  mismatch — while the one thing that does, pointing the client at a name the certificate carries,
+  went unmentioned. Both clients now compose the remedies from what was actually diagnosed and lead
+  a name mismatch with the ready-made `np config set server <url>` (`NODEPILOT_MCP_SERVER=<url>` for
+  the MCP server). A second cause is no longer swallowed either: .NET raises the name and chain
+  policy errors independently, and an untrusted chain used to hide a name mismatch behind it.
+
 ### Added
 
 - **Six activity property panels stop rendering German to English users.** The i18n sweep left

@@ -26,6 +26,14 @@ public sealed record NetworkFailureInfo(
     PresentedCertificateInfo? Certificate)
 {
     public bool IsTls => Tls != TlsFailureKind.None;
+
+    /// <summary>
+    /// Whether the host was absent from the certificate's names. Independent of <see cref="Tls"/>,
+    /// which names one primary cause: .NET sets the name and chain policy errors separately, so a
+    /// certificate can be untrusted and misnamed at once and the operator has to learn both.
+    /// </summary>
+    public bool HasNameMismatch
+        => Certificate?.PolicyErrors.HasFlag(SslPolicyErrors.RemoteCertificateNameMismatch) == true;
 }
 
 /// <summary>

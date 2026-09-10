@@ -32,7 +32,8 @@ public static class PinnedCertificateHandlerFactory
         handler.ServerCertificateCustomValidationCallback = (request, certificate, chain, errors) =>
         {
             var accepted = Evaluate(
-                tls, request.RequestUri?.IdnHost ?? "", certificate, chain, errors, out var observation);
+                tls, request.RequestUri?.IdnHost ?? "", request.RequestUri?.Port ?? 0,
+                certificate, chain, errors, out var observation);
             TlsObservationHandler.Record(observation);
             observer?.Invoke(observation);
             return accepted;
@@ -50,6 +51,7 @@ public static class PinnedCertificateHandlerFactory
     public static bool Evaluate(
         ClientTlsOptions options,
         string requestHost,
+        int requestPort,
         X509Certificate2? certificate,
         X509Chain? chain,
         SslPolicyErrors errors,
@@ -63,7 +65,7 @@ public static class PinnedCertificateHandlerFactory
         else if (options.HasPin) accepted = pinMatched;
         else accepted = options.SkipVerification;
 
-        observation = Describe(requestHost, certificate, chain, errors, fingerprint) with
+        observation = Describe(requestHost, requestPort, certificate, chain, errors, fingerprint) with
         {
             PinConfigured = options.HasPin,
             PinMatched = pinMatched,
@@ -76,6 +78,7 @@ public static class PinnedCertificateHandlerFactory
 
     private static PresentedCertificateInfo Describe(
         string requestHost,
+        int requestPort,
         X509Certificate2? certificate,
         X509Chain? chain,
         SslPolicyErrors errors,
@@ -83,12 +86,16 @@ public static class PinnedCertificateHandlerFactory
     {
         if (certificate is null)
         {
-            return new PresentedCertificateInfo { RequestHost = requestHost, PolicyErrors = errors };
+            return new PresentedCertificateInfo
+            {
+                RequestHost = requestHost, RequestPort = requestPort, PolicyErrors = errors,
+            };
         }
 
         return new PresentedCertificateInfo
         {
             RequestHost = requestHost,
+            RequestPort = requestPort,
             Subject = certificate.Subject,
             Issuer = certificate.Issuer,
             Sha256 = fingerprint,
