@@ -56,5 +56,12 @@ public sealed class OutputWriter
     public void Info(string markup) => _stderr.MarkupLine(markup);
     public void Warning(string markup) => _stderr.MarkupLine($"[yellow]{markup}[/]");
     public void Error(string markup) => _stderr.MarkupLine($"[red]{markup}[/]");
+
+    /// <summary>
+    /// Writes a multi-line diagnostic that was not built as markup — certificate subjects and
+    /// exception messages carry characters Spectre would parse. Escaped once, here, so no caller
+    /// has to remember it per field.
+    /// </summary>
+    public void ErrorBlock(string plainText) => _stderr.MarkupLine($"[red]{Markup.Escape(plainText)}[/]");
     public void Success(string markup) => _stderr.MarkupLine($"[green]{markup}[/]");
 }

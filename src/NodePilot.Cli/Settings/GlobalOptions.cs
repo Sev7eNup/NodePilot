@@ -17,6 +17,14 @@ public class GlobalSettings : CommandSettings
     [Description("Allow HTTP only for an explicit loopback server (development only).")]
     public bool AllowInsecureLoopback { get; set; }
 
+    [CommandOption("--tls-thumbprint <SHA256>")]
+    [Description("Accept exactly this server certificate (SHA-256 fingerprint) even when the chain is untrusted; `np auth login` stores it in the profile. Ignored on an http:// URL.")]
+    public string? TlsThumbprint { get; set; }
+
+    [CommandOption("--insecure-tls")]
+    [Description("Skip server certificate validation for this call only (never stored). A configured pin still wins.")]
+    public bool InsecureTls { get; set; }
+
     [CommandOption("--profile <NAME>")]
     [Description("Use a named connection profile (default: 'default').")]
     public string? Profile { get; set; }

@@ -301,7 +301,11 @@ statt kommentarlos zu fehlen.
 Wer noch gar keins hat, lässt das Feld **leer**. Die Prüfseite meldet dann „No certificate
 selected" und bietet an, ein selbstsigniertes zu erzeugen — angeboten, nicht vorangehakt, denn ein
 Laborzertifikat entsteht auf Ansage. Es gilt zwei Jahre und wird bewusst **nicht** in den
-Root-Store importiert; für Produktion bleibt ein Zertifikat aus der eigenen PKI der Weg.
+Root-Store importiert; für Produktion bleibt ein Zertifikat aus der eigenen PKI der Weg. Das Skript
+gibt neben dem Thumbprint auch den SHA-256-Fingerprint aus: Clients können das Zertifikat entweder
+systemweit in `Cert:\LocalMachine\Root` importieren oder — nur für `np` und den MCP-Server — genau
+dieses eine Zertifikat pinnen (`np auth login --tls-thumbprint <SHA-256>`, siehe
+[CLI](../cli)).
 Unbeaufsichtigt entspricht das einem leeren `certificate.thumbprint` plus
 `"provisioning": { "generateSelfSignedCertificate": true }`.
 

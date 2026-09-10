@@ -75,7 +75,55 @@ public sealed class McpServerConfig
             }
         }
 
-        return new SessionContext(server, profile, token, usesRefreshableSession);
+        var (pin, tlsError) = ResolveTlsPin(profile, server, cliConfig);
+        return new SessionContext(
+            server,
+            profile,
+            token,
+            usesRefreshableSession,
+            pin,
+            SkipTlsVerification: IsTruthy(FirstNonEmpty(
+                Environment.GetEnvironmentVariable("NODEPILOT_MCP_TLS_NO_VERIFY"),
+                Environment.GetEnvironmentVariable("NODEPILOT_TLS_NO_VERIFY"))),
+            tlsError);
+    }
+
+    /// <summary>
+    /// Certificate pin for this process: <c>NODEPILOT_MCP_TLS_THUMBPRINT</c> &gt;
+    /// <c>NODEPILOT_TLS_THUMBPRINT</c> &gt; the CLI profile. A profile pin is origin-bound like the
+    /// session token — it overrides hostname validation and must not vouch for another server. A
+    /// pin that cannot be parsed is reported instead of dropped: dropping it would turn a pinned
+    /// connection into an unpinned one, and together with the bypass env var into no check at all.
+    /// </summary>
+    private static (string? Pin, string? Error) ResolveTlsPin(string profile, string? server, CliConfig cliConfig)
+    {
+        var env = FirstNonEmpty(
+            Environment.GetEnvironmentVariable("NODEPILOT_MCP_TLS_THUMBPRINT"),
+            Environment.GetEnvironmentVariable("NODEPILOT_TLS_THUMBPRINT"));
+        if (!string.IsNullOrWhiteSpace(env))
+        {
+            return CertificatePin.TryParse(env, out var fromEnv)
+                ? (fromEnv, null)
+                : (null, "NODEPILOT_MCP_TLS_THUMBPRINT/NODEPILOT_TLS_THUMBPRINT is not a SHA-256 "
+                    + "fingerprint (64 hex characters).");
+        }
+
+        if (!cliConfig.Profiles.TryGetValue(profile, out var entry)
+            || string.IsNullOrWhiteSpace(entry.TlsThumbprint))
+        {
+            return (null, null);
+        }
+
+        if (!CertificatePin.TryParse(entry.TlsThumbprint, out var fromProfile))
+        {
+            return (null, $"The TLS pin stored for profile '{profile}' is not a SHA-256 fingerprint. "
+                + "Fix it with `np config set tls-thumbprint <SHA256>`, or clear it with "
+                + "`np config set tls-thumbprint none`.");
+        }
+
+        return ClientSessionSecurity.HasSameServerOrigin(entry.Server, server)
+            ? (fromProfile, null)
+            : (null, null);
     }
 
     private static string? FirstNonEmpty(params string?[] values)

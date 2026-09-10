@@ -197,6 +197,9 @@ src/nodepilot-ui/coverage-sonar/
 # Codex CLI scratch artifacts
 .codex-artifacts/
 
+# Local investigation output (CM1 reviews, gcdumps, log pulls) - never part of the repo
+.artifacts/
+
 # Scratch bodies handed to `gh pr create --body-file` — never part of the repo
 /pr*-body.md
 

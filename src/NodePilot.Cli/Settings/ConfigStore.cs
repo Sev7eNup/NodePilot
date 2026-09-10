@@ -52,4 +52,50 @@ public sealed class ConfigStore : ClientConfigStore
             return p.Server;
         return null;
     }
+
+    /// <summary>
+    /// Resolve the certificate pin for a call: CLI flag &gt; environment variable &gt; profile.
+    /// A stored pin is origin-bound like the session token — it overrides hostname validation, so
+    /// it must not authenticate a server it was never accepted for.
+    /// </summary>
+    public ResolvedTlsPin ResolveTlsThumbprint(string? cliFlag, string profile, string? server, CliConfig? config = null)
+    {
+        if (!string.IsNullOrWhiteSpace(cliFlag))
+            return new ResolvedTlsPin(TlsPinInput.Require(cliFlag, "--tls-thumbprint"), null);
+
+        var env = Environment.GetEnvironmentVariable(TlsThumbprintEnvironmentVariable);
+        if (!string.IsNullOrWhiteSpace(env))
+            return new ResolvedTlsPin(TlsPinInput.Require(env, TlsThumbprintEnvironmentVariable), null);
+
+        var cfg = config ?? Load();
+        if (!cfg.Profiles.TryGetValue(profile, out var entry) || string.IsNullOrWhiteSpace(entry.TlsThumbprint))
+            return new ResolvedTlsPin(null, null);
+
+        var pin = TlsPinInput.Require(entry.TlsThumbprint, $"Der TLS-Pin in {ConfigPath}");
+        if (!ClientSessionSecurity.HasSameServerOrigin(entry.Server, server))
+        {
+            return new ResolvedTlsPin(
+                null,
+                $"Profil-Pin gilt für {entry.Server} und wurde für {server} ignoriert.");
+        }
+
+        return new ResolvedTlsPin(pin, null);
+    }
+
+    /// <summary>Bypass switch: flag or environment variable. Deliberately not persistable.</summary>
+    public static bool ResolveSkipTlsVerification(bool cliFlag)
+    {
+        if (cliFlag) return true;
+        var value = Environment.GetEnvironmentVariable(SkipTlsVerificationEnvironmentVariable);
+        return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) || value == "1";
+    }
+
+    public const string TlsThumbprintEnvironmentVariable = "NODEPILOT_TLS_THUMBPRINT";
+    public const string SkipTlsVerificationEnvironmentVariable = "NODEPILOT_TLS_NO_VERIFY";
 }
+
+/// <summary>
+/// The pin a call runs with, plus why a stored one was left out — the caller prints that reason
+/// instead of failing with an unexplained certificate error.
+/// </summary>
+public sealed record ResolvedTlsPin(string? Value, string? IgnoredReason);

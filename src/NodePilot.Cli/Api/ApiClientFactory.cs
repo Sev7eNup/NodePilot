@@ -35,13 +35,12 @@ public sealed class ApiClientFactory
                 $"Not authenticated for profile '{session.Profile}'. Run `np auth login`.");
 
         var baseUri = NormalizeBaseUri(session.Server!, session.AllowInsecureLoopback);
-        var primary = new HttpClientHandler();
-        HttpMessageHandler handler = primary;
+        var handler = PinnedCertificateHandlerFactory.Create(session.Tls);
         if (session.HasSession)
         {
             handler = new TokenRefreshHandler(_tokens, session.Profile)
             {
-                InnerHandler = primary,
+                InnerHandler = handler,
             };
         }
 
@@ -61,9 +60,14 @@ public sealed class ApiClientFactory
     /// Build a client without an attached session — used by `np auth login` itself,
     /// which has nowhere yet to read a token from.
     /// </summary>
-    public NodePilotApiClient CreateAnonymous(string serverUrl, bool allowInsecureLoopback = false)
+    public NodePilotApiClient CreateAnonymous(
+        string serverUrl,
+        bool allowInsecureLoopback = false,
+        ClientTlsOptions? tls = null,
+        Action<PresentedCertificateInfo>? observer = null)
     {
-        var http = new HttpClient
+        var handler = PinnedCertificateHandlerFactory.Create(tls, primary: null, observer);
+        var http = new HttpClient(handler, disposeHandler: true)
         {
             BaseAddress = NormalizeBaseUri(serverUrl, allowInsecureLoopback),
             Timeout = TimeSpan.FromSeconds(60),
@@ -78,15 +82,17 @@ public sealed class ApiClientFactory
     /// returns the JWT only in the httpOnly <c>np_auth</c> cookie. Returns the jar alongside the
     /// client so the command can read that cookie out.
     /// </summary>
-    public WindowsSsoClient CreateForWindowsSso(string serverUrl, bool allowInsecureLoopback = false)
+    public WindowsSsoClient CreateForWindowsSso(
+        string serverUrl, bool allowInsecureLoopback = false, ClientTlsOptions? tls = null)
     {
         var cookies = new CookieContainer();
-        var handler = new HttpClientHandler
+        var primary = new HttpClientHandler
         {
             UseDefaultCredentials = true,
             UseCookies = true,
             CookieContainer = cookies,
         };
+        var handler = PinnedCertificateHandlerFactory.Create(tls, primary);
         var http = new HttpClient(handler, disposeHandler: true)
         {
             BaseAddress = NormalizeBaseUri(serverUrl, allowInsecureLoopback),

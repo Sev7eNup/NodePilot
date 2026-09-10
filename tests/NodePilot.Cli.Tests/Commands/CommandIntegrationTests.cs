@@ -72,6 +72,62 @@ public class CommandIntegrationTests
     }
 
     [Fact]
+    public void AuthLogin_WithTlsThumbprint_PersistsPinIntoProfile()
+    {
+        using var h = new CommandTestHarness(authenticated: false);
+        StubLogin(h);
+
+        var result = h.Run(
+            "auth", "login", "--username", "admin", "--password", "pw12345678",
+            "--tls-thumbprint", new string('a', 64));
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        h.Config.Load().Profiles["default"].TlsThumbprint.Should().Be(new string('A', 64));
+    }
+
+    [Fact]
+    public void AuthLogin_WithoutTlsThumbprint_KeepsExistingProfilePin()
+    {
+        // The profile entry used to be replaced wholesale, which dropped the pin on every login.
+        using var h = new CommandTestHarness(authenticated: false);
+        var cfg = h.Config.Load();
+        cfg.Profiles["default"].TlsThumbprint = new string('A', 64);
+        h.Config.Save(cfg);
+        StubLogin(h);
+
+        var result = h.Run("auth", "login", "--username", "admin", "--password", "pw12345678");
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        h.Config.Load().Profiles["default"].TlsThumbprint.Should().Be(new string('A', 64));
+    }
+
+    [Fact]
+    public void AuthLogin_AgainstAnotherServer_DropsThePinOfThePreviousOne()
+    {
+        using var h = new CommandTestHarness(authenticated: false);
+        var cfg = h.Config.Load();
+        cfg.Profiles["default"].Server = "https://np.previous";
+        cfg.Profiles["default"].TlsThumbprint = new string('A', 64);
+        h.Config.Save(cfg);
+        StubLogin(h);
+
+        var result = h.Run(
+            "auth", "login", "--username", "admin", "--password", "pw12345678",
+            "--server", h.Server.Url!, "--allow-insecure");
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        h.Config.Load().Profiles["default"].TlsThumbprint.Should().BeNull();
+    }
+
+    private static void StubLogin(CommandTestHarness h)
+        => h.Server.Given(Request.Create().WithPath("/api/auth/login").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                token = "fresh", userId = Guid.NewGuid(), username = "admin", role = "Admin",
+                expiresAt = DateTimeOffset.UtcNow.AddHours(8),
+            }));
+
+    [Fact]
     public void AuthLogin_BadCredentials_ReturnsAuthRequired()
     {
         using var h = new CommandTestHarness(authenticated: false);
@@ -798,6 +854,57 @@ public class CommandIntegrationTests
         var result = h.Run("config", "set", "default-profile", "prod");
         result.ExitCode.Should().Be(ExitCodes.Success);
         h.Config.Load().DefaultProfile.Should().Be("prod");
+    }
+
+    [Fact]
+    public void ConfigSet_ServerWithDifferentOrigin_ClearsStoredPin()
+    {
+        using var h = new CommandTestHarness(authenticated: false);
+        var cfg = h.Config.Load();
+        cfg.Profiles["default"].TlsThumbprint = new string('A', 64);
+        h.Config.Save(cfg);
+
+        var result = h.Run("config", "set", "server", "https://np.new");
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        h.Config.Load().Profiles["default"].TlsThumbprint.Should().BeNull(
+            "a pin vouches for one certificate at one origin");
+    }
+
+    [Fact]
+    public void ConfigSet_TlsThumbprint_PersistsNormalizedValue()
+    {
+        using var h = new CommandTestHarness(authenticated: false);
+
+        var result = h.Run("config", "set", "tls-thumbprint", new string('a', 64));
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        h.Config.Load().Profiles["default"].TlsThumbprint.Should().Be(new string('A', 64));
+    }
+
+    [Fact]
+    public void ConfigSet_TlsThumbprintNone_ClearsThePin()
+    {
+        using var h = new CommandTestHarness(authenticated: false);
+        var cfg = h.Config.Load();
+        cfg.Profiles["default"].TlsThumbprint = new string('A', 64);
+        h.Config.Save(cfg);
+
+        var result = h.Run("config", "set", "tls-thumbprint", "none");
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        h.Config.Load().Profiles["default"].TlsThumbprint.Should().BeNull();
+    }
+
+    [Fact]
+    public void ConfigSet_TlsThumbprintInvalid_ReturnsError()
+    {
+        using var h = new CommandTestHarness(authenticated: false);
+
+        var run = () => h.Run("config", "set", "tls-thumbprint", "not-a-fingerprint");
+
+        run.Should().Throw<InvalidOperationException>();
+        h.Config.Load().Profiles["default"].TlsThumbprint.Should().BeNull();
     }
 
     [Fact]

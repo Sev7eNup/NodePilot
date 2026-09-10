@@ -54,6 +54,18 @@ environment variables, falling back to the CLI's on-disk config/session:
 | Server URL | `NODEPILOT_MCP_SERVER` › `NODEPILOT_SERVER` › CLI `config.json` profile |
 | Profile | `NODEPILOT_MCP_PROFILE` › `NODEPILOT_PROFILE` › CLI default profile › `default` |
 | Token | `NODEPILOT_MCP_TOKEN` (raw bearer, CI/headless escape — no refresh) › DPAPI `np auth login` session (cross-process single-flight rotation shared with CLI before its server-issued absolute expiry; transient proactive failures use a 15-second token-bound cooldown; re-login after expiry) |
+| TLS pin | `NODEPILOT_MCP_TLS_THUMBPRINT` › `NODEPILOT_TLS_THUMBPRINT` › CLI `config.json` profile (`tlsThumbprint`) |
+| TLS bypass | `NODEPILOT_MCP_TLS_NO_VERIFY` › `NODEPILOT_TLS_NO_VERIFY` (`1`/`true`) — emergency only, never stored |
+
+**TLS.** The certificate chain is validated normally. A SHA-256 pin is accepted *in addition* to a
+valid chain, for a server whose certificate this machine does not trust; a configured pin that does
+**not** match is refused even with the bypass set. A pin stored in a CLI profile only applies to
+the server origin that profile names. A pin that is not a SHA-256 fingerprint is a configuration
+error: the server still starts, but every tool call reports it until the pin is fixed
+(`np config set tls-thumbprint <SHA256>`) or cleared (`np config set tls-thumbprint none`). The
+generic `NODEPILOT_TLS_*` variables are shared with the `np` CLI — setting one in a shell affects
+both binaries. A TLS failure names the presented certificate and its SHA-256, which is the value to
+pin.
 
 The server starts even when unconfigured/unauthenticated; tools then return an actionable error
 (`run np auth login`, or set `NODEPILOT_MCP_SERVER`).

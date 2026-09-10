@@ -771,7 +771,7 @@ Operations-CLI für Operatoren — eigenes Projekt unter [src/NodePilot.Cli/](..
 - Resources — `machine`, `credential`, `globals` (list/create/update/delete/**export**/**import**; `folder`-Unterbaum mit list/create/rename/move/delete (`--recursive` löscht samt Inhalt)), `user` + **`shared-folder`** (org RBAC: list/create/rename/move/delete (`--recursive` löscht samt Inhalt)/permissions/grant/revoke) + **`maintenance`** (Wartungsfenster: list/get/create/update/delete) + **`system-alert`** (System-Alert-Policies, ADR 0008: catalog/list/get/create/update/enable/disable/delete/test-fire; create/update via `--file`) + **`alerting`** (Notification-Rules: list/get/create/update/delete/**test-fire**/**deliveries** [Zustell-Ledger, Filter `--rule`/`--status`]; Routen via `--email`/`--webhook`, Scope via `--folder`/`--workflow`)
 - System — `audit list`, `health`, `cron next`, **`db`** (info/query — read-mode default, `--write` opt-in), `dashboard`, `observability` (summary/**query**/**query-range**), **`settings`** (status/system-info/**effective-sizing**/get/put/test smtp|llm), **`secrets reencrypt`**, `config get|set`
 
-Globale Flags: `--server`, `--profile`, `-o table|json|yaml`, `--no-color`, `-v`. Exit-Codes: 0 ok, 1 generic, 2 run failed/cancelled, 3 auth required, 4 permission denied.
+Globale Flags: `--server`, `--profile`, `--tls-thumbprint <SHA256>`, `--insecure-tls`, `-o table|json|yaml`, `--no-color`, `-v`. Exit-Codes: 0 ok, 1 generic, 2 run failed/cancelled, 3 auth required, 4 permission denied.
 
 **Import in CI:** `workflow import` und `workflow import-scorch` geben bei `-o json` den kompletten
 Importreport mit `workflows[].id` auf stdout aus. Jeder Import ist zunächst disabled; die Pipeline
@@ -782,7 +782,30 @@ schaltet ausschließlich die geprüften IDs in einem zweiten, auditierbaren Schr
 
 **Settings-Spezialfall:** `np settings ...` arbeitet section-basiert, file-roundtrip, ETag-gegated. Workflow: `np settings get Smtp --etag-only > etag.txt`, dann `np settings put Smtp --file smtp.json --etag $(cat etag.txt)`. Kein `set key=value`.
 
-**Token-Storage:** DPAPI-encrypted (`CurrentUser`-Scope) unter `%APPDATA%\NodePilot\session-<profile>.dat`, inklusive serverseitigem `expiresAt`. `TokenRefreshHandler` rotiert einen noch gültigen Token kurz vor der absoluten Deadline. CLI und MCP koordinieren parallele Prozesse über denselben origin-gebundenen File-Lease: genau ein Prozess refresht, wartende Verlierer laden dessen Token. Atomarer Replace im selben Verzeichnis verhindert partielle Session-Blobs. Transiente proactive Fehler (408/429/5xx) aktivieren pro Token 15 Sekunden Cooldown; noch gültige Requests laufen weiter und ein späterer Request versucht erneut zu rotieren. Nach absolutem Ablauf ist ein neuer Login nötig; Refresh verlängert die Session nicht. Klartext-Config (Server-URL, Default-Profile) liegt daneben in `config.json`.
+**Token-Storage:** DPAPI-encrypted (`CurrentUser`-Scope) unter `%APPDATA%\NodePilot\session-<profile>.dat`, inklusive serverseitigem `expiresAt`. `TokenRefreshHandler` rotiert einen noch gültigen Token kurz vor der absoluten Deadline. CLI und MCP koordinieren parallele Prozesse über denselben origin-gebundenen File-Lease: genau ein Prozess refresht, wartende Verlierer laden dessen Token. Atomarer Replace im selben Verzeichnis verhindert partielle Session-Blobs. Transiente proactive Fehler (408/429/5xx) aktivieren pro Token 15 Sekunden Cooldown; noch gültige Requests laufen weiter und ein späterer Request versucht erneut zu rotieren. Nach absolutem Ablauf ist ein neuer Login nötig; Refresh verlängert die Session nicht. Klartext-Config (Server-URL, Default-Profile, TLS-Pin) liegt daneben in `config.json`.
+
+**TLS-Vertrauen (CLI + MCP):** Beide Clients validieren die Zertifikatskette normal. Für einen
+Server, dessen Zertifikat der Client-Maschine unbekannt ist (Lab, Pilot), gibt es zwei Wege statt
+eines Root-Store-Imports: einen **SHA-256-Pin** — `--tls-thumbprint <SHA256>` › `NODEPILOT_TLS_THUMBPRINT`
+› `ProfileEntry.TlsThumbprint` (MCP: `NODEPILOT_MCP_TLS_THUMBPRINT` › `NODEPILOT_TLS_THUMBPRINT` ›
+Profil) — und den Notnagel `--insecure-tls` bzw. `NODEPILOT_TLS_NO_VERIFY` (MCP:
+`NODEPILOT_MCP_TLS_NO_VERIFY`). Regeln: Der Pin ist **additiv** (eine gültige Kette wird weiterhin
+akzeptiert, sonst bräche jede Zert-Erneuerung ein sauberes Profil); ein gesetzter Pin, der **nicht**
+passt, wird abgelehnt — auch mit `--insecure-tls`. Ein gespeicherter Pin ist **origin-gebunden** wie
+der Token (`ClientSessionSecurity.HasSameServerOrigin`) und wird beim Serverwechsel gelöscht;
+`np auth login --tls-thumbprint …` schreibt ihn ins Profil, `np config set tls-thumbprint <SHA256>|none`
+setzt/löscht ihn. Der Bypass ist **nicht** persistierbar und druckt bei jedem Aufruf eine Warnung.
+Ein unbrauchbarer Pin ist fail-closed: die CLI bricht ab, der MCP-Server startet zwar, lehnt aber
+jeden API-Aufruf mit einem reparierbaren Konfigurationsfehler ab. Impl: `NodePilot.Core.Clients`
+(`CertificatePin`, `ClientTlsOptions`, `PinnedCertificateHandlerFactory`, `TlsObservationHandler`,
+`NetworkFailureAnalyzer`).
+
+**Netzwerkfehler nennen ihre Ursache.** Die Clients entfalten die `InnerException`-Kette und
+nennen bei einem TLS-Fehler das präsentierte Zertifikat samt SHA-256 (der Wert, den man in
+`--tls-thumbprint` kopiert). Die Beobachtung ist an den **Request** gebunden, der sie ausgelöst hat
+(`TlsObservationHandler`, `AsyncLocal` → `Exception.Data`) — ohne eindeutige Zuordnung (Pool-Reuse,
+Abbruch vor der Zertifikatsprüfung) entfällt der Zertifikatsblock, statt ein fremdes Zertifikat zu
+zeigen.
 
 **Architektur-Konvention:** Wer einen neuen API-Endpoint hinzufügt, der für Operatoren-Workflows relevant ist, legt parallel eine Methode in [NodePilotApiClient.cs](../src/NodePilot.Cli/Api/NodePilotApiClient.cs) + ein Command unter `Commands/<Bereich>/` an. DTOs werden in `Cli/Api/Dtos/` **dupliziert** (kein ProjectReference auf `NodePilot.Api`).
 
