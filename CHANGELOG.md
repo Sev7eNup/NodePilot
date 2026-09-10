@@ -40,6 +40,10 @@ exhaustive.
 
 ### Changed
 
+- **The bundled ASP.NET Core runtime moves to 10.0.12.** The server installer picks the newest
+  pinned payload, and the desktop package now names the same version, so both shipping targets
+  carry one runtime. 10.0.11 stays in the lock file; the documented 10.0.11 floor is unchanged.
+
 - **The Engine Switcher is now simply the Switcher.** The name moved everywhere it is persisted:
   the project and assembly (`NodePilot.Switcher`), the executable, the installation folder
   (`tools\switcher`), the configuration file (`switcher.json`), the data directory
