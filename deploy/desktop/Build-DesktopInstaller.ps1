@@ -37,7 +37,7 @@ $UiDir        = Join-Path $RepoRoot 'src\nodepilot-ui'
 $DocsUiDir    = Join-Path $RepoRoot 'src\nodepilot-docs-ui'
 $ApiCsproj    = Join-Path $RepoRoot 'src\NodePilot.Api\NodePilot.Api.csproj'
 $PublishSettingsHygieneScript = Join-Path $RepoRoot 'deploy\Assert-PublishSettingsHygiene.ps1'
-$DesktopRuntimeVersion = '10.0.11'
+$DesktopRuntimeVersion = '10.0.12'
 # The one place the bundled PostgreSQL major is written down. A cluster initialised by one major
 # cannot be opened by another, and this package upgrades in place over an existing pgdata.
 $DesktopPostgresMajorVersion = 16

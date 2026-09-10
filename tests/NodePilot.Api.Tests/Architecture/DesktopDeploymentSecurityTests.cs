@@ -123,7 +123,7 @@ public sealed class DesktopDeploymentSecurityTests
         var build = File.ReadAllText(Path.Combine(desktopDeploy, "Build-DesktopInstaller.ps1"));
         var gatePath = Path.Combine(desktopDeploy, "Assert-DesktopRuntimePayload.ps1");
 
-        build.Should().Contain("$DesktopRuntimeVersion = '10.0.11'");
+        build.Should().Contain("$DesktopRuntimeVersion = '10.0.12'");
         build.Should().Contain("\"-p:RuntimeFrameworkVersion=$DesktopRuntimeVersion\"");
         build.Should().Contain(". (Join-Path $PSScriptRoot 'Assert-DesktopRuntimePayload.ps1')");
         build.Should().Contain("Assert-DesktopRuntimePayload -AppPath $appStage -MinimumVersion ([version]$DesktopRuntimeVersion)");
