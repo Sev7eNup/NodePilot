@@ -1443,6 +1443,8 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 **Prüfpunkte:**
 - [ ] Stat-Cards sichtbar: Total Workflows, Running Executions, Success Rate, Machines
 - [ ] 24h Execution-Chart rendert
+- [ ] Erfolgsraten-Trend: einzelne aktive Stunden bleiben als Punkte sichtbar; Stunden ohne Läufe werden nicht verbunden (Browser-Regression in `e2e/dashboard.spec.ts`).
+- [ ] Trend-Punkte bei 0 % und 100 % bleiben sichtbar; Hover zeigt erfolgreiche/abgeschlossene Läufe. Helles und dunkles Theme prüfen.
 - [ ] "Top Workflows" Liste zeigt nach Aktivität sortiert
 - [ ] "Recent Executions" Liste ist aktuell
 - [ ] Keine "loading"-States hängen
