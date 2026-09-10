@@ -61,6 +61,8 @@ public class StartProgramResourceCleanupTests
     // Wall-clock budget for the capture tests. They assert what the drain loop collects, not how
     // fast it collects it, so the budget only has to outlast a loaded CI runner: the pipe readers
     // complete on the thread pool, and a starved pool delays them far beyond a local run.
+    // It has to be given to the engine as well as to the step: the engine timeout is the outer
+    // wall clock and cuts a slow drain off before the step budget is ever reached.
     private const int CaptureBudgetSeconds = 60;
 
     [Fact]
@@ -73,7 +75,7 @@ public class StartProgramResourceCleanupTests
                 filePath = CmdPath,
                 arguments = "/d /c \"(for /l %i in (1,1,128) do @echo out-%i) & (for /l %i in (1,1,128) do @echo err-%i 1>&2)\"",
                 timeoutSeconds = CaptureBudgetSeconds
-            });
+            }, CaptureBudgetSeconds);
             result.Success.Should().BeTrue(result.ErrorOutput);
             var stdout = result.OutputParameters["stdout"].Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim());
             var stderr = result.OutputParameters["stderr"].Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim());
@@ -92,7 +94,7 @@ public class StartProgramResourceCleanupTests
             filePath = PowerShellPath,
             arguments = EncodedCommand($"[Console]::Out.Write(('x' * {count})); [Console]::Error.Write(('y' * {count}))"),
             timeoutSeconds = CaptureBudgetSeconds
-        });
+        }, CaptureBudgetSeconds);
         result.Success.Should().BeTrue(result.ErrorOutput);
         result.OutputParameters["stdout"].Length.Should().Be(StartProgramActivity.MaxOutputBytesPerStream);
         result.OutputParameters["stderr"].Length.Should().Be(StartProgramActivity.MaxOutputBytesPerStream);
@@ -220,20 +222,25 @@ public class StartProgramResourceCleanupTests
     private static string EncodedCommand(string script) =>
         "-NoProfile -NonInteractive -EncodedCommand " + Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));
 
-    private static async Task<PowerShellExecutionResult> Run(RunspaceExecutionEngine engine, string script)
+    // The engine timeout is the outer wall clock over the whole script, so it has to be at least
+    // the step budget the caller asked for. Defaults suit the short probes; the capture tests pass
+    // their own.
+    private static async Task<PowerShellExecutionResult> Run(
+        RunspaceExecutionEngine engine, string script, int timeoutSeconds = 10)
     {
         var result = await engine.ExecuteAsync(new PowerShellExecutionRequest {
-            ScriptText = script, Timeout = TimeSpan.FromSeconds(10)
-        }, TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(15));
+            ScriptText = script, Timeout = TimeSpan.FromSeconds(timeoutSeconds)
+        }, TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(timeoutSeconds + 5));
         result.Success.Should().BeTrue(result.Error);
         return result;
     }
 
-    private static async Task<ActivityResult> Execute(RunspaceExecutionEngine engine, object settings)
+    private static async Task<ActivityResult> Execute(
+        RunspaceExecutionEngine engine, object settings, int timeoutSeconds = 10)
     {
         var config = JsonSerializer.SerializeToElement(settings);
         var activity = new Accessor();
-        var result = await Run(engine, activity.Render(config));
+        var result = await Run(engine, activity.Render(config), timeoutSeconds);
         return activity.Process(new ActivityResult {
             Success = result.Success, Output = result.Output, ErrorOutput = result.Error, Duration = result.Duration
         }, config);
