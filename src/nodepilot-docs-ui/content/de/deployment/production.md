@@ -438,6 +438,17 @@ Erwartete Ergebnisse:
 
 Bei aktivierter Verzeichnisanbindung ist `/healthz/directory` separat zu prüfen. Die allgemeine Readiness bleibt absichtlich auf die Datenbank beschränkt.
 
+Die `np`-CLI auf dem Server nutzt dieselbe öffentliche URL wie jeder andere Client — das Zertifikat
+nennt den öffentlichen Hostnamen, nicht `localhost`:
+
+```powershell
+np config set server https://nodepilot.contoso.local
+```
+
+Bei einer Installation abseits von 443 kommt `:<HttpsPort>` dahinter. Auf `https://localhost` zu
+zeigen scheitert mit „Der Hostname steht nicht in den Zertifikatsnamen", weil dieser Name nicht im
+Zertifikat steht.
+
 Schlägt eine der Prüfungen fehl, steht die Ursache im Anwendungslog unter `C:\ProgramData\NodePilot\logs\nodepilot-<Datum>.log`. Welche Datei bei welchem Störungsbild weiterhilft — inklusive des Setup-Transkripts unter `%TEMP%`, das ein Abbruch der Installation hinterlässt —, steht unter [Logs & Diagnose](logs).
 
 ### Verhalten bei Datenbank-Ausfall im laufenden Betrieb

@@ -49,7 +49,9 @@ valid chain, for a server whose certificate this machine does not know. A config
 not match is refused even with the bypass set. A pin from the CLI profile only applies to the server
 that profile names. If the pin is not a SHA-256 fingerprint the server still starts, but every tool
 call reports a repairable configuration error (`np config set tls-thumbprint <SHA256>`, or `none` to
-clear it). The generic `NODEPILOT_TLS_*` variables are shared with the `np` CLI.
+clear it). The generic `NODEPILOT_TLS_*` variables are shared with the `np` CLI. A name mismatch is reported
+as its own failure and points at `NODEPILOT_MCP_SERVER=<url>` built from a name the certificate
+carries — trusting or pinning does not fix a host the certificate does not name.
 
 The transport is **stdio** (streamable HTTP is planned as a later option). Windows only
 (`net10.0-windows`, DPAPI).

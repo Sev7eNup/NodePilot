@@ -119,9 +119,113 @@ public sealed class NetworkErrorRendererTests
         text.Should().Contain("OU=[Ops]");
     }
 
+    [Fact]
+    public void Render_NameMismatch_LeadsWithTheServerUrlFromTheCertificate()
+    {
+        // The reported defect: the block offered a root import, which cannot fix a name mismatch,
+        // and never named the one thing that does.
+        var failure = WithObservation(Observation() with
+        {
+            RequestHost = "localhost",
+            PolicyErrors = SslPolicyErrors.RemoteCertificateNameMismatch,
+        });
+
+        var text = NetworkErrorRenderer.Render(failure, "https://localhost:8443");
+
+        text.Should().Contain("np config set server https://np.lab.local:8443");
+        text.Should().NotContain(@"Cert:\LocalMachine\Root");
+        text.Should().Contain("--insecure-tls");
+    }
+
+    [Fact]
+    public void Render_NameMismatchOnDefaultPort_OmitsThePort()
+    {
+        var failure = WithObservation(Observation() with
+        {
+            RequestHost = "localhost",
+            RequestPort = 443,
+            PolicyErrors = SslPolicyErrors.RemoteCertificateNameMismatch,
+        });
+
+        var text = NetworkErrorRenderer.Render(failure, "https://localhost");
+
+        text.Should().Contain("np config set server https://np.lab.local");
+        text.Should().NotContain("https://np.lab.local:443");
+    }
+
+    [Fact]
+    public void Render_NameMismatchWithOnlyWildcardNames_OmitsTheCommand()
+    {
+        var failure = WithObservation(Observation() with
+        {
+            RequestHost = "localhost",
+            DnsNames = new[] { "*.lab.local" },
+            PolicyErrors = SslPolicyErrors.RemoteCertificateNameMismatch,
+        });
+
+        var text = NetworkErrorRenderer.Render(failure, "https://localhost:8443");
+
+        text.Should().NotContain("np config set server");
+        text.Should().Contain("keinen verwendbaren Hostnamen");
+    }
+
+    [Fact]
+    public void Render_NameMismatchWithLocalhostFirst_PrefersTheRoutableName()
+    {
+        var failure = WithObservation(Observation() with
+        {
+            RequestHost = "np.other.local",
+            DnsNames = new[] { "localhost", "np.lab.local" },
+            PolicyErrors = SslPolicyErrors.RemoteCertificateNameMismatch,
+        });
+
+        var text = NetworkErrorRenderer.Render(failure, "https://np.other.local:8443");
+
+        text.Should().Contain("np config set server https://np.lab.local:8443");
+    }
+
+    [Fact]
+    public void Render_UntrustedChainAndNameMismatch_ReportsBothCauses()
+    {
+        // .NET raises the two policy errors independently. Reporting only the chain would send the
+        // operator back for a second round once trust is fixed.
+        var failure = WithObservation(Observation() with
+        {
+            RequestHost = "localhost",
+            PolicyErrors = SslPolicyErrors.RemoteCertificateChainErrors
+                | SslPolicyErrors.RemoteCertificateNameMismatch,
+            ChainStatus = "UntrustedRoot",
+        });
+
+        var text = NetworkErrorRenderer.Render(failure, "https://localhost:8443");
+
+        text.Should().Contain("nicht vertrauenswürdig");
+        text.Should().Contain("UntrustedRoot");
+        text.Should().Contain("Zertifikatsnamen");
+        text.Should().Contain("np config set server https://np.lab.local:8443");
+        text.Should().Contain(@"Cert:\LocalMachine\Root");
+    }
+
+    [Fact]
+    public void Render_ExpiredCertificate_DoesNotSuggestARootImport()
+    {
+        var failure = WithObservation(Observation() with
+        {
+            NotBefore = DateTimeOffset.UtcNow.AddYears(-2),
+            NotAfter = DateTimeOffset.UtcNow.AddDays(-1),
+            PolicyErrors = SslPolicyErrors.RemoteCertificateChainErrors,
+        });
+
+        var text = NetworkErrorRenderer.Render(failure, "https://np.lab.local:8443");
+
+        text.Should().Contain("erneuern");
+        text.Should().NotContain(@"Cert:\LocalMachine\Root");
+    }
+
     private static PresentedCertificateInfo Observation() => new()
     {
         RequestHost = "np.lab.local",
+        RequestPort = 8443,
         Subject = "CN=np.lab.local",
         Issuer = "CN=np.lab.local",
         Sha256 = Fingerprint,

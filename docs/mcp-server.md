@@ -65,7 +65,9 @@ error: the server still starts, but every tool call reports it until the pin is 
 (`np config set tls-thumbprint <SHA256>`) or cleared (`np config set tls-thumbprint none`). The
 generic `NODEPILOT_TLS_*` variables are shared with the `np` CLI — setting one in a shell affects
 both binaries. A TLS failure names the presented certificate and its SHA-256, which is the value to
-pin.
+pin. When the failure is a name mismatch rather than a trust problem, it names
+`NODEPILOT_MCP_SERVER=<url>` built from a name the certificate carries instead — trusting the
+certificate does not fix a host that is not on it.
 
 The server starts even when unconfigured/unauthenticated; tools then return an actionable error
 (`run np auth login`, or set `NODEPILOT_MCP_SERVER`).

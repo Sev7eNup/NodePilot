@@ -56,13 +56,46 @@ public static class ApiErrorMapper
             text.Append($" Presented certificate: {certificate.Subject}, issuer {certificate.Issuer}");
             if (certificate.DnsNames.Count > 0) text.Append($", DNS {string.Join("/", certificate.DnsNames)}");
             text.Append($", SHA-256 {certificate.Sha256}.");
-            text.Append(info.Tls == TlsFailureKind.PinMismatch
-                ? " The configured pin does not match; check why the certificate changed before updating it."
-                : @" Trust it by importing it into LocalMachine\Root, or pin it with"
-                  + " NODEPILOT_MCP_TLS_THUMBPRINT=<SHA-256> in the .mcp.json env block.");
+            AppendRemedy(text, info, certificate);
         }
 
         return text.ToString();
+    }
+
+    /// <summary>
+    /// Names only what addresses the diagnosed cause. A root import fixes neither a name mismatch
+    /// nor an expired certificate, and pointing the agent at either wastes a round trip.
+    /// </summary>
+    private static void AppendRemedy(
+        StringBuilder text, NetworkFailureInfo info, PresentedCertificateInfo certificate)
+    {
+        if (info.Tls == TlsFailureKind.PinMismatch)
+        {
+            text.Append(
+                " The configured pin does not match; check why the certificate changed before updating it.");
+            return;
+        }
+
+        if (info.HasNameMismatch)
+        {
+            text.Append(certificate.SuggestedServerUrl is { } url
+                ? $" The request host is not among the certificate's names. Point the server at one it"
+                  + $" carries: NODEPILOT_MCP_SERVER={url} in the .mcp.json env block."
+                : " The request host is not among the certificate's names, and the certificate names no"
+                  + " host a client could dial; reissue it for the name the server is reached under.");
+            text.Append(@" A LocalMachine\Root import does not fix a name mismatch.");
+        }
+
+        switch (info.Tls)
+        {
+            case TlsFailureKind.UntrustedChain or TlsFailureKind.Unknown:
+                text.Append(@" Trust it by importing it into LocalMachine\Root, or pin it with"
+                    + " NODEPILOT_MCP_TLS_THUMBPRINT=<SHA-256> in the .mcp.json env block.");
+                break;
+            case TlsFailureKind.Expired:
+                text.Append(" The certificate is outside its validity window; it has to be renewed.");
+                break;
+        }
     }
 
     private static string Describe(ApiException ex)

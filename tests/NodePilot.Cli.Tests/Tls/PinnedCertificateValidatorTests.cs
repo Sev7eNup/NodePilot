@@ -16,7 +16,7 @@ public sealed class PinnedCertificateValidatorTests
         using var certificate = TestCertificates.CreateSelfSigned("np.test");
 
         PinnedCertificateHandlerFactory.Evaluate(
-            ClientTlsOptions.None, "np.test", certificate, null, SslPolicyErrors.None, out var observation)
+            ClientTlsOptions.None, "np.test", 8443, certificate, null, SslPolicyErrors.None, out var observation)
             .Should().BeTrue();
 
         observation.PinConfigured.Should().BeFalse();
@@ -32,7 +32,7 @@ public sealed class PinnedCertificateValidatorTests
         var options = new ClientTlsOptions(new string('A', 64));
 
         PinnedCertificateHandlerFactory.Evaluate(
-            options, "np.test", certificate, null, SslPolicyErrors.None, out var observation)
+            options, "np.test", 8443, certificate, null, SslPolicyErrors.None, out var observation)
             .Should().BeTrue();
 
         observation.PinMatched.Should().BeFalse();
@@ -45,7 +45,7 @@ public sealed class PinnedCertificateValidatorTests
         var options = new ClientTlsOptions(CertificatePin.Compute(certificate));
 
         PinnedCertificateHandlerFactory.Evaluate(
-            options, "np.test", certificate, null, ChainErrors, out var observation)
+            options, "np.test", 8443, certificate, null, ChainErrors, out var observation)
             .Should().BeTrue();
 
         observation.PinMatched.Should().BeTrue();
@@ -59,7 +59,7 @@ public sealed class PinnedCertificateValidatorTests
         var options = new ClientTlsOptions(new string('B', 64));
 
         PinnedCertificateHandlerFactory.Evaluate(
-            options, "np.test", certificate, null, ChainErrors, out var observation)
+            options, "np.test", 8443, certificate, null, ChainErrors, out var observation)
             .Should().BeFalse();
 
         observation.PinConfigured.Should().BeTrue();
@@ -75,7 +75,7 @@ public sealed class PinnedCertificateValidatorTests
         var options = new ClientTlsOptions(new string('C', 64), SkipVerification: true);
 
         PinnedCertificateHandlerFactory.Evaluate(
-            options, "np.test", certificate, null, ChainErrors, out _)
+            options, "np.test", 8443, certificate, null, ChainErrors, out _)
             .Should().BeFalse();
     }
 
@@ -85,7 +85,7 @@ public sealed class PinnedCertificateValidatorTests
         using var certificate = TestCertificates.CreateSelfSigned("np.test");
 
         PinnedCertificateHandlerFactory.Evaluate(
-            ClientTlsOptions.None, "np.test", certificate, null, ChainErrors, out _)
+            ClientTlsOptions.None, "np.test", 8443, certificate, null, ChainErrors, out _)
             .Should().BeFalse();
     }
 
@@ -95,7 +95,7 @@ public sealed class PinnedCertificateValidatorTests
         using var certificate = TestCertificates.CreateSelfSigned("np.test");
 
         PinnedCertificateHandlerFactory.Evaluate(
-            new ClientTlsOptions(SkipVerification: true), "np.test", certificate, null, ChainErrors,
+            new ClientTlsOptions(SkipVerification: true), "np.test", 8443, certificate, null, ChainErrors,
             out var observation)
             .Should().BeTrue();
 
@@ -109,7 +109,7 @@ public sealed class PinnedCertificateValidatorTests
         var options = new ClientTlsOptions(CertificatePin.Compute(certificate));
 
         PinnedCertificateHandlerFactory.Evaluate(
-            options, "np.test", certificate, null, NameMismatch, out var observation)
+            options, "np.test", 8443, certificate, null, NameMismatch, out var observation)
             .Should().BeTrue();
 
         observation.AcceptedDespiteNameMismatch.Should().BeTrue();
@@ -121,7 +121,7 @@ public sealed class PinnedCertificateValidatorTests
         var options = new ClientTlsOptions(new string('D', 64));
 
         PinnedCertificateHandlerFactory.Evaluate(
-            options, "np.test", null, null, SslPolicyErrors.RemoteCertificateNotAvailable,
+            options, "np.test", 8443, null, null, SslPolicyErrors.RemoteCertificateNotAvailable,
             out var observation)
             .Should().BeFalse();
 
@@ -134,14 +134,30 @@ public sealed class PinnedCertificateValidatorTests
         using var certificate = TestCertificates.CreateSelfSigned("np.test", "np.test", "localhost");
 
         PinnedCertificateHandlerFactory.Evaluate(
-            ClientTlsOptions.None, "np.test", certificate, null, ChainErrors, out var observation);
+            ClientTlsOptions.None, "np.test", 8443, certificate, null, ChainErrors, out var observation);
 
         observation.RequestHost.Should().Be("np.test");
+        observation.RequestPort.Should().Be(8443);
         observation.Subject.Should().Be(certificate.Subject);
         observation.Sha256.Should().Be(CertificatePin.Compute(certificate));
         observation.DnsNames.Should().BeEquivalentTo("np.test", "localhost");
         observation.IsSelfSigned.Should().BeTrue();
         observation.PolicyErrors.Should().Be(ChainErrors);
+    }
+
+    [Fact]
+    public void Evaluate_CombinedChainAndNameErrors_RecordsBothFlagsUnmasked()
+    {
+        // The clients decide what to report from these flags, so the observation must not collapse
+        // them into one.
+        using var certificate = TestCertificates.CreateSelfSigned("np.test");
+
+        PinnedCertificateHandlerFactory.Evaluate(
+            ClientTlsOptions.None, "localhost", 8443, certificate, null, ChainErrors | NameMismatch,
+            out var observation);
+
+        observation.PolicyErrors.Should().HaveFlag(ChainErrors);
+        observation.PolicyErrors.Should().HaveFlag(NameMismatch);
     }
 
     [Fact]
@@ -151,7 +167,7 @@ public sealed class PinnedCertificateValidatorTests
             "np.test", DateTimeOffset.UtcNow.AddYears(-2), DateTimeOffset.UtcNow.AddDays(-1));
 
         PinnedCertificateHandlerFactory.Evaluate(
-            ClientTlsOptions.None, "np.test", certificate, null, ChainErrors, out var observation);
+            ClientTlsOptions.None, "np.test", 8443, certificate, null, ChainErrors, out var observation);
 
         observation.IsExpired.Should().BeTrue();
     }
