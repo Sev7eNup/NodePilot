@@ -1,5 +1,6 @@
 import { BareMetalServer, ChevronRight, Help, Menu, Plug } from '@carbon/icons-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -93,21 +94,62 @@ function useHostInfo() {
   });
 }
 
+/** Gap in px between the help button and the version card below it. */
+const VERSION_CARD_GAP = 4;
+/** Minimum distance the card keeps from the viewport edge. */
+const VERSION_CARD_MARGIN = 8;
+
 /**
  * Product version of the running server, behind the header's help icon. Hovering reveals the
  * card, clicking pins it open so the version can be selected and copied into a support ticket.
+ *
+ * The card renders into a portal on `document.body`: the header paints `backdrop-blur`, which
+ * opens a stacking context, so a card nested inside it can never rise above page content no
+ * matter how high its z-index. Anchoring it to the button's viewport rect keeps it topmost.
  */
 function VersionInfo() {
   const { t } = useTranslation(['common']);
   const [pinned, setPinned] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ top: number; right: number } | null>(null);
   const { data } = useHostInfo();
+
+  const open = pinned || hovered;
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPosition(null);
+      return;
+    }
+    const update = () => {
+      const rect = anchorRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setPosition({
+        top: rect.bottom + VERSION_CARD_GAP,
+        right: Math.max(VERSION_CARD_MARGIN, globalThis.innerWidth - rect.right),
+      });
+    };
+    update();
+    globalThis.addEventListener('resize', update);
+    // Capture phase so scrolling in any nested scroller re-anchors the card, not just the window.
+    globalThis.addEventListener('scroll', update, true);
+    return () => {
+      globalThis.removeEventListener('resize', update);
+      globalThis.removeEventListener('scroll', update, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!pinned) return;
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setPinned(false);
+      const target = e.target as Node;
+      // The card lives in a portal, so it is outside the button's subtree: check both, or
+      // selecting the version text would dismiss the card mid-drag.
+      if (anchorRef.current?.contains(target)) return;
+      if (cardRef.current?.contains(target)) return;
+      setPinned(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -118,29 +160,32 @@ function VersionInfo() {
     : t('common:version.unknown');
 
   return (
-    <div
-      ref={ref}
-      className="relative"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
+    <div className="relative">
       <button
+        ref={anchorRef}
         onClick={() => setPinned((p) => !p)}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         aria-label={t('common:version.tooltip')}
-        aria-expanded={pinned || hovered}
+        aria-expanded={open}
         className="p-1.5 rounded text-on-surface-variant hover:bg-surface-highest hover:text-on-surface transition-colors"
       >
         <Help size={16} />
       </button>
-      {(pinned || hovered) && (
+      {open && position && createPortal(
         <div
+          ref={cardRef}
           role="tooltip"
-          className="absolute top-full right-0 mt-1 z-[60] whitespace-nowrap rounded-md border border-outline-variant/40 bg-surface-container px-2 py-1 text-[11px] leading-none shadow-md"
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          style={{ top: position.top, right: position.right }}
+          className="fixed z-[9999] whitespace-nowrap rounded-md border border-outline-variant/40 bg-surface-container px-2 py-1 text-[11px] leading-none shadow-md"
         >
           <span className="text-on-surface-variant">NodePilot</span>
           {' '}
           <span className="font-medium text-on-surface">{version}</span>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

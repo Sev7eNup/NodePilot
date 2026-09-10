@@ -60,16 +60,27 @@ describe('TopBar', () => {
     const button = screen.getByRole('button', { name: 'NodePilot version' });
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
 
-    fireEvent.mouseEnter(button.parentElement!);
+    fireEvent.mouseEnter(button);
     await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('9.8.7'));
-    expect(screen.getByRole('tooltip')).toHaveTextContent('NodePilot');
+    const card = screen.getByRole('tooltip');
+    expect(card).toHaveTextContent('NodePilot');
+    // The card is portaled out of the header, whose backdrop-blur opens a stacking context that
+    // would otherwise let page content paint over it.
+    expect(button.closest('header')?.contains(card)).toBe(false);
+    expect(card.className).toContain('fixed');
 
     // Hover alone is transient; a click keeps the card open after the pointer leaves.
-    fireEvent.mouseLeave(button.parentElement!);
+    fireEvent.mouseLeave(button);
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
     fireEvent.click(button);
-    fireEvent.mouseLeave(button.parentElement!);
+    fireEvent.mouseLeave(button);
     expect(screen.getByRole('tooltip')).toBeInTheDocument();
+
+    // Pressing inside the portaled card must not read as an outside click.
+    fireEvent.mouseDown(screen.getByRole('tooltip'));
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
   it('shows a placeholder when the backend reports no version', async () => {
