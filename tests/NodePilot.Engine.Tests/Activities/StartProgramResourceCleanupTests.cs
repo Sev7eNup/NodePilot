@@ -58,6 +58,11 @@ public class StartProgramResourceCleanupTests
         await AssertResources(engine);
     }
 
+    // Wall-clock budget for the capture tests. They assert what the drain loop collects, not how
+    // fast it collects it, so the budget only has to outlast a loaded CI runner: the pipe readers
+    // complete on the thread pool, and a starved pool delays them far beyond a local run.
+    private const int CaptureBudgetSeconds = 60;
+
     [Fact]
     public async Task FastProcessExit_PreservesAllOutputInOrder()
     {
@@ -67,7 +72,7 @@ public class StartProgramResourceCleanupTests
             var result = await Execute(engine, new {
                 filePath = CmdPath,
                 arguments = "/d /c \"(for /l %i in (1,1,128) do @echo out-%i) & (for /l %i in (1,1,128) do @echo err-%i 1>&2)\"",
-                timeoutSeconds = 5
+                timeoutSeconds = CaptureBudgetSeconds
             });
             result.Success.Should().BeTrue(result.ErrorOutput);
             var stdout = result.OutputParameters["stdout"].Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim());
@@ -86,7 +91,7 @@ public class StartProgramResourceCleanupTests
         var result = await Execute(engine, new {
             filePath = PowerShellPath,
             arguments = EncodedCommand($"[Console]::Out.Write(('x' * {count})); [Console]::Error.Write(('y' * {count}))"),
-            timeoutSeconds = 10
+            timeoutSeconds = CaptureBudgetSeconds
         });
         result.Success.Should().BeTrue(result.ErrorOutput);
         result.OutputParameters["stdout"].Length.Should().Be(StartProgramActivity.MaxOutputBytesPerStream);
