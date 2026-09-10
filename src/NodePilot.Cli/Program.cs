@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NodePilot.Cli;
 using NodePilot.Cli.Api;
 using NodePilot.Cli.Auth;
+using NodePilot.Cli.Output;
 using NodePilot.Cli.Settings;
 using NodePilot.Core.Clients;
 using Spectre.Console.Cli;
@@ -42,6 +43,13 @@ try
 catch (CommandRuntimeException ex)
 {
     await Console.Error.WriteLineAsync(ex.Message);
+    return ExitCodes.Error;
+}
+catch (HttpRequestException ex)
+{
+    // Last chance: a transport failure that escaped a command still has to name its cause,
+    // including the certificate the server presented.
+    await Console.Error.WriteLineAsync(NetworkErrorRenderer.Render(ex));
     return ExitCodes.Error;
 }
 catch (Exception ex)

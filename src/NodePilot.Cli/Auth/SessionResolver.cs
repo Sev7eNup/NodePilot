@@ -32,12 +32,18 @@ public sealed class SessionResolver
             session = null;
         }
 
+        // A stored pin is authority-bound for the same reason a token is: it overrides hostname
+        // validation, so it may only be presented to the origin it was accepted for.
+        var pin = _config.ResolveTlsThumbprint(settings.TlsThumbprint, profile, server, cfg);
+
         return new SessionContext
         {
             Profile = profile,
             Server = server,
             Session = session,
             AllowInsecureLoopback = settings.AllowInsecureLoopback,
+            Tls = new ClientTlsOptions(pin.Value, ConfigStore.ResolveSkipTlsVerification(settings.InsecureTls)),
+            TlsPinNotice = pin.IgnoredReason,
         };
     }
 }

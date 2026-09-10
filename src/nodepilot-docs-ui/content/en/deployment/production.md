@@ -304,7 +304,10 @@ private key appears in the list with a corresponding marking rather than silentl
 If you have none at all, leave the field **empty**. The readiness page then reports "No certificate
 selected" and offers to generate a self-signed one — offered, not pre-ticked, because a lab
 certificate is created on request. It is valid for two years and deliberately **not** imported into
-the root store; for production, a certificate from your own PKI remains the way. Unattended, this
+the root store; for production, a certificate from your own PKI remains the way. Next to the
+thumbprint the script also prints the SHA-256 fingerprint: clients can either import the certificate
+into `Cert:\LocalMachine\Root` machine-wide, or — for `np` and the MCP server only — pin that one
+certificate (`np auth login --tls-thumbprint <SHA-256>`, see [CLI](../cli)). Unattended, this
 corresponds to an empty `certificate.thumbprint` plus
 `"provisioning": { "generateSelfSignedCertificate": true }`.
 

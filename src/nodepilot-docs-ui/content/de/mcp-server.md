@@ -41,6 +41,16 @@ Headless (vom MCP-Client gestartet) → env-first, mit Fallback auf die CLI-Conf
 | Server-URL | `NODEPILOT_MCP_SERVER` › `NODEPILOT_SERVER` › CLI-`config.json`-Profil |
 | Profil | `NODEPILOT_MCP_PROFILE` › `NODEPILOT_PROFILE` › CLI-Default › `default` |
 | Token | `NODEPILOT_MCP_TOKEN` (Raw-Bearer, CI-Escape) › DPAPI-Session aus `np auth login` (Auto-Refresh) |
+| TLS-Pin | `NODEPILOT_MCP_TLS_THUMBPRINT` › `NODEPILOT_TLS_THUMBPRINT` › CLI-Profil (`tlsThumbprint`) |
+| TLS-Bypass | `NODEPILOT_MCP_TLS_NO_VERIFY` › `NODEPILOT_TLS_NO_VERIFY` (`1`/`true`) — Notnagel, nie gespeichert |
+
+**TLS:** Die Zertifikatskette wird normal geprüft. Ein SHA-256-Pin gilt **zusätzlich** zu einer
+gültigen Kette — für einen Server, dessen Zertifikat die Maschine nicht kennt. Ein gesetzter Pin,
+der nicht passt, wird auch mit gesetztem Bypass abgelehnt. Ein Pin aus dem CLI-Profil gilt nur für
+den Server, den dieses Profil nennt. Ist der Pin kein SHA-256-Fingerprint, startet der Server zwar,
+lehnt aber jeden Tool-Aufruf mit einem reparierbaren Konfigurationsfehler ab
+(`np config set tls-thumbprint <SHA256>` bzw. `none` zum Löschen). Die generischen
+`NODEPILOT_TLS_*`-Variablen teilen sich CLI und MCP-Server.
 
 Transport ist **stdio** (Streamable HTTP ist als spätere Option vorgesehen). Windows-only
 (`net10.0-windows`, DPAPI).

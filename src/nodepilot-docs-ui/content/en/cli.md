@@ -49,6 +49,8 @@ Available on every command — from the base settings class `GlobalOptions`:
 ```
 --server <URL>        Override the server URL for this call
 --profile <NAME>      A named connection profile (default: 'default')
+--tls-thumbprint <S>  Accept exactly this server certificate (SHA-256 fingerprint)
+--insecure-tls        Skip certificate validation for this call only (never stored)
 -o|--output <FORMAT>  table (the TTY default) | json | yaml
 --no-color            Turn off coloured output (automatically off when stdout is redirected)
 -v|--verbose          An HTTP request/response trace on stderr
@@ -78,6 +80,9 @@ np auth login --username admin --password-stdin \
 
 # Kerberos: sign in as the current Windows account (needs Authentication:Windows:Enabled)
 np auth login --windows --server https://np.internal:8443
+
+# A server with a self-signed certificate (lab): pin that one certificate
+np auth login --server https://np.lab.local:8443 --tls-thumbprint A1B2...8F90
 
 # Discovery (anonymous, no session needed) + a profile check
 np auth methods --server https://np.internal:8443
@@ -430,11 +435,36 @@ np db query --file ./remediate.sql --write --yes
 np config get
 np config set server https://np.internal:8443
 np config set default-profile prod
+np config set tls-thumbprint A1B2...8F90   # 'none' clears the pin again
 ```
+
+## TLS: server certificates this machine does not trust
+
+The CLI validates the certificate chain like any other client — unlike a browser, it cannot be
+clicked through. When the handshake fails, the error names the cause, the certificate the server
+presented and its SHA-256 fingerprint.
+
+Two supported ways to reach a server whose certificate the client machine does not know:
+
+* **Pin it** (recommended for lab and pilot use): `--tls-thumbprint <SHA-256>`. `np auth login`
+  stores the pin in the profile, so later calls need no flag. `NODEPILOT_TLS_THUMBPRINT` and
+  `np config set tls-thumbprint <SHA-256>` do the same.
+* **Trust it machine-wide:** import the certificate into `Cert:\LocalMachine\Root` — that applies
+  to every program, not just `np`.
+
+The rules that apply:
+
+* The pin is **additive**: a certificate with a valid chain is still accepted, so a routine renewal
+  does not lock out a correctly configured profile.
+* A configured pin that does **not** match is refused — even with `--insecure-tls`.
+* A stored pin only applies to the server it was set for; changing the server clears it.
+* `--insecure-tls` (or `NODEPILOT_TLS_NO_VERIFY=1`) skips validation for **one** call, is never
+  stored, and prints a warning every time.
+* Precedence: `--tls-thumbprint` › `NODEPILOT_TLS_THUMBPRINT` › the profile.
 
 ## Token storage
 
-DPAPI-encrypted (`CurrentUser` scope) at `%APPDATA%\NodePilot\session-<profile>.dat`. Refresh happens transparently through `TokenRefreshHandler`. The plaintext configuration (server URL, default profile) is in `config.json`.
+DPAPI-encrypted (`CurrentUser` scope) at `%APPDATA%\NodePilot\session-<profile>.dat`. Refresh happens transparently through `TokenRefreshHandler`. The plaintext configuration (server URL, default profile, TLS pin) is in `config.json`.
 
 ## Architectural convention
 

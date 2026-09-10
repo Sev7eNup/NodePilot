@@ -78,8 +78,15 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
             return ExitCodes.Error;
         }
 
+        var pin = _config.ResolveTlsThumbprint(settings.TlsThumbprint, profile, server, cfg);
+        var tls = new ClientTlsOptions(pin.Value, ConfigStore.ResolveSkipTlsVerification(settings.InsecureTls));
+        TlsNotices.WriteBefore(writer, tls, pin.IgnoredReason);
+        // Only a pin the caller named on this command line is stored; an environment pin stays a
+        // property of that shell.
+        var pinToStore = string.IsNullOrWhiteSpace(settings.TlsThumbprint) ? null : pin.Value;
+
         if (settings.Windows)
-            return await LoginWithWindowsIdentityAsync(settings, cfg, profile, server, writer, ct);
+            return await LoginWithWindowsIdentityAsync(settings, cfg, profile, server, tls, pinToStore, writer, ct);
 
         var username = settings.Username ?? await AnsiConsole.AskAsync<string>("Username:");
         string password;
@@ -92,7 +99,9 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
 
         try
         {
-            var api = _factory.CreateAnonymous(server, settings.AllowInsecureLoopback);
+            PresentedCertificateInfo? presented = null;
+            var api = _factory.CreateAnonymous(
+                server, settings.AllowInsecureLoopback, tls, observation => presented = observation);
             var response = await api.LoginAsync(new LoginRequest(username, password), settings.SetupToken, ct);
             if (!ClientSessionSecurity.TryResolveExpiration(
                     response.Token, response.ExpiresAt, out var expiresAt)
@@ -110,8 +119,9 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
                 UserId = response.UserId,
                 Role = response.Role,
                 ExpiresAt = expiresAt,
-            });
+            }, pinToStore);
 
+            TlsNotices.WriteAfter(writer, presented);
             writer.Success($"Eingeloggt als [bold]{response.Username}[/] ({response.Role}) → {server}");
             return ExitCodes.Success;
         }
@@ -127,7 +137,7 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
         }
         catch (HttpRequestException ex)
         {
-            writer.Error($"Netzwerk-Fehler: {Markup.Escape(ex.Message)}");
+            writer.ErrorBlock(NetworkErrorRenderer.Render(ex, server));
             return ExitCodes.Error;
         }
     }
@@ -142,6 +152,8 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
         CliConfig cfg,
         string profile,
         string server,
+        ClientTlsOptions tls,
+        string? pinToStore,
         OutputWriter writer,
         CancellationToken ct)
     {
@@ -150,8 +162,9 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
             // Ask before knocking: with Authentication:Windows:Enabled off, the endpoint's auth
             // scheme is not registered and ASP.NET answers 500 with an internal handler message.
             // The anonymous discovery endpoint gives a clean answer instead.
+            PresentedCertificateInfo? presented = null;
             var methods = await _factory
-                .CreateAnonymous(server, settings.AllowInsecureLoopback)
+                .CreateAnonymous(server, settings.AllowInsecureLoopback, tls, observation => presented = observation)
                 .GetAuthMethodsAsync(ct);
             if (!methods.Windows)
             {
@@ -159,7 +172,7 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
                 return ExitCodes.AuthRequired;
             }
 
-            var sso = _factory.CreateForWindowsSso(server, settings.AllowInsecureLoopback);
+            var sso = _factory.CreateForWindowsSso(server, settings.AllowInsecureLoopback, tls);
             var identity = await sso.Api.WindowsLoginAsync(ct);
             var token = sso.Cookies.GetCookies(sso.Api.BaseAddress!)[AuthCookieName]?.Value;
             if (string.IsNullOrEmpty(token))
@@ -185,8 +198,9 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
                 UserId = identity.UserId,
                 Role = identity.Role,
                 ExpiresAt = expiresAt,
-            });
+            }, pinToStore);
 
+            TlsNotices.WriteAfter(writer, presented);
             writer.Success(
                 $"Per Windows-Anmeldung eingeloggt als [bold]{identity.Username}[/] ({identity.Role}) → {server}");
             return ExitCodes.Success;
@@ -215,16 +229,24 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
         }
         catch (HttpRequestException ex)
         {
-            writer.Error($"Netzwerk-Fehler: {Markup.Escape(ex.Message)}");
+            writer.ErrorBlock(NetworkErrorRenderer.Render(ex, server));
             return ExitCodes.Error;
         }
     }
 
     /// <summary>Writes the server URL into the active profile and stores the session.</summary>
-    private void PersistSession(CliConfig cfg, string profile, string server, StoredSession session)
+    private void PersistSession(
+        CliConfig cfg, string profile, string server, StoredSession session, string? pinToStore)
     {
         // Persist server URL into the active profile so subsequent calls don't need --server.
-        cfg.Profiles[profile] = new ProfileEntry { Server = server };
+        // Read-modify-write: replacing the entry would drop a stored pin on every login.
+        if (!cfg.Profiles.TryGetValue(profile, out var entry)) entry = new ProfileEntry();
+        // A pin authenticates one certificate for one origin; pointing the profile at another
+        // server drops it rather than letting it vouch for the new one.
+        if (!ClientSessionSecurity.HasSameServerOrigin(entry.Server, server)) entry.TlsThumbprint = null;
+        entry.Server = server;
+        if (pinToStore is not null) entry.TlsThumbprint = pinToStore;
+        cfg.Profiles[profile] = entry;
         if (string.IsNullOrWhiteSpace(cfg.DefaultProfile)) cfg.DefaultProfile = profile;
         _config.Save(cfg);
         _tokens.Save(profile, session);
@@ -292,9 +314,13 @@ public sealed class AuthMethodsCommand : AsyncCommand<GlobalSettings>
             return ExitCodes.Error;
         }
 
+        var pin = _config.ResolveTlsThumbprint(settings.TlsThumbprint, profile, server, cfg);
+        var tls = new ClientTlsOptions(pin.Value, ConfigStore.ResolveSkipTlsVerification(settings.InsecureTls));
+        TlsNotices.WriteBefore(writer, tls, pin.IgnoredReason);
+
         try
         {
-            var api = _factory.CreateAnonymous(server, settings.AllowInsecureLoopback);
+            var api = _factory.CreateAnonymous(server, settings.AllowInsecureLoopback, tls);
             var methods = await api.GetAuthMethodsAsync(ct);
             writer.WriteData(methods, (console, value) =>
             {
@@ -316,7 +342,7 @@ public sealed class AuthMethodsCommand : AsyncCommand<GlobalSettings>
         }
         catch (HttpRequestException ex)
         {
-            writer.Error($"Network error: {ex.Message}");
+            writer.ErrorBlock(NetworkErrorRenderer.Render(ex, server));
             return ExitCodes.Error;
         }
     }

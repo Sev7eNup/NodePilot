@@ -1,4 +1,6 @@
 using System.Net;
+using System.Net.Security;
+using System.Security.Authentication;
 using FluentAssertions;
 using NodePilot.Mcp.Api;
 using NodePilot.Mcp.Config;
@@ -65,6 +67,117 @@ public sealed class InfraTests
         }
         finally { TryDelete(dir); }
     }
+
+    // ---- TLS pin resolution -------------------------------------------------
+
+    [Fact]
+    public void Resolve_TlsThumbprint_PrefersMcpEnvThenGenericEnvThenProfile()
+    {
+        var pin = new string('A', 64);
+        var other = new string('B', 64);
+        var fromProfile = new string('C', 64);
+
+        WithEnv(new() { ["NODEPILOT_MCP_TLS_THUMBPRINT"] = pin, ["NODEPILOT_TLS_THUMBPRINT"] = other }, () =>
+        {
+            var dir = Temp();
+            try
+            {
+                WriteProfile(dir, fromProfile);
+                Resolve(dir).TlsThumbprint.Should().Be(pin);
+
+                Environment.SetEnvironmentVariable("NODEPILOT_MCP_TLS_THUMBPRINT", null);
+                Resolve(dir).TlsThumbprint.Should().Be(other);
+
+                Environment.SetEnvironmentVariable("NODEPILOT_TLS_THUMBPRINT", null);
+                Resolve(dir).TlsThumbprint.Should().Be(fromProfile);
+            }
+            finally { TryDelete(dir); }
+        });
+    }
+
+    [Fact]
+    public void Resolve_ProfilePinFromAnotherOrigin_IsNotApplied()
+    {
+        WithEnv(new() { ["NODEPILOT_MCP_SERVER"] = "https://elsewhere/" }, () =>
+        {
+            var dir = Temp();
+            try
+            {
+                WriteProfile(dir, new string('C', 64));
+                var session = Resolve(dir);
+                session.TlsThumbprint.Should().BeNull();
+                session.TlsConfigurationError.Should().BeNull();
+            }
+            finally { TryDelete(dir); }
+        });
+    }
+
+    [Fact]
+    public void Resolve_InvalidProfilePin_BootsButReportsConfigurationError()
+    {
+        WithEnv(ClearedConfigEnv(), () =>
+        {
+            var dir = Temp();
+            try
+            {
+                WriteProfile(dir, "not-a-fingerprint");
+                var session = Resolve(dir);
+                session.TlsThumbprint.Should().BeNull();
+                session.TlsConfigurationError.Should().Contain("np config set tls-thumbprint");
+            }
+            finally { TryDelete(dir); }
+        });
+    }
+
+    [Fact]
+    public async Task ApiClient_WithUnusablePin_RefusesEveryCallEvenWithNoVerifySet()
+    {
+        // Dropping a broken pin and connecting anyway would turn a configured pin plus the bypass
+        // env var into no certificate check at all.
+        var session = new SessionContext(
+            "https://np.example/", "default", null, false, TlsConfigurationError: "pin is broken");
+        var client = new NodePilotApiClient(new HttpClient { BaseAddress = new Uri("https://np.example/") })
+        {
+            Session = session,
+        };
+
+        var act = () => client.MeAsync(CancellationToken.None);
+
+        (await act.Should().ThrowAsync<NotConfiguredException>()).WithMessage("pin is broken");
+    }
+
+    [Fact]
+    public async Task ApiErrorMapper_TlsFailure_NamesTheCertificateAndBothRemedies()
+    {
+        var failure = new HttpRequestException(
+            "The SSL connection could not be established, see inner exception.",
+            new AuthenticationException("The remote certificate was rejected."));
+        failure.Data[TlsObservationHandler.ExceptionDataKey] = new PresentedCertificateInfo
+        {
+            RequestHost = "np.lab.local",
+            Subject = "CN=np.lab.local",
+            Issuer = "CN=np.lab.local",
+            Sha256 = new string('A', 64),
+            DnsNames = ["np.lab.local"],
+            PolicyErrors = SslPolicyErrors.RemoteCertificateChainErrors,
+        };
+
+        var message = await Throws(failure);
+
+        message.Should().Contain("The remote certificate was rejected.");
+        message.Should().Contain(new string('A', 64));
+        message.Should().Contain("NODEPILOT_MCP_TLS_THUMBPRINT");
+        message.Should().Contain(@"LocalMachine\Root");
+    }
+
+    private static SessionContext Resolve(string dir)
+        => new McpServerConfig(new ClientConfigStore(dir), new TokenStore(dir)).Resolve();
+
+    private static void WriteProfile(string dir, string pin)
+        => File.WriteAllText(
+            Path.Combine(dir, "config.json"),
+            "{\"defaultProfile\":\"prod\",\"profiles\":{\"prod\":{\"server\":\"https://prod-srv/\","
+            + "\"tlsThumbprint\":\"" + pin + "\"}}}");
 
     // ---- McpServerConfig resolution ----------------------------------------
 
@@ -575,7 +688,8 @@ public sealed class InfraTests
     private static void TryDelete(string dir) { try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ } }
 
     private static readonly string[] ConfigEnvVars =
-        ["NODEPILOT_MCP_SERVER", "NODEPILOT_SERVER", "NODEPILOT_MCP_PROFILE", "NODEPILOT_PROFILE", "NODEPILOT_MCP_TOKEN"];
+        ["NODEPILOT_MCP_SERVER", "NODEPILOT_SERVER", "NODEPILOT_MCP_PROFILE", "NODEPILOT_PROFILE", "NODEPILOT_MCP_TOKEN",
+         "NODEPILOT_MCP_TLS_THUMBPRINT", "NODEPILOT_TLS_THUMBPRINT", "NODEPILOT_MCP_TLS_NO_VERIFY", "NODEPILOT_TLS_NO_VERIFY"];
 
     private static Dictionary<string, string?> ClearedConfigEnv() => ConfigEnvVars.ToDictionary(v => v, _ => (string?)null);
 

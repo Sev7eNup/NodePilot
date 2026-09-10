@@ -19,7 +19,8 @@
 .PARAMETER ValidityYears
     Lifetime. Default 2.
 .OUTPUTS
-    The thumbprint, so the caller can fill it into the installer's -CertThumbprint.
+    The thumbprint, so the caller can fill it into the installer's -CertThumbprint. The SHA-256
+    pin for the np CLI and the MCP server is printed, not returned.
 #>
 
 [CmdletBinding()]
@@ -57,11 +58,23 @@ $certificate = New-SelfSignedCertificate `
     -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.1') `
     -NotAfter (Get-Date).AddYears($ValidityYears)
 
+# SHA-256 over the DER certificate, uppercase hex without separators: the pin format the np CLI
+# and the MCP server accept. Computed by hand because GetCertHashString(HashAlgorithmName) needs
+# .NET Framework 4.8+.
+$sha = [System.Security.Cryptography.SHA256]::Create()
+try { $pin = (($sha.ComputeHash($certificate.RawData)) | ForEach-Object { $_.ToString('X2') }) -join '' }
+finally { $sha.Dispose() }
+
 Write-Host "[setup] Created $($certificate.Thumbprint), valid until $($certificate.NotAfter.ToString('yyyy-MM-dd'))." -ForegroundColor Green
+Write-Host "[setup] SHA-256 pin: $pin" -ForegroundColor Green
 Write-Host ''
 Write-Host '  To make clients trust it, export the public part and import it on each of them:' -ForegroundColor Yellow
 Write-Host "    Export-Certificate -Cert Cert:\LocalMachine\My\$($certificate.Thumbprint) -FilePath nodepilot-tls.cer" -ForegroundColor Gray
 Write-Host '    Import-Certificate -FilePath nodepilot-tls.cer -CertStoreLocation Cert:\LocalMachine\Root' -ForegroundColor Gray
+Write-Host ''
+Write-Host '  Or let the clients pin this one certificate instead (lab/pilot):' -ForegroundColor Yellow
+Write-Host "    np auth login --server https://$PublicHostname --tls-thumbprint $pin" -ForegroundColor Gray
+Write-Host "    (MCP: NODEPILOT_MCP_TLS_THUMBPRINT=$pin)" -ForegroundColor Gray
 Write-Host ''
 
 return $certificate.Thumbprint

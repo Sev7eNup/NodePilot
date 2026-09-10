@@ -47,6 +47,9 @@ public sealed class NodePilotApiClient
 
     private void EnsureReady()
     {
+        // Fail closed: a pin that cannot be used is a configuration error, not a reason to
+        // connect without one.
+        if (Session?.TlsConfigurationError is { } tlsError) throw new NotConfiguredException(tlsError);
         if (_http.BaseAddress is null)
             throw new NotConfiguredException(
                 "No NodePilot server is configured. Set NODEPILOT_MCP_SERVER (or a CLI profile via `np config set server <URL>`).");

@@ -30,9 +30,12 @@ public abstract class BaseCommand<TSettings> : AsyncCommand<TSettings>
     {
         var format = OutputFormatParser.Resolve(settings.Output);
         var writer = new OutputWriter(format, settings.NoColor || Console.IsOutputRedirected);
+        SessionContext? resolved = null;
         try
         {
             var session = Sessions.Resolve(settings);
+            resolved = session;
+            TlsNotices.WriteBefore(writer, session.Tls, session.TlsPinNotice);
             return await RunAsync(context, settings, session, writer, ct);
         }
         catch (NotAuthenticatedException ex)
@@ -62,7 +65,7 @@ public abstract class BaseCommand<TSettings> : AsyncCommand<TSettings>
         }
         catch (HttpRequestException ex)
         {
-            writer.Error($"Netzwerk-Fehler: {ex.Message}");
+            writer.ErrorBlock(NetworkErrorRenderer.Render(ex, resolved?.Server ?? settings.Server));
             return ExitCodes.Error;
         }
         catch (InvalidOperationException ex)

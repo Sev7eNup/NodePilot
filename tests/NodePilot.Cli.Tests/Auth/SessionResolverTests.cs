@@ -126,6 +126,41 @@ public sealed class SessionResolverTests : IDisposable
         ctx.Session!.Token.Should().Be("tok");
     }
 
+    [Fact]
+    public void Resolve_ProfilePinForSameOrigin_IsApplied()
+    {
+        var cfg = _config.Load();
+        cfg.Profiles["default"].TlsThumbprint = new string('A', 64);
+        _config.Save(cfg);
+
+        var ctx = _resolver.Resolve(new GlobalSettings());
+
+        ctx.Tls.PinnedSha256.Should().Be(new string('A', 64));
+        ctx.TlsPinNotice.Should().BeNull();
+    }
+
+    [Fact]
+    public void Resolve_ProfilePinFromDifferentOrigin_IsIgnored()
+    {
+        // Same rule as the stored session: a pin belongs to the origin it was accepted for.
+        var cfg = _config.Load();
+        cfg.Profiles["default"].TlsThumbprint = new string('A', 64);
+        _config.Save(cfg);
+
+        var ctx = _resolver.Resolve(new GlobalSettings { Server = "https://np.other" });
+
+        ctx.Tls.PinnedSha256.Should().BeNull();
+        ctx.TlsPinNotice.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void Resolve_InsecureTlsFlag_EnablesBypass()
+    {
+        var ctx = _resolver.Resolve(new GlobalSettings { InsecureTls = true });
+
+        ctx.Tls.SkipVerification.Should().BeTrue();
+    }
+
     private static StoredSession SessionFor(string server, string token) => new()
     {
         Server = server,

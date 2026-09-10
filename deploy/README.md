@@ -33,7 +33,7 @@ The service runs under one of:
 | [Invoke-NodePilotSetup.ps1](Invoke-NodePilotSetup.ps1) | Adapter between the wizard and the scripts (`InitSession`/`Probe`/`Provision`/`Apply`/`Cleanup`) |
 | [Provision-NodePilotDatabase.ps1](Provision-NodePilotDatabase.ps1) | Opt-in: create the SQL login + database. Permission gate **before** any mutation, otherwise DDL output only. SQL Server only |
 | [Provision-NodePilotPostgres.ps1](Provision-NodePilotPostgres.ps1) | The same for PostgreSQL: role + database through the bundled `psql`. Needs superuser credentials (Postgres has no `Trusted_Connection`). Does **not** reset the password of an existing role and does **not** change a database owner |
-| [New-NodePilotSelfSignedCertificate.ps1](New-NodePilotSelfSignedCertificate.ps1) | Opt-in: self-signed Kestrel certificate, two years, **no** automatic root import |
+| [New-NodePilotSelfSignedCertificate.ps1](New-NodePilotSelfSignedCertificate.ps1) | Opt-in: self-signed Kestrel certificate, two years, **no** automatic root import. Prints the SHA-256 pin the `np` CLI and the MCP server accept via `--tls-thumbprint` / `NODEPILOT_MCP_TLS_THUMBPRINT`, as the alternative to trusting it machine-wide |
 | [Get-DotnetRuntimePayload.ps1](Get-DotnetRuntimePayload.ps1) | Build time: fetch the ASP.NET Core runtime, verify against the published SHA512 + the checked-in pin + Authenticode |
 | [Test-SetupAdapter.ps1](Test-SetupAdapter.ps1) | Behavioural test of the answer-file contract (non-admin, offline, no database) |
 | [server/](server/README.md) | GUI installer for the server installation (Inno Setup 6) |

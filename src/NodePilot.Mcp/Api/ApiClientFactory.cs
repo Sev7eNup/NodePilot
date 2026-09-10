@@ -28,16 +28,13 @@ public sealed class ApiClientFactory
     {
         var session = _config.Resolve();
 
-        HttpClient http;
+        var transport = PinnedCertificateHandlerFactory.Create(session.Tls);
         if (session.UsesRefreshableSession)
         {
-            var refresher = new TokenRefreshHandler(_tokens, session.Profile) { InnerHandler = new HttpClientHandler() };
-            http = new HttpClient(refresher, disposeHandler: true);
+            transport = new TokenRefreshHandler(_tokens, session.Profile) { InnerHandler = transport };
         }
-        else
-        {
-            http = new HttpClient();
-        }
+
+        var http = new HttpClient(transport, disposeHandler: true);
 
         http.Timeout = TimeSpan.FromSeconds(100);
         http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("NodePilot.Mcp", "1.0"));

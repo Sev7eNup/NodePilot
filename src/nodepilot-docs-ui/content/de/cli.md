@@ -49,6 +49,8 @@ Auf jedem Befehl — Basis-Settings-Klasse `GlobalOptions`:
 ```
 --server <URL>        Server-URL für diesen Aufruf überschreiben
 --profile <NAME>      Benanntes Verbindungsprofil (Default: 'default')
+--tls-thumbprint <S>  Genau dieses Serverzertifikat akzeptieren (SHA-256-Fingerprint)
+--insecure-tls        Zertifikatsprüfung nur für diesen Aufruf überspringen (nie gespeichert)
 -o|--output <FORMAT>  table (TTY-Default) | json | yaml
 --no-color            Farbausgabe aus (auto-off bei redirectiertem stdout)
 -v|--verbose          HTTP-Request/Response-Trace auf stderr
@@ -78,6 +80,9 @@ np auth login --username admin --password-stdin \
 
 # Kerberos: als aktuelles Windows-Konto anmelden (braucht Authentication:Windows:Enabled)
 np auth login --windows --server https://np.internal:8443
+
+# Server mit selbstsigniertem Zertifikat (Lab): genau dieses Zertifikat pinnen
+np auth login --server https://np.lab.local:8443 --tls-thumbprint A1B2...8F90
 
 # Discovery (anonym, keine Session nötig) + Profil-Check
 np auth methods --server https://np.internal:8443
@@ -430,11 +435,37 @@ np db query --file ./remediate.sql --write --yes
 np config get
 np config set server https://np.internal:8443
 np config set default-profile prod
+np config set tls-thumbprint A1B2...8F90   # 'none' löscht den Pin wieder
 ```
+
+## TLS: nicht vertrauenswürdige Serverzertifikate
+
+Die CLI prüft die Zertifikatskette wie jeder andere Client — anders als ein Browser lässt sie sich
+nicht durchklicken. Schlägt der Handshake fehl, nennt die Fehlermeldung die Ursache, das vom Server
+präsentierte Zertifikat und dessen SHA-256-Fingerprint.
+
+Zwei unterstützte Wege für einen Server, dessen Zertifikat die Client-Maschine nicht kennt:
+
+* **Pinnen** (empfohlen für Lab/Pilot): `--tls-thumbprint <SHA-256>`. `np auth login` speichert den
+  Pin im Profil, danach brauchen Folgeaufrufe kein Flag mehr. Alternativ `NODEPILOT_TLS_THUMBPRINT`
+  oder `np config set tls-thumbprint <SHA-256>`.
+* **Systemweit vertrauen:** das Zertifikat nach `Cert:\LocalMachine\Root` importieren — gilt dann
+  für alle Programme, nicht nur für `np`.
+
+Regeln, die dabei gelten:
+
+* Der Pin ist **additiv**: ein Zertifikat mit gültiger Kette wird weiterhin akzeptiert, damit eine
+  Zert-Erneuerung kein sauber konfiguriertes Profil aussperrt.
+* Ein gesetzter Pin, der **nicht** passt, wird abgelehnt — auch mit `--insecure-tls`.
+* Ein gespeicherter Pin gilt nur für den Server, für den er gesetzt wurde; ein Serverwechsel löscht
+  ihn.
+* `--insecure-tls` (oder `NODEPILOT_TLS_NO_VERIFY=1`) überspringt die Prüfung für **einen** Aufruf,
+  wird nie gespeichert und druckt jedes Mal eine Warnung.
+* Präzedenz: `--tls-thumbprint` › `NODEPILOT_TLS_THUMBPRINT` › Profil.
 
 ## Token-Storage
 
-DPAPI-verschlüsselt (`CurrentUser`-Scope) unter `%APPDATA%\NodePilot\session-<profile>.dat`. Refresh transparent via `TokenRefreshHandler`. Plaintext-Config (Server-URL, Default-Profile) in `config.json`.
+DPAPI-verschlüsselt (`CurrentUser`-Scope) unter `%APPDATA%\NodePilot\session-<profile>.dat`. Refresh transparent via `TokenRefreshHandler`. Plaintext-Config (Server-URL, Default-Profile, TLS-Pin) in `config.json`.
 
 ## Architektur-Konvention
 

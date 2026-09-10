@@ -57,4 +57,14 @@ public sealed class CliConfig
 public sealed class ProfileEntry
 {
     public string? Server { get; set; }
+
+    /// <summary>
+    /// Canonical SHA-256 fingerprint of the certificate <see cref="Server"/> is expected to
+    /// present, for servers whose certificate the client machine does not trust. Bound to
+    /// <see cref="Server"/>'s origin: a pin overrides hostname validation, so it must never carry
+    /// over to another server. There is deliberately no stored counterpart for the
+    /// <c>--insecure-tls</c> bypass — permanently disabled certificate validation is what the pin
+    /// exists to avoid.
+    /// </summary>
+    public string? TlsThumbprint { get; set; }
 }

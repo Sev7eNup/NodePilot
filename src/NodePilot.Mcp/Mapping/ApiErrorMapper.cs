@@ -1,3 +1,4 @@
+using System.Text;
 using ModelContextProtocol;
 using NodePilot.Core.Clients;
 using NodePilot.Mcp.Api;
@@ -29,7 +30,7 @@ public static class ApiErrorMapper
         }
         catch (HttpRequestException ex)
         {
-            throw new McpException($"Cannot reach the NodePilot API: {ex.Message}");
+            throw new McpException(DescribeTransport(ex));
         }
         catch (TaskCanceledException)
         {
@@ -39,6 +40,30 @@ public static class ApiErrorMapper
 
     public static async Task Guard(Func<Task> call)
         => await Guard(async () => { await call(); return true; });
+
+    /// <summary>
+    /// Unwraps the exception chain — the outer message of a handshake failure says nothing — and
+    /// names the certificate the server presented, when this request observed one.
+    /// </summary>
+    private static string DescribeTransport(HttpRequestException ex)
+    {
+        var info = NetworkFailureAnalyzer.Analyze(ex);
+        var text = new StringBuilder("Cannot reach the NodePilot API: ");
+        text.Append(string.Join(" -> ", info.CauseChain));
+
+        if (info.Certificate is { HasCertificate: true } certificate)
+        {
+            text.Append($" Presented certificate: {certificate.Subject}, issuer {certificate.Issuer}");
+            if (certificate.DnsNames.Count > 0) text.Append($", DNS {string.Join("/", certificate.DnsNames)}");
+            text.Append($", SHA-256 {certificate.Sha256}.");
+            text.Append(info.Tls == TlsFailureKind.PinMismatch
+                ? " The configured pin does not match; check why the certificate changed before updating it."
+                : @" Trust it by importing it into LocalMachine\Root, or pin it with"
+                  + " NODEPILOT_MCP_TLS_THUMBPRINT=<SHA-256> in the .mcp.json env block.");
+        }
+
+        return text.ToString();
+    }
 
     private static string Describe(ApiException ex)
     {

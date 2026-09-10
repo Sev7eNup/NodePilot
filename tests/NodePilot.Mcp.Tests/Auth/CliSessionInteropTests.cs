@@ -18,6 +18,10 @@ public sealed class CliSessionInteropTests
     [InlineData("src/NodePilot.Cli/Api/TokenRefreshHandler.cs")]
     [InlineData("src/NodePilot.Mcp/Auth/TokenStore.cs")]
     [InlineData("src/NodePilot.Mcp/Api/TokenRefreshHandler.cs")]
+    [InlineData("src/NodePilot.Cli/Api/PinnedCertificateHandlerFactory.cs")]
+    [InlineData("src/NodePilot.Mcp/Api/PinnedCertificateHandlerFactory.cs")]
+    [InlineData("src/NodePilot.Cli/Api/CertificatePin.cs")]
+    [InlineData("src/NodePilot.Mcp/Config/CertificatePin.cs")]
     public void SessionStoreAndRefreshHandler_HaveNoPerClientCopy(string relativePath)
     {
         File.Exists(Path.Combine(FindRepoRoot(), relativePath)).Should().BeFalse(
@@ -30,7 +34,11 @@ public sealed class CliSessionInteropTests
     {
         typeof(McpServerConfig).Assembly.GetTypes()
             .Select(t => t.Name)
-            .Should().NotContain(["TokenStore", "TokenRefreshHandler", "StoredSession"]);
+            .Should().NotContain([
+                "TokenStore", "TokenRefreshHandler", "StoredSession",
+                "CertificatePin", "ClientTlsOptions", "PinnedCertificateHandlerFactory",
+                "TlsObservationHandler", "NetworkFailureAnalyzer",
+            ]);
     }
 
     [Fact]

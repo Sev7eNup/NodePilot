@@ -13,6 +13,12 @@ public sealed class SessionContext
     public StoredSession? Session { get; init; }
     public bool AllowInsecureLoopback { get; init; }
 
+    /// <summary>How this call treats the server certificate (pin and/or bypass).</summary>
+    public ClientTlsOptions Tls { get; init; } = ClientTlsOptions.None;
+
+    /// <summary>Set when a stored pin was skipped because it belongs to another server origin.</summary>
+    public string? TlsPinNotice { get; init; }
+
     public bool HasServer => !string.IsNullOrWhiteSpace(Server);
     public bool HasSession => Session is not null && !string.IsNullOrWhiteSpace(Session.Token);
 }
