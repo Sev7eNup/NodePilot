@@ -4,7 +4,6 @@ import {
   Branch,
   ChartLine,
   ChartLineData,
-  ChartPie,
   CheckmarkFilled,
   CircleDash,
   DocumentUnknown,
@@ -21,7 +20,7 @@ import {
   Time,
   WarningAltFilled,
 } from '@carbon/icons-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -111,7 +110,7 @@ const STATUS_KEY: Record<string, string> = {
   Succeeded: 'succeeded', Failed: 'failed', Running: 'running',
   Pending: 'pending', Cancelled: 'cancelled', Skipped: 'skipped',
 };
-// Donut segment key mapped to an execution status string for the Recent-table filter.
+// Summary row key mapped to an execution status string for the Recent-table filter.
 // 'statusOther' folds Pending, Paused and Skipped together, so it cannot filter cleanly.
 const RUN_STATUS_FILTER_FOR_KEY: Record<string, string | null> = {
   succeeded: 'Succeeded',
@@ -135,7 +134,7 @@ export function DashboardPage() {
   const { t } = useTranslation(['dashboard', 'executions', 'common']);
   const navigate = useNavigate();
   const { probeRef, tokens } = useChartTokens();
-  // User-selected time window for the hero, area, donut and success-trend charts. The top and
+  // User-selected time window for the hero, area, status summary and success-trend charts. The top and
   // failing lists stay on a fixed 7-day window from the backend, so they do not empty out when
   // windowHours is 1.
   const [windowHours, setWindowHours] = useState(24);
@@ -150,7 +149,7 @@ export function DashboardPage() {
     queryFn: () => api.get<DashboardStats>(`/stats/dashboard?windowHours=${windowHours}`),
     refetchInterval: 120_000,
   });
-  // Clicking a donut segment filters the Recent Executions table client-side. The backend only
+  // Selecting a status row filters the Recent Executions table client-side. The backend only
   // returns the latest 10 rows, so this filters within those; full filtering lives on /executions.
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
@@ -241,8 +240,8 @@ export function DashboardPage() {
       {/* Three compact charts: run status, success trend and performance. */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-5">
         <div className="np-fade-up" style={{ animationDelay: '160ms' }}>
-          <Panel title={t('dashboard:runStatusWindow', { window: windowLabel })} icon={ChartPie} iconClass="text-emerald-500" className="h-full">
-            <RunStatusDonut counts={stats.last24h} tokens={tokens} onSelect={(status) => setStatusFilter(status)} />
+          <Panel title={t('dashboard:runStatusWindow', { window: windowLabel })} icon={Time} iconClass="text-emerald-500" className="h-full">
+            <RunStatusSummary counts={stats.last24h} windowLabel={windowLabel} selectedStatus={statusFilter} onSelect={setStatusFilter} />
           </Panel>
         </div>
         <div className="np-fade-up" style={{ animationDelay: '200ms' }}>
@@ -854,80 +853,77 @@ function HourlyAreaChart({ buckets, windowHours, tokens }: Readonly<{ buckets: H
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Run-status donut showing the composition of the selected window. `total` also counts
+// Run-status summary showing the composition of the selected window. `total` also counts
 // Pending, Paused and Skipped, which the DTO does not break out, so the remainder is folded
-// into an "Other" slice and the slices always sum to the centre total.
+// into an "Other" row so all statuses contribute to the distribution.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function RunStatusDonut({ counts, tokens, onSelect }: Readonly<{ counts: ExecutionCounts; tokens: ChartTokens; onSelect: (status: string | null) => void }>) {
+function RunStatusSummary({ counts, windowLabel, selectedStatus, onSelect }: Readonly<{
+  counts: ExecutionCounts;
+  windowLabel: string;
+  selectedStatus: string | null;
+  onSelect: (status: string | null) => void;
+}>) {
   const { t } = useTranslation(['dashboard']);
-  const tipBg = tokens.surfaceHigh;
-  const tipText = tokens.onSurface;
-  const border = tokens.surfaceHigh;
-
-  const segments = useMemo(() => {
-    const other = Math.max(0, counts.total - counts.succeeded - counts.failed - counts.cancelled - counts.running);
-    return [
-      { key: 'succeeded', value: counts.succeeded, color: HEALTH.ok },
-      { key: 'failed', value: counts.failed, color: HEALTH.bad },
-      { key: 'cancelled', value: counts.cancelled, color: HEALTH.muted },
-      { key: 'running', value: counts.running, color: '#3b82f6' },
-      { key: 'statusOther', value: other, color: '#64748b' },
-    ].filter((s) => s.value > 0);
-  }, [counts]);
-
-  const option = useMemo<EChartsOption>(() => ({
-    tooltip: {
-      trigger: 'item',
-      backgroundColor: tipBg,
-      borderWidth: 0,
-      padding: [6, 10],
-      textStyle: { color: tipText, fontSize: 11 },
-    },
-    series: [{
-      type: 'pie',
-      radius: ['60%', '86%'],
-      center: ['50%', '50%'],
-      avoidLabelOverlap: false,
-      label: { show: false },
-      labelLine: { show: false },
-      emphasis: { scale: true, scaleSize: 4 },
-      itemStyle: { borderColor: border, borderWidth: 2, borderRadius: 4 },
-      data: segments.map((s) => ({
-        name: t(`dashboard:${s.key}`), value: s.value, itemStyle: { color: s.color },
-        statusKey: s.key,
-      })),
-    }],
-  }), [segments, tipBg, tipText, border, t]);
-
-  // Stable handler identity: map the clicked segment's statusKey back to a status string.
-  const handleClick = useCallback((params: unknown) => {
-    const p = params as { data?: { statusKey?: string } };
-    const key = p?.data?.statusKey;
-    if (!key) return;
-    onSelect(RUN_STATUS_FILTER_FOR_KEY[key] ?? null);
-  }, [onSelect]);
-
   if (counts.total === 0) {
     return <div className="h-40 flex items-center justify-center"><EmptyState text={t('dashboard:noExecutionsYet')} /></div>;
   }
+
+  const other = Math.max(0, counts.total - counts.succeeded - counts.failed - counts.cancelled - counts.running);
+  const segments = [
+    { key: 'succeeded', value: counts.succeeded, color: HEALTH.ok },
+    { key: 'failed', value: counts.failed, color: HEALTH.bad },
+    { key: 'cancelled', value: counts.cancelled, color: HEALTH.muted },
+    { key: 'running', value: counts.running, color: '#3b82f6' },
+    ...(other > 0 ? [{ key: 'statusOther', value: other, color: '#64748b' }] : []),
+  ];
+  const formatShare = (value: number) => {
+    const share = value / counts.total;
+    const formatted = formatNumber(share > 0 && share < 0.001 ? 0.001 : share, {
+      style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1,
+    });
+    return share > 0 && share < 0.001 ? `< ${formatted}` : formatted;
+  };
+
   return (
-    <div>
-      <div className="relative h-40">
-        <EChart option={option} className="absolute inset-0 cursor-pointer" ariaLabel={t('dashboard:runStatus24h')} onClick={handleClick} />
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="text-2xl font-bold tabular-nums leading-none text-on-surface">{formatNumber(counts.total)}</span>
-          <span className="text-[11px] text-on-surface-variant mt-1">{t('dashboard:runsLabel')}</span>
-        </div>
+    <div role="group" aria-label={t('dashboard:runStatusWindow', { window: windowLabel })}>
+      <div className="pt-1 pb-4">
+        <p className="text-4xl font-semibold tracking-tight tabular-nums leading-none text-on-surface">{formatNumber(counts.total)}</p>
+        <p className="text-xs text-on-surface-variant mt-2">{t('dashboard:runsInSelectedWindow')}</p>
       </div>
-      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mt-3 text-xs text-on-surface-variant">
-        {segments.map((s) => (
-          <span key={s.key} className="flex items-center gap-1 tabular-nums">
-            <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: s.color }} />
-            {t(`dashboard:${s.key}`)} {formatNumber(s.value)}
-          </span>
+      <div aria-hidden="true" className="flex h-2 overflow-hidden rounded-full bg-surface-high mb-3">
+        {segments.filter((s) => s.value > 0).map((s) => (
+          <span key={s.key} className="h-full shrink-0" style={{ width: `${s.value / counts.total * 100}%`, backgroundColor: s.color }} />
         ))}
       </div>
+      <ul className="divide-y divide-outline-variant/20">
+        {segments.map((s) => {
+          const status = RUN_STATUS_FILTER_FOR_KEY[s.key];
+          const selected = status != null && selectedStatus === status;
+          const rowClass = 'grid grid-cols-[minmax(0,1fr)_auto_4.5rem] items-center gap-x-3 w-full px-2 py-2 rounded-md text-xs';
+          const content = <>
+            <span className="flex items-center gap-2 min-w-0 text-left text-on-surface-variant">
+              <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+              <span className="break-words">{t(`dashboard:${s.key}`)}</span>
+            </span>
+            <span className="font-medium tabular-nums text-right text-on-surface">{formatNumber(s.value)}</span>
+            <span className="tabular-nums text-right whitespace-nowrap text-on-surface-variant">{formatShare(s.value)}</span>
+          </>;
+          return <li key={s.key} className="py-0.5">
+            {status == null ? <div className={rowClass}>{content}</div> : (
+              <button
+                type="button"
+                aria-label={`${t(`dashboard:${s.key}`)} ${formatNumber(s.value)} ${formatShare(s.value)}`}
+                aria-pressed={selected}
+                onClick={() => onSelect(selected ? null : status)}
+                className={`${rowClass} cursor-pointer transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${selected ? 'bg-primary/10 ring-1 ring-inset ring-primary/25' : 'hover:bg-on-surface/5'}`}
+              >
+                {content}
+              </button>
+            )}
+          </li>;
+        })}
+      </ul>
     </div>
   );
 }
@@ -990,7 +986,13 @@ function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: 
       type: 'line',
       smooth: 0.35,
       connectNulls: false,
-      showSymbol: false,
+      // Inactive buckets stay gaps. Without symbols, isolated active buckets have
+      // neither a neighbouring line segment nor any other visible representation.
+      showSymbol: true,
+      showAllSymbol: true,
+      symbol: 'circle',
+      symbolSize: 6,
+      itemStyle: { color: HEALTH.ok, borderColor: tipBg, borderWidth: 1 },
       lineStyle: { width: 2, color: HEALTH.ok },
       areaStyle: {
         color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [

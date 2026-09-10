@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { DashboardPage } from '../../pages/DashboardPage';
 import { useAuthStore } from '../../stores/authStore';
+import i18n from '../../i18n';
 
 // The dashboard now subscribes to the SignalR ops-feed for live updates. Mock the hook
 // to a no-op (mirrors OperationsPage.test) so no real WebSocket is opened under jsdom.
@@ -233,7 +234,7 @@ describe('DashboardPage', () => {
     expect(screen.queryByPlaceholderText(/Name of the new workflow/i)).not.toBeInTheDocument();
   });
 
-  it('filters the recent executions table by status when the donut segment is clicked', async () => {
+  it('filters recent executions using status rows and toggles the filter with the keyboard', async () => {
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
       ...BASE_STATS,
       last24h: { total: 2, succeeded: 1, failed: 1, running: 0, cancelled: 0 },
@@ -247,6 +248,23 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Fail WF')).toBeInTheDocument();
     // No filter chip initially.
     expect(screen.queryByText(/Show only/i)).not.toBeInTheDocument();
+    const userEvent = (await import('@testing-library/user-event')).default;
+    const summary = screen.getByRole('group', { name: 'Run Status (24h)' });
+    const failed = within(summary).getByRole('button', { name: /Failed/ });
+    await userEvent.click(failed);
+    expect(failed).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText('Succ WF')).not.toBeInTheDocument();
+    expect(screen.getByText('Fail WF')).toBeInTheDocument();
+    expect(failed).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    expect(failed).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('Succ WF')).toBeInTheDocument();
+    await userEvent.keyboard(' ');
+    expect(failed).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(screen.getByRole('button', { name: '7 days' }));
+    const nextSummary = await screen.findByRole('group', { name: 'Run Status (7 days)' });
+    expect(within(nextSummary).getByRole('button', { name: /Failed/ })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('Succ WF')).toBeInTheDocument();
   });
 
   it('renders Next-Fire badge for cron triggers', async () => {
@@ -401,17 +419,23 @@ describe('DashboardPage', () => {
     expect(scroller.parentElement).toHaveClass('relative');
   });
 
-  // ── Insight charts (run-status donut · success-rate trend · p95 bars) ──
+  // ── Insights (run-status summary · success-rate trend · p95 bars) ──
 
-  it('renders the run-status donut with centre total and legend', async () => {
+  it('renders the run-status summary with total and all four statuses including zero counts', async () => {
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)));
     renderPage();
     await waitFor(() => expect(screen.getByText('Run Status (24h)')).toBeInTheDocument());
-    // Centre overlay label is the only plain "runs" text node on the page.
-    expect(screen.getByText('runs')).toBeInTheDocument();
+    const summary = within(screen.getByRole('group', { name: 'Run Status (24h)' }));
+    expect(summary.getByText('30')).toBeInTheDocument();
+    expect(summary.getByText('Runs in the selected period')).toBeInTheDocument();
+    expect(summary.getAllByRole('button')).toHaveLength(4);
+    expect(summary.getByRole('button', { name: 'Succeeded 28 93.3%' })).toBeInTheDocument();
+    expect(summary.getByRole('button', { name: 'Cancelled 0 0.0%' })).toBeInTheDocument();
+    expect(summary.getByRole('button', { name: 'Running 0 0.0%' })).toBeInTheDocument();
+    expect(summary.queryByText('Other')).not.toBeInTheDocument();
   });
 
-  it('folds Pending/Paused/Skipped into an "Other" donut segment', async () => {
+  it('folds Pending/Paused/Skipped into an informational Other row', async () => {
     // total 50 but only 45 are succeeded+failed -> 5 land in "Other".
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
       ...BASE_STATS,
@@ -419,7 +443,39 @@ describe('DashboardPage', () => {
     })));
     renderPage();
     await waitFor(() => expect(screen.getByText('Run Status (24h)')).toBeInTheDocument());
-    expect(screen.getByText('Other 5')).toBeInTheDocument();
+    const summary = within(screen.getByRole('group', { name: 'Run Status (24h)' }));
+    expect(summary.getByText('Other').closest('li')).toHaveTextContent('Other510.0%');
+    expect(summary.queryByRole('button', { name: /Other/ })).not.toBeInTheDocument();
+  });
+
+  it.each(['en', 'de'])('formats the screenshot distribution and tiny positive shares in %s', async (language) => {
+    await i18n.changeLanguage(language);
+    try {
+      server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+        ...BASE_STATS,
+        last24h: { total: 69737, succeeded: 63835, failed: 5894, cancelled: 1, running: 7 },
+      })));
+      renderPage();
+      const summary = within(await screen.findByRole('group', { name: /Run Status|Lauf-Status/ }));
+      expect(summary.getByText(language === 'de' ? '69.737' : '69,737')).toBeInTheDocument();
+      expect(summary.getByText(language === 'de' ? '91,5 %' : '91.5%')).toBeInTheDocument();
+      expect(summary.getByText(language === 'de' ? '8,5 %' : '8.5%')).toBeInTheDocument();
+      expect(summary.getAllByText(language === 'de' ? '< 0,1 %' : '< 0.1%')).toHaveLength(2);
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('shows the existing empty state when the selected period has no runs', async () => {
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+      ...BASE_STATS,
+      last24h: { total: 0, succeeded: 0, failed: 0, cancelled: 0, running: 0 },
+    })));
+    renderPage();
+    const heading = await screen.findByText('Run Status (24h)');
+    const card = within(heading.closest('div.np-card') as HTMLElement);
+    expect(card.getByText('No executions yet')).toBeInTheDocument();
+    expect(card.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('shows empty state for the success-rate trend when there are no buckets', async () => {

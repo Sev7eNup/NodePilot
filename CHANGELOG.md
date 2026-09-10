@@ -55,6 +55,14 @@ exhaustive.
   pinned payload, and the desktop package now names the same version, so both shipping targets
   carry one runtime. 10.0.11 stays in the lock file; the documented 10.0.11 floor is unchanged.
 
+- **The dashboard's run-status donut is a readable summary instead.** The ring carried five slices,
+  a centre total and a legend, and still made the two numbers an operator actually reads — how many
+  runs, and what share failed — the hardest to get out of it: small slices were unhoverable and the
+  legend repeated what the ring already showed. The panel now leads with the total, keeps a single
+  proportion bar and lists every status with its count and its share. Selecting a status still
+  filters the Recent Executions table, now as a real button with a pressed state, so the filter is
+  reachable by keyboard and announced by a screen reader.
+
 - **The Engine Switcher is now simply the Switcher.** The name moved everywhere it is persisted:
   the project and assembly (`NodePilot.Switcher`), the executable, the installation folder
   (`tools\switcher`), the configuration file (`switcher.json`), the data directory
@@ -78,6 +86,16 @@ exhaustive.
   installation that does not listen on 443 — the documented example uses 8443 — none of them could
   be opened as printed. All four now come from one public URL that carries the port the service was
   configured with.
+
+- **Isolated hours are visible in the success-rate trend.** Hours without runs stay gaps rather than
+  being connected, which is correct — but the series drew no symbols, so an hour whose neighbours
+  were empty had neither a line segment nor a point and simply did not appear. On a mostly idle
+  installation the whole trend could read as empty while runs existed. The series now draws a point
+  per observed hour.
+
+- **The automatic sizing documentation had the memory formula backwards.** Both language versions of
+  the performance page subtracted the 512 MB base requirement before applying the 60 % share; the
+  algorithm takes the share first and subtracts afterwards.
 
 - **Workflow input data can no longer end up as PowerShell code.** The escaping on the way into a
   generated script only handled the ASCII quote characters, while the PowerShell parser recognises

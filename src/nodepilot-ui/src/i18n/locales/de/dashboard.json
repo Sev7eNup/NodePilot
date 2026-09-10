@@ -100,6 +100,7 @@
   "avgDuration": "Ø {{duration}}",
   "p95": "p95 {{duration}}",
   "runStatus24h": "Lauf-Status (24 h)",
+  "runsInSelectedWindow": "Läufe im ausgewählten Zeitraum",
   "successTrend24h": "Erfolgsraten-Verlauf (24 h)",
   "p95TopWorkflows": "p95 · Top-Workflows (7 Tage)",
   "statusOther": "Sonstige",

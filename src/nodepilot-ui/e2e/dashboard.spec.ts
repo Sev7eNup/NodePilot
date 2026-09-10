@@ -99,6 +99,49 @@ test.describe('Dashboard (Teil 11)', () => {
     await installDefaultMocks(page);
   });
 
+  for (const scenario of [
+    { name: 'single active hour', theme: 'dark', observations: [{ index: 23, succeeded: 851, failed: 159 }] },
+    { name: 'isolated observations', theme: 'light', observations: [{ index: 7, succeeded: 9, failed: 1 }, { index: 19, succeeded: 5, failed: 5 }] },
+    { name: 'zero and full success at the edges', theme: 'dark', observations: [{ index: 0, succeeded: 0, failed: 10 }, { index: 23, succeeded: 10, failed: 0 }] },
+  ]) {
+    test(`success trend displays ${scenario.name} without connecting inactive hours`, async ({ page }, testInfo) => {
+      await page.addInitScript(theme => {
+        localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme }, version: 0 }));
+      }, scenario.theme);
+      const buckets = hourBuckets().map((b, index) => ({
+        ...b, succeeded: scenario.observations.find(p => p.index === index)?.succeeded ?? 0,
+        failed: scenario.observations.find(p => p.index === index)?.failed ?? 0, cancelled: 0,
+      }));
+      const succeeded = buckets.reduce((sum, b) => sum + b.succeeded, 0);
+      const failed = buckets.reduce((sum, b) => sum + b.failed, 0);
+      await page.route('**/api/stats/dashboard**', route => route.fulfill({ json: dashboardStats({
+        last24h: { total: succeeded + failed, succeeded, failed, running: 0, cancelled: 0 },
+        last24hBuckets: buckets,
+      }) }));
+      await page.goto('/');
+      const chart = page.getByRole('img', { name: 'Success Rate Trend (24h)', exact: true });
+      await expect(chart).toBeVisible();
+      // Each observation needs a visible marker: with no neighbouring observations, there
+      // is no line segment to draw. Checking the SVG exercises the actual ECharts renderer.
+      const markers = chart.locator('svg path[fill="#22c55e"]');
+      await expect(markers).toHaveCount(scenario.observations.length);
+      for (const marker of await markers.all()) {
+        // ECharts animates symbol scale in JS; a path can exist while still having no
+        // visible area. Wait for real size before checking the screenshot or tooltip.
+        await expect.poll(async () => (await marker.boundingBox())?.width ?? 0).toBeGreaterThan(4);
+      }
+      const line = chart.locator('svg path[stroke="#22c55e"][fill="none"]');
+      await expect(line).toHaveCount(1);
+      const path = await line.getAttribute('d');
+      expect(path?.match(/M/g)).toHaveLength(scenario.observations.length);
+      expect(path).not.toMatch(/[LC]/);
+      await chart.locator('..').screenshot({ path: testInfo.outputPath('sparse-success-trend.png'), animations: 'disabled' });
+      await markers.last().hover();
+      const last = scenario.observations.at(-1)!;
+      await expect(chart).toContainText(`${last.succeeded}/${last.succeeded + last.failed} succeeded`);
+    });
+  }
+
   test('11.1 — stat cards, 24h chart, top/recent lists render from /stats/dashboard', async ({ page }) => {
     await page.route('**/api/stats/dashboard**', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(dashboardStats()) }),
