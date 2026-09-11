@@ -1445,6 +1445,7 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 - [ ] 24h Execution-Chart rendert
 - [ ] Erfolgsraten-Trend: einzelne aktive Stunden bleiben als Punkte sichtbar; Stunden ohne Läufe werden nicht verbunden (Browser-Regression in `e2e/dashboard.spec.ts`).
 - [ ] Trend-Punkte bei 0 % und 100 % bleiben sichtbar; Hover zeigt erfolgreiche/abgeschlossene Läufe. Helles und dunkles Theme prüfen.
+- [ ] Zusammenhängende Trend-Werte erscheinen als Linie ohne permanente Punkte. Das Diagramm füllt die Kartenhöhe bis zum unteren Innenabstand, auch nach einem Wechsel zwischen Desktop- und Mobilbreite.
 - [ ] "Top Workflows" Liste zeigt nach Aktivität sortiert
 - [ ] "Recent Executions" Liste ist aktuell
 - [ ] Keine "loading"-States hängen
@@ -4631,6 +4632,27 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 > Automatisiert: `e2e/ai-chat.spec.ts` (80.1–80.9, hermetisch — SSE via `page.route`).
 
+### Test 80.10 — Globales Chat-Widget
+1. Chat unten rechts öffnen, Frage absenden, während der Antwort einen Entwurf schreiben.
+2. Minimieren, zu Workflows wechseln, Widget öffnen und „Großen Chat öffnen“ wählen.
+- [ ] Dieselbe Anfrage und derselbe Entwurf bleiben erhalten; keine doppelte Frage.
+- [ ] Minimiert fertiggestellte Antwort zeigt einen Hinweis am Launcher.
+- [ ] Fehler bleiben mit Wiederholen im Gespräch sichtbar.
+- [ ] Im Designer ist jeweils das Widget oder der Workflow-Assistent geöffnet.
+
+### Test 80.11 — Widget auf Mobilgeräten und in allen Themes
+1. Widget bei 390 px Breite öffnen; Tastatur öffnen und längeren Verlauf lesen.
+2. Tastaturbedienung und die sieben Themes prüfen.
+- [ ] Eingabe und Minimieren erreichbar; kein horizontaler Seiten-Overflow.
+- [ ] Auf Mobilgeräten bleibt der Tastaturfokus im Panel, Escape minimiert und gibt den Fokus zurück.
+- [ ] Quellen und Antwortdetails sind aufklappbar; lange Codeblöcke scrollen im Chat.
+- [ ] Benachrichtigungen verdecken weder Launcher noch Eingabe; Dialoge liegen über dem Desktop-Widget.
+
+> Automatisiert: `e2e/ai-chat-widget.spec.ts` (80.10–80.11; mobile Viewport-Verkleinerung simuliert
+> den verfügbaren Platz bei geöffneter Tastatur). Echte Bildschirmtastatur zusätzlich am Gerät prüfen.
+> Inkrementelle Stream-Fortsetzung, Stop mit verspäteten Callbacks und Logout werden durch
+> `AiChatWidget.test.tsx` und `knowledgeChatSessionStore.test.ts` abgesichert.
+
 ---
 
 ## Teil 81: Custom Activities (`/custom-activities`)
@@ -4933,7 +4955,7 @@ Prüfpunkte je Provider/Fall:
 [ ] Teil 77: KI-Workflow-Assistent + Streaming (77.1 — 77.10)
 [ ] Teil 78: Alerting (78.1 — 78.8)
 [ ] Teil 79: Toolbar-Layout-Umschalter (79.1 — 79.4)
-[ ] Teil 80: Globaler AI-Chat (80.1 — 80.9)
+[ ] Teil 80: Globaler AI-Chat (80.1 — 80.11)
 [ ] Teil 81: Custom Activities (81.1 — 81.9)
 [ ] Teil 82: Datenbank-Ausfall zur Laufzeit (82.1 — 82.4)
 [ ] Teil 83: Live-Ops Mission Control (83.1 — 83.14)

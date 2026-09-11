@@ -99,6 +99,39 @@ test.describe('Dashboard (Teil 11)', () => {
     await installDefaultMocks(page);
   });
 
+  test('success trend keeps continuous runs smooth and fills the status-card row', async ({ page }, testInfo) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme: 'dark' }, version: 0 }));
+    });
+    const buckets = hourBuckets().map((b, index) => ({
+      ...b, succeeded: index >= 12 ? 85 : 0, failed: index >= 12 ? 15 : 0, cancelled: 0,
+    }));
+    await page.route('**/api/stats/dashboard**', route => route.fulfill({ json: dashboardStats({
+      last24h: { total: 1200, succeeded: 1020, failed: 180, running: 0, cancelled: 0 },
+      last24hBuckets: buckets,
+    }) }));
+    await page.goto('/');
+    const chart = page.getByRole('img', { name: 'Success Rate Trend (24h)', exact: true });
+    await expect(chart).toBeVisible();
+    const line = chart.locator('svg path[stroke="#22c55e"][fill="none"]');
+    await expect(line).toHaveCount(1);
+    await expect(chart.locator('svg path[fill="#22c55e"]')).toHaveCount(0);
+    const linePath = await line.getAttribute('d');
+    expect(linePath?.match(/M/g)).toHaveLength(1);
+    expect(linePath).toMatch(/[LC]/);
+    for (const width of [1920, 1440, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await chart.scrollIntoViewIfNeeded();
+      await expect.poll(() => chart.evaluate(el =>
+        Math.abs(Number(el.querySelector('svg')?.getAttribute('height')) - el.clientHeight),
+      )).toBeLessThanOrEqual(1);
+      const chartBox = await chart.boundingBox();
+      const cardBox = await chart.locator('..').boundingBox();
+      expect(cardBox!.y + cardBox!.height - chartBox!.y - chartBox!.height).toBeLessThanOrEqual(24);
+      await chart.locator('..').screenshot({ path: testInfo.outputPath(`continuous-success-trend-${width}.png`), animations: 'disabled' });
+    }
+  });
+
   for (const scenario of [
     { name: 'single active hour', theme: 'dark', observations: [{ index: 23, succeeded: 851, failed: 159 }] },
     { name: 'isolated observations', theme: 'light', observations: [{ index: 7, succeeded: 9, failed: 1 }, { index: 19, succeeded: 5, failed: 5 }] },

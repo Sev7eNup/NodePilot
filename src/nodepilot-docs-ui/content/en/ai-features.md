@@ -70,7 +70,18 @@ The chat and the properties panel share the right-hand area of the designer: the
 
 ## The global AI chat
 
-**Where:** the navigation, the **AI Chat** page.
+**Where:** the chat button in the bottom-right corner or the **AI Chat** page in the navigation.
+
+The **NodePilot Assistant** opens the same conversations in a compact window over the current
+page. Minimizing and navigating preserve ongoing answers and message drafts. A completed answer
+adds an indicator to the closed chat button. **Open full chat** carries the conversation into the
+full chat page. In the workflow designer, one assistant panel is open at a time; the global chat
+and the workflow assistant keep their own conversations.
+
+On phones, the window fills the visible screen and keeps the input accessible when the keyboard
+opens. Escape minimizes the chat. History and conversations survive a reload in the same browser
+tab; ongoing requests and drafts last only until reload. Signing out cancels requests and clears
+chat data.
 
 The global AI chat is not tied to an open workflow. It serves as a read-only assistant for questions such as:
 

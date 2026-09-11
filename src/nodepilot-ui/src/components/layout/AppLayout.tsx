@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { useIsMobile } from '../../hooks/useMediaQuery';
+import { AiChatWidget } from '../ai/AiChatWidget';
 
 // Lazy so @xyflow stays out of the main bundle and loads only when a phone user opens a
 // workflow. Desktop keeps rendering the full editor route through <Outlet/>.
@@ -12,6 +13,15 @@ const MobileWorkflowView = lazy(() =>
 );
 
 export function AppLayout() {
+  return (
+    <>
+      <div id="np-app-content"><AppContent /></div>
+      <AiChatWidget />
+    </>
+  );
+}
+
+function AppContent() {
   const location = useLocation();
   const { t } = useTranslation(['nav']);
   const isMobile = useIsMobile();

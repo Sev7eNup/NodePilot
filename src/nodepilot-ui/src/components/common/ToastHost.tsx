@@ -27,7 +27,7 @@ export function ToastHost() {
   return createPortal(
     <div className="np-shell">
       <div
-        className="fixed bottom-4 right-4 z-[80] flex w-[min(24rem,calc(100vw-2rem))] flex-col items-stretch gap-2"
+        className="np-toast-stack fixed bottom-4 right-4 z-[80] flex w-[min(24rem,calc(100vw-2rem))] flex-col items-stretch gap-2"
         role="status"
         aria-live="polite"
       >

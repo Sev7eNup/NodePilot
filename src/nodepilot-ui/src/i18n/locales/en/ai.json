@@ -1,4 +1,16 @@
 {
+  "widget": {
+    "title": "NodePilot Assistant",
+    "subtitle": "Your questions. Your NodePilot.",
+    "open": "Open NodePilot Assistant",
+    "openUnread": "Open NodePilot Assistant — new reply",
+    "minimize": "Minimize assistant",
+    "expand": "Open full chat",
+    "answerReady": "Your answer is ready.",
+    "sources": "Available knowledge sources",
+    "searching": "Looking up information",
+    "details": "Response details"
+  },
   "scriptDialog": {
     "title": "Generate script with AI",
     "promptLabel": "What should the script do?",

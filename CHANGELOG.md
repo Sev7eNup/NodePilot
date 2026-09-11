@@ -25,6 +25,17 @@ exhaustive.
 
 ### Added
 
+- **The knowledge assistant is reachable from every page, not only from `/ai-chat`.** A launcher in
+  the bottom right corner opens the same conversation as a widget, so a question about a concept or
+  a count no longer costs the page someone is working on. One component renders both views and a
+  session store keeps the conversation, the draft and any in-flight request alive across route
+  changes: minimising does not interrupt a running stream, a finished answer marks the launcher, and
+  "open the large chat" hands both conversation and draft over to the page. The widget and the
+  workflow assistant open exclusively of one another and keep separate conversations. Visibility
+  follows the existing capabilities response, and the backend endpoints, source permissions and
+  audit entries are unchanged — history stays in per-user `sessionStorage`, drafts and running
+  requests in memory only, and signing out aborts requests and discards late stream callbacks.
+
 - **Six activity property panels stop rendering German to English users.** The i18n sweep left
   literals behind in the `startProgram`, `startWorkflow`, `waitForCondition`, `wmiQuery`,
   `zipOperation` and `powerManagement` configs — checkbox explanations, condition-type options,
