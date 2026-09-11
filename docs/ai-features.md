@@ -469,6 +469,16 @@ viele kleine lokale Modelle nicht. Aus → der Chat verhält sich exakt wie vorh
 
 Vom workflow-spezifischen Chat getrennt: ein seitenweiter, **canvas-freier** read-only Q&A-Assistent
 in der UI-Seite `/ai-chat` (`POST /api/ai/knowledge/ask`, SSE; Capabilities `GET /api/ai/knowledge/capabilities`).
+Der Chat-Button unten rechts öffnet dieselbe Unterhaltung als Widget. `KnowledgeChat` rendert
+beide Ansichten; `knowledgeChatSessionStore` hält Anfragen, Entwürfe und Fehler unabhängig von
+der Route im Speicher. Minimieren unterbricht den Stream nicht; eine fertige Antwort markiert den
+Launcher. „Großen Chat öffnen“ übernimmt Gespräch und Entwurf. Der Workflow-Assistent und das
+Widget öffnen ihre Panels gegenseitig exklusiv, mit getrennten Gesprächsbereichen.
+Die Sichtbarkeit folgt `capabilities.enabled`; die bestehenden Backend-Endpunkte, Quellenrechte
+und Audit-Einträge gelten für beide Ansichten. Verlauf bleibt im benutzerbezogenen
+`sessionStorage`, Entwürfe und laufende Anfragen nur im Speicher. Logout bricht Anfragen ab und
+verwirft auch verspätete Stream-Callbacks. Auf Smartphones folgt das Panel dem sichtbaren
+Viewport; Hintergrund und Fokus werden während des geöffneten Chats auf das Panel begrenzt.
 Erklärt Konzepte, beantwortet „wie viele Workflows/Maschinen/Execution gibt es", hilft bei Konfig- und
 Code-Fragen — ohne einen Workflow im Designer zu öffnen. Opt-in via `AiKnowledge:Enabled` (zusätzlich zu
 `Llm:Enabled`), hot-reloadbar.

@@ -70,7 +70,18 @@ Chat und Properties-Panel teilen sich den rechten Bereich des Designers: Der ge�
 
 ## Globaler AI-Chat
 
-**Ort:** Navigation, Seite **AI Chat**.
+**Ort:** Chat-Button unten rechts oder Navigation, Seite **AI Chat**.
+
+Der **NodePilot Assistent** öffnet dieselben Gespräche in einem kompakten Fenster über der
+aktuellen Seite. Minimieren und Seitenwechsel erhalten laufende Antworten und Eingabeentwürfe.
+Eine fertige Antwort wird am geschlossenen Chat-Button markiert. **Großen Chat öffnen** übernimmt
+das Gespräch auf die vollständige Chat-Seite. Im Workflow-Designer ist jeweils ein Assistenten-Panel
+geöffnet; der globale Chat und der Workflow-Assistent behalten ihre eigenen Gespräche.
+
+Auf Smartphones füllt das Fenster den sichtbaren Bildschirm; die Eingabe bleibt bei geöffneter
+Tastatur erreichbar. Escape minimiert den Chat. Verlauf und Gespräche überleben einen Reload
+innerhalb desselben Browser-Tabs; laufende Anfragen und Entwürfe bleiben nur bis zum Reload erhalten.
+Beim Abmelden werden Anfragen abgebrochen und Chat-Daten gelöscht.
 
 Der globale AI-Chat ist nicht an einen geöffneten Workflow gebunden. Er dient als lesender Assistent für Fragen wie:
 

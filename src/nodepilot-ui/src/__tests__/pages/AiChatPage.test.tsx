@@ -7,6 +7,7 @@ import {
   type KnowledgeAskRequest, type KnowledgeStreamHandlers, type ChatDoneMeta,
 } from '../../api/ai';
 import { useAiChatStore } from '../../stores/aiChatStore';
+import { useKnowledgeChatSessionStore } from '../../stores/knowledgeChatSessionStore';
 import { useAuthStore } from '../../stores/authStore';
 
 vi.mock('../../api/ai', async (orig) => {
@@ -38,11 +39,13 @@ function renderPage() {
 }
 
 async function ask(question: string) {
+  await waitFor(() => expect(screen.getByRole('textbox')).toBeEnabled());
   fireEvent.change(screen.getByRole('textbox'), { target: { value: question } });
   fireEvent.click(screen.getByRole('button', { name: /send/i }));
 }
 
 beforeEach(() => {
+  useKnowledgeChatSessionStore.getState().reset();
   askMock.mockReset();
   capsMock.mockReset();
   capsMock.mockResolvedValue({ enabled: true, docs: true, operational: true, sourceCode: false, db: false });
@@ -101,6 +104,7 @@ describe('AiChatPage', () => {
     renderPage();
 
     const box = screen.getByRole('textbox');
+    await waitFor(() => expect(box).toBeEnabled());
     fireEvent.change(box, { target: { value: 'a question' } });
     fireEvent.keyDown(box, { key: 'Enter', shiftKey: true });
     expect(askMock).not.toHaveBeenCalled();

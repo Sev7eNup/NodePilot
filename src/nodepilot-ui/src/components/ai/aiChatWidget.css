@@ -1,0 +1,120 @@
+.np-ai-chat-launcher {
+  position: fixed;
+  right: max(24px, env(safe-area-inset-right));
+  bottom: max(24px, env(safe-area-inset-bottom));
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 20px;
+  border: 1px solid color-mix(in srgb, var(--color-on-primary) 20%, transparent);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--color-primary) 24%, transparent);
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+.np-ai-chat-launcher:hover { transform: translateY(-2px); }
+.np-ai-chat-launcher:active { transform: scale(.96); }
+.np-ai-chat-panel :is(button, summary, a):focus-visible,
+.np-ai-chat-launcher:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 4px;
+}
+.np-ai-chat-indicator, .np-ai-chat-unread {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  border-radius: 50%;
+  background: var(--color-surface-high);
+  color: var(--color-primary);
+}
+.np-ai-chat-unread {
+  width: 13px;
+  height: 13px;
+  background: var(--color-primary);
+  border: 3px solid var(--color-surface-lowest);
+}
+.np-ai-chat-panel {
+  position: fixed;
+  right: max(24px, env(safe-area-inset-right));
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + 72px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: min(420px, calc(100vw - 32px));
+  height: min(620px, calc(100dvh - 120px));
+  overflow: hidden;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: 24px;
+  background: var(--color-surface-low);
+  color: var(--color-on-surface);
+  box-shadow: 0 24px 64px color-mix(in srgb, var(--color-on-surface) 14%, transparent);
+  transform-origin: bottom right;
+  animation: np-chat-enter 180ms ease-out;
+}
+.np-ai-chat-panel:focus { outline: none; }
+.np-ai-chat-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent);
+  background: linear-gradient(115deg, color-mix(in srgb, var(--color-primary) 8%, var(--color-surface-high)), var(--color-surface-high));
+}
+.np-ai-chat-mark {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+}
+.np-ai-chat-action {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+}
+.np-ai-chat-action:hover { background: var(--color-surface-highest); color: var(--color-on-surface); }
+.np-chat-content [data-testid="ai-chat-scroll"] { overscroll-behavior: contain; }
+.np-chat-content textarea { font-size: 14px; }
+.np-chat-content pre { max-width: 100%; overflow-x: auto; }
+body[data-ai-chat="launcher"] .np-toast-stack { bottom: calc(max(24px, env(safe-area-inset-bottom)) + 72px); }
+body[data-ai-chat="open"] .np-toast-stack { top: 16px; bottom: auto; right: 16px; }
+@keyframes np-chat-enter {
+  from { opacity: 0; transform: translateY(10px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (max-width: 639px) {
+  .np-ai-chat-launcher {
+    right: max(16px, env(safe-area-inset-right));
+    bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  .np-ai-chat-launcher-open { display: none; }
+  .np-ai-chat-panel {
+    top: var(--chat-viewport-top, 0px);
+    left: 0;
+    right: 0;
+    bottom: auto;
+    width: 100%;
+    height: var(--chat-viewport-height, 100dvh);
+    border: 0;
+    border-radius: 0;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .np-ai-chat-action { width: 40px; height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .np-ai-chat-launcher, .np-ai-chat-panel { animation: none; transition: none; }
+  .np-ai-chat-panel .animate-spin, .np-ai-chat-panel .animate-pulse,
+  .np-ai-chat-launcher .animate-spin { animation: none; }
+}

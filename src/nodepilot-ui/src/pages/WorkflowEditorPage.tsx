@@ -100,6 +100,7 @@ import { MaintenanceWindowBadge } from '../components/designer/MaintenanceWindow
 import { EditorStatusBanners } from '../components/designer/EditorStatusBanners';
 import { EditorRightPanel } from '../components/designer/EditorRightPanel';
 import { AiWorkflowChatPanel } from '../components/ai/AiWorkflowChatPanel';
+import { useKnowledgeChatSessionStore } from '../stores/knowledgeChatSessionStore';
 import { stripRuntimeDefinition } from '../lib/workflowDefinitionSanitizer';
 import { EditorSidebar } from '../components/designer/EditorSidebar';
 import { useRole } from '../lib/rbac';
@@ -559,7 +560,9 @@ function WorkflowEditorInner() {
   const [fullscreen, setFullscreen] = useState(false);
 
   // AI workflow assistant, docked in the right panel.
-  const [aiChatOpen, setAiChatOpen] = useState(false);
+  const aiChatOpen = useKnowledgeChatSessionStore((s) => s.workflowChatOpen);
+  const setAiChatOpen = useKnowledgeChatSessionStore((s) => s.setWorkflowChatOpen);
+  useEffect(() => () => setAiChatOpen(false), [setAiChatOpen]);
   const getCurrentDefinition = useCallback(
     () => stripRuntimeDefinition({ nodes, edges }),
     [nodes, edges],
@@ -577,7 +580,7 @@ function WorkflowEditorInner() {
   // selected node does not change `selected`, so that case is handled in `onNodeClick`.
   useEffect(() => {
     if (selected) setAiChatOpen(false);
-  }, [selected]);
+  }, [selected, setAiChatOpen]);
   // `onNodeClick` is defined further down, next to `completeEdgeReattach`: it closes the AI
   // chat and finishes a pending edge detach, so it needs that handler in its dependency list.
   //
@@ -1011,7 +1014,7 @@ function WorkflowEditorInner() {
     if (e.shiftKey || e.ctrlKey || e.metaKey) return;
     if (completeEdgeReattach(e, node)) return;
     setAiChatOpen(false);
-  }, [completeEdgeReattach]);
+  }, [completeEdgeReattach, setAiChatOpen]);
 
   // Mark dirty on any graph or name change (after initial load).
   const onNodesChangeDirty = useCallback((changes: Parameters<typeof onNodesChange>[0]) => {
@@ -1310,7 +1313,7 @@ function WorkflowEditorInner() {
         workflowId={id} workflow={workflow}
         name={name} onRename={rename} isDirty={isDirty}
         canWrite={canWrite} nodes={nodes}
-        aiChatOpen={aiChatOpen} onToggleAiChat={() => setAiChatOpen((o) => !o)}
+        aiChatOpen={aiChatOpen} onToggleAiChat={() => setAiChatOpen(!aiChatOpen)}
         undo={undo} redo={redo} historyPast={historyPast} historyFuture={historyFuture}
         tidyLayout={tidyLayout} isTidying={isTidying} layoutMode={layoutMode}
         restoreOrigLayout={restoreOrigLayout} hasOrigLayout={hasOrigLayout}

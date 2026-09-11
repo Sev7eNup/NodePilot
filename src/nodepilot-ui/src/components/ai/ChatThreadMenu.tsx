@@ -52,13 +52,20 @@ export function ChatThreadMenu({
   const alignClass = align === 'right' ? 'right-0' : 'left-0';
 
   return (
-    <div ref={ref} className="relative min-w-0">
+    <div ref={ref} className="relative min-w-0" onKeyDown={(event) => {
+      if (event.key !== 'Escape' || !open) return;
+      event.stopPropagation();
+      setOpen(false);
+      setRenaming(null);
+      ref.current?.querySelector('button')?.focus();
+    }}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={triggerClassName}
         title={t('ai:chat.threads')}
         aria-label={t('ai:chat.threads')}
+        aria-expanded={open}
       >
         <span className="max-w-[11rem] truncate">{activeName}</span>
         <ChevronDown size={13} className="shrink-0 text-on-surface-variant" />
@@ -102,7 +109,7 @@ export function ChatThreadMenu({
                   title={t('ai:chat.renameThread')}
                   aria-label={t('ai:chat.renameThread')}
                   onClick={() => { setRenaming(th.id); setRenameValue(th.name); }}
-                  className="rounded p-0.5 text-on-surface-variant opacity-0 transition-opacity hover:text-on-surface group-hover/th:opacity-100 disabled:hover:text-on-surface-variant"
+                  className="rounded p-1 text-on-surface-variant transition-opacity hover:text-on-surface sm:opacity-0 group-hover/th:opacity-100 group-focus-within/th:opacity-100 disabled:hover:text-on-surface-variant"
                 >
                   <Edit size={12} />
                 </button>
@@ -112,7 +119,7 @@ export function ChatThreadMenu({
                   title={t('ai:chat.deleteThread')}
                   aria-label={t('ai:chat.deleteThread')}
                   onClick={() => onDelete(th.id)}
-                  className="rounded p-0.5 text-on-surface-variant opacity-0 transition-opacity hover:text-error group-hover/th:opacity-100 disabled:hover:text-on-surface-variant"
+                  className="rounded p-1 text-on-surface-variant transition-opacity hover:text-error sm:opacity-0 group-hover/th:opacity-100 group-focus-within/th:opacity-100 disabled:hover:text-on-surface-variant"
                 >
                   <TrashCan size={12} />
                 </button>

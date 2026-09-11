@@ -246,11 +246,11 @@ test.describe('AI Knowledge Chat (/ai-chat)', () => {
 
     await page.getByRole('textbox', { name: /Ask about NodePilot/i }).fill('What is NodePilot?');
     await page.getByTitle(/^Send$/i).click();
-    await expect(page.getByText(/Answer/i)).toBeVisible();
+    await expect(page.getByText('Answer.', { exact: true })).toBeVisible();
 
     // Hover the last assistant bubble to reveal the actions row (opacity-0 until group-hover),
     // then click the regenerate button (title/aria-label = "Regenerate answer").
-    await page.getByText(/Answer/i).hover();
+    await page.getByText('Answer.', { exact: true }).hover();
     await page.getByTitle(/Regenerate answer/i).click();
 
     // The second ask request must carry the same question as the first.

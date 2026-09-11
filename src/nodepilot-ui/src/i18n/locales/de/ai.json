@@ -1,4 +1,16 @@
 {
+  "widget": {
+    "title": "NodePilot Assistent",
+    "subtitle": "Deine Fragen. Dein NodePilot.",
+    "open": "NodePilot Assistent öffnen",
+    "openUnread": "NodePilot Assistent öffnen — neue Antwort",
+    "minimize": "Assistent minimieren",
+    "expand": "Großen Chat öffnen",
+    "answerReady": "Deine Antwort ist fertig.",
+    "sources": "Verfügbare Wissensquellen",
+    "searching": "Informationen werden gesucht",
+    "details": "Antwortdetails"
+  },
   "scriptDialog": {
     "title": "Skript per KI generieren",
     "promptLabel": "Was soll das Skript machen?",

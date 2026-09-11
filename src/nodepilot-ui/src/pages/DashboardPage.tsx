@@ -245,7 +245,7 @@ export function DashboardPage() {
           </Panel>
         </div>
         <div className="np-fade-up" style={{ animationDelay: '200ms' }}>
-          <Panel title={t('dashboard:successTrendWindow', { window: windowLabel })} icon={ChartLine} iconClass="text-primary" className="h-full">
+          <Panel title={t('dashboard:successTrendWindow', { window: windowLabel })} icon={ChartLine} iconClass="text-primary" className="h-full flex flex-col">
             <SuccessRateTrend buckets={stats.last24hBuckets} windowHours={windowHours} tokens={tokens} />
           </Panel>
         </div>
@@ -986,8 +986,8 @@ function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: 
       type: 'line',
       smooth: 0.35,
       connectNulls: false,
-      // Inactive buckets stay gaps. Without symbols, isolated active buckets have
-      // neither a neighbouring line segment nor any other visible representation.
+      // Only isolated observations need a symbol; connected runs keep the smooth
+      // line. showAllSymbol prevents axis-label thinning from hiding isolated points.
       showSymbol: true,
       showAllSymbol: true,
       symbol: 'circle',
@@ -1006,14 +1006,17 @@ function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: 
         lineStyle: { type: 'dashed', color: axisColor, opacity: 0.6 },
         label: { formatter: t('dashboard:successTarget', { pct: 95 }), color: axisColor, fontSize: 10, position: 'insideEndTop' },
       },
-      data: points.map((p) => p.rate),
+      data: points.map((p, index) => p.rate == null ? null : ({
+        value: p.rate,
+        symbol: points[index - 1]?.rate == null && points[index + 1]?.rate == null ? 'circle' : 'none',
+      })),
     }],
   }), [points, axisColor, tipBg, tipText, t]);
 
   if (points.length === 0 || points.every((p) => p.rate == null)) {
-    return <div className="h-40 flex items-center justify-center"><EmptyState text={t('dashboard:noExecutionsYet')} /></div>;
+    return <div className="flex-1 min-h-40 flex items-center justify-center"><EmptyState text={t('dashboard:noExecutionsYet')} /></div>;
   }
-  return <EChart option={option} className="h-40 w-full" ariaLabel={t('dashboard:successTrend24h')} />;
+  return <EChart option={option} className="flex-1 min-h-40 w-full" ariaLabel={t('dashboard:successTrendWindow', { window: t(`dashboard:window.${WINDOW_KEY[windowHours] ?? '24h'}`) })} />;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
