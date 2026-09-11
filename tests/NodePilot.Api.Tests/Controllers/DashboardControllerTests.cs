@@ -3,6 +3,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using Moq;
 using NodePilot.Ai;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
@@ -10,6 +11,7 @@ using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
+using NodePilot.Engine.Cluster;
 using NodePilot.TestCommons;
 using Xunit;
 
@@ -79,6 +81,46 @@ public class DashboardControllerTests
         var statsDisabled = (await NewController(db, llmOptions: disabled).Get(CancellationToken.None))
             .Result.As<OkObjectResult>().Value.As<DashboardStats>();
         statsDisabled.LlmEnabled.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("single", false, null)]
+    [InlineData("single", true, null)]
+    [InlineData("none", false, null)]
+    [InlineData("none", true, null)]
+    [InlineData("leader", false, "leader")]
+    [InlineData("leader", true, "leader")]
+    [InlineData("standby", false, "standby")]
+    [InlineData("standby", true, "standby")]
+    public async Task Get_ClusterRole_ReflectsRuntimeMode(string mode, bool noFolderAccess, string? expectedRole)
+    {
+        using var db = TestDbFactory.Create();
+        var cluster = new Mock<IClusterStateProvider>();
+        cluster.SetupGet(c => c.IsLeader).Returns(mode == "leader");
+        if (mode == "leader")
+        {
+            cluster.SetupGet(c => c.LeaseEpoch).Returns(1);
+            cluster.SetupGet(c => c.LeaseExpiresAt).Returns(DateTime.UtcNow.AddMinutes(1));
+        }
+        // A fresh standby has no lease; single-node mode supplies a synthetic lease.
+        IClusterStateProvider? provider = mode switch
+        {
+            "single" => new SingleNodeClusterStateProvider(),
+            "none" => null,
+            _ => cluster.Object,
+        };
+        var authz = new Mock<IResourceAuthorizationService>();
+        authz.Setup(a => a.GetAccessibleFolderIdsAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(noFolderAccess ? AccessibleFolderSet.None : AccessibleFolderSet.Unrestricted);
+        var controller = new DashboardController(db, authz.Object, cluster: provider)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
+        };
+
+        var stats = (await controller.Get(TestContext.Current.CancellationToken))
+            .Result.As<OkObjectResult>().Value.As<DashboardStats>();
+
+        stats.ClusterRole.Should().Be(expectedRole);
     }
 
     [Fact]
