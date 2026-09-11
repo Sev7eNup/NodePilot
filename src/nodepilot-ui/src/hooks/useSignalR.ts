@@ -113,13 +113,18 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
       queryInvalidateTimerRef.current = null;
       const wfIds = Array.from(pendingInvalidateWorkflowsRef.current);
       pendingInvalidateWorkflowsRef.current.clear();
-      // Per-workflow history lists (the ExecutionPanel history tab + ExecutionsPage filter).
+      // Per-workflow history lists (the ExecutionPanel history tab + ExecutionsPage filter),
+      // plus the designer's last-run step detail — it shows the most recent terminal run, which
+      // is exactly what a status change can replace.
       for (const id of wfIds) {
         queryClient.invalidateQueries({ queryKey: ['workflow-executions', id], exact: false });
+        queryClient.invalidateQueries({ queryKey: ['last-execution-steps', id], exact: false });
       }
-      // Global lists that aren't scoped to a workflowId (ExecutionsPage default view, Dashboard).
+      // Global lists that aren't scoped to a workflowId (ExecutionsPage default view, Dashboard,
+      // sidebar running-count badge).
       queryClient.invalidateQueries({ queryKey: ['executions'], exact: false });
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'], exact: false });
+      queryClient.invalidateQueries({ queryKey: ['sidebar-counts'], exact: false });
     }, QUERY_INVALIDATE_DEBOUNCE_MS);
   }, [queryClient]);
   // Tracks executions for which we've fetched full step detail (fully hydrated).

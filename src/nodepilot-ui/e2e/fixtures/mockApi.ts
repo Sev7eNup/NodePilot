@@ -139,11 +139,14 @@ export async function installDefaultMocks(page: Page) {
   await page.route('**/api/executions', (route) => emptyArray(route));
   await page.route('**/api/audit', (route) => emptyArray(route));
 
-  // Dashboard aggregate: the single endpoint the landing page ('/') is built from and the
-  // source of the sidebar nav badges. It must be an object, because the catch-all's `[]` is
-  // truthy, so the page passes its `!stats` guard and then fails on `stats.last24h.total`.
-  // Empty but valid, like the list mocks above; specs that need real numbers override this
-  // after install.
+  // The sidebar nav badges read their own three-count endpoint, on every page.
+  await page.route('**/api/stats/sidebar-counts**', (route) =>
+    route.fulfill({ json: { workflowsTotal: 0, runningCount: 0, machinesTotal: 0 } }));
+
+  // Dashboard aggregate: the single endpoint the landing page ('/') is built from. It must be
+  // an object, because the catch-all's `[]` is truthy, so the page passes its `!stats` guard
+  // and then fails on `stats.last24h.total`. Empty but valid, like the list mocks above;
+  // specs that need real numbers override this after install.
   await page.route('**/api/stats/failure-causes**', route =>
     route.fulfill({ json: { totalFailed: 0, groups: [], remainingCount: 0 } }));
   await page.route('**/api/stats/dashboard**', (route) =>

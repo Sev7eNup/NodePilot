@@ -115,6 +115,17 @@ public static class WorkflowCallGraphBuilder
         if (!WorkflowDefinitionDocument.TryParse(definitionJson, out var doc) || doc is null)
             return [];
 
+        return ExtractCallSites(doc);
+    }
+
+    /// <summary>
+    /// Same extraction from an already-parsed definition, for callers that derive several facts
+    /// from one document and should not parse it again per fact.
+    /// </summary>
+    public static IReadOnlyList<WorkflowCallSite> ExtractCallSites(WorkflowDefinitionDocument doc)
+    {
+        ArgumentNullException.ThrowIfNull(doc);
+
         var sites = new List<WorkflowCallSite>();
         foreach (var node in doc.Nodes)
         {

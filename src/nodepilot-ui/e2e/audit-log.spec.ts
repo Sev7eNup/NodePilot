@@ -118,15 +118,40 @@ test.describe('Audit Log (Teil 16 + 64)', () => {
     await expect(page.getByText('WORKFLOW_PUBLISHED').first()).toBeVisible({ timeout: 15_000 });
 
     // Action filter (placeholder WORKFLOW_CREATED) and user ID filter combine into one query.
+    // The id has to be a real GUID: the endpoint matches it exactly, so a partial one is held
+    // back rather than queried — otherwise the list would silently come back unfiltered.
+    const userGuid = '11111111-2222-3333-4444-555555555555';
     await page.getByPlaceholder('WORKFLOW_CREATED').fill('WORKFLOW_PUBLISHED');
-    await page.locator('input[placeholder="GUID"]').last().fill('admin-guid-123');
+    await page.locator('input[placeholder="GUID"]').last().fill(userGuid);
 
-    // The query re-fires on debounced state change; poll for a URL carrying both params.
+    // The query re-fires once the typing settles; poll for a URL carrying both params.
     await expect
-      .poll(() => seenUrls.some((u) => /action=WORKFLOW_PUBLISHED/.test(u) && /userId=admin-guid-123/.test(u)), {
+      .poll(() => seenUrls.some((u) => /action=WORKFLOW_PUBLISHED/.test(u) && u.includes(`userId=${userGuid}`)), {
         timeout: 10_000,
       })
       .toBe(true);
+  });
+
+  test('64.3 — a partial GUID is not queried and says so', async ({ page }) => {
+    const seenUrls: string[] = [];
+    await page.route('**/api/audit**', (route) => {
+      seenUrls.push(route.request().url());
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ items: [entry({ action: 'WORKFLOW_PUBLISHED' })], nextCursor: null }),
+      });
+    });
+
+    await page.goto('/audit');
+    await expect(page.getByText('WORKFLOW_PUBLISHED').first()).toBeVisible({ timeout: 15_000 });
+    const before = seenUrls.length;
+
+    await page.locator('input[placeholder="GUID"]').first().fill('aaaaaaaa-bbbb');
+
+    await expect(page.getByText(/incomplete guid/i)).toBeVisible();
+    await page.waitForTimeout(1000);
+    expect(seenUrls.length).toBe(before);
   });
 
   test('64.2 — export links carry the active filter set (CSV + NDJSON)', async ({ page }) => {
@@ -142,6 +167,9 @@ test.describe('Audit Log (Teil 16 + 64)', () => {
     await expect(page.getByText('WORKFLOW_PUBLISHED').first()).toBeVisible({ timeout: 15_000 });
 
     await page.getByPlaceholder('WORKFLOW_CREATED').fill('WORKFLOW_PUBLISHED');
+    // The links follow the applied filter set, so they only carry the value once the typing
+    // settles — they are inert until then, exactly so an export cannot disagree with the list.
+    await expect(page.getByPlaceholder('WORKFLOW_CREATED')).toHaveValue('WORKFLOW_PUBLISHED');
 
     // Export is an <a href="/api/audit/export?...&format=..."> built from the same filter params.
     // The links sit in a hover-revealed dropdown (display:none until group-hover), so match on

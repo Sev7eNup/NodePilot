@@ -290,10 +290,11 @@ builder.Services.AddSingleton<NodePilot.Api.Services.IWorkflowContractDeriver, N
 // local OS network config and cached — see HostIdentityProvider. Surfaced via
 // /api/system/host-info.
 builder.Services.AddSingleton<NodePilot.Core.Interfaces.IHostIdentityProvider, NodePilot.Api.Services.HostIdentityProvider>();
-// Live-Ops call-graph cache. Singleton by design: it is keyed by workflow id + UpdatedAt and holds
-// only extracted child-workflow refs, so it is shared safely across users and requests — see
-// WorkflowCallSiteCache for why edges are NOT what gets cached.
-builder.Services.AddSingleton<NodePilot.Api.Services.WorkflowCallSiteCache>();
+// Facts derived from workflow definitions, for the list endpoints that would otherwise read and
+// parse every definition per request. Singleton by design: keyed by workflow id + UpdatedAt and
+// holding only definition-local facts, so it is shared safely across users and requests — see
+// WorkflowDefinitionFactsCache for what deliberately stays out of it.
+builder.Services.AddSingleton<NodePilot.Api.Services.WorkflowDefinitionFactsCache>();
 
 // Response compression. The Live-Ops snapshot alone can carry 4000 finished runs (~900 KB of
 // GUID- and ISO-timestamp-heavy JSON) on a 5 s poll, and it compresses roughly an order of

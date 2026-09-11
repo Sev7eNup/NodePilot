@@ -135,6 +135,17 @@ public sealed record DashboardAuditEvent(
     DateTime Timestamp, string? ActorUserName, string Action,
     string? ResourceType, Guid? ResourceId);
 
+/// <summary>How many finished runs in the window needed more than one attempt at some activity.</summary>
+public sealed record ExecutionRetryStats(int FinishedCount, int RetriedCount);
+
+/// <summary>A redacted, normalized failure message (null when none was recorded), how often it
+/// occurred, and the most recent run that produced it.</summary>
+public sealed record FailureCause(string? Message, int Count, Guid LatestExecutionId, DateTime LatestStartedAt);
+
+/// <summary>Recent failures grouped by cause. <c>RemainingCount</c> covers the groups beyond the
+/// returned ones.</summary>
+public sealed record FailureCausesResponse(int TotalFailed, List<FailureCause> Groups, int RemainingCount);
+
 public sealed record DashboardStats(
     int WorkflowsTotal, int WorkflowsEnabled,
     int MachinesTotal, int MachinesReachable,
@@ -153,7 +164,8 @@ public sealed record DashboardStats(
     string DatabaseProvider = "",
     string? ClusterRole = null,
     List<DashboardAuditEvent>? RecentAudit = null,
-    bool LlmEnabled = false);
+    bool LlmEnabled = false,
+    ExecutionRetryStats? RetryStats = null);
 
 // ---- Observability -----------------------------------------------------------
 

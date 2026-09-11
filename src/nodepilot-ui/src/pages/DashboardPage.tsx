@@ -21,16 +21,17 @@ import {
   Time,
   WarningAltFilled,
 } from '@carbon/icons-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import type { EChartsOption } from 'echarts';
 import { api } from '../api/client';
-import { EChart } from '../components/common/EChart';
+import { EChart } from '../components/common/LazyEChart';
 import { useObservabilityConfig, useTelemetrySummary } from '../api/observability';
 import { useDashboardFeed } from '../hooks/useDashboardFeed';
 import { useMinuteTick } from '../hooks/useMinuteTick';
+import { useOpsClock } from '../hooks/useOpsClock';
 import { SystemHealthBanner } from '../components/dashboard/SystemHealthBanner';
 import { DashboardQuickActions } from '../components/dashboard/DashboardQuickActions';
 import { FailureCauses } from '../components/dashboard/FailureCauses';
@@ -559,6 +560,9 @@ function KpiCard({
 
 function RunningList({ items, onOpen, longRunningSeconds }: Readonly<{ items: RunningExecutionInfo[]; onOpen: (id: string) => void; longRunningSeconds: number }>) {
   const { t } = useTranslation(['dashboard']);
+  // One clock for the whole list. Each row used to own a 1 Hz interval, so a busy system meant
+  // dozens of timers and dozens of separate re-renders per second.
+  const nowMs = useOpsClock(1000, items.length === 0);
   if (items.length === 0) {
     return <EmptyState text={t('dashboard:nothingRunning')} />;
   }
@@ -582,7 +586,7 @@ function RunningList({ items, onOpen, longRunningSeconds }: Readonly<{ items: Ru
               </p>
             </div>
           </div>
-          <LiveDuration startedAt={r.startedAt} longRunningSeconds={longRunningSeconds} />
+          <LiveDuration startedAt={r.startedAt} longRunningSeconds={longRunningSeconds} nowMs={nowMs} />
         </li>
       ))}
     </ul>
@@ -1090,15 +1094,9 @@ function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: 
 // Live elapsed time for active executions.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function LiveDuration({ startedAt, longRunningSeconds }: Readonly<{ startedAt: string; longRunningSeconds: number }>) {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    const timer = globalThis.setInterval(() => setNow(Date.now()), 1000);
-    return () => globalThis.clearInterval(timer);
-  }, []);
-
-  const ms = now - new Date(startedAt).getTime();
+/** Ticked by the list's shared clock rather than one of its own. */
+function LiveDuration({ startedAt, longRunningSeconds, nowMs }: Readonly<{ startedAt: string; longRunningSeconds: number; nowMs: number }>) {
+  const ms = nowMs - new Date(startedAt).getTime();
   const isLong = ms > longRunningSeconds * 1000;
   return (
     <span className={`text-xs font-medium tabular-nums shrink-0 ml-2 flex items-center gap-1 ${isLong ? 'text-red-600' : 'text-blue-600'}`}>

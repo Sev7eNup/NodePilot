@@ -313,6 +313,11 @@ export function getUpstreamVariables(nodeId: string, allNodes: Node[], edges: Ed
     incomingByTarget.set(edge.target, list);
   }
 
+  // Indexed once. Scanning allNodes inside the walk made this quadratic in graph size, and
+  // the properties panel calls it while the canvas is being dragged.
+  const nodeById = new Map<string, Node>();
+  for (const node of allNodes) nodeById.set(node.id, node);
+
   const directSources = incomingByTarget.get(nodeId) || [];
   queue.push(...directSources);
 
@@ -321,7 +326,7 @@ export function getUpstreamVariables(nodeId: string, allNodes: Node[], edges: Ed
     if (visited.has(current)) continue;
     visited.add(current);
 
-    const node = allNodes.find((n) => n.id === current);
+    const node = nodeById.get(current);
     if (node) {
       result.push(...describeNodeOutputs(node));
     }

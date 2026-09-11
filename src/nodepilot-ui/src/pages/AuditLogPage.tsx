@@ -28,6 +28,51 @@ interface AuditPageResponse {
   nextCursor: AuditCursor | null;
 }
 
+/** The free-text half of the filter set — the part somebody types a character at a time. */
+interface AuditTextFilters {
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  userId: string;
+  ipAddress: string;
+}
+
+const FILTER_DEBOUNCE_MS = 300;
+const GUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+/** True when an id field holds something the server could never match. */
+function isIncompleteId(value: string): boolean {
+  return value.trim() !== '' && !GUID_PATTERN.test(value.trim());
+}
+
+/**
+ * The filter set the list, "load more" and the export all read.
+ *
+ * Every keystroke used to be its own request — typing one action name produced sixteen, against
+ * an endpoint that allows sixty a minute, and each one also discarded the already-loaded pages.
+ * Applying the text filters only after a pause fixes both.
+ *
+ * Two cases skip the wait, because they are single deliberate actions rather than typing:
+ * clearing a field, and picking a quick-filter chip (`applyNow`). And an id that is not a GUID
+ * is held back entirely — the server matches those exactly, so querying would silently return
+ * the unfiltered list instead of nothing.
+ */
+function useAppliedTextFilters(next: AuditTextFilters): [AuditTextFilters, (value: AuditTextFilters) => void] {
+  const [applied, setApplied] = useState(next);
+
+  useEffect(() => {
+    if (next === applied) return;
+    if (isIncompleteId(next.resourceId) || isIncompleteId(next.userId)) return;
+
+    const cleared = (Object.keys(next) as (keyof AuditTextFilters)[])
+      .some((key) => next[key] === '' && applied[key] !== '');
+    const timer = globalThis.setTimeout(() => setApplied(next), cleared ? 0 : FILTER_DEBOUNCE_MS);
+    return () => globalThis.clearTimeout(timer);
+  }, [next, applied]);
+
+  return [applied, setApplied];
+}
+
 /**
  * Admin-only audit log viewer. Reads the cursor-paginated `GET /api/audit` endpoint with the
  * current filter set, renders entries newest first, and loads further pages via `nextCursor`.
@@ -48,24 +93,46 @@ export function AuditLogPage() {
   // Pages appended by "Load more". Cleared back to the first page when the filters change.
   const [extraPages, setExtraPages] = useState<AuditPageResponse[]>([]);
 
+  // What the inputs currently hold, and what has actually been applied. The list, "load more"
+  // and the export all read the applied set, so they can never disagree about what is shown.
+  const typedFilters = useMemo<AuditTextFilters>(
+    () => ({ action, resourceType, resourceId, userId, ipAddress }),
+    [action, resourceType, resourceId, userId, ipAddress],
+  );
+  const [appliedText, applyFiltersNow] = useAppliedTextFilters(typedFilters);
+  // The pickers and the row cap are single deliberate actions, so they apply straight away.
+  const filterPending = typedFilters !== appliedText;
+
+  /** Sets a text filter and applies it without the typing delay. */
+  const applyTextFilter = useCallback((patch: Partial<AuditTextFilters>) => {
+    const next = { ...typedFilters, ...patch };
+    if (patch.action !== undefined) setAction(patch.action);
+    if (patch.resourceType !== undefined) setResourceType(patch.resourceType);
+    if (patch.resourceId !== undefined) setResourceId(patch.resourceId);
+    if (patch.userId !== undefined) setUserId(patch.userId);
+    if (patch.ipAddress !== undefined) setIpAddress(patch.ipAddress);
+    applyFiltersNow(next);
+  }, [typedFilters, applyFiltersNow]);
+
   // Builds the query string shared by the live query and the export links.
   const buildParams = useCallback(
     (overrides?: Record<string, string>) => {
       const params = new URLSearchParams();
-      if (action.trim()) params.set('action', action.trim());
-      if (resourceType.trim()) params.set('resourceType', resourceType.trim());
-      if (resourceId.trim()) params.set('resourceId', resourceId.trim());
-      if (userId.trim()) params.set('userId', userId.trim());
-      if (ipAddress.trim()) params.set('ipAddress', ipAddress.trim());
+      if (appliedText.action.trim()) params.set('action', appliedText.action.trim());
+      if (appliedText.resourceType.trim()) params.set('resourceType', appliedText.resourceType.trim());
+      if (appliedText.resourceId.trim()) params.set('resourceId', appliedText.resourceId.trim());
+      if (appliedText.userId.trim()) params.set('userId', appliedText.userId.trim());
+      if (appliedText.ipAddress.trim()) params.set('ipAddress', appliedText.ipAddress.trim());
       if (since.trim()) params.set('since', since);
       if (until.trim()) params.set('until', until);
       if (overrides) for (const [k, v] of Object.entries(overrides)) params.set(k, v);
       return params;
     },
-    [action, resourceType, resourceId, userId, ipAddress, since, until],
+    [appliedText, since, until],
   );
 
-  const queryKey = ['audit', action, resourceType, resourceId, userId, ipAddress, since, until, take];
+  const queryKey = ['audit', appliedText.action, appliedText.resourceType, appliedText.resourceId,
+    appliedText.userId, appliedText.ipAddress, since, until, take];
   const { data: firstPage, refetch, isFetching } = useQuery({
     queryKey,
     queryFn: async () => {
@@ -80,7 +147,7 @@ export function AuditLogPage() {
   // This is keyed on the filter values rather than on the fetch: queryFn also runs on the
   // auto-refetch and on manual refresh, which have to keep the "Load more" pages intact.
    
-  useEffect(() => { setExtraPages([]); }, [action, resourceType, resourceId, userId, ipAddress, since, until, take]);
+  useEffect(() => { setExtraPages([]); }, [appliedText, since, until, take]);
 
   const entries: AuditEntry[] = useMemo(() => {
     const head = firstPage?.items ?? [];
@@ -94,14 +161,15 @@ export function AuditLogPage() {
   }, [firstPage, extraPages]);
 
   const loadMore = useCallback(async () => {
-    if (!lastCursor) return;
+    // A pending filter change would page against a cursor from the previous filter set.
+    if (!lastCursor || filterPending) return;
     const params = buildParams();
     params.set('take', String(take));
     params.set('afterTs', lastCursor.timestamp);
     params.set('afterId', lastCursor.id);
     const next = await api.get<AuditPageResponse>(`/audit?${params.toString()}`);
     setExtraPages((prev) => [...prev, next]);
-  }, [lastCursor, buildParams, take]);
+  }, [lastCursor, buildParams, take, filterPending]);
 
   // Export links: the streaming endpoint reads the same filter params. The browser sends the
   // httpOnly auth cookie on the GET and Content-Disposition triggers the download, so no
@@ -140,14 +208,18 @@ export function AuditLogPage() {
             </button>
             <div className="absolute right-0 top-full mt-1 hidden group-hover:block group-focus-within:block bg-surface-high border border-outline-variant/30 rounded-md shadow-lg z-10 min-w-[160px]">
               <a
-                href={exportHref('csv')}
-                className="block px-3 py-1.5 text-xs font-label hover:bg-surface-highest text-on-surface"
+                href={filterPending ? undefined : exportHref('csv')}
+                aria-disabled={filterPending}
+                title={filterPending ? t('audit:export.pending') : undefined}
+                className={`block px-3 py-1.5 text-xs font-label text-on-surface ${filterPending ? 'opacity-50 pointer-events-none' : 'hover:bg-surface-highest'}`}
               >
                 {t('audit:export.csv')}
               </a>
               <a
-                href={exportHref('ndjson')}
-                className="block px-3 py-1.5 text-xs font-label hover:bg-surface-highest text-on-surface"
+                href={filterPending ? undefined : exportHref('ndjson')}
+                aria-disabled={filterPending}
+                title={filterPending ? t('audit:export.pending') : undefined}
+                className={`block px-3 py-1.5 text-xs font-label text-on-surface ${filterPending ? 'opacity-50 pointer-events-none' : 'hover:bg-surface-highest'}`}
               >
                 {t('audit:export.ndjson')}
               </a>
@@ -198,6 +270,9 @@ export function AuditLogPage() {
               placeholder="GUID"
               className="input-field font-mono text-xs"
             />
+            {isIncompleteId(resourceId) && (
+              <p className="mt-0.5 text-[10px] text-amber-600">{t('audit:incompleteGuid')}</p>
+            )}
           </div>
           <div>
             <label className="block text-[10px] font-label font-semibold text-on-surface-variant uppercase tracking-wider mb-0.5">{t('audit:fields.userId')}</label>
@@ -208,6 +283,9 @@ export function AuditLogPage() {
               placeholder="GUID"
               className="input-field font-mono text-xs"
             />
+            {isIncompleteId(userId) && (
+              <p className="mt-0.5 text-[10px] text-amber-600">{t('audit:incompleteGuid')}</p>
+            )}
           </div>
           <div>
             <label className="block text-[10px] font-label font-semibold text-on-surface-variant uppercase tracking-wider mb-0.5">{t('audit:fields.ipAddress')}</label>
@@ -258,7 +336,7 @@ export function AuditLogPage() {
             {actionCounts.map(([a, n]) => (
               <button
                 key={a}
-                onClick={() => setAction(a === action ? '' : a)}
+                onClick={() => applyTextFilter({ action: a === action ? '' : a })}
                 className={`text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors ${
                   a === action
                     ? 'bg-primary text-on-primary'
@@ -362,7 +440,9 @@ export function AuditLogPage() {
         <div className="flex justify-center">
           <button
             onClick={loadMore}
-            className="px-4 py-1.5 rounded-md bg-surface-high hover:bg-surface-highest text-on-surface-variant text-xs font-label font-semibold transition-colors"
+            disabled={filterPending}
+            title={filterPending ? t('audit:export.pending') : undefined}
+            className="px-4 py-1.5 rounded-md bg-surface-high hover:bg-surface-highest text-on-surface-variant text-xs font-label font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {t('audit:loadMore')}
           </button>

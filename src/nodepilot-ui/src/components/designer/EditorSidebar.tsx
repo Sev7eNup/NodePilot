@@ -72,14 +72,26 @@ export function EditorSidebar({
   useCustomActivityCatalog();
   // Subscribe so the palette rebuilds when the catalog loads / changes.
   const customCatalog = useCustomActivityCatalogStore((s) => s.catalog);
-  // Rebuild categories on language change so labels follow the current language.
-  const filteredCategories = useMemo(() => buildActivityCategories().map((cat) => ({
-    ...cat,
-    items: cat.items.filter((item) =>
-      item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.type.toLowerCase().includes(searchQuery.toLowerCase()),
-    ),
-  })).filter((cat) => cat.items.length > 0), [searchQuery, i18n.language, customCatalog]);
+  // Rebuild categories on language change so labels follow the current language. Kept apart
+  // from the search filter below: building them sorts the whole catalogue, which has nothing
+  // to do with the query and should not repeat on every keystroke.
+  const categories = useMemo(
+    () => buildActivityCategories(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reads the active language and the custom catalog through module state
+    [i18n.language, customCatalog],
+  );
+  const filteredCategories = useMemo(() => {
+    const query = searchQuery.toLowerCase();
+    return categories.map((cat) => ({
+      ...cat,
+      items: query
+        ? cat.items.filter((item) =>
+          item.label.toLowerCase().includes(query) || item.type.toLowerCase().includes(query))
+        : cat.items,
+      // An empty category is dropped either way — a section with no entries (Custom Nodes
+      // before any exist) must not render a bare heading.
+    })).filter((cat) => cat.items.length > 0);
+  }, [searchQuery, categories]);
 
   if (fullscreen) return null;
 

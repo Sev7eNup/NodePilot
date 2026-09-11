@@ -209,10 +209,11 @@ export function useNodeAnnotations({
   const machineColoringEnabled = useDesignStore((s) => s.machineColoringEnabled);
   // Value-based cache key: recompute only when the assigned machines change, not on every new
   // `nodes` array identity (the designer produces one on any drag). Hoisted into a local because
-  // the dependency list must contain simple expressions (react-hooks/use-memo).
-  const targetMachineIdKey = nodes
-    .map((n) => (n.data as Record<string, unknown>).targetMachineId)
-    .join(',');
+  // the dependency list must contain simple expressions (react-hooks/use-memo). Building it at
+  // all is skipped while the feature is off, since it is itself a per-frame scan.
+  const targetMachineIdKey = machineColoringEnabled
+    ? nodes.map((n) => (n.data as Record<string, unknown>).targetMachineId).join(',')
+    : '';
   const sortedMachineIds = useMemo(
     () => [...new Set(
       nodes

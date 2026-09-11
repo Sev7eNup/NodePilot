@@ -283,3 +283,67 @@ describe('QueryPane', () => {
     expect(screen.queryByText('user-a-result')).not.toBeInTheDocument();
   });
 });
+
+describe('QueryPane — result pagination', () => {
+  /** A result set the size the server actually allows (DbAdmin:QueryMaxRows defaults to 10 000). */
+  function bigResult(rowCount: number) {
+    return {
+      columns: [{ name: 'Id', type: 'int' }],
+      rows: Array.from({ length: rowCount }, (_, i) => [`row-${i}`]),
+      rowsAffected: null,
+      durationMs: 12,
+      truncated: false,
+      mode: 'read' as const,
+    };
+  }
+
+  async function runQuery(rowCount: number) {
+    vi.mocked(dbAdminApi.query).mockResolvedValue(bigResult(rowCount));
+    wrap(<QueryPane />);
+    await waitFor(() => expect(screen.getByText('postgres')).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('sql-editor'), { target: { value: 'SELECT Id FROM T' } });
+    await userEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+    await waitFor(() => expect(screen.getByText('row-0')).toBeInTheDocument());
+  }
+
+  it('renders one page of rows, not the whole result set', async () => {
+    // 250 rows × one cell used to become 250 table rows; at the server's cap that is six
+    // figures of DOM elements.
+    await runQuery(250);
+
+    expect(screen.getByText('row-99')).toBeInTheDocument();
+    expect(screen.queryByText('row-100')).not.toBeInTheDocument();
+    expect(screen.getByText('Row 1–100 of 250')).toBeInTheDocument();
+  });
+
+  it('keeps every loaded row reachable through the pager', async () => {
+    await runQuery(250);
+
+    await userEvent.click(screen.getByRole('button', { name: /next page/i }));
+    expect(screen.getByText('row-100')).toBeInTheDocument();
+    expect(screen.queryByText('row-99')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /next page/i }));
+    expect(screen.getByText('row-249')).toBeInTheDocument();
+    // Last page: 50 rows, and forward is blocked.
+    expect(screen.getByText('Row 201–250 of 250')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /next page/i })).toBeDisabled();
+  });
+
+  it('honours the page-size selector and returns to the first page', async () => {
+    await runQuery(250);
+    await userEvent.click(screen.getByRole('button', { name: /next page/i }));
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: /rows per page/i }), '50');
+
+    expect(screen.getByText('Row 1–50 of 250')).toBeInTheDocument();
+    expect(screen.getByText('row-0')).toBeInTheDocument();
+  });
+
+  it('shows no pager for a result that fits on one page', async () => {
+    await runQuery(3);
+
+    expect(screen.getByText('Row 1–3 of 3')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /next page/i })).not.toBeInTheDocument();
+  });
+});

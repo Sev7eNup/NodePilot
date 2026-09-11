@@ -29,6 +29,8 @@
     "label": "Export",
     "csv": "as CSV",
     "ndjson": "as NDJSON",
-    "hint": "Streams all matches of the current filter set (no cap)."
-  }
+    "hint": "Streams all matches of the current filter set (no cap).",
+    "pending": "Waiting for the filter change…"
+  },
+  "incompleteGuid": "Incomplete GUID — the search starts once it is complete."
 }

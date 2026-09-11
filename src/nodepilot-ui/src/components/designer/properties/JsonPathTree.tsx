@@ -3,6 +3,9 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { buildJsonPath, describeJsonValue, type JsonPathSegment } from '../../../lib/jsonPathBuilder';
 
+/** Children mounted per expansion step, and per click on "show more". */
+const CHILDREN_PAGE_SIZE = 50;
+
 export function JsonPathTree({
   value,
   onPick,
@@ -44,6 +47,11 @@ function JsonPathTreeNode({
   const { t } = useTranslation('properties');
   const expandable = value !== null && typeof value === 'object' && depth < maxDepth;
   const [open, setOpen] = useState(depth < 2);
+  // How many children of this node are mounted. A step output holding a few hundred records
+  // expands into a four-figure row count, and every row is a component with its own state —
+  // enough to make a single click on a chevron stall. Nothing is hidden: the rest is one
+  // click away and the full path of every entry stays reachable.
+  const [shownChildren, setShownChildren] = useState(CHILDREN_PAGE_SIZE);
   const jsonPath = buildJsonPath(path);
   const children = getChildren(value);
 
@@ -85,7 +93,7 @@ function JsonPathTreeNode({
       </div>
       {expandable && open && (
         <div>
-          {children.map(({ key, child }) => (
+          {children.slice(0, shownChildren).map(({ key, child }) => (
             <JsonPathTreeNode
               key={`${depth}-${String(key)}`}
               name={String(key)}
@@ -96,6 +104,16 @@ function JsonPathTreeNode({
               onPick={onPick}
             />
           ))}
+          {children.length > shownChildren && (
+            <button
+              type="button"
+              onClick={() => setShownChildren((n) => n + CHILDREN_PAGE_SIZE)}
+              style={{ paddingLeft: (depth + 1) * 12 + 4 }}
+              className="w-full text-left py-0.5 pr-1 text-[10px] text-primary hover:underline"
+            >
+              {t('jsonPathTree.showMore', { count: children.length - shownChildren })}
+            </button>
+          )}
         </div>
       )}
     </div>

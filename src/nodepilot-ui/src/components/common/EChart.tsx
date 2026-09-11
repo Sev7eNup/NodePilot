@@ -4,15 +4,17 @@ import { GaugeChart, LineChart, BarChart, PieChart, HeatmapChart } from 'echarts
 import {
   GridComponent, TooltipComponent, MarkLineComponent, VisualMapComponent, LegendComponent,
 } from 'echarts/components';
-import { SVGRenderer } from 'echarts/renderers';
+import { CanvasRenderer, SVGRenderer } from 'echarts/renderers';
 import type { EChartsOption } from 'echarts';
 
-// SVG renderer (not Canvas) on purpose: it needs no `getContext('2d')`, so it
-// renders crisp and scalable, and works in jsdom (vitest) without a canvas polyfill.
+// SVG is the default renderer on purpose: it needs no `getContext('2d')`, so it renders crisp
+// and scalable, and works in jsdom (vitest) without a canvas polyfill. Canvas is registered
+// alongside it for the one chart type that draws a cell per data point — see the `renderer`
+// prop below.
 echarts.use([
   GaugeChart, LineChart, BarChart, PieChart, HeatmapChart,
   GridComponent, TooltipComponent, MarkLineComponent, VisualMapComponent, LegendComponent,
-  SVGRenderer,
+  SVGRenderer, CanvasRenderer,
 ]);
 
 /**
@@ -21,7 +23,7 @@ echarts.use([
  * fully under this project's control.
  */
 export function EChart({
-  option, className, style, ariaLabel, onClick,
+  option, className, style, ariaLabel, onClick, renderer = 'svg',
 }: Readonly<{
   option: EChartsOption;
   className?: string;
@@ -31,6 +33,10 @@ export function EChart({
    *  event params (incl. `data`, `name`, `dataIndex`). Used by dashboard charts that
    *  act as filters (e.g. a donut segment click sets a status filter). */
   onClick?: (params: unknown) => void;
+  /** SVG everywhere by default. Canvas is for charts that draw one mark per data point —
+   *  a heatmap over a day at minute resolution is tens of thousands of them, and as SVG that
+   *  is tens of thousands of DOM elements. Same data, same values, one element. */
+  renderer?: 'svg' | 'canvas';
 }>) {
   const elRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
@@ -40,7 +46,7 @@ export function EChart({
     if (!el) return;
     let chart: echarts.ECharts | null = null;
     try {
-      chart = echarts.init(el, undefined, { renderer: 'svg' });
+      chart = echarts.init(el, undefined, { renderer });
       chartRef.current = chart;
     } catch {
       // jsdom / zero-size container — render nothing, never crash the page.
@@ -55,7 +61,7 @@ export function EChart({
       chart?.dispose();
       chartRef.current = null;
     };
-  }, []);
+  }, [renderer]);
 
   useEffect(() => {
     try {

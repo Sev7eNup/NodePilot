@@ -21,6 +21,31 @@ public sealed class DashboardCommand : BaseCommand<GlobalSettings>
     }
 }
 
+public sealed class FailureCausesSettings : GlobalSettings
+{
+    [CommandOption("--window-hours <N>")]
+    [Description("Window in hours (1..720, default 24).")]
+    public int? WindowHours { get; set; }
+}
+
+/// <summary>
+/// Recent failures grouped by their normalized message. The server folds GUIDs, timestamps and
+/// whitespace out of each message first, so one recurring fault is one row rather than a scroll
+/// of near-identical lines.
+/// </summary>
+[SupportedOSPlatform("windows")]
+public sealed class FailureCausesCommand : BaseCommand<FailureCausesSettings>
+{
+    public FailureCausesCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
+    protected override async Task<int> RunAsync(CommandContext _, FailureCausesSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
+    {
+        var api = ClientFactory.Create(session);
+        var r = await api.GetFailureCausesAsync(settings.WindowHours, ct);
+        writer.WriteData(r, (console, value) => Renderers.FailureCauses(console, value));
+        return ExitCodes.Success;
+    }
+}
+
 public sealed class WorkflowStatsSettings : GlobalSettings
 {
     [CommandArgument(0, "<ID-OR-NAME>")]

@@ -1,4 +1,4 @@
-import { useContext, useState } from 'react';
+import { useContext, useState, useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   useStore,
@@ -6,6 +6,7 @@ import {
   BaseEdge,
   type EdgeProps,
 } from '@xyflow/react';
+import { shallowEqual } from '../../../lib/shallowEqual';
 import { edgeArrowPath, getSmartEdgePath, EDGE_ARROW_STROKE_FRAC, type ControlPoints } from './smartEdgePath';
 import { EdgeReshapeHandles } from './EdgeReshapeHandles';
 import { EdgeEditingContext } from './edgeEditingContext';
@@ -21,9 +22,18 @@ import type { ExprNode } from '../ConditionBuilder';
  *  superset with reshape actions added. Existing tests and imports keep working. */
 export const EdgeInsertContext = EdgeEditingContext;
 
+/** Edge colours ride the semantic status tokens (skin-stable, dark-aware). `custom` uses the
+ *  dedicated orange token; `reachable`/`varFlow`/`dataBus` share the info token. */
+const EDGE_COLOR_TOKENS = {
+  success: 'var(--color-success)', failed: 'var(--color-error)', custom: 'var(--color-custom)',
+  running: 'var(--color-running)', reachable: 'var(--color-info)', skipped: 'var(--color-skipped)',
+  varFlow: 'var(--color-info)', collapsed: 'var(--color-skipped)', dataBus: 'var(--color-info)',
+  arrowDefault: 'var(--color-outline-variant)',
+} as const;
+
 /* ---- Custom Edge ---- */
 
-export function LabeledEdge({
+function LabeledEdgeImpl({
   id, source, target, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
   data, style, markerEnd, selected,
 }: EdgeProps) {
@@ -39,14 +49,7 @@ export function LabeledEdge({
   const edgeRouting = useDesignStore((s) => s.edgeRouting);
   const edgesAnimated = useDesignStore((s) => s.edgesAnimated);
   const premiumCanvas = useDesignStore((s) => s.premiumCanvas);
-  // Edge colours ride the semantic status tokens (skin-stable, dark-aware). `custom` uses
-  // the dedicated orange token; `reachable`/`varFlow`/`dataBus` share the info token.
-  const EDGE_COLORS = {
-    success: 'var(--color-success)', failed: 'var(--color-error)', custom: 'var(--color-custom)',
-    running: 'var(--color-running)', reachable: 'var(--color-info)', skipped: 'var(--color-skipped)',
-    varFlow: 'var(--color-info)', collapsed: 'var(--color-skipped)', dataBus: 'var(--color-info)',
-    arrowDefault: 'var(--color-outline-variant)',
-  };
+  const EDGE_COLORS = EDGE_COLOR_TOKENS;
 
   // One separate useStore call per endpoint, each returning a primitive value. A
   // tuple/object return would create a new object on every store update and defeat
@@ -128,11 +131,15 @@ export function LabeledEdge({
   // bolder arrowhead. The floor keeps thin edges' arrows visible; the soft ceiling avoids
   // absurd heads at the widest setting.
   const premiumArrowLength = premiumCanvas ? Math.max(12, Math.min(48, edgeWidth * 6)) : undefined;
-  const segments = getSmartEdgePath({
+  // Trimming the curve behind the arrowhead runs a binary search over the cubic's arc length,
+  // so this is the most expensive thing an edge does. Nothing here changes unless an endpoint
+  // or a canvas setting moves.
+  const segments = useMemo(() => getSmartEdgePath({
     sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, routing: edgeRouting,
     controlPoints,
     markerEndLength: premiumArrowLength,
-  });
+  }), [sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, edgeRouting,
+    controlPoints, premiumArrowLength]);
   const [, labelX, labelY] = segments[0];
 
   // Condition-based edge coloring uses semantic, theme-aware status tokens:
@@ -393,3 +400,27 @@ export function LabeledEdge({
     </>
   );
 }
+
+/**
+ * `memo` keeps an edge from re-running its path geometry when the canvas re-renders for an
+ * unrelated reason — a node drag, a selection change, a live-status flush. React Flow hands
+ * the edge a fresh `data` object whenever the projection rebuilds, so `data` is compared by
+ * entries rather than by reference; a reference check would never hold.
+ *
+ * `style` and `markerEnd` are compared the same way: both arrive as object literals.
+ */
+export const LabeledEdge = memo(LabeledEdgeImpl, (prev, next) => {
+  return prev.id === next.id
+    && prev.source === next.source
+    && prev.target === next.target
+    && prev.sourceX === next.sourceX
+    && prev.sourceY === next.sourceY
+    && prev.targetX === next.targetX
+    && prev.targetY === next.targetY
+    && prev.sourcePosition === next.sourcePosition
+    && prev.targetPosition === next.targetPosition
+    && prev.selected === next.selected
+    && shallowEqual(prev.data as Record<string, unknown>, next.data as Record<string, unknown>)
+    && shallowEqual(prev.style as Record<string, unknown>, next.style as Record<string, unknown>)
+    && shallowEqual(prev.markerEnd as unknown as Record<string, unknown>, next.markerEnd as unknown as Record<string, unknown>);
+});

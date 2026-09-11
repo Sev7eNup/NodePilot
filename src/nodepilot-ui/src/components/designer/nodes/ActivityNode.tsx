@@ -16,6 +16,7 @@ import { NodeScaleOverrideContext } from '../nodeScaleContext';
 
 import { getActivityVisual } from './activityConfig';
 import { usePointerFlowPosition } from '../../../stores/pointerFlowPositionStore';
+import { shallowEqual } from '../../../lib/shallowEqual';
 
 /**
  * Context plumbing for the sub-workflow inline-preview button on startWorkflow nodes.
@@ -879,17 +880,17 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
  * 200-node graphs this was measurable — every useDesignStore update (snap toggle, node-style
  * switch) or pan tick walked all 200 nodes.
  *
- * React Flow calls the node component with `data`/`selected`/`isConnectable` as props. Its
- * internal reducer creates a new `data` reference whenever `node.data` actually changed
- * (e.g. a live-status update, a config edit). Reference equality on `data` is therefore the
- * right cut-point: same reference -> no content change -> the re-render can be skipped.
+ * React Flow calls the node component with `data`/`selected`/`isConnectable` as props. `data`
+ * is compared by entries, not by reference: useDisplayedGraph builds a fresh data object for
+ * every node on every projection pass, so a reference check reports a change even when
+ * nothing about the node differs, and this memo would never hold.
  *
  * The component's own useDesignStore subscriptions (nodeStyle, autoHidePorts, etc.)
  * still trigger re-renders independently of this memo — that's intentional, otherwise style
  * switches wouldn't take effect.
  */
 export const ActivityNode = memo(ActivityNodeImpl, (prev, next) => {
-  return prev.data === next.data
+  return shallowEqual(prev.data as Record<string, unknown>, next.data as Record<string, unknown>)
     && prev.selected === next.selected
     && prev.isConnectable === next.isConnectable
     // Position/size feed the cursor-proximity port reveal — RF moves the wrapper without a

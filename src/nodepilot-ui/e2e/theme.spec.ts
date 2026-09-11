@@ -331,7 +331,8 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     await page.addInitScript(() =>
       localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme: 'light-bank' }, version: 0 })),
     );
-    await page.route((url) => url.pathname === '/api/stats/dashboard', (route) => route.fulfill({
+    // Source of the sidebar nav badges asserted further down.
+    await page.route((url) => url.pathname === '/api/stats/sidebar-counts', (route) => route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ workflowsTotal: 24, machinesTotal: 128, runningCount: 3 }),

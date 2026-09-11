@@ -24,15 +24,15 @@ public class OperationsController : ControllerBase
     private readonly NodePilotDbContext _db;
     private readonly IResourceAuthorizationService _authz;
     private readonly IConfiguration? _configuration;
-    private readonly WorkflowCallSiteCache _callSites;
+    private readonly WorkflowDefinitionFactsCache _definitionFacts;
 
     public OperationsController(NodePilotDbContext db, IResourceAuthorizationService authz,
-        IConfiguration? configuration = null, WorkflowCallSiteCache? callSites = null)
+        IConfiguration? configuration = null, WorkflowDefinitionFactsCache? definitionFacts = null)
     {
         _db = db;
         _authz = authz;
         _configuration = configuration;
-        _callSites = callSites ?? new WorkflowCallSiteCache();
+        _definitionFacts = definitionFacts ?? new WorkflowDefinitionFactsCache();
     }
 
     /// <summary>
@@ -114,38 +114,19 @@ public class OperationsController : ControllerBase
         // Deliberately without DefinitionJson: definitions are unbounded text including every
         // inline script, and this endpoint only needs the child-workflow call graph, which changes
         // when a workflow is saved, not when somebody polls. UpdatedAt is the revision marker
-        // WorkflowCallSiteCache uses to decide which definitions still need to be read.
+        // WorkflowDefinitionFactsCache uses to decide which definitions still need to be read.
         var workflows = await workflowQuery
             .Select(w => new { w.Id, w.Name, w.FolderId, w.IsEnabled, w.UpdatedAt })
             .ToListAsync(ct);
 
-        // Request-local and authoritative for THIS response. Deliberately not a second read of the
-        // shared cache after storing: two polls racing across a save could otherwise interleave
-        // into
-        // a mixed answer, and an eviction landing mid-request would silently drop the edges of
-        // workflows this very request had already extracted.
-        var callSitesByWorkflow = new Dictionary<Guid, IReadOnlyList<WorkflowCallSite>>(workflows.Count);
-
-        var staleIds = _callSites.StaleIds(workflows.Select(w => (w.Id, w.UpdatedAt)));
-        if (staleIds.Count > 0)
-        {
-            var definitions = await workflowQuery
-                .Where(w => staleIds.Contains(w.Id))
-                .Select(w => new { w.Id, w.UpdatedAt, w.DefinitionJson })
-                .ToListAsync(ct);
-            foreach (var d in definitions)
-            {
-                var sites = WorkflowCallGraphBuilder.ExtractCallSites(d.DefinitionJson);
-                _callSites.Store(d.Id, d.UpdatedAt, sites);
-                callSitesByWorkflow[d.Id] = sites;
-            }
-        }
-
-        foreach (var wf in workflows)
-        {
-            if (!callSitesByWorkflow.ContainsKey(wf.Id))
-                callSitesByWorkflow[wf.Id] = _callSites.Get(wf.Id);
-        }
+        var factsByWorkflow = await _definitionFacts.ResolveAsync(
+            workflows.Select(w => (w.Id, w.UpdatedAt)).ToList(),
+            async (ids, token) => await workflowQuery
+                .Where(w => ids.Contains(w.Id))
+                .Select(w => new WorkflowDefinitionRow(w.Id, w.UpdatedAt, w.DefinitionJson))
+                .ToListAsync(token),
+            ct);
+        var callSitesByWorkflow = factsByWorkflow.ToDictionary(kv => kv.Key, kv => kv.Value.CallSites);
 
         var folderIds = workflows.Select(w => w.FolderId).Distinct().ToList();
         var folderPaths = await _db.SharedWorkflowFolders.AsNoTracking()

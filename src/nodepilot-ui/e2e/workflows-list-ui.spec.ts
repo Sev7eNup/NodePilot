@@ -265,8 +265,13 @@ test.describe('Workflows-Listenansicht UI (Teil 63)', () => {
       }],
       edges: [],
     });
+    // The list carries no definition, only the flag. The parameter form comes from the
+    // single-workflow read, which the page fetches when Run Now is clicked.
     await page.route('**/api/workflows', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([workflow({ definitionJson: defWithParam })]) }),
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([workflow({ definitionJson: undefined, hasManualTriggerParameters: true })]) }),
+    );
+    await page.route(`**/api/workflows/${ID_ALPHA}`, (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflow({ definitionJson: defWithParam })) }),
     );
     let executeBody: unknown = undefined;
     await page.route(`**/api/workflows/${ID_ALPHA}/execute`, (route) => {

@@ -110,7 +110,9 @@ function SuccessRateCell({ success, total }: Readonly<{ success: number; total: 
 
 export function WorkflowsPage() {
   const { t } = useTranslation(['workflows', 'common']);
-  const TRIGGER_META = buildTriggerMeta(t);
+  // Rebuilt only on a language change, not on every render of a page that re-renders on
+  // every keystroke in its search box.
+  const TRIGGER_META = useMemo(() => buildTriggerMeta(t), [t]);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { canWrite, canDelete, isAdmin } = useRole();
@@ -582,11 +584,20 @@ export function WorkflowsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['executions'] }),
   });
 
-  const handleRunWorkflow = (w: Workflow) => {
-    const triggerConfig = extractManualTriggerConfig(w.definitionJson);
-    if (triggerConfig && triggerConfig.parameters.length > 0) {
-      setRunDialogWorkflow(w);
-    } else {
+  // The list does not carry definitions, so the parameter form is fetched only for the
+  // workflows that actually prompt for input. `hasManualTriggerParameters` comes from the list,
+  // so the common case — run it and go — still fires without a round-trip.
+  const handleRunWorkflow = async (w: Workflow) => {
+    if (!w.hasManualTriggerParameters) {
+      executeMutation.mutate({ id: w.id });
+      return;
+    }
+    try {
+      const full = await api.get<Workflow>(`/workflows/${w.id}`);
+      setRunDialogWorkflow(full);
+    } catch {
+      // Fall back to running it without parameters rather than swallowing the click; the
+      // engine seeds declared defaults for anything the caller leaves out.
       executeMutation.mutate({ id: w.id });
     }
   };
@@ -1377,7 +1388,8 @@ export function WorkflowsPage() {
 
       {/* Run Dialog for ManualTrigger workflows */}
       {runDialogWorkflow && (() => {
-        const triggerConfig = extractManualTriggerConfig(runDialogWorkflow.definitionJson);
+        // Set from the single-workflow fetch in handleRunWorkflow, so the definition is present.
+        const triggerConfig = extractManualTriggerConfig(runDialogWorkflow.definitionJson ?? '');
         if (!triggerConfig) return null;
         return (
           <RunWorkflowDialog

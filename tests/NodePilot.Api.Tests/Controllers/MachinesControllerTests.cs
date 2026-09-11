@@ -370,6 +370,46 @@ public class MachinesControllerTests
     }
 
     [Fact]
+    public async Task GetAll_EditedDefinition_UpdatesUsedByWorkflowCount()
+    {
+        // Machine references come from a revision-keyed cache instead of re-parsing every
+        // definition per request. A saved edit moves UpdatedAt, so the next list must reflect it
+        // — serving the cached answer here would leave the "used by" signal permanently wrong.
+        var db = CreateContext();
+        var machine = new ManagedMachine { Id = Guid.NewGuid(), Name = "X", Hostname = "x.local" };
+        db.ManagedMachines.Add(machine);
+
+        var targeting = $"{{\"nodes\":[{{\"id\":\"n0\",\"type\":\"activity\",\"data\":{{\"activityType\":\"runScript\",\"targetMachineId\":\"{machine.Id}\"}}}}],\"edges\":[]}}";
+        var workflow = new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Name = "WF",
+            DefinitionJson = targeting,
+            UpdatedAt = new DateTime(2026, 9, 1, 10, 0, 0, DateTimeKind.Utc),
+        };
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var cache = new NodePilot.Api.Services.WorkflowDefinitionFactsCache();
+        MachinesController NewController() => new(
+            db, new Mock<IRemoteSessionFactory>().Object,
+            new Mock<ICredentialStore>().Object, NoopAuditWriter.Instance,
+            definitionFacts: cache);
+
+        static int CountFor(ActionResult<List<MachineResponse>> result, Guid id)
+            => (((result.Result as OkObjectResult)!.Value as List<MachineResponse>)!)
+                .Single(m => m.Id == id).UsedByWorkflowCount;
+
+        CountFor(await NewController().GetAll(CancellationToken.None), machine.Id).Should().Be(1);
+
+        workflow.DefinitionJson = "{\"nodes\":[],\"edges\":[]}";
+        workflow.UpdatedAt = new DateTime(2026, 9, 1, 11, 0, 0, DateTimeKind.Utc);
+        await db.SaveChangesAsync();
+
+        CountFor(await NewController().GetAll(CancellationToken.None), machine.Id).Should().Be(0);
+    }
+
+    [Fact]
     public async Task GetAll_PopulatesRecentStepStats_AndActiveRuns()
     {
         var db = CreateContext();

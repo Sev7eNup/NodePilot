@@ -1,44 +1,28 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { useState } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 
-// renderHook mounts no <ReactFlow> element, so useReactFlow has no real store to talk to.
-// The mock below backs it with a per-test in-memory store so getNodes and setNodes
-// round-trip the way the production hook expects.
-let mockNodes: Node[] = [];
-let mockEdges: Edge[] = [];
-vi.mock('@xyflow/react', () => ({
-  useReactFlow: () => ({
-    getNodes: () => mockNodes,
-    getEdges: () => mockEdges,
-    setNodes: (next: Node[] | ((prev: Node[]) => Node[])) => {
-      mockNodes = typeof next === 'function' ? (next as (p: Node[]) => Node[])(mockNodes) : next;
-    },
-    setEdges: (next: Edge[] | ((prev: Edge[]) => Edge[])) => {
-      mockEdges = typeof next === 'function' ? (next as (p: Edge[]) => Edge[])(mockEdges) : next;
-    },
-  }),
-}));
-
-// Imported after vi.mock so these bindings resolve to the mocked module.
 import { useWorkflowHistory } from '../../hooks/useWorkflowHistory';
-import { useReactFlow } from '@xyflow/react';
 
-function makeNode(id: string): Node {
-  return { id, position: { x: 0, y: 0 }, data: { label: id } };
+function makeNode(id: string, parentId?: string): Node {
+  return { id, position: { x: 0, y: 0 }, data: { label: id }, ...(parentId ? { parentId } : {}) };
 }
 
-function setup() {
+/**
+ * Drives the hook from real React state, the way the editor does. The hook must never read
+ * the graph from React Flow's store, so no store is provided here.
+ */
+function setup(initialNodes: Node[] = [], initialEdges: Edge[] = []) {
   return renderHook(() => {
-    const flow = useReactFlow();
-    const history = useWorkflowHistory('wf-1');
-    return { flow, history };
+    const [nodes, setNodes] = useState<Node[]>(initialNodes);
+    const [edges, setEdges] = useState<Edge[]>(initialEdges);
+    const history = useWorkflowHistory('wf-1', { nodes, edges, setNodes, setEdges });
+    return { nodes, edges, setNodes, setEdges, history };
   });
 }
 
 describe('useWorkflowHistory', () => {
-  beforeEach(() => { mockNodes = []; mockEdges = []; });
-
   it('starts with empty past and future stacks', () => {
     const { result } = setup();
     expect(result.current.history.historyPast).toEqual([]);
@@ -48,7 +32,7 @@ describe('useWorkflowHistory', () => {
   it('commitHistory snapshots the current state onto the past stack', () => {
     const { result } = setup();
 
-    act(() => { result.current.flow.setNodes([makeNode('a')]); });
+    act(() => { result.current.setNodes([makeNode('a')]); });
     act(() => { result.current.history.commitHistory(); });
 
     expect(result.current.history.historyPast).toHaveLength(1);
@@ -56,29 +40,27 @@ describe('useWorkflowHistory', () => {
     expect(result.current.history.historyFuture).toEqual([]);
   });
 
-  it('undo restores the previous snapshot to the canvas and shifts stacks', () => {
+  it('undo restores the previous snapshot and shifts stacks', () => {
     const { result } = setup();
 
-    act(() => { result.current.flow.setNodes([makeNode('a')]); });
+    act(() => { result.current.setNodes([makeNode('a')]); });
     act(() => { result.current.history.commitHistory(); });
-    act(() => { result.current.flow.setNodes([makeNode('a'), makeNode('b')]); });
+    act(() => { result.current.setNodes([makeNode('a'), makeNode('b')]); });
     act(() => { result.current.history.undo(); });
 
-    // Restoration to the past snapshot is the user-observable contract.
-    expect(result.current.flow.getNodes().map(n => n.id)).toEqual(['a']);
+    expect(result.current.nodes.map(n => n.id)).toEqual(['a']);
     expect(result.current.history.historyPast).toHaveLength(0);
     expect(result.current.history.historyFuture).toHaveLength(1);
-    // The contents of historyFuture[0].nodes are not asserted: the snapshot is taken in a
-    // nested setState updater that React runs after the setNodes mutation, so it holds the
-    // post-undo state. The stack lengths above are what the undo/redo buttons rely on.
+    // The future entry holds the pre-undo graph, so redo restores it exactly.
+    expect(result.current.history.historyFuture[0].nodes.map(n => n.id)).toEqual(['a', 'b']);
   });
 
   it('redo pops from the future stack and pushes onto the past stack', () => {
     const { result } = setup();
 
-    act(() => { result.current.flow.setNodes([makeNode('a')]); });
+    act(() => { result.current.setNodes([makeNode('a')]); });
     act(() => { result.current.history.commitHistory(); });
-    act(() => { result.current.flow.setNodes([makeNode('a'), makeNode('b')]); });
+    act(() => { result.current.setNodes([makeNode('a'), makeNode('b')]); });
     act(() => { result.current.history.undo(); });
 
     expect(result.current.history.historyFuture).toHaveLength(1);
@@ -86,6 +68,7 @@ describe('useWorkflowHistory', () => {
 
     act(() => { result.current.history.redo(); });
 
+    expect(result.current.nodes.map(n => n.id)).toEqual(['a', 'b']);
     expect(result.current.history.historyFuture).toHaveLength(0);
     expect(result.current.history.historyPast).toHaveLength(1);
   });
@@ -93,11 +76,11 @@ describe('useWorkflowHistory', () => {
   it('commitHistory after an undo clears the redo stack', () => {
     const { result } = setup();
 
-    act(() => { result.current.flow.setNodes([makeNode('a')]); });
+    act(() => { result.current.setNodes([makeNode('a')]); });
     act(() => { result.current.history.commitHistory(); });
-    act(() => { result.current.flow.setNodes([makeNode('a'), makeNode('b')]); });
+    act(() => { result.current.setNodes([makeNode('a'), makeNode('b')]); });
     act(() => { result.current.history.undo(); });
-    act(() => { result.current.flow.setNodes([makeNode('c')]); });
+    act(() => { result.current.setNodes([makeNode('c')]); });
     act(() => { result.current.history.commitHistory(); });
 
     expect(result.current.history.historyFuture).toEqual([]);
@@ -107,7 +90,7 @@ describe('useWorkflowHistory', () => {
     const { result } = setup();
 
     for (let i = 0; i < 55; i++) {
-      act(() => { result.current.flow.setNodes([makeNode(`n${i}`)]); });
+      act(() => { result.current.setNodes([makeNode(`n${i}`)]); });
       act(() => { result.current.history.commitHistory(); });
     }
 
@@ -118,10 +101,37 @@ describe('useWorkflowHistory', () => {
   it('undo on an empty past stack is a no-op', () => {
     const { result } = setup();
 
-    act(() => { result.current.flow.setNodes([makeNode('a')]); });
+    act(() => { result.current.setNodes([makeNode('a')]); });
     act(() => { result.current.history.undo(); });
 
-    expect(result.current.flow.getNodes().map(n => n.id)).toEqual(['a']);
+    expect(result.current.nodes.map(n => n.id)).toEqual(['a']);
     expect(result.current.history.historyFuture).toEqual([]);
+  });
+
+  it('keeps the children of a collapsed group through commit and undo', () => {
+    // The canvas projection drops a collapsed group's children (buildCollapsedGraphView), so a
+    // snapshot taken from React Flow's store would omit them and undo would delete them for
+    // real. The hook snapshots the editor's own state instead.
+    const group = makeNode('group-1');
+    const children = [makeNode('step-a', 'group-1'), makeNode('step-b', 'group-1')];
+    const { result } = setup([group, ...children]);
+
+    act(() => { result.current.history.commitHistory('Collapse'); });
+    act(() => { result.current.setNodes([group]); });
+    act(() => { result.current.history.undo(); });
+
+    expect(result.current.nodes.map(n => n.id)).toEqual(['group-1', 'step-a', 'step-b']);
+  });
+
+  it('commitHistory keeps one identity across graph updates', () => {
+    // It is a dependency of most graph callbacks; a new identity per drag frame would
+    // invalidate all of them.
+    const { result } = setup();
+    const first = result.current.history.commitHistory;
+
+    act(() => { result.current.setNodes([makeNode('a')]); });
+    act(() => { result.current.setNodes([makeNode('a'), makeNode('b')]); });
+
+    expect(result.current.history.commitHistory).toBe(first);
   });
 });

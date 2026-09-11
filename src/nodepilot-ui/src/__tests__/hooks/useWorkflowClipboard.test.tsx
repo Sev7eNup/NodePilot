@@ -3,27 +3,25 @@ import { renderHook, act } from '@testing-library/react';
 import type { Node, Edge } from '@xyflow/react';
 
 /**
- * useWorkflowClipboard reads and writes the React Flow store via `useReactFlow()`.
- * The provider alone does not wire up getNodes/setNodes without a mounted <ReactFlow>,
- * so @xyflow/react is mocked and backed by a small in-test store. This keeps the tests
- * on the hook's clipboard semantics: selection rules, in-memory lifetime, paste offsets
- * and group/parent re-mapping.
+ * useWorkflowClipboard works on the editor's own graph state, which a small in-test store
+ * stands in for. This keeps the tests on the hook's clipboard semantics: selection rules,
+ * in-memory lifetime, paste offsets and group/parent re-mapping.
  */
 
 const store: { nodes: Node[]; edges: Edge[] } = { nodes: [], edges: [] };
 
-vi.mock('@xyflow/react', () => ({
-  useReactFlow: () => ({
-    getNodes: () => store.nodes,
-    getEdges: () => store.edges,
-    setNodes: (updater: ((ns: Node[]) => Node[]) | Node[]) => {
-      store.nodes = typeof updater === 'function' ? updater(store.nodes) : updater;
-    },
-    setEdges: (updater: ((es: Edge[]) => Edge[]) | Edge[]) => {
-      store.edges = typeof updater === 'function' ? updater(store.edges) : updater;
-    },
-  }),
-}));
+// Getters so the hook always sees the current store contents, the way it sees current
+// React state in the editor.
+const graphSource = {
+  get nodes() { return store.nodes; },
+  get edges() { return store.edges; },
+  setNodes: ((updater: ((ns: Node[]) => Node[]) | Node[]) => {
+    store.nodes = typeof updater === 'function' ? updater(store.nodes) : updater;
+  }) as React.Dispatch<React.SetStateAction<Node[]>>,
+  setEdges: ((updater: ((es: Edge[]) => Edge[]) | Edge[]) => {
+    store.edges = typeof updater === 'function' ? updater(store.edges) : updater;
+  }) as React.Dispatch<React.SetStateAction<Edge[]>>,
+};
 
 import { useWorkflowClipboard } from '../../hooks/useWorkflowClipboard';
 
@@ -53,7 +51,7 @@ function setup(initialNodes: Node[], initialEdges: Edge[]) {
   });
 
   const commitHistory = vi.fn();
-  const hook = renderHook(() => useWorkflowClipboard(commitHistory));
+  const hook = renderHook(() => useWorkflowClipboard(commitHistory, graphSource));
   return { ...hook, commitHistory };
 }
 

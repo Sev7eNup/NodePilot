@@ -22,8 +22,11 @@ export function useCriticalPath(
 ) {
   const { setNodes } = useReactFlow();
 
+  // Gated like the computation below it: the canvas replaces the node array on every frame of
+  // a drag, and scanning it for stats the feature is not going to use is wasted work.
   const stats = useMemo(() => {
     const map = new Map<string, { p95DurationMs: number }>();
+    if (!enabled) return map;
     for (const n of nodes) {
       const s = (n.data as Record<string, unknown>)?.__stats as { p95DurationMs: number } | undefined;
       if (s && typeof s.p95DurationMs === 'number') {
@@ -31,7 +34,7 @@ export function useCriticalPath(
       }
     }
     return map;
-  }, [nodes]);
+  }, [enabled, nodes]);
 
   const result = useMemo(() => {
     if (!enabled) return null;

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { DesignerMode } from '../stores/designStore';
 
 const SCRIPT_EDITOR_DIALOG_SELECTOR = '[data-nodepilot-script-editor-dialog="true"]';
@@ -78,32 +78,41 @@ interface EditorShortcutsOptions {
   navigate: (to: string) => void;
 }
 
-export function useEditorKeyboardShortcuts({
-  designerMode,
-  undo, redo, copySelection, pasteBuffer, groupSelection,
-  selectAll, zoomToSelection, navigateNode,
-  searchOpen, setSearchOpen, setSearchInput,
-  helpOpen, setHelpOpen,
-  findReplaceOpen, setFindReplaceOpen,
-  edgeDetachActive, cancelEdgeDetach,
-  toggleFullscreen, toggleQuickSwitcher, toggleCommandPalette,
-  triggerSave, triggerLock, triggerUnlock, triggerForceUnlock,
-  triggerPublish, triggerTest, triggerDebug, triggerCancel,
-  triggerTidy, toggleLintPanel,
-  restoreOrigLayout, setDiffOpen, triggerSimulation, clearActivityTypeFilter,
-  toggleEdgesAnimated, cycleEdgeRouting, edgeWidthInc, edgeWidthDec,
-  toggleNodeStyle, nodeSizeInc, nodeSizeDec, labelFontInc, labelFontDec,
-  toggleMachineColoring, toggleFailureHeatmap, toggleCriticalPath, toggleSnapToGrid,
-  toggleSelectedDisabled, toggleSelectedBreakpoint,
-  nudgeSelectedNodes, fitViewAll,
-  exportJson, exportPng,
-  navigate,
-}: EditorShortcutsOptions) {
+export function useEditorKeyboardShortcuts(options: EditorShortcutsOptions) {
+  // The editor rebuilds this option bag on every render — many entries are inline arrows, and
+  // several close over the node array. Binding the listener to it would add and remove a
+  // window listener on every frame of a drag, so the handler reads the newest bag from a ref
+  // and stays attached for the lifetime of the editor.
+  const optionsRef = useRef(options);
+  useEffect(() => { optionsRef.current = options; });
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (typeof document !== 'undefined' && document.querySelector(SCRIPT_EDITOR_DIALOG_SELECTOR)) {
         return;
       }
+
+      const {
+        designerMode,
+        undo, redo, copySelection, pasteBuffer, groupSelection,
+        selectAll, zoomToSelection, navigateNode,
+        searchOpen, setSearchOpen, setSearchInput,
+        helpOpen, setHelpOpen,
+        findReplaceOpen, setFindReplaceOpen,
+        edgeDetachActive, cancelEdgeDetach,
+        toggleFullscreen, toggleQuickSwitcher, toggleCommandPalette,
+        triggerSave, triggerLock, triggerUnlock, triggerForceUnlock,
+        triggerPublish, triggerTest, triggerDebug, triggerCancel,
+        triggerTidy, toggleLintPanel,
+        restoreOrigLayout, setDiffOpen, triggerSimulation, clearActivityTypeFilter,
+        toggleEdgesAnimated, cycleEdgeRouting, edgeWidthInc, edgeWidthDec,
+        toggleNodeStyle, nodeSizeInc, nodeSizeDec, labelFontInc, labelFontDec,
+        toggleMachineColoring, toggleFailureHeatmap, toggleCriticalPath, toggleSnapToGrid,
+        toggleSelectedDisabled, toggleSelectedBreakpoint,
+        nudgeSelectedNodes, fitViewAll,
+        exportJson, exportPng,
+        navigate,
+      } = optionsRef.current;
 
       const isExpert = designerMode === 'expert';
       const target = e.target as HTMLElement | null;
@@ -307,21 +316,5 @@ export function useEditorKeyboardShortcuts({
     };
     globalThis.addEventListener('keydown', onKeyDown);
     return () => globalThis.removeEventListener('keydown', onKeyDown);
-  }, [
-    designerMode, undo, redo, copySelection, pasteBuffer, groupSelection, selectAll, zoomToSelection,
-    navigateNode, searchOpen, setSearchOpen, setSearchInput, helpOpen, setHelpOpen,
-    findReplaceOpen, setFindReplaceOpen, edgeDetachActive, cancelEdgeDetach,
-    toggleFullscreen, toggleQuickSwitcher, toggleCommandPalette,
-    triggerSave, triggerLock, triggerUnlock, triggerForceUnlock,
-    triggerPublish, triggerTest, triggerDebug, triggerCancel,
-    triggerTidy, toggleLintPanel,
-    restoreOrigLayout, setDiffOpen, triggerSimulation, clearActivityTypeFilter,
-    toggleEdgesAnimated, cycleEdgeRouting, edgeWidthInc, edgeWidthDec,
-    toggleNodeStyle, nodeSizeInc, nodeSizeDec, labelFontInc, labelFontDec,
-    toggleMachineColoring, toggleFailureHeatmap, toggleCriticalPath, toggleSnapToGrid,
-    toggleSelectedDisabled, toggleSelectedBreakpoint,
-    nudgeSelectedNodes, fitViewAll,
-    exportJson, exportPng,
-    navigate,
-  ]);
+  }, []);
 }

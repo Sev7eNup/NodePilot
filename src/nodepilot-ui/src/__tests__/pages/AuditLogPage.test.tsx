@@ -288,3 +288,80 @@ describe('AuditLogPage', () => {
     await waitFor(() => expect(lastUrl).toContain('ipAddress=192.168.1.1'));
   });
 });
+
+describe('AuditLogPage — filter debouncing', () => {
+  it('applies a typed action filter once, not once per keystroke', async () => {
+    // The endpoint allows 60 requests a minute; typing one action name used to spend a
+    // quarter of that budget, and every keystroke also discarded the loaded pages.
+    const seen: string[] = [];
+    server.use(http.get(`${BASE}/api/audit`, ({ request }) => {
+      seen.push(new URL(request.url).searchParams.get('action') ?? '');
+      return HttpResponse.json(page(ENTRIES));
+    }));
+    renderPage();
+    await waitFor(() => expect(seen.length).toBe(1)); // the unfiltered first load
+
+    const field = screen.getByPlaceholderText('WORKFLOW_CREATED');
+    for (const value of ['W', 'WO', 'WOR', 'WORK', 'WORKF']) {
+      fireEvent.change(field, { target: { value } });
+    }
+
+    await waitFor(() => expect(seen).toContain('WORKF'), { timeout: 2000 });
+    // One request for the settled value, never one per character.
+    expect(seen.filter((a) => a !== '')).toEqual(['WORKF']);
+  });
+
+  it('clears a filter immediately instead of waiting out the delay', async () => {
+    const seen: string[] = [];
+    server.use(http.get(`${BASE}/api/audit`, ({ request }) => {
+      seen.push(new URL(request.url).searchParams.get('action') ?? '');
+      return HttpResponse.json(page(ENTRIES));
+    }));
+    renderPage();
+    const field = await screen.findByPlaceholderText('WORKFLOW_CREATED');
+
+    fireEvent.change(field, { target: { value: 'LOGIN_FAILED' } });
+    await waitFor(() => expect(seen).toContain('LOGIN_FAILED'), { timeout: 2000 });
+
+    fireEvent.change(field, { target: { value: '' } });
+
+    await waitFor(() => expect(seen.at(-1)).toBe(''), { timeout: 500 });
+  });
+
+  it('does not query an incomplete GUID and says so', async () => {
+    // resourceId is matched exactly server-side, so a partial GUID can only ever return the
+    // unfiltered list — which would look like the filter silently did nothing.
+    const seen: string[] = [];
+    server.use(http.get(`${BASE}/api/audit`, ({ request }) => {
+      seen.push(new URL(request.url).searchParams.get('resourceId') ?? '');
+      return HttpResponse.json(page(ENTRIES));
+    }));
+    renderPage();
+    await waitFor(() => expect(seen.length).toBe(1));
+
+    const [resourceIdField] = screen.getAllByPlaceholderText('GUID');
+    fireEvent.change(resourceIdField, { target: { value: 'aaaaaaaa-bbbb' } });
+
+    expect(await screen.findByText(/incomplete guid/i)).toBeInTheDocument();
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 600));
+    expect(seen.length).toBe(1);
+
+    fireEvent.change(resourceIdField, { target: { value: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' } });
+    await waitFor(() => expect(seen).toContain('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'), { timeout: 2000 });
+  });
+
+  it('disables export and load-more while a filter change is pending', async () => {
+    server.use(http.get(`${BASE}/api/audit`, () =>
+      HttpResponse.json(page(ENTRIES, { timestamp: '2026-04-25T11:00:00Z', id: 'e2' }))));
+    renderPage();
+    const field = await screen.findByPlaceholderText('WORKFLOW_CREATED');
+    const loadMore = () => screen.getByRole('button', { name: /load more|mehr laden/i });
+    await waitFor(() => expect(loadMore()).toBeEnabled());
+
+    fireEvent.change(field, { target: { value: 'WORKFLOW' } });
+
+    // Paging mid-edit would follow a cursor from the previous filter set.
+    expect(loadMore()).toBeDisabled();
+    await waitFor(() => expect(loadMore()).toBeEnabled(), { timeout: 2000 });
+  });
+});

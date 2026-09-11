@@ -56,10 +56,41 @@ public class WorkflowsControllerTests
 
         // Assert
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var workflows = ok.Value.Should().BeAssignableTo<List<WorkflowResponse>>().Subject;
+        var workflows = ok.Value.Should().BeAssignableTo<List<WorkflowListItemResponse>>().Subject;
         workflows.Should().HaveCount(2);
         workflows[0].Name.Should().Be("Newer");
         workflows[1].Name.Should().Be("Older");
+    }
+
+    /// <summary>
+    /// The list does not carry definitions. They are unbounded text including every inline
+    /// script, the list returns up to 500 rows, and ten UI surfaces fetch it for names alone.
+    /// The one thing the list did need from a definition — whether starting the workflow asks
+    /// for input — is answered by a flag instead.
+    /// </summary>
+    [Fact]
+    public async Task GetAll_OmitsDefinitionsAndFlagsManualParameters()
+    {
+        var db = CreateContext();
+        const string withParameters = """
+            {"nodes":[{"id":"mt","type":"activity","data":{"activityType":"manualTrigger","config":{"parameters":[{"name":"env"}]}}}],"edges":[]}
+            """;
+        const string withoutParameters = """
+            {"nodes":[{"id":"mt","type":"activity","data":{"activityType":"manualTrigger","config":{}}}],"edges":[]}
+            """;
+        db.Workflows.AddRange(
+            new Workflow { Id = Guid.NewGuid(), Name = "Prompts", DefinitionJson = withParameters, UpdatedAt = DateTime.UtcNow.AddHours(-1) },
+            new Workflow { Id = Guid.NewGuid(), Name = "Silent", DefinitionJson = withoutParameters, UpdatedAt = DateTime.UtcNow.AddHours(-2) });
+        await db.SaveChangesAsync();
+
+        var result = await NewController(db).Workflows.GetAll(CancellationToken.None);
+
+        var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        var workflows = ok.Value.Should().BeAssignableTo<List<WorkflowListItemResponse>>().Subject;
+        workflows.Single(w => w.Name == "Prompts").HasManualTriggerParameters.Should().BeTrue();
+        workflows.Single(w => w.Name == "Silent").HasManualTriggerParameters.Should().BeFalse();
+        // No property on the row can carry a definition at all.
+        typeof(WorkflowListItemResponse).GetProperty("DefinitionJson").Should().BeNull();
     }
 
     /// <summary>
@@ -126,7 +157,7 @@ public class WorkflowsControllerTests
         var result = await h.Workflows.GetAll(CancellationToken.None);
 
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var responses = ok.Value.Should().BeAssignableTo<List<WorkflowResponse>>().Subject;
+        var responses = ok.Value.Should().BeAssignableTo<List<WorkflowListItemResponse>>().Subject;
         var hotResp = responses.Single(r => r.Name == "Hot");
         var coolResp = responses.Single(r => r.Name == "Cool");
 
@@ -150,7 +181,7 @@ public class WorkflowsControllerTests
         var result = await h.Workflows.GetAll(CancellationToken.None);
 
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var responses = ok.Value.Should().BeAssignableTo<List<WorkflowResponse>>().Subject;
+        var responses = ok.Value.Should().BeAssignableTo<List<WorkflowListItemResponse>>().Subject;
         responses.Should().BeEmpty();
     }
 
@@ -179,7 +210,7 @@ public class WorkflowsControllerTests
         var result = await h.Workflows.GetAll(CancellationToken.None);
 
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var responses = ok.Value.Should().BeAssignableTo<List<WorkflowResponse>>().Subject;
+        var responses = ok.Value.Should().BeAssignableTo<List<WorkflowListItemResponse>>().Subject;
         responses.Count.Should().Be(500);
     }
 
@@ -206,7 +237,7 @@ public class WorkflowsControllerTests
         var result = await h.Workflows.GetAll(CancellationToken.None);
 
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var resp = ok.Value.Should().BeAssignableTo<List<WorkflowResponse>>().Subject.Single();
+        var resp = ok.Value.Should().BeAssignableTo<List<WorkflowListItemResponse>>().Subject.Single();
         resp.LastExecution.Should().BeNull();
         resp.TotalCount.Should().Be(0);
         resp.SuccessCount.Should().Be(0);
@@ -258,7 +289,7 @@ public class WorkflowsControllerTests
         var result = await h.Workflows.GetAll(CancellationToken.None);
 
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var response = ok.Value.Should().BeAssignableTo<List<WorkflowResponse>>().Subject.Single();
+        var response = ok.Value.Should().BeAssignableTo<List<WorkflowListItemResponse>>().Subject.Single();
         response.LastExecution.Should().NotBeNull();
         response.LastExecution!.Id.Should().Be(latestId);
         response.LastExecution.Status.Should().Be(nameof(ExecutionStatus.Failed));

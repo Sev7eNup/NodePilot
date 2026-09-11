@@ -124,6 +124,43 @@ public record WorkflowResponse(
     public WorkflowCapabilities Capabilities { get; init; } = new(false, false, false, false, false);
 }
 
+/// <summary>
+/// One row of <c>GET /api/workflows</c>.
+///
+/// <para>Everything <see cref="WorkflowResponse"/> carries except <c>DefinitionJson</c>. A
+/// definition is unbounded text including every inline script, and the list can return up to 500
+/// rows; none of the surfaces that read this list render a definition. Fetch the single workflow
+/// when the graph itself is needed.</para>
+///
+/// <para><see cref="HasManualTriggerParameters"/> replaces the one thing the list did read out of
+/// the definition: whether starting this workflow asks the caller for input. False means it can
+/// be started straight away.</para>
+/// </summary>
+public record WorkflowListItemResponse(
+    Guid Id, string Name, string? Description,
+    int Version, bool IsEnabled, DateTime CreatedAt, DateTime UpdatedAt, string? CreatedBy, string? UpdatedBy)
+{
+    public int ActivityCount { get; init; }
+    public List<string> TriggerTypes { get; init; } = new();
+    public LastExecutionInfo? LastExecution { get; init; }
+    public int SuccessCount { get; init; }
+    public int TotalCount { get; init; }
+    public double? AvgDurationMs { get; init; }
+    public bool HasManualTriggerParameters { get; init; }
+
+    public int? MaxConcurrentExecutions { get; init; }
+
+    public Guid? CheckedOutByUserId { get; init; }
+    public string? CheckedOutByUserName { get; init; }
+    public DateTime? CheckedOutAt { get; init; }
+
+    public Guid FolderId { get; init; }
+    public string? FolderPath { get; init; }
+
+    /// <summary>Default-deny, for the same reason as on <see cref="WorkflowResponse"/>.</summary>
+    public WorkflowCapabilities Capabilities { get; init; } = new(false, false, false, false, false);
+}
+
 /// <summary>RBAC capabilities a caller has on a specific workflow. Lifted into the DTO so
 /// the UI can hide buttons it cannot use without a separate /me/permissions roundtrip.
 /// <para><b>CanDelete</b> is its own flag because the workflow-DELETE endpoint is Admin-only
