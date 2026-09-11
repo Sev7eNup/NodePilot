@@ -37,6 +37,8 @@ public record DashboardAuditEvent(
     DateTime Timestamp, string? ActorUserName,
     string Action, string? ResourceType, Guid? ResourceId);
 
+public record ExecutionRetryStats(int FinishedCount, int RetriedCount);
+
 public record DashboardStats(
     int WorkflowsTotal, int WorkflowsEnabled,
     int MachinesTotal, int MachinesReachable,
@@ -55,4 +57,7 @@ public record DashboardStats(
     string? ClusterRole,
     List<DashboardAuditEvent>? RecentAudit,
     bool LlmEnabled,
-    int LongRunningSeconds);
+    int LongRunningSeconds)
+{
+    public ExecutionRetryStats RetryStats { get; init; } = new(0, 0);
+}

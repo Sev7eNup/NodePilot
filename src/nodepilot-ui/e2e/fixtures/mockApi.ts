@@ -144,6 +144,8 @@ export async function installDefaultMocks(page: Page) {
   // truthy, so the page passes its `!stats` guard and then fails on `stats.last24h.total`.
   // Empty but valid, like the list mocks above; specs that need real numbers override this
   // after install.
+  await page.route('**/api/stats/failure-causes**', route =>
+    route.fulfill({ json: { totalFailed: 0, groups: [], remainingCount: 0 } }));
   await page.route('**/api/stats/dashboard**', (route) =>
     route.fulfill({
       status: 200,
@@ -151,6 +153,7 @@ export async function installDefaultMocks(page: Page) {
       body: JSON.stringify({
         workflowsTotal: 0, workflowsEnabled: 0, machinesTotal: 0, machinesReachable: 0,
         executionsTotal: 0,
+        retryStats: { finishedCount: 0, retriedCount: 0 },
         last24h: { total: 0, succeeded: 0, failed: 0, running: 0, cancelled: 0 },
         last24hBuckets: [], topWorkflows: [], running: [], recent: [], armedTriggers: [],
         pendingCount: 0, runningCount: 0, longRunningCount: 0,

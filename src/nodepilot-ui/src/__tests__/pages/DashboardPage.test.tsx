@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { http, HttpResponse } from 'msw';
@@ -24,6 +25,7 @@ function patchFetch() {
 }
 
 const server = setupServer(
+  http.get(`${BASE}/api/stats/failure-causes`, () => HttpResponse.json({ totalFailed: 0, groups: [], remainingCount: 0 })),
   http.get(`${BASE}/api/observability/config`, () =>
     HttpResponse.json({ enabled: false, traceUiUrlTemplate: null, traceBackendName: null })
   )
@@ -57,6 +59,7 @@ const BASE_STATS = {
   machinesReachable: 5,
   executionsTotal: 250,
   last24h: { total: 30, succeeded: 28, failed: 2, running: 0, cancelled: 0 },
+  retryStats: { finishedCount: 30, retriedCount: 2 },
   last24hBuckets: [],
   topWorkflows: [
     {
@@ -125,21 +128,67 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Machines')).toBeInTheDocument();
   });
 
-  it('renders the Runs (24h) KPI without the inline sparkline graphic', async () => {
+  it.each([
+    [0, 0, '—', 'No finished executions'],
+    [100, 0, '0%', '0 executions'],
+    [16, 1, '6.3%', '1 execution'],
+    [59_516, 3690, '6.2%', '3,690 executions'],
+    [1, 1, '100%', '1 execution'],
+    [1000, 1, '0.1%', '1 execution'],
+    [10000, 1, '<0.1%', '1 execution'],
+  ])('renders retry share for %s finished and %s retried executions', async (finishedCount, retriedCount, value, hint) => {
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
       ...BASE_STATS,
-      last24hBuckets: [
-        { hourStart: new Date(Date.now() - 2 * 3600_000).toISOString(), succeeded: 5, failed: 1, cancelled: 0 },
-        { hourStart: new Date(Date.now() - 1 * 3600_000).toISOString(), succeeded: 7, failed: 0, cancelled: 0 },
-      ],
+      retryStats: { finishedCount, retriedCount },
     })));
     renderPage();
-    await waitFor(() => expect(screen.getByText('Runs (24h)')).toBeInTheDocument());
-    const card = screen.getByText('Runs (24h)').closest('div.np-card') as HTMLElement;
-    // The removed sparkline was the only 72px-wide inline svg; the Carbon label icon is 12px.
-    expect(card.querySelector('svg[width="72"]')).toBeNull();
-    // Total renders in full now that nothing competes for the row.
-    expect(card.textContent).toContain('30');
+    const card = (await screen.findByText('Retries needed (24h)')).closest('div.np-card') as HTMLElement;
+    expect(within(card).getByText(value)).toBeInTheDocument();
+    expect(within(card).getByText(hint)).toBeInTheDocument();
+    expect(screen.queryByText('Runs (24h)')).not.toBeInTheDocument();
+    expect(within(card).queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('explains automatic retries against finished executions with a keyboard-accessible disclosure', async () => {
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)));
+    renderPage();
+    const summary = await screen.findByLabelText('How the retry share is calculated');
+    expect(summary.closest('details')).not.toHaveAttribute('open');
+    summary.focus();
+    // jsdom does not implement the browser's default keyboard action for summary;
+    // the browser test below exercises Enter, while click verifies disclosure content here.
+    await userEvent.click(summary);
+    expect(summary.closest('details')).toHaveAttribute('open');
+    expect(screen.getByText(/Of 30 finished executions.*automatically retried activity/)).toBeVisible();
+  });
+
+  it('updates the retry KPI and its denominator with the selected window', async () => {
+    const hours: string[] = [];
+    server.use(http.get(`${BASE}/api/stats/dashboard`, ({ request }) => {
+      const selected = new URL(request.url).searchParams.get('windowHours')!;
+      hours.push(selected);
+      return HttpResponse.json({ ...BASE_STATS, retryStats: selected === '168'
+        ? { finishedCount: 100, retriedCount: 10 } : BASE_STATS.retryStats });
+    }));
+    renderPage();
+    await screen.findByText('Retries needed (24h)');
+    await userEvent.click(screen.getByRole('button', { name: '7 days' }));
+    const card = (await screen.findByText('Retries needed (7 days)')).closest('div.np-card')!;
+    expect(within(card as HTMLElement).getByText('10%')).toBeInTheDocument();
+    expect(hours).toEqual(['24', '168']);
+  });
+
+  it('localizes retry counts and very small positive percentages in German', async () => {
+    await i18n.changeLanguage('de');
+    try {
+      server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+        ...BASE_STATS, retryStats: { finishedCount: 100_000_000, retriedCount: 3690 },
+      })));
+      renderPage();
+      const card = (await screen.findByText('Wiederholungen nötig (24 h)')).closest('div.np-card') as HTMLElement;
+      expect(within(card).getByText(/<0,1\s%/)).toBeInTheDocument();
+      expect(within(card).getByText('3.690 Ausführungen')).toBeInTheDocument();
+    } finally { await i18n.changeLanguage('en'); }
   });
 
   it('renders top workflows panel with avg/p95 duration', async () => {
@@ -148,9 +197,7 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByText('Top Workflows (7 days)')).toBeInTheDocument());
     expect(screen.getByText('10 runs')).toBeInTheDocument();
     expect(screen.getByText(/avg/i)).toBeInTheDocument();
-    // The new "p95 · Top Workflows" chart title also matches /p95/i, so assert ≥1 instead of
-    // unique.
-    expect(screen.getAllByText(/p95/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/p95/i)).toBeInTheDocument();
   });
 
   it('renders recent executions with status', async () => {
@@ -371,17 +418,35 @@ describe('DashboardPage', () => {
       longRunningCount: 1,
     })));
     renderPage();
-    await waitFor(() => expect(screen.getByText(/0p · 3r/)).toBeInTheDocument());
-    expect(screen.getByText(/1 long/i)).toBeInTheDocument();
+    const card = (await screen.findByText('Queue', { exact: true })).closest('.np-card')! as HTMLElement;
+    expect(within(within(card).getByText('Pending').closest('div')!).getByText('0')).toBeInTheDocument();
+    expect(within(within(card).getByText('Running').closest('div')!).getByText('3')).toBeInTheDocument();
+    expect(within(card).getByText('1 of these long-running')).toBeInTheDocument();
   });
 
-  it('renders cluster role badge when HA is configured', async () => {
-    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
-      ...BASE_STATS,
-      clusterRole: 'leader',
-    })));
-    renderPage();
-    await waitFor(() => expect(screen.getByText('Leader')).toBeInTheDocument());
+  it.each([
+    ['en', null, 'Disabled', 'Single node', 'HA: disabled'],
+    ['de', null, 'Deaktiviert', 'Einzelknoten', 'HA: deaktiviert'],
+    ['en', 'leader', 'Leader', 'HA enabled', 'HA: leader'],
+    ['en', 'standby', 'Standby', 'HA enabled', 'HA: standby'],
+    ['de', 'leader', 'Leader', 'HA aktiviert', 'HA: Leader'],
+    ['de', 'standby', 'Standby', 'HA aktiviert', 'HA: Standby'],
+  ] as const)('shows HA mode and role in %s with role %s', async (language, clusterRole, value, hint, banner) => {
+    await i18n.changeLanguage(language);
+    try {
+      server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({ ...BASE_STATS, clusterRole })));
+      renderPage();
+      const card = (await screen.findByText('HA', { exact: true })).closest('.np-card')! as HTMLElement;
+      expect(within(card).getByText(value)).toBeInTheDocument();
+      expect(within(card).getByText(hint)).toBeInTheDocument();
+      expect(screen.getByText(banner)).toBeInTheDocument();
+      if (clusterRole === null) {
+        expect(within(card).queryByText('Leader')).not.toBeInTheDocument();
+        expect(screen.queryByText(/HA: active|HA: aktiv$/)).not.toBeInTheDocument();
+      }
+    } finally {
+      await i18n.changeLanguage('en');
+    }
   });
 
   it('keeps the Currently Running list in an out-of-flow scroll container (no row blow-out)', async () => {
@@ -419,7 +484,7 @@ describe('DashboardPage', () => {
     expect(scroller.parentElement).toHaveClass('relative');
   });
 
-  // ── Insights (run-status summary · success-rate trend · p95 bars) ──
+  // ── Insights (run-status summary · success-rate trend · recurring errors) ──
 
   it('renders the run-status summary with total and all four statuses including zero counts', async () => {
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)));
@@ -499,17 +564,20 @@ describe('DashboardPage', () => {
     expect(screen.queryByText('No executions yet')).not.toBeInTheDocument();
   });
 
-  it('renders the p95 top-workflows chart when duration data exists', async () => {
+  it('replaces the p95 chart with the independent failure-causes panel', async () => {
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)));
     renderPage();
-    await waitFor(() => expect(screen.getByText('p95 · Top Workflows (7d)')).toBeInTheDocument());
-    expect(screen.queryByText('No duration data yet')).not.toBeInTheDocument();
+    expect(await screen.findByText('Most Common Errors (24h)')).toBeInTheDocument();
+    expect(screen.queryByText('p95 · Top Workflows (7d)')).not.toBeInTheDocument();
+    expect(await screen.findByText('No failed executions in the selected period.')).toBeInTheDocument();
   });
 
-  it('shows empty state for p95 chart when no workflow has duration data', async () => {
+  it('keeps the dashboard available when failure causes cannot load', async () => {
+    server.use(http.get(`${BASE}/api/stats/failure-causes`, () => HttpResponse.json({}, { status: 500 })));
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({ ...BASE_STATS, topWorkflows: [] })));
     renderPage();
-    await waitFor(() => expect(screen.getByText('p95 · Top Workflows (7d)')).toBeInTheDocument());
-    expect(screen.getByText('No duration data yet')).toBeInTheDocument();
+    expect(await screen.findByText('Could not load failure causes.')).toBeInTheDocument();
+    expect(screen.getByText('Workflows')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 });

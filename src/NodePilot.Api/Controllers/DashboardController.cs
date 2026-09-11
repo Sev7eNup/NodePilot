@@ -5,10 +5,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using NodePilot.Ai;
 using NodePilot.Api.Dtos;
+using NodePilot.Api.Services;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.WorkflowDefinitions;
 using NodePilot.Data;
+using NodePilot.Engine.Cluster;
+using NodePilot.Engine.Security;
 using Quartz;
 
 namespace NodePilot.Api.Controllers;
@@ -24,13 +27,15 @@ public class DashboardController : ControllerBase
     private readonly IOptionsMonitor<LlmOptions>? _llmOptions;
     private readonly IMaintenanceWindowEvaluator? _maintenance;
     private readonly IConfiguration? _configuration;
+    private readonly OutputRedactor _redactor;
 
     public DashboardController(NodePilotDbContext db,
         IResourceAuthorizationService authz,
         IClusterStateProvider? cluster = null,
         IOptionsMonitor<LlmOptions>? llmOptions = null,
         IMaintenanceWindowEvaluator? maintenance = null,
-        IConfiguration? configuration = null)
+        IConfiguration? configuration = null,
+        OutputRedactor? redactor = null)
     {
         _db = db;
         _authz = authz;
@@ -38,6 +43,18 @@ public class DashboardController : ControllerBase
         _llmOptions = llmOptions;
         _maintenance = maintenance;
         _configuration = configuration;
+        _redactor = redactor ?? new OutputRedactor(configuration);
+    }
+
+    [HttpGet("failure-causes")]
+    public async Task<ActionResult<FailureCausesResponse>> GetFailureCauses(CancellationToken ct, [FromQuery] int windowHours = 24)
+    {
+        if (windowHours <= 0 || windowHours > 720) windowHours = 24;
+        var now = DateTime.UtcNow;
+        var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
+        var executions = _db.WorkflowExecutions.AsNoTracking().ScopeToAccessibleFolders(accessible);
+        if (executions is null) return Ok(new FailureCausesResponse(0, [], 0));
+        return Ok(await new DashboardFailureCauses(_db, _redactor).ReadAsync(executions, now.AddHours(-windowHours), now, ct));
     }
 
     /// <summary>
@@ -145,6 +162,9 @@ public class DashboardController : ControllerBase
             hourlyAgg.Sum(a => a.Failed),
             hourlyAgg.Sum(a => a.Running),
             hourlyAgg.Sum(a => a.Cancelled));
+
+        var retryStats = await DashboardRetryStats.BuildQuery(execQuery, _db.StepExecutions.AsNoTracking(), sinceWindow, now)
+            .SingleOrDefaultAsync(ct) ?? new ExecutionRetryStats(0, 0);
 
         var wfStats7d = await execQuery
             .Where(e => e.StartedAt >= since7d)
@@ -442,7 +462,10 @@ public class DashboardController : ControllerBase
             clusterRole,
             recentAudit,
             GetLlmEnabled(),
-            longRunningSeconds);
+            longRunningSeconds)
+        {
+            RetryStats = retryStats,
+        };
 
         return Ok(stats);
     }
@@ -542,11 +565,8 @@ public class DashboardController : ControllerBase
 
     private string? GetClusterRole()
     {
-        // No-op provider (single-node mode) always reports IsLeader=true; the cluster
-        // feature itself is config-gated, so we only surface a role string when an actual
-        // cluster lease has been observed (LeaseEpoch > 0 or LeaseExpiresAt is set).
-        if (_cluster is null) return null;
-        if (_cluster.LeaseEpoch == 0 && _cluster.LeaseExpiresAt is null) return null;
+        // The registered provider reflects the running mode; config changes require a restart.
+        if (_cluster is null or SingleNodeClusterStateProvider) return null;
         return _cluster.IsLeader ? "leader" : "standby";
     }
 

@@ -10,9 +10,10 @@ import {
   ErrorFilled,
   FlashFilled,
   Growth,
+  Information,
   Locked,
   Meter,
-  Play,
+  Renew,
   Screen,
   SecurityServices,
   Subtract,
@@ -32,6 +33,7 @@ import { useDashboardFeed } from '../hooks/useDashboardFeed';
 import { useMinuteTick } from '../hooks/useMinuteTick';
 import { SystemHealthBanner } from '../components/dashboard/SystemHealthBanner';
 import { DashboardQuickActions } from '../components/dashboard/DashboardQuickActions';
+import { FailureCauses } from '../components/dashboard/FailureCauses';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { formatDate, formatDuration, formatNumber, formatRelative, formatRelativeFuture } from '../lib/format';
 import { TRIGGER_BADGE_META as TRIGGER_META } from '../lib/triggerBadgeMeta';
@@ -53,6 +55,7 @@ interface DashboardStats {
   runningCount: number;
   longRunningCount: number;
   longRunningSeconds: number;
+  retryStats: { finishedCount: number; retriedCount: number };
   failingWorkflows: FailingWorkflow[];
   editLocks: EditLockInfo[];
   healthHeartbeats: HealthHeartbeatInfo[];
@@ -193,7 +196,7 @@ export function DashboardPage() {
         </div>
       </div>
       {/* Hero row: radial gauge on the left, KPI cluster in the centre, live runs on the right. */}
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-5 mb-5">
+      <div className="relative grid grid-cols-1 xl:grid-cols-4 gap-5 mb-5 has-[details[open]]:z-30">
         <div className="np-fade-up" style={{ animationDelay: '0ms' }}>
           <HeroGauge
             successRate={successRate}
@@ -204,7 +207,7 @@ export function DashboardPage() {
             tokens={tokens}
           />
         </div>
-        <div className="xl:col-span-2 np-fade-up" style={{ animationDelay: '60ms' }}>
+        <div className="relative xl:col-span-2 np-fade-up has-[details[open]]:z-10" style={{ animationDelay: '60ms' }}>
           <KpiGrid stats={stats} windowLabel={windowLabel} />
         </div>
         <div className="np-fade-up flex flex-col" style={{ animationDelay: '90ms' }}>
@@ -237,7 +240,7 @@ export function DashboardPage() {
         </div>
         <HourlyAreaChart buckets={stats.last24hBuckets} windowHours={windowHours} tokens={tokens} />
       </div>
-      {/* Three compact charts: run status, success trend and performance. */}
+      {/* Run status, success trend and recurring failure messages. */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-5">
         <div className="np-fade-up" style={{ animationDelay: '160ms' }}>
           <Panel title={t('dashboard:runStatusWindow', { window: windowLabel })} icon={Time} iconClass="text-emerald-500" className="h-full">
@@ -250,8 +253,8 @@ export function DashboardPage() {
           </Panel>
         </div>
         <div className="np-fade-up" style={{ animationDelay: '240ms' }}>
-          <Panel title={t('dashboard:p95TopWorkflows')} icon={Time} iconClass="text-amber-500" className="h-full">
-            <P95WorkflowBars items={stats.topWorkflows} tokens={tokens} />
+          <Panel title={t('dashboard:failureCauses.title', { window: windowLabel })} icon={DocumentUnknown} iconClass="text-red-500" className="h-full flex flex-col">
+            <FailureCauses windowHours={windowHours} />
           </Panel>
         </div>
       </div>
@@ -422,19 +425,8 @@ function KpiGrid({ stats, windowLabel }: Readonly<{ stats: DashboardStats; windo
         hint={t('dashboard:machinesReachable', { count: stats.machinesReachable })}
         hintColor={machinesAllOnline ? undefined : 'text-amber-600'}
       />
-      <KpiCard
-        icon={Play} iconColor="text-on-surface-variant"
-        label={t('dashboard:runsWindow', { window: windowLabel })} value={formatNumber(stats.last24h.total)}
-        hint={t('dashboard:runsAllTime', { count: stats.executionsTotal })}
-      />
-      <KpiCard
-        icon={TaskComplete} iconColor="text-on-surface-variant"
-        label={t('dashboard:queueDepth')}
-        value={t('dashboard:queueShort', { pending: stats.pendingCount, running: stats.runningCount })}
-        hint={stats.longRunningCount > 0 ? t('dashboard:longRunning', { count: stats.longRunningCount }) : undefined}
-        hintColor={stats.longRunningCount > 0 ? 'text-red-600' : undefined}
-        hintIcon={stats.longRunningCount > 0 ? WarningAltFilled : undefined}
-      />
+      <RetryKpiCard retryStats={stats.retryStats} windowLabel={windowLabel} />
+      <QueueKpiCard stats={stats} />
       <KpiCard
         icon={Activity}
         iconColor={scheduler ? (scheduler.isStale ? 'text-red-600' : 'text-emerald-500') : 'text-outline'}
@@ -443,47 +435,122 @@ function KpiGrid({ stats, windowLabel }: Readonly<{ stats: DashboardStats; windo
         valueColor={scheduler?.isStale ? 'text-red-600' : undefined}
         hint={scheduler ? formatRelative(scheduler.lastHeartbeatAt) : undefined}
       />
-      {stats.clusterRole && (
-        <KpiCard
-          icon={BareMetalServer} iconColor="text-primary"
-          label={t('dashboard:clusterRole')}
-          value={stats.clusterRole === 'leader' ? t('dashboard:clusterLeader') : t('dashboard:clusterStandby')}
-        />
+      <KpiCard
+        icon={BareMetalServer} iconColor={stats.clusterRole ? 'text-primary' : 'text-outline'}
+        label={t('dashboard:clusterRole')}
+        value={stats.clusterRole === 'leader' ? t('dashboard:clusterLeader')
+          : stats.clusterRole === 'standby' ? t('dashboard:clusterStandby')
+          : t('dashboard:clusterDisabled')}
+        valueColor={stats.clusterRole ? undefined : 'text-on-surface-variant'}
+        compactValue={!stats.clusterRole}
+        hint={stats.clusterRole ? t('dashboard:clusterEnabled') : t('dashboard:clusterSingleNode')}
+      />
+    </div>
+  );
+}
+
+function QueueKpiCard({ stats }: Readonly<{ stats: DashboardStats }>) {
+  const { t } = useTranslation(['dashboard']);
+  return (
+    <div className="np-card p-4 min-w-0 flex flex-col justify-center">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-on-surface-variant">
+        <TaskComplete size={12} className="shrink-0" />
+        <span>{t('dashboard:queueDepth')}</span>
+      </div>
+      <dl className="mt-2 divide-y divide-outline-variant/40">
+        {[
+          { label: t('dashboard:queuePending'), count: stats.pendingCount, active: false },
+          { label: t('dashboard:queueRunning'), count: stats.runningCount, active: stats.runningCount > 0 },
+        ].map(({ label, count, active }) => (
+          <div key={label} className="flex items-center justify-between gap-2 py-1.5">
+            <dt className="flex shrink-0 items-center gap-1.5 text-xs text-on-surface-variant">
+              <span aria-hidden="true" className={`size-1.5 shrink-0 rounded-full ${active ? 'bg-primary' : 'bg-outline'}`} />
+              {label}
+            </dt>
+            <dd className={`min-w-0 text-right text-xl font-bold tabular-nums leading-none [overflow-wrap:anywhere] ${active ? 'text-primary' : 'text-on-surface'}`}>
+              {formatNumber(count)}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {stats.longRunningCount > 0 && (
+        <p className="mt-1 flex items-start gap-1 text-xs text-error"
+          title={t('dashboard:longRunningTitle', { duration: formatDuration(stats.longRunningSeconds * 1000) })}>
+          <WarningAltFilled size={12} className="mt-0.5 shrink-0" />
+          <span>{t('dashboard:longRunning', { count: stats.longRunningCount })}</span>
+        </p>
       )}
     </div>
   );
 }
 
+function RetryKpiCard({ retryStats, windowLabel }: Readonly<{ retryStats: DashboardStats['retryStats']; windowLabel: string }>) {
+  const { t, i18n } = useTranslation(['dashboard']);
+  // An older server may not yet include the additive field during a frontend/backend rollout.
+  const { finishedCount = 0, retriedCount = 0 } = retryStats ?? {};
+  const percentage = new Intl.NumberFormat(i18n.language, { style: 'percent', maximumFractionDigits: 1 });
+  const share = finishedCount > 0 ? retriedCount / finishedCount : null;
+  const value = share == null ? '—' : share > 0 && share < 0.001
+    ? `<${percentage.format(0.001)}` : percentage.format(share);
+  return (
+    <KpiCard
+      icon={Renew} iconColor="text-on-surface-variant"
+      label={t('dashboard:retryStats.title', { window: windowLabel })}
+      value={value}
+      hint={finishedCount > 0
+        ? t('dashboard:retryStats.affected', { count: retriedCount, formattedCount: formatNumber(retriedCount) })
+        : t('dashboard:retryStats.empty')}
+      description={t('dashboard:retryStats.description', { formattedCount: formatNumber(finishedCount) })}
+    />
+  );
+}
+
 function KpiCard({
-  icon: Icon, iconColor, label, value, valueColor, hint, hintColor, hintIcon: HintIcon,
+  icon: Icon, iconColor, label, value, valueColor, compactValue, hint, hintColor, hintIcon: HintIcon, description,
 }: Readonly<{
   icon: React.ElementType;
   iconColor: string;
   label: string;
   value: string;
   valueColor?: string;
+  compactValue?: boolean;
   hint?: string;
   hintColor?: string;
   hintIcon?: React.ElementType;
+  description?: string;
 }>) {
+  const { t } = useTranslation(['dashboard']);
   return (
     <div className="np-card p-4 min-w-0 flex flex-col justify-center">
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-on-surface-variant">
         <Icon size={12} className={`${iconColor} shrink-0`} />
-        <span className="truncate">{label}</span>
+        <span className={description ? 'min-w-0 flex-1 whitespace-normal tracking-normal' : 'truncate'}>{label}</span>
       </div>
-      <div className="mt-2.5">
+      <div className="mt-2.5 flex items-center justify-between gap-2">
         <p
-          className={`text-[1.7rem] font-bold tabular-nums leading-none truncate ${valueColor ?? 'text-on-surface'}`}
+          className={`${compactValue ? 'text-xl sm:text-[1.7rem]' : 'text-[1.7rem]'} font-bold tabular-nums leading-none truncate ${valueColor ?? 'text-on-surface'}`}
           title={value}
         >
           {value}
         </p>
+        {description && (
+          <details className="shrink-0 text-on-surface-variant">
+            <summary
+              aria-label={t('dashboard:retryStats.explain')}
+              className="cursor-pointer list-none rounded focus-visible:outline-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden"
+            >
+              <Information size={14} />
+            </summary>
+            <p className="absolute inset-x-0 top-full z-20 mt-1 rounded-xl border border-outline-variant bg-surface-lowest p-3 text-xs leading-relaxed text-on-surface shadow-lg">
+              {description}
+            </p>
+          </details>
+        )}
       </div>
       {hint && (
         <p className={`text-xs mt-2 flex items-center gap-1 ${hintColor ?? 'text-outline'}`}>
           {HintIcon && <HintIcon size={10} className="shrink-0" />}
-          <span className="truncate">{hint}</span>
+          <span className={description ? '[overflow-wrap:anywhere]' : 'truncate'}>{hint}</span>
         </p>
       )}
     </div>
@@ -1020,79 +1087,8 @@ function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// p95 duration of the busiest workflows as ranked horizontal bars. Sorting that set by
-// p95 is presentation order only, not a global "slowest" ranking, because the backend
-// selects the workflows by run count.
+// Live elapsed time for active executions.
 // ─────────────────────────────────────────────────────────────────────────────
-
-function P95WorkflowBars({ items, tokens }: Readonly<{ items: TopWorkflow[]; tokens: ChartTokens }>) {
-  const { t } = useTranslation(['dashboard']);
-  const axisColor = tokens.axis;
-  const tipBg = tokens.surfaceHigh;
-  const tipText = tokens.onSurface;
-  // Gradient stops follow the active skin's accent tokens, which fall back to literal
-  // colours where the CSS variables resolve to empty.
-  const barFrom = tokens.primaryContainer;
-  const barTo = tokens.primary;
-
-  const top = useMemo(() => items
-    .filter((w) => w.p95DurationMs != null)
-    .sort((a, b) => (b.p95DurationMs ?? 0) - (a.p95DurationMs ?? 0))
-    .slice(0, 5), [items]);
-
-  const option = useMemo<EChartsOption>(() => ({
-    grid: { left: 4, right: 48, top: 6, bottom: 6, containLabel: true },
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'shadow' },
-      backgroundColor: tipBg,
-      borderWidth: 0,
-      padding: [6, 10],
-      textStyle: { color: tipText, fontSize: 11 },
-      formatter: (params: unknown) => {
-        const arr = params as Array<{ name: string; value: number }>;
-        const p = arr[0];
-        return p ? `${p.name}<br/>p95 ${formatDuration(p.value)}` : '';
-      },
-    },
-    xAxis: { type: 'value', show: false },
-    yAxis: {
-      type: 'category',
-      inverse: true,
-      data: top.map((w) => w.name),
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: {
-        color: axisColor,
-        fontSize: 11,
-        formatter: (v: string) => (v.length > 16 ? `${v.slice(0, 15)}…` : v),
-      },
-    },
-    series: [{
-      type: 'bar',
-      barWidth: '55%',
-      itemStyle: {
-        borderRadius: [0, 4, 4, 0],
-        color: { type: 'linear', x: 0, y: 0, x2: 1, y2: 0, colorStops: [
-          { offset: 0, color: barFrom }, { offset: 1, color: barTo },
-        ] },
-      },
-      label: {
-        show: true,
-        position: 'right',
-        color: axisColor,
-        fontSize: 10,
-        formatter: (p: unknown) => formatDuration((p as { value: number }).value),
-      },
-      data: top.map((w) => w.p95DurationMs),
-    }],
-  }), [top, axisColor, tipBg, tipText, barFrom, barTo]);
-
-  if (top.length === 0) {
-    return <div className="h-40 flex items-center justify-center"><EmptyState text={t('dashboard:noDurationData')} /></div>;
-  }
-  return <EChart option={option} className="h-40 w-full" ariaLabel={t('dashboard:p95TopWorkflows')} />;
-}
 
 function LiveDuration({ startedAt, longRunningSeconds }: Readonly<{ startedAt: string; longRunningSeconds: number }>) {
   const [now, setNow] = useState(() => Date.now());

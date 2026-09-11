@@ -42,6 +42,7 @@ function dashboardStats(overrides: Record<string, unknown> = {}) {
     machinesReachable: 4,
     executionsTotal: 530,
     last24h: { total: 40, succeeded: 36, failed: 4, running: 1, cancelled: 0 },
+    retryStats: { finishedCount: 40, retriedCount: 3 },
     last24hBuckets: hourBuckets(),
     topWorkflows: [
       { id: WF_TOP, name: 'Nightly Backup', runCount: 20, successCount: 19, failCount: 1, avgDurationMs: 4200, p95DurationMs: 8000 },
@@ -98,6 +99,119 @@ test.describe('Dashboard (Teil 11)', () => {
   test.beforeEach(async ({ page }) => {
     await installDefaultMocks(page);
   });
+
+  for (const theme of ['light', 'dark']) {
+    for (const width of [1440, 390]) {
+      test(`HA and queue KPIs stay readable at ${width}px in ${theme} theme`, async ({ page }, testInfo) => {
+        const german = width === 390;
+        await page.setViewportSize({ width, height: 1000 });
+        await page.addInitScript(({ value, language }) => {
+          localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme: value }, version: 0 }));
+          localStorage.setItem('nodepilot.lang', language);
+        }, { value: theme, language: german ? 'de' : 'en' });
+        await page.route('**/api/stats/dashboard**', route => route.fulfill({ json: dashboardStats({ clusterRole: null, pendingCount: 0, runningCount: 7, longRunningCount: 0 }) }));
+        await page.goto('/');
+        const card = page.locator('.np-card').filter({ has: page.getByText('HA', { exact: true }) });
+        const value = card.getByText(german ? 'Deaktiviert' : 'Disabled', { exact: true });
+        const hint = card.getByText(german ? 'Einzelknoten' : 'Single node', { exact: true });
+        await expect(value).toBeVisible();
+        await expect(hint).toBeVisible();
+        await expect(page.getByText(german ? 'HA: deaktiviert' : 'HA: disabled', { exact: true })).toBeVisible();
+        await expect(card.getByText('Leader', { exact: true })).toHaveCount(0);
+        for (const text of [value, hint]) {
+          expect(await text.evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+        }
+        await card.screenshot({ path: testInfo.outputPath(`ha-disabled-${theme}-${width}.png`), animations: 'disabled' });
+        const queue = page.locator('.np-card').filter({ has: page.getByText('Queue', { exact: true }) });
+        await expect(queue.getByText(german ? 'Wartend' : 'Pending', { exact: true })).toBeVisible();
+        await expect(queue.getByText(german ? 'Laufend' : 'Running', { exact: true })).toBeVisible();
+        await expect(queue.locator('dd')).toHaveText(['0', '7']);
+        expect(await queue.locator('dt, dd').evaluateAll(elements => elements.every(e => e.scrollWidth <= e.clientWidth + 1))).toBe(true);
+        await queue.screenshot({ path: testInfo.outputPath(`queue-${theme}-${width}.png`), animations: 'disabled' });
+      });
+
+      test(`retry KPI stays readable at ${width}px in ${theme} theme`, async ({ page }, testInfo) => {
+        const german = width === 390;
+        await page.setViewportSize({ width, height: 1000 });
+        await page.addInitScript(({ value, language }) => {
+          localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme: value }, version: 0 }));
+          localStorage.setItem('nodepilot.lang', language);
+        }, { value: theme, language: german ? 'de' : 'en' });
+        await page.route('**/api/stats/dashboard**', route => route.fulfill({ json: dashboardStats({
+          retryStats: { finishedCount: 59_516, retriedCount: 3690 },
+        }) }));
+        await page.goto('/');
+        const label = page.getByText(german ? 'Wiederholungen nötig (24 h)' : 'Retries needed (24h)', { exact: true });
+        const card = page.locator('.np-card').filter({ has: label });
+        await expect(label).toBeVisible();
+        await expect(card.getByText(german ? /6,2\s%/ : '6.2%', { exact: true })).toBeVisible();
+        await expect(card.getByText(german ? '3.690 Ausführungen' : '3,690 executions', { exact: true })).toBeVisible();
+        expect(await card.evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+        expect(await label.evaluate(e => e.scrollWidth <= e.clientWidth + 1 && e.scrollHeight <= e.clientHeight + 1)).toBe(true);
+        await card.screenshot({ path: testInfo.outputPath(`retry-kpi-${theme}-${width}.png`), animations: 'disabled' });
+        const explanation = card.getByLabel(german ? 'Berechnung des Wiederholungsanteils' : 'How the retry share is calculated');
+        await explanation.focus();
+        await page.keyboard.press('Enter');
+        await expect(card.locator('details')).toHaveAttribute('open', '');
+        await expect(card.locator('details p')).toContainText(german ? '59.516 beendeten Ausführungen' : '59,516 finished executions');
+        await expect(card.locator('details p')).toBeVisible();
+        await card.locator('details p').scrollIntoViewIfNeeded();
+        const bounds = await card.locator('details p').boundingBox();
+        expect(bounds!.x).toBeGreaterThanOrEqual(0);
+        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+        const visibility = await card.locator('details p').evaluate(element => {
+          const rect = element.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.bottom - 6);
+          return { unobscured: element.contains(hit), blocker: hit?.outerHTML.slice(0, 250) };
+        });
+        expect(visibility).toMatchObject({ unobscured: true });
+        await page.screenshot({ path: testInfo.outputPath(`retry-kpi-help-${theme}-${width}.png`), animations: 'disabled' });
+        await page.keyboard.press('Enter');
+        await expect(card.locator('details')).not.toHaveAttribute('open');
+        await expect(page).toHaveURL(/\/$/);
+      });
+    }
+  }
+
+  for (const theme of ['light', 'dark']) {
+    for (const width of [1440, 390]) {
+      test(`failure causes wrap and expand at ${width}px in ${theme} theme`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width, height: 1000 });
+        await page.addInitScript(value => {
+          localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme: value }, version: 0 }));
+        }, theme);
+        const longMessage = 'Connection refused on backup-server-02 while reading C:\\ProgramData\\NodePilot\\' + 'long-directory-name/'.repeat(18) + 'snapshot.json (503). Request <id> at <timestamp>.';
+        await page.route('**/api/stats/dashboard**', route => route.fulfill({ json: dashboardStats() }));
+        await page.route('**/api/stats/failure-causes**', route => route.fulfill({ json: {
+          totalFailed: 788, remainingCount: 17,
+          groups: [
+            { message: longMessage, count: 380 },
+            { message: 'Access denied on server-A while opening C:\\backup\\inventory.json (403)', count: 240 },
+            { message: 'Timeout after 30 seconds waiting for the remote command to complete', count: 95 },
+            { message: 'Invalid JSON response from https://inventory.example/api/assets', count: 42 },
+            { message: null, count: 14 },
+          ].map(group => ({ ...group, latestExecutionId: EXEC_RECENT, latestStartedAt: new Date().toISOString() })),
+        } }));
+        await page.goto('/');
+        const card = page.locator('.np-card').filter({ has: page.getByRole('heading', { name: 'Most Common Errors (24h)', exact: true }) });
+        await card.scrollIntoViewIfNeeded();
+        await expect(card.getByText('380 executions · 48.2%')).toBeVisible();
+        const scroller = card.locator('.overflow-y-auto');
+        expect(await scroller.evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+        await card.screenshot({ path: testInfo.outputPath(`failure-causes-${theme}-${width}.png`), animations: 'disabled' });
+        const expand = card.getByRole('button', { name: 'Show full message' });
+        await expand.focus();
+        await page.keyboard.press('Enter');
+        await expect(card.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true');
+        await expect(card.getByText(longMessage, { exact: true })).toBeVisible();
+        expect(await scroller.evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+        expect(await scroller.evaluate(e => e.scrollHeight > e.clientHeight)).toBe(true);
+        await card.screenshot({ path: testInfo.outputPath(`failure-causes-expanded-${theme}-${width}.png`), animations: 'disabled' });
+        await card.getByRole('link', { name: `Open latest failed execution: ${longMessage}`, exact: true }).click();
+        await expect(page).toHaveURL(new RegExp(`/executions\\?id=${EXEC_RECENT}`));
+      });
+    }
+  }
 
   test('success trend keeps continuous runs smooth and fills the status-card row', async ({ page }, testInfo) => {
     await page.addInitScript(() => {
@@ -194,7 +308,8 @@ test.describe('Dashboard (Teil 11)', () => {
     await expect(page.getByText(/^machines$/i).first()).toBeVisible();
     await expect(page.getByText(/success rate/i).first()).toBeVisible();
     await expect(page.getByText('90%', { exact: true })).toBeVisible(); // 36/(36+4)
-    await expect(page.getByText(/runs \(24h\)/i)).toBeVisible();
+    await expect(page.getByText('Retries needed (24h)', { exact: true })).toBeVisible();
+    await expect(page.getByText('7.5%', { exact: true })).toBeVisible();
 
     // Selected-window chart header renders.
     await expect(page.getByRole('heading', { name: /executions.*24h/i })).toBeVisible();
