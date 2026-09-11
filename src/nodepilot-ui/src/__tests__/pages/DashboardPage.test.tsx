@@ -442,7 +442,7 @@ describe('DashboardPage', () => {
       expect(screen.getByText(banner)).toBeInTheDocument();
       if (clusterRole === null) {
         expect(within(card).queryByText('Leader')).not.toBeInTheDocument();
-        expect(screen.queryByText(/HA: active|HA: aktiv$/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/HA: (active|aktiv)$/)).not.toBeInTheDocument();
       }
     } finally {
       await i18n.changeLanguage('en');
