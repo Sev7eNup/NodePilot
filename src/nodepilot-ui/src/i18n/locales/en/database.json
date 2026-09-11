@@ -68,6 +68,9 @@
     "confirmWriteTitle": "Confirm write mode",
     "confirmWriteHint": "This statement will modify the database. Type the confirmation phrase to proceed.",
     "confirmWritePhrasePrompt": "Type: {{phrase}}",
-    "confirmWriteButton": "Yes, run it"
+    "confirmWriteButton": "Yes, run it",
+    "rowRange": "Row {{from}}–{{to}} of {{total}}",
+    "rowsPerPage": "Rows per page",
+    "pageOf": "Page {{page}} of {{pages}}"
   }
 }

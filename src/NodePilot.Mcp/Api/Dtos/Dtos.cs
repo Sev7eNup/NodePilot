@@ -45,6 +45,36 @@ public sealed record WorkflowResponse(
     string? FolderPath = null,
     WorkflowCapabilities? Capabilities = null);
 
+/// <summary>
+/// One row of <c>GET /api/workflows</c>. Same shape as <see cref="WorkflowResponse"/> minus
+/// <c>DefinitionJson</c>, which the list does not send: it is unbounded text including every
+/// inline script. Use <c>get_workflow_definition</c> when the graph itself is needed.
+/// </summary>
+public sealed record WorkflowListItemResponse(
+    Guid Id,
+    string Name,
+    string? Description,
+    int Version,
+    bool IsEnabled,
+    DateTime CreatedAt,
+    DateTime UpdatedAt,
+    string? CreatedBy,
+    string? UpdatedBy,
+    int ActivityCount,
+    List<string> TriggerTypes,
+    LastExecutionInfo? LastExecution,
+    int SuccessCount,
+    int TotalCount,
+    double? AvgDurationMs,
+    Guid? CheckedOutByUserId,
+    string? CheckedOutByUserName,
+    DateTime? CheckedOutAt,
+    bool HasManualTriggerParameters = false,
+    int? MaxConcurrentExecutions = null,
+    Guid FolderId = default,
+    string? FolderPath = null,
+    WorkflowCapabilities? Capabilities = null);
+
 public sealed record WorkflowCapabilities(
     bool CanRead, bool CanRun, bool CanEdit, bool CanDelete, bool CanAdmin);
 

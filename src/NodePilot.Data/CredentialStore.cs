@@ -50,9 +50,13 @@ public class CredentialStore : ICredentialStore
             ?? throw new KeyNotFoundException($"Credential {id} not found");
     }
 
+    /// <summary>
+    /// Every caller reads — the list endpoint projects to a DTO, backup and import only look at
+    /// names. Untracked keeps the encrypted secret blobs out of the change tracker.
+    /// </summary>
     public async Task<IReadOnlyList<Credential>> GetAllAsync(CancellationToken ct)
     {
-        return await _db.Credentials.OrderBy(c => c.Name).ToListAsync(ct);
+        return await _db.Credentials.AsNoTracking().OrderBy(c => c.Name).ToListAsync(ct);
     }
 
     public async Task<Credential> CreateAsync(string name, string username, string password, string? domain, DateTime? expiresAt, CancellationToken ct)

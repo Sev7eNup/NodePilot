@@ -1,9 +1,9 @@
 import { CircleDash, Launch, Meter, Pause, Play, Renew, WarningAltFilled } from '@carbon/icons-react';
-import { useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Link, NavLink, useParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import type { EChartsOption } from 'echarts';
-import { EChart } from '../components/common/EChart';
+import { EChart } from '../components/common/LazyEChart';
 import { buildGrafanaDashboardUrl, useMetricsDashboard, useObservabilityConfig } from '../api/observability';
 import type { MetricsDataSeries, MetricsWidget } from '../types/api';
 import { metricsSections } from '../lib/navigation';
@@ -74,7 +74,13 @@ function StatWidget({ widget }: { widget: MetricsWidget }) {
 
 function ChartWidget({ widget, tokens }: { widget: MetricsWidget; tokens: ChartTokens }) {
   const option = useMemo<EChartsOption>(() => buildMetricsChartOption(widget, tokens), [widget, tokens]);
-  return widget.data.length ? <EChart option={option} style={{ height: Math.max(220, widget.grid.height * 28) }} ariaLabel={widget.title} /> : <Empty />;
+  // A heatmap draws one cell per bucket and timestamp. The shipped dashboards sample at 1m, so a
+  // 24 h window is tens of thousands of cells — as SVG that is tens of thousands of DOM elements.
+  // Every other chart type stays on SVG, which keeps it crisp at any zoom.
+  const renderer = widget.type === 'heatmap' ? 'canvas' : 'svg';
+  return widget.data.length
+    ? <EChart option={option} renderer={renderer} style={{ height: Math.max(220, widget.grid.height * 28) }} ariaLabel={widget.title} />
+    : <Empty />;
 }
 
 /**
@@ -116,7 +122,9 @@ export function buildMetricsChartOption(widget: MetricsWidget, tokens: ChartToke
   if (widget.type === 'heatmap') {
     const timestamps = [...new Set(widget.data.flatMap((series) => series.points.map((point) => point.timestamp)))].sort((a, b) => a - b);
     const buckets = widget.data.map((series) => series.label);
-    const values = widget.data.flatMap((series, y) => series.points.flatMap((point) => point.value == null ? [] : [[timestamps.indexOf(point.timestamp), y, point.value]]));
+    // Indexed once; indexOf per point scanned the whole axis for every cell.
+    const xByTimestamp = new Map(timestamps.map((timestamp, index) => [timestamp, index]));
+    const values = widget.data.flatMap((series, y) => series.points.flatMap((point) => point.value == null ? [] : [[xByTimestamp.get(point.timestamp)!, y, point.value]]));
     const max = Math.max(1, ...values.map((value) => Number(value[2])));
     // A heatmap encodes magnitude, so it uses a single-hue sequential ramp keyed to the
     // skin accent rather than the categorical palette.
@@ -125,14 +133,27 @@ export function buildMetricsChartOption(widget: MetricsWidget, tokens: ChartToke
   return { ...base, xAxis: { type: 'time', axisLabel }, yAxis: { type: 'value', axisLabel, splitLine: { lineStyle: { color: gridLine } } }, series: widget.data.map((series, index) => ({ name: series.label, type: 'line', smooth: true, showSymbol: false, lineStyle: { width: 2 }, areaStyle: { opacity: widget.data.length === 1 ? .12 : 0 }, itemStyle: { color: seriesColor(index) }, data: series.points.filter((point) => point.value != null).map((point) => [point.timestamp * 1000, point.value]) })) };
 }
 
-function TableWidget({ widget }: { widget: MetricsWidget }) {
+const TableWidget = memo(function TableWidget({ widget }: { widget: MetricsWidget }) {
+  // Indexed by (column, row) once. Looking each cell up with a scan over the whole series list
+  // made rendering quadratic in the size of the table.
+  const model = useMemo(() => {
+    const entityKey = findEntityKey(widget.data);
+    if (!entityKey) return null;
+    const columns = [...new Set(widget.data.map((series) => series.label))];
+    const rows = [...new Set(widget.data.map((series) => series.labels[entityKey]).filter(Boolean))];
+    const cells = new Map<string, MetricsDataSeries>();
+    for (const series of widget.data) {
+      const key = `${series.label} ${series.labels[entityKey]}`;
+      if (!cells.has(key)) cells.set(key, series);
+    }
+    return { entityKey, columns, rows, cells };
+  }, [widget.data]);
+
   if (!widget.data.length) return <Empty />;
-  const entityKey = findEntityKey(widget.data);
-  if (!entityKey) return <SimpleTable widget={widget} />;
-  const columns = [...new Set(widget.data.map((series) => series.label))];
-  const rows = [...new Set(widget.data.map((series) => series.labels[entityKey]).filter(Boolean))];
-  return <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-outline-variant/30 text-left text-xs text-on-surface-variant"><th className="px-2 py-2 font-medium">{humanize(entityKey)}</th>{columns.map((column) => <th key={column} className="px-2 py-2 text-right font-medium">{column}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={row} className="border-b border-outline-variant/15"><td className="max-w-[260px] truncate px-2 py-2 text-on-surface">{row}</td>{columns.map((column) => { const value = widget.data.find((series) => series.label === column && series.labels[entityKey] === row); return <td key={column} className="px-2 py-2 text-right tabular-nums text-on-surface-variant">{value ? formatValue(last(value), unitForColumn(column, widget.unit)) : '—'}</td>; })}</tr>)}</tbody></table></div>;
-}
+  if (!model) return <SimpleTable widget={widget} />;
+  const { entityKey, columns, rows, cells } = model;
+  return <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b border-outline-variant/30 text-left text-xs text-on-surface-variant"><th className="px-2 py-2 font-medium">{humanize(entityKey)}</th>{columns.map((column) => <th key={column} className="px-2 py-2 text-right font-medium">{column}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={row} className="border-b border-outline-variant/15"><td className="max-w-[260px] truncate px-2 py-2 text-on-surface">{row}</td>{columns.map((column) => { const value = cells.get(`${column} ${row}`); return <td key={column} className="px-2 py-2 text-right tabular-nums text-on-surface-variant">{value ? formatValue(last(value), unitForColumn(column, widget.unit)) : '—'}</td>; })}</tr>)}</tbody></table></div>;
+});
 
 function SimpleTable({ widget }: { widget: MetricsWidget }) { return <div className="space-y-1">{widget.data.map((series, index) => <div key={`${series.label}-${index}`} className="flex justify-between gap-3 border-b border-outline-variant/15 py-1.5 text-sm"><span className="truncate text-on-surface-variant">{series.label}</span><span className="tabular-nums text-on-surface">{formatValue(last(series), widget.unit)}</span></div>)}</div>; }
 function findEntityKey(data: MetricsDataSeries[]) { const priority = ['workflow_name', 'http_route', 'activity_type', 'auth_type', 'operation', 'trigger_type', 'model']; return priority.find((key) => data.some((series) => series.labels[key])); }

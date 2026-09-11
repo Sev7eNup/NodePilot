@@ -216,6 +216,8 @@ public static class CommandRegistration
 
         // -- stats / observability ----------------------------------------------
         config.AddCommand<DashboardCommand>("dashboard").WithDescription("Show the dashboard summary.");
+        config.AddCommand<FailureCausesCommand>("failure-causes")
+            .WithDescription("Recent failures grouped by cause over a window.");
         config.AddBranch("operations", o =>
         {
             o.SetDescription("Live-ops / NOC view.");

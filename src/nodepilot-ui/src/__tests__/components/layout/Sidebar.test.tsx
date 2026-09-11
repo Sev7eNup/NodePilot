@@ -19,15 +19,12 @@ function patchFetch() {
   });
 }
 
-// Only the totals the sidebar badges read; the real endpoint returns more fields.
-const STATS = {
-  workflowsTotal: 24, workflowsEnabled: 20, machinesTotal: 128, machinesReachable: 120,
-  executionsTotal: 999, runningCount: 3, pendingCount: 0, longRunningCount: 0,
-};
+// The dedicated counts endpoint the badges read — three numbers, not the dashboard payload.
+const STATS = { workflowsTotal: 24, runningCount: 3, machinesTotal: 128 };
 const RULES = Array.from({ length: 7 }, (_, i) => ({ id: `r${i}`, name: `rule ${i}` }));
 
 const server = setupServer(
-  http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(STATS)),
+  http.get(`${BASE}/api/stats/sidebar-counts`, () => HttpResponse.json(STATS)),
   http.get(`${BASE}/api/alerting/rules`, () => HttpResponse.json(RULES)),
 );
 
@@ -137,7 +134,7 @@ describe('Sidebar', () => {
 
   it('hides admin-only items and the alerts badge for a Viewer', async () => {
     renderSidebar('Viewer');
-    // dashboard-stats is open to every role, so the workflows badge still resolves.
+    // sidebar-counts is open to every role, so the workflows badge still resolves.
     expect(await screen.findByText('24')).toBeInTheDocument();
     // The alerting-rule count is Admin/Operator-only, so a Viewer gets no alerts badge.
     expect(screen.queryByText('7')).not.toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -136,7 +136,16 @@ function makeComponents(size: MarkdownSize): Components {
 const componentsSm = makeComponents('sm');
 const componentsBase = makeComponents('base');
 
-export function Markdown({ children, size = 'sm' }: Readonly<{ children: string; size?: MarkdownSize }>) {
+/**
+ * Rendering markdown means running the whole remark + rehype + highlight pipeline, so an
+ * unchanged message must not be re-parsed.
+ *
+ * Both chat surfaces keep the composer draft in the same component that renders the message
+ * list, so every keystroke re-renders every message. Both props are primitives, which is why
+ * the default shallow comparison is enough here — a streaming message still updates on every
+ * chunk, because its text really does change.
+ */
+export const Markdown = memo(function Markdown({ children, size = 'sm' }: Readonly<{ children: string; size?: MarkdownSize }>) {
   return (
     <div className={`${size === 'base' ? 'text-sm' : 'text-xs'} text-on-surface`}>
       <ReactMarkdown
@@ -148,5 +157,5 @@ export function Markdown({ children, size = 'sm' }: Readonly<{ children: string;
       </ReactMarkdown>
     </div>
   );
-}
+});
 

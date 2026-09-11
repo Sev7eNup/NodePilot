@@ -1,46 +1,69 @@
-import { useState, useEffect, useCallback } from 'react';
-import { type Node, type Edge, useReactFlow } from '@xyflow/react';
+import { useState, useEffect, useRef, useCallback, type Dispatch, type SetStateAction } from 'react';
+import { type Node, type Edge } from '@xyflow/react';
 
 export type HistorySnapshot = { nodes: Node[]; edges: Edge[]; label?: string };
 
-export function useWorkflowHistory(workflowId: string | undefined) {
-  const { getNodes, getEdges, setNodes, setEdges } = useReactFlow();
+/**
+ * The editor's own graph state plus its setters. Anything that snapshots or rewrites the
+ * graph takes this instead of reaching into React Flow's store, which holds the projected
+ * graph rather than the source of truth.
+ */
+export interface WorkflowGraphSource {
+  nodes: Node[];
+  edges: Edge[];
+  setNodes: Dispatch<SetStateAction<Node[]>>;
+  setEdges: Dispatch<SetStateAction<Edge[]>>;
+}
+
+/**
+ * Undo/redo over the editor's graph state.
+ *
+ * Snapshots come from that state and never from React Flow's store. The store holds the
+ * projected graph, and a collapsed group is projected without its child nodes — snapshotting
+ * that and undoing it would delete the children for real. The projection also carries
+ * render-only fields (in-degree, lint counts, hidden, className) that would become
+ * authoritative on undo and end up in the saved definition.
+ */
+export function useWorkflowHistory(workflowId: string | undefined, source: WorkflowGraphSource) {
   const [historyPast, setHistoryPast] = useState<HistorySnapshot[]>([]);
   const [historyFuture, setHistoryFuture] = useState<HistorySnapshot[]>([]);
+
+  // Held in a ref so commitHistory keeps one identity: it is a dependency of most graph
+  // callbacks, and a drag replaces the node array on every frame.
+  const sourceRef = useRef(source);
+  useEffect(() => { sourceRef.current = source; });
 
   useEffect(() => { setHistoryPast([]); setHistoryFuture([]); }, [workflowId]);
 
   const commitHistory = useCallback((label?: string) => {
-    const snap: HistorySnapshot = { nodes: getNodes(), edges: getEdges(), label };
+    const { nodes, edges } = sourceRef.current;
     setHistoryPast((p) => {
-      const next = [...p, snap];
+      const next = [...p, { nodes, edges, label }];
       if (next.length > 50) next.shift();
       return next;
     });
     setHistoryFuture([]);
-  }, [getNodes, getEdges]);
+  }, []);
 
   const undo = useCallback(() => {
-    setHistoryPast((past) => {
-      if (past.length === 0) return past;
-      const last = past[past.length - 1];
-      setHistoryFuture((f) => [...f, { nodes: getNodes(), edges: getEdges() }]);
-      setNodes(last.nodes);
-      setEdges(last.edges);
-      return past.slice(0, -1);
-    });
-  }, [getNodes, getEdges, setNodes, setEdges]);
+    if (historyPast.length === 0) return;
+    const last = historyPast[historyPast.length - 1];
+    const { nodes, edges, setNodes, setEdges } = sourceRef.current;
+    setHistoryFuture((f) => [...f, { nodes, edges }]);
+    setHistoryPast((p) => p.slice(0, -1));
+    setNodes(last.nodes);
+    setEdges(last.edges);
+  }, [historyPast]);
 
   const redo = useCallback(() => {
-    setHistoryFuture((future) => {
-      if (future.length === 0) return future;
-      const next = future[future.length - 1];
-      setHistoryPast((p) => [...p, { nodes: getNodes(), edges: getEdges() }]);
-      setNodes(next.nodes);
-      setEdges(next.edges);
-      return future.slice(0, -1);
-    });
-  }, [getNodes, getEdges, setNodes, setEdges]);
+    if (historyFuture.length === 0) return;
+    const next = historyFuture[historyFuture.length - 1];
+    const { nodes, edges, setNodes, setEdges } = sourceRef.current;
+    setHistoryPast((p) => [...p, { nodes, edges }]);
+    setHistoryFuture((f) => f.slice(0, -1));
+    setNodes(next.nodes);
+    setEdges(next.edges);
+  }, [historyFuture]);
 
   return { historyPast, historyFuture, commitHistory, undo, redo };
 }

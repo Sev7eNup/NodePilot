@@ -203,6 +203,95 @@ CSS-Variablen.
 | `5a9b78c` | `applyLiveEvents` O(N+M) Batch | War O(N × M) durch Per-Event-`{...prev}`-Spread des kompletten Executions-Dicts. Ein einziger Spread upfront, dann In-Place-Update einzelner Einträge im Working-Copy. Bei 200 Executions × 200 Events pro Batch = 40 000× weniger Property-Copies. |
 | `5a9b78c` | `sortLiveExecutions` Key-Precompute | `steps.some()` lief vorher inside des Comparators (O(N log N) Aufrufe). Jetzt einmal pro Execution beim Map auf Sort-Keys. |
 
+### Designer-Frame-Pfad, List-Payloads und Initial-Load (Session 2026-09-11)
+
+Ein Durchgang über alle Seiten, den Designer und die dahinterliegenden List-Endpoints. Roter
+Faden: Arbeit lief pro Frame oder pro Request, die pro *Änderung* bzw. pro *Save* anfällt.
+
+**Designer — Arbeit vom Frame-Pfad genommen.** React Flow läuft controlled, also setzt jedes
+Drag-Mousemove State auf der Editor-Seite, und alles was an `nodes`/`edges` hängt lief mit:
+
+| Bereich | Was war | Was jetzt |
+|---|---|---|
+| `lintWorkflow` | Lief pro Frame. Die Occlusion-Regel samplet je aktiver Kante 23 Bezier-Punkte gegen **jeden** Node, je zwei Rechtecke — bei 60 Kanten × 50 Nodes ~69 000 Treffertests, dazu `dup-published-param` mit `O(N·(N+E))` und ein `JSON.stringify(config)` je Node. | Läuft auf `useSettledGraph` (250 ms Ruhe). Ein durchgehender Drag setzt den Timer immer neu, der Scan läuft also einmal nach dem Loslassen. Der Publish-Pfad lintet **live** im Klick-Handler, damit das Urteil nie veraltet ist. Gepinnt durch einen Test, der drei Selektionswechsel abfeuert und den Aufrufzähler prüft (alt: +6). |
+| `useDisplayedGraph` — Lint-Badges | `lintResult.errors.filter(...)` **pro Node**, also `O(N × Befunde)`. | Einmal pro Lint-Ergebnis in zwei `Map`s gebucketet. |
+| `useDisplayedGraph` — Kanten | Memo hing an `nodes`, obwohl `nodes` nur beim aktiven Activity-Typ-Filter gebraucht wird → jede Kante bekam pro Drag-Frame ein neues Objekt, was React Flows `edgeLookup` invalidiert. | `hiddenNodeIds` als eigenes Memo; ohne Filter ist es konstant, und ein Drag lässt jedes Kanten-Objekt unangetastet. Dasselbe für die leere `flowingVarsPerEdge`-Map. |
+| `ActivityNode`-Memo | Comparator verglich `prev.data === next.data`. Die Projektion baut `data` bei **jedem** Durchlauf neu — der Comparator schlug also nie an, und die weiter unten dokumentierte Memoisierung war faktisch wirkungslos. | Shallow-Equal auf `data` (`lib/shallowEqual.ts`). Kein Feld-Whitelist (driftet), kein Render-Cache. |
+| `LabeledEdge` | Nicht memoisiert, und `getSmartEdgePath` unmemoisiert im Render-Body: mit `premiumCanvas` trimmt eine 24-Schritt-Binärsuche × `CUBIC_LENGTH_STEPS = 28` die Kurve hinter der Pfeilspitze — ~700 kubische Auswertungen **pro Kante pro Render**. | `memo` + `useMemo` auf die Geometrie. Test misst beides: wertgleiche Props → kein Render, keine Pfad-Berechnung. |
+| `getUpstreamVariables` | Unmemoisiert im PropertiesPanel, intern `allNodes.find()` in der BFS-Schleife → `O(Ahnen × N)`. | Node-Index einmal aufgebaut; Aufruf memoisiert. |
+| Weitere Pro-Frame-Scans | `useCriticalPath` mappte alle Nodes auch bei abgeschaltetem Feature; `aiSelection` filterte Nodes+Kanten bei geschlossenem Panel; `useNodeAnnotations` baute seinen Maschinen-Key im Render-Body; `stripRuntimeDefinition` lief pro Frame für einen 5-s-Autosave; `useEditorKeyboardShortcuts` band `window.keydown` bei **jedem** Render neu (~45 Deps, davon 13 Inline-Arrows); die Paletten-Kategorien wurden bei jedem Suchtastendruck neu gebaut und sortiert. | Alle gegated, memoisiert oder hinter ein Ref gelegt. Der Autosave-Draft hält jetzt den Graphen roh und sanitisiert erst beim Bauen des Request-Bodys — damit trägt auch ein Save mitten im Drag den Stand vom Canvas. |
+
+**Datenverlust in Undo/Redo** (gesucht war Performance, gefunden wurde ein Bug).
+`useWorkflowHistory` schnappschusste über `useReactFlow().getNodes()`, also den **projizierten**
+Graphen. `buildCollapsedGraphView` entfernt bei eingeklapptem Group-Node dessen Kinder aus dem
+Array — ein Commit in diesem Zustand hielt einen Graphen *ohne* diese Kinder fest, und Undo schrieb
+ihn als Wahrheit zurück, wo der Autosave ihn persistierte. Zweite Folge: `inDegreeCount`,
+`hidden`, `className` und `animated` landeten nach einem Undo in der gespeicherten Definition.
+History und Clipboard arbeiten jetzt gegen den Editor-State; `stripRuntimeDefinition` entfernt die
+vier Projektions-Felder zusätzlich, damit bereits verschmutzte Definitionen beim nächsten Save
+sauber werden. Regressionstest: einklappen, Kind entfernen, Undo, Kinder müssen da sein.
+
+**Backend — Definitionen nicht lesen, die niemand braucht.** Derselbe Fund wie beim
+Live-Ops-Snapshot, an drei weiteren Stellen:
+
+| Endpoint | Was war | Was jetzt |
+|---|---|---|
+| `GET /api/machines` (und `/{id}`) | `ComputeOperationalStatsAsync` lud `DefinitionJson` **jedes** Workflows — ohne Folder-Scoping und ohne das 500er-Cap — und parste jede einzelne, nur um die referenzierten Maschinen-Guids zu zählen. Auch für **eine** Maschine. Der Designer lädt `/machines` beim Öffnen mit. | `WorkflowCallSiteCache` zu `WorkflowDefinitionFactsCache` verallgemeinert: ein auf `UpdatedAt` gekeyter Cache, ein Parse, drei Konsumenten (Call-Sites für den Ops-Graphen, Maschinen-Refs, Manual-Trigger-Flag). Der Controller liest nur noch `(Id, UpdatedAt)`. |
+| `GET /api/machines` — Step-Aggregate | Zwei `GroupBy` über `StepExecutions`, gefiltert auf `StartedAt`/`Status`/`TargetMachine` — keiner davon index-gedeckt, also zwei Full-Scans der größten Tabelle pro Request. | 10-s-TTL im MemoryCache. Die Liste pollt im Frontend nicht, der Wert ist innerhalb eines Seitenbesuchs ohnehin eingefroren. **Bewusst kein neuer Index** auf der heißesten Schreibtabelle — dafür verlangt die Roadmap gemessene Statistik. |
+| `GET /api/workflows` | Lieferte die volle `DefinitionJson` pro Zeile, bis 500 Zeilen, pro Workflow bis 5 MiB (Beispielset: Ø 14 KB, max. 154 KB). Für Nicht-Admins zusätzlich ein Parse → Secret-Rewrite → erneutes Parse **pro Zeile**. Zehn UI-Stellen holen die Liste, **keine** liest die Definition. | Eigenes `WorkflowListItemResponse` + Spalten-Projektion, die Textspalte wird gar nicht erst gelesen. Das einzige was die Liste daraus brauchte — ob der Start nach Parametern fragt — ist jetzt das Flag `HasManualTriggerParameters` aus dem Fakten-Cache. Der Run-Klick ohne Parameter feuert unverändert ohne Round-Trip; nur der Parameter-Dialog holt den Einzel-Workflow. |
+| `GET /api/executions` | `ReturnData` + `InputParametersJson` (je 32 KiB gedeckelt) in **jeder** Zeile, bei `PAGE_SIZE = 200`. Die Executions-Seite rendert beides nie; der Designer schon (Tooltip + Badge-Zähler). | Opt-out `?includePayloads=false`, das nur die Executions-Seite setzt. Designer-Pfad unverändert. |
+
+**Hintergrundverkehr.** Die Sidebar-Badges zogen alle 60 s `/stats/dashboard` — **auf jeder Seite** —
+für drei Integer; dahinter ~20 sequenzielle Queries inklusive eines ungefilterten `COUNT(*)` über
+die gesamte Executions-Tabelle, den der Hook nicht einmal liest. Jetzt `/stats/sidebar-counts` mit
+genau drei Counts (SPA-interne Fläche, als solche in den Client-Known-Gaps dokumentiert). Dazu:
+`PropertiesPanel` pollte alle 15 s `/executions/{id}/steps` — ein Endpoint, der **jeden** Step mit
+Output, Error, Trace, Variablen-Snapshot und Output-Parametern liefert; das hängt jetzt an der
+bestehenden SignalR-Invalidation. Das Dashboard mountete einen 1-Hz-`setInterval` **pro laufender
+Zeile** statt einen geteilten Ticker.
+
+Zwei Bugs im selben Umfeld: `useWorkflowExecution` schickte `&limit=1`, der Endpoint pagt aber über
+`pageSize` (Default 100) — es kamen 100 schwere Zeilen statt einer. Und das Ergebnis ist ein
+`PagedResponse`, wurde aber als Array indiziert, sodass das Vorbefüllen des Run-Dialogs mit den
+letzten Parametern **still tot** war. Beides gefixt, das Feature ist wieder da.
+
+**Initial-Load.** `DashboardPage` ist eine der drei eager importierten Routen und importierte
+`EChart` statisch, was ECharts in den Boot-Chunk zog — jede Seite zahlte dafür, auch die
+Login-Maske. Die Chart-Komponente ist jetzt `lazy`; der Chunk wird geladen, während die Seite
+ohnehin auf ihre Daten wartet.
+
+Gemessen am Prod-Build (Entry-Chunk + alle `modulepreload`-Einträge + Stylesheet):
+
+| | roh | gzip |
+|---|---|---|
+| vorher | 2 029,7 KB | 591,1 KB |
+| nachher | 1 418,8 KB | 386,3 KB |
+
+**Nachtrag — fünf gemeldete Engpässe, am Code gegengeprüft und behoben.** Roter Faden wieder
+derselbe: Arbeit pro Tastendruck oder pro Zeile, die pro *Ergebnis* anfällt.
+
+| Stelle | Was war | Was jetzt |
+|---|---|---|
+| Chat-Verläufe | `Markdown` war nicht memoisiert, und beide Chat-Oberflächen halten den Composer-Entwurf im selben Component wie die Nachrichtenliste — jeder Tastendruck parste **jede** Antwort neu durch remark + rehype + highlight. | `memo`. Beide Props sind primitiv, der Default-Comparator reicht; ein streamender Text ändert sich wirklich und aktualisiert weiter sofort. |
+| Audit-Suche | Der Query-Key trug die rohen Filterwerte. Ein getipptes `WORKFLOW_CREATED` = 16 Requests gegen einen Endpoint mit 60/Min — und jeder Tastendruck verwarf zusätzlich die per „Mehr laden" geholten Seiten. | 300 ms Ruhe, dann anwenden. Liste, Nachladen und Export lesen denselben angewendeten Stand; während einer offenen Änderung sind Export und Nachladen deaktiviert. Feld leeren und Quick-Filter-Chip wirken sofort. Eine unvollständige GUID wird gar nicht erst abgefragt — `resourceId`/`userId` matchen serverseitig **exakt**, die Liste käme also ungefiltert zurück und sähe aus, als hätte der Filter nichts getan; das Feld sagt das jetzt. |
+| SQL-Ergebnisse | `DbAdmin:QueryMaxRows` erlaubt **10 000** Zeilen, und alle gingen auf einmal ins DOM (~elf Zellen je Zeile). `resizableColumns` wurde zudem pro Render neu gebaut, also unter jedem Frame eines Spalten-Ziehens. | 100 Zeilen je Seite (50/100/200 wählbar), Pager darunter, neues Ergebnis springt auf Seite 1. Alle geladenen Zeilen bleiben erreichbar; Spaltenbreiten, Typanzeige und Begrenzungshinweis unverändert. Keine Backend-Änderung. |
+| Metrik-Heatmaps | Die ausgelieferten Dashboards samplen mit `step: "1m"`; 16 Buckets über 24 h sind 23 040 Zellen — als SVG ebenso viele DOM-Elemente. | `EChart` bekommt `renderer?: 'svg' \| 'canvas'`, Default bleibt SVG; nur Heatmaps nutzen Canvas. **Nebenfläche, die man leicht übersieht:** `__tests__/setup.ts` stubbte `getContext` nur als Text-Mess-Kontext, und zwei Tests rendern Heatmap-Widgets — der Stub deckt jetzt auch die Zeichen-Aufrufe ab (No-Ops; niemand assertet auf Pixel). |
+| Designer „Letzte Ausgabe" | `JsonPathTree` ist ein **rekursiver** Component-Baum mit eigenem `useState` je Knoten; 200 JSON-Objekte wurden zu ~800 Zeilen, und ein Klick auf ein Chevron blockierte. | Kinder werden in Schritten von 50 gemountet, der Rest hängt an „Weitere N anzeigen". **Bewusst nicht virtualisiert:** dafür müssten alle Aufklappzustände in ein zentrales, flaches Modell — ein Rewrite der Komponente, nicht der inkrementelle Eingriff. Es wird nichts abgeschnitten, jeder Pfad bleibt erreichbar. |
+
+**Geprüft und bewusst nicht gemacht:**
+
+- **Locales lazy laden** (DE+EN ≈ 385 KB roh liegen beide im Eager-Pfad). Ein asynchroner i18n-Init
+  müsste vor dem ersten Render awaited werden, sonst gibt es einen unübersetzten Frame — und dieses
+  Await ist ein Startup-Wasserfall, der mehr kosten kann als die ~50 KB gzip, die er spart.
+- **Virtualisierung für Maschinen / Globals / Audit-Log.** Das Muster liegt im Repo (`/workflows`,
+  `/executions`), aber es kostet die Browser-Suche über nicht gerenderte Zeilen. Ohne gemessene
+  Zeilenzahl, die das rechtfertigt, ist das ein Tausch ohne Anlass.
+- **Authz-N+1** (eine `SharedFolderPermissions`-Query je distinktem Ordner, im Ops-Poll alle 5 s).
+  Batchbar über die Vereinigung der Ahnen-Ketten, aber in einer sicherheitsrelevanten Klasse gegen
+  einen pro Request gecachten Posten — das Risiko eines subtilen Rechte-Bugs wiegt schwerer.
+- **`CustomActivityDefinitionStore.GetAllAsync`** liest die unbegrenzte `ScriptTemplate`-Spalte,
+  die der Katalog wegwirft — der Backup-Export braucht sie an derselben Methode.
+
 ### Remote / WinRM
 
 | Commit | Bereich | Was wurde verbessert |

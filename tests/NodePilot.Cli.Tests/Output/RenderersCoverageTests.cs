@@ -247,6 +247,36 @@ public class RenderersCoverageTests
     // ---- Dashboard --------------------------------------------------------------
 
     [Fact]
+    public void FailureCauses_RendersGroupsAndTheWithheldTail()
+    {
+        var r = new FailureCausesResponse(
+            TotalFailed: 42,
+            Groups: new()
+            {
+                new FailureCause("WinRM connect failed", 30, Guid.NewGuid(), DateTime.UtcNow),
+                // No message recorded — the row still has to say what it stands for.
+                new FailureCause(null, 5, Guid.NewGuid(), DateTime.UtcNow),
+            },
+            RemainingCount: 7);
+
+        var output = Render(c => Renderers.FailureCauses(c, r));
+
+        output.Should().Contain("42");
+        output.Should().Contain("WinRM connect failed").And.Contain("30");
+        output.Should().Contain("no message recorded");
+        // Without the tail the listed groups read as the whole picture.
+        output.Should().Contain("+7");
+    }
+
+    [Fact]
+    public void FailureCauses_QuietWindow_SaysSoInsteadOfRenderingAnEmptyTable()
+    {
+        var output = Render(c => Renderers.FailureCauses(c, new FailureCausesResponse(0, new(), 0)));
+
+        output.Should().Contain("No failed runs");
+    }
+
+    [Fact]
     public void Dashboard_RendersCountsAndTopWorkflowsTable()
     {
         var s = new DashboardStats(

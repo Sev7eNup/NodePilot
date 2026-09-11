@@ -594,9 +594,17 @@ describe('WorkflowsPage — Mutations', () => {
   });
 
   it('Run Now button on manualTrigger workflow with parameters opens RunWorkflowDialog', async () => {
-    const wfWithManualParams = mkWorkflow({
+    // The list carries no definition, only the flag. The parameter form comes from the
+    // single-workflow endpoint, fetched on the click.
+    const listRow = mkWorkflow({
       id: 'wf-manual',
       name: 'Manual WF',
+      definitionJson: undefined,
+      hasManualTriggerParameters: true,
+      triggerTypes: ['manualTrigger'],
+    });
+    const full = {
+      ...listRow,
       definitionJson: JSON.stringify({
         nodes: [{
           id: 'mt',
@@ -610,9 +618,11 @@ describe('WorkflowsPage — Mutations', () => {
         }],
         edges: [],
       }),
-      triggerTypes: ['manualTrigger'],
-    });
-    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([wfWithManualParams])));
+    };
+    server.use(
+      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([listRow])),
+      http.get(`${BASE}/api/workflows/wf-manual`, () => HttpResponse.json(full)),
+    );
     renderPage();
     await waitFor(() => expect(screen.getByText('Manual WF')).toBeInTheDocument());
 
@@ -620,6 +630,28 @@ describe('WorkflowsPage — Mutations', () => {
 
     // RunWorkflowDialog renders the trigger title
     await waitFor(() => expect(screen.getByText(/Run Manual/)).toBeInTheDocument());
+  });
+
+  it('Run Now on a workflow without parameters executes without fetching the definition', async () => {
+    // The common path must stay a single click with no round-trip for the definition.
+    const listRow = mkWorkflow({
+      id: 'wf-plain', name: 'Plain WF', definitionJson: undefined,
+      hasManualTriggerParameters: false, triggerTypes: ['manualTrigger'],
+    });
+    let definitionFetches = 0;
+    let executed = false;
+    server.use(
+      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([listRow])),
+      http.get(`${BASE}/api/workflows/wf-plain`, () => { definitionFetches++; return HttpResponse.json(listRow); }),
+      http.post(`${BASE}/api/workflows/wf-plain/execute`, () => { executed = true; return HttpResponse.json({ id: 'exec-1' }); }),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Plain WF')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTitle('Run Now'));
+
+    await waitFor(() => expect(executed).toBe(true));
+    expect(definitionFetches).toBe(0);
   });
 
   it('Power button on enabled workflow calls /disable', async () => {

@@ -25,7 +25,12 @@ export interface Workflow {
   id: string;
   name: string;
   description: string | null;
-  definitionJson: string;
+  /** Present on single-workflow reads. The list omits it: a definition is unbounded text
+   *  including every inline script, and no list surface renders it. */
+  definitionJson?: string;
+  /** List-only: true when starting this workflow prompts for parameters, so the caller knows
+   *  whether it has to fetch the definition for the run dialog. */
+  hasManualTriggerParameters?: boolean;
   version: number;
   isEnabled: boolean;
   createdAt: string;

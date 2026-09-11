@@ -29,7 +29,7 @@ public class OperationsControllerTests
         IResourceAuthorizationService? authz = null,
         string role = "Admin",
         IConfiguration? configuration = null,
-        NodePilot.Api.Services.WorkflowCallSiteCache? callSites = null)
+        NodePilot.Api.Services.WorkflowDefinitionFactsCache? callSites = null)
     {
         var controller = new OperationsController(db, authz ?? new AlwaysAllowAuthorizationService(), configuration, callSites);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
@@ -118,7 +118,7 @@ public class OperationsControllerTests
             Wf(child, "Child", "{}"));
         await db.SaveChangesAsync();
 
-        var cache = new NodePilot.Api.Services.WorkflowCallSiteCache();
+        var cache = new NodePilot.Api.Services.WorkflowDefinitionFactsCache();
         var first = await GetGraph(NewController(db, callSites: cache));
         first.Edges.Should().ContainSingle().Which.RefStatus.Should().Be("Resolved");
 
@@ -143,7 +143,7 @@ public class OperationsControllerTests
         db.Workflows.AddRange(Wf(parent, "Parent", CallsDef(child.ToString())), Wf(child, "Child", "{}"));
         await db.SaveChangesAsync();
 
-        var cache = new NodePilot.Api.Services.WorkflowCallSiteCache();
+        var cache = new NodePilot.Api.Services.WorkflowDefinitionFactsCache();
         (await GetGraph(NewController(db, callSites: cache))).Edges.Should().ContainSingle();
 
         var row = await db.Workflows.FirstAsync(w => w.Id == parent);
@@ -496,7 +496,7 @@ public class OperationsControllerTests
             db.Workflows.Add(Wf(Guid.NewGuid(), $"Caller {i}", CallsDef(child.ToString())));
         await db.SaveChangesAsync();
 
-        var cache = new NodePilot.Api.Services.WorkflowCallSiteCache();
+        var cache = new NodePilot.Api.Services.WorkflowDefinitionFactsCache();
         var cold = await GetGraph(NewController(db, callSites: cache));
 
         cold.Nodes.Should().HaveCount(3001);
@@ -548,7 +548,7 @@ public class OperationsControllerTests
         db.Workflows.AddRange(Wf(parent, "Parent", CallsDef(child.ToString())), Wf(child, "Child", "{}"));
         await db.SaveChangesAsync();
 
-        var cache = new NodePilot.Api.Services.WorkflowCallSiteCache();
+        var cache = new NodePilot.Api.Services.WorkflowDefinitionFactsCache();
         var graph = await GetGraph(NewController(db, callSites: cache));
 
         graph.Edges.Should().ContainSingle().Which.RefStatus.Should().Be("Resolved");

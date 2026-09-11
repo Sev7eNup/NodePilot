@@ -92,11 +92,32 @@ if (typeof globalThis !== 'undefined' && !('DOMMatrixReadOnly' in globalThis)) {
   globalThis.DOMMatrixReadOnly = class { m11=1; m22=1; e=0; f=0; };
 }
 
-// ECharts uses the SVG renderer in unit tests, but zrender still creates a 2D canvas solely to
-// measure text. jsdom deliberately leaves getContext() unimplemented and writes to stderr on every
-// call. A deterministic measureText-only context is the complete surface this SVG path needs.
+// ECharts renders through SVG almost everywhere, but zrender still creates a 2D canvas to measure
+// text — and heatmaps render through the canvas backend outright. jsdom deliberately leaves
+// getContext() unimplemented and writes to stderr on every call.
+//
+// measureText is what the SVG path needs. The rest are no-ops so the canvas backend can run its
+// draw calls without throwing: nothing asserts on pixels, only that the chart mounts and that the
+// option it was handed is correct.
 const canvasMeasureContext = {
   measureText: (text: string) => ({ width: String(text).length * 8 }),
+  canvas: { width: 0, height: 0 },
+  save: () => {}, restore: () => {}, scale: () => {}, translate: () => {}, rotate: () => {},
+  transform: () => {}, setTransform: () => {}, resetTransform: () => {},
+  beginPath: () => {}, closePath: () => {}, moveTo: () => {}, lineTo: () => {},
+  bezierCurveTo: () => {}, quadraticCurveTo: () => {}, arc: () => {}, arcTo: () => {},
+  rect: () => {}, ellipse: () => {},
+  fill: () => {}, stroke: () => {}, clip: () => {},
+  fillRect: () => {}, strokeRect: () => {}, clearRect: () => {},
+  fillText: () => {}, strokeText: () => {},
+  drawImage: () => {}, putImageData: () => {},
+  getImageData: () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }),
+  createImageData: () => ({ data: new Uint8ClampedArray(4), width: 1, height: 1 }),
+  createLinearGradient: () => ({ addColorStop: () => {} }),
+  createRadialGradient: () => ({ addColorStop: () => {} }),
+  createPattern: () => null,
+  setLineDash: () => {}, getLineDash: () => [],
+  isPointInPath: () => false, isPointInStroke: () => false,
 } as unknown as CanvasRenderingContext2D;
 Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
   configurable: true,

@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { Node, Edge } from '@xyflow/react';
 import { api } from '../api/client';
+import { getPage } from '../api/paging';
 import type { Workflow, WorkflowExecution } from '../types/api';
 import { withSpan } from '../telemetry/otel';
 import { extractManualTriggerConfig } from '../components/common/RunWorkflowDialog';
@@ -50,13 +51,18 @@ export function useWorkflowExecution({
   const [pendingRunIsDebug, setPendingRunIsDebug] = useState(false);
 
   // Most recent execution, fetched only when the run dialog is about to open, to pre-fill the
-  // parameter form with the values used last time. Bounded to one row to keep the call cheap.
-  const { data: lastExecutionList } = useQuery({
+  // parameter form with the values used last time. Genuinely bounded to one row: the endpoint
+  // pages with `pageSize` (`limit` was ignored, so it returned the default 100 rows, each
+  // carrying its input parameters and return data), and it answers with a PagedResponse whose
+  // `items` hold the rows.
+  const { data: lastExecutionPage } = useQuery({
     queryKey: ['last-execution', workflowId],
-    queryFn: () => api.get<Array<{ id: string; inputParametersJson: string | null }>>(`/executions?workflowId=${workflowId}&limit=1`),
+    queryFn: () => getPage<{ id: string; inputParametersJson: string | null }>(
+      `/executions?workflowId=${workflowId}`, 1, 1),
     enabled: !!workflowId && showRunDialog,
     staleTime: 30_000,
   });
+  const lastExecutionList = lastExecutionPage?.items;
 
   const executeMutation = useMutation({
     mutationFn: (args?: { params?: Record<string, string>; debug?: boolean }) =>

@@ -5,10 +5,9 @@ import { useDisplayedGraph } from '../../hooks/useDisplayedGraph';
 
 /**
  * The projection from `nodes`/`edges` to `displayedNodes`/`displayedEdges` patches purely visual
- * markers into the graph data. Clearing them matters as much as setting them: `useWorkflowHistory`
- * snapshots the projected graph from the React Flow store and writes it back as raw state on undo,
- * so a marker that is only ever set leaks into the raw edges for good (`__detached` makes
- * LabeledEdge apply `pointerEvents: 'none'`). These tests pin both directions for every marker.
+ * markers into the graph data. Clearing them matters as much as setting them: a marker that is
+ * only ever set survives in any graph that once carried it (`__detached` makes LabeledEdge apply
+ * `pointerEvents: 'none'`). These tests pin both directions for every marker.
  */
 
 const NODES: Node[] = [
@@ -41,7 +40,8 @@ function edgeData(edges: Edge[], id: string) {
 
 describe('useDisplayedGraph — edge detach marker', () => {
   const cleanEdge: Edge = { id: 'e1', source: 'a', target: 'b', type: 'labeled', data: { label: 'On Success' } };
-  /** An edge as it looks after an undo wrote the projected snapshot back into raw state. */
+  /** An edge carrying a marker from an earlier session, e.g. a definition saved before the
+   *  projection stopped leaking into persisted state. */
   const staleEdge: Edge = { ...cleanEdge, data: { label: 'On Success', __detached: true } };
 
   it('detachedEdgeId_marksThatEdge', () => {
@@ -86,5 +86,62 @@ describe('useDisplayedGraph — dock target marker', () => {
     const stale: Node[] = NODES.map((n) => ({ ...n, className: 'np-dock-target' }));
     const { displayedNodes } = project({ nodes: stale, dockTargetNodeId: null });
     for (const n of displayedNodes) expect(n.className).toBeUndefined();
+  });
+});
+
+describe('useDisplayedGraph — identity stability', () => {
+  const EDGES: Edge[] = [
+    { id: 'e1', source: 'a', target: 'b', type: 'labeled', data: { label: 'On Success' } },
+  ];
+
+  it('keeps every edge object when only the node array changes', () => {
+    // A drag replaces the node array on every frame. Rebuilding the edges there would churn
+    // React Flow's edge lookup and re-render every EdgeWrapper for a move that touched none
+    // of them.
+    const args = baseArgs({ edges: EDGES, edgesAnimated: false });
+    const { result, rerender } = renderHook((p: Parameters<typeof useDisplayedGraph>[0]) => useDisplayedGraph(p), {
+      initialProps: args,
+    });
+    const before = result.current.displayedEdges;
+
+    const moved = NODES.map((n) => (n.id === 'a' ? { ...n, position: { x: 40, y: 0 } } : n));
+    rerender({ ...args, nodes: moved });
+
+    expect(result.current.displayedEdges[0]).toBe(before[0]);
+  });
+
+  it('still hides edges that touch a filtered-out node', () => {
+    const { displayedEdges } = project({ edges: EDGES, hiddenActivityTypes: new Set(['delay']) });
+    expect(displayedEdges[0].hidden).toBe(true);
+  });
+
+  it('re-projects edges when the activity-type filter changes', () => {
+    const args = baseArgs({ edges: EDGES });
+    const { result, rerender } = renderHook((p: Parameters<typeof useDisplayedGraph>[0]) => useDisplayedGraph(p), {
+      initialProps: args,
+    });
+    expect(result.current.displayedEdges[0].hidden).toBeFalsy();
+
+    rerender({ ...args, hiddenActivityTypes: new Set(['delay']) });
+
+    expect(result.current.displayedEdges[0].hidden).toBe(true);
+  });
+
+  it('counts lint issues per node without scanning the issue lists per node', () => {
+    const lintResult = {
+      errors: [{ severity: 'error' as const, nodeId: 'a', code: 'x', message: 'boom' }],
+      warnings: [
+        { severity: 'warning' as const, nodeId: 'a', code: 'y', message: 'meh' },
+        { severity: 'warning' as const, nodeId: 'b', code: 'y', message: 'meh' },
+      ],
+    };
+    const { displayedNodes } = project({ lintResult });
+
+    const a = displayedNodes.find((n) => n.id === 'a')!.data as Record<string, unknown>;
+    const b = displayedNodes.find((n) => n.id === 'b')!.data as Record<string, unknown>;
+    expect(a.__lintErrors).toBe(1);
+    expect(a.__lintWarnings).toBe(1);
+    expect(b.__lintErrors).toBeUndefined();
+    expect(b.__lintWarnings).toBe(1);
   });
 });

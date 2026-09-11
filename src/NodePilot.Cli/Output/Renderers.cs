@@ -9,7 +9,7 @@ namespace NodePilot.Cli.Output;
 /// </summary>
 public static class Renderers
 {
-    public static void Workflows(IAnsiConsole console, IReadOnlyList<WorkflowResponse> rows)
+    public static void Workflows(IAnsiConsole console, IReadOnlyList<WorkflowListItemResponse> rows)
     {
         var table = new Table().Border(TableBorder.Rounded)
             .AddColumn("Id")
@@ -485,6 +485,35 @@ public static class Renderers
                 u.CreatedAt.ToLocalTime().ToString("u"));
         }
         console.Write(table);
+    }
+
+    public static void FailureCauses(IAnsiConsole console, FailureCausesResponse r)
+    {
+        if (r.TotalFailed == 0)
+        {
+            console.MarkupLine("[green]No failed runs in the window.[/]");
+            return;
+        }
+
+        var table = new Table().Border(TableBorder.Rounded)
+            .Title($"Failure causes ([red]{r.TotalFailed}[/] failed runs)")
+            .AddColumn("Count")
+            .AddColumn("Cause")
+            .AddColumn("Latest run")
+            .AddColumn("Latest");
+        foreach (var g in r.Groups)
+        {
+            table.AddRow(
+                g.Count.ToString(),
+                Markup.Escape(g.Message ?? "(no message recorded)"),
+                ShortGuid(g.LatestExecutionId),
+                g.LatestStartedAt.ToLocalTime().ToString("g"));
+        }
+        console.Write(table);
+
+        // The server returns the largest groups; the tail is a count so the total still adds up.
+        if (r.RemainingCount > 0)
+            console.MarkupLine($"[grey]+{r.RemainingCount} further cause(s) not shown.[/]");
     }
 
     public static void Dashboard(IAnsiConsole console, DashboardStats s)

@@ -784,7 +784,8 @@
     "collapse": "JSON-Node einklappen",
     "expand": "JSON-Node ausklappen",
     "use": "{{path}} verwenden",
-    "copy": "{{path}} kopieren"
+    "copy": "{{path}} kopieren",
+    "showMore": "Weitere {{count}} anzeigen"
   },
   "autocomplete": {
     "help": "↑↓ navigieren · Enter/Tab einfügen · Esc schließen"

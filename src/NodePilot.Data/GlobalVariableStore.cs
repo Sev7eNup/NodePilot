@@ -34,8 +34,9 @@ public class GlobalVariableStore : IGlobalVariableStore
         _logger = logger;
     }
 
+    /// <summary>Read-only for every caller (list endpoint, backup, import collision check).</summary>
     public async Task<IReadOnlyList<GlobalVariable>> GetAllAsync(CancellationToken ct)
-        => await _db.GlobalVariables.OrderBy(v => v.Name).ToListAsync(ct);
+        => await _db.GlobalVariables.AsNoTracking().OrderBy(v => v.Name).ToListAsync(ct);
 
     public async Task<string?> GetValueAsync(string name, CancellationToken ct)
     {

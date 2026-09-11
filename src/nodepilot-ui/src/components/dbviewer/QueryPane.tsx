@@ -23,6 +23,9 @@ import {
 
 const HISTORY_LIMIT = 20;
 const WRITE_CONFIRM_PHRASE = 'ALLOW WRITE';
+/** Result rows rendered at once. The server returns up to DbAdmin:QueryMaxRows (10 000). */
+const RESULT_PAGE_SIZES = [50, 100, 200] as const;
+const DEFAULT_RESULT_PAGE_SIZE = 100;
 
 interface Props {
   /**
@@ -381,11 +384,32 @@ export function QueryPane({ insertSignal }: Readonly<Props>) {
 
 function ResultTable({ data }: Readonly<{ data: DbAdminQueryResponse }>) {
   const { t } = useTranslation(['database', 'common']);
-  const resizableColumns = data.columns.map<ResizableColumn>((column, index) => ({
-    key: `${index}:${column.name}`,
-    defaultWidth: 200,
-  }));
+  // Rebuilt only when the result set changes. It also feeds the resize handles, so rebuilding
+  // it per render put a fresh array under every frame of a column drag.
+  const resizableColumns = useMemo(
+    () => data.columns.map<ResizableColumn>((column, index) => ({
+      key: `${index}:${column.name}`,
+      defaultWidth: 200,
+    })),
+    [data.columns],
+  );
   const { getWidth, resizeBy, startResize, totalWidth } = useResizableColumns(resizableColumns);
+
+  // The server returns up to DbAdmin:QueryMaxRows (10 000 by default) and everything used to go
+  // into the DOM at once — around eleven cells per row, so six figures of elements. Every result
+  // stays loaded; only one page of it is rendered.
+  const [pageSize, setPageSize] = useState(DEFAULT_RESULT_PAGE_SIZE);
+  const [page, setPage] = useState(1);
+  // A new result set starts at the top again.
+  useEffect(() => { setPage(1); }, [data]);
+
+  const pageCount = Math.max(1, Math.ceil(data.rows.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const firstRowIndex = (currentPage - 1) * pageSize;
+  const visibleRows = useMemo(
+    () => data.rows.slice(firstRowIndex, firstRowIndex + pageSize),
+    [data.rows, firstRowIndex, pageSize],
+  );
 
   return (
     <div className="p-4">
@@ -431,8 +455,8 @@ function ResultTable({ data }: Readonly<{ data: DbAdminQueryResponse }>) {
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/20">
-              {data.rows.map((row, i) => (
-                <tr key={i} className="hover:bg-surface-low">
+              {visibleRows.map((row, i) => (
+                <tr key={firstRowIndex + i} className="hover:bg-surface-low">
                   {row.map((cell, j) => (
                     <td key={j} className="px-3 py-1.5 whitespace-nowrap text-on-surface-variant truncate overflow-hidden">
                       {renderCell(cell)}
@@ -442,6 +466,48 @@ function ResultTable({ data }: Readonly<{ data: DbAdminQueryResponse }>) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {data.columns.length > 0 && data.rows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-on-surface-variant">
+          <span className="tabular-nums">
+            {t('database:query.rowRange', {
+              from: firstRowIndex + 1,
+              to: firstRowIndex + visibleRows.length,
+              total: data.rows.length,
+            })}
+          </span>
+          <label className="flex items-center gap-1.5">
+            {t('database:query.rowsPerPage')}
+            <select
+              value={pageSize}
+              onChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setPage(1); }}
+              className="input-field text-xs py-0.5 w-auto"
+            >
+              {RESULT_PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+            </select>
+          </label>
+          {pageCount > 1 && (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-2 py-0.5 rounded bg-surface-high hover:bg-surface-highest disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {t('database:prevPage')}
+              </button>
+              <span className="tabular-nums">{t('database:query.pageOf', { page: currentPage, pages: pageCount })}</span>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                disabled={currentPage === pageCount}
+                className="px-2 py-0.5 rounded bg-surface-high hover:bg-surface-highest disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {t('database:nextPage')}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

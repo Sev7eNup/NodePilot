@@ -100,7 +100,9 @@ export function ExecutionsPage() {
   const { data: executionPage, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['executions', 'terminalOnly', statusFilter, workflowFilter, debouncedSearch, page],
     queryFn: () => {
-      const params = new URLSearchParams({ terminalOnly: 'true' });
+      // includePayloads=false: this grid never renders returnData or inputParametersJson, and
+      // both are capped at 32 KiB per row over a page of 200.
+      const params = new URLSearchParams({ terminalOnly: 'true', includePayloads: 'false' });
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (workflowFilter !== 'all') params.set('workflowId', workflowFilter);
       if (debouncedSearch) params.set('search', debouncedSearch);
@@ -180,7 +182,10 @@ export function ExecutionsPage() {
     let list = executions ?? [];
     if (statusFilter !== 'all') list = list.filter((e) => e.status === statusFilter);
     if (workflowFilter !== 'all') list = list.filter((e) => e.workflowId === workflowFilter);
-    const term = search.trim().toLowerCase();
+    // Debounced, like the server query above: on the raw value this re-filtered, re-sorted and
+    // re-cloned up to 200 rows on every keystroke. The client filter stays because it matches
+    // more fields than the server does (started-by user, execution id).
+    const term = debouncedSearch.trim().toLowerCase();
     if (term) {
       list = list.filter((e) =>
         workflowNameOf(e).toLowerCase().includes(term)
@@ -206,7 +211,7 @@ export function ExecutionsPage() {
     return sorted;
     // workflowNameOf depends on workflowNames; listing it keeps the sort stable across renames.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [executions, statusFilter, workflowFilter, search, sortBy, sortDir, workflowNames]);
+  }, [executions, statusFilter, workflowFilter, debouncedSearch, sortBy, sortDir, workflowNames]);
 
   // --- Virtual scrolling (desktop only) ---
   const listRef = useRef<HTMLDivElement>(null);

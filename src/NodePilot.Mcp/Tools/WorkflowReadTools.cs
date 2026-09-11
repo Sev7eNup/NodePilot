@@ -27,7 +27,7 @@ public sealed class WorkflowReadTools
         CancellationToken cancellationToken = default)
     {
         var all = await ApiErrorMapper.Guard(() => _api.ListWorkflowsAsync(cancellationToken));
-        IEnumerable<WorkflowResponse> q = all;
+        IEnumerable<WorkflowListItemResponse> q = all;
         if (!string.IsNullOrWhiteSpace(nameContains))
             q = q.Where(w => w.Name.Contains(nameContains, StringComparison.OrdinalIgnoreCase));
         if (enabledOnly)
@@ -139,7 +139,7 @@ public sealed class WorkflowReadTools
         };
     }
 
-    private static object Summarize(WorkflowResponse w) => new
+    private static object Summarize(WorkflowListItemResponse w) => new
     {
         id = w.Id,
         name = w.Name,

@@ -49,7 +49,8 @@ public class OutputAndRenderingTests
     [Fact]
     public void Renderers_WorkflowDetail_RendersAllRows()
     {
-        var w = SampleWorkflow("Build", lastStatus: "Failed");
+        // WorkflowDetail renders a single-workflow read, which does carry the definition.
+        var w = SampleWorkflowDetail("Build", lastStatus: "Failed");
         var console = (IAnsiConsole)NewBuffer();
         Renderers.WorkflowDetail(console, w);
         var output = ((TestConsole)console).Output;
@@ -209,7 +210,27 @@ public class OutputAndRenderingTests
         ex.Message.Should().Contain("400").And.Contain("raw error body");
     }
 
-    private static WorkflowResponse SampleWorkflow(string name, string lastStatus) => new(
+    private static WorkflowListItemResponse SampleWorkflow(string name, string lastStatus) => new(
+        Id: Guid.NewGuid(),
+        Name: name,
+        Description: null,
+        Version: 1,
+        IsEnabled: true,
+        CreatedAt: DateTime.UtcNow,
+        UpdatedAt: DateTime.UtcNow,
+        CreatedBy: null,
+        UpdatedBy: "admin",
+        ActivityCount: 3,
+        TriggerTypes: new() { "manualTrigger" },
+        LastExecution: new LastExecutionInfo(Guid.NewGuid(), lastStatus, DateTime.UtcNow, DateTime.UtcNow, 100),
+        SuccessCount: 1,
+        TotalCount: 1,
+        AvgDurationMs: 100,
+        CheckedOutByUserId: null,
+        CheckedOutByUserName: null,
+        CheckedOutAt: null);
+
+    private static WorkflowResponse SampleWorkflowDetail(string name, string lastStatus) => new(
         Id: Guid.NewGuid(),
         Name: name,
         Description: null,

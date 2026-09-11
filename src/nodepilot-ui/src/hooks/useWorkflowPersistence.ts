@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useBlocker } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -58,19 +58,23 @@ export function useWorkflowPersistence({
   const draftGenerationRef = useRef(0);
 
   const blocker = useBlocker(isDirty);
-  const persistableDefinition = useMemo(() => stripRuntimeDefinition({ nodes, edges }), [nodes, edges]);
 
   // Always points at the newest rendered draft. Request bodies copy from this ref once; a
   // follow-up save captures it again after the preceding request completes.
-  const draftRef = useRef({ workflowId, name, description: workflow?.description ?? '', persistableDefinition });
+  //
+  // The draft holds the graph as-is and is sanitised when a request body is built, not on
+  // every render: a drag replaces the node array on every frame, and stripRuntimeDefinition
+  // walks every node and edge. Keeping the live graph here also means a save that lands
+  // mid-drag still writes what is on the canvas.
+  const draftRef = useRef({ workflowId, name, description: workflow?.description ?? '', graph: { nodes, edges } });
   useLayoutEffect(() => {
     if (renderedWorkflowIdRef.current !== workflowId) {
       renderedWorkflowIdRef.current = workflowId;
       // Even switching away and back to the same ID invalidates work from the prior visit.
       draftGenerationRef.current += 1;
     }
-    draftRef.current = { workflowId, name, description: workflow?.description ?? '', persistableDefinition };
-  }, [workflowId, name, workflow?.description, persistableDefinition]);
+    draftRef.current = { workflowId, name, description: workflow?.description ?? '', graph: { nodes, edges } };
+  }, [workflowId, name, workflow?.description, nodes, edges]);
 
   useLayoutEffect(() => () => { draftGenerationRef.current += 1; }, []);
 
@@ -88,7 +92,7 @@ export function useWorkflowPersistence({
       body: {
         name: draft.name,
         description: draft.description,
-        definitionJson: JSON.stringify(draft.persistableDefinition),
+        definitionJson: JSON.stringify(stripRuntimeDefinition(draft.graph)),
       },
     };
   }, []);
@@ -217,7 +221,7 @@ export function useWorkflowPersistence({
 
     draftRef.current = {
       ...draftRef.current,
-      persistableDefinition: stripRuntimeDefinition({ nodes: nextNodes, edges: nextEdges }),
+      graph: { nodes: nextNodes, edges: nextEdges },
     };
     revisionRef.current += 1;
     updateDirty(true);

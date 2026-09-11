@@ -110,7 +110,7 @@ Large free-text fields (stdout/stderr, return data, audit details, diagnostics) 
 
 ## Tool catalog
 
-91 default tools across 10 groups, plus 10 gated destructive tools (101 total). (Roles refer to the
+92 default tools across 10 groups, plus 10 gated destructive tools (102 total). (Roles refer to the
 authenticated user.)
 
 ### Discovery
@@ -137,8 +137,14 @@ decoded XML text. This preserves UTF-16 BOMs and declarations end to end.
 `trigger_external_workflow` (X-Api-Key)
 
 ### Telemetry / data
-`get_dashboard_stats` · `get_operations_graph` · `get_workflow_coverage` · `get_workflow_step_health` ·
-`get_workflow_step_stats` · `query_audit_log` (Admin) · `get_support_diagnostics` (Admin)
+`get_dashboard_stats` · `get_failure_causes` · `get_operations_graph` · `get_workflow_coverage` ·
+`get_workflow_step_health` · `get_workflow_step_stats` · `query_audit_log` (Admin) ·
+`get_support_diagnostics` (Admin)
+
+`get_failure_causes` groups recent failed runs by their normalized message — the server folds out
+GUIDs, timestamps and whitespace before grouping, so one recurring fault is one group instead of a
+page of near-identical lines. Each group carries the most recent execution id, which
+`get_execution_steps` can open.
 
 `get_operations_graph` caps `recent` to the **most recent 200** on top of the server cap and reports
 the truncation in `meta.recentToolCap` / `meta.recentWithheldByTool`. The server cap (4,000) is a

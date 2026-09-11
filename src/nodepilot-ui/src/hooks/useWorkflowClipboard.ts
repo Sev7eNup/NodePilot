@@ -1,11 +1,15 @@
-import { useRef, useCallback } from 'react';
-import { type Node, type Edge, useReactFlow } from '@xyflow/react';
+import { useRef, useCallback, useEffect } from 'react';
+import { type Node, type Edge } from '@xyflow/react';
 import { randomUuid } from '../lib/uuid';
+import type { WorkflowGraphSource } from './useWorkflowHistory';
 
 type WorkflowClipboard = { nodes: Node[]; edges: Edge[] };
 
-export function useWorkflowClipboard(commitHistory: (label?: string) => void) {
-  const { getNodes, getEdges, setNodes, setEdges } = useReactFlow();
+export function useWorkflowClipboard(commitHistory: (label?: string) => void, source: WorkflowGraphSource) {
+  // Copy reads the editor's graph state, not React Flow's store: a collapsed group is
+  // projected without its children, so copying it from the store would lose them.
+  const sourceRef = useRef(source);
+  useEffect(() => { sourceRef.current = source; });
   const pasteCountRef = useRef(0);
   const selectionRef = useRef<{ nodeIds: string[]; edgeIds: string[] }>({ nodeIds: [], edgeIds: [] });
   // Workflow nodes can contain inline credentials, so the clipboard lives in this hook instance
@@ -22,8 +26,7 @@ export function useWorkflowClipboard(commitHistory: (label?: string) => void) {
   const copySelection = useCallback(() => {
     const { nodeIds, edgeIds } = selectionRef.current;
     if (nodeIds.length === 0 && edgeIds.length === 0) return;
-    const nodes = getNodes();
-    const edges = getEdges();
+    const { nodes, edges } = sourceRef.current;
     const nodeIdSet = new Set(nodeIds);
     const selectedNodes = nodes.filter((n) => nodeIdSet.has(n.id));
     // An edge is copied only when both of its endpoints are in the selection.
@@ -37,7 +40,7 @@ export function useWorkflowClipboard(commitHistory: (label?: string) => void) {
       edges: selectedEdges.map((e) => ({ ...e, data: e.data ? { ...(e.data as object) } : undefined })),
     };
     pasteCountRef.current = 0;
-  }, [getNodes, getEdges]);
+  }, []);
 
   const pasteBuffer = useCallback(() => {
     const buf = clipboardRef.current;
@@ -67,10 +70,11 @@ export function useWorkflowClipboard(commitHistory: (label?: string) => void) {
       target: idMap.get(e.target)!,
       selected: true,
     }));
+    const { setNodes, setEdges } = sourceRef.current;
     commitHistory('Paste');
     setNodes((nds: Node[]) => [...nds.map((n) => ({ ...n, selected: false })), ...newNodes]);
     setEdges((eds: Edge[]) => [...eds.map((e) => ({ ...e, selected: false })), ...newEdges]);
-  }, [commitHistory, setNodes, setEdges]);
+  }, [commitHistory]);
 
   return { copySelection, pasteBuffer, resetPasteCount, updateSelection };
 }

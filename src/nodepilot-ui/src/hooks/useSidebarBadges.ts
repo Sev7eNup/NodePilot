@@ -3,8 +3,8 @@ import { api } from '../api/client';
 import { alertingApi } from '../api/alerting';
 import { useAuthStore } from '../stores/authStore';
 
-/** The subset of `/stats/dashboard` the sidebar badges read: three window-independent totals. */
-interface DashboardCounts {
+/** The three window-independent totals the sidebar badges read. */
+interface SidebarCounts {
   workflowsTotal: number;
   runningCount: number;
   machinesTotal: number;
@@ -20,9 +20,10 @@ export interface SidebarBadges {
 /**
  * Live counts for the sidebar nav badges.
  *
- * Shares the dashboard's query key `['dashboard-stats', 24]`; the totals are window-independent,
- * so an open dashboard costs no extra request and its SignalR invalidation keeps the running
- * count current. The refetch interval keeps the counts fresh on other pages.
+ * Reads a dedicated three-count endpoint rather than the dashboard payload. The sidebar renders
+ * on every page, so sharing the dashboard's key meant polling roughly twenty sequential queries
+ * — including an unfiltered count over the whole executions table — everywhere in the app for
+ * three numbers.
  *
  * The alerting-rule count is gated to Admin/Operator: `GET /api/alerting/rules` is not
  * Viewer-readable, so for a Viewer the query stays disabled and no alerts badge renders.
@@ -33,8 +34,8 @@ export function useSidebarBadges(): SidebarBadges {
   const canReadAlerts = role === 'Admin' || role === 'Operator';
 
   const stats = useQuery({
-    queryKey: ['dashboard-stats', 24],
-    queryFn: () => api.get<DashboardCounts>('/stats/dashboard?windowHours=24'),
+    queryKey: ['sidebar-counts'],
+    queryFn: () => api.get<SidebarCounts>('/stats/sidebar-counts'),
     enabled: isAuthenticated,
     staleTime: 30_000,
     refetchInterval: 60_000,

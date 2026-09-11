@@ -94,10 +94,10 @@ public sealed class NodePilotApiClient
 
     // ---- Workflows ----------------------------------------------------------
 
-    public async Task<List<WorkflowResponse>> ListWorkflowsAsync(CancellationToken ct)
+    public async Task<List<WorkflowListItemResponse>> ListWorkflowsAsync(CancellationToken ct)
     {
         using var res = await _http.GetAsync("api/workflows", ct);
-        return await ParseAsync<List<WorkflowResponse>>(res, ct);
+        return await ParseAsync<List<WorkflowListItemResponse>>(res, ct);
     }
 
     public async Task<WorkflowResponse> GetWorkflowAsync(Guid id, CancellationToken ct)
@@ -659,6 +659,15 @@ public sealed class NodePilotApiClient
     {
         using var res = await _http.GetAsync("api/stats/dashboard", ct);
         return await ParseAsync<DashboardStats>(res, ct);
+    }
+
+    /// <summary>Recent failures grouped by their normalized message, so a repeating fault reads as
+    /// one row instead of scrolling past as many.</summary>
+    public async Task<FailureCausesResponse> GetFailureCausesAsync(int? windowHours, CancellationToken ct)
+    {
+        var query = windowHours is null ? "" : $"?windowHours={windowHours}";
+        using var res = await _http.GetAsync($"api/stats/failure-causes{query}", ct);
+        return await ParseAsync<FailureCausesResponse>(res, ct);
     }
 
     public async Task<TelemetrySummaryResponse> GetObservabilitySummaryAsync(CancellationToken ct)

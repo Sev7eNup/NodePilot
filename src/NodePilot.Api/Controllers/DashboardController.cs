@@ -64,6 +64,30 @@ public class DashboardController : ControllerBase
     private int LongRunningSeconds()
         => Math.Max(1, _configuration?.GetValue("Alerting:LongRunningSeconds", 600) ?? 600);
 
+    /// <summary>
+    /// The three counters behind the sidebar nav badges.
+    ///
+    /// <para>They used to come from <c>GET /api/stats/dashboard</c>, which the sidebar polled on
+    /// every page — about twenty sequential queries, including an unfiltered <c>COUNT(*)</c> over
+    /// the whole executions table, to render three numbers. This answers the same question with
+    /// three counts and no row materialisation.</para>
+    /// </summary>
+    [HttpGet("sidebar-counts")]
+    public async Task<ActionResult<SidebarCounts>> GetSidebarCounts(CancellationToken ct)
+    {
+        var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
+        var workflowQuery = _db.Workflows.AsNoTracking().ScopeToAccessibleFolders(accessible);
+        var execQuery = _db.WorkflowExecutions.AsNoTracking().ScopeToAccessibleFolders(accessible);
+        if (workflowQuery is null || execQuery is null)
+            return Ok(new SidebarCounts(0, 0, 0));
+
+        // Machines are not folder-scoped, matching what the dashboard reports.
+        return Ok(new SidebarCounts(
+            WorkflowsTotal: await workflowQuery.CountAsync(ct),
+            RunningCount: await execQuery.CountAsync(e => e.Status == ExecutionStatus.Running, ct),
+            MachinesTotal: await _db.ManagedMachines.AsNoTracking().CountAsync(ct)));
+    }
+
     [HttpGet("dashboard")]
     public async Task<ActionResult<DashboardStats>> Get(CancellationToken ct, [FromQuery] int windowHours = 24)
     {

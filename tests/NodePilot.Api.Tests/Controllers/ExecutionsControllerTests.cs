@@ -114,6 +114,46 @@ public class ExecutionsControllerTests
         executions.Should().HaveCount(2);
     }
 
+    /// <summary>
+    /// ReturnData and InputParametersJson are capped at 32 KiB each, and the executions page
+    /// reads a page of 200 rows without rendering either. The designer's history panel does show
+    /// both, so they stay on by default and only the page opts out.
+    /// </summary>
+    [Fact]
+    public async Task GetAll_IncludePayloadsFalse_OmitsPayloadsButKeepsTheRow()
+    {
+        var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
+        db.Workflows.Add(workflow);
+        var exec = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(),
+            WorkflowId = workflow.Id,
+            Status = ExecutionStatus.Succeeded,
+            StartedAt = DateTime.UtcNow.AddMinutes(-1),
+            CompletedAt = DateTime.UtcNow,
+            ReturnData = "{\"result\":\"ok\"}",
+            InputParametersJson = "{\"env\":\"prod\"}",
+        };
+        db.WorkflowExecutions.Add(exec);
+        await db.SaveChangesAsync();
+
+        var controller = NewController(db, new Mock<IWorkflowEngine>().Object);
+
+        var withPayloads = (((await controller.GetAll(null, ct: CancellationToken.None))
+            .Result as OkObjectResult)!.Value as PagedResponse<ExecutionResponse>)!.Items.Single();
+        withPayloads.ReturnData.Should().NotBeNull();
+        withPayloads.InputParametersJson.Should().NotBeNull();
+
+        var without = (((await controller.GetAll(null, ct: CancellationToken.None, includePayloads: false))
+            .Result as OkObjectResult)!.Value as PagedResponse<ExecutionResponse>)!.Items.Single();
+        without.ReturnData.Should().BeNull();
+        without.InputParametersJson.Should().BeNull();
+        // Only the two heavy fields go; the row is otherwise unchanged.
+        without.Id.Should().Be(exec.Id);
+        without.Status.Should().Be("Succeeded");
+    }
+
     [Fact]
     public async Task GetAll_ReturnsRequestedPageAndTrueTotal()
     {

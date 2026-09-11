@@ -39,6 +39,12 @@ public record DashboardAuditEvent(
 
 public record ExecutionRetryStats(int FinishedCount, int RetriedCount);
 
+/// <summary>
+/// Counters for the sidebar nav badges. Window-independent, so the sidebar does not need the
+/// dashboard's window parameter — or the rest of its payload.
+/// </summary>
+public record SidebarCounts(int WorkflowsTotal, int RunningCount, int MachinesTotal);
+
 public record DashboardStats(
     int WorkflowsTotal, int WorkflowsEnabled,
     int MachinesTotal, int MachinesReachable,

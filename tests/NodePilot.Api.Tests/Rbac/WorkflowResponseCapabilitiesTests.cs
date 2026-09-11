@@ -239,7 +239,7 @@ public sealed class WorkflowResponseCapabilitiesTests : IDisposable
 
         var ctrl = NewCtrl(_editorId, "Operator");
         var ok = (await ctrl.GetAll(CancellationToken.None)).Result as OkObjectResult;
-        var list = ok!.Value as List<WorkflowResponse>;
+        var list = ok!.Value as List<WorkflowListItemResponse>;
         list.Should().HaveCount(1, "editor sees only Finance, not Sales");
         list![0].Capabilities.CanEdit.Should().BeTrue();
         list[0].FolderPath.Should().Be("/Finance");

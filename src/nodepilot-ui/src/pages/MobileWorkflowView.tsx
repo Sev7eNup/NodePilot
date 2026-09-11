@@ -56,7 +56,8 @@ function MobileWorkflowViewInner({ workflowId }: Readonly<{ workflowId: string }
   useEffect(() => {
     if (!workflow) return;
     try {
-      const def = JSON.parse(workflow.definitionJson) as { nodes?: Node[]; edges?: Edge[] };
+      // Always present here: this comes from the single-workflow endpoint, not the list.
+      const def = JSON.parse(workflow.definitionJson ?? '{}') as { nodes?: Node[]; edges?: Edge[] };
       const rawNodes = def.nodes ?? [];
       // Render the authored layout unchanged: the mobile view mirrors the desktop
       // arrangement, and only the node scale is enlarged (NodeScaleOverrideContext below),

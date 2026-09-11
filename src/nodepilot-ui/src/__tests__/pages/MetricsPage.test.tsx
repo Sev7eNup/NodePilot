@@ -8,7 +8,7 @@ import { buildMetricsChartOption, MetricsPage } from '../../pages/MetricsPage';
 import { DEFAULT_CHART_TOKENS } from '../../lib/chartTheme';
 import type { MetricsWidget } from '../../types/api';
 
-vi.mock('../../components/common/EChart', () => ({ EChart: ({ ariaLabel }: { ariaLabel?: string }) => <div role="img" aria-label={ariaLabel} /> }));
+vi.mock('../../components/common/EChart', () => ({ EChart: ({ ariaLabel, renderer }: { ariaLabel?: string; renderer?: string }) => <div role="img" aria-label={ariaLabel} data-renderer={renderer ?? 'svg'} /> }));
 
 const BASE = 'http://localhost';
 const server = setupServer(
@@ -131,5 +131,35 @@ describe('MetricsPage', () => {
     expect(slot1).toBe(DEFAULT_CHART_TOKENS.series[0]);
     expect(slot2).toBe(DEFAULT_CHART_TOKENS.series[1]);
     expect(slot1).not.toBe(slot2);
+  });
+});
+
+describe('MetricsPage — chart renderer', () => {
+  /**
+   * A heatmap draws one cell per bucket and timestamp. The shipped dashboards sample at 1m, so
+   * a 24 h window is tens of thousands of cells; as SVG that is tens of thousands of DOM
+   * elements. Everything else stays on SVG so it is crisp at any zoom.
+   */
+  function panelsOf(type: 'heatmap' | 'timeseries' | 'bargauge' | 'piechart') {
+    return [{
+      id: 1, title: `${type} panel`, description: null, type, unit: 'short',
+      grid: { x: 0, y: 0, width: 12, height: 8 },
+      data: [{ label: 'a', labels: {}, points: [{ timestamp: 1, value: 1 }] }],
+      error: null,
+    }];
+  }
+
+  it.each([
+    ['heatmap', 'canvas'],
+    ['timeseries', 'svg'],
+    ['bargauge', 'svg'],
+    ['piechart', 'svg'],
+  ] as const)('renders a %s through the %s backend', async (type, expected) => {
+    server.use(http.get(`${BASE}/api/observability/dashboards/:key`, () =>
+      HttpResponse.json({ available: true, key: 'mission-control', title: 'Mission Control', widgets: panelsOf(type) })));
+    renderPage();
+
+    const chart = await screen.findByRole('img', { name: `${type} panel` });
+    expect(chart).toHaveAttribute('data-renderer', expected);
   });
 });

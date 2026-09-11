@@ -8,7 +8,7 @@ The REST API manages workflows, executions, infrastructure and administration. I
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/workflows` | The list (an array, 500-row cap, filtered by folder RBAC) |
+| `GET /api/workflows` | The list (an array, 500-row cap, filtered by folder RBAC). Rows carry no `definitionJson` — read a single workflow for the graph |
 | `POST /api/workflows` | Create (Admin/Operator) — 201 |
 | `PUT /api/workflows/{id}` | Update — 204 (423 without the lock, 409 on a version conflict) |
 | `DELETE /api/workflows/{id}` | Delete (Admin) — 204 |

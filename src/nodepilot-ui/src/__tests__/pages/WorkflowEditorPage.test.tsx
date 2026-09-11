@@ -43,6 +43,15 @@ vi.mock('@microsoft/signalr', () => {
 // not blow up at module-load time.
 vi.mock('html-to-image', () => ({ toPng: toPngMock }));
 
+// Real lint, wrapped so tests can count how often the editor runs it. It walks every edge
+// against every node, so it must not run per frame of a drag.
+const lintSpy = vi.hoisted(() => ({ fn: null as ReturnType<typeof vi.fn> | null }));
+vi.mock('../../lib/workflowLint', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/workflowLint')>();
+  lintSpy.fn = vi.fn(actual.lintWorkflow);
+  return { ...actual, lintWorkflow: lintSpy.fn };
+});
+
 vi.mock('../../lib/autoLayout', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/autoLayout')>();
   return { ...actual, autoLayoutELK: autoLayoutElkMock };
@@ -1864,5 +1873,33 @@ describe('WorkflowEditorPage — node context menu preserves node data', () => {
     expect((stepB!.data.config as Record<string, unknown>).script).toBe('Get-PSDrive C');
     // The disable-then-enable round-trip leaves the node enabled again.
     expect(stepB!.data.disabled).toBe(false);
+  });
+});
+
+describe('WorkflowEditorPage — lint stays off the frame path', () => {
+  it('coalesces a burst of graph changes into one lint pass', async () => {
+    // lintWorkflow samples every edge against every node. React Flow runs controlled here, so
+    // a drag replaces the node array on every mouse move — linting per change would put that
+    // scan on the frame path. Selection changes stand in for the drag: each one replaces the
+    // node array exactly the same way.
+    renderPage();
+    await waitForCanvasReady();
+    await waitFor(() => expect(lintSpy.fn!.mock.calls.length).toBeGreaterThan(0));
+
+    const settledCalls = lintSpy.fn!.mock.calls.length;
+
+    fireEvent.click(document.querySelector('.react-flow__node[data-id="step-a"]')!);
+    fireEvent.click(document.querySelector('.react-flow__node[data-id="step-b"]')!);
+    fireEvent.click(document.querySelector('.react-flow__node[data-id="step-a"]')!);
+
+    // Nothing settled yet, so the scan has not been repeated.
+    expect(lintSpy.fn!.mock.calls.length).toBe(settledCalls);
+
+    // One pass once editing pauses, not one per change.
+    await waitFor(
+      () => expect(lintSpy.fn!.mock.calls.length).toBeGreaterThan(settledCalls),
+      { timeout: 2000 },
+    );
+    expect(lintSpy.fn!.mock.calls.length).toBeLessThanOrEqual(settledCalls + 2);
   });
 });

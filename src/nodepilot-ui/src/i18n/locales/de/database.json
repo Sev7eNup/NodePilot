@@ -68,6 +68,9 @@
     "confirmWriteTitle": "Write-Modus bestätigen",
     "confirmWriteHint": "Dieses Statement wird die Datenbank verändern. Tippe die Bestätigungs-Phrase, um fortzufahren.",
     "confirmWritePhrasePrompt": "Tippe: {{phrase}}",
-    "confirmWriteButton": "Ja, ausführen"
+    "confirmWriteButton": "Ja, ausführen",
+    "rowRange": "Zeile {{from}}–{{to}} von {{total}}",
+    "rowsPerPage": "Zeilen pro Seite",
+    "pageOf": "Seite {{page}} von {{pages}}"
   }
 }

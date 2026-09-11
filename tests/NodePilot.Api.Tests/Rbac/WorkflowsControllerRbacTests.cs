@@ -145,7 +145,7 @@ public sealed class WorkflowsControllerRbacTests : IDisposable
         var result = await ctrl.GetAll(CancellationToken.None);
         var ok = result.Result as OkObjectResult;
         ok.Should().NotBeNull();
-        var list = ok!.Value as List<Dtos.WorkflowResponse>;
+        var list = ok!.Value as List<Dtos.WorkflowListItemResponse>;
         list.Should().HaveCount(2, "Viewer-on-Root sees both /Finance and /Sales workflows via inheritance");
     }
 
@@ -156,7 +156,7 @@ public sealed class WorkflowsControllerRbacTests : IDisposable
         var result = await ctrl.GetAll(CancellationToken.None);
         var ok = result.Result as OkObjectResult;
         ok.Should().NotBeNull();
-        var list = ok!.Value as List<Dtos.WorkflowResponse>;
+        var list = ok!.Value as List<Dtos.WorkflowListItemResponse>;
         list.Should().HaveCount(1);
         list![0].Id.Should().Be(_financeWorkflow.Id, "the Sales workflow must be filtered out");
     }
@@ -167,7 +167,7 @@ public sealed class WorkflowsControllerRbacTests : IDisposable
         var ctrl = NewController(_strangerUserId, "Operator");
         var result = await ctrl.GetAll(CancellationToken.None);
         var ok = result.Result as OkObjectResult;
-        var list = ok!.Value as List<Dtos.WorkflowResponse>;
+        var list = ok!.Value as List<Dtos.WorkflowListItemResponse>;
         list.Should().BeEmpty();
     }
 
@@ -179,7 +179,7 @@ public sealed class WorkflowsControllerRbacTests : IDisposable
         var ctrl = NewController(adminId, "Admin");
         var result = await ctrl.GetAll(CancellationToken.None);
         var ok = result.Result as OkObjectResult;
-        var list = ok!.Value as List<Dtos.WorkflowResponse>;
+        var list = ok!.Value as List<Dtos.WorkflowListItemResponse>;
         list.Should().HaveCount(2);
     }
 

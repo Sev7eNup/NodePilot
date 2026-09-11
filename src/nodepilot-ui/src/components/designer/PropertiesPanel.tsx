@@ -76,7 +76,10 @@ function PropertiesPanelImpl({
   const isExternalTrigger = EXTERNAL_TRIGGER_TYPES.includes(activityType as typeof EXTERNAL_TRIGGER_TYPES[number]);
   const isTrigger = isExternalTrigger || activityType === ACTIVITY_TYPES.MANUAL_TRIGGER;
 
-  const upstreamVars = getUpstreamVariables(node.id, allNodes, edges);
+  const upstreamVars = useMemo(
+    () => getUpstreamVariables(node.id, allNodes, edges),
+    [node.id, allNodes, edges],
+  );
 
   const updateData = (patch: Record<string, unknown>) => {
     onUpdate(node.id, { ...data, ...patch });
@@ -93,10 +96,13 @@ function PropertiesPanelImpl({
   // network call: the LastOutputBlock for the *selected* step, and the hover-preview tooltip
   // for *upstream variables* in AvailableVariablesList. Done in one query (rather than
   // per-step) so we don't fan out N requests on a 40-node workflow.
+  // No refetchInterval: GET /executions/{id}/steps returns every step with its full output,
+  // error, trace, variable snapshot and output parameters, which is megabytes on a large run.
+  // SignalR invalidates this key on every ExecutionStatusChanged instead — the only event that
+  // can put a different run in front of this panel (see useSignalR.scheduleQueryInvalidate).
   const { data: lastStepsByWorkflow } = useQuery({
     queryKey: ['last-execution-steps', workflowId],
     enabled: !!workflowId,
-    refetchInterval: 15_000,
     staleTime: 10_000,
     queryFn: async () => {
       const authBoundaryGeneration = captureAuthBoundaryGeneration();

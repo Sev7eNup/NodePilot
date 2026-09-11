@@ -66,11 +66,11 @@ public sealed class NodePilotApiClient
 
     // ---- Workflows (read) ---------------------------------------------------
 
-    public async Task<List<WorkflowResponse>> ListWorkflowsAsync(CancellationToken ct)
+    public async Task<List<WorkflowListItemResponse>> ListWorkflowsAsync(CancellationToken ct)
     {
         EnsureReady();
         using var res = await _http.GetAsync("api/workflows", ct);
-        return await ParseAsync<List<WorkflowResponse>>(res, ct);
+        return await ParseAsync<List<WorkflowListItemResponse>>(res, ct);
     }
 
     public async Task<WorkflowResponse> GetWorkflowAsync(Guid id, CancellationToken ct)
@@ -373,6 +373,13 @@ public sealed class NodePilotApiClient
     {
         EnsureReady();
         using var res = await _http.GetAsync("api/stats/dashboard", ct);
+        return await ParseAsync<JsonElement>(res, ct);
+    }
+
+    public async Task<JsonElement> GetFailureCausesAsync(int windowHours, CancellationToken ct)
+    {
+        EnsureReady();
+        using var res = await _http.GetAsync($"api/stats/failure-causes?windowHours={windowHours}", ct);
         return await ParseAsync<JsonElement>(res, ct);
     }
 

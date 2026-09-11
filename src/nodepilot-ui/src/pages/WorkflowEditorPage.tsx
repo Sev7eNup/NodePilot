@@ -37,8 +37,9 @@ import '@xyflow/react/dist/style.css';
 import { ActivityNode } from '../components/designer/nodes/ActivityNode';
 import { StickyNoteNode } from '../components/designer/nodes/StickyNoteNode';
 import { GroupNode, GroupNodeEditContext, GroupDropTargetContext } from '../components/designer/nodes/GroupNode';
-import { lintWorkflow } from '../lib/workflowLint';
+import { lintWorkflow, type LintResult } from '../lib/workflowLint';
 import { getPrePublishLint } from '../lib/prePublishChecks';
+import { useSettledGraph } from '../hooks/useSettledGraph';
 import { getSmartDefaults } from '../lib/lastSimilarNode';
 import { reparentDraggedNodes, findDropTargetGroupId } from '../lib/groupReparenting';
 import { useDesignStore, LAYOUT_MODES, MACHINE_COLORS } from '../stores/designStore';
@@ -113,6 +114,12 @@ import { ErrorBoundary } from '../components/ErrorBoundary';
 /* ---- Editor Page ---- */
 
 type SelectedItem = { type: 'node'; id: string } | { type: 'edge'; id: string } | null;
+
+/** Placeholder until the Publish handler computes the real one. Frozen so it cannot be mutated. */
+const EMPTY_LINT_RESULT: LintResult = Object.freeze({ errors: [], warnings: [] });
+
+/** Stable identity for the closed AI panel, so its memo does not churn on every frame. */
+const EMPTY_AI_SELECTION = Object.freeze({ nodeLabels: [] as string[], edgeCount: 0 });
 
 export function WorkflowEditorPage() {
   const { t } = useTranslation(['editor']);
@@ -312,7 +319,17 @@ function WorkflowEditorInner() {
   const { data: credentials = [] } = useQuery({ queryKey: ['credentials'], queryFn: () => api.get<Credential[]>('/credentials') });
 
   // ---- Undo / Redo History ------------------------------------------------
-  const { historyPast, historyFuture, commitHistory, undo, redo } = useWorkflowHistory(id);
+  // The graph source of truth for everything that snapshots or rewrites it. React Flow's
+  // store holds the projected graph instead and must not be used for this.
+  const graphSource = { nodes, edges, setNodes, setEdges };
+  // Same graph behind a stable reference, for callbacks that must read it on demand without
+  // taking a new identity on every frame of a drag.
+  const liveGraphRef = useRef(graphSource);
+  useEffect(() => { liveGraphRef.current = graphSource; });
+  // Graph as of the last pause in editing — carries the whole-graph passes (lint, autosave
+  // draft) so they do not run per frame.
+  const settledGraph = useSettledGraph(nodes, edges);
+  const { historyPast, historyFuture, commitHistory, undo, redo } = useWorkflowHistory(id, graphSource);
 
   // Debounced commit for rapid property edits (e.g. typing in script field).
   // Structural changes (disabled, breakpoint, outputVariable) still commit immediately.
@@ -330,7 +347,7 @@ function WorkflowEditorInner() {
   const fittedWorkflowIdRef = useRef<string | null>(null);
 
   // ---- Copy / Paste -------------------------------------------------------
-  const { copySelection, pasteBuffer, resetPasteCount, updateSelection } = useWorkflowClipboard(commitHistory);
+  const { copySelection, pasteBuffer, resetPasteCount, updateSelection } = useWorkflowClipboard(commitHistory, graphSource);
 
   useEffect(() => {
     if (workflow) {
@@ -338,7 +355,8 @@ function WorkflowEditorInner() {
       resetPasteCount();
       pushRecentWorkflow(workflow.id);
       try {
-        const def = JSON.parse(workflow.definitionJson);
+        // Always present here: this comes from the single-workflow endpoint, not the list.
+        const def = JSON.parse(workflow.definitionJson ?? '{}');
         // Groups must come before their children in the array (React Flow renders in array order).
         const rawNodes: Node[] = (def.nodes || []);
         setNodes([...rawNodes].sort((a) => (a.type === 'group' ? -1 : 1)));
@@ -584,11 +602,12 @@ function WorkflowEditorInner() {
   // `onNodeClick` is defined further down, next to `completeEdgeReattach`: it closes the AI
   // chat and finishes a pending edge detach, so it needs that handler in its dependency list.
   //
-  // Current canvas labels scope AI chat to the selection.
-  const aiSelection = useMemo(() => ({
+  // Current canvas labels scope AI chat to the selection. Only scanned while the panel is
+  // open — the node and edge arrays are replaced on every frame of a drag.
+  const aiSelection = useMemo(() => (aiChatOpen ? {
     nodeLabels: nodes.filter((n) => n.selected).map((n) => (n.data?.label as string) || n.id),
     edgeCount: edges.filter((e) => e.selected).length,
-  }), [nodes, edges]);
+  } : EMPTY_AI_SELECTION), [aiChatOpen, nodes, edges]);
   const toggleFullscreen = useCallback(() => setFullscreen((f) => !f), []);
 
   // ---- Quick-Switcher / Recent Workflows (Ctrl+P) -------------------------
@@ -1031,16 +1050,19 @@ function WorkflowEditorInner() {
   // `no-trigger` lint error (which also blocks publish). No separate cycle banner needed.
 
   // Revalidate every graph change for the header badge and lint panel without blocking saves.
-  const lintResult = useMemo(() => lintWorkflow(nodes, edges, allWorkflows), [nodes, edges, allWorkflows]);
+  // Runs on the settled graph, not the live one: lintWorkflow walks every edge against every
+  // node, which is far too much work to repeat on each frame of a drag. The badge and the
+  // panel trail the canvas by one settle interval, which is what they are worth.
+  const lintResult = useMemo(
+    () => lintWorkflow(settledGraph.nodes, settledGraph.edges, allWorkflows),
+    [settledGraph, allWorkflows],
+  );
   const [lintPanelOpen, setLintPanelOpen] = useState(false);
 
   // Pre-publish lint folds the standard lint with extra publish-time-only checks (no trigger,
-  // trigger without out-edge, missing description). Computed lazily so the modal sees a fresh
-  // snapshot at the moment the user clicks Publish.
-  const prePublishLint = useMemo(
-    () => getPrePublishLint(lintResult, nodes, edges, workflow),
-    [lintResult, nodes, edges, workflow],
-  );
+  // trigger without out-edge, missing description). Computed in the Publish handler so the
+  // modal always sees the live graph, never a settled one.
+  const [prePublishLint, setPrePublishLint] = useState<LintResult>(EMPTY_LINT_RESULT);
   const [prePublishOpen, setPrePublishOpen] = useState(false);
 
   const {
@@ -1083,16 +1105,22 @@ function WorkflowEditorInner() {
       return;
     }
     if (isPublishing || isEnabling) return;
+    // Linted here rather than per render: this is the one moment the verdict matters, and it
+    // must describe the graph as it is right now, not as it settled.
+    const live = liveGraphRef.current;
+    const fresh = getPrePublishLint(
+      lintWorkflow(live.nodes, live.edges, allWorkflows), live.nodes, live.edges, workflow);
     // Clean lint -> straight through. Otherwise gate behind the modal so the user sees the
     // outstanding issues exactly once before going live.
-    if (prePublishLint.errors.length === 0 && prePublishLint.warnings.length === 0) {
+    if (fresh.errors.length === 0 && fresh.warnings.length === 0) {
       if (isLockedByMe) publish();
       else enable();
       return;
     }
+    setPrePublishLint(fresh);
     setPrePublishOpen(true);
-  }, [roleCanWrite, isLockedByOther, workflow?.isEnabled, isLockedByMe,
-      isPublishing, isTidying, publish, isEnabling, enable, disable, prePublishLint, t]);
+  }, [roleCanWrite, isLockedByOther, workflow, isLockedByMe, allWorkflows,
+      isPublishing, isTidying, publish, isEnabling, enable, disable, t]);
 
   // Modal "Trotzdem publizieren" / "Publizieren" callback — fires the right mutation.
   // Errors block the button at render time, so we don't re-check here.
@@ -1112,10 +1140,10 @@ function WorkflowEditorInner() {
     if (roleCanWrite && liveExecution?.status !== 'Running') run(true);
   }, [roleCanWrite, liveExecution?.status, run]);
   // Both values are read into locals first so the dependency list is a list of simple
-  // expressions. Reading `liveExecution.executionId` inside the body made the compiler infer
-  // the whole `liveExecution` object as the dependency while the source listed the two
-  // properties — a mismatch that cost this component its auto-memoization
-  // (react-hooks/preserve-manual-memoization).
+  // expressions. Reading `liveExecution.executionId` inside the body made the lint infer the
+  // whole `liveExecution` object as the dependency while the source listed the two properties,
+  // which trips react-hooks/preserve-manual-memoization. Only the lint runs here — the React
+  // Compiler itself is not enabled, so every memo boundary in this file is hand-written.
   const liveExecutionStatus = liveExecution?.status;
   const liveExecutionId = liveExecution?.executionId;
   const triggerCancel = useCallback(() => {

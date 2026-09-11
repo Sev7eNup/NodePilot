@@ -42,6 +42,21 @@ public sealed class TelemetryTools
         };
     }
 
+    [McpServerTool(Name = "get_failure_causes", ReadOnly = true)]
+    [Description("Recent failed runs grouped by cause over a window (1-720 hours, default 24). The server normalizes each error message first - GUIDs, timestamps and whitespace are folded out - so one recurring fault is one group rather than many near-identical messages, and the messages pass through secret redaction. Each group carries its count and the most recent execution id that produced it, which get_execution_steps can then open. 'remainingCount' covers the smaller groups beyond the returned ones, so the totals still add up. Answers 'what is actually breaking right now, and how often?'.")]
+    public async Task<object> GetFailureCauses(
+        [Description("Window in hours, 1-720. Values outside that range fall back to 24.")] int windowHours = 24,
+        CancellationToken cancellationToken = default)
+    {
+        var root = await ApiErrorMapper.Guard(() => _api.GetFailureCausesAsync(windowHours, cancellationToken));
+        return new
+        {
+            totalFailed = Int(root, "totalFailed"),
+            groups = Element(root, "groups"),
+            remainingCount = Int(root, "remainingCount"),
+        };
+    }
+
     /// <summary>
     /// How many finished runs <c>get_operations_graph</c> hands an agent. Deliberately far below
     /// the

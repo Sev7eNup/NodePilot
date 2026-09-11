@@ -97,7 +97,12 @@ public class ExecutionsController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 100,
         [FromQuery] ExecutionStatus? status = null,
-        [FromQuery] string? search = null)
+        [FromQuery] string? search = null,
+        // ReturnData and InputParametersJson are capped at 32 KiB each, so a full page of 200
+        // rows can carry megabytes the caller never looks at. The designer's history panel does
+        // read both (as tooltips and a badge count); the executions page does not, and asks to
+        // have them left out.
+        [FromQuery] bool includePayloads = true)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 200);
@@ -152,7 +157,9 @@ public class ExecutionsController : ControllerBase
             .Skip(skip)
             .Take(pageSize)
             .Select(e => new { e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt,
-                e.TriggeredBy, e.ErrorMessage, e.TraceId, e.SpanId, e.ReturnData, e.InputParametersJson,
+                e.TriggeredBy, e.ErrorMessage, e.TraceId, e.SpanId,
+                ReturnData = includePayloads ? e.ReturnData : null,
+                InputParametersJson = includePayloads ? e.InputParametersJson : null,
                 e.StartedByUserId, e.ParentExecutionId })
             .ToListAsync(ct);
 

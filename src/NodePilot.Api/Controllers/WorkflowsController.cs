@@ -31,6 +31,7 @@ public class WorkflowsController : WorkflowsControllerBase
     private readonly NodePilot.Api.Services.IWorkflowContractDeriver _contractDeriver;
     private readonly NodePilot.Api.Services.WorkflowVersionDefinitionProtector _versionDefinitions;
     private readonly IWorkflowConcurrencyGate _concurrency;
+    private readonly NodePilot.Api.Services.WorkflowDefinitionFactsCache _definitionFacts;
 
     public WorkflowsController(
         NodePilotDbContext db,
@@ -39,12 +40,14 @@ public class WorkflowsController : WorkflowsControllerBase
         IResourceAuthorizationService authz,
         NodePilot.Api.Services.IWorkflowContractDeriver contractDeriver,
         NodePilot.Api.Services.WorkflowVersionDefinitionProtector versionDefinitions,
-        IWorkflowConcurrencyGate concurrency)
+        IWorkflowConcurrencyGate concurrency,
+        NodePilot.Api.Services.WorkflowDefinitionFactsCache? definitionFacts = null)
         : base(db, logger, audit, authz)
     {
         _contractDeriver = contractDeriver;
         _versionDefinitions = versionDefinitions;
         _concurrency = concurrency;
+        _definitionFacts = definitionFacts ?? new NodePilot.Api.Services.WorkflowDefinitionFactsCache();
     }
 
     /// <summary>
@@ -87,7 +90,7 @@ public class WorkflowsController : WorkflowsControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<WorkflowResponse>>> GetAll(CancellationToken ct)
+    public async Task<ActionResult<List<WorkflowListItemResponse>>> GetAll(CancellationToken ct)
     {
         const int StatsWindow = 20;
         // Hard cap on how many workflows a single list call returns. Without this cap, a
@@ -104,10 +107,18 @@ public class WorkflowsController : WorkflowsControllerBase
         var accessibleFolders = await _authz.GetAccessibleFolderIdsAsync(User, ct);
         var query = _db.Workflows.AsNoTracking().ScopeToAccessibleFolders(accessibleFolders);
         if (query is null)
-            return Ok(new List<WorkflowResponse>());
+            return Ok(new List<WorkflowListItemResponse>());
+        // Column projection, deliberately without DefinitionJson: it is unbounded text including
+        // every inline script, and no surface that reads this list renders it. What the list did
+        // need from it — whether starting the workflow asks for input — comes from the
+        // revision-keyed facts cache below instead.
         var workflows = await query
             .OrderByDescending(w => w.UpdatedAt)
             .Take(HardLimitWorkflows)
+            .Select(w => new WorkflowListRow(
+                w.Id, w.Name, w.Description, w.Version, w.IsEnabled, w.CreatedAt, w.UpdatedAt,
+                w.CreatedBy, w.UpdatedBy, w.ActivityCount, w.TriggerTypesJson,
+                w.MaxConcurrentExecutions, w.CheckedOutByUserId, w.CheckedOutAt, w.FolderId))
             .ToListAsync(ct);
 
         var wfIds = workflows.Select(w => w.Id).ToList();
@@ -210,6 +221,16 @@ public class WorkflowsController : WorkflowsControllerBase
             .Select(f => new { f.Id, f.Path })
             .ToDictionaryAsync(x => x.Id, x => x.Path, ct);
 
+        // Whether starting a workflow prompts for parameters. Cached against UpdatedAt, so the
+        // steady state reads no definitions at all.
+        var facts = await _definitionFacts.ResolveAsync(
+            workflows.Select(w => (w.Id, w.UpdatedAt)).ToList(),
+            async (ids, token) => await query
+                .Where(w => ids.Contains(w.Id))
+                .Select(w => new NodePilot.Api.Services.WorkflowDefinitionRow(w.Id, w.UpdatedAt, w.DefinitionJson))
+                .ToListAsync(token),
+            ct);
+
         var responses = workflows.Select(w =>
         {
             var activityCount = w.ActivityCount;
@@ -250,19 +271,40 @@ public class WorkflowsController : WorkflowsControllerBase
 
             folderCaps.TryGetValue(w.FolderId, out var caps);
             pathLookup.TryGetValue(w.FolderId, out var path);
-            return ToScopedResponse(w, lockOwnerName, caps, path) with
+            return new WorkflowListItemResponse(
+                w.Id, w.Name, w.Description, w.Version, w.IsEnabled,
+                w.CreatedAt, w.UpdatedAt, w.CreatedBy, w.UpdatedBy)
             {
                 ActivityCount = activityCount,
                 TriggerTypes = triggerTypes,
                 LastExecution = lastInfo,
                 SuccessCount = successCount,
                 TotalCount = totalCount,
-                AvgDurationMs = avgMs
+                AvgDurationMs = avgMs,
+                HasManualTriggerParameters = facts[w.Id].HasManualTriggerParameters,
+                MaxConcurrentExecutions = w.MaxConcurrentExecutions,
+                CheckedOutByUserId = w.CheckedOutByUserId,
+                CheckedOutByUserName = lockOwnerName,
+                CheckedOutAt = w.CheckedOutAt,
+                FolderId = w.FolderId,
+                FolderPath = path,
+                // Default-deny mirrors ToScopedResponse: a missing capability set must not ship
+                // permissive flags.
+                Capabilities = caps is null
+                    ? new WorkflowCapabilities(false, false, false, false, false)
+                    : new WorkflowCapabilities(caps.CanRead, caps.CanRun, caps.CanEdit, caps.CanDelete, caps.CanAdmin),
             };
         }).ToList();
 
         return Ok(responses);
     }
+
+    /// <summary>The columns <see cref="GetAll"/> reads. Notably not DefinitionJson.</summary>
+    private sealed record WorkflowListRow(
+        Guid Id, string Name, string? Description, int Version, bool IsEnabled,
+        DateTime CreatedAt, DateTime UpdatedAt, string? CreatedBy, string? UpdatedBy,
+        int ActivityCount, string? TriggerTypesJson, int? MaxConcurrentExecutions,
+        Guid? CheckedOutByUserId, DateTime? CheckedOutAt, Guid FolderId);
 
     private sealed record WorkflowExecutionListRow(
         Guid Id,
