@@ -303,7 +303,7 @@ curl -s -b cookie.jar -X PUT "$NP/api/admin/settings/Smtp" \
 | Folder permissions | `GET/POST /api/shared-workflow-folders/{folderId}/permissions`, `PUT/DELETE /{permissionId}` |
 | Settings | `GET /api/admin/settings`, `GET\|PUT /{section}`, `GET /status\|system-info\|effective-sizing`, `POST /test/smtp\|test/llm\|test/ldap` (Admin; an Authentication PUT in a cluster returns 409) |
 | Database admin | `GET /api/dbadmin/tables`, `GET\|PATCH\|DELETE /tables/{name}/rows`, `GET /info`, `POST /query` (Admin) |
-| Dashboard | `GET /api/stats/dashboard` |
+| Dashboard | `GET /api/stats/dashboard`, `GET /api/stats/failure-causes?windowHours=N` (1..720, default 24 — recent failures grouped by their normalized message; folder-scoped like the dashboard) |
 | Activity catalog | `GET /api/activity-catalog` |
 | Scheduler | `GET /api/triggers/schedule/next-fires` |
 | System | `GET /api/system/host-info` (all roles) |
