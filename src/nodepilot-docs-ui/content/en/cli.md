@@ -35,6 +35,7 @@ np auth login --server https://nodepilot.example.com
 | `cron` | `cron next` |
 | `db` | info/query (read by default, `--write` opt-in) |
 | `dashboard` | Statistics |
+| `failure-causes` | Recent failures grouped by their normalized message (`--window-hours 1..720`, default 24) |
 | `operations` | graph (a live-ops snapshot: workflows, the call graph, running and recently finished executions; RBAC folder-scoped; `--window 30\|60`) |
 | `observability` | summary/**query**/**query-range** |
 | `settings` | status/system-info/effective-sizing/get/put/test smtp\|llm |
@@ -344,6 +345,9 @@ np cron next "0 0 2 ? * MON-FRI" --count 10
 
 # Dashboard & observability
 np dashboard -o json
+np failure-causes                             # the last 24 h, grouped by cause
+np failure-causes --window-hours 168 -o json  # 1..720 hours; GUIDs and timestamps are folded
+                                              # out of the messages before grouping
 np observability summary
 np observability query --query "up{job=\"nodepilot\"}"
 np observability query-range --query "rate(nodepilot_workflows_total[5m])" \
