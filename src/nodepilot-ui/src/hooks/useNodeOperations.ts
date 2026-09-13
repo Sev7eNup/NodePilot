@@ -22,8 +22,10 @@ export interface NodeOperationsApi {
 
 /**
  * Hosts the create, clone, delete and group operations the editor exposes through toolbar,
- * context menu and shortcuts. Every operation commits history before mutating, so Ctrl+Z
- * reverts the whole action.
+ * context menu and shortcuts. Every operation commits history and marks the draft dirty before
+ * mutating, so Ctrl+Z reverts the whole action and the change reaches save and autosave. These
+ * operations write through setNodes/setEdges directly, which does not emit onNodesChange, so the
+ * editor's automatic dirty detection never sees them.
  */
 export function useNodeOperations({
   nodes,
@@ -33,6 +35,7 @@ export function useNodeOperations({
   selected,
   setSelected,
   commitHistory,
+  markDirty,
   canvasRef,
   screenToFlowPosition,
 }: {
@@ -43,6 +46,7 @@ export function useNodeOperations({
   selected: SelectedItem;
   setSelected: (s: SelectedItem) => void;
   commitHistory: (label?: string) => void;
+  markDirty: () => void;
   canvasRef: RefObject<HTMLElement | null>;
   screenToFlowPosition: (pos: { x: number; y: number }) => { x: number; y: number };
 }): NodeOperationsApi {
@@ -96,9 +100,10 @@ export function useNodeOperations({
           },
         };
     commitHistory('Add node');
+    markDirty();
     setNodes((nds: Node[]) => [...nds, newNode]);
     setSelected({ type: 'node', id: newNode.id });
-  }, [canvasRef, screenToFlowPosition, nodes, commitHistory, setNodes, setSelected]);
+  }, [canvasRef, screenToFlowPosition, nodes, commitHistory, markDirty, setNodes, setSelected]);
 
   /** Origin is the viewport center minus half a snippet width, so the pattern is not glued to
    *  the top-left. New nodes land selected so the group can be dragged straight away. */
@@ -111,13 +116,14 @@ export function useNodeOperations({
       origin = screenToFlowPosition({ x: rect.left + rect.width / 2 - 200, y: rect.top + rect.height / 2 - 100 });
     }
     commitHistory('Insert snippet');
+    markDirty();
     const result = insertSnippet(snippet, origin, nodes, edges);
     setNodes(result.nodes);
     setEdges(result.edges);
     if (result.newNodeIds.length > 0) {
       setSelected({ type: 'node', id: result.newNodeIds[0] });
     }
-  }, [canvasRef, screenToFlowPosition, nodes, edges, commitHistory, setNodes, setEdges, setSelected]);
+  }, [canvasRef, screenToFlowPosition, nodes, edges, commitHistory, markDirty, setNodes, setEdges, setSelected]);
 
   const duplicateNode = useCallback((nodeId: string) => {
     const source = nodes.find((n) => n.id === nodeId);
@@ -131,16 +137,18 @@ export function useNodeOperations({
       data: { ...source.data as Record<string, unknown> },
     };
     commitHistory('Duplicate node');
+    markDirty();
     setNodes((nds: Node[]) => [...nds, newNode]);
     setSelected({ type: 'node', id: newId });
-  }, [nodes, commitHistory, setNodes, setSelected]);
+  }, [nodes, commitHistory, markDirty, setNodes, setSelected]);
 
   const deleteNodeById = useCallback((nodeId: string) => {
     commitHistory('Delete');
+    markDirty();
     setNodes((nds: Node[]) => nds.filter((n) => n.id !== nodeId));
     setEdges((eds: Edge[]) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
     if (selected?.id === nodeId) setSelected(null);
-  }, [commitHistory, setNodes, setEdges, selected, setSelected]);
+  }, [commitHistory, markDirty, setNodes, setEdges, selected, setSelected]);
 
   /** The group node goes first in the array: React Flow renders in array order, so the group
    *  ends up beneath its children. */
@@ -172,6 +180,7 @@ export function useNodeOperations({
     };
     const selIds = new Set(sel.map((n) => n.id));
     commitHistory('Group');
+    markDirty();
     setNodes((nds: Node[]) => [
       groupNode,
       ...nds.map((n) => {
@@ -182,7 +191,7 @@ export function useNodeOperations({
         };
       }),
     ]);
-  }, [nodes, setNodes, commitHistory]);
+  }, [nodes, setNodes, commitHistory, markDirty]);
 
   return { addNode, addSnippet, duplicateNode, deleteNodeById, groupSelection };
 }

@@ -329,7 +329,7 @@ function WorkflowEditorInner() {
   // Graph as of the last pause in editing — carries the whole-graph passes (lint, autosave
   // draft) so they do not run per frame.
   const settledGraph = useSettledGraph(nodes, edges);
-  const { historyPast, historyFuture, commitHistory, undo, redo } = useWorkflowHistory(id, graphSource);
+  const { historyPast, historyFuture, commitHistory, undo, redo } = useWorkflowHistory(id, graphSource, markDirty);
 
   // Debounced commit for rapid property edits (e.g. typing in script field).
   // Structural changes (disabled, breakpoint, outputVariable) still commit immediately.
@@ -347,7 +347,7 @@ function WorkflowEditorInner() {
   const fittedWorkflowIdRef = useRef<string | null>(null);
 
   // ---- Copy / Paste -------------------------------------------------------
-  const { copySelection, pasteBuffer, resetPasteCount, updateSelection } = useWorkflowClipboard(commitHistory, graphSource);
+  const { copySelection, pasteBuffer, resetPasteCount, updateSelection } = useWorkflowClipboard(commitHistory, markDirty, graphSource);
 
   useEffect(() => {
     if (workflow) {
@@ -419,6 +419,13 @@ function WorkflowEditorInner() {
       const target = nodes.find((node) => node.id === connection.target);
       const targetLabel = ((target?.data as Record<string, unknown> | undefined)?.label as string | undefined)
         ?? connection.target;
+      // The insertion below is computed from the graph as it is now, so claim that draft before
+      // the dialog awaits and reject the result if anything replaced it meanwhile.
+      const token = beginAsyncGraphEdit();
+      if (!token) {
+        showConnectionNotice(t('editor:fanIn.cancelled'));
+        return;
+      }
       const accepted = await confirmDialog({
         title: t('editor:fanIn.title'),
         message: t('editor:fanIn.message', { target: targetLabel }),
@@ -436,14 +443,19 @@ function WorkflowEditorInner() {
         label: t('editor:fanIn.defaultLabel'),
         movingEdge,
       });
+      // Also marks the draft dirty, so no separate markDirty() here.
+      if (!applyAsyncGraphEdit(token, result.nodes, result.edges)) {
+        showConnectionNotice(t('editor:fanIn.cancelled'));
+        return;
+      }
       commitHistory(movingEdge ? 'Move edge with junction' : 'Add edge with junction');
-      markDirty();
       setNodes(result.nodes);
       setEdges(result.edges);
       setSelected({ type: 'node', id: result.junctionId });
       showConnectionNotice(t('editor:fanIn.inserted'));
     },
-    [nodes, edges, t, commitHistory, markDirty, setNodes, setEdges, setSelected, showConnectionNotice],
+    [nodes, edges, t, beginAsyncGraphEdit, applyAsyncGraphEdit, commitHistory,
+      setNodes, setEdges, setSelected, showConnectionNotice],
   );
 
   const onConnect = useCallback(
@@ -866,7 +878,7 @@ function WorkflowEditorInner() {
   const { addNode, addSnippet, duplicateNode, deleteNodeById, groupSelection } = useNodeOperations({
     nodes, setNodes, edges, setEdges,
     selected, setSelected,
-    commitHistory,
+    commitHistory, markDirty,
     canvasRef, screenToFlowPosition,
   });
 
