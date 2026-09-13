@@ -12,6 +12,14 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-13
+
+The first minor release since 1.2.0, cut from thirteen development builds. The designer stops
+losing work and stops linting on every frame of a drag, the knowledge assistant is reachable from
+every page, Live-Ops and the dashboard were reworked, `startProgram` stopped leaking runspace
+resources, and the `np` CLI and the MCP server pin the server certificate. Sixty-five commits
+since 1.2.26.
+
 ### Fixed
 
 - **A TLS error no longer suggests a remedy that cannot help it.** The `np` CLI and the MCP server
@@ -1432,7 +1440,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.23...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.3.0...main
+[1.3.0]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.3.0
 [1.2.26]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.26
 [1.2.25]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.25
 [1.2.24]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.24
