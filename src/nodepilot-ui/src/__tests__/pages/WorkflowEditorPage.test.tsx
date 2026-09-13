@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { http, HttpResponse } from 'msw';
@@ -1945,5 +1945,89 @@ describe('WorkflowEditorPage — lint stays off the frame path', () => {
       { timeout: 2000 },
     );
     expect(lintSpy.fn!.mock.calls.length).toBeLessThanOrEqual(settledCalls + 2);
+  });
+});
+
+/**
+ * The run dialog pre-fills its parameter form with the values of the last run. That asked the
+ * endpoint for `limit=1` — a parameter it does not have, so it paged with the default 100 and
+ * returned a hundred rows carrying their input parameters and return data. It then indexed the
+ * PagedResponse as if it were an array, so the value it went to all that trouble for was always
+ * undefined and the prefill silently did nothing.
+ */
+describe('WorkflowEditorPage — run-dialog prefill from the last run', () => {
+  const WF_WITH_PARAMS = {
+    ...MOCK_WORKFLOW,
+    isEnabled: true,
+    checkedOutByUserId: TEST_USER_ID,
+    checkedOutByUserName: 'tester',
+    checkedOutAt: '2026-04-26T12:30:00Z',
+    definitionJson: JSON.stringify({
+      nodes: [
+        { id: 'mt', type: 'activity', position: { x: 0, y: 0 },
+          data: {
+            label: 'Manual',
+            activityType: 'manualTrigger',
+            config: {
+              title: 'Run with params',
+              // The declared default is 'dev'; the last run used 'prod'. Only a working prefill
+              // can put 'prod' into the field.
+              parameters: [{ name: 'env', type: 'string', required: true, default: 'dev' }],
+            },
+          },
+        },
+      ],
+      edges: [],
+    }),
+  };
+
+  /** Serves the last-run page and records the URLs the hook asked for. */
+  function installExecutionsMock(seenUrls: string[]) {
+    server.use(
+      http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(WF_WITH_PARAMS)),
+      http.put(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(WF_WITH_PARAMS)),
+      http.get(`${BASE}/api/executions`, ({ request }) => {
+        seenUrls.push(request.url);
+        return HttpResponse.json({
+          items: [{ id: 'exec-last', inputParametersJson: JSON.stringify({ env: 'prod' }) }],
+          page: 1, pageSize: 1, total: 1, totalPages: 1,
+        });
+      }),
+    );
+  }
+
+  async function openRunDialog() {
+    renderPage('Admin');
+    await waitFor(() => expect(screen.getByRole('button', { name: /Test/ })).toBeInTheDocument());
+    await waitForCanvasReady();
+    fireEvent.click(screen.getByRole('button', { name: /Test/ }));
+    await waitFor(() => expect(screen.getByText(/Run with params/)).toBeInTheDocument());
+  }
+
+  it('asks for exactly one row, with the parameter the endpoint actually pages on', async () => {
+    const seenUrls: string[] = [];
+    installExecutionsMock(seenUrls);
+
+    await openRunDialog();
+
+    await waitFor(() => expect(seenUrls.length).toBeGreaterThan(0));
+    const url = new URL(seenUrls[seenUrls.length - 1]);
+    expect(url.searchParams.get('pageSize')).toBe('1');
+    // `limit` is not a parameter of GET /api/executions — sending it means paging at the
+    // default of 100 while believing one row was requested.
+    expect(url.searchParams.has('limit')).toBe(false);
+  });
+
+  it('fills the field from the last run rather than the declared default', async () => {
+    // Reads items[0] of the PagedResponse. Indexing the response object itself yields
+    // undefined, which is exactly how this stayed broken without failing anything.
+    installExecutionsMock([]);
+
+    await openRunDialog();
+
+    const dialog = screen.getByRole('dialog');
+    await waitFor(() => {
+      expect(within(dialog).getByRole('textbox')).toHaveValue('prod');
+    });
   });
 });
