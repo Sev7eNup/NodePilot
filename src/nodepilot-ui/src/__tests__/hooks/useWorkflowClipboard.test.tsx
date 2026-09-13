@@ -51,8 +51,9 @@ function setup(initialNodes: Node[], initialEdges: Edge[]) {
   });
 
   const commitHistory = vi.fn();
-  const hook = renderHook(() => useWorkflowClipboard(commitHistory, graphSource));
-  return { ...hook, commitHistory };
+  const markDirty = vi.fn();
+  const hook = renderHook(() => useWorkflowClipboard(commitHistory, markDirty, graphSource));
+  return { ...hook, commitHistory, markDirty };
 }
 
 describe('useWorkflowClipboard', () => {
@@ -208,6 +209,28 @@ describe('useWorkflowClipboard', () => {
     expect(pastedChild).toBeDefined();
     expect(pastedChild!.parentId).toBe(pastedGroup!.id);
     expect(pastedChild!.parentId).not.toBe('group-1');
+  });
+
+  it('pasteBuffer_marksDraftDirty', () => {
+    // Paste writes through the setters, so onNodesChange never fires. Without markDirty the
+    // pasted nodes would not reach save, autosave or the navigation guard.
+    const a = makeNode('a', 'activity');
+    const { result, markDirty } = setup([a], []);
+
+    act(() => result.current.updateSelection({ nodeIds: ['a'], edgeIds: [] }));
+    act(() => result.current.copySelection());
+    expect(markDirty).not.toHaveBeenCalled();
+
+    act(() => result.current.pasteBuffer());
+    expect(markDirty).toHaveBeenCalledTimes(1);
+  });
+
+  it('pasteBuffer_withEmptyClipboard_doesNotMarkDirty', () => {
+    const { result, markDirty } = setup([makeNode('a', 'activity')], []);
+
+    act(() => result.current.pasteBuffer());
+
+    expect(markDirty).not.toHaveBeenCalled();
   });
 
   it('resetPasteCount_makesNextPasteUseFreshOffset', () => {

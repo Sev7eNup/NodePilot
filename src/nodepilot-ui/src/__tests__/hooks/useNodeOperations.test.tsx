@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import type { Node, Edge } from '@xyflow/react';
 import { useNodeOperations } from '../../hooks/useNodeOperations';
+import { WORKFLOW_SNIPPETS } from '../../lib/workflowSnippets';
 
 type SetState<T> = React.Dispatch<React.SetStateAction<T>>;
 
@@ -42,6 +43,7 @@ function setup({
 
   const setSelected = vi.fn((s: typeof initialSelected) => { currentSelected = s; });
   const commitHistory = vi.fn();
+  const markDirty = vi.fn();
   const screenToFlowPosition = vi.fn(({ x, y }) => ({ x, y }));
 
   // The hook reads canvasRef.current.getBoundingClientRect() for viewport-based placement,
@@ -62,6 +64,7 @@ function setup({
       selected: props.selected,
       setSelected,
       commitHistory,
+      markDirty,
       canvasRef,
       screenToFlowPosition,
     }),
@@ -70,7 +73,7 @@ function setup({
 
   return {
     result, rerender,
-    setNodes, setEdges, setSelected, commitHistory,
+    setNodes, setEdges, setSelected, commitHistory, markDirty,
     getCurrentNodes: () => currentNodes,
     getCurrentEdges: () => currentEdges,
     getCurrentSelected: () => currentSelected,
@@ -294,6 +297,59 @@ describe('useNodeOperations', () => {
       const next: Node[] = updater([]);
       expect(next[0].type).toBe('stickyNote');
       expect((next[0].data as Record<string, unknown>).targetMachineId).toBeUndefined();
+    });
+  });
+
+  describe('dirty tracking', () => {
+    // Every operation here writes through setNodes/setEdges, which does not emit
+    // onNodesChange. Without markDirty the change would not reach save, autosave or the
+    // navigation guard, and Ctrl+S (gated on isDirty in the editor) would do nothing.
+    it('addNode marks the draft dirty', () => {
+      const harness = setup();
+      act(() => { harness.result.current.addNode('runScript', 'New'); });
+      expect(harness.markDirty).toHaveBeenCalledTimes(1);
+    });
+
+    it('addSnippet marks the draft dirty', () => {
+      const harness = setup();
+      act(() => { harness.result.current.addSnippet(WORKFLOW_SNIPPETS[0].id); });
+      expect(harness.markDirty).toHaveBeenCalledTimes(1);
+    });
+
+    it('addSnippet with an unknown id marks nothing', () => {
+      const harness = setup();
+      act(() => { harness.result.current.addSnippet('no-such-snippet'); });
+      expect(harness.markDirty).not.toHaveBeenCalled();
+    });
+
+    it('duplicateNode marks the draft dirty', () => {
+      const harness = setup({ initialNodes: [makeNode('a')] });
+      act(() => { harness.result.current.duplicateNode('a'); });
+      expect(harness.markDirty).toHaveBeenCalledTimes(1);
+    });
+
+    it('duplicateNode on a missing node marks nothing', () => {
+      const harness = setup({ initialNodes: [makeNode('a')] });
+      act(() => { harness.result.current.duplicateNode('missing'); });
+      expect(harness.markDirty).not.toHaveBeenCalled();
+    });
+
+    it('deleteNodeById marks the draft dirty', () => {
+      const harness = setup({ initialNodes: [makeNode('a'), makeNode('b')], initialEdges: [makeEdge('e', 'a', 'b')] });
+      act(() => { harness.result.current.deleteNodeById('a'); });
+      expect(harness.markDirty).toHaveBeenCalledTimes(1);
+    });
+
+    it('groupSelection marks the draft dirty', () => {
+      const harness = setup({ initialNodes: [makeNode('a', { selected: true }), makeNode('b', { selected: true })] });
+      act(() => { harness.result.current.groupSelection(); });
+      expect(harness.markDirty).toHaveBeenCalledTimes(1);
+    });
+
+    it('groupSelection without a selection marks nothing', () => {
+      const harness = setup({ initialNodes: [makeNode('a')] });
+      act(() => { harness.result.current.groupSelection(); });
+      expect(harness.markDirty).not.toHaveBeenCalled();
     });
   });
 });

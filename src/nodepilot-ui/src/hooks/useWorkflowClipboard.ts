@@ -5,7 +5,11 @@ import type { WorkflowGraphSource } from './useWorkflowHistory';
 
 type WorkflowClipboard = { nodes: Node[]; edges: Edge[] };
 
-export function useWorkflowClipboard(commitHistory: (label?: string) => void, source: WorkflowGraphSource) {
+export function useWorkflowClipboard(
+  commitHistory: (label?: string) => void,
+  markDirty: () => void,
+  source: WorkflowGraphSource,
+) {
   // Copy reads the editor's graph state, not React Flow's store: a collapsed group is
   // projected without its children, so copying it from the store would lose them.
   const sourceRef = useRef(source);
@@ -71,10 +75,13 @@ export function useWorkflowClipboard(commitHistory: (label?: string) => void, so
       selected: true,
     }));
     const { setNodes, setEdges } = sourceRef.current;
+    // Pasting writes through the setters directly, so onNodesChange never fires and the editor's
+    // automatic dirty detection would miss the new nodes.
     commitHistory('Paste');
+    markDirty();
     setNodes((nds: Node[]) => [...nds.map((n) => ({ ...n, selected: false })), ...newNodes]);
     setEdges((eds: Edge[]) => [...eds.map((e) => ({ ...e, selected: false })), ...newEdges]);
-  }, [commitHistory]);
+  }, [commitHistory, markDirty]);
 
   return { copySelection, pasteBuffer, resetPasteCount, updateSelection };
 }

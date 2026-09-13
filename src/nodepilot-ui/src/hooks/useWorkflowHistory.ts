@@ -24,7 +24,11 @@ export interface WorkflowGraphSource {
  * render-only fields (in-degree, lint counts, hidden, className) that would become
  * authoritative on undo and end up in the saved definition.
  */
-export function useWorkflowHistory(workflowId: string | undefined, source: WorkflowGraphSource) {
+export function useWorkflowHistory(
+  workflowId: string | undefined,
+  source: WorkflowGraphSource,
+  markDirty: () => void,
+) {
   const [historyPast, setHistoryPast] = useState<HistorySnapshot[]>([]);
   const [historyFuture, setHistoryFuture] = useState<HistorySnapshot[]>([]);
 
@@ -45,15 +49,18 @@ export function useWorkflowHistory(workflowId: string | undefined, source: Workf
     setHistoryFuture([]);
   }, []);
 
+  // Undo and redo replace the graph wholesale through the setters, which does not emit
+  // onNodesChange. Without markDirty the restored graph would never reach save or autosave.
   const undo = useCallback(() => {
     if (historyPast.length === 0) return;
     const last = historyPast[historyPast.length - 1];
     const { nodes, edges, setNodes, setEdges } = sourceRef.current;
     setHistoryFuture((f) => [...f, { nodes, edges }]);
     setHistoryPast((p) => p.slice(0, -1));
+    markDirty();
     setNodes(last.nodes);
     setEdges(last.edges);
-  }, [historyPast]);
+  }, [historyPast, markDirty]);
 
   const redo = useCallback(() => {
     if (historyFuture.length === 0) return;
@@ -61,9 +68,10 @@ export function useWorkflowHistory(workflowId: string | undefined, source: Workf
     const { nodes, edges, setNodes, setEdges } = sourceRef.current;
     setHistoryPast((p) => [...p, { nodes, edges }]);
     setHistoryFuture((f) => f.slice(0, -1));
+    markDirty();
     setNodes(next.nodes);
     setEdges(next.edges);
-  }, [historyFuture]);
+  }, [historyFuture, markDirty]);
 
   return { historyPast, historyFuture, commitHistory, undo, redo };
 }

@@ -543,6 +543,50 @@ describe('WorkflowEditorPage — Mutations', () => {
     await waitFor(() => expect(putCalled).toBe(true));
   });
 
+  it('adding a node from the palette makes Ctrl+S save', async () => {
+    // Ctrl+S is gated on the dirty flag, and the palette adds nodes through setNodes directly,
+    // which does not emit onNodesChange. Without an explicit markDirty the new node would
+    // reach neither this save nor the autosave.
+    let putBody: { definitionJson?: string } | null = null;
+    server.use(
+      http.put(`${BASE}/api/workflows/wf-smoke-1`, async ({ request }) => {
+        putBody = await request.json() as { definitionJson?: string };
+        return HttpResponse.json(MOCK_WORKFLOW);
+      })
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByDisplayValue('Smoke Workflow')).toBeInTheDocument());
+
+    // The sidebar opens on the workflows tab; the palette lives on the nodes tab. Narrow it by
+    // activity type, which is language-independent, then click the entry.
+    fireEvent.click(screen.getByRole('button', { name: 'Nodes' }));
+    fireEvent.change(screen.getByPlaceholderText(/Search nodes|Nodes suchen/i), { target: { value: 'delay' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Delay/i }));
+
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+
+    await waitFor(() => expect(putBody).not.toBeNull());
+    const saved = JSON.parse(putBody!.definitionJson!) as { nodes: { data: { activityType: string } }[] };
+    expect(saved.nodes.some((n) => n.data.activityType === 'delay')).toBe(true);
+  });
+
+  it('Ctrl+S on an unchanged workflow does not save', async () => {
+    let putCalled = false;
+    server.use(
+      http.put(`${BASE}/api/workflows/wf-smoke-1`, async () => {
+        putCalled = true;
+        return HttpResponse.json(MOCK_WORKFLOW);
+      })
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByDisplayValue('Smoke Workflow')).toBeInTheDocument());
+
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(putCalled).toBe(false);
+  });
+
   it('manual Save failure shows an error toast instead of silently leaving the dirty dot', async () => {
     server.use(
       http.put(`${BASE}/api/workflows/wf-smoke-1`, () =>

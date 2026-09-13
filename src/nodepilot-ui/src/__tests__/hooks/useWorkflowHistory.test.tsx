@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useState } from 'react';
 import type { Node, Edge } from '@xyflow/react';
@@ -14,12 +14,14 @@ function makeNode(id: string, parentId?: string): Node {
  * the graph from React Flow's store, so no store is provided here.
  */
 function setup(initialNodes: Node[] = [], initialEdges: Edge[] = []) {
-  return renderHook(() => {
+  const markDirty = vi.fn();
+  const rendered = renderHook(() => {
     const [nodes, setNodes] = useState<Node[]>(initialNodes);
     const [edges, setEdges] = useState<Edge[]>(initialEdges);
-    const history = useWorkflowHistory('wf-1', { nodes, edges, setNodes, setEdges });
+    const history = useWorkflowHistory('wf-1', { nodes, edges, setNodes, setEdges }, markDirty);
     return { nodes, edges, setNodes, setEdges, history };
   });
+  return { ...rendered, markDirty };
 }
 
 describe('useWorkflowHistory', () => {
@@ -121,6 +123,32 @@ describe('useWorkflowHistory', () => {
     act(() => { result.current.history.undo(); });
 
     expect(result.current.nodes.map(n => n.id)).toEqual(['group-1', 'step-a', 'step-b']);
+  });
+
+  it('undo and redo mark the draft dirty', () => {
+    // Both replace the graph through the setters, which does not emit onNodesChange. Without
+    // this the restored graph would not reach save, autosave or the navigation guard.
+    const { result, markDirty } = setup();
+
+    act(() => { result.current.setNodes([makeNode('a')]); });
+    act(() => { result.current.history.commitHistory(); });
+    act(() => { result.current.setNodes([makeNode('a'), makeNode('b')]); });
+
+    markDirty.mockClear();
+    act(() => { result.current.history.undo(); });
+    expect(markDirty).toHaveBeenCalledTimes(1);
+
+    act(() => { result.current.history.redo(); });
+    expect(markDirty).toHaveBeenCalledTimes(2);
+  });
+
+  it('a no-op undo does not mark the draft dirty', () => {
+    const { result, markDirty } = setup();
+
+    act(() => { result.current.history.undo(); });
+    act(() => { result.current.history.redo(); });
+
+    expect(markDirty).not.toHaveBeenCalled();
   });
 
   it('commitHistory keeps one identity across graph updates', () => {
