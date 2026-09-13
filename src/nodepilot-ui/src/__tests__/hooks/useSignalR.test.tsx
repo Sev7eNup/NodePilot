@@ -1248,3 +1248,88 @@ describe('useWorkflowSignalR', () => {
     }
   });
 });
+
+/**
+ * The designer's properties panel shows the step detail of the most recent terminal run. It used
+ * to poll a 15 s interval against an endpoint that returns every step with its full output, error,
+ * trace, variable snapshot and output parameters — megabytes on a large run, per open tab. The
+ * poll is gone; a status change is the only event that can put a different run in front of that
+ * panel, so the invalidation has to carry its key.
+ */
+describe('useWorkflowSignalR — query invalidation on status changes', () => {
+  function renderWithOwnClient(workflowId: string) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 0 } } });
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const rendered = rtlRenderHook(() => useWorkflowSignalR(workflowId), { wrapper });
+    return { ...rendered, invalidate };
+  }
+
+  function emitStatusChange(executionId: string, status = 'Succeeded') {
+    act(() => {
+      __currentConnection!.emit('ExecutionStatusChanged', {
+        executionId, workflowId: 'wf-1', status,
+        completedAt: '2026-04-26T12:00:05Z',
+      });
+    });
+  }
+
+  type InvalidateSpy = { mock: { calls: unknown[][] } };
+
+  /** Every key the debounced invalidation touched, serialized so they compare by value. */
+  function invalidatedKeys(invalidate: InvalidateSpy): string[] {
+    return invalidate.mock.calls
+      .map((call) => (call[0] as { queryKey?: unknown[] } | undefined)?.queryKey)
+      .filter((key): key is unknown[] => Array.isArray(key))
+      .map((key) => JSON.stringify(key));
+  }
+
+  it('invalidates the last-run step detail of the affected workflow', async () => {
+    const { result, invalidate } = renderWithOwnClient('wf-1');
+    await waitFor(() => expect(result.current.connected).toBe(true));
+    invalidate.mockClear();
+
+    emitStatusChange('exec-1');
+
+    await waitFor(
+      () => expect(invalidatedKeys(invalidate)).toContain(JSON.stringify(['last-execution-steps', 'wf-1'])),
+      { timeout: 3000 },
+    );
+  });
+
+  it('keeps invalidating the execution lists and the dashboard counters alongside it', async () => {
+    // The step detail is an addition, not a replacement — the lists still have to refresh.
+    const { result, invalidate } = renderWithOwnClient('wf-1');
+    await waitFor(() => expect(result.current.connected).toBe(true));
+    invalidate.mockClear();
+
+    emitStatusChange('exec-1');
+
+    await waitFor(() => {
+      const keys = invalidatedKeys(invalidate);
+      expect(keys).toContain(JSON.stringify(['workflow-executions', 'wf-1']));
+      expect(keys).toContain(JSON.stringify(['executions']));
+      expect(keys).toContain(JSON.stringify(['dashboard-stats']));
+      expect(keys).toContain(JSON.stringify(['sidebar-counts']));
+    }, { timeout: 3000 });
+  });
+
+  it('coalesces a burst of status changes into one invalidation per key', async () => {
+    // The debounce is what keeps a finishing fan-out from firing one refetch per execution.
+    const { result, invalidate } = renderWithOwnClient('wf-1');
+    await waitFor(() => expect(result.current.connected).toBe(true));
+    invalidate.mockClear();
+
+    for (const id of ['exec-1', 'exec-2', 'exec-3', 'exec-4']) emitStatusChange(id);
+
+    await waitFor(
+      () => expect(invalidatedKeys(invalidate)).toContain(JSON.stringify(['last-execution-steps', 'wf-1'])),
+      { timeout: 3000 },
+    );
+    const stepDetailCalls = invalidatedKeys(invalidate)
+      .filter((k) => k === JSON.stringify(['last-execution-steps', 'wf-1']));
+    expect(stepDetailCalls).toHaveLength(1);
+  });
+});
