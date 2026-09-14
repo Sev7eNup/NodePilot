@@ -187,7 +187,7 @@ export function SubWorkflowPreviewModal({ workflowNameOrId, onClose, onOpenInEdi
                 edgeTypes={edgeTypes}
                 defaultEdgeOptions={{
                   type: 'labeled', animated: false,
-                  markerEnd: { type: MarkerType.ArrowClosed, color: '#c3c6d7' },
+                  markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--np-edge-idle, #c3c6d7)' },
                 }}
                 fitView
                 fitViewOptions={{ padding: 0.2, maxZoom: 1.0 }}

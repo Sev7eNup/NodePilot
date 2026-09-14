@@ -11,7 +11,7 @@ import { EditorView, keymap } from '@codemirror/view';
 import { nodePilotCodeMirrorTheme } from '../../../lib/codeMirrorTheme';
 import { autocompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { openSearchPanel } from '@codemirror/search';
-import { useThemeStore, resolveTheme } from '../../../stores/themeStore';
+import { useThemeStore } from '../../../stores/themeStore';
 import type { UpstreamVariable } from '../../../lib/upstreamVariables';
 import { validateTemplateExpression } from '../../../lib/templateValidation';
 import { hasDraggedVariableExpression, readDraggedVariableExpression } from '../../../lib/variableDragDrop';
@@ -436,9 +436,8 @@ export function CodeField({
 }>) {
   const { t } = useTranslation('properties');
   const fullscreenText = fullscreenLabel ?? t('panel.openEditor');
-  const theme = useThemeStore((s) => s.theme);
   const [dragActive, setDragActive] = useState(false);
-  const isDark = resolveTheme(theme) === 'dark';
+  const isDark = useThemeStore((s) => s.resolvedTheme) === 'dark';
   const langExt = LANGUAGE_EXTENSIONS[language];
   const refs = upstreamRefs ?? upstreamVars.map((v) => ({ expression: v.expression, label: v.label }));
 

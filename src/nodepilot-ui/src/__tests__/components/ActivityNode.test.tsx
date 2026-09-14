@@ -4,6 +4,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { ActivityNode } from '../../components/designer/nodes/ActivityNode';
 import { useDesignStore } from '../../stores/designStore';
 import { usePointerFlowPosition } from '../../stores/pointerFlowPositionStore';
+import { useThemeStore } from '../../stores/themeStore';
 
 // Config summaries render only in the 'card' node style, so force it for these tests.
 // Resetting nodeIconStyle and autoHidePorts and clearing the pointer store keeps glyph-view
@@ -11,6 +12,7 @@ import { usePointerFlowPosition } from '../../stores/pointerFlowPositionStore';
 beforeEach(() => {
   useDesignStore.setState({ nodeStyle: 'card', nodeIconStyle: 'shape', autoHidePorts: true });
   usePointerFlowPosition.setState({ x: null, y: null });
+  useThemeStore.setState({ theme: 'light', resolvedTheme: 'light' });
 });
 
 function renderActivityNode(data: Record<string, unknown>, selected = false) {
@@ -286,6 +288,70 @@ describe('ActivityNode', () => {
       useDesignStore.setState({ nodeStyle: 'classic', nodeIconStyle: 'glyph' });
       const { container } = renderActivityNode({ label: 'Live', activityType: 'runScript', config: {}, __failureTint: 0.8, __liveStatus: 'Running' });
       expect(container.querySelector('[data-testid="heatmap-glow"]')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('minimal skins', () => {
+    it('flattens premium nodes on a same-base skin change without changing ports or preferences', () => {
+      useDesignStore.setState({ nodeStyle: 'classic', nodeIconStyle: 'shape', premiumCanvas: true });
+      useThemeStore.setState({ theme: 'dark', resolvedTheme: 'dark' });
+      const { container } = renderActivityNode({ label: 'Custom script', activityType: 'custom:sample', config: {} });
+      const body = container.querySelector<HTMLElement>('.np-btn-node-inner')!;
+      const originalImage = body.style.backgroundImage;
+      const originalShadow = body.style.boxShadow;
+      const originalSize = [body.style.width, body.style.height];
+      const portStyles = () => [...container.querySelectorAll<HTMLElement>('.react-flow__handle')].map((port) => port.style.cssText);
+      const originalPorts = portStyles();
+      const originalPreferences = useDesignStore.getState();
+      expect(originalImage).toContain('linear-gradient');
+      expect(originalShadow).not.toBe('');
+
+      act(() => useThemeStore.setState({ theme: 'dark-minimal' }));
+
+      expect(body.style.backgroundImage).toBe('');
+      expect(body.style.boxShadow).toBe('');
+      expect([body.style.width, body.style.height]).toEqual(originalSize);
+      expect(portStyles()).toEqual(originalPorts);
+      expect(useDesignStore.getState()).toBe(originalPreferences);
+
+      act(() => useThemeStore.setState({ theme: 'dark' }));
+      expect(body.style.backgroundImage).toBe(originalImage);
+      expect(body.style.boxShadow).toBe(originalShadow);
+    });
+
+    it.each(['light-minimal', 'dark-minimal'] as const)('keeps glyph heatmaps visible as hard contours in %s', (theme) => {
+      useDesignStore.setState({ nodeStyle: 'classic', nodeIconStyle: 'glyph' });
+      useThemeStore.setState({ theme, resolvedTheme: theme === 'dark-minimal' ? 'dark' : 'light' });
+      const { container } = renderActivityNode({ label: 'Hot', activityType: 'runScript', config: {}, __failureTint: 0.8 });
+      const signal = container.querySelector<HTMLElement>('[data-testid="heatmap-glow"]')!;
+      expect(signal.style.filter).toBe('');
+      expect(signal.style.backgroundColor).toBe('');
+      expect(signal.style.border).toContain('var(--color-error)');
+      expect(container.querySelector('[data-testid="glyph-icon"]')).toBeInTheDocument();
+    });
+
+    it('keeps failed cards distinguishable by a solid contour', () => {
+      useThemeStore.setState({ theme: 'dark-minimal', resolvedTheme: 'dark' });
+      const { container } = renderActivityNode({ label: 'Failed script', activityType: 'runScript', config: {}, __liveStatus: 'Failed' });
+      const card = container.querySelector<HTMLElement>('.np-activity-card')!;
+      expect(card.style.boxShadow).toBe('');
+      expect(card.style.outline).toBe('2px solid var(--color-error)');
+      expect(card.querySelectorAll('.react-flow__handle')).toHaveLength(4);
+    });
+
+    it('preserves machine stripes and selection around a shaped heatmap node', () => {
+      useDesignStore.setState({ nodeStyle: 'classic', nodeIconStyle: 'shape', premiumCanvas: true });
+      useThemeStore.setState({ theme: 'dark-minimal', resolvedTheme: 'dark' });
+      const { container } = renderActivityNode({ label: 'Remote script', activityType: 'runScript', config: {}, __failureTint: 0.8, __machineColorIdx: 0 }, true);
+      const shape = container.querySelector<HTMLElement>('.np-shape-wrap')!;
+      const layers = [...shape.querySelectorAll<HTMLElement>(':scope > div[style]')];
+      const heatmap = layers.find((layer) => layer.style.inset === '-5px')!;
+      const selection = layers.find((layer) => layer.style.inset === '-8px')!;
+      expect(heatmap.style.filter).toBe('');
+      expect(heatmap.style.backgroundColor).toContain('var(--color-error)');
+      expect(selection.style.backgroundColor).toBe('var(--color-primary)');
+      expect(selection.style.clipPath).toBe(heatmap.style.clipPath);
+      expect(container.querySelector<HTMLElement>('[data-testid="machine-stripe"]')!.style.background).toContain('linear-gradient');
     });
   });
 

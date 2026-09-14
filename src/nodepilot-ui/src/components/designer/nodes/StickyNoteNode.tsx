@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type NodeProps, useReactFlow, useStore, NodeResizer, type Node } from '@xyflow/react';
-import { useThemeStore } from '../../../stores/themeStore';
+import { isMinimalSkin, useThemeStore } from '../../../stores/themeStore';
 
 /**
  * Pure annotation node — documents the workflow inline (why does this branch exist, what does
@@ -40,6 +40,7 @@ export function StickyNoteNode({ id, data, selected }: NodeProps) {
   const fontSize = typeof d.fontSize === 'number' ? (d.fontSize as number) : DEFAULT_FONT_SIZE;
   const { setNodes } = useReactFlow();
   const isDark = useThemeStore((s) => s.resolvedTheme === 'dark');
+  const minimal = useThemeStore((s) => isMinimalSkin(s.theme));
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(savedText);
@@ -145,17 +146,17 @@ export function StickyNoteNode({ id, data, selected }: NodeProps) {
         handleStyle={{ width: 8, height: 8, borderRadius: 2, background: isDark ? '#92400e' : '#ca8a04' }}
       />
       <div
-        className={`relative rounded-lg font-label leading-snug whitespace-pre-wrap break-words flex flex-col ${
+        className={`np-sticky-note relative rounded-lg font-label leading-snug whitespace-pre-wrap break-words flex flex-col ${
           isDark
             ? (selected ? 'ring-2 ring-amber-400/55' : 'ring-1 ring-amber-400/18')
             : (selected ? 'ring-2 ring-yellow-400' : 'ring-1 ring-yellow-300/60')
         }`}
         style={{
-          backgroundColor: isDark ? 'rgba(20, 16, 4, 0.92)' : '#fef9c3',
-          backgroundImage: isDark
+          backgroundColor: minimal ? 'var(--color-warning-container)' : isDark ? 'rgba(20, 16, 4, 0.92)' : '#fef9c3',
+          backgroundImage: !minimal && isDark
             ? 'linear-gradient(180deg, rgba(251,191,36,.10) 0%, rgba(251,191,36,.02) 45%, transparent 100%)'
             : undefined,
-          color: isDark ? '#fde68a' : '#713f12',
+          color: minimal ? 'var(--color-on-warning-container)' : isDark ? '#fde68a' : '#713f12',
           width: isResizable ? '100%' : undefined,
           height: isResizable ? '100%' : undefined,
           minWidth: isResizable ? undefined : 160,
@@ -165,7 +166,7 @@ export function StickyNoteNode({ id, data, selected }: NodeProps) {
           transformOrigin: 'center',
           transition: 'transform 120ms ease-out, box-shadow 120ms ease-out',
           zIndex: isHoverZooming ? 50 : undefined,
-          boxShadow: isDark
+          boxShadow: minimal ? undefined : isDark
             ? (isHoverZooming
                 ? '0 12px 36px rgba(0,0,0,.58), 0 2px 8px rgba(0,0,0,.48), inset 0 1px 0 rgba(251,191,36,.14)'
                 : '0 2px 6px rgba(0,0,0,.48), 0 8px 22px rgba(0,0,0,.38), inset 0 1px 0 rgba(251,191,36,.10), inset 0 -1px 0 rgba(0,0,0,.42)')

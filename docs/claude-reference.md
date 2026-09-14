@@ -973,8 +973,10 @@ Alerting-Webhooks). Merksatz: *ausgehend alles, eingehend nichts.*
 **Icons (skin-folgend):** [scripts/generate-desktop-icons.ps1](../scripts/generate-desktop-icons.ps1)
 rendert `src/nodepilot-desktop/assets/` aus den Brand-Assets der SPA — Default-Set (`icon.ico`
 16/32/48/256, `icon.png`, `tray.png`) **blau** aus `appicon-dark.png` plus `skins/<id>.png` +
-`<id>-tray.png` je Skin. Zur Laufzeit folgt die Shell dem Skin: die SPA schreibt bei jedem Wechsel
-`/appicon-<skin>.png` in `<link rel="icon">`, Chromium meldet das als `page-favicon-updated`, und
+`<id>-tray.png` je Brand-Asset. Zur Laufzeit folgt die Shell dem Skin: die SPA schreibt den über
+`lib/appIcon.ts` gewählten `/appicon-<id>.png`-Pfad in `<link rel="icon">`; `light-minimal` und
+`dark-minimal` verwenden die vorhandenen blauen Assets `light` und `dark`. Chromium meldet
+den Pfad als `page-favicon-updated`, und
 [skins.ts](../src/nodepilot-desktop/src/skins.ts) mappt es zurück auf `skins/<id>.*` (Fenster- +
 Tray-Icon). Bewusst **kein** Preload/IPC am Produktions-SPA-Fenster — die Shell liest ein Signal,
 das der Renderer ohnehin sendet. Die Skin-Liste ist **nicht** gespiegelt: der Generator leitet sie

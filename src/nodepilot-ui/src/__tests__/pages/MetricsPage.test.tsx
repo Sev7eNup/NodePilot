@@ -117,6 +117,19 @@ describe('MetricsPage', () => {
     expect(byIndex.get(2)).toBe(3);
   });
 
+  it('keeps the heatmap magnitude ramp and values when Minimal removes tooltip decoration', () => {
+    const widget: MetricsWidget = {
+      id: 103, title: 'Duration', description: null, type: 'heatmap', unit: 'ms',
+      grid: { x: 0, y: 0, width: 12, height: 8 }, error: null,
+      data: [{ label: 'bucket', labels: {}, points: [{ timestamp: 1, value: 7 }] }],
+    };
+    const normal = buildMetricsChartOption(widget);
+    const minimal = buildMetricsChartOption(widget, { ...DEFAULT_CHART_TOKENS, reducedDecoration: true });
+    expect(minimal.visualMap).toEqual(normal.visualMap);
+    expect(minimal.series).toEqual(normal.series);
+    expect(minimal.tooltip).toEqual({ ...normal.tooltip, extraCssText: 'box-shadow:none' });
+  });
+
   it('assignsSeriesColoursBySlotOrderWithoutCycling', () => {
     const widget: MetricsWidget = {
       id: 101, title: 'Two series', description: null, type: 'timeseries', unit: 'short',

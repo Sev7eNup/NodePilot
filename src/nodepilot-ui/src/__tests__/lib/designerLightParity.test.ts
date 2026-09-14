@@ -17,6 +17,7 @@ import { join } from 'node:path';
 const CSS_DIR = join(__dirname, '..', '..');
 const indexCss = readFileSync(join(CSS_DIR, 'index.css'), 'utf8');
 const atelierCss = readFileSync(join(CSS_DIR, 'styles', 'designer-atelier.css'), 'utf8');
+const minimalCss = readFileSync(join(CSS_DIR, 'styles', 'skin-minimal.css'), 'utf8');
 
 /**
  * Text of a brace-matched block whose selector list contains `needle`. `html.dark {` occurs
@@ -164,6 +165,78 @@ describe('canvas dot grid contrast', () => {
       const canvas = decl(blockAfter(atelierCss, ground, '--wd-canvas'), '--wd-canvas');
 
       expect(dotContrast(dot, canvas)).toBeGreaterThanOrEqual(MIN_CONTRAST[base]);
+    });
+  }
+});
+
+function contrast(foreground: string, background: string): number {
+  const [lo, hi] = [luminance(parseHex(foreground)), luminance(parseHex(background))].sort((a, b) => a - b);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+describe('Minimal palette parity and contrast', () => {
+  const sharedSelector = 'html:is([data-skin="light-minimal"], [data-skin="dark-minimal"]),';
+  const shared = blockAfter(minimalCss, sharedSelector, '--wd-canvas');
+
+  it('applies the same palette to document portals, shell and Atelier scopes', () => {
+    const start = minimalCss.indexOf(sharedSelector);
+    const selector = minimalCss.slice(start, minimalCss.indexOf('{', start));
+    for (const scope of ['.np-shell', '.np-designer', '.np-designer.wd-atelier', '.np-tooltip-portal']) {
+      expect(selector).toContain(scope);
+    }
+    for (const [designer, shell] of [
+      ['--wd-canvas', '--color-surface'], ['--wd-panel', '--color-surface-lowest'],
+      ['--wd-ink', '--color-on-surface'], ['--wd-ink-muted', '--color-on-surface-variant'],
+      ['--wd-outline', '--color-outline'], ['--wd-accent', '--color-primary'],
+    ]) {
+      expect(decl(shared, designer), `${designer} matches ${shell}`).toBe(decl(shared, shell));
+    }
+    expect(decl(shared, '--np-reduced-decoration')).toBe('1');
+  });
+
+  for (const base of ['light', 'dark'] as const) {
+    const palette = blockAfter(minimalCss, `html[data-skin="${base}-minimal"] {`);
+    const color = (name: string) => decl(palette, `--np-min-${name}`);
+
+    it(`${base}-minimal: main and secondary text meet 4.5:1 across neutral surfaces`, () => {
+      for (const background of ['ground', 'panel', 'subtle', 'hover']) {
+        for (const foreground of ['ink', 'muted']) {
+          expect(contrast(color(foreground), color(background)), `${foreground} on ${background}`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    });
+
+    it(`${base}-minimal: action and status text meet 4.5:1 on their rendered fills`, () => {
+      for (const background of ['accent', 'accent-hover']) {
+        expect(contrast(color('on-accent'), color(background)), `button text on ${background}`).toBeGreaterThanOrEqual(4.5);
+      }
+      for (const status of ['accent', 'success', 'warning', 'error', 'custom']) {
+        for (const background of ['panel', `${status}-soft`]) {
+          expect(contrast(color(status), color(background)), `${status} on ${background}`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    });
+
+    it(`${base}-minimal: controls, focus and idle edges meet 3:1 on neutral surfaces`, () => {
+      for (const foreground of ['control', 'accent']) {
+        for (const background of ['ground', 'panel', 'subtle', 'hover']) {
+          expect(contrast(color(foreground), color(background)), `${foreground} on ${background}`).toBeGreaterThanOrEqual(3);
+        }
+      }
+      expect(decl(shared, '--np-edge-idle')).toBe('var(--np-min-control)');
+    });
+
+    it(`${base}-minimal: code syntax meets 4.5:1 on editor and markdown surfaces`, () => {
+      for (const token of ['comment', 'keyword', 'string', 'number', 'function', 'type', 'variable', 'attribute', 'meta', 'deletion', 'addition']) {
+        for (const background of ['panel', 'ground', 'subtle']) {
+          expect(contrast(decl(palette, `--np-code-${token}`), color(background)), `${token} on ${background}`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    });
+
+    it(`${base}-minimal: the dot grid remains legible after alpha compositing`, () => {
+      const dot = decl(palette, '--np-canvas-dot');
+      expect(dotContrast(dot, color('ground'))).toBeGreaterThanOrEqual(MIN_CONTRAST[base]);
     });
   }
 });

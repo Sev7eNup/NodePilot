@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 import { ScriptEditorDialog } from '../../components/designer/ScriptEditorDialog';
 import { monaco } from '../../lib/monacoSetup';
+import { useThemeStore } from '../../stores/themeStore';
 
 describe('ScriptEditorDialog', () => {
   it('renders title bar, PS badge and the (mocked) Monaco editor', () => {
@@ -282,10 +283,14 @@ describe('ScriptEditorDialog Monaco theme bridge', () => {
     '--color-on-surface': 'red',
     '--color-primary': '#e00',
     '--color-outline': 'oklch(0.7 0.1 200)',
+    '--np-code-keyword': '#639',
+    '--np-code-comment': '#080',
   };
 
   afterEach(() => {
+    cleanup();
     for (const name of Object.keys(MINIFIED)) document.documentElement.style.removeProperty(name);
+    useThemeStore.getState().setTheme('light');
     vi.restoreAllMocks();
   });
 
@@ -305,6 +310,34 @@ describe('ScriptEditorDialog Monaco theme bridge', () => {
     expect(colors.length).toBeGreaterThan(0);
     // The optional trailing pair covers the alpha the caller concatenates onto `primary`.
     for (const color of colors) expect(color).toMatch(/^#[0-9a-f]{6}([0-9a-f]{2})?$/i);
+  });
+
+  it.each(['light', 'dark'] as const)('refreshes %s Minimal syntax colours without losing the editor buffer', async (base) => {
+    useThemeStore.getState().setTheme(base);
+    setMinifiedTokens();
+    const defineTheme = vi.spyOn(monaco.editor, 'defineTheme');
+    render(<ScriptEditorDialog value="$buffer = 7" onChange={() => {}} onClose={() => {}} />);
+    const activeDefinition = () => defineTheme.mock.calls.filter(([name]) => name === `nodepilot-${base}`).at(-1)![1];
+    const foreground = (token: string) => activeDefinition().rules.find((rule) => rule.token === token)?.foreground;
+    expect(foreground('keyword.powershell')).toBe(base === 'light' ? 'AF00DB' : 'C586C0');
+
+    act(() => useThemeStore.getState().setTheme(`${base}-minimal`));
+    await waitFor(() => expect(foreground('keyword')).toBe('663399'));
+    expect(foreground('comment')).toBe('008800');
+    for (const rule of activeDefinition().rules) expect(rule.foreground).toMatch(/^[0-9a-f]{6}$/i);
+    expect(screen.getByTestId('monaco-editor-mock')).toHaveValue('$buffer = 7');
+
+    act(() => useThemeStore.getState().setTheme(base));
+    await waitFor(() => expect(foreground('keyword.powershell')).toBe(base === 'light' ? 'AF00DB' : 'C586C0'));
+  });
+
+  it('follows a resolved OS theme change while the preference remains system', async () => {
+    useThemeStore.getState().setTheme('system');
+    render(<ScriptEditorDialog value="Get-Date" onChange={() => {}} onClose={() => {}} />);
+    vi.spyOn(globalThis, 'matchMedia').mockReturnValue({ matches: true } as MediaQueryList);
+    act(() => useThemeStore.getState().syncResolved());
+    await waitFor(() => expect(screen.getByTestId('monaco-editor-mock')).toHaveAttribute('data-theme', 'nodepilot-dark'));
+    expect(useThemeStore.getState().theme).toBe('system');
   });
 
   it('falls back to the built-in theme when defineTheme rejects a value', () => {

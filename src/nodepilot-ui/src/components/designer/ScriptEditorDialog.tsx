@@ -26,7 +26,7 @@ import Editor, { type OnMount } from '@monaco-editor/react';
 import { Trans, useTranslation } from 'react-i18next';
 import { cssColorToHex } from '../../lib/cssColor';
 import { monaco, MONO_FONT_STACK } from '../../lib/monacoSetup';
-import { useThemeStore, resolveTheme } from '../../stores/themeStore';
+import { isMinimalSkin, useThemeStore } from '../../stores/themeStore';
 import { AiPromptDialog } from '../ai/AiPromptDialog';
 import type { StepTestResult } from '../../types/api';
 
@@ -120,22 +120,42 @@ function readVar(name: string, fallback: string): string {
  * it reaches the error boundary and takes the whole designer page down.
  */
 function applyNodePilotTheme(isDark: boolean): string {
+  const minimal = isMinimalSkin(document.documentElement.dataset.skin ?? '');
+  const syntaxColor = (token: string, fallback: string) => minimal
+    ? readVar(token, `#${fallback}`).slice(1)
+    : fallback;
+  // PowerShell emits comment.ps1, keyword.if.ps1 and number.hex.ps1. Match semantic
+  // prefixes so both the language suffix and its keyword/number subtypes inherit the palette.
+  const minimalRules: monaco.editor.ITokenThemeRule[] = [
+    { token: 'comment', foreground: syntaxColor('--np-code-comment', '505660'), fontStyle: 'italic' },
+    { token: 'keyword', foreground: syntaxColor('--np-code-keyword', '245EA8') },
+    { token: 'string', foreground: syntaxColor('--np-code-string', '217348') },
+    { token: 'variable', foreground: syntaxColor('--np-code-variable', '70418A') },
+    { token: 'variable.predefined', foreground: syntaxColor('--np-code-variable', '70418A') },
+    { token: 'variable.parameter', foreground: syntaxColor('--np-code-variable', '70418A') },
+    { token: 'type', foreground: syntaxColor('--np-code-type', '87521C') },
+    { token: 'number', foreground: syntaxColor('--np-code-number', '87521C') },
+    { token: 'number.hex', foreground: syntaxColor('--np-code-number', '87521C') },
+    { token: 'delimiter', foreground: syntaxColor('--color-on-surface-variant', '505660') },
+    { token: 'metatag', foreground: syntaxColor('--np-code-meta', '505660') },
+    { token: 'string.escape.invalid', foreground: syntaxColor('--color-error', 'B83232') },
+  ];
   const lightColors = {
-    editorSurface: readVar('--color-surface-low', '#f3f4f6'),
-    gutterSurface: readVar('--color-surface-container', '#edeef0'),
+    editorSurface: readVar(minimal ? '--color-surface-lowest' : '--color-surface-low', '#f3f4f6'),
+    gutterSurface: readVar(minimal ? '--color-surface-lowest' : '--color-surface-container', '#edeef0'),
     onSurface: readVar('--color-on-surface', '#191c1e'),
     primary: readVar('--color-primary', '#004ac6'),
-    outline: readVar('--color-outline', '#737686'),
+    outline: readVar(minimal ? '--color-on-surface-variant' : '--color-outline', '#737686'),
   };
   // Dark reads the same runtime tokens as light: readVar resolves against the live scope,
   // which under html.dark already carries the dark values. Hardcoding them here would
   // ignore skins and token updates.
   const darkColors = {
     surfaceLowest: readVar('--color-surface-lowest', '#111214'),
-    surfaceLow: readVar('--color-surface-low', '#1e2024'),
+    surfaceLow: readVar(minimal ? '--color-surface-lowest' : '--color-surface-low', '#1e2024'),
     onSurface: readVar('--color-on-surface', '#e2e2e6'),
     primary: readVar('--color-primary', '#aac7ff'),
-    outline: readVar('--color-outline', '#8e9099'),
+    outline: readVar(minimal ? '--color-on-surface-variant' : '--color-outline', '#8e9099'),
   };
 
   const name = isDark ? THEME_DARK : THEME_LIGHT;
@@ -145,15 +165,15 @@ function applyNodePilotTheme(isDark: boolean): string {
     monaco.editor.defineTheme(THEME_LIGHT, {
       base: 'vs',
       inherit: true,
-      rules: [
-        { token: 'variable.predefined.powershell', foreground: '0451A5' },
-        { token: 'variable.powershell', foreground: '0070C1' },
-        { token: 'type.powershell', foreground: '267F99' },
-        { token: 'string.powershell', foreground: 'A31515' },
-        { token: 'comment.powershell', foreground: '008000', fontStyle: 'italic' },
-        { token: 'keyword.powershell', foreground: 'AF00DB' },
-        { token: 'operator.powershell', foreground: '6F6F6F' },
-        { token: 'number.powershell', foreground: '098658' },
+      rules: minimal ? minimalRules : [
+        { token: 'variable.predefined.powershell', foreground: syntaxColor('--np-code-variable', '0451A5') },
+        { token: 'variable.powershell', foreground: syntaxColor('--np-code-variable', '0070C1') },
+        { token: 'type.powershell', foreground: syntaxColor('--np-code-type', '267F99') },
+        { token: 'string.powershell', foreground: syntaxColor('--np-code-string', 'A31515') },
+        { token: 'comment.powershell', foreground: syntaxColor('--np-code-comment', '008000'), fontStyle: 'italic' },
+        { token: 'keyword.powershell', foreground: syntaxColor('--np-code-keyword', 'AF00DB') },
+        { token: 'operator.powershell', foreground: syntaxColor('--color-on-surface-variant', '6F6F6F') },
+        { token: 'number.powershell', foreground: syntaxColor('--np-code-number', '098658') },
       ],
       colors: {
         'editor.background': lightColors.editorSurface,
@@ -169,15 +189,15 @@ function applyNodePilotTheme(isDark: boolean): string {
     monaco.editor.defineTheme(THEME_DARK, {
       base: 'vs-dark',
       inherit: true,
-      rules: [
-        { token: 'variable.predefined.powershell', foreground: '4FC1FF' },
-        { token: 'variable.powershell', foreground: '9CDCFE' },
-        { token: 'type.powershell', foreground: '4EC9B0' },
-        { token: 'string.powershell', foreground: 'CE9178' },
-        { token: 'comment.powershell', foreground: '6A9955', fontStyle: 'italic' },
-        { token: 'keyword.powershell', foreground: 'C586C0' },
-        { token: 'operator.powershell', foreground: 'D4D4D4' },
-        { token: 'number.powershell', foreground: 'B5CEA8' },
+      rules: minimal ? minimalRules : [
+        { token: 'variable.predefined.powershell', foreground: syntaxColor('--np-code-variable', '4FC1FF') },
+        { token: 'variable.powershell', foreground: syntaxColor('--np-code-variable', '9CDCFE') },
+        { token: 'type.powershell', foreground: syntaxColor('--np-code-type', '4EC9B0') },
+        { token: 'string.powershell', foreground: syntaxColor('--np-code-string', 'CE9178') },
+        { token: 'comment.powershell', foreground: syntaxColor('--np-code-comment', '6A9955'), fontStyle: 'italic' },
+        { token: 'keyword.powershell', foreground: syntaxColor('--np-code-keyword', 'C586C0') },
+        { token: 'operator.powershell', foreground: syntaxColor('--color-on-surface-variant', 'D4D4D4') },
+        { token: 'number.powershell', foreground: syntaxColor('--np-code-number', 'B5CEA8') },
       ],
       colors: {
         'editor.background': darkColors.surfaceLowest,
@@ -472,7 +492,7 @@ export function ScriptEditorDialog({
   const handleAiStop = useCallback(() => aiAbortRef.current?.abort(), []);
 
   const theme = useThemeStore((s) => s.theme);
-  const isDark = resolveTheme(theme) === 'dark';
+  const isDark = useThemeStore((s) => s.resolvedTheme) === 'dark';
   // Starts on Monaco's built-in theme and only carries a NodePilot theme name once that theme
   // has activated without being rejected, so the editor never activates one that throws.
   const [monacoTheme, setMonacoTheme] = useState(isDark ? 'vs-dark' : 'vs');
@@ -481,8 +501,12 @@ export function ScriptEditorDialog({
   // `selectionBackground` pick up the freshly resolved CSS variable values. Layout effect, so
   // the skin colors are in place before the first paint instead of flashing the built-in theme.
   useLayoutEffect(() => {
-    setMonacoTheme(applyNodePilotTheme(isDark));
-  }, [isDark]);
+    const refresh = () => setMonacoTheme(applyNodePilotTheme(document.documentElement.classList.contains('dark')));
+    refresh();
+    const observer = new MutationObserver(refresh);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-skin'] });
+    return () => observer.disconnect();
+  }, [theme, isDark]);
 
   // Variable completion provider: triggers on `{{` and offers all upstream refs. Registered
   // per mount so each dialog session gets a provider scoped to its own upstreamRefs closure.
@@ -539,13 +563,13 @@ export function ScriptEditorDialog({
 
   const handleEditorMount: OnMount = useCallback((editor) => {
     editorRef.current = editor;
-    setMonacoTheme(applyNodePilotTheme(isDark));
+    setMonacoTheme(applyNodePilotTheme(document.documentElement.classList.contains('dark')));
     // Ctrl+S flushes the current buffer to onChange without closing the dialog.
     // editor.getValue() captures the latest text even while React state is mid-flush.
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       onChange(editor.getValue());
     });
-  }, [onChange, isDark]);
+  }, [onChange]);
 
   const exposedVars = parseExposedVars(code);
   const exposedPrefix = outputVariableName?.trim() ? outputVariableName.trim() : '<step>';

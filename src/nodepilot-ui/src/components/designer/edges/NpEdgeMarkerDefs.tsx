@@ -3,7 +3,7 @@ import { useDesignStore, EDGE_WIDTHS } from '../../../stores/designStore';
 // Arrowhead fills ride the semantic status tokens (dark-aware, skin-stable); `custom`
 // uses the dedicated custom-orange token so stroke, arrowhead and label pill share one colour.
 const MARKERS = [
-  { id: 'np-arrow-default', fill: 'var(--color-outline-variant)' },
+  { id: 'np-arrow-default', fill: 'var(--np-edge-idle, var(--color-outline-variant))' },
   { id: 'np-arrow-success', fill: 'var(--color-success)' },
   { id: 'np-arrow-failed',  fill: 'var(--color-error)' },
   { id: 'np-arrow-custom',  fill: 'var(--color-custom)' },

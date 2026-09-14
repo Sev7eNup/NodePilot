@@ -8,10 +8,16 @@ import { setupServer } from 'msw/node';
 import { DashboardPage } from '../../pages/DashboardPage';
 import { useAuthStore } from '../../stores/authStore';
 import i18n from '../../i18n';
+import * as chartTheme from '../../lib/chartTheme';
+import type { EChartsOption } from 'echarts';
 
 // The dashboard now subscribes to the SignalR ops-feed for live updates. Mock the hook
 // to a no-op (mirrors OperationsPage.test) so no real WebSocket is opened under jsdom.
 vi.mock('../../hooks/useDashboardFeed', () => ({ useDashboardFeed: () => {} }));
+vi.mock('../../components/common/EChart', () => ({
+  EChart: ({ ariaLabel, option }: { ariaLabel?: string; option: EChartsOption }) =>
+    <div role="img" aria-label={ariaLabel} data-chart-option={JSON.stringify(option)} />,
+}));
 
 const BASE = 'http://localhost';
 
@@ -99,6 +105,29 @@ const BASE_STATS = {
 };
 
 describe('DashboardPage', () => {
+  it.each([false, true])('keeps chart data while reduced decoration is %s', async (reducedDecoration) => {
+    vi.spyOn(chartTheme, 'useChartTokens').mockReturnValue({
+      probeRef: { current: null }, tokens: { ...chartTheme.DEFAULT_CHART_TOKENS, reducedDecoration },
+    });
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
+      ...BASE_STATS,
+      last24hBuckets: [{ hourStart: '2026-09-14T10:00:00Z', succeeded: 3, failed: 1, cancelled: 2 }],
+    })));
+    const { container } = renderPage();
+    await waitFor(() => expect(container.querySelectorAll('[data-chart-option]').length).toBe(3));
+    const series = Array.from(container.querySelectorAll<HTMLElement>('[data-chart-option]'))
+      .flatMap((chart) => JSON.parse(chart.dataset.chartOption!).series);
+    const gauge = series.find((entry) => entry.type === 'gauge');
+    expect(gauge.progress.itemStyle.shadowBlur).toBe(reducedDecoration ? 0 : 22);
+    const stacked = series.filter((entry) => entry.stack === 'total');
+    expect(stacked.map((entry) => entry.data)).toEqual([[3], [1], [2]]);
+    expect(new Set(stacked.map((entry) => entry.lineStyle.color)).size).toBe(3);
+    for (const entry of series.filter((entry) => entry.areaStyle)) {
+      expect(typeof entry.areaStyle.color).toBe(reducedDecoration ? 'string' : 'object');
+      if (reducedDecoration) expect(entry.lineStyle.shadowBlur ?? 0).toBe(0);
+    }
+  });
+
   it.each([600, 1800])('uses the API threshold %s for the tooltip and running-duration warning', async (seconds) => {
     useAuthStore.setState({ userId: 'admin', username: 'admin', role: 'Admin', isAuthenticated: true });
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({

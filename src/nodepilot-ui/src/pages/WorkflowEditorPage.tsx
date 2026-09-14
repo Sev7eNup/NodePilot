@@ -1289,7 +1289,7 @@ function WorkflowEditorInner() {
     // not via React Flow's built-in edge.animated — that would add its own CSS dash
     // animation and conflict with our overlay.
     animated: false,
-    markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-outline-variant)' },
+    markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--np-edge-idle, var(--color-outline-variant))' },
   }), []);
   const selectedNode = selected?.type === 'node' ? nodes.find((n) => n.id === selected.id) ?? null : null;
   const selectedEdge = selected?.type === 'edge' ? edges.find((e) => e.id === selected.id) ?? null : null;

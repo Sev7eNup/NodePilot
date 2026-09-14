@@ -8,7 +8,7 @@ import { standardSQL } from '@codemirror/legacy-modes/mode/sql';
 import { keymap } from '@codemirror/view';
 import { nodePilotCodeMirrorTheme } from '../../lib/codeMirrorTheme';
 import { dbAdminApi, type DbAdminQueryResponse } from '../../api/dbadmin';
-import { useThemeStore, resolveTheme } from '../../stores/themeStore';
+import { useThemeStore } from '../../stores/themeStore';
 import { TypedPhraseConfirmDialog } from '../common/TypedPhraseConfirmDialog';
 import { ResizeHandle, useResizableColumns, type ResizableColumn } from './useResizableColumns';
 import {
@@ -92,8 +92,7 @@ function loadDraftMode(): 'read' | 'write' {
 
 export function QueryPane({ insertSignal }: Readonly<Props>) {
   const { t } = useTranslation(['database', 'common']);
-  const theme = useThemeStore((s) => s.theme);
-  const isDark = resolveTheme(theme) === 'dark';
+  const isDark = useThemeStore((s) => s.resolvedTheme) === 'dark';
 
   const [sql, setSqlState] = useState<string>(() => loadDraftSql());
   const [mode, setModeState] = useState<Mode>(() => loadDraftMode());

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { applyFavicon, appIconForTheme, APP_ICON_BY_SKIN } from '../../lib/appIcon';
-import { useThemeStore } from '../../stores/themeStore';
+import { THEMES, useThemeStore } from '../../stores/themeStore';
 
 describe('appIcon', () => {
   beforeEach(() => {
@@ -16,6 +16,8 @@ describe('appIcon', () => {
     ['dark-bank', 'dark', '/appicon-dark-bank.png'],
     ['light-bank', 'light', '/appicon-light-bank.png'],
     ['dark-nebula', 'dark', '/appicon-dark-nebula.png'],
+    ['light-minimal', 'light', '/appicon-light.png'],
+    ['dark-minimal', 'dark', '/appicon-dark.png'],
   ])('resolves the %s skin icon', (theme, resolved, expected) => {
     expect(appIconForTheme(theme as never, resolved as never)).toBe(expected);
   });
@@ -31,8 +33,9 @@ describe('appIcon', () => {
 
   it('covers every declared skin', () => {
     // Guards the favicon + logo from drifting apart when a new skin is added.
-    for (const id of Object.keys(APP_ICON_BY_SKIN)) {
-      expect(APP_ICON_BY_SKIN[id as keyof typeof APP_ICON_BY_SKIN]).toMatch(/^\/appicon-.*\.png$/);
+    expect(Object.keys(APP_ICON_BY_SKIN).sort()).toEqual(THEMES.map(({ id }) => id).sort());
+    for (const { id } of THEMES) {
+      expect(APP_ICON_BY_SKIN[id]).toMatch(/^\/appicon-.*\.png$/);
     }
   });
 

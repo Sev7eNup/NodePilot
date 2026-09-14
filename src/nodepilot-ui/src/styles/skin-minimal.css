@@ -1,0 +1,337 @@
+/* Minimal palettes: one vocabulary for the shell, designer and body portals. */
+html[data-skin="light-minimal"] {
+  --np-min-ground: #f6f7f8;
+  --np-min-panel: #ffffff;
+  --np-min-subtle: #eef0f2;
+  --np-min-hover: #e5e8ed;
+  --np-min-ink: #202124;
+  --np-min-muted: #505660;
+  --np-min-line: #d9dde3;
+  --np-min-control: #7b8492;
+  --np-min-accent: #245ea8;
+  --np-min-accent-hover: #1c4d8c;
+  --np-min-accent-soft: #e7effb;
+  --np-min-on-accent: #ffffff;
+  --np-min-success: #217348;
+  --np-min-success-soft: #edf6ef;
+  --np-min-warning: #946016;
+  --np-min-warning-soft: #fbf3e5;
+  --np-min-error: #b83232;
+  --np-min-error-soft: #fceeee;
+  --np-min-custom: #96531f;
+  --np-min-custom-soft: #fbefe3;
+  --np-canvas-dot: rgba(32, 33, 36, 0.25);
+  --np-minimap-mask: rgba(32, 33, 36, 0.12);
+
+  --np-code-comment: #505660;
+  --np-code-keyword: #245ea8;
+  --np-code-string: #217348;
+  --np-code-number: #87521c;
+  --np-code-function: #70418a;
+  --np-code-type: #87521c;
+  --np-code-variable: #70418a;
+  --np-code-attribute: #245ea8;
+  --np-code-meta: #505660;
+  --np-code-deletion: #b83232;
+  --np-code-addition: #217348;
+}
+
+html[data-skin="dark-minimal"] {
+  --np-min-ground: #181a1d;
+  --np-min-panel: #22252a;
+  --np-min-subtle: #2c3036;
+  --np-min-hover: #363b43;
+  --np-min-ink: #eceff3;
+  --np-min-muted: #b3bac4;
+  --np-min-line: #3c424a;
+  --np-min-control: #7c8797;
+  --np-min-accent: #8cb4e8;
+  --np-min-accent-hover: #a4c5ee;
+  --np-min-accent-soft: #26374d;
+  --np-min-on-accent: #181a1d;
+  --np-min-success: #85cba4;
+  --np-min-success-soft: #253a2e;
+  --np-min-warning: #e7bb71;
+  --np-min-warning-soft: #3e3424;
+  --np-min-error: #f1a2a2;
+  --np-min-error-soft: #422b2d;
+  --np-min-custom: #e1af83;
+  --np-min-custom-soft: #3c3028;
+  --np-canvas-dot: rgba(236, 239, 243, 0.32);
+  --np-minimap-mask: rgba(24, 26, 29, 0.5);
+
+  --np-code-comment: #b3bac4;
+  --np-code-keyword: #8cb4e8;
+  --np-code-string: #85cba4;
+  --np-code-number: #e7bb71;
+  --np-code-function: #c8addf;
+  --np-code-type: #e1af83;
+  --np-code-variable: #c8addf;
+  --np-code-attribute: #8cb4e8;
+  --np-code-meta: #b3bac4;
+  --np-code-deletion: #f1a2a2;
+  --np-code-addition: #85cba4;
+}
+
+/* Reassert at scopes which declare their own palette instead of inheriting it. */
+html:is([data-skin="light-minimal"], [data-skin="dark-minimal"]),
+html:is([data-skin="light-minimal"], [data-skin="dark-minimal"]) :is(
+  .np-shell, .np-designer, .np-designer.wd-atelier, .np-tooltip-portal,
+  .np-designer.wd-atelier .react-flow, .np-designer .react-flow
+) {
+  --color-surface: var(--np-min-ground);
+  --color-surface-dim: var(--np-min-subtle);
+  --color-surface-bright: var(--np-min-panel);
+  --color-surface-lowest: var(--np-min-panel);
+  --color-surface-low: var(--np-min-ground);
+  --color-surface-container: var(--np-min-panel);
+  --color-surface-high: var(--np-min-subtle);
+  --color-surface-highest: var(--np-min-hover);
+  --color-surface-variant: var(--np-min-subtle);
+  --color-surface-tint: var(--np-min-accent);
+  --color-on-surface: var(--np-min-ink);
+  --color-on-background: var(--np-min-ink);
+  --color-on-surface-variant: var(--np-min-muted);
+  --color-inverse-surface: var(--np-min-ink);
+  --color-inverse-on-surface: var(--np-min-panel);
+  --color-outline: var(--np-min-control);
+  --color-outline-variant: var(--np-min-line);
+  --color-primary: var(--np-min-accent);
+  --color-primary-container: var(--np-min-accent-hover);
+  --color-primary-fixed: var(--np-min-accent-soft);
+  --color-primary-fixed-dim: var(--np-min-accent-soft);
+  --color-on-primary: var(--np-min-on-accent);
+  --color-on-primary-container: var(--np-min-on-accent);
+  --color-on-primary-fixed: var(--np-min-accent);
+  --color-inverse-primary: var(--np-min-accent);
+  --color-secondary: var(--np-min-muted);
+  --color-secondary-container: var(--np-min-subtle);
+  --color-secondary-fixed: var(--np-min-subtle);
+  --color-on-secondary: var(--np-min-panel);
+  --color-on-secondary-container: var(--np-min-ink);
+  --color-tertiary: var(--np-min-custom);
+  --color-tertiary-container: var(--np-min-custom-soft);
+  --color-tertiary-fixed: var(--np-min-custom-soft);
+  --color-on-tertiary: var(--np-min-on-accent);
+  --color-on-tertiary-container: var(--np-min-custom);
+  --color-error: var(--np-min-error);
+  --color-error-container: var(--np-min-error-soft);
+  --color-on-error: var(--np-min-on-accent);
+  --color-on-error-container: var(--np-min-error);
+  --color-success: var(--np-min-success);
+  --color-success-container: var(--np-min-success-soft);
+  --color-on-success: var(--np-min-on-accent);
+  --color-on-success-container: var(--np-min-success);
+  --color-warning: var(--np-min-warning);
+  --color-warning-container: var(--np-min-warning-soft);
+  --color-on-warning: var(--np-min-on-accent);
+  --color-on-warning-container: var(--np-min-warning);
+  --color-info: var(--np-min-muted);
+  --color-info-container: var(--np-min-subtle);
+  --color-on-info: var(--np-min-panel);
+  --color-on-info-container: var(--np-min-muted);
+  --color-running: var(--np-min-accent);
+  --color-running-container: var(--np-min-accent-soft);
+  --color-on-running-container: var(--np-min-accent);
+  --color-paused: var(--np-min-warning);
+  --color-paused-container: var(--np-min-warning-soft);
+  --color-on-paused-container: var(--np-min-warning);
+  --color-skipped: var(--np-min-muted);
+  --color-skipped-container: var(--np-min-subtle);
+  --color-on-skipped-container: var(--np-min-muted);
+  --color-custom: var(--np-min-custom);
+  --color-custom-container: var(--np-min-custom-soft);
+  --color-on-custom-container: var(--np-min-custom);
+
+  --np-accent: var(--np-min-accent);
+  --np-accent-hover: var(--np-min-accent-hover);
+  --np-accent-text: var(--np-min-accent);
+  --np-accent-badge: var(--np-min-accent-soft);
+  --np-accent-soft: var(--np-min-accent-soft);
+  --np-accent-ring: var(--np-min-accent);
+  --np-toggle-on: var(--np-min-accent);
+  --np-toolbar-accent: var(--np-min-accent);
+  --np-controls-accent: var(--np-min-accent);
+  --np-controlflow-accent: var(--np-min-accent);
+  --np-port-fill: var(--np-min-control);
+  --np-node-bg: var(--np-min-panel);
+  --np-edge-idle: var(--np-min-control);
+  --np-reduced-decoration: 1;
+  --np-radius-xs: 4px;
+  --np-radius-sm: 4px;
+  --np-radius-md: 4px;
+  --np-radius-lg: 6px;
+  --np-radius-xl: 6px;
+  --radius-sm: 4px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 6px;
+  --radius-2xl: 6px;
+  --radius-3xl: 6px;
+  --np-elev-1: none;
+  --np-elev-2: none;
+  --np-elev-3: none;
+  --np-elev-4: none;
+
+  --wd-radius: 6px;
+  --wd-shadow-panel: none;
+  --wd-shadow-float: none;
+  --wd-accent: var(--np-min-accent);
+  --wd-accent-deep: var(--np-min-accent-hover);
+  --wd-accent-surface: var(--np-min-accent-soft);
+  --wd-accent-surface-dim: var(--np-min-accent-soft);
+  --wd-accent-on: var(--np-min-on-accent);
+  --wd-accent-on-deep: var(--np-min-on-accent);
+  --wd-accent-on-surface: var(--np-min-accent);
+  --wd-accent-inverse: var(--np-min-accent);
+  --wd-canvas: var(--np-min-ground);
+  --wd-panel: var(--np-min-panel);
+  --wd-hairline: var(--np-min-line);
+  --wd-s-dim: var(--np-min-subtle);
+  --wd-s-bright: var(--np-min-panel);
+  --wd-s-lowest: var(--np-min-panel);
+  --wd-s-low: var(--np-min-ground);
+  --wd-s-container: var(--np-min-panel);
+  --wd-s-high: var(--np-min-subtle);
+  --wd-s-highest: var(--np-min-hover);
+  --wd-s-variant: var(--np-min-subtle);
+  --wd-ink: var(--np-min-ink);
+  --wd-ink-muted: var(--np-min-muted);
+  --wd-outline: var(--np-min-control);
+  --wd-outline-variant: var(--np-min-line);
+}
+
+html:is([data-skin="light-minimal"], [data-skin="dark-minimal"]) {
+  /* Preserve Tailwind focus/selection rings while dropping decorative elevation. */
+  & :is(.shadow, .shadow-sm, .shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl,
+    [class*="hover:shadow"]):not(.react-flow__node, .react-flow__edge) {
+    --tw-shadow: 0 0 #0000;
+    box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000);
+  }
+  & :is(.np-shell, .np-designer, .np-tooltip-portal) :is(.shadow, .shadow-sm, .shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl) {
+    box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000);
+  }
+  & [class*="backdrop-blur"] { backdrop-filter: none; }
+  & :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  & :is(.np-shell, .np-designer) :is(.np-card, .np-card-hero, .np-folder-card, .np-modal-panel) {
+    background: var(--np-min-panel);
+    border-color: var(--np-min-line);
+    border-radius: 6px;
+    box-shadow: none;
+  }
+  & .np-shell .np-modal-panel { outline: 1px solid var(--np-min-control); }
+  & .np-shell .np-card.np-folder-card { background: var(--np-min-panel); }
+  & .np-shell :is(.np-card, .np-row):hover { transform: none; }
+  & .np-col-header { background: var(--np-min-ground); }
+  & :is(.np-btn, .np-segmented, .np-row) { border-radius: 4px; }
+  & .np-btn { box-shadow: none; background-image: none; border-color: var(--np-min-control); }
+  & .np-btn-ghost { border-color: transparent; }
+  & .np-btn-primary { background: var(--np-min-accent); color: var(--np-min-on-accent); border-color: var(--np-min-accent); }
+  & .np-btn-primary:hover:not(:disabled) { background: var(--np-min-accent-hover); border-color: var(--np-min-accent-hover); }
+  & .np-btn-selected { background: var(--np-min-accent-soft); color: var(--np-min-accent); border-color: var(--np-min-accent); }
+  & .np-btn-attention, & :is(.np-shell, .np-designer) .np-btn-attention { color: var(--np-min-warning); border-color: var(--np-min-warning); background: var(--np-min-warning-soft); }
+  & .np-btn-danger, & :is(.np-shell, .np-designer) .np-btn-danger { color: var(--np-min-error); border-color: var(--np-min-error); background: var(--np-min-error-soft); }
+  & .np-btn-success, & :is(.np-shell, .np-designer) .np-btn-success { color: var(--np-min-success); border-color: var(--np-min-success); background: var(--np-min-success-soft); }
+  /* Legacy solid-blue CTAs carry text-white; the pale dark accent needs dark ink. */
+  & .np-shell :is(.bg-blue-600, .bg-blue-700),
+  & .bg-primary.text-white { color: var(--np-min-on-accent); background-image: none; }
+  & .bg-error.text-white { color: var(--color-on-error); }
+  & .np-ai-create { background: var(--np-min-panel); color: var(--np-min-accent); outline: 1px solid var(--np-min-control); outline-offset: -1px; }
+  & .np-ai-create:hover:not(:disabled) { background: var(--np-min-accent-soft); }
+
+  /* Muted labels remain readable; disabled controls keep their own opacity. */
+  & :is(.text-outline, .text-on-surface-variant\/40, .text-on-surface-variant\/50,
+    .text-on-surface-variant\/60, .text-on-surface-variant\/70,
+    .text-on-surface-variant\/80, .text-on-surface-variant\/90) { color: var(--np-min-muted); }
+  & :is(input, textarea)::placeholder { color: var(--np-min-muted); opacity: 1; }
+
+  & .input-field, & .np-sb-search-input {
+    background: var(--np-min-panel);
+    color: var(--np-min-ink);
+    border-color: var(--np-min-control);
+    border-radius: 4px;
+    box-shadow: none;
+  }
+  & .input-field:focus, & .np-sb-search-input:focus {
+    background: var(--np-min-panel);
+    border-color: var(--np-min-accent);
+    box-shadow: none;
+    outline: 2px solid var(--np-min-accent);
+    outline-offset: 2px;
+  }
+  & :is(input, select, textarea)[class*="border-outline-variant"] { border-color: var(--np-min-control); }
+  & :is(input, select, textarea):focus { box-shadow: none; }
+  & ::picker(select) { background: var(--np-min-panel); color: var(--np-min-ink); border-color: var(--np-min-control); box-shadow: none; border-radius: 4px; }
+  & option:is(:hover, :checked) { color: var(--np-min-accent); background: var(--np-min-accent-soft); }
+
+  & .np-shell aside.np-sidebar {
+    --np-sb-text: var(--np-min-muted);
+    --np-sb-icon: var(--np-min-muted);
+    --np-sb-heading: var(--np-min-muted);
+    --np-sb-muted: var(--np-min-muted);
+    --np-sb-border: var(--np-min-line);
+    --np-sb-divider: var(--np-min-line);
+    --np-sb-control: var(--np-min-panel);
+    --np-sb-control-hover: var(--np-min-subtle);
+    --np-sb-raised: var(--np-min-panel);
+    --np-sb-raised-soft: var(--np-min-panel);
+    --np-sb-raised-hover: var(--np-min-subtle);
+    --np-sb-active-background: var(--np-min-accent-soft);
+    --np-sb-active-text: var(--np-min-accent);
+    --np-sb-active-border: transparent;
+    --np-sb-active-shadow: none;
+    --np-sb-active-icon-border: transparent;
+    --np-sb-active-icon-background: transparent;
+    --np-sb-active-icon-shadow: none;
+    --np-sb-active-accent-shadow: none;
+    background: var(--np-min-panel);
+    box-shadow: none;
+  }
+  & .np-sidebar :is(.np-nav, .np-nav-icon, .np-profile-card, .np-brand-mark, .np-avatar,
+    .np-skin-btn, .np-lang-switch, .np-lang-btn, .np-logout-btn, .np-account-menu-btn) { border-radius: 4px; }
+  & .np-shell aside.np-sidebar img { filter: none; }
+  & .np-shell aside a.np-nav[aria-current="page"]::before { box-shadow: none; }
+  & :is(.np-brand-mark, .np-profile-card, .np-profile-card:hover) { background: var(--np-min-panel); box-shadow: none; border-color: var(--np-min-line); }
+  & .np-avatar { background: var(--np-min-accent-soft); color: var(--np-min-accent); box-shadow: none; }
+  & .np-lang-btn.is-active { background: var(--np-min-accent-soft); }
+  & :is(.np-skin-btn:hover, .np-collapse-btn:hover) { box-shadow: none; transform: none; }
+  & .np-shell > main > header { background: var(--np-min-panel); }
+
+  & :is(.np-accent-text, .np-shell .bg-clip-text) {
+    background: none;
+    background-clip: border-box;
+    -webkit-background-clip: border-box;
+    color: var(--np-min-accent);
+    -webkit-text-fill-color: currentColor;
+  }
+  & :is(button, a)[class*="bg-gradient-"][class*="from-primary"] { background: var(--np-min-accent); color: var(--np-min-on-accent); }
+  & :is(button, a)[class*="bg-gradient-"][class*="from-primary"]:hover { background: var(--np-min-accent-hover); }
+  & [class*="bg-gradient-"][class*="from-surface"] { background: var(--np-min-panel); }
+  & .np-bar-ok { background: var(--np-min-success); }
+  & .np-bar-warn { background: var(--np-min-warning); }
+  & .np-bar-bad { background: var(--np-min-error); }
+
+  & :is(.np-login-aurora, .np-login-grid, .np-login-logo::before, .np-login-card::before) { display: none; }
+  & .np-shell.np-login { background: var(--np-min-ground); }
+  & .np-login-card { background: var(--np-min-panel); border-color: var(--np-min-line); border-radius: 6px; backdrop-filter: none; box-shadow: none; }
+  & .np-login button[type="submit"] { translate: none; transform: none; box-shadow: none; border-radius: 4px; }
+  & .np-login button[type="submit"] > .pointer-events-none { display: none; }
+
+  & :is(.np-fade-up, .np-anim-panel, .np-anim-overlay, .np-anim-backdrop, .np-ai-chat-panel) { animation: none; }
+  & :is(.np-ai-chat-panel, .np-ai-chat-launcher) { border-radius: 6px; box-shadow: none; }
+  & .np-ai-chat-panel { background: var(--np-min-panel); }
+  & .np-ai-chat-launcher:is(:hover, :active) { transform: none; }
+  & .np-ai-chat-header { background: var(--np-min-panel); border-color: var(--np-min-line); }
+  & :is(.np-ai-chat-mark, .np-ai-chat-action) { border-radius: 4px; }
+
+  /* Preserve running/stalled/overdue meaning, remove only the moving sheen and halo. */
+  & .np-ops-now { box-shadow: none; }
+  & .np-ops-bar--running { background-image: none; box-shadow: none; animation: none; }
+  & .np-ops-bar--overdue { border-color: var(--np-min-warning); outline: 1px solid var(--np-min-warning); box-shadow: none; animation: none; }
+  & .np-ops-bar--stalled { background-image: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--np-min-warning) 35%, transparent) 0 5px, transparent 5px 10px); }
+  & .np-ops-bar--selected { outline: 2px solid var(--np-min-accent); outline-offset: 2px; }
+}

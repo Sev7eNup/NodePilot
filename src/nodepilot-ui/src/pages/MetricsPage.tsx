@@ -99,6 +99,7 @@ export function buildMetricsChartOption(widget: MetricsWidget, tokens: ChartToke
     backgroundColor: surfaceHigh,
     borderColor: gridLine,
     textStyle: { color: onSurface },
+    ...(tokens.reducedDecoration ? { extraCssText: 'box-shadow:none' } : {}),
   };
   const base = {
     tooltip: { trigger: 'axis' as const, ...tooltipStyle },

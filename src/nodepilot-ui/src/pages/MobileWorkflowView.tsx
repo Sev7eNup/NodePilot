@@ -124,7 +124,7 @@ function MobileWorkflowViewInner({ workflowId }: Readonly<{ workflowId: string }
               edges={edges}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
-              defaultEdgeOptions={{ type: 'labeled', animated: false, markerEnd: { type: MarkerType.ArrowClosed, color: '#c3c6d7' } }}
+              defaultEdgeOptions={{ type: 'labeled', animated: false, markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--np-edge-idle, #c3c6d7)' } }}
               nodesDraggable={false}
               elementsSelectable={false}
               edgesReconnectable={false}

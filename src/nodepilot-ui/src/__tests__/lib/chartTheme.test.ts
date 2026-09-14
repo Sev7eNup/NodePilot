@@ -1,5 +1,7 @@
+import { createElement } from 'react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { CHART_SERIES_DARK, CHART_SERIES_LIGHT, DEFAULT_CHART_TOKENS } from '../../lib/chartTheme';
+import { CHART_SERIES_DARK, CHART_SERIES_LIGHT, DEFAULT_CHART_TOKENS, useChartTokens } from '../../lib/chartTheme';
 
 /** The semantic status colours declared in index.css. They are reserved for state
  *  and must never double as a categorical series colour, or a chart legend would
@@ -49,6 +51,7 @@ describe('chartTheme categorical palette', () => {
     expect(DEFAULT_CHART_TOKENS.axis).toBeTruthy();
     expect(DEFAULT_CHART_TOKENS.grid).toBeTruthy();
     expect(DEFAULT_CHART_TOKENS.series).toHaveLength(8);
+    expect(DEFAULT_CHART_TOKENS.reducedDecoration).toBe(false);
   });
 
   it('gridFallback_keepsItsAlpha', () => {
@@ -56,5 +59,39 @@ describe('chartTheme categorical palette', () => {
     // through verbatim: hexifying this one would turn every recessive gridline into a solid
     // slab.
     expect(DEFAULT_CHART_TOKENS.grid).toBe('rgba(148,163,184,.16)');
+  });
+});
+
+describe('chart token probe', () => {
+  it('refreshes decoration and normalized colours on same-base skin changes and restores defaults', async () => {
+    function Probe() {
+      const { probeRef, tokens } = useChartTokens();
+      return createElement('div', { ref: probeRef, 'data-testid': 'probe', 'data-tokens': JSON.stringify(tokens) });
+    }
+    const originalSkin = document.documentElement.dataset.skin;
+    const { unmount } = render(createElement(Probe));
+    const probe = screen.getByTestId('probe');
+    try {
+      act(() => {
+        probe.style.setProperty('--np-reduced-decoration', '1');
+        probe.style.setProperty('--color-primary', '#abc');
+        document.documentElement.dataset.skin = 'light-minimal';
+      });
+      await waitFor(() => {
+        const tokens = JSON.parse(probe.dataset.tokens!);
+        expect(tokens.reducedDecoration).toBe(true);
+        expect(tokens.primary).toBe('#aabbcc');
+        expect(tokens.series).toEqual(CHART_SERIES_LIGHT);
+      });
+      act(() => {
+        probe.style.removeProperty('--np-reduced-decoration');
+        document.documentElement.dataset.skin = 'light';
+      });
+      await waitFor(() => expect(JSON.parse(probe.dataset.tokens!).reducedDecoration).toBe(false));
+    } finally {
+      unmount();
+      if (originalSkin === undefined) delete document.documentElement.dataset.skin;
+      else document.documentElement.dataset.skin = originalSkin;
+    }
   });
 });

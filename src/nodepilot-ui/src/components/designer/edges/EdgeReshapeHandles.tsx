@@ -203,9 +203,9 @@ function ReshapeHandleDiv({ testId, x, y, cursor, onPointerDown }: Readonly<{
         // already uses primary blue (#004ac6), and both Material primary tones (including
         // the -container variant #2563eb) sit visually too close to it. sky-400 has a
         // clearly turquoise cast and stands out reliably in both light and dark mode.
-        background: '#38bdf8',
-        border: '2.5px solid white',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.45)',
+        background: 'var(--np-reshape-fill, #38bdf8)',
+        border: '2.5px solid var(--np-reshape-border, white)',
+        boxShadow: 'var(--np-reshape-shadow, 0 1px 3px rgba(0,0,0,0.45))',
         cursor,
         pointerEvents: 'all',
         zIndex: 10,

@@ -120,7 +120,7 @@ export function GroupNode({ id, data, selected }: NodeProps) {
         handleStyle={{ width: 8, height: 8, borderRadius: 2, background: '#94a3b8' }}
       />
       <div
-        className={`w-full h-full rounded-xl transition-colors border overflow-hidden ${styles.border} ${
+        className={`np-group-node w-full h-full rounded-xl transition-colors border overflow-hidden ${styles.border} ${
           isDropTarget ? `ring-2 ${styles.ring} ${styles.dropBg}` : styles.bg
         }`}
       >

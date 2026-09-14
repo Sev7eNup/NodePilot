@@ -27,7 +27,7 @@ import { useRole } from '../lib/rbac';
 import { formatDate } from '../lib/format';
 import { toast } from '../stores/toastStore';
 import { confirmDialog } from '../stores/confirmStore';
-import { useThemeStore, resolveTheme } from '../stores/themeStore';
+import { useThemeStore } from '../stores/themeStore';
 import {
   AuthBoundaryChangedError,
   assertAuthBoundaryGenerationCurrent,
@@ -524,8 +524,7 @@ const SCRIPT_EDITOR_EXTENSIONS = [POWERSHELL_LANGUAGE, EditorView.lineWrapping, 
 
 /** PowerShell-highlighted CodeMirror editor for the script template. */
 function ScriptTemplateEditor({ value, onChange }: Readonly<{ value: string; onChange: (v: string) => void }>) {
-  const theme = useThemeStore((s) => s.theme);
-  const isDark = resolveTheme(theme) === 'dark';
+  const isDark = useThemeStore((s) => s.resolvedTheme) === 'dark';
   return (
     <div className="border border-outline-variant rounded-md overflow-hidden bg-surface-lowest"
       style={{ resize: 'vertical', minHeight: 180, maxHeight: 600, overflow: 'auto' }}>

@@ -4,7 +4,7 @@ import { useState, useRef, memo, createContext, useContext, useCallback, useMemo
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { useDesignStore, NODE_SCALES, LABEL_FONT_OFFSETS, MACHINE_COLORS } from '../../../stores/designStore';
-import { useThemeStore } from '../../../stores/themeStore';
+import { isMinimalSkin, useThemeStore } from '../../../stores/themeStore';
 import { summarizeActivityConfig } from '../../../lib/activityConfigFacts';
 import { TRIGGER_ACTIVITY_TYPES } from '../../../lib/activityCatalog.generated';
 import { ACTIVITY_ICON_COMPONENTS, FALLBACK_ACTIVITY_ICON } from '../../../lib/activityIcons';
@@ -78,6 +78,7 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   const labelOffset = LABEL_FONT_OFFSETS[useDesignStore((s) => s.labelFontOffsetIndex)];
   const scale = NODE_SCALES[scaleIndex];
   const isDark = useThemeStore((s) => s.resolvedTheme === 'dark');
+  const minimal = useThemeStore((s) => isMinimalSkin(s.theme));
   const premiumCanvas = useDesignStore((s) => s.premiumCanvas);
   const effectiveLabelFont = Math.max(6, scale.labelFont + labelOffset);
   const activityType = (data.activityType as string) || 'runScript';
@@ -234,7 +235,7 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   const showCriticalPath = !liveStatus && !simulated && criticalPath?.isCritical;
   const showSlack = !liveStatus && !simulated && criticalPath && !criticalPath.isCritical && criticalPath.slack > 0;
 
-  const effectiveBg = liveStyle?.bgColor ?? ac.bgColor;
+  const effectiveBg = liveStyle?.bgColor ?? (minimal ? 'var(--color-surface-lowest)' : ac.bgColor);
   const effectiveBorder = liveStyle?.borderColor
     ?? (showCriticalPath ? 'color-mix(in srgb, var(--color-paused) 85%, transparent)' : null)
     ?? heatmapBorder
@@ -250,15 +251,15 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   const isIdle = !liveStyle && !isDisabled;
   // Thicker border in dark mode: 1.5px renders "frayed" at zoom-out levels; 2px stays crisp.
   const baseBorderPx   = premiumCanvas && isDark && isIdle ? 2 : 1.5;
-  const premiumRadius  = premiumCanvas ? Math.min(Math.round(scale.iconBox * 0.37), 16) : undefined;
+  const premiumRadius  = minimal ? 4 : premiumCanvas ? Math.min(Math.round(scale.iconBox * 0.37), 16) : undefined;
   // Read `--np-node-bg` from each dark skin so every theme controls its own idle node color.
   const premiumBg      = premiumCanvas && isIdle && isDark ? 'var(--np-node-bg)' : undefined;
-  const premiumBgImage = premiumCanvas && isIdle
+  const premiumBgImage = !minimal && premiumCanvas && isIdle
     ? isDark
       ? 'linear-gradient(180deg, rgba(255,255,255,.13) 0%, rgba(255,255,255,.04) 50%, transparent 100%)'
       : 'linear-gradient(180deg, rgba(255,255,255,.7) 0%, rgba(255,255,255,.15) 60%, transparent 100%)'
     : undefined;
-  const premiumShadow  = premiumCanvas && isIdle && !heatmapBorder && !showCriticalPath
+  const premiumShadow  = !minimal && premiumCanvas && isIdle && !heatmapBorder && !showCriticalPath
     ? isDark
       // Two-layer shadow: tight/opaque for crispness + medium/softer for depth. No large blur
       // radii.
@@ -353,7 +354,7 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
           // selection/sim rings, live-status and badges hang off an invisible icon-box so every
           // node affordance survives. Same glyph (ac.icon) the left "Actions" palette shows.
           (<div
-            className={`relative flex items-center justify-center transition-transform ${
+            className={`np-glyph-node-wrap relative flex items-center justify-center transition-transform ${
               isSimRevealing ? 'scale-125' :
               isSimReachable ? 'scale-105' :
               (!liveStatus && varFlowRole) ? 'scale-105' :
@@ -370,19 +371,19 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
               <span
                 data-testid="heatmap-glow"
                 className="absolute inset-[-4px] rounded-lg pointer-events-none"
-                style={{ backgroundColor: heatmapBorder, filter: 'blur(5px)', opacity: 0.85 }}
+                style={minimal ? { border: `2px solid ${heatmapBorder}` } : { backgroundColor: heatmapBorder, filter: 'blur(5px)', opacity: 0.85 }}
               />
             )}
             {showCriticalPath && !isDisabled && (
               <span
                 className="absolute inset-[-4px] rounded-lg pointer-events-none"
-                style={{ backgroundColor: 'color-mix(in srgb, var(--color-paused) 70%, transparent)', filter: 'blur(5px)', opacity: 0.85 }}
+                style={minimal ? { border: '2px solid var(--color-paused)' } : { backgroundColor: 'color-mix(in srgb, var(--color-paused) 70%, transparent)', filter: 'blur(5px)', opacity: 0.85 }}
               />
             )}
             {isFailedGlow && (
               <span
                 className="absolute inset-[-4px] rounded-lg pointer-events-none"
-                style={{ backgroundColor: 'color-mix(in srgb, var(--color-error) 55%, transparent)', filter: 'blur(5px)' }}
+                style={minimal ? { border: '2px solid var(--color-error)' } : { backgroundColor: 'color-mix(in srgb, var(--color-error) 55%, transparent)', filter: 'blur(5px)' }}
               />
             )}
             {/* Running pulse — ping ring on the invisible box */}
@@ -394,6 +395,7 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
               <span
                 className={`absolute inset-[-3px] rounded-lg pointer-events-none ${isSimRevealing ? 'animate-pulse' : ''}`}
                 style={{
+                  inset: minimal && (heatmapBorder || showCriticalPath || isFailedGlow) ? -8 : undefined,
                   border: `2px solid ${
                     isSimRevealing ? 'var(--color-running)' :
                     isSimReachable ? 'var(--color-info)' :
@@ -471,14 +473,14 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
               <div
                 className={`absolute pointer-events-none ${isSimRevealing ? 'animate-pulse' : ''}`}
                 style={{
-                  inset: isSimRevealing ? '-7px' : '-3px',
+                  inset: minimal && (heatmapBorder || showCriticalPath || isFailedGlow) ? '-8px' : isSimRevealing ? '-7px' : '-3px',
                   clipPath: shapeClipPath,
                   backgroundColor:
                     isSimRevealing ? 'var(--color-running)' :
                     isSimReachable ? 'var(--color-info)' :
                     (!liveStatus && varFlowRole === 'producer') ? 'var(--color-info)' :
                     (!liveStatus && varFlowRole === 'consumer') ? 'var(--color-warning)' :
-                    'color-mix(in srgb, var(--color-primary) 45%, transparent)',
+                    minimal ? 'var(--color-primary)' : 'color-mix(in srgb, var(--color-primary) 45%, transparent)',
                 }}
               />
             )}
@@ -490,8 +492,8 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
                   inset: '-5px',
                   clipPath: shapeClipPath,
                   backgroundColor: heatmapBorder,
-                  filter: 'blur(4px)',
-                  opacity: 0.85,
+                  filter: minimal ? undefined : 'blur(4px)',
+                  opacity: minimal ? 1 : 0.85,
                 }}
               />
             )}
@@ -503,8 +505,8 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
                 style={{
                   inset: '-5px',
                   clipPath: shapeClipPath,
-                  backgroundColor: 'color-mix(in srgb, var(--color-error) 55%, transparent)',
-                  filter: 'blur(5px)',
+                  backgroundColor: minimal ? 'var(--color-error)' : 'color-mix(in srgb, var(--color-error) 55%, transparent)',
+                  filter: minimal ? undefined : 'blur(5px)',
                 }}
               />
             )}
@@ -515,7 +517,7 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
             {showCriticalPath && !isBookendShape && !isDisabled && (
               <div
                 className="absolute pointer-events-none"
-                style={{ inset: '-5px', clipPath: shapeClipPath, backgroundColor: 'color-mix(in srgb, var(--color-paused) 60%, transparent)', filter: 'blur(5px)' }}
+                style={{ inset: '-5px', clipPath: shapeClipPath, backgroundColor: minimal ? 'var(--color-paused)' : 'color-mix(in srgb, var(--color-paused) 60%, transparent)', filter: minimal ? undefined : 'blur(5px)' }}
               />
             )}
             {/* Control-group frame — shared indigo outer silhouette. The border layer below is
@@ -653,9 +655,9 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
                 // so a "failing step" stays clearly visible even at a small node scale.
                 border: `${(liveStyle?.dashed || isDisabled) ? '1.5px dashed' : ((heatmapBorder && !liveStyle) || showCriticalPath ? '3px solid' : `${baseBorderPx}px solid`)} ${isDisabled ? 'var(--color-skipped)' : effectiveBorder}`,
                 ...(premiumShadow ? { boxShadow: premiumShadow } : {}),
-                ...(heatmapBorder && !liveStyle && !isDisabled ? { boxShadow: `0 0 12px ${heatmapBorder}` } : {}),
-                ...(showCriticalPath ? { boxShadow: '0 0 12px color-mix(in srgb, var(--color-paused) 60%, transparent)' } : {}),
-                ...(isFailedGlow ? { boxShadow: FAILED_GLOW_SHADOW } : {}),
+                ...(!minimal && heatmapBorder && !liveStyle && !isDisabled ? { boxShadow: `0 0 12px ${heatmapBorder}` } : {}),
+                ...(!minimal && showCriticalPath ? { boxShadow: '0 0 12px color-mix(in srgb, var(--color-paused) 60%, transparent)' } : {}),
+                ...(isFailedGlow ? (minimal ? { outline: '2px solid var(--color-error)', outlineOffset: 2 } : { boxShadow: FAILED_GLOW_SHADOW }) : {}),
                 ...(liveStyle?.pulse && !isDisabled ? { '--tw-ring-color': effectiveBorder } as React.CSSProperties : {}),
               }}
             >
@@ -733,15 +735,15 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   return (
     <div
       ref={nodeRef}
-      className={`relative bg-surface-lowest flex flex-col min-w-[220px] max-w-[280px] transition-all rounded-xl shadow-[var(--np-elev-1)] hover:shadow-[var(--np-elev-2)] ${
+      className={`np-activity-card relative bg-surface-lowest flex flex-col min-w-[220px] max-w-[280px] transition-all rounded-xl shadow-[var(--np-elev-1)] hover:shadow-[var(--np-elev-2)] ${
         simRingCls || (selected ? 'ring-2 ring-primary/50 shadow-[var(--np-elev-2)]' : 'ring-1 ring-outline-variant/20')
       } ${isDisabled ? 'opacity-50 [border:1.5px_dashed_var(--color-skipped)]' : ''} ${coverageDim ? 'opacity-40 grayscale' : ''} ${coverageRareTint ? 'opacity-80' : ''}`}
       style={(heatmapBorder && !liveStatus && !isDisabled)
-        ? { border: `3px solid ${heatmapBorder}`, boxShadow: `0 0 14px ${heatmapBorder}` }
+        ? { border: `3px solid ${heatmapBorder}`, boxShadow: minimal ? undefined : `0 0 14px ${heatmapBorder}` }
         : showCriticalPath && !isDisabled
-          ? { border: '3px solid color-mix(in srgb, var(--color-paused) 85%, transparent)', boxShadow: '0 0 14px color-mix(in srgb, var(--color-paused) 60%, transparent)' }
+          ? { border: '3px solid color-mix(in srgb, var(--color-paused) 85%, transparent)', boxShadow: minimal ? undefined : '0 0 14px color-mix(in srgb, var(--color-paused) 60%, transparent)' }
           : isFailedGlow
-            ? { boxShadow: FAILED_GLOW_SHADOW }
+            ? (minimal ? { outline: '2px solid var(--color-error)', outlineOffset: 2 } : { boxShadow: FAILED_GLOW_SHADOW })
             : undefined}
       title={coverage
         ? t('nodes.coverageTooltip', { days: coverage.windowDays, executed: coverage.executedCount, total: coverage.totalExecutions })

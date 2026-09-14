@@ -9,9 +9,8 @@ export type ThemeBase = 'light' | 'dark';
  * re-accented dark skin such as `dark-lila` keeps `base: 'dark'`. `id` is also the `data-skin`
  * attribute on <html>, which index.css keys accent and surface overrides on.
  *
- * A new skin needs an entry here, an `html.dark[data-skin="<id>"]` block in index.css, an i18n
- * label in the `settings` and `nav` namespaces, and an accent hue in
- * `scripts/generate-logo-skins.py` plus a `LOGO_BY_SKIN` entry in `BrandLogo.tsx`.
+ * Register each skin here, scope its styles by data-skin, and add settings/nav translations.
+ * lib/appIcon.ts maps each id to a matching brand asset; related palettes may reuse an asset.
  */
 export interface ThemeDef {
   id: string;
@@ -30,15 +29,22 @@ export const THEMES = [
   { id: 'light', base: 'light', labelKey: 'themeLight' },
   { id: 'light-grey', base: 'light', labelKey: 'themeLightGrey', remapBlue: true },
   { id: 'light-bank', base: 'light', labelKey: 'themeBankLight', remapBlue: true },
+  { id: 'light-minimal', base: 'light', labelKey: 'themeMinimalLight', remapBlue: true },
   { id: 'dark', base: 'dark', labelKey: 'themeDark', remapBlue: true },
   { id: 'dark-lila', base: 'dark', labelKey: 'themeDarkLila', remapBlue: true },
   { id: 'dark-bank', base: 'dark', labelKey: 'themeBankDark', remapBlue: true },
   { id: 'dark-nebula', base: 'dark', labelKey: 'themeDarkNebula', remapBlue: true },
+  { id: 'dark-minimal', base: 'dark', labelKey: 'themeMinimalDark', remapBlue: true },
 ] as const satisfies readonly ThemeDef[];
 
 export type SkinId = (typeof THEMES)[number]['id'];
 /** A persisted preference: a concrete skin id or the OS-following `system`. */
 export type Theme = SkinId | 'system';
+
+/** Shared by renderers whose visual effects are computed outside CSS. */
+export function isMinimalSkin(skin: string): boolean {
+  return skin === 'light-minimal' || skin === 'dark-minimal';
+}
 
 interface ThemeStore {
   theme: Theme;

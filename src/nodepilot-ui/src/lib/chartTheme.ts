@@ -43,6 +43,8 @@ export const CHART_SERIES_DARK = [
 
 export interface ChartTokens {
   isDark: boolean;
+  /** Flat fills and no decorative chart shadows. Semantic colour ramps stay intact. */
+  reducedDecoration: boolean;
   /** Axis labels, legend text, tick text. */
   axis: string;
   /** Split lines and grid lines. Kept visually recessive. */
@@ -62,6 +64,7 @@ export interface ChartTokens {
  *  the dark skin, which is what `system` resolves to on a dark OS. */
 const FALLBACK: ChartTokens = {
   isDark: false,
+  reducedDecoration: false,
   axis: '#9ca3af',
   grid: 'rgba(148,163,184,.16)',
   surfaceHigh: '#212328',
@@ -97,6 +100,7 @@ export function useChartTokens(): { probeRef: React.RefObject<HTMLDivElement | n
       const isDark = document.documentElement.classList.contains('dark');
       setTokens({
         isDark,
+        reducedDecoration: cs.getPropertyValue('--np-reduced-decoration').trim() === '1',
         axis: g('--color-on-surface-variant', FALLBACK.axis),
         grid: g('--color-outline-variant', FALLBACK.grid),
         surfaceHigh: g('--color-surface-high', FALLBACK.surfaceHigh),

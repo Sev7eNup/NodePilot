@@ -376,11 +376,11 @@ function HeroGauge({
         show: true,
         width: 16,
         roundCap: true,
-        itemStyle: { color, shadowBlur: 22, shadowColor: color },
+        itemStyle: { color, shadowBlur: tokens.reducedDecoration ? 0 : 22, shadowColor: color },
       },
       data: [{ value: successRate ?? 0 }],
     }],
-  }), [successRate, color, track]);
+  }), [successRate, color, track, tokens.reducedDecoration]);
 
   const runningSuffix = running > 0 ? ` · ${running}↻` : '';
   return (
@@ -880,7 +880,7 @@ function HourlyAreaChart({ buckets, windowHours, tokens }: Readonly<{ buckets: H
       tooltip: {
         trigger: 'axis',
         backgroundColor: tipBg,
-        borderWidth: 0,
+        ...(tokens.reducedDecoration ? { extraCssText: 'box-shadow:none', borderColor: axisColor, borderWidth: 1 } : { borderWidth: 0 }),
         padding: [6, 10],
         textStyle: { color: tipText, fontSize: 11 },
         axisPointer: { type: 'line', lineStyle: { color: axisColor, opacity: 0.4 } },
@@ -908,18 +908,18 @@ function HourlyAreaChart({ buckets, windowHours, tokens }: Readonly<{ buckets: H
         lineStyle: {
           width: 2.5,
           color: s.line,
-          ...(s.shadow ? { shadowBlur: 14, shadowColor: s.shadow } : {}),
+          ...(s.shadow && !tokens.reducedDecoration ? { shadowBlur: 14, shadowColor: s.shadow } : {}),
         },
         emphasis: { focus: 'series' },
         areaStyle: {
-          color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [
+          color: tokens.reducedDecoration ? s.mid : { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [
             { offset: 0, color: s.top }, { offset: 0.45, color: s.mid }, { offset: 1, color: s.bot },
           ] },
         },
         data: buckets.map((b) => b[s.key]),
       })),
     };
-  }, [buckets, windowHours, axisColor, tipBg, tipText, t]);
+  }, [buckets, windowHours, axisColor, tipBg, tipText, tokens.reducedDecoration, t]);
 
   if (buckets.length === 0) {
     return <div className="h-28 flex items-center justify-center"><EmptyState text={t('dashboard:noExecutionsYet')} /></div>;
@@ -1035,7 +1035,7 @@ function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: 
     tooltip: {
       trigger: 'axis',
       backgroundColor: tipBg,
-      borderWidth: 0,
+      ...(tokens.reducedDecoration ? { extraCssText: 'box-shadow:none', borderColor: axisColor, borderWidth: 1 } : { borderWidth: 0 }),
       padding: [6, 10],
       textStyle: { color: tipText, fontSize: 11 },
       axisPointer: { type: 'line', lineStyle: { color: axisColor, opacity: 0.4 } },
@@ -1070,7 +1070,7 @@ function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: 
       itemStyle: { color: HEALTH.ok, borderColor: tipBg, borderWidth: 1 },
       lineStyle: { width: 2, color: HEALTH.ok },
       areaStyle: {
-        color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [
+        color: tokens.reducedDecoration ? 'rgba(34,197,94,0.15)' : { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [
           { offset: 0, color: 'rgba(34,197,94,0.30)' }, { offset: 1, color: 'rgba(34,197,94,0.02)' },
         ] },
       },
@@ -1086,7 +1086,7 @@ function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: 
         symbol: points[index - 1]?.rate == null && points[index + 1]?.rate == null ? 'circle' : 'none',
       })),
     }],
-  }), [points, axisColor, tipBg, tipText, t]);
+  }), [points, axisColor, tipBg, tipText, tokens.reducedDecoration, t]);
 
   if (points.length === 0 || points.every((p) => p.rate == null)) {
     return <div className="flex-1 min-h-40 flex items-center justify-center"><EmptyState text={t('dashboard:noExecutionsYet')} /></div>;

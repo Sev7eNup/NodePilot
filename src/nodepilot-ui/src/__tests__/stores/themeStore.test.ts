@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { useThemeStore, resolveTheme, resolveSkin, applyTheme, normalizeTheme, THEMES } from '../../stores/themeStore';
+import { useThemeStore, resolveTheme, resolveSkin, applyTheme, normalizeTheme, isMinimalSkin, THEMES } from '../../stores/themeStore';
 
 /**
  * Theme resolution + DOM side-effects. Two pieces:
@@ -64,6 +64,26 @@ describe('resolveTheme (pure)', () => {
     expect(resolveTheme('totally-unknown' as never)).toBe('light');
     expect(normalizeTheme('dark-synthwave' as never)).toBe('light');
   });
+
+  it.each(['light', 'dark'] as const)('%s Minimal retains its registered id and resolves to its base', (base) => {
+    const skin = `${base}-minimal` as const;
+    expect(normalizeTheme(skin)).toBe(skin);
+    expect(resolveSkin(skin)).toBe(skin);
+    expect(resolveTheme(skin)).toBe(base);
+    expect(isMinimalSkin(skin)).toBe(true);
+  });
+
+  it('only explicit Minimal skins request reduced decoration', () => {
+    for (const skin of ['light', 'light-grey', 'light-bank', 'dark', 'dark-lila', 'dark-bank', 'dark-nebula', 'system', 'unknown']) {
+      expect(isMinimalSkin(skin), skin).toBe(false);
+    }
+    mockSystemDark(true);
+    expect(resolveSkin('system')).toBe('dark');
+    expect(isMinimalSkin(resolveSkin('system'))).toBe(false);
+    mockSystemDark(false);
+    expect(resolveSkin('system')).toBe('light');
+    expect(isMinimalSkin(resolveSkin('system'))).toBe(false);
+  });
 });
 
 describe('skins / data-skin attribute', () => {
@@ -77,14 +97,25 @@ describe('skins / data-skin attribute', () => {
     vi.restoreAllMocks();
   });
 
-  it('registryContainsAllSevenSkins', () => {
+  it('registryContainsAllNineSkins', () => {
     const ids = THEMES.map((t) => t.id);
-    expect(ids).toEqual(['light', 'light-grey', 'light-bank', 'dark', 'dark-lila', 'dark-bank', 'dark-nebula']);
+    expect(ids).toEqual(['light', 'light-grey', 'light-bank', 'light-minimal', 'dark', 'dark-lila', 'dark-bank', 'dark-nebula', 'dark-minimal']);
     expect(THEMES.find((t) => t.id === 'dark-lila')?.base).toBe('dark');
     expect(THEMES.find((t) => t.id === 'light-grey')?.base).toBe('light');
     expect(THEMES.find((t) => t.id === 'dark-bank')?.base).toBe('dark');
     expect(THEMES.find((t) => t.id === 'light-bank')?.base).toBe('light');
     expect(THEMES.find((t) => t.id === 'dark-nebula')?.base).toBe('dark');
+  });
+
+  it.each(['light', 'dark'] as const)('applies %s Minimal with its base, marker and accent remap', (base) => {
+    applyTheme(`${base}-minimal`);
+    expect(document.documentElement.dataset.skin).toBe(`${base}-minimal`);
+    expect(document.documentElement.classList.contains('dark')).toBe(base === 'dark');
+    expect(document.documentElement.classList.contains('np-accent-remap')).toBe(true);
+    applyTheme('light');
+    expect(document.documentElement.dataset.skin).toBe('light');
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+    expect(document.documentElement.classList.contains('np-accent-remap')).toBe(false);
   });
 
   it('applyTheme_darkBank_addsDarkClassAndDataSkinAndRemap', () => {
@@ -226,5 +257,26 @@ describe('useThemeStore', () => {
 
     expect(useThemeStore.getState().resolvedTheme).toBe('dark');
     expect(document.documentElement.classList.contains('dark')).toBe(true);
+  });
+
+  it.each(['light', 'dark'] as const)('persists and rehydrates %s Minimal as an explicit preference', async (base) => {
+    const skin = `${base}-minimal` as const;
+    useThemeStore.getState().setTheme(skin);
+    const saved = localStorage.getItem('nodepilot.theme')!;
+    expect(JSON.parse(saved).state).toEqual({ theme: skin });
+
+    useThemeStore.getState().setTheme('light-grey');
+    localStorage.setItem('nodepilot.theme', saved);
+    await useThemeStore.persist.rehydrate();
+    expect(useThemeStore.getState().theme).toBe(skin);
+    expect(useThemeStore.getState().resolvedTheme).toBe(base);
+    expect(document.documentElement.dataset.skin).toBe(skin);
+    expect(document.documentElement.classList.contains('dark')).toBe(base === 'dark');
+    expect(document.documentElement.classList.contains('np-accent-remap')).toBe(true);
+
+    mockSystemDark(base === 'light');
+    useThemeStore.getState().syncResolved();
+    expect(useThemeStore.getState().resolvedTheme).toBe(base);
+    expect(document.documentElement.dataset.skin).toBe(skin);
   });
 });

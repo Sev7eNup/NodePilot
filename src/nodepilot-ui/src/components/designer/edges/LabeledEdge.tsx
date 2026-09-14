@@ -28,7 +28,7 @@ const EDGE_COLOR_TOKENS = {
   success: 'var(--color-success)', failed: 'var(--color-error)', custom: 'var(--color-custom)',
   running: 'var(--color-running)', reachable: 'var(--color-info)', skipped: 'var(--color-skipped)',
   varFlow: 'var(--color-info)', collapsed: 'var(--color-skipped)', dataBus: 'var(--color-info)',
-  arrowDefault: 'var(--color-outline-variant)',
+  arrowDefault: 'var(--np-edge-idle, var(--color-outline-variant))',
 } as const;
 
 /* ---- Custom Edge ---- */
@@ -154,7 +154,7 @@ function LabeledEdgeImpl({
     conditionKind === 'success' ? EDGE_COLORS.success :
     conditionKind === 'failed'  ? EDGE_COLORS.failed :
     conditionKind === 'custom'  ? EDGE_COLORS.custom :
-    'var(--color-outline-variant)';
+    EDGE_COLORS.arrowDefault;
   const conditionArrowFill = conditionKind === 'always' ? EDGE_COLORS.arrowDefault : conditionStroke;
 
   // Premium: glow CSS class applied to the <g> wrapper for the dark-mode drop-shadow filter.

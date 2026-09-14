@@ -4,6 +4,8 @@ import './index.css'
 // Atelier designer skin, imported after index.css on purpose: its selectors tie with the
 // per-skin `.np-designer` overrides on specificity, so source order decides the cascade.
 import './styles/designer-atelier.css'
+import './styles/skin-minimal.css'
+import './styles/designer-minimal.css'
 import './i18n'
 import App from './App.tsx'
 import type { ObservabilityConfig } from './types/api'

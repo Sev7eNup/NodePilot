@@ -8,7 +8,8 @@ we pre-render one variant per skin by hue-remapping the untouched original
 (`appicon.original.png`), preserving saturation/value so gradients and shading survive
 and the white play-triangle / checkmark stay white.
 
-`BrandLogo.tsx` then picks `appicon-<skin>.png` for the active skin.
+`lib/appIcon.ts` maps each skin to an asset for BrandLogo and the favicon.
+The minimal skins reuse the existing blue light/dark assets and need no additional variants.
 
 Re-run after the source logo changes:  python scripts/generate-logo-skins.py
 Requires Pillow (`pip install pillow`).

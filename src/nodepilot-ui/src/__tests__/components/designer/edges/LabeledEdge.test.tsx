@@ -120,6 +120,15 @@ describe('LabeledEdge — disabled indicator', () => {
     expect(screen.queryByText('disabled')).not.toBeInTheDocument();
   });
 
+  it('uses the contrast-aware idle token for both the edge and premium arrow', () => {
+    mocks.designState.premiumCanvas = true;
+    mocks.smartSegments = [['M0,0 C50,0 50,0 100,0', 50, 0, { tipX: 100, tipY: 0, baseX: 88, baseY: 0 }]];
+    render(<svg><LabeledEdge {...baseProps} /></svg>);
+    const idle = 'var(--np-edge-idle, var(--color-outline-variant))';
+    expect(screen.getByTestId('base-edge').style.stroke).toBe(idle);
+    expect(screen.getByTestId('premium-edge-arrow-e1')).toHaveAttribute('fill', idle);
+  });
+
   it('does NOT render disabled badge when disabled field is absent', () => {
     render(
       <svg>
