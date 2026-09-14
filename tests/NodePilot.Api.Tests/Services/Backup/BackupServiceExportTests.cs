@@ -298,7 +298,19 @@ public sealed class BackupServiceExportTests : IDisposable
             [BackupSections.Workflows, BackupSections.Users], Passphrase, "admin", CancellationToken.None);
 
         var outer = (JsonObject)JsonNode.Parse(Encoding.UTF8.GetString(result.Content))!;
-        outer.ToJsonString().Should().NotContain("users").And.NotContain("wf1");
+
+        // Scan the envelope for plaintext with the opaque fields blanked, not the raw JSON: that
+        // JSON is almost entirely base64, and a short marker like "wf1" occurs in it by chance
+        // (w, f and 1 are all base64 characters). Pin the field names too — a new field would
+        // otherwise either leak plaintext unnoticed or, if it carries base64, start the same
+        // false failures again.
+        outer.Select(p => p.Key).Should().BeEquivalentTo(["schema", "crypto", "payload"]);
+        var scrubbed = (JsonObject)JsonNode.Parse(outer.ToJsonString())!;
+        scrubbed["payload"] = "";
+        var scrubbedCrypto = (JsonObject)scrubbed["crypto"]!;
+        scrubbedCrypto["salt"] = "";
+        scrubbedCrypto["verifier"] = "";
+        scrubbed.ToJsonString().Should().NotContain("users").And.NotContain("wf1");
 
         var payload = Convert.FromBase64String(outer["payload"]!.GetValue<string>());
         payload[payload.Length / 2] ^= 0x01;
