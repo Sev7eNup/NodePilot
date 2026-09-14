@@ -71,8 +71,10 @@ Every trigger publishes its event data onto the data bus. Verified (fileWatcher 
 `fileName`/`fileAction`, webhook → `webhookBody`/`webhookMethod`/`webhookPath` + JSONPath
 `fieldMappings`, manual → the declared parameters). **Read them through
 `{{<triggerNode>.param.<key>}}`** — that is the universal, contract-correct route that resolves in
-engine-local configurations (log/returnData). `{{manual.<key>}}` is a flat runScript variable and
-stays literal in configurations — which is why all trigger samples use `{{trg.param.X}}`.
+engine-local configurations (log/returnData). `{{manual.<key>}}` also resolves in activity
+configurations when the run supplies that input; values are JSON-escaped by the shared resolver.
+Unknown inputs stay unresolved for the engine diagnostic. The samples use `{{trg.param.X}}`
+to make the producing trigger and its declared output contract explicit.
 
 > **Important:** trigger-fired runs need an *effective principal* (`Workflow.PublishedByUserId`),
 > otherwise they are aborted with `missing_effective_principal` (enterprise SSO hardening). Publish,

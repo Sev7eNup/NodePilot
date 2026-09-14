@@ -76,6 +76,11 @@ public static class ApiErrorMapper
             return;
         }
 
+        // A self-signed certificate reached under a name it does not carry raises both policy
+        // errors. Saying a root import does not help and then offering one contradicts itself, so
+        // the trust remedy is qualified instead. Mirrors the CLI's NetworkErrorRenderer.
+        var combined = info.HasNameMismatch && info.Tls != TlsFailureKind.NameMismatch;
+
         if (info.HasNameMismatch)
         {
             text.Append(certificate.SuggestedServerUrl is { } url
@@ -83,14 +88,19 @@ public static class ApiErrorMapper
                   + $" carries: NODEPILOT_MCP_SERVER={url} in the .mcp.json env block."
                 : " The request host is not among the certificate's names, and the certificate names no"
                   + " host a client could dial; reissue it for the name the server is reached under.");
-            text.Append(@" A LocalMachine\Root import does not fix a name mismatch.");
+            if (!combined)
+                text.Append(@" A LocalMachine\Root import does not fix a name mismatch.");
         }
 
         switch (info.Tls)
         {
             case TlsFailureKind.UntrustedChain or TlsFailureKind.Unknown:
-                text.Append(@" Trust it by importing it into LocalMachine\Root, or pin it with"
-                    + " NODEPILOT_MCP_TLS_THUMBPRINT=<SHA-256> in the .mcp.json env block.");
+                text.Append(combined
+                    ? @" The chain is untrusted on top of that: importing it into LocalMachine\Root"
+                      + " or pinning it with NODEPILOT_MCP_TLS_THUMBPRINT=<SHA-256> settles the chain,"
+                      + " but the host still has to be a name the certificate carries."
+                    : @" Trust it by importing it into LocalMachine\Root, or pin it with"
+                      + " NODEPILOT_MCP_TLS_THUMBPRINT=<SHA-256> in the .mcp.json env block.");
                 break;
             case TlsFailureKind.Expired:
                 text.Append(" The certificate is outside its validity window; it has to be renewed.");

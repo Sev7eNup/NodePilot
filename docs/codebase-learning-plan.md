@@ -12,11 +12,8 @@ Bevor du eine einzige Klasse liest, schau dir die Karte an:
 
 1. [CLAUDE.md](../CLAUDE.md) — Tech-Stack, Modul-Graph, Activity-Typen-Tabelle, Edit-Lifecycle. **Wichtigster Single-Source-of-Truth-Read.**
 2. [CONTEXT.md](../CONTEXT.md) — Architektur-Narrativ, was NodePilot überhaupt ist und welche Probleme es löst.
-3. [docs/adr/](adr/) — Architecture Decision Records. **Aktuell als ADR ausformuliert:**
-   - [0001 — System Configuration Backup/Restore](adr/0001-system-configuration-backup-restore.md)
-
-   Weitere Architektur-Entscheidungen sind im Code + in CLAUDE.md/CONTEXT.md dokumentiert, aber (noch) nicht als eigenständige ADR geschrieben — u.a. Backend-owned Activity Catalog, Workflow-Definition Owns Runtime Semantics, Execution-Dispatch Owns Pending Lifecycle, Explicit Settings-Section-Adapters, Incremental PowerShell-Operation-Module.
-4. Dependency-Graph einprägen (steht in CLAUDE.md): `Api → Engine, Scheduler, Data, Remote, Core, Telemetry`. **Core hat null Abhängigkeiten** — das ist dein Anker.
+3. [ADR-Index](adr/README.md) — Entscheidungen zu Backup, HA, Identität, API-Verträgen, Hosting und Engine-Semantik. Der Index führt die Records 0001–0015 und ihren jeweiligen Status; ADR 0003 wurde durch 0009 abgelöst. Für den Runtime-Einstieg besonders [0013 — Junction Fan-In](adr/0013-explicit-junction-fan-in.md), [0014 — Durable Execution Dispatch](adr/0014-durable-execution-dispatch.md) und [0015 — Fail-Closed Edge Conditions](adr/0015-fail-closed-edge-conditions.md) lesen.
+4. Den Dependency-Graph aus CLAUDE.md einprägen, insbesondere: `Api → Ai, Engine, Scheduler, Data, Remote, Core, Telemetry`; `Ai → Core`. Core referenziert kein anderes NodePilot-Projekt, enthält aber gemeinsame Logik und Client-Infrastruktur.
 
 **Ziel:** Du sollst auf „warum gibt es Engine **und** Scheduler separat?" und „wer kennt wen?" sofort antworten können.
 
@@ -26,11 +23,11 @@ Bevor du eine einzige Klasse liest, schau dir die Karte an:
 
 ### 1A. NodePilot.Core — die Sprache des Systems (1–2 h)
 
-Core enthält nur Models, Enums, Interfaces. Keine Logik. Das ist dein Vokabular für alles, was danach kommt.
+Core enthält Models, Enums und Interfaces sowie gemeinsam genutzte Logik: Workflow-Validierung und -Analyse unter `WorkflowDefinitions`, Performance-Sizing unter `Configuration` und HTTP-/Session-/TLS-Infrastruktur unter `Clients`. Es ist die gemeinsame Vertragsschicht und referenziert kein anderes NodePilot-Projekt.
 
 **Reihenfolge:**
 
-1. [src/NodePilot.Core/Enums/](../src/NodePilot.Core/Enums/) — alle 5 Files durchlesen. Klein, kondensiert: `ExecutionStatus`, `UserRole`, `AuthProvider`, `FolderPrincipalType`, `SharedFolderRole`.
+1. [src/NodePilot.Core/Enums/](../src/NodePilot.Core/Enums/) — zuerst `ExecutionStatus`, `UserRole`, `AuthProvider`, `FolderPrincipalType` und `SharedFolderRole` lesen; weitere Enums bei den zugehörigen Subsystemen nachschlagen.
 2. Die zwei wichtigsten Aggregate:
    - [Workflow.cs](../src/NodePilot.Core/Models/Workflow.cs) — Was ist eine Workflow-Row? Achte auf `DefinitionJson`, `IsEnabled`, `CheckedOutByUserId`/`CheckedOutAt` (Edit-Lock).
    - [WorkflowExecution.cs](../src/NodePilot.Core/Models/WorkflowExecution.cs) + [StepExecution.cs](../src/NodePilot.Core/Models/StepExecution.cs) — Lauf-Historie.
@@ -38,7 +35,7 @@ Core enthält nur Models, Enums, Interfaces. Keine Logik. Das ist dein Vokabular
    - [WorkflowGraph.cs](../src/NodePilot.Core/Models/WorkflowGraph.cs) — `nodes[]` + `edges[]`. **Hier liegt das eigentliche Workflow-Format.** Vergleiche mit dem JSON-Snippet in CLAUDE.md Abschnitt „Workflow-JSON Format".
 4. Die zwei Engine-Interfaces:
    - [IWorkflowEngine.cs](../src/NodePilot.Core/Interfaces/IWorkflowEngine.cs) — Engine-Public-API.
-   - [IActivityExecutor.cs](../src/NodePilot.Core/Interfaces/IActivityExecutor.cs) — Contract, das jede Activity erfüllt. **Drei Methoden, eine Klasse — schau, wie schlank das ist.**
+   - [IActivityExecutor.cs](../src/NodePilot.Core/Interfaces/IActivityExecutor.cs) — Contract, das jede Activity erfüllt. **Eine `ActivityType`-Property und `ExecuteAsync` beschreiben den Executor-Vertrag; Ergebnis und Ausführungskontext stehen in derselben Datei.**
 5. Restliche Models nur überfliegen: [Credential.cs](../src/NodePilot.Core/Models/Credential.cs), [ManagedMachine.cs](../src/NodePilot.Core/Models/ManagedMachine.cs), [GlobalVariable.cs](../src/NodePilot.Core/Models/GlobalVariable.cs), [AuditLogEntry.cs](../src/NodePilot.Core/Models/AuditLogEntry.cs).
 
 **Verständnis-Check:** Skizziere auf Papier das ERD von Workflow → WorkflowExecution → StepExecution. Wenn du das ohne IDE-Hilfe kannst, sitzt es.
@@ -93,7 +90,7 @@ Mehr brauchst du anfangs nicht. WinRM-Tiefe lohnt erst, wenn du an `runScript` o
 
 **Schritt 5 — DI-Registrierung:**
 
-- Wo werden alle `IActivityExecutor`s registriert? → in [Program.cs](../src/NodePilot.Api/Program.cs) per `AddScoped<IActivityExecutor, ...>`. Such die Stelle, scroll durch die ganze Liste. Das ist dein Activity-Katalog.
+- [Program.cs](../src/NodePilot.Api/Program.cs) ruft `AddNodePilotActivities()` auf. Lies den Assembly-Scan in [ServiceCollectionExtensions.cs](../src/NodePilot.Engine/ServiceCollectionExtensions.cs): konkrete `IActivityExecutor`-Typen werden automatisch als scoped Services registriert. Die Metadaten des Activity-Katalogs liegen getrennt davon in `NodePilot.Core/Activities`.
 
 **Verständnis-Check:** Trace gedanklich einen Workflow mit 3 Nodes (Trigger → runScript → returnData). Wo entsteht der `ExecutionId`, welcher Code persistiert den ersten `StepExecution`-Row, wer markiert den letzten Step als `Succeeded`?
 

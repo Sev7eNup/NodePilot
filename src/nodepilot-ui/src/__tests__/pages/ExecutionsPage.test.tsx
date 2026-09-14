@@ -7,7 +7,7 @@ import { setupServer } from 'msw/node';
 import { ExecutionsPage } from '../../pages/ExecutionsPage';
 import { useAuthStore } from '../../stores/authStore';
 import { confirmDialog } from '../../stores/confirmStore';
-import type { WorkflowExecution, Workflow } from '../../types/api';
+import type { WorkflowExecution, WorkflowNameItem } from '../../types/api';
 
 vi.mock('../../stores/confirmStore', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../../stores/confirmStore')>();
@@ -90,15 +90,17 @@ const MOCK_EXECUTIONS: WorkflowExecution[] = [
   },
 ];
 
-const MOCK_WORKFLOWS: Workflow[] = [
-  { id: 'wf-1', name: 'Disk Check', description: null, definitionJson: '{}', version: 1, isEnabled: true, createdAt: '', updatedAt: '', createdBy: null, updatedBy: null },
-  { id: 'wf-2', name: 'Backup Job', description: null, definitionJson: '{}', version: 1, isEnabled: true, createdAt: '', updatedAt: '', createdBy: null, updatedBy: null },
+// The page resolves names through /api/workflows/names, not the full list endpoint: it needs id
+// and name for the filter dropdown and the row labels, and nothing else.
+const MOCK_WORKFLOWS: WorkflowNameItem[] = [
+  { id: 'wf-1', name: 'Disk Check' },
+  { id: 'wf-2', name: 'Backup Job' },
 ];
 
 function mockList() {
   server.use(
     http.get(`${BASE}/api/executions`, () => HttpResponse.json(MOCK_EXECUTIONS)),
-    http.get(`${BASE}/api/workflows`, () => HttpResponse.json(MOCK_WORKFLOWS))
+    http.get(`${BASE}/api/workflows/names`, () => HttpResponse.json(MOCK_WORKFLOWS))
   );
 }
 
@@ -106,7 +108,7 @@ describe('ExecutionsPage', () => {
   it('shows loading state initially', () => {
     server.use(
       http.get(`${BASE}/api/executions`, () => new Promise(() => {})),
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([]))
+      http.get(`${BASE}/api/workflows/names`, () => HttpResponse.json([]))
     );
     renderPage();
     expect(screen.getByText('Loading...')).toBeInTheDocument();
@@ -127,7 +129,7 @@ describe('ExecutionsPage', () => {
           totalPages: 2_130,
         });
       }),
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json(MOCK_WORKFLOWS))
+      http.get(`${BASE}/api/workflows/names`, () => HttpResponse.json(MOCK_WORKFLOWS))
     );
 
     renderPage();
@@ -147,7 +149,7 @@ describe('ExecutionsPage', () => {
   it('shows empty state when no executions', async () => {
     server.use(
       http.get(`${BASE}/api/executions`, () => HttpResponse.json([])),
-      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([]))
+      http.get(`${BASE}/api/workflows/names`, () => HttpResponse.json([]))
     );
     renderPage();
     await waitFor(() =>

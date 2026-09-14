@@ -543,6 +543,7 @@ $releaseSigner = "0123456789ABCDEF0123456789ABCDEF01234567"
 Der Updater:
 
 - prüft das neue Artefakt,
+- gleicht jedes Framework, das der neue Build nennt, gegen die Runtimes des Hosts ab und bricht **vor jeder Änderung** ab, wenn eines davon zu alt ist — Roll-Forward geht nie rückwärts, ein älterer Patch auf dem Host heißt also: der Dienst würde gar nicht erst starten,
 - sichert die vorhandenen Binaries,
 - wartet nach dem Dienststopp bis zu 30 Sekunden auf das Ende von Prozessen aus dem Installationsverzeichnis und beendet Verbliebene erzwungen; nur wenn das nicht greift, bricht der Updater mit Prozessname und PID **vor der ersten Dateilöschung** ab (ein gestoppter Dienst genügt nicht: verwaiste Worker halten ihre DLLs weiterhin gemappt),
 - erhält Datenbank, Dienstkonto, Produktionskonfiguration und die Server-URL des Switchers,

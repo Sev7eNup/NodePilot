@@ -32,6 +32,9 @@ public class NodePilotDbContext : DbContext
     public DbSet<GlobalVariableFolder> GlobalVariableFolders => Set<GlobalVariableFolder>();
     public DbSet<SystemHealthHeartbeat> SystemHealth => Set<SystemHealthHeartbeat>();
     public DbSet<WorkflowStats> WorkflowStats => Set<WorkflowStats>();
+    public DbSet<ExecutionHourlyStat> ExecutionHourlyStats => Set<ExecutionHourlyStat>();
+    public DbSet<FailureCauseHourlyStat> FailureCauseHourlyStats => Set<FailureCauseHourlyStat>();
+    public DbSet<ExecutionStatsRollupState> ExecutionStatsRollupStates => Set<ExecutionStatsRollupState>();
     public DbSet<ClusterLeader> ClusterLeaders => Set<ClusterLeader>();
     public DbSet<SharedWorkflowFolder> SharedWorkflowFolders => Set<SharedWorkflowFolder>();
     public DbSet<SharedFolderPermission> SharedFolderPermissions => Set<SharedFolderPermission>();
@@ -652,6 +655,46 @@ public class NodePilotDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(x => x.WorkflowId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ExecutionHourlyStat>(e =>
+        {
+            // (HourUtc, WorkflowId): every read is a time range first, then a per-workflow
+            // grouping, so the hour leads the key.
+            e.HasKey(x => new { x.HourUtc, x.WorkflowId });
+            e.HasOne(x => x.Workflow)
+                .WithMany()
+                .HasForeignKey(x => x.WorkflowId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // Serves the rollup's "which hours are still provisional" lookup, which would otherwise
+            // scan the whole table on every pass.
+            e.HasIndex(x => new { x.IsFinal, x.HourUtc });
+        });
+
+        modelBuilder.Entity<FailureCauseHourlyStat>(e =>
+        {
+            e.HasKey(x => new { x.HourUtc, x.WorkflowId, x.MessageHash });
+            // Hex SHA-256. Fixed width, so it stays a cheap key column on both providers.
+            e.Property(x => x.MessageHash).HasMaxLength(64).IsRequired();
+            // Deliberately uncapped, matching the source columns (ErrorMessage / ErrorOutput are
+            // both unbounded). This value is returned verbatim in the API response, so capping it
+            // would truncate what callers see today — PowerShell stack traces and chained SQL
+            // exceptions routinely run past a few thousand characters. The table stays small
+            // because distinct normalised messages are few, not because rows are short.
+            e.HasOne(x => x.Workflow)
+                .WithMany()
+                .HasForeignKey(x => x.WorkflowId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.IsFinal, x.HourUtc });
+        });
+
+        modelBuilder.Entity<ExecutionStatsRollupState>(e =>
+        {
+            e.HasKey(x => x.Id);
+            // Never generated: this table holds one row with a fixed id. Leaving it to the provider
+            // would emit a provider-specific identity strategy into the migration, which breaks the
+            // single migration set shared by PostgreSQL and SQL Server.
+            e.Property(x => x.Id).ValueGeneratedNever();
         });
 
         modelBuilder.Entity<IdempotencyKey>(e =>

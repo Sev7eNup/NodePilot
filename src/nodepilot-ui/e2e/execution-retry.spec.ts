@@ -27,6 +27,13 @@ test.describe('Execution Retry & Cancel-All (Teil 49)', () => {
         }]),
       }),
     );
+    // The executions list labels its rows from here.
+    await page.route('**/api/workflows/names', (route) =>
+      route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([{ id: RETRY_WF_ID, name: 'Retry_WF' }]),
+      }),
+    );
     // A single failed run: retry is only offered on rows in a terminal state.
     await page.route('**/api/executions**', (route) => {
       if (route.request().url().includes('/steps')) return route.fallback();

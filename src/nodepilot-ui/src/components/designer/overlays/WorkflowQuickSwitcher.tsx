@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/client';
-import type { Workflow } from '../../../types/api';
+import type { WorkflowListItem } from '../../../types/api';
 
 const RECENT_KEY = 'nodepilot.recentWorkflows';
 const MAX_RECENT = 10;
@@ -44,7 +44,7 @@ export function WorkflowQuickSwitcher({ onClose }: Readonly<Props>) {
 
   const { data: workflows = [] } = useQuery({
     queryKey: ['workflows'],
-    queryFn: () => api.get<Workflow[]>('/workflows'),
+    queryFn: () => api.get<WorkflowListItem[]>('/workflows'),
     staleTime: 30_000,
   });
 
@@ -57,7 +57,7 @@ export function WorkflowQuickSwitcher({ onClose }: Readonly<Props>) {
     const ids = readRecentWorkflows();
     return ids
       .map((id) => workflows.find((w) => w.id === id))
-      .filter((w): w is Workflow => !!w);
+      .filter((w): w is WorkflowListItem => !!w);
   }, [workflows]);
 
   // Build the filtered + ordered list. When query is empty: recents first, then the rest.
@@ -83,7 +83,7 @@ export function WorkflowQuickSwitcher({ onClose }: Readonly<Props>) {
         const score = (inName ? 100 - name.indexOf(q) : 0) + (inDesc ? 10 : 0);
         return { workflow: w, isRecent: false, score };
       })
-      .filter((x): x is { workflow: Workflow; isRecent: false; score: number } => !!x)
+      .filter((x): x is { workflow: WorkflowListItem; isRecent: false; score: number } => !!x)
       .sort((a, b) => b.score - a.score);
     return scored;
   }, [workflows, recents, query]);

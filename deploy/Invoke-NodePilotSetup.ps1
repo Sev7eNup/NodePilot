@@ -205,9 +205,14 @@ function Get-NodePilotServiceCrashReason {
     <#
       Returns one sentence explaining why the service was installed but never reported ready. The
       wizard shows only the message it gets back, and a health-probe timeout names a symptom
-      rather than a cause; the cause sits in the Application log, for example:
+      rather than a cause; the cause sits in the event log, for example:
 
           SocketException (10013): An attempt was made to access a socket in a way forbidden ...
+
+      Three sources, most specific first. A managed exception is the best answer, but the failures
+      that never reach managed code - a missing shared framework, a logon failure, a start timeout -
+      write no .NET Runtime event at all, and those used to leave the operator with the SCM's own
+      "the service cannot be started on computer .", which names nothing.
 
       Best effort: a diagnostic that throws would replace the original failure with its own.
     #>
@@ -215,23 +220,66 @@ function Get-NodePilotServiceCrashReason {
     # than staying empty, and Get-WinEvent then scans the whole log.
     param($Since)
 
+    if ($Since -isnot [datetime]) { $Since = (Get-Date).AddMinutes(-15) }
+
+    # 1. Unhandled managed exception.
     try {
-        if ($Since -isnot [datetime]) { $Since = (Get-Date).AddMinutes(-15) }
         $crash = Get-WinEvent -FilterHashtable @{
             LogName = 'Application'; ProviderName = '.NET Runtime'; StartTime = $Since
         } -MaxEvents 10 -ErrorAction Stop |
             Where-Object { $_.Message -like '*NodePilot.Api*' } |
             Select-Object -First 1
-        if (-not $crash) { return '' }
+        if ($crash) {
+            $lines = @($crash.Message -split "`r?`n")
+            $info = @($lines | Where-Object { $_ -like 'Exception Info:*' }) | Select-Object -First 1
+            # One line only: the caller shows this in a message box, where a stack trace would bury
+            # the message.
+            if ($info) { return ($info -replace '^Exception Info:\s*', '').Trim() }
 
-        $info = @($crash.Message -split "`r?`n" |
-            Where-Object { $_ -like 'Exception Info:*' }) | Select-Object -First 1
-        if (-not $info) { return '' }
-        # One line only: the caller shows this in a message box, where a stack trace would bury
-        # the message.
-        return ($info -replace '^Exception Info:\s*', '').Trim()
-    }
-    catch { return '' }
+            # The apphost logs under this same provider when it cannot resolve a framework, and
+            # that event carries no Exception Info line - managed code never ran. It is the
+            # "You must install or update .NET to run this application" case, and reading only
+            # Exception Info threw away the one event that named the cause.
+            $message = @($lines | Where-Object { $_ -like 'Message:*' }) | Select-Object -First 1
+            if ($message) {
+                $text = ($message -replace '^Message:\s*', '').Trim()
+                $framework = @($lines | Where-Object { $_ -like 'Framework:*' }) | Select-Object -First 1
+                if ($framework) { $text = "$text ($($framework.Trim()))" }
+                return $text
+            }
+        }
+    } catch { }
+
+    # 2. Native crash of the apphost - no managed exception is written for these.
+    try {
+        $fault = Get-WinEvent -FilterHashtable @{
+            LogName = 'Application'; ProviderName = 'Application Error'; StartTime = $Since
+        } -MaxEvents 10 -ErrorAction Stop |
+            Where-Object { $_.Message -like '*NodePilot.Api*' } |
+            Select-Object -First 1
+        if ($fault) {
+            $line = @($fault.Message -split "`r?`n" | Where-Object { $_.Trim() }) | Select-Object -First 1
+            if ($line) { return $line.Trim() }
+        }
+    } catch { }
+
+    # 3. Whatever the SCM itself recorded. Preferring an event that names NodePilot and otherwise
+    # taking the first start failure in the window: the window opens when Apply starts, so an
+    # unrelated service failing inside it is unlikely, and the event text names its own service.
+    try {
+        $scmEvents = @(Get-WinEvent -FilterHashtable @{
+            LogName = 'System'; ProviderName = 'Service Control Manager'; StartTime = $Since
+            Id      = @(7000, 7009, 7023, 7024, 7031, 7034)
+        } -MaxEvents 10 -ErrorAction Stop)
+        $scm = @($scmEvents | Where-Object { $_.Message -like '*NodePilot*' }) | Select-Object -First 1
+        if (-not $scm) { $scm = $scmEvents | Select-Object -First 1 }
+        if ($scm) {
+            $line = @($scm.Message -split "`r?`n" | Where-Object { $_.Trim() }) | Select-Object -First 1
+            if ($line) { return "SCM event $($scm.Id): $($line.Trim())" }
+        }
+    } catch { }
+
+    return ''
 }
 
 function Add-NodePilotCertificateInventory {

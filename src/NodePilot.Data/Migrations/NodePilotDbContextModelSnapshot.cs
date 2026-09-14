@@ -484,6 +484,78 @@ namespace NodePilot.Data.Migrations
                     b.ToTable("ExecutionDispatchOutbox");
                 });
 
+            modelBuilder.Entity("NodePilot.Core.Models.ExecutionHourlyStat", b =>
+                {
+                    b.Property<DateTime>("HourUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("WorkflowId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CancelledCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ComputedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DurationMsCount")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("DurationMsSum")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("FailedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FinishedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsFinal")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("RetriedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RunningCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SucceededCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TotalCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("HourUtc", "WorkflowId");
+
+                    b.HasIndex("WorkflowId");
+
+                    b.HasIndex("IsFinal", "HourUtc");
+
+                    b.ToTable("ExecutionHourlyStats");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.ExecutionStatsRollupState", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("BackfillComplete")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("CoverageEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CoverageStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ExecutionStatsRollupStates");
+                });
+
             modelBuilder.Entity("NodePilot.Core.Models.ExternalIdentity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -517,6 +589,45 @@ namespace NodePilot.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("ExternalIdentities");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.FailureCauseHourlyStat", b =>
+                {
+                    b.Property<DateTime>("HourUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("WorkflowId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MessageHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("ComputedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsFinal")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("LatestExecutionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("LatestStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("text");
+
+                    b.HasKey("HourUtc", "WorkflowId", "MessageHash");
+
+                    b.HasIndex("WorkflowId");
+
+                    b.HasIndex("IsFinal", "HourUtc");
+
+                    b.ToTable("FailureCauseHourlyStats");
                 });
 
             modelBuilder.Entity("NodePilot.Core.Models.GlobalVariable", b =>
@@ -1940,6 +2051,17 @@ namespace NodePilot.Data.Migrations
                     b.Navigation("Execution");
                 });
 
+            modelBuilder.Entity("NodePilot.Core.Models.ExecutionHourlyStat", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.Workflow", "Workflow")
+                        .WithMany()
+                        .HasForeignKey("WorkflowId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Workflow");
+                });
+
             modelBuilder.Entity("NodePilot.Core.Models.ExternalIdentity", b =>
                 {
                     b.HasOne("NodePilot.Core.Models.User", "User")
@@ -1949,6 +2071,17 @@ namespace NodePilot.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.FailureCauseHourlyStat", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.Workflow", "Workflow")
+                        .WithMany()
+                        .HasForeignKey("WorkflowId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Workflow");
                 });
 
             modelBuilder.Entity("NodePilot.Core.Models.GlobalVariable", b =>

@@ -275,13 +275,19 @@ New-Item -ItemType Directory -Path $StageDir | Out-Null
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
 
 Write-Host "[build] dotnet publish ($Configuration/$RuntimeIdentifier)" -ForegroundColor Cyan
+# ReadyToRun: without it every NodePilot assembly and every NuGet dependency (EF Core, the data
+# provider, Serilog, Quartz, the PowerShell SDK) ships as IL and is JIT-compiled on first use. That
+# cost lands on whoever opens the UI first after a restart. The runtime identifier is already
+# pinned above, which is what R2R requires. Trade-off: the published output grows, startup gets
+# cheaper.
 & dotnet publish $ApiCsproj `
     --configuration $Configuration `
     --runtime $RuntimeIdentifier `
     --self-contained false `
     --output $StageDir `
     -p:UseAppHost=true `
-    -p:DebugType=embedded
+    -p:DebugType=embedded `
+    -p:PublishReadyToRun=true
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE" }
 
 # --- PowerShell built-in modules -> <stage>\Modules -------------------------------------------

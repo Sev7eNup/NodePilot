@@ -1080,6 +1080,21 @@ if (-not $SkipSqlConnectivityCheck -and $DbProvider -eq 'sqlserver') {
 $artifactStage = Expand-NodePilotArtifactToStaging -ArtifactPath $ArtifactPath
 Write-Info "  Artifact extracted and verified in restricted staging: $artifactStage"
 
+# The readiness page checks a fixed floor and only for Microsoft.AspNetCore.App. The apphost
+# resolves every framework the build names, so a host carrying a newer web framework than base
+# runtime passes that check and still refuses to start the service. Now that the artifact is
+# extracted its own requirement can be read, which is the version that actually decides.
+#
+# Before the install directory is touched: the alternative is a Start-Service that fails with the
+# SCM's generic message at the very end of an otherwise complete installation.
+Write-Step "Checking the runtime against this build"
+$artifactRuntimeVerdict = Test-NodePilotArtifactRuntime `
+    -Requirement @(Get-NodePilotArtifactRuntimeRequirement -RootPath $artifactStage)
+if ($artifactRuntimeVerdict.Status -eq 'Fail') {
+    throw ($artifactRuntimeVerdict.AbortMessage + ' Nothing was changed.')
+}
+Write-Ok "  $($artifactRuntimeVerdict.Detail)"
+
 $previousService = Get-ServiceRollbackSnapshot -Name $ServiceName
 $previousAclIdentity = if ($previousService -and
     $previousService.StartName.Trim().ToLowerInvariant() -notin @('localsystem', '.\localsystem', 'system', 'nt authority\system')) {
@@ -1516,66 +1531,11 @@ if ($isLocalSystem) {
     Grant-LogOnAsServiceRight -Account $ServiceAccount
 }
 
-function Show-ServiceStartDiagnostics {
-    <#
-      Prints recent Application/System errors and the tail of the NodePilot log file when
-      Start-Service or the health probe fails. Saves the user from running diagnostic
-      one-liners manually.
-    #>
-    param([string]$ServiceName, [string]$DataPath)
-    Write-Host ""
-    Write-Warn "  Service-Start-Diagnose:"
-    Write-Host ""
-    try {
-        $appEvents = Get-WinEvent -LogName Application -MaxEvents 25 -ErrorAction Stop |
-            Where-Object { $_.TimeCreated -gt (Get-Date).AddMinutes(-3) -and
-                           $_.LevelDisplayName -in @('Error','Critical') }
-        if ($appEvents) {
-            Write-Host "  --- Application-Log (letzte 3 Min, Errors) ---" -ForegroundColor Yellow
-            foreach ($e in $appEvents | Select-Object -First 6) {
-                Write-Host ("  [{0:HH:mm:ss}] {1} (id {2})" -f $e.TimeCreated, $e.ProviderName, $e.Id) -ForegroundColor Yellow
-                $msg = $e.Message
-                if ($msg.Length -gt 600) { $msg = $msg.Substring(0, 600) + ' [..gekürzt]' }
-                $msg -split "`n" | Select-Object -First 12 | ForEach-Object { Write-Host "    $_" }
-                Write-Host ""
-            }
-        }
-    } catch { Write-Host "  (Application-Log nicht lesbar: $($_.Exception.Message))" }
-
-    try {
-        $sysEvents = Get-WinEvent -LogName System -MaxEvents 15 -ErrorAction Stop |
-            Where-Object { $_.TimeCreated -gt (Get-Date).AddMinutes(-3) -and
-                           $_.ProviderName -eq 'Service Control Manager' -and
-                           $_.LevelDisplayName -in @('Error','Critical','Warning') }
-        if ($sysEvents) {
-            Write-Host "  --- System-Log / SCM (letzte 3 Min) ---" -ForegroundColor Yellow
-            foreach ($e in $sysEvents | Select-Object -First 4) {
-                Write-Host ("  [{0:HH:mm:ss}] SCM event {1}: {2}" -f $e.TimeCreated, $e.Id,
-                    ($e.Message -split "`n" | Select-Object -First 1)) -ForegroundColor Yellow
-            }
-            Write-Host ""
-        }
-    } catch { }
-
-    $logDir = Join-Path $DataPath 'logs'
-    if (Test-Path $logDir) {
-        $latestLog = Get-ChildItem (Join-Path $logDir 'nodepilot-*.log') -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        if ($latestLog) {
-            Write-Host "  --- $($latestLog.Name) (Tail) ---" -ForegroundColor Yellow
-            Get-Content $latestLog.FullName -Tail 25 | ForEach-Object { Write-Host "  $_" }
-        } else {
-            Write-Host "  (Keine nodepilot-*.log Datei in $logDir - der Service crashte vor dem Serilog-Init.)" -ForegroundColor Yellow
-        }
-    }
-    Write-Host ""
-}
-
 Write-Step "Starting service"
 try {
     Start-Service -Name $ServiceName -ErrorAction Stop
 } catch {
-    Show-ServiceStartDiagnostics -ServiceName $ServiceName -DataPath $DataPath
+    Show-NodePilotServiceStartDiagnostics -DataPath $DataPath
     throw "Start-Service failed: $($_.Exception.Message)"
 }
 # Probe-Timeout 180s instead of 60s: if a previous failed install left the service in
@@ -1585,7 +1545,7 @@ try {
 $probeUrl = "https://localhost:$HttpsPort/healthz/ready"
 Write-Info "  Probing $probeUrl (up to 180s)…"
 if (-not (Invoke-HealthProbe -Url $probeUrl -TimeoutSeconds 180)) {
-    Show-ServiceStartDiagnostics -ServiceName $ServiceName -DataPath $DataPath
+    Show-NodePilotServiceStartDiagnostics -DataPath $DataPath
     throw "Service did not report /healthz/ready within 180s. See diagnostics above."
 }
 Write-Ok "  /healthz/ready → 200 OK"

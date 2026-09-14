@@ -292,6 +292,203 @@ derselbe: Arbeit pro Tastendruck oder pro Zeile, die pro *Ergebnis* anfällt.
 - **`CustomActivityDefinitionStore.GetAllAsync`** liest die unbegrenzte `ScriptTemplate`-Spalte,
   die der Katalog wegwirft — der Backup-Export braucht sie an derselben Methode.
 
+### Kaltstart und Dashboard-Fenster (Session 2026-09-14)
+
+Auslöser: Auf einem Testsystem in einer Arbeitsumgebung dauerten Executions, Workflows und vor
+allem das Dashboard mit 7-/30-Tage-Fenster 10–12 s, dazu ein Datenbank-Timeout. Umgebung: **SQL
+Server auf derselben Maschine wie die API** (Dev fährt Postgres), viel Historie aus Lasttests,
+Symptom „erster Aufruf sehr schlimm, danach besser aber nicht gut" — also zwei Ursachen
+übereinander.
+
+**Kaltstart.**
+
+| Stelle | Was war | Was jetzt |
+|---|---|---|
+| `deploy/Build-Artifact.ps1` | Publish ohne `PublishReadyToRun`. Damit sind **alle** NodePilot-Assemblies und jedes NuGet-Paket — EF Core, der Datenprovider, Serilog, Quartz, das PowerShell SDK — reines IL und werden beim ersten Durchlauf Tier-0-JIT-kompiliert. Diese Kosten trägt, wer nach einem Neustart als Erster die UI öffnet. | `-p:PublishReadyToRun=true`. Die RID war bereits gepinnt, mehr brauchte es nicht. Preis: größeres Artefakt. Der Desktop-Installer bleibt bewusst unangetastet — anderes Symptombild, und dort zählt die Offline-Paketgröße. |
+| `WorkflowDefinitionFactsCache` | Prozessweiter In-Memory-Cache, nach jedem Start leer. Der erste `GET /api/workflows` fand alles stale und las plus parste **jede** Definition — unbegrenzter Text inklusive aller Inline-Skripte — innerhalb dieses einen Requests. `/api/machines` und der Ops-Graph hängen am selben Cache. | `WorkflowDefinitionFactsWarmup`, ein Hosted Service mit 10 s Anlaufverzögerung, Availability-Gate und Laden in 50er-Batches (damit nicht alle Definitionen gleichzeitig im Speicher liegen). Läuft einmal; danach hält sich der Cache über `UpdatedAt` selbst aktuell. Der breite Catch liegt bewusst ganz außen — `BackgroundServiceExceptionBehavior` steht auf `StopHost`. |
+| `ExecutionsPage` | Zog für Namens-Map und Filter-Dropdown die komplette `/api/workflows`-Liste — und zahlte damit die ROW_NUMBER-Fensterabfrage über die Execution-Historie, eine Berechtigungsauflösung je Ordner und den Definitions-Cache mit, um zwei Spalten zu benutzen. | Neuer schlanker `GET /api/workflows/names` (Id + Name, folder-RBAC-gefiltert). Nicht aus der Executions-Antwort ableitbar: die trägt `WorkflowId` und den *Eltern*-Namen, aber nicht den Namen des ausgeführten Workflows — und das Dropdown muss Workflows anbieten, die auf der aktuellen Ergebnisseite gar keinen Lauf haben. Query-Key `['workflows', 'names']`, damit die zehn bestehenden `invalidateQueries(['workflows'])` ihn per Prefix mit treffen. |
+
+**Fenster-Skalierung.** Das Dashboard fährt ~20 Abfragen nacheinander; die teuren skalieren linear
+mit dem gewählten Zeitraum.
+
+| Stelle | Was war | Was jetzt |
+|---|---|---|
+| `execsTotal`, Stundenreihe, Retry-Quote | Drei Abfragen pro Request, darunter ein **ungefiltertes** `COUNT(*)` über die gesamte Executions-Tabelle für ein Feld, das das Dashboard-UI nicht rendert (nur CLI und MCP lesen es), und `AttemptCount > 1` über `StepExecutions` — die größte Tabelle, ohne passenden Index. | Zusammengefasst in `DashboardHistoricalAggregates` und durch `DashboardAggregateCache` (TTL 30 s) gezogen. |
+| Drei Queue-Zähler | Drei `CountAsync` über dieselbe Indexspanne. | Eine Abfrage mit drei bedingten Zählern. Bewusst **nicht** gecacht: Queue-Tiefe ist Live-Zustand. |
+| `/stats/failure-causes` | **Die teuerste Einzelabfrage des Dashboards** — gruppiert Fehlläufe über eine unbegrenzte Textspalte. Startete zudem erst, nachdem `/stats/dashboard` aufgelöst war (die Komponente sitzt hinter dem Loading-Gate der Seite), die zwei teuersten Abfragen liefen also nacheinander statt nebeneinander. | Zwei Eingriffe: als `failureCausesQuery(windowHours)` exportiert und auf der Dashboard-Seite mitgestartet (gleicher Query-Key, die Komponente liest das Ergebnis), **und** durch denselben Aggregat-Cache gezogen — rein historisch, folder-gescopt, nichts Rollenabhängiges in der Antwort. |
+
+**Gemessen** auf der Dev-Instanz (Postgres, lokal, 110 Workflows, ~75 000 Fehlläufe in 30 Tagen).
+Das Testsystem fährt SQL Server auf derselben Maschine wie die API und hat einen kalten
+Buffer-Pool, dort liegen die Ausgangswerte höher:
+
+| Aufruf | vorher | nachher (warm) |
+|---|---|---|
+| `/stats/failure-causes?windowHours=720` | 3,4–4,3 s | 0,01 s |
+| `/stats/dashboard?windowHours=720` | 2,0–2,5 s | 0,14–0,20 s |
+| `/stats/dashboard?windowHours=24` | 0,73 s | 0,12 s |
+| `/api/workflows` → `/api/workflows/names` | 107 KB / 0,69 s | 9 KB / 0,10 s |
+
+Die beiden Dashboard-Abfragen summierten sich vorher zu ~6,8 s, weil sie seriell liefen — auf
+einer *lokalen* Instanz mit warmem Cache. Das ist der Kern der Meldung vom Testsystem.
+
+**Der Cache allein half nur dem zweiten Besucher — deshalb ein Warmup.** Ein reiner TTL-Cache nimmt
+die Wiederholungskosten, nicht die des ersten Aufrufs je Fenster: Wer das 30-Tage-Dashboard öffnet,
+zahlte weiterhin die volle Aggregation (auf CM1 gemessen 4,9 s + 2,4 s). `DashboardAggregateWarmup`
+berechnet die gängigen Fenster (24 h, 7 d, 30 d) **einmal** nach dem Start vor — in dieser
+Reihenfolge, weil das Dashboard immer auf 24 h öffnet.
+
+Die Kostenfrage entscheidet dabei das Design, nicht der Komfort:
+
+| Regel | Warum |
+|---|---|
+| `PrimeAsync` zählt **nicht** als Anfrage | Sonst würde eine Instanz, die niemand ansieht, diese Aggregationen dauerhaft im Hintergrund wiederholen. So kostet sie genau einen Durchlauf und danach nichts. |
+| Refresh nur für Einträge, die **jemand angefragt** hat | Gewärmt wird, was offen ist; ein geschlossenes Dashboard kühlt nach 4 Minuten ab. |
+| TTL 150 s | Länger als der 120-s-Poll der Seite, sonst wäre jeder Poll ein Miss und liefe genau in die Aggregation, die der Cache vermeiden soll. |
+| Nicht leader-gated | Der Cache ist prozesslokal; jeder Knoten wärmt seinen eigenen. |
+| `Dashboard:Warmup:Enabled` | Abschaltbar, falls die Startlast irgendwo stört. |
+
+Ein Eintrag, den niemand mehr anfragt, wird beim Sweep verworfen — sonst sammelte eine Instanz mit
+vielen Ordner-Scopes Einträge an, die keiner liest.
+
+**Gemessen auf CM1** (SQL Server, 4 Kerne, 202k Executions / 2,19 Mio Steps / 28k Fehlläufe in 30 d),
+jeweils der **erste** Aufruf nach einem Dienst-Neustart:
+
+| Aufruf | ohne Warmup | mit Warmup |
+|---|---|---|
+| `dashboard?windowHours=720` | 2,39 s | **0,31 s** |
+| `failure-causes?windowHours=720` | 4,89 s | **0,023 s** |
+| `dashboard?windowHours=168` | — | 0,061 s |
+| `failure-causes?windowHours=168` | — | 0,008 s |
+| `dashboard?windowHours=24` | 1,82 s | 0,059 s |
+
+Das 30-Tage-Dashboard kostete beim Öffnen ~7,3 s (beide Abfragen zusammen) und kostet jetzt ~0,33 s.
+
+Laufende Kosten, über die CPU-Zeit des API-Prozesses gemessen (4 Kerne, Test-Workflows liefen
+parallel weiter, der Sockel ist also nicht null):
+
+| Zustand | CPU über 150 s | Anteil einer Maschine |
+|---|---|---|
+| Dashboard offen (6 Einträge werden warm gehalten) | 10,2 s | 1,7 % |
+| niemand schaut (Einträge abgekühlt) | 1,8 s | 0,3 % |
+
+Der Abfall belegt die Abkühlung: Ohne Zuschauer hört der Refresh auf, übrig bleibt der Sockel der
+übrigen Dienste.
+
+**Warum der Cache nicht auf der Response liegt.** Die Dashboard-Antwort mischt drei Sorten Daten,
+und nur eine davon darf geteilt werden: Fenster-Aggregate (ja), Live-Zähler und Heartbeats (nein —
+30 s alte Queue-Tiefe wäre ein Rückschritt) und der **Admin-only Audit-Feed** (nein — er hängt an
+`User.IsInRole("Admin")` und läge sonst im selben Eintrag wie die Aggregate). Ein Response-Cache
+hätte einem Viewer den Audit-Feed des vorherigen Admin-Aufrufs ausgeliefert; `DashboardCacheIsolationTests`
+pinnt genau das. Der Cache-Key trägt Fenster **und** Berechtigungszustand (uneingeschränkt vs.
+gehashte Ordnerliste), parallele Misses teilen sich eine Berechnung, und jede Berechnung läuft in
+einem **eigenen DI-Scope**: der auslösende Request kann abbrechen und seinen DbContext entsorgen,
+während andere noch auf das Ergebnis warten.
+
+**Bewusst nicht gemacht:**
+
+- **Gruppierung von `failure-causes` auf einen Nachrichten-Präfix.** Zwei verschiedene Fehler mit
+  gleichem Präfix würden verschmelzen, und die nachgelagerte Normalisierung kann den verlorenen
+  Unterschied nicht rekonstruieren. Eine Begrenzung auf die letzten N Läufe wäre eine *andere*
+  Statistik. Ein echter Umbau braucht zuerst eine Produktentscheidung, was die Kachel zeigen soll.
+  Der Cache nimmt die Wiederholungskosten, **nicht** die des ersten Aufrufs je Fenster — die
+  bleiben bei mehreren Sekunden und sind der nächste Ansatzpunkt, sobald die Messung vom
+  Testsystem vorliegt.
+- **`execsTotal` aus `WorkflowStats` bedienen.** Die Tabelle ist ausdrücklich als potenziell
+  veraltet dokumentiert und fehlt für neue Workflows — das hätte die Bedeutung des Feldes geändert,
+  nicht nur seine Kosten.
+- **Neue Indexe** (`AttemptCount`, `(WorkflowId, Status, StartedAt DESC)`, `Workflows.UpdatedAt`).
+  Belegte Lücken, aber eine Migration auf der heißesten Schreibtabelle gehört hinter eine Messung
+  am betroffenen System, nicht auf Verdacht ins Repo.
+- **RBAC-N+1 batchen.** Weiterhin eine `SharedFolderPermissions`-Abfrage je distinktem Ordner, und
+  weiterhin aus demselben Grund wie 2026-09-11 nicht angefasst.
+
+Messmittel für das Testsystem liegen als `scripts/diagnose-load-times.{sqlserver,postgres}.sql`
+bei: Historienmenge je Fenster, Tabellengrößen, Edition/Buffer-Pool, Retention-Rückstand.
+
+### Vorberechnete Stunden-Buckets — als der Cache bei 1,7 Mio Läufen nicht mehr reichte (Session 2026-09-14, Teil 2)
+
+Auslöser: Auf dem Testsystem (SQL Server, **1,7 Mio Executions**, ~18 Mio StepExecutions, laufend
+wachsend) blieb das Dashboard mit 7-/30-Tage-Fenster bei 10–30 s — **obwohl** der Aggregat-Cache aus
+Teil 1 dort lief und der Nutzer globaler Admin ist, also genau den vorgewärmten Scope trifft.
+
+**Der Cache war durch einen eigenen Fehler faktisch wirkungslos.** `PrimeAsync` legte Einträge an,
+ohne `LastRequestedUtc` zu setzen (blieb `DateTime.MinValue`) — bewusst, um Leerlauf-Last zu
+vermeiden. `RefreshDueAsync` erneuert aber nur Einträge mit `LastRequestedUtc >= now - activeWithin`,
+was für `MinValue` **nie** zutrifft. Vorgewärmte Werte liefen also nach einer TTL ab und flogen
+danach aus dem Cache: Der Warmup half nur, wer das Dashboard ~20–170 s nach dem Dienststart öffnete.
+Die Messung in Teil 1 lief genau in diesem Fenster und war deshalb **nicht repräsentativ**; ein Test
+hielt das Fehlverhalten sogar als gewollt fest.
+
+**Den Fehler nur zu beheben wäre falsch gewesen.** Warmhalten heißt bei einer Berechnung, die hier
+Dutzende Sekunden dauert, faktisch Dauerbetrieb. Der Zielkonflikt löst sich erst auf, wenn das
+Nachführen nur den **Zuwachs** anfasst.
+
+**Die tragende Beobachtung:** Eine abgeschlossene Stunde ändert sich nie mehr. Also einmal je Stunde
+und Workflow zusammenfassen, danach nur noch summieren.
+
+| Baustein | Zweck |
+|---|---|
+| `ExecutionHourlyStat` (`HourUtc` + `WorkflowId`) | Status-Zähler, Retry-Anteil, Dauer-Summe je Stunde und Workflow |
+| `FailureCauseHourlyStat` (+ `MessageHash`) | die normalisierten Fehlergruppen je Stunde und Workflow |
+| `ExecutionStatsRollupState` | wie weit die Vorberechnung reicht |
+| `ExecutionStatsRollupService` | leader-gated, ~60 s, inkrementell, mit Backfill in Tages-Chunks |
+| `DashboardRollupReader` | Leseseite; gibt `null` zurück, wenn die Buckets das Fenster nicht decken |
+
+**Warum pro Workflow und nicht nur pro Stunde:** nur so bleiben die Buckets über
+`Workflow.FolderId` **folder-scopebar** (RBAC), und dieselbe Quelle bedient zusätzlich die fünf
+fixen 7-/14-Tage-Aggregationen, die der Cache nie erreichen konnte.
+
+**Die Korrektheitsfalle:** Eine Ausführung wird nach `StartedAt` einsortiert, ihr Status steht aber
+später fest — ein 10:55 gestarteter Lauf kann 11:30 fehlschlagen. Eine Stunde gilt deshalb erst als
+`IsFinal`, wenn kein Lauf aus ihr mehr offen ist; provisorische Stunden werden bei jedem Durchlauf
+neu berechnet. Solange der Backfill noch läuft, liefert der Reader `null` und der alte Live-Pfad
+rechnet weiter — langsam, aber korrekt.
+
+**Der Backfill verarbeitet Tage, nicht Stunden — und läuft durch.** Die erste Fassung rollte
+stundenweise und pausierte 60 s zwischen den Pässen; 30 Tage hätten so eine halbe Stunde gebraucht,
+in der das Dashboard weiter auf dem langsamen Live-Pfad lief. Entscheidend ist die **Anzahl der
+Abfragen**, nicht die Zeilenzahl: Ein Tag stundenweise sind 24 Roundtrips je Aggregat, derselbe Tag
+als Bereich sind drei. **Gemessen auf der Dev-Instanz (Postgres, 627.654 Läufe, 29 Tage Historie):
+der vollständige Backfill braucht 29 Chunks und 11,95 Sekunden.** Der Fortschritt wird pro Chunk
+persistiert, ein Abbruch setzt also dort wieder an.
+
+Ergebnis mit vollständiger Abdeckung — die Fensterlänge spielt keine Rolle mehr:
+
+| Fenster | `failure-causes` | `dashboard` |
+|---|---|---|
+| 24 h | 0,082 s | 0,39 s |
+| 7 d | 0,007 s | 0,17 s |
+| 30 d | **0,006 s** | **0,145 s** |
+
+Gegenprobe der Korrektheit: 623.348 Rohzeilen, 623.348 in den Buckets summiert.
+
+**Aus dem adversarischen Review kamen drei echte Fehler in der ersten Fassung** (alle behoben und
+mit Tests gepinnt):
+- `ExecutionsTotal` aus Bucket-Summen hätte nur den *abgedeckten* Bereich gezählt — die Zahl ist
+  wieder ein Live-`COUNT` (ein index-gedecktes Aggregat, nie der Engpass).
+- Die 4000-Zeichen-Kappung der Fehlermeldung hätte die **API-Antwort** beschnitten; das Feld wird
+  verbatim ausgeliefert und ist jetzt ungekappt.
+- Der Folder-Scope für `failure-causes` brauchte einen eigenen Test: Die Buckets tragen
+  Execution-Id und Startzeit, die die UI zu einem Drill-down-Link macht.
+
+**Zwei unabhängige Fixes derselben Session:**
+- Der Admin-Audit-Feed setzte `auditActions.Contains(...)` ab; EF Core parametrisiert Collection-
+  `Contains` auf SQL Server über `OPENJSON`, wodurch der Optimizer den Index `(Action, Timestamp DESC)`
+  verfehlen und die AuditLog scannen kann. Jetzt ein Seek je Aktion mit eigenem `TOP 8`, danach in
+  C# gemischt. Betraf **nur Admins**.
+- Die SignalR-Invalidierung des Dashboards stand auf 500 ms Debounce. Auf einem System mit
+  laufenden Workflows hieß das mehrfaches Neuladen pro Minute — jedes Mal inklusive der
+  historischen Teile. Jetzt 5 s: die Live-Kacheln bleiben weit schneller als der 120-s-Poll, die
+  Mehrtages-Auswertungen brauchen diesen Takt nicht.
+
+**Provider-Falle, die dabei auffiel:** Der Live-Pfad gruppiert über `e.StartedAt.Year/Month/Day/Hour`.
+Npgsql übersetzt das auf `timestamptz` zu `date_part(...)`, das in der **Session-Zeitzone** und nicht
+zwingend in UTC ausgewertet wird. Der Rollup bildet seine Stundengrenzen dagegen aus reinen
+Bereichsvergleichen (`>= hour && < next`) und ist damit zeitzonenfest — er erbt den Fehler nicht.
+Auf einer Postgres-Instanz mit nicht-UTC-Session können die beiden Pfade deshalb unterschiedliche
+Stunden-Labels liefern; der Bucket-Pfad ist der richtige. In den Tests fällt das nicht auf, weil sie
+auf SQLite laufen.
+
 ### Remote / WinRM
 
 | Commit | Bereich | Was wurde verbessert |

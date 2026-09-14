@@ -1,18 +1,18 @@
 import { FlashFilled } from '@carbon/icons-react';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Workflow } from '../../types/api';
+import type { WorkflowListItem } from '../../types/api';
 import { TRIGGER_META } from './workflowTriggerMeta';
 import { formatDuration, formatRelative } from '../../lib/format';
 
 interface Props {
   /** The workflow to describe: the hovered row, or the currently open workflow as fallback. */
-  workflow: Workflow | null;
+  workflow: WorkflowListItem | null;
 }
 
 /**
  * Compact details panel shown beneath the workflow list in the browser. Presentation only:
- * every field comes from the `Workflow` already loaded by the `['workflows']` query, so no
+ * every field comes from the list row already loaded by the `['workflows']` query, so no
  * extra API call is made. Rows without data are omitted.
  */
 export function WorkflowInfoCard({ workflow }: Readonly<Props>) {

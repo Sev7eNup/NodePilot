@@ -26,13 +26,15 @@ public class OperationsController : ControllerBase
     private readonly IConfiguration? _configuration;
     private readonly WorkflowDefinitionFactsCache _definitionFacts;
 
+    // The facts cache is required: ActivatorUtilities honours default values, so a defaulted one
+    // would make a missing registration a silent per-request throwaway that never hits.
     public OperationsController(NodePilotDbContext db, IResourceAuthorizationService authz,
-        IConfiguration? configuration = null, WorkflowDefinitionFactsCache? definitionFacts = null)
+        WorkflowDefinitionFactsCache definitionFacts, IConfiguration? configuration = null)
     {
         _db = db;
         _authz = authz;
         _configuration = configuration;
-        _definitionFacts = definitionFacts ?? new WorkflowDefinitionFactsCache();
+        _definitionFacts = definitionFacts;
     }
 
     /// <summary>

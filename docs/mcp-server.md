@@ -57,17 +57,16 @@ environment variables, falling back to the CLI's on-disk config/session:
 | TLS pin | `NODEPILOT_MCP_TLS_THUMBPRINT` › `NODEPILOT_TLS_THUMBPRINT` › CLI `config.json` profile (`tlsThumbprint`) |
 | TLS bypass | `NODEPILOT_MCP_TLS_NO_VERIFY` › `NODEPILOT_TLS_NO_VERIFY` (`1`/`true`) — emergency only, never stored |
 
-**TLS.** The certificate chain is validated normally. A SHA-256 pin is accepted *in addition* to a
-valid chain, for a server whose certificate this machine does not trust; a configured pin that does
-**not** match is refused even with the bypass set. A pin stored in a CLI profile only applies to
-the server origin that profile names. A pin that is not a SHA-256 fingerprint is a configuration
-error: the server still starts, but every tool call reports it until the pin is fixed
-(`np config set tls-thumbprint <SHA256>`) or cleared (`np config set tls-thumbprint none`). The
-generic `NODEPILOT_TLS_*` variables are shared with the `np` CLI — setting one in a shell affects
-both binaries. A TLS failure names the presented certificate and its SHA-256, which is the value to
-pin. When the failure is a name mismatch rather than a trust problem, it names
-`NODEPILOT_MCP_SERVER=<url>` built from a name the certificate carries instead — trusting the
-certificate does not fix a host that is not on it.
+**TLS.** Successful certificate validation (chain and hostname) is accepted even when a pin
+is also configured. If TLS validation fails, a configured SHA-256 pin decides: a match accepts
+the certificate, including a hostname mismatch; a mismatch rejects it even with the bypass set.
+Only when no pin is configured can `NODEPILOT_MCP_TLS_NO_VERIFY` bypass a validation error.
+A matching pin does not repair the name mismatch; it explicitly accepts that certificate despite
+it. A URL using a name on the certificate remains the normal path.
+
+A CLI profile's pin applies only to its server origin. An invalid fingerprint format causes a
+repairable configuration error on tool calls (`np config set tls-thumbprint <SHA256>`, or `none`
+to clear it). The generic `NODEPILOT_TLS_*` variables are shared by CLI and MCP server.
 
 The server starts even when unconfigured/unauthenticated; tools then return an actionable error
 (`run np auth login`, or set `NODEPILOT_MCP_SERVER`).
@@ -87,7 +86,9 @@ Destructive/admin tools are **not registered at all** unless `NODEPILOT_MCP_ALLO
 `delete_alerting_rule`, `delete_system_alert_policy`.
 
 Every tool also carries MCP annotations: read tools are `readOnly`, the gated ones are
-`destructive`, and `execute`/`enable`/`disable`/`lock`/`unlock`/`cancel` are `idempotent`.
+`destructive`, and `enable`/`disable`/`lock`/`unlock`/`cancel` are `idempotent`.
+`execute_workflow` is **not idempotent**: a repeated call starts another run. Check executions
+before retrying a start whose response was lost.
 
 ## Secret handling
 

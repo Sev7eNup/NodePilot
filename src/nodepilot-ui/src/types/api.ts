@@ -21,16 +21,17 @@ export interface ResourceCapabilities {
   canAdmin: boolean;
 }
 
-export interface Workflow {
+/**
+ * Fields both `GET /api/workflows` rows and single-workflow reads carry. Prefer `WorkflowListItem`
+ * or `Workflow` — they mirror the server's own split (`WorkflowListItemResponse` vs
+ * `WorkflowResponse`) so a caller cannot read a definition off a list row or a parameter flag off a
+ * full read. This base is for the few surfaces that legitimately take either, such as a breadcrumb
+ * that renders the open workflow next to list rows.
+ */
+export interface WorkflowSummary {
   id: string;
   name: string;
   description: string | null;
-  /** Present on single-workflow reads. The list omits it: a definition is unbounded text
-   *  including every inline script, and no list surface renders it. */
-  definitionJson?: string;
-  /** List-only: true when starting this workflow prompts for parameters, so the caller knows
-   *  whether it has to fetch the definition for the run dialog. */
-  hasManualTriggerParameters?: boolean;
   version: number;
   isEnabled: boolean;
   createdAt: string;
@@ -58,6 +59,26 @@ export interface Workflow {
   /** Caller's effective capabilities on this workflow. Undefined means the server
    *  did not surface them (older endpoints) and the UI must fall back to global role. */
   capabilities?: ResourceCapabilities;
+}
+
+/** One row of `GET /api/workflows/names` — id and display name only, for surfaces that offer
+ *  workflow names without rendering anything else about them. */
+export interface WorkflowNameItem {
+  id: string;
+  name: string;
+}
+
+/** One row of `GET /api/workflows`. Carries no definition: it is unbounded text including every
+ *  inline script, and no list surface renders it. Fetch the single workflow for the graph. */
+export interface WorkflowListItem extends WorkflowSummary {
+  /** True when starting this workflow prompts for parameters, so the caller knows whether it
+   *  has to fetch the definition for the run dialog. */
+  hasManualTriggerParameters: boolean;
+}
+
+/** One workflow from `GET /api/workflows/{id}` and the mutating endpoints. */
+export interface Workflow extends WorkflowSummary {
+  definitionJson: string;
 }
 
 export interface ManagedMachine {

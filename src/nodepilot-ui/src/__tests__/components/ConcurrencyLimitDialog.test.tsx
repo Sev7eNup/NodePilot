@@ -1,13 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ConcurrencyLimitDialog } from '../../components/workflows/ConcurrencyLimitDialog';
-import type { Workflow } from '../../types/api';
+import type { WorkflowListItem } from '../../types/api';
 
-const workflow = (maxConcurrentExecutions: number | null): Workflow => ({
+const workflow = (maxConcurrentExecutions: number | null): WorkflowListItem => ({
   id: 'wf-1',
   name: 'Nightly Sync',
   description: null,
-  definitionJson: '{}',
+  hasManualTriggerParameters: false,
   version: 1,
   isEnabled: true,
   createdAt: '2026-01-01T00:00:00Z',

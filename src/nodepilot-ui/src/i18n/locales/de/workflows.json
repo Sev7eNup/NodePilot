@@ -11,6 +11,7 @@
   "foldersHeading": "Ordner",
   "managePermissions": "Berechtigungen…",
   "moveFailed": "Verschieben fehlgeschlagen: {{msg}}",
+  "runDialogLoadFailed": "Parameter konnten nicht geladen werden: {{message}}",
   "mobileReadonlyHint": "Schreibgeschützte Ansicht — zum Bearbeiten am Desktop öffnen.",
   "importTitle": "Workflows aus einer oder mehreren JSON-Dateien importieren",
   "importScorch": "SCOrch importieren",

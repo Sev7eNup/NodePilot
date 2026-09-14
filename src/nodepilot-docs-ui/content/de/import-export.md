@@ -64,9 +64,10 @@ Was die Übersetzung leistet:
   keinen) bekommt einen manuellen Trigger auf seine Einstiegsaktivitäten. Ohne Trigger-Node hat ein
   NodePilot-Workflow keinen Root und scheitert bei jedem Lauf.
 - **Sub-Runbook-Aufrufe** — ein Aufruf wird über den vollen Pfad, den SCOrch speichert, seinem Kind
-  zugeordnet. Das zählt beim Import eines Gesamtbestands: SCOrch erlaubt zwei gleichnamige Runbooks
-  in verschiedenen Ordnern, NodePilot nicht — eines wird beim Import umbenannt, und seine Aufrufer
-  werden auf den tatsächlich vergebenen Namen umgebogen. Ein Aufruf auf ein Runbook, das weder in
+  zugeordnet. Beide Systeme erlauben gleichnamige Workflows in verschiedenen Ordnern. Der Import
+  vergibt dennoch eindeutige Namen und passt die Aufrufer an, damit namensbasierte
+  Sub-Workflow-Aufrufe in NodePilot eindeutig bleiben. Das ist eine Importstrategie, keine
+  allgemeine Eindeutigkeitsregel für Workflow-Namen. Ein Aufruf auf ein Runbook, das weder in
   der Datei noch bereits in NodePilot liegt, wird gemeldet; er würde zur Laufzeit scheitern.
 - **Ordner** — ein Export bringt seinen eigenen Baum mit, für Runbooks ebenso wie für globale
   Variablen, und beide werden unterhalb des gewählten Zielordners nachgebaut. Bereits vorhandene

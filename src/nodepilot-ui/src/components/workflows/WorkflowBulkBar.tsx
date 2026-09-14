@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Close, Download, FolderMoveTo, Power, TrashCan } from '@carbon/icons-react';
-import type { Workflow } from '../../types/api';
+import type { WorkflowListItem } from '../../types/api';
 import type { WorkflowBulkActions } from '../../hooks/useWorkflowBulkActions';
 import { BulkMoveFolderDialog } from './BulkMoveFolderDialog';
 
 export interface WorkflowBulkBarProps {
-  selected: Workflow[];
+  selected: WorkflowListItem[];
   actions: WorkflowBulkActions;
   onClear: () => void;
-  canDelete: (w: Workflow) => boolean;
-  canEdit: (w: Workflow) => boolean;
+  canDelete: (w: WorkflowListItem) => boolean;
+  canEdit: (w: WorkflowListItem) => boolean;
   /** Global Admin or Operator, the roles the export endpoint accepts. */
   canExport: boolean;
 }

@@ -67,7 +67,7 @@ The same applies to **Delete** in a single folder's right-click menu.
 | `PUT /api/shared-workflow-folders/{id}` | FolderEditor | Rename |
 | `POST /api/shared-workflow-folders/{id}/move` | FolderEditor on source + target | Move |
 | `DELETE /api/shared-workflow-folders/{id}` | FolderEditor (empty folders only) | Delete |
-| `DELETE /api/shared-workflow-folders/{id}?recursive=true` | FolderEditor | Delete **with contents** (sub-folders + workflows); 423 if the subtree holds someone else's edit lock |
+| `DELETE /api/shared-workflow-folders/{id}?recursive=true` | Global Admin role + folder edit permission | Delete **with contents** (sub-folders + workflows); 423 if the subtree holds someone else's edit lock |
 | `POST /api/workflows/{id}/move-folder` | FolderEditor on source + target | Move a workflow |
 | `GET /api/shared-workflow-folders/{id}/permissions` | FolderAdmin | List grants |
 | `POST /api/shared-workflow-folders/{id}/permissions` | FolderAdmin | Grant |

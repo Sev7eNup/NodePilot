@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-    Process-lifetime helpers shared by Install-NodePilot.ps1 and Update-NodePilot.ps1.
+    Process-lifetime and start-diagnostic helpers shared by Install-NodePilot.ps1 and
+    Update-NodePilot.ps1.
 
 .DESCRIPTION
     A stopped Windows service does not mean a dead process: the SCM reports SERVICE_STOPPED while
@@ -84,4 +85,66 @@ function Wait-NodePilotProcessesUnderPath {
         Start-Sleep -Milliseconds 250
     }
     return @($blocking)
+}
+
+function Show-NodePilotServiceStartDiagnostics {
+    <#
+    .SYNOPSIS
+        Prints recent Application/System errors and the tail of the NodePilot log file when
+        Start-Service or the health probe fails. Never throws.
+    .DESCRIPTION
+        Shared so both entry points name a cause. The SCM's own message ("The service cannot be
+        started on computer .") names none, and an update that fails on it leaves the operator
+        with a rolled-back installation and no reason for it.
+    .PARAMETER DataPath
+        The installation's data directory; its logs subdirectory holds the Serilog output.
+    #>
+    param([Parameter(Mandatory)][string]$DataPath)
+
+    Write-Host ""
+    Write-Warn "  Service-Start-Diagnose:"
+    Write-Host ""
+    try {
+        $appEvents = Get-WinEvent -LogName Application -MaxEvents 25 -ErrorAction Stop |
+            Where-Object { $_.TimeCreated -gt (Get-Date).AddMinutes(-3) -and
+                           $_.LevelDisplayName -in @('Error','Critical') }
+        if ($appEvents) {
+            Write-Host "  --- Application-Log (letzte 3 Min, Errors) ---" -ForegroundColor Yellow
+            foreach ($e in $appEvents | Select-Object -First 6) {
+                Write-Host ("  [{0:HH:mm:ss}] {1} (id {2})" -f $e.TimeCreated, $e.ProviderName, $e.Id) -ForegroundColor Yellow
+                $msg = $e.Message
+                if ($msg.Length -gt 600) { $msg = $msg.Substring(0, 600) + ' [..gekürzt]' }
+                $msg -split "`n" | Select-Object -First 12 | ForEach-Object { Write-Host "    $_" }
+                Write-Host ""
+            }
+        }
+    } catch { Write-Host "  (Application-Log nicht lesbar: $($_.Exception.Message))" }
+
+    try {
+        $sysEvents = Get-WinEvent -LogName System -MaxEvents 15 -ErrorAction Stop |
+            Where-Object { $_.TimeCreated -gt (Get-Date).AddMinutes(-3) -and
+                           $_.ProviderName -eq 'Service Control Manager' -and
+                           $_.LevelDisplayName -in @('Error','Critical','Warning') }
+        if ($sysEvents) {
+            Write-Host "  --- System-Log / SCM (letzte 3 Min) ---" -ForegroundColor Yellow
+            foreach ($e in $sysEvents | Select-Object -First 4) {
+                Write-Host ("  [{0:HH:mm:ss}] SCM event {1}: {2}" -f $e.TimeCreated, $e.Id,
+                    ($e.Message -split "`n" | Select-Object -First 1)) -ForegroundColor Yellow
+            }
+            Write-Host ""
+        }
+    } catch { }
+
+    $logDir = Join-Path $DataPath 'logs'
+    if (Test-Path $logDir) {
+        $latestLog = Get-ChildItem (Join-Path $logDir 'nodepilot-*.log') -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($latestLog) {
+            Write-Host "  --- $($latestLog.Name) (Tail) ---" -ForegroundColor Yellow
+            Get-Content $latestLog.FullName -Tail 25 | ForEach-Object { Write-Host "  $_" }
+        } else {
+            Write-Host "  (Keine nodepilot-*.log Datei in $logDir - der Service crashte vor dem Serilog-Init.)" -ForegroundColor Yellow
+        }
+    }
+    Write-Host ""
 }

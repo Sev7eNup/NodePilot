@@ -44,6 +44,12 @@ async function mockAll(page: Page) {
     { id: 'wf1', name: 'Windows Update — Health Check', version: 3, activityCount: 8, triggerTypes: ['scheduleTrigger'], isEnabled: true, successCount: 47, totalCount: 50, avgDurationMs: 42000, createdAt: '2026-05-01T00:00:00Z', updatedAt: '2026-06-20T00:00:00Z', createdBy: 'admin', updatedBy: 'admin' },
     { id: 'wf2', name: 'Nightly Backup', version: 1, activityCount: 4, triggerTypes: ['scheduleTrigger', 'webhookTrigger'], isEnabled: false, successCount: 8, totalCount: 10, avgDurationMs: 120000, createdAt: '2026-05-10T00:00:00Z', updatedAt: '2026-06-18T00:00:00Z', createdBy: 'admin', updatedBy: 'ops' },
   ]));
+  // The executions page labels its rows from /names, not the full list — the pattern above matches
+  // the exact path only, so this needs its own route.
+  await page.route('**/api/workflows/names', (r) => json(r, [
+    { id: 'wf1', name: 'Windows Update — Health Check' },
+    { id: 'wf2', name: 'Nightly Backup' },
+  ]));
   await page.route('**/api/executions**', (r) => json(r, [
     { id: 'ex1', workflowId: 'wf1', status: 'Succeeded', startedAt: new Date(now - 5 * 3600_000).toISOString(), completedAt: new Date(now - 5 * 3600_000 + 42000).toISOString(), stepsTotal: 8, stepsCompleted: 8, failedSteps: [], triggeredBy: 'schedule', startedByUsername: 'system', traceId: null, parentExecutionId: null },
     { id: 'ex2', workflowId: 'wf2', status: 'Failed', startedAt: new Date(now - 21 * 3600_000).toISOString(), completedAt: new Date(now - 21 * 3600_000 + 130000).toISOString(), stepsTotal: 4, stepsCompleted: 2, failedSteps: [{ stepId: 's2', stepName: 'Copy files' }], triggeredBy: 'manual', startedByUsername: 'admin', traceId: null, parentExecutionId: null },

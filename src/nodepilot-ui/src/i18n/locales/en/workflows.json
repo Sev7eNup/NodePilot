@@ -11,6 +11,7 @@
   "foldersHeading": "Folders",
   "managePermissions": "Permissions…",
   "moveFailed": "Move failed: {{msg}}",
+  "runDialogLoadFailed": "Could not load the parameters: {{message}}",
   "mobileReadonlyHint": "Read-only view — open on a desktop to edit.",
   "importTitle": "Import workflow(s) from one or more JSON files",
   "importScorch": "Import SCOrch",

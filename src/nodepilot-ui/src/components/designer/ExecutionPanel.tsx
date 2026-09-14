@@ -17,7 +17,7 @@ import { Link } from 'react-router';
 import type { Node } from '@xyflow/react';
 import { api } from '../../api/client';
 import { getPage } from '../../api/paging';
-import type { WorkflowExecution, Workflow } from '../../types/api';
+import type { WorkflowExecution, WorkflowListItem } from '../../types/api';
 import type { LiveExecution } from '../../hooks/useSignalR';
 import { OutputTab } from './execution/OutputTab';
 import { WatchTab } from './execution/WatchTab';
@@ -119,7 +119,7 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
 
   const { data: allWorkflows } = useQuery({
     queryKey: ['workflows'],
-    queryFn: () => api.get<Workflow[]>('/workflows'),
+    queryFn: () => api.get<WorkflowListItem[]>('/workflows'),
     enabled: historyScope === 'all',
   });
   const workflowNames = new Map((allWorkflows ?? []).map(w => [w.id, w.name]));

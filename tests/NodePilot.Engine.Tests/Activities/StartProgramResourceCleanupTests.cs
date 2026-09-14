@@ -144,35 +144,86 @@ public class StartProgramResourceCleanupTests
     }
 
     [Fact]
-    public async Task CallerCancellation_ReleasesJobsAndLeavesPoolUsable()
+    public async Task CallerCancellation_ReleasesJobsAndKillsTheWaitedChild()
     {
         using var engine = CreateEngine();
         using var cts = new CancellationTokenSource();
-        var eventName = "np-program-started-" + Guid.NewGuid().ToString("N");
+        var suffix = Guid.NewGuid().ToString("N");
+        var eventName = "np-program-started-" + suffix;
+        // The child publishes its own PID before signalling, so the kill can be asserted on the
+        // process itself: the resource counters say nothing about it, and the script's `finally`
+        // only runs if PowerShell.Stop() unwinds the pipeline.
+        var pidFile = Path.Join(Path.GetTempPath(), $"np-program-pid-{suffix}.txt");
+        var marker = Path.Join(Path.GetTempPath(), $"np-program-survived-{suffix}.txt");
         using var started = new EventWaitHandle(false, EventResetMode.ManualReset, eventName);
-        var childScript = $"$ready=[System.Threading.EventWaitHandle]::OpenExisting('{eventName}'); [void]$ready.Set(); $ready.Dispose(); Start-Sleep -Seconds 2";
+        var childScript =
+            $"[System.IO.File]::WriteAllText('{PsLiteral(pidFile)}', [string]$PID); "
+            + $"$ready=[System.Threading.EventWaitHandle]::OpenExisting('{eventName}'); [void]$ready.Set(); $ready.Dispose(); "
+            + $"Start-Sleep -Seconds 30; [System.IO.File]::WriteAllText('{PsLiteral(marker)}', 'survived')";
         var script = new Accessor().Render(JsonSerializer.SerializeToElement(new {
-            filePath = PowerShellPath, arguments = EncodedCommand(childScript), timeoutSeconds = 5
+            filePath = PowerShellPath, arguments = EncodedCommand(childScript), timeoutSeconds = 60
         }));
         var execution = engine.ExecuteAsync(new PowerShellExecutionRequest {
-            ScriptText = script, Timeout = TimeSpan.FromSeconds(10)
+            ScriptText = script, Timeout = TimeSpan.FromSeconds(90)
         }, cts.Token);
         try
         {
             (await Task.Run(() => started.WaitOne(TimeSpan.FromSeconds(10)), TestContext.Current.CancellationToken))
                 .Should().BeTrue("the real child process must start before cancellation");
+            var childPid = int.Parse(File.ReadAllText(pidFile));
             var cancellation = cts.CancelAsync();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(
                 () => execution.WaitAsync(TimeSpan.FromSeconds(15), TestContext.Current.CancellationToken));
             await cancellation;
             await AssertResources(engine);
+
+            (await WaitForExitAsync(childPid, TimeSpan.FromSeconds(15)))
+                .Should().BeTrue("a cancelled step must not leave its waited child running for its full lifetime");
+            File.Exists(marker).Should().BeFalse("the child was killed long before its 30s sleep elapsed");
         }
         finally
         {
             await cts.CancelAsync();
             try { await execution.WaitAsync(TimeSpan.FromSeconds(15), CancellationToken.None); }
             catch (OperationCanceledException ex) { ex.CancellationToken.Should().Be(cts.Token); }
+            KillIfAlive(pidFile);
+            File.Delete(pidFile);
+            File.Delete(marker);
         }
+    }
+
+    [Fact]
+    public async Task PostExitDrain_IsBoundedByTheDrainGraceAndKeepsBufferedOutput()
+    {
+        using var engine = CreateEngine();
+        var suffix = Guid.NewGuid().ToString("N");
+        var eventName = "np-program-holder-" + suffix;
+        using var release = new EventWaitHandle(false, EventResetMode.ManualReset, eventName);
+        // `cmd /c start` hands the inherited stdout handle to a detached grandchild, so the pipe
+        // never reaches EOF even though the launched program is long gone. Without the grace the
+        // loop would burn the whole step timeout and report a timeout failure.
+        var holder = $"$gate=[System.Threading.EventWaitHandle]::OpenExisting('{eventName}'); [void]$gate.WaitOne(60000)";
+        var arguments = "/d /c \"echo captured-before-exit & start \"\"\"\" /b "
+            + PowerShellPath + " " + EncodedCommand(holder) + "\"";
+        var clock = Stopwatch.StartNew();
+        try
+        {
+            var result = await Execute(engine, new {
+                filePath = CmdPath, arguments, timeoutSeconds = CaptureBudgetSeconds
+            }, CaptureBudgetSeconds);
+            clock.Stop();
+
+            result.Success.Should().BeTrue(result.ErrorOutput);
+            result.OutputParameters["stdout"].Should().Contain("captured-before-exit");
+            result.Output.Should().Contain("output capture incomplete");
+            clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(CaptureBudgetSeconds),
+                "the drain after process exit is bounded by the drain grace, not by the step timeout");
+        }
+        finally
+        {
+            release.Set();
+        }
+        await AssertResources(engine);
     }
 
     [Fact]
@@ -218,6 +269,38 @@ public class StartProgramResourceCleanupTests
     }
 
     private static RunspaceExecutionEngine CreateEngine() => new(NullLogger.Instance, 1, 1);
+
+    private static string PsLiteral(string value) => value.Replace("'", "''");
+
+    // Polls instead of WaitForExitAsync: the process is not a child of the test host, so no exit
+    // handle is available. An empty process table entry means it is gone.
+    private static async Task<bool> WaitForExitAsync(int pid, TimeSpan budget)
+    {
+        var deadline = Stopwatch.StartNew();
+        while (deadline.Elapsed < budget)
+        {
+            try
+            {
+                using var process = Process.GetProcessById(pid);
+                if (process.HasExited) return true;
+            }
+            catch (ArgumentException) { return true; }
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+        }
+        return false;
+    }
+
+    private static void KillIfAlive(string pidFile)
+    {
+        if (!File.Exists(pidFile) || !int.TryParse(File.ReadAllText(pidFile), out var pid)) return;
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+        }
+        catch (ArgumentException) { /* Already gone. */ }
+        catch (InvalidOperationException) { /* Raced with its own exit. */ }
+    }
 
     private static string EncodedCommand(string script) =>
         "-NoProfile -NonInteractive -EncodedCommand " + Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(script));

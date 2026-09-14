@@ -340,6 +340,7 @@ function ConvertTo-NodePilotIniValue {
 $script:NodePilotInstallPhases = @(
     [pscustomobject]@{ Step = 'NodePilot installer';                     Percent = 2;  Text = 'Starting the installer' }
     [pscustomobject]@{ Step = 'Pre-flight checks';                       Percent = 8;  Text = 'Checking prerequisites' }
+    [pscustomobject]@{ Step = 'Checking the runtime against this build'; Percent = 11; Text = 'Matching the installed runtimes against this build' }
     [pscustomobject]@{ Step = 'Preparing directories';                   Percent = 15; Text = 'Preparing directories' }
     [pscustomobject]@{ Step = 'Extracting artifact';                     Percent = 25; Text = 'Extracting and verifying the signed artifact' }
     [pscustomobject]@{ Step = 'Generating appsettings.Production.json';  Percent = 55; Text = 'Writing the configuration' }
@@ -356,6 +357,9 @@ $script:NodePilotUpdatePhases = @(
     # Ahead of the backup on purpose: expanding the files to staging and hashing each one against
     # the signed manifest is the longest part of an update, so it gets a phase of its own.
     [pscustomobject]@{ Step = 'Extracting artifact';          Percent = 10; Text = 'Extracting and verifying the signed artifact - this can take a few minutes' }
+    # Between extraction and the backup: the requirement is read from the extracted artifact, and
+    # it has to be answered before anything on the machine is changed.
+    [pscustomobject]@{ Step = 'Checking the runtime against this build'; Percent = 15; Text = 'Matching the installed runtimes against this build' }
     [pscustomobject]@{ Step = 'Backing up current install';   Percent = 20; Text = 'Backing up the current installation' }
     [pscustomobject]@{ Step = 'Stopping service';             Percent = 40; Text = 'Stopping the service' }
     [pscustomobject]@{ Step = 'Installing verified artifact'; Percent = 55; Text = 'Installing the verified artifact' }

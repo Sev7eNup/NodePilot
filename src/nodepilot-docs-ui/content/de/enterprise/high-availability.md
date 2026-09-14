@@ -9,7 +9,7 @@ Die Standardkonfiguration ist Single-Node. `Cluster:Enabled=true` aktiviert den 
 - **RTO 40–60 s** bei Crash: Lease des toten Leaders expired nach max 30 s (TTL), Standby akquiriert (Renew alle 10 s), LB bemerkt beim nächsten 5-s-Probe.
 - **Geplanter Stop:** Leader released Lease beim Shutdown → Standby übernimmt am nächsten 10-s-Tick (~10 s).
 - **Fencing:** Ein Leader, der seinen eigenen Step-down erkennt (Renew returned 0 Rows), cancelt sofort alle lokal laufenden Executions.
-- **Recovery-Sweep:** Jeder neue Leader scannt `WorkflowExecutions` auf Running-Rows mit fremdem `OwnerNodeId` und markiert sie `Cancelled`.
+- **Recovery-Sweep:** Der neue Leader markiert fremde `Running`-/`Paused`-Ausführungen und verwaiste `Pending`-Ausführungen ohne Dispatch-Auftrag als `Cancelled`. Dauerhafte `Pending`-Aufträge mit Outbox-Eintrag übernimmt er und gibt ihre Dispatch-Leases frei.
 - **LeaseEpoch** als monotoner Fencing-Token pro Acquire — landet im Audit-Log.
 - **DB-Write-Fence:** Terminale Engine-Updates sind Compare-and-Set-Operationen aus `Running`/`Paused`; dasselbe SQL-Update prüft Owner, Epoch und nicht abgelaufene Lease. Ein alter Leader kann ein durch SSO-Offboarding gesetztes `Cancelled` nicht zurücküberschreiben.
 
@@ -127,15 +127,14 @@ Start-Service NodePilot       # A wird Follower, B bleibt Leader
 
 - **Active/Active** — alle Mutationen gehen durch den Leader.
 - **Multi-Region** — Lease arbeitet gegen exakt eine DB.
-- **LeaseEpoch als harte Write-Fencing-Spalte auf `WorkflowExecution`** (V2) — aktuell Fencing via CTS-Cancellation.
 
 ## Akzeptierte Restrisiken
 
-1. Workflows mid-Failover = `Cancelled` (kein Auto-Retry).
-2. FileWatcher-Events im Failover-Fenster gehen verloren (`FileSystemWatcher` ist prozess-lokal).
-3. Quartz-Misfires — 1 Cron-Fire pro Workflow im 30–60s-Fenster kann verloren gehen.
+1. Bereits gestartete oder pausierte Ausführungen werden beim Failover `Cancelled` (kein Auto-Retry); dauerhaft eingereihte Pending-Aufträge bleiben erhalten.
+2. FileWatcher-Änderungen während einer Unterbrechung werden nicht nachgeholt, auch wenn sie im Dateisystem noch sichtbar sind. Beim Start wird ein neuer Snapshot als Basis gespeichert.
+3. Verpasste Cron-Termine werden übersprungen; der dauerhafte Cursor wird vorgerückt. Je nach Takt und Ausfalldauer können mehrere Termine betroffen sein.
 4. DB ist Single Point of Failure (DB-HA = Operator-Verantwortung).
-5. Kein STONITH — kurzes Fenster (~`LeaseRenewSeconds`) mit altem Leader.
+5. Kein STONITH — ein alter Prozess kann noch Quellsignale beobachten. Admission prüft die Lease-Epoch; eindeutige Event-Receipts verhindern doppelte Annahme desselben Ereignisses. Terminale Engine-Updates prüfen Owner, Epoch und Lease-Ablauf im selben SQL-Update.
 
 ## Rollout-Empfehlung
 

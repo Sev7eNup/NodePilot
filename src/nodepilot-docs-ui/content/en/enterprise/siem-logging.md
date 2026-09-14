@@ -58,12 +58,14 @@ Out-of-the-box Sigma/Sentinel/Elastic detection rules match without custom field
 
 ## Filebeat example
 
+These examples read only the dated main logs `nodepilot-[0-9]*.log` in JSON/ECS format. `nodepilot-support-*.log` is always plain text and must not be passed to the NDJSON parser. Adapt the pattern if you customize `Logging:File:Path`.
+
 ```yaml
 filebeat.inputs:
   - type: filestream
     id: nodepilot
     paths:
-      - C:\ProgramData\NodePilot\logs\nodepilot-*.log
+      - C:\ProgramData\NodePilot\logs\nodepilot-[0-9]*.log
     parsers:
       - ndjson:
           target: ""
@@ -82,7 +84,7 @@ output.elasticsearch:
 ```yaml
 filebeat.inputs:
   - type: filestream
-    paths: [C:\ProgramData\NodePilot\logs\*.log]
+    paths: ['C:\ProgramData\NodePilot\logs\nodepilot-[0-9]*.log']
     parsers: [{ ndjson: {} }]
 output.http:
   url: https://splunk.example.com:8088/services/collector/event

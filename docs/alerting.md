@@ -12,7 +12,7 @@ and matches this optional `Filter`, deliver via these `Routes` — unless suppre
 
 | Piece | Meaning |
 |---|---|
-| `EventTypes` | Coarse pre-filter: comma-separated `NotificationEventType` names. Execution/workflow-scoped: `ExecutionFailed`, `ExecutionSucceeded`, `ExecutionCancelled`, `ExecutionRunningLong`, `ExecutionQueuedLong`, `ScheduleMissed`, `WorkflowNoRecentSuccess`, `CredentialFailure`. Global signals: `ServiceStale`, `MachineUnreachable`, `BacklogHigh`, `PendingHigh`, `CancelRateHigh`. |
+| `EventTypes` | Coarse pre-filter for custom rules: comma-separated `NotificationEventType` names. Supported: `ExecutionFailed`, `ExecutionSucceeded`, `ExecutionCancelled`, `ExecutionRunningLong`, `ExecutionQueuedLong`, `CredentialFailure`. Infrastructure, credential-expiry and schedule-health signals are configured as system policies, not custom-rule event types (see below). |
 | `ScopeKind` | `Global` (all workflows), `Folders` (rule's folder targets), or `Workflows` (rule's workflow targets). |
 | `Filter` | Optional composable AND/OR/NOT expression over event fields — the **same condition AST** the designer uses for edge conditions, with operands of `source: "event"`. Empty = match every event of the configured types in scope. |
 | `DedupKeyTemplate` | Optional grouping template for cooldown/flap state, e.g. `{{eventType}}:{{workflowId}}`; empty uses the default workflow/source grouping. |

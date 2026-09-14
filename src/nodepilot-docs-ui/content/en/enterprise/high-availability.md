@@ -9,7 +9,7 @@ The default configuration is single node. `Cluster:Enabled=true` activates clust
 - **An RTO of 40–60 s** on a crash: the dead leader's lease expires after at most 30 s (the TTL), the standby acquires it (renewing every 10 s), and the load balancer notices on the next 5-second probe.
 - **A planned stop:** the leader releases its lease at shutdown → the standby takes over on the next 10-second tick (~10 s).
 - **Fencing:** a leader that detects its own step-down (a renew returning 0 rows) immediately cancels every locally running execution.
-- **A recovery sweep:** every new leader scans `WorkflowExecutions` for running rows with a foreign `OwnerNodeId` and marks them `Cancelled`.
+- **A recovery sweep:** the new leader cancels foreign `Running`/`Paused` executions and orphaned `Pending` executions without a dispatch request. It takes ownership of durable `Pending` requests with an outbox entry and releases their dispatch leases.
 - **`LeaseEpoch`** as a monotonic fencing token per acquire — it lands in the audit log.
 - **A database write fence:** terminal engine updates are compare-and-set operations out of `Running`/`Paused`; the same SQL update checks the owner, the epoch and that the lease has not expired. An old leader cannot overwrite a `Cancelled` set by SSO offboarding.
 
@@ -127,15 +127,14 @@ Start-Service NodePilot       # A becomes a follower, B stays the leader
 
 - **Active/active** — all mutations go through the leader.
 - **Multi-region** — the lease works against exactly one database.
-- **`LeaseEpoch` as a hard write-fencing column on `WorkflowExecution`** (V2) — fencing currently happens through CTS cancellation.
 
 ## Accepted residual risks
 
-1. Workflows caught mid-failover become `Cancelled` (no auto-retry).
-2. File-watcher events in the failover window are lost (`FileSystemWatcher` is process-local).
-3. Quartz misfires — one cron fire per workflow can be lost in the 30–60 s window.
+1. Executions already running or paused become `Cancelled` on failover (no auto-retry); durable Pending requests survive.
+2. File-watcher changes during an interruption are not replayed, even if they remain visible in the file system. Startup stores a fresh snapshot as the baseline.
+3. Missed cron times are skipped and the durable cursor advances. Multiple occurrences may be skipped depending on the schedule and outage duration.
 4. The database is a single point of failure (database HA is the operator's responsibility).
-5. No STONITH — a short window (~`LeaseRenewSeconds`) with an old leader.
+5. No STONITH — an old process can still observe source signals. Admission checks the lease epoch; unique event receipts prevent duplicate acceptance of the same event. Terminal engine writes check the owner, epoch and lease expiry in the same SQL update.
 
 ## Rollout recommendation
 

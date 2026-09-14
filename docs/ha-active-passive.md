@@ -53,7 +53,7 @@ probably good enough.
 2. B's `ClusterLeaderService` runs every 10 s and sees `ExpiresAt < db_now` → an atomic `UPDATE … WHERE OwnerNodeId='' OR ExpiresAt < now`.
 3. B increments `LeaseEpoch` (+1) and is the new leader. The `OnLeadershipAcquired` event fires.
 4. B's `TriggerOrchestrator` starts all trigger sources (Quartz, file watcher, etc.).
-5. B's `ClusterFailoverRecoveryHost` marks every `WorkflowExecutions` row with `OwnerNodeId != "nodepilot-b"` and status `Running/Pending/Paused` as `Cancelled`, with an audit entry.
+5. B's `ClusterFailoverRecoveryHost` cancels foreign `Running`/`Paused` executions and orphaned `Pending` executions without a dispatch-outbox entry, with audit entries. Durable `Pending` requests with an outbox entry are retained, assigned to B and have their dispatch leases released so the worker can start them.
 6. B's `/healthz/leader` answers **200** with the new `leaseEpoch`.
 7. The load balancer notices on the next 5-second probe and routes traffic to B.
 
@@ -274,14 +274,15 @@ if it did not, cluster mode is accidentally off on one node.
 
 ## Deliberately accepted residual risks
 
-1. **Workflows caught mid-failover are cancelled.** There is no auto-retry. The operator clicks retry.
+1. **Running or paused executions caught mid-failover are cancelled.** There is no auto-retry;
+   the operator clicks retry. Durable Pending dispatch requests survive and are taken over.
    A genuinely resumable engine would be several extra person-days (persisting step state mid-execution).
-2. **Transient file events can remain unreconstructable.** Durable snapshots replay lasting
-   create/change/delete state after failover and pair unambiguous renames. A file created and
-   deleted completely while no watcher can observe it leaves no state to reconcile. Use an
-   external queue/journal when every transient event matters.
-3. **Quartz misfires are reconciled.** `MisfireHandlingInstructionDoNothing` prevents Quartz's own
-   one-shot behavior; NodePilot replays every cron time after the durable per-trigger cursor.
+2. **File changes during an interruption are skipped.** Startup writes a fresh snapshot as the
+   baseline, including lasting create/change/delete state; it does not replay the missed window.
+   Use an external queue/journal when every event matters.
+3. **Missed cron times are skipped.** `MisfireHandlingInstructionDoNothing` disables Quartz
+   catch-up; NodePilot fast-forwards its durable cursor. Depending on schedule frequency and
+   outage duration, multiple occurrences can be skipped.
 4. **The database is a single point of failure.** Database HA is the operator's responsibility.
 5. **No STONITH fencing.** A stale leader can still observe a source signal after a long GC pause,
    but the admission path checks the lease epoch immediately before the transactional dispatch.

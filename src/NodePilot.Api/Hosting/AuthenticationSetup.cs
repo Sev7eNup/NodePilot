@@ -93,6 +93,8 @@ public static class AuthenticationSetup
 
         // Audit H-17: TokenValidityMiddleware caches revocation + user-state checks in a 30s
         // TTL MemoryCache to stop a burst of authenticated requests from hammering the DB.
+        // MachinesController and SharedFolderPermissionsController take IMemoryCache too, so
+        // dropping this registration fails their activation rather than degrading silently.
         services.AddMemoryCache();
 
         var authBuilder = services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

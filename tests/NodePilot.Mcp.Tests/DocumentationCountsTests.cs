@@ -25,6 +25,16 @@ public class DocumentationCountsTests
         CountMatches(new[] { RepoPath("src", "nodepilot-ui", "src", "stores", "themeStore.ts") },
             @"id: '[a-z-]+'");
 
+    // Frontend suite sizes, counted the way the runners discover them: vitest.config.ts includes
+    // `src/**/*.test.{ts,tsx}`, and Playwright's testDir is `./e2e` with the default testMatch.
+    // The figures justify the scoped-testing rule in CLAUDE.md and had drifted twice before.
+    private static int VitestFiles() =>
+        CountFiles(RepoPath("src", "nodepilot-ui", "src"), f => f.EndsWith(".test.ts") || f.EndsWith(".test.tsx"));
+    private static int E2eSpecs() =>
+        CountFiles(RepoPath("src", "nodepilot-ui", "e2e"), f =>
+            f.EndsWith(".spec.ts") || f.EndsWith(".spec.tsx")
+            || f.EndsWith(".test.ts") || f.EndsWith(".test.tsx"));
+
     public static IEnumerable<object[]> DocClaims()
     {
         var toolTotal = McpToolTotal();
@@ -32,6 +42,8 @@ public class DocumentationCountsTests
         var defaultTools = toolTotal - destructive;
         var activities = ActivityTypes();
         var skins = Skins();
+        var vitestFiles = VitestFiles();
+        var e2eSpecs = E2eSpecs();
 
         // (relative doc path, regex with one capturing group, expected value, what it is)
         yield return Row("CLAUDE.md", @"über (\d+) Tools", toolTotal, "MCP tools (CLAUDE.md overview)");
@@ -39,8 +51,18 @@ public class DocumentationCountsTests
         // some phrasings ("(99 Tools, 3 Resources, stdio)"). Stay anchored to the group without
         // pinning the guard to whatever else is listed inside it.
         yield return Row("CLAUDE.md", @"\((\d+) Tools, \d+ Resources[,)]", toolTotal, "MCP tools (CLAUDE.md MCP section)");
+        // Same phrasing, same guard: this file sat at 100 while the root guide said 101 and the code
+        // said 102, because nothing read it.
+        yield return Row("src/NodePilot.Mcp/CLAUDE.md",
+            @"\((\d+) Tools, \d+ Resources[,)]", toolTotal, "MCP tools (Mcp project guide)");
         yield return Row("README.md", @"— (\d+) tools over", toolTotal, "MCP tools (README)");
         yield return Row("README.md", @"with (\d+) activity types", activities, "activity types (README highlights)");
+        // The scoped-testing rule in CLAUDE.md is argued from these two figures. They drifted in
+        // #292 and again in #353/#354 because nothing derived them; now something does. The third
+        // number in that sentence — the backend test-case count — needs a real test run and stays
+        // a hand-measured snapshot.
+        yield return Row("CLAUDE.md", @"(\d+) Vitest-Dateien", vitestFiles, "Vitest files (CLAUDE.md test scope)");
+        yield return Row("CLAUDE.md", @"(\d+) E2E-Specs", e2eSpecs, "E2E specs (CLAUDE.md test scope)");
         // The README's "Beyond the N executable Activity types…" annotation-node claim was retired
         // when the README stopped duplicating the documentation site. The count is still guarded
         // twice — in the highlights row above, and in both language versions of the doc site's
@@ -93,6 +115,9 @@ public class DocumentationCountsTests
 
     private static string[] McpToolsGlob()
         => Directory.EnumerateFiles(RepoPath("src", "NodePilot.Mcp", "Tools"), "*.cs").ToArray();
+
+    private static int CountFiles(string root, Func<string, bool> matches)
+        => Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).Count(matches);
 
     private static int CountMatches(IEnumerable<string> files, string pattern)
     {

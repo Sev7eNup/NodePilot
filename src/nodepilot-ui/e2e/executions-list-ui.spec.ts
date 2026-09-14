@@ -54,7 +54,12 @@ function executions() {
 /** Mock /workflows (names) + /executions (list). Returns a getter for the list-request count. */
 async function mockExecutions(page: Page) {
   let listRequests = 0;
+  // The page resolves names through /names; the full list route stays for anything else that
+  // mounts alongside it.
   await page.route('**/api/workflows', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflows()) }),
+  );
+  await page.route('**/api/workflows/names', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(workflows()) }),
   );
   await page.route('**/api/executions**', (route) => {

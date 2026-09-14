@@ -44,14 +44,16 @@ Headless (started by the MCP client) → environment first, falling back to the 
 | TLS pin | `NODEPILOT_MCP_TLS_THUMBPRINT` › `NODEPILOT_TLS_THUMBPRINT` › the CLI profile (`tlsThumbprint`) |
 | TLS bypass | `NODEPILOT_MCP_TLS_NO_VERIFY` › `NODEPILOT_TLS_NO_VERIFY` (`1`/`true`) — emergency only, never stored |
 
-**TLS:** The certificate chain is validated normally. A SHA-256 pin is accepted **in addition** to a
-valid chain, for a server whose certificate this machine does not know. A configured pin that does
-not match is refused even with the bypass set. A pin from the CLI profile only applies to the server
-that profile names. If the pin is not a SHA-256 fingerprint the server still starts, but every tool
-call reports a repairable configuration error (`np config set tls-thumbprint <SHA256>`, or `none` to
-clear it). The generic `NODEPILOT_TLS_*` variables are shared with the `np` CLI. A name mismatch is reported
-as its own failure and points at `NODEPILOT_MCP_SERVER=<url>` built from a name the certificate
-carries — trusting or pinning does not fix a host the certificate does not name.
+**TLS:** Successful certificate validation (chain and hostname) is accepted even when a pin
+is also configured. If TLS validation fails, a configured SHA-256 pin decides: a match accepts
+the certificate, including a hostname mismatch; a mismatch rejects it even with the bypass set.
+Only when no pin is configured can `NODEPILOT_MCP_TLS_NO_VERIFY` bypass a validation error.
+A matching pin does not repair the name mismatch; it explicitly accepts that certificate despite
+it. A URL using a name on the certificate remains the normal path.
+
+A CLI profile's pin applies only to its server origin. An invalid fingerprint format causes a
+repairable configuration error on tool calls (`np config set tls-thumbprint <SHA256>`, or `none`
+to clear it). The generic `NODEPILOT_TLS_*` variables are shared by CLI and MCP server.
 
 The transport is **stdio** (streamable HTTP is planned as a later option). Windows only
 (`net10.0-windows`, DPAPI).
@@ -65,8 +67,9 @@ The transport is **stdio** (streamable HTTP is planned as a later option). Windo
   `authToken`/`bearer`/`connectionString` → `***`). On `publish`/`update`/`apply_workflow_patch`, real
   secrets are restored by node ID from the stored version — the agent's `***` never overwrites a real
   value. Credentials/globals never emit secrets.
-- **Annotations:** read tools are `readOnly`, gated tools `destructive`, and execute/enable/disable/lock
-  are `idempotent`.
+- **Annotations:** read tools are `readOnly`, gated tools `destructive`, and enable/disable/lock
+  are `idempotent`. `execute_workflow` is **not idempotent**: calling it again starts another run.
+  Check executions before retrying a start whose response was lost.
 
 ## Tool groups
 
@@ -75,7 +78,7 @@ The transport is **stdio** (streamable HTTP is planned as a later option). Windo
 - **Editing workflows:** lock/unlock/`publish_workflow`/`update_workflow_definition`, `validate_workflow_definition`, `preview/apply_workflow_patch` (merge by ID, secret protection, validate before save), create/duplicate/enable/disable/rollback/import (JSON via `import_workflow`, SCOrch `.ois_export` via `import_scorch_workflow`), step-test context
 - **Gated destructive:** `test_step` (runs a real activity; a configuration override additionally requires edit permission and your own lock), delete/force-unlock/cancel-all
 - **Executions:** list/get/steps/paused-steps, `execute_workflow`, cancel/retry/resume, `trigger_external_workflow`
-- **Telemetry:** dashboard, coverage/step-health/step-stats, `query_audit_log` (admin), `get_support_diagnostics` (admin)
+- **Telemetry:** dashboard, coverage/step-health/step-stats, `get_failure_causes`, `get_operations_graph`, `query_audit_log` (admin), `get_support_diagnostics` (admin)
 - **Database / text2sql (admin, read-only):** `list_db_tables` (the schema catalog; secret columns hidden, `GlobalVariable.Value` masked), `get_db_info` (provider + row/timeout limits), `run_readonly_sql` (one read-only statement, with the server enforcing a keyword allow-list + rollback; there is no write tool). Secret columns are unreachable through raw SQL too — three layers: a direct reference returns `protected_column`; a `SELECT *` returns the values as `***`; and serializing a **whole row** of a table with a secret column (`to_json`/`row_to_json`/`::text`/`FOR JSON`) returns `protected_row_projection` — that route is exactly what carried the values past the first two, purely name-based layers. Naming columns explicitly always works. Translating natural language into SQL is the agent's job.
 - **Supporting:** machines, credentials, globals (secrets never emitted)
 - **Alerting:** `get_alerting_catalog` (the rule vocabulary) + `list/get/create/update/test_fire_alerting_rule` + `list_alerting_deliveries` (the ledger) (+ gated `delete_alerting_rule`; route secrets are never emitted)

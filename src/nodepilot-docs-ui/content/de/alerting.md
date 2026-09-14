@@ -89,10 +89,11 @@ Benutzerdefinierte Regeln reagieren auf Ereignisse. Eine Regel besteht aus Ereig
 | Gruppe | Ereignisse |
 |---|---|
 | Ausführungen | fehlgeschlagen, erfolgreich, abgebrochen, läuft lange, wartet lange |
-| Zugangsdaten | Credential-Fehler, Credential läuft ab |
-| Betrieb | Service veraltet, Maschine nicht erreichbar, Backlog hoch, Pending-Backlog hoch, Abbruch-Rate hoch |
-| Zeitpläne | Zeitplan verpasst, kein aktueller Workflow-Erfolg |
-| System | System-Alarm |
+| Zugangsdaten | Credential-Fehler |
+
+Credential-Ablauf, Service-/Maschinenzustand, Backlog, Abbruch-Rate und Zeitplanüberwachung
+werden über System-Policies konfiguriert. Diese Signale und `SystemAlert` können nicht als
+Ereignistypen einer benutzerdefinierten Regel gewählt werden.
 
 Für einen manuellen Abbruch kann das Feld **Abgebrochen von** gefiltert werden. Der Wert `user` begrenzt die Regel auf einzeln durch eine Person abgebrochene Ausführungen.
 

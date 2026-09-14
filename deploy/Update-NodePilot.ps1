@@ -22,7 +22,7 @@
 .PARAMETER InstallPath
     Install directory. Default: C:\Program Files\NodePilot.
 .PARAMETER DataPath
-    Writable data directory. Retained for command-line compatibility.
+    Writable data directory. Its logs subdirectory is read for the start diagnostics.
 .PARAMETER HttpsPort
     HTTPS port used for the health probe after restart. Defaults to the port in the installed
     appsettings.Production.json (Kestrel:Https:HttpsPort), falling back to 443 only when that
@@ -58,6 +58,14 @@ if (-not (Test-Path -LiteralPath $ServiceControlScript -PathType Leaf)) {
     throw "Service control helper not found: $ServiceControlScript"
 }
 . $ServiceControlScript
+
+# The wizard reaches its readiness page only on the install path, so an update is the one route
+# onto a host where nothing has ever checked whether the new binaries can run there at all.
+$PreflightScript = Join-Path $PSScriptRoot 'Preflight.ps1'
+if (-not (Test-Path -LiteralPath $PreflightScript -PathType Leaf)) {
+    throw "Pre-flight helper not found: $PreflightScript"
+}
+. $PreflightScript
 
 function Write-Step { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Cyan }
 function Write-Info { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Gray }
@@ -249,6 +257,29 @@ try {
     $artifactStage = Expand-NodePilotArtifactToStaging -ArtifactPath $ArtifactPath
     Write-Info "Verified restricted staging: $artifactStage"
 
+    # Before anything is stopped, backed up or wiped: can this host run what is in the staging
+    # directory? The artifact is framework-dependent, so a build made against a newer runtime than
+    # the host carries fails at the apphost, before managed code - the SCM then reports its generic
+    # "cannot be started" and neither the event log nor the NodePilot log holds a reason.
+    #
+    # Checked here rather than against the fixed floor in Test-NodePilotDotNetRuntime because the
+    # floor cannot move with the build: the version that matters is the one this artifact asks for.
+    Write-Step 'Checking the runtime against this build'
+    $runtimeRequirement = @(Get-NodePilotArtifactRuntimeRequirement -RootPath $artifactStage)
+    $runtimeVerdict = Test-NodePilotArtifactRuntime -Requirement $runtimeRequirement
+    if ($runtimeVerdict.Status -eq 'Fail') {
+        # The setup runs this script out of its payload directory, which can already hold the
+        # matching runtime installer. Naming it saves a download on a host without internet access.
+        $bundledRuntime = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter 'aspnetcore-runtime-*.exe' `
+            -File -ErrorAction SilentlyContinue)
+        $bundledHint = if ($bundledRuntime.Count -eq 1) {
+            " A matching installer ships with this setup: $($bundledRuntime[0].FullName)."
+        } else { '' }
+        throw ($runtimeVerdict.AbortMessage + $bundledHint +
+               ' Nothing was changed; the installation is untouched.')
+    }
+    Write-Ok "  $($runtimeVerdict.Detail)"
+
     # Installed binaries are immutable. Backing them up while the service still runs ensures a
     # disk/ACL failure here cannot leave an otherwise healthy service stopped.
     Write-Step 'Backing up current install'
@@ -319,10 +350,18 @@ try {
         if ($LASTEXITCODE -ne 0) { Write-Warn "  sc.exe config (start= auto) returned $LASTEXITCODE" }
 
         Write-Step "Starting service '$ServiceName'"
-        Start-Service -Name $ServiceName -ErrorAction Stop
+        # Diagnostics before the rollback, not after: the catch block below wipes the new binaries,
+        # and an operator who only gets "the service cannot be started" has nothing left to look at.
+        try {
+            Start-Service -Name $ServiceName -ErrorAction Stop
+        } catch {
+            Show-NodePilotServiceStartDiagnostics -DataPath $DataPath
+            throw "Start-Service failed: $($_.Exception.Message)"
+        }
 
         if (-not (Wait-NodePilotReady -Port $HttpsPort -TimeoutSeconds 60)) {
-            throw 'Service did not become ready after upgrade.'
+            Show-NodePilotServiceStartDiagnostics -DataPath $DataPath
+            throw 'Service did not become ready after upgrade. See diagnostics above.'
         }
         Write-Ok '/healthz/ready returned 200 OK'
 

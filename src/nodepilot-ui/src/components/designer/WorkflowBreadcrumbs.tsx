@@ -5,12 +5,12 @@ import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import type { Node } from '@xyflow/react';
 import { api } from '../../api/client';
-import type { Workflow } from '../../types/api';
+import type { WorkflowListItem } from '../../types/api';
 
 export interface WorkflowCallRef {
   sourceLabel: string;
   refName: string;
-  target: Workflow | null;
+  target: WorkflowListItem | null;
 }
 
 /**
@@ -21,7 +21,7 @@ export interface WorkflowCallRef {
 export function useWorkflowCallRefs(nodes: Node[]): WorkflowCallRef[] {
   const { data: workflows = [] } = useQuery({
     queryKey: ['workflows'],
-    queryFn: () => api.get<Workflow[]>('/workflows'),
+    queryFn: () => api.get<WorkflowListItem[]>('/workflows'),
     staleTime: 30_000,
   });
 

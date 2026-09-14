@@ -477,13 +477,16 @@ Zwei unterstützte Wege für einen Server, dessen Zertifikat die Client-Maschine
 
 Regeln, die dabei gelten:
 
-* Der Pin ist **additiv**: ein Zertifikat mit gültiger Kette wird weiterhin akzeptiert, damit eine
-  Zert-Erneuerung kein sauber konfiguriertes Profil aussperrt.
-* Ein gesetzter Pin, der **nicht** passt, wird abgelehnt — auch mit `--insecure-tls`.
+* Der Pin ist **additiv**: ein Zertifikat mit gültiger Kette und passendem Hostnamen wird auch
+  bei abweichendem Pin akzeptiert, damit eine reguläre Zertifikatserneuerung das Profil nicht aussperrt.
+* Schlägt die reguläre TLS-Prüfung fehl, entscheidet ein gesetzter Pin: ein passender Pin
+  akzeptiert das Zertifikat auch bei einem Hostnamen-Mismatch; ein abweichender Pin führt
+  zur Ablehnung, auch mit `--insecure-tls`.
 * Ein gespeicherter Pin gilt nur für den Server, für den er gesetzt wurde; ein Serverwechsel löscht
   ihn.
-* `--insecure-tls` (oder `NODEPILOT_TLS_NO_VERIFY=1`) überspringt die Prüfung für **einen** Aufruf,
-  wird nie gespeichert und druckt jedes Mal eine Warnung.
+* Ohne gesetzten Pin kann `--insecure-tls` (oder `NODEPILOT_TLS_NO_VERIFY=1`) einen
+  TLS-Prüffehler für **einen** Aufruf übergehen. Der Bypass wird nie gespeichert und druckt
+  jedes Mal eine Warnung.
 * Präzedenz: `--tls-thumbprint` › `NODEPILOT_TLS_THUMBPRINT` › Profil.
 
 ## Token-Storage

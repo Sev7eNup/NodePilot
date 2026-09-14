@@ -233,11 +233,13 @@ Beschreibung, Nutzerproblem und Sicherheitsgrenzen je Idee: [`ai-feature-ideas.m
 
 ### Alerting
 
+Per-Rule Dedup-Key-Templates sind bereits implementiert (`DedupKeyTemplate`, in der UI „Gruppieren nach“); siehe [Alerting](alerting.md).
+
 | Posten | Auslöser |
 |---|---|
 | PagerDuty- / Opsgenie-Sinks | Erster Kundenbedarf. Die Enum-Werte existieren bereits, es fehlen die Sinks — Validierung lehnt Kanäle ohne registrierten Sink heute korrekt ab. |
 | „Resolved"-Recovery-Notifications für Signal-Events | Wenn silent recovery als Mangel gemeldet wird. |
-| Escalation-Policies · per-Rule Dedup-Key-Templates | Enterprise-Bedarf. |
+| Escalation-Policies | Enterprise-Bedarf. |
 | `sourceKey` auch für Execution-Events befüllen | Konsistenz-Posten, mitnehmen wenn ohnehin am Dispatcher gearbeitet wird. |
 
 ### Designer

@@ -77,6 +77,13 @@ async function mockExecutionsView(page: Page) {
   await page.route('**/api/workflows', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([workflow()]) }),
   );
+  // The executions page labels its rows from /names; the route above matches the exact path only.
+  await page.route('**/api/workflows/names', (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([{ id: workflow().id, name: workflow().name }]),
+    }),
+  );
   // ExecutionsPage fetches /executions?terminalOnly=true — catch the query-string variant.
   await page.route('**/api/executions**', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([execution()]) }),

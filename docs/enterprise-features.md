@@ -34,9 +34,9 @@ jedoch bewusst auf dasselbe Identitäts-, Session-, Membership- und Offboarding-
 - **Fencing**: ein Leader, der sich selbst step-down erkennt (Renew lieferte 0 Rows),
   cancelt sofort alle lokal laufenden Workflow-Executions, damit der neue Leader die
   orphan rows ohne Write-Race adoptieren kann.
-- **Recovery-Sweep**: jeder neue Leader scannt beim Acquire-Event `WorkflowExecutions`
-  nach Running-Rows, die einer fremden `OwnerNodeId` gehören, und markiert sie als
-  `Cancelled` — keine Zombie-Runs nach Failover.
+- **Recovery-Sweep**: der neue Leader markiert fremde `Running`-/`Paused`-Ausführungen
+  und verwaiste `Pending`-Ausführungen ohne Dispatch-Outbox-Eintrag als `Cancelled`.
+  Dauerhafte `Pending`-Aufträge übernimmt er und gibt ihre Dispatch-Leases frei.
 - **LeaseEpoch** als monotonisches Fencing-Token in jedem Acquire — landet im Audit, sodass
   Post-Mortems erkennen können „dies war Leader-Inkarnation 7, danach 8".
 - **Terminal-Write-Fence**: Engine-Abschlüsse schreiben per Compare-and-Set nur aus
@@ -109,9 +109,6 @@ TTL=30s + Renew=10s + Sweep=~5s → ~45s Worst Case.
   Audit-Sequenz) und ist eine eigene Engineering-Etage.
 - **Multi-Region** — die Lease arbeitet gegen genau eine DB. Cross-Region setzt
   Geo-Replication + Konfliktdetektion voraus.
-- **LeaseEpoch auf WorkflowExecution** als hartes Write-Fencing (V2): aktuell wird
-  Fencing über CTS-Cancellation der laufenden Executions gemacht; eine harte Epoch-Spalte
-  würde DB-Side rejecten, dass ein alter Leader rows updated.
 
 ### Field-Test
 

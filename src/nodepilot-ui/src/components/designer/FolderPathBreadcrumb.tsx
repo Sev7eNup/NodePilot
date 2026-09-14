@@ -4,16 +4,16 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { sharedFoldersApi } from '../../api/sharedFolders';
-import type { Workflow } from '../../types/api';
+import type { WorkflowListItem, WorkflowSummary } from '../../types/api';
 import { BreadcrumbSegment, type BreadcrumbSegmentData } from './BreadcrumbSegment';
 
 const OPEN_DELAY_MS = 250;
 const CLOSE_DELAY_MS = 150;
 
 interface Props {
-  workflow: Workflow;
+  workflow: WorkflowSummary;
   currentWorkflowId: string | undefined;
-  onOpenWorkflow: (w: Workflow) => void;
+  onOpenWorkflow: (w: WorkflowSummary) => void;
 }
 
 /**
@@ -33,7 +33,7 @@ export function FolderPathBreadcrumb({ workflow, currentWorkflowId, onOpenWorkfl
   });
   const { data: allWorkflows = [] } = useQuery({
     queryKey: ['workflows'],
-    queryFn: () => api.get<Workflow[]>('/workflows'),
+    queryFn: () => api.get<WorkflowListItem[]>('/workflows'),
     staleTime: 30_000,
   });
 

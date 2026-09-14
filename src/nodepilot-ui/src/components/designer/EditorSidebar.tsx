@@ -2,7 +2,7 @@ import { Apps, ChevronDown, FolderTree, Search, SidePanelClose, SidePanelOpen } 
 import { useMemo } from 'react';
 import type { Node } from '@xyflow/react';
 import { useTranslation } from 'react-i18next';
-import type { Workflow } from '../../types/api';
+import type { WorkflowListItem } from '../../types/api';
 import { buildActivityCategories } from './library/activityCategories';
 import { ActivityIcon, SnippetsSection, ResizeHandle } from './library/NodeLibrary';
 import { WorkflowBrowser } from './WorkflowBrowser';
@@ -35,8 +35,8 @@ interface EditorSidebarProps {
   isStartWorkflowSelected: boolean;
   selected: SelectedItem;
   nodes: Node[];
-  onOpenWorkflow: (workflow: Workflow) => void;
-  onEmbedWorkflow: (workflow: Workflow) => void;
+  onOpenWorkflow: (workflow: WorkflowListItem) => void;
+  onEmbedWorkflow: (workflow: WorkflowListItem) => void;
 }
 
 /**

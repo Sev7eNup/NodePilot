@@ -44,15 +44,18 @@ Headless (vom MCP-Client gestartet) → env-first, mit Fallback auf die CLI-Conf
 | TLS-Pin | `NODEPILOT_MCP_TLS_THUMBPRINT` › `NODEPILOT_TLS_THUMBPRINT` › CLI-Profil (`tlsThumbprint`) |
 | TLS-Bypass | `NODEPILOT_MCP_TLS_NO_VERIFY` › `NODEPILOT_TLS_NO_VERIFY` (`1`/`true`) — Notnagel, nie gespeichert |
 
-**TLS:** Die Zertifikatskette wird normal geprüft. Ein SHA-256-Pin gilt **zusätzlich** zu einer
-gültigen Kette — für einen Server, dessen Zertifikat die Maschine nicht kennt. Ein gesetzter Pin,
-der nicht passt, wird auch mit gesetztem Bypass abgelehnt. Ein Pin aus dem CLI-Profil gilt nur für
-den Server, den dieses Profil nennt. Ist der Pin kein SHA-256-Fingerprint, startet der Server zwar,
-lehnt aber jeden Tool-Aufruf mit einem reparierbaren Konfigurationsfehler ab
-(`np config set tls-thumbprint <SHA256>` bzw. `none` zum Löschen). Die generischen
-`NODEPILOT_TLS_*`-Variablen teilen sich CLI und MCP-Server. Ein Namens-Mismatch wird als eigene
-Störung gemeldet und verweist auf `NODEPILOT_MCP_SERVER=<url>` mit einem Namen aus dem Zertifikat —
-Vertrauen oder Pinnen behebt einen Host nicht, den das Zertifikat nicht nennt.
+**TLS:** Eine fehlerfreie Zertifikatsprüfung (Kette und Hostname) wird akzeptiert, auch wenn
+zusätzlich ein Pin konfiguriert ist. Bei einem TLS-Prüffehler entscheidet ein gesetzter
+SHA-256-Pin: passt er, wird das Zertifikat akzeptiert — ausdrücklich auch bei einem
+Hostnamen-Mismatch; passt er nicht, hilft auch der Bypass nicht. Nur ohne Pin kann
+`NODEPILOT_MCP_TLS_NO_VERIFY` einen Prüffehler übergehen. Ein passender Pin behebt den
+Namensfehler nicht, sondern erlaubt dieses konkrete Zertifikat trotz des Fehlers.
+Eine URL mit einem Namen aus dem Zertifikat bleibt der reguläre Weg.
+
+Ein Pin aus dem CLI-Profil gilt nur für dessen Server-Origin. Ein ungültiges Fingerprint-Format
+führt bei Tool-Aufrufen zu einem reparierbaren Konfigurationsfehler
+(`np config set tls-thumbprint <SHA256>` beziehungsweise `none` zum Löschen).
+Die generischen `NODEPILOT_TLS_*`-Variablen teilen sich CLI und MCP-Server.
 
 Transport ist **stdio** (Streamable HTTP ist als spätere Option vorgesehen). Windows-only
 (`net10.0-windows`, DPAPI).
@@ -66,8 +69,9 @@ Transport ist **stdio** (Streamable HTTP ist als spätere Option vorgesehen). Wi
   `authToken`/`bearer`/`connectionString` → `***`). Bei `publish`/`update`/`apply_workflow_patch`
   werden echte Secrets per Node-ID aus der gespeicherten Version wiederhergestellt — das `***` des
   Agenten überschreibt nie einen echten Wert. Credentials/Globals geben Secrets nie aus.
-- **Annotations:** Read-Tools `readOnly`, gated Tools `destructive`, execute/enable/disable/lock
-  `idempotent`.
+- **Annotations:** Read-Tools `readOnly`, gated Tools `destructive`, enable/disable/lock
+  `idempotent`. `execute_workflow` ist **nicht idempotent**: ein erneuter Aufruf startet
+  eine weitere Ausführung. Einen unklar beantworteten Start zuerst über die Ausführungen prüfen.
 
 ## Tool-Gruppen
 
@@ -76,7 +80,7 @@ Transport ist **stdio** (Streamable HTTP ist als spätere Option vorgesehen). Wi
 - **Workflow editieren:** lock/unlock/`publish_workflow`/`update_workflow_definition`, `validate_workflow_definition`, `preview/apply_workflow_patch` (Merge-by-ID, Secret-Schutz, Validate-before-Save), create/duplicate/enable/disable/rollback/import (JSON via `import_workflow`, SCOrch-`.ois_export` via `import_scorch_workflow`), step-test context
 - **Gated destructive:** `test_step` (führt eine echte Activity aus; Config-Override zusätzlich nur mit Edit + eigenem Lock), delete/force-unlock/cancel-all
 - **Executions:** list/get/steps/paused-steps, `execute_workflow`, cancel/retry/resume, `trigger_external_workflow`
-- **Telemetrie:** dashboard, coverage/step-health/step-stats, `query_audit_log` (Admin), `get_support_diagnostics` (Admin)
+- **Telemetrie:** dashboard, coverage/step-health/step-stats, `get_failure_causes`, `get_operations_graph`, `query_audit_log` (Admin), `get_support_diagnostics` (Admin)
 - **DB / text2sql (Admin, nur lesend):** `list_db_tables` (Schema-Katalog; Secret-Spalten hidden, `GlobalVariable.Value` maskiert), `get_db_info` (Provider + Row-/Timeout-Limits), `run_readonly_sql` (ein Read-Only-Statement, Server erzwingt Keyword-Whitelist + Rollback; kein Write-Tool). Secret-Spalten sind auch über Raw-SQL unerreichbar — drei Schichten: Ein direkter Verweis liefert `protected_column`; ein `SELECT *` liefert die Werte als `***`; und wer eine **ganze Zeile** einer Tabelle mit Secret-Spalte serialisiert (`to_json`/`row_to_json`/`::text`/`FOR JSON`), bekommt `protected_row_projection` — genau dieser Weg trug die Werte an den ersten beiden, rein namensbasierten Schichten vorbei. Spalten explizit benennen funktioniert immer. Die Übersetzung natürlicher Sprache nach SQL übernimmt der Agent.
 - **Supporting:** Machines, Credentials, Globals (Secrets nie ausgegeben)
 - **Alerting:** `get_alerting_catalog` (Regel-Vokabular) + `list/get/create/update/test_fire_alerting_rule` + `list_alerting_deliveries` (Ledger) (+ gated `delete_alerting_rule`; Route-Secrets nie ausgegeben)

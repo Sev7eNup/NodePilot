@@ -128,6 +128,12 @@ export async function installDefaultMocks(page: Page) {
     route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
   );
 
+  // Id+name only, used by the executions filter. A separate route because the pattern above
+  // matches the exact path and does not cover this one.
+  await page.route('**/api/workflows/names', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  );
+
   // Machines, credentials and globals: an empty fleet, so dropdowns render
   // without pulling in unrelated data.
   await page.route('**/api/machines', (route) => emptyArray(route));

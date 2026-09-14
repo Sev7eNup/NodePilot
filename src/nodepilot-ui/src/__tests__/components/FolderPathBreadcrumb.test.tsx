@@ -6,7 +6,7 @@ import type { ReactElement } from 'react';
 import { FolderPathBreadcrumb } from '../../components/designer/FolderPathBreadcrumb';
 import { sharedFoldersApi, ROOT_FOLDER_ID, type SharedFolder } from '../../api/sharedFolders';
 import { api } from '../../api/client';
-import type { Workflow } from '../../types/api';
+import type { WorkflowSummary } from '../../types/api';
 
 /**
  * FolderPathBreadcrumb renders the open workflow's folder path as a top-left canvas overlay.
@@ -35,9 +35,9 @@ function makeFolder(over: Partial<SharedFolder>): SharedFolder {
   };
 }
 
-function makeWorkflow(over: Partial<Workflow>): Workflow {
+function makeWorkflow(over: Partial<WorkflowSummary>): WorkflowSummary {
   return {
-    id: 'wf', name: 'WF', description: null, definitionJson: '{}', version: 1, isEnabled: true,
+    id: 'wf', name: 'WF', description: null, version: 1, isEnabled: true,
     createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z', createdBy: null, updatedBy: null,
     ...over,
   };
@@ -52,8 +52,8 @@ const WF_SIBLING = makeWorkflow({ id: 'wf2', name: 'Annual Report', folderId: 'r
 const WF_FINANCE = makeWorkflow({ id: 'wf3', name: 'Budget Plan', folderId: 'finance', folderPath: '/Finance' });
 
 function renderBreadcrumb(
-  workflow: Workflow,
-  onOpenWorkflow: (w: Workflow) => void = vi.fn(),
+  workflow: WorkflowSummary,
+  onOpenWorkflow: (w: WorkflowSummary) => void = vi.fn(),
 ): ReturnType<typeof render> {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const ui: ReactElement = (

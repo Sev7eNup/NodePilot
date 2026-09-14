@@ -67,7 +67,7 @@ Dasselbe gilt für den Eintrag **Löschen** im Rechtsklick-Menü eines einzelnen
 | `PUT /api/shared-workflow-folders/{id}` | FolderEditor | Rename |
 | `POST /api/shared-workflow-folders/{id}/move` | FolderEditor auf Source + Target | Move |
 | `DELETE /api/shared-workflow-folders/{id}` | FolderEditor (nur leere Folders) | Delete |
-| `DELETE /api/shared-workflow-folders/{id}?recursive=true` | FolderEditor | Delete **samt Inhalt** (Unterordner + Workflows); 423 bei fremdem Edit-Lock im Subtree |
+| `DELETE /api/shared-workflow-folders/{id}?recursive=true` | Globale Rolle Admin + Folder-Edit | Delete **samt Inhalt** (Unterordner + Workflows); 423 bei fremdem Edit-Lock im Subtree |
 | `POST /api/workflows/{id}/move-folder` | FolderEditor auf Source + Target | Workflow umsortieren |
 | `GET /api/shared-workflow-folders/{id}/permissions` | FolderAdmin | Grants auflisten |
 | `POST /api/shared-workflow-folders/{id}/permissions` | FolderAdmin | Grant |

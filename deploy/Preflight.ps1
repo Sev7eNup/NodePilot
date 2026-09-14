@@ -296,6 +296,124 @@ function Test-NodePilotDotNetRuntime {
         -Detail ".NET 10 ASP.NET Core runtime $($patchedRuntime[0]) found (x64, $($State.X64Path))."
 }
 
+function Get-NodePilotArtifactRuntimeRequirement {
+    <#
+      Every shared framework an extracted artifact asks its host for, read from
+      NodePilot.Api.runtimeconfig.json, as objects with Name and Version.
+
+      All of them, not just Microsoft.AspNetCore.App: the apphost resolves each one and refuses to
+      start if any is missing. A host can carry a newer Microsoft.AspNetCore.App than
+      Microsoft.NETCore.App, and a check that looks at the web framework alone passes there and
+      still leaves a service that will not start.
+
+      Empty when the artifact carries its own runtime or names no shared framework, so a caller
+      degrades to the fixed floor instead of refusing an artifact it cannot read.
+    #>
+    param([Parameter(Mandatory)][string]$RootPath)
+
+    $configPath = Join-Path $RootPath 'NodePilot.Api.runtimeconfig.json'
+    if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { return @() }
+
+    $options = $null
+    try {
+        $document = Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($document -and ($document.PSObject.Properties.Name -contains 'runtimeOptions')) {
+            $options = $document.runtimeOptions
+        }
+    } catch { return @() }
+    if (-not $options) { return @() }
+
+    $sections = $options.PSObject.Properties.Name
+    # Self-contained: the frameworks ship inside the artifact and nothing is asked of the machine.
+    if ($sections -contains 'includedFrameworks') { return @() }
+
+    $frameworks = @()
+    if ($sections -contains 'framework') { $frameworks += $options.framework }
+    if ($sections -contains 'frameworks') { $frameworks += @($options.frameworks) }
+
+    $required = @()
+    foreach ($framework in $frameworks) {
+        if (-not $framework) { continue }
+        $fields = $framework.PSObject.Properties.Name
+        if (($fields -notcontains 'name') -or ($fields -notcontains 'version')) { continue }
+        $parsed = $null
+        if (-not [version]::TryParse([string]$framework.version, [ref]$parsed)) { continue }
+        $required += [pscustomobject]@{ Name = [string]$framework.name; Version = $parsed }
+    }
+    return @($required)
+}
+
+function Test-NodePilotArtifactRuntime {
+    <#
+      Whether this machine can host the artifact that is about to be installed.
+
+      Test-NodePilotDotNetRuntime checks a fixed floor; this checks the exact versions the artifact
+      in hand was built against, which is what the apphost resolves at start. Roll-forward is
+      minor-only by default: a higher patch or minor of the same major serves, a lower one does
+      not, and there is no roll-back to an older patch. A build made against a newer runtime than
+      the target host carries therefore dies the moment the SCM starts it, with no managed
+      exception and nothing in the event log to name the cause.
+    #>
+    param(
+        [object[]]$Requirement = @(),
+        [object]$State = (Get-NodePilotDotNetHostState)
+    )
+
+    $title = 'Runtime serves the new build'
+    $link = 'https://dotnet.microsoft.com/download/dotnet/10.0'
+    $required = @($Requirement | Where-Object { $_ })
+
+    if ($required.Count -eq 0) {
+        return New-NodePilotPreflightResult -Id 'artifactRuntime' -Title $title -Status 'Skipped' `
+            -Detail 'The artifact names no shared framework, so there is nothing to match.'
+    }
+
+    $installed = @(
+        foreach ($runtime in @($State.Runtimes)) {
+            if ("$runtime" -match '^(?<Name>[\w\.]+) (?<Version>\d+\.\d+\.\d+)(?:\s|$)') {
+                $parsed = $null
+                # Indexed, not dotted: $Matches is a hashtable, and a capture named like one of its
+                # own members would resolve to the member instead of the capture.
+                if ([version]::TryParse($Matches['Version'], [ref]$parsed)) {
+                    [pscustomobject]@{ Name = $Matches['Name']; Version = $parsed }
+                }
+            }
+        }
+    )
+
+    $unmet = @()
+    $served = @()
+    foreach ($entry in $required) {
+        $candidates = @($installed |
+            Where-Object { $_.Name -eq $entry.Name -and
+                           $_.Version.Major -eq $entry.Version.Major -and
+                           $_.Version -ge $entry.Version } |
+            Sort-Object Version -Descending | Select-Object -First 1)
+        if ($candidates.Count -gt 0) {
+            $served += "$($entry.Name) $($entry.Version) (served by $($candidates[0].Version))"
+            continue
+        }
+        $sameName = @($installed | Where-Object { $_.Name -eq $entry.Name } |
+            ForEach-Object { $_.Version } | Sort-Object)
+        $found = if ($sameName.Count -gt 0) { $sameName -join ', ' } else { 'none' }
+        $unmet += "$($entry.Name) $($entry.Version) or a higher $($entry.Version.Major).x (installed: $found)"
+    }
+
+    if ($unmet.Count -eq 0) {
+        return New-NodePilotPreflightResult -Id 'artifactRuntime' -Title $title -Status 'Pass' -Required $true `
+            -Detail "The installed runtimes serve this build: $($served -join '; ')."
+    }
+
+    $detail = "This build needs $($unmet -join '; '). All of them are x64."
+    New-NodePilotPreflightResult -Id 'artifactRuntime' -Title $title -Status 'Fail' -Required $true `
+        -CanAutoFix $true -AutoFixLabel 'Install the bundled ASP.NET Core 10 runtime now' `
+        -Detail $detail `
+        -RemediationHint ('Install the matching ASP.NET Core runtime (x64) - it carries the base ' +
+                          '.NET runtime of the same version - then re-run.') `
+        -Remediation $link `
+        -AbortMessage "$detail Install the matching ASP.NET Core runtime (x64) from $link, then re-run."
+}
+
 function Get-NodePilotCertificateInventory {
     <#
       What is available in LocalMachine\My. The installer prints this when a thumbprint does not
