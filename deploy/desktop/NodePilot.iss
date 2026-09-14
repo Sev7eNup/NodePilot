@@ -35,6 +35,11 @@ OutputDir={#OutputDir}
 OutputBaseFilename=NodePilot-Desktop-Setup-{#AppVersion}
 WizardStyle=modern
 SetupIconFile={#StageDir}\setup-icon.ico
+; NodePilot logo on the wizard: the left banner of the welcome/finished pages and the small
+; image in every inner page header. One file per scaling step, Inno picks by display DPI.
+; Generated from the tracked brand assets by scripts\generate-desktop-icons.ps1.
+WizardImageFile={#StageDir}\wizard-image-164x314.bmp,{#StageDir}\wizard-image-192x386.bmp,{#StageDir}\wizard-image-246x459.bmp,{#StageDir}\wizard-image-328x628.bmp
+WizardSmallImageFile={#StageDir}\wizard-small-55x55.bmp,{#StageDir}\wizard-small-64x68.bmp,{#StageDir}\wizard-small-83x80.bmp,{#StageDir}\wizard-small-110x106.bmp
 
 [Tasks]
 ; The desktop shortcut is the one optional part of this install; the Start-Menu entry is created

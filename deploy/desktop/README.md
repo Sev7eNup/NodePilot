@@ -177,6 +177,17 @@ are versioned, so a clean clone can always rebuild it.
 | `icon.png` / `tray.png` | every window + the tray until the SPA reports its skin |
 | `skins\<id>.png` / `<id>-tray.png` | window + tray icon per SPA color skin |
 
+With `-WizardImageDirectory` the same script also writes the Inno Setup wizard bitmaps into the
+stage directory, which both installers reference:
+
+| Output | Used for |
+|---|---|
+| `wizard-image-<w>x<h>.bmp` | left banner of the welcome and finished pages (logo on a dark navy gradient) |
+| `wizard-small-<w>x<h>.bmp` | header of every inner wizard page (logo on white) |
+
+One file per scaling step because Inno picks the candidate closest to the size it needs at the
+current display DPI, and 24bpp because Inno ignores a BMP alpha channel.
+
 The static default is **blue** — rendered from `appicon-dark.png`, not from the untinted orange
 source art `appicon.png` (`-DefaultSkin` picks a different one). At runtime the shell follows the
 skin: the SPA rewrites `<link rel="icon">` to `/appicon-<skin>.png` on every skin switch, Chromium
@@ -226,7 +237,7 @@ Running the Electron shell straight from source (`npm start`, see below) starts 
 | File | Role |
 |---|---|
 | `Build-DesktopInstaller.ps1` | Build orchestrator (icons + publish + SPA + Modules + Electron + operator clients → `tools\{np,mcp}` + PG subset + ISCC). |
-| `../../scripts/generate-desktop-icons.ps1` | Icon set from the SPA brand assets (default + per-skin); also runnable standalone. |
+| `../../scripts/generate-desktop-icons.ps1` | Icon set and Inno wizard bitmaps from the SPA brand assets (default + per-skin); also runnable standalone. |
 | `Sync-DesktopApp.ps1` | Dev loop: pushes local changes into an installed app in ~1 min (see below). |
 | `NodePilot.iss` | Inno Setup installer definition. |
 | `Provision-LocalDb.ps1` | First-run/repeatable runtime provisioner (DB, services, cert, config, handoff). |

@@ -1141,6 +1141,28 @@ Assert-TextMatches -Name 'the server setup installs a Start Menu shortcut for th
 # was while the page around it got taller.
 Assert-TextDoesNotMatch -Name 'the wizard window must not be resizable' `
     -Text $serverIss -Pattern '(?m)^WizardResizable=yes'
+
+# Wizard branding. Both setups carry the NodePilot logo on the welcome/finished banner and in the
+# header of the inner pages. The bitmaps are generated into the stage directory at build time, so
+# the .iss reference and the build script's generator call have to stay together - a missing file
+# is an Inno compile error, but a build script that stopped asking for them would be silent.
+foreach ($branding in @(
+    @{ Name = 'server'; Text = $serverIss },
+    @{ Name = 'desktop'; Text = (Get-Content -LiteralPath $DesktopIssPath -Raw) })) {
+    Assert-TextMatches -Name "the $($branding.Name) setup shows the logo on the welcome banner" `
+        -Text $branding.Text -Pattern '(?m)^WizardImageFile=.+wizard-image-164x314\.bmp,'
+    Assert-TextMatches -Name "the $($branding.Name) setup shows the logo in the page header" `
+        -Text $branding.Text -Pattern '(?m)^WizardSmallImageFile=.+wizard-small-55x55\.bmp,'
+}
+Assert-TextMatches -Name 'the icon generator can write the wizard bitmaps' `
+    -Text (Get-Content -LiteralPath (Join-Path (Split-Path -Parent $scriptDirectory) 'scripts\generate-desktop-icons.ps1') -Raw) `
+    -Pattern '(?m)^\s*\[string\] \$WizardImageDirectory'
+Assert-TextMatches -Name 'the server build generates the wizard bitmaps' `
+    -Text (Get-Content -LiteralPath (Join-Path $scriptDirectory 'server\Build-ServerInstaller.ps1') -Raw) `
+    -Pattern "'-WizardImageDirectory', \`$stage"
+Assert-TextMatches -Name 'the desktop build generates the wizard bitmaps' `
+    -Text (Get-Content -LiteralPath (Join-Path $scriptDirectory 'desktop\Build-DesktopInstaller.ps1') -Raw) `
+    -Pattern '-WizardImageDirectory \$Stage'
 # Measured on Inno 6.7.3: in ssPostInstall neither RaiseException nor Abort changes the exit code -
 # a failed installation still reports 0. Under SCCM that is a deployment claiming success having
 # installed nothing, which is the same silent-failure class the [Run] ban above exists to prevent.
