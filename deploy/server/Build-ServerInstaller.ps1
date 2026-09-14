@@ -250,9 +250,13 @@ Write-Step 'Staging the icon and licence'
 Invoke-Tool -FilePath 'powershell.exe' -Arguments @(
     '-NoProfile', '-ExecutionPolicy', 'Bypass',
     '-File', (Join-Path $repoRoot 'scripts\generate-desktop-icons.ps1'),
-    '-SetupIconPath', (Join-Path $stage 'setup-icon.ico'))
+    '-SetupIconPath', (Join-Path $stage 'setup-icon.ico'),
+    '-WizardImageDirectory', $stage)
 if (-not (Test-Path -LiteralPath (Join-Path $stage 'setup-icon.ico'))) {
     throw 'The icon generator did not produce setup-icon.ico.'
+}
+if (-not (Test-Path -LiteralPath (Join-Path $stage 'wizard-image-164x314.bmp'))) {
+    throw 'The icon generator did not produce the wizard bitmaps.'
 }
 Copy-Item -LiteralPath (Join-Path $repoRoot 'LICENSE') -Destination (Join-Path $stage 'LICENSE.txt') -Force
 

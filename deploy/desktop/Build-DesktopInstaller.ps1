@@ -97,8 +97,12 @@ Write-Step 'Generating application icons from the brand assets'
 $iconScript = Join-Path $RepoRoot 'scripts\generate-desktop-icons.ps1'
 Invoke-Tool {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $iconScript `
-        -SetupIconPath (Join-Path $Stage 'setup-icon.ico')
+        -SetupIconPath (Join-Path $Stage 'setup-icon.ico') `
+        -WizardImageDirectory $Stage
 } 'Icon generation failed.'
+if (-not (Test-Path -LiteralPath (Join-Path $Stage 'wizard-image-164x314.bmp'))) {
+    throw 'The icon generator did not produce the wizard bitmaps.'
+}
 
 # --- 1. API (self-contained) -----------------------------------------------------------------
 Write-Step 'Publishing API (self-contained win-x64)'
