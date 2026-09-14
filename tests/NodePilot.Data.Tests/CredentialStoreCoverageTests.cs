@@ -113,8 +113,10 @@ public sealed class CredentialStoreCoverageTests
             plain.Should().Be("s3cret");
         }
 
-        // The audit append runs fire-and-forget on an independent scope — wait for it.
-        var wrote = await WaitForAuditRowsAsync(connString, TimeSpan.FromSeconds(10));
+        // The audit append runs fire-and-forget on an independent scope — wait for it. The budget
+        // is wall clock on a shared CI runner, not a latency claim: a starved thread pool has
+        // pushed this past ten seconds, which failed the assertion without anything being wrong.
+        var wrote = await WaitForAuditRowsAsync(connString, TimeSpan.FromSeconds(60));
         wrote.Should().BeTrue(
             "the scope-factory branch must persist a CREDENTIAL_DECRYPTED audit row via an independent DI scope");
     }
@@ -171,9 +173,12 @@ public sealed class CredentialStoreCoverageTests
                 if (await db.AuditLog.AnyAsync())
                     return true;
             }
-            catch
+            catch (SqliteException)
             {
                 // Transient SQLite BUSY while the background write holds a lock — retry.
+                // Anything else means the background write path itself is broken; letting it
+                // through keeps "broken" distinguishable from "not written yet", which a
+                // catch-all turned into the same red assertion.
             }
             await Task.Delay(50);
         }
