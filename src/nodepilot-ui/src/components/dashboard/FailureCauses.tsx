@@ -18,16 +18,23 @@ interface FailureCausesResponse {
   remainingCount: number;
 }
 
+/**
+ * Shared so the dashboard page can start this request while it is still waiting for its own
+ * stats call. This component only mounts after that call resolves, which used to make the two
+ * heaviest queries of the page run one after the other instead of side by side.
+ */
+export const failureCausesQuery = (windowHours: number) => ({
+  // Separate from dashboard-stats: the live feed must not rerun this aggregation on every event.
+  queryKey: ['dashboard-failure-causes', windowHours],
+  queryFn: () => api.get<FailureCausesResponse>(`/stats/failure-causes?windowHours=${windowHours}`),
+  refetchInterval: 120_000,
+  staleTime: 120_000,
+  retry: false,
+});
+
 export function FailureCauses({ windowHours }: Readonly<{ windowHours: number }>) {
   const { t } = useTranslation(['dashboard', 'common']);
-  const { data, isPending, isError, refetch } = useQuery({
-    // Separate from dashboard-stats: the live feed must not rerun this aggregation on every event.
-    queryKey: ['dashboard-failure-causes', windowHours],
-    queryFn: () => api.get<FailureCausesResponse>(`/stats/failure-causes?windowHours=${windowHours}`),
-    refetchInterval: 120_000,
-    staleTime: 120_000,
-    retry: false,
-  });
+  const { data, isPending, isError, refetch } = useQuery(failureCausesQuery(windowHours));
 
   return (
     <div className="relative flex-1 min-h-[240px]" aria-busy={isPending}>

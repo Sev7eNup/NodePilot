@@ -90,7 +90,8 @@ public sealed class WorkflowsControllerRbacTests : IDisposable
             new ResourceAuthorizationService(_db),
             new NodePilot.Api.Services.WorkflowContractDeriver(),
             NodePilot.Api.Tests.Controllers.WorkflowControllerHarnessFactory.VersionDefinitions(),
-            new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate())
+            new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate(),
+            new NodePilot.Api.Services.WorkflowDefinitionFactsCache())
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } }
         };

@@ -67,7 +67,7 @@ internal static class WorkflowControllerHarnessFactory
         var workflows = new WorkflowsController(
             db, NullLogger<WorkflowsController>.Instance, audit, authz,
             new NodePilot.Api.Services.WorkflowContractDeriver(), versionDefinitions,
-            concurrency)
+            concurrency, new NodePilot.Api.Services.WorkflowDefinitionFactsCache())
         {
             ControllerContext = NewCtx()
         };

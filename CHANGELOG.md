@@ -12,6 +12,36 @@ exhaustive.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An install or update no longer takes a working installation apart to find out the host cannot
+  run the new binaries.** The server artifact is framework-dependent, so a build made against a
+  newer .NET patch than the target machine carries dies at the apphost — before managed code, with
+  no exception in the event log — and all the SCM reports is `The service cannot be started on
+  computer .`. The readiness page never saw it coming: it checks a fixed floor, and only for
+  `Microsoft.AspNetCore.App`, so a host whose web framework was patched past its base runtime
+  passed and then failed to start. Both scripts now read the frameworks the extracted artifact
+  actually names and match every one of them against what the host reports, before the service is
+  stopped, anything is backed up and the install directory is touched. A shortfall aborts naming
+  the framework, the version needed and the versions present, and leaves the machine untouched.
+- **A failed update says why.** `Show-NodePilotServiceStartDiagnostics` — recent Application and
+  SCM errors plus the tail of the NodePilot log — existed only in the installer, so an update that
+  could not start the service rolled back and reported the SCM's own message and nothing else. It
+  is now shared by both, and runs before the rollback wipes the evidence. The setup wizard's own
+  one-line cause, previously limited to unhandled managed exceptions, also reads the apphost's
+  *You must install or update .NET to run this application* event and what the SCM recorded.
+
+- **A finished `startProgram` no longer fails on the step timeout because a surviving child holds
+  its output pipe.** `cmd /c start …` and its relatives hand the inherited stdout and stderr handles
+  to a detached grandchild, so neither pipe reaches end-of-file even after the launched program has
+  exited. The capture loop was bounded by `timeoutSeconds` alone, so it burned the whole budget —
+  five minutes by default — and then reported `Process or output capture timed out` for a program
+  that had completed successfully. Once the process has exited, the remaining drain is now bounded
+  by `Engine:IsolatedDrainGraceSeconds` (default 5 s), the same convention the isolated `runScript`
+  path already uses for the identical problem; the step returns the buffered output, notes on its
+  meta line that the capture was cut short, and succeeds or fails on the exit code as it should.
+  `timeoutSeconds` keeps its meaning for the process that is still running.
+
 ## [1.3.0] - 2026-09-13
 
 The first minor release since 1.2.0, cut from thirteen development builds. The designer stops
@@ -49,6 +79,17 @@ since 1.2.26.
   `zipOperation` and `powerManagement` configs — checkbox explanations, condition-type options,
   field labels and the WMI validation messages. All of them now go through translation keys, with
   the markup-bearing hints using `Trans` so the inline `<code>` elements survive translation.
+
+- **`startProgram` stopped leaking two PowerShell jobs per call, and stopped pretending to capture
+  output it never collected.** Every call registered two `Register-ObjectEvent` handlers for the
+  output streams and never unregistered them, so a long-lived runspace accumulated jobs and event
+  subscribers until the pool was recycled. Both pipes are now read concurrently with bounded
+  `ReadAsync` calls and nothing is registered. In the same move the capture contract was made
+  honest: redirection is set up only when `waitForExit: true` **and** `useShellExecute: false`, so a
+  fire-and-forget step returns `param.stdout` and `param.stderr` reliably empty instead of racily
+  partial — previously the redirection was set up and then abandoned with nobody draining it. The
+  timeout failure message changed accordingly from `Process timed out and was killed.` to
+  `Process or output capture timed out.`
 
 - **`startProgram` accepts `cmd.exe` again — by completing it, not by loosening the rule.** The
   engine launches through CreateProcess and never searches the target's PATH, so `filePath` has to

@@ -57,8 +57,14 @@ Deaktivierte Methoden melden `false` und `null`. `local` ist nur bei `LocalLogin
 
 Login setzt das httpOnly `np_auth`-Cookie und ein `np_csrf`-Cookie. Browser-Clients erhalten nur die Identität; die Response enthält bewusst keinen Token. CLI-Aufrufe und Skripte ohne Cookie-Jar fordern einen Bearer-Token mit dem Header `X-Auth-Token-Response: true` an.
 
+Bei Cookie-Authentifizierung benötigen schreibende Aufrufe (`POST`/`PUT`/`PATCH`/`DELETE`) zusätzlich den Header `X-CSRF-Token` mit dem Wert des Cookies `np_csrf`; ohne ihn folgt 403 `csrf_mismatch`. Login und Windows-Login sind ausgenommen. Die Bash-Funktion unten liest den aktuellen Wert aus einer Cookie-Datei für genau diesen Server. Refresh schreibt die rotierenden Cookies mit `-c cookie.jar` zurück; der nächste Aufruf liest dadurch den neuen CSRF-Wert. Bearer-Aufrufe benötigen keinen CSRF-Header.
+
 ```bash
 NP=http://localhost:5000
+
+csrf_token() {
+  awk '$6 == "np_csrf" {sub(/\r$/, "", $7); print $7}' cookie.jar
+}
 
 # Browser-Style: Token nur im Cookie, Body = Identität
 curl -s -c cookie.jar -X POST "$NP/api/auth/login" \
@@ -102,8 +108,8 @@ curl -s --negotiate -u : -c cookie.jar -X POST "$NP/api/auth/windows"
 # GET $NP/api/auth/oidc
 
 # Refresh + Logout
-curl -s -b cookie.jar -X POST "$NP/api/auth/refresh" -H 'X-Auth-Token-Response: true'   # neues JWT, gleiche absolute Session-Grenze
-curl -s -b cookie.jar -X POST "$NP/api/auth/logout" -i                                   # 204 No Content
+curl -s -b cookie.jar -c cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/auth/refresh" -H 'X-Auth-Token-Response: true'   # neues JWT, gleiche absolute Session-Grenze
+curl -s -b cookie.jar -c cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/auth/logout" -i                                   # 204 No Content
 ```
 
 OIDC-Gruppenclaims werden nur mit vorhandenem, höchstens 15 Minuten altem `iat` akzeptiert. Bei Group-Overage werden ausschließlich frische, authority-scoped SCIM-Memberships verwendet. SCIM-User-`externalId` muss exakt und case-sensitive dem OIDC-`sub` entsprechen; User-Updates erneuern keine Gruppen-Freshness. Ein vollständiger Membership-Snapshot oder Heartbeat mindestens alle 15 Minuten und HA-Failover mit gemeinsamem, zertifikatgeschütztem Data-Protection-Keyring gehören zum Release-Gate. SAML ist out of scope.

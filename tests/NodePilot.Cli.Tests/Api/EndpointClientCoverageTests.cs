@@ -87,6 +87,7 @@ public sealed class EndpointClientCoverageTests
         ["api/system/host-info"] = "UI About surface",
         ["api/users/*/reactivate"] = "np user has no reactivate verb (deactivate-only)",
         ["api/webhooks/*/*"] = WebhookIngress,
+        ["api/workflows/names"] = SpaBootstrap + " — id+name for the executions filter dropdown; np workflow list covers the same names",
     };
 
     private static readonly Dictionary<string, string> KnownMcpGaps = new(StringComparer.OrdinalIgnoreCase)
@@ -166,6 +167,7 @@ public sealed class EndpointClientCoverageTests
         ["api/webhooks/*/*"] = WebhookIngress,
         ["api/workflows/*/move-folder"] = "no MCP folder-RBAC tools — placement follows the same gap as api/shared-workflow-folders",
         ["api/workflows/export"] = "export_workflow covers one workflow; a bulk dump is an operator (UI/CLI) task",
+        ["api/workflows/names"] = SpaBootstrap + " — id+name for the executions filter dropdown; list_workflows covers the same names",
     };
 
     [Theory]

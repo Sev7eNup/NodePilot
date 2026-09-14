@@ -34,7 +34,7 @@ import { useMinuteTick } from '../hooks/useMinuteTick';
 import { useOpsClock } from '../hooks/useOpsClock';
 import { SystemHealthBanner } from '../components/dashboard/SystemHealthBanner';
 import { DashboardQuickActions } from '../components/dashboard/DashboardQuickActions';
-import { FailureCauses } from '../components/dashboard/FailureCauses';
+import { FailureCauses, failureCausesQuery } from '../components/dashboard/FailureCauses';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { formatDate, formatDuration, formatNumber, formatRelative, formatRelativeFuture } from '../lib/format';
 import { TRIGGER_BADGE_META as TRIGGER_META } from '../lib/triggerBadgeMeta';
@@ -153,6 +153,10 @@ export function DashboardPage() {
     queryFn: () => api.get<DashboardStats>(`/stats/dashboard?windowHours=${windowHours}`),
     refetchInterval: 120_000,
   });
+  // Started here, rendered further down by <FailureCauses/>. That component sits behind the
+  // loading gate below, so leaving the request to it made the page's two most expensive queries
+  // run in sequence. Same query key, so the component reads this result rather than refetching.
+  useQuery(failureCausesQuery(windowHours));
   // Selecting a status row filters the Recent Executions table client-side. The backend only
   // returns the latest 10 rows, so this filters within those; full filtering lives on /executions.
   const [statusFilter, setStatusFilter] = useState<string | null>(null);

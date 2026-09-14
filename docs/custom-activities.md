@@ -119,16 +119,16 @@ any restore write.
 
 ## AI awareness
 
-The chat assistant's system prompt includes facts for the enabled custom activities the current
-workflow references (name, remote flag, inputs, outputs) — built by `BuildActivityMetadata` from the
-`ICustomActivityDefinitionStore` — so it can wire their inputs/outputs instead of treating them as
-unknown types.
+The chat assistant and workflow generator receive all enabled custom-activity definitions from
+`ICustomActivityDefinitionStore`, rendered by `ActivityCatalogPromptRenderer` (name, remote flag,
+inputs and outputs). This includes definitions not yet used on the current canvas, so the
+assistant can propose new custom nodes and wire their inputs and outputs. Disabled definitions
+are excluded.
 
 ## Known follow-ups (not in v1)
 
 - **`np` CLI**: no `custom-activity` command group yet; use the REST API or MCP.
-- **AI `list_activity_types` discovery**: the read-only chat tool lists only built-ins, so the
-  assistant can't yet *discover* custom activities it could add (it can use ones already on the
-  canvas — see AI awareness above). Wiring the scoped store into the singleton tool registry is the
-  remaining step.
+- **AI `list_activity_types` tool**: this read-only chat tool still lists only built-ins.
+  Adding custom definitions to that tool remains a follow-up; the assistant and workflow
+  generator already receive the enabled custom catalog through their system prompts.
 - **Composite / sub-workflow custom nodes**: deliberately out of scope (v1 is PowerShell-only).

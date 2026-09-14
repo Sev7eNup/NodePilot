@@ -5,63 +5,95 @@ and exercises the engine / DB / hub path with big, complex workflows.
 
 ## One-time setup
 
-1. **Start support stack** (SQL Server + Prometheus + Grafana):
+Use a dedicated local database and Windows PowerShell 5.1. Run the preparation commands from
+the repository root. The API runs in **Development**, bound to loopback; these settings are for
+an isolated load-test machine. Noop reports synthetic script success and requires explicit
+acknowledgement. Do not reuse these settings for a production deployment.
 
-   ```bash
-   cd tests/NodePilot.LoadTests
-   cp .env.example .env      # then set MSSQL_SA_PASSWORD and GF_SECURITY_ADMIN_PASSWORD
+1. **Start the support stack** (SQL Server + Prometheus + Grafana):
+
+   ```powershell
+   Push-Location tests/NodePilot.LoadTests
+   Copy-Item .env.example .env   # first setup only; set both passwords before the next command
    docker compose up -d
+   Pop-Location
    ```
 
-   The `.env` is not optional — compose declares both passwords as required and aborts
-   without them.
+   `.env` must define `MSSQL_SA_PASSWORD` and `GF_SECURITY_ADMIN_PASSWORD`; Compose rejects
+   missing values. SQL Server listens at `localhost:1433`, Prometheus at `localhost:9090`,
+   and Grafana at `localhost:3000` (user `admin`, password from `.env`). Anonymous Grafana
+   access is off by default. Keep the support ports confined to the isolated test machine.
+   Wait until SQL Server is ready before starting the API. With an existing SQL data volume,
+   use its current SA password: changing `.env` does not reset an initialized database password.
 
-   - SQL Server: `localhost:1433`, SA password = your `MSSQL_SA_PASSWORD`
-   - Prometheus: http://localhost:9090
-   - Grafana: http://localhost:3000 — user `admin`, password = your
-     `GF_SECURITY_ADMIN_PASSWORD`. Anonymous viewing is **off** unless you set
-     `GF_AUTH_ANONYMOUS_ENABLED=true`.
+2. **Configure the API in this PowerShell session.** Read the resolved Compose password instead
+   of copying a second password into an appsettings file. The connection-string builder also
+   quotes passwords containing connection-string delimiters correctly.
 
-2. **Configure the API host for load testing.** Create `src/NodePilot.Api/appsettings.Loadtest.json`:
+   ```powershell
+   $loadStack = docker compose -f tests/NodePilot.LoadTests/docker-compose.yml --env-file tests/NodePilot.LoadTests/.env config --format json | ConvertFrom-Json
+   $loadDb = New-Object System.Data.SqlClient.SqlConnectionStringBuilder
+   $loadDb['Data Source'] = 'localhost,1433'
+   $loadDb['Initial Catalog'] = 'NodePilotLoadTest'
+   $loadDb['User ID'] = 'sa'
+   $loadDb['Password'] = $loadStack.services.sqlserver.environment.MSSQL_SA_PASSWORD
+   $loadDb['Encrypt'] = $true
+   $loadDb['TrustServerCertificate'] = $true
 
-   ```json
-   {
-     "Database": {
-       "Provider": "sqlserver"
-     },
-     "ConnectionStrings": {
-       "DefaultConnection": "Server=localhost,1433;Database=NodePilotLoadTest;User Id=sa;Password=LoadTest!Password1;TrustServerCertificate=True"
-     },
-     "Remote": {
-       "Provider": "noop",
-       "Noop": { "MinLatencyMs": 5, "MaxLatencyMs": 20 }
-     },
-     "Logging": {
-       "StepDetail": { "Enabled": false }
-     },
-     "OpenTelemetry": {
-       "Enabled": true,
-       "Exporters": { "PrometheusScrape": true }
-     }
-   }
+   $env:ASPNETCORE_ENVIRONMENT = 'Development'
+   $env:DOTNET_ENVIRONMENT = 'Development'
+   $env:Database__Provider = 'sqlserver'
+   $env:Database__AllowInsecureTls = 'true'
+   $env:ConnectionStrings__DefaultConnection = $loadDb.ConnectionString
+   $env:Remote__Provider = 'noop'
+   $env:Remote__AllowNoop = 'true'
+   $env:Remote__Noop__MinLatencyMs = '5'
+   $env:Remote__Noop__MaxLatencyMs = '20'
+   $env:Logging__StepDetail__Enabled = 'false'
+   $env:OpenTelemetry__Enabled = 'true'
+   $env:OpenTelemetry__Exporters__PrometheusScrape = 'true'
+   $env:OpenTelemetry__Exporters__PrometheusScrapeAllowAnonymous = 'true'
    ```
 
-3. **Start the API against the Loadtest profile:**
+   `Remote:AllowNoop=true` (alternatively `NODEPILOT_ALLOW_NOOP_REMOTE=1`) is mandatory;
+   `Remote:Provider=noop` alone aborts startup. `Database:AllowInsecureTls=true` is allowed
+   here because the database is loopback-only and the environment is Development. A custom
+   environment named `Loadtest` does **not** qualify. Server deployments outside Development
+   require verified TLS (`Encrypt=Strict;TrustServerCertificate=False` for SQL Server).
+   No tracked appsettings file needs to change.
 
-   ```bash
-   cd src/NodePilot.Api
-   dotnet run --environment Loadtest --urls http://localhost:5000
+3. **Start the API in the same terminal:**
+
+   ```powershell
+   Push-Location src/NodePilot.Api
+   dotnet run --no-launch-profile -- --urls http://localhost:5000
+   Pop-Location
    ```
 
-4. **Create the load-test user** via a normal login against the fresh DB — the first login
-   auto-creates an Admin with the credentials you provide. Use the same credentials as
-   `appsettings.loadtests.json` (`loadtest` / `loadtest-password`).
+   The terminal remains occupied until the API stops. Closing it afterward discards the
+   session-only overrides. Confirm `/healthz/ready` is healthy before running scenarios.
+   The bundled Prometheus targets `host.docker.internal:5000`; verify that Docker Desktop
+   can reach the host listener. If it cannot, run Prometheus on the host with a
+   `localhost:5000` scrape target while keeping the API bound to loopback.
 
-   ```bash
-   curl -X POST http://localhost:5000/api/auth/login \
-        -H "Content-Type: application/json" \
-        -d '{"username":"loadtest","password":"loadtest-password"}'
+4. **Create the first load-test admin** in a second PowerShell terminal, from the repository
+   root. On a fresh database, login requires the one-shot `X-Setup-Token` header. With the
+   default token location, the API writes `admin-setup.token` into its content root:
+
+   ```powershell
+   $loadSetupToken = (Get-Content -LiteralPath src/NodePilot.Api/admin-setup.token -Raw).Trim()
+   $loadLogin = @{ username = 'loadtest'; password = 'loadtest-password' } | ConvertTo-Json
+   Invoke-RestMethod -Method Post -Uri http://localhost:5000/api/auth/login -ContentType 'application/json' -Headers @{ 'X-Setup-Token' = $loadSetupToken } -Body $loadLogin
+   Remove-Variable loadSetupToken, loadLogin
    ```
+
+   Without a valid token the first login returns `401 SETUP_TOKEN_REQUIRED`. Bootstrap marks
+   the first admin as a break-glass account, so the default `BreakGlassOnly` login policy
+   permits subsequent harness logins. If the database already has users, use an existing
+   authorized test admin instead; bootstrap cannot create another one. The example credentials
+   match `appsettings.loadtests.json` and are only for this disposable local setup. If changed,
+   set `LOADTEST__Username` and `LOADTEST__Password` in the terminal running the harness. The
+   harness requests a bearer token itself; it does not consume a browser cookie jar.
 
 ## Running scenarios
 

@@ -476,12 +476,13 @@ Two supported ways to reach a server whose certificate the client machine does n
 
 The rules that apply:
 
-* The pin is **additive**: a certificate with a valid chain is still accepted, so a routine renewal
-  does not lock out a correctly configured profile.
-* A configured pin that does **not** match is refused — even with `--insecure-tls`.
+* The pin is **additive**: a certificate with a valid chain and matching hostname is accepted
+  even if the pin differs, so a routine certificate renewal does not lock out the profile.
+* If normal TLS validation fails, a configured pin decides: a match accepts the certificate
+  even with a hostname mismatch; a different pin rejects it, including with `--insecure-tls`.
 * A stored pin only applies to the server it was set for; changing the server clears it.
-* `--insecure-tls` (or `NODEPILOT_TLS_NO_VERIFY=1`) skips validation for **one** call, is never
-  stored, and prints a warning every time.
+* Without a configured pin, `--insecure-tls` (or `NODEPILOT_TLS_NO_VERIFY=1`) can bypass a
+  TLS validation error for **one** call. The bypass is never stored and prints a warning every time.
 * Precedence: `--tls-thumbprint` › `NODEPILOT_TLS_THUMBPRINT` › the profile.
 
 ## Token storage

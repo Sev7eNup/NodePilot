@@ -7,7 +7,7 @@ import { setupServer } from 'msw/node';
 import { WorkflowsPage } from '../../pages/WorkflowsPage';
 import { useAuthStore } from '../../stores/authStore';
 import { useToastStore } from '../../stores/toastStore';
-import type { Workflow } from '../../types/api';
+import type { WorkflowListItem } from '../../types/api';
 import { clearLocalAuthBoundary } from '../../security/authBoundary';
 
 const BASE = 'http://localhost';
@@ -64,12 +64,12 @@ function renderPage(role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
   return { ...view, queryClient: qc };
 }
 
-function mkWorkflow(overrides: Partial<Workflow> = {}): Workflow {
+function mkWorkflow(overrides: Partial<WorkflowListItem> = {}): WorkflowListItem {
   return {
     id: 'wf-1',
     name: 'Workflow A',
     description: null,
-    definitionJson: '{}',
+    hasManualTriggerParameters: false,
     version: 1,
     isEnabled: true,
     createdAt: '2026-04-26T10:00:00Z',
@@ -82,14 +82,10 @@ function mkWorkflow(overrides: Partial<Workflow> = {}): Workflow {
   };
 }
 
-const WORKFLOW_WITH_SCHEDULE: Workflow = mkWorkflow({
+const WORKFLOW_WITH_SCHEDULE: WorkflowListItem = mkWorkflow({
   id: 'wf-1',
   name: 'Backup Workflow',
   description: 'Daily backup',
-  definitionJson: JSON.stringify({
-    nodes: [{ id: 't1', data: { activityType: 'scheduleTrigger', config: {} } }],
-    edges: [],
-  }),
   version: 3,
   isEnabled: true,
   triggerTypes: ['scheduleTrigger'],
@@ -105,7 +101,7 @@ const WORKFLOW_WITH_SCHEDULE: Workflow = mkWorkflow({
   avgDurationMs: 8000,
 });
 
-const DISABLED_WORKFLOW: Workflow = mkWorkflow({
+const DISABLED_WORKFLOW: WorkflowListItem = mkWorkflow({
   id: 'wf-2',
   name: 'Disabled Job',
   isEnabled: false,
@@ -599,7 +595,6 @@ describe('WorkflowsPage — Mutations', () => {
     const listRow = mkWorkflow({
       id: 'wf-manual',
       name: 'Manual WF',
-      definitionJson: undefined,
       hasManualTriggerParameters: true,
       triggerTypes: ['manualTrigger'],
     });
@@ -635,8 +630,7 @@ describe('WorkflowsPage — Mutations', () => {
   it('Run Now on a workflow without parameters executes without fetching the definition', async () => {
     // The common path must stay a single click with no round-trip for the definition.
     const listRow = mkWorkflow({
-      id: 'wf-plain', name: 'Plain WF', definitionJson: undefined,
-      hasManualTriggerParameters: false, triggerTypes: ['manualTrigger'],
+      id: 'wf-plain', name: 'Plain WF', hasManualTriggerParameters: false, triggerTypes: ['manualTrigger'],
     });
     let definitionFetches = 0;
     let executed = false;
@@ -652,6 +646,34 @@ describe('WorkflowsPage — Mutations', () => {
 
     await waitFor(() => expect(executed).toBe(true));
     expect(definitionFetches).toBe(0);
+  });
+
+  it('Run Now surfaces a failed definition fetch instead of running without parameters', async () => {
+    // The click asked to be prompted. Running anyway skips inputs the engine cannot seed —
+    // a declared parameter without a default simply stays absent.
+    const listRow = mkWorkflow({
+      id: 'wf-manual', name: 'Manual WF',
+      hasManualTriggerParameters: true, triggerTypes: ['manualTrigger'],
+    });
+    let executed = false;
+    useToastStore.setState({ toasts: [] });
+    server.use(
+      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([listRow])),
+      http.get(`${BASE}/api/workflows/wf-manual`, () => new HttpResponse(null, { status: 500 })),
+      http.post(`${BASE}/api/workflows/wf-manual/execute`, () => {
+        executed = true;
+        return HttpResponse.json({ id: 'exec-1' });
+      }),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Manual WF')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTitle('Run Now'));
+
+    await waitFor(() => expect(useToastStore.getState().toasts).toHaveLength(1));
+    expect(useToastStore.getState().toasts[0].kind).toBe('error');
+    expect(executed).toBe(false);
+    expect(screen.queryByText(/Run Manual/)).not.toBeInTheDocument();
   });
 
   it('Power button on enabled workflow calls /disable', async () => {
@@ -1112,7 +1134,7 @@ describe('WorkflowsPage — bulk selection', () => {
     mkWorkflow({ id: 'wf-2', name: 'Beta', isEnabled: false }),
   ];
 
-  async function renderWithRows(rows: Workflow[] = TWO) {
+  async function renderWithRows(rows: WorkflowListItem[] = TWO) {
     server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json(rows)));
     renderPage('Admin');
     await waitFor(() => expect(screen.getByText(rows[0].name)).toBeInTheDocument());
@@ -1183,7 +1205,7 @@ describe('WorkflowsPage — bulk actions', () => {
     mkWorkflow({ id: 'wf-2', name: 'Beta' }),
   ];
 
-  async function selectBoth(rows: Workflow[] = TWO, role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
+  async function selectBoth(rows: WorkflowListItem[] = TWO, role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
     server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json(rows)));
     renderPage(role);
     await waitFor(() => expect(screen.getByText(rows[0].name)).toBeInTheDocument());

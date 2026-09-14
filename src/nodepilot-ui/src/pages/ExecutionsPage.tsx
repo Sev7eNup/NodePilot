@@ -16,7 +16,7 @@ import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tansta
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { api } from '../api/client';
 import { getPage } from '../api/paging';
-import type { WorkflowExecution, StepExecution, Workflow } from '../types/api';
+import type { WorkflowExecution, StepExecution, WorkflowNameItem } from '../types/api';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -112,9 +112,15 @@ export function ExecutionsPage() {
   });
   const executions = executionPage?.items;
 
+  // Names only: this page uses the list for the filter dropdown and to label rows. The full
+  // list endpoint additionally runs an execution-history window query, resolves permissions per
+  // folder and reads workflow definitions — none of which produces a name.
+  //
+  // Keyed under ['workflows', …] so the existing invalidateQueries({ queryKey: ['workflows'] })
+  // calls after a rename, delete or import refresh these names too — query keys match by prefix.
   const { data: workflows } = useQuery({
-    queryKey: ['workflows'],
-    queryFn: () => api.get<Workflow[]>('/workflows'),
+    queryKey: ['workflows', 'names'],
+    queryFn: () => api.get<WorkflowNameItem[]>('/workflows/names'),
   });
 
   const { data: observability } = useObservabilityConfig();

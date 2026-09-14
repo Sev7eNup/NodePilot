@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { ACTIVITY_CATALOG } from '../../lib/activityCatalog.generated';
-import type { Workflow } from '../../types/api';
+import type { WorkflowListItem } from '../../types/api';
 import { useWorkflowBrowserStore } from '../../stores/workflowBrowserStore';
 import { SharedFolderTree, WORKFLOW_DRAG_MIME } from '../workflows/SharedFolderTree';
 import { sharedFoldersApi } from '../../api/sharedFolders';
@@ -26,10 +26,10 @@ interface Props {
   /** Id of the currently open workflow, excluded from the list to avoid recursive selection. */
   currentWorkflowId?: string;
   /** Called when the user opens a workflow, to navigate to its designer. */
-  onOpen: (workflow: Workflow) => void;
+  onOpen: (workflow: WorkflowListItem) => void;
   /** True when a startWorkflow step is selected, which enables the insert affordance. */
   canEmbed: boolean;
-  onEmbed?: (workflow: Workflow) => void;
+  onEmbed?: (workflow: WorkflowListItem) => void;
 }
 
 /**
@@ -42,13 +42,13 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
 
   const { data: workflows = [], isLoading } = useQuery({
     queryKey: ['workflows'],
-    queryFn: () => api.get<Workflow[]>('/workflows'),
+    queryFn: () => api.get<WorkflowListItem[]>('/workflows'),
   });
 
 
   const [query, setQuery] = useState('');
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  const [hoveredWorkflow, setHoveredWorkflow] = useState<Workflow | null>(null);
+  const [hoveredWorkflow, setHoveredWorkflow] = useState<WorkflowListItem | null>(null);
   const { viewMode, setViewMode, collapsedFolders, toggleFolder, infoCardHeight, setInfoCardHeight } = useWorkflowBrowserStore();
 
   // Splitter between the workflow list and the info card. The card sits below the splitter,
@@ -90,7 +90,7 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
 
   // Grouping used by trigger view: bucket workflows by their primary trigger type.
   const grouped = useMemo(() => {
-    const byGroup = new Map<string, Workflow[]>();
+    const byGroup = new Map<string, WorkflowListItem[]>();
     for (const w of baseFiltered) {
       const primary = w.triggerTypes?.[0] ?? '__none__';
       const key = TRIGGER_META[primary] ? primary : '__none__';
@@ -265,13 +265,13 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
 function WorkflowBrowserItem({
   workflow, canEmbed, isCurrent, onOpen, onEmbed, onHover, draggable = false,
 }: Readonly<{
-  workflow: Workflow;
+  workflow: WorkflowListItem;
   canEmbed: boolean;
   isCurrent: boolean;
   onOpen: () => void;
   onEmbed?: () => void;
   /** Lifts the hovered workflow up so the info card can describe it. */
-  onHover?: (w: Workflow | null) => void;
+  onHover?: (w: WorkflowListItem | null) => void;
   draggable?: boolean;
 }>) {
   const [hover, setHover] = useState(false);

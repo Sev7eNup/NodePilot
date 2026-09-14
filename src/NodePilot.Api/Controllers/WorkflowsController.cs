@@ -41,13 +41,13 @@ public class WorkflowsController : WorkflowsControllerBase
         NodePilot.Api.Services.IWorkflowContractDeriver contractDeriver,
         NodePilot.Api.Services.WorkflowVersionDefinitionProtector versionDefinitions,
         IWorkflowConcurrencyGate concurrency,
-        NodePilot.Api.Services.WorkflowDefinitionFactsCache? definitionFacts = null)
+        NodePilot.Api.Services.WorkflowDefinitionFactsCache definitionFacts)
         : base(db, logger, audit, authz)
     {
         _contractDeriver = contractDeriver;
         _versionDefinitions = versionDefinitions;
         _concurrency = concurrency;
-        _definitionFacts = definitionFacts ?? new NodePilot.Api.Services.WorkflowDefinitionFactsCache();
+        _definitionFacts = definitionFacts;
     }
 
     /// <summary>
@@ -87,6 +87,28 @@ public class WorkflowsController : WorkflowsControllerBase
         if (result.Workflow is not { } workflow) return NotFound();
         if (await RequireWorkflowAccessAsync(workflow, ResourceOp.Read, ct) is { } denied) return denied;
         return Ok(_contractDeriver.Derive(workflow));
+    }
+
+    /// <summary>
+    /// Id + name for every workflow the caller may read, ordered by name.
+    ///
+    /// <para>Exists because the executions page needs names for its filter dropdown and was
+    /// pulling the full list to get them — paying for the execution-history window query, a
+    /// permission lookup per folder and a definition-facts resolve, then using two columns. The
+    /// dropdown must offer workflows that have no run on the current result page, so it cannot be
+    /// served from the executions response.</para>
+    /// </summary>
+    [HttpGet("names")]
+    public async Task<ActionResult<List<WorkflowNameItem>>> GetNames(CancellationToken ct)
+    {
+        var accessibleFolders = await _authz.GetAccessibleFolderIdsAsync(User, ct);
+        var query = _db.Workflows.AsNoTracking().ScopeToAccessibleFolders(accessibleFolders);
+        if (query is null) return Ok(new List<WorkflowNameItem>());
+
+        return Ok(await query
+            .OrderBy(w => w.Name)
+            .Select(w => new WorkflowNameItem(w.Id, w.Name))
+            .ToListAsync(ct));
     }
 
     [HttpGet]

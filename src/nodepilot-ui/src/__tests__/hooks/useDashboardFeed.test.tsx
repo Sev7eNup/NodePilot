@@ -80,8 +80,13 @@ describe('useDashboardFeed', () => {
       });
     });
 
-    // The invalidation is debounced, so wait for it to fire.
-    await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['dashboard-stats'] }));
+    // The invalidation is debounced by several seconds on purpose: on a busy instance executions
+    // change state constantly, and refetching per event re-ran the history-reading parts of the
+    // dashboard endpoint over and over. Allow for that window here.
+    await waitFor(
+      () => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['dashboard-stats'] }),
+      { timeout: 8_000 },
+    );
   });
 
   it('does not invalidate for a batch without ExecutionStatusChanged', async () => {

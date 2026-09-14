@@ -2,7 +2,7 @@ import { ChevronRight } from '@carbon/icons-react';
 import { useRef, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SharedFolder } from '../../api/sharedFolders';
-import type { Workflow } from '../../types/api';
+import type { WorkflowSummary } from '../../types/api';
 import { AnchoredPickerPopover } from './properties/AnchoredPickerPopover';
 import { FolderContentsBrowser } from './FolderContentsBrowser';
 
@@ -21,9 +21,9 @@ interface Props {
   /** Shared across segments — only one popover is mounted at a time. */
   popoverRef: RefObject<HTMLDivElement | null>;
   folders: SharedFolder[];
-  workflows: Workflow[];
+  workflows: WorkflowSummary[];
   currentWorkflowId: string | undefined;
-  onOpenWorkflow: (w: Workflow) => void;
+  onOpenWorkflow: (w: WorkflowSummary) => void;
   onEnter: (path: string) => void;
   onLeave: () => void;
   onToggle: (path: string) => void;

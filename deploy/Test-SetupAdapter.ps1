@@ -1332,6 +1332,116 @@ try {
     # decide whether to proceed, and a throw there would abort an otherwise fine installation.
     Assert-True -Name 'a non-existent path reports no processes' `
         -Condition (@(Get-NodePilotProcessesUnderPath -Path (Join-Path $workingDirectory 'nope')).Count -eq 0)
+
+    # --- artifact runtime requirement ---------------------------------------------------------
+    # Static text checks cannot cover this: a runtimeconfig shape that is read wrongly, or a
+    # roll-forward rule applied in the wrong direction, looks perfectly fine in the source and
+    # shows up as a service that will not start.
+    function New-RuntimeConfigRoot {
+        param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Json)
+        $root = Join-Path $workingDirectory $Name
+        [void](New-Item -ItemType Directory -Path $root -Force)
+        [IO.File]::WriteAllBytes((Join-Path $root 'NodePilot.Api.runtimeconfig.json'),
+            [Text.Encoding]::UTF8.GetBytes($Json))
+        return $root
+    }
+
+    $singleFramework = New-RuntimeConfigRoot -Name 'rt-single' -Json @'
+{ "runtimeOptions": { "tfm": "net10.0",
+  "framework": { "name": "Microsoft.AspNetCore.App", "version": "10.0.12" } } }
+'@
+    $singleRequirement = @(Get-NodePilotArtifactRuntimeRequirement -RootPath $singleFramework)
+    Assert-True -Name 'the requirement is read from a single framework entry' `
+        -Condition ($singleRequirement.Count -eq 1 -and
+                    $singleRequirement[0].Name -eq 'Microsoft.AspNetCore.App' -and
+                    $singleRequirement[0].Version -eq [version]'10.0.12')
+
+    # Both entries, not just the web framework: the apphost resolves every one of them.
+    $multiFramework = New-RuntimeConfigRoot -Name 'rt-multi' -Json @'
+{ "runtimeOptions": { "frameworks": [
+  { "name": "Microsoft.NETCore.App", "version": "10.0.12" },
+  { "name": "Microsoft.AspNetCore.App", "version": "10.0.12" } ] } }
+'@
+    $multiRequirement = @(Get-NodePilotArtifactRuntimeRequirement -RootPath $multiFramework)
+    Assert-True -Name 'every framework in the array is a requirement' `
+        -Condition ($multiRequirement.Count -eq 2 -and
+                    (@($multiRequirement | ForEach-Object { $_.Name }) -contains 'Microsoft.NETCore.App'))
+
+    # A self-contained artifact asks nothing of the machine. Reporting its bundled version as a
+    # requirement would refuse an artifact that runs fine.
+    $selfContained = New-RuntimeConfigRoot -Name 'rt-self' -Json @'
+{ "runtimeOptions": { "includedFrameworks": [
+  { "name": "Microsoft.AspNetCore.App", "version": "10.0.12" } ] } }
+'@
+    Assert-True -Name 'a self-contained artifact states no requirement' `
+        -Condition (@(Get-NodePilotArtifactRuntimeRequirement -RootPath $selfContained).Count -eq 0)
+
+    $malformed = New-RuntimeConfigRoot -Name 'rt-broken' -Json '{ "runtimeOptions": '
+    Assert-True -Name 'an unreadable runtimeconfig degrades instead of throwing' `
+        -Condition (@(Get-NodePilotArtifactRuntimeRequirement -RootPath $malformed).Count -eq 0)
+    Assert-True -Name 'a missing runtimeconfig degrades instead of throwing' `
+        -Condition (@(Get-NodePilotArtifactRuntimeRequirement -RootPath $workingDirectory).Count -eq 0)
+
+    # --- runtime verdict ----------------------------------------------------------------------
+    # The host from the field: the web framework was patched to 10.0.12, the base runtime stayed
+    # at 10.0.11, and the apphost refused with "You must install or update .NET to run this
+    # application" - while a check that looks only at Microsoft.AspNetCore.App reported green.
+    $hostState = [pscustomobject]@{
+        X64Path           = 'C:\Program Files\dotnet\dotnet.exe'
+        Runtimes          = @(
+            'Microsoft.NETCore.App 8.0.31 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]',
+            'Microsoft.NETCore.App 10.0.11 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]',
+            'Microsoft.AspNetCore.App 10.0.12 [C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App]'
+        )
+        OtherPath         = $null
+        OtherArchitecture = ''
+    }
+    function New-Requirement {
+        param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Version)
+        [pscustomobject]@{ Name = $Name; Version = [version]$Version }
+    }
+
+    $fieldCase = Test-NodePilotArtifactRuntime -State $hostState -Requirement @(
+        (New-Requirement -Name 'Microsoft.NETCore.App' -Version '10.0.12'),
+        (New-Requirement -Name 'Microsoft.AspNetCore.App' -Version '10.0.12'))
+    Assert-True -Name 'a lagging base runtime fails even when the web framework is current' `
+        -Condition ($fieldCase.Status -eq 'Fail')
+    Assert-True -Name 'and the abort message names the framework that is short' `
+        -Condition ($fieldCase.AbortMessage -like '*Microsoft.NETCore.App 10.0.12*')
+    Assert-True -Name 'and names what is installed instead' `
+        -Condition ($fieldCase.AbortMessage -like '*10.0.11*')
+    # Only the framework that is short is named; a served one in the same build is not noise.
+    Assert-True -Name 'and does not report the framework that is served' `
+        -Condition ($fieldCase.AbortMessage -notlike '*Microsoft.AspNetCore.App*')
+
+    Assert-True -Name 'the exact version serves' `
+        -Condition ((Test-NodePilotArtifactRuntime -State $hostState -Requirement @(
+            (New-Requirement -Name 'Microsoft.NETCore.App' -Version '10.0.11'))).Status -eq 'Pass')
+    # Roll-forward is minor-only and upward: a higher patch serves an older build.
+    Assert-True -Name 'a higher installed patch serves an older build' `
+        -Condition ((Test-NodePilotArtifactRuntime -State $hostState -Requirement @(
+            (New-Requirement -Name 'Microsoft.NETCore.App' -Version '10.0.8'))).Status -eq 'Pass')
+    # Major roll-forward is off by default, so 10.x never serves an 11.x build - and an 8.x
+    # install does not serve a 10.x build either, which the version sort alone would allow.
+    Assert-True -Name 'another major never serves' `
+        -Condition ((Test-NodePilotArtifactRuntime -State $hostState -Requirement @(
+            (New-Requirement -Name 'Microsoft.NETCore.App' -Version '11.0.0'))).Status -eq 'Fail')
+    # A framework the host has never heard of must fail, not pass for lack of a comparison.
+    Assert-True -Name 'an unknown framework never serves' `
+        -Condition ((Test-NodePilotArtifactRuntime -State $hostState -Requirement @(
+            (New-Requirement -Name 'Microsoft.WindowsDesktop.App' -Version '10.0.11'))).Status -eq 'Fail')
+    # Nothing to match is not a failure: it would refuse every artifact whose config cannot be read.
+    Assert-True -Name 'no stated requirement is skipped, not failed' `
+        -Condition ((Test-NodePilotArtifactRuntime -State $hostState -Requirement @()).Status -eq 'Skipped')
+
+    # --- start diagnostics --------------------------------------------------------------------
+    # It runs on a path that has already failed, so a throw here would replace the real failure
+    # with its own - and on the update path it runs just before a rollback.
+    $diagnosticsThrew = $false
+    try { Show-NodePilotServiceStartDiagnostics -DataPath (Join-Path $workingDirectory 'no-data') 6>$null }
+    catch { $diagnosticsThrew = $true }
+    Assert-True -Name 'the start diagnostics never throw on a missing data directory' `
+        -Condition (-not $diagnosticsThrew)
 }
 finally {
     if (Test-Path -LiteralPath $workingDirectory) {

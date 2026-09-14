@@ -76,7 +76,7 @@ Der gespeicherte `filePath` muss ein absoluter lokaler Programmpfad auf dem Ziel
 
 Mit `waitForExit: false` liefert die Activity die Prozess-ID, während das Programm weiterläuft; stdout und stderr werden nicht erfasst. Für den Exit-Code muss `waitForExit: true` gesetzt sein, für die Ausgabeerfassung zusätzlich `useShellExecute: false`.
 
-Das Timeout gilt auch beim Einsammeln verbleibender Ausgaben. Erreicht ein Ausgabestrom sein Erfassungslimit, wird weitere Ausgabe verworfen, während der Prozess weiterläuft; `stdoutTruncated` beziehungsweise `stderrTruncated` zeigt das an.
+Das Timeout begrenzt das Warten auf den laufenden Prozess. Ist er beendet und liefert ein Ausgabestrom trotzdem kein Ende — weil ein überlebendes Enkelkind das Handle geerbt hat, etwa bei `cmd /c start …` —, wird noch `Engine:IsolatedDrainGraceSeconds` (Standard 5 s) weitergelesen; danach gibt der Step die gepufferte Ausgabe mit einem Hinweis in der Meta-Zeile zurück, statt am Timeout zu scheitern. Erreicht ein Ausgabestrom sein Erfassungslimit, wird weitere Ausgabe verworfen, während der Prozess weiterläuft; `stdoutTruncated` beziehungsweise `stderrTruncated` zeigt das an.
 
 ## `powerManagement`
 

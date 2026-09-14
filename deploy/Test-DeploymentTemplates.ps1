@@ -567,6 +567,39 @@ Assert-TextMatches -Name 'an update normalises the service start type' `
 Assert-TextDoesNotMatch -Name 'an update must not reconfigure identity, dependencies or recovery' `
     -Text $updateCode -Pattern 'sc\.exe\s+(failure|managedaccount)|sc\.exe\s+config[^\r\n]*\b(obj|depend)='
 
+# The wizard shows its readiness page on the install path only, so an update is the one route onto
+# a host where nothing has established that the new binaries can run there. The artifact is
+# framework-dependent: built against a newer runtime than the host carries, it dies at the apphost
+# with no managed exception and nothing in the event log.
+Assert-TextMatches -Name 'an update dot-sources the shared pre-flight helper' `
+    -Text $updateScript -Pattern "Join-Path\s+\`$PSScriptRoot\s+'Preflight\.ps1'"
+Assert-TextMatches -Name 'an update matches the runtime against the artifact in hand' `
+    -Text $updateCode -Pattern 'Test-NodePilotArtifactRuntime'
+
+# Index comparison rather than a proximity regex: what makes this check worth having is the
+# ORDER. A gate that runs after the service is stopped or the binaries are backed up still fails
+# the update, but it fails it having already taken the installation apart.
+$runtimeGateIndex = $updateCode.IndexOf('Test-NodePilotArtifactRuntime')
+$backupIndex = $updateCode.IndexOf('Backing up current install')
+# The invocation, not the name: Stop-ServiceAndVerify is declared near the top of the script, so
+# a bare name match would compare the gate against a function definition and always fail.
+$stopIndex = $updateCode.IndexOf('Stop-ServiceAndVerify -Name $ServiceName')
+if ($runtimeGateIndex -lt 0 -or $backupIndex -lt 0 -or $stopIndex -lt 0) {
+    throw 'Deployment template check failed: could not locate the runtime gate, the backup or the service stop in Update-NodePilot.ps1.'
+}
+if ($runtimeGateIndex -gt $backupIndex -or $runtimeGateIndex -gt $stopIndex) {
+    throw 'Deployment template check failed: the update checks the runtime after it has already begun changing the installation.'
+}
+
+# On the failing path the rollback wipes the new binaries, so a diagnostic that runs after it has
+# nothing left to read. The operator would be back to the SCM's own message, which names no cause.
+Assert-TextMatches -Name 'a failed update start is diagnosed' `
+    -Text $updateCode -Pattern 'Show-NodePilotServiceStartDiagnostics'
+$diagnosticsIndex = $updateScript.IndexOf('Show-NodePilotServiceStartDiagnostics')
+if ($diagnosticsIndex -lt 0 -or $diagnosticsIndex -gt $catchStart) {
+    throw 'Deployment template check failed: the update diagnoses a failed start only after the rollback.'
+}
+
 # --- pre-flight extraction contracts ----------------------------------------------------------
 # The readiness checks live in Preflight.ps1 so the setup wizard can run the same set behind a
 # "re-check" button. That shared use is the entire reason for the split, and it only holds while
@@ -979,6 +1012,18 @@ Assert-TextDoesNotMatch -Name 'installer and update do not re-declare the shared
 Assert-TextMatches -Name 'the shared process helper ships with the setup' `
     -Text (Get-Content -LiteralPath (Join-Path $scriptDirectory 'server\Build-ServerInstaller.ps1') -Raw) `
     -Pattern "'ServiceControl\.ps1'"
+
+# The start diagnostics are the difference between "the service cannot be started" and a cause.
+# They belonged to the installer alone, which is why the update path was a black box.
+Assert-TextMatches -Name 'the shared start diagnostics exist' `
+    -Text $serviceControlScript -Pattern 'function\s+Show-NodePilotServiceStartDiagnostics'
+Assert-TextDoesNotMatch -Name 'installer and update do not re-declare the start diagnostics' `
+    -Text ($installerScript + $updateScript) `
+    -Pattern '(?m)^\s*function\s+Show-\w*ServiceStartDiagnostics\b'
+# Update-NodePilot.ps1 dot-sources it, so the setup's copy dies on a missing helper without it.
+Assert-TextMatches -Name 'the shared pre-flight helper ships with the setup' `
+    -Text (Get-Content -LiteralPath (Join-Path $scriptDirectory 'server\Build-ServerInstaller.ps1') -Raw) `
+    -Pattern "'Preflight\.ps1'"
 
 # --- service start-type contracts ---------------------------------------------------------------
 # Scoped to the registration section, because Restore-ServiceRollbackSnapshot legitimately still
@@ -1924,6 +1969,25 @@ Assert-TextMatches -Name 'the wait loop cannot run forever' `
 # --- setup adapter contracts ---------------------------------------------------------------------
 $setupAdapter = Remove-CommentLines -Text (Get-Content -LiteralPath $SetupAdapterPath -Raw)
 
+# The failures that never reach managed code - a missing shared framework, a logon failure, a
+# start timeout - write no .NET Runtime event, so a lookup limited to that provider hands the
+# wizard an empty string and the operator reads the SCM's "cannot be started" and nothing else.
+$crashReasonStart = $setupAdapter.IndexOf('function Get-NodePilotServiceCrashReason')
+if ($crashReasonStart -lt 0) {
+    throw 'Deployment template check failed: could not locate the crash-reason lookup in the setup adapter.'
+}
+$crashReasonEnd = $setupAdapter.IndexOf("`nfunction ", $crashReasonStart + 40)
+if ($crashReasonEnd -lt 0) { $crashReasonEnd = $setupAdapter.Length }
+$crashReason = $setupAdapter.Substring($crashReasonStart, $crashReasonEnd - $crashReasonStart)
+foreach ($provider in @('\.NET Runtime', 'Application Error', 'Service Control Manager')) {
+    Assert-TextMatches -Name "the crash-reason lookup consults '$provider'" `
+        -Text $crashReason -Pattern $provider
+}
+# The apphost's "You must install or update .NET" event carries no Exception Info line, so a
+# lookup that reads only that line throws away the one event that named the cause.
+Assert-TextMatches -Name 'the crash-reason lookup reads a framework failure too' `
+    -Text $crashReason -Pattern "(?s)'Message:\*'[\s\S]{0,400}'Framework:\*'"
+
 # Update-NodePilot.ps1 derives the probe port from the installed Kestrel configuration. Passing the
 # 443 default rolled back a healthy 8443 installation in the lab on 2026-08-01; the adapter must
 # not reintroduce that by being helpful.
@@ -2024,9 +2088,13 @@ Assert-TextMatches -Name 'a failed install reports why the service would not sta
 # presented as the reason for this one.
 Assert-TextMatches -Name 'the crash lookup is bounded to the current run' `
     -Text $setupAdapter -Pattern '(?s)function Get-NodePilotServiceCrashReason[\s\S]*?StartTime = \$Since'
-# A diagnostic that throws would replace the real failure with its own.
-Assert-TextMatches -Name 'the crash lookup cannot itself fail the run' `
-    -Text $setupAdapter -Pattern "(?s)function Get-NodePilotServiceCrashReason[\s\S]*?catch \{ return '' \}"
+# A diagnostic that throws would replace the real failure with its own. Each source is wrapped on
+# its own so a failing one falls through to the next instead of ending the lookup, and the function
+# ends on the empty answer when none of them knows.
+Assert-TextDoesNotMatch -Name 'the crash lookup cannot itself fail the run' `
+    -Text $crashReason -Pattern 'throw\b'
+Assert-TextMatches -Name 'and ends on the empty answer when no source knows' `
+    -Text $crashReason -Pattern "(?m)^\s*return ''\s*$"
 
 # The finish page is the only place the bootstrap token is ever shown, and a plain read of it always
 # fails: the service writes the file with a single ACE for its own identity, and the installing

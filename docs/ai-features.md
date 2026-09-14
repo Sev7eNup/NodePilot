@@ -312,8 +312,8 @@ Wenn lokal nicht geht, läuft NodePilot auch gegen die OpenAI-API:
       "openai": {
         "Name": "OpenAI Cloud",
         "BaseUrl": "https://api.openai.com/v1",
-        "Model": "gpt-4o-mini",
-        "MaxTokens": 4000
+        "Model": "gpt-5.5",
+        "MaxTokens": 128000
       }
     }
   }

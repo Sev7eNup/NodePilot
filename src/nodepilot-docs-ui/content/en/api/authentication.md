@@ -57,8 +57,14 @@ Disabled methods report `false` and `null`. `local` is only false with `LocalLog
 
 A login sets the httpOnly `np_auth` cookie and an `np_csrf` cookie. Browser clients only receive the identity; the response deliberately contains no token. CLI calls and scripts without a cookie jar request a bearer token with the header `X-Auth-Token-Response: true`.
 
+With cookie authentication, mutating calls (`POST`/`PUT`/`PATCH`/`DELETE`) also require `X-CSRF-Token` containing the `np_csrf` cookie value; otherwise they return 403 `csrf_mismatch`. Login and Windows login are exempt. The Bash function below reads the current value from a cookie jar dedicated to this server. Refresh writes the rotated cookies back with `-c cookie.jar`, so the next call reads the new CSRF value. Bearer requests do not need a CSRF header.
+
 ```bash
 NP=http://localhost:5000
+
+csrf_token() {
+  awk '$6 == "np_csrf" {sub(/\r$/, "", $7); print $7}' cookie.jar
+}
 
 # Browser style: the token is in the cookie only, the body is the identity
 curl -s -c cookie.jar -X POST "$NP/api/auth/login" \
@@ -102,8 +108,8 @@ curl -s --negotiate -u : -c cookie.jar -X POST "$NP/api/auth/windows"
 # GET $NP/api/auth/oidc
 
 # Refresh + logout
-curl -s -b cookie.jar -X POST "$NP/api/auth/refresh" -H 'X-Auth-Token-Response: true'   # a new JWT, the same absolute session limit
-curl -s -b cookie.jar -X POST "$NP/api/auth/logout" -i                                   # 204 No Content
+curl -s -b cookie.jar -c cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/auth/refresh" -H 'X-Auth-Token-Response: true'   # a new JWT, the same absolute session limit
+curl -s -b cookie.jar -c cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/auth/logout" -i                                   # 204 No Content
 ```
 
 OIDC group claims are only accepted with a present `iat` no older than 15 minutes. On group overage, only fresh, authority-scoped SCIM memberships are used. A SCIM user's `externalId` has to match the OIDC `sub` exactly and case-sensitively; user updates do not renew group freshness. A complete membership snapshot or heartbeat at least every 15 minutes, and HA failover with a shared, certificate-protected data-protection key ring, are part of the release gate. SAML is out of scope.

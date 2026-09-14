@@ -4,11 +4,21 @@ The REST API manages workflows, executions, infrastructure and administration. I
 
 > **JSON format:** property names use `camelCase`. Enum values are serialized as the .NET name in PascalCase, for example `"role":"Admin"` and `"status":"Succeeded"`. Sign-in uses the httpOnly cookie `np_auth` by default. `curl` stores and sends it with `-c cookie.jar -b cookie.jar`. The examples use `$NP = "http://localhost:5000"`.
 
+The Bash examples below assume a login following [Authentication](./authentication) and a `cookie.jar` dedicated to this server. Define this function before running them; it reads the current CSRF value, including after a refresh:
+
+```bash
+NP=http://localhost:5000
+csrf_token() {
+  awk '$6 == "np_csrf" {sub(/\r$/, "", $7); print $7}' cookie.jar
+}
+```
+
 ## Workflows
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/workflows` | The list (an array, 500-row cap, filtered by folder RBAC). Rows carry no `definitionJson` — read a single workflow for the graph |
+| `GET /api/workflows/names` | Id and name only, ordered by name, filtered by folder RBAC. For surfaces that offer workflow names without rendering anything else — the executions filter uses it instead of the full list. Deliberately has neither an `np` command nor an MCP tool — `np workflow list` covers the same names |
 | `POST /api/workflows` | Create (Admin/Operator) — 201 |
 | `PUT /api/workflows/{id}` | Update — 204 (423 without the lock, 409 on a version conflict) |
 | `DELETE /api/workflows/{id}` | Delete (Admin) — 204 |
@@ -26,7 +36,7 @@ curl -s -b cookie.jar "$NP/api/workflows" | jq '.[0] | {id,name,isEnabled,versio
 curl -s -b cookie.jar "$NP/api/workflows/by-name/deploy-prod" | jq '{id,name,isEnabled}'
 
 # Create (definitionJson = a JSON object as a string, ≤5 MiB, depth ≤64)
-curl -s -b cookie.jar -X POST "$NP/api/workflows" \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows" \
   -H 'Content-Type: application/json' \
   -d '{ "name": "Deploy App",
         "description": "Deploys the web app",
@@ -34,18 +44,18 @@ curl -s -b cookie.jar -X POST "$NP/api/workflows" \
         "folderId": null }'
 
 # Update (requires the lock)
-curl -s -b cookie.jar -X PUT "$NP/api/workflows/21f1c0d4-..." \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X PUT "$NP/api/workflows/21f1c0d4-..." \
   -H 'Content-Type: application/json' \
   -d '{ "name": "Deploy App v2", "description": "updated",
         "definitionJson": "{\"nodes\":[...],\"edges\":[...]}" }' -i   # 204
 
 # Publish (atomic), duplicate, cancel-all
-curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../publish" \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../publish" \
   -H 'Content-Type: application/json' \
   -d '{ "name": "Deploy App", "description": null,
         "definitionJson": "{\"nodes\":[...],\"edges\":[...]}" }'
-curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../duplicate"
-curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../cancel-all"   # {"total":3,"signalled":2}
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../duplicate"
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../cancel-all"   # {"total":3,"signalled":2}
 ```
 
 The 409 lock-conflict body: `{"message":"Workflow is already locked by alice.","lockedByUserName":"alice","lockedAt":"..."}`. A 409 version conflict: `{"code":"workflow_version_conflict","currentVersion":4}`.
@@ -62,7 +72,7 @@ The 409 lock-conflict body: `{"message":"Workflow is already locked by alice.","
 
 ```bash
 curl -s -b cookie.jar "$NP/api/workflows/21f1c0d4-.../versions" | jq '.[0]'
-curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../rollback/12" \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../rollback/12" \
   -H 'Content-Type: application/json' -d '{"reason":"revert bad config"}'
 
 # Contract: inputs from manualTrigger.parameters + outputs from returnData + system
@@ -85,7 +95,7 @@ curl -s -b cookie.jar "$NP/api/workflows/by-name/deploy-prod/contract" | jq
 
 ```bash
 # Test a step with mock variables + a config override
-curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../steps/runHealth/test" \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../steps/runHealth/test" \
   -H 'Content-Type: application/json' \
   -d '{ "mockVariables": { "checkDisk.output": "7", "checkDisk.param.freeGb": "7" },
         "configOverride": { "script": "Get-Process", "timeoutSeconds": 30 } }' | jq
@@ -106,12 +116,12 @@ curl -s -b cookie.jar "$NP/api/workflows/21f1c0d4-.../coverage?windowDays=7" | j
 
 ```bash
 curl -s -b cookie.jar "$NP/api/workflows/21f1c0d4-.../export" -o deploy.envelope.json
-import_result="$(curl -s -b cookie.jar -X POST "$NP/api/workflows/import" \
+import_result="$(curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/import" \
   -H 'Content-Type: application/json' --data-binary @deploy.envelope.json)"
 workflow_id="$(printf '%s' "$import_result" | jq -r '.workflows[0].id')"
 
 # Import is always disabled; only this explicit second call arms the workflow.
-curl -s -o /dev/null -w '%{http_code}\n' -b cookie.jar -X POST \
+curl -s -o /dev/null -w '%{http_code}\n' -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST \
   "$NP/api/workflows/$workflow_id/enable"
 ```
 
@@ -125,7 +135,7 @@ activation visibly. Envelope type: `nodepilot-workflow-export/v1`. Secrets are r
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/executions` | The list (`?workflowId=&activeOnly=&terminalOnly=`, 500 cap) |
+| `GET /api/executions` | The list (`?workflowId=&activeOnly=&terminalOnly=&includePayloads=`, 500 cap). `includePayloads` is the only one of these that does not filter but changes the response shape: it defaults to `true`, and `false` returns `returnData` and `inputParametersJson` as `null`. Purely narrowing parameters (`page`, `pageSize`, `status`, `search`) are deliberately left out of this table. |
 | `GET /api/executions/{id}` | A single execution |
 | `GET /api/executions/{id}/steps` | The steps of an execution |
 | `POST /api/executions/{id}/cancel` / `retry` / `resume` | A single run |
@@ -134,8 +144,8 @@ activation visibly. Envelope type: `nodepilot-workflow-export/v1`. Secrets are r
 curl -s -b cookie.jar "$NP/api/executions?workflowId=21f1c0d4-...&activeOnly=true" | jq '.[0]'
 curl -s -b cookie.jar "$NP/api/executions/7e3f..." | jq '{status,startedAt,completedAt,triggeredBy}'
 curl -s -b cookie.jar "$NP/api/executions/7e3f.../steps" | jq '.[] | {stepId,status,durationMs}'
-curl -s -b cookie.jar -X POST "$NP/api/executions/7e3f.../cancel" -i   # 204
-curl -s -b cookie.jar -X POST "$NP/api/executions/7e3f.../retry"  -i   # 202 + Location
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/executions/7e3f.../cancel" -i   # 204
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/executions/7e3f.../retry"  -i   # 202 + Location
 ```
 
 The `resume` body (a debug pause): `{"stepId":"runHealth","mode":"continue|stepOver|stop","overrides":{"vars.targetHost":"srv02"}}` → 204.
@@ -150,18 +160,18 @@ The `resume` body (a debug pause): `{"stepId":"runHealth","mode":"continue|stepO
 
 ```bash
 # Create a machine
-curl -s -b cookie.jar -X POST "$NP/api/machines" -H 'Content-Type: application/json' \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/machines" -H 'Content-Type: application/json' \
   -d '{ "name":"SRV-PROD-01", "hostname":"srv-prod-01.contoso.com",
         "winRmPort":5985, "useSsl":false,
         "defaultCredentialId":"4c2a-...", "tags":"prod;web" }'
 
 # Connection test (credentialId null = the machine default)
-curl -s -b cookie.jar -X POST "$NP/api/machines/9f1a.../test" \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/machines/9f1a.../test" \
   -H 'Content-Type: application/json' -d '{"credentialId":null}'
 # { "success":true, "computerName":"SRV-PROD-01", "credentialUsed":"svc-winrm" }
 
 # Credential (password minimum 8 characters, never returned)
-curl -s -b cookie.jar -X POST "$NP/api/credentials" -H 'Content-Type: application/json' \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/credentials" -H 'Content-Type: application/json' \
   -d '{ "name":"svc-winrm", "username":"CONTOSO\\svc-winrm", "password":"p@ssw0rd!", "domain":null }'
 # 201 → { "id":"...", "name":"svc-winrm", "username":"CONTOSO\\svc-winrm", "domain":null }
 ```
@@ -171,12 +181,12 @@ curl -s -b cookie.jar -X POST "$NP/api/credentials" -H 'Content-Type: applicatio
 `GET /api/global-variables` (Admin/Operator), `POST/PUT/DELETE` (Admin). Name pattern `[A-Za-z0-9_-]{1,100}`. Secrets are stored but never returned (`"value":"***"`).
 
 ```bash
-curl -s -b cookie.jar -X POST "$NP/api/global-variables" -H 'Content-Type: application/json' \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/global-variables" -H 'Content-Type: application/json' \
   -d '{ "name":"API_ENDPOINT", "value":"https://api.example.com",
         "isSecret":false, "description":"Upstream API base URL" }'
 
 # Create a secret — the response masks the value
-curl -s -b cookie.jar -X POST "$NP/api/global-variables" -H 'Content-Type: application/json' \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/global-variables" -H 'Content-Type: application/json' \
   -d '{ "name":"SIGNING_KEY", "value":"-----BEGIN PRIVATE KEY-----...",
         "isSecret":true, "description":null }'
 # 201 → { ..., "value":"***", "isSecret":true }
@@ -274,21 +284,21 @@ curl -s -b cookie.jar "$NP/api/observability/summary" | jq '.panels[] | {key,val
 # Backup — multipart for preview/restore, the passphrase as a form field
 curl -s -b cookie.jar "$NP/api/backup/manifest" | jq   # {"sections":[{"section":"Credentials","count":12},...]}
 
-curl -s -b cookie.jar -X POST "$NP/api/backup/export" -H 'Content-Type: application/json' \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/backup/export" -H 'Content-Type: application/json' \
   -d '{ "sections":["Credentials","GlobalVariables","Workflows","Settings"],
         "passphrase":"correct-horse-battery-staple" }' -o backup.npbackup
 
 # Restore: file + passphrase + policy (skip|rename|overwrite, overridable per section)
-curl -s -b cookie.jar -X POST "$NP/api/backup/restore" \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/backup/restore" \
   -F "file=@backup.npbackup" -F "passphrase=correct-horse-battery-staple" -F "policy=skip,Users=Overwrite"
 
 # Users
-curl -s -b cookie.jar -X POST "$NP/api/users" -H 'Content-Type: application/json' \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/users" -H 'Content-Type: application/json' \
   -d '{ "username":"alice", "password":"p@ssw0rd!", "role":"Operator" }'   # 201
 
 # Settings — ETag-gated (If-Match required)
 ETAG=$(curl -s -b cookie.jar -D - "$NP/api/admin/settings/Smtp" | tr -d '\r' | awk -F': ' '/^ETag:/ {print $2}')
-curl -s -b cookie.jar -X PUT "$NP/api/admin/settings/Smtp" \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X PUT "$NP/api/admin/settings/Smtp" \
   -H 'Content-Type: application/json' -H "If-Match: $ETAG" -d @smtp.json
 # 428 without If-Match; 412 on a mismatch; 400 from boot validation "would prevent booting"
 # In a cluster: PUT /api/admin/settings/Authentication → 409 CLUSTER_CONFIG_AS_CODE_REQUIRED
@@ -303,7 +313,7 @@ curl -s -b cookie.jar -X PUT "$NP/api/admin/settings/Smtp" \
 | Folder permissions | `GET/POST /api/shared-workflow-folders/{folderId}/permissions`, `PUT/DELETE /{permissionId}` |
 | Settings | `GET /api/admin/settings`, `GET\|PUT /{section}`, `GET /status\|system-info\|effective-sizing`, `POST /test/smtp\|test/llm\|test/ldap` (Admin; an Authentication PUT in a cluster returns 409) |
 | Database admin | `GET /api/dbadmin/tables`, `GET\|PATCH\|DELETE /tables/{name}/rows`, `GET /info`, `POST /query` (Admin) |
-| Dashboard | `GET /api/stats/dashboard`, `GET /api/stats/failure-causes?windowHours=N` (1..720, default 24 — recent failures grouped by their normalized message; folder-scoped like the dashboard) |
+| Dashboard | `GET /api/stats/dashboard`, `GET /api/stats/failure-causes?windowHours=N` (1..720, default 24 — recent failures grouped by their normalized message; folder-scoped like the dashboard), `GET /api/stats/sidebar-counts` (three nav-badge counters for the SPA, folder-scoped; deliberately has neither an `np` command nor an MCP tool — `np stats dashboard` covers the same numbers) |
 | Activity catalog | `GET /api/activity-catalog` |
 | Scheduler | `GET /api/triggers/schedule/next-fires` |
 | System | `GET /api/system/host-info` (all roles) |
@@ -327,20 +337,27 @@ The maintenance-window create body:
 
 `Llm:Enabled=false` by default. 503 `{"code":"LLM_DISABLED",...}` when disabled, and 503 `{"code":"LLM_NO_ACTIVE_PROFILE",...}` when enabled but no LLM profile is selected.
 
+Script generation returns Server-Sent Events: concatenate `delta.text` fragments to obtain the script; `done` contains `model` and `durationMs`. Failures before the stream starts use normal HTTP errors; later failures arrive as an `error` event with `code` and `message`. `curl -N` displays fragments without output buffering.
+
 ```bash
 # Generate a script (with upstream variable context)
 # The optional editor context additionally requires includeCurrentScript:true; without that flag
 # the server ignores a supplied currentScript, because it can contain passwords or tokens.
-curl -s -b cookie.jar -X POST "$NP/api/ai/generate-script" -H 'Content-Type: application/json' \
+curl -sN -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/ai/generate-script" -H 'Content-Type: application/json' \
   -d '{ "prompt":"Write a PowerShell step that checks free disk space",
         "workflowId":"21f1c0d4-...", "stepId":"runScript_1",
         "upstreamVariables":[
           {"stepId":"collectInfo","label":"Collect Info → $hostname",
            "variable":"collectInfo.param.hostname","expression":"{{collectInfo.param.hostname}}","type":"string"}] }'
-# 200 → {"script":"Get-PSDrive ...","durationMs":1820,"model":"gpt-4o","totalTokens":505}
+# 200 Content-Type: text/event-stream
+# event: delta
+# data: {"text":"Get-PSDrive ..."}
+#
+# event: done
+# data: {"model":"gpt-4o","durationMs":1820}
 
 # Generate a workflow
-curl -s -b cookie.jar -X POST "$NP/api/ai/generate-workflow" -H 'Content-Type: application/json' \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/ai/generate-workflow" -H 'Content-Type: application/json' \
   -d '{ "prompt":"A workflow that checks disk space and emails on low" }'
 # 200 → {"definitionJson":"{...}","suggestedName":"Check Disk Space","nodeCount":4,...}
 ```

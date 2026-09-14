@@ -599,10 +599,12 @@ overwritten. Settings are written last (a service restart may be needed for them
 
 | Symptom | Check |
 |---|---|
-| Service starts and stops immediately | Event Viewer → Windows Logs → Application, source `<ServiceName>`. Usually a configuration or ACL problem. |
+| Service starts and stops immediately | Event Viewer → Windows Logs → Application, source `<ServiceName>`. Usually a configuration or ACL problem. Install and update print the same evidence into `%TEMP%\nodepilot-server-setup.log` under `Service-Start-Diagnose` when the start or the health probe fails. |
+| Install or update aborts with "This build needs Microsoft.NETCore.App *x.y.z* or a higher *x*.x" | The artifact is framework-dependent and this host carries an older patch of one of the frameworks it names. Roll-forward never goes backwards, so the apphost refuses to start and the SCM reports only its generic "cannot be started". **Nothing was changed.** Install the ASP.NET Core runtime of that version or newer (x64) — it carries the base .NET runtime of the same version — then re-run. A newer `Microsoft.AspNetCore.App` alone is not enough: every framework the build names is checked separately. |
 | Update aborts with "Access to the path '…\*.dll' is denied" | A process is still running from the install directory (DLLs image-mapped), despite the service being stopped. `tasklist /m <dll>` names the holder; `Get-Process \| Where-Object { $_.Path -like 'C:\Program Files\NodePilot\*' } \| Stop-Process -Force`, then retry. Current builds abort with the PID before anything is deleted. |
 | "Processes are still running from … and could not be ended" | A process from the install directory survived the 30 s grace period **and** could not be terminated — in practice always missing permissions or a hung kernel call. The PID and name are in the message; the service and the files are untouched. Terminate the process or reboot, then retry. |
 | Browser shows `{"message":"Token is no longer valid"}` instead of the app | The session cookie has exceeded the absolute lifetime (`Authentication:SessionAbsoluteLifetimeHours`, 8 h). Artifacts before 2026-08-02 answered SPA navigations including `/login` with that too. Clear the site's cookies; permanently: deploy a current artifact. |
+| Browser shows **Bad Request - Invalid Hostname** (`HTTP Error 400. The request hostname is invalid.`) | The page imitates IIS but comes from ASP.NET Core's host filtering. `AllowedHosts` holds the `-PublicHostname` the installer was given plus `localhost`, and nothing else — a short name, an IP or a DNS alias is rejected. Use the exact name (the FQDN also matches the certificate); `install-report.txt` names the list. To add one, extend `AllowedHosts` semicolon-separated in `appsettings.Production.json` and restart the service — it is read once at boot. `"*"` is refused by `Security:StrictAllowedHosts`; `*.example.com` is accepted. |
 | Certificate not found / no private key | `Get-ChildItem Cert:\LocalMachine\My\<thumb>` — must show HasPrivateKey=True. On re-import use `-KeyStorageFlags MachineKeySet,PersistKeySet,Exportable`. |
 | Service stops right after a certificate swap | The service account has no read ACE on the new key file. The installer grants it (`Grant-CertPrivateKeyAccess`), a manual swap does not. Steps: [Replacing the HTTPS certificate](../src/nodepilot-docs-ui/content/en/deployment/production.md#replacing-the-https-certificate). Under `LocalSystem` this cannot be the cause — SYSTEM already reads `MachineKeys`. |
 | 503 on `/healthz/ready` | The database is not ready. State and reason are available without signing in at `/healthz/database` (always HTTP 200) or via `np health`. On SQL Server also check as the gMSA with `sqlcmd -S sql01 -E -d NodePilot -Q "SELECT 1"`. |
@@ -621,7 +623,11 @@ overwritten. Settings are written last (a service restart may be needed for them
 
 - It does not install the ASP.NET Core runtime — that must be present beforehand. **Exception:** the
   GUI setup (`server/`) ships the official Microsoft runtime installer and offers it on the readiness
-  page; the ZIP route described here does not.
+  page; the ZIP route described here does not. Both install and update do *check* it: once the
+  artifact is extracted, the frameworks its `runtimeconfig.json` names are matched against what the
+  host reports, and a shortfall aborts before anything on the machine is changed. The readiness
+  page's own check is a fixed floor on `Microsoft.AspNetCore.App` and cannot see either the build's
+  exact requirement or the base runtime.
 - **It does not delete the database on uninstall — not even optionally.** It was provisioned
   separately, often has its own backup and replication regime, and in an active/passive cluster both
   nodes share it. What the installer never created, it does not remove.

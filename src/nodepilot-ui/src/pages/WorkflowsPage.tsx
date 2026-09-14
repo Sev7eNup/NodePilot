@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useTranslation, Trans } from 'react-i18next';
 import { api, downloadFromApi } from '../api/client';
-import type { Workflow, LastExecutionInfo } from '../types/api';
+import type { Workflow, WorkflowListItem, LastExecutionInfo } from '../types/api';
 import { formatDate, formatDuration, formatRelative } from '../lib/format';
 import { TRIGGER_BADGE_META } from '../lib/triggerBadgeMeta';
 import {
@@ -61,7 +61,7 @@ type ScorchImportResponse = {
 };
 
 /** Module-level so the identity stays stable across renders; useBulkSelection memoizes on it. */
-const workflowKey = (w: Workflow) => w.id;
+const workflowKey = (w: WorkflowListItem) => w.id;
 
 function buildTriggerMeta(t: (k: string) => string): Record<string, { label: string; icon: typeof Time; className: string }> {
   return {
@@ -176,7 +176,7 @@ export function WorkflowsPage() {
     isFetching: isRefetchingWorkflows,
   } = useQuery({
     queryKey: ['workflows'],
-    queryFn: () => api.get<Workflow[]>('/workflows'),
+    queryFn: () => api.get<WorkflowListItem[]>('/workflows'),
     meta: { silentError: true },
   });
 
@@ -225,24 +225,24 @@ export function WorkflowsPage() {
   const enableMutation = useMutation({
     mutationFn: (id: string) => api.post(`/workflows/${id}/enable`, {}),
     onSuccess: (_, id) =>
-      queryClient.setQueryData<Workflow[]>(['workflows'], old =>
+      queryClient.setQueryData<WorkflowListItem[]>(['workflows'], old =>
         old?.map(w => w.id === id ? { ...w, isEnabled: true } : w) ?? []),
   });
 
   const disableMutation = useMutation({
     mutationFn: (id: string) => api.post(`/workflows/${id}/disable`, {}),
     onSuccess: (_, id) =>
-      queryClient.setQueryData<Workflow[]>(['workflows'], old =>
+      queryClient.setQueryData<WorkflowListItem[]>(['workflows'], old =>
         old?.map(w => w.id === id ? { ...w, isEnabled: false } : w) ?? []),
   });
 
   // Operational, like enable/disable: no edit lock, no version bump.
-  const [concurrencyTarget, setConcurrencyTarget] = useState<Workflow | null>(null);
+  const [concurrencyTarget, setConcurrencyTarget] = useState<WorkflowListItem | null>(null);
   const concurrencyMutation = useMutation({
     mutationFn: ({ id, limit }: { id: string; limit: number | null }) =>
       api.put(`/workflows/${id}/concurrency-limit`, { maxConcurrentExecutions: limit }),
     onSuccess: (_, { id, limit }) => {
-      queryClient.setQueryData<Workflow[]>(['workflows'], old =>
+      queryClient.setQueryData<WorkflowListItem[]>(['workflows'], old =>
         old?.map(w => w.id === id ? { ...w, maxConcurrentExecutions: limit } : w) ?? []);
       setConcurrencyTarget(null);
     },
@@ -427,7 +427,7 @@ export function WorkflowsPage() {
     e.target.value = '';
   };
 
-  const handleExportOne = async (w: Workflow) => {
+  const handleExportOne = async (w: WorkflowListItem) => {
     try {
       await downloadFromApi(`/workflows/${w.id}/export`, `${w.name}.workflow.json`);
     } catch (err) {
@@ -587,7 +587,7 @@ export function WorkflowsPage() {
   // The list does not carry definitions, so the parameter form is fetched only for the
   // workflows that actually prompt for input. `hasManualTriggerParameters` comes from the list,
   // so the common case — run it and go — still fires without a round-trip.
-  const handleRunWorkflow = async (w: Workflow) => {
+  const handleRunWorkflow = async (w: WorkflowListItem) => {
     if (!w.hasManualTriggerParameters) {
       executeMutation.mutate({ id: w.id });
       return;
@@ -595,10 +595,11 @@ export function WorkflowsPage() {
     try {
       const full = await api.get<Workflow>(`/workflows/${w.id}`);
       setRunDialogWorkflow(full);
-    } catch {
-      // Fall back to running it without parameters rather than swallowing the click; the
-      // engine seeds declared defaults for anything the caller leaves out.
-      executeMutation.mutate({ id: w.id });
+    } catch (err) {
+      // Never fall through to an unparameterised run: a declared parameter without a default
+      // stays absent, so the run would fail late at template resolution or use the wrong input.
+      // The user clicked to be asked — report why they were not.
+      toast.error(t('workflows:runDialogLoadFailed', { message: (err as Error).message }));
     }
   };
 
@@ -609,13 +610,13 @@ export function WorkflowsPage() {
   // hidden, matching what the API would 403 anyway. Where capabilities widen access
   // is the opposite case: a global Operator who has FolderEditor on /Finance only
   // sees edit buttons exclusively on /Finance rows, not on /Sales.
-  const rowCanRun    = (w: Workflow) => w.capabilities ? w.capabilities.canRun  : canWrite;
-  const rowCanEdit   = (w: Workflow) => w.capabilities ? w.capabilities.canEdit : canWrite;
+  const rowCanRun    = (w: WorkflowListItem) => w.capabilities ? w.capabilities.canRun  : canWrite;
+  const rowCanEdit   = (w: WorkflowListItem) => w.capabilities ? w.capabilities.canEdit : canWrite;
   // canDelete is its own capability from the server (the controller enforces Admin-only).
   // A frontend heuristic based on canEdit alone was deliberately not used, because
   // Operators with Folder-Editor rights also have canEdit=true but must not see Delete.
-  const rowCanDelete = (w: Workflow) => w.capabilities ? w.capabilities.canDelete : canDelete;
-  const rowCanForceUnlock = (w: Workflow) => w.capabilities ? w.capabilities.canAdmin : isAdmin;
+  const rowCanDelete = (w: WorkflowListItem) => w.capabilities ? w.capabilities.canDelete : canDelete;
+  const rowCanForceUnlock = (w: WorkflowListItem) => w.capabilities ? w.capabilities.canAdmin : isAdmin;
 
   // Import/SCOrch-Import target the currently selected folder (Root when "all" is
   // selected) — like Create. Gate the buttons on the caller's effective Edit on THAT
@@ -1389,7 +1390,7 @@ export function WorkflowsPage() {
       {/* Run Dialog for ManualTrigger workflows */}
       {runDialogWorkflow && (() => {
         // Set from the single-workflow fetch in handleRunWorkflow, so the definition is present.
-        const triggerConfig = extractManualTriggerConfig(runDialogWorkflow.definitionJson ?? '');
+        const triggerConfig = extractManualTriggerConfig(runDialogWorkflow.definitionJson);
         if (!triggerConfig) return null;
         return (
           <RunWorkflowDialog

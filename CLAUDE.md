@@ -194,7 +194,7 @@ User-authored, PowerShell-backed Activities (UI: „Custom Nodes") — reine **r
 User-definierte Regeln, die bei passenden Ereignissen über Kanäle (SMTP / Generic-Webhook + HMAC) benachrichtigen. Opt-in **per Daten** (idle bis eine Regel existiert). Volle Doku: `docs/alerting.md`.
 
 - **Zwei Arten:** Custom-Regeln (`Kind=Custom`, Execution-Events, Filter-AST = derselbe `ConditionEvaluator` wie Edge-Conditions) und System-Policies (`Kind=System`, ADR 0008 — 14 katalogisierte `ISystemAlertSource`s für Infra-/Signal-/Security-Alerts, ausgewertet vom `SystemAlertEvaluator`; `audit-event` macht das Audit-Log in-product alarmierbar).
-- **Kern:** Entität `NotificationRule` (+ Routes/Targets) + getrennte State-Tabellen (Suppression, Delivery-Ledger `NotificationDeliveryAttempt`, Dispatcher-Watermark). `NotificationDispatcher` (leader-gated, ~30 s) matcht → suppressed (Cooldown/Flap) → persistiert Pending-Attempt VOR jedem I/O → sendet (exactly-once pro `(rule, route, occurrence)`).
+- **Kern:** Entität `NotificationRule` (+ Routes/Targets) + getrennte State-Tabellen (Suppression, Delivery-Ledger `NotificationDeliveryAttempt`, Dispatcher-Watermark). `NotificationDispatcher` (leader-gated, ~30 s) matcht → suppressed (Cooldown/Flap) → persistiert Pending-Attempt VOR jedem I/O → sendet (**at-least-once**). Der eindeutige Ledger-Key `(rule, route, occurrence)` verhindert doppelte Attempts, aber ein Crash nach Empfang und vor gespeichertem `Sent` kann zur erneuten Zustellung führen; Webhook-Empfänger deduplizieren über `EventKey`.
 - **Governance:** Read Admin/Op; alle Mutationen + Test-Fire Admin-only; neue Regeln entstehen disabled. Secrets in Responses redigiert.
 - **Frontend/CLI/MCP:** Seite `/alerts` (2 Tabs, wiederverwendeter `ConditionBuilder`), `np alerting` + `np system-alert`, MCP-Tools für beides.
 
@@ -324,7 +324,7 @@ Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.js
 
 ### Testumfang pro Änderung
 
-**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (6.277 Backend-Testfälle, 218 Vitest-Dateien, 74 E2E-Specs) und liefert lokal kein neues Signal: das Netz hängt an `ci.yml`, das auf **jedem PR und jedem Push auf main** läuft (Coverage-Gate + E2E eingeschlossen).
+**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (6.597 Backend-Testfälle, 228 Vitest-Dateien, 75 E2E-Specs — die beiden Frontend-Zahlen hält `DocumentationCountsTests` seit 2026-09-14 an der Dateiliste fest, die Backend-Zahl bleibt ein Handmaß) und liefert lokal kein neues Signal: das Netz hängt an `ci.yml`, das auf **jedem PR und jedem Push auf main** läuft (Coverage-Gate + E2E eingeschlossen).
 
 **Der Nightly ist kein verlässlicher zweiter Boden.** Er läuft als Windows-Task um 22:00 gegen den ausgecheckten Baum und wird verpasst, sobald die Maschine dann aus ist — gemessen am 2026-08-31: letzter Lauf 2026-08-22, acht verpasste Läufe. Wer sich auf ihn beruft, prüft vorher `C:\temp\nodepilot-nightly\latest.md` auf sein Datum.
 
@@ -372,6 +372,7 @@ Scoped Testing übersieht genau eine Fehlerklasse — die Parity-/Drift-Tests, d
 | Workflow-Analyzer (`WorkflowAnalyzer`/`WorkflowDataBusAnalyzer` in Core — MCP **und** AI-Chat) | `WorkflowAnalyzerFrontendParityTests` | Engine.Tests |
 | Template-Grammatik / Variable-Resolution | `TemplateGrammarParityTests` | Engine.Tests |
 | Metrics-Dashboard-Katalog | `MetricsDashboardCatalogTests` | Api.Tests |
+| Zahl-tragende Doku-Behauptung (MCP-Tool-Zahl, Activity-Typen, Skins) oder eine neue Vitest-/E2E-Datei | `DocumentationCountsTests` | Mcp.Tests |
 | `RequestSizeLimit` an `/import`/`/import-scorch` oder die Upload-Gates in `WorkflowsPage.tsx` | `ImportSizeLimitFrontendSyncTests` | Api.Tests |
 | LLM-Profil-Defaults (`LlmProfileOptions`, `LlmProfileSettingsDto`, `SettingsSections.cs`, `IntegrationsSection.tsx`) | `LlmProfileDefaultsTests` | Api.Tests |
 | `vite.config.ts`-Proxy / Dev-Ports | `AppSettingsHygieneTests` | Api.Tests |

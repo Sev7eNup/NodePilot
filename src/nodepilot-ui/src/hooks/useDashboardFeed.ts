@@ -10,8 +10,16 @@ const DASHBOARD_STATS_KEY = ['dashboard-stats'];
  * ['dashboard-stats'], the dashboard's own cache key, rather than the operations graph.
  * Any status transition can move several counters, so one debounced refetch replaces
  * per-event deltas.
+ *
+ * The debounce is deliberately long. On a busy instance executions change state constantly, and at
+ * half a second the dashboard refetched several times a minute — each one re-running the parts of
+ * the endpoint that read history. The live tiles this feed exists for (running, queue, recent)
+ * still update far faster than the 120 s polling fallback, while the multi-day aggregates behind
+ * the same response do not need that cadence.
  */
+const LIVE_TILE_DEBOUNCE_MS = 5_000;
+
 export function useDashboardFeed() {
-  useLiveOpsFeed({ queryKey: DASHBOARD_STATS_KEY, debounceMs: 500 });
+  useLiveOpsFeed({ queryKey: DASHBOARD_STATS_KEY, debounceMs: LIVE_TILE_DEBOUNCE_MS });
   return null;
 }

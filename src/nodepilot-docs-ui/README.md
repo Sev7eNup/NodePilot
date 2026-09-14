@@ -31,7 +31,7 @@ Der README-Video-Link bleibt dadurch stabil. `.gitattributes` schließt `pages-m
 
 - `src/data/nav.ts` — Seitenbaum, Gruppierung, Sidebar-Icon je Seite, Prev/Next-Logik, `groupOf()` für den Breadcrumb. Das `icon`-Feld ist **required**: `tsc -b` schlägt fehl, sobald eine neue Seite ohne Icon eingetragen wird.
 - `src/lib/content.ts` — lädt via `import.meta.glob` alle `content/**/*.md` als Raw-Strings
-- `src/lib/useTheme.ts` — Light/Dark-Toggle (LocalStorage). Die Erstauflösung passiert im Inline-Script in `index.html` **vor** dem ersten Paint (kein Theme-Flash); der Hook seedet aus der gesetzten `html.dark`-Klasse.
+- `src/lib/useTheme.ts` — Light/Dark-Toggle (LocalStorage). Die Erstauflösung passiert in der externen Datei `public/theme-init.js`, die `index.html` als klassisches Script ohne `defer`/`async` **vor** dem ersten Paint lädt (kein Theme-Flash, kompatibel mit `script-src 'self'`); der Hook seedet aus der gesetzten `html.dark`-Klasse.
 - `src/components/` — `TopBar`, `Sidebar`, `DocPage`, `Toc`, `SearchModal`
 - `src/index.css` — Tailwind + Design-Tokens (Material-3-Tonal-Palette / Azur) + portierte `.np-sidebar`-, `.np-nav`- und `.np-card`-Blöcke + `.np-prose`
 - `index.html` — SPA-Root (`#root`) + Pre-Hydration-Theme-Script

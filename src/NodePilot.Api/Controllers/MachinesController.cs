@@ -43,19 +43,23 @@ public class MachinesController : ControllerBase
     private readonly IAuditWriter _audit;
     private readonly ILogger<MachinesController> _logger;
     private readonly WorkflowDefinitionFactsCache _definitionFacts;
-    private readonly IMemoryCache? _cache;
+    private readonly IMemoryCache _cache;
 
     // logger is optional so the slim direct-construction tests don't have to thread a logger
-    // through every call site; DI always supplies the real one in production.
+    // through every call site; DI always supplies the real one in production. The caches are not:
+    // controllers are activated through ActivatorUtilities, which honours default values, so a
+    // defaulted cache would turn a missing registration into a silent per-request throwaway that
+    // never hits — no error, no log line, and every list call back to reading every definition.
     public MachinesController(NodePilotDbContext db, IRemoteSessionFactory sessionFactory,
-        ICredentialStore credentialStore, IAuditWriter audit, ILogger<MachinesController>? logger = null,
-        WorkflowDefinitionFactsCache? definitionFacts = null, IMemoryCache? cache = null)
+        ICredentialStore credentialStore, IAuditWriter audit,
+        WorkflowDefinitionFactsCache definitionFacts, IMemoryCache cache,
+        ILogger<MachinesController>? logger = null)
     {
         _db = db;
         _sessionFactory = sessionFactory;
         _credentialStore = credentialStore;
         _audit = audit;
-        _definitionFacts = definitionFacts ?? new WorkflowDefinitionFactsCache();
+        _definitionFacts = definitionFacts;
         _cache = cache;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<MachinesController>.Instance;
     }
@@ -140,11 +144,8 @@ public class MachinesController : ControllerBase
     private async Task<(Dictionary<Guid, (int Total, int Failed)> Recent, Dictionary<Guid, int> Active)>
         GetStepStatsAsync(CancellationToken ct)
     {
-        if (_cache is not null
-            && _cache.TryGetValue(StepStatsCacheKey, out (Dictionary<Guid, (int, int)> Recent, Dictionary<Guid, int> Active) cached))
-        {
+        if (_cache.TryGetValue(StepStatsCacheKey, out (Dictionary<Guid, (int, int)> Recent, Dictionary<Guid, int> Active) cached))
             return cached;
-        }
 
         // 2) Recent step stats — last 7 days, grouped by resolved target string.
         //    StepExecution.TargetMachine stores the template-resolved string (set
@@ -185,7 +186,7 @@ public class MachinesController : ControllerBase
                 activeRuns[mid] = row.Count;
 
         var result = (recentStepStats, activeRuns);
-        _cache?.Set(StepStatsCacheKey, result, StepStatsCacheTtl);
+        _cache.Set(StepStatsCacheKey, result, StepStatsCacheTtl);
         return result;
     }
 

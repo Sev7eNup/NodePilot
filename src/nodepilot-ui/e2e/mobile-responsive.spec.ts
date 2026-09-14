@@ -120,6 +120,11 @@ test.describe('Mobile responsiveness', () => {
       status: 200, contentType: 'application/json',
       body: JSON.stringify([{ id: 'wf1', name: 'Nightly Backup', version: 1, activityCount: 3, triggerTypes: [], isEnabled: true, createdAt: '2026-06-01T00:00:00Z', updatedAt: '2026-06-01T00:00:00Z' }]),
     }));
+    // The executions page labels its rows from /names; the route above matches the exact path only.
+    await page.route('**/api/workflows/names', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([{ id: 'wf1', name: 'Nightly Backup' }]),
+    }));
     await page.route('**/api/executions**', (route) => route.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify([{ id: 'ex1', workflowId: 'wf1', status: 'Succeeded', startedAt: '2026-06-01T10:00:00Z', completedAt: '2026-06-01T10:01:00Z', stepsTotal: 3, stepsCompleted: 3, failedSteps: [], triggeredBy: 'manual', startedByUsername: 'admin', traceId: null, parentExecutionId: null }]),

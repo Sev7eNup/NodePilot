@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
@@ -82,6 +83,30 @@ internal sealed class DashboardFailureCauses(NodePilotDbContext db, OutputRedact
         var normalized = GuidPattern.Replace(scrubbed, "<id>");
         normalized = TimestampPattern.Replace(normalized, "<timestamp>");
         return WhitespacePattern.Replace(normalized, " ").Trim();
+    }
+
+    /// <summary>
+    /// Reads the failure causes for a window ending now, resolving the execution scope itself.
+    ///
+    /// <para>Takes the window length rather than a fixed start/end pair because the result is
+    /// cached and later recomputed by the warm-up: a captured timestamp would freeze the window at
+    /// the moment of the first call.</para>
+    /// </summary>
+    public async Task<FailureCausesResponse> ReadWindowAsync(
+        NodePilot.Core.Interfaces.AccessibleFolderSet accessible, int windowHours, CancellationToken ct)
+    {
+        // Precomputed buckets first — this is the most expensive query on the dashboard, because it
+        // groups on an unbounded text column. Null means the rollup does not cover the window yet;
+        // then the live path below runs, which is slow but correct.
+        var fromBuckets = await new DashboardRollupReader(db)
+            .ReadFailureCausesAsync(accessible, windowHours, ct);
+        if (fromBuckets is not null) return fromBuckets;
+
+        var executions = db.WorkflowExecutions.AsNoTracking()
+            .ScopeToAccessibleFolders(accessible);
+        if (executions is null) return new FailureCausesResponse(0, [], 0);
+        var now = DateTime.UtcNow;
+        return await ReadAsync(executions, now.AddHours(-windowHours), now, ct);
     }
 
     public async Task<FailureCausesResponse> ReadAsync(IQueryable<WorkflowExecution> accessible, DateTime since, DateTime now, CancellationToken ct)

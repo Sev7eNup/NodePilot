@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { WorkflowInfoCard } from '../../../components/designer/WorkflowInfoCard';
 import { formatDuration } from '../../../lib/format';
-import type { Workflow } from '../../../types/api';
+import type { WorkflowListItem } from '../../../types/api';
 
 // formatRelative() output is relative to the current time, so these tests assert only on
 // stable, deterministic fields.
-function makeWorkflow(overrides: Partial<Workflow> = {}): Workflow {
+function makeWorkflow(overrides: Partial<WorkflowListItem> = {}): WorkflowListItem {
   return {
     id: 'wf-1',
     name: 'Nightly Backup',
@@ -31,7 +31,7 @@ function makeWorkflow(overrides: Partial<Workflow> = {}): Workflow {
     checkedOutAt: null,
     folderPath: '/VRZ/Maintenance',
     ...overrides,
-  } as Workflow;
+  } as WorkflowListItem;
 }
 
 describe('WorkflowInfoCard', () => {

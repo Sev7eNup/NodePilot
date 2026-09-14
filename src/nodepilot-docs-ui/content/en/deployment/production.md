@@ -542,6 +542,7 @@ $releaseSigner = "0123456789ABCDEF0123456789ABCDEF01234567"
 The updater:
 
 - verifies the new artifact,
+- matches every framework the new build names against the runtimes the host reports and aborts **before anything is changed** when one of them is short — roll-forward never goes backwards, so an older patch on the host means the service would not start at all,
 - backs up the existing binaries,
 - waits up to 30 seconds after stopping the service for processes from the installation directory to exit and then terminates any that remain; only if that does not help does the updater abort with the process name and PID **before the first file deletion** (a stopped service is not enough: orphaned workers keep their DLLs mapped),
 - preserves the database, the service account, the production configuration and the Switcher's server URL,

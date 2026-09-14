@@ -29,10 +29,14 @@ limit holds across **every** caller — manual runs, schedule/file/database/even
 webhooks, external triggers and sub-workflow calls from `startWorkflow` and `forEach` — so two
 parents fanning out to the same child cannot exceed it between them.
 
-Reaching the limit **queues**, it never rejects: a queued run stays `Pending` and starts on its
-own as soon as a slot frees. Nothing is lost and no run is marked failed. A `forEach` loop's
-`maxParallelism` still bounds that one loop; the workflow limit bounds the child across all of
-them, and the tighter of the two wins.
+Durably dispatched starts stay `Pending` when the limit is reached and start when a slot
+frees. This also applies to asynchronous `startWorkflow` (`waitForCompletion=false`). Reaching
+the limit alone does not fail these dispatch requests.
+
+Synchronous `startWorkflow` calls and `forEach` instead wait for a slot inside the running
+parent. This wait counts towards the step or per-item timeout and can time out before the
+child starts; it does not create a durable Pending child execution. A loop's `maxParallelism`
+still bounds that loop, while the workflow limit bounds the child across callers.
 
 Changing the limit takes effect immediately. Lowering it below the number of active runs cancels
 nothing — the excess drains and the cap applies from then on. Raising it releases queued runs at
@@ -100,23 +104,32 @@ All `nodesDraggable`/`nodesConnectable`/save/tidy affordances follow automatical
 
 > `NP=http://localhost:5000`, authentication via `-b cookie.jar` (see [Authentication](./authentication)). JSON property keys are camelCase; enum values are PascalCase strings (`"status":"Succeeded"`).
 
+The Bash examples below assume a login following [Authentication](./authentication) and a `cookie.jar` dedicated to this server. Define this function before running them; it reads the current CSRF value, including after a refresh:
+
+```bash
+NP=http://localhost:5000
+csrf_token() {
+  awk '$6 == "np_csrf" {sub(/\r$/, "", $7); print $7}' cookie.jar
+}
+```
+
 ### Running
 
 ```bash
 # Start asynchronously — 202 + ExecutionResponse, with a Location header pointing at /api/executions/{id}
-curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../execute" \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../execute" \
   -H 'Content-Type: application/json' \
   -d '{ "parameters": { "version":"2.1.0", "env":"prod" },
         "timeoutSeconds": 300, "debug": false }'
 # 202 → {"id":"7e3f...","workflowId":"...","status":"Pending","triggeredBy":"manual",...}
 
 # A debug run with a pause — resume via /api/executions/{id}/resume
-curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../execute" \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../execute" \
   -H 'Content-Type: application/json' \
   -d '{ "parameters":{}, "debug": true }'
 
 # An admin can bypass a maintenance window
-curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../execute?force=true" \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../execute?force=true" \
   -H 'Content-Type: application/json' -d '{}'
 ```
 
@@ -126,45 +139,45 @@ Progress through SignalR (`/hubs/execution`). `parameters` keys with a `__` pref
 
 ```bash
 # Request the lock — atomically IsEnabled=false + the lock fields. 409 if someone else holds it.
-curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../lock"
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../lock"
 # 200 → WorkflowResponse (locked by me, disabled)
 
 # Save an intermediate state (PUT, no status change) — 423 without your own lock
-curl -s -b cookie.jar -X PUT "$NP/api/workflows/21f1c0d4-..." \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X PUT "$NP/api/workflows/21f1c0d4-..." \
   -H 'Content-Type: application/json' \
   -d '{ "name":"Deploy App", "description":"wip",
         "definitionJson":"{\"nodes\":[...],\"edges\":[...]}" }' -i   # 204
 
 # Publish — atomically save + enable + unlock. The workflow is productive again.
-curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../publish" \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../publish" \
   -H 'Content-Type: application/json' \
   -d '{ "name":"Deploy App", "description":null,
         "definitionJson":"{\"nodes\":[...],\"edges\":[...]}" }'
 
 # Exit without publishing: unlock only — the workflow stays disabled
-curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../unlock"
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../unlock"
 
 # Reactivate without an edit round trip (IsEnabled=false, no lock → /enable)
-curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../enable" -i   # 204
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../enable" -i   # 204
 
 # Break someone else's lock (admin only)
-curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../force-unlock"
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../force-unlock"
 ```
 
 ### Quarantine & controlling a single run
 
 ```bash
 # Quarantine = disable + cancel-all
-curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../disable" -i       # 204, ignores locks
-curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../cancel-all"
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../disable" -i       # 204, ignores locks
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/workflows/21f1c0d4-.../cancel-all"
 # 200 → {"total":3,"signalled":2}
 
 # A single execution
-curl -s -b cookie.jar -X POST "$NP/api/executions/7e3f.../cancel" -i            # 204
-curl -s -b cookie.jar -X POST "$NP/api/executions/7e3f.../retry"  -i            # 202 + Location
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/executions/7e3f.../cancel" -i            # 204
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/executions/7e3f.../retry"  -i            # 202 + Location
 
 # Debug resume — stepId is required, mode: continue|stepOver|stop
-curl -s -b cookie.jar -X POST "$NP/api/executions/7e3f.../resume" \
+curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/executions/7e3f.../resume" \
   -H 'Content-Type: application/json' \
   -d '{ "stepId":"runHealth", "mode":"stepOver",
         "overrides": { "vars.targetHost":"srv02" } }' -i                        # 204

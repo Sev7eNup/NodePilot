@@ -89,10 +89,11 @@ Custom rules react to events. A rule consists of event types, optional filters, 
 | Group | Events |
 |---|---|
 | Executions | Failed, succeeded, cancelled, running long, waiting long |
-| Credentials | Credential error, credential expiring |
-| Operations | Stale service, machine unreachable, high backlog, high pending backlog, high cancellation rate |
-| Schedules | Missed schedule, no recent workflow success |
-| System | System alert |
+| Credentials | Credential error |
+
+Credential expiry, service/machine health, backlog, cancellation rate and schedule monitoring
+are configured through system policies. These signals and `SystemAlert` cannot be selected as
+event types for a custom rule.
 
 For a manual cancellation, the **Cancelled by** field can be filtered. The value `user` limits the rule to executions cancelled individually by a person.
 

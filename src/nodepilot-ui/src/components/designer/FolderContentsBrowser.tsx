@@ -2,7 +2,7 @@ import { ArrowUp, ChevronRight, FlowModeler, Folder } from '@carbon/icons-react'
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ROOT_FOLDER_ID, type SharedFolder } from '../../api/sharedFolders';
-import type { Workflow } from '../../types/api';
+import type { WorkflowSummary } from '../../types/api';
 
 interface Props {
   /** Folder whose contents the popover opens on. */
@@ -10,9 +10,9 @@ interface Props {
   /** Full (RBAC-visible) folder tree — used for sub-folders + drill-in. */
   folders: SharedFolder[];
   /** Workflow list to filter by folder membership. */
-  workflows: Workflow[];
+  workflows: WorkflowSummary[];
   currentWorkflowId: string | undefined;
-  onOpenWorkflow: (w: Workflow) => void;
+  onOpenWorkflow: (w: WorkflowSummary) => void;
   /** Hover bridge — keep the popover open while the pointer is inside it. */
   onMouseEnter: () => void;
   onMouseLeave: () => void;

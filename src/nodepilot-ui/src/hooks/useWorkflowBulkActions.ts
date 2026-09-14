@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import type { Workflow } from '../types/api';
+import type { WorkflowListItem } from '../types/api';
 import { api } from '../api/client';
 import { sharedFoldersApi, ROOT_FOLDER_ID } from '../api/sharedFolders';
 import { toast } from '../stores/toastStore';
@@ -30,10 +30,10 @@ export interface WorkflowBulkActions {
   running: boolean;
   abortRequested: boolean;
   requestAbort: () => void;
-  deleteWorkflows: (items: Workflow[]) => Promise<void>;
-  moveWorkflows: (items: Workflow[], targetFolderId: string) => Promise<void>;
-  setEnabled: (items: Workflow[], enable: boolean) => Promise<void>;
-  exportWorkflows: (items: Workflow[]) => Promise<void>;
+  deleteWorkflows: (items: WorkflowListItem[]) => Promise<void>;
+  moveWorkflows: (items: WorkflowListItem[], targetFolderId: string) => Promise<void>;
+  setEnabled: (items: WorkflowListItem[], enable: boolean) => Promise<void>;
+  exportWorkflows: (items: WorkflowListItem[]) => Promise<void>;
 }
 
 /**
@@ -56,7 +56,7 @@ export function useWorkflowBulkActions(
   const abortRef = useRef(false);
 
   const report = useCallback((
-    result: BulkResult<Workflow>,
+    result: BulkResult<WorkflowListItem>,
     total: number,
     successKey: string,
     invalidateFolders: boolean,
@@ -86,8 +86,8 @@ export function useWorkflowBulkActions(
   }, [queryClient, t, onRetain]);
 
   const run = useCallback(async (
-    items: Workflow[],
-    op: (w: Workflow) => Promise<void>,
+    items: WorkflowListItem[],
+    op: (w: WorkflowListItem) => Promise<void>,
     successKey: string,
     invalidateFolders = false,
   ) => {
@@ -115,7 +115,7 @@ export function useWorkflowBulkActions(
     }
   }, [report, t]);
 
-  const deleteWorkflows = useCallback(async (items: Workflow[]) => {
+  const deleteWorkflows = useCallback(async (items: WorkflowListItem[]) => {
     if (items.length === 0) return;
     const ok = await confirmDialog({
       message: t('workflows:bulk.deleteConfirm', { count: items.length }),
@@ -125,7 +125,7 @@ export function useWorkflowBulkActions(
     await run(items, (w) => api.delete(`/workflows/${w.id}`), 'workflows:bulk.deleted');
   }, [run, t]);
 
-  const moveWorkflows = useCallback(async (items: Workflow[], targetFolderId: string) => {
+  const moveWorkflows = useCallback(async (items: WorkflowListItem[], targetFolderId: string) => {
     await run(
       items,
       async (w) => {
@@ -138,7 +138,7 @@ export function useWorkflowBulkActions(
     );
   }, [run]);
 
-  const setEnabled = useCallback(async (items: Workflow[], enable: boolean) => {
+  const setEnabled = useCallback(async (items: WorkflowListItem[], enable: boolean) => {
     const path = enable ? 'enable' : 'disable';
     await run(
       items,
@@ -150,7 +150,7 @@ export function useWorkflowBulkActions(
     );
   }, [run]);
 
-  const exportWorkflows = useCallback(async (items: Workflow[]) => {
+  const exportWorkflows = useCallback(async (items: WorkflowListItem[]) => {
     if (items.length === 0) return;
     abortRef.current = false;
     setAbortRequested(false);

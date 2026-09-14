@@ -31,7 +31,8 @@ public class OperationsControllerTests
         IConfiguration? configuration = null,
         NodePilot.Api.Services.WorkflowDefinitionFactsCache? callSites = null)
     {
-        var controller = new OperationsController(db, authz ?? new AlwaysAllowAuthorizationService(), configuration, callSites);
+        var controller = new OperationsController(db, authz ?? new AlwaysAllowAuthorizationService(),
+            callSites ?? new NodePilot.Api.Services.WorkflowDefinitionFactsCache(), configuration);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
             [new Claim(ClaimTypes.Role, role)], "TestAuth"));
         controller.ControllerContext = new ControllerContext

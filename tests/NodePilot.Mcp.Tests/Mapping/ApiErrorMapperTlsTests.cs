@@ -43,6 +43,26 @@ public sealed class ApiErrorMapperTlsTests
         message.Should().NotContain("NODEPILOT_MCP_SERVER");
     }
 
+    // The usual outcome for a self-signed NodePilot certificate reached under a name it does not
+    // carry: .NET raises both policy errors, and the analyzer classifies it as UntrustedChain.
+    [Fact]
+    public async Task Guard_UntrustedChainAndNameMismatch_NamesBothCausesWithoutContradiction()
+    {
+        var message = await MessageFor(Observation() with
+        {
+            RequestHost = "localhost",
+            PolicyErrors = SslPolicyErrors.RemoteCertificateChainErrors
+                | SslPolicyErrors.RemoteCertificateNameMismatch,
+        });
+
+        message.Should().Contain("NODEPILOT_MCP_SERVER=https://np.lab.local:8443");
+        message.Should().Contain(@"LocalMachine\Root");
+        message.Should().Contain("NODEPILOT_MCP_TLS_THUMBPRINT");
+        message.Should().Contain("a name the certificate carries");
+        message.Should().NotContain("does not fix a name mismatch",
+            "offering a root import in the next sentence contradicts it");
+    }
+
     [Fact]
     public async Task Guard_PinMismatch_SuggestsNeitherPinningNorTrusting()
     {

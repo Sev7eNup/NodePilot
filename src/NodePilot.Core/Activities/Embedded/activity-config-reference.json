@@ -128,9 +128,9 @@
         { "key": "filePath", "type": "string", "required": true, "description": "The stored definition must contain an absolute local executable path; the engine rejects bare names and UNC paths and never searches PATH. The designer completes cmd, powershell, cscript and wscript (with or without .exe) to absolute paths on blur. API, MCP and generated definitions must supply the absolute path themselves." },
         { "key": "arguments", "type": "string", "required": false, "description": "Command-line arguments." },
         { "key": "workingDirectory", "type": "string", "required": false, "description": "Working directory." },
-        { "key": "waitForExit", "type": "boolean", "required": false, "description": "Block until the process exits and capture stdout/stderr/exitCode." },
+        { "key": "waitForExit", "type": "boolean", "required": false, "description": "Block until the process exits and capture stdout/stderr/exitCode. With false the step returns the process ID only and sets up no redirection at all, so param.stdout and param.stderr come back empty. Capture additionally requires useShellExecute to be false." },
         { "key": "successExitCodes", "type": "string", "required": false, "description": "Comma-separated exit codes treated as success." },
-        { "key": "timeoutSeconds", "type": "number", "required": false, "description": "How long to wait for the process when waitForExit is set." },
+        { "key": "timeoutSeconds", "type": "number", "required": false, "description": "How long to wait for the running process when waitForExit is set. Once it has exited, remaining output is collected for at most Engine:IsolatedDrainGraceSeconds (default 5) instead of this budget." },
         { "key": "useShellExecute", "type": "boolean", "required": false, "description": "Use the shell to start the process. May be blocked by StartProgram:DisallowShellExecute." }
       ]
     },

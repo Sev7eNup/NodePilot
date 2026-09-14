@@ -28,6 +28,11 @@ public class DashboardController : ControllerBase
     private readonly IMaintenanceWindowEvaluator? _maintenance;
     private readonly IConfiguration? _configuration;
     private readonly OutputRedactor _redactor;
+    private readonly DashboardAggregateCache? _aggregates;
+
+    /// <summary>Named so the per-action audit queries can be merged in memory before projection.</summary>
+    private sealed record AuditRow(
+        DateTime Timestamp, Guid? UserId, string Action, string? ResourceType, Guid? ResourceId);
 
     public DashboardController(NodePilotDbContext db,
         IResourceAuthorizationService authz,
@@ -35,7 +40,8 @@ public class DashboardController : ControllerBase
         IOptionsMonitor<LlmOptions>? llmOptions = null,
         IMaintenanceWindowEvaluator? maintenance = null,
         IConfiguration? configuration = null,
-        OutputRedactor? redactor = null)
+        OutputRedactor? redactor = null,
+        DashboardAggregateCache? aggregates = null)
     {
         _db = db;
         _authz = authz;
@@ -44,6 +50,7 @@ public class DashboardController : ControllerBase
         _maintenance = maintenance;
         _configuration = configuration;
         _redactor = redactor ?? new OutputRedactor(configuration);
+        _aggregates = aggregates;
     }
 
     [HttpGet("failure-causes")]
@@ -52,9 +59,23 @@ public class DashboardController : ControllerBase
         if (windowHours <= 0 || windowHours > 720) windowHours = 24;
         var now = DateTime.UtcNow;
         var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
-        var executions = _db.WorkflowExecutions.AsNoTracking().ScopeToAccessibleFolders(accessible);
-        if (executions is null) return Ok(new FailureCausesResponse(0, [], 0));
-        return Ok(await new DashboardFailureCauses(_db, _redactor).ReadAsync(executions, now.AddHours(-windowHours), now, ct));
+        if (_db.WorkflowExecutions.AsNoTracking().ScopeToAccessibleFolders(accessible) is null)
+            return Ok(new FailureCausesResponse(0, [], 0));
+
+        // The most expensive single query on the dashboard: it groups failed runs by their error
+        // text, which is an unbounded column. Purely historical and folder-scoped — nothing in the
+        // answer depends on the caller's role — so it belongs in the same cache as the window
+        // aggregates.
+        if (_aggregates is null)
+            return Ok(await new DashboardFailureCauses(_db, _redactor)
+                .ReadWindowAsync(accessible, windowHours, ct));
+
+        return Ok(await _aggregates.GetOrComputeAsync(
+            DashboardAggregateCache.Key("failure-causes", accessible, windowHours),
+            DashboardCacheSettings.Ttl,
+            (db, token) => new DashboardFailureCauses(db, _redactor)
+                .ReadWindowAsync(accessible, windowHours, token),
+            ct));
     }
 
     /// <summary>
@@ -126,34 +147,22 @@ public class DashboardController : ControllerBase
             .Select(m => new { m.IsReachable })
             .ToListAsync(ct);
 
-        var execsTotal = await execQuery.CountAsync(ct);
+        // The window-scaled part of this response (all-time count, hourly series, retry ratio) is
+        // computed once per window+scope and reused for a few seconds. These values are already
+        // folder-scoped and carry nothing role-dependent, so sharing them between callers with the
+        // same permissions is safe — unlike the live counters and the Admin audit feed further
+        // down, which are deliberately left out of the cache and recomputed every request.
+        var windowAggregates = _aggregates is null
+            ? await DashboardHistoricalAggregates.ComputeAsync(_db, accessible, windowHours, ct)
+            : await _aggregates.GetOrComputeAsync(
+                DashboardAggregateCache.Key("window", accessible, windowHours),
+                DashboardCacheSettings.Ttl,
+                (db, token) => DashboardHistoricalAggregates.ComputeAsync(
+                    db, accessible, windowHours, token),
+                ct);
 
-        // DB-side GROUP BY (Year/Month/Day/Hour, Status): one aggregated query instead of
-        // loading rows into memory. Grouped at hour granularity because EF Core compiles
-        // e.StartedAt.Year etc. natively on both SqlServer and Postgres; wider windows are
-        // folded into fewer display buckets in C# below.
-        var hourlyAgg = await execQuery
-            .Where(e => e.StartedAt >= sinceWindow)
-            .GroupBy(e => new
-            {
-                e.StartedAt.Year,
-                e.StartedAt.Month,
-                e.StartedAt.Day,
-                e.StartedAt.Hour,
-            })
-            .Select(g => new
-            {
-                g.Key.Year,
-                g.Key.Month,
-                g.Key.Day,
-                g.Key.Hour,
-                Total = g.Count(),
-                Succeeded = g.Count(e => e.Status == ExecutionStatus.Succeeded),
-                Failed = g.Count(e => e.Status == ExecutionStatus.Failed),
-                Running = g.Count(e => e.Status == ExecutionStatus.Running),
-                Cancelled = g.Count(e => e.Status == ExecutionStatus.Cancelled),
-            })
-            .ToListAsync(ct);
+        var execsTotal = windowAggregates.ExecutionsTotal;
+        var hourlyAgg = windowAggregates.Hourly;
 
         // Display buckets: ≤24 buckets spanning [sinceWindow, now]. For windows ≤24 h
         // each bucket is one hour; for larger windows each bucket spans
@@ -187,8 +196,7 @@ public class DashboardController : ControllerBase
             hourlyAgg.Sum(a => a.Running),
             hourlyAgg.Sum(a => a.Cancelled));
 
-        var retryStats = await DashboardRetryStats.BuildQuery(execQuery, _db.StepExecutions.AsNoTracking(), sinceWindow, now)
-            .SingleOrDefaultAsync(ct) ?? new ExecutionRetryStats(0, 0);
+        var retryStats = windowAggregates.RetryStats;
 
         var wfStats7d = await execQuery
             .Where(e => e.StartedAt >= since7d)
@@ -400,11 +408,24 @@ public class DashboardController : ControllerBase
             prevFailByWf.GetValueOrDefault(f.WorkflowId, 0),
             prevRunByWf.GetValueOrDefault(f.WorkflowId, 0))).ToList();
 
-        // Queue-depth metrics.
-        var pendingCount = await execQuery.CountAsync(e => e.Status == ExecutionStatus.Pending, ct);
-        var runningCount = await execQuery.CountAsync(e => e.Status == ExecutionStatus.Running, ct);
-        var longRunningCount = await execQuery.CountAsync(
-            e => e.Status == ExecutionStatus.Running && e.StartedAt < longRunningCutoff, ct);
+        // Queue-depth metrics. One round-trip for all three: they read the same two statuses and
+        // differ only in their predicate, so three separate COUNTs meant three scans of the same
+        // index range. Left out of the aggregate cache on purpose — this is live state, and a
+        // stale queue depth is worse than a slightly slower one.
+        var queueCounts = await execQuery
+            .Where(e => e.Status == ExecutionStatus.Pending || e.Status == ExecutionStatus.Running)
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Pending = g.Count(e => e.Status == ExecutionStatus.Pending),
+                Running = g.Count(e => e.Status == ExecutionStatus.Running),
+                LongRunning = g.Count(e =>
+                    e.Status == ExecutionStatus.Running && e.StartedAt < longRunningCutoff),
+            })
+            .SingleOrDefaultAsync(ct);
+        var pendingCount = queueCounts?.Pending ?? 0;
+        var runningCount = queueCounts?.Running ?? 0;
+        var longRunningCount = queueCounts?.LongRunning ?? 0;
 
         // Edit locks: join Workflow.CheckedOutByUserId to Users.Username.
         var lockedWorkflows = workflows
@@ -448,12 +469,26 @@ public class DashboardController : ControllerBase
                 "GLOBAL_VARIABLE_CREATED", "GLOBAL_VARIABLE_DELETED",
                 "LOGIN_LOCKED"
             };
-            var auditRows = await _db.AuditLog.AsNoTracking()
-                .Where(a => auditActions.Contains(a.Action))
+            // One seek per action instead of a single Contains over the whole list: EF Core
+            // parameterises collection-Contains through OPENJSON on SQL Server, which hides the
+            // constants from the optimizer and can turn this into a full scan of an audit log with
+            // millions of rows. Each action here is an index seek on (Action, Timestamp DESC) with
+            // its own TOP 8; merging the eight newest of each in memory costs nothing.
+            var auditRowSets = new List<List<AuditRow>>(auditActions.Length);
+            foreach (var action in auditActions)
+            {
+                auditRowSets.Add(await _db.AuditLog.AsNoTracking()
+                    .Where(a => a.Action == action)
+                    .OrderByDescending(a => a.Timestamp)
+                    .Take(8)
+                    .Select(a => new AuditRow(a.Timestamp, a.UserId, a.Action, a.ResourceType, a.ResourceId))
+                    .ToListAsync(ct));
+            }
+            var auditRows = auditRowSets
+                .SelectMany(rows => rows)
                 .OrderByDescending(a => a.Timestamp)
                 .Take(8)
-                .Select(a => new { a.Timestamp, a.UserId, a.Action, a.ResourceType, a.ResourceId })
-                .ToListAsync(ct);
+                .ToList();
             var auditUserIds = auditRows.Where(a => a.UserId.HasValue).Select(a => a.UserId!.Value).Distinct().ToList();
             var auditUsers = await _db.Users.AsNoTracking()
                 .Where(u => auditUserIds.Contains(u.Id))

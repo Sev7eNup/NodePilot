@@ -60,9 +60,10 @@ What the translation does:
   manual trigger wired to its entry activities, because a NodePilot workflow with no trigger node
   has no root and fails on every run.
 - **Sub-runbook calls** — a call is matched to its child by the full path SCOrch stores. That
-  matters when importing a whole estate: SCOrch allows two runbooks of the same name in different
-  folders, NodePilot does not, so one is renamed on import and its callers are re-pointed at the
-  name it was actually given. A call into a runbook that is neither in the file nor already in
+  matters when importing a whole estate: both systems allow workflows with the same name in
+  different folders. The importer nevertheless assigns unique names and updates callers so that
+  name-based sub-workflow calls remain unambiguous in NodePilot. This is an import strategy,
+  not a general uniqueness constraint on workflow names. A call into a runbook that is neither in the file nor already in
   NodePilot is reported, since it would fail at run time.
 - **Folders** — an export carries its own tree, for runbooks and for global variables alike, and
   both are rebuilt below the destination you import into. Folders that already exist are reused

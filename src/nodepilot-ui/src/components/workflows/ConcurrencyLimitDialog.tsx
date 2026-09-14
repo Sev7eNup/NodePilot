@@ -1,7 +1,7 @@
 import { Close } from '@carbon/icons-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Workflow } from '../../types/api';
+import type { WorkflowListItem } from '../../types/api';
 
 /**
  * Sets a workflow's concurrency limit — how many of its executions may run at once across
@@ -11,7 +11,7 @@ import type { Workflow } from '../../types/api';
 export function ConcurrencyLimitDialog({
   workflow, onClose, onSave, isSaving,
 }: Readonly<{
-  workflow: Workflow;
+  workflow: WorkflowListItem;
   onClose: () => void;
   onSave: (limit: number | null) => void;
   isSaving: boolean;

@@ -472,12 +472,16 @@ Für jede Activity:
 - Speichern
 
 #### `startProgram`
-- **File Path:** `notepad.exe`
+- **File Path:** `C:\Windows\System32\notepad.exe` — absolut, weil die Engine `PATH` nicht durchsucht.
+  `notepad` gehört nicht zu den vier Launchern, die der Designer beim Verlassen des Felds ergänzt
+  (`cmd`, `powershell`, `cscript`, `wscript`), ein bloßer Name wird also abgelehnt.
 - **Arguments:** `C:\test.txt`
 - **Wait for Exit:** `true`
 - **Timeout:** `30`
 - **Success Exit Codes:** `0`
 - Speichern
+- Danach denselben Node auf **Wait for Exit:** `false` stellen und erneut speichern
+  (Fire-and-Forget-Vertrag)
 
 #### `powerManagement`
 - **Action:** `shutdown`
@@ -492,6 +496,11 @@ Für jede Activity:
 - [ ] Keine Validation-Fehler
 - [ ] Speichern erfolgt
 - [ ] Output Variable (wo sinnvoll) wird gespeichert
+
+**Zusätzliche Prüfpunkte `startProgram`:**
+- [ ] `notepad.exe` ohne Pfad wird beim Verlassen des Felds **nicht** ergänzt und als Fehler gemeldet
+- [ ] Mit **Wait for Exit:** `false` verschwinden Timeout und Success Exit Codes aus der
+      Ergebnis-Erwartung: der Node liefert nur die Prozess-ID, `stdout`/`stderr` bleiben leer
 
 **Erwartung:** Alle Remote-Activities konfigurierbar
 
@@ -4866,11 +4875,28 @@ Prüfpunkte je Provider/Fall:
 - [ ] Bei `TimedOut` gibt es **keinen** Retry-Button — der Endpoint lehnt diesen Zustand mit 400 ab, die UI spiegelt genau die Server-Regel.
 - [ ] Ohne `CanRun` auf dem Ordner erscheint Retry nicht.
 
-> Automatisiert: `e2e/operations.spec.ts` (83.1–83.13, hermetisch — Graph/Stats/Executions via
-> `page.route`, SignalR 404-gestubbt, damit die Seite rein vom gepollten Snapshot lebt).
-> **83.14 (Retry) ist nicht automatisiert** — die Spec deckt Cancel, Cancel-all und Quarantine ab,
-> aber keinen Retry-Pfad.
+### Test 83.15 — Zoom-Grenzen und Lane-Einrückung (nur manuell)
+1. Auf `/operations` mit dem Mausrad über einem Balken hineinzoomen, bis die Achse Sekunden zeigt, und weiterdrehen.
+2. Im gezoomten Ausschnitt einen Balken suchen, der links aus der Spanne herausfällt; danach den Window-Selector umstellen.
+3. Wieder herauszoomen, bis der volle Ausschnitt erreicht ist.
+4. Einen Workflow betrachten, der in diesem Fenster von **zwei verschiedenen** Eltern-Workflows aufgerufen wurde, und einen mit mehreren gleichzeitigen Läufen (oder Snapshot entsprechend mocken).
+- [ ] Die Spanne geht bis auf **5 s** herunter und nicht weiter; nach oben endet sie am geladenen Fenster, es entsteht kein leerer Track jenseits davon.
+- [ ] Die Achse trägt in jeder Stufe vier bis sechs Beschriftungen und ergänzt unter einer Minute Schrittweite die Sekunden.
+- [ ] Im gezoomten Ausschnitt **verschwinden** Balken außerhalb der Spanne, statt an den Rand geklemmt stehen zu bleiben (in der ungezoomten Live-Ansicht bleiben sie geklemmt sichtbar).
+- [ ] Das Umstellen des Window-Selektors verwirft den Zoom.
+- [ ] Vollständiges Herauszoomen landet exakt im ungezoomten Zustand — der **Back to live view**-Button verschwindet, es bleibt kein „fast volles" Zoom-Fenster stehen.
+- [ ] Die Lane mit zwei verschiedenen Aufrufern bleibt **top-level** (keine Einrückung) und ist mit `n callers in window` beschriftet; die Zuordnung der einzelnen Läufe zeigen die Connectoren.
+- [ ] Eine Lane, die unter genau **einen** Aufrufer auflöst, rückt unter ihm ein.
+- [ ] Eine Lane mit mehreren gleichzeitigen Läufen beschriftet ihre Sub-Rows als `Parallelspur n/m`.
 
+> Automatisiert: `e2e/operations.spec.ts` (83.1–83.13, hermetisch — Graph/Stats/Executions via
+> `page.route`, SignalR 404-gestubbt, damit die Seite rein vom gepollten Snapshot lebt). Aus 83.15
+> deckt die Spec zwei Punkte mit ab, die dort deshalb nicht mehr stehen: das zeigerverankerte
+> Vergrößern eines kurzen Laufs samt 6-px-Klick-Marge und dass Wheel-Zoom über dem Track die Lanes
+> nicht scrollt, während die Label-Spalte weiterhin scrollt.
+> **83.14 (Retry) und der Rest von 83.15 sind nicht automatisiert** — die Spec deckt Cancel,
+> Cancel-all und Quarantine ab, aber keinen Retry-Pfad; und Zoom-Grenzen, Detail-Filterung und die
+> Lane-Einrückungsregel brauchen einen Snapshot mit echter Aufruf-Topologie.
 ---
 
 ## Checkliste für vollständigen E2E-Test-Run
@@ -4958,7 +4984,7 @@ Prüfpunkte je Provider/Fall:
 [ ] Teil 80: Globaler AI-Chat (80.1 — 80.11)
 [ ] Teil 81: Custom Activities (81.1 — 81.9)
 [ ] Teil 82: Datenbank-Ausfall zur Laufzeit (82.1 — 82.4)
-[ ] Teil 83: Live-Ops Mission Control (83.1 — 83.14)
+[ ] Teil 83: Live-Ops Mission Control (83.1 — 83.15)
 [ ] Teil 84: Skript-Editor gegen das minifizierte Bundle (84.1 — 84.2)
 ```
 
