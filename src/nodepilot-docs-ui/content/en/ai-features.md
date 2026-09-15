@@ -75,19 +75,22 @@ The chat and the properties panel share the right-hand area of the designer: the
 The **NodePilot Assistant** opens the same conversations in a compact window over the current
 page. Minimizing and navigating preserve ongoing answers and message drafts. A completed answer
 adds an indicator to the closed chat button. **Open full chat** carries the conversation into the
-full chat page. In the workflow designer, one assistant panel is open at a time; the global chat
-and the workflow assistant keep their own conversations.
+full chat page. The workflow designer has no chat button — the workflow assistant covers that page;
+the workflow list still has it. The global chat and the workflow assistant keep their own
+conversations.
 
 On phones, the window fills the visible screen and keeps the input accessible when the keyboard
 opens. Escape minimizes the chat. History and conversations survive a reload in the same browser
 tab; ongoing requests and drafts last only until reload. Signing out cancels requests and clears
 chat data.
 
-On the full chat page, the chat column can be dragged wider or narrower from either outer edge —
-useful for answers with wide code blocks or tables. Double-clicking a handle restores the default
-width. The width is remembered per browser and survives a restart; when the window is narrower than
-the chosen width, the column is only displayed as wide as the space allows without losing the
-setting. Narrow windows have no handles.
+Both views can be dragged wider or narrower — useful for answers with wide code blocks or tables.
+On the full chat page, the column has a handle on **each** outer edge; the small window in the
+bottom-right corner has **one** handle on its left edge, since it stays anchored to the right.
+Double-clicking a handle restores that view's default width. The two widths are remembered
+separately, per browser, and survive a restart; when the window is narrower than the chosen width,
+only as much is displayed as the space allows, without losing the setting. Narrow windows and
+phones have no handles.
 
 The global AI chat is not tied to an open workflow. It serves as a read-only assistant for questions such as:
 

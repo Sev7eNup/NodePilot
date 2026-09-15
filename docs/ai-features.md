@@ -472,17 +472,24 @@ in der UI-Seite `/ai-chat` (`POST /api/ai/knowledge/ask`, SSE; Capabilities `GET
 Der Chat-Button unten rechts öffnet dieselbe Unterhaltung als Widget. `KnowledgeChat` rendert
 beide Ansichten; `knowledgeChatSessionStore` hält Anfragen, Entwürfe und Fehler unabhängig von
 der Route im Speicher. Minimieren unterbricht den Stream nicht; eine fertige Antwort markiert den
-Launcher. „Großen Chat öffnen“ übernimmt Gespräch und Entwurf. Der Workflow-Assistent und das
-Widget öffnen ihre Panels gegenseitig exklusiv, mit getrennten Gesprächsbereichen.
+Launcher. „Großen Chat öffnen“ übernimmt Gespräch und Entwurf. **Im Designer (`/workflows/:id`)
+erscheint der Launcher nicht** — dort ist der Workflow-Assistent der zuständige Chat; die
+Workflow-Liste `/workflows` behält ihn. Ein noch offenes Widget wird vom Öffnen des
+Workflow-Assistenten geschlossen (`knowledgeChatSessionStore`), damit es beim Verlassen des
+Designers nicht wieder aufspringt. Beide behalten getrennte Gesprächsbereiche.
 Die Sichtbarkeit folgt `capabilities.enabled`; die bestehenden Backend-Endpunkte, Quellenrechte
 und Audit-Einträge gelten für beide Ansichten. Verlauf bleibt im benutzerbezogenen
 `sessionStorage`, Entwürfe und laufende Anfragen nur im Speicher. Logout bricht Anfragen ab und
 verwirft auch verspätete Stream-Callbacks. Auf Smartphones folgt das Panel dem sichtbaren
 Viewport; Hintergrund und Fokus werden während des geöffneten Chats auf das Panel begrenzt.
-Die Seitenansicht hat eine ziehbare Spaltenbreite (Griffe an beiden Außenrändern, Doppelklick
-setzt zurück, Persistenz in `chatLayoutStore`/`localStorage`); die Widget-Ansicht behält ihre
-feste Geometrie. Die gespeicherte Breite ist eine Obergrenze — die Spalte behält `w-full`, der
-verfügbare Platz deckelt sie also, ohne die Einstellung zu überschreiben.
+Beide Ansichten sind in der Breite ziehbar, mit getrennten Werten in `chatLayoutStore`
+(`localStorage`), Doppelklick auf einen Griff setzt zurück. Die Seitenansicht ist zentriert und
+hat Griffe an **beiden** Außenrändern — ein Rand legt nur die halbe Breitenänderung zurück,
+deshalb `scale: 2` am `useResizable`. Das Widget ist unten rechts verankert und hat **einen**
+Griff am linken Rand (`reverse`, kein `scale`); auf Telefonen ist er ausgeblendet, weil das Panel
+dort den Bildschirm füllt. In beiden Fällen ist die gespeicherte Breite eine **Obergrenze**: die
+Spalte behält `w-full`, das Panel seinen `min(…, calc(100vw - 32px))`-Term — ein zu schmales
+Fenster zeigt also nur schmaler an, ohne die Einstellung zu überschreiben.
 Erklärt Konzepte, beantwortet „wie viele Workflows/Maschinen/Execution gibt es", hilft bei Konfig- und
 Code-Fragen — ohne einen Workflow im Designer zu öffnen. Opt-in via `AiKnowledge:Enabled` (zusätzlich zu
 `Llm:Enabled`), hot-reloadbar.

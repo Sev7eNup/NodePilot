@@ -75,19 +75,22 @@ Chat und Properties-Panel teilen sich den rechten Bereich des Designers: Der ge�
 Der **NodePilot Assistent** öffnet dieselben Gespräche in einem kompakten Fenster über der
 aktuellen Seite. Minimieren und Seitenwechsel erhalten laufende Antworten und Eingabeentwürfe.
 Eine fertige Antwort wird am geschlossenen Chat-Button markiert. **Großen Chat öffnen** übernimmt
-das Gespräch auf die vollständige Chat-Seite. Im Workflow-Designer ist jeweils ein Assistenten-Panel
-geöffnet; der globale Chat und der Workflow-Assistent behalten ihre eigenen Gespräche.
+das Gespräch auf die vollständige Chat-Seite. Im Workflow-Designer erscheint der Chat-Button nicht —
+dort ist der Workflow-Assistent zuständig; in der Workflow-Liste ist er weiterhin da. Der globale
+Chat und der Workflow-Assistent behalten ihre eigenen Gespräche.
 
 Auf Smartphones füllt das Fenster den sichtbaren Bildschirm; die Eingabe bleibt bei geöffneter
 Tastatur erreichbar. Escape minimiert den Chat. Verlauf und Gespräche überleben einen Reload
 innerhalb desselben Browser-Tabs; laufende Anfragen und Entwürfe bleiben nur bis zum Reload erhalten.
 Beim Abmelden werden Anfragen abgebrochen und Chat-Daten gelöscht.
 
-Auf der vollständigen Chat-Seite lässt sich die Breite der Chat-Spalte an beiden Außenrändern mit
-der Maus ziehen — nützlich für Antworten mit breiten Code-Blöcken oder Tabellen. Ein Doppelklick auf
-einen Griff stellt die Standardbreite wieder her. Die Breite gilt pro Browser und überlebt einen
-Neustart; ist das Fenster schmaler als die gewählte Breite, wird die Spalte nur angezeigt so breit
-wie der Platz reicht, ohne die Einstellung zu verlieren. Auf schmalen Fenstern entfallen die Griffe.
+Beide Ansichten lassen sich in der Breite ziehen — nützlich für Antworten mit breiten Code-Blöcken
+oder Tabellen. Auf der vollständigen Chat-Seite sitzt an **beiden** Außenrändern der Spalte ein
+Griff; das kleine Fenster unten rechts hat **einen** Griff an seinem linken Rand, weil es rechts
+verankert bleibt. Ein Doppelklick auf einen Griff stellt die jeweilige Standardbreite wieder her.
+Beide Breiten werden getrennt gespeichert, gelten pro Browser und überleben einen Neustart; ist das
+Fenster schmaler als die gewählte Breite, wird nur angezeigt so breit wie der Platz reicht, ohne die
+Einstellung zu verlieren. Auf schmalen Fenstern und Telefonen entfallen die Griffe.
 
 Der globale AI-Chat ist nicht an einen geöffneten Workflow gebunden. Er dient als lesender Assistent für Fragen wie:
 

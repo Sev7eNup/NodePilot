@@ -5,9 +5,9 @@
   z-index: 40;
   display: grid;
   place-items: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 20px;
+  width: 48px;
+  height: 48px;
+  border-radius: 17px;
   border: 1px solid color-mix(in srgb, var(--color-on-primary) 20%, transparent);
   background: var(--color-primary);
   color: var(--color-on-primary);
@@ -39,11 +39,14 @@
 .np-ai-chat-panel {
   position: fixed;
   right: max(24px, env(safe-area-inset-right));
-  bottom: calc(max(24px, env(safe-area-inset-bottom)) + 72px);
+  /* Clears the launcher: its 48px height plus a 16px gap. */
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + 64px);
   z-index: 40;
   display: flex;
   flex-direction: column;
-  width: min(420px, calc(100vw - 32px));
+  /* The stored width is a maximum: the viewport term still caps it, so a width chosen on a
+     wide screen is only displayed smaller on a narrow one instead of being overwritten. */
+  width: min(var(--np-chat-widget-width, 420px), calc(100vw - 32px));
   height: min(620px, calc(100dvh - 120px));
   overflow: hidden;
   border: 1px solid var(--color-outline-variant);
@@ -55,6 +58,15 @@
   animation: np-chat-enter 180ms ease-out;
 }
 .np-ai-chat-panel:focus { outline: none; }
+/* Drag handle for the panel width. The panel is anchored bottom-right, so only the left edge
+   moves; it sits inside the panel because `overflow: hidden` would clip anything outside. */
+.np-ai-chat-resize {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  z-index: 1;
+  display: flex;
+}
 .np-ai-chat-header {
   display: flex;
   align-items: center;
@@ -87,7 +99,7 @@
 .np-chat-content [data-testid="ai-chat-scroll"] { overscroll-behavior: contain; }
 .np-chat-content textarea { font-size: 14px; }
 .np-chat-content pre { max-width: 100%; overflow-x: auto; }
-body[data-ai-chat="launcher"] .np-toast-stack { bottom: calc(max(24px, env(safe-area-inset-bottom)) + 72px); }
+body[data-ai-chat="launcher"] .np-toast-stack { bottom: calc(max(24px, env(safe-area-inset-bottom)) + 64px); }
 body[data-ai-chat="open"] .np-toast-stack { top: 16px; bottom: auto; right: 16px; }
 @keyframes np-chat-enter {
   from { opacity: 0; transform: translateY(10px) scale(.98); }
@@ -111,6 +123,8 @@ body[data-ai-chat="open"] .np-toast-stack { top: 16px; bottom: auto; right: 16px
     padding-top: env(safe-area-inset-top);
     padding-bottom: env(safe-area-inset-bottom);
   }
+  /* Full-screen on phones: there is no width left to drag. */
+  .np-ai-chat-resize { display: none; }
   .np-ai-chat-action { width: 40px; height: 40px; }
 }
 @media (prefers-reduced-motion: reduce) {

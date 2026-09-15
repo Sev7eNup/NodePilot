@@ -8,6 +8,7 @@ import { askStream, getKnowledgeCapabilities, type KnowledgeStreamHandlers } fro
 import { useAiChatStore } from '../../../stores/aiChatStore';
 import { useKnowledgeChatSessionStore as session } from '../../../stores/knowledgeChatSessionStore';
 import { useAuthStore } from '../../../stores/authStore';
+import { useChatLayoutStore, DEFAULT_WIDGET_WIDTH } from '../../../stores/chatLayoutStore';
 
 vi.mock('../../../api/ai', async (original) => ({
   ...await original<typeof import('../../../api/ai')>(),
@@ -21,9 +22,11 @@ function renderApp() {
       <MemoryRouter>
         <div id="np-app-content">
           <Link to="/workflows">Workflows</Link>
+          <Link to="/workflows/w-1">Open designer</Link>
           <Routes>
             <Route path="/" element={<p>Dashboard</p>} />
             <Route path="/workflows" element={<p>Workflow list</p>} />
+            <Route path="/workflows/:id" element={<p>Designer</p>} />
             <Route path="/ai-chat" element={<AiChatPage />} />
           </Routes>
         </div>
@@ -39,6 +42,8 @@ beforeEach(() => {
   useAuthStore.setState({ userId: 'widget-user' });
   vi.mocked(getKnowledgeCapabilities).mockResolvedValue({ enabled: true, llm: true, docs: true, operational: true, db: false, sourceCode: false });
   vi.mocked(askStream).mockReset();
+  // The panel width persists to localStorage, so reset it between tests.
+  useChatLayoutStore.setState({ widgetWidth: DEFAULT_WIDGET_WIDTH });
 });
 afterEach(() => session.getState().reset());
 
@@ -103,5 +108,37 @@ describe('AI chat widget', () => {
     renderApp();
     await waitFor(() => expect(getKnowledgeCapabilities).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: /NodePilot Assistant/ })).not.toBeInTheDocument();
+  });
+
+  it('hides the launcher in the workflow designer, which brings its own assistant', async () => {
+    renderApp();
+    // The workflow list keeps the launcher; only the editor route replaces it.
+    fireEvent.click(screen.getByRole('link', { name: 'Workflows' }));
+    expect(await screen.findByRole('button', { name: /NodePilot Assistant/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Open designer' }));
+    expect(screen.getByText('Designer')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /NodePilot Assistant/ })).not.toBeInTheDocument();
+  });
+
+  it('widens the panel when its handle is dragged left and remembers the width', async () => {
+    renderApp();
+    fireEvent.click(await screen.findByRole('button', { name: /NodePilot Assistant/ }));
+    const panel = screen.getByRole('dialog');
+
+    // The panel is anchored bottom-right, so only the left edge moves: dragging it left by 80
+    // widens the panel by 80. Every element measures 600px wide in the test harness, which is
+    // what the drag seeds from.
+    fireEvent.mouseDown(screen.getByTestId('ai-chat-widget-resize'), { clientX: 500 });
+    fireEvent.mouseMove(document, { clientX: 420 });
+    fireEvent.mouseUp(document);
+
+    expect(panel.style.getPropertyValue('--np-chat-widget-width')).toBe('680px');
+    expect(useChatLayoutStore.getState().widgetWidth).toBe(680);
+
+    // Double-click restores the original panel width.
+    fireEvent.doubleClick(screen.getByTestId('ai-chat-widget-resize'));
+    expect(panel.style.getPropertyValue('--np-chat-widget-width')).toBe(`${DEFAULT_WIDGET_WIDTH}px`);
+    expect(useChatLayoutStore.getState().widgetWidth).toBe(DEFAULT_WIDGET_WIDTH);
   });
 });
