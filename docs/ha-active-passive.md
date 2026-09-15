@@ -1,6 +1,6 @@
 # Active/passive HA for NodePilot
 
-As of 2026-05-09. The setup for two NodePilot nodes behind a load balancer with automatic failover
+As of 2026-09-15. The setup for two NodePilot nodes behind a load balancer with automatic failover
 (RTO ~40–60 s).
 
 ## When do you need this?
@@ -63,6 +63,20 @@ lease has not expired. An old leader resuming after a GC pause can therefore nei
 `Cancelled` already set by SSO offboarding nor commit `Succeeded`/`Failed` after an epoch change.
 
 **Expected RTO: 40–60 s** (a 30 s TTL + a 10 s renew interval + a 5 s load-balancer probe).
+
+### Recovery does not hold the lease for the whole backlog
+
+Recovery reads at most 100 candidate execution IDs before locking the lease row. Each batch checks
+owner, epoch and expiry again, then commits execution/step changes, reservation cleanup and audit
+entries together. It releases the lease lock between batches; log forwarding runs after commit.
+The default two-second batch budget stays below the lease-query timeout. A timed-out batch rolls
+back and shrinks. If even one execution cannot complete within budget, the sweep resumes after
+five seconds while the same epoch is still owned. Leadership loss cancels the recovery task.
+
+Committed batches remain complete across retries. An uncertain commit is verified before replay;
+recovery must not emit duplicate audit entries or report completion before durable progress is known.
+Traffic takeover and backlog cleanup are separate: the RTO estimate above is not a promise that
+every orphan has been cleaned up within that period.
 
 ## Prerequisites
 
@@ -256,6 +270,14 @@ Both nodes answer `503`? → the database is unreachable from both.
 - Check the load-balancer probe interval (it should be 5 s)
 - `Cluster:LeaseTtlSeconds` is configured too high
 - Database latency: if the lease UPDATE takes 30+ s, the database itself is the problem
+
+### "Recovery is repeatedly deferred"
+
+`Cluster recovery batch committed` reports completed batches. `Cluster recovery deferred` means
+the remaining work will be retried; completed batches are preserved. Check database lock waits and
+query latency when deferral persists. Keep the lease-query timeout short and investigate the blocking
+work before changing the lease TTL. A row with a very large step history can need several attempts
+even when leadership itself is healthy.
 
 ### "Sign-in fails with 401 after a failover"
 

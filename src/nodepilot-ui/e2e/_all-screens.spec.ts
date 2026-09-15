@@ -35,7 +35,7 @@ async function mockAll(page: Page) {
     editLocks: [], healthHeartbeats: [{ serviceName: 'Scheduler', lastHeartbeatAt: new Date(now - 20_000).toISOString(), expectedIntervalSeconds: 60, status: 'ok', isStale: false }],
     databaseProvider: 'PostgreSQL', clusterRole: 'leader', recentAudit: [],
   }));
-  await page.route('**/api/machines', (r) => json(r, [
+  await page.route(/\/api\/machines(?:\/options)?$/, (r) => json(r, [
     { id: 'm1', name: 'WEB-PROD-01', hostname: 'web01.corp.local', winRmPort: 5986, useSsl: true, defaultCredentialId: 'c1', tags: 'prod,web', lastConnectivityCheck: new Date(now - 4 * 3600_000).toISOString(), isReachable: true, usedByWorkflowCount: 6, recentStepCount: 40, recentFailedStepCount: 1, activeRunCount: 2 },
     { id: 'm2', name: 'DB-PROD-01', hostname: 'db01.corp.local', winRmPort: 5985, useSsl: false, defaultCredentialId: null, tags: 'prod,sql', lastConnectivityCheck: null, isReachable: false, usedByWorkflowCount: 0, recentStepCount: 0, recentFailedStepCount: 0, activeRunCount: 0 },
   ]));

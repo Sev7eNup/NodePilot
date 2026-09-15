@@ -155,6 +155,7 @@ curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X POST "$NP/api/executio
 | Endpoint | Zweck |
 |---|---|
 | `GET/POST/PUT/DELETE /api/machines` | Maschinen (POST/PUT Admin/Op, DELETE Admin) |
+| `GET /api/machines/options` | Authentifizierte Maschinenauswahl: neun Konfigurations-/Verbindungsfelder, nach Name sortiert; keine Workflow- oder Activity-Statistiken |
 | `POST /{id}/test` | Maschinen-Verbindungstest — Body `{"credentialId": null}` |
 | `GET/POST/PUT/DELETE /api/credentials` | Credentials (DELETE Admin) |
 

@@ -1,6 +1,8 @@
 using FluentAssertions;
+using System.Data.Common;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -24,6 +26,117 @@ namespace NodePilot.Api.Tests.ExecutionDispatch;
 /// </summary>
 public class ExecutionDispatchWorkerTests
 {
+    [Fact]
+    public async Task DurableWorker_ManyIdleWorkers_ShareOnePollAndWakeOnSignal()
+    {
+        await using var connection = new SqliteConnection("DataSource=:memory:");
+        await connection.OpenAsync();
+        var observer = new ClaimObserver();
+        var signal = new ControlledPollSignal();
+        var services = new ServiceCollection();
+        services.AddDbContext<NodePilotDbContext>(options => options.UseSqlite(connection).AddInterceptors(observer));
+        await using var provider = services.BuildServiceProvider();
+        await using (var scope = provider.CreateAsyncScope())
+            await scope.ServiceProvider.GetRequiredService<NodePilotDbContext>().Database.EnsureCreatedAsync();
+        var worker = new ExecutionDispatchWorker(
+            provider.GetRequiredService<IServiceScopeFactory>(), signal,
+            Options.Create(new ExecutionDispatchOptions { WorkerCount = 20 }),
+            new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
+            new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate(),
+            NullLogger<ExecutionDispatchWorker>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            await signal.WaitEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.Delay(100);
+            signal.Waiters.Should().Be(1, "other idle workers must wait locally without polling");
+            observer.Calls.Should().Be(1);
+            signal.NextWait = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            signal.Pulse();
+            await signal.NextWait.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            observer.Calls.Should().Be(2, "one pulse wakes exactly one empty-queue poll");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+        worker.ExecuteTask!.IsCompletedSuccessfully.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task DurableWorker_ClaimGateReleasesBeforeRun_AndDoesNotPrefetchBeyondWorkerCount()
+    {
+        await using var connection = new SqliteConnection("DataSource=:memory:");
+        await connection.OpenAsync();
+        var signal = new ExecutionDispatchSignal();
+        var firstWave = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var nextStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new SemaphoreSlim(0);
+        var calls = 0;
+        var engine = new Mock<IWorkflowEngine>();
+        engine.Setup(candidate => candidate.ExecuteAsync(
+                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
+                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
+                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(), It.IsAny<bool>()))
+            .Returns(async (Workflow workflow, string _, CancellationToken ct, Dictionary<string, string>? _,
+                int? _, bool _, Guid? _, Guid? _, int _, Guid? executionId, bool _) =>
+            {
+                var count = Interlocked.Increment(ref calls);
+                if (count == 2) firstWave.TrySetResult();
+                if (count == 3) nextStarted.TrySetResult();
+                await release.WaitAsync(ct);
+                return new WorkflowExecution { Id = executionId!.Value, WorkflowId = workflow.Id, Status = ExecutionStatus.Succeeded };
+            });
+        var cluster = new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider();
+        var concurrency = new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddDbContext<NodePilotDbContext>(options => options.UseSqlite(connection));
+        services.AddSingleton(engine.Object);
+        services.AddSingleton<IClusterStateProvider>(cluster);
+        services.AddSingleton<IMaintenanceWindowEvaluator>(NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll);
+        services.AddSingleton(new OutputRedactor(null));
+        services.AddSingleton(signal);
+        services.AddSingleton(new ExecutionDispatchCallbackRegistry());
+        services.AddSingleton<IDatabaseAvailability>(NodePilot.TestCommons.TestDatabaseAvailability.Available);
+        services.AddSingleton<IWorkflowConcurrencyGate>(concurrency);
+        services.AddScoped<ExecutionDispatchService>();
+        await using var provider = services.BuildServiceProvider();
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+            await db.Database.EnsureCreatedAsync();
+            var workflow = new Workflow { Id = Guid.NewGuid(), Name = "Capacity", DefinitionJson = "{}" };
+            db.Workflows.Add(workflow);
+            await db.SaveChangesAsync();
+            var dispatcher = scope.ServiceProvider.GetRequiredService<ExecutionDispatchService>();
+            for (var i = 0; i < 5; i++)
+                await dispatcher.DispatchAsync(new WorkflowDispatchIntent(workflow.Id, "manual", null), CancellationToken.None);
+        }
+        var worker = new ExecutionDispatchWorker(provider.GetRequiredService<IServiceScopeFactory>(), signal,
+            Options.Create(new ExecutionDispatchOptions { WorkerCount = 2 }), cluster, concurrency,
+            NullLogger<ExecutionDispatchWorker>.Instance, NodePilot.TestCommons.TestDatabaseAvailability.Available);
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            await firstWave.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await using (var scope = provider.CreateAsyncScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+                (await db.ExecutionDispatchOutbox.CountAsync(x => x.AttemptCount == 0)).Should().Be(3);
+            }
+            release.Release();
+            await nextStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            calls.Should().Be(3);
+        }
+        finally
+        {
+            release.Release(5);
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
     [Fact]
     public async Task DurableWorker_PollsPersistedItemsAndHonorsInteractivePriority()
     {
@@ -379,6 +492,38 @@ public class ExecutionDispatchWorkerTests
             LastToken = ct;
             FirstWait.TrySetResult();
             return base.WaitAsync(pollInterval, ct);
+        }
+    }
+
+    private sealed class ClaimObserver : DbCommandInterceptor
+    {
+        public int Calls;
+
+        public override ValueTask<InterceptionResult<object>> ScalarExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<object> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("NodePilot:ExecutionDispatchClaim", StringComparison.Ordinal))
+                Interlocked.Increment(ref Calls);
+            return base.ScalarExecutingAsync(command, eventData, result, cancellationToken);
+        }
+    }
+
+    private sealed class ControlledPollSignal : ExecutionDispatchSignal
+    {
+        private readonly SemaphoreSlim _ticks = new(0);
+        public int Waiters;
+        public TaskCompletionSource WaitEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource? NextWait { get; set; }
+        public override void Pulse() => _ticks.Release();
+
+        public override async Task WaitAsync(TimeSpan pollInterval, CancellationToken ct)
+        {
+            Interlocked.Increment(ref Waiters);
+            WaitEntered.TrySetResult();
+            NextWait?.TrySetResult();
+            try { await _ticks.WaitAsync(ct); }
+            finally { Interlocked.Decrement(ref Waiters); }
         }
     }
 }

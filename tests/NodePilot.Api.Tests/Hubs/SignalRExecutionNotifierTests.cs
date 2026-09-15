@@ -8,6 +8,7 @@ using Xunit;
 
 namespace NodePilot.Api.Tests.Hubs;
 
+[Collection(ExecutionHubStaticStateCollection.Name)]
 public sealed class SignalRExecutionNotifierTests : IDisposable
 {
     private sealed class Capture

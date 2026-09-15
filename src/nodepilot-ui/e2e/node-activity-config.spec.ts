@@ -100,7 +100,7 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
   test.beforeEach(async ({ page }) => {
     await installDefaultMocks(page);
     // One machine + one credential so the Execution-Context pickers on remote activities populate.
-    await page.route('**/api/machines', (route) =>
+    await page.route('**/api/machines/options', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',

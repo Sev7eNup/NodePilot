@@ -138,6 +138,14 @@ public static class ApiMetrics
         "nodepilot.dispatch.items_processed", unit: "1",
         description: "Items processed by the execution dispatch worker pool, tagged by result.");
 
+    public static readonly Counter<long> DispatchClaims = Meter.CreateCounter<long>(
+        "nodepilot.dispatch.claims", unit: "1",
+        description: "Outbox claim operations, tagged by result (success/empty/error).");
+
+    public static readonly Histogram<double> DispatchClaimDuration = Meter.CreateHistogram<double>(
+        "nodepilot.dispatch.claim.duration", unit: "ms",
+        description: "Outbox claim latency, tagged by result (success/empty/error).");
+
     // Runs held back by a workflow's own MaxConcurrentExecutions. Expected to be non-zero
     // whenever a limit is doing its job, so it measures queueing, not failure.
     public static readonly Counter<long> WorkflowConcurrencyDeferrals = Meter.CreateCounter<long>(

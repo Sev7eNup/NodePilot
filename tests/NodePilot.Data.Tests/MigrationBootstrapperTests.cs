@@ -2,8 +2,6 @@ using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.TestCommons;
@@ -104,48 +102,6 @@ public sealed class MigrationBootstrapperTests : IDisposable
         thrown.InnerException.Should().NotBeNull("the original provider exception stays available for diagnosis");
     }
 
-    [Fact]
-    public void EnterpriseIdentityMigration_BackfillsOnlyUnambiguousKeys_AndPreservesBreakGlassAdmin()
-    {
-        using var db = NewContext();
-        var migrator = db.Database.GetService<IMigrator>();
-        migrator.Migrate("20260712090321_AddWorkflowPublishedByUserId");
-
-        static string UserInsert(Guid id, string username, string provider, string externalId, string role = "Viewer") => $"""
-            INSERT INTO "Users"
-                ("Id", "Username", "PasswordHash", "Role", "Provider", "ExternalId",
-                 "KnownGroupSidsJson", "IsActive", "CreatedAt", "PasswordChangedAt",
-                 "FailedLoginCount", "LockedUntil", "SecurityStamp")
-            VALUES
-                ('{id:D}', '{username}', NULL, '{role}', '{provider}', '{externalId}',
-                 '[]', 1, '2026-07-12 00:00:00', '2026-07-12 00:00:00', 0, NULL, 0);
-            """;
-
-        var windowsId = Guid.NewGuid();
-        var ldapId = Guid.NewGuid();
-        var duplicateA = Guid.NewGuid();
-        var duplicateB = Guid.NewGuid();
-        var localAdminId = Guid.NewGuid();
-        db.Database.ExecuteSqlRaw(UserInsert(windowsId, @"FIRMA\alice", "Windows", "S-1-5-21-1-2-3-1001"));
-        db.Database.ExecuteSqlRaw(UserInsert(ldapId, "bob@firma.de", "Ldap", "71fe6e8c-546a-4b73-9910-a1d92090994a"));
-        db.Database.ExecuteSqlRaw(UserInsert(duplicateA, "dup-a@firma.de", "Ldap", "82373442-c6bb-4091-a49f-a906a800198e"));
-        db.Database.ExecuteSqlRaw(UserInsert(duplicateB, "dup-b@firma.de", "Ldap", "82373442-c6bb-4091-a49f-a906a800198e"));
-        db.Database.ExecuteSqlRaw(UserInsert(localAdminId, "break-glass", "Local", "", "Admin"));
-
-        migrator.Migrate();
-        db.ChangeTracker.Clear();
-
-        db.ExternalIdentities.Should().ContainSingle(i =>
-            i.UserId == windowsId
-            && i.Authority == NodePilot.Core.Models.ExternalIdentity.ActiveDirectoryAuthority
-            && i.Subject == "S-1-5-21-1-2-3-1001");
-        db.ExternalIdentities.Should().ContainSingle(i =>
-            i.UserId == ldapId
-            && i.Authority == NodePilot.Core.Models.ExternalIdentity.LegacyLdapAuthority);
-        db.ExternalIdentities.Should().NotContain(i => i.UserId == duplicateA || i.UserId == duplicateB,
-            "ambiguous legacy identities must be left for explicit administrator resolution");
-        db.Users.Single(u => u.Username == "break-glass").IsBreakGlass.Should().BeTrue();
-    }
 
     [Fact]
     public void Bootstrap_AlreadyMigratedDatabase_IsNoOp_DoesNotThrow()

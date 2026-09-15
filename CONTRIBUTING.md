@@ -77,6 +77,47 @@ cd src/nodepilot-docs-ui && npm run build       # documentation website type-che
 cd src/nodepilot-docs-ui && npm run test:run    # docs-site tests incl. the de/en parity guard
 ```
 
+### Database provider integration tests
+
+The pre-production migration history was consolidated into `20260915180058_InitialBaseline`.
+It creates the complete current schema, including the filtered Running-step index. Databases
+created by the previous history are not upgrade targets for this baseline: use a new development
+database, or explicitly export/import required data. Startup does not reset existing databases or
+rewrite their migration history. Future schema changes append migrations after this baseline.
+
+Schema and locking changes must also run against real PostgreSQL and SQL Server. From the repository
+root on Windows, with Docker using Linux containers:
+
+```powershell
+./scripts/Test-DatabaseProviders.ps1
+```
+
+The runner starts disposable PostgreSQL 16 and SQL Server 2022 containers on loopback ports, runs
+the `DatabaseIntegration` tests and removes those containers afterward. Each fixture creates its own
+`nodepilot_test_<guid>` database. Coverage includes fresh migrations and upgrades, atomic outbox
+claims, SQL Server with RCSI on/off, and lease-fenced recovery. SQLite remains the fast default
+for ordinary database tests; it does not validate either production provider's locking behavior.
+
+To use existing **test servers**, set both `NODEPILOT_TEST_POSTGRES` and `NODEPILOT_TEST_SQLSERVER`
+to administrative connection strings in your local environment. Their accounts must be able to
+create and drop test databases; SQL Server tests also change RCSI on those disposable databases.
+The runner then leaves the servers themselves running. Keep these credentials outside tracked files.
+Use `-NoBuild` after building the test projects, or `-Filter 'FullyQualifiedName~ExecutionDispatchOutboxClaimerTests'`
+to select a focused scenario. Real-provider tests report a skip when their test server is not configured.
+
+With `NODEPILOT_TEST_POSTGRES` configured, the dispatch comparison can be repeated separately:
+
+```powershell
+dotnet test tests/NodePilot.Data.Tests --filter 'FullyQualifiedName~DispatchClaimBenchmarkTests' --logger 'console;verbosity=detailed'
+```
+
+It compares the historical SELECT/compare-and-set claim loop with atomic claims and shared idle
+polling: 20 workers, a 3.25-second idle window, then 100 queued starts with 25 ms of simulated work.
+Both paths use the same coalesced signals and PostgreSQL connection pooling with a 40-connection cap. Output reports
+claim statements per start and burst-release-to-claim p50/p95; setup and completion deletes are
+excluded from the statement count. This isolates the claim protocol and does not model full workflow
+execution or remote activities. Run it without other database load.
+
 ### Documentation website
 
 `src/nodepilot-docs-ui` is a standalone Vite SPA published to
@@ -135,7 +176,8 @@ codes, trigger keys, settings schema), run that specific test — the mapping is
 
 - **Tests are mandatory.** Every behavioral change ships with matching tests in the same PR.
   Naming: `MethodName_Scenario_ExpectedResult`. The remote/WinRM layer is always mocked; DB
-  tests use in-memory SQLite. Coverage gates: backend ≥ 85 % line / ≥ 70 % branch (enforced
+  tests normally use in-memory SQLite; production-provider schema and concurrency checks use the
+  isolated integration runner above. Coverage gates: backend ≥ 85 % line / ≥ 70 % branch (enforced
   in `.github/workflows/ci.yml` — the workflow is the single authoritative number), frontend
   per `vitest.config.ts`.
 - **Models and interfaces live in `NodePilot.Core`** (which has no project dependencies).

@@ -10,11 +10,8 @@ using Xunit;
 namespace NodePilot.Data.Tests.Rbac;
 
 /// <summary>
-/// Migration-level coverage for RBAC Tier A (the first RBAC rollout phase): the
-/// AddSharedWorkflowFolders migration must produce a usable Root folder, every existing
-/// workflow must end up assigned to Root, and the bootstrapper's idempotent
-/// default-permissions step must grant Operator/Viewer users the right baseline grant on
-/// Root (Admin gets nothing, since the global role already bypasses folder checks).
+/// The baseline creates a usable Root folder and enforces folder constraints.
+/// Repeated startup must preserve explicit permission revocations.
 /// </summary>
 public sealed class SharedWorkflowFolderMigrationTests : IDisposable
 {
@@ -60,18 +57,13 @@ public sealed class SharedWorkflowFolderMigrationTests : IDisposable
     }
 
     [Fact]
-    public void Bootstrap_BackfillsExistingWorkflowsToRoot()
+    public void Bootstrap_NewWorkflowDefaultsToRoot()
     {
-        // Seed one workflow before any RBAC awareness; simulates an upgrade from a pre-RBAC
-        // schema. The migration's AddColumn defaultValue must put it on Root automatically.
+        // New workflows inherit the model's Root default after the baseline creates it.
         var preExistingId = Guid.NewGuid();
         using (var db = NewContext())
         {
             MigrationBootstrapper.Bootstrap(db, NullLogger.Instance);  // creates schema + Root
-            // Deleting the auto-created Root and re-inserting a Workflow without FolderId
-            // would need raw SQL on an already-migrated DB. Instead this adds a workflow after
-            // bootstrap and checks it defaults to Root, the same default AddColumn applies on
-            // upgrade and the model applies on fresh inserts.
             db.Workflows.Add(new Workflow
             {
                 Id = preExistingId,
@@ -91,8 +83,7 @@ public sealed class SharedWorkflowFolderMigrationTests : IDisposable
     [Fact]
     public void Bootstrap_DoesNotReseedRootPermissions_AfterAdminRevoke()
     {
-        // The Root permission seed runs once as part of an EF migration; repeated Bootstrap
-        // calls must not re-grant a permission an admin has revoked.
+        // Repeated Bootstrap calls must not re-grant a permission an admin has revoked.
         var operatorId = Guid.NewGuid();
 
         using (var db = NewContext())
@@ -133,14 +124,6 @@ public sealed class SharedWorkflowFolderMigrationTests : IDisposable
                 "intentional Admin revokes must not be re-created by re-bootstraps â€” F1 fix " +
                 "(the prior runtime backfill loop was the bug)");
     }
-
-    // Note: BackfillSharedFolderUserPermissions' SELECT-INSERT path is covered end-to-end by
-    // the integration suite (real upgrade scenarios with pre-existing users). Reproducing
-    // "users existed before the migration applied" in a SQLite unit test is impractical:
-    // db.Database.Migrate() applies all pending migrations atomically against a model built
-    // from scratch, so there is no hook to insert rows between InitialBaseline and the
-    // backfill migration without forking EF's migrator. The revoke-survives-reboot behavior
-    // is covered by Bootstrap_DoesNotReseedRootPermissions_AfterAdminRevoke above.
 
     [Fact]
     public void SiblingNameUniqueness_IsEnforcedAtSchemaLevel()

@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { ExecutionPanel, type SimulationSnapshot } from '../../../components/designer/ExecutionPanel';
+import { StepInputBlock } from '../../../components/designer/execution/ExecutionPanelParts';
 import type { LiveExecution, StepUpdate, DatabusEntry } from '../../../hooks/useSignalR';
 import type { WorkflowExecution } from '../../../types/api';
 import { useDesignStore } from '../../../stores/designStore';
@@ -35,6 +36,29 @@ function patchFetch() {
 }
 
 const server = setupServer();
+it('step input resolves machine names using options without operational statistics', async () => {
+  const options = vi.fn(() => HttpResponse.json([{ id: 'machine-1', name: 'Target Machine' }]));
+  const statistics = vi.fn(() => HttpResponse.json([]));
+  server.use(
+    http.get(`${BASE}/api/machines/options`, options),
+    http.get(`${BASE}/api/machines`, statistics),
+    http.get(`${BASE}/api/credentials`, () => HttpResponse.json([])),
+    http.get(`${BASE}/api/workflows/wf-1`, () => HttpResponse.json({
+      definitionJson: JSON.stringify({ nodes: [{ id: 'step-1', data: { targetMachineId: 'machine-1' } }] }),
+    })),
+  );
+  patchFetch();
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <StepInputBlock workflowId="wf-1" stepId="step-1" />
+    </QueryClientProvider>,
+  );
+
+  expect(await screen.findByText('Target Machine')).toBeInTheDocument();
+  expect(options).toHaveBeenCalledTimes(1);
+  expect(statistics).not.toHaveBeenCalled();
+});
+
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));
 beforeEach(() => useDesignStore.setState({ designerMode: 'expert' }));
 afterEach(() => { server.resetHandlers(); vi.restoreAllMocks(); });
@@ -155,7 +179,7 @@ describe('ExecutionPanel', () => {
         isEnabled: false,
         definitionJson: '{"nodes":[],"edges":[]}',
       })),
-      http.get(`${BASE}/api/machines`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/machines/options`, () => HttpResponse.json([])),
       http.get(`${BASE}/api/credentials`, () => HttpResponse.json([])),
     );
     const databus: Record<string, DatabusEntry> = {
@@ -254,7 +278,7 @@ describe('ExecutionPanel', () => {
     server.use(http.get(`${BASE}/api/workflows/wf-1`, () => HttpResponse.json({
       id: 'wf-1', name: 'WF', isEnabled: false, definitionJson: '{"nodes":[],"edges":[]}',
     })));
-    server.use(http.get(`${BASE}/api/machines`, () => HttpResponse.json([])));
+    server.use(http.get(`${BASE}/api/machines/options`, () => HttpResponse.json([])));
     server.use(http.get(`${BASE}/api/credentials`, () => HttpResponse.json([])));
     renderPanel({
       liveExecution: liveExec({ steps: [step({ stepId: 'a', stepName: 'Alpha' })] }),
@@ -631,7 +655,7 @@ describe('ExecutionPanel', () => {
         isEnabled: false,
         definitionJson: '{"nodes":[],"edges":[]}',
       })),
-      http.get(`${BASE}/api/machines`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/machines/options`, () => HttpResponse.json([])),
       http.get(`${BASE}/api/credentials`, () => HttpResponse.json([])),
     );
 

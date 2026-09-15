@@ -12,15 +12,15 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace NodePilot.Data.Migrations
 {
     [DbContext(typeof(NodePilotDbContext))]
-    [Migration("20260630220518_DropNotificationSignalStateLastAlertedAt")]
-    partial class DropNotificationSignalStateLastAlertedAt
+    [Migration("20260915180058_InitialBaseline")]
+    partial class InitialBaseline
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.5")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -79,6 +79,53 @@ namespace NodePilot.Data.Migrations
                     b.ToTable("AuditLog");
                 });
 
+            modelBuilder.Entity("NodePilot.Core.Models.AuthSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AuthenticationMethod")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("AuthorizationVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CurrentJti")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("RefreshGeneration")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("AuthSessions");
+                });
+
             modelBuilder.Entity("NodePilot.Core.Models.ClusterLeader", b =>
                 {
                     b.Property<string>("Resource")
@@ -119,6 +166,9 @@ namespace NodePilot.Data.Migrations
                     b.Property<byte[]>("EncryptedPassword")
                         .IsRequired()
                         .HasColumnType("bytea");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -327,6 +377,262 @@ namespace NodePilot.Data.Migrations
                     b.ToTable("CustomActivityDefinitionVersions");
                 });
 
+            modelBuilder.Entity("NodePilot.Core.Models.DirectoryMembership", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Authority")
+                        .IsRequired()
+                        .HasMaxLength(384)
+                        .HasColumnType("character varying(384)");
+
+                    b.Property<string>("GroupKey")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<DateTime>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Authority", "GroupKey");
+
+                    b.HasIndex("UserId", "Authority", "GroupKey")
+                        .IsUnique();
+
+                    b.ToTable("DirectoryMemberships");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.ExecutionDispatchOutboxItem", b =>
+                {
+                    b.Property<Guid>("ExecutionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("AvailableAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("BypassMaintenanceWindow")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("CallDepth")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("DebugEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LeaseExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LeaseOwner")
+                        .HasMaxLength(240)
+                        .HasColumnType("character varying(240)");
+
+                    b.Property<string>("MissingWorkflowMessage")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid?>("ParentExecutionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PreOwnershipFailurePrefix")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer");
+
+                    b.Property<byte[]>("ProtectedParameters")
+                        .HasColumnType("bytea");
+
+                    b.Property<bool>("RequireMaintenanceWindowCheck")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("RequireWorkflowEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("StartedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("TimeoutSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TriggeredBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("WorkflowId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ExecutionId");
+
+                    b.HasIndex("LeaseExpiresAt");
+
+                    b.HasIndex("AvailableAt", "Priority");
+
+                    b.ToTable("ExecutionDispatchOutbox");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.ExecutionHourlyStat", b =>
+                {
+                    b.Property<DateTime>("HourUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("WorkflowId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CancelledCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ComputedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DurationMsCount")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("DurationMsSum")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("FailedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("FinishedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsFinal")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("RetriedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RunningCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SucceededCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TotalCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("HourUtc", "WorkflowId");
+
+                    b.HasIndex("WorkflowId");
+
+                    b.HasIndex("IsFinal", "HourUtc");
+
+                    b.ToTable("ExecutionHourlyStats");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.ExecutionStatsRollupState", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("BackfillComplete")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("CoverageEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CoverageStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ExecutionStatsRollupStates");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.ExternalIdentity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Authority")
+                        .IsRequired()
+                        .HasMaxLength(384)
+                        .HasColumnType("character varying(384)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(384)
+                        .HasColumnType("character varying(384)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("Authority", "Subject")
+                        .IsUnique();
+
+                    b.ToTable("ExternalIdentities");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.FailureCauseHourlyStat", b =>
+                {
+                    b.Property<DateTime>("HourUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("WorkflowId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MessageHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("ComputedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsFinal")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("LatestExecutionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("LatestStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("text");
+
+                    b.HasKey("HourUtc", "WorkflowId", "MessageHash");
+
+                    b.HasIndex("WorkflowId");
+
+                    b.HasIndex("IsFinal", "HourUtc");
+
+                    b.ToTable("FailureCauseHourlyStats");
+                });
+
             modelBuilder.Entity("NodePilot.Core.Models.GlobalVariable", b =>
                 {
                     b.Property<Guid>("Id")
@@ -339,6 +645,11 @@ namespace NodePilot.Data.Migrations
                     b.Property<string>("Description")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("FolderId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasDefaultValue(new Guid("00000000-0000-0000-0000-000000000002"));
 
                     b.Property<bool>("IsSecret")
                         .HasColumnType("boolean");
@@ -360,10 +671,60 @@ namespace NodePilot.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("FolderId");
+
                     b.HasIndex("Name")
                         .IsUnique();
 
                     b.ToTable("GlobalVariables");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.GlobalVariableFolder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Depth")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid?>("ParentFolderId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(800)
+                        .HasColumnType("character varying(800)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParentFolderId");
+
+                    b.HasIndex("ParentFolderId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("GlobalVariableFolders");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000002"),
+                            CreatedAt = new DateTime(2020, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Depth = 0,
+                            Name = "Root",
+                            Path = "/"
+                        });
                 });
 
             modelBuilder.Entity("NodePilot.Core.Models.IdempotencyKey", b =>
@@ -640,6 +1001,9 @@ namespace NodePilot.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<string>("ConditionExpressionJson")
+                        .HasColumnType("text");
+
                     b.Property<Guid>("NotificationRuleId")
                         .HasColumnType("uuid");
 
@@ -668,6 +1032,9 @@ namespace NodePilot.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ActivatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("CooldownMinutes")
                         .HasColumnType("integer");
 
@@ -693,6 +1060,13 @@ namespace NodePilot.Data.Migrations
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Custom");
+
                     b.Property<int>("MinOccurrences")
                         .HasColumnType("integer");
 
@@ -709,6 +1083,24 @@ namespace NodePilot.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<string>("SeverityOverride")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SourceParametersJson")
+                        .HasColumnType("text");
+
+                    b.Property<int>("SustainForSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SystemPresetId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("SystemSourceId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -722,6 +1114,8 @@ namespace NodePilot.Data.Migrations
 
                     b.HasIndex("Name")
                         .IsUnique();
+
+                    b.HasIndex("Kind", "IsEnabled");
 
                     b.ToTable("NotificationRules");
                 });
@@ -751,33 +1145,6 @@ namespace NodePilot.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("NotificationRuleTargets");
-                });
-
-            modelBuilder.Entity("NodePilot.Core.Models.NotificationSignalState", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("LastChangedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("LastState")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("SourceKey")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SourceKey")
-                        .IsUnique();
-
-                    b.ToTable("NotificationSignalStates");
                 });
 
             modelBuilder.Entity("NodePilot.Core.Models.NotificationSuppressionState", b =>
@@ -811,6 +1178,26 @@ namespace NodePilot.Data.Migrations
                     b.ToTable("NotificationSuppressionStates");
                 });
 
+            modelBuilder.Entity("NodePilot.Core.Models.OidcLoginTicket", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("ProtectedPayload")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.ToTable("OidcLoginTickets");
+                });
+
             modelBuilder.Entity("NodePilot.Core.Models.RevokedToken", b =>
                 {
                     b.Property<string>("Jti")
@@ -837,6 +1224,49 @@ namespace NodePilot.Data.Migrations
                     b.ToTable("RevokedTokens");
                 });
 
+            modelBuilder.Entity("NodePilot.Core.Models.ScimGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Authority")
+                        .IsRequired()
+                        .HasMaxLength(384)
+                        .HasColumnType("character varying(384)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("ExternalId")
+                        .IsRequired()
+                        .HasMaxLength(384)
+                        .HasColumnType("character varying(384)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsTombstoned")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DisplayName");
+
+                    b.HasIndex("Authority", "ExternalId")
+                        .IsUnique();
+
+                    b.ToTable("ScimGroups");
+                });
+
             modelBuilder.Entity("NodePilot.Core.Models.SharedFolderPermission", b =>
                 {
                     b.Property<Guid>("Id")
@@ -851,6 +1281,13 @@ namespace NodePilot.Data.Migrations
 
                     b.Property<Guid?>("GrantedByUserId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("PrincipalAuthority")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasDefaultValue("");
 
                     b.Property<string>("PrincipalKey")
                         .IsRequired()
@@ -871,8 +1308,9 @@ namespace NodePilot.Data.Migrations
 
                     b.HasIndex("FolderId");
 
-                    b.HasIndex("FolderId", "PrincipalType", "PrincipalKey")
-                        .IsUnique();
+                    b.HasIndex("FolderId", "PrincipalType", "PrincipalAuthority", "PrincipalKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_SharedFolderPermissions_Principal");
 
                     b.ToTable("SharedFolderPermissions");
                 });
@@ -993,6 +1431,10 @@ namespace NodePilot.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Status")
+                        .HasDatabaseName("IX_StepExecutions_Running")
+                        .HasFilter("\"Status\" = 'Running'");
+
                     b.HasIndex("WorkflowExecutionId", "StartedAt");
 
                     b.HasIndex("WorkflowExecutionId", "Status");
@@ -1086,6 +1528,77 @@ namespace NodePilot.Data.Migrations
                     b.ToTable("SupportEvents");
                 });
 
+            modelBuilder.Entity("NodePilot.Core.Models.SystemAlertPolicyState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("EpisodeStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("InstanceKey")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<bool>("IsMatching")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("LastObservedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("MatchStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("NotificationRuleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LastObservedAt");
+
+                    b.HasIndex("NotificationRuleId", "SourceId", "InstanceKey")
+                        .IsUnique();
+
+                    b.ToTable("SystemAlertPolicyStates");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.SystemAlertSourceState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CursorJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("StateKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceId", "StateKey")
+                        .IsUnique();
+
+                    b.ToTable("SystemAlertSourceStates");
+                });
+
             modelBuilder.Entity("NodePilot.Core.Models.SystemHealthHeartbeat", b =>
                 {
                     b.Property<string>("ServiceName")
@@ -1107,6 +1620,87 @@ namespace NodePilot.Data.Migrations
                     b.ToTable("SystemHealth");
                 });
 
+            modelBuilder.Entity("NodePilot.Core.Models.TriggerDeliveryCheckpoint", b =>
+                {
+                    b.Property<Guid>("WorkflowId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TriggerNodeId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("ConfigurationHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Position")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("TriggerType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("WorkflowId", "TriggerNodeId");
+
+                    b.ToTable("TriggerDeliveryCheckpoints");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.TriggerDeliveryReceipt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EventKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid?>("ExecutionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TriggerNodeId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TriggerType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("WorkflowId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReceivedAt");
+
+                    b.HasIndex("WorkflowId", "TriggerNodeId", "EventKey")
+                        .IsUnique();
+
+                    b.ToTable("TriggerDeliveryReceipts");
+                });
+
             modelBuilder.Entity("NodePilot.Core.Models.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1115,6 +1709,10 @@ namespace NodePilot.Data.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DirectorySyncStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<string>("ExternalId")
                         .HasMaxLength(256)
@@ -1126,8 +1724,17 @@ namespace NodePilot.Data.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsBreakGlass")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsTombstoned")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("KnownGroupSidsJson")
                         .HasColumnType("text");
+
+                    b.Property<DateTime?>("LastDirectorySyncAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("LockedUntil")
                         .HasColumnType("timestamp with time zone");
@@ -1149,6 +1756,7 @@ namespace NodePilot.Data.Migrations
                         .HasColumnType("character varying(20)");
 
                     b.Property<int>("SecurityStamp")
+                        .IsConcurrencyToken()
                         .HasColumnType("integer");
 
                     b.Property<string>("Username")
@@ -1200,10 +1808,16 @@ namespace NodePilot.Data.Migrations
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("boolean");
 
+                    b.Property<int?>("MaxConcurrentExecutions")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("PublishedByUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("TriggerTypesJson")
                         .HasColumnType("text");
@@ -1234,6 +1848,10 @@ namespace NodePilot.Data.Migrations
 
                     b.Property<int>("CallDepth")
                         .HasColumnType("integer");
+
+                    b.Property<string>("CancelledBy")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1284,6 +1902,11 @@ namespace NodePilot.Data.Migrations
                     b.HasIndex("ParentExecutionId");
 
                     b.HasIndex("TraceId");
+
+                    b.HasIndex("CompletedAt", "Id")
+                        .HasAnnotation("SqlServer:Include", new[] { "Status" });
+
+                    NpgsqlIndexBuilderExtensions.IncludeProperties(b.HasIndex("CompletedAt", "Id"), new[] { "Status" });
 
                     b.HasIndex("StartedAt", "Status");
 
@@ -1391,6 +2014,17 @@ namespace NodePilot.Data.Migrations
                     b.ToTable("WorkflowVersions");
                 });
 
+            modelBuilder.Entity("NodePilot.Core.Models.AuthSession", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("NodePilot.Core.Models.CustomActivityDefinitionVersion", b =>
                 {
                     b.HasOne("NodePilot.Core.Models.CustomActivityDefinition", "Definition")
@@ -1400,6 +2034,78 @@ namespace NodePilot.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Definition");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.DirectoryMembership", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.ExecutionDispatchOutboxItem", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.WorkflowExecution", "Execution")
+                        .WithOne()
+                        .HasForeignKey("NodePilot.Core.Models.ExecutionDispatchOutboxItem", "ExecutionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Execution");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.ExecutionHourlyStat", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.Workflow", "Workflow")
+                        .WithMany()
+                        .HasForeignKey("WorkflowId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Workflow");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.ExternalIdentity", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.User", "User")
+                        .WithMany("ExternalIdentities")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.FailureCauseHourlyStat", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.Workflow", "Workflow")
+                        .WithMany()
+                        .HasForeignKey("WorkflowId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Workflow");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.GlobalVariable", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.GlobalVariableFolder", null)
+                        .WithMany()
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.GlobalVariableFolder", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.GlobalVariableFolder", null)
+                        .WithMany()
+                        .HasForeignKey("ParentFolderId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("NodePilot.Core.Models.MaintenanceWindowTarget", b =>
@@ -1471,6 +2177,28 @@ namespace NodePilot.Data.Migrations
                     b.Navigation("WorkflowExecution");
                 });
 
+            modelBuilder.Entity("NodePilot.Core.Models.TriggerDeliveryCheckpoint", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.Workflow", "Workflow")
+                        .WithMany()
+                        .HasForeignKey("WorkflowId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Workflow");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.TriggerDeliveryReceipt", b =>
+                {
+                    b.HasOne("NodePilot.Core.Models.Workflow", "Workflow")
+                        .WithMany()
+                        .HasForeignKey("WorkflowId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Workflow");
+                });
+
             modelBuilder.Entity("NodePilot.Core.Models.Workflow", b =>
                 {
                     b.HasOne("NodePilot.Core.Models.SharedWorkflowFolder", "Folder")
@@ -1530,6 +2258,11 @@ namespace NodePilot.Data.Migrations
             modelBuilder.Entity("NodePilot.Core.Models.SharedWorkflowFolder", b =>
                 {
                     b.Navigation("Permissions");
+                });
+
+            modelBuilder.Entity("NodePilot.Core.Models.User", b =>
+                {
+                    b.Navigation("ExternalIdentities");
                 });
 
             modelBuilder.Entity("NodePilot.Core.Models.Workflow", b =>

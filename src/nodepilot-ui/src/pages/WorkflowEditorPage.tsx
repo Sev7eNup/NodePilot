@@ -2,7 +2,7 @@ import { useParams, useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api, downloadFromApi } from '../api/client';
-import type { Workflow, ManagedMachine, Credential } from '../types/api';
+import type { Workflow, MachineOption, Credential } from '../types/api';
 import { Add, Chemistry, CircleDash, Close, Minimize } from '@carbon/icons-react';
 import { toPng } from 'html-to-image';
 import { autoLayout, autoLayoutTB, autoLayoutCompact, autoLayoutELK } from '../lib/autoLayout';
@@ -315,7 +315,7 @@ function WorkflowEditorInner() {
     createWorkflowMutation.mutate(trimmed);
   }, [newWorkflowName, createWorkflowMutation]);
 
-  const { data: machines = [] } = useQuery({ queryKey: ['machines'], queryFn: () => api.get<ManagedMachine[]>('/machines') });
+  const { data: machines = [] } = useQuery({ queryKey: ['machines', 'options'], queryFn: () => api.get<MachineOption[]>('/machines/options') });
   const { data: credentials = [] } = useQuery({ queryKey: ['credentials'], queryFn: () => api.get<Credential[]>('/credentials') });
 
   // ---- Undo / Redo History ------------------------------------------------

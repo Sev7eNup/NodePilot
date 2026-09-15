@@ -6,6 +6,10 @@ public record CreateMachineRequest(string Name, string Hostname, int WinRmPort =
 public record UpdateMachineRequest(string Name, string Hostname, [property: JsonRequired] int WinRmPort, [property: JsonRequired] bool UseSsl, Guid? DefaultCredentialId, string? Tags);
 public record TestConnectionRequest(Guid? CredentialId);
 
+public record MachineOptionResponse(
+    Guid Id, string Name, string Hostname, int WinRmPort, bool UseSsl,
+    Guid? DefaultCredentialId, string? Tags, DateTime? LastConnectivityCheck, bool IsReachable);
+
 public record MachineResponse(
     Guid Id, string Name, string Hostname, int WinRmPort, bool UseSsl,
     Guid? DefaultCredentialId, string? Tags, DateTime? LastConnectivityCheck, bool IsReachable,

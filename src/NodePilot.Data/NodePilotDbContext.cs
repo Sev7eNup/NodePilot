@@ -271,6 +271,10 @@ public class NodePilotDbContext : DbContext
             // low-selectivity and useless as an index without a leading FK filter, so the
             // composite is what actually serves this query.
             e.HasIndex(x => new { x.WorkflowExecutionId, x.Status });
+            // Machine activity counts must only visit the small set of currently running steps.
+            e.HasIndex(x => x.Status)
+                .HasDatabaseName("IX_StepExecutions_Running")
+                .HasFilter("\"Status\" = 'Running'");
         });
 
         modelBuilder.Entity<ManagedMachine>(e =>

@@ -153,7 +153,7 @@ const EMPTY_WORKFLOW = {
 const server = setupServer(
   http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(MOCK_WORKFLOW)),
   http.get(`${BASE}/api/workflows`, () => HttpResponse.json([{ id: 'wf-smoke-1', name: 'Smoke Workflow' }])),
-  http.get(`${BASE}/api/machines`, () => HttpResponse.json([])),
+  http.get(`${BASE}/api/machines/options`, () => HttpResponse.json([])),
   http.get(`${BASE}/api/credentials`, () => HttpResponse.json([])),
   http.get(`${BASE}/api/executions`, () => HttpResponse.json([])),
   http.get(`${BASE}/api/observability/config`, () =>
@@ -230,6 +230,19 @@ async function openToolsMenu() {
 }
 
 describe('WorkflowEditorPage — smoke + toolbar', () => {
+  it('loads machine options without requesting operational statistics', async () => {
+    const options = vi.fn(() => HttpResponse.json([]));
+    const statistics = vi.fn(() => HttpResponse.json([]));
+    server.use(
+      http.get(`${BASE}/api/machines/options`, options),
+      http.get(`${BASE}/api/machines`, statistics),
+    );
+
+    renderPage();
+    await waitFor(() => expect(options).toHaveBeenCalledTimes(1));
+    expect(statistics).not.toHaveBeenCalled();
+  });
+
   it('mounts and renders save + publish buttons after workflow load', async () => {
     renderPage();
     await waitFor(() => {
