@@ -22,6 +22,8 @@ Retention-Services löschen oder archivieren historische Daten nach einer Aufbew
 | `ExecutionDispatchWorker` | Geleaster Dispatch persistierter `Pending` Executions aus der DB-Outbox | leader-only (im Cluster) |
 | `MaintenanceWindowSnapshotService` | Hält Maintenance-Window-Snapshot pro Node aktuell | immer an |
 | `WorkflowStatsRefresher` | Berechnet `WorkflowStats`-Aggregate | immer an |
+| `ExecutionStatsRollupService` | Schreibt die Stunden-Buckets der Dashboard-Historie fort (`ExecutionHourlyStat`, `FailureCauseHourlyStat`); Sweep alle 60 s, Erstbefüllung in Tages-Chunks | `Stats:Rollup:Enabled` (default an), leader-only |
+| `DashboardAggregateWarmup` | Berechnet die Dashboard-Aggregate für 24 h / 7 d / 30 d nach dem Start vor, damit auch der erste Aufruf den Cache trifft | `Dashboard:Warmup:Enabled` (default an), pro Node |
 | `RevokedTokensCleanupService` | Daily Sweep von `RevokedTokens` | immer an |
 | `HubRevocationSweeper` | Schließt SignalR-Connections bei Logout/Deactivation | immer an |
 | `SupportEventFlushService` | Gepufferter Flush von Support-Events in DB | immer an (wenn DB-Projektion an) |
@@ -35,5 +37,8 @@ Dashboard und Workflow-Listen lesen ein **precomputed** `WorkflowStats`-Aggregat
 |---|---|---|
 | `Stats:RefreshIntervalMinutes` | `5` | Aggregate-Refresh-Interval |
 | `Stats:WindowDays` | `7` | Zeitfenster der aggregierten KPIs |
+| `Stats:Rollup:Enabled` | `true` | Vorberechnete Stunden-Buckets für die Dashboard-Historie. Aus geschaltet rechnet das Dashboard jedes Fenster wieder aus den Rohzeilen — korrekt, aber auf großen Beständen deutlich langsamer |
+
+Die Stunden-Buckets tragen die historischen Dashboard-Zahlen (Status-Zähler, Retry-Anteil, Dauer, Fehlerursachen). Laufende Werte — aktive Läufe, Queue-Tiefe, Heartbeats — werden nie vorberechnet. Solange die Erstbefüllung ein Fenster noch nicht deckt, liefert das Dashboard dort weiterhin die live gerechneten Zahlen.
 
 `GET /api/stats/dashboard` liefert den letzten Refresh-Stand, keine Live-Zahlen. Settings-Mutationen schreiben `SETTINGS_STATS_UPDATED` ins Audit-Log.
