@@ -31,6 +31,7 @@ function patchFetch() {
 }
 
 const server = setupServer(
+  http.get(`${BASE}/api/stats/duration-trend`, () => HttpResponse.json({ buckets: [], workflows: [] })),
   http.get(`${BASE}/api/stats/failure-causes`, () => HttpResponse.json({ totalFailed: 0, groups: [], remainingCount: 0 })),
   http.get(`${BASE}/api/observability/config`, () =>
     HttpResponse.json({ enabled: false, traceUiUrlTemplate: null, traceBackendName: null })
@@ -112,6 +113,9 @@ describe('DashboardPage', () => {
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
       ...BASE_STATS,
       last24hBuckets: [{ hourStart: '2026-09-14T10:00:00Z', succeeded: 3, failed: 1, cancelled: 2 }],
+    })));
+    server.use(http.get(`${BASE}/api/stats/duration-trend`, () => HttpResponse.json({
+      buckets: [{ startedAt: '2026-09-14T10:00:00Z', count: 4, medianMs: 1000, p95Ms: 3000 }], workflows: [],
     })));
     const { container } = renderPage();
     await waitFor(() => expect(container.querySelectorAll('[data-chart-option]').length).toBe(3));
@@ -226,7 +230,7 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByText('Top Workflows (7 days)')).toBeInTheDocument());
     expect(screen.getByText('10 runs')).toBeInTheDocument();
     expect(screen.getByText(/avg/i)).toBeInTheDocument();
-    expect(screen.getByText(/p95/i)).toBeInTheDocument();
+    expect(within(screen.getByText('Top Workflows (7 days)').closest('.np-card') as HTMLElement).getByText(/p95/i)).toBeInTheDocument();
   });
 
   it('renders recent executions with status', async () => {
@@ -513,7 +517,7 @@ describe('DashboardPage', () => {
     expect(scroller.parentElement).toHaveClass('relative');
   });
 
-  // ── Insights (run-status summary · success-rate trend · recurring errors) ──
+  // ── Insights (run-status summary · execution duration · recurring errors) ──
 
   it('renders the run-status summary with total and all four statuses including zero counts', async () => {
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)));
@@ -572,25 +576,53 @@ describe('DashboardPage', () => {
     expect(card.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('shows empty state for the success-rate trend when there are no buckets', async () => {
+  it('shows an independent empty state for execution durations', async () => {
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)));
     renderPage();
-    await waitFor(() => expect(screen.getByText('Success Rate Trend (24h)')).toBeInTheDocument());
-    // Both the 24h area chart and the trend fall back to the empty state with no buckets.
-    expect(screen.getAllByText('No executions yet').length).toBeGreaterThanOrEqual(2);
+    expect(await screen.findByText('Execution Duration (24h)')).toBeInTheDocument();
+    expect(await screen.findByText('No completed runs in the selected period.')).toBeInTheDocument();
   });
 
-  it('renders the success-rate trend chart when hourly buckets exist', async () => {
+  it('renders the duration chart from its own endpoint', async () => {
     const buckets = [
       { hourStart: new Date(Date.now() - 2 * 3600_000).toISOString(), succeeded: 10, failed: 0, cancelled: 0 },
       { hourStart: new Date(Date.now() - 1 * 3600_000).toISOString(), succeeded: 8, failed: 2, cancelled: 0 },
     ];
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({ ...BASE_STATS, last24hBuckets: buckets })));
+    server.use(http.get(`${BASE}/api/stats/duration-trend`, () => HttpResponse.json({
+      buckets: buckets.map(b => ({ startedAt: b.hourStart, count: 10, medianMs: 1000, p95Ms: 3000 })), workflows: [],
+    })));
     renderPage();
-    await waitFor(() => expect(screen.getByText('Success Rate Trend (24h)')).toBeInTheDocument());
-    // With data present, the trend no longer shows the empty state (only the running panel is empty
-    // here).
-    expect(screen.queryByText('No executions yet')).not.toBeInTheDocument();
+    expect(await screen.findByRole('img', { name: 'Execution Duration (24h)' })).toBeInTheDocument();
+    expect(screen.queryByText('No completed runs in the selected period.')).not.toBeInTheDocument();
+  });
+
+  it('preserves the duration workflow filter when the dashboard window changes', async () => {
+    const requests: string[] = [];
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)));
+    server.use(http.get(`${BASE}/api/stats/duration-trend`, ({ request }) => {
+      requests.push(request.url);
+      return HttpResponse.json({ buckets: [], workflows: [{ id: 'wf-1', name: 'Disk Check' }] });
+    }));
+    renderPage();
+    await screen.findByRole('option', { name: 'Disk Check' });
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Workflow for execution duration' }), 'wf-1');
+    await waitFor(() => expect(requests.some(url => url.includes('windowHours=24&workflowId=wf-1'))).toBe(true));
+    await user.click(screen.getByRole('button', { name: '7 days' }));
+    await waitFor(() => expect(requests.some(url => url.includes('windowHours=168&workflowId=wf-1'))).toBe(true));
+    expect(screen.getByRole('combobox', { name: 'Workflow for execution duration' })).toHaveValue('wf-1');
+  });
+
+  it('retries a failed duration request without hiding other dashboard cards', async () => {
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)));
+    server.use(http.get(`${BASE}/api/stats/duration-trend`, () => new HttpResponse(null, { status: 500 })));
+    renderPage();
+    expect(await screen.findByText('Could not load execution durations.')).toBeInTheDocument();
+    expect(screen.getByText('Run Status (24h)')).toBeInTheDocument();
+    server.use(http.get(`${BASE}/api/stats/duration-trend`, () => HttpResponse.json({ buckets: [], workflows: [] })));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('No completed runs in the selected period.')).toBeInTheDocument();
   });
 
   it('replaces the p95 chart with the independent failure-causes panel', async () => {

@@ -35,6 +35,7 @@ import { useOpsClock } from '../hooks/useOpsClock';
 import { SystemHealthBanner } from '../components/dashboard/SystemHealthBanner';
 import { DashboardQuickActions } from '../components/dashboard/DashboardQuickActions';
 import { FailureCauses, failureCausesQuery } from '../components/dashboard/FailureCauses';
+import { DurationTrend, durationTrendQuery } from '../components/dashboard/DurationTrend';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { formatDate, formatDuration, formatNumber, formatRelative, formatRelativeFuture } from '../lib/format';
 import { TRIGGER_BADGE_META as TRIGGER_META } from '../lib/triggerBadgeMeta';
@@ -138,10 +139,11 @@ export function DashboardPage() {
   const { t } = useTranslation(['dashboard', 'executions', 'common']);
   const navigate = useNavigate();
   const { probeRef, tokens } = useChartTokens();
-  // User-selected time window for the hero, area, status summary and success-trend charts. The top and
+  // User-selected time window for the hero, area, status summary and duration charts. The top and
   // failing lists stay on a fixed 7-day window from the backend, so they do not empty out when
   // windowHours is 1.
   const [windowHours, setWindowHours] = useState(24);
+  const [durationWorkflowId, setDurationWorkflowId] = useState('');
   const windowLabel = t(`dashboard:window.${WINDOW_KEY[windowHours] ?? '24h'}`);
   // Live status transitions from the SignalR ops feed (JoinOperationsFeed). It invalidates
   // ['dashboard-stats'] with a debounce as soon as an execution starts or finishes, so the
@@ -157,6 +159,7 @@ export function DashboardPage() {
   // loading gate below, so leaving the request to it made the page's two most expensive queries
   // run in sequence. Same query key, so the component reads this result rather than refetching.
   useQuery(failureCausesQuery(windowHours));
+  useQuery(durationTrendQuery(windowHours, durationWorkflowId));
   // Selecting a status row filters the Recent Executions table client-side. The backend only
   // returns the latest 10 rows, so this filters within those; full filtering lives on /executions.
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -245,7 +248,7 @@ export function DashboardPage() {
         </div>
         <HourlyAreaChart buckets={stats.last24hBuckets} windowHours={windowHours} tokens={tokens} />
       </div>
-      {/* Run status, success trend and recurring failure messages. */}
+      {/* Run status, execution duration and recurring failure messages. */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-5">
         <div className="np-fade-up" style={{ animationDelay: '160ms' }}>
           <Panel title={t('dashboard:runStatusWindow', { window: windowLabel })} icon={Time} iconClass="text-emerald-500" className="h-full">
@@ -253,8 +256,9 @@ export function DashboardPage() {
           </Panel>
         </div>
         <div className="np-fade-up" style={{ animationDelay: '200ms' }}>
-          <Panel title={t('dashboard:successTrendWindow', { window: windowLabel })} icon={ChartLine} iconClass="text-primary" className="h-full flex flex-col">
-            <SuccessRateTrend buckets={stats.last24hBuckets} windowHours={windowHours} tokens={tokens} />
+          <Panel title={t('dashboard:durationTrend.title', { window: windowLabel })} icon={ChartLine} iconClass="text-primary" className="h-full flex flex-col">
+            <DurationTrend windowHours={windowHours} windowLabel={windowLabel} tokens={tokens}
+              workflowId={durationWorkflowId} onWorkflowChange={setDurationWorkflowId} />
           </Panel>
         </div>
         <div className="np-fade-up" style={{ animationDelay: '240ms' }}>
@@ -1003,96 +1007,6 @@ function RunStatusSummary({ counts, windowLabel, selectedStatus, onSelect }: Rea
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Success-rate trend: succeeded / (succeeded+failed) per hour. Gaps stay gaps
-// (connectNulls:false), and the tooltip carries the run count so a 0% or 100%
-// single-run hour can be read in context.
-// ─────────────────────────────────────────────────────────────────────────────
-
-function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: HourBucket[]; windowHours: number; tokens: ChartTokens }>) {
-  const { t } = useTranslation(['dashboard']);
-  const axisColor = tokens.axis;
-  const tipBg = tokens.surfaceHigh;
-  const tipText = tokens.onSurface;
-  const multiDay = windowHours > 24;
-
-  const points = useMemo(() => buckets.map((b) => {
-    const d = new Date(b.hourStart);
-    const label = multiDay
-      ? `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      : `${String(d.getHours()).padStart(2, '0')}:00`;
-    const terminal = b.succeeded + b.failed;
-    return {
-      label,
-      succeeded: b.succeeded,
-      terminal,
-      rate: terminal > 0 ? Math.round((b.succeeded / terminal) * 1000) / 10 : null,
-    };
-  }), [buckets, multiDay]);
-
-  const option = useMemo<EChartsOption>(() => ({
-    grid: { left: 2, right: 6, top: 10, bottom: 18, containLabel: false },
-    tooltip: {
-      trigger: 'axis',
-      backgroundColor: tipBg,
-      ...(tokens.reducedDecoration ? { extraCssText: 'box-shadow:none', borderColor: axisColor, borderWidth: 1 } : { borderWidth: 0 }),
-      padding: [6, 10],
-      textStyle: { color: tipText, fontSize: 11 },
-      axisPointer: { type: 'line', lineStyle: { color: axisColor, opacity: 0.4 } },
-      formatter: (params: unknown) => {
-        const arr = params as Array<{ dataIndex: number }>;
-        const p = points[arr[0]?.dataIndex];
-        if (!p) return '';
-        const rate = p.rate == null ? '–' : `${p.rate}%`;
-        const ctx = p.terminal > 0 ? `<br/>${t('dashboard:successOfRuns', { succeeded: p.succeeded, terminal: p.terminal })}` : '';
-        return `${p.label} · ${rate}${ctx}`;
-      },
-    },
-    xAxis: {
-      type: 'category',
-      boundaryGap: false,
-      data: points.map((p) => p.label),
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: { color: axisColor, fontSize: 10, interval: (i: number) => i % 3 === 0, hideOverlap: true },
-    },
-    yAxis: { type: 'value', show: false, min: 0, max: 100 },
-    series: [{
-      type: 'line',
-      smooth: 0.35,
-      connectNulls: false,
-      // Only isolated observations need a symbol; connected runs keep the smooth
-      // line. showAllSymbol prevents axis-label thinning from hiding isolated points.
-      showSymbol: true,
-      showAllSymbol: true,
-      symbol: 'circle',
-      symbolSize: 6,
-      itemStyle: { color: HEALTH.ok, borderColor: tipBg, borderWidth: 1 },
-      lineStyle: { width: 2, color: HEALTH.ok },
-      areaStyle: {
-        color: tokens.reducedDecoration ? 'rgba(34,197,94,0.15)' : { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [
-          { offset: 0, color: 'rgba(34,197,94,0.30)' }, { offset: 1, color: 'rgba(34,197,94,0.02)' },
-        ] },
-      },
-      markLine: {
-        silent: true,
-        symbol: 'none',
-        data: [{ yAxis: 95 }],
-        lineStyle: { type: 'dashed', color: axisColor, opacity: 0.6 },
-        label: { formatter: t('dashboard:successTarget', { pct: 95 }), color: axisColor, fontSize: 10, position: 'insideEndTop' },
-      },
-      data: points.map((p, index) => p.rate == null ? null : ({
-        value: p.rate,
-        symbol: points[index - 1]?.rate == null && points[index + 1]?.rate == null ? 'circle' : 'none',
-      })),
-    }],
-  }), [points, axisColor, tipBg, tipText, tokens.reducedDecoration, t]);
-
-  if (points.length === 0 || points.every((p) => p.rate == null)) {
-    return <div className="flex-1 min-h-40 flex items-center justify-center"><EmptyState text={t('dashboard:noExecutionsYet')} /></div>;
-  }
-  return <EChart option={option} className="flex-1 min-h-40 w-full" ariaLabel={t('dashboard:successTrendWindow', { window: t(`dashboard:window.${WINDOW_KEY[windowHours] ?? '24h'}`) })} />;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Live elapsed time for active executions.

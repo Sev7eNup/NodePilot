@@ -13,7 +13,6 @@
   "successRateWindow": "Success Rate ({{window}})",
   "executionsWindow": "Executions — {{window}}",
   "runStatusWindow": "Run Status ({{window}})",
-  "successTrendWindow": "Success Rate Trend ({{window}})",
   "filterByStatus": "Show only {{status}}",
   "clearFilter": "Clear filter",
   "banner": {
@@ -113,8 +112,6 @@
   "runsInSelectedWindow": "Runs in the selected period",
   "successTrend24h": "Success Rate Trend (24h)",
   "statusOther": "Other",
-  "successTarget": "{{pct}}% target",
-  "successOfRuns": "{{succeeded}}/{{terminal}} succeeded",
   "runsLabel": "runs",
   "editLocks": "Workflows being edited",
   "noEditLocks": "No checked-out workflows",
@@ -126,6 +123,19 @@
   "recentAudit": "Recent admin events",
   "noRecentAudit": "No relevant admin events",
   "auditSystemActor": "system",
+  "durationTrend": {
+    "title": "Execution Duration ({{window}})",
+    "median": "Median",
+    "workflow": "Workflow for execution duration",
+    "allWorkflows": "All workflows",
+    "unavailable": "Unavailable workflow",
+    "description": "Successful and failed runs · P95: 95% finish within this time.",
+    "empty": "No completed runs in the selected period.",
+    "error": "Could not load execution durations.",
+    "retry": "Retry",
+    "samples_one": "{{formattedCount}} run",
+    "samples_other": "{{formattedCount}} runs"
+  },
   "failureCauses": {
     "title": "Most Common Errors ({{window}})",
     "empty": "No failed executions in the selected period.",

@@ -53,6 +53,21 @@ public class DashboardController : ControllerBase
         _aggregates = aggregates;
     }
 
+    [HttpGet("duration-trend")]
+    public async Task<ActionResult<DurationTrendResponse>> GetDurationTrend(
+        CancellationToken ct, [FromQuery] int windowHours = 24, [FromQuery] Guid? workflowId = null)
+    {
+        if (windowHours is not (1 or 24 or 168 or 720)) windowHours = 24;
+        var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
+        if (_aggregates is null)
+            return Ok(await new DashboardDurationTrend(_db).ReadAsync(accessible, windowHours, workflowId, ct));
+
+        return Ok(await _aggregates.GetOrComputeAsync(
+            DashboardAggregateCache.Key($"duration-trend:{workflowId?.ToString() ?? "all"}", accessible, windowHours),
+            TimeSpan.FromMinutes(2),
+            (db, token) => new DashboardDurationTrend(db).ReadAsync(accessible, windowHours, workflowId, token), ct));
+    }
+
     [HttpGet("failure-causes")]
     public async Task<ActionResult<FailureCausesResponse>> GetFailureCauses(CancellationToken ct, [FromQuery] int windowHours = 24)
     {
@@ -112,7 +127,7 @@ public class DashboardController : ControllerBase
     [HttpGet("dashboard")]
     public async Task<ActionResult<DashboardStats>> Get(CancellationToken ct, [FromQuery] int windowHours = 24)
     {
-        // The hero/area/donut/success-trend charts honour the caller-selected window.
+        // The dashboard charts honour the caller-selected window.
         // Allowed: 1/24/168/720. Out-of-range values clamp to a sane default rather than
         // rejecting — the dashboard is a glance surface, not a strict API contract.
         if (windowHours <= 0 || windowHours > 720) windowHours = 24;

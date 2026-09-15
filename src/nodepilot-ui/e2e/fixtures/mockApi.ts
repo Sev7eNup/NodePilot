@@ -154,6 +154,8 @@ export async function installDefaultMocks(page: Page) {
   // an object, because the catch-all's `[]` is truthy, so the page passes its `!stats` guard
   // and then fails on `stats.last24h.total`. Empty but valid, like the list mocks above;
   // specs that need real numbers override this after install.
+  await page.route('**/api/stats/duration-trend**', route =>
+    route.fulfill({ json: { buckets: [], workflows: [] } }));
   await page.route('**/api/stats/failure-causes**', route =>
     route.fulfill({ json: { totalFailed: 0, groups: [], remainingCount: 0 } }));
   await page.route('**/api/stats/dashboard**', (route) =>

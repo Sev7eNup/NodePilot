@@ -13,7 +13,6 @@
   "successRateWindow": "Erfolgsquote ({{window}})",
   "executionsWindow": "Ausführungen — {{window}}",
   "runStatusWindow": "Lauf-Status ({{window}})",
-  "successTrendWindow": "Erfolgsraten-Verlauf ({{window}})",
   "filterByStatus": "Nur {{status}} anzeigen",
   "clearFilter": "Filter aufheben",
   "banner": {
@@ -113,8 +112,6 @@
   "runsInSelectedWindow": "Läufe im ausgewählten Zeitraum",
   "successTrend24h": "Erfolgsraten-Verlauf (24 h)",
   "statusOther": "Sonstige",
-  "successTarget": "{{pct}} % Ziel",
-  "successOfRuns": "{{succeeded}}/{{terminal}} erfolgreich",
   "runsLabel": "Läufe",
   "editLocks": "Workflows in Bearbeitung",
   "noEditLocks": "Keine ausgecheckten Workflows",
@@ -126,6 +123,19 @@
   "recentAudit": "Letzte Admin-Ereignisse",
   "noRecentAudit": "Keine relevanten Admin-Ereignisse",
   "auditSystemActor": "System",
+  "durationTrend": {
+    "title": "Ausführungsdauer ({{window}})",
+    "median": "Median",
+    "workflow": "Workflow für Ausführungsdauer",
+    "allWorkflows": "Alle Workflows",
+    "unavailable": "Workflow nicht verfügbar",
+    "description": "Erfolgreiche und fehlgeschlagene Runs · P95: 95 % sind in dieser Zeit fertig.",
+    "empty": "Keine abgeschlossenen Runs im gewählten Zeitraum.",
+    "error": "Ausführungsdauer konnte nicht geladen werden.",
+    "retry": "Erneut versuchen",
+    "samples_one": "{{formattedCount}} Run",
+    "samples_other": "{{formattedCount}} Runs"
+  },
   "failureCauses": {
     "title": "Häufigste Fehlerursachen ({{window}})",
     "empty": "Keine fehlgeschlagenen Ausführungen im gewählten Zeitraum.",
