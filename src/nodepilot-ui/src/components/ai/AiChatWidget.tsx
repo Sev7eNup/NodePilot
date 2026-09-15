@@ -1,11 +1,16 @@
 import { lazy, Suspense, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Chat, ChevronDown, Launch, CircleDash } from '@carbon/icons-react';
-import { useLocation, useNavigate } from 'react-router';
+import { useLocation, useMatch, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useAiCapabilities } from '../../hooks/useAiCapabilities';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { useResizable } from '../../hooks/useResizable';
+import { ResizeHandle } from '../designer/library/NodeLibrary';
 import { useKnowledgeChatSessionStore } from '../../stores/knowledgeChatSessionStore';
+import {
+  useChatLayoutStore, DEFAULT_WIDGET_WIDTH, MIN_WIDGET_WIDTH, MAX_WIDGET_WIDTH,
+} from '../../stores/chatLayoutStore';
 import './aiChatWidget.css';
 
 const KnowledgeChat = lazy(() => import('./KnowledgeChat').then((m) => ({ default: m.KnowledgeChat })));
@@ -22,10 +27,26 @@ export function AiChatWidget() {
   const setOpen = useKnowledgeChatSessionStore((s) => s.setWidgetOpen);
   const mobile = useMediaQuery('(max-width: 639px)');
   const pageVisible = pathname === '/ai-chat';
-  const available = Boolean(caps?.enabled) && !pageVisible;
+  // The designer carries its own workflow assistant, so the launcher would be a second, unrelated
+  // chat entry point in the same corner. Matches only the editor, not the workflow list.
+  const designerRoute = useMatch('/workflows/:id') !== null;
+  const available = Boolean(caps?.enabled) && !pageVisible && !designerRoute;
   const visible = available && open;
   const launcher = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
+
+  // Panel width, dragged from the left edge. The panel is anchored bottom-right, so that edge
+  // moves 1:1 with the pointer — no `scale`, unlike the centred column on the full chat page.
+  const storedWidth = useChatLayoutStore((s) => s.widgetWidth);
+  const setStoredWidth = useChatLayoutStore((s) => s.setWidgetWidth);
+  const { size: width, handleProps, setSize: setWidth } = useResizable({
+    initialSize: storedWidth,
+    minSize: MIN_WIDGET_WIDTH,
+    maxSize: MAX_WIDGET_WIDTH,
+    direction: 'horizontal',
+    reverse: true,
+  });
+  useEffect(() => { setStoredWidth(width); }, [width, setStoredWidth]);
 
   useEffect(() => {
     useKnowledgeChatSessionStore.getState().setPageVisible(pageVisible);
@@ -86,6 +107,7 @@ export function AiChatWidget() {
           ref={panel}
           id="np-ai-chat-panel"
           className="np-ai-chat-panel"
+          style={{ '--np-chat-widget-width': `${width}px` } as React.CSSProperties}
           role="dialog"
           aria-modal={mobile || undefined}
           aria-labelledby="np-ai-chat-title"
@@ -110,6 +132,17 @@ export function AiChatWidget() {
             }
           }}
         >
+          {/* Hidden on phones by CSS, where the panel is full-screen. */}
+          <div className="np-ai-chat-resize">
+            <ResizeHandle
+              direction="horizontal"
+              data-testid="ai-chat-widget-resize"
+              aria-label={t('ai:knowledge.resizeWidth')}
+              title={t('ai:knowledge.resizeWidthHint')}
+              onMouseDown={(e) => handleProps.onMouseDown(e, panel.current?.getBoundingClientRect().width || undefined)}
+              onDoubleClick={() => setWidth(DEFAULT_WIDGET_WIDTH)}
+            />
+          </div>
           <header className="np-ai-chat-header">
             <span className="np-ai-chat-mark"><Chat size={22} /></span>
             <div className="min-w-0 flex-1">
@@ -140,7 +173,7 @@ export function AiChatWidget() {
         title={t(visible ? 'ai:widget.minimize' : 'ai:widget.open')}
         onClick={() => visible ? minimize() : setOpen(true)}
       >
-        {visible ? <ChevronDown size={25} /> : <Chat size={25} />}
+        {visible ? <ChevronDown size={21} /> : <Chat size={21} />}
         {sending && !visible && <CircleDash size={17} className="np-ai-chat-indicator animate-spin" />}
         {unread && !visible && <span className="np-ai-chat-unread" />}
       </button>

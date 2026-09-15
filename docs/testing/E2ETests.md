@@ -4651,7 +4651,7 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 - [ ] Dieselbe Anfrage und derselbe Entwurf bleiben erhalten; keine doppelte Frage.
 - [ ] Minimiert fertiggestellte Antwort zeigt einen Hinweis am Launcher.
 - [ ] Fehler bleiben mit Wiederholen im Gespräch sichtbar.
-- [ ] Im Designer ist jeweils das Widget oder der Workflow-Assistent geöffnet.
+- [ ] Im Designer (`/workflows/<id>`) gibt es keinen Chat-Button — dort übernimmt der Workflow-Assistent; auf der Workflow-Liste ist der Button vorhanden.
 
 ### Test 80.11 — Widget auf Mobilgeräten und in allen Themes
 1. Widget bei 390 px Breite öffnen; Tastatur öffnen und längeren Verlauf lesen.
@@ -4666,20 +4666,25 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 > Inkrementelle Stream-Fortsetzung, Stop mit verspäteten Callbacks und Logout werden durch
 > `AiChatWidget.test.tsx` und `knowledgeChatSessionStore.test.ts` abgesichert.
 
-### Test 80.12 — Ziehbare Chat-Breite (`/ai-chat`)
+### Test 80.12 — Ziehbare Chat-Breite (Seite und Widget)
 1. `/ai-chat` auf einem breiten Fenster öffnen; Griff am rechten Außenrand nach außen ziehen.
 2. Griff am linken Außenrand nach außen ziehen.
 3. Auf einen Griff doppelklicken, danach neu laden.
 4. Fenster schmaler ziehen als die gewählte Breite, danach wieder aufziehen.
 5. Fenster unter 1024 px verkleinern.
+6. Auf einer anderen Seite das Chat-Widget unten rechts öffnen; Griff an seinem **linken** Rand nach links ziehen, doppelklicken, neu laden und Widget erneut öffnen.
+7. Widget bei 390 px Breite öffnen.
 - [ ] Der Griff bleibt beim Ziehen unter dem Cursor; die Spalte wächst zentriert, Eingabefeld und Fußzeile wachsen mit.
-- [ ] Beide Griffe verhalten sich gespiegelt — nach außen ziehen verbreitert, nach innen verschmälert.
+- [ ] Beide Griffe der Seite verhalten sich gespiegelt — nach außen ziehen verbreitert, nach innen verschmälert.
 - [ ] Doppelklick stellt die Standardbreite her; die gezogene Breite überlebt einen Reload.
 - [ ] Im schmalen Fenster wird die Spalte nur angezeigt so breit wie der Platz reicht (kein horizontales Scrollen); nach dem Aufziehen ist die gespeicherte Breite zurück.
-- [ ] Unter 1024 px sind keine Griffe vorhanden.
+- [ ] Unter 1024 px sind keine Griffe auf der Seite vorhanden.
+- [ ] Das Widget wächst nach links, bleibt rechts verankert und behält seine Breite über Schließen/Öffnen und Reload. Seiten- und Widget-Breite sind voneinander unabhängig.
+- [ ] Bei 390 px hat das Widget keinen Griff (es füllt den Bildschirm).
 
-> Automatisiert: `e2e/ai-chat.spec.ts` (80.12) und `AiChatPage.test.tsx`. Die Viewport-Deckelung
-> und das Verhalten unter 1024 px bleiben manuell.
+> Automatisiert: `e2e/ai-chat.spec.ts` + `AiChatPage.test.tsx` (Seite) und
+> `e2e/ai-chat-widget.spec.ts` + `AiChatWidget.test.tsx` (Widget). Die Viewport-Deckelung und das
+> Verhalten unter 1024 px bleiben manuell.
 
 ---
 

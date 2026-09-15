@@ -128,19 +128,46 @@ test('adapts to every skin and contains long Markdown without horizontal page ov
   }
 });
 
-test('coordinates with the designer assistant without two open panels', async ({ page }) => {
+test('resizes the panel from its left edge and remembers the width across a reload', async ({ page }) => {
+  await page.goto('/workflows');
+  const panel = await openWidget(page);
+  const startWidth = Math.round((await panel.boundingBox())!.width);
+
+  // Anchored bottom-right: only the left edge moves, so the panel grows by the pointer travel.
+  const handle = page.getByTestId('ai-chat-widget-resize');
+  const box = (await handle.boundingBox())!;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 80, y, { steps: 5 });
+  await page.mouse.up();
+  expect(Math.round((await panel.boundingBox())!.width)).toBe(startWidth + 80);
+
+  // The width outlives the page and applies as soon as the panel is reopened.
+  await page.reload();
+  const reopened = await openWidget(page);
+  expect(Math.round((await reopened.boundingBox())!.width)).toBe(startWidth + 80);
+
+  // Double-click on the handle restores the original panel width.
+  await page.getByTestId('ai-chat-widget-resize').dblclick();
+  expect(Math.round((await reopened.boundingBox())!.width)).toBe(startWidth);
+});
+
+test('leaves the designer to its own assistant and keeps the launcher on the workflow list', async ({ page }) => {
   const id = 'a1a1a1a1-b2b2-c3c3-d4d4-e5e5e5e5e5e5';
   await page.route(`**/api/workflows/${id}`, (route) => route.fulfill({ json: {
     id, name: 'Widget test', description: '', isEnabled: false, version: 1,
     checkedOutByUserId: MOCK_USER.id, checkedOutByUserName: MOCK_USER.username,
     definitionJson: JSON.stringify({ nodes: [], edges: [] }),
   } }));
+  const launcher = page.getByRole('button', { name: 'Open NodePilot Assistant', exact: true });
+
+  // The designer has its own workflow assistant, so the global launcher stays away entirely.
   await page.goto(`/workflows/${id}`);
-  const panel = await openWidget(page);
-  const designerToggle = page.getByRole('button', { name: /AI assistant/i, exact: true });
-  await designerToggle.click();
-  await expect(panel).toHaveCount(0);
-  await expect(designerToggle).toHaveAttribute('aria-pressed', 'true');
-  await openWidget(page);
-  await expect(designerToggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('button', { name: /AI assistant/i, exact: true })).toBeVisible();
+  await expect(launcher).toHaveCount(0);
+
+  // The list route is not the designer and keeps the launcher.
+  await page.goto('/workflows');
+  await expect(launcher).toBeVisible();
 });
