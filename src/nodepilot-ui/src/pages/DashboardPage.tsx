@@ -871,6 +871,7 @@ function HourlyAreaChart({ buckets, windowHours, tokens }: Readonly<{ buckets: H
     // emits at most 24 buckets, so labelling every third one keeps the axis legible.
     const multiDay = windowHours > 24;
     const formatLabel = (iso: string) => {
+      if (buckets.length === 1) return formatDate(iso, { hour: '2-digit', minute: '2-digit' });
       const d = new Date(iso);
       if (multiDay) {
         const pad = (n: number) => String(n).padStart(2, '0');
@@ -891,7 +892,7 @@ function HourlyAreaChart({ buckets, windowHours, tokens }: Readonly<{ buckets: H
       },
       xAxis: {
         type: 'category',
-        boundaryGap: false,
+        boundaryGap: buckets.length === 1,
         data: labels,
         axisLine: { show: false },
         axisTick: { show: false },
@@ -905,7 +906,10 @@ function HourlyAreaChart({ buckets, windowHours, tokens }: Readonly<{ buckets: H
       yAxis: { type: 'value', show: false, min: 0 },
       series: AREA_SERIES.map((s) => ({
         name: t(s.labelKey),
-        type: 'line',
+        // A lone bucket has no line segment or area; show its counts as a stacked bar.
+        type: buckets.length === 1 ? 'bar' : 'line',
+        barMaxWidth: 56,
+        itemStyle: { color: s.line },
         stack: 'total',
         smooth: 0.35,
         symbol: 'none',

@@ -212,6 +212,25 @@ test.describe('Dashboard (Teil 11)', () => {
     }
   }
 
+  test('one-hour execution counts remain visible with a single bucket', async ({ page }, testInfo) => {
+    await page.route('**/api/stats/dashboard**', route => route.fulfill({ json: dashboardStats({
+      last24h: { total: 624, succeeded: 577, failed: 46, cancelled: 0, running: 1 },
+      last24hBuckets: [{ hourStart: '2026-09-15T19:14:00Z', succeeded: 577, failed: 46, cancelled: 0 }],
+    }) }));
+    await page.goto('/');
+    await page.getByRole('button', { name: '1h', exact: true }).click();
+    const chart = page.getByRole('img', { name: 'Executions — 1h', exact: true });
+    await expect(chart).toBeVisible();
+    const succeeded = chart.locator('svg path[fill="#22c55e"]');
+    await expect(succeeded).toHaveCount(1);
+    await expect.poll(async () => (await succeeded.boundingBox())?.width ?? 0).toBeGreaterThan(4);
+    await expect.poll(async () => (await succeeded.boundingBox())?.height ?? 0).toBeGreaterThan(20);
+    await succeeded.hover();
+    await expect(chart).toContainText('577');
+    await expect(chart).toContainText('46');
+    await chart.locator('..').screenshot({ path: testInfo.outputPath('one-hour-executions.png'), animations: 'disabled' });
+  });
+
   test('duration trend shows both percentiles and fills the card at every width', async ({ page }, testInfo) => {
     await page.route('**/api/stats/dashboard**', route => route.fulfill({ json: dashboardStats() }));
     await page.route('**/api/stats/duration-trend**', route => route.fulfill({ json: {
