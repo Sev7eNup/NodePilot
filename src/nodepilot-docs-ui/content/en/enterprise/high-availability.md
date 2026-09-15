@@ -27,7 +27,23 @@ The default configuration is single node. `Cluster:Enabled=true` activates clust
 }
 ```
 
-**RTO formula:** `TTL + renew interval + recovery sweep` → 30 + 10 + ~5 = ~45 s worst case.
+**Traffic takeover estimate:** `TTL + renew interval + load-balancer probe` →
+30 + 10 + 5 = roughly 45 s. Cleanup of old executions runs independently; its duration depends
+on the backlog and the database.
+
+### Recovery with a large backlog
+
+Recovery commits small batches individually. Before each batch it checks the current leader
+and epoch; it stops when leadership is lost. Committed batches remain complete if a later batch
+fails. A batch that exceeds its time budget is rolled back and reduced; if necessary, another
+attempt follows after five seconds under the same epoch.
+
+With the defaults, the batch budget is two seconds and remains below
+`Cluster:LeaseDbTimeoutSeconds`. Lease renewal therefore does not have to wait for the entire
+cleanup. A batch exceeding its budget is not a reason to increase the lease TTL across the board.
+The logs `Cluster recovery batch committed` and `Cluster recovery deferred` show progress and
+deferred work; persistently deferred batches require checking database latency and blocking
+transactions.
 
 ### Authentication and OIDC in a cluster
 

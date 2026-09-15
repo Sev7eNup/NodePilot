@@ -1,5 +1,5 @@
 import type { Node, Edge } from '@xyflow/react';
-import type { ManagedMachine, Credential } from '../../types/api';
+import type { MachineOption, Credential } from '../../types/api';
 import { ResizeHandle } from './library/NodeLibrary';
 import { PropertiesPanel } from './PropertiesPanel';
 import { BulkEditPanel } from './BulkEditPanel';
@@ -12,7 +12,7 @@ interface EditorRightPanelProps {
   edges: Edge[];
   selectedNode: Node | null;
   selectedEdge: Edge | null;
-  machines: ManagedMachine[];
+  machines: MachineOption[];
   credentials: Credential[];
   workflowId: string | undefined;
   canWrite: boolean;

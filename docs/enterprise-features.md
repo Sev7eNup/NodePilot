@@ -420,18 +420,14 @@ auswählen und den Button **Berechtigungen…** am Fuß der Ordner-Karte nutzen.
 - **`SharedWorkflowFoldersController` + `SharedFolderPermissionsController`** liefern die
   CRUD-Surface: Create/Rename/Move/Delete von Foldern, Grant/Update/Revoke von
   Permissions. Beide gated durch `_authz.CanAccessFolderAsync(... ResourceOp.Admin)`.
-- **Permission-Backfill (bestehende User)**: einmaliges `INSERT … SELECT` aus
-  `Users` → `SharedFolderPermissions` (Operator → FolderEditor auf Root, Viewer →
-  FolderViewer auf Root). Dieses Backfill und der Root-Sentinel-Seed (`HasData`) sind in
-  die `InitialBaseline`-Migration (`20260511183144`) zusammengefasst — auf einer frischen
-  DB greift es einmalig beim ersten `Migrate()`. Ein früherer Runtime-Reseed-Loop im
-  `MigrationBootstrapper` (der bei jedem Boot Admin-Revokes wieder eingespielt hätte) ist
-  weg; der Seed läuft genau einmal.
+- **Root-Sentinel:** `20260915180058_InitialBaseline` legt den Root-Ordner einmalig
+  auf einer frischen Datenbank an. Die alte Entwicklungshistorie samt User-Backfills
+  wurde vor dem ersten produktiven Einsatz konsolidiert. Beim erneuten Start werden
+  keine entzogenen Berechtigungen wiederhergestellt.
 - **`UsersController.Create`** legt für neue Operator/Viewer beim Anlegen eine Default-
-  Permission auf Root mit, damit nach dem Migrationsschritt keine zweite Code-Zeile mehr
-  den Default verteilen muss.
+  Permission auf Root mit.
 
-### Default-Mapping (Migration + Create)
+### Default-Mapping beim Anlegen eines Users
 
 | Globale UserRole | Folder-Permission auf Root |
 |---|---|
@@ -441,8 +437,8 @@ auswählen und den Button **Berechtigungen…** am Fuß der Ordner-Karte nutzen.
 
 ### Konfiguration
 
-Keine — RBAC ist immer aktiv. Der Default lässt das System unverändert wirken (jeder
-Operator/Viewer hat dieselben Rechte wie vor der Migration auf Root + Subtree).
+Keine — RBAC ist immer aktiv. Neue Operator/Viewer erhalten die genannten
+Standardberechtigungen auf Root und dessen Unterordner.
 Folder + Grants ändert ein globaler Admin via UI oder direkt am API.
 
 ### Wichtige Dateien
@@ -454,7 +450,7 @@ Folder + Grants ändert ein globaler Admin via UI oder direkt am API.
 - [src/NodePilot.Api/Controllers/SharedWorkflowFoldersController.cs](../src/NodePilot.Api/Controllers/SharedWorkflowFoldersController.cs)
 - [src/NodePilot.Api/Controllers/SharedFolderPermissionsController.cs](../src/NodePilot.Api/Controllers/SharedFolderPermissionsController.cs)
 - [src/NodePilot.Api/Controllers/WorkflowsControllerBase.cs](../src/NodePilot.Api/Controllers/WorkflowsControllerBase.cs)
-- [src/NodePilot.Data/Migrations/20260511183144_InitialBaseline.cs](../src/NodePilot.Data/Migrations/20260511183144_InitialBaseline.cs) — Folder-Schema, Root-Sentinel-Seed (`HasData`) und das Permission-Backfill sind in die Baseline-Migration gesquasht (die früheren `AddSharedWorkflowFolders`/`BackfillSharedFolderUserPermissions`-Migrationen existieren nicht mehr separat)
+- [InitialBaseline](../src/NodePilot.Data/Migrations/20260915180058_InitialBaseline.cs) — aktuelles Folder-Schema und Root-Sentinel-Seed (`HasData`)
 - Frontend: [src/nodepilot-ui/src/components/workflows/SharedFolderTree.tsx](../src/nodepilot-ui/src/components/workflows/SharedFolderTree.tsx),
   [SharedFolderPermissionsModal.tsx](../src/nodepilot-ui/src/components/workflows/SharedFolderPermissionsModal.tsx),
   [pages/WorkflowsPage.tsx](../src/nodepilot-ui/src/pages/WorkflowsPage.tsx)

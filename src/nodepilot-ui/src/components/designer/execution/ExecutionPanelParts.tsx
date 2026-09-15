@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { api } from '../../../api/client';
 import { parseOutputParametersJson } from '../../../lib/outputParameters';
 import { TRIGGER_BADGE_META } from '../../../lib/triggerBadgeMeta';
-import type { WorkflowExecution, Workflow, ManagedMachine, Credential } from '../../../types/api';
+import type { WorkflowExecution, Workflow, MachineOption, Credential } from '../../../types/api';
 import { activityConfig } from '../nodes/activityConfig';
 import { ACTIVITY_ICON_COMPONENTS, FALLBACK_ACTIVITY_ICON } from '../../../lib/activityIcons';
 import { STATUS_BADGE_CLASS } from '../../../lib/statusTokens';
@@ -82,8 +82,8 @@ export function StepInputBlock({ workflowId, stepId }: Readonly<{ workflowId: st
     staleTime: 60_000,
   });
   const { data: machines } = useQuery({
-    queryKey: ['machines'],
-    queryFn: () => api.get<ManagedMachine[]>('/machines'),
+    queryKey: ['machines', 'options'],
+    queryFn: () => api.get<MachineOption[]>('/machines/options'),
     staleTime: 60_000,
   });
   const { data: credentials } = useQuery({

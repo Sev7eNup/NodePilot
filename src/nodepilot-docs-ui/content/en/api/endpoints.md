@@ -155,6 +155,7 @@ The `resume` body (a debug pause): `{"stepId":"runHealth","mode":"continue|stepO
 | Endpoint | Purpose |
 |---|---|
 | `GET/POST/PUT/DELETE /api/machines` | Machines (POST/PUT Admin/Operator, DELETE Admin) |
+| `GET /api/machines/options` | Authenticated machine selectors: nine configuration/connectivity fields, sorted by name; no workflow or activity statistics |
 | `POST /{id}/test` | A machine connection test — body `{"credentialId": null}` |
 | `GET/POST/PUT/DELETE /api/credentials` | Credentials (DELETE Admin) |
 

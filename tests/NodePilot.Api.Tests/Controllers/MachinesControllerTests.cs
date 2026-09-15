@@ -9,7 +9,9 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Api.Tests.TestSupport;
-using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using NodePilot.Api.Services;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Controllers;
@@ -21,7 +23,14 @@ public class MachinesControllerTests
     // Both caches are required constructor dependencies, so a test that does not care about them
     // still hands over a fresh instance rather than letting a default hide a missing registration.
     private static NodePilot.Api.Services.WorkflowDefinitionFactsCache NewDefinitionFacts() => new();
-    private static IMemoryCache NewMemoryCache() => new MemoryCache(new MemoryCacheOptions());
+    private static MachineStepStatsCache NewStepStatsCache(NodePilotDbContext db)
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<NodePilotDbContext>(o => o.UseSqlite(db.Database.GetDbConnection()));
+        var provider = services.BuildServiceProvider();
+        return new MachineStepStatsCache(provider.GetRequiredService<IServiceScopeFactory>(),
+            Mock.Of<IHostApplicationLifetime>());
+    }
 
     [Fact]
     public async Task GetAll_ReturnsOrderedList()
@@ -46,7 +55,7 @@ public class MachinesControllerTests
         var mockSessionFactory = new Mock<IRemoteSessionFactory>();
         var mockCredentialStore = new Mock<ICredentialStore>();
         var controller = new MachinesController(db, mockSessionFactory.Object, mockCredentialStore.Object, NoopAuditWriter.Instance,
-            NewDefinitionFacts(), NewMemoryCache());
+            NewDefinitionFacts(), NewStepStatsCache(db));
 
         // Act
         var result = await controller.GetAll(CancellationToken.None);
@@ -67,7 +76,7 @@ public class MachinesControllerTests
         var mockSessionFactory = new Mock<IRemoteSessionFactory>();
         var mockCredentialStore = new Mock<ICredentialStore>();
         var controller = new MachinesController(db, mockSessionFactory.Object, mockCredentialStore.Object, NoopAuditWriter.Instance,
-            NewDefinitionFacts(), NewMemoryCache());
+            NewDefinitionFacts(), NewStepStatsCache(db));
         var request = new CreateMachineRequest("Server1", "server1.local", 5985, false, null, "web,prod");
 
         // Act
@@ -101,7 +110,7 @@ public class MachinesControllerTests
             new Mock<ICredentialStore>().Object,
             NoopAuditWriter.Instance,
             NewDefinitionFacts(),
-            NewMemoryCache());
+            NewStepStatsCache(db));
 
         var result = await controller.Create(
             new CreateMachineRequest(name, hostname, port, false, null, null),
@@ -122,7 +131,7 @@ public class MachinesControllerTests
             new Mock<ICredentialStore>().Object,
             NoopAuditWriter.Instance,
             NewDefinitionFacts(),
-            NewMemoryCache());
+            NewStepStatsCache(db));
 
         var result = await controller.Create(
             new CreateMachineRequest("Server", "server.local", 5985, false, Guid.NewGuid(), null),
@@ -149,7 +158,7 @@ public class MachinesControllerTests
         var mockSessionFactory = new Mock<IRemoteSessionFactory>();
         var mockCredentialStore = new Mock<ICredentialStore>();
         var controller = new MachinesController(db, mockSessionFactory.Object, mockCredentialStore.Object, NoopAuditWriter.Instance,
-            NewDefinitionFacts(), NewMemoryCache());
+            NewDefinitionFacts(), NewStepStatsCache(db));
         var request = new UpdateMachineRequest("Updated", "updated.local", 5986, true, null, "updated");
 
         // Act
@@ -181,7 +190,7 @@ public class MachinesControllerTests
         var mockSessionFactory = new Mock<IRemoteSessionFactory>();
         var mockCredentialStore = new Mock<ICredentialStore>();
         var controller = new MachinesController(db, mockSessionFactory.Object, mockCredentialStore.Object, NoopAuditWriter.Instance,
-            NewDefinitionFacts(), NewMemoryCache());
+            NewDefinitionFacts(), NewStepStatsCache(db));
 
         // Act
         var result = await controller.Delete(machine.Id, CancellationToken.None);
@@ -210,7 +219,7 @@ public class MachinesControllerTests
         var mockSessionFactory = new Mock<IRemoteSessionFactory>();
         var mockCredentialStore = new Mock<ICredentialStore>();
         var controller = new MachinesController(db, mockSessionFactory.Object, mockCredentialStore.Object, NoopAuditWriter.Instance,
-            NewDefinitionFacts(), NewMemoryCache());
+            NewDefinitionFacts(), NewStepStatsCache(db));
 
         // Act
         var result = await controller.TestConnection(machine.Id, null, CancellationToken.None);
@@ -256,7 +265,7 @@ public class MachinesControllerTests
 
         var audit = new CapturingAuditWriter();
         var controller = new MachinesController(db, factory.Object, credStore.Object, audit,
-            NewDefinitionFacts(), NewMemoryCache());
+            NewDefinitionFacts(), NewStepStatsCache(db));
 
         await controller.TestConnection(machine.Id, null, CancellationToken.None);
 
@@ -299,7 +308,7 @@ public class MachinesControllerTests
 
         var audit = new CapturingAuditWriter();
         var controller = new MachinesController(db, factory.Object, credStore.Object, audit,
-            NewDefinitionFacts(), NewMemoryCache());
+            NewDefinitionFacts(), NewStepStatsCache(db));
 
         await controller.TestConnection(machine.Id, null, CancellationToken.None);
 
@@ -336,7 +345,7 @@ public class MachinesControllerTests
 
         var audit = new CapturingAuditWriter();
         var controller = new MachinesController(db, factory.Object, credStore.Object, audit,
-            NewDefinitionFacts(), NewMemoryCache());
+            NewDefinitionFacts(), NewStepStatsCache(db));
 
         await controller.TestConnection(machine.Id, null, CancellationToken.None);
 
@@ -375,7 +384,7 @@ public class MachinesControllerTests
         var controller = new MachinesController(
             db, new Mock<IRemoteSessionFactory>().Object,
             new Mock<ICredentialStore>().Object, NoopAuditWriter.Instance,
-            NewDefinitionFacts(), NewMemoryCache());
+            NewDefinitionFacts(), NewStepStatsCache(db));
 
         // Act
         var result = await controller.GetAll(CancellationToken.None);
@@ -413,7 +422,7 @@ public class MachinesControllerTests
         MachinesController NewController() => new(
             db, new Mock<IRemoteSessionFactory>().Object,
             new Mock<ICredentialStore>().Object, NoopAuditWriter.Instance,
-            cache, NewMemoryCache());
+            cache, NewStepStatsCache(db));
 
         static int CountFor(ActionResult<List<MachineResponse>> result, Guid id)
             => (((result.Result as OkObjectResult)!.Value as List<MachineResponse>)!)
@@ -465,7 +474,7 @@ public class MachinesControllerTests
         var controller = new MachinesController(
             db, new Mock<IRemoteSessionFactory>().Object,
             new Mock<ICredentialStore>().Object, NoopAuditWriter.Instance,
-            NewDefinitionFacts(), NewMemoryCache());
+            NewDefinitionFacts(), NewStepStatsCache(db));
 
         var result = await controller.GetAll(CancellationToken.None);
         var m = ((result.Result as OkObjectResult)!.Value as List<MachineResponse>)!.Single();
@@ -488,7 +497,7 @@ public class MachinesControllerTests
         var controller = new MachinesController(
             db, new Mock<IRemoteSessionFactory>().Object,
             new Mock<ICredentialStore>().Object, NoopAuditWriter.Instance,
-            NewDefinitionFacts(), NewMemoryCache());
+            NewDefinitionFacts(), NewStepStatsCache(db));
 
         var act = async () => await controller.GetAll(CancellationToken.None);
         await act.Should().NotThrowAsync();
@@ -538,7 +547,7 @@ public class MachinesControllerTests
             .ReturnsAsync(mockSession.Object);
 
         var controller = new MachinesController(db, mockSessionFactory.Object, mockCredentialStore.Object, NoopAuditWriter.Instance,
-            NewDefinitionFacts(), NewMemoryCache());
+            NewDefinitionFacts(), NewStepStatsCache(db));
 
         // Act
         var result = await controller.TestConnection(machine.Id, null, CancellationToken.None);
@@ -583,7 +592,7 @@ public class MachinesControllerTests
 
         var audit = new CapturingAuditWriter();
         var controller = new MachinesController(db, factory.Object, credStore.Object, audit,
-            NewDefinitionFacts(), NewMemoryCache());
+            NewDefinitionFacts(), NewStepStatsCache(db));
 
         var result = await controller.TestConnection(machine.Id, null, CancellationToken.None);
 

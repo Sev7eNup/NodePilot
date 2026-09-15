@@ -109,6 +109,7 @@ Zwei Provider, umschaltbar über `Database:Provider`:
 | SQL Server | `"sqlserver"` | `ConnectionStrings:DefaultConnection` |
 
 - **Ein gemeinsames Migration-Set**, provider-agnostisch (ohne `type:`-Strings). Bootstrap via `db.Database.Migrate()`.
+- **Aktuelle Baseline:** `20260915180058_InitialBaseline` ersetzt die Entwicklungshistorie vor dem ersten produktiven Einsatz. Sie erstellt das vollständige aktuelle Schema. Datenbanken mit der alten Historie haben keinen Upgrade-Pfad zu dieser Baseline; für diesen Stand eine neue Entwicklungsdatenbank verwenden. Bestehende Datenbanken niemals automatisch löschen oder deren Migration-History umschreiben.
 - **Neue Migration:** `dotnet ef migrations add <Name> --project src/NodePilot.Data --startup-project src/NodePilot.Api --context NodePilotDbContext`. **Pflicht-Postprocessing — zwei Schritte:**
   1. In der Migration (`<Name>.cs`): alle `type: "..."`-Annotations entfernen.
   2. In der Designer-Datei (`<Name>.Designer.cs`): `MigrationModelPortability.UseActiveProviderStoreTypes(modelBuilder);` als letzte Zeile vor `#pragma warning restore 612, 618` in `BuildTargetModel` ergänzen. Der `ModelSnapshot` bekommt den Aufruf bewusst **nicht** (Diff-Basis, kein Migration-Target-Model).

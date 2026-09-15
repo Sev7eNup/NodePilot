@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using NodePilot.Api.Telemetry;
@@ -26,6 +27,7 @@ public sealed class ExecutionDispatchWorker : BackgroundService
     private readonly ILogger<ExecutionDispatchWorker> _logger;
     private readonly IDatabaseAvailability _availability;
     private readonly int _workerCount;
+    private readonly SemaphoreSlim _claimGate = new(1, 1);
 
     public ExecutionDispatchWorker(
         IServiceScopeFactory scopeFactory,
@@ -64,36 +66,8 @@ public sealed class ExecutionDispatchWorker : BackgroundService
             {
                 try
                 {
-                    if (!_cluster.IsLeader)
-                    {
-                        await _signal.WaitAsync(PollInterval, stoppingToken);
-                        continue;
-                    }
-
-                    if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
-
-                    Guid? executionId;
-                    try
-                    {
-                        executionId = await TryClaimAsync(leaseOwner, stoppingToken);
-                    }
-                    // Every claim failure backs off, not just the ones the classifier recognises as a
-                    // database fault. A deadlock victim (Postgres 40P01 / SQL Server 1205) classifies
-                    // as None by design, and many workers issuing overlapping claims against the same
-                    // outbox rows is exactly the workload that produces one — the narrower filter
-                    // re-threw it out of the worker.
-                    catch (Exception ex) when (ex is not OperationCanceledException)
-                    {
-                        _logger.LogWarning(ex, "Durable dispatch worker {WorkerId} could not poll the outbox.", workerId);
-                        await _signal.WaitAsync(PollInterval, stoppingToken);
-                        continue;
-                    }
-
-                    if (executionId is null)
-                    {
-                        await _signal.WaitAsync(PollInterval, stoppingToken);
-                        continue;
-                    }
+                    var executionId = await WaitForNextClaimAsync(leaseOwner, stoppingToken);
+                    if (executionId is null) break;
 
                     try
                     {
@@ -178,44 +152,60 @@ public sealed class ExecutionDispatchWorker : BackgroundService
         }
     }
 
+    private async Task<Guid?> WaitForNextClaimAsync(string leaseOwner, CancellationToken ct)
+    {
+        // Only one idle worker polls. Release before processing so WorkerCount still bounds
+        // full workflow lifetimes, without reserving rows ahead of available workers.
+        await _claimGate.WaitAsync(ct);
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    if (_cluster.IsLeader)
+                    {
+                        if (!await _availability.WaitUntilServableAsync(ct)) return null;
+                        var claimed = await TryClaimAsync(leaseOwner, ct);
+                        if (claimed is not null) return claimed;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(ex, "Durable dispatch could not poll the outbox; retrying after back-off.");
+                }
+                // No database scope or connection survives this wait. The timer also discovers
+                // lost signals, newly free workflow slots and expired/future leases.
+                await _signal.WaitAsync(PollInterval, ct);
+            }
+            return null;
+        }
+        finally
+        {
+            _claimGate.Release();
+        }
+    }
+
     private async Task<Guid?> TryClaimAsync(string leaseOwner, CancellationToken ct)
     {
-        await using var scope = _scopeFactory.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
-        var now = DateTime.UtcNow;
-        var query = db.ExecutionDispatchOutbox.AsNoTracking()
-            .Where(item => item.AvailableAt <= now
-                           && (item.LeaseExpiresAt == null || item.LeaseExpiresAt <= now));
-
-        // Skip workflows already at their concurrency limit. Without this, one saturated
-        // workflow's queued rows fill every candidate slot (they are the oldest) and no other
-        // workflow is ever seen. Only applied when the set is non-empty so the common case
-        // keeps the exact SQL shape it has today.
-        var blocked = _concurrency.BlockedWorkflowIds;
-        if (blocked.Length > 0)
-            query = query.Where(item => !blocked.Contains(item.WorkflowId));
-
-        var candidates = await query
-            .OrderByDescending(item => item.Priority)
-            .ThenBy(item => item.CreatedAt)
-            .Select(item => item.ExecutionId)
-            .Take(Math.Max(4, _workerCount))
-            .ToListAsync(ct);
-
-        foreach (var executionId in candidates)
+        var started = Stopwatch.GetTimestamp();
+        var result = "error";
+        try
         {
-            var claimed = await db.ExecutionDispatchOutbox
-                .Where(item => item.ExecutionId == executionId
-                               && item.AvailableAt <= now
-                               && (item.LeaseExpiresAt == null || item.LeaseExpiresAt <= now))
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(item => item.LeaseOwner, leaseOwner)
-                    .SetProperty(item => item.LeaseExpiresAt, now.Add(LeaseDuration))
-                    .SetProperty(item => item.AttemptCount, item => item.AttemptCount + 1), ct);
-            if (claimed == 1) return executionId;
+            await using var scope = _scopeFactory.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+            var now = DateTime.UtcNow;
+            var claimed = await ExecutionDispatchOutboxClaimer.TryClaimAsync(
+                db, now, now.Add(LeaseDuration), leaseOwner, _concurrency.BlockedWorkflowIds, ct);
+            result = claimed is null ? "empty" : "success";
+            return claimed;
         }
-
-        return null;
+        finally
+        {
+            var tag = new KeyValuePair<string, object?>("result", result);
+            ApiMetrics.DispatchClaims.Add(1, tag);
+            ApiMetrics.DispatchClaimDuration.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds, tag);
+        }
     }
 
     /// <param name="countAttempt">

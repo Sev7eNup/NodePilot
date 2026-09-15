@@ -137,6 +137,7 @@ export async function installDefaultMocks(page: Page) {
   // Machines, credentials and globals: an empty fleet, so dropdowns render
   // without pulling in unrelated data.
   await page.route('**/api/machines', (route) => emptyArray(route));
+  await page.route('**/api/machines/options', (route) => emptyArray(route));
   await page.route('**/api/credentials', (route) => emptyArray(route));
   await page.route('**/api/global-variables', (route) => emptyArray(route));
 

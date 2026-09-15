@@ -295,6 +295,7 @@ builder.Services.AddSingleton<NodePilot.Core.Interfaces.IHostIdentityProvider, N
 // holding only definition-local facts, so it is shared safely across users and requests — see
 // WorkflowDefinitionFactsCache for what deliberately stays out of it.
 builder.Services.AddSingleton<NodePilot.Api.Services.WorkflowDefinitionFactsCache>();
+builder.Services.AddSingleton<NodePilot.Api.Services.MachineStepStatsCache>();
 // Keeps the first workflow list after a restart from paying for every definition at once. Without
 // it that one request reads and parses all of them while somebody waits on the UI.
 builder.Services.AddHostedService<NodePilot.Api.Services.WorkflowDefinitionFactsWarmup>();

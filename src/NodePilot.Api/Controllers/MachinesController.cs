@@ -3,15 +3,12 @@ using System.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Services;
 using NodePilot.Api.Telemetry;
-using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
-using NodePilot.Core.WorkflowDefinitions;
 using NodePilot.Data;
 
 namespace NodePilot.Api.Controllers;
@@ -23,19 +20,6 @@ public class MachinesController : ControllerBase
 {
     private const int MaxMachineNameLength = 200;
     private const int MaxHostnameLength = 500;
-    // Rolling window for the "X/Y steps OK last week" cell on the machines list.
-    // Matches the implicit window on WorkflowsPage's success-rate column so the
-    // two views show comparable signal periods.
-    private const int RecentStatsWindowDays = 7;
-
-    /// <summary>
-    /// How long the aggregated step counters behind the operational columns stay reusable.
-    /// They are a seven-day rolling total and a live-run count; the machines list does not poll,
-    /// so this window is invisible to the user and keeps two unindexed scans of the largest table
-    /// off every request.
-    /// </summary>
-    private static readonly TimeSpan StepStatsCacheTtl = TimeSpan.FromSeconds(10);
-    private const string StepStatsCacheKey = "machines:step-stats";
 
     private readonly NodePilotDbContext _db;
     private readonly IRemoteSessionFactory _sessionFactory;
@@ -43,7 +27,7 @@ public class MachinesController : ControllerBase
     private readonly IAuditWriter _audit;
     private readonly ILogger<MachinesController> _logger;
     private readonly WorkflowDefinitionFactsCache _definitionFacts;
-    private readonly IMemoryCache _cache;
+    private readonly MachineStepStatsCache _stepStats;
 
     // logger is optional so the slim direct-construction tests don't have to thread a logger
     // through every call site; DI always supplies the real one in production. The caches are not:
@@ -52,7 +36,7 @@ public class MachinesController : ControllerBase
     // never hits — no error, no log line, and every list call back to reading every definition.
     public MachinesController(NodePilotDbContext db, IRemoteSessionFactory sessionFactory,
         ICredentialStore credentialStore, IAuditWriter audit,
-        WorkflowDefinitionFactsCache definitionFacts, IMemoryCache cache,
+        WorkflowDefinitionFactsCache definitionFacts, MachineStepStatsCache stepStats,
         ILogger<MachinesController>? logger = null)
     {
         _db = db;
@@ -60,9 +44,19 @@ public class MachinesController : ControllerBase
         _credentialStore = credentialStore;
         _audit = audit;
         _definitionFacts = definitionFacts;
-        _cache = cache;
+        _stepStats = stepStats;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<MachinesController>.Instance;
     }
+
+    /// <summary>Machine configuration for selectors and designer annotations, without statistics.</summary>
+    [HttpGet("options")]
+    public async Task<ActionResult<List<MachineOptionResponse>>> GetOptions(CancellationToken ct)
+        => Ok(await _db.ManagedMachines.AsNoTracking()
+            .OrderBy(m => m.Name)
+            .Select(m => new MachineOptionResponse(
+                m.Id, m.Name, m.Hostname, m.WinRmPort, m.UseSsl,
+                m.DefaultCredentialId, m.Tags, m.LastConnectivityCheck, m.IsReachable))
+            .ToListAsync(ct));
 
     [HttpGet]
     public async Task<ActionResult<List<MachineResponse>>> GetAll(CancellationToken ct)
@@ -132,62 +126,8 @@ public class MachinesController : ControllerBase
                 workflowRefs[mid] = workflowRefs.GetValueOrDefault(mid) + 1;
         }
 
-        var (recentStepStats, activeRuns) = await GetStepStatsAsync(ct);
+        var (recentStepStats, activeRuns) = await _stepStats.GetAsync(ct);
         return new OperationalStats(workflowRefs, recentStepStats, activeRuns);
-    }
-
-    /// <summary>
-    /// The two step-level aggregates behind the operational columns. Neither filter is index-backed
-    /// (<c>StepExecution</c> is indexed by execution id), so both are scans of the largest table —
-    /// hence the short TTL above.
-    /// </summary>
-    private async Task<(Dictionary<Guid, (int Total, int Failed)> Recent, Dictionary<Guid, int> Active)>
-        GetStepStatsAsync(CancellationToken ct)
-    {
-        if (_cache.TryGetValue(StepStatsCacheKey, out (Dictionary<Guid, (int, int)> Recent, Dictionary<Guid, int> Active) cached))
-            return cached;
-
-        // 2) Recent step stats — last 7 days, grouped by resolved target string.
-        //    StepExecution.TargetMachine stores the template-resolved string (set
-        //    by StepRunner). For UI-authored workflows that's the machine Guid in
-        //    canonical "D" format; for dynamically-resolved targets it's whatever
-        //    the template produced, which we can't reliably attribute. We match
-        //    only on parseable Guids to keep the join clean.
-        var since = DateTime.UtcNow.AddDays(-RecentStatsWindowDays);
-        var rawStepRows = await _db.StepExecutions
-            .AsNoTracking()
-            .Where(s => s.StartedAt >= since && s.TargetMachine != null)
-            .GroupBy(s => s.TargetMachine!)
-            .Select(g => new
-            {
-                Target = g.Key,
-                Total = g.Count(),
-                Failed = g.Count(s => s.Status == ExecutionStatus.Failed),
-            })
-            .ToListAsync(ct);
-
-        var recentStepStats = new Dictionary<Guid, (int Total, int Failed)>();
-        foreach (var row in rawStepRows)
-            if (Guid.TryParse(row.Target, out var mid))
-                recentStepStats[mid] = (row.Total, row.Failed);
-
-        // 3) Active runs — step executions currently in Running state. Same
-        //    Guid-only attribution as above.
-        var rawActiveRows = await _db.StepExecutions
-            .AsNoTracking()
-            .Where(s => s.Status == ExecutionStatus.Running && s.TargetMachine != null)
-            .GroupBy(s => s.TargetMachine!)
-            .Select(g => new { Target = g.Key, Count = g.Count() })
-            .ToListAsync(ct);
-
-        var activeRuns = new Dictionary<Guid, int>();
-        foreach (var row in rawActiveRows)
-            if (Guid.TryParse(row.Target, out var mid))
-                activeRuns[mid] = row.Count;
-
-        var result = (recentStepStats, activeRuns);
-        _cache.Set(StepStatsCacheKey, result, StepStatsCacheTtl);
-        return result;
     }
 
     private static MachineResponse BuildMachineResponse(ManagedMachine m, OperationalStats stats)

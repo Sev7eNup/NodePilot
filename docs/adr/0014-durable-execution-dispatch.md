@@ -37,6 +37,36 @@ Execution claims, terminal writes, dispatch failures, and direct cancellation us
 `ExecutionStateLifecycle` database transitions. In-memory cancellation remains a latency
 optimization, not the source of truth.
 
+### Atomic claims and idle polling (2026-09-15)
+
+The worker pool shares one process-local claim gate. Its holder waits for a signal or a one-second
+fallback when no item is available; no database connection or transaction survives that wait.
+A successful reservation releases the gate before workflow processing. Workers still remain occupied
+for the complete workflow lifetime, so `WorkerCount` remains the dispatch concurrency limit and
+there is no prefetched queue of leased requests.
+
+This reduces database commands, but also serializes reservation round trips. A large burst can
+therefore wait longer to start, especially with higher database latency; raising `WorkerCount`
+does not remove that reservation limit. Workflow execution remains parallel. The isolated
+100-request benchmark measured 1,029 claim commands before this change and 107 after it, while
+release-to-claim p95 increased from 408.9 ms to 624.1 ms in that run. See
+[the performance measurements](../performance-improvements.md) for the workload and limitations.
+
+One statement reserves one item: PostgreSQL uses `FOR UPDATE SKIP LOCKED` with `UPDATE RETURNING`,
+SQL Server uses an ordered updateable CTE with `UPDLOCK`, `READPAST`, `READCOMMITTEDLOCK` and
+`UPDATE OUTPUT`. The SQL Server hints support RCSI; competing scan locks can temporarily produce
+an empty result, which the next poll revisits. SQLite tests use `UPDATE RETURNING`.
+
+Eligibility includes availability time, lease expiry and blocked workflow IDs before selecting the
+first row. Ordering is priority descending, creation time ascending, then execution ID ascending.
+Existing strict interactive priority is retained; this decision does not introduce priority aging.
+
+Claims use EF's command/connection interceptors and configured timeout without automatic execution-
+strategy replay. If commit succeeds but the response is lost, the worker does not start an activity;
+the reserved item becomes eligible after its existing 60-second lease expires. Claim counts and
+duration use only the low-cardinality result labels `success`, `empty` and `error`. No new outbox
+index is introduced without measuring the remaining claim cost after the polling change.
+
 ## Konsequenzen
 
 - A returned `202 Accepted` survives process restart while the execution is still Pending.

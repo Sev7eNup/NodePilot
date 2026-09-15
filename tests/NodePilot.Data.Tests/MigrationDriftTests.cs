@@ -78,10 +78,9 @@ public class MigrationDriftTests
 
                 var migrator = db.Database.GetService<IMigrator>();
 
-                // Down: roll back to the first migration. If a Down operation is broken
-                // (e.g. it drops an index that an earlier migration's Down already
-                // removed), this fails here with a clear SQL error message.
-                migrator.Migrate(targetMigration: applied.First());
+                // Include the baseline's Down path: the schema must return to an empty database.
+                migrator.Migrate(targetMigration: Migration.InitialDatabase);
+                db.Database.GetAppliedMigrations().Should().BeEmpty();
 
                 // Back up again: confirms that after Down + Up the schema ends up with
                 // the same tables/indexes. This only checks schema stability, not data.
@@ -166,27 +165,6 @@ public class MigrationDriftTests
                 "authority/subject/group identifiers require exact case-sensitive storage semantics");
     }
 
-    [Fact]
-    public void GroupPrincipalAuthorityDowngrade_RejectsNamespaceCollisions()
-    {
-        const string latest = "20260712210753_ScopeFolderGroupPrincipalsByAuthority";
-        const string previous = "20260712194756_EnforceSqlServerOrdinalIdentityCollation";
-        using var sqlServer = new NodePilotDbContext(
-            new DbContextOptionsBuilder<NodePilotDbContext>()
-                .UseSqlServer("Server=(localdb)\\mssqllocaldb;Database=NodePilotMigrationScriptOnly;Trusted_Connection=True")
-                .Options);
-        using var postgres = new NodePilotDbContext(
-            new DbContextOptionsBuilder<NodePilotDbContext>()
-                .UseNpgsql("Host=localhost;Database=NodePilotMigrationScriptOnly;Username=nodepilot;Password=not-used")
-                .Options);
-
-        sqlServer.Database.GetService<IMigrator>().GenerateScript(latest, previous)
-            .Should().Contain("authority-distinct folder grants would collide")
-            .And.Contain("THROW 51000");
-        postgres.Database.GetService<IMigrator>().GenerateScript(latest, previous)
-            .Should().Contain("authority-distinct folder grants would collide")
-            .And.Contain("RAISE EXCEPTION");
-    }
 
     /// <summary>
     /// Second half of the mandatory post-processing after <c>dotnet ef migrations add</c>
@@ -274,12 +252,9 @@ public class MigrationDriftTests
     /// <summary>
     /// Every migration must be discoverable by EF: it needs both a <c>[Migration]</c> id and a
     /// <c>[DbContext]</c> attribute, or <c>Migrate()</c> silently skips it and the schema drifts.
-    /// The one deliberate exception is <c>RemoveUserWorkflowFolders</c>, which is intentionally
-    /// invisible; its cleanup runs through the attributed <c>DropOrphanedUserFolderTables</c>
-    /// migration.
     /// </summary>
     [Fact]
-    public void EveryMigration_IsDiscoverable_ExceptTheIntentionallyInvisibleOne()
+    public void EveryMigration_IsDiscoverable()
     {
         var migrationTypes = typeof(NodePilotDbContext).Assembly.GetTypes()
             .Where(t => !t.IsAbstract && typeof(Migration).IsAssignableFrom(t))
@@ -294,17 +269,15 @@ public class MigrationDriftTests
             .OrderBy(n => n)
             .ToList();
 
-        undiscoverable.Should().Equal(new[] { "RemoveUserWorkflowFolders" },
-            "only RemoveUserWorkflowFolders may lack [Migration]/[DbContext] (deliberately invisible). " +
-            "A new migration missing those attributes would be silently skipped by Migrate() and drift the schema.");
+        undiscoverable.Should().BeEmpty(
+            "a migration missing those attributes would be silently skipped by Migrate() and drift the schema");
     }
 
     /// <summary>
-    /// The attributed <c>DropOrphanedUserFolderTables</c> migration must actually remove the two
-    /// orphaned personal-folders tables that <c>InitialBaseline</c> still creates.
+    /// The current schema must not create the retired personal-folder tables.
     /// </summary>
     [Fact]
-    public void OrphanedFolderTables_AreDroppedByTheMigrationChain_OnSqlite()
+    public void Baseline_DoesNotCreateRetiredTables_OnSqlite()
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"nodepilot-orphan-{Guid.NewGuid():N}.db");
         var connStr = $"DataSource={dbPath}";
@@ -325,7 +298,7 @@ public class MigrationDriftTests
                 while (reader.Read()) found.Add(reader.GetString(0));
             }
 
-            found.Should().BeEmpty("the orphaned folder tables must be dropped by the migration chain");
+            found.Should().BeEmpty("the baseline must only create the current schema");
         }
         finally
         {

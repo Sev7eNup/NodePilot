@@ -33,9 +33,31 @@ Alle Werte sind positive, restart-pflichtige Boot-Konfiguration. `0` wird abgele
 damit teilweise einen unbegrenzten Timeout aktivieren. Status liefern `/healthz/ready` (Traffic-Gate)
 und `/healthz/database` (immer HTTP 200, Zustand im Body).
 
+## Datenbanklast im Betrieb
+
+Die Maschinenauswahl im Designer lädt Konfigurationsdaten über `GET /api/machines/options`.
+Die Maschinenübersicht und Detailansicht teilen ihre Schrittstatistik für zehn Sekunden;
+gleichzeitige Aufrufe lösen nur eine Neuberechnung aus. Die dort angezeigten Aktivitätszahlen
+werden nach einer Berechnung bis zu zehn Sekunden wiederverwendet und sind keine sekundengenaue Live-Anzeige.
+
+Angenommene Workflow-Starts warten dauerhaft in der Dispatch-Outbox. Pro Prozess prüft nur ein
+freier Worker die Queue, mit sofortiger Benachrichtigung bei neuen Aufträgen und einem
+Sekundenintervall als Rückfall. `ExecutionDispatch:WorkerCount` begrenzt weiterhin die Zahl
+gleichzeitig laufender Workflows. Mehr Worker erhöhen nicht die Abfragerate einer leeren Queue.
+Bei verlorener Antwort auf eine Reservierung wird der Auftrag nach Ablauf seiner 60-Sekunden-Lease
+wieder verfügbar; ein neuer Start wird erst nach bestätigter Reservierung ausgeführt.
+
+Die Reservierungen erfolgen nacheinander. Das senkt die Datenbanklast, kann bei vielen gleichzeitig
+eingehenden Starts aber die Wartezeit erhöhen; höhere Datenbanklatenz verstärkt diesen Effekt.
+Mehr Worker beseitigen diese Grenze der Reservierungsrate nicht.
+
+Die Metriken `nodepilot.dispatch.claims` und `nodepilot.dispatch.claim.duration` zeigen Anzahl und
+Dauer der Reservierungsversuche, aufgeteilt nach `success`, `empty` und `error`.
+
 ## Migrationen
 
 - **Ein gemeinsames Migration-Set**, provider-agnostisch (ohne `type:`-Strings). Bootstrap via `db.Database.Migrate()`.
+- **Initiale Baseline:** `20260915180058_InitialBaseline` enthält das vollständige aktuelle Schema einschließlich Running-Step-Index. Sie ersetzt die Entwicklungshistorie vor dem ersten produktiven Einsatz. Für bestehende Entwicklungsdatenbanken aus dieser alten Historie ist eine neue Datenbank oder eine ausdrückliche Datenübernahme nötig; diese Baseline aktualisiert sie nicht. Der Start setzt sie niemals automatisch zurück. Spätere Schemaänderungen ergänzen Migrationen nach dieser Baseline.
 - Neue Migration:
   ```bash
   dotnet ef migrations add <Name> \

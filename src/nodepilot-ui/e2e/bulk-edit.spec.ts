@@ -69,7 +69,7 @@ async function openEditor(page: Page) {
   await page.route(`**/api/workflows/${WF_ID}`, (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson() }),
   );
-  await page.route('**/api/machines', (route) =>
+  await page.route('**/api/machines/options', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([MACHINE]) }),
   );
   await page.goto(`/workflows/${WF_ID}`);
@@ -117,7 +117,7 @@ test.describe('BulkEditPanel & ActivityTypeFilter (Teil 60)', () => {
       }
       return route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson() });
     });
-    await page.route('**/api/machines', (route) =>
+    await page.route('**/api/machines/options', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([MACHINE]) }),
     );
 

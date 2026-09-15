@@ -33,9 +33,31 @@ All values are positive, restart-required boot configuration. `0` is rejected, b
 treat it as an unlimited timeout. Status is available from `/healthz/ready` (the traffic gate) and
 `/healthz/database` (always HTTP 200, with the state in the body).
 
+## Database load during operation
+
+Machine selectors in the designer load configuration through `GET /api/machines/options`.
+The machine list and detail page share step statistics for ten seconds; concurrent requests
+trigger a single refresh. Activity counts are reused for up to ten seconds after a refresh
+and are not a second-by-second live display.
+
+Accepted workflow starts wait durably in the dispatch outbox. Only one idle worker per process
+checks the queue, waking immediately for new requests and falling back to a one-second interval.
+`ExecutionDispatch:WorkerCount` still limits concurrently running workflows. Increasing the
+worker count does not increase the query rate of an empty queue. If the response to a reservation
+is lost, the request becomes available again when its 60-second lease expires; execution starts
+only after a confirmed reservation.
+
+Reservations run one at a time. This reduces database load but can increase wait times when many
+starts arrive together; higher database latency increases this effect. Adding workers does not
+remove this reservation-rate limit.
+
+The metrics `nodepilot.dispatch.claims` and `nodepilot.dispatch.claim.duration` report reservation
+attempt counts and duration, grouped by `success`, `empty` and `error`.
+
 ## Migrations
 
 - **One shared migration set**, provider-agnostic (without `type:` strings). Bootstrapped via `db.Database.Migrate()`.
+- **Initial baseline:** `20260915180058_InitialBaseline` contains the complete current schema, including the Running-step index. It replaces the development history before the first production deployment. Existing development databases from that older history need a fresh database or an explicit data transfer; this baseline does not upgrade them. Startup never resets them automatically. Later schema changes append migrations to this baseline.
 - A new migration:
   ```bash
   dotnet ef migrations add <Name> \

@@ -10,6 +10,192 @@ Dokumentiert alle umgesetzten Performance-Optimierungen.
 
 ---
 
+## Datenbank und HA (2026-09-15)
+
+Der Review auf dem Ausgangsstand `d15cbc9` priorisierte drei konkrete Engpässe.
+Die lokale PostgreSQL-16.6-Datenbank enthielt rund 5,0 Mio. Activities und 675.000
+Executions. Die Sieben-Tage-Maschinenstatistik benötigte in einem gemessenen Lauf
+1.076 ms, die Abfrage laufender Activities weitere 530 ms. Zusammen sind das
+1.606 ms SQL-Zeit bei einem Statistik-Cache-Miss, **keine gemessene HTTP-p95**.
+Die 193.444 gelesenen PostgreSQL-Buffer der Wochenstatistik entsprechen rund
+1,58 GB in den Buffer-Cache geladenen Seiten; daraus lässt sich kein physischer
+Datenträgerdurchsatz ableiten.
+
+In einem separaten 35,5-s-Fenster nahm der Outbox-Scan-Zähler um 2.185 zu
+(rund 61,5/s), bei 41 neuen Einträgen. Das belegt unnötiges Polling, aber für sich
+allein noch keinen CPU-Engpass. Zum Beobachtungszeitpunkt gab es keine aktiven
+Blockierer und der Datenbank-Deadlock-Zähler stand auf null. Das HA-Risiko ergab
+sich aus der Transaktionsstruktur: Die Recovery hielt die Leader-Lease über den
+gesamten Rückstand gesperrt, während die Erneuerung nach drei Sekunden abbricht.
+
+### Umsetzung
+
+- **Maschinenauswahl:** Der Workflow-Editor und seine Ausführungsansicht verwenden
+  `GET /api/machines/options`. Eine Projektion liest ausschließlich die neun
+  Konfigurations-/Verbindungsfelder aus `ManagedMachines`, sortiert nach Name.
+  Die Verwaltung, CLI und MCP behalten die vollständige Maschinenantwort.
+- **Statistik:** Ein Singleton bündelt parallele Cache-Misses in einer Berechnung
+  mit eigenem DI-Scope und DbContext. Die zehn Sekunden TTL beginnen nach Erfolg.
+  Request-Abbruch beendet nur das Warten dieses Aufrufers, Shutdown die gemeinsame
+  Berechnung. Fehler werden nicht gespeichert. Die Sieben-Tage-Statistik bleibt erhalten.
+- **Aktive Activities:** Die konsolidierte `20260915180058_InitialBaseline` enthält
+  `IX_StepExecutions_Running` auf `Status`, gefiltert auf `Running`, ohne Payload.
+  Es gibt keinen zusätzlichen Zeit- oder Outbox-Index in diesem Schritt.
+- **HA:** Höchstens 100 vorher ausgewählte Execution-IDs pro Transaktion;
+  Lease-Prüfung vor Execution-/Kind-/Audit-Änderungen. Das Budget beträgt
+  `min(2 s, 2/3 × Cluster:LeaseDbTimeoutSeconds)`. Ein Budgetabbruch rollt zurück,
+  halbiert die Batchgröße und wartet eine Sekunde. Scheitert ein einzelner Lauf,
+  setzt der Host nach fünf Sekunden mit frischem Scope fort. Zwischen erfolgreichen
+  Batches liegen 100 ms ohne Transaktion. Verlorene Commit-Antworten werden anhand
+  stabiler Audit-IDs bzw. übernommener Ownership geprüft; Verifikationsfehler führen
+  zunächst ausschließlich zu erneuten Leseversuchen. Epoch-Wechsel, Führungsverlust
+  und Shutdown brechen die Recovery ab. Leader-TTL und Renew-Timeout bleiben gleich.
+- **Dispatch:** Ein gemeinsames `SemaphoreSlim` koordiniert nur das Warten auf die
+  nächste Reservierung. Nach erfolgreichem Claim wird es vor der Ausführung frei.
+  Alle Worker behalten ihre Ausführungsparallelität; es gibt keine Vorabreservierungsqueue.
+  Der Claim ist ein parametrisiertes Statement über EF-Interceptors: PostgreSQL
+  `SKIP LOCKED`, SQL Server `UPDLOCK, READPAST, READCOMMITTEDLOCK`, SQLite `RETURNING`.
+  Keine automatische Wiederholung bei unklarer Commit-Antwort; die vorhandene
+  60-s-Lease macht den Eintrag erneut verfügbar. Blockierte Workflows werden vor
+  der Begrenzung ausgeschlossen. Sortierung: Priorität absteigend, Erstellzeit und
+  Execution-ID aufsteigend.
+
+Die Metriken `nodepilot.dispatch.claims` und `nodepilot.dispatch.claim.duration`
+verwenden ausschließlich `result=success|empty|error`. Im Leerlauf ohne Signale
+ist etwa ein periodischer Poll pro Sekunde vorgesehen; Signale und erfolgreiche
+Starts dürfen zusätzliche Claims auslösen.
+
+### Reproduzierbare Prüfung
+
+`scripts/Test-DatabaseProviders.ps1 -ArtifactsPath .codex-artifacts/db-provider-tests`
+startet PostgreSQL 16 und SQL Server 2022 in isolierten Docker-Containern oder nutzt
+explizite `NODEPILOT_TEST_POSTGRES`-/`NODEPILOT_TEST_SQLSERVER`-Testserver.
+Jede Fixture erstellt und entfernt ausschließlich ihre eigene
+`nodepilot_test_<guid>`-Datenbank. Die Sperrtests verwenden SQL Server mit RCSI an
+und aus. SQLite-Tests ergänzen diese Prüfung für Cancellation und Fehlereinjektion.
+
+Die Regressionen prüfen unter anderem atomare Claims, gesperrte Kandidaten,
+Prioritäten und Lease-Ablauf, verlorene Claim-/Commit-Antworten, Rollback aller
+Recovery-Änderungen, Epoch-Wechsel und Scope-Abbruch. Ein auf mehrere Sekunden
+verlangsamter Rückstand prüft parallele Lease-Erneuerungen mit unverändertem
+Drei-Sekunden-Timeout. Migrationstests führen Upgrade, Downgrade und erneutes
+Upgrade auf beiden echten Providern aus. Seit der Konsolidierung bedeutet das
+vollständige Schema-Erstellung, Rücknahme bis zur leeren Datenbank und erneute
+Erstellung. Die alte Entwicklungshistorie wird nicht mehr ausgeliefert; vorhandene
+Datenbanken dieser Historie werden weder migriert noch automatisch zurückgesetzt.
+
+### Messung auf isolierten Testdatenbanken
+
+Windows/.NET 10, PostgreSQL 16 und SQL Server 2022 CU27 in Docker. Die
+Maschinenmessung verwendet pro Provider 250.000 synthetische Activities über
+30 Tage, 20.000 Executions, 16 Workflows, vier Maschinen und vier laufende
+Activities; terminale Outputs enthalten 1.024 Zeichen. Die Daten bleiben beim
+Indexvergleich identisch. Messverbindungen verwenden Pooling mit höchstens
+20 Verbindungen. SQL-Werte sind Mediane aus fünf warmen Läufen nach zwei
+Verwerfungsläufen.
+
+| Messung | PostgreSQL vorher → nachher | SQL Server vorher → nachher |
+|---|---:|---:|
+| HTTP für Maschinenauswahl: vollständige Liste bei Cache-Miss → Options | 49,59 → 2,00 ms | 87,33 → 3,40 ms |
+| SQL für aktive Activities, ohne → mit Index | 1,53 → 0,99 ms | 25,95 → 1,87 ms |
+| Aktiver Abfrageplan: Buffer-Zugriffe / logische Reads | 392 → 4 | 2.348 → 18 |
+| Sieben-Tage-SQL, ohne → mit Index | 37,68 → 39,55 ms | 51,54 → 87,83 ms |
+| Vollständige Maschinenliste, Cache-Miss, ohne → mit Index | 49,59 → 49,28 ms | 87,33 → 100,26 ms |
+
+HTTP verwendet die tatsächlichen Controller-Routen in einem kleinen
+Loopback-Kestrel-Host mit synthetischer Anmeldung. Host-Start, Produktstart,
+Proxy und weitere Produktionsmiddleware sind ausgeschlossen. Ein erster Host
+wird verworfen; fünf Hosts mit jeweils frischem Statistikcache liefern die
+Stichproben. Der Vorher-Pfad verwendet die erhaltene ursprüngliche Abfrageform
+der vollständigen Liste ohne neuen Index, kein separat gebautes altes Binary.
+Die Antwort für vier Maschinen schrumpft von 1.261 auf 881 Bytes. Der Vorteil
+liegt klar in der Auswahl ohne Statistik und im aktiven Abfrageplan;
+**die vollständige Statistikliste wird in diesem Versuch nicht durchgehend schneller**.
+Die Wochenabfrage bleibt ein breiter Scan.
+
+**Schreibkosten:** Nach einem verworfenen Aufwärmblock folgen acht Blöcke in
+der Reihenfolge OFF/ON/ON/OFF/OFF/ON/ON/OFF. Jeder Block verarbeitet dieselben
+200 Step-IDs mit acht parallelen Schreibern: Running-INSERT, anschließend
+Succeeded-UPDATE mit 1-KB-Output. Testzeilen werden zwischen den Blöcken entfernt.
+
+| Median ohne → mit Index | PostgreSQL | SQL Server |
+|---|---:|---:|
+| Running-INSERT (`SaveChanges`) | 4,124 → 4,135 ms | 10,242 → 10,225 ms |
+| Terminales UPDATE (`SaveChanges`) | 4,354 → 4,322 ms | 10,508 → 10,463 ms |
+| Gesamter 200-Step-Block | 223,67 → 242,19 ms (+8,28 %) | 786,51 → 729,80 ms (−7,21 %) |
+
+Die einzelnen Blockzeiten streuen deutlich: PostgreSQL mit Index 224–258 ms,
+SQL Server mit Index 679–924 ms. Der kleine Versuch beweist weder kostenlose
+Indexpflege noch einen Gewinn beim Schreiben. Er dokumentiert den beobachteten
+Lesevorteil samt Schreibkosten; Produktions-p95 und maximale Dauerlast sind
+damit nicht bestimmt. Rohwerte, tatsächliche Abfragepläne und das lokale
+Messprogramm liegen unter `.codex-artifacts/db-implementation/machine-benchmark-results/`
+bzw. `.codex-artifacts/db-implementation/machine-benchmark/`.
+
+**Queue-Vergleich:** `DispatchClaimBenchmarkTests` vergleicht den eingefrorenen
+alten SELECT/CAS-Ablauf mit dem neuen Claim-/Warteablauf auf isoliertem PostgreSQL
+16: 20 Worker, Pooling mit 40 Verbindungen, 3,25 Sekunden Leerlauf und ein Burst
+mit 100 Einträgen sowie je 25 ms simulierter Ausführungszeit. Setup und
+Abschluss-DELETEs sind vom Zähler ausgeschlossen; gezählt werden abgeschlossene
+EF-Claim-Statements. Beide Varianten verwenden dasselbe begrenzte Signal.
+
+| Messung im abschließenden Lauf | Vorher | Nachher |
+|---|---:|---:|
+| Leerlauf-Statements im Messfenster | 80 | 4 |
+| Leerlauf-Statements pro Sekunde einschließlich initialem Poll | 24,51 | 1,23 |
+| Claim-Statements für 100 Starts | 1.029 | 107 |
+| Claim-Statements pro Start | 10,29 | 1,07 |
+| Burstfreigabe bis Reservierung, p50 | 234,7 ms | 320,9 ms |
+| Burstfreigabe bis Reservierung, p95 | 408,9 ms | 624,1 ms |
+| Gesamter Burst einschließlich simulierter Arbeit | 490,6 ms | 698,6 ms |
+
+Der Leerlauf verursacht rund 95 % weniger Statements; im Burst sind es rund
+90 % weniger. **Die Reservierungslatenz steigt in diesem Lauf**, weil auch
+erfolgreiche Claims nacheinander erfolgen. Die Workflow-Ausführung bleibt
+parallel. Frühere Messläufe schwankten und lieferten teilweise schnellere
+Burstzeiten; eine allgemeine Latenzverbesserung ist damit nicht belegt. Bei
+hoher Netzwerklatenz zur Datenbank begrenzt ein serieller Claim pro Roundtrip
+den Startdurchsatz. Der Nutzen dieses Schritts ist die geringere Datenbanklast
+und atomare Reservierung; die gemessene Wartezeit ist ein konkreter Kompromiss.
+Rohprotokoll: `.codex-artifacts/db-implementation/benchmark-results/h3-queue-benchmark-pooled-final.trx`.
+
+### Ausgeführte Tests
+
+| Bereich | Tatsächlich ausgeführt | Ergebnis |
+|---|---|---|
+| Data | `MigrationDriftTests`, `ProviderMigrationTests`, `NodePilotDbContextTests` | 20 bestanden |
+| Claims | `ExecutionDispatchOutboxClaimerTests`, SQLite und beide echte Provider einschließlich SQL Server RCSI an/aus | 8 bestanden |
+| Engine | Startup-Recovery-Tests einschließlich 10 echter Providerfälle; `ClusterLeaderServiceTests` | 30 + 9 bestanden |
+| API gezielt | Maschinen/Cache, Dispatch, HA-Host, Architektur und Setup | 118 bestanden |
+| API vollständig | Gesamte `NodePilot.Api.Tests`-Projektsuite | 2.641 bestanden, keine Fehler oder übersprungenen Tests |
+| DTO-Parität | `NodePilot.Cli.Tests.ApiDtoParityTests` | 8 bestanden |
+| Frontend | Betroffene Vitest-Suiten; Picker-/Activity-/Bulk-Playwright-Szenarien | 190 + 25 bestanden |
+| Statische Frontend-Prüfung | TypeScript; ESLint der betroffenen Dateien | bestanden |
+| Produktdokumentation | Sprach-/Inhaltsprüfungen | 10 bestanden |
+| Docker-Testskript | Automatischer Start, Data-/Engine-Providerfälle, automatisches Entfernen der eigenen Container | 18 Providerfälle bestanden; API hat derzeit keine Tests mit diesem Provider-Trait |
+
+Der erste vollständige API-Lauf zeigte eine bestehende Testisolationslücke:
+SignalR-Tests konnten dieselben statischen Gruppen parallel zurücksetzen.
+Die Zuordnung zur vorhandenen Testcollection und deren Parallelisierungsschutz
+wurden korrigiert; der anschließende vollständige Lauf bestand. An der
+SignalR-Produktionsimplementierung wurde nichts geändert.
+
+Die übrigen vollständigen Backend-/Frontend-Suiten wurden lokal nicht ausgeführt;
+diese bleiben CI-Prüfungen. Die laufende Anwendungsdatenbank und vorhandene
+Bildänderung wurden nicht verändert. Testdatenbanken und selbst gestartete
+Testcontainer wurden entfernt. Kein Commit, Push oder Deployment.
+
+**Anschließende Baseline-Konsolidierung:** Die 29 bisherigen Migrationsklassen
+(einschließlich der absichtlich unsichtbaren Altklasse) wurden durch eine
+`20260915180058_InitialBaseline` ersetzt. Im Migrationsordner bleiben Initialmigration,
+Designer und Snapshot. Nach dieser Änderung bestanden zusätzlich 304 Data-Tests
+und erneut alle 18 echten Providerfälle. Der Schema-Abgleich prüft alle aktuellen
+Tabellen/Spalten, beide Root-Startdatensätze und die acht exakten SQL-Server-
+Identitätskollationen. Für alte Entwicklungsdatenbanken ist eine neue Datenbank
+oder ausdrückliche Datenübernahme erforderlich; sie wurden nicht angefasst.
+
+---
+
 ## Manual-Tuning-Preset (Stand 2026-05-07)
 
 > **Das sind nicht zwangsläufig die Werte, mit denen dein Prozess läuft.** Seit der
@@ -736,7 +922,7 @@ Audit-Erhebung über Backend + Frontend + DB-Layer mit drei parallelen Code-Audi
 | RCSI Auto-Setup | `Enable-SqlReadCommittedSnapshot` Helper im Installer-Pre-Flight. SQL-Server-Pendant zu Postgres-MVCC: ohne RCSI blockieren `WorkflowStatsRefresher`-GROUP-BYs jeden parallelen `INSERT`. Idempotent (`SELECT is_read_committed_snapshot_on`-Check), failure → loud warning + DBA-Snippet, kein hard-fail. | [Install-NodePilot.ps1:345-401](../deploy/Install-NodePilot.ps1#L345-L401) |
 | Pool-Sizing | `Min Pool Size=20;Max Pool Size=480` in der SQL-Server-ConnectionString eingeführt; Postgres-ConnString im Installer ebenfalls gefixt (war ohne Pool-Sizing — analog zur Dev-config). **Inzwischen auf `Min=40;Max=800` für beide Provider hochgezogen** ([siehe Single-Source-Block oben](#aktueller-stand-stand-2026-05-07)). | [appsettings.json](../src/NodePilot.Api/appsettings.json), [Install-NodePilot.ps1:680](../deploy/Install-NodePilot.ps1#L680) |
 | MaxBatchSize + CommandTimeout | `MaxBatchSize=200` (vs. SqlServer-Default 42 → 24 Round-Trips für 1000 Steps werden 5), `CommandTimeout=120s` (vs. 30s — `WorkflowStatsRefresher`-Sweeps reißen das sonst). Override via `Database:MaxBatchSize` / `CommandTimeoutSeconds`. Beide Provider. | [Program.cs:155-220](../src/NodePilot.Api/Program.cs#L155-L220) |
-| 3 Covering-Indexe | `(WorkflowId, StartedAt DESC) INCLUDE (Status, CompletedAt)`, `(Status, StartedAt DESC) INCLUDE (WorkflowId, CompletedAt, TriggeredBy)`, `(WorkflowExecutionId, StartedAt)`. Annotations doppelt gesetzt: `SqlServer:Include` + `Npgsql:IndexInclude` — beide Provider lesen jeweils ihre eigene und kriegen echte covering-Indexe (Postgres v11+). EF-Migration manuell um Annotations ergänzt (SQLite-Scaffolder übernimmt sie nicht). | [NodePilotDbContext.cs:41-79](../src/NodePilot.Data/NodePilotDbContext.cs#L41-L79), [Migration `AddCoveringIndexesForSqlServer`](../src/NodePilot.Data/Migrations/20260511183144_InitialBaseline.cs) |
+| 3 Covering-Indexe | `(WorkflowId, StartedAt DESC) INCLUDE (Status, CompletedAt)`, `(Status, StartedAt DESC) INCLUDE (WorkflowId, CompletedAt, TriggeredBy)`, `(WorkflowExecutionId, StartedAt)`. Annotations doppelt gesetzt: `SqlServer:Include` + `Npgsql:IndexInclude` — beide Provider lesen jeweils ihre eigene und kriegen echte covering-Indexe (Postgres v11+). EF-Migration manuell um Annotations ergänzt (SQLite-Scaffolder übernimmt sie nicht). | [NodePilotDbContext.cs:41-79](../src/NodePilot.Data/NodePilotDbContext.cs#L41-L79), [aktuelle InitialBaseline](../src/NodePilot.Data/Migrations/20260915180058_InitialBaseline.cs) |
 
 **Live verifiziert via `EXPLAIN ANALYZE`:** alle drei Indexe von Postgres genutzt (`Bitmap Index Scan` / `Index Scan using IX_…`). activeOnly-Query exec-time 0.135 ms.
 

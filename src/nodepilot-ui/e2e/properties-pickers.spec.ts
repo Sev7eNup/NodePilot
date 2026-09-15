@@ -66,7 +66,7 @@ function installWorkflowRoute(page: Page, capture: { body: { definitionJson?: st
 test.describe('Credential- & Machine-Picker im Properties Panel (Teil 65)', () => {
   test.beforeEach(async ({ page }) => {
     await installDefaultMocks(page);
-    await page.route('**/api/machines', (route) =>
+    await page.route('**/api/machines/options', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',

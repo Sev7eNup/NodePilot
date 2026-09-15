@@ -15,7 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { api } from '../../api/client';
 import { getPage } from '../../api/paging';
 import type { Node, Edge } from '@xyflow/react';
-import type { ManagedMachine, Credential, WorkflowExecution, StepExecution } from '../../types/api';
+import type { MachineOption, Credential, WorkflowExecution, StepExecution } from '../../types/api';
 import { getUpstreamVariables } from '../../lib/upstreamVariables';
 import { tryParseJson } from '../../lib/jsonPathBuilder';
 import { parseOutputParametersJson } from '../../lib/outputParameters';
@@ -44,7 +44,7 @@ interface Props {
   node: Node;
   allNodes: Node[];
   edges: Edge[];
-  machines: ManagedMachine[];
+  machines: MachineOption[];
   credentials: Credential[];
   onUpdate: (nodeId: string, data: Record<string, unknown>) => void;
   onClose: () => void;

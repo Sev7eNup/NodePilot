@@ -5,7 +5,7 @@ using NodePilot.Core.Models;
 namespace NodePilot.Data;
 
 /// <summary>
-/// Applies each provider's own EF migration set at startup. SQL Server and PostgreSQL behave
+/// Applies the shared EF migration set at startup. SQL Server and PostgreSQL behave
 /// identically: <c>db.Database.Migrate()</c> brings the DB up to the current schema (creates
 /// all tables on an empty DB, otherwise applies only the pending ones).
 /// </summary>

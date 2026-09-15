@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
-import type { ManagedMachine, StepExecution } from '../types/api';
+import type { MachineOption, StepExecution } from '../types/api';
 import { useDesignStore } from '../stores/designStore';
 import { REMOTE_ACTIVITY_TYPES } from '../components/designer/properties/shared';
 import { findEdgePathBetween } from '../lib/upstreamVariables';
@@ -62,7 +62,7 @@ export function useNodeAnnotations({
   replayExecutionId: string | null;
   replaySteps: StepExecution[] | undefined;
   scrubTimeMs: number | null;
-  machines: ManagedMachine[];
+  machines: MachineOption[];
 }): NodeAnnotationsApi {
   // ---- __liveStatus: SignalR live > replay > clear ----
   useEffect(() => {

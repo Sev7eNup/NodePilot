@@ -104,6 +104,10 @@ export interface ManagedMachine {
   activeRunCount: number;
 }
 
+export type MachineOption = Pick<ManagedMachine,
+  'id' | 'name' | 'hostname' | 'winRmPort' | 'useSsl' | 'defaultCredentialId'
+  | 'tags' | 'lastConnectivityCheck' | 'isReachable'>;
+
 export interface Credential {
   id: string;
   name: string;

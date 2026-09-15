@@ -2,11 +2,11 @@ import { Close } from '@carbon/icons-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Node } from '@xyflow/react';
-import type { ManagedMachine } from '../../types/api';
+import type { MachineOption } from '../../types/api';
 
 interface Props {
   selectedNodes: Node[];
-  machines: ManagedMachine[];
+  machines: MachineOption[];
   onApply: (nodeIds: string[], patch: Record<string, unknown>, configPatch?: Record<string, unknown>) => void;
   onClose: () => void;
   width: number;

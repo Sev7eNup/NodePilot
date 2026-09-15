@@ -27,7 +27,23 @@ Die Standardkonfiguration ist Single-Node. `Cluster:Enabled=true` aktiviert den 
 }
 ```
 
-**RTO-Formel:** `TTL + Renew-Interval + Recovery-Sweep` → 30 + 10 + ~5 = ~45 s worst case.
+**RTO-Abschätzung für die Traffic-Übernahme:** `TTL + Renew-Intervall + LB-Probe` →
+30 + 10 + 5 = ungefähr 45 s. Die Bereinigung alter Ausführungen läuft unabhängig davon;
+ihre Dauer hängt vom Rückstand und von der Datenbank ab.
+
+### Recovery bei großem Rückstand
+
+Die Recovery schreibt kleine, einzeln bestätigte Pakete. Vor jedem Paket prüft sie den aktuellen
+Leader und seine Epoch; bei Führungsverlust beendet sie die Arbeit. Abgeschlossene Pakete bleiben
+bei einem späteren Fehler erhalten. Läuft ein Paket in sein Zeitbudget, wird es zurückgerollt und
+verkleinert; nötigenfalls folgt nach fünf Sekunden ein neuer Versuch unter derselben Epoch.
+
+Das Paketbudget beträgt mit den Defaults zwei Sekunden und bleibt unter
+`Cluster:LeaseDbTimeoutSeconds`. So muss die Lease-Verlängerung nicht auf die gesamte Bereinigung
+warten. Eine Budgetüberschreitung ist kein Grund, die Lease-TTL pauschal zu erhöhen. Die Logs
+`Cluster recovery batch committed` und `Cluster recovery deferred` zeigen Fortschritt und
+zurückgestellte Arbeit; dauerhaft zurückgestellte Pakete erfordern eine Prüfung der DB-Latenz
+und blockierender Transaktionen.
 
 ### Authentication und OIDC im Cluster
 
