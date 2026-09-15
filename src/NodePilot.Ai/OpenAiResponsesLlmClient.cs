@@ -19,14 +19,17 @@ namespace NodePilot.Ai;
 /// their results are top-level <c>function_call</c>/<c>function_call_output</c> items, and the
 /// stream is a sequence of typed events instead of choice deltas.</para>
 ///
-/// <para>No compatibility fallbacks. The quirk retries of the chat-completions client apply to
-/// that dialect only: <c>max_tokens</c> and <c>stream_options</c> do not exist here, and
+/// <para>Almost no compatibility fallbacks. The quirk retries of the chat-completions client apply
+/// to that dialect only: <c>max_tokens</c> and <c>stream_options</c> do not exist here, and
 /// <c>text.format</c> and <c>strict</c> are not optional extras that can be dropped. An endpoint
-/// that rejects them fails instead of sending something else.</para>
+/// that rejects them fails instead of sending something else. The one exception is
+/// <see cref="LlmTemperatureQuirk"/>: reasoning models reached through this dialect reject
+/// <c>temperature</c>, which is optional, so it is dropped and the call retried once.</para>
 /// </summary>
 public sealed class OpenAiResponsesLlmClient : ILlmClient
 {
     private readonly LlmClientConfig _config;
+    private readonly ILogger<OpenAiResponsesLlmClient> _logger;
     private readonly LlmHttpTransport _transport;
 
     public OpenAiResponsesLlmClient(
@@ -35,12 +38,34 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
         ILogger<OpenAiResponsesLlmClient> logger)
     {
         _config = config;
+        _logger = logger;
         _transport = new LlmHttpTransport(httpClientFactory, config, logger);
     }
 
+    private string CompatibilityKey =>
+        LlmTemperatureQuirk.Key(_config.Endpoint.PostUrl, _config.Model);
+
     public async Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct)
     {
-        var body = BuildBody(request, stream: false);
+        var dropTemperature = LlmTemperatureQuirk.IsKnown(CompatibilityKey);
+        try
+        {
+            return await CompleteOnceAsync(request, dropTemperature, ct);
+        }
+        catch (LlmException ex) when (!dropTemperature && LlmTemperatureQuirk.IsUnsupported(ex))
+        {
+            LlmTemperatureQuirk.Remember(CompatibilityKey);
+            _logger.LogWarning(
+                "LLM upstream rejected temperature with HTTP 400 — retrying without it. Body: {BodyExcerpt}",
+                ex.BodyExcerpt);
+            return await CompleteOnceAsync(request, dropTemperature: true, ct);
+        }
+    }
+
+    private async Task<LlmResponse> CompleteOnceAsync(
+        LlmRequest request, bool dropTemperature, CancellationToken ct)
+    {
+        var body = BuildBody(request, stream: false, dropTemperature);
 
         using var timeoutCts = _transport.CreateTimeoutScope(ct);
         using var resp = await _transport.SendAsync(
@@ -56,8 +81,8 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
         using var timeoutCts = _transport.CreateTimeoutScope(ct);
         var token = timeoutCts.Token;
 
-        using var resp = await _transport.SendAsync(
-            BuildBody(request, stream: true), HttpCompletionOption.ResponseHeadersRead, token, ct);
+        // yield is not allowed inside try/catch, so the temperature retry lives in its own method.
+        using var resp = await SendStreamingWithTemperatureFallbackAsync(request, token, ct);
 
         string? model = null;
         string? status = null;
@@ -168,10 +193,32 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
             GenerationMs: generationMs);
     }
 
+    private async Task<HttpResponseMessage> SendStreamingWithTemperatureFallbackAsync(
+        LlmRequest request, CancellationToken token, CancellationToken ct)
+    {
+        var dropTemperature = LlmTemperatureQuirk.IsKnown(CompatibilityKey);
+        try
+        {
+            return await _transport.SendAsync(
+                BuildBody(request, stream: true, dropTemperature),
+                HttpCompletionOption.ResponseHeadersRead, token, ct);
+        }
+        catch (LlmException ex) when (!dropTemperature && LlmTemperatureQuirk.IsUnsupported(ex))
+        {
+            LlmTemperatureQuirk.Remember(CompatibilityKey);
+            _logger.LogWarning(
+                "LLM upstream rejected temperature with HTTP 400 — retrying without it. Body: {BodyExcerpt}",
+                ex.BodyExcerpt);
+            return await _transport.SendAsync(
+                BuildBody(request, stream: true, dropTemperature: true),
+                HttpCompletionOption.ResponseHeadersRead, token, ct);
+        }
+    }
+
     /// <summary>Builds the Responses request body. It carries no <c>max_tokens</c>,
     /// <c>response_format</c> or <c>stream_options</c>: those belong to the other
     /// dialect.</summary>
-    private Dictionary<string, object?> BuildBody(LlmRequest request, bool stream)
+    private Dictionary<string, object?> BuildBody(LlmRequest request, bool stream, bool dropTemperature)
     {
         var body = new Dictionary<string, object?>
         {
@@ -183,7 +230,7 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
             // switching the endpoint must not change where prompt data ends up.
             ["store"] = false,
         };
-        if (_config.Temperature is double temperature)
+        if (!dropTemperature && _config.Temperature is double temperature)
             body["temperature"] = temperature;
         if (request.JsonMode)
             body["text"] = new { format = new { type = "json_object" } };

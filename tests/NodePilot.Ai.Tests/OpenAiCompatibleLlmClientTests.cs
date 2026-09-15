@@ -30,14 +30,14 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
         _server.Dispose();
     }
 
-    private OpenAiCompatibleLlmClient BuildClient(int? timeoutSeconds = null)
+    private OpenAiCompatibleLlmClient BuildClient(int? timeoutSeconds = null, double? temperature = null)
     {
         var config = new LlmClientConfig(
             Endpoint: LlmEndpointGuard.ResolveEndpoint(_server.Url!),
             ApiKey: null,
             Model: "test-model",
             MaxTokens: 100,
-            Temperature: null,
+            Temperature: temperature,
             TimeoutSeconds: timeoutSeconds ?? 90);
         var factory = new SingleClientHttpClientFactory();
         return new OpenAiCompatibleLlmClient(factory, config, NullLogger<OpenAiCompatibleLlmClient>.Instance);
@@ -191,6 +191,55 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
 
         ex.Kind.Should().Be(LlmErrorKind.UpstreamError);
         ex.BodyExcerpt.Should().Contain("context length exceeded");
+    }
+
+    [Fact]
+    public async Task CompleteAsync_TemperatureUnsupported400_RetriesWithoutTemperature()
+    {
+        // Reasoning models reject sampling parameters. temperature is optional, so the call is
+        // retried without it instead of failing the caller.
+        _server.Given(Request.Create().WithPath("/chat/completions").UsingPost()
+                .WithBody(b => b != null && b.Contains("temperature")))
+               .RespondWith(Response.Create().WithStatusCode(400)
+                   .WithBody("{\"error\":{\"message\":\"Unsupported parameter: 'temperature' is not supported with this model.\",\"type\":\"invalid_request_error\",\"param\":\"temperature\",\"code\":null}}"));
+        _server.Given(Request.Create().WithPath("/chat/completions").UsingPost()
+                .WithBody(b => b != null && !b.Contains("temperature")))
+               .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+               {
+                   model = "test-model",
+                   choices = new[] { new { message = new { content = "recovered" } } },
+               }));
+
+        var client = BuildClient(temperature: 0);
+        var resp = await client.CompleteAsync(new LlmRequest("sys", "user"), CancellationToken.None);
+
+        resp.Content.Should().Be("recovered");
+        _server.LogEntries.Should().HaveCount(2);
+        _server.LogEntries.Last().RequestMessage!.Body.Should().NotContain("temperature");
+
+        // Remembered per endpoint/model, so the next client skips the round-trip that is known
+        // to fail.
+        var second = await BuildClient(temperature: 0).CompleteAsync(
+            new LlmRequest("sys", "user"), CancellationToken.None);
+        second.Content.Should().Be("recovered");
+        _server.LogEntries.Should().HaveCount(3);
+        _server.LogEntries.Last().RequestMessage!.Body.Should().NotContain("temperature");
+    }
+
+    [Fact]
+    public async Task CompleteAsync_BadRequestMentioningTemperature_IsNotTreatedAsTheQuirk()
+    {
+        // A 400 that merely echoes the parameter must not strip a temperature the endpoint never
+        // objected to; without the "unsupported" wording the failure reaches the caller.
+        _server.Given(Request.Create().WithPath("/chat/completions").UsingPost())
+               .RespondWith(Response.Create().WithStatusCode(400)
+                   .WithBody("{\"error\":{\"message\":\"temperature must be between 0 and 2\",\"type\":\"invalid_request_error\"}}"));
+
+        var client = BuildClient(temperature: 5);
+        var act = () => client.CompleteAsync(new LlmRequest("sys", "user"), CancellationToken.None);
+
+        await act.Should().ThrowAsync<LlmException>();
+        _server.LogEntries.Should().HaveCount(1);
     }
 
     [Fact]

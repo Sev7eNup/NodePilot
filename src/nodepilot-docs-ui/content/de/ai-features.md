@@ -270,6 +270,12 @@ Bei der Responses-API sendet NodePilot immer die Anweisung, die Anfrage **nicht*
 speichern. Ohne diese Anweisung würde OpenAI dort standardmäßig jede Anfrage 30 Tage aufbewahren,
 während Chat Completions nichts speichert.
 
+Reasoning-Modelle nehmen keine Sampling-Parameter an und weisen eine Anfrage mit `temperature`
+zurück. Da dieser Wert optional ist, lässt NodePilot ihn in einem solchen Fall weg und wiederholt
+die Anfrage automatisch — die Aktivität läuft dann mit dem Standard-Sampling des Modells, statt zu
+scheitern. Betroffen sind nur Aktivitäten, an denen `temperature` ausdrücklich gesetzt ist; ein
+Profil kennt diesen Wert nicht.
+
 Profile werden am besten unter **Einstellungen → System → Integrationen → LLM** angelegt. Dort angelegte Profile lassen sich vollständig verwalten. Ein Profil, das zusätzlich in einer Basis-Konfigurationsdatei oder in Umgebungsvariablen definiert ist, kann in der Oberfläche zwar bearbeitet, aber nicht gelöscht werden — es würde beim nächsten Neuladen der Konfiguration wieder erscheinen. Solche Profile sind in der Oberfläche entsprechend gekennzeichnet.
 
 Der API-Schlüssel sollte über die Umgebungsvariable `Llm__Profiles__<Kennung>__ApiKey` oder einen Secret-Provider gesetzt werden. Ein Klartextwert in der Konfigurationsdatei erzeugt eine Sicherheitswarnung.

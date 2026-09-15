@@ -265,6 +265,11 @@ With the Responses API, NodePilot always sends the instruction **not** to store 
 provider. Without that instruction OpenAI would retain every request there for 30 days by default,
 whereas chat completions stores nothing.
 
+Reasoning models accept no sampling parameters and reject a request that carries `temperature`.
+Since that value is optional, NodePilot drops it in such a case and repeats the request
+automatically — the activity then runs with the model's default sampling instead of failing. Only
+activities that set `temperature` explicitly are affected; a profile has no such value.
+
 Profiles are best created under **Settings → System → Integrations → LLM**. Profiles created there can be managed completely. A profile that is additionally defined in a base configuration file or in environment variables can be edited in the interface but not deleted — it would reappear the next time the configuration is reloaded. Such profiles are marked accordingly in the interface.
 
 The API key should be set through the environment variable `Llm__Profiles__<id>__ApiKey` or a secret provider. A plaintext value in the configuration file produces a security warning.

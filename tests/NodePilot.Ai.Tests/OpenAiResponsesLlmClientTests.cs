@@ -11,8 +11,9 @@ namespace NodePilot.Ai.Tests;
 /// <summary>
 /// Wire-level behavior of <see cref="OpenAiResponsesLlmClient"/>: the Responses request shape
 /// (<c>input</c>/<c>max_output_tokens</c>/<c>text.format</c>/flat tools), parsing of the
-/// <c>output[]</c> envelope, the typed SSE event stream, and the deliberate absence of the
-/// chat-completions compatibility fallbacks. Runs against a local WireMockServer.
+/// <c>output[]</c> envelope, the typed SSE event stream, the deliberate absence of the
+/// chat-completions compatibility fallbacks, and the one quirk that does apply here
+/// (<c>temperature</c>). Runs against a local WireMockServer.
 /// </summary>
 public sealed class OpenAiResponsesLlmClientTests : IDisposable
 {
@@ -31,14 +32,14 @@ public sealed class OpenAiResponsesLlmClientTests : IDisposable
         _server.Dispose();
     }
 
-    private OpenAiResponsesLlmClient BuildClient(int? timeoutSeconds = null)
+    private OpenAiResponsesLlmClient BuildClient(int? timeoutSeconds = null, double? temperature = null)
     {
         var config = new LlmClientConfig(
             Endpoint: LlmEndpointGuard.ResolveEndpoint(_server.Url!.TrimEnd('/') + Path),
             ApiKey: null,
             Model: "test-model",
             MaxTokens: 100,
-            Temperature: null,
+            Temperature: temperature,
             TimeoutSeconds: timeoutSeconds ?? 90);
         return new OpenAiResponsesLlmClient(
             new SingleClientHttpClientFactory(), config, NullLogger<OpenAiResponsesLlmClient>.Instance);
@@ -607,6 +608,46 @@ public sealed class OpenAiResponsesLlmClientTests : IDisposable
         var ex = await Assert.ThrowsAsync<LlmException>(() => Collect(BuildClient(), Prompt()));
 
         ex.Kind.Should().Be(LlmErrorKind.Unauthorized);
+    }
+
+    [Fact]
+    public async Task CompleteAsync_TemperatureUnsupported400_RetriesWithoutTemperature()
+    {
+        // The Responses API is how OpenAI's reasoning models are reached, and those reject
+        // sampling parameters. temperature is optional, so it is dropped and the call retried.
+        _server.Given(Request.Create().WithPath(Path).UsingPost()
+                .WithBody(b => b != null && b.Contains("temperature")))
+               .RespondWith(Response.Create().WithStatusCode(400)
+                   .WithBody("{\"error\":{\"message\":\"Unsupported parameter: 'temperature' is not supported with this model.\",\"type\":\"invalid_request_error\",\"param\":\"temperature\",\"code\":null}}"));
+        _server.Given(Request.Create().WithPath(Path).UsingPost()
+                .WithBody(b => b != null && !b.Contains("temperature")))
+               .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+               {
+                   model = "test-model",
+                   status = "completed",
+                   output = new object[]
+                   {
+                       new
+                       {
+                           type = "message",
+                           content = new object[] { new { type = "output_text", text = "recovered" } },
+                       },
+                   },
+               }));
+
+        var resp = await BuildClient(temperature: 0).CompleteAsync(
+            new LlmRequest("sys", "user"), CancellationToken.None);
+
+        resp.Content.Should().Be("recovered");
+        _server.LogEntries.Should().HaveCount(2);
+        _server.LogEntries.Last().RequestMessage!.Body.Should().NotContain("temperature");
+
+        // Remembered per endpoint/model, so the next client sends the accepted shape straight away.
+        var second = await BuildClient(temperature: 0).CompleteAsync(
+            new LlmRequest("sys", "user"), CancellationToken.None);
+        second.Content.Should().Be("recovered");
+        _server.LogEntries.Should().HaveCount(3);
+        _server.LogEntries.Last().RequestMessage!.Body.Should().NotContain("temperature");
     }
 
     private static LlmToolDefinition Tool(string name, bool strict) => new(

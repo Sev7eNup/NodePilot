@@ -39,12 +39,13 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         // Detect that response and retry once with the new key; other endpoints keep `max_tokens`.
         var effectiveRequest = request;
         var useMaxCompletionTokens = PrefersMaxCompletionTokens();
+        var dropTemperature = LlmTemperatureQuirk.IsKnown(CompatibilityKey);
         for (var attempt = 0; ; attempt++)
         {
             try
             {
                 return await CompleteWithJsonFallbackAsync(
-                    effectiveRequest, useMaxCompletionTokens, ct);
+                    effectiveRequest, useMaxCompletionTokens, dropTemperature, ct);
             }
             catch (LlmException ex) when (!useMaxCompletionTokens && IsMaxTokensUnsupported(ex))
             {
@@ -61,32 +62,44 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                     "LLM upstream rejected strict function schemas — retrying with best-effort tool calling. Body: {BodyExcerpt}",
                     ex.BodyExcerpt);
             }
+            catch (LlmException ex) when (!dropTemperature && LlmTemperatureQuirk.IsUnsupported(ex))
+            {
+                LlmTemperatureQuirk.Remember(CompatibilityKey);
+                dropTemperature = true;
+                _logger.LogWarning(
+                    "LLM upstream rejected temperature with HTTP 400 — retrying without it. Body: {BodyExcerpt}",
+                    ex.BodyExcerpt);
+            }
 
-            if (attempt >= 2) throw new InvalidOperationException("LLM compatibility fallback limit exceeded.");
+            // One attempt per fallback, plus the original try.
+            if (attempt >= 3) throw new InvalidOperationException("LLM compatibility fallback limit exceeded.");
         }
     }
 
     private async Task<LlmResponse> CompleteWithJsonFallbackAsync(
-        LlmRequest request, bool useMaxCompletionTokens, CancellationToken ct)
+        LlmRequest request, bool useMaxCompletionTokens, bool dropTemperature, CancellationToken ct)
     {
         // Sends `response_format: json_object` when the request asks for JSON mode. Endpoints
         // without JSON-mode support answer HTTP 400, so retry once without that field; the prompt
-        // and the caller-side parse retry still yield parsable JSON. The max_tokens quirk is not
-        // caught here, so the outer CompleteAsync loop handles it.
+        // and the caller-side parse retry still yield parsable JSON. The max_tokens, strict-tool
+        // and temperature quirks are not caught here, so the outer CompleteAsync loop handles them.
         try
         {
-            return await SendOnceAsync(request, includeJsonResponseFormat: request.JsonMode, useMaxCompletionTokens, ct);
+            return await SendOnceAsync(
+                request, includeJsonResponseFormat: request.JsonMode, useMaxCompletionTokens, dropTemperature, ct);
         }
         catch (LlmException ex) when (request.JsonMode
             && ex.Kind == LlmErrorKind.UpstreamError
             && ex.HttpStatus == (int)HttpStatusCode.BadRequest
             && !IsMaxTokensUnsupported(ex)
-            && !IsStrictToolsUnsupported(ex))
+            && !IsStrictToolsUnsupported(ex)
+            && !LlmTemperatureQuirk.IsUnsupported(ex))
         {
             _logger.LogWarning(
                 "LLM upstream rejected response_format=json_object with HTTP 400 — retrying without it. Body: {BodyExcerpt}",
                 ex.BodyExcerpt);
-            return await SendOnceAsync(request, includeJsonResponseFormat: false, useMaxCompletionTokens, ct);
+            return await SendOnceAsync(
+                request, includeJsonResponseFormat: false, useMaxCompletionTokens, dropTemperature, ct);
         }
     }
 
@@ -129,7 +142,8 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         };
 
     private async Task<LlmResponse> SendOnceAsync(
-        LlmRequest request, bool includeJsonResponseFormat, bool useMaxCompletionTokens, CancellationToken ct)
+        LlmRequest request, bool includeJsonResponseFormat, bool useMaxCompletionTokens,
+        bool dropTemperature, CancellationToken ct)
     {
         var body = new Dictionary<string, object?>
         {
@@ -137,7 +151,7 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
             [useMaxCompletionTokens ? "max_completion_tokens" : "max_tokens"] = _config.MaxTokens,
             ["messages"] = BuildMessages(request),
         };
-        if (_config.Temperature is double temperature)
+        if (!dropTemperature && _config.Temperature is double temperature)
             body["temperature"] = temperature;
         if (includeJsonResponseFormat)
         {
@@ -199,12 +213,13 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         HttpResponseMessage resp;
         var effectiveRequest = request;
         var useMaxCompletionTokens = PrefersMaxCompletionTokens();
+        var dropTemperature = LlmTemperatureQuirk.IsKnown(CompatibilityKey);
         for (var attempt = 0; ; attempt++)
         {
             try
             {
                 resp = await SendStreamingWithStreamOptionsFallbackAsync(
-                    effectiveRequest, useMaxCompletionTokens, token, ct);
+                    effectiveRequest, useMaxCompletionTokens, dropTemperature, token, ct);
                 break;
             }
             catch (LlmException ex) when (!useMaxCompletionTokens && IsMaxTokensUnsupported(ex))
@@ -222,8 +237,17 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                     "LLM upstream rejected strict function schemas — retrying with best-effort tool calling. Body: {BodyExcerpt}",
                     ex.BodyExcerpt);
             }
+            catch (LlmException ex) when (!dropTemperature && LlmTemperatureQuirk.IsUnsupported(ex))
+            {
+                LlmTemperatureQuirk.Remember(CompatibilityKey);
+                dropTemperature = true;
+                _logger.LogWarning(
+                    "LLM upstream rejected temperature with HTTP 400 — retrying without it. Body: {BodyExcerpt}",
+                    ex.BodyExcerpt);
+            }
 
-            if (attempt >= 2) throw new InvalidOperationException("LLM compatibility fallback limit exceeded.");
+            // One attempt per fallback, plus the original try.
+            if (attempt >= 3) throw new InvalidOperationException("LLM compatibility fallback limit exceeded.");
         }
 
         using (resp)
@@ -302,25 +326,29 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
     /// max_tokens quirk is not caught here, so the outer StreamAsync loop handles it.
     /// </summary>
     private async Task<HttpResponseMessage> SendStreamingWithStreamOptionsFallbackAsync(
-        LlmRequest request, bool useMaxCompletionTokens, CancellationToken token, CancellationToken ct)
+        LlmRequest request, bool useMaxCompletionTokens, bool dropTemperature,
+        CancellationToken token, CancellationToken ct)
     {
         try
         {
-            return await SendStreamingAsync(request, includeStreamOptions: true, useMaxCompletionTokens, token, ct);
+            return await SendStreamingAsync(
+                request, includeStreamOptions: true, useMaxCompletionTokens, dropTemperature, token, ct);
         }
         catch (LlmException ex) when (ex.Kind == LlmErrorKind.UpstreamError
             && ex.HttpStatus == (int)HttpStatusCode.BadRequest
             && !IsMaxTokensUnsupported(ex)
-            && !IsStrictToolsUnsupported(ex))
+            && !IsStrictToolsUnsupported(ex)
+            && !LlmTemperatureQuirk.IsUnsupported(ex))
         {
             _logger.LogWarning("LLM upstream rejected stream_options with HTTP 400 — retrying without it.");
-            return await SendStreamingAsync(request, includeStreamOptions: false, useMaxCompletionTokens, token, ct);
+            return await SendStreamingAsync(
+                request, includeStreamOptions: false, useMaxCompletionTokens, dropTemperature, token, ct);
         }
     }
 
     private async Task<HttpResponseMessage> SendStreamingAsync(
         LlmRequest request, bool includeStreamOptions, bool useMaxCompletionTokens,
-        CancellationToken token, CancellationToken ct)
+        bool dropTemperature, CancellationToken token, CancellationToken ct)
     {
         var body = new Dictionary<string, object?>
         {
@@ -329,7 +357,7 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
             ["stream"] = true,
             ["messages"] = BuildMessages(request),
         };
-        if (_config.Temperature is double temperature)
+        if (!dropTemperature && _config.Temperature is double temperature)
             body["temperature"] = temperature;
         if (includeStreamOptions)
             body["stream_options"] = new { include_usage = true };
