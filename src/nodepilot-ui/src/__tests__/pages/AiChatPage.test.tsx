@@ -9,6 +9,7 @@ import {
 import { useAiChatStore } from '../../stores/aiChatStore';
 import { useKnowledgeChatSessionStore } from '../../stores/knowledgeChatSessionStore';
 import { useAuthStore } from '../../stores/authStore';
+import { useChatLayoutStore, DEFAULT_CHAT_WIDTH } from '../../stores/chatLayoutStore';
 
 vi.mock('../../api/ai', async (orig) => {
   const actual = await orig<typeof import('../../api/ai')>();
@@ -52,6 +53,8 @@ beforeEach(() => {
   // History lives in a module-global store, so clear it to keep threads from leaking between tests.
   useAiChatStore.setState({ messagesByThread: {}, threadsByScope: {}, activeThreadByScope: {} });
   useAuthStore.setState({ userId: null });
+  // The column width persists to localStorage, so reset it between tests.
+  useChatLayoutStore.setState({ chatWidth: DEFAULT_CHAT_WIDTH });
 });
 
 describe('AiChatPage', () => {
@@ -220,5 +223,55 @@ describe('AiChatPage', () => {
     unmount();
     renderPage();
     expect(screen.getByText(/remembered/i)).toBeInTheDocument();
+  });
+
+  it('renders the stored column width and a drag handle on each outer edge', () => {
+    useChatLayoutStore.setState({ chatWidth: 1200 });
+    renderPage();
+
+    // `max-width` rather than `width`: the column keeps `w-full`, so the viewport still caps it.
+    expect(screen.getByTestId('ai-chat-column')).toHaveStyle({ maxWidth: '1200px' });
+    expect(screen.getByTestId('ai-chat-resize-left')).toBeInTheDocument();
+    expect(screen.getByTestId('ai-chat-resize-right')).toBeInTheDocument();
+  });
+
+  // Each drag seeds from the column's measured width, which the test setup pins at 600px for
+  // every element, so both drags below start from 600 rather than from the stored 768.
+  const MEASURED_COLUMN_WIDTH = 600;
+
+  it('widens the column by twice the pointer travel and remembers the width', () => {
+    renderPage();
+
+    // The column is centred, so the dragged edge covers half the width change: 60px of pointer
+    // travel must widen it by 120.
+    fireEvent.mouseDown(screen.getByTestId('ai-chat-resize-right'), { clientX: 400 });
+    fireEvent.mouseMove(document, { clientX: 460 });
+    fireEvent.mouseUp(document);
+
+    expect(screen.getByTestId('ai-chat-column')).toHaveStyle({ maxWidth: `${MEASURED_COLUMN_WIDTH + 120}px` });
+    // The preference outlives the page, unlike the session-scoped chat history.
+    expect(useChatLayoutStore.getState().chatWidth).toBe(MEASURED_COLUMN_WIDTH + 120);
+  });
+
+  it('widens the column from the left handle when the pointer moves outwards', () => {
+    renderPage();
+
+    // Mirrored edge: moving left grows the column by the same amount the right handle would
+    // when moving right.
+    fireEvent.mouseDown(screen.getByTestId('ai-chat-resize-left'), { clientX: 200 });
+    fireEvent.mouseMove(document, { clientX: 140 });
+    fireEvent.mouseUp(document);
+
+    expect(screen.getByTestId('ai-chat-column')).toHaveStyle({ maxWidth: `${MEASURED_COLUMN_WIDTH + 120}px` });
+  });
+
+  it('restores the default width on a double-click on a handle', () => {
+    useChatLayoutStore.setState({ chatWidth: 1400 });
+    renderPage();
+
+    fireEvent.doubleClick(screen.getByTestId('ai-chat-resize-right'));
+
+    expect(screen.getByTestId('ai-chat-column')).toHaveStyle({ maxWidth: `${DEFAULT_CHAT_WIDTH}px` });
+    expect(useChatLayoutStore.getState().chatWidth).toBe(DEFAULT_CHAT_WIDTH);
   });
 });

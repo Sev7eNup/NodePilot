@@ -190,6 +190,83 @@ describe('useResizable', () => {
     expect(result.current.size).toBe(280);
   });
 
+  it('scale_multipliesPointerTravel', () => {
+    // A centred column moves both of its edges, so the dragged edge only covers half the width
+    // change. scale: 2 makes the size follow the pointer 1:1 again.
+    const { result } = renderHook(() =>
+      useResizable({ initialSize: 700, minSize: 100, maxSize: 1600, direction: 'horizontal', scale: 2 }),
+    );
+
+    act(() => {
+      result.current.handleProps.onMouseDown({ preventDefault: () => {}, clientX: 100, clientY: 0 } as React.MouseEvent);
+    });
+    act(() => {
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 150, clientY: 0 }));
+    });
+
+    // delta = 50, doubled, so the new size is 700 + 100 = 800.
+    expect(result.current.size).toBe(800);
+  });
+
+  it('mirrorHandle_drivesSameSizeInOppositeDirection', () => {
+    // The handle on the opposite edge shares the state but inverts the delta, so dragging
+    // outwards grows the element from either side.
+    const { result } = renderHook(() =>
+      useResizable({ initialSize: 700, minSize: 100, maxSize: 1600, direction: 'horizontal', scale: 2 }),
+    );
+
+    act(() => {
+      result.current.mirrorHandleProps.onMouseDown({ preventDefault: () => {}, clientX: 300, clientY: 0 } as React.MouseEvent);
+    });
+    act(() => {
+      // Pointer moves left: the left edge moving outwards must grow the element.
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 250, clientY: 0 }));
+    });
+
+    expect(result.current.size).toBe(800);
+  });
+
+  it('mirrorHandle_doesNotLeakSignIntoTheNextDragOfTheOtherHandle', () => {
+    // The drag direction is fixed per mousedown. A mirrored drag must not invert the following
+    // drag on the primary handle.
+    const { result } = renderHook(() =>
+      useResizable({ initialSize: 300, minSize: 100, maxSize: 900, direction: 'horizontal' }),
+    );
+
+    act(() => {
+      result.current.mirrorHandleProps.onMouseDown({ preventDefault: () => {}, clientX: 200, clientY: 0 } as React.MouseEvent);
+    });
+    act(() => {
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 150, clientY: 0 }));
+      document.dispatchEvent(new MouseEvent('mouseup'));
+    });
+    expect(result.current.size).toBe(350);
+
+    act(() => {
+      result.current.handleProps.onMouseDown({ preventDefault: () => {}, clientX: 200, clientY: 0 } as React.MouseEvent);
+    });
+    act(() => {
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 250, clientY: 0 }));
+    });
+    expect(result.current.size).toBe(400);
+  });
+
+  it('setSize_clampsToBounds', () => {
+    // Consumers that restore a default outside a drag go through the same clamp as the drag.
+    const { result } = renderHook(() =>
+      useResizable({ initialSize: 400, minSize: 200, maxSize: 800, direction: 'horizontal' }),
+    );
+
+    act(() => result.current.setSize(640));
+    expect(result.current.size).toBe(640);
+
+    act(() => result.current.setSize(5000));
+    expect(result.current.size).toBe(800);
+
+    act(() => result.current.setSize(0));
+    expect(result.current.size).toBe(200);
+  });
+
   it('mouseDown_setsCursorAndUserSelect', () => {
     const { result } = renderHook(() =>
       useResizable({ initialSize: 200, minSize: 100, maxSize: 500, direction: 'horizontal' }),

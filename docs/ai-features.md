@@ -479,6 +479,10 @@ und Audit-Einträge gelten für beide Ansichten. Verlauf bleibt im benutzerbezog
 `sessionStorage`, Entwürfe und laufende Anfragen nur im Speicher. Logout bricht Anfragen ab und
 verwirft auch verspätete Stream-Callbacks. Auf Smartphones folgt das Panel dem sichtbaren
 Viewport; Hintergrund und Fokus werden während des geöffneten Chats auf das Panel begrenzt.
+Die Seitenansicht hat eine ziehbare Spaltenbreite (Griffe an beiden Außenrändern, Doppelklick
+setzt zurück, Persistenz in `chatLayoutStore`/`localStorage`); die Widget-Ansicht behält ihre
+feste Geometrie. Die gespeicherte Breite ist eine Obergrenze — die Spalte behält `w-full`, der
+verfügbare Platz deckelt sie also, ohne die Einstellung zu überschreiben.
 Erklärt Konzepte, beantwortet „wie viele Workflows/Maschinen/Execution gibt es", hilft bei Konfig- und
 Code-Fragen — ohne einen Workflow im Designer zu öffnen. Opt-in via `AiKnowledge:Enabled` (zusätzlich zu
 `Llm:Enabled`), hot-reloadbar.

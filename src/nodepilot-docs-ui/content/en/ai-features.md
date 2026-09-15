@@ -83,6 +83,12 @@ opens. Escape minimizes the chat. History and conversations survive a reload in 
 tab; ongoing requests and drafts last only until reload. Signing out cancels requests and clears
 chat data.
 
+On the full chat page, the chat column can be dragged wider or narrower from either outer edge —
+useful for answers with wide code blocks or tables. Double-clicking a handle restores the default
+width. The width is remembered per browser and survives a restart; when the window is narrower than
+the chosen width, the column is only displayed as wide as the space allows without losing the
+setting. Narrow windows have no handles.
+
 The global AI chat is not tied to an open workflow. It serves as a read-only assistant for questions such as:
 
 - Setting up a trigger or a deployment

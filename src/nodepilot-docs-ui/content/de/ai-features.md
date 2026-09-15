@@ -83,6 +83,12 @@ Tastatur erreichbar. Escape minimiert den Chat. Verlauf und Gespräche überlebe
 innerhalb desselben Browser-Tabs; laufende Anfragen und Entwürfe bleiben nur bis zum Reload erhalten.
 Beim Abmelden werden Anfragen abgebrochen und Chat-Daten gelöscht.
 
+Auf der vollständigen Chat-Seite lässt sich die Breite der Chat-Spalte an beiden Außenrändern mit
+der Maus ziehen — nützlich für Antworten mit breiten Code-Blöcken oder Tabellen. Ein Doppelklick auf
+einen Griff stellt die Standardbreite wieder her. Die Breite gilt pro Browser und überlebt einen
+Neustart; ist das Fenster schmaler als die gewählte Breite, wird die Spalte nur angezeigt so breit
+wie der Platz reicht, ohne die Einstellung zu verlieren. Auf schmalen Fenstern entfallen die Griffe.
+
 Der globale AI-Chat ist nicht an einen geöffneten Workflow gebunden. Er dient als lesender Assistent für Fragen wie:
 
 - Einrichtung eines Triggers oder Deployments

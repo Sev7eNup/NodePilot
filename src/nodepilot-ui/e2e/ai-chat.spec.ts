@@ -60,6 +60,16 @@ async function openChat(page: Page) {
     .toBeVisible({ timeout: 20_000 });
 }
 
+/** Drags a resize handle horizontally by `dx` px (negative moves left). */
+async function dragHandle(page: Page, testId: string, dx: number) {
+  const box = (await page.getByTestId(testId).boundingBox())!;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + dx, y, { steps: 5 });
+  await page.mouse.up();
+}
+
 test.describe('AI Knowledge Chat (/ai-chat)', () => {
   test.beforeEach(async ({ page }) => {
     await installDefaultMocks(page);
@@ -313,5 +323,32 @@ test.describe('AI Knowledge Chat (/ai-chat)', () => {
     await expect(main.getByText(/^Database$/i)).toHaveCount(0);
     await expect(main.getByRole('button', { name: /webhook trigger/i })).toBeVisible();
     await expect(main.getByRole('button', { name: /last 10 failed runs/i })).toHaveCount(0);
+  });
+
+  // 10. The column is resizable from both outer edges and the width outlives the page.
+  test('resizes the chat column from either edge and remembers the width across a reload', async ({ page }) => {
+    await mockCaps(page, capsJson());
+    await openChat(page);
+
+    const column = page.getByTestId('ai-chat-column');
+    const startWidth = Math.round((await column.boundingBox())!.width);
+
+    // The column is centred, so 60px of pointer travel widens it by 120. One such step at a
+    // time keeps the column under the width the viewport leaves next to the sidebar.
+    await dragHandle(page, 'ai-chat-resize-right', 60);
+    expect(Math.round((await column.boundingBox())!.width)).toBe(startWidth + 120);
+
+    // A double-click on a handle restores the default width.
+    await page.getByTestId('ai-chat-resize-right').dblclick();
+    expect(Math.round((await column.boundingBox())!.width)).toBe(startWidth);
+
+    // The mirrored handle grows the column the same way when dragged outwards.
+    await dragHandle(page, 'ai-chat-resize-left', -60);
+    expect(Math.round((await column.boundingBox())!.width)).toBe(startWidth + 120);
+
+    // Persisted per browser, so the width is back after a reload.
+    await page.reload();
+    await expect(page.locator('#np-main-scroll').getByRole('heading', { name: /^AI Chat$/i })).toBeVisible();
+    expect(Math.round((await column.boundingBox())!.width)).toBe(startWidth + 120);
   });
 });

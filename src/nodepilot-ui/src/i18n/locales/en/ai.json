@@ -131,6 +131,8 @@
     "send": "Send",
     "clear": "Clear history",
     "export": "Export as Markdown",
+    "resizeWidth": "Chat width",
+    "resizeWidthHint": "Drag to change the chat width, double-click to reset",
     "thinking": "Thinking…",
     "roleUser": "Question",
     "roleAssistant": "Assistant",

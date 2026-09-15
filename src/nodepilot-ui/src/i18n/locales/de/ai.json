@@ -131,6 +131,8 @@
     "send": "Senden",
     "clear": "Verlauf löschen",
     "export": "Als Markdown exportieren",
+    "resizeWidth": "Chat-Breite",
+    "resizeWidthHint": "Ziehen ändert die Chat-Breite, Doppelklick setzt zurück",
     "thinking": "Denke nach…",
     "roleUser": "Frage",
     "roleAssistant": "Assistent",
