@@ -100,7 +100,9 @@ if ($null -eq $folder) {
 $folderId = $folder.id
 
 # --- collision check before any mutation -------------------------------------------
-$existing = Get-WorkflowList
+# @() at the assignment, not just inside the function: PowerShell unrolls a returned
+# collection, so an empty instance would make $existing a scalar and the later `+=` fail.
+$existing = @(Get-WorkflowList)
 $suiteNames = @($manifest.workflows | ForEach-Object { $_.name })
 $ambiguous = @($existing | Where-Object { $_.name -in $suiteNames } |
   Group-Object -Property name | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
@@ -187,6 +189,44 @@ if ($webhookSecret -notmatch '^[A-Za-z0-9]{32,}$') {
   throw "NP_TESTSUITE_WEBHOOK_SECRET does not look like a single opaque token; refusing to inject it."
 }
 
+$script:settingsSections = $null
+
+# Reads one effective config value through the admin settings API. The response is a list of
+# { sectionPath, payload, ... }; the payload serialises its keys in camelCase. Returns $null
+# when the section or the property does not exist.
+function Get-SettingValue {
+  param([Parameter(Mandatory)][string]$Key)
+  if ($null -eq $script:settingsSections) {
+    $response = Invoke-NodePilotJson -Method GET -Path '/api/admin/settings'
+    # PowerShell can hand a JSON array back as one nested element. `+=` concatenates an array's
+    # items, so this loop flattens that case and leaves a already-flat response untouched.
+    $flat = @()
+    foreach ($item in $response) { $flat += $item }
+    $script:settingsSections = $flat
+  }
+  $section = $null
+  $rest = $null
+  foreach ($s in $script:settingsSections) {
+    $prefix = $s.sectionPath + ':'
+    if (-not $Key.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { continue }
+    # Longest matching sectionPath wins, so a nested section beats its parent.
+    if ($null -eq $section -or $s.sectionPath.Length -gt $section.sectionPath.Length) {
+      $section = $s
+      $rest = $Key.Substring($prefix.Length)
+    }
+  }
+  if ($null -eq $section) { return $null }
+  $node = $section.payload
+  foreach ($part in $rest.Split(':')) {
+    if ($null -eq $node) { return $null }
+    $name = $part.Substring(0, 1).ToLowerInvariant() + $part.Substring(1)
+    $prop = $node.PSObject.Properties[$name]
+    if ($null -eq $prop) { return $null }
+    $node = $prop.Value
+  }
+  return $node
+}
+
 function Test-Prerequisites {
   param([string[]]$Requires)
   foreach ($req in @($Requires)) {
@@ -194,6 +234,37 @@ function Test-Prerequisites {
     if ($req.StartsWith('globals:')) {
       $name = ($req.Substring(8) -split '=')[0]
       if (-not (Test-GlobalPresent -Name $name)) { return $false }
+      continue
+    }
+    # Only `config:<Key>=<scalar>` is machine-checkable. Entries that name a key without a
+    # value, or add prose after it, describe a shape the installer cannot verify and stay
+    # assumptions - otherwise every such workflow would ship disabled for no reason.
+    if ($req.StartsWith('config:')) {
+      $spec = $req.Substring(7)
+      $eq = $spec.IndexOf('=')
+      if ($eq -lt 0) { continue }
+      $key = $spec.Substring(0, $eq).Trim()
+      $want = $spec.Substring($eq + 1).Trim()
+      if ($key -match '\s' -or $want -match '\s') { continue }
+      $actual = Get-SettingValue -Key $key
+      if ($null -eq $actual) { return $false }
+      # PowerShell renders booleans as True/False while the manifest writes true/false.
+      if (-not [string]::Equals([string]$actual, $want, [StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+      }
+      continue
+    }
+    # The event-log workflows need a source that only an elevated one-time step can create.
+    if ($req -match '^event source (\S+) registered') {
+      $source = $Matches[1]
+      try {
+        if (-not [System.Diagnostics.EventLog]::SourceExists($source)) { return $false }
+      }
+      catch {
+        # Unreadable is not proof of presence; leave the workflow disabled.
+        return $false
+      }
+      continue
     }
   }
   return $true
@@ -286,13 +357,20 @@ foreach ($entry in @($manifest.workflows)) {
     }
   }
   else {
-    if ($current.checkedOutByUserId -and $current.checkedOutByUserId -ne $login.user.id) {
+    # The login response is flat: { token, userId, username, role, expiresAt }.
+    $lockedByMe = $current.checkedOutByUserId -and $current.checkedOutByUserId -eq $login.userId
+    if ($current.checkedOutByUserId -and -not $lockedByMe) {
       if (-not $ForceUnlock) {
         throw "'$($wf.name)' is checked out by $($current.checkedOutByUserName). Re-run with -ForceUnlock to take it over."
       }
       $null = Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($current.id)/force-unlock"
+      $lockedByMe = $false
     }
-    $null = Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($current.id)/lock"
+    # /lock answers 409 when the workflow is already checked out, including by this caller -
+    # what an interrupted earlier run leaves behind. Publish only needs the lock, not a new one.
+    if (-not $lockedByMe) {
+      $null = Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($current.id)/lock"
+    }
     if ($wantEnabled) {
       $null = Invoke-NodePilotJson -Method POST -Path "/api/workflows/$($current.id)/publish" -Body $body
       Write-Host "updated + published : $($wf.name)"

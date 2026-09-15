@@ -435,10 +435,15 @@ $assertOk = 'trigger-drivers'
 
 
 def event_log_driver_workflow():
+    # Write-EventLog ships only with Windows PowerShell. The .NET API exists on both engines,
+    # so the step behaves the same whether it runs in the PS7 pool or under PS 5.1.
     poke = """
 $cid = {{cid.param.text}}
-Write-EventLog -LogName Application -Source '""" + EVENT_SOURCE + """' -EventId 4242 `
-  -EntryType Information -Message "NodePilot test suite probe cid=$cid"
+[System.Diagnostics.EventLog]::WriteEntry(
+  '""" + EVENT_SOURCE + """',
+  "NodePilot test suite probe cid=$cid",
+  [System.Diagnostics.EventLogEntryType]::Information,
+  4242)
 $pokedEvent = $cid
 """
     check = """

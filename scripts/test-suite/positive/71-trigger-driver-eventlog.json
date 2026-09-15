@@ -54,7 +54,7 @@
               "config": {
                 "engine": "auto",
                 "timeoutSeconds": 30,
-                "script": "\n$cid = {{cid.param.text}}\nWrite-EventLog -LogName Application -Source 'NodePilot-TestSuite' -EventId 4242 `\n  -EntryType Information -Message \"NodePilot test suite probe cid=$cid\"\n$pokedEvent = $cid\n"
+                "script": "\n$cid = {{cid.param.text}}\n[System.Diagnostics.EventLog]::WriteEntry(\n  'NodePilot-TestSuite',\n  \"NodePilot test suite probe cid=$cid\",\n  [System.Diagnostics.EventLogEntryType]::Information,\n  4242)\n$pokedEvent = $cid\n"
               },
               "outputVariable": "poke",
               "targetMachineId": "localhost"
