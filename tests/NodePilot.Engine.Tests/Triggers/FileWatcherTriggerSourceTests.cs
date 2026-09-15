@@ -967,7 +967,12 @@ public class FileWatcherTriggerSourceTests
 
         try
         {
-            await Task.Delay(TimeSpan.FromSeconds(4)); // several ticks past the transient failure
+            // Wait for the ticks instead of assuming a wall-clock span produces them: a loaded
+            // runner delays a 1 s timer enough that four seconds yield only two probes, which
+            // reads as an eviction bug when it is just scheduling.
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+            while (Volatile.Read(ref probes) <= 2 && DateTime.UtcNow < deadline)
+                await Task.Delay(100);
 
             probes.Should().BeGreaterThan(2, "the probe should have run past the single failure");
             src.Health.IsHealthy.Should().BeTrue();

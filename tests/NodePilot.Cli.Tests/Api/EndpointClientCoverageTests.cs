@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using FluentAssertions;
 using Xunit;
 
@@ -36,6 +36,7 @@ public sealed class EndpointClientCoverageTests
     private const string WebhookIngress = "DELIBERATE: external webhook ingress — callers are third-party systems, not our clients";
     private const string CustomActivityGap = "audit finding F1: the custom-activities surface has NO client — close by adding np custom-activity + MCP tools";
     private const string RuleBuilderPreview = "DELIBERATE: stateless dry-run for the rule builder's live preview; a client authors the rule JSON and validates it by saving";
+    private const string MachineOptionsProjection = "DELIBERATE: statistics-free projection of api/machines for the SPA's machine selectors and designer annotations; np machine list and the MCP machine tools return the same records";
 
     private static readonly Dictionary<string, string> KnownCliGaps = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -73,9 +74,11 @@ public sealed class EndpointClientCoverageTests
         ["api/diagnostics/support-log"] = "np has no support-log surface (the MCP server has read tools)",
         ["api/diagnostics/support-log/download"] = "np has no support-log surface (the MCP server has read tools)",
         ["api/maintenance-windows/affecting/*"] = "designer hint endpoint; np maintenance covers CRUD",
+        ["api/machines/options"] = MachineOptionsProjection,
         ["api/observability/config"] = SpaBootstrap,
         ["api/observability/dashboards/*"] = SpaBootstrap,
         ["api/stats/sidebar-counts"] = SpaBootstrap + " — three nav-badge counters; np stats dashboard covers the same numbers",
+        ["api/stats/duration-trend"] = SpaBootstrap + " — chart series for the dashboard's duration percentiles; np stats dashboard reports the same executions",
         ["api/scim/v2/groups"] = ScimSurface,
         ["api/scim/v2/groups/*"] = ScimSurface,
         ["api/scim/v2/resourcetypes"] = ScimSurface,
@@ -140,9 +143,11 @@ public sealed class EndpointClientCoverageTests
         ["api/maintenance-windows"] = "no MCP maintenance-window tools",
         ["api/maintenance-windows/*"] = "no MCP maintenance-window tools",
         ["api/maintenance-windows/affecting/*"] = "no MCP maintenance-window tools",
+        ["api/machines/options"] = MachineOptionsProjection,
         ["api/observability/config"] = SpaBootstrap,
         ["api/observability/dashboards/*"] = SpaBootstrap,
         ["api/stats/sidebar-counts"] = SpaBootstrap + " — three nav-badge counters; np stats dashboard covers the same numbers",
+        ["api/stats/duration-trend"] = SpaBootstrap + " — chart series for the dashboard's duration percentiles; np stats dashboard reports the same executions",
         ["api/observability/query"] = "metrics UI surface; no MCP observability tools",
         ["api/observability/query_range"] = "metrics UI surface; no MCP observability tools",
         ["api/observability/summary"] = "metrics UI surface; no MCP observability tools",
