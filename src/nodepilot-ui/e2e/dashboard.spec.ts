@@ -4,9 +4,8 @@ import { installDefaultMocks, MOCK_HOST } from './fixtures/mockApi';
 /**
  * Dashboard page.
  *
- * The dashboard reads a single aggregate endpoint: GET /api/stats/dashboard. Everything on the
- * page (KPI cards, the 24h bar chart, Top/Failing workflow panels, Currently-Running, Recent
- * Executions table, edit-locks, armed triggers, recent audit) is derived from that one payload.
+ * KPI cards and execution lists read GET /api/stats/dashboard. Duration trends and failure
+ * causes load independently through their own aggregate endpoints.
  *
  * Hermetic: page.route() mocks only (no backend), per fixtures/mockApi.ts. The catch-all returns
  * [] for unmocked /api/* calls (including /observability/config so the opt-in Telemetry section
@@ -213,79 +212,73 @@ test.describe('Dashboard (Teil 11)', () => {
     }
   }
 
-  test('success trend keeps continuous runs smooth and fills the status-card row', async ({ page }, testInfo) => {
-    await page.addInitScript(() => {
-      localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme: 'dark' }, version: 0 }));
-    });
-    const buckets = hourBuckets().map((b, index) => ({
-      ...b, succeeded: index >= 12 ? 85 : 0, failed: index >= 12 ? 15 : 0, cancelled: 0,
-    }));
-    await page.route('**/api/stats/dashboard**', route => route.fulfill({ json: dashboardStats({
-      last24h: { total: 1200, succeeded: 1020, failed: 180, running: 0, cancelled: 0 },
-      last24hBuckets: buckets,
-    }) }));
+  test('duration trend shows both percentiles and fills the card at every width', async ({ page }, testInfo) => {
+    await page.route('**/api/stats/dashboard**', route => route.fulfill({ json: dashboardStats() }));
+    await page.route('**/api/stats/duration-trend**', route => route.fulfill({ json: {
+      workflows: [{ id: WF_TOP, name: 'Nightly Backup' }],
+      buckets: hourBuckets().map((b, i) => ({
+        startedAt: b.hourStart, count: i >= 12 ? 100 : 0,
+        medianMs: i >= 12 ? 1000 + i * 100 : null, p95Ms: i >= 12 ? 4000 + i * 200 : null,
+      })),
+    } }));
     await page.goto('/');
-    const chart = page.getByRole('img', { name: 'Success Rate Trend (24h)', exact: true });
+    const chart = page.getByRole('img', { name: 'Execution Duration (24h)', exact: true });
     await expect(chart).toBeVisible();
-    const line = chart.locator('svg path[stroke="#22c55e"][fill="none"]');
-    await expect(line).toHaveCount(1);
-    await expect(chart.locator('svg path[fill="#22c55e"]')).toHaveCount(0);
-    const linePath = await line.getAttribute('d');
-    expect(linePath?.match(/M/g)).toHaveLength(1);
-    expect(linePath).toMatch(/[LC]/);
+    const lines = chart.locator('svg path[fill="none"][stroke-width="2"]');
+    await expect(lines).toHaveCount(2);
+    for (const line of await lines.all()) {
+      expect(await line.getAttribute('d')).toMatch(/[LC]/);
+    }
     for (const width of [1920, 1440, 390]) {
       await page.setViewportSize({ width, height: 1000 });
       await chart.scrollIntoViewIfNeeded();
       await expect.poll(() => chart.evaluate(el =>
         Math.abs(Number(el.querySelector('svg')?.getAttribute('height')) - el.clientHeight),
       )).toBeLessThanOrEqual(1);
+      const card = chart.locator('..').locator('..');
       const chartBox = await chart.boundingBox();
-      const cardBox = await chart.locator('..').boundingBox();
+      const cardBox = await card.boundingBox();
       expect(cardBox!.y + cardBox!.height - chartBox!.y - chartBox!.height).toBeLessThanOrEqual(24);
-      await chart.locator('..').screenshot({ path: testInfo.outputPath(`continuous-success-trend-${width}.png`), animations: 'disabled' });
+      await card.screenshot({ path: testInfo.outputPath(`duration-trend-${width}.png`), animations: 'disabled' });
     }
+    await page.getByRole('combobox', { name: 'Workflow for execution duration' }).selectOption(WF_TOP);
+    await expect(page.getByRole('combobox', { name: 'Workflow for execution duration' })).toHaveValue(WF_TOP);
+    await expect(chart).toBeVisible();
   });
 
-  for (const scenario of [
-    { name: 'single active hour', theme: 'dark', observations: [{ index: 23, succeeded: 851, failed: 159 }] },
-    { name: 'isolated observations', theme: 'light', observations: [{ index: 7, succeeded: 9, failed: 1 }, { index: 19, succeeded: 5, failed: 5 }] },
-    { name: 'zero and full success at the edges', theme: 'dark', observations: [{ index: 0, succeeded: 0, failed: 10 }, { index: 23, succeeded: 10, failed: 0 }] },
-  ]) {
-    test(`success trend displays ${scenario.name} without connecting inactive hours`, async ({ page }, testInfo) => {
+  for (const theme of ['light', 'dark']) {
+    test(`duration trend displays isolated observations in ${theme} theme`, async ({ page }, testInfo) => {
       await page.addInitScript(theme => {
         localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme }, version: 0 }));
-      }, scenario.theme);
-      const buckets = hourBuckets().map((b, index) => ({
-        ...b, succeeded: scenario.observations.find(p => p.index === index)?.succeeded ?? 0,
-        failed: scenario.observations.find(p => p.index === index)?.failed ?? 0, cancelled: 0,
-      }));
-      const succeeded = buckets.reduce((sum, b) => sum + b.succeeded, 0);
-      const failed = buckets.reduce((sum, b) => sum + b.failed, 0);
-      await page.route('**/api/stats/dashboard**', route => route.fulfill({ json: dashboardStats({
-        last24h: { total: succeeded + failed, succeeded, failed, running: 0, cancelled: 0 },
-        last24hBuckets: buckets,
-      }) }));
+      }, theme);
+      await page.route('**/api/stats/dashboard**', route => route.fulfill({ json: dashboardStats() }));
+      await page.route('**/api/stats/duration-trend**', route => route.fulfill({ json: {
+        workflows: [],
+        buckets: hourBuckets().map((b, index) => ({
+          startedAt: b.hourStart, count: [7, 19].includes(index) ? 10 : 0,
+          medianMs: [7, 19].includes(index) ? 1000 : null,
+          p95Ms: [7, 19].includes(index) ? 3000 : null,
+        })),
+      } }));
       await page.goto('/');
-      const chart = page.getByRole('img', { name: 'Success Rate Trend (24h)', exact: true });
+      const chart = page.getByRole('img', { name: 'Execution Duration (24h)', exact: true });
       await expect(chart).toBeVisible();
-      // Each observation needs a visible marker: with no neighbouring observations, there
-      // is no line segment to draw. Checking the SVG exercises the actual ECharts renderer.
-      const markers = chart.locator('svg path[fill="#22c55e"]');
-      await expect(markers).toHaveCount(scenario.observations.length);
-      for (const marker of await markers.all()) {
-        // ECharts animates symbol scale in JS; a path can exist while still having no
-        // visible area. Wait for real size before checking the screenshot or tooltip.
-        await expect.poll(async () => (await marker.boundingBox())?.width ?? 0).toBeGreaterThan(4);
+      const lines = chart.locator('svg path[fill="none"][stroke-width="2"]');
+      await expect(lines).toHaveCount(2);
+      for (const line of await lines.all()) {
+        const path = await line.getAttribute('d');
+        expect(path?.match(/M/g)).toHaveLength(2);
+        expect(path).not.toMatch(/[LC]/);
       }
-      const line = chart.locator('svg path[stroke="#22c55e"][fill="none"]');
-      await expect(line).toHaveCount(1);
-      const path = await line.getAttribute('d');
-      expect(path?.match(/M/g)).toHaveLength(scenario.observations.length);
-      expect(path).not.toMatch(/[LC]/);
-      await chart.locator('..').screenshot({ path: testInfo.outputPath('sparse-success-trend.png'), animations: 'disabled' });
+      const colors = await lines.evaluateAll(elements => elements.map(el => el.getAttribute('stroke')));
+      const markers = chart.locator(colors.map(color => `svg path[fill="${color}"]`).join(','));
+      await expect(markers).toHaveCount(4);
+      await expect.poll(async () => (await markers.last().boundingBox())?.width ?? 0).toBeGreaterThan(4);
       await markers.last().hover();
-      const last = scenario.observations.at(-1)!;
-      await expect(chart).toContainText(`${last.succeeded}/${last.succeeded + last.failed} succeeded`);
+      await expect(chart).toContainText('10 runs');
+      await expect(chart).toContainText('Median: 1.0 s');
+      await expect(chart).toContainText('P95: 3.0 s');
+      await chart.locator('..').locator('..').screenshot({ path: testInfo.outputPath('sparse-duration-trend.png'), animations: 'disabled' });
     });
   }
 
