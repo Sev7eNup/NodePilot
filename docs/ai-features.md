@@ -213,6 +213,15 @@ Responses-Dialekt nicht: die ersten beiden Felder existieren dort gar nicht, die
 sind keine optionalen Extras. Ein Responses-Endpunkt, der sie ablehnt, scheitert laut statt still
 etwas anderes zu senden.
 
+Genau **eine** Ausnahme gilt in beiden Dialekten: `temperature`. Reasoning-Modelle beantworten
+Sampling-Parameter mit `400 Unsupported parameter`. Da der Parameter optional ist, lässt NodePilot
+ihn fallen und wiederholt den Aufruf einmal, statt den Step scheitern zu lassen; die Erkenntnis
+wird pro `postUrl|model` gemerkt, damit Folgeaufrufe den sicher scheiternden Roundtrip überspringen.
+Erkannt wird nur ein 400er, der `temperature` nennt **und** ihn als nicht unterstützt bezeichnet —
+eine Bereichsverletzung wie `temperature must be between 0 and 2` erreicht weiterhin den Aufrufer.
+Praktische Folge: ein `llmQuery`-Node mit gesetzter `temperature` läuft auch gegen ein
+Reasoning-Modell, dann eben mit dessen Default-Sampling.
+
 ### Profile anlegen
 
 `appsettings.json` und die Deploy-Templates liefern **`"Profiles": {}`** aus. Das ist Absicht: die
