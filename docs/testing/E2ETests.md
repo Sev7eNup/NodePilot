@@ -4666,6 +4666,21 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 > Inkrementelle Stream-Fortsetzung, Stop mit verspäteten Callbacks und Logout werden durch
 > `AiChatWidget.test.tsx` und `knowledgeChatSessionStore.test.ts` abgesichert.
 
+### Test 80.12 — Ziehbare Chat-Breite (`/ai-chat`)
+1. `/ai-chat` auf einem breiten Fenster öffnen; Griff am rechten Außenrand nach außen ziehen.
+2. Griff am linken Außenrand nach außen ziehen.
+3. Auf einen Griff doppelklicken, danach neu laden.
+4. Fenster schmaler ziehen als die gewählte Breite, danach wieder aufziehen.
+5. Fenster unter 1024 px verkleinern.
+- [ ] Der Griff bleibt beim Ziehen unter dem Cursor; die Spalte wächst zentriert, Eingabefeld und Fußzeile wachsen mit.
+- [ ] Beide Griffe verhalten sich gespiegelt — nach außen ziehen verbreitert, nach innen verschmälert.
+- [ ] Doppelklick stellt die Standardbreite her; die gezogene Breite überlebt einen Reload.
+- [ ] Im schmalen Fenster wird die Spalte nur angezeigt so breit wie der Platz reicht (kein horizontales Scrollen); nach dem Aufziehen ist die gespeicherte Breite zurück.
+- [ ] Unter 1024 px sind keine Griffe vorhanden.
+
+> Automatisiert: `e2e/ai-chat.spec.ts` (80.12) und `AiChatPage.test.tsx`. Die Viewport-Deckelung
+> und das Verhalten unter 1024 px bleiben manuell.
+
 ---
 
 ## Teil 81: Custom Activities (`/custom-activities`)

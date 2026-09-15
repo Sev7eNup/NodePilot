@@ -7,6 +7,8 @@ import {
 } from '@carbon/icons-react';
 import type { KnowledgeCapabilities } from '../../api/ai';
 import { useAiCapabilities } from '../../hooks/useAiCapabilities';
+import { useResizable } from '../../hooks/useResizable';
+import { ResizeHandle } from '../designer/library/NodeLibrary';
 import { Markdown } from '../common/Markdown';
 import { CopyButton } from '../common/CopyButton';
 import { UsageFooter } from './UsageFooter';
@@ -16,6 +18,9 @@ import {
   type ChatMessage, type ChatThreadMeta,
 } from '../../stores/aiChatStore';
 import { useAuthStore } from '../../stores/authStore';
+import {
+  useChatLayoutStore, DEFAULT_CHAT_WIDTH, MIN_CHAT_WIDTH, MAX_CHAT_WIDTH,
+} from '../../stores/chatLayoutStore';
 import { useKnowledgeChatSessionStore } from '../../stores/knowledgeChatSessionStore';
 import { buildChatMarkdown, chatFilenameSlug, downloadTextFile } from '../../lib/chatExport';
 
@@ -40,6 +45,27 @@ export function KnowledgeChat({ compact = false }: Readonly<{ compact?: boolean 
 
   const capsQuery = useAiCapabilities();
   const caps = capsQuery.data;
+
+  // Width of the chat column, dragged from either outer edge (full-page mode only). The column
+  // stays centred, so one edge covers half the width change — `scale: 2` keeps the handle under
+  // the cursor. The rendered width is `min(stored, available)` via `w-full` + `max-width`, so a
+  // width stored on a wide screen is only clipped on a narrow window, never overwritten.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const storedWidth = useChatLayoutStore((s) => s.chatWidth);
+  const setStoredWidth = useChatLayoutStore((s) => s.setChatWidth);
+  const { size: chatWidth, handleProps, mirrorHandleProps, setSize: setChatWidth } = useResizable({
+    initialSize: storedWidth,
+    minSize: MIN_CHAT_WIDTH,
+    maxSize: MAX_CHAT_WIDTH,
+    direction: 'horizontal',
+    scale: 2,
+  });
+  useEffect(() => { setStoredWidth(chatWidth); }, [chatWidth, setStoredWidth]);
+  // Seed every drag from the measured width: while the viewport caps the column, the rendered
+  // width is smaller than the stored one and an unseeded drag would jump. An unmeasurable
+  // element reports 0, which would seed a collapsed column — fall back to the tracked size.
+  const measuredWidth = () => rootRef.current?.getBoundingClientRect().width || undefined;
+  const resetWidth = useCallback(() => setChatWidth(DEFAULT_CHAT_WIDTH), [setChatWidth]);
 
   const userId = useAuthStore((s) => s.userId);
   const scope = aiChatScopeKey(userId, GLOBAL_SCOPE);
@@ -176,7 +202,39 @@ export function KnowledgeChat({ compact = false }: Readonly<{ compact?: boolean 
   }
 
   return (
-    <div className={compact ? "np-chat-content flex min-h-0 flex-1 flex-col" : "mx-auto flex h-[calc(100dvh-6rem)] min-h-0 w-full max-w-3xl flex-col"}>
+    <div
+      ref={rootRef}
+      data-testid="ai-chat-column"
+      style={compact ? undefined : { maxWidth: chatWidth }}
+      className={compact ? "np-chat-content flex min-h-0 flex-1 flex-col" : "relative mx-auto flex h-[calc(100dvh-6rem)] min-h-0 w-full flex-col"}
+    >
+      {/* Drag handles on both outer edges, 8px outside the column so they sit in the page
+          padding. Hidden below `lg`, which is the mobile breakpoint. */}
+      {!compact && (
+        <>
+          <div className="absolute inset-y-0 -left-2 hidden lg:flex">
+            <ResizeHandle
+              direction="horizontal"
+              data-testid="ai-chat-resize-left"
+              aria-label={t('ai:knowledge.resizeWidth')}
+              title={t('ai:knowledge.resizeWidthHint')}
+              onMouseDown={(e) => mirrorHandleProps.onMouseDown(e, measuredWidth())}
+              onDoubleClick={resetWidth}
+            />
+          </div>
+          <div className="absolute inset-y-0 -right-2 hidden lg:flex">
+            <ResizeHandle
+              direction="horizontal"
+              data-testid="ai-chat-resize-right"
+              aria-label={t('ai:knowledge.resizeWidth')}
+              title={t('ai:knowledge.resizeWidthHint')}
+              onMouseDown={(e) => handleProps.onMouseDown(e, measuredWidth())}
+              onDoubleClick={resetWidth}
+            />
+          </div>
+        </>
+      )}
+
       {/* Header: title/subtitle + thread menu + export/clear */}
       <div className="flex items-start justify-between gap-3">
         {!compact && <PageHeader t={t} />}
