@@ -1,6 +1,6 @@
 # NodePilot Prometheus Metrics — Validated Inventory
 
-**Stand:** 2026-05-07, Label-/Instrument-Abgleich gegen Source nachgezogen 2026-06-23. Validiert gegen Live-`/metrics`-Output (siehe `RAW_METRICS_SAMPLE.txt`) und Source. Hinweis: Tags, die über `TelemetryConstants.Attributes.*`-Konstanten (`nodepilot.*`) gesetzt werden, exportieren mit `nodepilot_`-Präfix als Label (z.B. `nodepilot_llm_kind`); reine String-Tags (`result`, `status`, `source`, `operation`, …) nicht.
+**Stand:** 2026-05-07, Label-/Instrument-Abgleich gegen Source nachgezogen 2026-06-23; Dispatch-Claim-Metriken am 2026-09-16 gegen einen Live-Scrape ergänzt. Validiert gegen Live-`/metrics`-Output (siehe `RAW_METRICS_SAMPLE.txt`) und Source. Hinweis: Tags, die über `TelemetryConstants.Attributes.*`-Konstanten (`nodepilot.*`) gesetzt werden, exportieren mit `nodepilot_`-Präfix als Label (z.B. `nodepilot_llm_kind`); reine String-Tags (`result`, `status`, `source`, `operation`, …) nicht.
 
 ## Naming-Regel (OpenTelemetry .NET → Prometheus)
 
@@ -81,6 +81,7 @@
 | `nodepilot_credential_crud_total` | `operation`, `result` |
 | `nodepilot_global_variable_crud_total` | `operation`, `result` |
 | `nodepilot_dispatch_items_processed_total` | `result` |
+| `nodepilot_dispatch_claims_total` | `result` (`success`/`empty`, …) |
 | `nodepilot_security_revoked_tokens_deleted_total` | — |
 | `nodepilot_machine_test_connections_total` | `result` |
 | `nodepilot_maintenance_window_crud_total` | `operation`, `result` |
@@ -95,6 +96,7 @@
 | `nodepilot_import_export_duration_milliseconds_*` | `nodepilot_import_export_operation` |
 | `nodepilot_machine_test_connection_duration_milliseconds_*` | — |
 | `nodepilot_security_revoked_tokens_sweep_duration_milliseconds_*` | — |
+| `nodepilot_dispatch_claim_duration_milliseconds_*` | `result` |
 
 ### UpDown / Gauges
 
