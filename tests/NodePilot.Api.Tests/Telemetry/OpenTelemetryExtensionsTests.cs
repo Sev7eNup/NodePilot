@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -195,6 +197,41 @@ public class OpenTelemetryExtensionsTests
 
         using var sp = services.BuildServiceProvider();
         sp.GetRequiredService<MeterProvider>().Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task PrometheusScrape_WithRecordedHistogram_ReturnsTheMetrics()
+    {
+        // Serves a real scrape. The Prometheus exporter ships as a prerelease that binds to
+        // internals of one OpenTelemetry core release; a core update without it built fine and
+        // then failed every scrape with a histogram in it with HTTP 500.
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+        builder.Services.AddNodePilotTelemetry(
+            Config(new()
+            {
+                ["OpenTelemetry:Enabled"] = "true",
+                ["OpenTelemetry:Exporters:Traces"] = "false",
+                ["OpenTelemetry:Exporters:Metrics"] = "true",
+                ["OpenTelemetry:Exporters:PrometheusScrape"] = "true",
+                ["OpenTelemetry:Exporters:Logs"] = "false",
+            }),
+            Env());
+        await using var app = builder.Build();
+        app.MapPrometheusScrapingEndpoint();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        var result = new KeyValuePair<string, object?>("result", "claimed");
+        NodePilot.Api.Telemetry.ApiMetrics.DispatchClaims.Add(1, result);
+        NodePilot.Api.Telemetry.ApiMetrics.DispatchClaimDuration.Record(12.5, result);
+
+        var client = app.GetTestClient();
+        var response = await client.GetAsync("/metrics", TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        body.Should().Contain("nodepilot_dispatch_claims_total");
+        body.Should().Contain("nodepilot_dispatch_claim_duration_milliseconds_bucket");
     }
 
     [Fact]
