@@ -211,23 +211,35 @@ Running the Electron shell straight from source (`npm start`, see below) starts 
   `%TEMP%\nodepilot-provision.log` and suppresses the "Launch NodePilot" step, instead of finishing
   green with a dead app. Setup is deliberately not rolled back at that point — the files are already
   in place and a rollback would take the database with it.
+  - **There is no default account or password.** The first administrator is whoever completes the
+    shell's setup page. Data left behind by an uninstall keeps its accounts, so setup shows a page
+    (only when no installation exists but `ProgramData\NodePilot` does) that keeps it or deletes it;
+    unattended it keeps it, `/DISCARDDATA=1` deletes it.
+  - **Service start window.** Windows ends a service that has not connected to the SCM within 30 s,
+    and the API connects only after it has loaded its binaries, waited for and migrated the database.
+    The provisioner therefore reads every binary once (cold file cache, antivirus scan), starts the
+    API only once `pg_isready` answers, and starts it again (up to five times) if the SCM ended it.
 - **When something goes wrong:** [`docs/desktop-troubleshooting.md`](../../docs/desktop-troubleshooting.md)
-  — log locations, the "setup page never appeared" recovery, port-pool exhaustion, and the uninstall
-  ordering trap below.
-- **Update:** run a newer installer. On an existing cluster it takes an ACL-protected `pg_dump` first,
-  overwrites binaries, and re-provisions. Re-provisioning is repeatable but not side-effect free: step 0
-  **stops and deletes** both services and recreates them, and the existing cluster is reused (`initdb`
-  is skipped when `pgdata\PG_VERSION` exists), so data survives. `Update-Desktop.ps1` also implements a
-  full staged update with binary + config + DB rollback for direct/advanced use. Postgres **major**
-  upgrades are out of scope for v1.
-- **Uninstall:** removes both services, the certificate, and Program Files. **ProgramData and `pgdata`
-  are preserved** unless `-PurgeData` is used. The script lives inside the installation and takes a
-  mandatory `-InstallPath`:
-  `& 'C:\Program Files\NodePilot\deploy\Uninstall-Desktop.ps1' -InstallPath 'C:\Program Files\NodePilot' -PurgeData`
-  **Run the purge before the normal uninstall, not after** — the uninstaller deletes that very
-  script, and what is left behind is a `ProgramData\NodePilot` whose ACL excludes the current user.
-  The manual way out is in
-  [`docs/desktop-troubleshooting.md`](../../docs/desktop-troubleshooting.md#removing-nodepilot-completely).
+  — log locations, the "setup page never appeared" recovery, port-pool exhaustion, and manual removal
+  of an installation that predates the uninstall question.
+- **Update / over-install:** run a newer installer, or the same one again. Before any file is copied,
+  `PrepareToInstall` runs `Prepare-DesktopSetup.ps1` from the **new** installer (extracted to `{tmp}`
+  from the `setup\` staging tree, because the copies inside the installation belong to the old
+  version): an ACL-protected `pg_dump`, then `Stop-DesktopRuntime` ends the shell and clients, stops
+  both services and waits for their processes, including a postmaster that outlived its service
+  wrapper. If that fails, setup aborts before touching a program file. Re-provisioning then deletes
+  both services (waiting until the SCM has really removed them, not merely marked them for deletion),
+  recreates them, and reuses the cluster (`initdb` is skipped when `pgdata\PG_VERSION` exists), so data
+  survives. `Update-Desktop.ps1` also implements a full staged update with binary + config + DB
+  rollback for direct/advanced use. Postgres **major** upgrades are out of scope for v1.
+- **Uninstall:** asks whether to keep the data (*Keep data* / *Delete everything* / *Cancel*; unattended
+  keeps it, `/PURGEDATA=1` deletes it) and runs `Uninstall-Desktop.ps1` from `CurUninstallStepChanged`,
+  not `[UninstallRun]`, whose parameters Inno freezes at install time. The script ends the shell and
+  clients, deletes both services, removes the certificate **with its private key**, the setup handoffs
+  and the rendered configuration; with `-PurgeData` also `ProgramData\NodePilot` (taking ownership of
+  what the API and Postgres protected) and the `NodePilot` folders in every profile (`%APPDATA%`: shell
+  session + `np`/`nodepilot-mcp` config, `%LOCALAPPDATA%`: handoff). It exits 1 when anything is left,
+  and the uninstaller reports `%TEMP%\nodepilot-uninstall.log`.
 - **Antivirus:** the installer sets no AV exclusions. Electron's Chromium native DLLs, Postgres' WAL
   I/O and the generated `%TEMP%\nodepilot_*.ps1` scripts are the usual false-positive sources — a
   hand-off list with per-entry rationale and residual risk is in [`docs/av-exclusions.md`](../../docs/av-exclusions.md).
@@ -241,8 +253,10 @@ Running the Electron shell straight from source (`npm start`, see below) starts 
 | `Sync-DesktopApp.ps1` | Dev loop: pushes local changes into an installed app in ~1 min (see below). |
 | `NodePilot.iss` | Inno Setup installer definition. |
 | `Provision-LocalDb.ps1` | First-run/repeatable runtime provisioner (DB, services, cert, config, handoff). |
+| `DesktopRuntime.ps1` | Shared stop/removal helpers: waits for service processes, not for the reported status. |
+| `Prepare-DesktopSetup.ps1` | Run by setup before copying files: backup, stop everything, optionally discard old data. |
 | `Update-Desktop.ps1` | Pre-upgrade backup + full staged update with rollback. |
-| `Uninstall-Desktop.ps1` | Service + cert removal (data preserved by default). |
+| `Uninstall-Desktop.ps1` | Runtime removal; with `-PurgeData` also all data and per-user folders. |
 | `appsettings.Desktop.json.template` | Production-hardened desktop config (rendered by the provisioner). |
 
 ## Iterating without rebuilding the installer
@@ -280,14 +294,17 @@ Honest inventory so nobody assumes more coverage than exists:
   `npm run test:run` in `src/nodepilot-desktop` (vitest, node environment) covers `config.ts`
   (desktop.json handoff validation — origin, fingerprint, serviceName injection barrier),
   `security.ts` (certificate-pin match/mismatch/parse-failure, non-loopback rejection, permission
-  and download blocking, navigation containment) and `skins.ts` (favicon → skin-icon resolution,
-  including the path-charset guard on the renderer-supplied id). What still needs a real Electron
+  and download blocking, navigation containment), `skins.ts` (favicon → skin-icon resolution,
+  including the path-charset guard on the renderer-supplied id) and `setupFlow.ts` (setup page vs.
+  app window, handling of a rejected setup token). What still needs a real Electron
   process — the setup-token IPC guard, the elevated `restartBackend` path, window lifecycle, and
   whether Chromium actually reports the SPA's favicon swap — is verified only by hand. The backend half of the feature *is* unit-tested (`DeploymentModeTests`,
   `DatabaseTlsBootValidatorTests`, `DatabaseReadinessGateTests`, `KestrelHttpsConfiguratorTests`).
 - **No CI coverage for `deploy/desktop/*`.** The `desktop` CI job runs `npm audit`, typecheck and
   vitest for `src/nodepilot-desktop`, and the nightly script adds a `desktop-vitest` suite; there is
-  still no lint config, and `Test-DeploymentTemplates.ps1` validates the server templates only —
+  still no lint config. `Test-DeploymentTemplates.ps1` pins the desktop setup's contracts as text
+  (provisioning exit code, handoff profile, stop before copy, uninstall data question, service
+  removal, staging of dot-sourced helpers) but runs none of the scripts, and
   `appsettings.Desktop.json.template` is never parsed by any check.
 - **The vulnerable legacy ZIP extractor is not installed.** Electron Packager 20.3.0 uses Electron's
   hardened native extractor, both are pinned exactly, malicious symlink archives are tested, and a
@@ -300,7 +317,9 @@ Honest inventory so nobody assumes more coverage than exists:
   `NodePilot-<version>.SHA256SUMS.txt`. A self-signed publisher still leaves SmartScreen warning on first launch; only a
   reputation-carrying certificate silences that.
 - **Not exercised end-to-end:** upgrade with a forced health failure (the rollback path),
-  installation on a genuinely clean VM, and process-isolated `runScript` (`config.isolated`).
+  process-isolated `runScript` (`config.isolated`), and the interactive wizard/uninstall dialogs
+  (the install/over-install/uninstall/reinstall paths were verified unattended on a clean
+  Windows 11 VM).
 - **Postgres major-version upgrades** and **Electron auto-update** are out of scope by design.
 
 ## On-VM validation (test plan)
@@ -313,5 +332,10 @@ Windows 11 x64 VM without .NET/Postgres preinstalled:
 3. Launch shell → SPA loads without a cert warning → first-run admin creation → a `runScript`
    workflow against `localhost` runs in-process.
 4. Close the window → a `scheduleTrigger` still fires in the background → reopen is single-instance.
-5. Reboot → services auto-start. Upgrade → users/credentials/workflows/PG data survive; forced health
-   failure rolls back. Uninstall → services gone, `pgdata` preserved (or purged with `-PurgeData`).
+5. Reboot → services auto-start. Upgrade and same-version over-install with the shell open →
+   users/credentials/workflows/PG data survive, no file-in-use errors; forced health failure rolls back.
+6. Uninstall *Keep data* → services, certificate + private key and Program Files gone, `pgdata`
+   preserved; reinstall → old administrator signs in, no setup page.
+7. Uninstall *Delete everything* (`/PURGEDATA=1`) → additionally `ProgramData\NodePilot` and the
+   per-user `NodePilot` folders gone; reinstall → setup page, new administrator.
+8. Leftover data + setup's *Delete the existing data* (`/DISCARDDATA=1`) → fresh database.

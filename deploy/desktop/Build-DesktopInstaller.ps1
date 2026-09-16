@@ -225,7 +225,7 @@ foreach ($part in @('bin', 'lib', 'share')) {
     if (-not (Test-Path -LiteralPath $srcPart)) { throw "PostgreSQL distribution is missing '$part': $srcPart" }
     Copy-Item -Path $srcPart -Destination (Join-Path $pgStage $part) -Recurse -Force
 }
-foreach ($required in @('bin\postgres.exe', 'bin\initdb.exe', 'bin\pg_ctl.exe', 'bin\psql.exe', 'bin\pg_dump.exe', 'share\postgres.bki')) {
+foreach ($required in @('bin\postgres.exe', 'bin\initdb.exe', 'bin\pg_ctl.exe', 'bin\pg_isready.exe', 'bin\psql.exe', 'bin\pg_dump.exe', 'share\postgres.bki')) {
     if (-not (Test-Path -LiteralPath (Join-Path $pgStage $required))) { throw "PostgreSQL staging incomplete: $required missing." }
 }
 Write-Host ("    {0:N0} MB gestaged" -f ((Get-ChildItem $pgStage -Recurse -File | Measure-Object Length -Sum).Sum / 1MB))
@@ -234,8 +234,14 @@ Write-Host ("    {0:N0} MB gestaged" -f ((Get-ChildItem $pgStage -Recurse -File 
 Write-Step 'Staging deploy scripts'
 $deployStage = Join-Path $Stage 'deploy'
 New-Item -ItemType Directory -Force -Path $deployStage | Out-Null
-foreach ($f in @('Provision-LocalDb.ps1', 'Update-Desktop.ps1', 'Uninstall-Desktop.ps1', 'appsettings.Desktop.json.template')) {
+foreach ($f in @('DesktopRuntime.ps1', 'Provision-LocalDb.ps1', 'Update-Desktop.ps1', 'Uninstall-Desktop.ps1', 'appsettings.Desktop.json.template')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot $f) -Destination $deployStage -Force
+}
+# Run by setup before it copies any file, so they ship as a separate tree (see NodePilot.iss).
+$setupStage = Join-Path $Stage 'setup'
+New-Item -ItemType Directory -Force -Path $setupStage | Out-Null
+foreach ($f in @('DesktopRuntime.ps1', 'Prepare-DesktopSetup.ps1', 'Update-Desktop.ps1')) {
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $f) -Destination $setupStage -Force
 }
 
 # --- 6. compile installer --------------------------------------------------------------------

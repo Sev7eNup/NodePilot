@@ -2461,6 +2461,87 @@ Assert-TextMatches -Name 'the handoff ACL is granted to the resolved user' `
 Assert-TextMatches -Name 'the handoff directory is built from the resolved base' `
     -Text $desktopProvision -Pattern "\`$handoffDir = Join-Path \`$handoffBase 'NodePilot'"
 
+# 2b. Install over an installation, uninstall, install again. Each defect below left a machine that
+#     looked installed or uninstalled and was neither.
+$desktopDirectory = Split-Path -Parent $DesktopIssPath
+$desktopUninstall = Get-Content -LiteralPath (Join-Path $desktopDirectory 'Uninstall-Desktop.ps1') -Raw
+$desktopPrepare   = Get-Content -LiteralPath (Join-Path $desktopDirectory 'Prepare-DesktopSetup.ps1') -Raw
+$desktopRuntime   = Get-Content -LiteralPath (Join-Path $desktopDirectory 'DesktopRuntime.ps1') -Raw
+$desktopUpdate    = Get-Content -LiteralPath (Join-Path $desktopDirectory 'Update-Desktop.ps1') -Raw
+
+# A failed provisioning ended an unattended install with exit code 0, or - worse - left it waiting
+# forever on a message box that /SUPPRESSMSGBOXES does not suppress.
+Assert-TextMatches -Name 'a failed desktop provisioning makes setup exit non-zero' `
+    -Text $desktopIss -Pattern '(?s)function GetCustomSetupExitCode\(\).*?if ProvisionOk then'
+Assert-TextDoesNotMatch -Name 'the desktop setup shows no message box an unattended run cannot suppress' `
+    -Text $desktopIss -Pattern '(?<![A-Za-z])MsgBox\('
+
+# Setup copied files while the shell, the API service and PostgreSQL still held them open.
+Assert-TextMatches -Name 'the desktop setup stops the existing installation before copying files' `
+    -Text $desktopIss -Pattern '(?s)function PrepareToInstall\(.*?Prepare-DesktopSetup\.ps1.*?ResultCode\s*<>\s*0'
+Assert-TextMatches -Name 'the desktop setup-time scripts ship as a dontcopy tree' `
+    -Text $desktopIss -Pattern '(?m)^Source:\s*"\{#StageDir\}\\setup\\\*";\s*Flags:\s*dontcopy'
+Assert-TextMatches -Name 'the desktop preparation stops the runtime' `
+    -Text $desktopPrepare -Pattern 'Stop-DesktopRuntime'
+
+# Services were deleted after a fixed sleep. A process still running left the service "marked for
+# deletion", and registering it again failed.
+foreach ($serviceConsumer in @(
+        @{ Name = 'provisioner'; Text = $desktopProvision },
+        @{ Name = 'uninstaller'; Text = $desktopUninstall },
+        @{ Name = 'updater';     Text = $desktopUpdate })) {
+    Assert-TextMatches -Name "the desktop $($serviceConsumer.Name) uses the shared runtime helpers" `
+        -Text $serviceConsumer.Text -Pattern "Join-Path \`$PSScriptRoot 'DesktopRuntime\.ps1'"
+    Assert-TextDoesNotMatch -Name "the desktop $($serviceConsumer.Name) does not delete services itself" `
+        -Text $serviceConsumer.Text -Pattern 'sc\.exe\s+delete'
+}
+Assert-TextMatches -Name 'desktop service removal waits until the service is gone' `
+    -Text $desktopRuntime -Pattern '(?s)function Remove-DesktopService.*?sc\.exe delete.*?while \(Test-DesktopServiceExists'
+
+# The API connects to the service manager only after it has waited for and migrated the database,
+# and Windows ends a service that has not connected within 30 seconds.
+Assert-TextMatches -Name 'the desktop provisioner waits for PostgreSQL before starting the API' `
+    -Text $desktopProvision -Pattern '(?s)pg_isready\.exe.*?Waiting for readiness'
+Assert-TextMatches -Name 'the desktop provisioner starts the API again after a failed start' `
+    -Text $desktopProvision -Pattern '(?s)\$apiState -eq ''Stopped''.*?sc\.exe start \$ApiServiceName'
+
+# The data question never reached the script: Inno freezes [UninstallRun] parameters at install time.
+Assert-TextDoesNotMatch -Name 'the desktop uninstall does not run from [UninstallRun]' `
+    -Text $desktopIss -Pattern '(?m)^\[UninstallRun\]'
+Assert-TextMatches -Name 'the desktop uninstall asks whether to keep the data' `
+    -Text $desktopIss -Pattern '(?s)function InitializeUninstall\(.*?SuppressibleTaskDialogMsgBox'
+Assert-TextMatches -Name 'the desktop uninstall passes the purge decision to the script' `
+    -Text $desktopIss -Pattern '(?s)procedure CurUninstallStepChanged\(.*?Uninstall-Desktop\.ps1.*?if UninstallPurgeData then\s*Params := Params \+ '' -PurgeData'''
+Assert-TextMatches -Name 'the desktop uninstall exit code is inspected' `
+    -Text $desktopIss -Pattern '(?s)procedure CurUninstallStepChanged\(.*?ResultCode\s*<>\s*0'
+Assert-TextMatches -Name 'the desktop purge deletes the data directory' `
+    -Text $desktopUninstall -Pattern '(?s)if \(\$PurgeData\).*?Remove-DesktopDirectory -Path \$DataPath'
+Assert-TextMatches -Name 'the desktop uninstaller exits non-zero when something is left behind' `
+    -Text $desktopUninstall -Pattern '(?s)\$problems\.Count -gt 0.*?exit 1'
+
+# Every helper a desktop script dot-sources must be staged next to it: deploy\ for the installed
+# scripts, setup\ for what runs before the files are copied.
+$desktopBuild = Get-Content -LiteralPath $DesktopBuildScriptPath -Raw
+foreach ($stageTree in @(
+        @{ Stage = 'deployStage'; Scripts = @('Provision-LocalDb.ps1', 'Uninstall-Desktop.ps1', 'Update-Desktop.ps1') },
+        @{ Stage = 'setupStage';  Scripts = @('Prepare-DesktopSetup.ps1') })) {
+    $listMatch = [regex]::Match($desktopBuild,
+        "foreach \(\`$f in @\(([^)]*)\)\) \{\s*Copy-Item -LiteralPath \(Join-Path \`$PSScriptRoot \`$f\) -Destination \`$$($stageTree.Stage)")
+    if (-not $listMatch.Success) { throw "Deployment template check failed: the desktop build has no staging list for `$$($stageTree.Stage)." }
+    $required = [System.Collections.Generic.SortedSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($script in $stageTree.Scripts) {
+        [void]$required.Add($script)
+        $scriptText = Get-Content -LiteralPath (Join-Path $desktopDirectory $script) -Raw
+        foreach ($helper in [regex]::Matches($scriptText, "Join-Path \`$PSScriptRoot '([A-Za-z0-9.\-]+\.ps1)'")) {
+            [void]$required.Add($helper.Groups[1].Value)
+        }
+    }
+    foreach ($file in $required) {
+        Assert-TextMatches -Name "the desktop build stages $file into `$$($stageTree.Stage)" `
+            -Text $listMatch.Groups[1].Value -Pattern ([regex]::Escape("'$file'"))
+    }
+}
+
 # 3. The bundled PostgreSQL major. A cluster initialised by one major cannot be opened by another,
 #    and this package upgrades in place over the pgdata a previous version created. Staging a
 #    runtime from a different major compiles, signs and ships without a single warning, and then

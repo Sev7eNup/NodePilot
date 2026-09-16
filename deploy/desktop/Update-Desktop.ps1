@@ -36,6 +36,8 @@ $DesktopJson = Join-Path $DataPath 'desktop.json'
 
 function Write-Step([string] $m) { Write-Host "==> $m" -ForegroundColor Cyan }
 
+. (Join-Path $PSScriptRoot 'DesktopRuntime.ps1')
+
 function Get-PostgresConnection {
     # Authoritative source: the ACL-restricted service-environment connection string.
     $svcRegPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$ApiServiceName"
@@ -118,11 +120,8 @@ $components = @('app', 'desktop', 'pgsql')
 
 function Stop-Everything {
     Write-Step 'Stopping shell and services'
-    Get-Process -Name 'NodePilot' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    foreach ($svc in @($ApiServiceName, $DbServiceName)) {
-        if (Get-Service -Name $svc -ErrorAction SilentlyContinue) { & sc.exe stop $svc | Out-Null }
-    }
-    Start-Sleep -Seconds 3
+    Stop-DesktopRuntime -InstallPath $InstallPath -DataPath $DataPath `
+        -ApiServiceName $ApiServiceName -DbServiceName $DbServiceName
 }
 
 function Start-Services {
@@ -171,7 +170,7 @@ try {
 }
 catch {
     Write-Warning "Update failed: $($_.Exception.Message). Rolling back."
-    Stop-Everything
+    try { Stop-Everything } catch { Write-Warning "Stopping before the rollback failed: $($_.Exception.Message)" }
     foreach ($c in $components) {
         $cur = Join-Path $InstallPath $c
         $saved = Join-Path $rollbackRoot $c

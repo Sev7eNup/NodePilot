@@ -6,6 +6,7 @@ import { restartServiceCommand } from './backendRestart';
 import { loadDesktopConfig, type DesktopConfig } from './config';
 import { requestStatus } from './http';
 import { hardenSession, hardenWindow } from './security';
+import { appWindowFor, describeSetupFailure } from './setupFlow';
 import { defaultIcons, skinIconsForFavicons, type SkinIcons } from './skins';
 
 /** Persistent session partition shared by the login request, the setup window, and the SPA window
@@ -54,10 +55,7 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.setAppUserModelId('com.nodepilot.desktop');
 
-  app.on('second-instance', () => {
-    if (setupWindow) { focus(setupWindow); return; }
-    openMainWindow();
-  });
+  app.on('second-instance', () => openAppWindow());
 
   // Stay resident in the tray when all windows are closed (background services keep running too).
   app.on('window-all-closed', () => { /* intentional no-op: quit only via the tray */ });
@@ -92,9 +90,14 @@ async function bootstrap(): Promise<void> {
   }
 
   createTray();
+  openAppWindow();
+}
 
-  // First run: the installer left a bootstrap-token handoff -> show the local setup page.
-  if (existsSync(HANDOFF_PATH)) {
+/** First run (the installer left a bootstrap-token handoff) shows the local setup page, otherwise
+ *  the app. Used by every entry point, so closing the setup page does not strand the user on a
+ *  login form that cannot create the first administrator. */
+function openAppWindow(): void {
+  if (appWindowFor(existsSync(HANDOFF_PATH)) === 'setup') {
     openSetupWindow();
   } else {
     openMainWindow();
@@ -166,7 +169,11 @@ async function handleSetupComplete(
   }
 
   if (status !== 200) {
-    return { ok: false, error: `Setup login failed (HTTP ${status}).` };
+    const failure = describeSetupFailure(status);
+    if (failure.discardHandoff) {
+      try { rmSync(HANDOFF_PATH, { force: true }); } catch { /* best-effort */ }
+    }
+    return { ok: false, error: failure.error };
   }
 
   // Success: the server consumed its one-shot token; remove the local handoff copy too.
@@ -280,7 +287,11 @@ function openSetupWindow(): void {
   });
   setupWindow.removeMenu();
   hardenWindow(setupWindow, config.origin);
-  setupWindow.on('closed', () => { setupWindow = null; });
+  setupWindow.on('closed', () => {
+    setupWindow = null;
+    // A discarded handoff leaves nothing to set up: continue to the login page.
+    if (!quitting && !existsSync(HANDOFF_PATH)) openMainWindow();
+  });
   void setupWindow.loadFile(join(__dirname, 'setup.html'));
 }
 
@@ -318,12 +329,12 @@ function createTray(): void {
     tray = new Tray(trayIcon());
     tray.setToolTip('NodePilot');
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'Open NodePilot', click: () => openMainWindow() },
+      { label: 'Open NodePilot', click: () => openAppWindow() },
       { label: 'Restart backend', click: () => restartBackend() },
       { type: 'separator' },
       { label: 'Quit Electron', click: () => { quitting = true; app.quit(); } },
     ]));
-    tray.on('click', () => openMainWindow());
+    tray.on('click', () => openAppWindow());
   } catch {
     // A missing tray icon must not prevent the app from running.
     tray = null;

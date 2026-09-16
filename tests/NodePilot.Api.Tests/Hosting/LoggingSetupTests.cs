@@ -61,6 +61,39 @@ public class LoggingSetupTests
             "relative override is rebased against ContentRoot (dev convenience)");
     }
 
+    [Theory]
+    [InlineData("--contentRoot")]
+    [InlineData("/contentRoot")]
+    public void ResolveBootstrapBasePath_ContentRootArgument_WinsOverCurrentDirectory(string switchName)
+    {
+        var basePath = LoggingSetup.ResolveBootstrapBasePath(
+            [switchName, @"C:\Program Files\NodePilot\app"], @"C:\Windows\System32");
+
+        basePath.Should().Be(@"C:\Program Files\NodePilot\app",
+            "a Windows service starts in System32, where the installed appsettings files are not");
+    }
+
+    [Fact]
+    public void ResolveBootstrapBasePath_EqualsSyntax_IsHonoured()
+    {
+        LoggingSetup.ResolveBootstrapBasePath([@"--contentRoot=C:\App"], @"C:\Windows\System32")
+            .Should().Be(@"C:\App");
+    }
+
+    [Fact]
+    public void ResolveBootstrapBasePath_RelativeContentRoot_IsRootedAtCurrentDirectory()
+    {
+        LoggingSetup.ResolveBootstrapBasePath(["--contentRoot", "app"], @"C:\Install")
+            .Should().Be(@"C:\Install\app");
+    }
+
+    [Fact]
+    public void ResolveBootstrapBasePath_NoContentRoot_UsesCurrentDirectory()
+    {
+        LoggingSetup.ResolveBootstrapBasePath(["--urls", "http://localhost:5000"], @"C:\Dev\NodePilot.Api")
+            .Should().Be(@"C:\Dev\NodePilot.Api");
+    }
+
     [Fact]
     public void BuildBootstrapConfiguration_PicksUpEnvironmentVariables()
     {

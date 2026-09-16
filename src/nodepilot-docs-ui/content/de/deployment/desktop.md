@@ -138,6 +138,19 @@ Der erzeugte Installer muss vor der Verteilung mit Authenticode signiert werden.
 4. Electron-Shell starten.
 5. Lokalen Admin-Account im Setup-Dialog anlegen.
 
+NodePilot hat **kein Standardkonto und kein Standardpasswort**. Name und Passwort aus dem
+Setup-Dialog (mindestens 8 Zeichen) sind ab dann die Anmeldung des Administrators.
+
+Liegen noch Daten einer früheren, deinstallierten NodePilot-Installation auf dem Rechner, fragt das
+Setup, was damit geschehen soll:
+
+| Auswahl | Wirkung |
+|---|---|
+| Keep the existing data (Daten behalten) | Arbeitet mit der alten Datenbank weiter. Der Setup-Dialog erscheint nicht; Anmeldung mit dem damals angelegten Administratorkonto. |
+| Delete the existing data and start fresh (Daten löschen, neu beginnen) | Löscht `C:\ProgramData\NodePilot` vor der Installation. Die Shell fragt nach einem neuen Administrator. |
+
+Unbeaufsichtigt behält das Setup die Daten; `/DISCARDDATA=1` löscht sie.
+
 Der Installer:
 
 - installiert Dateien,
@@ -192,16 +205,21 @@ Invoke-WebRequest "$($desktop.origin)/healthz/ready" -SkipCertificateCheck
 
 ## Update
 
-Ein neuer signierter Installer kann über die bestehende Installation ausgeführt werden.
+Ein neuer signierter Installer kann über die bestehende Installation ausgeführt werden, ebenso
+dieselbe Version erneut. Die Shell darf dabei geöffnet bleiben; das Setup beendet sie.
 
 Update-Ablauf:
 
-1. ACL-geschütztes `pg_dump` erstellen.
-2. Dienste stoppen.
+1. ACL-geschütztes `pg_dump` unter `C:\ProgramData\NodePilot\backups` erstellen (die neuesten drei bleiben).
+2. Shell und die Clients `np`/`nodepilot-mcp` beenden, beide Dienste stoppen und warten, bis ihre
+   Prozesse beendet sind — bevor eine Datei ersetzt wird.
 3. Binaries ersetzen.
-4. Vorhandenes PostgreSQL-Datenverzeichnis weiterverwenden.
+4. Vorhandenes PostgreSQL-Datenverzeichnis weiterverwenden: Konten, Workflows und Einstellungen bleiben erhalten.
 5. Dienste neu provisionieren.
-6. Health-Endpunkt prüfen.
+6. Health-Endpunkt prüfen. Bricht Windows einen langsamen ersten Start des API-Dienstes ab, startet das Setup ihn erneut.
+
+Lässt sich die laufende Installation nicht stoppen, bricht das Setup ab, bevor es eine Programmdatei
+ändert, und nennt sein Log, `%TEMP%\nodepilot-setup-prepare.log`.
 
 `Update-Desktop.ps1` bietet zusätzlich ein gestuftes Update mit Rollback für Binaries, Konfiguration und Datenbank.
 
@@ -209,25 +227,32 @@ PostgreSQL-Major-Upgrades und Electron-Auto-Update sind nicht Bestandteil der ak
 
 ## Deinstallation
 
-Die normale Deinstallation entfernt:
+NodePilot über *Apps & Features* deinstallieren. Die Deinstallation entfernt immer:
 
+- die Shell und die Clients `np`/`nodepilot-mcp`, falls sie laufen,
 - beide Windows-Dienste,
-- Loopback-Zertifikat,
-- Dateien unter `C:\Program Files\NodePilot`.
+- das Loopback-Zertifikat samt privatem Schlüssel,
+- die Dateien unter `C:\Program Files\NodePilot`.
 
-Die Daten unter `C:\ProgramData\NodePilot`, einschließlich `pgdata`, bleiben standardmäßig erhalten.
+Danach fragt sie nach den Daten:
 
-Vollständige Entfernung:
+| Auswahl | Wirkung |
+|---|---|
+| Keep data (Daten behalten) | `C:\ProgramData\NodePilot` bleibt: Datenbank, Schlüssel, Einstellungen, Logs und Backups. Eine spätere Installation arbeitet damit weiter; Anmeldung mit dem bestehenden Konto. |
+| Delete everything (Alles löschen) | Löscht zusätzlich `C:\ProgramData\NodePilot` und die `NodePilot`-Ordner in jedem Benutzerprofil (`%APPDATA%`, `%LOCALAPPDATA%`: Sitzung der Shell und Konfiguration von `np`/`nodepilot-mcp`). Nicht rückgängig zu machen. Die nächste Installation beginnt mit leerer Datenbank und fragt nach einem neuen Administrator. |
+| Cancel (Abbrechen) | Es wird nichts entfernt. |
 
-Das Skript liegt in der Installation, nicht im aktuellen Verzeichnis, und `-InstallPath` ist ein
-Pflichtparameter:
+Unbeaufsichtigt bleiben die Daten erhalten:
 
 ```powershell
-& 'C:\Program Files\NodePilot\deploy\Uninstall-Desktop.ps1' `
-    -InstallPath 'C:\Program Files\NodePilot' -PurgeData
+& 'C:\Program Files\NodePilot\unins000.exe' /VERYSILENT /SUPPRESSMSGBOXES               # Daten behalten
+& 'C:\Program Files\NodePilot\unins000.exe' /VERYSILENT /SUPPRESSMSGBOXES /PURGEDATA=1  # alles löschen
 ```
 
-`-PurgeData` löscht die lokale Datenbank und ist nicht rückgängig zu machen. Vorher ist ein Backup erforderlich.
+„Alles löschen" ist nicht rückgängig zu machen. Werden die Daten eventuell noch gebraucht, vorher ein Backup erstellen.
+
+Konnte etwas nicht entfernt werden, meldet die Deinstallation das und nennt ihr Log,
+`%TEMP%\nodepilot-uninstall.log`.
 
 ## Backup und Systemwechsel
 

@@ -2,11 +2,14 @@
 #requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Removes the NodePilot desktop runtime: stops and deletes both Windows services and removes
-    the self-signed loopback certificate. ProgramData (including the Postgres data directory) is
-    kept unless -PurgeData is passed.
-.NOTES
-    Invoked by the Inno Setup uninstaller through [UninstallRun].
+    Removes the NodePilot desktop runtime: ends the shell and clients, stops and deletes both
+    Windows services, and removes the loopback certificate with its private key. With -PurgeData
+    it also deletes the data directory (database cluster, keys, settings, logs, backups) and the
+    per-user NodePilot folders, so a following installation starts empty.
+
+.DESCRIPTION
+    Invoked by the Inno Setup uninstaller before it deletes the program files. Exits 1 when
+    something could not be removed, so the uninstaller can say so.
 #>
 [CmdletBinding()]
 param(
@@ -18,45 +21,85 @@ param(
 )
 
 Set-StrictMode -Version 3.0
-$ErrorActionPreference = 'Continue'
+$ErrorActionPreference = 'Stop'
 
-function Remove-NodePilotService([string] $name) {
-    $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
-    if (-not $svc) { return }
-    Write-Host "Stopping and removing service '$name'..."
-    & sc.exe stop $name | Out-Null
-    for ($i = 0; $i -lt 15; $i++) {
-        Start-Sleep -Seconds 1
-        $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
-        if (-not $svc -or $svc.Status -eq 'Stopped') { break }
+$TranscriptPath = Join-Path $env:TEMP 'nodepilot-uninstall.log'
+try { Start-Transcript -Path $TranscriptPath -Force | Out-Null } catch { }
+
+. (Join-Path $PSScriptRoot 'DesktopRuntime.ps1')
+
+function Write-Step([string] $m) { Write-Host "==> $m" -ForegroundColor Cyan }
+
+$problems = New-Object System.Collections.Generic.List[string]
+function Invoke-UninstallStep([string] $title, [scriptblock] $action) {
+    # Every step runs even when an earlier one failed: a service that cannot be deleted is no
+    # reason to keep the data the user asked to remove.
+    Write-Step $title
+    try { & $action } catch {
+        Write-Warning "$title failed: $($_.Exception.Message)"
+        $problems.Add("${title}: $($_.Exception.Message)")
     }
-    & sc.exe delete $name | Out-Null
 }
 
-# Stop the API first (it depends on the DB), then Postgres.
-Remove-NodePilotService $ApiServiceName
-Remove-NodePilotService $DbServiceName
+Invoke-UninstallStep 'Stopping NodePilot and removing its services' {
+    Stop-DesktopRuntime -InstallPath $InstallPath -DataPath $DataPath `
+        -ApiServiceName $ApiServiceName -DbServiceName $DbServiceName -RemoveServices
+}
 
-# Remove the loopback certificate, identified by its friendly name.
-try {
-    Get-ChildItem -Path Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
-        Where-Object { $_.FriendlyName -eq 'NodePilot Desktop Local' } |
-        ForEach-Object {
-            Write-Host "Removing certificate $($_.Thumbprint)..."
-            Remove-Item -Path ("Cert:\LocalMachine\My\{0}" -f $_.Thumbprint) -Force -ErrorAction SilentlyContinue
-        }
-} catch { Write-Warning "Certificate cleanup skipped: $($_.Exception.Message)" }
+Invoke-UninstallStep 'Removing the loopback certificate' {
+    foreach ($cert in @(Get-ChildItem -Path Cert:\LocalMachine\My | Where-Object { $_.FriendlyName -eq 'NodePilot Desktop Local' })) {
+        Write-Host "    $($cert.Thumbprint)"
+        # -DeleteKey also removes the private key file, which a plain Remove-Item leaves behind.
+        Remove-Item -LiteralPath ("Cert:\LocalMachine\My\{0}" -f $cert.Thumbprint) -DeleteKey -Force
+    }
+}
 
-# Remove the per-user first-run handoff if it is still there. Failures are ignored.
-$handoff = Join-Path $env:LOCALAPPDATA 'NodePilot\admin-setup.handoff'
-if (Test-Path -LiteralPath $handoff) { Remove-Item -LiteralPath $handoff -Force -ErrorAction SilentlyContinue }
+Invoke-UninstallStep 'Removing first-run setup handoffs' { Remove-DesktopSetupHandoffs }
+
+# Written by the provisioner next to the application, so Inno does not track it.
+Invoke-UninstallStep 'Removing the rendered configuration' {
+    $rendered = Join-Path $InstallPath 'app\appsettings.Production.json'
+    if (Test-Path -LiteralPath $rendered) { Remove-Item -LiteralPath $rendered -Force }
+}
 
 if ($PurgeData) {
-    Write-Host "Purging data directory $DataPath..."
-    if (Test-Path -LiteralPath $DataPath) { Remove-Item -LiteralPath $DataPath -Recurse -Force -ErrorAction SilentlyContinue }
+    Invoke-UninstallStep "Deleting the data directory $DataPath" {
+        if (-not (Remove-DesktopDirectory -Path $DataPath)) { throw "$DataPath could not be removed completely." }
+    }
+    # %APPDATA%\NodePilot holds the shell's browser profile and the np / nodepilot-mcp client
+    # configuration, %LOCALAPPDATA%\NodePilot the setup handoff.
+    Invoke-UninstallStep 'Deleting per-user NodePilot folders' {
+        foreach ($profilePath in @(Get-DesktopUserProfilePaths)) {
+            foreach ($relative in @('AppData\Roaming\NodePilot', 'AppData\Local\NodePilot')) {
+                $folder = Join-Path $profilePath $relative
+                if (-not (Test-Path -LiteralPath $folder)) { continue }
+                Write-Host "    $folder"
+                if (-not (Remove-DesktopDirectory -Path $folder)) { throw "$folder could not be removed completely." }
+            }
+        }
+    }
+    # Versions up to 1.3.1 wrote their first log lines relative to the service's working directory.
+    Invoke-UninstallStep 'Deleting early start-up logs' {
+        $legacyLogDir = Join-Path $env:SystemRoot 'System32\logs'
+        if (Test-Path -LiteralPath $legacyLogDir) {
+            Get-ChildItem -LiteralPath $legacyLogDir -Filter 'nodepilot-*.log' -File | Remove-Item -Force
+            if (@(Get-ChildItem -LiteralPath $legacyLogDir -Force).Count -eq 0) { Remove-Item -LiteralPath $legacyLogDir -Force }
+        }
+    }
+    $provisionLog = Join-Path $env:TEMP 'nodepilot-provision.log'
+    if (Test-Path -LiteralPath $provisionLog) { Remove-Item -LiteralPath $provisionLog -Force -ErrorAction SilentlyContinue }
 } else {
-    Write-Host "Preserving data directory $DataPath (pass -PurgeData to remove)."
+    Write-Step "Keeping the data directory $DataPath"
 }
 
-Write-Host 'NodePilot desktop runtime removed.'
+if ($problems.Count -gt 0) {
+    Write-Warning ("Uninstall finished with problems:`n  " + ($problems -join "`n  "))
+    try { Stop-Transcript | Out-Null } catch { }
+    exit 1
+}
+
+Write-Host 'NodePilot desktop runtime removed.' -ForegroundColor Green
+try { Stop-Transcript | Out-Null } catch { }
+# Nothing went wrong, so the log is not needed; a purge leaves no file behind.
+Remove-Item -LiteralPath $TranscriptPath -Force -ErrorAction SilentlyContinue
 exit 0
