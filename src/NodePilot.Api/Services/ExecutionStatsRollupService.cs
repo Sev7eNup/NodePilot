@@ -56,6 +56,18 @@ public sealed class ExecutionStatsRollupService : BackgroundService
     /// </summary>
     private const int BackfillChunksPerPass = 400;
 
+    /// <summary>
+    /// How long buckets are kept: the longest dashboard window (720 h) plus two days of margin.
+    /// No read reaches further back, so older buckets are deleted and never backfilled.
+    /// </summary>
+    internal static readonly TimeSpan BucketRetention = TimeSpan.FromHours(720 + 48);
+
+    /// <summary>
+    /// The reader stops trusting the buckets when the state row has not been updated for this long,
+    /// and computes from raw rows instead. Covers a disabled rollup and a pass that keeps failing.
+    /// </summary>
+    internal static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(10);
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IDatabaseAvailability _availability;
     private readonly IClusterStateProvider? _cluster;
@@ -137,6 +149,8 @@ public sealed class ExecutionStatsRollupService : BackgroundService
         var state = await LoadStateAsync(db, ct).ConfigureAwait(false);
         var currentHour = Truncate(DateTime.UtcNow);
 
+        await PruneAsync(db, state, currentHour - BucketRetention, ct).ConfigureAwait(false);
+
         // Forward: everything from the last covered hour up to (and including) the current one, plus
         // any earlier hour still marked provisional because runs were open when it was written.
         var from = state.CoverageEndUtc is { } end ? end : currentHour;
@@ -179,6 +193,8 @@ public sealed class ExecutionStatsRollupService : BackgroundService
         }
 
         var horizon = Truncate(oldestRaw.Value);
+        var retentionStart = Truncate(DateTime.UtcNow) - BucketRetention;
+        if (horizon < retentionStart) horizon = retentionStart;
         var cursor = state.CoverageStartUtc is { } start ? start : state.CoverageEndUtc ?? Truncate(DateTime.UtcNow);
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var chunks = 0;
@@ -196,6 +212,11 @@ public sealed class ExecutionStatsRollupService : BackgroundService
             state.CoverageStartUtc = cursor;
             state.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
+
+            // Saved buckets are not needed again in this pass. Without clearing, every later chunk
+            // would run change detection over all buckets written so far.
+            db.ChangeTracker.Clear();
+            db.ExecutionStatsRollupStates.Attach(state);
         }
 
         if (cursor <= horizon)
@@ -400,6 +421,18 @@ public sealed class ExecutionStatsRollupService : BackgroundService
             row.IsFinal = isFinal;
             row.ComputedAt = now;
         }
+    }
+
+    /// <summary>
+    /// Deletes buckets older than <paramref name="cutoff"/> and moves the recorded coverage start
+    /// up to it, so the state never claims hours whose buckets are gone.
+    /// </summary>
+    internal static async Task PruneAsync(
+        NodePilotDbContext db, ExecutionStatsRollupState state, DateTime cutoff, CancellationToken ct)
+    {
+        await db.ExecutionHourlyStats.Where(s => s.HourUtc < cutoff).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+        await db.FailureCauseHourlyStats.Where(s => s.HourUtc < cutoff).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+        if (state.CoverageStartUtc < cutoff) state.CoverageStartUtc = cutoff;
     }
 
     private static async Task<ExecutionStatsRollupState> LoadStateAsync(NodePilotDbContext db, CancellationToken ct)

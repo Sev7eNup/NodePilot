@@ -292,6 +292,91 @@ public sealed class ExecutionStatsRollupServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Reader_StaleState_ReturnsNullSoTheCallerComputesLive()
+    {
+        // A disabled rollup or a pass that keeps failing leaves coverage that looks complete while
+        // every hour since the last pass is missing.
+        var wf = AddWorkflow();
+        var hour = ExecutionStatsRollupService.Truncate(DateTime.UtcNow).AddHours(-1);
+        AddExecution(wf, ExecutionStatus.Succeeded, hour.AddMinutes(5), hour.AddMinutes(6));
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        await RollUpAsync(hour);
+        _db.ExecutionStatsRollupStates.Add(new ExecutionStatsRollupState
+        {
+            Id = ExecutionStatsRollupService.StateRowId,
+            CoverageStartUtc = hour.AddHours(-48),
+            CoverageEndUtc = hour,
+            BackfillComplete = true,
+            UpdatedAt = DateTime.UtcNow - ExecutionStatsRollupService.StaleAfter - TimeSpan.FromMinutes(1),
+        });
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        var reader = new DashboardRollupReader(_db);
+        (await reader.ReadWindowAggregatesAsync(AccessibleFolderSet.Unrestricted, 24, TestContext.Current.CancellationToken))
+            .Should().BeNull();
+        (await reader.ReadFailureCausesAsync(AccessibleFolderSet.Unrestricted, 24, TestContext.Current.CancellationToken))
+            .Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RunPass_DeletesBucketsOlderThanTheRetention()
+    {
+        var wf = AddWorkflow();
+        var currentHour = ExecutionStatsRollupService.Truncate(DateTime.UtcNow);
+        var cutoff = currentHour - ExecutionStatsRollupService.BucketRetention;
+        foreach (var hour in new[] { cutoff.AddHours(-1), cutoff.AddHours(5) })
+        {
+            _db.ExecutionHourlyStats.Add(new ExecutionHourlyStat { HourUtc = hour, WorkflowId = wf, TotalCount = 1, IsFinal = true });
+            _db.FailureCauseHourlyStats.Add(new FailureCauseHourlyStat
+            {
+                HourUtc = hour, WorkflowId = wf, MessageHash = ExecutionStatsRollupService.HashMessage("boom"),
+                Message = "boom", Count = 1, LatestExecutionId = Guid.NewGuid(), LatestStartedAt = hour, IsFinal = true,
+            });
+        }
+        _db.ExecutionStatsRollupStates.Add(new ExecutionStatsRollupState
+        {
+            Id = ExecutionStatsRollupService.StateRowId,
+            CoverageStartUtc = cutoff.AddHours(-100),
+            CoverageEndUtc = currentHour,
+            BackfillComplete = true,
+            UpdatedAt = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await NewService().RunPassAsync(TestContext.Current.CancellationToken);
+
+        var ct = TestContext.Current.CancellationToken;
+        (await _db.ExecutionHourlyStats.AsNoTracking().Select(s => s.HourUtc).ToListAsync(ct))
+            .Should().Equal(cutoff.AddHours(5));
+        (await _db.FailureCauseHourlyStats.AsNoTracking().Select(s => s.HourUtc).ToListAsync(ct))
+            .Should().Equal(cutoff.AddHours(5));
+        (await _db.ExecutionStatsRollupStates.AsNoTracking().SingleAsync(ct)).CoverageStartUtc
+            .Should().Be(cutoff, "the state must not claim hours whose buckets were deleted");
+    }
+
+    [Fact]
+    public async Task RunPass_BackfillStopsAtTheRetention()
+    {
+        var wf = AddWorkflow();
+        var currentHour = ExecutionStatsRollupService.Truncate(DateTime.UtcNow);
+        var retentionStart = currentHour - ExecutionStatsRollupService.BucketRetention;
+        AddExecution(wf, ExecutionStatus.Succeeded, retentionStart.AddHours(-200), retentionStart.AddHours(-200).AddMinutes(1));
+        AddExecution(wf, ExecutionStatus.Succeeded, currentHour.AddHours(-2), currentHour.AddHours(-2).AddMinutes(1));
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await NewService().RunPassAsync(TestContext.Current.CancellationToken);
+
+        var ct = TestContext.Current.CancellationToken;
+        var state = await _db.ExecutionStatsRollupStates.AsNoTracking().SingleAsync(ct);
+        state.BackfillComplete.Should().BeTrue();
+        state.CoverageStartUtc.Should().Be(retentionStart);
+        (await _db.ExecutionHourlyStats.AsNoTracking().Select(s => s.HourUtc).ToListAsync(ct))
+            .Should().Equal(currentHour.AddHours(-2));
+        (await new DashboardRollupReader(_db).ReadWindowAggregatesAsync(AccessibleFolderSet.Unrestricted, 720, ct))
+            .Should().NotBeNull("the longest dashboard window is covered");
+    }
+
+    [Fact]
     public async Task Reader_MatchesTheLiveComputation()
     {
         // The property that matters: both paths must agree.

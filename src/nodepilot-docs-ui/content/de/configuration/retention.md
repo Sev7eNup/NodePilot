@@ -39,6 +39,6 @@ Dashboard und Workflow-Listen lesen ein **precomputed** `WorkflowStats`-Aggregat
 | `Stats:WindowDays` | `7` | Zeitfenster der aggregierten KPIs |
 | `Stats:Rollup:Enabled` | `true` | Vorberechnete Stunden-Buckets für die Dashboard-Historie. Aus geschaltet rechnet das Dashboard jedes Fenster wieder aus den Rohzeilen — korrekt, aber auf großen Beständen deutlich langsamer |
 
-Die Stunden-Buckets tragen die historischen Dashboard-Zahlen (Status-Zähler, Retry-Anteil, Dauer, Fehlerursachen). Laufende Werte — aktive Läufe, Queue-Tiefe, Heartbeats — werden nie vorberechnet. Solange die Erstbefüllung ein Fenster noch nicht deckt, liefert das Dashboard dort weiterhin die live gerechneten Zahlen.
+Die Stunden-Buckets tragen die historischen Dashboard-Zahlen (Status-Zähler, Retry-Anteil, Dauer, Fehlerursachen). Laufende Werte — aktive Läufe, Queue-Tiefe, Heartbeats — werden nie vorberechnet. Solange die Erstbefüllung ein Fenster noch nicht deckt, liefert das Dashboard dort weiterhin die live gerechneten Zahlen. Dasselbe gilt, wenn die Buckets nicht mehr fortgeschrieben werden — Rollup abgeschaltet oder länger als zehn Minuten fehlerhaft —, damit das Dashboard nie Buckets zeigt, denen die letzten Stunden fehlen. Buckets, die älter als 32 Tage sind (längstes Dashboard-Fenster von 30 Tagen plus Puffer), löscht der Rollup-Dienst selbst; eine eigene Aufbewahrungs-Einstellung dafür gibt es nicht.
 
 `GET /api/stats/dashboard` liefert den letzten Refresh-Stand, keine Live-Zahlen. Settings-Mutationen schreiben `SETTINGS_STATS_UPDATED` ins Audit-Log.
