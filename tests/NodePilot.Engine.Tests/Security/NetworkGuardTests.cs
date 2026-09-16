@@ -160,6 +160,71 @@ public class NetworkGuardTests
         act.Should().Throw<InvalidOperationException>();
     }
 
+    // ---- Mixed DNS records: one usable address is enough ----
+
+    private static System.Net.IPAddress Ip(string s) => System.Net.IPAddress.Parse(s);
+
+    [Fact]
+    public void MixedRecords_RoutableAlongsideLinkLocal_IsAllowed()
+    {
+        // A domain-joined Windows host registers its IPv6 link-local addresses in DNS next to
+        // its routable ones, so this set is what an ordinary internal target looks like.
+        // Rejecting the host for the link-local entries would make it unreachable with no way
+        // to allow it, since link-local cannot be put on RestApi:AllowedHosts.
+        var act = () => NetworkGuard.AssertAnyAddressUsable(
+            "cm1.corp.contoso.com",
+            new[] { Ip("fe80::9933:55be:3abe:fd90"), Ip("fe80::7e0b:a9b3:abc9:e4e9"), Ip("192.168.240.10"), Ip("10.0.0.7") },
+            blockPrivate: false);
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void MixedRecords_OnlyBlockedAddresses_StillRejected()
+    {
+        // The relaxation is "at least one usable", not "any address excuses the rest".
+        var act = () => NetworkGuard.AssertAnyAddressUsable(
+            "linklocal-only.corp",
+            new[] { Ip("fe80::1"), Ip("169.254.169.254") },
+            blockPrivate: false);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*link-local*");
+    }
+
+    [Fact]
+    public void MixedRecords_PrivateStillBlockedWhenPolicySaysSo()
+    {
+        // Private-network blocking is unaffected: a link-local plus an RFC1918 address leaves
+        // nothing usable while RestApi:BlockPrivateNetworks is on.
+        var act = () => NetworkGuard.AssertAnyAddressUsable(
+            "internal.corp",
+            new[] { Ip("fe80::1"), Ip("10.0.0.7") },
+            blockPrivate: true);
+
+        act.Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
+    public void MixedRecords_PublicAddressSurvivesPrivateBlocking()
+    {
+        var act = () => NetworkGuard.AssertAnyAddressUsable(
+            "mixed.example.com",
+            new[] { Ip("10.0.0.7"), Ip("8.8.8.8") },
+            blockPrivate: true);
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void NoAddresses_IsRejected()
+    {
+        // An empty resolution must not read as "nothing blocked, therefore fine".
+        var act = () => NetworkGuard.AssertAnyAddressUsable(
+            "void.example.com", Array.Empty<System.Net.IPAddress>(), blockPrivate: true);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*did not resolve*");
+    }
+
     // ---- EnforceConnect: TCP-connect-time policy (DNS rebinding closure) ----
 
     [Fact]

@@ -50,8 +50,33 @@ public static class NetworkGuard
         // DNS name can be compromised or rebound to 169.254.169.254.
         var blockPrivate = ShouldBlockPrivateNetworks(config)
                            && !IsHostAllowlisted(config, uri.Host);
+
+        AssertAnyAddressUsable(uri.Host, addresses, blockPrivate);
+    }
+
+    /// <summary>
+    /// Requires one usable address, mirroring <see cref="EnforceConnect"/>. A name routinely
+    /// resolves to a mix: a domain-joined Windows host registers its IPv6 link-local addresses
+    /// in DNS next to its routable ones, and demanding that every address pass would make such
+    /// a host permanently unreachable with no way to allow it. The blocked addresses stay
+    /// unreachable regardless — the connect callback re-applies this policy per address and
+    /// opens a socket only to one that survives there.
+    ///
+    /// <para>Takes the addresses rather than resolving them so the policy is testable; a test
+    /// cannot steer what a hostname resolves to.</para>
+    /// </summary>
+    internal static void AssertAnyAddressUsable(string host, IPAddress[] addresses, bool blockPrivate)
+    {
+        string? lastReason = null;
         foreach (var ip in addresses)
-            AssertAddressAllowed(ip, uri.Host, blockPrivate);
+        {
+            var reason = DescribeBlock(ip, host, blockPrivate);
+            if (reason is null) return;
+            lastReason = reason;
+        }
+
+        throw new InvalidOperationException(
+            lastReason ?? $"REST API: host '{host}' did not resolve to any address");
     }
 
     /// <summary>
@@ -213,13 +238,19 @@ public static class NetworkGuard
         return !string.Equals(raw, bool.FalseString, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void AssertAddressAllowed(IPAddress ip, string host, bool blockPrivate)
+    /// <summary>
+    /// Why this address may not be used, or null when it may. Same policy as the per-address
+    /// branch of <see cref="EnforceConnect"/>; kept as a message so the caller can report the
+    /// rule that fired once it knows no address survived.
+    /// </summary>
+    private static string? DescribeBlock(IPAddress ip, string host, bool blockPrivate)
     {
         ip = NormalizeAddress(ip);
         if (IsLinkLocal(ip))
-            throw new InvalidOperationException($"REST API: host '{host}' resolves to a link-local address ({ip}); this range (including the cloud metadata endpoint 169.254.169.254) is always blocked by the SSRF guard and cannot be enabled through RestApi:AllowedHosts.");
+            return $"REST API: host '{host}' resolves to a link-local address ({ip}); this range (including the cloud metadata endpoint 169.254.169.254) is always blocked by the SSRF guard and cannot be enabled through RestApi:AllowedHosts.";
         if (blockPrivate && (IPAddress.IsLoopback(ip) || IsPrivateNetwork(ip)))
-            throw new InvalidOperationException($"REST API: host '{host}' resolves to loopback/private address {ip} (blocked by RestApi:BlockPrivateNetworks)");
+            return $"REST API: host '{host}' resolves to loopback/private address {ip} (blocked by RestApi:BlockPrivateNetworks)";
+        return null;
     }
 
     private static bool IsLinkLocal(IPAddress ip)
