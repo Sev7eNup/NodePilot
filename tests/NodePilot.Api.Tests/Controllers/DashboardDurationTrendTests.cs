@@ -37,10 +37,11 @@ public sealed class DashboardDurationTrendTests
         FolderId = folderId ?? SharedWorkflowFolder.RootFolderId,
     };
 
-    [Fact]
-    public async Task CalculatesMedianAndNearestRankP95AcrossRunsAndLeavesGaps()
+    // The query is written per SQL dialect. Each scenario below runs on SQLite as a unit test and,
+    // through Provider_MatchesTheSqliteScenarios, on real PostgreSQL and SQL Server.
+
+    private static async Task MedianAndNearestRankP95(NodePilotDbContext db)
     {
-        using var db = TestDbFactory.Create();
         var workflow = Workflow();
         foreach (var ms in Enumerable.Range(1, 20)) Add(db, workflow, ms * 1000);
         Add(db, workflow, 0, Now.AddHours(-2));
@@ -52,10 +53,8 @@ public sealed class DashboardDurationTrendTests
         result.Buckets[0].Should().Be(new DurationBucket(Now.AddDays(-1), 0, null, null));
     }
 
-    [Fact]
-    public async Task CountsOnlyValidCompletedSuccessesAndFailuresInsideWindow()
+    private static async Task OnlyValidCompletedRunsInsideWindow(NodePilotDbContext db)
     {
-        using var db = TestDbFactory.Create();
         var workflow = Workflow();
         Add(db, workflow, 1000, Now.AddDays(-1));
         Add(db, workflow, 3000, status: ExecutionStatus.Failed);
@@ -73,14 +72,8 @@ public sealed class DashboardDurationTrendTests
         result.Buckets[^1].P95Ms.Should().Be(3000);
     }
 
-    [Theory]
-    [InlineData(1, 12)]
-    [InlineData(24, 24)]
-    [InlineData(168, 24)]
-    [InlineData(720, 24)]
-    public async Task WindowsUseAllSamplesAndFilterByWorkflow(int hours, int count)
+    private static async Task WindowAndWorkflowFilter(NodePilotDbContext db, int hours, int count)
     {
-        using var db = TestDbFactory.Create();
         var selected = Workflow("Selected");
         Add(db, selected, 500, Now.AddHours(-hours));
         Add(db, selected, 1500, Now.AddMinutes(-1));
@@ -94,12 +87,10 @@ public sealed class DashboardDurationTrendTests
         result.Workflows.Select(w => w.Name).Should().Equal("Other", "Selected");
     }
 
-    [Fact]
-    public async Task FolderScopeProtectsBothSeriesAndWorkflowNames()
+    private static async Task FolderScopeProtectsSeriesAndNames(NodePilotDbContext db)
     {
-        using var db = TestDbFactory.Create();
-        var allowed = new SharedWorkflowFolder { Id = Guid.NewGuid(), Name = "Allowed" };
-        var hidden = new SharedWorkflowFolder { Id = Guid.NewGuid(), Name = "Hidden" };
+        var allowed = new SharedWorkflowFolder { Id = Guid.NewGuid(), Name = "Allowed", ParentFolderId = SharedWorkflowFolder.RootFolderId };
+        var hidden = new SharedWorkflowFolder { Id = Guid.NewGuid(), Name = "Hidden", ParentFolderId = SharedWorkflowFolder.RootFolderId };
         db.SharedWorkflowFolders.AddRange(allowed, hidden);
         var visible = Workflow("Visible", allowed.Id);
         var secret = Workflow("Secret", hidden.Id);
@@ -117,6 +108,54 @@ public sealed class DashboardDurationTrendTests
         var empty = await service.ReadAsync(AccessibleFolderSet.None, 24, null, default, Now);
         empty.Workflows.Should().BeEmpty();
         empty.Buckets.Should().OnlyContain(b => b.Count == 0 && b.MedianMs == null && b.P95Ms == null);
+    }
+
+    private static async Task OnSqlite(Func<NodePilotDbContext, Task> scenario)
+    {
+        using var db = TestDbFactory.Create();
+        await scenario(db);
+    }
+
+    [Fact]
+    public Task CalculatesMedianAndNearestRankP95AcrossRunsAndLeavesGaps() => OnSqlite(MedianAndNearestRankP95);
+
+    [Fact]
+    public Task CountsOnlyValidCompletedSuccessesAndFailuresInsideWindow() => OnSqlite(OnlyValidCompletedRunsInsideWindow);
+
+    [Theory]
+    [InlineData(1, 12)]
+    [InlineData(24, 24)]
+    [InlineData(168, 24)]
+    [InlineData(720, 24)]
+    public Task WindowsUseAllSamplesAndFilterByWorkflow(int hours, int count)
+        => OnSqlite(db => WindowAndWorkflowFilter(db, hours, count));
+
+    [Fact]
+    public Task FolderScopeProtectsBothSeriesAndWorkflowNames() => OnSqlite(FolderScopeProtectsSeriesAndNames);
+
+    [Theory]
+    [Trait("Category", "DatabaseIntegration")]
+    [InlineData("postgres")]
+    [InlineData("sqlserver")]
+    public async Task Provider_MatchesTheSqliteScenarios(string provider)
+    {
+        if (!ProviderTestDatabase.IsConfigured(provider)) Assert.Skip($"No isolated {provider} test server configured.");
+        var scenarios = new List<Func<NodePilotDbContext, Task>>
+        {
+            MedianAndNearestRankP95,
+            OnlyValidCompletedRunsInsideWindow,
+            FolderScopeProtectsSeriesAndNames,
+        };
+        foreach (var (hours, count) in new[] { (1, 12), (24, 24), (168, 24), (720, 24) })
+            scenarios.Add(db => WindowAndWorkflowFilter(db, hours, count));
+
+        foreach (var scenario in scenarios)
+        {
+            // One database per scenario, so seeded rows never leak into the next assertion.
+            await using var database = await ProviderTestDatabase.CreateAsync(provider);
+            await using var db = database.CreateContext();
+            await scenario(db);
+        }
     }
 
     [Theory]

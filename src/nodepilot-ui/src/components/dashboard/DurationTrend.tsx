@@ -32,8 +32,10 @@ export function DurationTrend({ windowHours, windowLabel, tokens, workflowId, on
 }>) {
   const { t } = useTranslation(['dashboard', 'common']);
   const query = useQuery(durationTrendQuery(windowHours, workflowId));
-  // Keep the available choices while a newly selected series loads.
-  const optionsQuery = useQuery(durationTrendQuery(windowHours));
+  // Keep the available choices while a newly selected series loads. Only while it loads: once the
+  // selected series is there it carries the same list, and polling the unfiltered aggregation next
+  // to it would compute every percentile twice.
+  const optionsQuery = useQuery({ ...durationTrendQuery(windowHours), enabled: !query.data });
   const workflows = query.data?.workflows ?? optionsQuery.data?.workflows ?? [];
   const option = useMemo<EChartsOption>(() => {
     const buckets = query.data?.buckets ?? [];
@@ -79,7 +81,7 @@ export function DurationTrend({ windowHours, windowLabel, tokens, workflowId, on
 
   return (
     <div className="flex flex-col flex-1 min-h-[240px] min-w-0" aria-busy={query.isFetching}>
-      <select className="np-input w-full text-xs mb-2" aria-label={t('dashboard:durationTrend.workflow')}
+      <select className="input-field mb-2" aria-label={t('dashboard:durationTrend.workflow')}
         value={workflowId} onChange={event => onWorkflowChange(event.target.value)}>
         <option value="">{t('dashboard:durationTrend.allWorkflows')}</option>
         {workflowId && !workflows.some(w => w.id === workflowId) && <option value={workflowId}>{t('dashboard:durationTrend.unavailable')}</option>}

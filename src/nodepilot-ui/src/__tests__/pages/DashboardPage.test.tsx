@@ -614,6 +614,14 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('combobox', { name: 'Workflow for execution duration' })).toHaveValue('wf-1');
   });
 
+  it('styles the duration workflow filter with the card input class, which every skin defines', async () => {
+    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)));
+    renderPage();
+    const filter = await screen.findByRole('combobox', { name: 'Workflow for execution duration' });
+    expect(filter).toHaveClass('input-field');
+    expect(filter).not.toHaveClass('np-input');
+  });
+
   it('retries a failed duration request without hiding other dashboard cards', async () => {
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)));
     server.use(http.get(`${BASE}/api/stats/duration-trend`, () => new HttpResponse(null, { status: 500 })));
