@@ -42,7 +42,7 @@ See SCOrch import, the Workflow Designer, execution history, Live Ops, logs and 
 <details>
 <summary><b>📊 Dashboard</b></summary>
 
-![Dashboard — run status, success-rate trend, p95 top workflows, quick actions](docs/images/dashboard-dark.png)
+![Dashboard — run status, execution-duration percentiles, most common errors, quick actions](docs/images/dashboard-dark.png)
 
 </details>
 
