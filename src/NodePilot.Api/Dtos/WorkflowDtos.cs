@@ -125,6 +125,14 @@ public record WorkflowResponse(
 }
 
 /// <summary>
+/// Id and display name only — for surfaces that resolve or offer workflow names without rendering
+/// anything else about them, such as the executions filter. The full list item costs a window
+/// query over execution history, a per-folder permission lookup and a definition-facts resolve,
+/// none of which a name dropdown uses.
+/// </summary>
+public record WorkflowNameItem(Guid Id, string Name);
+
+/// <summary>
 /// One row of <c>GET /api/workflows</c>.
 ///
 /// <para>Everything <see cref="WorkflowResponse"/> carries except <c>DefinitionJson</c>. A
@@ -136,14 +144,6 @@ public record WorkflowResponse(
 /// the definition: whether starting this workflow asks the caller for input. False means it can
 /// be started straight away.</para>
 /// </summary>
-/// <summary>
-/// Id and display name only — for surfaces that resolve or offer workflow names without rendering
-/// anything else about them, such as the executions filter. The full list item costs a window
-/// query over execution history, a per-folder permission lookup and a definition-facts resolve,
-/// none of which a name dropdown uses.
-/// </summary>
-public record WorkflowNameItem(Guid Id, string Name);
-
 public record WorkflowListItemResponse(
     Guid Id, string Name, string? Description,
     int Version, bool IsEnabled, DateTime CreatedAt, DateTime UpdatedAt, string? CreatedBy, string? UpdatedBy)
