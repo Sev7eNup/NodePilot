@@ -9,7 +9,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.SqlClient" VersionOverride="7.0.3" />
+    <!-- Direct, so this project binds the same SqlClient as Engine and Scheduler instead of the
+         older one EF Core's SQL Server provider floors at. The version comes from
+         Directory.Packages.props like every other package. -->
+    <PackageReference Include="Microsoft.Data.SqlClient" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
