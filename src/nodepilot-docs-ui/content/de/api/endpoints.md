@@ -314,7 +314,7 @@ curl -s -b cookie.jar -H "X-CSRF-Token: $(csrf_token)" -X PUT "$NP/api/admin/set
 | Folder-Permissions | `GET/POST /api/shared-workflow-folders/{folderId}/permissions`, `PUT/DELETE /{permissionId}` |
 | Settings | `GET /api/admin/settings`, `GET\|PUT /{section}`, `GET /status\|system-info\|effective-sizing`, `POST /test/smtp\|test/llm\|test/ldap` (Admin; Authentication-PUT im Cluster = 409) |
 | DB-Admin | `GET /api/dbadmin/tables`, `GET\|PATCH\|DELETE /tables/{name}/rows`, `GET /info`, `POST /query` (Admin) |
-| Dashboard | `GET /api/stats/dashboard`, `GET /api/stats/failure-causes?windowHours=N` (1..720, Default 24 — letzte Fehlschläge, gruppiert nach normalisierter Meldung; folder-gescopt wie das Dashboard), `GET /api/stats/sidebar-counts` (drei Nav-Badge-Zähler für die SPA, folder-gescopt; bewusst ohne `np`-Befehl und ohne MCP-Tool — `np stats dashboard` liefert dieselben Zahlen) |
+| Dashboard | `GET /api/stats/dashboard`, `GET /api/stats/failure-causes?windowHours=N` (1..720, Default 24 — letzte Fehlschläge, gruppiert nach normalisierter Meldung; folder-gescopt wie das Dashboard), `GET /api/stats/sidebar-counts` (drei Nav-Badge-Zähler für die SPA, folder-gescopt; bewusst ohne `np`-Befehl und ohne MCP-Tool — `np stats dashboard` liefert dieselben Zahlen), `GET /api/stats/duration-trend?windowHours=N&workflowId=` (1/24/168/720, Default 24, alles andere fällt auf 24 zurück — Median- und P95-Laufzeit je Bucket, für alle Workflows oder einen, folder-gescopt; Chart-Serie der SPA, bewusst ohne `np`-Befehl und ohne MCP-Tool — `np stats dashboard` liefert dieselben Läufe) |
 | Activity-Catalog | `GET /api/activity-catalog` |
 | Scheduler | `GET /api/triggers/schedule/next-fires` |
 | System | `GET /api/system/host-info` (alle Rollen) |

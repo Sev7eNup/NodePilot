@@ -1451,10 +1451,11 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 
 **Prüfpunkte:**
 - [ ] Stat-Cards sichtbar: Total Workflows, Running Executions, Success Rate, Machines
-- [ ] 24h Execution-Chart rendert
-- [ ] Erfolgsraten-Trend: einzelne aktive Stunden bleiben als Punkte sichtbar; Stunden ohne Läufe werden nicht verbunden (Browser-Regression in `e2e/dashboard.spec.ts`).
-- [ ] Trend-Punkte bei 0 % und 100 % bleiben sichtbar; Hover zeigt erfolgreiche/abgeschlossene Läufe. Helles und dunkles Theme prüfen.
-- [ ] Zusammenhängende Trend-Werte erscheinen als Linie ohne permanente Punkte. Das Diagramm füllt die Kartenhöhe bis zum unteren Innenabstand, auch nach einem Wechsel zwischen Desktop- und Mobilbreite.
+- [ ] 24h Execution-Chart rendert; bei Fenster „1 Stunde" bleibt der einzelne Bucket als gestapelter Balken sichtbar.
+- [ ] Laufzeit-Diagramm („Ausführungsdauer"): Median als durchgezogene, P95 als gestrichelte Linie, beide in der Legende; die Workflow-Auswahl darüber schaltet zwischen „Alle Workflows" und einem einzelnen Workflow um (Browser-Regression in `e2e/dashboard.spec.ts`).
+- [ ] Buckets ohne abgeschlossene Läufe werden nicht verbunden; eine einzelne beobachtete Stunde bleibt als Punkt sichtbar. Helles und dunkles Theme prüfen.
+- [ ] Hover zeigt Median, P95 und die Anzahl der Läufe des Buckets. Ohne abgeschlossene Läufe im Fenster erscheint der Leer-Text, bei einem Ladefehler die Meldung mit „Erneut versuchen".
+- [ ] Das Laufzeit-Diagramm füllt die Kartenhöhe bis zum unteren Innenabstand, auch nach einem Wechsel zwischen Desktop- und Mobilbreite.
 - [ ] "Top Workflows" Liste zeigt nach Aktivität sortiert
 - [ ] "Recent Executions" Liste ist aktuell
 - [ ] Keine "loading"-States hängen
