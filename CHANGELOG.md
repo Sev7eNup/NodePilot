@@ -12,8 +12,91 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-16
+
+The dashboard answers its history from precomputed hourly buckets and charts execution durations
+instead of a success-rate trend, the web UI gains minimal light and dark skins, HA recovery and
+execution dispatch hold up on real PostgreSQL and SQL Server, and the desktop package can be
+installed over itself, uninstalled completely and installed again. The database migration history
+was consolidated into one baseline, which is why this is a minor release: **a 1.3.0 database
+cannot be upgraded** (see below).
+
+### Upgrading from 1.3.0
+
+- **There is no automatic upgrade path from 1.3.0 or earlier.** The development-era migration
+  history was replaced by a single baseline (`20260915180058_InitialBaseline`). A database created
+  by 1.3.0 does not know that migration, so 1.4.0 tries to create the schema again and the API stops
+  at start-up with `relation "AuditLog" already exists`. The server update rolls back and keeps
+  1.3.0 running; the desktop setup reports the failed provisioning. To move to 1.4.0: export a
+  system configuration backup (`.npbackup`) on 1.3.0, install 1.4.0 against a new, empty database
+  — on the desktop, uninstall with *Delete everything* first — and restore the backup. Workflows,
+  folders, machines, credentials, globals, users, custom activities, alerting and settings come
+  across; execution history, audit log and statistics do not. Databases created by 1.4.0 upgrade
+  normally from here on.
+
+### Added
+
+- **Execution duration on the dashboard.** The success-rate trend is replaced by median and P95
+  execution duration per time bucket, for all workflows or one selected workflow, backed by
+  `GET /api/stats/duration-trend`. Hours without runs stay gaps, and a window with a single bucket
+  shows its counts as a stacked bar.
+- **Minimal light and dark skins** across the web UI, with an isolated preview, flat shared
+  surfaces, and accessible designer and editor colours.
+- **Resizable AI chat.** The chat page column can be dragged wider from either edge and the floating
+  widget from its left edge; widths are remembered per browser and a double-click restores the
+  default. The global launcher no longer appears inside the workflow designer, which has its own
+  assistant.
+- **Branded installer wizards.** The server and desktop setups show the NodePilot logo.
+
+### Changed
+
+- **Dashboard history from hourly buckets.** Historical figures (status counts, retry share,
+  duration, failure causes) are summarised once per hour and workflow and then only summed, so a
+  30-day window no longer scans millions of rows. An hour stays provisional while runs started in it
+  are still open. The dashboard falls back to computing from raw rows while the initial backfill
+  runs, and also when the buckets stop being updated (rollup disabled with
+  `Stats:Rollup:Enabled=false`, or failing). Buckets older than 32 days are deleted by the rollup
+  itself. Live values are never precomputed.
+- **HA recovery works in bounded batches.** A new leader recovers orphaned executions at most 100 at
+  a time, re-checking lease owner, epoch and expiry per batch and releasing the lease lock between
+  batches, so a large backlog no longer holds the lease or times it out.
+- **Atomic dispatch claims.** Coordinated execution dispatch claims its next item atomically
+  (`FOR UPDATE SKIP LOCKED` on PostgreSQL, `UPDLOCK, READPAST` on SQL Server); new metrics
+  `nodepilot_dispatch_claims_total` and `nodepilot_dispatch_claim_duration_milliseconds`.
+- **`llmQuery` retries without `temperature`** when a reasoning model rejects the parameter as
+  unsupported, in both wire dialects, and remembers that per endpoint and model.
+- **Desktop setup:** there is no default account or password — the setup page says so; the first
+  administrator is created there. Data left behind by an uninstall is offered for keeping or
+  deleting on the next install (`/DISCARDDATA=1` unattended).
+
 ### Fixed
 
+- **The desktop uninstall asks about the data and can remove everything.** It used to keep the
+  database unconditionally, so a reinstall landed on a login form for an account the user no
+  longer remembered. It now offers *Keep data* / *Delete everything* / *Cancel*
+  (`/PURGEDATA=1` unattended). *Delete everything* also removes `C:\ProgramData\NodePilot`, the
+  per-user NodePilot folders and the certificate's private key; a run that leaves something behind
+  is reported.
+- **Installing the desktop package over a running installation no longer copies over files in
+  use.** Setup backs up the database and stops the shell, the clients, both services and any
+  surviving PostgreSQL process before copying, and aborts before touching a program file if that
+  fails. Services are removed only once Windows has really deleted them, so re-registration no
+  longer fails with "marked for deletion".
+- **The desktop API service starts on slow machines.** Windows ends a service that has not
+  reported back within 30 seconds; the provisioner now warms the binaries, waits for PostgreSQL and
+  starts the API again if Windows ended the first attempt. A failed provisioning exits with code 20
+  instead of 0 and no longer blocks an unattended install on a hidden message box.
+- **The service's early start-up configuration is read from the installation.** It was read from
+  the working directory, which is `System32` for a Windows service: the first log lines landed in
+  `C:\Windows\System32\logs` and performance sizing ignored the installed settings, including
+  `Performance:ManualTuning`. It now follows `--contentRoot`.
+- **`/metrics` works again.** A dependency update moved the stable OpenTelemetry packages to 1.18
+  while the Prometheus exporter stayed on 1.17, and every scrape containing a histogram answered
+  HTTP 500 (since 1.2.15). The prerelease packages now match, and a test serves a real scrape.
+- **The REST activity reaches hosts whose DNS records mix blocked and usable addresses.** A
+  domain-joined Windows host registers IPv6 link-local addresses next to its routable ones, and the
+  SSRF pre-check rejected it outright. It now requires one usable address — the rule the connect
+  callback already applied — and still never connects to a blocked one.
 - **An install or update no longer takes a working installation apart to find out the host cannot
   run the new binaries.** The server artifact is framework-dependent, so a build made against a
   newer .NET patch than the target machine carries dies at the apphost — before managed code, with
@@ -1481,7 +1564,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.3.0...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.0...main
+[1.4.0]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.0
 [1.3.0]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.3.0
 [1.2.26]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.26
 [1.2.25]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.25
