@@ -23,13 +23,17 @@ namespace NodePilot.Api.Services;
 internal sealed class DashboardRollupReader(NodePilotDbContext db)
 {
     /// <summary>
-    /// True when the buckets cover everything from <paramref name="since"/> onwards.
+    /// True when the buckets cover everything from <paramref name="since"/> onwards and are being
+    /// kept current. Buckets from a rollup that is disabled or keeps failing would silently miss
+    /// every hour since its last pass.
     /// </summary>
     public async Task<bool> CoversAsync(DateTime since, CancellationToken ct)
     {
         var state = await db.ExecutionStatsRollupStates.AsNoTracking()
             .FirstOrDefaultAsync(s => s.Id == ExecutionStatsRollupService.StateRowId, ct);
-        return state?.CoverageStartUtc is { } start && start <= since;
+        return state is { CoverageStartUtc: { } start, CoverageEndUtc: not null }
+               && start <= since
+               && state.UpdatedAt >= DateTime.UtcNow - ExecutionStatsRollupService.StaleAfter;
     }
 
     /// <summary>

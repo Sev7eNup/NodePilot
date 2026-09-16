@@ -39,6 +39,6 @@ The dashboard and the workflow lists read a **precomputed** `WorkflowStats` aggr
 | `Stats:WindowDays` | `7` | The time window of the aggregated KPIs |
 | `Stats:Rollup:Enabled` | `true` | Precomputed hourly buckets for the dashboard history. Turned off, the dashboard recomputes every window from the raw rows — correct, but markedly slower on large histories |
 
-The hourly buckets carry the historical dashboard figures (status counts, retry share, duration, failure causes). Live values — running executions, queue depth, heartbeats — are never precomputed. While the initial fill does not yet cover a window, the dashboard keeps serving that window from the live computation.
+The hourly buckets carry the historical dashboard figures (status counts, retry share, duration, failure causes). Live values — running executions, queue depth, heartbeats — are never precomputed. While the initial fill does not yet cover a window, the dashboard keeps serving that window from the live computation. The same happens when the buckets stop being updated — rollup switched off or failing for more than ten minutes — so the dashboard never shows buckets that are missing recent hours. Buckets older than 32 days (the longest dashboard window of 30 days plus a margin) are deleted by the rollup service itself; no separate retention setting exists for them.
 
 `GET /api/stats/dashboard` returns the state as of the last refresh, not live numbers. Settings mutations write `SETTINGS_STATS_UPDATED` to the audit log.
