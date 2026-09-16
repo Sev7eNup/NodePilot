@@ -78,7 +78,7 @@ if ($PurgeData) {
             }
         }
     }
-    # Versions up to 1.3.1 wrote their first log lines relative to the service's working directory.
+    # Versions before 1.4.0 wrote their first log lines relative to the service's working directory.
     Invoke-UninstallStep 'Deleting early start-up logs' {
         $legacyLogDir = Join-Path $env:SystemRoot 'System32\logs'
         if (Test-Path -LiteralPath $legacyLogDir) {
