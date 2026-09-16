@@ -73,6 +73,8 @@ $RenderedConfig = Join-Path $AppPath 'appsettings.Production.json'
 
 function Write-Step([string] $m) { Write-Host "==> $m" -ForegroundColor Cyan }
 
+. (Join-Path $PSScriptRoot 'DesktopRuntime.ps1')
+
 foreach ($p in @($InstallPath, $PgBinPath, $AppPath, $ApiExe, $initdb, $pg_ctl, $psql, $TemplatePath)) {
     if (-not (Test-Path -LiteralPath $p)) { throw "Required path not found: $p" }
 }
@@ -313,17 +315,11 @@ function Invoke-Native([string] $exe, [string[]] $arguments, [hashtable] $env = 
 
 # --- 0. idempotency: remove any prior NodePilot services -------------------------------------
 # A re-run or upgrade must not collide with a running postmaster on the reused data directory,
-# and must free the old binaries. Stopping and deleting both services is a no-op on a clean
-# install.
+# and must free the old binaries. Both services are registered again under the same names below,
+# so they must be fully gone, not merely marked for deletion. A no-op on a clean install.
 Write-Step 'Removing any prior NodePilot services'
-foreach ($svc in @($ApiServiceName, $DbServiceName)) {
-    if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
-        & sc.exe stop $svc | Out-Null
-        Start-Sleep -Seconds 2
-        & sc.exe delete $svc | Out-Null
-        Start-Sleep -Seconds 1
-    }
-}
+Stop-DesktopRuntime -InstallPath $InstallPath -DataPath $DataPath `
+    -ApiServiceName $ApiServiceName -DbServiceName $DbServiceName -RemoveServices
 
 Write-Step 'Securing runtime overrides and backups'
 Move-DesktopRuntimeOverridesToSecrets
@@ -441,12 +437,7 @@ try {
 
 # --- 4. postgres windows service (NetworkService, boot-start) --------------------------------
 Write-Step "Registering Postgres service '$DbServiceName'"
-if (Get-Service -Name $DbServiceName -ErrorAction SilentlyContinue) {
-    & sc.exe stop $DbServiceName | Out-Null
-    Start-Sleep -Seconds 2
-    & sc.exe delete $DbServiceName | Out-Null
-    Start-Sleep -Seconds 2
-}
+Remove-DesktopService -Name $DbServiceName
 Invoke-Native $pg_ctl @('register', '-N', $DbServiceName, '-D', $PgData,
     '-U', 'NT AUTHORITY\NetworkService', '-S', 'auto', '-o', "-p $PgPort")
 & sc.exe config $DbServiceName DisplayName= "$DbServiceDisplayName" | Out-Null
@@ -495,12 +486,7 @@ Set-Acl -LiteralPath $RenderedConfig -AclObject $cfgAcl
 
 # --- 7. API windows service (LocalSystem, boot-start, depends on DB) --------------------------
 Write-Step "Registering API service '$ApiServiceName'"
-if (Get-Service -Name $ApiServiceName -ErrorAction SilentlyContinue) {
-    & sc.exe stop $ApiServiceName | Out-Null
-    Start-Sleep -Seconds 2
-    & sc.exe delete $ApiServiceName | Out-Null
-    Start-Sleep -Seconds 2
-}
+Remove-DesktopService -Name $ApiServiceName
 # New-Service rather than sc.exe create: the .NET SCM API stores the quoted binary path and its
 # arguments verbatim in ImagePath, so an install path containing spaces is handled correctly.
 # sc.exe's `binPath= <value>` loses that quoting through PowerShell native-argument handling and
@@ -562,8 +548,21 @@ foreach ($protectedDir in @($KeyRingDir, $LogsDir, $ArchiveDir)) {
 # --- 9. start services + health poll ---------------------------------------------------------
 Write-Step 'Starting services'
 & sc.exe start $DbServiceName | Out-Null
-Start-Sleep -Seconds 3
-& sc.exe start $ApiServiceName | Out-Null
+# Windows ends a service that has not connected to the service manager within 30 seconds, and the
+# API connects only after it has loaded its binaries, waited for the database and migrated it.
+# Reading the binaries once here moves the cold file cache and the antivirus scan of a fresh
+# install out of that window; starting only once PostgreSQL accepts connections does the same for
+# the database wait.
+Write-Step 'Warming up the application files'
+foreach ($binary in @(Get-ChildItem -LiteralPath $AppPath -Recurse -File -Include '*.dll', '*.exe')) {
+    [void][System.IO.File]::ReadAllBytes($binary.FullName)
+}
+$pgIsReady = Join-Path $PgBinPath 'pg_isready.exe'
+for ($i = 0; $i -lt 60; $i++) {
+    & $pgIsReady -h 127.0.0.1 -p $PgPort -q
+    if ($LASTEXITCODE -eq 0) { break }
+    Start-Sleep -Seconds 1
+}
 
 Write-Step 'Waiting for readiness'
 $ready = $false
@@ -574,7 +573,20 @@ $origin = "https://localhost:$HttpsPort"
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { param($s,$certArg,$chain,$errs) $certArg.Thumbprint -eq $certThumbprint }
 $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
+# The first start after an install can still miss the 30-second window on a slow machine: every
+# binary is cold and scanned by antivirus, and the empty database gets its whole schema. A second
+# start finds the binaries cached and the migrations already committed.
+$apiStartAttempts = 0
 for ($i = 0; $i -lt 90; $i++) {
+    $apiState = (Get-CimInstance -ClassName Win32_Service -Filter "Name='$ApiServiceName'").State
+    if ($apiState -eq 'Stopped') {
+        if ($apiStartAttempts -ge 5) { break }
+        if ($apiStartAttempts -gt 0) {
+            Write-Warning "The '$ApiServiceName' service stopped while starting. Starting it again."
+        }
+        $apiStartAttempts++
+        & sc.exe start $ApiServiceName | Out-Null
+    }
     try {
         $resp = Invoke-WebRequest -Uri "$origin/healthz/ready" -UseBasicParsing -TimeoutSec 3
         if ($resp.StatusCode -eq 200) { $ready = $true; break }
@@ -595,6 +607,9 @@ for ($i = 0; $i -lt 90; $i++) {
 # the interactive user's profile, the one Inno starts the shell as, restricted to that user and
 # SYSTEM. No-op on re-install, where the token is absent once users exist.
 Write-Step 'Writing admin setup handoff'
+# Copies from an earlier installation carry a token the server no longer accepts, or none is due
+# at all because an administrator exists. Either way the shell would open a setup page that fails.
+Remove-DesktopSetupHandoffs
 $tokenPath = Join-Path $DataPath 'admin-setup.token'
 if (Test-Path -LiteralPath $tokenPath) {
     # The API (LocalSystem) creates the token with an owner-only ACL, so an elevated Administrator

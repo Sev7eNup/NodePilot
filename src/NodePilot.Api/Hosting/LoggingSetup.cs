@@ -36,7 +36,6 @@ internal static class LoggingSetup
     /// </summary>
     public static IConfiguration BuildBootstrapConfiguration()
     {
-        var basePath = Directory.GetCurrentDirectory();
         var bootstrapEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
 
         // CLI args are mirrored from the process command line so a `dotnet run
@@ -48,6 +47,7 @@ internal static class LoggingSetup
         var cliArgs = commandLineArgs.Length > 1
             ? commandLineArgs.Skip(1).ToArray()
             : Array.Empty<string>();
+        var basePath = ResolveBootstrapBasePath(cliArgs, Directory.GetCurrentDirectory());
 
         // First pass: read base + env-specific + envvars + cli so we can resolve
         // Settings:RuntimeOverridesPath if it's set as an EnvVar (typical in containers)
@@ -71,6 +71,22 @@ internal static class LoggingSetup
             .AddEnvironmentVariables()
             .AddCommandLine(cliArgs)
             .Build();
+    }
+
+    /// <summary>
+    /// Directory the bootstrap configuration is read from: the <c>--contentRoot</c> argument
+    /// the host also honours, else the current directory. Both installers start the service
+    /// with <c>--contentRoot</c>, and a Windows service starts in System32, where no
+    /// appsettings file exists.
+    /// </summary>
+    public static string ResolveBootstrapBasePath(string[] cliArgs, string currentDirectory)
+    {
+        var contentRoot = new ConfigurationBuilder()
+            .AddCommandLine(cliArgs)
+            .Build()[HostDefaults.ContentRootKey];
+        return string.IsNullOrWhiteSpace(contentRoot)
+            ? currentDirectory
+            : Path.GetFullPath(contentRoot, currentDirectory);
     }
 
     /// <summary>

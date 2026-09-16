@@ -25,6 +25,12 @@ Two notes that cost people time:
 
 ## The app opens a login form instead of "create administrator"
 
+**First check whether this is a reinstall.** NodePilot has no default account and no default
+password. If an earlier installation was uninstalled with *Keep data* (or setup was told to keep the
+existing data), the database still holds the administrator created back then — the login form is
+correct, and that account's password is the one to use. To start over with a new administrator,
+uninstall with *Delete everything*, or install with the *Delete the existing data* option.
+
 On a first install NodePilot should show a local setup page that creates the first administrator.
 It appears because the installer leaves a one-shot token at
 `%LOCALAPPDATA%\NodePilot\admin-setup.handoff` for the user the app runs as.
@@ -73,6 +79,8 @@ step. The common causes:
 | `No free port available in range 47000-47049` (or `47100-47149`) | Every port in the pool is taken | Free some, or find the offender with `Get-NetTCPConnection -LocalPort 47000..47049` |
 | `Re-install with a clean DataPath` | `pgdata` exists but `secrets\pg-superuser.secret` is gone, so the cluster's password is unrecoverable | Back up `C:\ProgramData\NodePilot\pgdata` if you need the data, then remove `C:\ProgramData\NodePilot` and reinstall |
 | `API did not report /healthz/ready within the timeout` | The API service started but did not become healthy | Check `C:\ProgramData\NodePilot\logs`; the first start migrates the database and is the slowest one |
+| `The 'NodePilot' service stopped while starting. Starting it again.` | Windows ended the API service because it had not reported back within 30 seconds — typical for the first start on a slow machine, where every binary is still cold and being scanned by antivirus | Nothing, if a later attempt succeeds. If all attempts fail, see the Application event log (source `.NET Runtime`) and [av-exclusions.md](av-exclusions.md) |
+| `Setup could not stop the NodePilot installation that is already on this computer` (dialog; details in `%TEMP%\nodepilot-setup-prepare.log`) | A process under `C:\Program Files\NodePilot` could not be ended, or a service stayed "marked for deletion" | Close the Services console and any tool holding a NodePilot file open, or restart Windows, then run setup again. No program file was changed |
 | `Required path not found` | The installation is incomplete | Reinstall |
 
 ## The window says the backend did not become ready
@@ -103,21 +111,20 @@ ordinary browser pointed at the same URL has no reason to, and will warn.
 
 ## Removing NodePilot completely
 
-The uninstaller in "Apps & features" removes the services, the certificate and the program files —
-but **keeps** `C:\ProgramData\NodePilot`, including your database. That is on purpose: an uninstall
-is not meant to destroy data.
+Uninstall from "Apps & features" and choose **Delete everything** when the uninstaller asks about
+the data. That removes the services, the certificate with its private key, the program files,
+`C:\ProgramData\NodePilot` including the database, and the `NodePilot` folders in every user
+profile. Unattended: `unins000.exe /VERYSILENT /SUPPRESSMSGBOXES /PURGEDATA=1`. Afterwards a new
+installation starts empty.
 
-To remove the data as well, run the purge **before** uninstalling:
+If the uninstaller reports that something could not be removed, the details are in
+`%TEMP%\nodepilot-uninstall.log`.
 
-```powershell
-# elevated
-& 'C:\Program Files\NodePilot\deploy\Uninstall-Desktop.ps1' -InstallPath 'C:\Program Files\NodePilot' -PurgeData
-```
-
-**The ordering matters.** That script lives under the installation directory, and the normal
-uninstall deletes it. Running the uninstaller first leaves you with a `C:\ProgramData\NodePilot`
-whose ACL excludes your own account and no script left to remove it. If that already happened, take
-ownership and delete it by hand in an elevated shell:
+**If the uninstaller did not ask about the data,** the installation predates that question: its
+uninstaller always keeps `C:\ProgramData\NodePilot`, and the leftover folder's ACL excludes your own
+account. Install the
+current version over the old one and uninstall that, or take ownership and delete the folder by hand
+in an elevated shell:
 
 ```powershell
 takeown.exe /f 'C:\ProgramData\NodePilot' /r /a

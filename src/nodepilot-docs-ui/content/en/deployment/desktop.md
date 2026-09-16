@@ -138,6 +138,18 @@ The resulting installer has to be Authenticode-signed before distribution.
 4. Start the Electron shell.
 5. Create a local admin account in the setup dialog.
 
+NodePilot has **no default account and no default password**. The name and password entered in the
+setup dialog (at least 8 characters) are the administrator's sign-in from then on.
+
+If data from an earlier, uninstalled NodePilot is still on the computer, setup asks what to do with it:
+
+| Choice | Effect |
+|---|---|
+| Keep the existing data | Continues with the old database. The setup dialog does not appear; sign in with the administrator account created back then. |
+| Delete the existing data and start fresh | Deletes `C:\ProgramData\NodePilot` before installing. The shell asks for a new administrator. |
+
+Unattended, setup keeps the data; `/DISCARDDATA=1` deletes it.
+
 The installer:
 
 - installs the files,
@@ -200,16 +212,21 @@ Invoke-WebRequest "$($desktop.origin)/healthz/ready" -SkipCertificateCheck
 
 ## Update
 
-A new signed installer can be run over the existing installation.
+A new signed installer can be run over the existing installation, and so can the same version again.
+The shell may stay open; setup closes it.
 
 The update sequence:
 
-1. Create an ACL-protected `pg_dump`.
-2. Stop the services.
+1. Create an ACL-protected `pg_dump` under `C:\ProgramData\NodePilot\backups` (the newest three are kept).
+2. End the shell and the `np`/`nodepilot-mcp` clients, stop both services and wait until their
+   processes have exited — before any file is replaced.
 3. Replace the binaries.
-4. Reuse the existing PostgreSQL data directory.
+4. Reuse the existing PostgreSQL data directory: accounts, workflows and settings are kept.
 5. Re-provision the services.
-6. Check the health endpoint.
+6. Check the health endpoint. If Windows ends a slow first start of the API service, setup starts it again.
+
+If the running installation cannot be stopped, setup aborts before it changes any program file and
+names its log, `%TEMP%\nodepilot-setup-prepare.log`.
 
 `Update-Desktop.ps1` additionally offers a staged update with rollback for binaries, configuration and database.
 
@@ -217,30 +234,32 @@ PostgreSQL major upgrades and Electron auto-update are not part of the current d
 
 ## Uninstalling
 
-The normal uninstall removes:
+Uninstall NodePilot from *Apps & features*. The uninstall always removes:
 
+- the shell and the `np`/`nodepilot-mcp` clients, if they are running,
 - both Windows services,
-- the loopback certificate,
+- the loopback certificate including its private key,
 - the files under `C:\Program Files\NodePilot`.
 
-The data under `C:\ProgramData\NodePilot`, including `pgdata`, is preserved by default.
+It then asks about the data:
 
-For complete removal:
+| Choice | Effect |
+|---|---|
+| Keep data | `C:\ProgramData\NodePilot` stays: database, keys, settings, logs and backups. A later installation continues with it; sign in with the existing account. |
+| Delete everything | Also deletes `C:\ProgramData\NodePilot` and the `NodePilot` folders in every user profile (`%APPDATA%`, `%LOCALAPPDATA%`: the shell's session and the `np`/`nodepilot-mcp` configuration). Cannot be undone. The next installation starts with an empty database and asks for a new administrator. |
+| Cancel | Nothing is removed. |
 
-The script lives inside the installation, not in the current directory, and `-InstallPath` is a
-mandatory parameter:
+Unattended, the data is kept:
 
 ```powershell
-& 'C:\Program Files\NodePilot\deploy\Uninstall-Desktop.ps1' `
-    -InstallPath 'C:\Program Files\NodePilot' -PurgeData
+& 'C:\Program Files\NodePilot\unins000.exe' /VERYSILENT /SUPPRESSMSGBOXES               # keep data
+& 'C:\Program Files\NodePilot\unins000.exe' /VERYSILENT /SUPPRESSMSGBOXES /PURGEDATA=1  # delete everything
 ```
 
-`-PurgeData` deletes the local database and cannot be undone. A backup is required beforehand.
+"Delete everything" cannot be undone. Create a backup beforehand if the data may still be needed.
 
-**The order matters: this script first, then the normal uninstall.** The normal uninstall deletes the
-script itself. Running it first leaves you with a `C:\ProgramData\NodePilot` whose permissions
-exclude your own account, and no script left to remove it. The manual route is in the
-[Desktop troubleshooting](https://github.com/Sev7eNup/NodePilot/blob/main/docs/desktop-troubleshooting.md) guide.
+If something could not be removed, the uninstaller says so and names its log,
+`%TEMP%\nodepilot-uninstall.log`.
 
 ## Backup and moving systems
 
