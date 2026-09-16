@@ -1073,7 +1073,7 @@ Endpoints: siehe CLAUDE.md "API Endpoints" (Maintenance Windows-Zeile). CLI: `np
 > DB-pollende Dienste parken bei einem Ausfall über `WaitUntilServableAsync`; Ausnahmen, Drop- und
 > Recovery-Semantik definiert [ADR 0011](adr/0011-database-availability-breaker.md).
 
-Alle Hosted-Services werden gebündelt in [BackgroundServicesSetup.cs](../src/NodePilot.Api/Hosting/BackgroundServicesSetup.cs) registriert (+ Cluster-Services in `ClusterSetup.cs`, SignalR-Bridge in `Program.cs`). Gating: **always-on** | **opt-in** (Config-Flag) | **leader-only** (nur im A/P-Leader aktiv).
+Die Hosted-Services werden gebündelt in [BackgroundServicesSetup.cs](../src/NodePilot.Api/Hosting/BackgroundServicesSetup.cs) registriert (+ Cluster-Services in `ClusterSetup.cs`, SignalR-Bridge sowie die drei Dashboard-/Rollup-Dienste in `Program.cs`). Gating: **always-on** | **opt-in** (Config-Flag) | **opt-out** (Config-Flag, default an) | **leader-only** (nur im A/P-Leader aktiv).
 
 | Service | Zweck | Gating |
 |---|---|---|
@@ -1090,6 +1090,9 @@ Alle Hosted-Services werden gebündelt in [BackgroundServicesSetup.cs](../src/No
 | `NotificationRetentionService` | Trimmt den Delivery-Ledger + stale Suppression-States (90 d) | opt-out `Retention:Notifications:Enabled`, leader-only |
 | `IdempotencyKeyCleanupService` | Prunt Idempotency-Keys nach 24 h TTL | always-on (nicht abschaltbar) |
 | `WorkflowStatsRefresher` | Berechnet `WorkflowStats`-Aggregat (siehe Stats) | always-on |
+| `ExecutionStatsRollupService` | Schreibt die Stunden-Buckets `ExecutionHourlyStat` + `FailureCauseHourlyStat` fort (Sweep 60 s, Start nach 25 s, Backfill in Tages-Chunks) | opt-out `Stats:Rollup:Enabled`, leader-only |
+| `DashboardAggregateWarmup` | Berechnet die Dashboard-Aggregate für 24 h / 7 d / 30 d nach dem Start vor und hält abgerufene Einträge warm (Sweep 20 s, Start nach 15 s) | opt-out `Dashboard:Warmup:Enabled` (prozesslokaler Cache, nicht leader-gated) |
+| `WorkflowDefinitionFactsWarmup` | Füllt den kalten `WorkflowDefinitionFactsCache` einmalig in 50er-Batches (Start nach 10 s) | always-on |
 | `RevokedTokensCleanupService` | Täglicher Sweep der `RevokedTokens` (Audit M12) | always-on |
 | `HubRevocationSweeper` | Schließt SignalR-Verbindungen bei Logout/Deaktivierung (Audit M2) | always-on |
 | `SupportEventFlushService` | Gepufferter Flush von Support-Events in die DB | always-on (wenn DB-Projektion an) |

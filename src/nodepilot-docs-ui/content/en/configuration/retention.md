@@ -22,6 +22,8 @@ Retention services delete or archive historical data after a retention period. I
 | `ExecutionDispatchWorker` | Leased dispatch of persisted `Pending` executions from the database outbox | Leader-only (in a cluster) |
 | `MaintenanceWindowSnapshotService` | Keeps the maintenance-window snapshot per node current | Always on |
 | `WorkflowStatsRefresher` | Computes the `WorkflowStats` aggregates | Always on |
+| `ExecutionStatsRollupService` | Keeps the hourly buckets behind the dashboard history current (`ExecutionHourlyStat`, `FailureCauseHourlyStat`); sweeps every 60 s, initial fill in daily chunks | `Stats:Rollup:Enabled` (on by default), leader only |
+| `DashboardAggregateWarmup` | Precomputes the 24 h / 7 d / 30 d dashboard aggregates after startup so the first caller hits the cache too | `Dashboard:Warmup:Enabled` (on by default), per node |
 | `RevokedTokensCleanupService` | Daily sweep of `RevokedTokens` | Always on |
 | `HubRevocationSweeper` | Closes SignalR connections on logout/deactivation | Always on |
 | `SupportEventFlushService` | Buffered flush of support events into the database | Always on (when the DB projection is enabled) |
@@ -35,5 +37,8 @@ The dashboard and the workflow lists read a **precomputed** `WorkflowStats` aggr
 |---|---|---|
 | `Stats:RefreshIntervalMinutes` | `5` | The aggregate refresh interval |
 | `Stats:WindowDays` | `7` | The time window of the aggregated KPIs |
+| `Stats:Rollup:Enabled` | `true` | Precomputed hourly buckets for the dashboard history. Turned off, the dashboard recomputes every window from the raw rows — correct, but markedly slower on large histories |
+
+The hourly buckets carry the historical dashboard figures (status counts, retry share, duration, failure causes). Live values — running executions, queue depth, heartbeats — are never precomputed. While the initial fill does not yet cover a window, the dashboard keeps serving that window from the live computation.
 
 `GET /api/stats/dashboard` returns the state as of the last refresh, not live numbers. Settings mutations write `SETTINGS_STATS_UPDATED` to the audit log.
