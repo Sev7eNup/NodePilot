@@ -851,7 +851,7 @@ function RecentAuditList({ items }: Readonly<{ items: DashboardAuditEvent[] }>) 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 24h gradient area chart
+// Execution gradient area chart for the selected window
 // ─────────────────────────────────────────────────────────────────────────────
 
 const AREA_SERIES = [
@@ -867,18 +867,17 @@ function HourlyAreaChart({ buckets, windowHours, tokens }: Readonly<{ buckets: H
   const tipText = tokens.onSurface;
 
   const option = useMemo<EChartsOption>(() => {
-    // Hourly windows label "HH:00", multi-day windows label the date "MM-DD". The backend
-    // emits at most 24 buckets, so labelling every third one keeps the axis legible.
+    // The one-hour window labels its two-minute buckets "HH:mm", day windows label "HH:00"
+    // and multi-day windows label the date "MM-DD".
     const multiDay = windowHours > 24;
+    const pad = (n: number) => String(n).padStart(2, '0');
     const formatLabel = (iso: string) => {
-      if (buckets.length === 1) return formatDate(iso, { hour: '2-digit', minute: '2-digit' });
       const d = new Date(iso);
-      if (multiDay) {
-        const pad = (n: number) => String(n).padStart(2, '0');
-        return `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-      }
-      return `${String(d.getHours()).padStart(2, '0')}:00`;
+      if (multiDay) return `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      return `${pad(d.getHours())}:${windowHours === 1 ? pad(d.getMinutes()) : '00'}`;
     };
+    // Label every ten minutes on the one-hour axis and every third bucket on the others.
+    const labelStep = windowHours === 1 ? 5 : 3;
     const labels = buckets.map((b) => formatLabel(b.hourStart));
     return {
       grid: { left: 2, right: 4, top: 8, bottom: 18, containLabel: false },
@@ -892,23 +891,21 @@ function HourlyAreaChart({ buckets, windowHours, tokens }: Readonly<{ buckets: H
       },
       xAxis: {
         type: 'category',
-        boundaryGap: buckets.length === 1,
+        boundaryGap: false,
         data: labels,
         axisLine: { show: false },
         axisTick: { show: false },
         axisLabel: {
           color: axisColor,
           fontSize: 10,
-          interval: (i: number) => i % 3 === 0,
+          interval: (i: number) => i % labelStep === 0,
           hideOverlap: true,
         },
       },
       yAxis: { type: 'value', show: false, min: 0 },
       series: AREA_SERIES.map((s) => ({
         name: t(s.labelKey),
-        // A lone bucket has no line segment or area; show its counts as a stacked bar.
-        type: buckets.length === 1 ? 'bar' : 'line',
-        barMaxWidth: 56,
+        type: 'line',
         itemStyle: { color: s.line },
         stack: 'total',
         smooth: 0.35,

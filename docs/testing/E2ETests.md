@@ -1451,7 +1451,7 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 
 **Prüfpunkte:**
 - [ ] Stat-Cards sichtbar: Total Workflows, Running Executions, Success Rate, Machines
-- [ ] 24h Execution-Chart rendert; bei Fenster „1 Stunde" bleibt der einzelne Bucket als gestapelter Balken sichtbar.
+- [ ] Execution-Chart rendert; im Fenster „1 Stunde" sieht er aus wie bei 24 h: Flächendiagramm aus 30 Zwei-Minuten-Buckets, Achse mit `HH:mm` beschriftet.
 - [ ] Laufzeit-Diagramm („Ausführungsdauer"): Median als durchgezogene, P95 als gestrichelte Linie, beide in der Legende; die Workflow-Auswahl darüber schaltet zwischen „Alle Workflows" und einem einzelnen Workflow um (Browser-Regression in `e2e/dashboard.spec.ts`).
 - [ ] Buckets ohne abgeschlossene Läufe werden nicht verbunden; eine einzelne beobachtete Stunde bleibt als Punkt sichtbar. Helles und dunkles Theme prüfen.
 - [ ] Hover zeigt Median, P95 und die Anzahl der Läufe des Buckets. Ohne abgeschlossene Läufe im Fenster erscheint der Leer-Text, bei einem Ladefehler die Meldung mit „Erneut versuchen".

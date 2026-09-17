@@ -259,6 +259,36 @@ describe('DashboardPage', () => {
     })));
   });
 
+  it('charts the one-hour window as thirty two-minute line buckets', async () => {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const starts = Array.from({ length: 30 }, (_, i) => new Date(2026, 8, 15, 21, 14 + 2 * i));
+    const buckets = starts.map((start, i) => ({
+      hourStart: start.toISOString(), succeeded: i % 4, failed: i % 7 === 0 ? 1 : 0, cancelled: i % 10 === 0 ? 1 : 0,
+    }));
+    server.use(http.get(`${BASE}/api/stats/dashboard`, ({ request }) => HttpResponse.json({
+      ...BASE_STATS,
+      last24hBuckets: new URL(request.url).searchParams.get('windowHours') === '1' ? buckets : [],
+    })));
+    renderPage();
+    await screen.findByText('Workflows');
+    await userEvent.click(screen.getByRole('button', { name: '1h' }));
+    const chart = await screen.findByRole('img', { name: 'Executions — 1h' });
+    const option = JSON.parse(chart.dataset.chartOption!);
+    const stacked = option.series.filter((entry: { stack?: string }) => entry.stack === 'total');
+    expect(stacked).toHaveLength(3);
+    for (const entry of stacked) {
+      expect(entry.type).toBe('line');
+      expect(entry).not.toHaveProperty('barMaxWidth');
+      expect(entry.lineStyle.color).toEqual(expect.any(String));
+      expect(entry.areaStyle.color).toBeDefined();
+    }
+    expect(stacked.map((entry: { data: number[] }) => entry.data)).toEqual([
+      buckets.map((b) => b.succeeded), buckets.map((b) => b.failed), buckets.map((b) => b.cancelled),
+    ]);
+    expect(option.xAxis.boundaryGap).toBe(false);
+    expect(option.xAxis.data).toEqual(starts.map((d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`));
+  });
+
   it('renders viewer quick-action bar without mutating buttons', async () => {
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)));
     renderPage();

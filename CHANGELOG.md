@@ -12,6 +12,12 @@ exhaustive.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Dashboard 1 h window.** The executions chart draws the same area chart as the other windows,
+  from 30 two-minute buckets, instead of a single stacked bar. The 1 h figures (success rate, run
+  status, retry share, failure causes) no longer include runs from up to an hour before the window.
+
 ## [1.4.0] - 2026-09-16
 
 The dashboard answers its history from precomputed hourly buckets and charts execution durations
