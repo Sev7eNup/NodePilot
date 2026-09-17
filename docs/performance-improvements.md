@@ -675,6 +675,9 @@ Auf einer Postgres-Instanz mit nicht-UTC-Session können die beiden Pfade deshal
 Stunden-Labels liefern; der Bucket-Pfad ist der richtige. In den Tests fällt das nicht auf, weil sie
 auf SQLite laufen.
 
+**Korrektur (2026-09-17):** Die Annahme stimmt nicht — Npgsql 10 übersetzt Datumsteile von
+`timestamptz` mit `AT TIME ZONE 'UTC'`; ein Translation-Test pinnt das.
+
 ### Remote / WinRM
 
 | Commit | Bereich | Was wurde verbessert |

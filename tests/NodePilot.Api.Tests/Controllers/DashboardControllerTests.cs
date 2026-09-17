@@ -295,18 +295,21 @@ public class DashboardControllerTests
     }
 
     [Fact]
-    public async Task Get_WindowHours1_ReturnsSingleHourBucket()
+    public async Task Get_WindowHours1_Returns30TwoMinuteBuckets()
     {
         var db = TestDbFactory.Create();
         var result = await NewController(db).Get(CancellationToken.None, windowHours: 1);
 
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
         var stats = ok.Value.Should().BeAssignableTo<DashboardStats>().Subject;
-        stats.Last24hBuckets.Should().HaveCount(1);
+        stats.Last24hBuckets.Should().HaveCount(30);
+        stats.Last24hBuckets[0].HourStart.Second.Should().Be(0);
+        stats.Last24hBuckets.Zip(stats.Last24hBuckets.Skip(1), (a, b) => b.HourStart - a.HourStart)
+            .Should().AllBeEquivalentTo(TimeSpan.FromMinutes(2));
     }
 
     [Fact]
-    public async Task Get_WindowHours1_CurrentHourExecution_AppearsInOnlyBucket()
+    public async Task Get_WindowHours1_CurrentExecution_AppearsInLastBucket()
     {
         var db = TestDbFactory.Create();
         var wfId = Guid.NewGuid();
@@ -319,8 +322,43 @@ public class DashboardControllerTests
         var stats = result.Result.As<OkObjectResult>().Value.As<DashboardStats>();
         stats.Last24h.Total.Should().Be(1);
         stats.Last24h.Succeeded.Should().Be(1);
-        stats.Last24hBuckets.Should().ContainSingle()
-            .Which.Succeeded.Should().Be(1);
+        stats.Last24hBuckets[^1].Succeeded.Should().Be(1);
+        stats.Last24hBuckets.Sum(b => b.Succeeded).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Get_WindowHours1_ExecutionOlderThanOneHour_IsNotCounted()
+    {
+        var db = TestDbFactory.Create();
+        var wfId = Guid.NewGuid();
+        db.Workflows.Add(new Workflow { Id = wfId, Name = "W", DefinitionJson = "{}", UpdatedAt = DateTime.UtcNow });
+        db.WorkflowExecutions.Add(MakeExecution(wfId, ExecutionStatus.Failed, startedAt: DateTime.UtcNow.AddMinutes(-61)));
+        await db.SaveChangesAsync();
+
+        var result = await NewController(db).Get(CancellationToken.None, windowHours: 1);
+
+        var stats = result.Result.As<OkObjectResult>().Value.As<DashboardStats>();
+        stats.Last24h.Total.Should().Be(0);
+        stats.Last24hBuckets.Should().OnlyContain(b => b.Succeeded == 0 && b.Failed == 0 && b.Cancelled == 0);
+    }
+
+    [Fact]
+    public async Task Get_WindowHours1_NoFolderAccess_Returns30EmptyBuckets()
+    {
+        using var db = TestDbFactory.Create();
+        var authz = new Mock<IResourceAuthorizationService>();
+        authz.Setup(a => a.GetAccessibleFolderIdsAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(AccessibleFolderSet.None);
+        var controller = new DashboardController(db, authz.Object)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
+        };
+
+        var stats = (await controller.Get(TestContext.Current.CancellationToken, windowHours: 1))
+            .Result.As<OkObjectResult>().Value.As<DashboardStats>();
+
+        stats.Last24hBuckets.Should().HaveCount(30);
+        stats.Last24hBuckets.Should().OnlyContain(b => b.Succeeded == 0 && b.Failed == 0 && b.Cancelled == 0);
     }
 
     [Fact]

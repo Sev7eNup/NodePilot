@@ -409,11 +409,42 @@ public sealed class ExecutionStatsRollupServiceTests : IDisposable
 
         fromBuckets.Should().NotBeNull();
         fromBuckets!.ExecutionsTotal.Should().Be(live.ExecutionsTotal);
+        fromBuckets.WindowStartUtc.Should().BeCloseTo(live.WindowStartUtc, TimeSpan.FromMinutes(1));
         fromBuckets.RetryStats.FinishedCount.Should().Be(live.RetryStats.FinishedCount);
-        fromBuckets.Hourly.Sum(h => h.Total).Should().Be(live.Hourly.Sum(h => h.Total));
-        fromBuckets.Hourly.Sum(h => h.Succeeded).Should().Be(live.Hourly.Sum(h => h.Succeeded));
-        fromBuckets.Hourly.Sum(h => h.Failed).Should().Be(live.Hourly.Sum(h => h.Failed));
-        fromBuckets.Hourly.Sum(h => h.Cancelled).Should().Be(live.Hourly.Sum(h => h.Cancelled));
+        fromBuckets.Slots.Sum(h => h.Total).Should().Be(live.Slots.Sum(h => h.Total));
+        fromBuckets.Slots.Sum(h => h.Succeeded).Should().Be(live.Slots.Sum(h => h.Succeeded));
+        fromBuckets.Slots.Sum(h => h.Failed).Should().Be(live.Slots.Sum(h => h.Failed));
+        fromBuckets.Slots.Sum(h => h.Cancelled).Should().Be(live.Slots.Sum(h => h.Cancelled));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(23)]
+    public async Task Reader_WindowShorterThanADay_ReturnsNullEvenWhenCovered(int windowHours)
+    {
+        var wf = AddWorkflow();
+        var now = DateTime.UtcNow;
+        var recentHour = ExecutionStatsRollupService.Truncate(now);
+        AddExecution(wf, ExecutionStatus.Failed, recentHour, recentHour, "boom");
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        await RollUpAsync(recentHour);
+        _db.ExecutionStatsRollupStates.Add(new ExecutionStatsRollupState
+        {
+            Id = ExecutionStatsRollupService.StateRowId,
+            CoverageStartUtc = recentHour.AddHours(-48),
+            CoverageEndUtc = recentHour,
+            BackfillComplete = true,
+            UpdatedAt = now,
+        });
+        await _db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var reader = new DashboardRollupReader(_db);
+
+        (await reader.ReadWindowAggregatesAsync(AccessibleFolderSet.Unrestricted, windowHours, TestContext.Current.CancellationToken))
+            .Should().BeNull("hourly buckets would add up to an hour of runs from before the window");
+        (await reader.ReadFailureCausesAsync(AccessibleFolderSet.Unrestricted, windowHours, TestContext.Current.CancellationToken))
+            .Should().BeNull();
+        (await reader.ReadWindowAggregatesAsync(AccessibleFolderSet.Unrestricted, DashboardRollupReader.MinimumWindowHours, TestContext.Current.CancellationToken))
+            .Should().NotBeNull("the same coverage serves a full day");
     }
 
     [Fact]
@@ -513,7 +544,7 @@ public sealed class ExecutionStatsRollupServiceTests : IDisposable
 
         result.Should().NotBeNull();
         result!.ExecutionsTotal.Should().Be(2, "the all-time counter covers everything, not just the window");
-        result.Hourly.Sum(h => h.Total).Should().Be(1, "the chart still only covers the window");
+        result.Slots.Sum(h => h.Total).Should().Be(1, "the chart still only covers the window");
     }
 
     [Fact]
@@ -554,6 +585,6 @@ public sealed class ExecutionStatsRollupServiceTests : IDisposable
             .ReadWindowAggregatesAsync(scoped, 24, TestContext.Current.CancellationToken);
 
         result.Should().NotBeNull();
-        result!.Hourly.Sum(h => h.Total).Should().Be(1, "the hidden folder's workflow must not be counted");
+        result!.Slots.Sum(h => h.Total).Should().Be(1, "the hidden folder's workflow must not be counted");
     }
 }

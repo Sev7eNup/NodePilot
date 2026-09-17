@@ -212,22 +212,42 @@ test.describe('Dashboard (Teil 11)', () => {
     }
   }
 
-  test('one-hour execution counts remain visible with a single bucket', async ({ page }, testInfo) => {
-    await page.route('**/api/stats/dashboard**', route => route.fulfill({ json: dashboardStats({
-      last24h: { total: 624, succeeded: 577, failed: 46, cancelled: 0, running: 1 },
-      last24hBuckets: [{ hourStart: '2026-09-15T19:14:00Z', succeeded: 577, failed: 46, cancelled: 0 }],
-    }) }));
+  test('one-hour window charts thirty two-minute buckets as an area', async ({ page }, testInfo) => {
+    // Local-time starts keep the expected HH:mm labels independent of the machine time zone.
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const starts = Array.from({ length: 30 }, (_, i) => new Date(2026, 8, 15, 21, 14 + 2 * i));
+    const hovered = 22;
+    const buckets = starts.map((start, i) => ({
+      hourStart: start.toISOString(),
+      succeeded: i === hovered ? 173 : 20 + (i % 5) * 6,
+      failed: i === hovered ? 19 : i % 6 === 0 ? 2 : 0,
+      cancelled: i === hovered ? 11 : i % 9 === 0 ? 1 : 0,
+    }));
+    const sum = (key: 'succeeded' | 'failed' | 'cancelled') => buckets.reduce((acc, b) => acc + b[key], 0);
+    const last24h = { succeeded: sum('succeeded'), failed: sum('failed'), cancelled: sum('cancelled'), running: 0 };
+    await page.route('**/api/stats/dashboard**', route => route.fulfill({
+      json: new URL(route.request().url()).searchParams.get('windowHours') === '1'
+        ? dashboardStats({ last24h: { ...last24h, total: last24h.succeeded + last24h.failed + last24h.cancelled }, last24hBuckets: buckets })
+        : dashboardStats(),
+    }));
+    const label = (i: number) => `${pad(starts[i].getHours())}:${pad(starts[i].getMinutes())}`;
     await page.goto('/');
     await page.getByRole('button', { name: '1h', exact: true }).click();
     const chart = page.getByRole('img', { name: 'Executions — 1h', exact: true });
     await expect(chart).toBeVisible();
-    const succeeded = chart.locator('svg path[fill="#22c55e"]');
-    await expect(succeeded).toHaveCount(1);
-    await expect.poll(async () => (await succeeded.boundingBox())?.width ?? 0).toBeGreaterThan(4);
-    await expect.poll(async () => (await succeeded.boundingBox())?.height ?? 0).toBeGreaterThan(20);
-    await succeeded.hover();
-    await expect(chart).toContainText('577');
-    await expect(chart).toContainText('46');
+    await expect.poll(() => chart.locator('svg text').allTextContents()).toEqual(expect.arrayContaining([label(0), label(5)]));
+    const succeededLine = chart.locator('svg path[fill="none"][stroke="#22c55e"]');
+    await expect(succeededLine).toHaveCount(1);
+    expect(await succeededLine.getAttribute('d')).toMatch(/C/);
+    await expect(chart.locator('svg path[fill="#22c55e"]')).toHaveCount(0);
+    await chart.scrollIntoViewIfNeeded();
+    const box = await chart.boundingBox();
+    // The category axis has no boundary gap, so bucket i sits at grid.left + i * step.
+    await page.mouse.move(box!.x + 2 + hovered * (box!.width - 6) / 29, box!.y + box!.height / 2, { steps: 4 });
+    await expect(chart).toContainText(label(hovered));
+    await expect(chart).toContainText('173');
+    await expect(chart).toContainText('19');
+    await expect(chart).toContainText('11');
     await chart.locator('..').screenshot({ path: testInfo.outputPath('one-hour-executions.png'), animations: 'disabled' });
   });
 

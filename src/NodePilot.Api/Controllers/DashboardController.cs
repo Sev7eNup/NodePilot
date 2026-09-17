@@ -177,39 +177,21 @@ public class DashboardController : ControllerBase
                 ct);
 
         var execsTotal = windowAggregates.ExecutionsTotal;
-        var hourlyAgg = windowAggregates.Hourly;
+        var slots = windowAggregates.Slots;
 
-        // Display buckets: ≤24 buckets spanning [sinceWindow, now]. For windows ≤24 h
-        // each bucket is one hour; for larger windows each bucket spans
-        // windowHours/24 hours so the chart density stays constant regardless of range.
-        var bucketCount = Math.Min(windowHours, 24);
-        var minutesPerBucket = windowHours * 60 / bucketCount;
-        var bucketStart = sinceWindow;
-        var buckets = Enumerable.Range(0, bucketCount)
-            .Select(i => new HourBucket(bucketStart.AddMinutes(i * minutesPerBucket), 0, 0, 0))
-            .ToList();
-        // Fold each hourly aggregate row into its containing display bucket. The first
-        // aggregate hour can start before sinceWindow; clamp it into bucket 0 so the
-        // first partial hour stays visible in the chart.
-        foreach (var a in hourlyAgg)
-        {
-            var rowHour = new DateTime(a.Year, a.Month, a.Day, a.Hour, 0, 0, DateTimeKind.Utc);
-            var bucketAnchor = rowHour < bucketStart ? bucketStart : rowHour;
-            var idx = (int)Math.Floor((bucketAnchor - bucketStart).TotalMinutes / minutesPerBucket);
-            if (idx < 0 || idx >= buckets.Count) continue;
-            var b = buckets[idx];
-            buckets[idx] = b with { Succeeded = b.Succeeded + a.Succeeded, Failed = b.Failed + a.Failed, Cancelled = b.Cancelled + a.Cancelled };
-        }
+        // Lay the chart out from the window the aggregates were computed for, not from this
+        // request's clock: a cached value can be a few minutes old.
+        var buckets = DashboardHistoricalAggregates.BuildBuckets(windowAggregates.WindowStartUtc, windowHours, slots);
 
         // Window totals drive the hero gauge and KPI cluster. `Running` counts executions
         // whose StartedAt falls inside the window and that are still Running (attribution
         // is by start time, not current status alone).
         var countsWindow = new ExecutionCounts(
-            hourlyAgg.Sum(a => a.Total),
-            hourlyAgg.Sum(a => a.Succeeded),
-            hourlyAgg.Sum(a => a.Failed),
-            hourlyAgg.Sum(a => a.Running),
-            hourlyAgg.Sum(a => a.Cancelled));
+            slots.Sum(a => a.Total),
+            slots.Sum(a => a.Succeeded),
+            slots.Sum(a => a.Failed),
+            slots.Sum(a => a.Running),
+            slots.Sum(a => a.Cancelled));
 
         var retryStats = windowAggregates.RetryStats;
 
@@ -646,13 +628,10 @@ public class DashboardController : ControllerBase
 
     private static DashboardStats EmptyStats(DateTime sinceWindow, int windowHours, string dbProvider, string? clusterRole, bool llmEnabled, int longRunningSeconds)
     {
-        var bucketCount = Math.Min(windowHours, 24);
-        var minutesPerBucket = windowHours * 60 / bucketCount;
-        var bucketStart = sinceWindow;
         return new DashboardStats(
             0, 0, 0, 0, 0,
             new ExecutionCounts(0, 0, 0, 0, 0),
-            Enumerable.Range(0, bucketCount).Select(i => new HourBucket(bucketStart.AddMinutes(i * minutesPerBucket), 0, 0, 0)).ToList(),
+            DashboardHistoricalAggregates.BuildBuckets(sinceWindow, windowHours, []),
             [], [], [], [],
             0, 0, 0,
             [], [], [],

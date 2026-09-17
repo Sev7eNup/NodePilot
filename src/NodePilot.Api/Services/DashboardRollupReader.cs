@@ -12,7 +12,8 @@ namespace NodePilot.Api.Services;
 /// <para>
 /// Every method answers <c>null</c> when the buckets cannot honestly serve the requested window —
 /// while the initial backfill is still walking through existing history, an older window would be
-/// under-reported. The caller then falls back to computing from raw rows: slower, but never wrong.
+/// under-reported, and a window shorter than <see cref="MinimumWindowHours"/> would be
+/// over-reported. The caller then falls back to computing from raw rows: slower, but never wrong.
 /// </para>
 ///
 /// <para>
@@ -22,6 +23,12 @@ namespace NodePilot.Api.Services;
 /// </summary>
 internal sealed class DashboardRollupReader(NodePilotDbContext db)
 {
+    /// <summary>
+    /// Buckets start on the hour, so a window read from them includes up to one extra hour.
+    /// Shorter windows are computed from raw rows.
+    /// </summary>
+    internal const int MinimumWindowHours = 24;
+
     /// <summary>
     /// True when the buckets cover everything from <paramref name="since"/> onwards and are being
     /// kept current. Buckets from a rollup that is disabled or keeps failing would silently miss
@@ -57,12 +64,14 @@ internal sealed class DashboardRollupReader(NodePilotDbContext db)
     public async Task<DashboardWindowAggregates?> ReadWindowAggregatesAsync(
         AccessibleFolderSet accessible, int windowHours, CancellationToken ct)
     {
+        if (windowHours < MinimumWindowHours) return null;
         var now = DateTime.UtcNow;
-        var since = ExecutionStatsRollupService.Truncate(now.AddHours(-windowHours));
+        var windowStart = now.AddHours(-windowHours);
+        var since = ExecutionStatsRollupService.Truncate(windowStart);
         if (!await CoversAsync(since, ct)) return null;
 
         var scoped = Scoped(accessible, since);
-        if (scoped is null) return new DashboardWindowAggregates(0, [], new ExecutionRetryStats(0, 0));
+        if (scoped is null) return new DashboardWindowAggregates(0, windowStart, [], new ExecutionRetryStats(0, 0));
 
         var rows = await scoped
             .Select(s => new
@@ -78,10 +87,10 @@ internal sealed class DashboardRollupReader(NodePilotDbContext db)
             })
             .ToListAsync(ct);
 
-        var hourly = rows
+        var slots = rows
             .GroupBy(r => r.HourUtc)
-            .Select(g => new HourlyExecutionAggregate(
-                g.Key.Year, g.Key.Month, g.Key.Day, g.Key.Hour,
+            .Select(g => new ExecutionSlotAggregate(
+                g.Key,
                 g.Sum(r => r.TotalCount),
                 g.Sum(r => r.SucceededCount),
                 g.Sum(r => r.FailedCount),
@@ -97,7 +106,7 @@ internal sealed class DashboardRollupReader(NodePilotDbContext db)
         var allTime = executions is null ? 0 : await executions.CountAsync(ct);
 
         var retry = new ExecutionRetryStats(rows.Sum(r => r.FinishedCount), rows.Sum(r => r.RetriedCount));
-        return new DashboardWindowAggregates(allTime, hourly, retry);
+        return new DashboardWindowAggregates(allTime, windowStart, slots, retry);
     }
 
     /// <summary>
@@ -107,6 +116,7 @@ internal sealed class DashboardRollupReader(NodePilotDbContext db)
     public async Task<FailureCausesResponse?> ReadFailureCausesAsync(
         AccessibleFolderSet accessible, int windowHours, CancellationToken ct)
     {
+        if (windowHours < MinimumWindowHours) return null;
         var now = DateTime.UtcNow;
         var since = ExecutionStatsRollupService.Truncate(now.AddHours(-windowHours));
         if (!await CoversAsync(since, ct)) return null;

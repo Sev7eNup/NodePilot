@@ -113,8 +113,8 @@ public sealed class DashboardAggregateCache
     /// </para>
     /// <para>
     /// The cost concern was real but is addressed at the source instead: the aggregates behind
-    /// these entries now come from precomputed hourly buckets, so recomputing one is cheap enough
-    /// to keep warm.
+    /// windows of a day or longer come from precomputed hourly buckets, and shorter windows only
+    /// scan their own few rows, so recomputing one is cheap enough to keep warm.
     /// </para>
     /// </summary>
     public async Task PrimeAsync<T>(
