@@ -194,15 +194,6 @@ start from your actual runbooks instead of a blank canvas.
 The last row is the honest one: NodePilot gives you the source, not a support contract. Judge it
 on that basis.
 
-**Need to make the case to someone else?** A ready-made slide deck lives in
-[`presentations/`](presentations/), self-contained HTML — download and open in a browser:
-
-- **[NodePilot — technical deck](presentations/nodepilot-presentation.html)** (39 slides) — overall
-  architecture, the activity model, migrating from SCOrch, operational practice.
-
-The deck is in **German**. It predates this README and is not maintained in step with it — treat
-it as a starting point for your own slides rather than as current reference material.
-
 ---
 
 ## Install — pick one of three paths
@@ -557,8 +548,8 @@ Found a security problem? Do not open a public issue — [SECURITY.md](SECURITY.
 reporting path. Everyone taking part is expected to follow the
 [Code of Conduct](CODE_OF_CONDUCT.md).
 
-`CLAUDE.md` and `.agents/` are working notes for AI coding agents, not contributor documentation.
-They are checked in deliberately: NodePilot is built with agentic engineering, so the context an
+`CLAUDE.md` is working notes for AI coding agents, not contributor documentation.
+It is checked in deliberately: NodePilot is built with agentic engineering, so the context an
 agent needs to work on this codebase belongs in the repository rather than in someone's private
 setup. What that does not change is the bar every change has to clear — behaviour changes ship
 with tests, and CI enforces the coverage gate on every pull request.
