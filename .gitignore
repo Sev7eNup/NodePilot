@@ -203,7 +203,8 @@ src/nodepilot-ui/coverage-sonar/
 # Scratch bodies handed to `gh pr create --body-file` — never part of the repo
 /pr*-body.md
 
-# Local presentations / slide decks (not part of the product)
+# Local presentations / slide decks (not part of the repo)
 presentations/
-# ...except the one deliberately published deck
-!presentations/nodepilot-presentation.html
+
+# Local AI agent skills and notes (not part of the repo)
+.agents/
