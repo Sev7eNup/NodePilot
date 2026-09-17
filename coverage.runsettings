@@ -9,7 +9,7 @@
 <RunSettings>
   <!--
     Run the test assemblies in parallel. VSTest starts up to MaxCpuCount testhost processes,
-    one per test container; 0 means one per logical core. Without this the nine assemblies run
+    one per test container; 0 means one per logical core. Without this the six assemblies run
     one after another and each pays its own start-up cost (process launch, JIT, coverlet
     instrumentation, discovery) with nothing overlapping it.
 
@@ -22,7 +22,7 @@
     process 60 seconds to answer discovery; run 33420635702 hit "Test process did not respond
     within 60 seconds" on NodePilot.Data.Tests with no parallelism at all, so the four-vCPU CI
     agent is already close to that limit. Saturating it would make the flake routine. Most of the
-    win is overlapping the seven per-assembly start-ups anyway, and two lanes get that.
+    win is overlapping the six per-assembly start-ups anyway, and two lanes get that.
   -->
   <RunConfiguration>
     <MaxCpuCount>2</MaxCpuCount>

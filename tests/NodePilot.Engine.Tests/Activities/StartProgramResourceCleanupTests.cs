@@ -115,10 +115,13 @@ public class StartProgramResourceCleanupTests
         }));
         var script = "1..3 | ForEach-Object { & {\n" + success + "\n}; & {\n" + failure + "\n} }\n"
             + "Write-Output ('resources jobs={0}; subscribers={1}; events={2}' -f @(Get-Job).Count,@(Get-EventSubscriber).Count,@(Get-Event).Count)";
+        // Same budget as the capture tests above, and for the same reason: this one starts a real
+        // powershell.exe, parses both rendered steps and spawns cmd.exe three times, all of which
+        // a loaded CI runner stretches well past a local run.
         var engine = ProcessExecutionEngine.CreateWindowsPowerShell(NullLogger.Instance);
         var result = await engine.ExecuteAsync(new PowerShellExecutionRequest {
-            ScriptText = script, Timeout = TimeSpan.FromSeconds(20)
-        }, TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(25), TestContext.Current.CancellationToken);
+            ScriptText = script, Timeout = TimeSpan.FromSeconds(CaptureBudgetSeconds)
+        }, TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(CaptureBudgetSeconds + 15), TestContext.Current.CancellationToken);
         result.Success.Should().BeTrue(result.Error);
         result.Output.Should().Contain("legacy-out").And.Contain("resources jobs=0; subscribers=0; events=0");
     }
