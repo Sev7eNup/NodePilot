@@ -18,6 +18,7 @@ describe('BrandLogo', () => {
     ['dark-nebula', '/appicon-dark-nebula.png'],
     ['light-minimal', '/appicon-light.png'],
     ['dark-minimal', '/appicon-dark.png'],
+    ['dark-ion', '/appicon-dark-nebula.png'],
   ])('renders the %s skin variant', (skin, expected) => {
     useThemeStore.setState({ theme: skin as never });
     render(<BrandLogo />);

@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
     premiumCanvas: false,
   },
   smartSegments: [['M0,0 C50,0 50,0 100,0', 50, 0]] as unknown[],
+  nodeLookup: new Map<string, { data: Record<string, unknown> }>(),
 }));
 
 vi.mock('@xyflow/react', async () => {
@@ -35,7 +36,7 @@ vi.mock('@xyflow/react', async () => {
       <div data-testid="edge-label-renderer">{children}</div>
     ),
     useStore: vi.fn((selector: (s: unknown) => unknown) =>
-      selector({ nodeLookup: new Map() }),
+      selector({ nodeLookup: mocks.nodeLookup }),
     ),
   };
 });
@@ -90,6 +91,8 @@ const baseProps = {
   style: {},
   markerEnd: undefined,
 } as const;
+
+beforeEach(() => mocks.nodeLookup.clear());
 
 describe('LabeledEdge — disabled indicator', () => {
   beforeEach(() => {
@@ -181,6 +184,48 @@ describe('LabeledEdge — disabled indicator', () => {
 
     expect(screen.getByTestId('base-edge')).toHaveAttribute('data-marker-end', '');
     expect(screen.getByTestId('premium-edge-arrow-e1')).toHaveAttribute('d', 'M 100,0 L 88,4 L 88,-4 Z');
+  });
+});
+
+describe('LabeledEdge — semantic skin effects', () => {
+  beforeEach(() => {
+    mocks.designState.premiumCanvas = true;
+    mocks.designState.edgesAnimated = true;
+    mocks.smartSegments = [['M0,0 C50,0 50,0 100,0', 50, 0]];
+  });
+
+  it('exposes the live edge colour and current flow without changing its path', () => {
+    mocks.nodeLookup.set('n1', { data: { __liveStatus: 'Succeeded' } });
+    mocks.nodeLookup.set('n2', { data: { __liveStatus: 'Running' } });
+    const { container } = render(<svg><LabeledEdge {...baseProps} /></svg>);
+    const group = container.querySelector<SVGGElement>('.np-edge-g')!;
+    expect(group).toHaveAttribute('data-premium', 'true');
+    expect(group).toHaveAttribute('data-flowing', 'true');
+    expect(group.style.getPropertyValue('--np-edge-signal')).toBe('var(--color-running)');
+    expect(container.querySelector('.np-edge-flow')).toBeInTheDocument();
+    expect(screen.getByTestId('base-edge')).toHaveAttribute('d', 'M0,0 C50,0 50,0 100,0');
+  });
+
+  it('keeps failed state visible when premium effects are disabled', () => {
+    mocks.designState.premiumCanvas = false;
+    mocks.nodeLookup.set('n1', { data: { __liveStatus: 'Succeeded' } });
+    mocks.nodeLookup.set('n2', { data: { __liveStatus: 'Failed' } });
+    const { container } = render(<svg><LabeledEdge {...baseProps} /></svg>);
+    const group = container.querySelector<SVGGElement>('.np-edge-g')!;
+    expect(group).toHaveAttribute('data-premium', 'false');
+    expect(group).toHaveAttribute('data-flowing', 'false');
+    expect(group.style.getPropertyValue('--np-edge-signal')).toBe('var(--color-error)');
+    expect(screen.getByTestId('base-edge').style.stroke).toBe('var(--color-error)');
+    expect(container.querySelector('.np-edge-flow')).not.toBeInTheDocument();
+  });
+
+  it('keeps simulation colour but disables its motion with the animation preference', () => {
+    mocks.designState.edgesAnimated = false;
+    mocks.nodeLookup.set('n1', { data: { __simulated: 'reachable' } });
+    mocks.nodeLookup.set('n2', { data: { __simulated: 'revealing' } });
+    const { container } = render(<svg><LabeledEdge {...baseProps} /></svg>);
+    expect(container.querySelector('.np-edge-g')).toHaveAttribute('data-flowing', 'false');
+    expect(screen.getByTestId('base-edge').style.stroke).toBe('var(--color-running)');
   });
 });
 

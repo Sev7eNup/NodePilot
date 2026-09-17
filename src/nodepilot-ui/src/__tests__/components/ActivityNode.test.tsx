@@ -10,7 +10,7 @@ import { useThemeStore } from '../../stores/themeStore';
 // Resetting nodeIconStyle and autoHidePorts and clearing the pointer store keeps glyph-view
 // and port-reveal cases from leaking into later ones.
 beforeEach(() => {
-  useDesignStore.setState({ nodeStyle: 'card', nodeIconStyle: 'shape', autoHidePorts: true });
+  useDesignStore.setState({ nodeStyle: 'card', nodeIconStyle: 'shape', autoHidePorts: true, premiumCanvas: true });
   usePointerFlowPosition.setState({ x: null, y: null });
   useThemeStore.setState({ theme: 'light', resolvedTheme: 'light' });
 });
@@ -352,6 +352,40 @@ describe('ActivityNode', () => {
       expect(selection.style.backgroundColor).toBe('var(--color-primary)');
       expect(selection.style.clipPath).toBe(heatmap.style.clipPath);
       expect(container.querySelector<HTMLElement>('[data-testid="machine-stripe"]')!.style.background).toContain('linear-gradient');
+    });
+  });
+
+  describe('semantic skin effects', () => {
+    it('turns off decorative hooks with premiumCanvas while preserving node geometry', () => {
+      useDesignStore.setState({ nodeStyle: 'classic', premiumCanvas: true });
+      const { container } = renderActivityNode({ label: 'Script', activityType: 'runScript', config: {} });
+      const node = container.querySelector<HTMLElement>('.np-activity-node')!;
+      const shape = container.querySelector<HTMLElement>('.np-shape-wrap')!;
+      const originalSize = [shape.style.width, shape.style.height];
+      expect(node).toHaveAttribute('data-premium', 'true');
+      expect(node).toHaveAttribute('data-node-overlay', 'false');
+      expect(node.style.getPropertyValue('--np-node-signal')).toBe('var(--act-runScript-color)');
+      act(() => useDesignStore.setState({ premiumCanvas: false }));
+      expect(node).toHaveAttribute('data-premium', 'false');
+      expect([shape.style.width, shape.style.height]).toEqual(originalSize);
+    });
+
+    it.each([
+      { __liveStatus: 'Failed' },
+      { __failureTint: 0.8 },
+      { __criticalPath: { isCritical: true, slack: 0, earliestStart: 0, duration: 100 } },
+      { __simulated: 'reachable' },
+      { disabled: true },
+    ])('reserves overlay styling for %j', (overlay) => {
+      useThemeStore.setState({ theme: 'dark', resolvedTheme: 'dark' });
+      const { container } = renderActivityNode({ label: 'Script', activityType: 'runScript', config: {}, ...overlay });
+      const node = container.querySelector<HTMLElement>('.np-activity-node')!;
+      expect(node).toHaveAttribute('data-node-overlay', 'true');
+      if ('__liveStatus' in overlay) {
+        expect(node.style.getPropertyValue('--np-node-signal')).toBe('var(--color-error)');
+        expect(node.style.boxShadow).toContain('var(--color-error)');
+      }
+      expect(node.querySelectorAll('.react-flow__handle')).toHaveLength(4);
     });
   });
 

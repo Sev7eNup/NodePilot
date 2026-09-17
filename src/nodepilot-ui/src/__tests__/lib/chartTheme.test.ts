@@ -63,6 +63,44 @@ describe('chartTheme categorical palette', () => {
 });
 
 describe('chart token probe', () => {
+  it('updates ION accents through same-base switches without changing categorical series or retaining Minimal decoration', async () => {
+    function Probe() {
+      const { probeRef, tokens } = useChartTokens();
+      return createElement('div', { ref: probeRef, 'data-testid': 'ion-probe', 'data-tokens': JSON.stringify(tokens) });
+    }
+    const originalSkin = document.documentElement.dataset.skin;
+    const originalClass = document.documentElement.className;
+    document.documentElement.classList.add('dark');
+    const { unmount } = render(createElement(Probe));
+    const probe = screen.getByTestId('ion-probe');
+    try {
+      for (const [skin, primary, reducedDecoration] of [
+        ['dark', '#6da8ff', false], ['dark-ion', '#65e4ff', false],
+        ['dark-minimal', '#8cb4e8', true], ['dark-ion', '#65e4ff', false], ['dark', '#6da8ff', false],
+      ] as const) {
+        act(() => {
+          probe.style.setProperty('--np-reduced-decoration', reducedDecoration ? '1' : '0');
+          probe.style.setProperty('--color-primary', primary);
+          probe.style.setProperty('--color-primary-container', skin === 'dark-ion' ? '#43b5f0' : '#2467d9');
+          document.documentElement.dataset.skin = skin;
+        });
+        await waitFor(() => {
+          const tokens = JSON.parse(probe.dataset.tokens!);
+          expect(tokens.isDark).toBe(true);
+          expect(tokens.primary).toBe(primary);
+          expect(tokens.primaryContainer).toBe(skin === 'dark-ion' ? '#43b5f0' : '#2467d9');
+          expect(tokens.reducedDecoration).toBe(reducedDecoration);
+          expect(tokens.series).toEqual(CHART_SERIES_DARK);
+        });
+      }
+    } finally {
+      unmount();
+      document.documentElement.className = originalClass;
+      if (originalSkin === undefined) delete document.documentElement.dataset.skin;
+      else document.documentElement.dataset.skin = originalSkin;
+    }
+  });
+
   it('refreshes decoration and normalized colours on same-base skin changes and restores defaults', async () => {
     function Probe() {
       const { probeRef, tokens } = useChartTokens();

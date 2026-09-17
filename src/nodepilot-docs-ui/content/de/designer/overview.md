@@ -17,10 +17,12 @@ Features, die nur im Expert-Modus sichtbar sind, sind in den folgenden Seiten mi
 - **Node-Library / Palette** links (Kategorien: Triggers, Actions, Control Flow, Logic, Annotations + Snippets).
 - **Workflow-Browser** links (Folder-View oder Trigger-View, Search/Filter, Info-Card).
 - **Properties-Panel** rechts (kontextsensitiv pro selektiertem Node/Edge). Der KI-Assistent teilt sich diesen Bereich: er überlagert die Properties und weicht wieder, sobald im Canvas etwas selektiert wird.
-- **Header/Toolbar** mit sieben Clustern (History, Layout, Inspect, View, Run, Lifecycle, Export) + KI-Assistent-Button + **Farb-Skin-Umschalter** (Palette-Icon — Popover mit 9 Skins + `system`, synchron mit Einstellungen).
+- **Header/Toolbar** mit sieben Clustern (History, Layout, Inspect, View, Run, Lifecycle, Export) + KI-Assistent-Button + **Farb-Skin-Umschalter** (Palette-Icon — Popover mit 10 Skins + `system`, synchron mit Einstellungen).
 - **Live Execution Panel** unten (Tabs Live / History / Output / Watch).
 
 **Minimal Hell** und **Minimal Dunkel** verwenden neutrale Flächen, einen blauen Akzent und klare Konturen in der gesamten Web-UI einschließlich Designer. Dekorative Verläufe, Glanz und Schatten entfallen; Statusfarben, Funktionen, Schriftgrößen, Abstände, Layout und persönliche Designer-Einstellungen bleiben erhalten.
+
+**ION Dunkel** verwendet tiefblaue Flächen, Cyan-Akzente und dezente Leuchtkonturen in der gesamten Web-UI einschließlich Designer. Statusfarben bleiben unterscheidbar; Layout, Schriftgrößen und persönliche Designer-Einstellungen bleiben erhalten. Die Systemeinstellung für reduzierte Bewegung wird berücksichtigt.
 
 ## Edit-Lifecycle im Designer
 

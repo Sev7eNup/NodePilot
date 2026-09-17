@@ -275,7 +275,12 @@ function LabeledEdgeImpl({
         <g
           key={i}
           className={`np-edge-g ${conditionGlowClass}`}
-          style={isDetached ? { opacity: 0.28, pointerEvents: 'none' } : undefined}
+          data-premium={premiumCanvas}
+          data-flowing={showFlowAnimation || (edgesAnimated && edgeSimState === 'flowing')}
+          style={{
+            '--np-edge-signal': edgeStyle.stroke ?? conditionStroke,
+            ...(isDetached ? { opacity: 0.28, pointerEvents: 'none' } : {}),
+          } as React.CSSProperties}
           onMouseEnter={() => setEdgeHovered(true)}
           onMouseLeave={() => setEdgeHovered(false)}
         >
@@ -294,6 +299,7 @@ function LabeledEdgeImpl({
             // the soft reference look; edgeArrowPath pre-insets the core geometry by half
             // this stroke so the rounded head still lands exactly on the port.
             <path
+              className="np-edge-arrow"
               data-testid={`premium-edge-arrow-${id}`}
               d={edgeArrowPath(manualArrow)}
               fill={conditionArrowFill}
@@ -317,6 +323,7 @@ function LabeledEdgeImpl({
       <EdgeLabelRenderer>
         {displayLabel && (
           <div
+            data-premium={premiumCanvas}
             className={`np-edge-label-pill absolute pointer-events-all px-2 py-0.5 rounded font-label font-semibold border shadow-sm cursor-pointer
               ${isDisabled ? 'bg-surface-high text-outline border-outline-variant/30' :
                 conditionKind === 'custom' ? 'bg-custom-container/80 text-on-custom-container border-custom/40' :

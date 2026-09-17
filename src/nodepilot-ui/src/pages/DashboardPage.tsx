@@ -243,7 +243,7 @@ export function DashboardPage() {
           <div className="flex items-center gap-3 text-xs text-on-surface-variant">
             <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-sm" /> {t('dashboard:succeeded')}</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 bg-red-500 rounded-sm" /> {t('dashboard:failed')}</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 bg-outline-variant rounded-sm" /> {t('dashboard:cancelled')}</span>
+            <span className="flex items-center gap-1"><span className="np-chart-legend-cancelled w-2 h-2 bg-outline-variant rounded-sm" /> {t('dashboard:cancelled')}</span>
           </div>
         </div>
         <HourlyAreaChart buckets={stats.last24hBuckets} windowHours={windowHours} tokens={tokens} />

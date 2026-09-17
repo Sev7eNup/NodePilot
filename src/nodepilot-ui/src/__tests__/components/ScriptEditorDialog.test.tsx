@@ -281,6 +281,7 @@ describe('ScriptEditorDialog Monaco theme bridge', () => {
     '--color-surface-lowest': '#fff',
     '--color-surface-container': '#fff8',
     '--color-on-surface': 'red',
+    '--color-on-surface-variant': '#a7b9ce',
     '--color-primary': '#e00',
     '--color-outline': 'oklch(0.7 0.1 200)',
     '--np-code-keyword': '#639',
@@ -338,6 +339,33 @@ describe('ScriptEditorDialog Monaco theme bridge', () => {
     act(() => useThemeStore.getState().syncResolved());
     await waitFor(() => expect(screen.getByTestId('monaco-editor-mock')).toHaveAttribute('data-theme', 'nodepilot-dark'));
     expect(useThemeStore.getState().theme).toBe('system');
+  });
+
+  it('switches dark, ION and Minimal syntax palettes in place while retaining their distinct editor surfaces', async () => {
+    useThemeStore.getState().setTheme('dark');
+    setMinifiedTokens();
+    const defineTheme = vi.spyOn(monaco.editor, 'defineTheme');
+    render(<ScriptEditorDialog value="$buffer = 0x2a" onChange={() => {}} onClose={() => {}} />);
+    const definition = () => defineTheme.mock.calls.filter(([name]) => name === 'nodepilot-dark').at(-1)![1];
+    const foreground = (token: string) => definition().rules.find((rule) => rule.token === token)?.foreground;
+
+    for (const skin of ['dark-ion', 'dark-minimal', 'dark-ion', 'dark'] as const) {
+      act(() => {
+        document.documentElement.style.setProperty('--np-code-keyword', skin === 'dark-ion' ? '#65e4ff' : '#639');
+        useThemeStore.getState().setTheme(skin);
+      });
+      if (skin === 'dark') {
+        await waitFor(() => expect(foreground('keyword.powershell')).toBe('C586C0'));
+        expect(foreground('keyword')).toBeUndefined();
+      } else {
+        await waitFor(() => expect(foreground('keyword')).toBe(skin === 'dark-ion' ? '65e4ff' : '663399'));
+        expect(foreground('comment')).toBe('008800');
+        expect(foreground('number.hex')).toBe(foreground('number'));
+        expect(definition().colors['editorLineNumber.foreground']).toBe('#a7b9ce');
+      }
+      expect(definition().colors['editorGutter.background']).toBe(skin === 'dark-minimal' ? '#ffffff' : '#222222');
+      expect(screen.getByTestId('monaco-editor-mock')).toHaveValue('$buffer = 0x2a');
+    }
   });
 
   it('falls back to the built-in theme when defineTheme rejects a value', () => {

@@ -60,6 +60,30 @@ async function openScriptEditor(page: Page) {
   await expect(page.getByText(/Editor konnte nicht geladen werden|Editor failed to load/i)).toHaveCount(0);
 }
 
+async function editorPalette(page: Page) {
+  return page.evaluate(() => {
+    const scope = document.querySelector('.np-designer')!;
+    const probe = document.createElement('span');
+    scope.appendChild(probe);
+    probe.style.color = 'var(--np-code-comment)';
+    const comment = getComputedStyle(probe).color;
+    probe.style.color = 'var(--color-surface-lowest)';
+    const surface = getComputedStyle(probe).color;
+    const syntax = Object.fromEntries(['keyword', 'variable', 'string', 'number'].map((token) => {
+      probe.style.color = `var(--np-code-${token})`;
+      return [token, getComputedStyle(probe).color];
+    }));
+    probe.remove();
+    return { comment, surface, syntax };
+  });
+}
+
+async function expectMonacoSyntax(page: Page, syntax: Record<string, string>) {
+  for (const [text, token] of [['if', 'keyword'], ['$probe', 'variable'], ["'hello'", 'string'], ['0x2a', 'number'], ['7.5', 'number']]) {
+    await expect(page.locator('.monaco-editor .view-line span').getByText(text, { exact: true }).last()).toHaveCSS('color', syntax[token]);
+  }
+}
+
 test.describe('Script editor against the minified bundle', () => {
   test.beforeEach(async ({ page }) => {
     await installDefaultMocks(page);
@@ -70,6 +94,7 @@ test.describe('Script editor against the minified bundle', () => {
   for (const { skin, dark } of [
     { skin: 'dark-bank', dark: true }, { skin: 'dark', dark: true },
     { skin: 'light-minimal', dark: false }, { skin: 'dark-minimal', dark: true },
+    { skin: 'dark-ion', dark: true },
   ]) {
     test(`opens under the ${skin} skin without an uncaught error`, async ({ page }) => {
       // Subscribed before navigating: the theme is applied while the dialog mounts, so a throw
@@ -113,26 +138,10 @@ test.describe('Script editor against the minified bundle', () => {
       const originalSurface = await editor.evaluate((element) => getComputedStyle(element).backgroundColor);
 
       await applySkin(page, `${base}-minimal`, base === 'dark');
-      const expected = await page.evaluate(() => {
-        const scope = document.querySelector('.np-designer')!;
-        const probe = document.createElement('span');
-        scope.appendChild(probe);
-        probe.style.color = 'var(--np-code-comment)';
-        const comment = getComputedStyle(probe).color;
-        probe.style.color = 'var(--color-surface-lowest)';
-        const surface = getComputedStyle(probe).color;
-        const syntax = Object.fromEntries(['keyword', 'variable', 'string', 'number'].map((token) => {
-          probe.style.color = `var(--np-code-${token})`;
-          return [token, getComputedStyle(probe).color];
-        }));
-        probe.remove();
-        return { comment, surface, syntax };
-      });
+      const expected = await editorPalette(page);
       await expect(comment).toHaveCSS('color', expected.comment);
       await expect(editor).toHaveCSS('background-color', expected.surface);
-      for (const [text, token] of [['if', 'keyword'], ['$probe', 'variable'], ["'hello'", 'string'], ['0x2a', 'number'], ['7.5', 'number']]) {
-        await expect(page.locator('.monaco-editor .view-line span').getByText(text, { exact: true }).last()).toHaveCSS('color', expected.syntax[token]);
-      }
+      await expectMonacoSyntax(page, expected.syntax);
       expect(expected.comment).not.toBe(originalComment);
       await expect(page.locator('.monaco-editor .view-lines')).toContainText('Get-Date');
 
@@ -142,4 +151,44 @@ test.describe('Script editor against the minified bundle', () => {
       expect(errors).toEqual([]);
     });
   }
+
+  test('keeps Monaco and CodeMirror in place across Dark, ION and Minimal switches', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => {
+      if (message.text().includes('skin colors rejected by Monaco')) errors.push(message.text());
+    });
+    await page.goto(`/workflows/${WF_ID}`);
+    await expect(page.locator('.react-flow__node[data-id="step-script"]')).toBeVisible();
+    await applySkin(page, 'dark', true);
+    await openScriptEditor(page);
+
+    const monaco = page.locator('.monaco-editor').first();
+    const monacoComment = page.locator('.monaco-editor .view-line span').filter({ hasText: /#.*Minimal.*comment/ }).last();
+    await expect(monacoComment).toHaveCSS('color', 'rgb(96, 139, 78)');
+    const originalMonacoSurface = await monaco.evaluate((element) => getComputedStyle(element).backgroundColor);
+    const codeMirror = page.locator('.cm-editor').first();
+    const codeMirrorComment = codeMirror.locator('.cm-line span').filter({ hasText: /#.*Minimal.*comment/ }).last();
+    const codeMirrorHandle = await codeMirror.elementHandle();
+    expect(codeMirrorHandle).not.toBeNull();
+
+    for (const skin of ['dark-ion', 'dark-minimal', 'dark-ion', 'dark']) {
+      await applySkin(page, skin, true);
+      const expected = await editorPalette(page);
+      await expect(codeMirror).toHaveCSS('background-color', expected.surface);
+      await expect(codeMirrorComment).toHaveCSS('color', expected.comment);
+      if (skin === 'dark') {
+        await expect(monacoComment).toHaveCSS('color', 'rgb(96, 139, 78)');
+        await expect(monaco).toHaveCSS('background-color', originalMonacoSurface);
+      } else {
+        await expect(monacoComment).toHaveCSS('color', expected.comment);
+        await expect(monaco).toHaveCSS('background-color', expected.surface);
+        await expectMonacoSyntax(page, expected.syntax);
+      }
+      expect(await codeMirrorHandle!.evaluate((element) => element.isConnected)).toBe(true);
+      await expect(codeMirror.locator('.cm-content')).toContainText('Get-Date');
+      await expect(monaco.locator('.view-lines')).toContainText('Get-Date');
+    }
+    expect(errors).toEqual([]);
+  });
 });

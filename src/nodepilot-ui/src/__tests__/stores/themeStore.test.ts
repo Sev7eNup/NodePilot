@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { useThemeStore, resolveTheme, resolveSkin, applyTheme, normalizeTheme, isMinimalSkin, THEMES } from '../../stores/themeStore';
+import deNav from '../../i18n/locales/de/nav.json';
+import enNav from '../../i18n/locales/en/nav.json';
+import deSettings from '../../i18n/locales/de/settings.json';
+import enSettings from '../../i18n/locales/en/settings.json';
 
 /**
  * Theme resolution + DOM side-effects. Two pieces:
@@ -74,7 +78,7 @@ describe('resolveTheme (pure)', () => {
   });
 
   it('only explicit Minimal skins request reduced decoration', () => {
-    for (const skin of ['light', 'light-grey', 'light-bank', 'dark', 'dark-lila', 'dark-bank', 'dark-nebula', 'system', 'unknown']) {
+    for (const skin of ['light', 'light-grey', 'light-bank', 'dark', 'dark-lila', 'dark-bank', 'dark-nebula', 'dark-ion', 'system', 'unknown']) {
       expect(isMinimalSkin(skin), skin).toBe(false);
     }
     mockSystemDark(true);
@@ -97,14 +101,26 @@ describe('skins / data-skin attribute', () => {
     vi.restoreAllMocks();
   });
 
-  it('registryContainsAllNineSkins', () => {
+  it('registryContainsAllTenSkins', () => {
     const ids = THEMES.map((t) => t.id);
-    expect(ids).toEqual(['light', 'light-grey', 'light-bank', 'light-minimal', 'dark', 'dark-lila', 'dark-bank', 'dark-nebula', 'dark-minimal']);
+    expect(ids).toEqual(['light', 'light-grey', 'light-bank', 'light-minimal', 'dark', 'dark-lila', 'dark-bank', 'dark-nebula', 'dark-minimal', 'dark-ion']);
     expect(THEMES.find((t) => t.id === 'dark-lila')?.base).toBe('dark');
     expect(THEMES.find((t) => t.id === 'light-grey')?.base).toBe('light');
     expect(THEMES.find((t) => t.id === 'dark-bank')?.base).toBe('dark');
     expect(THEMES.find((t) => t.id === 'light-bank')?.base).toBe('light');
     expect(THEMES.find((t) => t.id === 'dark-nebula')?.base).toBe('dark');
+    expect(THEMES.find((t) => t.id === 'dark-ion')?.base).toBe('dark');
+  });
+
+  it.each([
+    ['de', deNav, deSettings, 'ION Dunkel'],
+    ['en', enNav, enSettings, 'ION Dark'],
+  ] as const)('has matching %s labels for skin controls and settings', (_language, nav, settings, ionLabel) => {
+    for (const { labelKey } of THEMES) {
+      expect(nav[labelKey]).toBeTruthy();
+      expect(settings[labelKey]).toBe(nav[labelKey]);
+    }
+    expect(nav.themeIonDark).toBe(ionLabel);
   });
 
   it.each(['light', 'dark'] as const)('applies %s Minimal with its base, marker and accent remap', (base) => {
@@ -259,8 +275,12 @@ describe('useThemeStore', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(true);
   });
 
-  it.each(['light', 'dark'] as const)('persists and rehydrates %s Minimal as an explicit preference', async (base) => {
-    const skin = `${base}-minimal` as const;
+  it.each([
+    ['light-minimal', 'light'], ['dark-minimal', 'dark'], ['dark-ion', 'dark'],
+  ] as const)('persists and rehydrates %s as an explicit preference', async (skin, base) => {
+    expect(normalizeTheme(skin)).toBe(skin);
+    expect(resolveSkin(skin)).toBe(skin);
+    expect(resolveTheme(skin)).toBe(base);
     useThemeStore.getState().setTheme(skin);
     const saved = localStorage.getItem('nodepilot.theme')!;
     expect(JSON.parse(saved).state).toEqual({ theme: skin });

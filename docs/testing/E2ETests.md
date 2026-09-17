@@ -1954,12 +1954,13 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 **Schritte:**
 1. Öffne App
 2. Setting-Menu → Theme
-3. Optionen: `System` + 9 Skins — hell: `Light`, `Light Grey`, `Light Bank`, `Minimal Light`; dunkel: `Dark`, `Dark Lilac`, `Dark Bank`, `Nebula`, `Minimal Dark`
+3. Optionen: `System` + 10 Skins — hell: `Light`, `Light Grey`, `Light Bank`, `Minimal Light`; dunkel: `Dark`, `Dark Lilac`, `Dark Bank`, `Nebula`, `Minimal Dark`, `ION Dark`
 4. Wähle `Dark` → „Azur": kühles Graphit (Hue 220, ~5 % Sättigung) mit azurblauem Akzent. Erhabene Flächen tragen eine helle Oberkante, eine beschattete Unterkante und eine harte Kontaktlinie; Eingabefelder sind umgekehrt beleuchtet (versenkt), Buttons sinken beim Drücken ein. Anders als die übrigen Dark-Skins reicht der Akzent bis in den React-Flow-Canvas (Auswahl-Ringe, Handles, Zoom-Controls)
 5. Wähle `Light` → UI wechselt zurück
 6. Wähle `System` → folgt OS-Präferenz (dunkles OS ⇒ `Dark`)
 7. Wähle `Nebula` → futuristischer Cyan-Deep-Space-Skin (Glas-Cards, Cyan-Glow, Mesh-Backdrop); Canvas-Nodes bleiben neutral
 8. Wähle `Minimal Light` und `Minimal Dark` → neutrale Flächen, blaue Akzente und klare Konturen in normalen Seiten, Designer, Dialogen und Editoren; keine dekorativen Verläufe, Glanz- oder Schatteneffekte
+9. Wähle `ION Dark` → tiefblaue Flächen, Cyan-Akzente, abgestufte Panels und Leuchtkonturen in normalen Seiten, Designer, Dialogen und Editoren
 
 **Prüfpunkte:**
 - [ ] Theme-Change ist instant (kein Flicker)
@@ -1972,6 +1973,8 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 - [ ] Beide Minimal-Skins erhalten Schriftgrößen, Abstände, Layout, Node-Formen, Anschlusspunkte und persönliche Designer-Einstellungen; Skin-Wechsel verändern weder `nodepilot-design` noch die Workflow-Definition
 - [ ] Minimal-Skins: Auswahl, Fokus, Ports, Kanten sowie Fehler-, Pausen- und Overlay-Zustände bleiben klar erkennbar; Portals und mobile Workflow-Ansicht folgen dem Skin
 - [ ] Logo, Favicon sowie Desktop-Fenster- und Tray-Symbol verwenden für die Minimal-Skins die vorhandenen blauen Hell-/Dunkel-Assets
+- [ ] `ION Dark` bleibt über Reload erhalten; Logo, Favicon sowie Desktop-Fenster- und Tray-Symbol verwenden das vorhandene Cyan-Asset von Nebula
+- [ ] `ION Dark`: Schriftgrößen, Layout, Node-Geometrie und persönliche Designer-Einstellungen bleiben erhalten; Status- und Auswahlmarkierungen sowie Tastaturfokus bleiben erkennbar, reduzierte Bewegung wird berücksichtigt
 
 **Erwartung:** Theme-Switching ist seamless
 
