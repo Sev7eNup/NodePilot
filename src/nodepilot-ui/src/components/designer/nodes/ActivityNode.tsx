@@ -256,14 +256,14 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   const premiumBg      = premiumCanvas && isIdle && isDark ? 'var(--np-node-bg)' : undefined;
   const premiumBgImage = !minimal && premiumCanvas && isIdle
     ? isDark
-      ? 'linear-gradient(180deg, rgba(255,255,255,.13) 0%, rgba(255,255,255,.04) 50%, transparent 100%)'
+      ? 'var(--np-node-sheen, linear-gradient(180deg, rgba(255,255,255,.13) 0%, rgba(255,255,255,.04) 50%, transparent 100%))'
       : 'linear-gradient(180deg, rgba(255,255,255,.7) 0%, rgba(255,255,255,.15) 60%, transparent 100%)'
     : undefined;
   const premiumShadow  = !minimal && premiumCanvas && isIdle && !heatmapBorder && !showCriticalPath
     ? isDark
       // Two-layer shadow: tight/opaque for crispness + medium/softer for depth. No large blur
       // radii.
-      ? '0 2px 5px rgba(0,0,0,.45), 0 8px 18px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.13), inset 0 -1px 0 rgba(0,0,0,.48)'
+      ? 'var(--np-node-shadow, 0 2px 5px rgba(0,0,0,.45), 0 8px 18px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.13), inset 0 -1px 0 rgba(0,0,0,.48))'
       : '0 1px 3px rgba(0,0,0,.10), 0 4px 12px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.9)'
     : undefined;
 
@@ -287,6 +287,14 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
     | undefined;
   const coverageDim = coverage?.cls === 'never' && !liveStatus && !simulated;
   const coverageRareTint = coverage?.cls === 'rare' && !liveStatus && !simulated;
+  // Skin effects use the runtime status colour, and yield to overlays with their own signals.
+  const nodeAppearance = {
+    'data-premium': premiumCanvas,
+    'data-node-overlay': !!(liveStatus || simulated || varFlowRole || heatmapBorder || showCriticalPath || isDisabled || coverageDim || coverageRareTint),
+  };
+  const nodeSignalStyle = {
+    '--np-node-signal': liveStyle?.borderColor ?? (showEntryMarker ? entryAccentColor : ac.color),
+  } as React.CSSProperties;
 
   const [showTooltip, setShowTooltip] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -335,7 +343,9 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
     return (
       <div
         ref={nodeRef}
-        className={`relative flex flex-col items-center ${isDisabled ? 'opacity-50' : ''} ${isSimSkipped ? 'opacity-[0.45]' : ''} ${coverageDim ? 'opacity-40 grayscale' : ''} ${coverageRareTint ? 'opacity-80' : ''}`}
+        {...nodeAppearance}
+        style={nodeSignalStyle}
+        className={`np-activity-node relative flex flex-col items-center ${isDisabled ? 'opacity-50' : ''} ${isSimSkipped ? 'opacity-[0.45]' : ''} ${coverageDim ? 'opacity-40 grayscale' : ''} ${coverageRareTint ? 'opacity-80' : ''}`}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         title={
@@ -735,16 +745,17 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   return (
     <div
       ref={nodeRef}
-      className={`np-activity-card relative bg-surface-lowest flex flex-col min-w-[220px] max-w-[280px] transition-all rounded-xl shadow-[var(--np-elev-1)] hover:shadow-[var(--np-elev-2)] ${
+      {...nodeAppearance}
+      className={`np-activity-node np-activity-card relative bg-surface-lowest flex flex-col min-w-[220px] max-w-[280px] transition-all rounded-xl shadow-[var(--np-elev-1)] hover:shadow-[var(--np-elev-2)] ${
         simRingCls || (selected ? 'ring-2 ring-primary/50 shadow-[var(--np-elev-2)]' : 'ring-1 ring-outline-variant/20')
       } ${isDisabled ? 'opacity-50 [border:1.5px_dashed_var(--color-skipped)]' : ''} ${coverageDim ? 'opacity-40 grayscale' : ''} ${coverageRareTint ? 'opacity-80' : ''}`}
-      style={(heatmapBorder && !liveStatus && !isDisabled)
+      style={{ ...nodeSignalStyle, ...((heatmapBorder && !liveStatus && !isDisabled)
         ? { border: `3px solid ${heatmapBorder}`, boxShadow: minimal ? undefined : `0 0 14px ${heatmapBorder}` }
         : showCriticalPath && !isDisabled
           ? { border: '3px solid color-mix(in srgb, var(--color-paused) 85%, transparent)', boxShadow: minimal ? undefined : '0 0 14px color-mix(in srgb, var(--color-paused) 60%, transparent)' }
           : isFailedGlow
             ? (minimal ? { outline: '2px solid var(--color-error)', outlineOffset: 2 } : { boxShadow: FAILED_GLOW_SHADOW })
-            : undefined}
+            : undefined) }}
       title={coverage
         ? t('nodes.coverageTooltip', { days: coverage.windowDays, executed: coverage.executedCount, total: coverage.totalExecutions })
         : showCriticalPath

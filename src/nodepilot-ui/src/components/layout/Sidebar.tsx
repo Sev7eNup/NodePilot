@@ -4,7 +4,7 @@ import type { CarbonIconType } from '@carbon/icons-react';
 import {
   Screen, Settings, Logout, Light, Contrast, Asleep, ColorPalette,
   ChevronLeft, ChevronRight, Close, Building, BankVault, Checkmark,
-  Star, Search, OverflowMenuHorizontal, Catalog,
+  Star, Search, OverflowMenuHorizontal, Catalog, Flow,
 } from '@carbon/icons-react';
 import { useTranslation } from 'react-i18next';
 import { useAiCapabilities } from '../../hooks/useAiCapabilities';
@@ -20,7 +20,7 @@ import { navGroups, type BadgeKind } from '../../lib/navigation';
 
 // Icon per skin id, plus system. Options and cycle order come from the THEMES registry so a
 // new skin shows up in the quick toggle and the popover without further wiring.
-const THEME_ICONS: Record<string, CarbonIconType> = { light: Light, dark: Asleep, 'dark-lila': ColorPalette, 'light-grey': Contrast, 'dark-bank': BankVault, 'light-bank': Building, 'dark-nebula': Star, 'light-minimal': Light, 'dark-minimal': Asleep, system: Screen };
+const THEME_ICONS: Record<string, CarbonIconType> = { light: Light, dark: Asleep, 'dark-lila': ColorPalette, 'light-grey': Contrast, 'dark-bank': BankVault, 'light-bank': Building, 'dark-nebula': Star, 'light-minimal': Light, 'dark-minimal': Asleep, 'dark-ion': Flow, system: Screen };
 
 const THEME_OPTIONS: { value: Theme; icon: CarbonIconType; key: string }[] = [
   ...THEMES.map((t) => ({ value: t.id as Theme, icon: THEME_ICONS[t.id] ?? Screen, key: t.labelKey })),

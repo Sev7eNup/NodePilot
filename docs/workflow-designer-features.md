@@ -283,7 +283,7 @@ Seven clusters with a proximity-driven colour glow (purely cosmetic, prefers-red
 Outside the seven clusters in the header (to the right of the standard/expert toggle):
 - **AI workflow assistant button** (violet, sparkles icon) — opens the chat panel; described fully in § 15.
 - **Toolbar layout switch** (`Rows3` icon, `data-testid="toggle-toolbar-layout"`, to the left of the skin switcher, visible in **both** layouts): flips the header between the compact three-zone layout (the default; grouped view/overlays/tools popovers, a centred name, a green "run" CTA) and the classic inline row (every toggle and tool as an individual button, a right-aligned name, an icon-only play). Persisted in the `designStore` (`toolbarLayout`, default `compact`). Both layouts share `EditorIdentity`/`SkinSwitcher`/`RunControls`/`LifecycleControls`/`StandardMoreMenu` (so there is no double-maintenance drift); the `EditorHeader` dispatcher only reads `toolbarLayout` and renders `CompactEditorHeader` or `ClassicEditorHeader`. The classic row wraps whole clusters onto several lines in narrow windows and keeps the proximity glow trays.
-- **Colour skin switcher** (palette icon, icon only, next to the AI button): opens a popover with all 9 skins plus `system` from the `THEMES` registry. The selection syncs with the settings picker and the sidebar (a shared `useThemeStore`); the active skin gets a check icon; clicking outside closes the popover.
+- **Colour skin switcher** (palette icon, icon only, next to the AI button): opens a popover with all 10 skins plus `system` from the `THEMES` registry. The selection syncs with the settings picker and the sidebar (a shared `useThemeStore`); the active skin gets a check icon; clicking outside closes the popover.
 
 ### Inline workflow name
 Grows with its content; read-only without write permission.
@@ -336,6 +336,8 @@ Depending on the selection it shows: bulk edit (2 or more nodes, Expert), proper
 ## 20. Visual overlays & display options
 
 The designer uses the **Atelier** structure: a workbench with a dot grid, docked panels and one accent. `styles/designer-atelier.css` maps the `--color-*` tokens through a `--wd-*` palette layer, scoped by `.wd-atelier` on the editor root and `.wd-atelier-on` on `<html>` (the latter re-tokenises body-portaled tooltips). **Colour skins adapt it:** each skin re-points the accent family and the base tone (`--wd-accent*`, `--wd-canvas`/`--wd-panel`). **Minimal Light** and **Minimal Dark** also flatten decorative surfaces and simplify corners throughout the application: clear outlines replace sheen and shadow. Font sizes, spacing, panel layout, node shapes and port geometry stay unchanged, and execution states remain distinguishable. Switching skins does not change the `designStore` preferences, including `premiumCanvas`, or the workflow definition.
+
+**ION Dark** (`dark-ion`) adds deep navy surfaces, cyan accents, layered panels and luminous node outlines through the same theme system. Its decoration preserves node geometry, controls, semantic execution states and the existing designer preferences; reduced motion is respected. Logo and favicon reuse the cyan Nebula asset.
 
 Every display setting lives in the **`designStore`** (Zustand plus persist, key `nodepilot-design`) and applies editor-wide:
 

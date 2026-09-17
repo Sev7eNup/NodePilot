@@ -1,0 +1,252 @@
+.hightech-preview .sp-designer {
+  --ion-etch: color-mix(in srgb, var(--sp-accent) 22%, transparent);
+  --ion-light: color-mix(in srgb, var(--sp-accent) 50%, transparent);
+  --ion-grid: color-mix(in srgb, var(--sp-accent) 7%, transparent);
+  background: var(--sp-bg);
+}
+
+.hightech-preview .sp-designer-toolbar {
+  position: relative;
+  background: linear-gradient(105deg, color-mix(in srgb, var(--sp-panel) 88%, transparent), var(--sp-panel));
+  border-bottom-color: var(--ion-etch);
+  box-shadow: inset 0 1px color-mix(in srgb, var(--sp-accent) 10%, transparent);
+}
+
+.hightech-preview .sp-designer-toolbar::after {
+  content: '';
+  position: absolute;
+  right: 14%;
+  bottom: -1px;
+  left: 14%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ion-light), transparent);
+  pointer-events: none;
+}
+
+.hightech-preview .sp-designer-heading > svg,
+.hightech-preview .sp-designer-execution-heading h3 > svg {
+  color: var(--sp-accent);
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--sp-accent) 35%, transparent));
+}
+
+.hightech-preview .sp-designer-heading h2 { letter-spacing: 0.025em; }
+.hightech-preview .sp-designer-heading p { letter-spacing: 0.03em; }
+.hightech-preview .sp-designer-count { font-family: var(--font-mono); font-size-adjust: none; }
+.hightech-preview .sp-designer-tools .sp-icon-button { border-color: transparent; }
+.hightech-preview .sp-designer-tools .sp-icon-button:hover { border-color: var(--ion-light); background: var(--sp-accent-bg); }
+
+.hightech-preview .sp-designer-library,
+.hightech-preview .sp-designer-properties {
+  position: relative;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--sp-subtle) 78%, transparent), color-mix(in srgb, var(--sp-panel) 94%, transparent));
+  border-color: var(--ion-etch);
+  backdrop-filter: blur(14px);
+  box-shadow: inset 0 1px color-mix(in srgb, var(--sp-accent) 8%, transparent);
+}
+
+.hightech-preview .sp-designer-section-heading h3,
+.hightech-preview .sp-designer-execution-heading h3 {
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--sp-text);
+}
+
+.hightech-preview .sp-designer-library-hint { letter-spacing: 0.05em; }
+.hightech-preview .sp-designer-search > svg { color: var(--sp-accent); }
+.hightech-preview .sp-designer .sp-field {
+  background: color-mix(in srgb, var(--sp-bg) 86%, transparent);
+  border-color: var(--sp-control-border);
+  box-shadow: inset 0 1px 3px color-mix(in srgb, var(--sp-bg) 70%, transparent);
+}
+
+.hightech-preview .sp-designer .sp-field:focus {
+  border-color: var(--sp-accent);
+  box-shadow: 0 0 0 3px var(--sp-accent-bg), inset 0 1px color-mix(in srgb, var(--sp-accent) 12%, transparent);
+}
+
+.hightech-preview .sp-designer-library-item {
+  background: color-mix(in srgb, var(--sp-panel) 62%, transparent);
+  border-color: color-mix(in srgb, var(--sp-line) 75%, transparent);
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.hightech-preview .sp-designer-library-item:hover {
+  border-color: var(--ion-light);
+  background: var(--sp-accent-bg);
+}
+
+.hightech-preview .sp-designer-library-item.is-selected {
+  background: linear-gradient(100deg, var(--sp-accent-bg), color-mix(in srgb, var(--sp-panel) 90%, transparent));
+  border-color: var(--ion-light);
+  box-shadow: inset 2px 0 var(--sp-accent), 0 0 16px color-mix(in srgb, var(--sp-accent) 7%, transparent);
+}
+
+.hightech-preview .sp-designer-library-icon {
+  background: color-mix(in srgb, var(--sp-bg) 85%, currentColor);
+  border-color: color-mix(in srgb, currentColor 62%, transparent);
+  box-shadow: inset 0 1px color-mix(in srgb, currentColor 22%, transparent), 0 0 10px color-mix(in srgb, currentColor 9%, transparent);
+}
+
+.hightech-preview .sp-designer-canvas { isolation: isolate; }
+.hightech-preview .sp-designer-canvas .react-flow {
+  background-color: var(--sp-bg);
+  background-image:
+    radial-gradient(ellipse at 50% 35%, color-mix(in srgb, var(--sp-accent) 6%, transparent), transparent 66%),
+    linear-gradient(var(--ion-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ion-grid) 1px, transparent 1px),
+    linear-gradient(color-mix(in srgb, var(--sp-accent) 3%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--sp-accent) 3%, transparent) 1px, transparent 1px);
+  background-size: auto, 80px 80px, 80px 80px, 20px 20px, 20px 20px;
+  background-position: center;
+  box-shadow: inset 0 0 80px color-mix(in srgb, var(--sp-bg) 45%, transparent);
+}
+
+.hightech-preview .sp-designer-canvas::after {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--ion-light), var(--ion-light)) left top / 18px 1px no-repeat,
+    linear-gradient(var(--ion-light), var(--ion-light)) left top / 1px 18px no-repeat,
+    linear-gradient(var(--ion-light), var(--ion-light)) right top / 18px 1px no-repeat,
+    linear-gradient(var(--ion-light), var(--ion-light)) right top / 1px 18px no-repeat,
+    linear-gradient(var(--ion-light), var(--ion-light)) right bottom / 18px 1px no-repeat,
+    linear-gradient(var(--ion-light), var(--ion-light)) right bottom / 1px 18px no-repeat;
+}
+
+.hightech-preview .sp-designer-canvas-hint {
+  color: var(--sp-muted);
+  background: color-mix(in srgb, var(--sp-bg) 90%, transparent);
+  letter-spacing: 0.035em;
+}
+
+.hightech-preview .sp-designer-canvas .react-flow__attribution {
+  background: color-mix(in srgb, var(--sp-bg) 88%, transparent);
+}
+
+.hightech-preview .sp-flow-node { --ion-activity: var(--sp-accent); }
+.hightech-preview .sp-flow-node-start,
+.hightech-preview .sp-flow-node-result { --ion-activity: var(--sp-success); }
+.hightech-preview .sp-flow-node-error { --ion-activity: var(--sp-warning); }
+.hightech-preview .sp-flow-node:has(.sp-designer-status-failed) { --ion-activity: var(--sp-danger); }
+.hightech-preview .sp-flow-node-icon {
+  color: var(--ion-activity);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--ion-activity) 16%, var(--sp-panel)), var(--sp-panel));
+  border-color: var(--ion-activity);
+  box-shadow: inset 0 1px color-mix(in srgb, var(--ion-activity) 38%, transparent), inset 0 0 18px color-mix(in srgb, var(--ion-activity) 7%, transparent), 0 0 20px color-mix(in srgb, var(--ion-activity) 16%, transparent);
+}
+
+.hightech-preview .sp-flow-node-glyph {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--ion-activity) 30%, transparent));
+}
+
+.hightech-preview .sp-flow-node-selected .sp-flow-node-icon {
+  outline-width: 1px;
+  outline-color: color-mix(in srgb, var(--sp-accent) 80%, transparent);
+  box-shadow: inset 0 1px color-mix(in srgb, var(--ion-activity) 50%, transparent), inset 0 0 20px color-mix(in srgb, var(--ion-activity) 10%, transparent), 0 0 30px color-mix(in srgb, var(--ion-activity) 24%, transparent);
+}
+
+.hightech-preview .sp-flow-node-icon.sp-flow-node-bookend { background: none; box-shadow: none; outline: none; }
+.hightech-preview .sp-flow-bookend-body {
+  fill: color-mix(in srgb, var(--ion-activity) 9%, var(--sp-panel));
+  stroke: var(--ion-activity);
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--ion-activity) 35%, transparent));
+}
+
+.hightech-preview .sp-flow-bookend-selection {
+  stroke-width: 1;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--sp-accent) 40%, transparent));
+}
+
+.hightech-preview .sp-flow-node-selected .sp-flow-node-label { color: var(--sp-accent); }
+.hightech-preview .sp-flow-node-status { text-shadow: none; }
+.hightech-preview .sp-designer-canvas .sp-flow-node .react-flow__handle {
+  background: var(--ion-activity);
+  border-color: var(--sp-bg);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--ion-activity) 60%, transparent);
+}
+
+.hightech-preview .sp-designer-canvas .react-flow__edge-textbg { stroke: var(--ion-etch); stroke-width: 1; }
+.hightech-preview .sp-designer:has(.sp-designer-run-status.sp-designer-status-running) .react-flow__edge[data-id="start-check"] .react-flow__edge-path {
+  stroke-dasharray: 7 9;
+  animation: ion-flow-transmission 1.4s linear infinite;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--sp-accent) 50%, transparent));
+}
+
+.hightech-preview .sp-designer:has(.sp-designer-run-status.sp-designer-status-success) .react-flow__edge:is([data-id="start-check"], [data-id="check-result"]) .react-flow__edge-path {
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--sp-accent) 40%, transparent));
+}
+
+.hightech-preview .sp-designer:has(.sp-designer-run-status.sp-designer-status-failed) .react-flow__edge[data-id="check-error"] .react-flow__edge-path {
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--sp-danger) 45%, transparent));
+}
+
+.hightech-preview .sp-designer-configured { text-shadow: 0 0 10px color-mix(in srgb, var(--sp-success) 25%, transparent); }
+.hightech-preview .sp-designer-property-title strong { letter-spacing: 0.015em; }
+.hightech-preview .sp-designer-property-hint > svg { color: var(--sp-accent); }
+.hightech-preview .sp-designer-execution {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--sp-subtle) 60%, var(--sp-panel)), var(--sp-panel));
+  border-color: var(--ion-etch);
+  box-shadow: inset 0 1px color-mix(in srgb, var(--sp-accent) 8%, transparent);
+}
+
+.hightech-preview .sp-designer-execution-heading { border-bottom-color: var(--ion-etch); }
+.hightech-preview .sp-designer-run-status { letter-spacing: 0.035em; }
+.hightech-preview .sp-designer-run-status > svg { filter: drop-shadow(0 0 5px currentColor); }
+.hightech-preview .sp-designer-execution-step {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--sp-subtle) 80%, transparent), color-mix(in srgb, var(--sp-bg) 75%, transparent));
+  border-color: var(--ion-etch);
+  box-shadow: inset 0 1px color-mix(in srgb, var(--sp-accent) 7%, transparent);
+}
+
+.hightech-preview .sp-designer-execution-step:hover {
+  border-color: var(--ion-light);
+  background: var(--sp-accent-bg);
+}
+
+.hightech-preview .sp-designer-execution-step[aria-pressed="true"] {
+  border-color: var(--ion-light);
+  box-shadow: inset 0 2px var(--sp-accent), 0 0 14px color-mix(in srgb, var(--sp-accent) 7%, transparent);
+}
+
+.hightech-preview .sp-designer-step-symbol.sp-designer-status-success > svg { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--sp-success) 40%, transparent)); }
+.hightech-preview .sp-designer-step-symbol.sp-designer-status-failed > svg { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--sp-danger) 40%, transparent)); }
+
+.hightech-preview[data-effects="quiet"] .sp-designer-library,
+.hightech-preview[data-effects="quiet"] .sp-designer-properties { backdrop-filter: none; }
+.hightech-preview[data-effects="quiet"] .sp-designer-library-item,
+.hightech-preview[data-effects="quiet"] .sp-designer-library-icon,
+.hightech-preview[data-effects="quiet"] .sp-flow-node .sp-flow-node-icon,
+.hightech-preview[data-effects="quiet"] .sp-designer-canvas .sp-flow-node .react-flow__handle,
+.hightech-preview[data-effects="quiet"] .sp-designer-execution-step { box-shadow: none; }
+.hightech-preview[data-effects="quiet"] .sp-designer-configured { text-shadow: none; }
+.hightech-preview[data-effects="quiet"] .sp-designer-heading > svg,
+.hightech-preview[data-effects="quiet"] .sp-designer-execution-heading h3 > svg,
+.hightech-preview[data-effects="quiet"] .sp-flow-node-glyph,
+.hightech-preview[data-effects="quiet"] .sp-flow-bookend-body,
+.hightech-preview[data-effects="quiet"] .sp-flow-bookend-selection,
+.hightech-preview[data-effects="quiet"] .sp-designer-run-status > svg,
+.hightech-preview[data-effects="quiet"] .sp-designer-step-symbol > svg { filter: none; }
+.hightech-preview[data-effects="quiet"] .sp-designer:has(.sp-designer-run-status:is(.sp-designer-status-running, .sp-designer-status-success, .sp-designer-status-failed)) .react-flow__edge[data-id] .react-flow__edge-path {
+  animation: none;
+  filter: none;
+  stroke-dasharray: none;
+}
+
+@keyframes ion-flow-transmission {
+  to { stroke-dashoffset: -32; }
+}
+
+@media (max-width: 650px) {
+  .hightech-preview .sp-designer-canvas::after { inset: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hightech-preview .sp-designer-library-item { transition: none; }
+  .hightech-preview .sp-designer:has(.sp-designer-run-status.sp-designer-status-running) .react-flow__edge[data-id="start-check"] .react-flow__edge-path {
+    animation: none;
+    stroke-dasharray: none;
+  }
+}

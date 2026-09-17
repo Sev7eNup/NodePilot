@@ -29,9 +29,11 @@ function StatusBadge({ status }: { status: DemoStatus }) {
   return <span className={`sp-badge sp-status-${status}`}><Icon size={12} />{t(status)}</span>;
 }
 
-export function SkinPreview({ initialVariant }: { initialVariant: Variant }) {
+export function SkinPreview({ initialVariant, presentation = 'minimal' }: { initialVariant: Variant; presentation?: 'minimal' | 'hightech' }) {
   const { t, i18n } = useTranslation('preview');
+  const hightech = presentation === 'hightech';
   const [variant, setVariant] = useState(initialVariant);
+  const [effects, setEffects] = useState(true);
   const [view, setView] = useState<View>(() => new URLSearchParams(location.search).get('view') === 'designer' ? 'designer' : 'overview');
   const [designerVisited, setDesignerVisited] = useState(view === 'designer');
   const [status, setStatus] = useState<DemoStatus>('idle');
@@ -89,7 +91,7 @@ export function SkinPreview({ initialVariant }: { initialVariant: Variant }) {
   })).filter((workflow) => workflow.label.toLowerCase().includes(query.toLowerCase()) && (filter === 'all' || workflow.status === filter));
 
   return (
-    <div className="skin-preview">
+    <div className={`skin-preview${hightech ? ' hightech-preview' : ''}`} data-effects={effects ? 'full' : 'quiet'}>
       <header className="sp-preview-header">
         <div className="sp-preview-identity"><span className="sp-prototype-tag">{t('prototype')}</span><span className="sp-muted sp-demo-description">{t('demo')}</span></div>
         <nav className="sp-view-tabs" aria-label={t('navigatePreview')}>
@@ -110,13 +112,20 @@ export function SkinPreview({ initialVariant }: { initialVariant: Variant }) {
               <button type="button" className="sp-nav-item" onClick={() => switchView('designer')}><Flow size={18} /><span>{t('designer')}</span><ChevronRight size={14} /></button>
               <button type="button" className="sp-nav-item" onClick={() => document.getElementById('sp-workflow-settings')?.focus()}><Settings size={18} /><span>{t('settings')}</span></button>
             </nav>
+            {hightech && <div className={`ht-signal ht-signal-${status}`}>
+              <div className="ht-signal-orbit" aria-hidden="true"><span /><Flow size={32} /></div>
+              <span className="ht-eyebrow">{t('signalTitle')}</span>
+              <strong>{t(status)}</strong>
+              <span className="sp-muted">{t('signalHint')}</span>
+              <div className="ht-signal-bars" aria-hidden="true">{[20, 34, 26, 44, 32, 52, 40, 28, 46, 32, 24, 38].map((height, index) => <i key={index} style={{ height }} />)}</div>
+            </div>}
             <div className="sp-sidebar-bottom"><div className="sp-workspace-avatar"><UserAvatar size={20} /><span>{t('account')}</span></div><span className="sp-muted"><span className="sp-local-dot" />{t('local')}</span></div>
           </aside>
 
           <div className="sp-main-shell">
             <header className="sp-app-header"><div>{t('workspace')}<ChevronRight size={14} /><strong>{t('workflows')}</strong></div><span className="sp-muted">{t('note')}</span></header>
             <main className="sp-overview">
-              <div className="sp-page-heading"><div><h1>{t('workflows')}</h1><p className="sp-muted">{t('subtitle')}</p></div><button type="button" className="sp-button sp-button-primary" onClick={(event) => openDialog(event.currentTarget)}><Add size={17} />{t('newWorkflow')}</button></div>
+              <div className="sp-page-heading"><div>{hightech && <span className="ht-eyebrow">{t('controlPlane')}</span>}<h1>{t('workflows')}</h1><p className="sp-muted">{t('subtitle')}</p></div><button type="button" className="sp-button sp-button-primary" onClick={(event) => openDialog(event.currentTarget)}><Add size={17} />{t('newWorkflow')}</button></div>
 
               <div className="sp-stats">
                 {[
@@ -167,9 +176,9 @@ export function SkinPreview({ initialVariant }: { initialVariant: Variant }) {
 
       <footer className="sp-preview-bar">
         <div className="sp-preview-caption"><strong>{t('previewTitle')}</strong><span className="sp-muted">{t('previewHint')}</span></div>
-        <div className="sp-variant-switch" role="group" aria-label={t('variant')}>
+        {hightech ? <div className="ht-variant-controls"><span className="ht-skin-label"><span className="ht-skin-dot" />ION <span>DARK</span></span><button type="button" className="sp-button ht-effects-toggle" aria-pressed={effects} onClick={() => setEffects((value) => !value)}>{t('effects')}<span>{t(effects ? 'effectsOn' : 'effectsOff')}</span></button></div> : <div className="sp-variant-switch" role="group" aria-label={t('variant')}>
           {(['light', 'dark'] as const).map((theme) => <button key={theme} type="button" className={variant === theme ? 'is-active' : ''} aria-pressed={variant === theme} onClick={() => setVariant(theme)}><span className={`sp-swatch sp-swatch-${theme}`} />{t(theme)}{variant === theme && <Checkmark size={13} />}</button>)}
-        </div>
+        </div>}
         <label className="sp-status-control"><span>{t('status')}</span><select className="sp-field" value={status} onChange={(event) => setStatus(event.target.value as DemoStatus)}>{(['idle', 'running', 'success', 'failed'] as const).map((state) => <option key={state} value={state}>{t(state)}</option>)}</select></label>
         <button className="sp-icon-button" type="button" title={t('reset')} aria-label={t('reset')} onClick={resetDemo}><Renew size={18} /></button>
       </footer>

@@ -9,7 +9,8 @@ we pre-render one variant per skin by hue-remapping the untouched original
 and the white play-triangle / checkmark stay white.
 
 `lib/appIcon.ts` maps each skin to an asset for BrandLogo and the favicon.
-The minimal skins reuse the existing blue light/dark assets and need no additional variants.
+The minimal skins reuse the blue light/dark assets; ION reuses Nebula's cyan asset.
+These skins need no additional generated variants.
 
 Re-run after the source logo changes:  python scripts/generate-logo-skins.py
 Requires Pillow (`pip install pillow`).

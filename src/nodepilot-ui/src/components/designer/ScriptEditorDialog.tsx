@@ -120,13 +120,15 @@ function readVar(name: string, fallback: string): string {
  * it reaches the error boundary and takes the whole designer page down.
  */
 function applyNodePilotTheme(isDark: boolean): string {
-  const minimal = isMinimalSkin(document.documentElement.dataset.skin ?? '');
-  const syntaxColor = (token: string, fallback: string) => minimal
+  const skin = document.documentElement.dataset.skin ?? '';
+  const minimal = isMinimalSkin(skin);
+  const useSyntaxTokens = minimal || skin === 'dark-ion';
+  const syntaxColor = (token: string, fallback: string) => useSyntaxTokens
     ? readVar(token, `#${fallback}`).slice(1)
     : fallback;
   // PowerShell emits comment.ps1, keyword.if.ps1 and number.hex.ps1. Match semantic
   // prefixes so both the language suffix and its keyword/number subtypes inherit the palette.
-  const minimalRules: monaco.editor.ITokenThemeRule[] = [
+  const tokenRules: monaco.editor.ITokenThemeRule[] = [
     { token: 'comment', foreground: syntaxColor('--np-code-comment', '505660'), fontStyle: 'italic' },
     { token: 'keyword', foreground: syntaxColor('--np-code-keyword', '245EA8') },
     { token: 'string', foreground: syntaxColor('--np-code-string', '217348') },
@@ -145,7 +147,7 @@ function applyNodePilotTheme(isDark: boolean): string {
     gutterSurface: readVar(minimal ? '--color-surface-lowest' : '--color-surface-container', '#edeef0'),
     onSurface: readVar('--color-on-surface', '#191c1e'),
     primary: readVar('--color-primary', '#004ac6'),
-    outline: readVar(minimal ? '--color-on-surface-variant' : '--color-outline', '#737686'),
+    outline: readVar(useSyntaxTokens ? '--color-on-surface-variant' : '--color-outline', '#737686'),
   };
   // Dark reads the same runtime tokens as light: readVar resolves against the live scope,
   // which under html.dark already carries the dark values. Hardcoding them here would
@@ -155,7 +157,7 @@ function applyNodePilotTheme(isDark: boolean): string {
     surfaceLow: readVar(minimal ? '--color-surface-lowest' : '--color-surface-low', '#1e2024'),
     onSurface: readVar('--color-on-surface', '#e2e2e6'),
     primary: readVar('--color-primary', '#aac7ff'),
-    outline: readVar(minimal ? '--color-on-surface-variant' : '--color-outline', '#8e9099'),
+    outline: readVar(useSyntaxTokens ? '--color-on-surface-variant' : '--color-outline', '#8e9099'),
   };
 
   const name = isDark ? THEME_DARK : THEME_LIGHT;
@@ -165,7 +167,7 @@ function applyNodePilotTheme(isDark: boolean): string {
     monaco.editor.defineTheme(THEME_LIGHT, {
       base: 'vs',
       inherit: true,
-      rules: minimal ? minimalRules : [
+      rules: useSyntaxTokens ? tokenRules : [
         { token: 'variable.predefined.powershell', foreground: syntaxColor('--np-code-variable', '0451A5') },
         { token: 'variable.powershell', foreground: syntaxColor('--np-code-variable', '0070C1') },
         { token: 'type.powershell', foreground: syntaxColor('--np-code-type', '267F99') },
@@ -189,7 +191,7 @@ function applyNodePilotTheme(isDark: boolean): string {
     monaco.editor.defineTheme(THEME_DARK, {
       base: 'vs-dark',
       inherit: true,
-      rules: minimal ? minimalRules : [
+      rules: useSyntaxTokens ? tokenRules : [
         { token: 'variable.predefined.powershell', foreground: syntaxColor('--np-code-variable', '4FC1FF') },
         { token: 'variable.powershell', foreground: syntaxColor('--np-code-variable', '9CDCFE') },
         { token: 'type.powershell', foreground: syntaxColor('--np-code-type', '4EC9B0') },

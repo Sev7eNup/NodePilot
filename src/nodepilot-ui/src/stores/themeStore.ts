@@ -23,8 +23,7 @@ export interface ThemeDef {
 }
 
 // Display order in the Settings picker and the sidebar cycle: all light skins first, then all
-// dark skins, each running from default to tinted to bank. Consumers append `system`, so it
-// always lands last.
+// dark skins. Consumers append `system`, so it always lands last.
 export const THEMES = [
   { id: 'light', base: 'light', labelKey: 'themeLight' },
   { id: 'light-grey', base: 'light', labelKey: 'themeLightGrey', remapBlue: true },
@@ -35,6 +34,7 @@ export const THEMES = [
   { id: 'dark-bank', base: 'dark', labelKey: 'themeBankDark', remapBlue: true },
   { id: 'dark-nebula', base: 'dark', labelKey: 'themeDarkNebula', remapBlue: true },
   { id: 'dark-minimal', base: 'dark', labelKey: 'themeMinimalDark', remapBlue: true },
+  { id: 'dark-ion', base: 'dark', labelKey: 'themeIonDark', remapBlue: true },
 ] as const satisfies readonly ThemeDef[];
 
 export type SkinId = (typeof THEMES)[number]['id'];

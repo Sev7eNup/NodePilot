@@ -18,6 +18,7 @@ describe('appIcon', () => {
     ['dark-nebula', 'dark', '/appicon-dark-nebula.png'],
     ['light-minimal', 'light', '/appicon-light.png'],
     ['dark-minimal', 'dark', '/appicon-dark.png'],
+    ['dark-ion', 'dark', '/appicon-dark-nebula.png'],
   ])('resolves the %s skin icon', (theme, resolved, expected) => {
     expect(appIconForTheme(theme as never, resolved as never)).toBe(expected);
   });
