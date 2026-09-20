@@ -15,7 +15,7 @@
 .experience-mission blockquote{margin:26px 0 30px;padding:18px;border-left:2px solid #e5bc70;background:#e5bc7008;width:100%;box-sizing:border-box}
 .experience-mission blockquote code{font:12px/1.8 var(--font-mono);color:#e5bc70;overflow-wrap:anywhere}
 .experience-mission blockquote span{display:block;font-size:12px;color:var(--muted);margin-top:8px;line-height:1.7}
-.experience-mission .button{margin-top:auto;min-height:44px;font-size:13px;text-align:center}
+.experience-mission .button{margin-top:auto;min-height:44px;text-align:center}
 .experience-notice{font-size:12px;line-height:1.8;color:var(--muted);margin:24px 0}
 .experience-links{display:flex;align-items:center;flex-wrap:wrap;gap:24px;margin:26px 0 40px;font-size:13px}
 @media(max-width:900px){.experience-missions{grid-template-columns:1fr}.experience-intro{padding:24px 0}.experience-mission{padding:26px}.experience-mission h2{max-width:none;font-size:26px}.experience-mission-number{font-size:60px}}
