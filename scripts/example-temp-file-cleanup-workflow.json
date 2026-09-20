@@ -1,0 +1,135 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-09-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "Temp File Cleanup",
+      "description": "Archives a temp folder into a ZIP, then verifies the archive with a checksum while the aged-out originals are removed. Both branches converge on a waitAll junction before the summary mail goes out.",
+      "definition": {
+        "nodes": [
+          { "id": "note_input", "type": "stickyNote", "position": { "x": 0, "y": 60 },
+            "style": { "width": 940, "height": 110 },
+            "data": { "label": "Note", "activityType": "note",
+              "text": "Phase A - Input\nThe two trigger parameters are the only thing to fill in. Both are declared as strings: the run dialog sends strings, and a number would be rejected on execute.",
+              "fontSize": 13, "disabled": true } },
+          { "id": "note_finish", "type": "stickyNote", "position": { "x": 1040, "y": 60 },
+            "style": { "width": 940, "height": 110 },
+            "data": { "label": "Note", "activityType": "note",
+              "text": "Phase B - Verify and clean\nChecksum and delete run in parallel and converge on waitAll, so the summary mail only goes out once both are done.",
+              "fontSize": 13, "disabled": true } },
+
+          { "id": "trg", "type": "activity", "position": { "x": 0, "y": 400 },
+            "data": {
+              "label": "Manual Trigger: cleanup run",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Temp File Cleanup",
+                "parameters": [
+                  { "name": "path",          "type": "string", "required": true, "default": "C:\\Windows\\Temp" },
+                  { "name": "olderThanDays", "type": "string", "required": true, "default": "30" }
+                ]
+              }
+            } },
+
+          { "id": "inventory", "type": "activity", "position": { "x": 400, "y": 400 },
+            "data": {
+              "label": "folderOperation: list the temp folder",
+              "activityType": "folderOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "inventory",
+              "config": { "operation": "list", "path": "{{trg.param.path}}" }
+            } },
+
+          { "id": "archive", "type": "activity", "position": { "x": 700, "y": 400 },
+            "data": {
+              "label": "zipOperation: archive the folder",
+              "activityType": "zipOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "archive",
+              "config": {
+                "operation": "compress",
+                "source": "{{trg.param.path}}",
+                "destination": "C:\\Archive\\temp-cleanup.zip",
+                "compressionLevel": "Optimal",
+                "force": true
+              }
+            } },
+
+          { "id": "checksum", "type": "activity", "position": { "x": 1040, "y": 240 },
+            "data": {
+              "label": "fileHash: checksum the archive",
+              "activityType": "fileHash",
+              "targetMachineId": "localhost",
+              "outputVariable": "checksum",
+              "config": { "path": "C:\\Archive\\temp-cleanup.zip", "algorithm": "SHA256" }
+            } },
+
+          { "id": "purge", "type": "activity", "position": { "x": 1040, "y": 560 },
+            "data": {
+              "label": "runScript: remove the archived files",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "purge",
+              "config": {
+                "script": "$cutoff = (Get-Date).AddDays(-[int]{{trg.param.olderThanDays}})\n$aged = Get-ChildItem {{trg.param.path}} -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $cutoff }\n$removedCount = ($aged | Measure-Object).Count\n$aged | Remove-Item -Force -ErrorAction SilentlyContinue\nWrite-Output \"Removed $removedCount file(s) last written before $cutoff.\"",
+                "timeoutSeconds": 300
+              }
+            } },
+
+          { "id": "gather", "type": "activity", "position": { "x": 1380, "y": 400 },
+            "data": {
+              "label": "Junction: waitAll (2)",
+              "activityType": "junction",
+              "config": { "mode": "waitAll" }
+            } },
+
+          { "id": "mail", "type": "activity", "position": { "x": 1680, "y": 400 },
+            "data": {
+              "label": "Email: cleanup summary",
+              "activityType": "emailNotification",
+              "config": {
+                "to": "ops@contoso.example",
+                "subject": "Temp cleanup finished",
+                "body": "{{purge.output}}\n\nArchive: {{archive.param.destination}}\nSHA256: {{checksum.param.hash}}",
+                "isHtml": false
+              }
+            } },
+
+          { "id": "ret", "type": "activity", "position": { "x": 1980, "y": 400 },
+            "data": {
+              "label": "Return: archive and checksum",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "archive": "{{archive.param.destination}}",
+                  "hash": "{{checksum.param.hash}}"
+                }
+              }
+            } }
+        ],
+        "edges": [
+          { "id": "e_trg_inventory", "source": "trg", "target": "inventory", "type": "labeled",
+            "data": { "label": "Always" } },
+          { "id": "e_inventory_archive", "source": "inventory", "target": "archive", "type": "labeled",
+            "data": { "label": "On Success", "condition": "inventory.success" } },
+
+          { "id": "e_archive_checksum", "source": "archive", "target": "checksum", "type": "labeled",
+            "data": { "label": "Always" } },
+          { "id": "e_archive_purge", "source": "archive", "target": "purge", "type": "labeled",
+            "data": { "label": "Always" } },
+
+          { "id": "e_checksum_gather", "source": "checksum", "target": "gather", "type": "labeled",
+            "data": { "label": "Always" } },
+          { "id": "e_purge_gather", "source": "purge", "target": "gather", "type": "labeled",
+            "data": { "label": "Always" } },
+
+          { "id": "e_gather_mail", "source": "gather", "target": "mail", "type": "labeled",
+            "data": { "label": "Always" } },
+          { "id": "e_mail_ret", "source": "mail", "target": "ret", "type": "labeled",
+            "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

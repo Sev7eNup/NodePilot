@@ -10,6 +10,7 @@ describe('resolveRoute', () => {
   })
 
   it('maps every page route', () => {
+    expect(resolveRoute('#/erleben')).toEqual({ page: 'experience' })
     expect(resolveRoute('#/produkt')).toEqual({ page: 'product' })
     expect(resolveRoute('#/blog')).toEqual({ page: 'blog' })
     expect(resolveRoute('#/impressum')).toEqual({ page: 'impressum' })
@@ -23,6 +24,7 @@ describe('resolveRoute', () => {
   })
 
   it('tolerates trailing slashes', () => {
+    expect(resolveRoute('#/erleben/')).toEqual({ page: 'experience' })
     expect(resolveRoute('#//')).toEqual({ page: 'home' })
     expect(resolveRoute('#/produkt/')).toEqual({ page: 'product' })
     expect(resolveRoute('#/blog//')).toEqual({ page: 'blog' })

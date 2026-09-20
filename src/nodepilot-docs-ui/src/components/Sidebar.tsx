@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { Asleep, ChevronRight, Close, Download, Light, LogoGithub, Search } from '@carbon/icons-react'
+import { Asleep, ChevronRight, Close, Download, Home, Light, LogoGithub, PlayFilledAlt, Search } from '@carbon/icons-react'
 import { navGroups, navGroupKey, navTitleKey, type NavPage } from '../data/nav'
 import { useTheme } from '../lib/useTheme'
+import { siteRoot } from '../lib/siteContext'
 import LanguageSwitcher from './LanguageSwitcher'
 import type { Lang } from '../i18n/languages'
 import logoLight from '../assets/logo-light.png'
@@ -28,6 +29,8 @@ interface SidebarProps {
  */
 export default function Sidebar({ lang, current, open, onClose, onOpenSearch }: SidebarProps) {
   const { theme, toggle } = useTheme()
+  // Read once per mount: the marker is baked into the served HTML and never changes.
+  const root = siteRoot()
   const { t } = useTranslation()
   const logo = theme === 'dark' ? logoDark : logoLight
 
@@ -127,6 +130,18 @@ export default function Sidebar({ lang, current, open, onClose, onOpenSearch }: 
           {theme === 'dark' ? <Light size={16} /> : <Asleep size={16} />}
         </button>
         <LanguageSwitcher lang={lang} current={current} />
+        {/* Only on GitHub Pages, where the website and the demo sit beside the docs. The copy
+            shipped inside the product has no such neighbours, so it renders neither link. */}
+        {root && (
+          <>
+            <a href={root} className="np-skin-btn" aria-label={t('ui.website')} title={t('ui.website')}>
+              <Home size={16} />
+            </a>
+            <a href={`${root}demo/`} className="np-skin-btn" aria-label={t('ui.liveDemo')} title={t('ui.liveDemo')}>
+              <PlayFilledAlt size={16} />
+            </a>
+          </>
+        )}
         <a
           href="https://github.com/Sev7eNup/NodePilot"
           target="_blank"

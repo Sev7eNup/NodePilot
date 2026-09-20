@@ -1,0 +1,21 @@
+.experience-home-link{margin:0 0 20px;display:inline-flex}
+.experience-page{max-width:1320px}
+.experience-intro{padding:40px 0 34px;max-width:850px}
+.experience-intro h1{font-size:clamp(32px,4vw,56px);line-height:1.12;letter-spacing:-.045em;margin:14px 0 20px}
+.experience-intro p{color:var(--muted);font-size:17px;line-height:1.8;max-width:750px}
+.experience-missions{display:grid;grid-template-columns:1.1fr 1fr;gap:24px}
+.experience-mission{position:relative;display:flex;flex-direction:column;align-items:flex-start;min-width:0;border:1px solid var(--line);border-radius:10px;padding:34px;background:var(--surface-lowest);overflow:hidden}
+.experience-mission:first-child{background:radial-gradient(ellipse at 100% 0,#18325280,transparent 70%),var(--surface-lowest);border-color:#345578}
+.experience-mission-number{font:72px/1 var(--font-mono);color:#6da8ff18;position:absolute;right:24px;top:22px;pointer-events:none}
+.experience-mission .section-kicker{font-size:10px;position:relative}
+.experience-mission h2{font-size:29px;letter-spacing:-.03em;line-height:1.25;margin:22px 0 14px;max-width:340px;position:relative}
+.experience-mission p{color:var(--muted);font-size:14px;line-height:1.8;margin:0}
+.experience-mission ol{padding-left:20px;color:var(--text);font-size:13px;line-height:2.4;margin:26px 0 30px}
+.experience-mission li::marker{color:var(--primary);font-family:var(--font-mono)}
+.experience-mission blockquote{margin:26px 0 30px;padding:18px;border-left:2px solid #e5bc70;background:#e5bc7008;width:100%;box-sizing:border-box}
+.experience-mission blockquote code{font:12px/1.8 var(--font-mono);color:#e5bc70;overflow-wrap:anywhere}
+.experience-mission blockquote span{display:block;font-size:12px;color:var(--muted);margin-top:8px;line-height:1.7}
+.experience-mission .button{margin-top:auto;min-height:44px;font-size:13px;text-align:center}
+.experience-notice{font-size:12px;line-height:1.8;color:var(--muted);margin:24px 0}
+.experience-links{display:flex;align-items:center;flex-wrap:wrap;gap:24px;margin:26px 0 40px;font-size:13px}
+@media(max-width:900px){.experience-missions{grid-template-columns:1fr}.experience-intro{padding:24px 0}.experience-mission{padding:26px}.experience-mission h2{max-width:none;font-size:26px}.experience-mission-number{font-size:60px}}

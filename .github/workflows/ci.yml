@@ -284,6 +284,31 @@ jobs:
       - name: Type check + build
         run: npm run build
 
+      - name: Build browser demo
+        # Type-checks and builds the demo on every PR that touches the frontend, so the Pages
+        # deploy is never the first place a demo break shows up.
+        run: npm run build:demo
+
+      - name: Verify the demo is not in the product bundle
+        # The demo is excluded by reachability — index.html never names its entry — rather
+        # than by dead-code elimination, so this asserts on the built output, not the config.
+        #
+        # The positive control is the point: the marker has to be FOUND in the demo bundle.
+        # Without it, a marker that no longer ships (an unused export gets tree-shaken) would
+        # be absent from both bundles and the product half would pass for the wrong reason.
+        run: |
+          set -eu
+          marker='nodepilot-browser-demo-8f3a21c6'
+          test "$(ls dist/*.html | wc -l)" -eq 1
+          if ! grep -rqF "$marker" dist-demo/; then
+            echo "Marker missing from the demo bundle — this check cannot prove anything." >&2
+            exit 1
+          fi
+          if grep -rqF "$marker" dist/; then
+            echo "Demo code reached the product bundle." >&2
+            exit 1
+          fi
+
       - name: Tests with coverage
         # Coverage thresholds live in vitest.config.ts; this fails the run if the line,
         # statement, branch or function rate drops below the floor configured there.
@@ -444,6 +469,13 @@ jobs:
         # blob instead of html: a single shard's HTML report is useless on its own, blob files
         # can be merged. `github` stays — those are the inline PR annotations.
         run: npm run test:e2e -- --shard=${{ matrix.shard }}/4 --reporter=blob,github
+
+      - name: Browser demo smoke test
+        # One shard only: the suite is six specs against its own build and server, and it is
+        # not sharded. It serves the demo under a sub-path on purpose — base-path failures
+        # cannot appear at the origin root.
+        if: matrix.shard == 1
+        run: npm run test:e2e:demo -- --reporter=github
 
       - name: Upload blob report
         if: always()

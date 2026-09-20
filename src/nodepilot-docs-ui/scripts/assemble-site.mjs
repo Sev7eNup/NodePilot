@@ -1,24 +1,48 @@
 // Assembles the GitHub Pages tree from the separate build outputs:
 //
-//   dist-site/*          -> _site/              project website (npm run build:site)
-//   dist/*               -> _site/docs/         docs SPA, the bundle the installers ship (npm run build)
-//   pages-media/*        -> _site/media/        tour video and poster, kept out of the installers
-//   public/og-image.png  -> _site/og-image.png  social preview image for the website
+//   dist-site/*              -> _site/              project website (npm run build:site)
+//   dist/*                   -> _site/docs/         docs SPA, the bundle the installers ship (npm run build)
+//                                                   the copy is stamped with np-site-root; see below
+//   ../nodepilot-ui/dist-demo/* -> _site/demo/      browser demo of the app (npm run build:demo there)
+//   pages-media/*            -> _site/media/        tour video and poster, kept out of the installers
+//   public/og-image.png      -> _site/og-image.png  social preview image for the website
 //
 // The Pages workflow and `npm run preview:site` both run this script, so the layout exists once.
-import { cpSync, existsSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+const DEMO_DIR = '../nodepilot-ui/dist-demo'
+
+// Every input is required. An optional one would let a deploy publish a site that silently
+// keeps the previous demo, which is the kind of failure nothing goes red for.
 const REQUIRED_INPUTS = [
   ['dist/index.html', 'Run "npm run build" first.'],
   ['dist-site/index.html', 'Run "npm run build:site" first.'],
+  [`${DEMO_DIR}/index.html`, 'Run "npm run build:demo" in src/nodepilot-ui first.'],
   ['pages-media', 'Source archives leave it out; assemble from a git checkout.'],
   ['public/og-image.png', ''],
 ]
 
 // Top-level names the other inputs own in the output.
-const RESERVED_NAMES = ['docs', 'media', 'og-image.png']
+const RESERVED_NAMES = ['docs', 'demo', 'media', 'og-image.png']
+
+/**
+ * Marks the docs copy as the one published beside a website and a demo.
+ *
+ * The same `dist/` is also shipped inside the product under `wwwroot/docs`, where neither
+ * neighbour exists. This script is the only code that knows the difference, so it stamps the
+ * copy rather than the build — the product's docs stay untouched and render no back-links.
+ * A `<meta>`, not a script: the docs page runs under `script-src 'self'`.
+ */
+const SITE_ROOT_META = '<meta name="np-site-root" content="../">'
+
+function markDocsAsPagesCopy(indexPath) {
+  const html = readFileSync(indexPath, 'utf8')
+  if (!html.includes('</head>'))
+    throw new Error('dist/index.html has no </head> to mark as the Pages copy.')
+  writeFileSync(indexPath, html.replace('</head>', `  ${SITE_ROOT_META}\n  </head>`))
+}
 
 /** True when `path` is `dir` or lies inside it. */
 function isWithin(dir, path) {
@@ -42,13 +66,15 @@ export function assembleSite(packageRoot, outDir = '_site') {
     if (existsSync(input(join('dist-site', name))))
       throw new Error(`dist-site/${name} collides with the Pages layout, which uses that name.`)
   }
-  const inputDirs = ['dist', 'dist-site', 'pages-media', 'public'].map(input)
+  const inputDirs = ['dist', 'dist-site', DEMO_DIR, 'pages-media', 'public'].map(input)
   if (!isWithin(root, out) || inputDirs.some((dir) => isWithin(dir, out) || isWithin(out, dir)))
     throw new Error(`Refusing to replace ${out}: use a separate folder inside ${root}.`)
 
   rmSync(out, { recursive: true, force: true })
   cpSync(input('dist-site'), out, { recursive: true })
   cpSync(input('dist'), join(out, 'docs'), { recursive: true })
+  markDocsAsPagesCopy(join(out, 'docs', 'index.html'))
+  cpSync(input(DEMO_DIR), join(out, 'demo'), { recursive: true })
   cpSync(input('pages-media'), join(out, 'media'), { recursive: true })
   cpSync(input('public/og-image.png'), join(out, 'og-image.png'))
   return out

@@ -8,6 +8,7 @@ import {
 } from '@carbon/icons-react';
 import { useTranslation } from 'react-i18next';
 import { useAiCapabilities } from '../../hooks/useAiCapabilities';
+import { docsHref } from '../../lib/docsLink';
 import { useAuthStore } from '../../stores/authStore';
 import { useThemeStore, THEMES, type Theme } from '../../stores/themeStore';
 import { useLangStore } from '../../stores/langStore';
@@ -73,7 +74,7 @@ function NavBadge({ kind, badges, liveLabel }: { kind: BadgeKind; badges: Sideba
 function DocsButton({ label, className }: Readonly<{ label: string; className: string }>) {
   return (
     <a
-      href="/docs/"
+      href={docsHref()}
       target="_blank"
       rel="noopener noreferrer"
       title={label}

@@ -23,6 +23,10 @@ const docsRoot = join(uiRoot, '..', 'nodepilot-docs-ui');
 const viteConfig = readFileSync(join(uiRoot, 'vite.config.ts'), 'utf8');
 // The documentation entry point lives in the sidebar; the header's help icon shows the version.
 const docsLinkHost = readFileSync(join(uiRoot, 'src', 'components', 'layout', 'Sidebar.tsx'), 'utf8');
+// The location itself is a single injectable default, so a host that sits elsewhere relative
+// to the documentation (the browser demo, published beside it rather than below it) can
+// replace it without the product learning about that host.
+const docsLinkModule = readFileSync(join(uiRoot, 'src', 'lib', 'docsLink.ts'), 'utf8');
 const docsPackageJson = JSON.parse(readFileSync(join(docsRoot, 'package.json'), 'utf8'));
 const docsViteConfig = readFileSync(join(docsRoot, 'vite.config.ts'), 'utf8');
 
@@ -30,13 +34,13 @@ describe('documentation site routing', () => {
   it('links to /docs/ with a plain anchor, not a router Link', () => {
     // A `Link` would keep this SPA mounted and push /docs into its own history, so the request
     // would never reach the server that holds the documentation.
-    expect(docsLinkHost).toContain('href="/docs/"');
+    expect(docsLinkHost).toContain('href={docsHref()}');
     expect(docsLinkHost).not.toMatch(/<Link[^>]*to=["']\/docs/);
   });
 
   it('keeps the trailing slash, which the docs bundle resolves its assets against', () => {
-    expect(docsLinkHost).toContain('href="/docs/"');
-    expect(docsLinkHost).not.toContain('href="/docs"');
+    expect(docsLinkModule).toContain("DEFAULT_DOCS_HREF = '/docs/'");
+    expect(docsLinkModule).not.toContain("= '/docs'");
   });
 
   it('proxies /docs to the docs dev server so development matches production', () => {

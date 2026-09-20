@@ -1,0 +1,181 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-09-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "Service Recovery Watchdog",
+      "description": "Checks the Print Spooler every fifteen minutes. If the service is stopped the workflow starts it, lets it settle and reads the state again, then reports either a successful recovery or an escalation to the on-call mailbox.",
+      "definition": {
+        "nodes": [
+          { "id": "note_check", "type": "stickyNote", "position": { "x": 0, "y": 60 },
+            "style": { "width": 900, "height": 110 },
+            "data": { "label": "Note", "activityType": "note",
+              "text": "Phase A - Check\nReads the service state every 15 minutes. The decision has only two outcomes, so the workflow stays flat.",
+              "fontSize": 13, "disabled": true } },
+          { "id": "note_recover", "type": "stickyNote", "position": { "x": 1000, "y": 60 },
+            "style": { "width": 1120, "height": 110 },
+            "data": { "label": "Note", "activityType": "note",
+              "text": "Phase B - Recover and verify\nStart the service, let it settle, then read the state again. The two edges out of the verify step compare the state itself, because reading a stopped service is a successful step, not a failed one.",
+              "fontSize": 13, "disabled": true } },
+
+          { "id": "trg", "type": "activity", "position": { "x": 0, "y": 400 },
+            "data": {
+              "label": "Schedule Trigger: every 15 minutes",
+              "activityType": "scheduleTrigger",
+              "config": { "cronExpression": "0 0/15 * * * ? *", "description": "Every 15 minutes" }
+            } },
+
+          { "id": "status", "type": "activity", "position": { "x": 380, "y": 400 },
+            "data": {
+              "label": "serviceManagement: read spooler state",
+              "activityType": "serviceManagement",
+              "targetMachineId": "localhost",
+              "outputVariable": "status",
+              "config": { "serviceName": "Spooler", "action": "status" }
+            } },
+
+          { "id": "dec", "type": "activity", "position": { "x": 660, "y": 400 },
+            "data": {
+              "label": "Decision: service state",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  { "name": "running", "condition": {
+                      "type": "comparison",
+                      "left": { "kind": "variable", "stepId": "status", "field": "param", "paramName": "status" },
+                      "op": "==",
+                      "right": { "kind": "literal", "value": "Running" } } }
+                ],
+                "defaultCaseName": "stopped"
+              }
+            } },
+
+          { "id": "log_ok", "type": "activity", "position": { "x": 1000, "y": 220 },
+            "data": {
+              "label": "Log: spooler is running",
+              "activityType": "log",
+              "config": {
+                "message": "Spooler is {{status.param.status}} (start type {{status.param.startType}}).",
+                "level": "info"
+              }
+            } },
+
+          { "id": "start", "type": "activity", "position": { "x": 1000, "y": 580 },
+            "data": {
+              "label": "serviceManagement: start spooler",
+              "activityType": "serviceManagement",
+              "targetMachineId": "localhost",
+              "config": { "serviceName": "Spooler", "action": "start" }
+            } },
+
+          { "id": "settle", "type": "activity", "position": { "x": 1280, "y": 580 },
+            "data": {
+              "label": "Delay: let the service settle",
+              "activityType": "delay",
+              "config": { "seconds": 5 }
+            } },
+
+          { "id": "verify", "type": "activity", "position": { "x": 1560, "y": 580 },
+            "data": {
+              "label": "serviceManagement: verify spooler state",
+              "activityType": "serviceManagement",
+              "targetMachineId": "localhost",
+              "outputVariable": "verify",
+              "config": { "serviceName": "Spooler", "action": "status" }
+            } },
+
+          { "id": "mail_recovered", "type": "activity", "position": { "x": 1840, "y": 580 },
+            "data": {
+              "label": "Email: spooler recovered",
+              "activityType": "emailNotification",
+              "config": {
+                "to": "ops@contoso.example",
+                "subject": "Print Spooler recovered",
+                "body": "The Print Spooler was stopped and has been restarted. It now reports {{verify.param.status}}.",
+                "isHtml": false
+              }
+            } },
+
+          { "id": "mail_escalate", "type": "activity", "position": { "x": 1840, "y": 760 },
+            "data": {
+              "label": "Email: recovery failed",
+              "activityType": "emailNotification",
+              "config": {
+                "to": "oncall@contoso.example",
+                "subject": "Print Spooler could not be recovered",
+                "body": "The Print Spooler was stopped and did not come back after a restart. It reports {{verify.param.status}} and needs a look.",
+                "isHtml": false
+              }
+            } },
+
+          { "id": "gather", "type": "activity", "position": { "x": 2180, "y": 400 },
+            "data": {
+              "label": "Junction: waitAny (3)",
+              "activityType": "junction",
+              "config": { "mode": "waitAny" }
+            } },
+
+          { "id": "ret", "type": "activity", "position": { "x": 2460, "y": 400 },
+            "data": {
+              "label": "Return: service and state",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "service": "Spooler",
+                  "state": "{{status.param.status}}"
+                }
+              }
+            } }
+        ],
+        "edges": [
+          { "id": "e_trg_status", "source": "trg", "target": "status", "type": "labeled",
+            "data": { "label": "Always" } },
+          { "id": "e_status_dec", "source": "status", "target": "dec", "type": "labeled",
+            "data": { "label": "On Success", "condition": "status.success" } },
+
+          { "id": "e_dec_running", "source": "dec", "target": "log_ok", "type": "labeled",
+            "data": { "label": "running", "conditionExpression": {
+              "type": "comparison",
+              "left": { "kind": "variable", "stepId": "dec", "field": "param", "paramName": "case" },
+              "op": "==",
+              "right": { "kind": "literal", "value": "running" } } } },
+          { "id": "e_dec_stopped", "source": "dec", "target": "start", "type": "labeled",
+            "data": { "label": "stopped", "conditionExpression": {
+              "type": "comparison",
+              "left": { "kind": "variable", "stepId": "dec", "field": "param", "paramName": "case" },
+              "op": "==",
+              "right": { "kind": "literal", "value": "stopped" } } } },
+
+          { "id": "e_start_settle", "source": "start", "target": "settle", "type": "labeled",
+            "data": { "label": "Always" } },
+          { "id": "e_settle_verify", "source": "settle", "target": "verify", "type": "labeled",
+            "data": { "label": "Always" } },
+
+          { "id": "e_verify_recovered", "source": "verify", "target": "mail_recovered", "type": "labeled",
+            "data": { "label": "state == Running", "conditionExpression": {
+              "type": "comparison",
+              "left": { "kind": "variable", "stepId": "verify", "field": "param", "paramName": "status" },
+              "op": "==",
+              "right": { "kind": "literal", "value": "Running" } } } },
+          { "id": "e_verify_escalate", "source": "verify", "target": "mail_escalate", "type": "labeled",
+            "data": { "label": "state != Running", "conditionExpression": {
+              "type": "comparison",
+              "left": { "kind": "variable", "stepId": "verify", "field": "param", "paramName": "status" },
+              "op": "!=",
+              "right": { "kind": "literal", "value": "Running" } } } },
+
+          { "id": "e_ok_gather", "source": "log_ok", "target": "gather", "type": "labeled",
+            "data": { "label": "Always" } },
+          { "id": "e_recovered_gather", "source": "mail_recovered", "target": "gather", "type": "labeled",
+            "data": { "label": "Always" } },
+          { "id": "e_escalate_gather", "source": "mail_escalate", "target": "gather", "type": "labeled",
+            "data": { "label": "Always" } },
+
+          { "id": "e_gather_ret", "source": "gather", "target": "ret", "type": "labeled",
+            "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

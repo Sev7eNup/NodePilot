@@ -32,6 +32,7 @@ export const navGroups: NavGroup[] = [
     id: 'getting-started',
     items: [
       { path: 'getting-started/introduction', icon: Idea },
+      { path: 'getting-started/live-demo', icon: PlayFilledAlt },
       { path: 'getting-started/installation', icon: Download },
       { path: 'getting-started/quickstart', icon: Rocket },
       { path: 'getting-started/architecture', icon: Layers },

@@ -21,6 +21,8 @@
     "lightMode": "Light mode",
     "darkMode": "Dark mode",
     "github": "GitHub repository",
+    "website": "NodePilot website",
+    "liveDemo": "Live demo",
     "language": "Language",
     "translationMissing": "This page is not available in your language yet and is shown in English."
   },
@@ -36,6 +38,7 @@
       "deployment": "Deployment & more"
     },
     "pages": {
+      "getting-started/live-demo": "Live demo",
       "getting-started/introduction": "Introduction",
       "getting-started/installation": "Installation",
       "getting-started/quickstart": "Quick start",

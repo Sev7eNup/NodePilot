@@ -48,10 +48,10 @@ export function getWorkflowSnippets(): WorkflowSnippet[] {
     icon: 'loop',
     nodes: [
       { localId: 'produce', dx: 0,   dy: 0, label: 'Produce list', activityType: 'runScript',
-        config: { script: "# return comma-separated items\nWrite-Output 'host1,host2,host3'" },
+        config: { script: "# one item per line\nWrite-Output 'host1'\nWrite-Output 'host2'\nWrite-Output 'host3'" },
         outputVariable: 'list' },
       { localId: 'foreach', dx: 260, dy: 0, label: 'For each item', activityType: 'forEach',
-        config: { items: '{{list.output}}', separator: ',', childWorkflowNameOrId: '' } },
+        config: { items: '{{list.output}}', itemsFormat: 'lines', childWorkflowNameOrId: '' } },
       { localId: 'done',    dx: 520, dy: 0, label: 'All items done', activityType: 'log',
         config: { level: 'info', message: 'Processed all items' } },
     ],
@@ -123,13 +123,17 @@ export function getWorkflowSnippets(): WorkflowSnippet[] {
         config: { engine: 'auto', timeoutSeconds: 60, script: "# your script here\nWrite-Output 'hello'" } },
       { localId: 'catch',   dx: 260, dy: 150, label: 'On failure — log', activityType: 'log',
         config: { level: 'error', message: 'Script failed: {{try.error}}' } },
-      { localId: 'continue',dx: 520, dy: 0,   label: 'Continue',         activityType: 'log',
+      // Both paths merge here: only a junction may take more than one incoming edge.
+      { localId: 'merge',   dx: 520, dy: 0,   label: 'Merge paths',      activityType: 'junction',
+        config: { mode: 'waitAny' } },
+      { localId: 'continue',dx: 780, dy: 0,   label: 'Continue',         activityType: 'log',
         config: { level: 'info', message: 'Post-script handler' } },
     ],
     edges: [
-      { fromLocalId: 'try',   toLocalId: 'continue', label: 'On Success', condition: 'try.success' },
-      { fromLocalId: 'try',   toLocalId: 'catch',    label: 'On Failure', condition: 'try.failed' },
-      { fromLocalId: 'catch', toLocalId: 'continue', label: '' },
+      { fromLocalId: 'try',   toLocalId: 'merge', label: 'On Success', condition: 'try.success' },
+      { fromLocalId: 'try',   toLocalId: 'catch', label: 'On Failure', condition: 'try.failed' },
+      { fromLocalId: 'catch', toLocalId: 'merge', label: '' },
+      { fromLocalId: 'merge', toLocalId: 'continue', label: '' },
     ],
   },
   ];
@@ -173,6 +177,16 @@ export function insertSnippet(
       credentialId: null,
     },
   }));
+  // A condition names its step by snippet-local id ('try.success'). That id only exists inside
+  // the snippet, so it has to follow the same remapping as the edge endpoints — otherwise the
+  // save is rejected with "references unknown step".
+  const remapCondition = (condition: string | undefined): string => {
+    if (!condition) return '';
+    const dot = condition.lastIndexOf('.');
+    if (dot <= 0) return condition;
+    const mapped = idMap.get(condition.slice(0, dot));
+    return mapped ? `${mapped}${condition.slice(dot)}` : condition;
+  };
   const newEdges: Edge[] = snippet.edges.map((e) => ({
     id: `edge-${idSuffix}-${e.fromLocalId}-${e.toLocalId}`,
     source: idMap.get(e.fromLocalId)!,
@@ -181,7 +195,7 @@ export function insertSnippet(
     selected: true,
     data: {
       label: e.label ?? '',
-      condition: e.condition ?? '',
+      condition: remapCondition(e.condition),
       disabled: false,
     },
   }));

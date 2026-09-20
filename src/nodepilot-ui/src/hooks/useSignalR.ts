@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useCallback, useDeferredValue } from 'react';
-import * as signalR from '@microsoft/signalr';
+import type { HubConnection } from '@microsoft/signalr';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { getAllPages } from '../api/paging';
-import { readCsrfToken } from '../api/csrf';
+import { createExecutionHubConnection } from '../lib/hubConnection';
 import {
   applyLiveEvents,
   buildDatabusFromHydratedSteps,
@@ -85,7 +85,7 @@ async function rateLimitedHydration<T>(fetcher: () => Promise<T>): Promise<T> {
 }
 
 export function useWorkflowSignalR(workflowId: string | undefined) {
-  const connectionRef = useRef<signalR.HubConnection | null>(null);
+  const connectionRef = useRef<HubConnection | null>(null);
   const workflowIdRef = useRef<string | undefined>(workflowId);
   // Desired, not merely confirmed, execution-group memberships. A JoinExecution invocation can be
   // rejected while the DB breaker is open even though the WebSocket stays connected; retaining the
@@ -531,15 +531,7 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
     if (!workflowId) return;
     mountedRef.current = true;
 
-    // The httpOnly np_auth cookie travels on the negotiate POST and the WebSocket upgrade
-    // automatically (same-origin, `withCredentials` default for SignalR browser transport).
-    const connection = new signalR.HubConnectionBuilder()
-      .withUrl('/hubs/execution', {
-        headers: { 'X-CSRF-Token': readCsrfToken() },
-      })
-      .withAutomaticReconnect()
-      .configureLogging(signalR.LogLevel.Warning)
-      .build();
+    const connection = createExecutionHubConnection();
 
     connectionRef.current = connection;
 

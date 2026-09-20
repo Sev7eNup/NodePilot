@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
-import * as signalR from '@microsoft/signalr';
 import { useQueryClient } from '@tanstack/react-query';
-import { readCsrfToken } from '../api/csrf';
+import { createExecutionHubConnection } from '../lib/hubConnection';
 import { connectPersistently } from '../lib/signalrConnect';
 
 // A LiveEventsBatch item is { Type|type, Event|evt }. Only ExecutionStatusChanged is handled.
@@ -50,11 +49,7 @@ export function useLiveOpsFeed({
 
   useEffect(() => {
     let disposed = false;
-    const connection = new signalR.HubConnectionBuilder()
-      .withUrl('/hubs/execution', { headers: { 'X-CSRF-Token': readCsrfToken() } })
-      .withAutomaticReconnect()
-      .configureLogging(signalR.LogLevel.Warning)
-      .build();
+    const connection = createExecutionHubConnection();
 
     const scheduleInvalidate = () => {
       if (invalidateTimer.current !== null) return;

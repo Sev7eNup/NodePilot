@@ -40,6 +40,29 @@ describe('WORKFLOW_SNIPPETS catalog', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it('everyConditionReferencesAnExistingLocalId', () => {
+    for (const snippet of WORKFLOW_SNIPPETS) {
+      const localIds = new Set(snippet.nodes.map((n) => n.localId));
+      for (const e of snippet.edges) {
+        if (!e.condition) continue;
+        expect(localIds.has(e.condition.slice(0, e.condition.lastIndexOf('.')))).toBe(true);
+      }
+    }
+  });
+
+  it('onlyJunctionsTakeMoreThanOneIncomingEdge', () => {
+    // Mirrors the backend's fan-in rule; a snippet that breaks it cannot be saved.
+    for (const snippet of WORKFLOW_SNIPPETS) {
+      const typeByLocalId = new Map(snippet.nodes.map((n) => [n.localId, n.activityType]));
+      const incoming = new Map<string, number>();
+      for (const e of snippet.edges) {
+        const count = (incoming.get(e.toLocalId) ?? 0) + 1;
+        incoming.set(e.toLocalId, count);
+        if (count > 1) expect(typeByLocalId.get(e.toLocalId)).toBe('junction');
+      }
+    }
+  });
+
   it('everyNodeHasActivityType', () => {
     for (const snippet of WORKFLOW_SNIPPETS) {
       for (const node of snippet.nodes) {
@@ -157,7 +180,10 @@ describe('insertSnippet', () => {
 
     const onSuccess = result.edges.find((e) => (e.data as { label: string }).label === 'On Success');
     expect(onSuccess).toBeDefined();
-    expect((onSuccess!.data as { condition: string }).condition).toBe('try.success');
+    // The condition must name the inserted node, not the snippet-local id it was authored with.
+    const tryNode = result.nodes.find((n) => (n.data as { label: string }).label === 'Try script');
+    expect((onSuccess!.data as { condition: string }).condition).toBe(`${tryNode!.id}.success`);
+    expect(onSuccess!.source).toBe(tryNode!.id);
 
     // An edge without an explicit condition gets an empty string, not undefined, so the
     // engine's schema validation accepts the JSON. It also carries an empty label, which is

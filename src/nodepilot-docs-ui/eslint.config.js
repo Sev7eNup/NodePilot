@@ -17,7 +17,7 @@ export default defineConfig([
     '*.tsbuildinfo',
   ]),
   {
-    files: ['src/**/*.{ts,tsx}'],
+    files: ['src/**/*.{ts,tsx}', 'e2e-site/**/*.ts'],
     extends: [
       js.configs.recommended,
       tseslint.configs.recommended,
@@ -51,7 +51,7 @@ export default defineConfig([
     languageOptions: { ecmaVersion: 2022, sourceType: 'script', globals: globals.browser },
   },
   {
-    files: ['vite.config.ts', 'vite.site.config.ts'],
+    files: ['vite.config.ts', 'vite.site.config.ts', 'playwright.site.config.ts'],
     extends: [
       js.configs.recommended,
       tseslint.configs.recommended,

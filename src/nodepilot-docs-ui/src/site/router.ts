@@ -6,13 +6,13 @@
  * First hash segments the website owns. Any other `#/<segment>` is an old documentation link,
  * which public/legacy-docs-redirect.js forwards to docs/. That script repeats this list.
  */
-export const SITE_ROUTE_SEGMENTS = ['produkt', 'blog', 'impressum', 'datenschutz'] as const
+export const SITE_ROUTE_SEGMENTS = ['erleben', 'produkt', 'blog', 'impressum', 'datenschutz'] as const
 
 export const ARTICLE_SLUGS = ['warum-nodepilot', 'scorch-import'] as const
 
 export type ArticleSlug = (typeof ARTICLE_SLUGS)[number]
 
-export type SitePage = 'home' | 'product' | 'blog' | 'article' | 'impressum' | 'datenschutz' | 'notfound'
+export type SitePage = 'experience' | 'home' | 'product' | 'blog' | 'article' | 'impressum' | 'datenschutz' | 'notfound'
 
 export type SiteRoute =
   | { page: 'article'; slug: ArticleSlug }
@@ -42,6 +42,8 @@ export function resolveRoute(hash: string): SiteRoute | null {
   switch (path) {
     case '/':
       return { page: 'home' }
+    case '/erleben':
+      return { page: 'experience' }
     case '/produkt':
       return { page: 'product' }
     case '/blog':

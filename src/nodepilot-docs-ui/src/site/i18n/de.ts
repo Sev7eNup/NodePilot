@@ -22,6 +22,28 @@ interface Article {
  * bodies are author-written HTML.
  */
 export const de = {
+  experience: {
+    "nav": "Ausprobieren",
+    "title": "NodePilot ausprobieren",
+    "kicker": "SELBST AUSPROBIEREN · ETWA 2 MINUTEN",
+    "headline": "Deine erste Aufgabe mit NodePilot.",
+    "intro": "Starte einen Workflow, prüfe sein Ergebnis und finde anschließend die Ursache eines Fehlers. Eine kurze Anleitung begleitet dich direkt in der Produktoberfläche.",
+    "firstKicker": "DEIN ERSTER ERFOLGREICHER LAUF",
+    "firstTitle": "Eine Datei bereitstellen.",
+    "firstText": "Ändere einen Konfigurationswert. PowerShell erzeugt deine Datei, File Copy bringt sie ins Ziel und Return Data zeigt dir das Ergebnis.",
+    "firstStep": "Einen Wert im Startdialog ändern",
+    "secondStep": "Den Workflow starten und verfolgen",
+    "thirdStep": "Dateiinhalt und Zielpfad prüfen",
+    "firstAction": "Geführten Einstieg starten",
+    "secondKicker": "DANACH · ODER DIREKT EINSTEIGEN",
+    "secondTitle": "Einen Fehler verstehen.",
+    "secondText": "Eine Datei wurde erzeugt, aber nicht kopiert. Untersuche den vorbereiteten Lauf und finde heraus, an welcher Stelle es scheitert.",
+    "clue": "Welche Activity ist betroffen – und was verrät ihr Protokoll?",
+    "secondAction": "Fehler untersuchen",
+    "notice": "Ohne Anmeldung oder Installation. Die Browserdemo verwendet simulierte Daten und schreibt keine echten Dateien. Änderungen bleiben in deinem Tab.",
+    "demo": "Demo frei erkunden",
+    "docs": "Ersten Workflow erstellen"
+  },
   meta: {
     description:
       'NodePilot verbindet PowerShell und Windows-Aktivitäten zu visuellen Workflows. Agentenlos, selbst gehostet, quelloffen und kostenlos.',
@@ -46,6 +68,7 @@ export const de = {
     blog: 'Blog',
     resources: 'RESSOURCEN',
     docs: 'Dokumentation',
+    liveDemo: 'Live-Demo',
     repository: 'Repository',
     releases: 'Releases',
     tagline: 'Offener Code.<br>Deine Infrastruktur.',
@@ -53,6 +76,7 @@ export const de = {
   },
   /** Breadcrumb in the header. */
   pages: {
+    experience: "NodePilot erleben",
     home: 'Übersicht',
     product: 'Das Produkt',
     blog: 'Blog',
@@ -63,6 +87,7 @@ export const de = {
   } satisfies Record<SitePage, string>,
   /** Document titles; an article uses its own title. */
   titles: {
+    experience: "NodePilot erleben",
     home: 'Windows-Automatisierung, Schritt für Schritt.',
     product: 'Das Produkt',
     blog: 'Blog',
@@ -77,6 +102,7 @@ export const de = {
     description:
       'Mit NodePilot baust du Workflows im Browser, führst sie über WinRM aus und siehst, was in jedem Schritt passiert. Ohne Agenten auf den Zielsystemen.',
     download: 'NodePilot herunterladen',
+    liveDemo: 'Live-Demo öffnen',
     source: 'Quellcode',
     selfHosted: 'Self-hosted',
     openSource: 'Open Source',
@@ -95,6 +121,8 @@ export const de = {
     copyTitle: 'Git-Befehl kopieren',
     docsTitle: 'Dokumentation',
     docsText: 'Installation, erster Workflow und Betrieb',
+    liveDemoTitle: 'Live-Demo',
+    liveDemoText: 'Die komplette Oberfläche im Browser, mit Beispieldaten',
     repoTitle: 'Repository',
     repoText: 'Quellcode, Issues und Contributions',
     installTitle: 'NodePilot installieren',
