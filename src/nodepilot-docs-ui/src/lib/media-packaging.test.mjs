@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { assembleSite } from '../../scripts/assemble-site.mjs'
 
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url))
 const repoRoot = resolve(packageRoot, '../..')
@@ -14,8 +15,36 @@ describe('Pages-only media packaging', () => {
       expect(existsSync(join(packageRoot, 'pages-media', name))).toBe(true)
       expect(existsSync(join(packageRoot, 'public/media', name))).toBe(false)
     }
-    expect(readFileSync(join(repoRoot, '.github/workflows/docs-pages.yml'), 'utf8'))
-      .toContain('cp -R pages-media dist/media')
+    const workflow = readFileSync(join(repoRoot, '.github/workflows/docs-pages.yml'), 'utf8')
+    expect(workflow).toContain('npm run assemble:site')
+    expect(workflow).toContain('path: src/nodepilot-docs-ui/_site')
+    const { scripts } = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'))
+    expect(scripts['assemble:site']).toBe('node scripts/assemble-site.mjs')
+  })
+
+  it('publishes pages-media under media/, where the tour URL points', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'np-media-site-'))
+    if (!resolve(fixture).startsWith(join(resolve(tmpdir()), 'np-media-site-')))
+      throw new Error('Unexpected fixture path')
+    try {
+      const files = {
+        'dist/index.html': 'DOCS',
+        'dist-site/index.html': 'SITE',
+        'pages-media/nodepilot-product-tour.mp4': 'TOUR_VIDEO_SENTINEL',
+        'public/og-image.png': 'OG',
+      }
+      for (const [path, content] of Object.entries(files)) {
+        mkdirSync(dirname(join(fixture, path)), { recursive: true })
+        writeFileSync(join(fixture, path), content)
+      }
+
+      assembleSite(fixture, '_site')
+
+      expect(readFileSync(join(fixture, '_site/media/nodepilot-product-tour.mp4'), 'utf8'))
+        .toBe('TOUR_VIDEO_SENTINEL')
+    } finally {
+      rmSync(fixture, { recursive: true, force: true })
+    }
   })
 
   it('excludes marketing binaries from git archive while retaining documentation source', () => {

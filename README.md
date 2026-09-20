@@ -15,7 +15,7 @@ Design, schedule, debug, and observe multi-step automation in your browser. Run 
 [![Latest release](https://img.shields.io/github/v/release/Sev7eNup/NodePilot?logo=github&label=release)](https://github.com/Sev7eNup/NodePilot/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-**[📚 Documentation](https://sev7enup.github.io/NodePilot/)** · **[⬇️ Download](https://github.com/Sev7eNup/NodePilot/releases/latest)** · **[🚀 Install](https://sev7enup.github.io/NodePilot/#/en/getting-started/installation)**
+**[🌐 Website](https://sev7enup.github.io/NodePilot/)** · **[📚 Documentation](https://sev7enup.github.io/NodePilot/docs/)** · **[⬇️ Download](https://github.com/Sev7eNup/NodePilot/releases/latest)** · **[🚀 Install](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/installation)**
 
 </div>
 
@@ -208,7 +208,7 @@ complete route to a working login, and nothing below mixes them.
 | **You get** | installer `.exe` — bundles a local PostgreSQL and the .NET runtime, installs both as services, opens a native window | setup `.exe` (or the signed `.zip` + PowerShell installer) — Windows service under a gMSA, Kestrel HTTPS | `dotnet run` + Vite dev server on your own machine |
 | **Database** | bundled, loopback-only | you provide it | you provide it |
 | **Offline** | yes, fully | yes | no (package restore) |
-| **Guide** | [below](#path-1--desktop-app) · [details](deploy/desktop/README.md) | [below](#path-2--windows-service) · [step-by-step](https://sev7enup.github.io/NodePilot/#/en/deployment/production) | [below](#path-3--from-source) |
+| **Guide** | [below](#path-1--desktop-app) · [details](deploy/desktop/README.md) | [below](#path-2--windows-service) · [step-by-step](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/production) | [below](#path-3--from-source) |
 
 > NodePilot is **Windows-only by design** — the engine drives PowerShell remoting over WinRM and
 > protects credentials with DPAPI. There is no Linux, container or Kubernetes target.
@@ -234,7 +234,7 @@ finishing green with an app that will not start. When something does go wrong,
 [docs/desktop-troubleshooting.md](docs/desktop-troubleshooting.md) covers the log locations,
 first-run recovery and a complete removal; the full inventory of every log file — server and
 desktop, with paths, retention and which one to read when — is at
-[Logs & diagnostics](https://sev7enup.github.io/NodePilot/#/en/deployment/logs).
+[Logs & diagnostics](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/logs).
 
 The backend runs as an always-on service, so scheduled and webhook triggers keep firing when the
 window is closed. It uses the `Deployment:Mode=Desktop` posture: `Production`-hardened, but with a
@@ -324,7 +324,7 @@ installing. If you build the artifact yourself you also sign it yourself;
 `docs/deployment-guide.md` walks through creating the self-signed code-signing certificate.
 
 **Full walkthrough** — service identity, database, certificates, first login:
-[Windows Server deployment](https://sev7enup.github.io/NodePilot/#/en/deployment/production).
+[Windows Server deployment](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/production).
 **Verifying what you downloaded, and building it yourself** — plus a troubleshooting table for
 what actually goes wrong: [docs/deployment-guide.md](docs/deployment-guide.md). **Operator
 reference** — every parameter, update and uninstall: [deploy/README.md](deploy/README.md).
@@ -405,8 +405,8 @@ $env:OpenTelemetry__Exporters__PrometheusScrapeAllowAnonymous = "true"
 See [grafana/README.md](grafana/README.md) for the full walk-through.
 
 The same walkthrough, with more detail per step, lives on the documentation site — in
-[English](https://sev7enup.github.io/NodePilot/#/en/getting-started/installation) and
-[German](https://sev7enup.github.io/NodePilot/#/de/getting-started/installation).
+[English](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/installation) and
+[German](https://sev7enup.github.io/NodePilot/docs/#/de/getting-started/installation).
 
 ---
 
@@ -429,19 +429,19 @@ laid out to fill the canvas width and run top-to-bottom.
 
 ## Documentation
 
-Everything below the surface lives on the **[documentation site](https://sev7enup.github.io/NodePilot/)**
+Everything below the surface lives on the **[documentation site](https://sev7enup.github.io/NodePilot/docs/)**
 — 43 pages in English and German, with search and deep links. This README deliberately stops at
 "installed and logged in".
 
 | | |
 |---|---|
-| **Start here** | [Introduction](https://sev7enup.github.io/NodePilot/#/en/getting-started/introduction) · [Installation](https://sev7enup.github.io/NodePilot/#/en/getting-started/installation) · [Architecture](https://sev7enup.github.io/NodePilot/#/en/getting-started/architecture) |
-| **Building workflows** | [Workflows & activities](https://sev7enup.github.io/NodePilot/#/en/concepts/workflows) · [Data bus & variables](https://sev7enup.github.io/NodePilot/#/en/concepts/data-bus) · [Edge conditions](https://sev7enup.github.io/NodePilot/#/en/concepts/edge-conditions) · [Sub-workflows](https://sev7enup.github.io/NodePilot/#/en/concepts/sub-workflows) |
-| **The designer** | [Overview](https://sev7enup.github.io/NodePilot/#/en/designer/overview) · [Canvas, nodes & edges](https://sev7enup.github.io/NodePilot/#/en/designer/canvas-nodes-edges) · [Properties, modes & shortcuts](https://sev7enup.github.io/NodePilot/#/en/designer/properties-modes) |
-| **Reference** | [All 27 activities](https://sev7enup.github.io/NodePilot/#/en/activities-reference) · [Triggers](https://sev7enup.github.io/NodePilot/#/en/triggers) · [API endpoints](https://sev7enup.github.io/NodePilot/#/en/api/endpoints) · [`np` CLI](https://sev7enup.github.io/NodePilot/#/en/cli) · [MCP server](https://sev7enup.github.io/NodePilot/#/en/mcp-server) |
-| **Running it** | [Windows Server](https://sev7enup.github.io/NodePilot/#/en/deployment/production) · [Desktop app](https://sev7enup.github.io/NodePilot/#/en/deployment/desktop) · [Antivirus exclusions](https://sev7enup.github.io/NodePilot/#/en/deployment/av-exclusions) · [Logs & diagnostics](https://sev7enup.github.io/NodePilot/#/en/deployment/logs) · [Configuration](https://sev7enup.github.io/NodePilot/#/en/configuration/appsettings) |
-| **Security** | [Security model](https://sev7enup.github.io/NodePilot/#/en/security/overview) · [Hardening flags](https://sev7enup.github.io/NodePilot/#/en/security/hardening) · [Audit log](https://sev7enup.github.io/NodePilot/#/en/security/audit-log) |
-| **Enterprise** | [High availability](https://sev7enup.github.io/NodePilot/#/en/enterprise/high-availability) · [Secret providers](https://sev7enup.github.io/NodePilot/#/en/enterprise/secrets-providers) · [AD SSO Preview](https://sev7enup.github.io/NodePilot/#/en/enterprise/ldap-windows-sso) · [Folder RBAC](https://sev7enup.github.io/NodePilot/#/en/enterprise/folder-rbac) |
+| **Start here** | [Introduction](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/introduction) · [Installation](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/installation) · [Architecture](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/architecture) |
+| **Building workflows** | [Workflows & activities](https://sev7enup.github.io/NodePilot/docs/#/en/concepts/workflows) · [Data bus & variables](https://sev7enup.github.io/NodePilot/docs/#/en/concepts/data-bus) · [Edge conditions](https://sev7enup.github.io/NodePilot/docs/#/en/concepts/edge-conditions) · [Sub-workflows](https://sev7enup.github.io/NodePilot/docs/#/en/concepts/sub-workflows) |
+| **The designer** | [Overview](https://sev7enup.github.io/NodePilot/docs/#/en/designer/overview) · [Canvas, nodes & edges](https://sev7enup.github.io/NodePilot/docs/#/en/designer/canvas-nodes-edges) · [Properties, modes & shortcuts](https://sev7enup.github.io/NodePilot/docs/#/en/designer/properties-modes) |
+| **Reference** | [All 27 activities](https://sev7enup.github.io/NodePilot/docs/#/en/activities-reference) · [Triggers](https://sev7enup.github.io/NodePilot/docs/#/en/triggers) · [API endpoints](https://sev7enup.github.io/NodePilot/docs/#/en/api/endpoints) · [`np` CLI](https://sev7enup.github.io/NodePilot/docs/#/en/cli) · [MCP server](https://sev7enup.github.io/NodePilot/docs/#/en/mcp-server) |
+| **Running it** | [Windows Server](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/production) · [Desktop app](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/desktop) · [Antivirus exclusions](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/av-exclusions) · [Logs & diagnostics](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/logs) · [Configuration](https://sev7enup.github.io/NodePilot/docs/#/en/configuration/appsettings) |
+| **Security** | [Security model](https://sev7enup.github.io/NodePilot/docs/#/en/security/overview) · [Hardening flags](https://sev7enup.github.io/NodePilot/docs/#/en/security/hardening) · [Audit log](https://sev7enup.github.io/NodePilot/docs/#/en/security/audit-log) |
+| **Enterprise** | [High availability](https://sev7enup.github.io/NodePilot/docs/#/en/enterprise/high-availability) · [Secret providers](https://sev7enup.github.io/NodePilot/docs/#/en/enterprise/secrets-providers) · [AD SSO Preview](https://sev7enup.github.io/NodePilot/docs/#/en/enterprise/ldap-windows-sso) · [Folder RBAC](https://sev7enup.github.io/NodePilot/docs/#/en/enterprise/folder-rbac) |
 
 The API also documents itself: the OpenAPI spec is served at `GET /openapi/v1.json`, with Swagger
 UI at `GET /swagger` (Development by default).
@@ -449,7 +449,7 @@ UI at `GET /swagger` (Development by default).
 ### Production deployment
 
 For a real server rollout, follow
-**[Windows Server deployment](https://sev7enup.github.io/NodePilot/#/en/deployment/production)** on
+**[Windows Server deployment](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/production)** on
 the documentation site — a lab-validated walkthrough covering service identity, both database
 providers, certificates and the first admin account. The installer runs NodePilot as a Windows
 service under a gMSA with direct Kestrel HTTPS, splits install and data directories, and upgrades
@@ -576,9 +576,9 @@ NodePilot is licensed under the [Apache License 2.0](LICENSE). You are free to u
 
 ## Further Reading
 
-- **[📚 sev7enup.github.io/NodePilot](https://sev7enup.github.io/NodePilot/)** — the documentation website: 43 pages in English and German, with search, sidebar navigation and light/dark themes. Start at [Introduction](https://sev7enup.github.io/NodePilot/#/en/getting-started/introduction) or jump to [Installation](https://sev7enup.github.io/NodePilot/#/en/getting-started/installation). **The same site ships with the product** — every installation serves it at `/docs`, without a login and without internet access, at the version actually installed.
+- **[📚 sev7enup.github.io/NodePilot/docs](https://sev7enup.github.io/NodePilot/docs/)** — the documentation website: 43 pages in English and German, with search, sidebar navigation and light/dark themes. Start at [Introduction](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/introduction) or jump to [Installation](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/installation). **The same site ships with the product** — every installation serves it at `/docs`, without a login and without internet access, at the version actually installed.
 - **[CLAUDE.md](CLAUDE.md)** — architecture conventions, full activity/trigger reference, variable resolution details, edge-condition grammar, test guidelines, and the complete API endpoint table.
-- **[src/nodepilot-docs-ui/](src/nodepilot-docs-ui/)** — standalone documentation website (Vite + React SPA) with client-side search, sidebar navigation, light/dark theme, and **English/German** via i18next (the language lives in the route: `#/en/…`, `#/de/…`). Note: it ships its own curated markdown corpus under `content/en/` and `content/de/` — changes to `docs/` must be mirrored there deliberately (it is not a 1:1 render), and both languages must be kept in step or the parity test fails. It has two deployments: GitHub Pages, and `wwwroot/docs` inside the server artifact and desktop package, which the API serves at `/docs`.
+- **[src/nodepilot-docs-ui/](src/nodepilot-docs-ui/)** — standalone documentation website (Vite + React SPA) with client-side search, sidebar navigation, light/dark theme, and **English/German** via i18next (the language lives in the route: `#/en/…`, `#/de/…`). Note: it ships its own curated markdown corpus under `content/en/` and `content/de/` — changes to `docs/` must be mirrored there deliberately (it is not a 1:1 render), and both languages must be kept in step or the parity test fails. It has two deployments: GitHub Pages, which publishes the project website at the site root and the documentation under `/docs/`, and `wwwroot/docs` inside the server artifact and desktop package, which the API serves at `/docs`. The project website (`src/site/`, English and German) is a separate build that only goes to GitHub Pages; the product ships the documentation alone.
 - **[docs/workflow-designer-features.md](docs/workflow-designer-features.md)** — complete feature inventory of the workflow designer (canvas, nodes, edges, properties, overlays, modes, shortcuts, mobile), organized by area.
 - **[docs/workflow-styleguide.md](docs/workflow-styleguide.md)** — layout rules, edge-label conventions, and engine gotchas for hand-built workflow JSON.
 - **[docs/ai-features.md](docs/ai-features.md)** — LLM configuration, recommended models, security model, error taxonomy.

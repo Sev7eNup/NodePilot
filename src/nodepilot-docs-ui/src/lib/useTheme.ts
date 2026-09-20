@@ -16,7 +16,11 @@ export function useTheme() {
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
-    localStorage.setItem('np-docs-theme', theme)
+    try {
+      localStorage.setItem('np-docs-theme', theme)
+    } catch {
+      // Private mode or disabled storage; the theme still applies for this visit.
+    }
 
     const favicon = document.querySelector<HTMLLinkElement>('#docs-favicon')
     if (favicon) favicon.href = theme === 'dark' ? faviconDark : faviconLight

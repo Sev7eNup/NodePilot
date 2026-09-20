@@ -106,4 +106,27 @@ describe('detectLang', () => {
     stubWindow({ stored: 'fr', languages: ['de'] })
     expect(detectLang()).toBe('de')
   })
+
+  describe('with blocked storage', () => {
+    // Browsers with storage disabled throw from the `localStorage` getter itself, before
+    // optional chaining can step in.
+    function stubBlockedStorage(languages: string[]) {
+      vi.stubGlobal('window', {
+        get localStorage(): Storage {
+          throw new DOMException('The operation is insecure.', 'SecurityError')
+        },
+        navigator: { languages },
+      })
+    }
+
+    it('falls back to the browser language', () => {
+      stubBlockedStorage(['de-DE', 'en'])
+      expect(detectLang()).toBe('de')
+    })
+
+    it('falls back to English when no browser language is supported', () => {
+      stubBlockedStorage(['fr-FR'])
+      expect(detectLang()).toBe(DEFAULT_LANG)
+    })
+  })
 })

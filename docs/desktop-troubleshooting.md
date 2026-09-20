@@ -149,6 +149,6 @@ with the version, the last ~50 lines of `%TEMP%\nodepilot-provision.log`, and th
 `Get-Service NodePilot, NodePilotDb`. If the app started at all, attach the application log around
 the time of the problem as well — it keeps only seven files and rolls again at 100 MB, so secure it
 before it ages out. The full inventory, including what NodePilot deliberately does not log, is at
-[Logs & diagnostics](https://sev7enup.github.io/NodePilot/#/en/deployment/logs).
+[Logs & diagnostics](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/logs).
 
 For anything security-relevant use the private channel in [SECURITY.md](../SECURITY.md) instead.

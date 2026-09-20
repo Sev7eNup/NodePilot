@@ -1,7 +1,18 @@
-name: Docs site
+name: Website and docs
 
-# Publishes the documentation SPA (src/nodepilot-docs-ui) to GitHub Pages at
-# https://sev7enup.github.io/NodePilot/.
+# Publishes GitHub Pages at https://sev7enup.github.io/NodePilot/, built from
+# src/nodepilot-docs-ui:
+#
+#   /         project website (src/site; `npm run build:site` writes dist-site/)
+#   /docs/    documentation SPA (`npm run build` writes dist/, the bundle the installers ship)
+#   /media/   Pages-only tour video and poster (pages-media/, kept out of the installers)
+#
+# scripts/assemble-site.mjs combines them into _site/, and `npm run preview:site` runs the same
+# script locally. The website never goes into dist/, so the product's wwwroot/docs stays
+# docs-only.
+#
+# Documentation links from before the website (/NodePilot/#/en/...) now open the website. Its
+# first script, legacy-docs-redirect.js, forwards every hash that is not a website route to docs/.
 #
 # One-time manual step: in Settings, under Pages, set Build and deployment Source to
 # "GitHub Actions". No workflow can do it: actions/configure-pages has an `enablement` input,
@@ -9,18 +20,25 @@ name: Docs site
 # administration:write). Until that switch is set, deploy-pages fails with a 404 naming the
 # settings URL.
 #
+# Custom domain (later): set it in Settings, under Pages. Deployments from Actions ignore a
+# CNAME file, so the artifact carries none. Assets, routes and the links between website, docs
+# and media are relative, so the same artifact works under /NodePilot/ and at a domain root;
+# only absolute URLs such as canonical and Open Graph tags need updating then.
+#
 # configure-pages is deliberately not used. Its only other job is injecting a base path for a
-# known SSG, and it recognises nuxt, next, gatsby and sveltekit only, not Vite. The docs site
-# builds location-independent: `base: './'` emits relative asset URLs and the app uses
-# HashRouter, so every route lives in the fragment and the server only serves
-# /NodePilot/index.html. No 404.html SPA fallback is needed either.
+# known SSG, and it recognises nuxt, next, gatsby and sveltekit only, not Vite. Both apps build
+# location-independent: `base: './'` emits relative asset URLs and every route lives in the
+# fragment (HashRouter in the docs, hash routes on the website), so the server only serves
+# index.html files. No 404.html SPA fallback is needed either.
 on:
   push:
     branches: [main]
-    # Only the docs package can change what gets published. A backend-only commit would
+    # Only these paths can change what gets published: the package, the screenshots in
+    # docs/images that the website imports, and this workflow. A backend-only commit would
     # otherwise redeploy a byte-identical site on every push to main.
     paths:
       - 'src/nodepilot-docs-ui/**'
+      - 'docs/images/**'
       - '.github/workflows/docs-pages.yml'
   # Manual re-deploy: useful after enabling Pages for the first time, and after a failed run
   # whose cause was fixed outside this repository.
@@ -62,21 +80,25 @@ jobs:
       - name: Install
         run: npm ci
 
-      # ci.yml already gates every PR with lint and the de/en corpus parity guard. The tests
-      # run again here because this job is the last check before the live site is updated.
+      # ci.yml already gates every PR with lint, the de/en corpus parity guard and both builds.
+      # The tests run again here because this job is the last check before the live site is
+      # updated.
       - name: Tests
         run: npm run test:run
 
-      - name: Build
+      - name: Build docs
         run: npm run build
 
-      - name: Add Pages-only marketing media
-        run: cp -R pages-media dist/media
+      - name: Build website
+        run: npm run build:site
+
+      - name: Assemble Pages site
+        run: npm run assemble:site
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: src/nodepilot-docs-ui/dist
+          path: src/nodepilot-docs-ui/_site
 
       - name: Deploy
         id: deployment
