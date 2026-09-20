@@ -12,7 +12,12 @@ const modules = import.meta.glob('../../content/**/*.md', {
 /** Per-language content, keyed by nav path (language segment stripped). */
 export const contentByLang: Record<Lang, Record<string, string>> = { en: {}, de: {} }
 
-for (const [filePath, raw] of Object.entries(modules)) {
+for (const [filePath, source] of Object.entries(modules)) {
+  // Absolute links in the content name the Pages origin. A build for another host retargets
+  // them; when the origins match this is a no-op.
+  const raw = __NP_SITE_ORIGIN__ === __NP_PAGES_ORIGIN__
+    ? source
+    : source.replaceAll(__NP_PAGES_ORIGIN__, __NP_SITE_ORIGIN__);
   // Turn ".../content/de/getting-started/introduction.md" into "de/getting-started/introduction".
   const key = filePath.replace(/^.*\/content\//, '').replace(/\.md$/, '')
   const slash = key.indexOf('/')
