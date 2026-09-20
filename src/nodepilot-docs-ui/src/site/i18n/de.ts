@@ -375,7 +375,7 @@ export const de = {
 <p>NodePilot ist unter Apache 2.0 veröffentlicht. Der Quellcode lässt sich ansehen, selbst betreiben und verändern. Es gibt keine Aufteilung in eine freie Oberfläche und kostenpflichtig gesperrte Produktfunktionen.</p>
 <p>Das ist trotzdem kein Ersatz für einen Supportvertrag. Bei einem Open-Source-Projekt gehören eine sorgfältige Evaluation, Tests mit den eigenen Workflows und ein Blick in die Dokumentation dazu.</p>
 <div class="article-note">Dieser Beitrag beschreibt die Motivation und den Ansatz des Projekts, keine Betriebsgarantie.</div>
-<p class="article-source">Technische Grundlage: <a href="https://github.com/Sev7eNup/NodePilot#why-nodepilot" target="_blank" rel="noopener noreferrer">NodePilot README</a>. Die <a href="docs/#/de/" target="_blank" rel="noopener noreferrer">Dokumentation</a> beschreibt Einrichtung und Betrieb.</p>`,
+<p class="article-source">Technische Grundlage: <a href="https://github.com/Sev7eNup/NodePilot#why-nodepilot" target="_blank" rel="noopener noreferrer">NodePilot README</a>. Die <a data-docs-path="" target="_blank" rel="noopener noreferrer">Dokumentation</a> beschreibt Einrichtung und Betrieb.</p>`,
     },
     'scorch-import': {
       category: 'PRAXIS',

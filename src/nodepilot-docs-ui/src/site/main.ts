@@ -17,7 +17,16 @@ import {
   type GraphLayout,
   type NodeKey,
 } from './graph'
-import { applyLanguage, currentLang, format, onLanguageChange, persistLang, setBasePrefix, t } from './i18n'
+import {
+  applyLanguage,
+  currentLang,
+  docsHref,
+  format,
+  onLanguageChange,
+  persistLang,
+  setBasePrefix,
+  t,
+} from './i18n'
 import { resolveRoute, type SitePage, type SiteRoute } from './router'
 
 const REPO = 'https://github.com/Sev7eNup/NodePilot'
@@ -641,7 +650,11 @@ function renderRouteTexts(route: SiteRoute): void {
     $('#article-title').textContent = article.title
     $('#article-lead').textContent = article.lead
     // Only author-written article HTML from the dictionaries is inserted here.
-    $('#article-body').innerHTML = article.body
+    const body = $('#article-body')
+    body.innerHTML = article.body
+    // The dictionary HTML is written for the site root; an article sits two levels below it.
+    for (const link of body.querySelectorAll('[data-docs-path]'))
+      link.setAttribute('href', docsHref(currentLang(), link.getAttribute('data-docs-path') ?? ''))
     document.title = `${article.title} — NodePilot Blog`
   } else {
     document.title = `${messages.titles[route.page]} — NodePilot`

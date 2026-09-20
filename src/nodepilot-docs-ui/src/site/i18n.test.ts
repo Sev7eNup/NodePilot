@@ -68,6 +68,20 @@ describe('website dictionaries', () => {
   })
 })
 
+describe('dictionary links', () => {
+  // Dictionary HTML is inserted by script, so the prerender's URL rewriting never sees it. A
+  // relative link in it resolves against the current directory and 404s on every page but the
+  // root. Links into the docs carry data-docs-path instead, which main.ts prefixes.
+  it.each(LANGUAGES)('%s: carries no relative href', (lang) => {
+    for (const [key, value] of leaves(messages[lang])) {
+      if (typeof value !== 'string') continue
+      for (const [, href] of value.matchAll(/href="([^"]*)"/g)) {
+        expect(href, `${lang}: ${key}`).toMatch(/^(https?:|mailto:|tel:|#)/)
+      }
+    }
+  })
+})
+
 describe('static markup', () => {
   // index.html carries the German texts for readers without JavaScript; they must match de.ts.
   it('matches the German dictionary', () => {

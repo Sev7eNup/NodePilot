@@ -4,7 +4,16 @@ import tailwindcss from '@tailwindcss/vite'
 import { PAGES_ORIGIN, siteOrigin } from './scripts/site-origin.mjs'
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    {
+      // The head's canonical and Open Graph URLs are absolute and written for Pages. A build for
+      // another host has to retarget them, or every docs page points a crawler at a foreign origin.
+      name: 'np-docs-origin',
+      transformIndexHtml: (html: string) => html.replaceAll(PAGES_ORIGIN, siteOrigin()),
+    },
+  ],
   // The content carries one absolute link (the demo lives beside the docs, not under them).
   // `lib/content.ts` rewrites it when the build targets another host.
   define: {

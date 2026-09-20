@@ -353,7 +353,7 @@ export const en = {
 <p>NodePilot is released under Apache 2.0. You can read the source code, run it yourself and change it. There is no split into a free interface and product features locked behind a paywall.</p>
 <p>That said, it is no substitute for a support contract. With an open-source project, careful evaluation, tests with your own workflows and a look at the documentation are part of the deal.</p>
 <div class="article-note">This post describes the motivation and approach of the project, not an operational guarantee.</div>
-<p class="article-source">Technical background: <a href="https://github.com/Sev7eNup/NodePilot#why-nodepilot" target="_blank" rel="noopener noreferrer">NodePilot README</a>. The <a href="docs/#/en/" target="_blank" rel="noopener noreferrer">documentation</a> covers setup and operations.</p>`,
+<p class="article-source">Technical background: <a href="https://github.com/Sev7eNup/NodePilot#why-nodepilot" target="_blank" rel="noopener noreferrer">NodePilot README</a>. The <a data-docs-path="" target="_blank" rel="noopener noreferrer">documentation</a> covers setup and operations.</p>`,
     },
     'scorch-import': {
       category: 'IN PRACTICE',

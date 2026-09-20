@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import indexHtml from '../../index.html?raw'
+import { PAGES_ORIGIN } from '../../scripts/site-origin.mjs'
 import themeInit from '../../public/theme-init.js?raw'
 
 /**
@@ -37,5 +38,15 @@ describe('index.html script policy', () => {
 
   it('ships a theme resolver that sets the class before paint', () => {
     expect(themeInit).toContain('document.documentElement.classList')
+  })
+})
+
+describe('index.html absolute URLs', () => {
+  // vite.config.ts retargets this one origin when the build is for another host. An absolute URL
+  // written any other way would keep pointing at Pages, which is a foreign origin there.
+  it('writes every absolute URL against the Pages origin', () => {
+    const urls = [...indexHtml.matchAll(/(?:href|content)="(https?:\/\/[^"]*)"/g)].map((m) => m[1])
+    expect(urls.length).toBeGreaterThan(0)
+    for (const url of urls) expect(url.startsWith(PAGES_ORIGIN), url).toBe(true)
   })
 })
