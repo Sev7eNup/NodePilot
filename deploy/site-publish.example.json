@@ -1,0 +1,15 @@
+{
+  "_comment": "Copy to site-publish.local.json (gitignored) and fill in. Never commit the copy.",
+  "_hostFingerprint": "SFTP only. The base64 part of: ssh-keyscan -t rsa <host> | ssh-keygen -lf -  Compare it with the fingerprint your provider publishes before the first upload.",
+  "_remotePath": "Directory the domain serves from, as seen by the SFTP account. Strato: often /<sitename> or /httpdocs.",
+
+  "origin": "https://www.example.com",
+  "protocol": "sftp",
+  "host": "ssh.example.com",
+  "port": "",
+  "user": "your-login",
+  "password": "your-password",
+  "keyFile": "",
+  "hostFingerprint": "",
+  "remotePath": "/"
+}

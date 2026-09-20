@@ -208,3 +208,6 @@ presentations/
 
 # Local AI agent skills and notes (not part of the repo)
 .agents/
+
+# Web host credentials for deploy/Publish-Site.ps1 - see site-publish.example.json
+deploy/site-publish.local.json

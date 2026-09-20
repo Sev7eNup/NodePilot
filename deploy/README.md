@@ -36,6 +36,7 @@ The service runs under one of:
 | [New-NodePilotSelfSignedCertificate.ps1](New-NodePilotSelfSignedCertificate.ps1) | Opt-in: self-signed Kestrel certificate, two years, **no** automatic root import. Prints the SHA-256 pin the `np` CLI and the MCP server accept via `--tls-thumbprint` / `NODEPILOT_MCP_TLS_THUMBPRINT`, as the alternative to trusting it machine-wide |
 | [Get-DotnetRuntimePayload.ps1](Get-DotnetRuntimePayload.ps1) | Build time: fetch the ASP.NET Core runtime, verify against the published SHA512 + the checked-in pin + Authenticode |
 | [Test-SetupAdapter.ps1](Test-SetupAdapter.ps1) | Behavioural test of the answer-file contract (non-admin, offline, no database) |
+| [Publish-Site.ps1](Publish-Site.ps1) | Publishes the **public website** (project site + `/docs/` + `/demo/`) to a web host over SFTP or FTPS. Nothing to do with a NodePilot installation — the alternative to the GitHub Pages workflow when the site lives on your own hosting. Settings and credentials in `site-publish.local.json` (gitignored, shape in [site-publish.example.json](site-publish.example.json)); `-DryRun` lists without transferring |
 | [server/](server/README.md) | GUI installer for the server installation (Inno Setup 6) |
 | [desktop/](desktop/README.md) | Desktop app installer (Electron, offline Win 11 x64; everything as boot-start services) — full documentation in the folder README |
 | [Test-ArtifactSecurity.ps1](Test-ArtifactSecurity.ps1) | Self-test of the artifact signature chain (tamper detection, signer pinning) |
