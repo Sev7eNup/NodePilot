@@ -111,6 +111,33 @@ If you install with `NodePilot-Server-Setup-<version>.exe`, you can skip the SQL
 
 **PostgreSQL likewise, with one difference.** The setup ships `psql`, signs in during the pre-flight as the NodePilot role (`sslmode=verify-full` against the supplied root certificate) and creates the role and database on request. Because PostgreSQL has no counterpart to `Trusted_Connection`, it requires **superuser credentials**: two additional fields on the credentials page, or `provisioning.postgresSuperUser` / `.postgresSuperPassword` in the answer file. Without them the row stays a diagnosis with no button. The password of an existing role is **never** overwritten.
 
+### What the service identity means for target machines
+
+The identity is not only a database matter: it also carries the WinRM connection to every target
+machine that has **no** credential stored. For that credential-less path, **resource-based
+constrained delegation** has to be configured on every target machine:
+
+```powershell
+# On a domain controller:
+$gmsa = Get-ADServiceAccount -Identity svc-nodepilot
+foreach ($target in $targetHosts) {
+    Set-ADComputer -Identity $target `
+        -PrincipalsAllowedToDelegateToAccount (
+            (Get-ADComputer $target).PrincipalsAllowedToDelegateToAccount + $gmsa
+        )
+}
+```
+
+Under LocalSystem the **computer account** of the NodePilot server takes the place of the gMSA
+(`Get-ADComputer <NodePilot-Host>`); the procedure is otherwise identical. In an active/passive
+installation each LocalSystem node has its own computer account and has to be authorized
+individually — with a gMSA it is one identity for all nodes.
+
+If NodePilot works with credentials stored per machine, no delegation is needed and the service
+identity is irrelevant for access. Both paths require the account in use to be allowed on the target
+machine's WinRM endpoint (local administrator or `Remote Management Users`) — details under
+[Remote execution](../configuration/remote-execution).
+
 ## 2. Prepare the database
 
 ### SQL Server

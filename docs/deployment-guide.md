@@ -426,6 +426,10 @@ A Content-Security-Policy problem is *not* a candidate: the browser words that d
 
 - **Onboard target machines:** UI → *Machines* → add by FQDN. Start with WinRM over HTTP
   (5985) plus a credential; for WinRM-HTTPS set port 5986 **and** `UseSsl` on the machine
-  and trust the target's listener certificate on the NodePilot server.
+  and trust the target's listener certificate on the NodePilot server. A machine without a
+  credential is reached under the service identity instead (gMSA, or the computer account
+  under LocalSystem) — that path needs Kerberos constrained delegation, see section 5 of
+  `deploy/README.md`. Either way the account has to be allowed on the target's WinRM
+  endpoint: local administrator or `Remote Management Users`.
 - **Alerting, AI features, backups:** see `docs/alerting.md`, `docs/ai-features.md` and
   the System-Backup section in `docs/claude-reference.md`.

@@ -34,7 +34,7 @@ $env:COMPUTERNAME
 ```
 
 5. Enter `hostInfo` as the **output variable**.
-6. Leave **Machine** empty.
+6. Leave **Machine** empty. With no machine, the script runs without WinRM directly in the API process, and therefore under its service identity — for remote systems see [Remote execution](../configuration/remote-execution).
 
 ## 3. Publish and run
 
