@@ -116,6 +116,17 @@ public class DocumentationCountsTests
             $"the documented '{claim.What}' in {claim.RelativePath} must match the code count ({claim.Expected}).");
     }
 
+    // The root guide is an index: behaviour rules, lookup tables and invariants, with the depth
+    // in docs/. It had grown past 70 KB because feature PRs appended paragraphs and removed none,
+    // so it is capped here. Raising this number is a decision, not a fix.
+    [Fact]
+    public void ClaudeMd_StaysAnIndex()
+    {
+        var path = Path.Combine(FindRepoRoot(), "CLAUDE.md");
+        new FileInfo(path).Length.Should().BeLessThan(60_000,
+            "CLAUDE.md is the index, not the documentation - move depth into docs/ instead.");
+    }
+
     private static object[] Row(string relPath, string pattern, int expected, string what)
         => new object[] { new DocClaim(relPath, pattern, expected, what) };
 
