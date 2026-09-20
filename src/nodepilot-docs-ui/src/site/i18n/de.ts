@@ -106,7 +106,7 @@ export const de = {
   } satisfies Record<Exclude<SitePage, 'article'>, string>,
   home: {
     eyebrow: 'WINDOWS WORKFLOW ORCHESTRATION',
-    title: 'Aus Skripten werden Workflows.<br><span>Du siehst sie laufen.</span>',
+    title: 'Automatisierung,<br><span>die du sehen kannst.</span>',
     lead: 'Deine Windows-Automatisierung verdient mehr als einen Ordner voller Skripte.',
     description:
       'Mit NodePilot baust du Workflows im Browser, führst sie über WinRM aus und siehst, was in jedem Schritt passiert. Ohne Agenten auf den Zielsystemen.',
