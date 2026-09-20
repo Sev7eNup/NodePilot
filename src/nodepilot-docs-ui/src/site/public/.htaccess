@@ -1,0 +1,61 @@
+# --- Transport ---------------------------------------------------------------
+# Plain HTTP and the bare domain both answered with a copy of the site: one is unencrypted,
+# the other is a second address for the same content. Both now land on the canonical one.
+RewriteEngine On
+
+# The bare domain served a second copy of the site. Redirecting by host name alone cannot loop,
+# because the target host differs from the one that matched.
+RewriteCond %{HTTP_HOST} !^www\.nodepilot\.run$ [NC]
+RewriteRule ^(.*)$ https://www.nodepilot.run/$1 [R=301,L]
+
+# Plain HTTP answered with the whole site. Both variables are checked because a shared host may
+# terminate TLS in front of Apache, where %{HTTPS} stays off for an encrypted request.
+RewriteCond %{HTTPS} !=on
+RewriteCond %{HTTP:X-Forwarded-Proto} !=https
+RewriteCond %{HTTP:X-Forwarded-SSL} !=on
+RewriteRule ^(.*)$ https://www.nodepilot.run/$1 [R=301,L]
+
+# --- Security headers --------------------------------------------------------
+<IfModule mod_headers.c>
+  # A year of HTTPS-only for this host. Deliberately without includeSubDomains, so a future
+  # subdomain is not forced onto HTTPS before it has a certificate.
+  Header always set Strict-Transport-Security "max-age=31536000"
+  Header always set X-Content-Type-Options "nosniff"
+  # frame-ancestors below says the same; this is for browsers that predate it.
+  Header always set X-Frame-Options "DENY"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=(), usb=()"
+  # The site loads everything from its own origin. 'unsafe-eval' and blob: workers are for the
+  # browser demo's editor under /demo/, which shares this document root.
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; media-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
+</IfModule>
+
+# --- Compression -------------------------------------------------------------
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css text/plain text/xml application/javascript application/json image/svg+xml
+</IfModule>
+
+# --- Caching -----------------------------------------------------------------
+<IfModule mod_headers.c>
+  # Asset names carry a content hash, so a changed file is a new name.
+  <FilesMatch "\.(js|css|woff2?)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  # Images and the video are not all content-hashed, so they expire rather than stick for a year.
+  <FilesMatch "\.(png|jpe?g|svg|webp|mp4|ico)$">
+    Header set Cache-Control "public, max-age=604800"
+  </FilesMatch>
+  # The pages themselves must not be served from an old cache after a deploy.
+  <FilesMatch "\.(html|xml|txt|json)$">
+    Header set Cache-Control "public, max-age=0, must-revalidate"
+  </FilesMatch>
+</IfModule>
+
+# --- Not found ---------------------------------------------------------------
+ErrorDocument 404 /404.html
+
+# --- Former addresses --------------------------------------------------------
+# The routes were German for a few hours before the addresses became English.
+RedirectPermanent /produkt/ /product/
+RedirectPermanent /erleben/ /walkthrough/
+RedirectPermanent /blog/warum-nodepilot/ /blog/why-nodepilot/
