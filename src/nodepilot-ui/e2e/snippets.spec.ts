@@ -66,15 +66,17 @@ test.describe('Workflow-Snippets (NodeLibrary) (Teil 74)', () => {
     await expect(page.getByText(/Try-Catch around script/i)).toBeVisible();
     await expect(page.getByText(/Parallel fan-out/i)).toBeVisible();
 
-    // Insert the Try-Catch snippet (3 nodes + 3 edges) by clicking it.
+    // Insert the Try-Catch snippet (4 nodes + 4 edges) by clicking it. Its success and
+    // failure paths meet in a junction, because only a junction may take more than one
+    // incoming edge.
     await page.getByRole('button').filter({ hasText: /Try-Catch around script/i }).click();
 
-    // Save: the PUT carries the original seed node plus the snippet's 3 nodes and 3 edges.
+    // Save: the PUT carries the original seed node plus the snippet's 4 nodes and 4 edges.
     await saveButton(page).click();
     await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
     const def = JSON.parse(putBody!.definitionJson as string) as { nodes: { id: string }[]; edges: { id: string }[] };
-    expect(def.nodes).toHaveLength(4);          // 1 seed + 3 from snippet
-    expect(def.edges.length).toBeGreaterThanOrEqual(3);
+    expect(def.nodes).toHaveLength(5);          // 1 seed + 4 from snippet
+    expect(def.edges.length).toBeGreaterThanOrEqual(4);
     // Fresh, unique ids (no clash with the seed or among themselves).
     const ids = def.nodes.map((n) => n.id);
     expect(new Set(ids).size).toBe(ids.length);
