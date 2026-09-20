@@ -14,11 +14,13 @@
     "dev:site": "vite --config vite.site.config.ts",
     "build:site": "vite build --config vite.site.config.ts",
     "assemble:site": "node scripts/assemble-site.mjs",
-    "preview:site": "npm run build && npm run build:site && npm run assemble:site && vite preview --config vite.site.config.ts --outDir ../../_site",
+    "preview:site": "npm run build && npm run build:site && npm run build:demo && npm run assemble:site && vite preview --config vite.site.config.ts --outDir ../../_site",
     "lint": "eslint .",
     "lint:ci": "eslint . --max-warnings 0",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "test:site:e2e": "playwright test --config playwright.site.config.ts",
+    "build:demo": "npm --prefix ../nodepilot-ui run build:demo"
   },
   "dependencies": {
     "@carbon/icons-react": "^11.88.0",
@@ -38,6 +40,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.2.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

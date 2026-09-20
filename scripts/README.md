@@ -94,6 +94,13 @@ to make the producing trigger and its declared output contract explicit.
 ## Realistic operational examples (hand-built)
 
 - `example-windows-update-health-workflow.json` — a Windows Update health check of a host (CBS/WU log tails, service/registry/WMI/file-system probes, `decision` classification).
+- `example-disk-space-watch-workflow.json` — daily free-space check on C: (`scheduleTrigger` → `runScript` → `decision` on three severities → critical branch collects the ten largest folders and mails ops, `waitAny` → `returnData`). 9 activities.
+- `example-service-recovery-workflow.json` — Print Spooler watchdog every 15 minutes (`serviceManagement` status → `decision` → start + `delay` + verify → recovery or escalation mail, `waitAny` → `returnData`). The two edges out of the verify step compare the service state rather than step success, because reading a stopped service is a successful step. 11 activities.
+- `example-temp-file-cleanup-workflow.json` — `manualTrigger` with `path`/`olderThanDays` parameters → `folderOperation` list → `zipOperation` → `fileHash` and a `runScript` purge in parallel → `waitAll` → summary mail → `returnData`. 8 activities.
+- `example-guided-file-workflow.json` — guided browser-demo task: manual inputs → registry destination → service status → PowerShell configuration file → copy → log → return data. 7 activities. The demo simulates registry, service and files; `Test` and `Production` succeed, while `Protected` fails at the copy with access denied. Machine IDs are placeholders remapped by the demo seed.
+
+These examples are also the seed of the browser demo (`src/nodepilot-ui/demo/seed/graphs.ts`), which
+means they are held to zero canvas-linter errors by `src/__tests__/demo/seedIntegrity.test.ts`.
 - `endsystem-log-korrelation-workflow.json` — **hourly AI log correlation** across three end systems: an SCCM server (CCM/CBS/VSS), a billing block (configurable application logs) and a PostgreSQL database server. A `scheduleTrigger` (`0 0 * * * ? *`) plus a manual run; per system a `runScript` collector → `llmQuery` triage, then `waitAll` → `llmQuery` correlation (`jsonMode`) → `jsonQuery` (severity/summary) → `decision` → log + `returnData`. The configuration (hosts, log paths, tail, error regex) is in the **CONFIG block of the `init` node**. It needs `Llm:Enabled=true`; the three target hosts are placeholder host names → for a real WinRM run, register them through `/api/machines` + `/api/credentials` and enter them in the CONFIG block.
 
 ## Creative demo workflows (hand-built)

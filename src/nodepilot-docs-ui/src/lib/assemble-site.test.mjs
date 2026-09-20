@@ -8,7 +8,12 @@ import { assembleSite } from '../../scripts/assemble-site.mjs'
 
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url))
 const FIXTURE_PREFIX = 'np-assemble-site-'
+const DOCS_INDEX_HTML = '<!doctype html><html><head><title>Docs</title></head><body>DOCS_INDEX</body></html>'
+const SITE_ROOT_META = '<meta name="np-site-root" content="../">'
 
+// The demo is built in a sibling package, so the fixture mirrors the repo's `src/` layout:
+// a workspace holding both packages, with the docs package as the assembly root.
+let workspace
 let fixture
 
 function put(path, content) {
@@ -28,11 +33,16 @@ function runCopiedScript() {
 }
 
 beforeEach(() => {
-  fixture = mkdtempSync(join(tmpdir(), FIXTURE_PREFIX))
+  workspace = mkdtempSync(join(tmpdir(), FIXTURE_PREFIX))
   // afterEach deletes this folder recursively, so it has to be the fresh temp fixture.
-  if (!resolve(fixture).startsWith(join(resolve(tmpdir()), FIXTURE_PREFIX)))
+  if (!resolve(workspace).startsWith(join(resolve(tmpdir()), FIXTURE_PREFIX)))
     throw new Error('Unexpected fixture path')
-  put('dist/index.html', 'DOCS_INDEX')
+  fixture = join(workspace, 'nodepilot-docs-ui')
+  mkdirSync(fixture, { recursive: true })
+  put('../nodepilot-ui/dist-demo/index.html', 'DEMO_INDEX')
+  put('../nodepilot-ui/dist-demo/assets/demo.js', 'DEMO_SCRIPT')
+  // Realistic enough to carry the Pages marker: the script stamps it into <head>.
+  put('dist/index.html', DOCS_INDEX_HTML)
   put('dist/assets/docs.js', 'DOCS_SCRIPT')
   put('dist-site/index.html', 'SITE_INDEX')
   put('dist-site/legacy-docs-redirect.js', 'SITE_REDIRECT')
@@ -41,7 +51,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  rmSync(fixture, { recursive: true, force: true })
+  rmSync(workspace, { recursive: true, force: true })
 })
 
 describe('assembleSite', () => {
@@ -51,10 +61,28 @@ describe('assembleSite', () => {
     expect(out).toBe(join(fixture, '_site'))
     expect(read('_site/index.html')).toBe('SITE_INDEX')
     expect(read('_site/legacy-docs-redirect.js')).toBe('SITE_REDIRECT')
-    expect(read('_site/docs/index.html')).toBe('DOCS_INDEX')
+    expect(read('_site/docs/index.html')).toContain('DOCS_INDEX')
     expect(read('_site/docs/assets/docs.js')).toBe('DOCS_SCRIPT')
     expect(read('_site/media/x.mp4')).toBe('TOUR_VIDEO')
     expect(read('_site/og-image.png')).toBe('OG_IMAGE')
+    expect(read('_site/demo/index.html')).toBe('DEMO_INDEX')
+    expect(read('_site/demo/assets/demo.js')).toBe('DEMO_SCRIPT')
+  })
+
+  it('marks only the published docs copy as the one beside a website and a demo', () => {
+    assembleSite(fixture, '_site')
+
+    // The published copy carries the marker, so the docs sidebar can offer the two neighbours.
+    expect(read('_site/docs/index.html')).toContain(SITE_ROOT_META)
+    // The build itself must not: the same dist/ ships inside the product under wwwroot/docs,
+    // where neither neighbour exists and both links would 404.
+    expect(read('dist/index.html')).not.toContain(SITE_ROOT_META)
+  })
+
+  it('fails when the docs build has no head to mark', () => {
+    put('dist/index.html', 'DOCS_INDEX')
+
+    expect(() => assembleSite(fixture, '_site')).toThrow(/no <\/head> to mark/)
   })
 
   it('replaces the output of an earlier run', () => {
@@ -69,6 +97,7 @@ describe('assembleSite', () => {
   it.each([
     ['dist/index.html', /Missing dist\/index\.html\. Run "npm run build" first/],
     ['dist-site/index.html', /Missing dist-site\/index\.html\. Run "npm run build:site" first/],
+    ['../nodepilot-ui/dist-demo/index.html', /Run "npm run build:demo" in src\/nodepilot-ui first/],
     ['pages-media', /Missing pages-media/],
     ['public/og-image.png', /Missing public\/og-image\.png/],
   ])('fails with a clear error when %s is missing', (path, message) => {
@@ -78,7 +107,7 @@ describe('assembleSite', () => {
     expect(existsSync(join(fixture, '_site'))).toBe(false)
   })
 
-  it.each(['docs/index.html', 'media/x.mp4', 'og-image.png'])(
+  it.each(['docs/index.html', 'demo/index.html', 'media/x.mp4', 'og-image.png'])(
     'refuses a website build containing %s, which the layout takes from another input',
     (path) => {
       put(join('dist-site', path), 'SITE_COPY')
@@ -89,7 +118,7 @@ describe('assembleSite', () => {
 
   it.each(['.', 'dist', 'public'])('refuses %s as the output folder', (outDir) => {
     expect(() => assembleSite(fixture, outDir)).toThrow(/Refusing to replace/)
-    expect(read('dist/index.html')).toBe('DOCS_INDEX')
+    expect(read('dist/index.html')).toBe(DOCS_INDEX_HTML)
     expect(read('public/og-image.png')).toBe('OG_IMAGE')
   })
 
@@ -109,7 +138,7 @@ describe('assembleSite', () => {
     expect(result.status, result.stderr).toBe(0)
     expect(result.stdout).toContain('assemble-site: wrote')
     expect(read('_site/index.html')).toBe('SITE_INDEX')
-    expect(read('_site/docs/index.html')).toBe('DOCS_INDEX')
+    expect(read('_site/docs/index.html')).toContain('DOCS_INDEX')
     expect(read('_site/media/x.mp4')).toBe('TOUR_VIDEO')
   })
 

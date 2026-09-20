@@ -1,0 +1,220 @@
+{
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "activity",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "data": {
+        "label": "Manual Trigger: configuration",
+        "activityType": "manualTrigger",
+        "targetMachineId": null,
+        "config": {
+          "parameters": [
+            {
+              "name": "fileName",
+              "type": "string",
+              "required": true,
+              "default": "settings.json"
+            },
+            {
+              "name": "pollIntervalSeconds",
+              "type": "string",
+              "required": true,
+              "default": "30"
+            },
+            {
+              "name": "environment",
+              "type": "string",
+              "required": true,
+              "default": "Test"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "registry",
+      "type": "activity",
+      "position": {
+        "x": 380,
+        "y": 0
+      },
+      "data": {
+        "label": "Registry Read: destination",
+        "activityType": "registryOperation",
+        "targetMachineId": "00000000-0000-0000-0000-000000000001",
+        "config": {
+          "operation": "read",
+          "keyPath": "HKLM:\\SOFTWARE\\NodePilotDemo\\FileWorker\\{{manual.environment}}",
+          "valueName": "ConfigDirectory"
+        }
+      }
+    },
+    {
+      "id": "service",
+      "type": "activity",
+      "position": {
+        "x": 760,
+        "y": 0
+      },
+      "data": {
+        "label": "Check Service: FileWorker",
+        "activityType": "serviceManagement",
+        "targetMachineId": "00000000-0000-0000-0000-000000000001",
+        "config": {
+          "action": "status",
+          "serviceName": "NodePilot.FileWorker"
+        }
+      }
+    },
+    {
+      "id": "powershell",
+      "type": "activity",
+      "position": {
+        "x": 1140,
+        "y": 0
+      },
+      "data": {
+        "label": "PowerShell: create file",
+        "activityType": "runScript",
+        "targetMachineId": "00000000-0000-0000-0000-000000000001",
+        "config": {
+          "script": "$sourcePath = Join-Path 'C:\\Staging' {{manual.fileName}}\n$destinationPath = Join-Path {{registry.param.value}} {{manual.fileName}}\n$content = [ordered]@{\n  environment = {{manual.environment}}\n  pollIntervalSeconds = [int]{{manual.pollIntervalSeconds}}\n  service = 'NodePilot.FileWorker'\n} | ConvertTo-Json\nNew-Item -ItemType Directory -Path 'C:\\Staging' -Force | Out-Null\nSet-Content -LiteralPath $sourcePath -Value $content -Encoding utf8"
+        }
+      }
+    },
+    {
+      "id": "fileCopy",
+      "type": "activity",
+      "position": {
+        "x": 1140,
+        "y": 260
+      },
+      "data": {
+        "label": "File Copy: configuration",
+        "activityType": "fileOperation",
+        "targetMachineId": "00000000-0000-0000-0000-000000000001",
+        "config": {
+          "operation": "copy",
+          "path": "{{powershell.param.sourcePath}}",
+          "destination": "{{powershell.param.destinationPath}}"
+        }
+      }
+    },
+    {
+      "id": "log",
+      "type": "activity",
+      "position": {
+        "x": 760,
+        "y": 260
+      },
+      "data": {
+        "label": "Log: file delivered",
+        "activityType": "log",
+        "targetMachineId": null,
+        "config": {
+          "level": "info",
+          "message": "Copied {{fileCopy.param.destination}} | Service: {{service.param.status}}"
+        }
+      }
+    },
+    {
+      "id": "returnData",
+      "type": "activity",
+      "position": {
+        "x": 380,
+        "y": 260
+      },
+      "data": {
+        "label": "Return Data: result",
+        "activityType": "returnData",
+        "targetMachineId": null,
+        "config": {
+          "data": {
+            "destination": "{{fileCopy.param.destination}}",
+            "serviceStatus": "{{service.param.status}}",
+            "content": "{{powershell.param.content}}",
+            "message": "{{log.output}}"
+          }
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "trigger",
+      "target": "registry",
+      "type": "labeled",
+      "sourceHandle": "right",
+      "targetHandle": "left",
+      "data": {
+        "condition": "trigger.success",
+        "label": "On Success"
+      }
+    },
+    {
+      "id": "e2",
+      "source": "registry",
+      "target": "service",
+      "type": "labeled",
+      "sourceHandle": "right",
+      "targetHandle": "left",
+      "data": {
+        "condition": "registry.success",
+        "label": "On Success"
+      }
+    },
+    {
+      "id": "e3",
+      "source": "service",
+      "target": "powershell",
+      "type": "labeled",
+      "sourceHandle": "right",
+      "targetHandle": "left",
+      "data": {
+        "condition": "service.success",
+        "label": "On Success"
+      }
+    },
+    {
+      "id": "e4",
+      "source": "powershell",
+      "target": "fileCopy",
+      "type": "labeled",
+      "sourceHandle": "bottom",
+      "targetHandle": "top",
+      "data": {
+        "condition": "powershell.success",
+        "label": "On Success"
+      }
+    },
+    {
+      "id": "e5",
+      "source": "fileCopy",
+      "target": "log",
+      "type": "labeled",
+      "sourceHandle": "left",
+      "targetHandle": "right",
+      "data": {
+        "condition": "fileCopy.success",
+        "label": "On Success"
+      }
+    },
+    {
+      "id": "e6",
+      "source": "log",
+      "target": "returnData",
+      "type": "labeled",
+      "sourceHandle": "left",
+      "targetHandle": "right",
+      "data": {
+        "condition": "log.success",
+        "label": "On Success"
+      }
+    }
+  ]
+}

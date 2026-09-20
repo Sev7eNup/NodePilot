@@ -2,7 +2,7 @@
 // website renders. Classic, non-deferred script, so it runs while the parser is still in <head>.
 // The list repeats SITE_ROUTE_SEGMENTS from src/site/router.ts; legacy-redirect.test.ts keeps both equal.
 (function () {
-  var siteRoutes = ['produkt', 'blog', 'impressum', 'datenschutz'];
+  var siteRoutes = ['erleben', 'produkt', 'blog', 'impressum', 'datenschutz'];
   var hash = location.hash;
   if (hash.indexOf('#/') !== 0) return;
   var segment = hash.slice(2).split('/')[0];

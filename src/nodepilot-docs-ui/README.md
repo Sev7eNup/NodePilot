@@ -33,12 +33,14 @@ Die Projekt-Website liegt in `src/site/`: Vanilla-TypeScript ohne React und Tail
 ```powershell
 npm run dev:site       # nur die Website, http://localhost:5175
 npm run build:site     # Website-Build nach dist-site/
-npm run assemble:site  # _site/ aus dist-site/, dist/ und pages-media/ zusammensetzen (beide Builds vorher)
-npm run preview:site   # build + build:site + assemble:site, danach _site/ auf http://localhost:5175
+npm run build:demo     # Browser-Demo im Nachbarpaket bauen (src/nodepilot-ui -> dist-demo/)
+npm run assemble:site  # _site/ aus dist-site/, dist/, dist-demo/ und pages-media/ zusammensetzen (Builds vorher)
+npm run preview:site   # build + build:site + build:demo + assemble:site, danach _site/ auf http://localhost:5175
 ```
 
-`preview:site` ist die einzige vollständige lokale Vorschau: `docs/` und `media/` gibt es nur im
-zusammengesetzten `_site/`. Genau dieses Verzeichnis veröffentlicht
+`preview:site` ist die einzige vollständige lokale Vorschau: `docs/`, `demo/` und `media/` gibt es
+nur im zusammengesetzten `_site/`. Jede dieser Eingaben ist Pflicht — eine optionale ließe einen
+Deploy die vorige Fassung stillschweigend weiterveröffentlichen, ohne dass etwas rot wird. Genau dieses Verzeichnis veröffentlicht
 `.github/workflows/docs-pages.yml` auf GitHub Pages; der Workflow ruft dafür dasselbe Skript
 `scripts/assemble-site.mjs` auf.
 
@@ -46,10 +48,18 @@ zusammengesetzten `_site/`. Genau dieses Verzeichnis veröffentlicht
 |---|---|---|
 | Wurzel | `dist-site/` | https://sev7enup.github.io/NodePilot/ |
 | `docs/` | `dist/` | https://sev7enup.github.io/NodePilot/docs/ |
+| `demo/` | `../nodepilot-ui/dist-demo/` | https://sev7enup.github.io/NodePilot/demo/ |
 | `media/` | `pages-media/` | https://sev7enup.github.io/NodePilot/media/nodepilot-product-tour.mp4 |
 | `og-image.png` | `public/og-image.png` | Vorschaubild der Website |
 
 Deep Links in die Doku haben die Form `https://sev7enup.github.io/NodePilot/docs/#/<sprache>/<seite>`.
+
+- **`np-site-root`:** Beim Kopieren nach `_site/docs/` stempelt `assemble-site.mjs` ein
+  `<meta name="np-site-root" content="../">` in die `index.html` — und schlägt fehl, wenn der
+  `</head>`-Anker fehlt. Dasselbe `dist/` wird nämlich ein zweites Mal ausgeliefert, als
+  `wwwroot/docs` im Produkt, wo weder Website noch Demo danebenliegen. `src/lib/siteContext.ts`
+  liest das Meta, und nur wenn es da ist, zeigt die Sidebar die Rückwege zu `../` und `../demo/`.
+  Ein `<meta>` und kein Inline-`<script>`, weil die Doku unter `script-src 'self'` läuft.
 
 - **Alte Doku-Links:** Früher lag die Doku an der Pages-Wurzel (`…/NodePilot/#/en/deployment/logs`).
   `src/site/public/legacy-docs-redirect.js` läuft als erstes klassisches Script im `<head>` und
@@ -74,6 +84,22 @@ Deep Links in die Doku haben die Form `https://sev7enup.github.io/NodePilot/docs
   Custom domain* eingetragen; eine `CNAME`-Datei braucht es beim Deploy per Actions nicht. Danach
   die absoluten `sev7enup.github.io/NodePilot`-Adressen in README und Doku sowie die OG- und
   Canonical-Tags beider `index.html` nachziehen.
+
+## Geführter Produkteinstieg
+
+Die Website-Route `#/erleben` bietet zwei Aufgaben direkt in der Browserdemo an:
+eine Konfigurationsdatei bereitstellen und einen fehlgeschlagenen Kopiervorgang untersuchen.
+Die Links `demo/?tour=file&lang=de` und `demo/?tour=diagnose&lang=de` öffnen die Führung;
+`lang=en` verwendet Englisch. Die Übersichtsgrafik bleibt auf der Startseite.
+
+Die Führung in `../nodepilot-ui/demo/ui/tour.ts` begleitet den echten Startdialog und die
+Ausführungshistorie. Der Beispiel-Workflow kommt aus `scripts/example-guided-file-workflow.json`;
+Registry, Dienst und Dateisystem sind simuliert. Eingaben werden im Lauf gespeichert und bestimmen
+die erzeugten Inhalte und Ausgaben. `Protected` simuliert fehlende Schreibrechte beim Kopieren.
+
+`npm run test:site:e2e` prüft Einstieg, Sprachwechsel und drei Bildschirmgrößen.
+Die eigentliche Führung wird mit `npm --prefix ../nodepilot-ui run test:e2e:demo` geprüft.
+Vor dem ersten Lauf Chromium mit `npx playwright install chromium` installieren.
 
 ## Struktur
 

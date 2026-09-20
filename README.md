@@ -15,11 +15,22 @@ Design, schedule, debug, and observe multi-step automation in your browser. Run 
 [![Latest release](https://img.shields.io/github/v/release/Sev7eNup/NodePilot?logo=github&label=release)](https://github.com/Sev7eNup/NodePilot/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-**[🌐 Website](https://sev7enup.github.io/NodePilot/)** · **[📚 Documentation](https://sev7enup.github.io/NodePilot/docs/)** · **[⬇️ Download](https://github.com/Sev7eNup/NodePilot/releases/latest)** · **[🚀 Install](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/installation)**
+**[🌐 Website](https://sev7enup.github.io/NodePilot/)** · **[▶️ Live demo](https://sev7enup.github.io/NodePilot/demo/)** · **[📚 Documentation](https://sev7enup.github.io/NodePilot/docs/)** · **[⬇️ Download](https://github.com/Sev7eNup/NodePilot/releases/latest)** · **[🚀 Install](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/installation)**
 
 </div>
 
 ---
+
+## Live demo
+
+**[Open the live demo](https://sev7enup.github.io/NodePilot/demo/)** — the real web UI with sample
+data, running entirely in your browser. Nothing is installed, nothing is sent anywhere, and every
+visitor gets a private copy: build a workflow, publish it, run it and watch the canvas light up.
+Reload to get the sample data back.
+
+It is the product's own frontend against an in-memory backend, so anything that genuinely needs a
+server — running PowerShell on a host, testing a WinRM connection, sending mail, restoring a
+backup — says so instead of pretending.
 
 ## Product tour
 

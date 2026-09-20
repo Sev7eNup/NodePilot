@@ -2,6 +2,28 @@ import type { Messages } from './de'
 
 /** English texts of the project website. `satisfies` holds the keys to those of `de.ts`. */
 export const en = {
+  experience: {
+    "nav": "Try it",
+    "title": "Try NodePilot",
+    "kicker": "TRY IT YOURSELF · ABOUT 2 MINUTES",
+    "headline": "Your first task with NodePilot.",
+    "intro": "Start a workflow, check its result and then find the cause of a failure. A short walkthrough guides you directly through the product interface.",
+    "firstKicker": "YOUR FIRST SUCCESSFUL EXECUTION",
+    "firstTitle": "Deliver a file.",
+    "firstText": "Change a configuration value. PowerShell creates your file, File Copy delivers it and Return Data shows you the result.",
+    "firstStep": "Change a value in the start dialog",
+    "secondStep": "Start and follow the workflow",
+    "thirdStep": "Check file content and destination",
+    "firstAction": "Start guided walkthrough",
+    "secondKicker": "NEXT · OR JUMP STRAIGHT IN",
+    "secondTitle": "Understand a failure.",
+    "secondText": "A file was created but not copied. Inspect a prepared execution and discover where it failed.",
+    "clue": "Which activity is affected – and what does its log tell you?",
+    "secondAction": "Investigate a failure",
+    "notice": "No sign-up or installation. The browser demo uses simulated data and writes no real files. Changes stay in your tab.",
+    "demo": "Explore the demo",
+    "docs": "Create your first workflow"
+  },
   meta: {
     description:
       'NodePilot connects PowerShell and Windows activities into visual workflows. Agentless, self-hosted, open source and free.',
@@ -26,12 +48,14 @@ export const en = {
     blog: 'Blog',
     resources: 'RESOURCES',
     docs: 'Documentation',
+    liveDemo: 'Live demo',
     repository: 'Repository',
     releases: 'Releases',
     tagline: 'Open code.<br>Your infrastructure.',
     license: 'View license',
   },
   pages: {
+    experience: "Experience NodePilot",
     home: 'Overview',
     product: 'The product',
     blog: 'Blog',
@@ -41,6 +65,7 @@ export const en = {
     notfound: 'Page not found',
   },
   titles: {
+    experience: "Experience NodePilot",
     home: 'Windows automation, step by step.',
     product: 'The product',
     blog: 'Blog',
@@ -55,6 +80,7 @@ export const en = {
     description:
       'With NodePilot you build workflows in the browser, run them over WinRM and see what happens at every step. No agents on the target systems.',
     download: 'Download NodePilot',
+    liveDemo: 'Open live demo',
     source: 'Source code',
     selfHosted: 'Self-hosted',
     openSource: 'Open source',
@@ -73,6 +99,8 @@ export const en = {
     copyTitle: 'Copy git command',
     docsTitle: 'Documentation',
     docsText: 'Installation, first workflow and operations',
+    liveDemoTitle: 'Live demo',
+    liveDemoText: 'The whole interface in your browser, with sample data',
     repoTitle: 'Repository',
     repoText: 'Source code, issues and contributions',
     installTitle: 'Install NodePilot',

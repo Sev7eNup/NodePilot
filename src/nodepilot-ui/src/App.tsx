@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { createBrowserRouter, Navigate } from 'react-router';
+import { createBrowserRouter, createHashRouter, Navigate } from 'react-router';
 // react-router v8 dissolved react-router-dom: general APIs live in 'react-router', the
 // DOM-specific ones (RouterProvider) in 'react-router/dom'.
 import { RouterProvider } from 'react-router/dom';
@@ -95,7 +95,12 @@ function DatabaseHealthWatcher() {
   return <DatabaseOutageBanner />;
 }
 
-const router = createBrowserRouter([
+// Path routing needs a server that rewrites unknown paths to index.html. Hosts that only
+// serve static files (the browser demo on GitHub Pages) get hash routes instead, so every
+// route is served by the one index.html that exists.
+const createRouter = __NP_DEMO__ ? createHashRouter : createBrowserRouter;
+
+const router = createRouter([
   { path: '/login', element: <LoginPage /> },
   {
     element: (

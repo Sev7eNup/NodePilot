@@ -2,7 +2,7 @@
 
 Hermetic Playwright specs for the React SPA. They mock every API call with `page.route`
 (no backend, no Postgres, no WinRM) and run against a `vite preview` build. The full
-[`docs/testing/E2ETests.md`](../../../docs/testing/E2ETests.md) catalogue (83 Teile) is the source of truth; this suite is the **automated
+[`docs/testing/E2ETests.md`](../../../docs/testing/E2ETests.md) catalogue (85 Teile) is the source of truth; this suite is the **automated
 UI subset**. Backend-only and environment-bound scenarios are covered elsewhere (noted below).
 
 ## Running
@@ -11,6 +11,16 @@ UI subset**. Backend-only and environment-bound scenarios are covered elsewhere 
 npm run test:e2e          # real config: builds the SPA, serves via vite preview :4173
 # fast local iteration against a running dev server (:5173), no build:
 npx playwright test <spec> --config=playwright.dev.config.ts
+```
+
+**The browser demo has its own suite**, in `e2e-demo/` rather than here: it needs a different
+artifact (`dist-demo`) and a different server, and it is served from a sub-path on purpose —
+`base: './'` leaves URLs inside JavaScript strings alone, so a root-absolute literal passes at
+the origin root and breaks on the published site. It also does not mock anything: the demo ships
+its own in-memory backend, so the specs drive the real thing.
+
+```bash
+npm run test:e2e:demo     # builds dist-demo, serves it under /NodePilot/demo/ on :4180
 ```
 
 The nightly Task Scheduler job (`scripts/nightly-tests.ps1`) runs `npm run test:e2e`

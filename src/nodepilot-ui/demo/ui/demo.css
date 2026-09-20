@@ -1,0 +1,106 @@
+/*
+ * Demo chrome. Uses the app's design tokens so the bar follows the active skin instead of
+ * fighting it; the hardcoded fallbacks only apply before the theme is attached.
+ */
+
+.np-demo-bar {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--np-text, #e6edf3);
+  background: var(--np-surface-high, #161b22);
+  border-top: 1px solid var(--np-border, #30363d);
+  box-shadow: 0 -2px 12px rgb(0 0 0 / 25%);
+}
+
+.np-demo-bar--hidden {
+  display: none;
+}
+
+.np-demo-bar__badge {
+  flex: none;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--np-accent-on, #04121f);
+  background: var(--np-accent, #4493f8);
+  border-radius: 999px;
+}
+
+.np-demo-bar__message {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.np-demo-bar__actions {
+  flex: none;
+  display: flex;
+  gap: 0.375rem;
+}
+
+.np-demo-bar__button,
+.np-demo-pill {
+  padding: 0.25rem 0.75rem;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--np-border, #30363d);
+  border-radius: 6px;
+}
+
+.np-demo-bar__button:hover,
+.np-demo-pill:hover {
+  background: var(--np-surface-hover, #21262d);
+}
+
+.np-demo-bar__button--quiet {
+  border-color: transparent;
+  opacity: 0.75;
+}
+
+.np-demo-pill {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 2147483000;
+  background: var(--np-surface-high, #161b22);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 25%);
+}
+
+/* The bar covers the bottom edge; give the app room so nothing is hidden behind it. */
+body:has(.np-demo-bar:not(.np-demo-bar--hidden)) {
+  padding-bottom: 2.5rem;
+}
+
+@media (width <= 640px) {
+  .np-demo-bar {
+    flex-wrap: wrap;
+  }
+
+  .np-demo-bar__message {
+    flex-basis: 100%;
+    order: 3;
+  }
+
+  /* The bar is two rows once it wraps. The single-row reserve above leaves the last few
+     pixels of the page underneath it, where a button can no longer be clicked. */
+  body:has(.np-demo-bar:not(.np-demo-bar--hidden)) {
+    padding-bottom: 5rem;
+  }
+
+  /* The app scrolls inside #np-main-scroll, so the body reserve above does not push its last
+     row clear of the bar. Every extra action here costs a row and buries another control, so
+     the way back to the website stays on wider viewports; the guided tour carries its own. */
+  .np-demo-bar__home {
+    display: none;
+  }
+}

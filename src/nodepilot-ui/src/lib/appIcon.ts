@@ -5,17 +5,21 @@ import { resolveSkin, type SkinId, type Theme, type ThemeBase } from '../stores/
  * Minimal skins reuse the light/dark blue assets; ION reuses Nebula's cyan asset. Shared by `BrandLogo` and
  * `applyFavicon` so the brand mark and favicon follow the selected skin together.
  */
+// Resolved against the build's base URL, not the origin root: a deployment served from a
+// sub-path would otherwise request the icons from the wrong place and render no brand mark.
+const asset = (file: string): string => `${import.meta.env.BASE_URL}${file}`;
+
 export const APP_ICON_BY_SKIN: Record<SkinId, string> = {
-  light: '/appicon-light.png',
-  dark: '/appicon-dark.png',
-  'dark-lila': '/appicon-dark-lila.png',
-  'light-grey': '/appicon-light-grey.png',
-  'dark-bank': '/appicon-dark-bank.png',
-  'light-bank': '/appicon-light-bank.png',
-  'dark-nebula': '/appicon-dark-nebula.png',
-  'light-minimal': '/appicon-light.png',
-  'dark-minimal': '/appicon-dark.png',
-  'dark-ion': '/appicon-dark-nebula.png',
+  light: asset('appicon-light.png'),
+  dark: asset('appicon-dark.png'),
+  'dark-lila': asset('appicon-dark-lila.png'),
+  'light-grey': asset('appicon-light-grey.png'),
+  'dark-bank': asset('appicon-dark-bank.png'),
+  'light-bank': asset('appicon-light-bank.png'),
+  'dark-nebula': asset('appicon-dark-nebula.png'),
+  'light-minimal': asset('appicon-light.png'),
+  'dark-minimal': asset('appicon-dark.png'),
+  'dark-ion': asset('appicon-dark-nebula.png'),
 };
 
 /**

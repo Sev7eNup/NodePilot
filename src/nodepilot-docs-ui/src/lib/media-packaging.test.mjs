@@ -23,13 +23,17 @@ describe('Pages-only media packaging', () => {
   })
 
   it('publishes pages-media under media/, where the tour URL points', () => {
-    const fixture = mkdtempSync(join(tmpdir(), 'np-media-site-'))
-    if (!resolve(fixture).startsWith(join(resolve(tmpdir()), 'np-media-site-')))
+    const workspace = mkdtempSync(join(tmpdir(), 'np-media-site-'))
+    if (!resolve(workspace).startsWith(join(resolve(tmpdir()), 'np-media-site-')))
       throw new Error('Unexpected fixture path')
     try {
+      // Mirrors the repo's src/ layout: the browser demo is built in a sibling package.
+      const fixture = join(workspace, 'nodepilot-docs-ui')
       const files = {
-        'dist/index.html': 'DOCS',
+        // Needs a <head>: assemble-site stamps the published docs copy as the Pages one.
+        'dist/index.html': '<!doctype html><html><head></head><body>DOCS</body></html>',
         'dist-site/index.html': 'SITE',
+        '../nodepilot-ui/dist-demo/index.html': 'DEMO',
         'pages-media/nodepilot-product-tour.mp4': 'TOUR_VIDEO_SENTINEL',
         'public/og-image.png': 'OG',
       }
@@ -42,8 +46,9 @@ describe('Pages-only media packaging', () => {
 
       expect(readFileSync(join(fixture, '_site/media/nodepilot-product-tour.mp4'), 'utf8'))
         .toBe('TOUR_VIDEO_SENTINEL')
+      expect(readFileSync(join(fixture, '_site/demo/index.html'), 'utf8')).toBe('DEMO')
     } finally {
-      rmSync(fixture, { recursive: true, force: true })
+      rmSync(workspace, { recursive: true, force: true })
     }
   })
 

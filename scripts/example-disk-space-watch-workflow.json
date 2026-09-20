@@ -1,0 +1,166 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-09-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "Disk Space Watch",
+      "description": "Reads the free space on the system drive every morning and reports it. Below 10 GB the workflow also collects the ten largest folders and alerts the ops mailbox, below 25 GB it writes a warning, otherwise an all-clear entry.",
+      "definition": {
+        "nodes": [
+          { "id": "note_probe", "type": "stickyNote", "position": { "x": 0, "y": 60 },
+            "style": { "width": 940, "height": 110 },
+            "data": { "label": "Note", "activityType": "note",
+              "text": "Phase A - Probe\nOne PowerShell step reads the free space on C: and publishes it as freeSpaceGb. It runs on localhost, which is the in-process bypass.",
+              "fontSize": 13, "disabled": true } },
+          { "id": "note_branch", "type": "stickyNote", "position": { "x": 1040, "y": 60 },
+            "style": { "width": 940, "height": 110 },
+            "data": { "label": "Note", "activityType": "note",
+              "text": "Phase B - Severity branches\nThe decision routes on freeSpaceGb: critical below 10 GB, warning below 25 GB, otherwise healthy. waitAny gathers whichever branch ran.",
+              "fontSize": 13, "disabled": true } },
+
+          { "id": "trg", "type": "activity", "position": { "x": 0, "y": 400 },
+            "data": {
+              "label": "Schedule Trigger: every morning 07:00",
+              "activityType": "scheduleTrigger",
+              "config": { "cronExpression": "0 0 7 * * ? *", "description": "Daily at 07:00" }
+            } },
+
+          { "id": "probe", "type": "activity", "position": { "x": 400, "y": 400 },
+            "data": {
+              "label": "runScript: read free space on C:",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "probe",
+              "config": {
+                "script": "$drive = Get-PSDrive -Name C\n$freeSpaceGb = [math]::Round($drive.Free / 1GB, 1)\n$usedPercent = [math]::Round($drive.Used / ($drive.Used + $drive.Free) * 100, 1)\nWrite-Output \"Free on C: $freeSpaceGb GB ($usedPercent % used)\"",
+                "timeoutSeconds": 60
+              }
+            } },
+
+          { "id": "dec", "type": "activity", "position": { "x": 700, "y": 400 },
+            "data": {
+              "label": "Decision: severity",
+              "activityType": "decision",
+              "config": {
+                "cases": [
+                  { "name": "critical", "condition": {
+                      "type": "comparison",
+                      "left": { "kind": "variable", "stepId": "probe", "field": "param", "paramName": "freeSpaceGb" },
+                      "op": "<",
+                      "right": { "kind": "literal", "value": "10" } } },
+                  { "name": "warning", "condition": {
+                      "type": "comparison",
+                      "left": { "kind": "variable", "stepId": "probe", "field": "param", "paramName": "freeSpaceGb" },
+                      "op": "<",
+                      "right": { "kind": "literal", "value": "25" } } }
+                ],
+                "defaultCaseName": "healthy"
+              }
+            } },
+
+          { "id": "top_dirs", "type": "activity", "position": { "x": 1040, "y": 220 },
+            "data": {
+              "label": "runScript: ten largest folders",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "top_dirs",
+              "config": {
+                "script": "$roots = Get-ChildItem C:\\ -Directory -Force -ErrorAction SilentlyContinue\n$sizes = foreach ($root in $roots) {\n  $bytes = (Get-ChildItem $root.FullName -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum\n  [pscustomobject]@{ Path = $root.FullName; SizeGb = [math]::Round($bytes / 1GB, 2) }\n}\n$report = $sizes | Sort-Object SizeGb -Descending | Select-Object -First 10 | Format-Table -AutoSize | Out-String\nWrite-Output $report",
+                "timeoutSeconds": 300
+              }
+            } },
+
+          { "id": "mail_critical", "type": "activity", "position": { "x": 1340, "y": 220 },
+            "data": {
+              "label": "Email: disk space critical",
+              "activityType": "emailNotification",
+              "config": {
+                "to": "ops@contoso.example",
+                "subject": "Disk space critical: {{probe.param.freeSpaceGb}} GB left on C:",
+                "body": "Free space on C: has dropped to {{probe.param.freeSpaceGb}} GB.\n\nThe ten largest folders:\n{{top_dirs.output}}",
+                "isHtml": false
+              }
+            } },
+
+          { "id": "log_warning", "type": "activity", "position": { "x": 1040, "y": 400 },
+            "data": {
+              "label": "Log: free space is getting low",
+              "activityType": "log",
+              "config": {
+                "message": "Free space on C: is {{probe.param.freeSpaceGb}} GB, below the 25 GB warning threshold.",
+                "level": "warning"
+              }
+            } },
+
+          { "id": "log_ok", "type": "activity", "position": { "x": 1040, "y": 580 },
+            "data": {
+              "label": "Log: free space is healthy",
+              "activityType": "log",
+              "config": {
+                "message": "Free space on C: is {{probe.param.freeSpaceGb}} GB.",
+                "level": "info"
+              }
+            } },
+
+          { "id": "gather", "type": "activity", "position": { "x": 1680, "y": 400 },
+            "data": {
+              "label": "Junction: waitAny (3)",
+              "activityType": "junction",
+              "config": { "mode": "waitAny" }
+            } },
+
+          { "id": "ret", "type": "activity", "position": { "x": 1980, "y": 400 },
+            "data": {
+              "label": "Return: severity and free space",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "severity": "{{dec.param.case}}",
+                  "freeSpaceGb": "{{probe.param.freeSpaceGb}}"
+                }
+              }
+            } }
+        ],
+        "edges": [
+          { "id": "e_trg_probe", "source": "trg", "target": "probe", "type": "labeled",
+            "data": { "label": "Always" } },
+          { "id": "e_probe_dec", "source": "probe", "target": "dec", "type": "labeled",
+            "data": { "label": "On Success", "condition": "probe.success" } },
+
+          { "id": "e_dec_critical", "source": "dec", "target": "top_dirs", "type": "labeled",
+            "data": { "label": "critical (<10 GB)", "conditionExpression": {
+              "type": "comparison",
+              "left": { "kind": "variable", "stepId": "dec", "field": "param", "paramName": "case" },
+              "op": "==",
+              "right": { "kind": "literal", "value": "critical" } } } },
+          { "id": "e_dec_warning", "source": "dec", "target": "log_warning", "type": "labeled",
+            "data": { "label": "warning (<25 GB)", "conditionExpression": {
+              "type": "comparison",
+              "left": { "kind": "variable", "stepId": "dec", "field": "param", "paramName": "case" },
+              "op": "==",
+              "right": { "kind": "literal", "value": "warning" } } } },
+          { "id": "e_dec_healthy", "source": "dec", "target": "log_ok", "type": "labeled",
+            "data": { "label": "healthy", "conditionExpression": {
+              "type": "comparison",
+              "left": { "kind": "variable", "stepId": "dec", "field": "param", "paramName": "case" },
+              "op": "==",
+              "right": { "kind": "literal", "value": "healthy" } } } },
+
+          { "id": "e_topdirs_mail", "source": "top_dirs", "target": "mail_critical", "type": "labeled",
+            "data": { "label": "Always" } },
+
+          { "id": "e_mail_gather", "source": "mail_critical", "target": "gather", "type": "labeled",
+            "data": { "label": "Always" } },
+          { "id": "e_warning_gather", "source": "log_warning", "target": "gather", "type": "labeled",
+            "data": { "label": "Always" } },
+          { "id": "e_ok_gather", "source": "log_ok", "target": "gather", "type": "labeled",
+            "data": { "label": "Always" } },
+
+          { "id": "e_gather_ret", "source": "gather", "target": "ret", "type": "labeled",
+            "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

@@ -40,6 +40,12 @@ on:
       - 'src/nodepilot-docs-ui/**'
       - 'docs/images/**'
       - '.github/workflows/docs-pages.yml'
+      # The browser demo is built from the app package. Without this entry the demo would be
+      # published once and then freeze, and nothing would go red about it.
+      - 'src/nodepilot-ui/**'
+      # The demo seeds its workflows from the definitions these folders ship.
+      - 'samples/**'
+      - 'scripts/*.json'
   # Manual re-deploy: useful after enabling Pages for the first time, and after a failed run
   # whose cause was fixed outside this repository.
   workflow_dispatch:
@@ -75,7 +81,11 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: src/nodepilot-docs-ui/package-lock.json
+          # Both packages are installed here: the site tree includes the browser demo, which
+          # is built from the app package.
+          cache-dependency-path: |
+            src/nodepilot-docs-ui/package-lock.json
+            src/nodepilot-ui/package-lock.json
 
       - name: Install
         run: npm ci
@@ -92,8 +102,26 @@ jobs:
       - name: Build website
         run: npm run build:site
 
+      - name: Install app package
+        working-directory: src/nodepilot-ui
+        run: npm ci
+
+      - name: Demo tests
+        # Scoped to the demo: ci.yml runs the full frontend suite on every PR and push.
+        working-directory: src/nodepilot-ui
+        run: npx vitest run src/__tests__/demo
+
+      - name: Build browser demo
+        working-directory: src/nodepilot-ui
+        run: npm run build:demo
+
       - name: Assemble Pages site
         run: npm run assemble:site
+
+      - name: Verify the demo is in the published tree
+        # assemble:site already fails on a missing input; this also catches a layout change
+        # that drops the demo without failing the copy.
+        run: test -f _site/demo/index.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

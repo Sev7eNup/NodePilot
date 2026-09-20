@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.demo.tsbuildinfo"
+  },
+  "include": ["demo", "src/types/demoGlobals.d.ts"]
+}

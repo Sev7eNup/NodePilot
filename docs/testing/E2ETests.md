@@ -5044,6 +5044,39 @@ Automatisiert: `e2e/script-editor.spec.ts`.
 
 ---
 
+## Teil 85: Browser-Demo gegen das veröffentlichte Bundle
+
+**Automatisiert** in `src/nodepilot-ui/e2e-demo/demo-smoke.spec.ts`, eigene Config
+(`playwright.demo.config.ts`), Aufruf `npm run test:e2e:demo`.
+
+Die Demo ist dieselbe SPA gegen ein In-Memory-Backend, veröffentlicht unter `/demo/`. Der Test
+fährt gegen das **gebaute** `dist-demo` und serviert es unter einem **Unterpfad** — an der Wurzel
+fielen genau die Basis-Pfad-Fehler nicht auf, weil `base: './'` URLs in JavaScript-Strings nicht
+umschreibt.
+
+Geprüft wird:
+
+1. **Start unter Unterpfad** — Dashboard rendert, Marken-Logo lädt (root-absolute Icon-Pfade),
+   Doku-Link zeigt auf `../docs/` statt `/docs/`.
+2. **Jede erreichbare Route** — null Konsolenfehler, null `[demo] unhandled`-Zeilen **und keine
+   gerenderte Error-Boundary**. Die dritte Zusicherung ist nachgerüstet: React reicht einen
+   Render-Fehler an die Boundary statt ans Fenster, `pageerror` feuert nicht, und der Durchlauf
+   meldete „sauber", während der System-Reiter der Einstellungen abstürzte. Die
+   Settings-Unterreiter werden seitdem einzeln abgegangen.
+3. **Einstellungen → System** rendert echte Werte (SMTP-Host aus den produkteigenen Defaults).
+4. **Live-Ops** liefert einen Snapshot, dessen Bezeichner so heißen, wie `OperationsGraph` sie
+   deklariert (`workflowId`/`executionId`), und dessen 30-Minuten-Fenster nicht leer ist.
+5. **Kein Netzverkehr verlässt den Origin**, und es gibt keinen `/hubs/`-Negotiate — der Fake-Hub
+   ist injiziert, sonst protokollierte die Retry-Schleife alle 30 s einen Fehlschlag.
+6. **Volle Lebenszyklus-Kette** — Bearbeiten (Lock deaktiviert den Workflow), Ausführen wird
+   **abgelehnt**, Veröffentlichen (Version steigt, wieder aktiv), Ausführen läuft bis `Succeeded`.
+   Das Wiederaktivieren ist Pflichtschritt, kein Umweg.
+7. **Reload stellt die Seed-Welt wieder her.**
+8. **Zwei Tabs desselben Browsers stören sich nicht** — Tab B öffnen und neu laden darf Tab A weder
+   Caches leeren noch remounten lassen.
+
+---
+
 ## Bekannte Limitation & Gotchas
 
 - **WinRM-Tests:** Remote-Activities erfordern echte Machines oder Mock-Setup. In Test-Environment: `Remote:Provider: noop` verwenden.

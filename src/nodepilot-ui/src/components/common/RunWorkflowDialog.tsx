@@ -1,5 +1,5 @@
 import { Close, Play } from '@carbon/icons-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface ManualParameter {
@@ -23,6 +23,7 @@ interface Props {
 export function RunWorkflowDialog({ workflowName, triggerTitle, triggerDescription, parameters, lastRunParams, onExecute, onCancel }: Readonly<Props>) {
   const { t } = useTranslation(['triggers', 'common']);
   const [values, setValues] = useState<Record<string, string>>({});
+  const edited = useRef(new Set<string>());
 
   useEffect(() => {
     // Initialize with defaults, then overlay last-run values where present.
@@ -31,10 +32,12 @@ export function RunWorkflowDialog({ workflowName, triggerTitle, triggerDescripti
       if (p.default) init[p.name] = p.default;
       if (lastRunParams?.[p.name] !== undefined) init[p.name] = lastRunParams[p.name];
     }
-    setValues(init);
+    // A late history response must not overwrite values the user has already entered.
+    setValues(previous => ({ ...init, ...Object.fromEntries(Object.entries(previous).filter(([name]) => edited.current.has(name))) }));
   }, [parameters, lastRunParams]);
 
   const setValue = (name: string, value: string) => {
+    edited.current.add(name);
     setValues((prev) => ({ ...prev, [name]: value }));
   };
 

@@ -1,8 +1,26 @@
 import { defineConfig } from 'vitest/config';
+import { readFileSync } from 'node:fs';
 import react from '@vitejs/plugin-react';
+
+// Same source as the demo build uses, so the two cannot drift apart.
+const VERSION = JSON.parse(readFileSync('package.json', 'utf8')).version;
 
 export default defineConfig({
   plugins: [react()],
+  // Mirrors the product build. Required, not cosmetic: tests that import App would otherwise
+  // fail with a ReferenceError that looks unrelated to the router.
+  define: {
+    __NP_DEMO__: 'false',
+    // The demo modules read this. Taken from package.json, like vite.demo.config.ts does.
+    __NP_DEMO_VERSION__: JSON.stringify(VERSION),
+  },
+  server: {
+    fs: {
+      // The demo's seed graphs are the workflow JSON the repository already ships, two
+      // levels above this package; without this the demo tests cannot read them.
+      allow: ['.', '../../samples', '../../scripts'],
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,

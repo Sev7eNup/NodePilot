@@ -149,8 +149,23 @@ function handleStorageEvent(event: StorageEvent): void {
   }
 }
 
+let isolated = false;
+
+/**
+ * Switches the cross-tab transport off in both directions: nothing is published and nothing
+ * is received, covering the BroadcastChannel and the storage-event fallback alike.
+ *
+ * Needed where several tabs of the same origin must not disturb each other. Opening or
+ * reloading a second tab publishes an identity event, and every other tab answers it by
+ * clearing its caches and re-probing — which discards unsaved editor state.
+ */
+export function isolateAuthBoundaryTransport(): void {
+  isolated = true;
+  stopTransport();
+}
+
 function startTransport(): void {
-  if (transportListening) return;
+  if (isolated || transportListening) return;
   const broadcastChannel = getChannel();
   if (broadcastChannel) broadcastChannel.addEventListener('message', handleChannelMessage);
   else if (typeof window !== 'undefined') window.addEventListener('storage', handleStorageEvent);
@@ -170,6 +185,7 @@ function stopTransport(): void {
 }
 
 function publish(event: AuthBoundaryEvent): void {
+  if (isolated) return;
   // App.tsx installs a long-lived listener before authentication starts. Isolated consumers such
   // as unit tests still need to publish without leaking a channel.
   if (!transportListening && channel === undefined && typeof globalThis.BroadcastChannel === 'function') {

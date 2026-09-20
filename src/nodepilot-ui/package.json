@@ -15,7 +15,11 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "build:demo": "tsc -p tsconfig.demo.json && vite build --config vite.demo.config.ts",
+    "dev:demo": "vite --config vite.demo.config.ts",
+    "preview:demo": "vite preview --config vite.demo.config.ts",
+    "test:e2e:demo": "playwright test --config=playwright.demo.config.ts"
   },
   "dependencies": {
     "@carbon/icons-react": "^11.88.0",

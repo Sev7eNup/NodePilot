@@ -4,6 +4,11 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // False in the product: path routing needs a server that rewrites unknown paths, which
+  // this build always has. Only the static browser demo sets it true.
+  define: {
+    __NP_DEMO__: 'false',
+  },
   server: {
     host: true,
     port: 5173,

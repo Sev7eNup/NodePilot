@@ -1,5 +1,6 @@
 /* NodePilot project website. No backend, analytics or real workflow execution: every
    interaction stays in the page, apart from the links a visitor opens. */
+import { mountExperience, type ExperienceController } from './experience/controller'
 import designerDark from '../../../../docs/images/designer-dark.png'
 import liveopsDark from '../../../../docs/images/liveops-dark.png'
 import logDark from '../../../../docs/images/log-dark.png'
@@ -20,7 +21,7 @@ import { applyLanguage, currentLang, format, onLanguageChange, persistLang, t } 
 import { resolveRoute, type SitePage, type SiteRoute } from './router'
 
 const REPO = 'https://github.com/Sev7eNup/NodePilot'
-const PAGES: readonly SitePage[] = ['home', 'product', 'blog', 'article', 'impressum', 'datenschutz', 'notfound']
+const PAGES: readonly SitePage[] = ['experience', 'home', 'product', 'blog', 'article', 'impressum', 'datenschutz', 'notfound']
 const SCREENSHOTS = {
   designer: { file: 'designer-dark.png', src: designerDark },
   liveops: { file: 'liveops-dark.png', src: liveopsDark },
@@ -64,6 +65,7 @@ const blogSearch = $<HTMLInputElement>('#blog-search')
 const productImage = $<HTMLImageElement>('#product-image')
 const galleryImage = $<HTMLImageElement>('#gallery-image')
 
+let experience: ExperienceController | undefined
 let currentRoute: SiteRoute | null = null
 let selectedNode: NodeKey = 'check'
 let currentProductTab: ScreenKey = 'designer'
@@ -648,6 +650,8 @@ function showRoute(next: SiteRoute, initial: boolean): void {
     if (active) link.setAttribute('aria-current', 'page')
     else link.removeAttribute('aria-current')
   }
+  if (next.page !== 'experience') { experience?.dispose(); experience = undefined }
+  else if (!experience) experience = mountExperience($('#experience-root'))
   currentRoute = next
   syncDemo()
   renderRouteTexts(next)
@@ -681,6 +685,7 @@ function renderLanguageState(): void {
 }
 
 onLanguageChange(() => {
+  experience?.updateLanguage()
   renderLanguageState()
   labelNavItems()
   renderMenuLabel()
@@ -701,7 +706,12 @@ document.addEventListener('click', (event) => {
     window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'instant' : 'smooth' })
   }
 })
+window.addEventListener('pageshow', () => {
+  if (currentRoute?.page === 'experience' && !experience) experience = mountExperience($('#experience-root'))
+})
 window.addEventListener('pagehide', () => {
+  experience?.dispose()
+  experience = undefined
   demoRun?.abort()
   window.clearTimeout(toastTimer)
 })

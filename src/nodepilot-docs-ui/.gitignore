@@ -13,3 +13,5 @@ vite.config.d.ts
 vite.site.config.js
 vite.site.config.d.ts
 *.tsbuildinfo
+test-results/
+playwright-report/
