@@ -212,14 +212,19 @@ export function WorkflowsPage() {
     },
   });
 
+  // There is no MutationCache.onError in queryClient.ts, so a mutation without its own handler
+  // fails silently. Enable is the visible case: it answers 423 while an edit lock is held, and
+  // without this the toggle just refuses to move.
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/workflows/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workflows'] }),
+    onError: (err: Error) => toast.error(t('common:deleteFailed', { message: err.message })),
   });
 
   const duplicateMutation = useMutation({
     mutationFn: (id: string) => api.post<Workflow>(`/workflows/${id}/duplicate`, {}),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workflows'] }),
+    onError: (err: Error) => toast.error(t('common:createFailed', { message: err.message })),
   });
 
   const enableMutation = useMutation({
@@ -227,6 +232,7 @@ export function WorkflowsPage() {
     onSuccess: (_, id) =>
       queryClient.setQueryData<WorkflowListItem[]>(['workflows'], old =>
         old?.map(w => w.id === id ? { ...w, isEnabled: true } : w) ?? []),
+    onError: (err: Error) => toast.error(t('common:updateFailed', { message: err.message })),
   });
 
   const disableMutation = useMutation({
@@ -234,6 +240,7 @@ export function WorkflowsPage() {
     onSuccess: (_, id) =>
       queryClient.setQueryData<WorkflowListItem[]>(['workflows'], old =>
         old?.map(w => w.id === id ? { ...w, isEnabled: false } : w) ?? []),
+    onError: (err: Error) => toast.error(t('common:updateFailed', { message: err.message })),
   });
 
   // Operational, like enable/disable: no edit lock, no version bump.
@@ -246,11 +253,13 @@ export function WorkflowsPage() {
         old?.map(w => w.id === id ? { ...w, maxConcurrentExecutions: limit } : w) ?? []);
       setConcurrencyTarget(null);
     },
+    onError: (err: Error) => toast.error(t('common:saveFailed', { message: err.message })),
   });
 
   const forceUnlockMutation = useMutation({
     mutationFn: (id: string) => api.post(`/workflows/${id}/force-unlock`, {}),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workflows'] }),
+    onError: (err: Error) => toast.error(t('common:updateFailed', { message: err.message })),
   });
 
   // Drag-and-drop of a workflow row onto a folder tree node. The backend (POST

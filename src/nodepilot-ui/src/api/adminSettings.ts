@@ -131,8 +131,10 @@ async function expectOk<T>(boundaryResponse: BoundaryResponse): Promise<T> {
   try { body = (await response.json()) as SettingsErrorBody; }
   catch { /* response had no JSON body */ }
   assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+  // The server's own message when it sent one. Reporting only the status turned an explained
+  // refusal into "Admin Settings API returned 501", which reads like a defect in the product.
   throw new SettingsApiError(
-    `Admin Settings API returned ${response.status}`,
+    body?.message?.trim() || `Admin Settings API returned ${response.status}`,
     response.status,
     body,
   );

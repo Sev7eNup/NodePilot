@@ -9,6 +9,7 @@ import { AlertingRuleEditor } from '../components/alerting/AlertingRuleEditor';
 import { SystemAlertsSection } from '../components/alerting/SystemAlertsSection';
 import { DeliveriesModal } from '../components/alerting/DeliveriesModal';
 import { useRole } from '../lib/rbac';
+import { toast } from '../stores/toastStore';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { confirmDialog } from '../stores/confirmStore';
 
@@ -39,14 +40,18 @@ export function AlertingPage() {
     queryFn: () => alertingApi.list(),
   });
 
+  // Without an onError a refused delete or toggle is completely silent: there is no
+  // MutationCache handler in queryClient.ts, only a QueryCache one.
   const deleteMutation = useMutation({
     mutationFn: (id: string) => alertingApi.delete(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerting-rules'] }),
+    onError: (err: Error) => toast.error(t('common:deleteFailed', { message: err.message })),
   });
 
   const toggleMutation = useMutation({
     mutationFn: (r: NotificationRule) => (r.isEnabled ? alertingApi.disable(r.id) : alertingApi.enable(r.id)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerting-rules'] }),
+    onError: (err: Error) => toast.error(t('common:updateFailed', { message: err.message })),
   });
 
   const openCreate = () => { setEditing(null); setShowEditor(true); };
