@@ -112,6 +112,33 @@ Wer mit `NodePilot-Server-Setup-<version>.exe` installiert, kann das SQL oben ü
 
 **PostgreSQL ebenso, mit einem Unterschied.** Das Setup bringt `psql` mit, meldet sich im Pre-Flight als NodePilot-Rolle an (`sslmode=verify-full` gegen das angegebene Root-Zertifikat) und legt Rolle und Datenbank auf Wunsch an. Weil PostgreSQL kein Gegenstück zu `Trusted_Connection` hat, verlangt das **Superuser-Zugangsdaten**: zwei zusätzliche Felder auf der Credentials-Seite bzw. `provisioning.postgresSuperUser` / `.postgresSuperPassword` in der Answer-File. Ohne sie bleibt die Zeile eine Diagnose ohne Knopf. Das Passwort einer bereits vorhandenen Rolle wird dabei **nie** überschrieben.
 
+### Was die Dienstidentität für Zielmaschinen bedeutet
+
+Die Identität ist nicht nur eine Datenbankfrage: sie trägt auch die WinRM-Verbindung zu jeder
+Zielmaschine, für die **kein** Credential hinterlegt ist. Für diesen credential-losen Pfad muss auf
+jeder Zielmaschine **resource-based constrained delegation** eingerichtet sein:
+
+```powershell
+# Auf einem Domänencontroller:
+$gmsa = Get-ADServiceAccount -Identity svc-nodepilot
+foreach ($target in $targetHosts) {
+    Set-ADComputer -Identity $target `
+        -PrincipalsAllowedToDelegateToAccount (
+            (Get-ADComputer $target).PrincipalsAllowedToDelegateToAccount + $gmsa
+        )
+}
+```
+
+Unter LocalSystem tritt an die Stelle des gMSA das **Computerkonto** des NodePilot-Servers
+(`Get-ADComputer <NodePilot-Host>`); das Vorgehen bleibt identisch. In einer Active/Passive-
+Installation hat jeder Knoten mit LocalSystem sein eigenes Computerkonto und muss einzeln berechtigt
+werden — mit einem gMSA ist es eine Identität für alle Knoten.
+
+Arbeitet NodePilot mit pro Maschine hinterlegten Credentials, ist keine Delegation nötig und die
+Dienstidentität für den Zugriff irrelevant. Beide Wege setzen voraus, dass das verwendende Konto den
+WinRM-Endpunkt der Zielmaschine benutzen darf (lokaler Administrator oder `Remote Management
+Users`) — Details unter [Remote-Execution](../configuration/remote-execution).
+
 ## 2. Datenbank vorbereiten
 
 ### SQL Server

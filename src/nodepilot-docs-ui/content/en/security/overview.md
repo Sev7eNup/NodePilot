@@ -28,7 +28,7 @@ Roles **Admin / Operator / Viewer**. See [Authentication & roles](../api/authent
 
 ## Localhost bypass
 
-Without credentials, `runScript` runs in-process. **A product feature; do not introduce a guard against it.**
+Without credentials, `runScript` runs in-process — under the service identity of the API (the gMSA, or `NT AUTHORITY\SYSTEM` under LocalSystem). **A product feature; do not introduce a guard against it.** Which account carries which path: [Remote execution](../configuration/remote-execution).
 
 ## Security headers (non-development)
 
