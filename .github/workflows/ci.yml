@@ -471,7 +471,7 @@ jobs:
         run: npm run test:e2e -- --shard=${{ matrix.shard }}/4 --reporter=blob,github
 
       - name: Browser demo smoke test
-        # One shard only: the suite is six specs against its own build and server, and it is
+        # One shard only: the suite is sixteen specs against its own build and server, and it is
         # not sharded. It serves the demo under a sub-path on purpose — base-path failures
         # cannot appear at the origin root.
         if: matrix.shard == 1
