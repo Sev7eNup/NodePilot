@@ -357,10 +357,15 @@ jobs:
       - name: Type check + build
         run: npm run build
 
-      - name: Build website
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build website + browser tests
         # The Pages deploy builds the project website too; a broken website build fails the PR
-        # here instead of the deploy after merge.
-        run: npm run build:site
+        # here instead of the deploy after merge. The suite's web server does that build, then
+        # walks the pages the way a reader does -- which is the only place a link that resolves
+        # against the address rather than the site root shows up.
+        run: npm run test:site:e2e
 
   desktop:
     name: Desktop shell typecheck + tests
