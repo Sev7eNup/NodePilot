@@ -174,6 +174,7 @@ export function MaintenanceWindowsPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/maintenance-windows/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['maintenance-windows'] }),
+    onError: (err: Error) => toast.error(t('common:deleteFailed', { message: err.message })),
   });
 
   const openCreate = () => { setForm(emptyForm()); setShowDialog(true); };

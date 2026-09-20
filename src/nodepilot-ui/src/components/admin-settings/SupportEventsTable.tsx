@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { diagnostics, type SupportEventQuery, type SupportEventResponse } from '../../api/diagnostics';
+import { toast } from '../../stores/toastStore';
 
 /**
  * Structured table view of the <c>SupportEvents</c> data. Body rows are virtualized via
@@ -162,6 +163,12 @@ export function SupportEventsTable() {
 
   const rows = data?.items ?? [];
 
+  const exportEvents = useCallback(
+    (format: 'csv' | 'ndjson') =>
+      diagnostics.exportEvents(format, filter).catch((err: Error) => toast.error(err.message)),
+    [filter],
+  );
+
   const virtualizer = useVirtualizer({
     count: rows.length,
     estimateSize: () => ROW_HEIGHT,
@@ -248,11 +255,13 @@ export function SupportEventsTable() {
           {t('common:refresh')}
         </button>
         <div className="ml-auto flex items-center gap-1">
-          <button type="button" onClick={() => diagnostics.exportEvents('csv', filter)}
+          {/* Both exports reject on any non-2xx; an uncaught rejection would leave the button
+              looking like it did nothing. */}
+          <button type="button" onClick={() => { void exportEvents('csv'); }}
             className="flex items-center gap-1 px-2 py-1 text-xs border border-outline-variant rounded hover:bg-surface-low">
             <Download size={12} /> CSV
           </button>
-          <button type="button" onClick={() => diagnostics.exportEvents('ndjson', filter)}
+          <button type="button" onClick={() => { void exportEvents('ndjson'); }}
             className="flex items-center gap-1 px-2 py-1 text-xs border border-outline-variant rounded hover:bg-surface-low">
             <Download size={12} /> NDJSON
           </button>

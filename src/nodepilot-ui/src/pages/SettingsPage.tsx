@@ -162,6 +162,7 @@ function PersonalSettings() {
       setShowCreate(false);
       setForm(emptyForm);
     },
+    onError: (err: Error) => toast.error(t('common:createFailed', { message: err.message })),
   });
 
   const updateMutation = useMutation({
@@ -187,6 +188,7 @@ function PersonalSettings() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/credentials/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['credentials'] }),
+    onError: (err: Error) => toast.error(t('common:deleteFailed', { message: err.message })),
   });
 
   // Derived from the THEMES registry (+ the OS-following `system`) so a new skin

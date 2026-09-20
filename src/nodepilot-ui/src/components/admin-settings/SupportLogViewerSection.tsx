@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { diagnostics } from '../../api/diagnostics';
+import { toast } from '../../stores/toastStore';
 import { SupportEventsTable } from './SupportEventsTable';
 
 type LevelFilter = 'all' | 'info' | 'warn' | 'error';
@@ -170,7 +171,13 @@ function PlainTextTailView() {
         <label className="text-xs font-medium text-on-surface-variant">{t('supportLog:downloadDaily')}</label>
         <input type="date" value={downloadDate} onChange={(e) => setDownloadDate(e.target.value)}
           className="px-2 py-1 border border-outline-variant rounded text-xs" />
-        <button type="button" onClick={() => diagnostics.downloadSupportLog(downloadDate)}
+        {/* The download rejects on any non-2xx. Without a catch the failure is an unhandled
+            rejection and the button looks like it did nothing. */}
+        <button type="button"
+          onClick={() => {
+            diagnostics.downloadSupportLog(downloadDate)
+              .catch((err: Error) => toast.error(err.message));
+          }}
           className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded">
           <Download size={12} /> Download
         </button>
