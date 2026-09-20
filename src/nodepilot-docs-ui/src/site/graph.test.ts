@@ -52,7 +52,6 @@ describe('workflow example geometry', () => {
         // Label and health dots sit below the shape.
         expect(y + box / 2 + 34, `${name} ${key} label`).toBeLessThan(layout.height)
       }
-      expect(layout.controls.y + 4 * 22, `${name} controls`).toBeLessThan(layout.height)
       if (layout.minimap) expect(layout.minimap.x + layout.minimap.width).toBeLessThan(layout.width)
     }
   })

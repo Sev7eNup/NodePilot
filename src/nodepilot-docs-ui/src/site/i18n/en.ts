@@ -3,7 +3,7 @@ import type { Messages } from './de'
 /** English texts of the project website. `satisfies` holds the keys to those of `de.ts`. */
 export const en = {
   experience: {
-    "nav": "Try it",
+    "nav": "Walkthrough",
     "title": "Try NodePilot",
     "kicker": "TRY IT YOURSELF · ABOUT 2 MINUTES",
     "headline": "Your first task with NodePilot.",
@@ -18,15 +18,24 @@ export const en = {
     "secondKicker": "NEXT · OR JUMP STRAIGHT IN",
     "secondTitle": "Understand a failure.",
     "secondText": "A file was created but not copied. Inspect a prepared execution and discover where it failed.",
-    "clue": "Which activity is affected – and what does its log tell you?",
+    "clue": "Which activity is affected, and what does its log tell you?",
     "secondAction": "Investigate a failure",
-    "notice": "No sign-up or installation. The browser demo uses simulated data and writes no real files. Changes stay in your tab.",
+    "notice": "No sign-up or installation. The browser demo uses simulated data and writes no real files. Changes stay in your tab. A desktop browser is recommended: the interface is built for wide screens.",
     "demo": "Explore the demo",
     "docs": "Create your first workflow"
   },
   meta: {
     description:
       'NodePilot connects PowerShell and Windows activities into visual workflows. Agentless, self-hosted, open source and free.',
+    descriptions: {
+      home: 'NodePilot connects PowerShell and Windows activities into visual workflows. Agentless, self-hosted, open source and free.',
+      product: 'Designer, step debugger, Live Ops, triggers, alerting and AI support in one tool. 27 activity types from PowerShell to SQL.',
+      experience: 'Try NodePilot in the browser: start a workflow, check its result and find the cause of a failure. No sign-up, no installation.',
+      blog: 'Why certain decisions were made, how things work and what helps when automating.',
+      impressum: 'Provider details and contact for the NodePilot open-source project.',
+      datenschutz: 'How this website handles data: hosting, browser storage and your rights.',
+      notfound: 'This address does not exist on nodepilot.run.',
+    },
   },
   skipLink: 'Skip to content',
   lang: {
@@ -55,7 +64,7 @@ export const en = {
     license: 'View license',
   },
   pages: {
-    experience: "Experience NodePilot",
+    experience: "Walkthrough",
     home: 'Overview',
     product: 'The product',
     blog: 'Blog',
@@ -65,7 +74,7 @@ export const en = {
     notfound: 'Page not found',
   },
   titles: {
-    experience: "Experience NodePilot",
+    experience: "Walkthrough",
     home: 'Windows automation, step by step.',
     product: 'The product',
     blog: 'Blog',
@@ -75,7 +84,7 @@ export const en = {
   },
   home: {
     eyebrow: 'WINDOWS WORKFLOW ORCHESTRATION',
-    title: 'Connect processes.<br><span>See how they run.</span>',
+    title: 'Turn scripts into workflows.<br><span>See everything run.</span>',
     lead: 'Your Windows automation deserves more than a folder full of scripts.',
     description:
       'With NodePilot you build workflows in the browser, run them over WinRM and see what happens at every step. No agents on the target systems.',
@@ -114,8 +123,8 @@ export const en = {
     badge: 'EXAMPLE',
     viewOriginal: 'View the original web UI',
     tab: 'Workflow',
-    stats: '4 activities · 2 paths',
-    canvasLabel: 'Interactive workflow example: start, check service, result or error log',
+    stats: '5 activities · 2 paths',
+    canvasLabel: 'Interactive workflow example: start, run script, check service, result or error log',
     edgeAlways: 'Always',
     edgeSuccess: 'On Success',
     edgeFailure: 'On Failure',
@@ -133,13 +142,20 @@ export const en = {
         label: 'Start: show step details',
         type: 'TRIGGER',
         detail: 'Workflow started manually',
-        code: 'Start → Check service',
+        code: 'Start → Run script',
+      },
+      script: {
+        name: 'Run script',
+        label: 'Run script: show step details',
+        type: 'RUN SCRIPT',
+        detail: 'WIN-SRV-01 / publishes hostName',
+        code: '$hostName = $env:COMPUTERNAME',
       },
       check: {
         name: 'Check service',
         label: 'Check service: show step details',
         type: 'SERVICE CONTROL',
-        detail: 'WIN-SRV-01 / Spooler',
+        detail: '{{script.param.hostName}} / Spooler',
         code: "Get-Service -Name 'Spooler'",
       },
       result: {
@@ -147,7 +163,7 @@ export const en = {
         label: 'Result: show step details',
         type: 'RETURN DATA',
         detail: 'Pass data to the next workflow',
-        code: 'Name: Spooler · Status: Running',
+        code: 'WIN-SRV-01 · Spooler · Running',
       },
       error: {
         name: 'Log error',
@@ -171,21 +187,21 @@ export const en = {
   product: {
     kicker: 'THE PRODUCT',
     title: 'One workflow.<br>From idea to log.',
-    intro: 'Designer, debugger and Live Ops belong in the same workspace. Not in three different tools.',
+    intro: 'Designer, debugger and Live Ops belong in the same workspace instead of three separate tools.',
     designerTitle: 'Design workflows',
-    designerText: '27 activity types from PowerShell to SQL, wired up with conditions and parallel paths on one canvas.',
-    liveopsTitle: 'Follow executions',
-    liveopsText: 'See what is running, what has finished and what starts next.',
+    designerText: '27 activity types: PowerShell, files and folders, services, the registry, WMI, scheduled tasks, REST calls and SQL, wired up with conditions and parallel paths on one canvas.',
     logsTitle: 'Trace errors',
     logsText: 'Read output and structured support events right in the product.',
+    aiTitle: 'No-code',
+    aiText: 'AI builds scripts and workflows from a description. The global AI chat searches the documentation, your workflows and their logs, the source code and the database to answer questions.',
     video: 'Watch the product video',
     enlarge: 'Enlarge product image',
     caption: 'Original screenshot from the NodePilot repository',
     captionTag: 'Dark theme',
-    detailKicker: 'EXISTING AUTOMATION',
-    detailTitle: 'Your scripts stay your scripts.',
+    detailKicker: 'ORCHESTRATION',
+    detailTitle: 'One workflow holds the run together.',
     detailText:
-      'NodePilot runs PowerShell and Windows activities over WinRM. Existing SCOrch runbooks can be imported as <code>.ois_export</code> files. Review the import log and the configuration before you enable a workflow.',
+      'NodePilot runs PowerShell and Windows activities agentless over WinRM. REST calls, SQL queries and mails run inside the engine itself. In between, conditions decide, branches run in parallel, failed steps repeat and every step hands its result to the next one. A run starts on a schedule, a file, an event-log entry, a database change or a webhook; afterwards the log shows step by step what happened. Existing SCOrch runbooks can be imported as <code>.ois_export</code> files. Review the import log and the configuration before you enable a workflow.',
     readMore: 'Read more in the documentation',
     codeExample: 'Example',
     codeComment: '# Reuse existing logic',
@@ -229,6 +245,24 @@ export const en = {
         b: 'MCP server for AI agents',
         c: 'OpenTelemetry, Prometheus, Grafana',
       },
+      liveops: {
+        title: 'Live Ops',
+        a: 'Running steps in real time',
+        b: 'Cancel, retry, resume',
+        c: 'History with a step-by-step log',
+      },
+      alerting: {
+        title: 'Alerting',
+        a: 'Rules on events during a run',
+        b: 'Mail and webhook with HMAC',
+        c: 'Stuck and missing runs',
+      },
+      migration: {
+        title: 'Migration & building blocks',
+        a: 'Import SCOrch runbooks',
+        b: 'Your own activities from PowerShell',
+        c: 'Encrypted configuration backup',
+      },
     },
     download: 'Download NodePilot',
     repository: 'View repository',
@@ -238,13 +272,13 @@ export const en = {
       title: 'Workflow Designer',
       alt: 'Original screenshot of the NodePilot Workflow Designer with the workflow canvas and the properties panel.',
     },
-    liveops: {
-      title: 'Live Ops',
-      alt: 'Original screenshot of the NodePilot Live Ops view for running and finished workflows.',
-    },
     logs: {
       title: 'Support Log',
       alt: 'Original screenshot of the NodePilot Support Log with structured events.',
+    },
+    ai: {
+      title: 'AI Chat',
+      alt: 'Original screenshot of the global NodePilot AI chat showing a question and its answer.',
     },
     loading: 'Loading the original web UI …',
     unavailable: 'Product image unavailable',
@@ -299,19 +333,19 @@ export const en = {
     toDocs: 'Go to the documentation',
   },
   articles: {
-    'warum-nodepilot': {
+    'why-nodepilot': {
       category: 'BACKGROUND',
       title: 'Why NodePilot exists.',
       indexTitle: 'Why NodePilot exists.',
       summary: 'From PowerShell scripts and SCOrch to a tool of its own.',
       teaser:
         'PowerShell solves many tasks. Coordinating them, running them and troubleshooting them takes more than a collection of individual scripts.',
-      lead: 'PowerShell is not the problem. Losing track of what happens between the scripts is.',
+      lead: 'PowerShell does the work. What gets lost is the overview of what happens between the scripts.',
       body: `<p>One script checks services, another copies files. A third queries a database. Each of them works on its own. But as soon as these tasks depend on each other, knowing where the files are is no longer enough.</p>
 <p>Which step ran? What output did it produce? Why did the next step not start? And what has to change without affecting the rest of the workflow?</p>
 <h2>The work between the scripts</h2>
 <p>This is where NodePilot comes in. PowerShell remains the tool for the actual work on the systems. The workflow describes how the individual steps fit together: with conditions, error paths and parallel branches.</p>
-<p>The goal is not to replace working scripts with a new language. It is to embed them in a workflow that you can design, run and trace afterwards.</p>
+<p>Working scripts stay as they are. They are simply embedded in a workflow that you can design, run and trace afterwards.</p>
 <h2>One workspace instead of separate views</h2>
 <p>NodePilot combines the visual designer with execution history, debugging and Live Ops. Target systems are reached over WinRM; they need no additional NodePilot agent. The application itself runs in your own environment.</p>
 <p>Existing automation should not get lost either. That is why importing SCOrch runbooks is part of the project. An import does not replace a review, but it takes the existing structure as the starting point – instead of an empty canvas.</p>
@@ -327,7 +361,7 @@ export const en = {
       indexTitle: 'Bring your runbooks.<br>Don’t start over.',
       summary: 'What matters when importing from System Center Orchestrator.',
       teaser:
-        'What becomes of activities, links and published data – and why the import report is part of the migration.',
+        'What becomes of activities, links and published data, and why the import report is part of the migration.',
       lead: 'Existing automation is more than a row of boxes. An import also has to carry over the links and the data between them.',
       body: `<p>A mature SCOrch runbook holds a lot of work: the right order, error handling, conditions and data passed from one activity to the next. That is exactly what nobody should have to rebuild by hand during a migration.</p>
 <h2>Start from the existing export</h2>
@@ -340,7 +374,7 @@ export const en = {
 <h2>Review, test, enable deliberately</h2>
 <p>Imported workflows start out disabled. Credentials are not reconstructed from the encrypted SCOrch data. Before enabling a workflow, check the items named in the report, the target systems, permissions and error paths.</p>
 <p>Then test it in a suitable test environment. Only when its behavior meets your requirements do you enable the workflow explicitly.</p>
-<div class="article-note">The benefit is not that every migration decision gets automated. It is that you work with the actual runbook and a report you can follow.</div>
+<div class="article-note">The migration decisions stay with you. What the import adds is the actual runbook and a report you can follow.</div>
 <p class="article-source">Background and current details: <a href="https://github.com/Sev7eNup/NodePilot#coming-from-system-center-orchestrator" target="_blank" rel="noopener noreferrer">SCOrch import in the NodePilot README</a>.</p>`,
     },
   },
