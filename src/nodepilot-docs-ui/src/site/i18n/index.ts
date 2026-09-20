@@ -45,6 +45,11 @@ export function setBasePrefix(prefix: string): void {
   basePrefix = prefix
 }
 
+/** A link from the current document to something at the site root, such as the demo. */
+export function sitePath(path = ''): string {
+  return `${basePrefix}${path}`
+}
+
 /** Relative link into the docs, which live next to the website under docs/. */
 export function docsHref(lang: Lang, page = ''): string {
   return `${basePrefix}docs/#/${lang}/${page}`

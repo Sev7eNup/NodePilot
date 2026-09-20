@@ -55,14 +55,28 @@ export function pageUrl(origin: string, path: string, directory = false): string
 
 const RELATIVE_URL = /\b(href|src)="(?!https?:|\/\/|\/|#|mailto:|tel:|data:)([^"]*)"/g
 
+/** Prefix from a file `depth` levels below the site root back up to it. */
+export function depthPrefix(depth: number): string {
+  return depth <= 0 ? '' : '../'.repeat(depth)
+}
+
 /**
- * Rewrites the shell's relative URLs for a file that sits `depth` levels down. The shell is
- * written for the site root, so `href="product"` has to become `href="../product"` one level
- * in — for assets, the documentation and the demo just as much as for the site's own routes.
+ * Prefix for the not-found page. The server hands it out for any address, at any depth, so its
+ * URLs cannot be relative to where the file sits: a stylesheet asked for beside a missing
+ * /a/b/c is looked for under /a/b/. The path of the published origin is the fixed point both
+ * hosts share.
  */
-export function rewriteRelativeUrls(html: string, depth: number): string {
-  if (depth <= 0) return html
-  const prefix = '../'.repeat(depth)
+export function originPrefix(origin: string): string {
+  return `${new URL(origin).pathname.replace(/\/+$/, '')}/`
+}
+
+/**
+ * Puts `prefix` in front of every relative URL in the shell, which is written for the site
+ * root: one level in, `href="product/"` has to become `href="../product/"` — for assets, the
+ * documentation and the demo just as much as for the site's own routes.
+ */
+export function rewriteRelativeUrls(html: string, prefix: string): string {
+  if (prefix === '') return html
   return html.replace(RELATIVE_URL, (_match, attribute: string, url: string) => {
     const clean = url.replace(/^\.\//, '')
     return `${attribute}="${prefix}${clean}"`
@@ -73,9 +87,8 @@ export function rewriteRelativeUrls(html: string, depth: number): string {
  * Tells the shell how far the site root is from this file. main.ts reads it to turn the address
  * into a route; without it every subdirectory would look like the site root.
  */
-export function setBaseMeta(html: string, depth: number): string {
-  const prefix = depth <= 0 ? './' : '../'.repeat(depth)
-  return html.replace(/(<meta name="np-site-base" content=")[^"]*(")/, `$1${prefix}$2`)
+export function setBaseMeta(html: string, prefix: string): string {
+  return html.replace(/(<meta name="np-site-base" content=")[^"]*(")/, `$1${prefix || './'}$2`)
 }
 
 export interface PageMeta {

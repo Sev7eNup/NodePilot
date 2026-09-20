@@ -71,20 +71,44 @@ export function mountDemoBanner(onReset: () => void, onTour?: () => void): () =>
   });
   restore.classList.add(HIDDEN_CLASS);
 
-  actions.append(
-    home,
-    button(strings.reset, strings.resetTitle, 'np-demo-bar__button', onReset),
-    button(strings.dismiss, strings.dismiss, 'np-demo-bar__button np-demo-bar__button--quiet', () => {
-      bar.classList.add(HIDDEN_CLASS);
-      restore.classList.remove(HIDDEN_CLASS);
-    }),
-  );
-  if (onTour) actions.prepend(button(strings.tour, strings.tour, 'np-demo-bar__button', onTour));
+  const resetButton = button(strings.reset, strings.resetTitle, 'np-demo-bar__button', onReset);
+  const dismissButton = button(strings.dismiss, strings.dismiss, 'np-demo-bar__button np-demo-bar__button--quiet', () => {
+    bar.classList.add(HIDDEN_CLASS);
+    restore.classList.remove(HIDDEN_CLASS);
+  });
+  const tourButton = onTour ? button(strings.tour, strings.tour, 'np-demo-bar__button', onTour) : null;
+
+  actions.append(home, resetButton, dismissButton);
+  if (tourButton) actions.prepend(tourButton);
 
   bar.append(badge, message, actions);
   document.body.append(bar, restore);
 
+  // The banner is plain DOM and is built once, so a visitor switching the language inside the
+  // app left it in the language it started in. The app writes its language onto <html>, which
+  // is the signal this follows.
+  const applyStrings = (): void => {
+    const next = demoStrings();
+    badge.textContent = next.badge;
+    message.textContent = next.message;
+    home.textContent = next.website;
+    home.title = next.website;
+    resetButton.textContent = next.reset;
+    resetButton.title = next.resetTitle;
+    dismissButton.textContent = next.dismiss;
+    dismissButton.title = next.dismiss;
+    restore.textContent = next.restore;
+    restore.title = next.restore;
+    if (tourButton) {
+      tourButton.textContent = next.tour;
+      tourButton.title = next.tour;
+    }
+  };
+  const languageWatch = new MutationObserver(applyStrings);
+  languageWatch.observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
+
   return () => {
+    languageWatch.disconnect();
     bar.remove();
     restore.remove();
   };
