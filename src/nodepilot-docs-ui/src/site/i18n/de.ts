@@ -38,15 +38,24 @@ export const de = {
     "secondKicker": "DANACH · ODER DIREKT EINSTEIGEN",
     "secondTitle": "Einen Fehler verstehen.",
     "secondText": "Eine Datei wurde erzeugt, aber nicht kopiert. Untersuche den vorbereiteten Lauf und finde heraus, an welcher Stelle es scheitert.",
-    "clue": "Welche Activity ist betroffen – und was verrät ihr Protokoll?",
+    "clue": "Welche Activity ist betroffen, und was verrät ihr Protokoll?",
     "secondAction": "Fehler untersuchen",
-    "notice": "Ohne Anmeldung oder Installation. Die Browserdemo verwendet simulierte Daten und schreibt keine echten Dateien. Änderungen bleiben in deinem Tab.",
+    "notice": "Ohne Anmeldung oder Installation. Die Browserdemo verwendet simulierte Daten und schreibt keine echten Dateien. Änderungen bleiben in deinem Tab. Empfohlen wird ein Desktop-Browser: die Oberfläche ist für breite Bildschirme gebaut.",
     "demo": "Demo frei erkunden",
     "docs": "Ersten Workflow erstellen"
   },
   meta: {
     description:
       'NodePilot verbindet PowerShell und Windows-Aktivitäten zu visuellen Workflows. Agentenlos, selbst gehostet, quelloffen und kostenlos.',
+    descriptions: {
+      home: 'NodePilot verbindet PowerShell und Windows-Aktivitäten zu visuellen Workflows. Agentenlos, selbst gehostet, quelloffen und kostenlos.',
+      product: 'Designer, Schritt-Debugger, Live Ops, Auslöser, Alarmierung und KI-Unterstützung in einem Werkzeug. 27 Aktivitätstypen von PowerShell bis SQL.',
+      experience: 'NodePilot im Browser ausprobieren: einen Workflow starten, sein Ergebnis prüfen und einem Fehlschlag auf den Grund gehen. Ohne Anmeldung, ohne Installation.',
+      blog: 'Warum bestimmte Entscheidungen so gefallen sind, wie die Dinge funktionieren und was beim Automatisieren hilft.',
+      impressum: 'Anbieterkennzeichnung und Kontakt zum Open-Source-Projekt NodePilot.',
+      datenschutz: 'Wie diese Website mit Daten umgeht: Hosting, Browser-Speicher und deine Rechte.',
+      notfound: 'Diese Adresse gibt es auf nodepilot.run nicht.',
+    },
   },
   skipLink: 'Zum Inhalt',
   lang: {
@@ -76,7 +85,7 @@ export const de = {
   },
   /** Breadcrumb in the header. */
   pages: {
-    experience: "NodePilot erleben",
+    experience: "Ausprobieren",
     home: 'Übersicht',
     product: 'Das Produkt',
     blog: 'Blog',
@@ -87,7 +96,7 @@ export const de = {
   } satisfies Record<SitePage, string>,
   /** Document titles; an article uses its own title. */
   titles: {
-    experience: "NodePilot erleben",
+    experience: "Ausprobieren",
     home: 'Windows-Automatisierung, Schritt für Schritt.',
     product: 'Das Produkt',
     blog: 'Blog',
@@ -97,7 +106,7 @@ export const de = {
   } satisfies Record<Exclude<SitePage, 'article'>, string>,
   home: {
     eyebrow: 'WINDOWS WORKFLOW ORCHESTRATION',
-    title: 'Prozesse verbinden.<br><span>Abläufe verstehen.</span>',
+    title: 'Aus Skripten werden Workflows.<br><span>Du siehst sie laufen.</span>',
     lead: 'Deine Windows-Automatisierung verdient mehr als einen Ordner voller Skripte.',
     description:
       'Mit NodePilot baust du Workflows im Browser, führst sie über WinRM aus und siehst, was in jedem Schritt passiert. Ohne Agenten auf den Zielsystemen.',
@@ -132,15 +141,15 @@ export const de = {
     blogLink: 'Zum Blog',
   },
   demo: {
-    title: 'Service-Check',
+    title: 'Service check',
     badge: 'BEISPIEL',
     viewOriginal: 'Original-Web-UI ansehen',
     tab: 'Workflow',
-    stats: '4 Aktivitäten · 2 Pfade',
-    canvasLabel: 'Interaktives Ablaufbeispiel: Start, Dienst prüfen, Ergebnis oder Fehlerprotokoll',
-    edgeAlways: 'Immer',
-    edgeSuccess: 'Bei Erfolg',
-    edgeFailure: 'Bei Fehler',
+    stats: '5 Aktivitäten · 2 Pfade',
+    canvasLabel: 'Interaktives Ablaufbeispiel: Start, Run script, Check service, Result oder Log error',
+    edgeAlways: 'Always',
+    edgeSuccess: 'On Success',
+    edgeFailure: 'On Failure',
     inspectorHint: 'Schritt anklicken, Details ansehen',
     originalUi: 'Original-Web-UI',
     pause: 'Animation pausieren',
@@ -154,29 +163,36 @@ export const de = {
         name: 'Start',
         label: 'Start: Schritt-Details anzeigen',
         type: 'TRIGGER',
-        detail: 'Manuell gestarteter Workflow',
-        code: 'Start → Dienst prüfen',
+        detail: 'Workflow started manually',
+        code: 'Start → Run script',
+      },
+      script: {
+        name: 'Run script',
+        label: 'Run script: Schritt-Details anzeigen',
+        type: 'RUN SCRIPT',
+        detail: 'WIN-SRV-01 / veröffentlicht hostName',
+        code: '$hostName = $env:COMPUTERNAME',
       },
       check: {
-        name: 'Dienst prüfen',
-        label: 'Dienst prüfen: Schritt-Details anzeigen',
+        name: 'Check service',
+        label: 'Check service: Schritt-Details anzeigen',
         type: 'SERVICE CONTROL',
-        detail: 'WIN-SRV-01 / Spooler',
+        detail: '{{script.param.hostName}} / Spooler',
         code: "Get-Service -Name 'Spooler'",
       },
       result: {
-        name: 'Ergebnis',
-        label: 'Ergebnis: Schritt-Details anzeigen',
+        name: 'Result',
+        label: 'Result: Schritt-Details anzeigen',
         type: 'RETURN DATA',
-        detail: 'Daten an den nächsten Ablauf übergeben',
-        code: 'Name: Spooler · Status: Running',
+        detail: 'Pass data to the next workflow',
+        code: 'WIN-SRV-01 · Spooler · Running',
       },
       error: {
-        name: 'Protokollieren',
-        label: 'Protokollieren: Schritt-Details anzeigen',
-        type: 'FEHLERPFAD',
-        detail: 'Ausgabe für die Fehleranalyse erfassen',
-        code: 'Fehler → Protokollierung',
+        name: 'Log error',
+        label: 'Log error: Schritt-Details anzeigen',
+        type: 'ERROR PATH',
+        detail: 'Capture output for troubleshooting',
+        code: 'Error → Logging',
       },
     },
   },
@@ -193,21 +209,21 @@ export const de = {
   product: {
     kicker: 'DAS PRODUKT',
     title: 'Ein Ablauf.<br>Von der Idee bis zum Log.',
-    intro: 'Designer, Debugger und Live Ops gehören in denselben Arbeitsbereich. Nicht in drei verschiedene Werkzeuge.',
+    intro: 'Designer, Debugger und Live Ops gehören in denselben Arbeitsbereich statt in drei verschiedene Werkzeuge.',
     designerTitle: 'Workflows entwerfen',
-    designerText: '27 Aktivitätstypen von PowerShell bis SQL, verbunden mit Bedingungen und parallelen Pfaden auf einem Canvas.',
-    liveopsTitle: 'Ausführungen verfolgen',
-    liveopsText: 'Sehen, was gerade läuft, was abgeschlossen ist und was als Nächstes startet.',
+    designerText: '27 Aktivitätstypen: PowerShell, Dateien und Ordner, Dienste, Registry, WMI, geplante Aufgaben, REST-Aufrufe und SQL, verbunden mit Bedingungen und parallelen Pfaden auf einem Canvas.',
     logsTitle: 'Fehler nachvollziehen',
     logsText: 'Ausgaben und strukturierte Support-Ereignisse direkt im Produkt lesen.',
+    aiTitle: 'No-Code',
+    aiText: 'Die KI baut Skripte und Workflows aus einer Beschreibung. Der globale KI-Chat durchsucht für seine Antworten Doku, Workflows und ihre Logs, den Quellcode und die Datenbank.',
     video: 'Produktvideo ansehen',
     enlarge: 'Produktbild vergrößern',
     caption: 'Original-Screenshot aus dem NodePilot-Repository',
     captionTag: 'Dunkles Design',
-    detailKicker: 'BESTEHENDE AUTOMATISIERUNG',
-    detailTitle: 'Deine Skripte bleiben deine Skripte.',
+    detailKicker: 'ORCHESTRIERUNG',
+    detailTitle: 'Ein Workflow hält den Ablauf zusammen.',
     detailText:
-      'NodePilot führt PowerShell und Windows-Aktivitäten über WinRM aus. Vorhandene SCOrch-Runbooks lassen sich als <code>.ois_export</code> importieren. Prüfe anschließend das Importprotokoll und die Konfiguration, bevor du einen Workflow aktivierst.',
+      'NodePilot führt PowerShell und Windows-Aktivitäten agentenlos über WinRM aus. REST-Aufrufe, SQL-Abfragen und E-Mails laufen direkt in der Engine. Dazwischen entscheiden Bedingungen, laufen Zweige parallel, wiederholen sich fehlgeschlagene Schritte und reichen ihr Ergebnis an den nächsten weiter. Gestartet wird per Zeitplan, Datei, Ereignisprotokoll, Datenbank oder Webhook; hinterher steht Schritt für Schritt im Protokoll, was passiert ist. Vorhandene SCOrch-Runbooks lassen sich als <code>.ois_export</code> importieren. Prüfe danach Importprotokoll und Konfiguration, bevor du einen Workflow aktivierst.',
     readMore: 'In der Dokumentation weiterlesen',
     codeExample: 'Beispiel',
     codeComment: '# Bestehende Logik weiterverwenden',
@@ -251,6 +267,24 @@ export const de = {
         b: 'MCP-Server für KI-Agenten',
         c: 'OpenTelemetry, Prometheus, Grafana',
       },
+      liveops: {
+        title: 'Live Ops',
+        a: 'Laufende Schritte in Echtzeit',
+        b: 'Abbrechen, Wiederholen, Fortsetzen',
+        c: 'Historie mit Schrittprotokoll',
+      },
+      alerting: {
+        title: 'Alarmieren',
+        a: 'Regeln auf Ereignisse im Lauf',
+        b: 'E-Mail und Webhook mit HMAC',
+        c: 'Hängende und ausbleibende Läufe',
+      },
+      migration: {
+        title: 'Migration & Bausteine',
+        a: 'SCOrch-Runbooks importieren',
+        b: 'Eigene Aktivitäten aus PowerShell',
+        c: 'Verschlüsseltes Konfigurations-Backup',
+      },
     },
     download: 'NodePilot herunterladen',
     repository: 'Repository ansehen',
@@ -260,13 +294,13 @@ export const de = {
       title: 'Workflow Designer',
       alt: 'Original-Screenshot des NodePilot Workflow Designers mit Workflow-Canvas und Eigenschaftenbereich.',
     },
-    liveops: {
-      title: 'Live Ops',
-      alt: 'Original-Screenshot der NodePilot Live-Ops-Ansicht für laufende und abgeschlossene Workflows.',
-    },
     logs: {
       title: 'Support Log',
       alt: 'Original-Screenshot des NodePilot Support Logs mit strukturierten Ereignissen.',
+    },
+    ai: {
+      title: 'KI-Chat',
+      alt: 'Original-Screenshot des globalen NodePilot-KI-Chats mit einer gestellten Frage und der Antwort.',
     },
     loading: 'Original-Web-UI wird geladen …',
     unavailable: 'Produktbild nicht erreichbar',
@@ -321,19 +355,19 @@ export const de = {
     toDocs: 'Zur Dokumentation',
   },
   articles: {
-    'warum-nodepilot': {
+    'why-nodepilot': {
       category: 'HINTERGRUND',
       title: 'Warum es NodePilot gibt.',
       indexTitle: 'Warum es NodePilot gibt.',
       summary: 'Von PowerShell-Skripten und SCOrch zum eigenen Werkzeug.',
       teaser:
         'PowerShell löst viele Aufgaben. Für das Zusammenspiel, die Ausführung und die Fehlersuche braucht es mehr als eine Sammlung einzelner Skripte.',
-      lead: 'PowerShell ist nicht das Problem. Der Überblick zwischen den Skripten ist es.',
+      lead: 'PowerShell erledigt die Arbeit. Verloren geht der Überblick über das, was zwischen den Skripten passiert.',
       body: `<p>Ein Skript prüft Dienste, ein anderes kopiert Dateien. Ein drittes fragt eine Datenbank ab. Jedes für sich funktioniert. Sobald diese Aufgaben aber voneinander abhängen, reicht es nicht mehr, nur zu wissen, wo die Dateien liegen.</p>
 <p>Welcher Schritt ist gelaufen? Welche Ausgabe hat er geliefert? Warum ist der nächste Schritt nicht gestartet? Und was muss angepasst werden, ohne dabei den restlichen Ablauf zu verändern?</p>
 <h2>Die Arbeit zwischen den Skripten</h2>
 <p>Genau hier setzt NodePilot an. PowerShell bleibt das Werkzeug für die eigentliche Systemarbeit. Der Workflow beschreibt, wie die einzelnen Schritte zusammenhängen: mit Bedingungen, Fehlerpfaden und parallelen Zweigen.</p>
-<p>Das Ziel ist nicht, funktionierende Skripte durch eine neue Sprache zu ersetzen. Es geht darum, sie in einen Ablauf einzubetten, der sich gestalten, ausführen und anschließend nachvollziehen lässt.</p>
+<p>Funktionierende Skripte bleiben, wie sie sind. Sie werden lediglich in einen Ablauf eingebettet, der sich gestalten, ausführen und anschließend nachvollziehen lässt.</p>
 <h2>Ein Arbeitsbereich statt einzelner Ansichten</h2>
 <p>NodePilot verbindet den visuellen Designer mit Ausführungshistorie, Debugging und Live Ops. Die Zielsysteme werden über WinRM angesprochen; dort wird kein zusätzlicher NodePilot-Agent benötigt. Die Anwendung selbst läuft in der eigenen Umgebung.</p>
 <p>Auch vorhandene Automatisierung soll nicht verloren gehen. Deshalb gehört der Import von SCOrch-Runbooks zum Projekt. Ein Import ersetzt keine Prüfung, nimmt aber die vorhandene Struktur als Ausgangspunkt – statt mit einem leeren Canvas zu beginnen.</p>
@@ -349,7 +383,7 @@ export const de = {
       indexTitle: 'Runbooks mitnehmen.<br>Nicht neu anfangen.',
       summary: 'Was beim Import aus System Center Orchestrator wichtig ist.',
       teaser:
-        'Was aus Aktivitäten, Verbindungen und Published Data wird – und warum das Importprotokoll zum Migrationsprozess gehört.',
+        'Was aus Aktivitäten, Verbindungen und Published Data wird, und warum das Importprotokoll zum Migrationsprozess gehört.',
       lead: 'Vorhandene Automatisierung ist mehr als eine Reihe von Kästchen. Der Import muss auch die Verbindungen und Daten dazwischen berücksichtigen.',
       body: `<p>In einem gewachsenen SCOrch-Runbook steckt viel Arbeit: die richtige Reihenfolge, Fehlerbehandlung, Bedingungen und Daten, die von einer Aktivität an die nächste weitergegeben werden. Genau das sollte bei einer Migration nicht von Hand rekonstruiert werden müssen.</p>
 <h2>Mit dem vorhandenen Export starten</h2>
@@ -362,7 +396,7 @@ export const de = {
 <h2>Prüfen, testen, bewusst aktivieren</h2>
 <p>Importierte Workflows sind zunächst deaktiviert. Zugangsdaten werden nicht aus den verschlüsselten SCOrch-Daten rekonstruiert. Vor der Aktivierung sollten deshalb die im Bericht genannten Punkte, Zielsysteme, Berechtigungen und Fehlerpfade kontrolliert werden.</p>
 <p>Danach folgt ein Test mit einer geeigneten Testumgebung. Erst wenn das Verhalten zu den eigenen Anforderungen passt, wird der Workflow ausdrücklich aktiviert.</p>
-<div class="article-note">Der Vorteil liegt nicht darin, jede Migrationsentscheidung zu automatisieren. Er liegt darin, mit dem tatsächlichen Runbook und einem nachvollziehbaren Bericht zu arbeiten.</div>
+<div class="article-note">Die Migrationsentscheidungen bleiben bei dir. Der Import liefert dazu das tatsächliche Runbook und einen nachvollziehbaren Bericht.</div>
 <p class="article-source">Grundlage und aktuelle Details: <a href="https://github.com/Sev7eNup/NodePilot#coming-from-system-center-orchestrator" target="_blank" rel="noopener noreferrer">SCOrch-Import im NodePilot README</a>.</p>`,
     },
   } satisfies Record<ArticleSlug, Article>,

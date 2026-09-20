@@ -2,14 +2,15 @@
    workflow designer: the silhouettes from nodepilot-ui's designer/nodes/shapes.ts and React Flow's
    bezier edges. */
 
-export const NODE_KEYS = ['start', 'check', 'result', 'error'] as const
+export const NODE_KEYS = ['start', 'script', 'check', 'result', 'error'] as const
 export type NodeKey = (typeof NODE_KEYS)[number]
 
-export type ShapeName = 'pennant' | 'hexFlat' | 'flag' | 'shield'
+export type ShapeName = 'pennant' | 'hexPointy' | 'hexFlat' | 'flag' | 'shield'
 
 /** Polygon vertices in percent of the node box, as in the designer. */
 export const SHAPES: Record<ShapeName, readonly (readonly [number, number])[]> = {
   pennant: [[100, 0], [25, 0], [0, 50], [25, 100], [100, 100]],
+  hexPointy: [[50, 0], [100, 25], [100, 75], [50, 100], [0, 75], [0, 25]],
   hexFlat: [[25, 0], [75, 0], [100, 50], [75, 100], [25, 100], [0, 50]],
   flag: [[0, 0], [75, 0], [100, 50], [75, 100], [0, 100]],
   shield: [[0, 0], [100, 0], [100, 55], [50, 100], [0, 55]],
@@ -18,14 +19,16 @@ export const SHAPES: Record<ShapeName, readonly (readonly [number, number])[]> =
 /** Icon offsets as a fraction of the box, so the icon sits on the shape's visual centre. */
 export const ICON_OFFSET: Record<ShapeName, readonly [number, number]> = {
   pennant: [0.06, 0],
+  hexPointy: [0, 0],
   hexFlat: [0, 0],
   flag: [-0.06, 0],
   shield: [0, -0.1],
 }
 
-/** manualTrigger, serviceManagement, returnData and log in the designer. */
+/** manualTrigger, runScript, serviceManagement, returnData and log in the designer. */
 export const NODE_SHAPE: Record<NodeKey, ShapeName> = {
   start: 'pennant',
+  script: 'hexPointy',
   check: 'hexFlat',
   result: 'flag',
   error: 'shield',
@@ -33,7 +36,8 @@ export const NODE_SHAPE: Record<NodeKey, ShapeName> = {
 
 /** Edge id, source node and target node. */
 export const EDGES = [
-  ['start', 'start', 'check'],
+  ['start', 'start', 'script'],
+  ['check', 'script', 'check'],
   ['result', 'check', 'result'],
   ['error', 'check', 'error'],
 ] as const satisfies readonly (readonly [string, NodeKey, NodeKey])[]
@@ -48,8 +52,6 @@ export interface GraphLayout {
   width: number
   height: number
   nodes: Record<NodeKey, NodeLayout>
-  /** Top-left corner of the zoom controls. */
-  controls: { x: number; y: number }
   /** Minimap frame, or null where the canvas is too small for it. */
   minimap: { x: number; y: number; width: number; height: number } | null
 }
@@ -59,24 +61,24 @@ export const LAYOUTS: { wide: GraphLayout; compact: GraphLayout } = {
     width: 640,
     height: 315,
     nodes: {
-      start: { x: 104, y: 150, box: 60 },
-      check: { x: 296, y: 150, box: 54 },
-      result: { x: 500, y: 74, box: 60 },
-      error: { x: 500, y: 228, box: 58 },
+      start: { x: 58, y: 150, box: 56 },
+      script: { x: 196, y: 150, box: 52 },
+      check: { x: 332, y: 150, box: 52 },
+      result: { x: 505, y: 74, box: 56 },
+      error: { x: 505, y: 228, box: 54 },
     },
-    controls: { x: 12, y: 213 },
     minimap: { x: 548, y: 253, width: 80, height: 50 },
   },
   compact: {
     width: 420,
     height: 340,
     nodes: {
-      start: { x: 70, y: 142, box: 54 },
-      check: { x: 200, y: 142, box: 48 },
-      result: { x: 350, y: 70, box: 54 },
-      error: { x: 350, y: 240, box: 52 },
+      start: { x: 48, y: 142, box: 48 },
+      script: { x: 148, y: 142, box: 44 },
+      check: { x: 248, y: 142, box: 44 },
+      result: { x: 362, y: 70, box: 48 },
+      error: { x: 362, y: 240, box: 46 },
     },
-    controls: { x: 10, y: 238 },
     minimap: null,
   },
 }
