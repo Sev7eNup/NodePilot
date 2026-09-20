@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url'
 import { de } from '../src/site/i18n/de.ts'
 import {
   applyMeta,
+  depthPrefix,
   metaKey,
+  originPrefix,
   pageUrl,
   revealPage,
   rewriteRelativeUrls,
@@ -41,6 +43,9 @@ export function prerenderSite(outDir, origin) {
 
   for (const page of pages) {
     const { title, description } = textsFor(page.route)
+    // The not-found page is handed out for any address, so it cannot reach its own assets
+    // by a relative path.
+    const prefix = page.listed ? depthPrefix(page.depth) : originPrefix(origin)
     const html = setBaseMeta(
       rewriteRelativeUrls(
         applyMeta(revealPage(shell, page.route), {
@@ -49,9 +54,9 @@ export function prerenderSite(outDir, origin) {
           // The not-found page gets no address of its own.
           url: page.listed ? pageUrl(origin, page.path, true) : '',
         }),
-        page.depth,
+        prefix,
       ),
-      page.depth,
+      prefix,
     )
     const target = join(root, page.file)
     mkdirSync(dirname(target), { recursive: true })

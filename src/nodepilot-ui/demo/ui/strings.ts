@@ -50,6 +50,12 @@ const STRINGS: Record<DemoLanguage, DemoStrings> = {
 export function demoLanguage(): DemoLanguage {
   const requested = new URLSearchParams(globalThis.location?.search ?? '').get('lang');
   if (requested === 'de' || requested === 'en') return requested;
+  // The app writes its current language onto <html> whenever a visitor switches it, which
+  // is the only signal available once the page is running. It is read before storage
+  // because i18next's cache and this attribute are written by separate listeners.
+  const applied = globalThis.document?.documentElement.lang;
+  if (applied?.startsWith('de')) return 'de';
+  if (applied?.startsWith('en')) return 'en';
   try {
     const stored = globalThis.localStorage?.getItem('nodepilot.lang');
     if (stored?.startsWith('de')) return 'de';

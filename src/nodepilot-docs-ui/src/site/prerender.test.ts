@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { applyMeta, pageUrl, revealPage, rewriteRelativeUrls, robots, routePages, setBaseMeta, sitemap } from './prerender'
+import {
+  applyMeta,
+  depthPrefix,
+  originPrefix,
+  pageUrl,
+  revealPage,
+  rewriteRelativeUrls,
+  robots,
+  routePages,
+  setBaseMeta,
+  sitemap,
+} from './prerender'
 import { ARTICLE_SLUGS, resolveRoute } from './router'
 
 const pages = routePages()
@@ -38,19 +49,19 @@ describe('rewriteRelativeUrls', () => {
   const html = '<script src="./legacy.js"></script><a href="product">P</a><a href="docs/#/de/">D</a>'
 
   it('leaves the root document untouched', () => {
-    expect(rewriteRelativeUrls(html, 0)).toBe(html)
+    expect(rewriteRelativeUrls(html, depthPrefix(0))).toBe(html)
   })
 
   it('lifts every relative URL by the depth of the file', () => {
-    expect(rewriteRelativeUrls(html, 1)).toBe(
+    expect(rewriteRelativeUrls(html, depthPrefix(1))).toBe(
       '<script src="../legacy.js"></script><a href="../product">P</a><a href="../docs/#/de/">D</a>',
     )
-    expect(rewriteRelativeUrls(html, 2)).toContain('href="../../product"')
+    expect(rewriteRelativeUrls(html, depthPrefix(2))).toContain('href="../../product"')
   })
 
   it('leaves absolute, anchor and mail URLs alone', () => {
     const fixed = '<a href="https://example.test/x">x</a><a href="#main">m</a><a href="mailto:a@b.test">a</a><img src="/og.png">'
-    expect(rewriteRelativeUrls(fixed, 2)).toBe(fixed)
+    expect(rewriteRelativeUrls(fixed, depthPrefix(2))).toBe(fixed)
   })
 })
 
@@ -128,11 +139,26 @@ describe('setBaseMeta', () => {
   const shell = '<meta name="np-site-base" content="./">'
 
   it('leaves the root file pointing at itself', () => {
-    expect(setBaseMeta(shell, 0)).toBe('<meta name="np-site-base" content="./">')
+    expect(setBaseMeta(shell, depthPrefix(0))).toBe('<meta name="np-site-base" content="./">')
   })
 
   it('reaches up once per directory level', () => {
-    expect(setBaseMeta(shell, 1)).toBe('<meta name="np-site-base" content="../">')
-    expect(setBaseMeta(shell, 2)).toBe('<meta name="np-site-base" content="../../">')
+    expect(setBaseMeta(shell, depthPrefix(1))).toBe('<meta name="np-site-base" content="../">')
+    expect(setBaseMeta(shell, depthPrefix(2))).toBe('<meta name="np-site-base" content="../../">')
+  })
+})
+
+describe('originPrefix', () => {
+  it('is an absolute path, because the not-found page is served for any address', () => {
+    expect(originPrefix('https://www.nodepilot.run')).toBe('/')
+    expect(originPrefix('https://www.nodepilot.run/')).toBe('/')
+    expect(originPrefix('https://sev7enup.github.io/NodePilot')).toBe('/NodePilot/')
+  })
+
+  it('reaches the assets of a page that was never there', () => {
+    const shell = '<link rel="stylesheet" href="assets/site.css"><a href="blog/">b</a>'
+    expect(rewriteRelativeUrls(shell, originPrefix('https://www.nodepilot.run'))).toBe(
+      '<link rel="stylesheet" href="/assets/site.css"><a href="/blog/">b</a>',
+    )
   })
 })
