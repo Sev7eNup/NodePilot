@@ -15,7 +15,7 @@ describe('website head', () => {
   it('loads the legacy docs redirect as the first, classic, non-deferred script', () => {
     const first = head.match(/<script\b[^>]*>/i)?.[0]
     expect(first, 'the redirect script must stay the first script in <head>').toMatch(
-      /\bsrc=["']\/legacy-docs-redirect\.js["']/,
+      /\bsrc=["']\.\/legacy-docs-redirect\.js["']/,
     )
     // defer, async and type="module" run after parsing, so the page would render before forwarding.
     expect(first).not.toMatch(/\bdefer\b/i)

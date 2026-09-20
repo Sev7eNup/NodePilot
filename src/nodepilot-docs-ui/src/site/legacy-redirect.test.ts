@@ -26,12 +26,24 @@ describe('legacy docs redirect', () => {
     },
   )
 
-  it.each(['#/', '', '#/produkt', '#/blog', '#/blog/scorch-import', '#/impressum', '#/datenschutz', '#main-content'])(
-    'keeps the website hash %j',
-    (hash) => {
-      expect(forwardTarget(hash)).toBeNull()
-    },
-  )
+  it.each([
+    ['#/', '.'],
+    ['#/produkt', 'product/'],
+    ['#/produkt/', 'product/'],
+    ['#/erleben', 'walkthrough/'],
+    ['#/product', 'product/'],
+    ['#/blog', 'blog/'],
+    ['#/blog/warum-nodepilot', 'blog/why-nodepilot/'],
+    ['#/blog/scorch-import', 'blog/scorch-import/'],
+    ['#/impressum', 'impressum/'],
+    ['#/datenschutz', 'datenschutz/'],
+  ])('forwards the old website hash %j to its address %j', (hash, path) => {
+    expect(forwardTarget(hash)).toBe(path)
+  })
+
+  it.each(['', '#main-content', '#top'])('leaves %j alone, so an in-page anchor still works', (hash) => {
+    expect(forwardTarget(hash)).toBeNull()
+  })
 
   it('lists exactly the router segments', () => {
     const literal = redirectScript.match(/\[([^\]]*)\]/)?.[1] ?? ''

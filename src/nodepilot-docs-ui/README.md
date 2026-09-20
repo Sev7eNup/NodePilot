@@ -54,6 +54,13 @@ Deploy die vorige Fassung stillschweigend weiterveröffentlichen, ohne dass etwa
 
 Deep Links in die Doku haben die Form `https://sev7enup.github.io/NodePilot/docs/#/<sprache>/<seite>`.
 
+- **`NP_SITE_ORIGIN`:** Fast alles ist ortsunabhängig (`base: './'`, Hash-Routen). Nur wenige URLs
+  können nicht relativ sein: `canonical`, `og:url` und `og:image` im Website-Head sowie der
+  Doku-Link auf die Demo. Die stehen im Quelltext auf der Pages-Adresse; ist beim Build
+  `NP_SITE_ORIGIN` gesetzt, schreiben beide Vite-Configs sie auf diesen Ursprung um
+  (`scripts/site-origin.mjs`, dieselbe Konstante für Website-Head und `lib/content.ts`). Ohne die
+  Variable ist die Umschreibung ein No-op. `deploy/Publish-Site.ps1` setzt sie aus seiner
+  Konfiguration, wenn die Seite auf eigenem Webspace statt auf Pages liegt.
 - **`np-site-root`:** Beim Kopieren nach `_site/docs/` stempelt `assemble-site.mjs` ein
   `<meta name="np-site-root" content="../">` in die `index.html` — und schlägt fehl, wenn der
   `</head>`-Anker fehlt. Dasselbe `dist/` wird nämlich ein zweites Mal ausgeliefert, als
@@ -61,13 +68,33 @@ Deep Links in die Doku haben die Form `https://sev7enup.github.io/NodePilot/docs
   liest das Meta, und nur wenn es da ist, zeigt die Sidebar die Rückwege zu `../` und `../demo/`.
   Ein `<meta>` und kein Inline-`<script>`, weil die Doku unter `script-src 'self'` läuft.
 
-- **Alte Doku-Links:** Früher lag die Doku an der Pages-Wurzel (`…/NodePilot/#/en/deployment/logs`).
+- **Routen sind echte Adressen.** `/product/`, `/blog/scorch-import/` und so weiter. Die
+  Segmente sind englisch, weil eine Adresse beide Sprachfassungen bedient; `impressum` und
+  `datenschutz` bleiben deutsch, weil es diese Seiten nur auf Deutsch gibt. Nach dem
+  Vite-Build schreibt das Plugin `np-site-prerender` (`vite.site.config.ts`) aus der einen
+  gebauten Hülle je Route eine eigene Datei, dazu `404.html`, `sitemap.xml` und `robots.txt`.
+  Die Regeln dafür stehen als reine Funktionen in `src/site/prerender.ts`. Jede Datei bekommt
+  eigenen Titel, eigene Beschreibung und eigene `canonical`-URL — vorher lieferte jede Adresse
+  dieselbe Hülle, ein Crawler sah also eine einzige Seite.
+
+  Weil die Website auch in einem Unterverzeichnis liegen kann (GitHub Pages), ist in der Quelle
+  jede interne URL relativ zur Wurzel geschrieben. Der Prerender hebt sie je Tiefe an und setzt
+  `<meta name="np-site-base">` auf denselben Präfix; `main.ts` liest das Meta, um aus der Adresse
+  eine Route zu machen, und `setBasePrefix()` gibt es an die Doku-Links weiter. **Wer eine neue
+  Route anlegt, trägt sie in `ROUTE_PATHS` bzw. `ARTICLE_SLUGS` und in `routePages()` ein** —
+  sonst entsteht keine Datei und die Adresse landet auf der 404-Seite.
+
+- **Alte Doku- und Website-Links:** Früher lag die Doku an der Pages-Wurzel
+  (`…/NodePilot/#/en/deployment/logs`), und die Website selbst benutzte Hash-Routen (`#/produkt`).
   `src/site/public/legacy-docs-redirect.js` läuft als erstes klassisches Script im `<head>` und
-  leitet jeden Hash, dessen erstes Segment keine Website-Route ist, per `location.replace` nach
-  `docs/` weiter. Website-Routen sind `#/`, der leere Hash und `SITE_ROUTE_SEGMENTS` aus
-  `src/site/router.ts` (`produkt`, `blog`, `impressum`, `datenschutz`); dieselbe Liste steht
-  wörtlich im Redirect-Script. Eine neue Route gehört in beide Listen und darf mit keinem
-  Doku-Pfad und keiner Sprache kollidieren.
+  leitet beides per `location.replace` weiter: einen Hash, dessen erstes Segment keine
+  Website-Route ist, nach `docs/`, jeden anderen auf die echte Adresse — dabei benennt er die
+  früheren deutschen Segmente um (`produkt` → `product`, `erleben` → `walkthrough`,
+  `warum-nodepilot` → `why-nodepilot`). Dieselben Umbenennungen stehen als 301 in
+  `src/site/public/.htaccess`, für Aufrufe ohne Hash. Website-Routen sind
+  `SITE_ROUTE_SEGMENTS` aus `src/site/router.ts` (`walkthrough`, `product`, `blog`, `impressum`,
+  `datenschutz`); dieselbe Liste steht wörtlich im Redirect-Script. Eine neue Route gehört in
+  beide Listen und darf mit keinem Doku-Pfad und keiner Sprache kollidieren.
 - **Texte und Sprache:** Die Texte der Website, auch die Blogbeiträge, stehen in
   `src/site/i18n/de.ts` und `en.ts`. Website und Doku teilen sich die Sprachwahl über
   `LANG_STORAGE_KEY` aus `src/i18n/languages.ts`, weil beide auf derselben Origin liegen.

@@ -35,9 +35,19 @@ export function format(template: string, values: Record<string, string | number>
   return template.replace(/\{(\w+)\}/g, (match, name: string) => (name in values ? String(values[name]) : match))
 }
 
+/**
+ * Prefix from the current document to the site root. Every prerendered route sits in its own
+ * directory, so a link written for the root needs it; main.ts sets it once at boot.
+ */
+let basePrefix = ''
+
+export function setBasePrefix(prefix: string): void {
+  basePrefix = prefix
+}
+
 /** Relative link into the docs, which live next to the website under docs/. */
 export function docsHref(lang: Lang, page = ''): string {
-  return `docs/#/${lang}/${page}`
+  return `${basePrefix}docs/#/${lang}/${page}`
 }
 
 /** Registers a callback that re-renders texts set from script, such as the current route. */

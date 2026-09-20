@@ -103,7 +103,9 @@ describe('static markup', () => {
 
 describe('lookup and format', () => {
   it('resolves nested keys and rejects missing or non-text keys', () => {
-    expect(lookup(de, 'demo.nodes.check.name')).toBe('Dienst prüfen')
+    // English in the German dictionary on purpose: the example workflow is product content,
+    // and its node and edge labels read the way NodePilot itself writes them.
+    expect(lookup(de, 'demo.nodes.check.name')).toBe('Check service')
     expect(lookup(de, 'articles.scorch-import.category')).toBe('PRAXIS')
     expect(lookup(de, 'demo.nodes')).toBeUndefined()
     expect(lookup(de, 'demo.missing')).toBeUndefined()
