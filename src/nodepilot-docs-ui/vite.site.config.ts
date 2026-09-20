@@ -1,4 +1,6 @@
 import { defineConfig } from 'vite'
+import { prerenderSite } from './scripts/prerender-plugin.mjs'
+import { PAGES_ORIGIN, siteOrigin } from './scripts/site-origin.mjs'
 
 // Project website (src/site). It builds separately from the docs SPA because dist/ is copied
 // as-is into the product's wwwroot/docs, so the website gets its own root, public dir and
@@ -7,6 +9,23 @@ import { defineConfig } from 'vite'
 // Vite resolves `root` against the working directory (npm runs scripts from this package) and
 // every other relative path below against `root`.
 export default defineConfig({
+  plugins: [
+    {
+      // canonical, og:url and og:image have to be absolute, so they name an origin the source
+      // cannot leave relative. Rewriting them here keeps index.html valid on its own.
+      name: 'np-site-origin',
+      transformIndexHtml: (html: string) => html.replaceAll(PAGES_ORIGIN, siteOrigin()),
+    },
+    {
+      // One file per route, so every address carries its own title, description and canonical
+      // URL instead of the home page's. Also writes the 404 page both hosts serve for an
+      // unknown address, plus robots.txt and the sitemap.
+      name: 'np-site-prerender',
+      closeBundle() {
+        prerenderSite(undefined, siteOrigin())
+      },
+    },
+  ],
   root: 'src/site',
   base: './',
   // No SPA fallback: in dev, docs/ does not exist, and a fallback to this page would make the

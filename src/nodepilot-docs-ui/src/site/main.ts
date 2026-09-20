@@ -2,8 +2,8 @@
    interaction stays in the page, apart from the links a visitor opens. */
 import { mountExperience, type ExperienceController } from './experience/controller'
 import designerDark from '../../../../docs/images/designer-dark.png'
-import liveopsDark from '../../../../docs/images/liveops-dark.png'
 import logDark from '../../../../docs/images/log-dark.png'
+import aiDark from '../../../../docs/images/ai-dark.png'
 import appIconUrl from '../assets/logo-dark.png'
 import { detectLang, isLang } from '../i18n/languages'
 import {
@@ -17,15 +17,15 @@ import {
   type GraphLayout,
   type NodeKey,
 } from './graph'
-import { applyLanguage, currentLang, format, onLanguageChange, persistLang, t } from './i18n'
+import { applyLanguage, currentLang, format, onLanguageChange, persistLang, setBasePrefix, t } from './i18n'
 import { resolveRoute, type SitePage, type SiteRoute } from './router'
 
 const REPO = 'https://github.com/Sev7eNup/NodePilot'
 const PAGES: readonly SitePage[] = ['experience', 'home', 'product', 'blog', 'article', 'impressum', 'datenschutz', 'notfound']
 const SCREENSHOTS = {
   designer: { file: 'designer-dark.png', src: designerDark },
-  liveops: { file: 'liveops-dark.png', src: liveopsDark },
   logs: { file: 'log-dark.png', src: logDark },
+  ai: { file: 'ai-dark.png', src: aiDark },
 }
 // German-only legal texts, supplied as files. A missing file leaves its page without text.
 const LEGAL_TEXTS = import.meta.glob<string>('./legal/*.de.html', { query: '?raw', import: 'default', eager: true })
@@ -464,9 +464,6 @@ function renderGraph(): void {
   }
   layoutEdgeLabels()
 
-  $$<SVGGElement>('.canvas-control').forEach((control, index) =>
-    control.setAttribute('transform', `translate(${layout.controls.x} ${layout.controls.y + index * 22})`),
-  )
   const minimap = $<SVGGElement>('.canvas-minimap')
   minimap.style.display = layout.minimap ? '' : 'none'
   if (layout.minimap) {
@@ -553,9 +550,14 @@ async function runDemoLoop(): Promise<void> {
       await wait(700, signal)
       node('start').replace('is-running', 'is-success')
       edge('start').add('is-running')
-      node('check').add('is-running')
-      await wait(1400, signal)
+      node('script').add('is-running')
+      await wait(1300, signal)
       edge('start').replace('is-running', 'is-done')
+      node('script').replace('is-running', 'is-success')
+      edge('check').add('is-running')
+      node('check').add('is-running')
+      await wait(1300, signal)
+      edge('check').replace('is-running', 'is-done')
       node('check').replace('is-running', 'is-success')
       edge('result').add('is-running')
       node('result').add('is-running')
@@ -628,6 +630,11 @@ $('#reset-search').addEventListener('click', () => {
 function renderRouteTexts(route: SiteRoute): void {
   const messages = t()
   $('#header-current').textContent = messages.pages[route.page]
+  // The prerendered file carries this route's description; applyLanguage would put the site-wide
+  // one back, so it is set again here for whatever a crawler reads after the script has run.
+  const description =
+    route.page === 'article' ? messages.articles[route.slug].summary : messages.meta.descriptions[route.page]
+  document.querySelector('meta[name="description"]')?.setAttribute('content', description)
   if (route.page === 'article') {
     const article = messages.articles[route.slug]
     $('#article-category').textContent = article.category
@@ -639,6 +646,15 @@ function renderRouteTexts(route: SiteRoute): void {
   } else {
     document.title = `${messages.titles[route.page]} — NodePilot`
   }
+}
+
+/** Replays the ten-second invitation on the live-demo link whenever the home page is
+    shown again; an animation only starts once per element on its own. */
+function restartDemoInvite(): void {
+  const link = $('.hero-demo-link')
+  link.classList.remove('is-inviting')
+  void link.offsetWidth
+  link.classList.add('is-inviting')
 }
 
 function showRoute(next: SiteRoute, initial: boolean): void {
@@ -656,6 +672,7 @@ function showRoute(next: SiteRoute, initial: boolean): void {
   syncDemo()
   renderRouteTexts(next)
   if (next.page === 'product' && previous !== 'product') setProductTab(currentProductTab)
+  if (next.page === 'home' && previous !== 'home') restartDemoInvite()
   setMenu(false)
   if (!initial) {
     window.scrollTo({ top: 0, behavior: 'instant' })
@@ -665,11 +682,27 @@ function showRoute(next: SiteRoute, initial: boolean): void {
   requestAnimationFrame(renderGraph)
 }
 
+/**
+ * Where the site root is, relative to the current document. Each prerendered route lives in its
+ * own directory, so `/product/` has to reach one level up for links and assets.
+ */
+const basePrefix = $<HTMLMetaElement>('meta[name="np-site-base"]').content || './'
+const basePath = new URL(basePrefix, location.href).pathname
+
+/** The current address as a path relative to the site root. */
+function currentPath(): string {
+  const path = location.pathname
+  return path.startsWith(basePath) ? path.slice(basePath.length) : path.replace(/^\/+/, '')
+}
+
 function route(initial = false): void {
-  const next = resolveRoute(location.hash)
-  // A hash that is no route (such as #main-content) keeps the current page.
-  if (next) showRoute(next, initial)
-  else if (initial) showRoute({ page: 'home' }, initial)
+  showRoute(resolveRoute(currentPath()), initial)
+}
+
+/** Follows an internal link without reloading, and keeps the address bar honest. */
+function navigate(href: string): void {
+  history.pushState(null, '', href)
+  route()
 }
 
 function setLanguage(value: string | undefined): void {
@@ -697,14 +730,26 @@ onLanguageChange(() => {
   if (currentRoute) renderRouteTexts(currentRoute)
 })
 
-window.addEventListener('hashchange', () => route())
-// Restore the top when clicking an already active local route.
+window.addEventListener('popstate', () => route())
+// Internal links stay in the page. Anything that leaves the site -- the docs, the demo, GitHub,
+// a download, a new tab or a modified click -- is left to the browser.
 document.addEventListener('click', (event) => {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
   if (!(event.target instanceof Element)) return
-  const link = event.target.closest('a[href^="#/"]')
-  if (link && link.getAttribute('href') === location.hash) {
+  const link = event.target.closest('a')
+  if (!link || link.target || link.hasAttribute('download') || !link.href) return
+
+  const url = new URL(link.href)
+  if (url.origin !== location.origin || url.hash || !url.pathname.startsWith(basePath)) return
+  const next = resolveRoute(url.pathname.slice(basePath.length))
+  if (next.page === 'notfound') return
+
+  event.preventDefault()
+  if (url.pathname === location.pathname) {
     window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'instant' : 'smooth' })
+    return
   }
+  navigate(link.href)
 })
 window.addEventListener('pageshow', () => {
   if (currentRoute?.page === 'experience' && !experience) experience = mountExperience($('#experience-root'))
@@ -716,6 +761,7 @@ window.addEventListener('pagehide', () => {
   window.clearTimeout(toastTimer)
 })
 
+setBasePrefix(basePrefix)
 applyLanguage(detectLang())
 route(true)
 selectNode(selectedNode)
