@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyMeta,
-  depthPrefix,
   originPrefix,
   pageUrl,
   revealPage,
@@ -30,14 +29,6 @@ describe('routePages', () => {
     expect(listed).not.toContain('404')
   })
 
-  it('states the depth its relative URLs have to bridge', () => {
-    expect(pages.find((page) => page.path === '')?.depth).toBe(0)
-    expect(pages.find((page) => page.path === 'product')?.depth).toBe(1)
-    expect(pages.find((page) => page.path === 'blog/scorch-import')?.depth).toBe(2)
-    // The 404 is served from the root for any address, so it must not reach upwards.
-    expect(pages.find((page) => page.path === '404')?.depth).toBe(0)
-  })
-
   it('writes files the router resolves back to the same page', () => {
     for (const page of pages.filter((entry) => entry.listed)) {
       expect(resolveRoute(page.path), page.path).toEqual(page.route)
@@ -48,20 +39,18 @@ describe('routePages', () => {
 describe('rewriteRelativeUrls', () => {
   const html = '<script src="./legacy.js"></script><a href="product">P</a><a href="docs/#/de/">D</a>'
 
-  it('leaves the root document untouched', () => {
-    expect(rewriteRelativeUrls(html, depthPrefix(0))).toBe(html)
-  })
-
-  it('lifts every relative URL by the depth of the file', () => {
-    expect(rewriteRelativeUrls(html, depthPrefix(1))).toBe(
-      '<script src="../legacy.js"></script><a href="../product">P</a><a href="../docs/#/de/">D</a>',
+  it('puts the site root in front of every relative URL', () => {
+    expect(rewriteRelativeUrls(html, '/')).toBe(
+      '<script src="/legacy.js"></script><a href="/product">P</a><a href="/docs/#/de/">D</a>',
     )
-    expect(rewriteRelativeUrls(html, depthPrefix(2))).toContain('href="../../product"')
+    expect(rewriteRelativeUrls(html, '/NodePilot/')).toContain('href="/NodePilot/product"')
+    // The site root is written as `.` in the shell, which must not become `/.`.
+    expect(rewriteRelativeUrls('<a href=".">home</a>', '/')).toBe('<a href="/">home</a>')
   })
 
   it('leaves absolute, anchor and mail URLs alone', () => {
     const fixed = '<a href="https://example.test/x">x</a><a href="#main">m</a><a href="mailto:a@b.test">a</a><img src="/og.png">'
-    expect(rewriteRelativeUrls(fixed, depthPrefix(2))).toBe(fixed)
+    expect(rewriteRelativeUrls(fixed, '/')).toBe(fixed)
   })
 })
 
@@ -138,18 +127,14 @@ describe('sitemap and robots', () => {
 describe('setBaseMeta', () => {
   const shell = '<meta name="np-site-base" content="./">'
 
-  it('leaves the root file pointing at itself', () => {
-    expect(setBaseMeta(shell, depthPrefix(0))).toBe('<meta name="np-site-base" content="./">')
-  })
-
-  it('reaches up once per directory level', () => {
-    expect(setBaseMeta(shell, depthPrefix(1))).toBe('<meta name="np-site-base" content="../">')
-    expect(setBaseMeta(shell, depthPrefix(2))).toBe('<meta name="np-site-base" content="../../">')
+  it('names the site root every file shares', () => {
+    expect(setBaseMeta(shell, '/')).toBe('<meta name="np-site-base" content="/">')
+    expect(setBaseMeta(shell, '/NodePilot/')).toBe('<meta name="np-site-base" content="/NodePilot/">')
   })
 })
 
 describe('originPrefix', () => {
-  it('is an absolute path, because the not-found page is served for any address', () => {
+  it('is the published origin as an absolute path', () => {
     expect(originPrefix('https://www.nodepilot.run')).toBe('/')
     expect(originPrefix('https://www.nodepilot.run/')).toBe('/')
     expect(originPrefix('https://sev7enup.github.io/NodePilot')).toBe('/NodePilot/')

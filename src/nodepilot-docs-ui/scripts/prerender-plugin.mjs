@@ -10,7 +10,6 @@ import { fileURLToPath } from 'node:url'
 import { de } from '../src/site/i18n/de.ts'
 import {
   applyMeta,
-  depthPrefix,
   metaKey,
   originPrefix,
   pageUrl,
@@ -43,9 +42,9 @@ export function prerenderSite(outDir, origin) {
 
   for (const page of pages) {
     const { title, description } = textsFor(page.route)
-    // The not-found page is handed out for any address, so it cannot reach its own assets
-    // by a relative path.
-    const prefix = page.listed ? depthPrefix(page.depth) : originPrefix(origin)
+    // Root-absolute, so a link keeps pointing at the same place after the address has changed
+    // under History API navigation.
+    const prefix = originPrefix(origin)
     const html = setBaseMeta(
       rewriteRelativeUrls(
         applyMeta(revealPage(shell, page.route), {
