@@ -1,5 +1,5 @@
 /**
- * First-visit preferences for the demo: English, and the Minimal Dark skin.
+ * First-visit preferences for the demo: its language, and the Minimal Dark skin.
  *
  * A side-effect module, imported first in `main.demo.ts`, because both values are read while
  * their owners initialise — i18n during `src/i18n/index.ts`, the theme store while zustand
@@ -25,9 +25,23 @@ function seed(key: string, value: string): void {
   }
 }
 
-// The product falls back to German and detects from the browser; the demo is published on an
-// English-language project site, so a first-time visitor should land in English regardless.
-seed(LANGUAGE_KEY, 'en');
+/**
+ * The same rule the project website and the documentation follow: the first supported browser
+ * language wins, otherwise English. Only the primary subtag counts, so `de-AT` resolves to `de`.
+ *
+ * Seeded rather than left to the product's own detector, because that one falls back to German —
+ * a visitor whose browser asks for neither language would meet a German demo beside an English
+ * website.
+ */
+function preferredLanguage(): string {
+  for (const candidate of globalThis.navigator?.languages ?? []) {
+    const primary = candidate.split('-')[0]?.toLowerCase();
+    if (primary === 'de' || primary === 'en') return primary;
+  }
+  return 'en';
+}
+
+seed(LANGUAGE_KEY, preferredLanguage());
 const requestedLanguage = new URLSearchParams(globalThis.location?.search ?? '').get('lang');
 if (requestedLanguage === 'de' || requestedLanguage === 'en') {
   try { globalThis.localStorage?.setItem(LANGUAGE_KEY, requestedLanguage); } catch { /* storage is optional */ }

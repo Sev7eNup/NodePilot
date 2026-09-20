@@ -188,21 +188,38 @@ test.describe('published browser demo', () => {
     expect(seen.errors, seen.errors.join('\n')).toEqual([]);
   });
 
-  test('opens in English on the Minimal Dark skin', async ({ page }) => {
+  test('opens in the browser language on the Minimal Dark skin', async ({ page }) => {
     // Checked on a first visit, with storage cleared: the product falls back to German and to
     // the OS theme, which would make the shop window look different to every visitor. Both are
     // seeded only when nothing is stored, so a visitor's own choice still survives a reload.
+    // The runner's browser asks for English, so this is the English half of the rule.
     await page.context().clearCookies();
     await page.goto('./');
     await page.evaluate(() => localStorage.clear());
     await page.reload();
     await settle(page);
 
+    expect(await page.evaluate(() => navigator.languages[0])).toMatch(/^en/);
     expect(await page.evaluate(() => document.documentElement.lang)).toBe('en');
     expect(await page.evaluate(() => document.documentElement.getAttribute('data-skin'))).toBe('dark-minimal');
     // The demo's own chrome follows the same choice; it used to read navigator.language and sat
     // in German beside an English app.
     await expect(page.locator('.np-demo-bar__message')).toContainText('Simulated data');
+  });
+
+  test('opens in German for a German browser, like the website and the docs', async ({ browser }) => {
+    // The other half: the demo used to pin English whatever the browser asked for, so a German
+    // visitor got a German website and documentation next to an English demo.
+    const context = await browser.newContext({ locale: 'de-DE' });
+    const page = await context.newPage();
+    await page.goto('./');
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await settle(page);
+
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe('de');
+    await expect(page.locator('.np-demo-bar__message')).toContainText('Simulierte Daten');
+    await context.close();
   });
 
   test('walks every reachable route without console errors or unhandled endpoints', async ({ page }) => {
