@@ -74,6 +74,7 @@ cd src/nodepilot-ui && npm run test:run         # frontend unit tests (vitest)
 cd src/nodepilot-ui && npm run lint:ci          # frontend lint (warning-capped — see below)
 cd src/nodepilot-ui && npm run test:e2e         # hermetic Playwright e2e (no backend needed)
 cd src/nodepilot-docs-ui && npm run build       # documentation website type-check + build
+cd src/nodepilot-docs-ui && npm run build:site  # project website build
 cd src/nodepilot-docs-ui && npm run test:run    # docs-site tests incl. the de/en parity guard
 ```
 
@@ -120,23 +121,44 @@ execution or remote activities. Run it without other database load.
 
 ### Documentation website
 
-`src/nodepilot-docs-ui` is a standalone Vite SPA published to
-[sev7enup.github.io/NodePilot](https://sev7enup.github.io/NodePilot/) by
-`.github/workflows/docs-pages.yml` on every push to `main` that touches the package. `npm run dev`
-serves it locally on port 5174.
+`src/nodepilot-docs-ui` is a standalone Vite SPA. `.github/workflows/docs-pages.yml` publishes it
+to GitHub Pages at [sev7enup.github.io/NodePilot/docs](https://sev7enup.github.io/NodePilot/docs/)
+on every push to `main` that touches the package. `npm run dev` serves it locally on port 5174,
+under `/docs/`.
 
-It has a **second deployment**: `deploy/Build-Artifact.ps1` and `deploy/desktop/Build-DesktopInstaller.ps1`
-build it as well and stage it into `wwwroot/docs`, which the API serves at `/docs` so a
-disconnected installation has the runbooks. `-SkipFrontend` skips both npm builds, `-SkipNpmCi`
-applies to both. Two consequences for anyone editing this package: `index.html` must not contain
-an inline `<script>` (the API serves it under `script-src 'self'`; `src/lib/document-head.test.ts`
-guards it), and the Vite base stays relative so the bundle works under a subdirectory. The main
-UI's dev server does not proxy `/docs` — use the docs dev server directly.
+The same package holds the **project website** in `src/site/`: plain TypeScript without React or
+Tailwind, in English and German, built by its own Vite config (`vite.site.config.ts`) into
+`dist-site/`. The same workflow publishes it at the root of the Pages site,
+[sev7enup.github.io/NodePilot](https://sev7enup.github.io/NodePilot/), and also runs when the
+screenshots in `docs/images/` change, because the website bundles some of them.
 
-It ships **its own curated markdown corpus** under `content/` — it does not render `docs/`, so a
-change to `docs/` reaches the site only if you mirror it deliberately.
+- `npm run dev:site` serves the website alone on port 5175 — enough for work on the website itself.
+- `npm run build:site` builds it into `dist-site/`.
+- `npm run assemble:site` runs `scripts/assemble-site.mjs`: from the two finished builds it
+  assembles `_site/` exactly as the workflow publishes it — the website at the root, the docs in
+  `docs/`, `pages-media/` in `media/`.
+- `npm run preview:site` runs both builds and the assembly, then serves `_site/` on port 5175. It
+  is the only complete local preview: `docs/` and `media/` exist only in the assembled `_site/`.
 
-**The site is bilingual, and that is machine-enforced.** Every page exists twice:
+Old documentation links without `/docs/` (`#/en/deployment/logs` at the site root) keep working:
+`src/site/public/legacy-docs-redirect.js` forwards every hash that is not a website route to
+`docs/`. A new top-level website route therefore has to be added to that script and to
+`SITE_ROUTE_SEGMENTS` in `src/site/router.ts`, and it must not collide with a docs path or
+language; the site tests check both.
+
+The docs have a **second deployment**: `deploy/Build-Artifact.ps1` and `deploy/desktop/Build-DesktopInstaller.ps1`
+build them as well and stage them into `wwwroot/docs`, which the API serves at `/docs` so a
+disconnected installation has the runbooks. The website is not part of that and never reaches
+`dist/` or the product. `-SkipFrontend` skips both npm builds, `-SkipNpmCi` applies to both. Two
+consequences for anyone editing the docs: `index.html` must not contain an inline `<script>` (the
+API serves it under `script-src 'self'`; `src/lib/document-head.test.ts` guards it), and the Vite
+base stays relative so the bundle works under a subdirectory. The main UI's dev server proxies
+`/docs` to the docs dev server on port 5174, so its help button reaches the docs while both run.
+
+The docs site ships **its own curated markdown corpus** under `content/` — it does not render
+`docs/`, so a change to `docs/` reaches the site only if you mirror it deliberately.
+
+**The docs site is bilingual, and that is machine-enforced.** Every page exists twice:
 `content/de/<path>.md` and `content/en/<path>.md`, with both trees on exactly the same set of
 paths. A new page therefore needs both files plus a title in **both** `src/i18n/locales/de.json`
 and `en.json`. Adding only one language fails `src/lib/content.test.ts` in CI — which is the point,

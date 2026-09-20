@@ -332,6 +332,11 @@ jobs:
       - name: Type check + build
         run: npm run build
 
+      - name: Build website
+        # The Pages deploy builds the project website too; a broken website build fails the PR
+        # here instead of the deploy after merge.
+        run: npm run build:site
+
   desktop:
     name: Desktop shell typecheck + tests
     needs: changes

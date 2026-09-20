@@ -21,7 +21,10 @@ export function isLang(value: string | undefined): value is Lang {
   return value !== undefined && (LANGUAGES as readonly string[]).includes(value)
 }
 
-/** localStorage key shared by the detector and the switcher. */
+/**
+ * localStorage key shared by the detector and the switcher. On GitHub Pages the docs and the
+ * project website share an origin and this key, so a language chosen in one applies to both.
+ */
 export const LANG_STORAGE_KEY = 'nodepilot-docs-lang'
 
 /**
@@ -32,14 +35,25 @@ export const LANG_STORAGE_KEY = 'nodepilot-docs-lang'
 export function detectLang(): Lang {
   if (typeof window === 'undefined') return DEFAULT_LANG
 
-  const stored = window.localStorage?.getItem(LANG_STORAGE_KEY)
-  if (isLang(stored ?? undefined)) return stored as Lang
+  const stored = readStoredLang()
+  if (stored) return stored
 
   for (const candidate of window.navigator?.languages ?? []) {
     const primary = candidate.split('-')[0]?.toLowerCase()
     if (isLang(primary)) return primary
   }
   return DEFAULT_LANG
+}
+
+/** The stored language, or null when none is stored or storage is blocked. */
+function readStoredLang(): Lang | null {
+  try {
+    // Blocked storage throws from the `localStorage` getter itself, so `?.` alone is not enough.
+    const stored = window.localStorage?.getItem(LANG_STORAGE_KEY)
+    return isLang(stored ?? undefined) ? (stored as Lang) : null
+  } catch {
+    return null
+  }
 }
 
 /**

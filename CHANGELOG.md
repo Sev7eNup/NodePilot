@@ -12,6 +12,13 @@ exhaustive.
 
 ## [Unreleased]
 
+### Added
+
+- **Project website.** <https://sev7enup.github.io/NodePilot/> now shows a project website in
+  English and German, and the documentation moves to <https://sev7enup.github.io/NodePilot/docs/>.
+  Old documentation links are forwarded to their new address automatically; the product video link
+  stays the same.
+
 ### Fixed
 
 - **Dashboard 1 h window.** The executions chart draws the same area chart as the other windows,

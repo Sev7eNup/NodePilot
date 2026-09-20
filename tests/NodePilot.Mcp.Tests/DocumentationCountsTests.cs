@@ -87,6 +87,12 @@ public class DocumentationCountsTests
             @"aller (\d+) Activity-Typen", activities, "activity types (doc site, de)");
         yield return Row("src/nodepilot-docs-ui/content/en/concepts/workflows.md",
             @"all (\d+) activity types", activities, "activity types (doc site, en)");
+        // The project website names the same figure on its product page. It is the only count the
+        // site carries, and it sits in the two dictionaries rather than in markdown.
+        yield return Row("src/nodepilot-docs-ui/src/site/i18n/de.ts",
+            @"(\d+) Aktivitätstypen", activities, "activity types (website, de)");
+        yield return Row("src/nodepilot-docs-ui/src/site/i18n/en.ts",
+            @"(\d+) activity types", activities, "activity types (website, en)");
         yield return Row("src/nodepilot-docs-ui/content/de/designer/overview.md",
             @"Popover mit (\d+) Skins", skins, "colour skins (doc site, de)");
         yield return Row("src/nodepilot-docs-ui/content/en/designer/overview.md",

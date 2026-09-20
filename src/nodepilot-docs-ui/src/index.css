@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+/* The project website in src/site ships its own CSS; its class names stay out of this build. */
+@source not "./site";
 
 /* Dark variant anchored to html.dark, mirroring the NodePilot app shell. Kept even though
    no `dark:` utility is used today: it stops a stray third-party `.dark` class from

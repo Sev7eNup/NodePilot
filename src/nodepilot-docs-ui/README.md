@@ -7,12 +7,14 @@ Dokumentations-Website für NodePilot — eine React 19 SPA (Vite + Tailwind CSS
 1. `[data-skin="dark"]` entfällt (die Docs haben nur ein Dark-Skin, kein 7-Skin-System).
 2. Blankes `aside` in Selektoren wird zu `.np-sidebar` (sonst erbt die TOC-Rail in `Toc.tsx` den Rail-Gradient).
 
+Im selben Paket liegt außerdem die Projekt-Website (`src/site/`), siehe [Projekt-Website](#projekt-website).
+
 ## Entwickeln
 
 ```powershell
 cd src\nodepilot-docs-ui
 npm install
-npm run dev      # http://localhost:5174
+npm run dev      # http://localhost:5174/docs/
 ```
 
 ## Build
@@ -22,12 +24,65 @@ npm run build    # statischer Output in dist/
 npm run preview  # Build lokal vorschauen
 ```
 
+## Projekt-Website
+
+Die Projekt-Website liegt in `src/site/`: Vanilla-TypeScript ohne React und Tailwind, zweisprachig
+(DE/EN), mit eigenem Vite-Build (`vite.site.config.ts`, Output `dist-site/`). Sie ist nie Teil von
+`dist/` und damit nie Teil des Server-Artefakts oder des Desktop-Pakets.
+
+```powershell
+npm run dev:site       # nur die Website, http://localhost:5175
+npm run build:site     # Website-Build nach dist-site/
+npm run assemble:site  # _site/ aus dist-site/, dist/ und pages-media/ zusammensetzen (beide Builds vorher)
+npm run preview:site   # build + build:site + assemble:site, danach _site/ auf http://localhost:5175
+```
+
+`preview:site` ist die einzige vollständige lokale Vorschau: `docs/` und `media/` gibt es nur im
+zusammengesetzten `_site/`. Genau dieses Verzeichnis veröffentlicht
+`.github/workflows/docs-pages.yml` auf GitHub Pages; der Workflow ruft dafür dasselbe Skript
+`scripts/assemble-site.mjs` auf.
+
+| In `_site/` | Quelle | Adresse |
+|---|---|---|
+| Wurzel | `dist-site/` | https://sev7enup.github.io/NodePilot/ |
+| `docs/` | `dist/` | https://sev7enup.github.io/NodePilot/docs/ |
+| `media/` | `pages-media/` | https://sev7enup.github.io/NodePilot/media/nodepilot-product-tour.mp4 |
+| `og-image.png` | `public/og-image.png` | Vorschaubild der Website |
+
+Deep Links in die Doku haben die Form `https://sev7enup.github.io/NodePilot/docs/#/<sprache>/<seite>`.
+
+- **Alte Doku-Links:** Früher lag die Doku an der Pages-Wurzel (`…/NodePilot/#/en/deployment/logs`).
+  `src/site/public/legacy-docs-redirect.js` läuft als erstes klassisches Script im `<head>` und
+  leitet jeden Hash, dessen erstes Segment keine Website-Route ist, per `location.replace` nach
+  `docs/` weiter. Website-Routen sind `#/`, der leere Hash und `SITE_ROUTE_SEGMENTS` aus
+  `src/site/router.ts` (`produkt`, `blog`, `impressum`, `datenschutz`); dieselbe Liste steht
+  wörtlich im Redirect-Script. Eine neue Route gehört in beide Listen und darf mit keinem
+  Doku-Pfad und keiner Sprache kollidieren.
+- **Texte und Sprache:** Die Texte der Website, auch die Blogbeiträge, stehen in
+  `src/site/i18n/de.ts` und `en.ts`. Website und Doku teilen sich die Sprachwahl über
+  `LANG_STORAGE_KEY` aus `src/i18n/languages.ts`, weil beide auf derselben Origin liegen.
+- **Keine Drittanfragen:** Schriften (`@fontsource/ibm-plex-sans`, `@fontsource/ibm-plex-mono`),
+  App-Icon und Screenshots aus `docs/images/` werden mitgebaut, das Video liegt unter `media/`.
+  Google Fonts und `raw.githubusercontent.com` sind tabu; die Datenschutzerklärung verlässt sich
+  darauf.
+- **Rechtstexte:** Impressum (`#/impressum`) und Datenschutz (`#/datenschutz`) rendern
+  `src/site/legal/impressum.de.html` und `src/site/legal/datenschutz.de.html`. Die Texte liefert
+  der Projektinhaber. Sie liegen nur auf Deutsch vor und erscheinen auch in der englischen Ansicht
+  auf Deutsch. Fehlt eine Datei oder ist sie leer, schlägt der Test fehl.
+- **Eigene Domain (später):** Die Website ist domain-unabhängig gebaut (`base: './'`, relative
+  Links). Die Domain wird im Konto verifiziert und dann im Repository unter *Settings → Pages →
+  Custom domain* eingetragen; eine `CNAME`-Datei braucht es beim Deploy per Actions nicht. Danach
+  die absoluten `sev7enup.github.io/NodePilot`-Adressen in README und Doku sowie die OG- und
+  Canonical-Tags beider `index.html` nachziehen.
+
 ## Struktur
 
 Marketingmedien liegen in `pages-media/`. Der normale Build für Server und Desktop enthält sie
-nicht. Nur `.github/workflows/docs-pages.yml` kopiert sie nach dem Build nach `dist/media/`.
-Der README-Video-Link bleibt dadurch stabil. `.gitattributes` schließt `pages-media/` per
-`export-ignore` aus dem `git archive`-Snapshot für `knowledge/source` aus.
+nicht. Erst `scripts/assemble-site.mjs` kopiert sie beim Zusammensetzen von `_site/` nach
+`_site/media/` (siehe [Projekt-Website](#projekt-website)). Die Video-Adresse
+`…/NodePilot/media/nodepilot-product-tour.mp4` und damit der README-Video-Link bleiben dadurch
+stabil. `.gitattributes` schließt `pages-media/` per `export-ignore` aus dem `git archive`-Snapshot
+für `knowledge/source` aus.
 
 - `src/data/nav.ts` — Seitenbaum, Gruppierung, Sidebar-Icon je Seite, Prev/Next-Logik, `groupOf()` für den Breadcrumb. Das `icon`-Feld ist **required**: `tsc -b` schlägt fehl, sobald eine neue Seite ohne Icon eingetragen wird.
 - `src/lib/content.ts` — lädt via `import.meta.glob` alle `content/**/*.md` als Raw-Strings

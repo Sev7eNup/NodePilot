@@ -10,5 +10,5 @@
     "moduleDetection": "force",
     "strict": true
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "vite.site.config.ts"]
 }
