@@ -59,7 +59,7 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.12" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="Npgsql" Version="10.0.3" />
-    <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.0.3" />
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.1.0" />
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <!-- Direct pin: Microsoft.Data.Sqlite 10.x still floors SQLitePCLRaw at 2.1.11, whose
          lib.e_sqlite3 bundles SQLite < 3.50.2 (GHSA-2m69-gcr7-jv3q / CVE-2025-6965, HIGH).
@@ -114,12 +114,12 @@
     scrape against another one (OpenTelemetryExtensionsTests.PrometheusScrape_* catches it).
   -->
   <ItemGroup>
-    <PackageVersion Include="OpenTelemetry" Version="1.18.0" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.18.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.18.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.18.0" />
+    <PackageVersion Include="OpenTelemetry" Version="1.19.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.19.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.19.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.19.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.19.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.19.0" />
     <PackageVersion Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.18.0-beta.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Process" Version="1.18.0-rc.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.18.0-beta.1" />
@@ -182,7 +182,7 @@
     <!-- 2.x asks for Scriban.Signed 7.2.5 itself, so the forced floor that used to sit here
          for GHSA-24c8-4792-22hx is gone — keeping it would only cap a future Scriban bump
          that WireMock wants. The Microsoft.OpenApi floor above is still load-bearing. -->
-    <PackageVersion Include="WireMock.Net" Version="2.15.0" />
+    <PackageVersion Include="WireMock.Net" Version="2.16.0" />
     <PackageVersion Include="NBomber" Version="6.*" />
     <PackageVersion Include="NBomber.Http" Version="6.*" />
   </ItemGroup>
