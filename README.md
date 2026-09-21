@@ -441,7 +441,7 @@ laid out to fill the canvas width and run top-to-bottom.
 ## Documentation
 
 Everything below the surface lives on the **[documentation site](https://sev7enup.github.io/NodePilot/docs/)**
-— 43 pages in English and German, with search and deep links. This README deliberately stops at
+— 44 pages in English and German, with search and deep links. This README deliberately stops at
 "installed and logged in".
 
 | | |
@@ -587,7 +587,7 @@ NodePilot is licensed under the [Apache License 2.0](LICENSE). You are free to u
 
 ## Further Reading
 
-- **[📚 sev7enup.github.io/NodePilot/docs](https://sev7enup.github.io/NodePilot/docs/)** — the documentation website: 43 pages in English and German, with search, sidebar navigation and light/dark themes. Start at [Introduction](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/introduction) or jump to [Installation](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/installation). **The same site ships with the product** — every installation serves it at `/docs`, without a login and without internet access, at the version actually installed.
+- **[📚 sev7enup.github.io/NodePilot/docs](https://sev7enup.github.io/NodePilot/docs/)** — the documentation website: 44 pages in English and German, with search, sidebar navigation and light/dark themes. Start at [Introduction](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/introduction) or jump to [Installation](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/installation). **The same site ships with the product** — every installation serves it at `/docs`, without a login and without internet access, at the version actually installed.
 - **[CLAUDE.md](CLAUDE.md)** — architecture conventions, full activity/trigger reference, variable resolution details, edge-condition grammar, test guidelines, and the complete API endpoint table.
 - **[src/nodepilot-docs-ui/](src/nodepilot-docs-ui/)** — standalone documentation website (Vite + React SPA) with client-side search, sidebar navigation, light/dark theme, and **English/German** via i18next (the language lives in the route: `#/en/…`, `#/de/…`). Note: it ships its own curated markdown corpus under `content/en/` and `content/de/` — changes to `docs/` must be mirrored there deliberately (it is not a 1:1 render), and both languages must be kept in step or the parity test fails. It has two deployments: GitHub Pages, which publishes the project website at the site root and the documentation under `/docs/`, and `wwwroot/docs` inside the server artifact and desktop package, which the API serves at `/docs`. The project website (`src/site/`, English and German) is a separate build that only goes to GitHub Pages; the product ships the documentation alone.
 - **[docs/workflow-designer-features.md](docs/workflow-designer-features.md)** — complete feature inventory of the workflow designer (canvas, nodes, edges, properties, overlays, modes, shortcuts, mobile), organized by area.
