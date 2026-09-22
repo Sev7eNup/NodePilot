@@ -3519,6 +3519,19 @@ html.dark[data-skin="dark"] :is(.np-shell, .np-designer) .input-field:focus {
               0 0 0 3px color-mix(in srgb, var(--np-accent) 20%, transparent);
 }
 
+/* A field sitting directly on a raised card, not in a dialog. The deep `surface-lowest` recess
+   reads as a black hole against the card's grey, so keep it in the card's own grey family and
+   let the rim do the delineating. */
+html.dark[data-skin="dark"] :is(.np-shell, .np-designer) .input-field-on-card {
+  background-color: var(--color-surface-high);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+html.dark[data-skin="dark"] :is(.np-shell, .np-designer) .input-field-on-card:focus {
+  background-color: var(--color-surface-highest);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.22),
+              0 0 0 3px color-mix(in srgb, var(--np-accent) 20%, transparent);
+}
+
 /* ── Sidebar ───────────────────────────────────────────────────────────────── */
 html.dark[data-skin="dark"] .np-sidebar {
   /* Section labels sat at 64% of an already-muted ink, which put them under the

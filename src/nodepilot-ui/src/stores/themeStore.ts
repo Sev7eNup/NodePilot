@@ -26,15 +26,15 @@ export interface ThemeDef {
 // dark skins. Consumers append `system`, so it always lands last.
 export const THEMES = [
   { id: 'light', base: 'light', labelKey: 'themeLight' },
+  { id: 'light-minimal', base: 'light', labelKey: 'themeMinimalLight', remapBlue: true },
   { id: 'light-grey', base: 'light', labelKey: 'themeLightGrey', remapBlue: true },
   { id: 'light-bank', base: 'light', labelKey: 'themeBankLight', remapBlue: true },
-  { id: 'light-minimal', base: 'light', labelKey: 'themeMinimalLight', remapBlue: true },
   { id: 'dark', base: 'dark', labelKey: 'themeDark', remapBlue: true },
+  { id: 'dark-minimal', base: 'dark', labelKey: 'themeMinimalDark', remapBlue: true },
   { id: 'dark-lila', base: 'dark', labelKey: 'themeDarkLila', remapBlue: true },
   { id: 'dark-bank', base: 'dark', labelKey: 'themeBankDark', remapBlue: true },
-  { id: 'dark-nebula', base: 'dark', labelKey: 'themeDarkNebula', remapBlue: true },
-  { id: 'dark-minimal', base: 'dark', labelKey: 'themeMinimalDark', remapBlue: true },
   { id: 'dark-ion', base: 'dark', labelKey: 'themeIonDark', remapBlue: true },
+  { id: 'dark-nebula', base: 'dark', labelKey: 'themeDarkNebula', remapBlue: true },
 ] as const satisfies readonly ThemeDef[];
 
 export type SkinId = (typeof THEMES)[number]['id'];
