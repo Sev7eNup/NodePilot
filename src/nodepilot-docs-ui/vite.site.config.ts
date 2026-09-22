@@ -1,8 +1,7 @@
-import { readFileSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
 import { prerenderSite } from './scripts/prerender-plugin.mjs'
-import { PAGES_ORIGIN, rewriteHtaccessHost, siteOrigin } from './scripts/site-origin.mjs'
+import { writeSiteHtaccess } from './scripts/htaccess.mjs'
+import { PAGES_ORIGIN, siteOrigin } from './scripts/site-origin.mjs'
 
 // Project website (src/site). It builds separately from the docs SPA because dist/ is copied
 // as-is into the product's wwwroot/docs, so the website gets its own root, public dir and
@@ -32,8 +31,7 @@ export default defineConfig({
       // every build to this project's own host. Rewritten after the public dir is copied.
       name: 'np-site-htaccess-host',
       closeBundle() {
-        const file = resolve(__dirname, 'dist-site/.htaccess')
-        writeFileSync(file, rewriteHtaccessHost(readFileSync(file, 'utf8'), siteOrigin()))
+        writeSiteHtaccess(undefined, siteOrigin())
       },
     },
   ],
