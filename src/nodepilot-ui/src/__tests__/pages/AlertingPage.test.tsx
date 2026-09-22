@@ -6,6 +6,8 @@ import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { AlertingPage } from '../../pages/AlertingPage';
 import { useAuthStore } from '../../stores/authStore';
+import { useToastStore } from '../../stores/toastStore';
+import * as confirmStore from '../../stores/confirmStore';
 import type { NotificationRule } from '../../api/alerting';
 
 const BASE = 'http://localhost';
@@ -210,5 +212,28 @@ describe('AlertingPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Description$/ }));
     // asc by description: aaa(N2), bbb(N3), ccc(N1)
     expect(rowNames(container)).toEqual(['N2', 'N3', 'N1']);
+  });
+});
+
+describe('AlertingPage failure reporting', () => {
+  it('reports a refused delete instead of failing silently', async () => {
+    useToastStore.setState({ toasts: [] });
+    vi.spyOn(confirmStore, 'confirmDialog').mockResolvedValue(true);
+    server.use(
+      http.get(`${BASE}/api/alerting/rules`, () => HttpResponse.json(RULES)),
+      http.delete(`${BASE}/api/alerting/rules/r1`, () =>
+        HttpResponse.json({ message: 'Rule is referenced by a system policy.' }, { status: 409 })),
+    );
+    renderPage('Admin');
+
+    const row = await screen.findByText('Prod-Failures');
+    const deleteButton = row.closest('tr')!.querySelector('button[title="Delete"]')!;
+    fireEvent.click(deleteButton);
+
+    await waitFor(() => {
+      const messages = useToastStore.getState().toasts.map((toast) => toast.message);
+      expect(messages.join(' ')).toMatch(/Rule is referenced by a system policy/);
+    });
+    expect(useToastStore.getState().toasts.every((toast) => toast.kind === 'error')).toBe(true);
   });
 });
