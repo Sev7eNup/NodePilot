@@ -81,7 +81,7 @@ export function DurationTrend({ windowHours, windowLabel, tokens, workflowId, on
 
   return (
     <div className="flex flex-col flex-1 min-h-[240px] min-w-0" aria-busy={query.isFetching}>
-      <select className="input-field mb-2" aria-label={t('dashboard:durationTrend.workflow')}
+      <select className="input-field input-field-on-card mb-2" aria-label={t('dashboard:durationTrend.workflow')}
         value={workflowId} onChange={event => onWorkflowChange(event.target.value)}>
         <option value="">{t('dashboard:durationTrend.allWorkflows')}</option>
         {workflowId && !workflows.some(w => w.id === workflowId) && <option value={workflowId}>{t('dashboard:durationTrend.unavailable')}</option>}

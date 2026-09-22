@@ -103,7 +103,7 @@ describe('skins / data-skin attribute', () => {
 
   it('registryContainsAllTenSkins', () => {
     const ids = THEMES.map((t) => t.id);
-    expect(ids).toEqual(['light', 'light-grey', 'light-bank', 'light-minimal', 'dark', 'dark-lila', 'dark-bank', 'dark-nebula', 'dark-minimal', 'dark-ion']);
+    expect(ids).toEqual(['light', 'light-minimal', 'light-grey', 'light-bank', 'dark', 'dark-minimal', 'dark-lila', 'dark-bank', 'dark-ion', 'dark-nebula']);
     expect(THEMES.find((t) => t.id === 'dark-lila')?.base).toBe('dark');
     expect(THEMES.find((t) => t.id === 'light-grey')?.base).toBe('light');
     expect(THEMES.find((t) => t.id === 'dark-bank')?.base).toBe('dark');
