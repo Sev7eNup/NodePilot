@@ -57,6 +57,10 @@ public class DocumentationCountsTests
             @"\((\d+) Tools, \d+ Resources[,)]", toolTotal, "MCP tools (Mcp project guide)");
         yield return Row("README.md", @"— (\d+) tools over", toolTotal, "MCP tools (README)");
         yield return Row("README.md", @"with (\d+) activity types", activities, "activity types (README highlights)");
+        // The highlights bullet was the only guarded one of the README's three activity counts,
+        // and the other two drifted to 29 in #402 while it stayed at 27. Both are pinned now.
+        yield return Row("README.md", @"\[All (\d+) activities\]", activities, "activity types (README reference table)");
+        yield return Row("README.md", @"WorkflowEngine, (\d+) activities", activities, "activity types (README solution tree)");
         // The scoped-testing rule in CLAUDE.md is argued from these two figures. They drifted in
         // #292 and again in #353/#354 because nothing derived them; now something does. The third
         // number in that sentence — the backend test-case count — needs a real test run and stays

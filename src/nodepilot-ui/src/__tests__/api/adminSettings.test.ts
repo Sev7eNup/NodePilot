@@ -26,3 +26,51 @@ describe('adminSettings auth-boundary binding', () => {
     await expect(staleRequest).rejects.toMatchObject({ name: 'AbortError' });
   });
 });
+
+describe('adminSettings error reporting', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('reportsTheServersOwnMessageWhenTheBodyCarriesOne', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      Response.json({ message: 'Secrets provider is not configured.' }, { status: 501 }),
+    );
+
+    await expect(adminSettings.getStatus()).rejects.toMatchObject({
+      message: 'Secrets provider is not configured.',
+      status: 501,
+    });
+  });
+
+  it('fallsBackToTheStatusWhenTheBodyCarriesNoMessage', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      Response.json({}, { status: 500 }),
+    );
+
+    await expect(adminSettings.getStatus()).rejects.toMatchObject({
+      message: 'Admin Settings API returned 500',
+      status: 500,
+    });
+  });
+
+  it('fallsBackToTheStatusWhenTheBodyIsBlankOrNotJson', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('<html>gateway</html>', { status: 502 }),
+    );
+
+    await expect(adminSettings.getStatus()).rejects.toMatchObject({
+      message: 'Admin Settings API returned 502',
+      status: 502,
+    });
+  });
+
+  it('treatsAWhitespaceOnlyMessageAsAbsent', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      Response.json({ message: '   ' }, { status: 400 }),
+    );
+
+    await expect(adminSettings.getStatus()).rejects.toMatchObject({
+      message: 'Admin Settings API returned 400',
+      status: 400,
+    });
+  });
+});
