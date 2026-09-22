@@ -367,6 +367,10 @@ Nicht unser Problem, aber dokumentiert, damit es nicht erneut versucht wird:
   2.x-Floor oben (NU1605 beim Restore). Bleibt auf 2.15.0, zusammen mit dem OpenApi-Eintrag zu heben.
 - **jsdom 30.1.0** — die vier `BackupPage`-Tests, die einen FormData-Body über msw posten, laufen in
   den Timeout; lokal gegen 30.1.0 reproduziert. Bleibt auf 30.0.x, bis msw nachzieht.
+- **vitest 5** — `@vitest/coverage-v8` pinnt seinen Peer auf die exakte vitest-Version, der Bump geht
+  also nur als Familie. Probiert: vitest 5.0.1 fährt alle drei Roots grün (3.219 / 136 / 112) und das
+  Coverage-Gate hält, aber im Gesamtlauf von `nodepilot-ui` fällt `ExecutionsPage` an einer
+  Cross-File-Verunreinigung, die isoliert und unter vitest 4 nicht auftritt. Migration, kein Bump.
 
 ### Kein Produkt-Scope
 
