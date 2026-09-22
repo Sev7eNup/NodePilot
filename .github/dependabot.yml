@@ -65,11 +65,21 @@ updates:
     # jsdom 30.1.0 breaks the four BackupPage tests that post a FormData body through msw:
     # the request never resolves and each case times out. Reproduced locally against 30.1.0
     # with everything else unchanged. Lift it when msw handles the new FormData behaviour.
+    #
+    # @vitest/coverage-v8 5.x pins its peer to the exact vitest version, so it can only move
+    # with the family. The family move itself was tried: vitest 5 runs all three roots green
+    # on its own, but in the full src/nodepilot-ui run it exposes cross-file pollution that
+    # fails ExecutionsPage, which passes in isolation and on vitest 4. That is a migration,
+    # not a bump. Lift both entries together when someone takes it on.
     ignore:
       - dependency-name: "typescript"
         versions: [">=7.0.0"]
       - dependency-name: "jsdom"
         versions: [">=30.1.0"]
+      - dependency-name: "vitest"
+        versions: [">=5.0.0"]
+      - dependency-name: "@vitest/*"
+        versions: [">=5.0.0"]
     groups:
       npm-minor-patch:
         patterns:
@@ -84,9 +94,14 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 1
+    # vitest moves as a family across all three roots; see the note on the nodepilot-ui block.
     ignore:
       - dependency-name: "typescript"
         versions: [">=7.0.0"]
+      - dependency-name: "vitest"
+        versions: [">=5.0.0"]
+      - dependency-name: "@vitest/*"
+        versions: [">=5.0.0"]
     groups:
       npm-minor-patch:
         patterns:
@@ -103,9 +118,14 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 1
+    # vitest moves as a family across all three roots; see the note on the nodepilot-ui block.
     ignore:
       - dependency-name: "typescript"
         versions: [">=7.0.0"]
+      - dependency-name: "vitest"
+        versions: [">=5.0.0"]
+      - dependency-name: "@vitest/*"
+        versions: [">=5.0.0"]
     groups:
       npm-minor-patch:
         patterns:

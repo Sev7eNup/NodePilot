@@ -29,7 +29,9 @@ public sealed class StartupRecoveryProviderTests
         var commits = new CommitCounter();
         await using var db = database.CreateContext(slowSave, commits);
         await using var renewDb = database.CreateContext();
-        renewDb.Database.SetCommandTimeout(3);
+        // An upper bound, not an assertion: a renewal the recovery does not block finishes in
+        // milliseconds. Three seconds was short enough for a cold CI PostgreSQL to miss it.
+        renewDb.Database.SetCommandTimeout(30);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var elapsed = Stopwatch.StartNew();
         var recovery = StartupRecovery.RecoverOrphanedExecutionsAsync(
@@ -73,7 +75,9 @@ public sealed class StartupRecoveryProviderTests
         var barrier = new FirstCommitBarrier();
         await using var db = database.CreateContext(barrier);
         await using var renewDb = database.CreateContext();
-        renewDb.Database.SetCommandTimeout(3);
+        // An upper bound, not an assertion: a renewal the recovery does not block finishes in
+        // milliseconds. Three seconds was short enough for a cold CI PostgreSQL to miss it.
+        renewDb.Database.SetCommandTimeout(30);
         var recovery = StartupRecovery.RecoverOrphanedExecutionsAsync(
             db, NullLogger.Instance, ourNodeId: "new", leaseEpoch: 7);
         try
@@ -107,7 +111,9 @@ public sealed class StartupRecoveryProviderTests
         var stall = new StallAuditSave();
         await using var db = database.CreateContext(stall);
         await using var renewDb = database.CreateContext();
-        renewDb.Database.SetCommandTimeout(3);
+        // An upper bound, not an assertion: a renewal the recovery does not block finishes in
+        // milliseconds. Three seconds was short enough for a cold CI PostgreSQL to miss it.
+        renewDb.Database.SetCommandTimeout(30);
         var recovery = StartupRecovery.RecoverOrphanedExecutionsAsync(
             db, NullLogger.Instance, ourNodeId: "new", leaseEpoch: 7,
             clusterBatchTimeout: TimeSpan.FromMilliseconds(750));
