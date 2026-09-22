@@ -23,9 +23,9 @@ Multi-step automation is designed, scheduled, debugged and observed in the brows
 
 ## Live demo
 
-**[Open the live demo](https://sev7enup.github.io/NodePilot/demo/)**, the real web UI with sample data, running entirely in the browser. Nothing is installed, nothing is sent anywhere, and every visitor receives a private copy. A workflow can be built, published and run, and the canvas reacts while it executes. A reload restores the sample data.
+**[Open the live demo](https://sev7enup.github.io/NodePilot/demo/)** — the real web UI with sample data, running entirely in the browser. Nothing is installed, nothing is sent anywhere, and every visitor gets a private copy that a reload resets. Workflows can be built, published and run, with the canvas reacting live.
 
-The demo is the product's own frontend against an in-memory backend. This means that anything which genuinely needs a server (running PowerShell on a host, testing a WinRM connection, sending mail, restoring a backup) reports that limitation instead of pretending.
+It is the product's own frontend on an in-memory backend, so anything that genuinely needs a server (PowerShell on a host, a WinRM test, mail, a restore) reports that limitation instead of pretending.
 
 ## Product tour
 
