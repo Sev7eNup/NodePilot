@@ -88,8 +88,9 @@ The same package holds the **project website** in `src/site/`: plain TypeScript 
 
 - `npm run dev:site` serves the website alone on port 5175, enough for work on the website itself.
 - `npm run build:site` builds it into `dist-site/`.
-- `npm run assemble:site` runs `scripts/assemble-site.mjs`: from the two finished builds it assembles `_site/` exactly as the workflow publishes it, the website at the root, the docs in `docs/`, `pages-media/` in `media/`.
-- `npm run preview:site` runs both builds and the assembly, then serves `_site/` on port 5175. It is the only complete local preview, since `docs/` and `media/` exist only in the assembled `_site/`.
+- `npm run build:demo` builds the browser demo in the neighbouring package (`src/nodepilot-ui` into `dist-demo/`).
+- `npm run assemble:site` runs `scripts/assemble-site.mjs`: from the three finished builds it assembles `_site/` exactly as the workflow publishes it, the website at the root, the docs in `docs/`, the demo in `demo/`, `pages-media/` in `media/`. Every input is required, so a missing build fails the assembly instead of publishing a site that keeps the previous demo.
+- `npm run preview:site` runs all three builds and the assembly, then serves `_site/` on port 5175. It is the only complete local preview, since `docs/`, `demo/` and `media/` exist only in the assembled `_site/`.
 
 Old documentation links without `/docs/` (`#/en/deployment/logs` at the site root) keep working: `src/site/public/legacy-docs-redirect.js` forwards every hash that is not a website route to `docs/`. A new top-level website route therefore has to be added to that script and to `SITE_ROUTE_SEGMENTS` in `src/site/router.ts`, and it must not collide with a docs path or language. The site tests check both.
 

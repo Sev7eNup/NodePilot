@@ -325,14 +325,14 @@ Import runs via the **Workflows** page → *Import*, or through `POST /api/workf
 
 ## Documentation
 
-Everything below the surface lives on the **[documentation site](https://sev7enup.github.io/NodePilot/docs/)**, 43 pages in English and German, with search and deep links. This README deliberately stops at "installed and logged in".
+Everything below the surface lives on the **[documentation site](https://sev7enup.github.io/NodePilot/docs/)**, 44 pages in English and German, with search and deep links. This README deliberately stops at "installed and logged in".
 
 | | |
 |---|---|
 | **Start here** | [Introduction](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/introduction) · [Installation](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/installation) · [Architecture](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/architecture) |
 | **Building workflows** | [Workflows & activities](https://sev7enup.github.io/NodePilot/docs/#/en/concepts/workflows) · [Data bus & variables](https://sev7enup.github.io/NodePilot/docs/#/en/concepts/data-bus) · [Edge conditions](https://sev7enup.github.io/NodePilot/docs/#/en/concepts/edge-conditions) · [Sub-workflows](https://sev7enup.github.io/NodePilot/docs/#/en/concepts/sub-workflows) |
 | **The designer** | [Overview](https://sev7enup.github.io/NodePilot/docs/#/en/designer/overview) · [Canvas, nodes & edges](https://sev7enup.github.io/NodePilot/docs/#/en/designer/canvas-nodes-edges) · [Properties, modes & shortcuts](https://sev7enup.github.io/NodePilot/docs/#/en/designer/properties-modes) |
-| **Reference** | [All 29 activities](https://sev7enup.github.io/NodePilot/docs/#/en/activities-reference) · [Triggers](https://sev7enup.github.io/NodePilot/docs/#/en/triggers) · [API endpoints](https://sev7enup.github.io/NodePilot/docs/#/en/api/endpoints) · [`np` CLI](https://sev7enup.github.io/NodePilot/docs/#/en/cli) · [MCP server](https://sev7enup.github.io/NodePilot/docs/#/en/mcp-server) |
+| **Reference** | [All 27 activities](https://sev7enup.github.io/NodePilot/docs/#/en/activities-reference) · [Triggers](https://sev7enup.github.io/NodePilot/docs/#/en/triggers) · [API endpoints](https://sev7enup.github.io/NodePilot/docs/#/en/api/endpoints) · [`np` CLI](https://sev7enup.github.io/NodePilot/docs/#/en/cli) · [MCP server](https://sev7enup.github.io/NodePilot/docs/#/en/mcp-server) |
 | **Running it** | [Windows Server](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/production) · [Desktop app](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/desktop) · [Antivirus exclusions](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/av-exclusions) · [Logs & diagnostics](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/logs) · [Configuration](https://sev7enup.github.io/NodePilot/docs/#/en/configuration/appsettings) |
 | **Security** | [Security model](https://sev7enup.github.io/NodePilot/docs/#/en/security/overview) · [Hardening flags](https://sev7enup.github.io/NodePilot/docs/#/en/security/hardening) · [Audit log](https://sev7enup.github.io/NodePilot/docs/#/en/security/audit-log) |
 | **Enterprise** | [High availability](https://sev7enup.github.io/NodePilot/docs/#/en/enterprise/high-availability) · [Secret providers](https://sev7enup.github.io/NodePilot/docs/#/en/enterprise/secrets-providers) · [AD SSO Preview](https://sev7enup.github.io/NodePilot/docs/#/en/enterprise/ldap-windows-sso) · [Folder RBAC](https://sev7enup.github.io/NodePilot/docs/#/en/enterprise/folder-rbac) |
@@ -357,7 +357,7 @@ src/
   NodePilot.Ai/           LLM stack: ILlmClient/OpenAI transport + SSRF guard, prompt catalog, script/workflow gen + chat assistant (Core-only; used by Api and Engine)
   NodePilot.Data/         EF Core DbContext, CredentialStore (DPAPI), provider-agnostic migrations
   NodePilot.Remote/       WinRM session factory + PowerShell SDK session
-  NodePilot.Engine/       WorkflowEngine, 29 activities, RetryPolicy, DebugCoordinator
+  NodePilot.Engine/       WorkflowEngine, 27 activities, RetryPolicy, DebugCoordinator
   NodePilot.Scheduler/    TriggerOrchestrator (Quartz.NET), 4 polling trigger sources + retention/cluster services
   NodePilot.Telemetry/    OpenTelemetry setup, Prometheus client, metric constants
   NodePilot.Api/          ASP.NET Core host, controllers, SignalR hub, security middleware
@@ -439,7 +439,7 @@ NodePilot is licensed under the [Apache License 2.0](LICENSE). Use, modification
 
 ## Further Reading
 
-- **[📚 sev7enup.github.io/NodePilot/docs](https://sev7enup.github.io/NodePilot/docs/)**, the documentation website. 43 pages in English and German, with search, sidebar navigation and light/dark themes. Start at [Introduction](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/introduction) or jump to [Installation](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/installation). **The same site ships with the product**, every installation serves it at `/docs`, without a login and without internet access, at the version actually installed.
+- **[📚 sev7enup.github.io/NodePilot/docs](https://sev7enup.github.io/NodePilot/docs/)**, the documentation website. 44 pages in English and German, with search, sidebar navigation and light/dark themes. Start at [Introduction](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/introduction) or jump to [Installation](https://sev7enup.github.io/NodePilot/docs/#/en/getting-started/installation). **The same site ships with the product**, every installation serves it at `/docs`, without a login and without internet access, at the version actually installed.
 - **[CLAUDE.md](CLAUDE.md)**: architecture conventions, full activity/trigger reference, variable resolution details, edge-condition grammar, test guidelines, and the complete API endpoint table.
 - **[src/nodepilot-docs-ui/](src/nodepilot-docs-ui/)**: standalone documentation website (Vite + React SPA) with client-side search, sidebar navigation, light/dark theme, and **English/German** via i18next (the language lives in the route: `#/en/…`, `#/de/…`). Note: it ships its own curated markdown corpus under `content/en/` and `content/de/`, changes to `docs/` must be mirrored there deliberately, since it is not a 1:1 render, and both languages must be kept in step or the parity test fails. It has two deployments: GitHub Pages, which publishes the project website at the site root and the documentation under `/docs/`, and `wwwroot/docs` inside the server artifact and desktop package, which the API serves at `/docs`. The project website (`src/site/`, English and German) is a separate build that only goes to GitHub Pages. The product ships the documentation alone.
 - **[docs/workflow-designer-features.md](docs/workflow-designer-features.md)**: complete feature inventory of the workflow designer (canvas, nodes, edges, properties, overlays, modes, shortcuts, mobile), organized by area.
