@@ -45,6 +45,15 @@ describe('legacy docs redirect', () => {
     expect(forwardTarget(hash)).toBeNull()
   })
 
+  it.each(['#///evil.com', '#//evil.com', '#////evil.com', '#/\\evil.com', '#//evil.com/path'])(
+    'sends the off-origin hash %j to the site root instead of following it',
+    (hash) => {
+      const target = forwardTarget(hash)
+      expect(target).not.toBeNull()
+      expect(target).not.toMatch(/^(\/\/|\\|[a-z][a-z0-9+.-]*:)/i)
+    },
+  )
+
   it('lists exactly the router segments', () => {
     const literal = redirectScript.match(/\[([^\]]*)\]/)?.[1] ?? ''
     const listed = [...literal.matchAll(/'([^']*)'/g)].map((match) => match[1])

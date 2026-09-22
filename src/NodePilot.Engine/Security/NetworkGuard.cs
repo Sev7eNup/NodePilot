@@ -21,7 +21,13 @@ namespace NodePilot.Engine.Security;
 /// </summary>
 public static class NetworkGuard
 {
-    public static void ValidateUrl(IConfiguration config, string url)
+    /// <param name="requireAllAddresses">
+    /// Set when a forward proxy will carry the request. The proxy resolves the destination
+    /// itself, so <see cref="EnforceConnect"/> never sees the destination addresses and this
+    /// pre-check is the only address filter left. Demanding that every resolved address pass
+    /// keeps a name that mixes a routable record with a link-local one out.
+    /// </param>
+    public static void ValidateUrl(IConfiguration config, string url, bool requireAllAddresses)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
             throw new InvalidOperationException($"REST API: url '{url}' is not a valid absolute URI");
@@ -51,11 +57,12 @@ public static class NetworkGuard
         var blockPrivate = ShouldBlockPrivateNetworks(config)
                            && !IsHostAllowlisted(config, uri.Host);
 
-        AssertAnyAddressUsable(uri.Host, addresses, blockPrivate);
+        AssertAddressesUsable(uri.Host, addresses, blockPrivate, requireAllAddresses);
     }
 
     /// <summary>
-    /// Requires one usable address, mirroring <see cref="EnforceConnect"/>. A name routinely
+    /// Requires one usable address, mirroring <see cref="EnforceConnect"/>, unless
+    /// <paramref name="requireAll"/> is set for a proxied request. A name routinely
     /// resolves to a mix: a domain-joined Windows host registers its IPv6 link-local addresses
     /// in DNS next to its routable ones, and demanding that every address pass would make such
     /// a host permanently unreachable with no way to allow it. The blocked addresses stay
@@ -65,15 +72,19 @@ public static class NetworkGuard
     /// <para>Takes the addresses rather than resolving them so the policy is testable; a test
     /// cannot steer what a hostname resolves to.</para>
     /// </summary>
-    internal static void AssertAnyAddressUsable(string host, IPAddress[] addresses, bool blockPrivate)
+    internal static void AssertAddressesUsable(string host, IPAddress[] addresses, bool blockPrivate, bool requireAll)
     {
         string? lastReason = null;
+        var anyUsable = false;
         foreach (var ip in addresses)
         {
             var reason = DescribeBlock(ip, host, blockPrivate);
-            if (reason is null) return;
+            if (reason is null) { anyUsable = true; continue; }
+            if (requireAll) throw new InvalidOperationException(reason);
             lastReason = reason;
         }
+
+        if (anyUsable) return;
 
         throw new InvalidOperationException(
             lastReason ?? $"REST API: host '{host}' did not resolve to any address");

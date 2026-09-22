@@ -24,7 +24,7 @@ public class NetworkGuardTests
         // so a stripped-down deployment falls on the safe side. Dev/test setups that need
         // 127.0.0.1 / RFC1918 reachability set the flag to "false" explicitly (mirrors
         // appsettings.Development.json).
-        Action act = () => NetworkGuard.ValidateUrl(Cfg(null), url);
+        Action act = () => NetworkGuard.ValidateUrl(Cfg(null), url, requireAllAddresses: false);
         act.Should().Throw<InvalidOperationException>();
     }
 
@@ -37,7 +37,7 @@ public class NetworkGuardTests
         // Dev-mode escape hatch — explicit BlockPrivateNetworks=false lets internal CMDB /
         // ticketing / monitoring calls flow through. The link-local range stays blocked
         // regardless (covered by Default_AlwaysBlocksLinkLocal).
-        Action act = () => NetworkGuard.ValidateUrl(Cfg("false"), url);
+        Action act = () => NetworkGuard.ValidateUrl(Cfg("false"), url, requireAllAddresses: false);
         act.Should().NotThrow();
     }
 
@@ -51,7 +51,7 @@ public class NetworkGuardTests
         // a connect to either reaches THIS host. Without them in the private-network set they
         // are a one-line bypass of RestApi:BlockPrivateNetworks that reaches every service
         // bound to the machine, NodePilot's own API included.
-        Action act = () => NetworkGuard.ValidateUrl(Cfg(null), url);
+        Action act = () => NetworkGuard.ValidateUrl(Cfg(null), url, requireAllAddresses: false);
         act.Should().Throw<InvalidOperationException>();
     }
 
@@ -63,7 +63,7 @@ public class NetworkGuardTests
         // Treated exactly like 127.0.0.1: it is loopback, so the same dev-mode escape hatch
         // applies. The point of the guard is that it takes an explicit decision, not that
         // this particular spelling is special.
-        Action act = () => NetworkGuard.ValidateUrl(Cfg("false"), url);
+        Action act = () => NetworkGuard.ValidateUrl(Cfg("false"), url, requireAllAddresses: false);
         act.Should().NotThrow();
     }
 
@@ -75,7 +75,7 @@ public class NetworkGuardTests
         // Link-local (incl. the cloud metadata range) is blocked unconditionally — there
         // is no legitimate reason for a workflow to hit the host's metadata endpoint via
         // the REST API activity.
-        Action act = () => NetworkGuard.ValidateUrl(Cfg(null), url);
+        Action act = () => NetworkGuard.ValidateUrl(Cfg(null), url, requireAllAddresses: false);
         act.Should().Throw<InvalidOperationException>();
     }
 
@@ -85,7 +85,7 @@ public class NetworkGuardTests
     [InlineData("http://169.254.169.254/latest/meta-data/")] // AWS metadata
     public void WhenEnabled_BlocksPrivateAndLoopback(string url)
     {
-        Action act = () => NetworkGuard.ValidateUrl(Cfg("true"), url);
+        Action act = () => NetworkGuard.ValidateUrl(Cfg("true"), url, requireAllAddresses: false);
         act.Should().Throw<InvalidOperationException>();
     }
 
@@ -96,7 +96,7 @@ public class NetworkGuardTests
     [InlineData("false ")]
     public void MalformedPrivateNetworkFlag_FailsClosed(string value)
     {
-        Action act = () => NetworkGuard.ValidateUrl(Cfg(value), "http://127.0.0.1/");
+        Action act = () => NetworkGuard.ValidateUrl(Cfg(value), "http://127.0.0.1/", requireAllAddresses: false);
 
         act.Should().Throw<InvalidOperationException>();
     }
@@ -113,7 +113,7 @@ public class NetworkGuardTests
             ["RestApi:AllowedHosts:0"] = host,
         };
         var cfg = new ConfigurationBuilder().AddInMemoryCollection(dict).Build();
-        Action act = () => NetworkGuard.ValidateUrl(cfg, url);
+        Action act = () => NetworkGuard.ValidateUrl(cfg, url, requireAllAddresses: false);
         act.Should().Throw<InvalidOperationException>().WithMessage("*cannot be enabled*");
     }
 
@@ -123,7 +123,7 @@ public class NetworkGuardTests
         var config = new ConfigurationBuilder().AddInMemoryCollection(
             new Dictionary<string, string?> { ["RestApi:AllowedHosts:0"] = "10.20.30.40" }).Build();
 
-        Action act = () => NetworkGuard.ValidateUrl(config, "http://10.20.30.40/");
+        Action act = () => NetworkGuard.ValidateUrl(config, "http://10.20.30.40/", requireAllAddresses: false);
 
         act.Should().NotThrow();
     }
@@ -134,7 +134,7 @@ public class NetworkGuardTests
         var config = new ConfigurationBuilder().AddInMemoryCollection(
             new Dictionary<string, string?> { ["RestApi:AllowedHosts:0"] = "::1" }).Build();
 
-        Action act = () => NetworkGuard.ValidateUrl(config, "http://[0:0:0:0:0:0:0:1]/");
+        Action act = () => NetworkGuard.ValidateUrl(config, "http://[0:0:0:0:0:0:0:1]/", requireAllAddresses: false);
 
         act.Should().NotThrow();
     }
@@ -142,21 +142,21 @@ public class NetworkGuardTests
     [Fact]
     public void WhenEnabled_PublicIpLiteralAccepted()
     {
-        Action act = () => NetworkGuard.ValidateUrl(Cfg("true"), "https://8.8.8.8/");
+        Action act = () => NetworkGuard.ValidateUrl(Cfg("true"), "https://8.8.8.8/", requireAllAddresses: false);
         act.Should().NotThrow();
     }
 
     [Fact]
     public void WhenEnabled_InvalidUrlRejected()
     {
-        Action act = () => NetworkGuard.ValidateUrl(Cfg("true"), "not-a-url");
+        Action act = () => NetworkGuard.ValidateUrl(Cfg("true"), "not-a-url", requireAllAddresses: false);
         act.Should().Throw<InvalidOperationException>();
     }
 
     [Fact]
     public void WhenEnabled_NonHttpSchemeRejected()
     {
-        Action act = () => NetworkGuard.ValidateUrl(Cfg("true"), "file:///etc/passwd");
+        Action act = () => NetworkGuard.ValidateUrl(Cfg("true"), "file:///etc/passwd", requireAllAddresses: false);
         act.Should().Throw<InvalidOperationException>();
     }
 
@@ -171,10 +171,10 @@ public class NetworkGuardTests
         // its routable ones, so this set is what an ordinary internal target looks like.
         // Rejecting the host for the link-local entries would make it unreachable with no way
         // to allow it, since link-local cannot be put on RestApi:AllowedHosts.
-        var act = () => NetworkGuard.AssertAnyAddressUsable(
+        var act = () => NetworkGuard.AssertAddressesUsable(
             "cm1.corp.contoso.com",
             new[] { Ip("fe80::9933:55be:3abe:fd90"), Ip("fe80::7e0b:a9b3:abc9:e4e9"), Ip("192.168.240.10"), Ip("10.0.0.7") },
-            blockPrivate: false);
+            blockPrivate: false, requireAll: false);
 
         act.Should().NotThrow();
     }
@@ -183,10 +183,10 @@ public class NetworkGuardTests
     public void MixedRecords_OnlyBlockedAddresses_StillRejected()
     {
         // The relaxation is "at least one usable", not "any address excuses the rest".
-        var act = () => NetworkGuard.AssertAnyAddressUsable(
+        var act = () => NetworkGuard.AssertAddressesUsable(
             "linklocal-only.corp",
             new[] { Ip("fe80::1"), Ip("169.254.169.254") },
-            blockPrivate: false);
+            blockPrivate: false, requireAll: false);
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*link-local*");
     }
@@ -196,10 +196,10 @@ public class NetworkGuardTests
     {
         // Private-network blocking is unaffected: a link-local plus an RFC1918 address leaves
         // nothing usable while RestApi:BlockPrivateNetworks is on.
-        var act = () => NetworkGuard.AssertAnyAddressUsable(
+        var act = () => NetworkGuard.AssertAddressesUsable(
             "internal.corp",
             new[] { Ip("fe80::1"), Ip("10.0.0.7") },
-            blockPrivate: true);
+            blockPrivate: true, requireAll: false);
 
         act.Should().Throw<InvalidOperationException>();
     }
@@ -207,20 +207,53 @@ public class NetworkGuardTests
     [Fact]
     public void MixedRecords_PublicAddressSurvivesPrivateBlocking()
     {
-        var act = () => NetworkGuard.AssertAnyAddressUsable(
+        var act = () => NetworkGuard.AssertAddressesUsable(
             "mixed.example.com",
             new[] { Ip("10.0.0.7"), Ip("8.8.8.8") },
-            blockPrivate: true);
+            blockPrivate: true, requireAll: false);
 
         act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void ProxiedRequest_MixedRecords_RejectsTheLinkLocalEntry()
+    {
+        // A proxy resolves the destination itself, so EnforceConnect never sees these
+        // addresses. The pre-check is the only filter left and has to reject the whole set.
+        var act = () => NetworkGuard.AssertAddressesUsable(
+            "mixed.corp.contoso.com",
+            new[] { Ip("192.168.240.10"), Ip("169.254.169.254") },
+            blockPrivate: false, requireAll: true);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*link-local*");
+    }
+
+    [Fact]
+    public void ProxiedRequest_AllAddressesUsable_IsAllowed()
+    {
+        var act = () => NetworkGuard.AssertAddressesUsable(
+            "clean.example.com",
+            new[] { Ip("8.8.8.8"), Ip("1.1.1.1") },
+            blockPrivate: true, requireAll: true);
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void ProxiedRequest_NoAddresses_IsRejected()
+    {
+        var act = () => NetworkGuard.AssertAddressesUsable(
+            "void.example.com", Array.Empty<System.Net.IPAddress>(), blockPrivate: false, requireAll: true);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*did not resolve*");
     }
 
     [Fact]
     public void NoAddresses_IsRejected()
     {
         // An empty resolution must not read as "nothing blocked, therefore fine".
-        var act = () => NetworkGuard.AssertAnyAddressUsable(
-            "void.example.com", Array.Empty<System.Net.IPAddress>(), blockPrivate: true);
+        var act = () => NetworkGuard.AssertAddressesUsable(
+            "void.example.com", Array.Empty<System.Net.IPAddress>(), blockPrivate: true, requireAll: false);
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*did not resolve*");
     }
@@ -332,7 +365,7 @@ public class NetworkGuardTests
     [InlineData("http://[::ffff:127.42.10.9]/")]
     public void Default_BlocksIpv4MappedLoopback(string url)
     {
-        Action act = () => NetworkGuard.ValidateUrl(Cfg(null), url);
+        Action act = () => NetworkGuard.ValidateUrl(Cfg(null), url, requireAllAddresses: false);
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*loopback/private*");
     }

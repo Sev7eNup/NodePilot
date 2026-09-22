@@ -56,7 +56,7 @@ public class ProbeAllowListSeparationTests
             ("WaitForCondition:AllowedHosts:0", "localhost"),
             ("RestApi:BlockPrivateNetworks", "true"));
 
-        Action act = () => NetworkGuard.ValidateUrl(config, "http://localhost:8080/");
+        Action act = () => NetworkGuard.ValidateUrl(config, "http://localhost:8080/", requireAllAddresses: false);
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*loopback*");
