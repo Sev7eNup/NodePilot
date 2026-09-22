@@ -70,6 +70,8 @@ Schema and locking changes must also run against real PostgreSQL and SQL Server.
 
 The runner starts disposable PostgreSQL 16 and SQL Server 2022 containers on loopback ports, runs the `DatabaseIntegration` tests and removes those containers afterward. Each fixture creates its own `nodepilot_test_<guid>` database. Coverage includes fresh migrations and upgrades, atomic outbox claims, SQL Server with RCSI on and off, as well as lease-fenced recovery. SQLite remains the fast default for ordinary database tests. It does not validate either production provider's locking behavior.
 
+CI runs the same category against PostgreSQL on every pull request, in its own `database` job: the Windows runner ships PostgreSQL installed but stopped, so the job starts it and points `NODEPILOT_TEST_POSTGRES` at it. SQL Server is not on that image, so its cases skip there and stay a local concern — run the script above before changing schema or locking behaviour.
+
 To use existing **test servers**, set both `NODEPILOT_TEST_POSTGRES` and `NODEPILOT_TEST_SQLSERVER` to administrative connection strings in the local environment. Their accounts must be able to create and drop test databases. SQL Server tests also change RCSI on those disposable databases. The runner then leaves the servers themselves running. These credentials belong outside tracked files. `-NoBuild` applies after the test projects have been built, and `-Filter 'FullyQualifiedName~ExecutionDispatchOutboxClaimerTests'` selects a focused scenario. Should a test server not be configured, the real-provider tests report a skip.
 
 With `NODEPILOT_TEST_POSTGRES` configured, the dispatch comparison can be repeated separately:

@@ -247,6 +247,67 @@ jobs:
           name: backend-coverage-report
           path: coverage-report/
 
+  database:
+    name: Database provider tests
+    # The DatabaseIntegration category runs the hand-written per-provider SQL: the atomic
+    # dispatch claim, the consolidated baseline migration, startup recovery and the dashboard
+    # duration trend. Every one of them skips itself without a server, so before this job
+    # existed the PostgreSQL branch - the production default - was executed by nothing.
+    #
+    # Its own job rather than a step in `backend`, so a database that fails to start reports
+    # as a database failure and does not hide behind the coverage run.
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-v1-${{ runner.os }}-${{ hashFiles('global.json', 'dotnet-tools.json', 'Directory.Packages.props', 'Directory.Build.props', 'src/**/*.csproj', 'tests/**/*.csproj') }}
+          restore-keys: |
+            nuget-v1-${{ runner.os }}-
+
+      - name: Start the runner's PostgreSQL
+        shell: pwsh
+        # The Windows image ships PostgreSQL installed but stopped, with the postgres password
+        # set to `root`. Each fixture creates its own nodepilot_test_<guid> database, so the
+        # admin connection below is only ever used to create and drop those.
+        run: |
+          $service = Get-Service -Name 'postgresql*' -ErrorAction Stop | Select-Object -First 1
+          Set-Service -Name $service.Name -StartupType Manual
+          Start-Service -Name $service.Name
+          $deadline = (Get-Date).AddMinutes(2)
+          do {
+            & "$env:PGBIN\pg_isready.exe" -h 127.0.0.1 -p 5432 *> $null
+            if ($LASTEXITCODE -eq 0) { break }
+            Start-Sleep -Seconds 2
+          } while ((Get-Date) -lt $deadline)
+          if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL did not accept connections within two minutes.' }
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Run the database integration tests
+        shell: pwsh
+        # SQL Server is not on the Windows image, so its InlineData cases skip themselves and
+        # stay a local/nightly concern. PostgreSQL is the production default and is covered here.
+        env:
+          NODEPILOT_TEST_POSTGRES: 'Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=root;SSL Mode=Disable'
+        run: |
+          dotnet test --configuration Release --no-build --filter 'Category=DatabaseIntegration' --logger 'console;verbosity=normal'
+
   frontend:
     name: Frontend build + tests
     # Its tests read CSS, TypeScript and package.json, never markdown.
@@ -549,7 +610,7 @@ jobs:
   ci-gate:
     name: CI gate
     if: ${{ always() }}
-    needs: [backend, changes, desktop, docs-ui, e2e, frontend]
+    needs: [backend, changes, database, desktop, docs-ui, e2e, frontend]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -562,6 +623,7 @@ jobs:
         run: |
           echo 'changes  = ${{ needs.changes.result }}'
           echo 'backend  = ${{ needs.backend.result }}'
+          echo 'database = ${{ needs.database.result }}'
           echo 'frontend = ${{ needs.frontend.result }}'
           echo "docs-ui  = ${{ needs['docs-ui'].result }}"
           echo 'desktop  = ${{ needs.desktop.result }}'
