@@ -1,9 +1,7 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { PAGES_ORIGIN, SOURCE_CANONICAL_HOST, rewriteHtaccessHost } from '../../scripts/site-origin.mjs'
-
-const htaccess = readFileSync(resolve(__dirname, 'public/.htaccess'), 'utf8')
+import { SOURCE_CANONICAL_HOST, rewriteHtaccessHost } from '../../scripts/htaccess.mjs'
+import htaccess from './public/.htaccess?raw'
+import { PAGES_ORIGIN } from '../../scripts/site-origin.mjs'
 
 describe('htaccess canonical host', () => {
   it('names this project host in the committed file, so it works unbuilt', () => {
