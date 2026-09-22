@@ -37,7 +37,11 @@ public sealed class WebhookNotificationSink : INotificationSink
         if (string.IsNullOrWhiteSpace(target))
             return NotificationSendResult.Fail("Webhook route has no URL.");
 
-        try { NetworkGuard.ValidateUrl(_config, target); }
+        // The sink uses the default named client, so the request is proxied whenever the
+        // configured proxy does not bypass this destination.
+        var proxied = Uri.TryCreate(target, UriKind.Absolute, out var targetUri)
+                      && _clients.UsesProxyForDestination(default, targetUri);
+        try { NetworkGuard.ValidateUrl(_config, target, proxied); }
         catch (Exception ex) { return NotificationSendResult.Fail($"Blocked webhook URL: {ex.Message}"); }
 
         var body = NotificationRenderer.WebhookJson(ctx);

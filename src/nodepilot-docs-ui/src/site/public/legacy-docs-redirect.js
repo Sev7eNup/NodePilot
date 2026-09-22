@@ -10,6 +10,12 @@
   var hash = location.hash;
   if (hash.indexOf('#/') !== 0) return;
   var path = hash.slice(2).replace(/\/+$/, '');
+  // A hash like #///evil.com leaves an empty first segment, which would join back into a
+  // protocol-relative URL and send the visitor off-origin. Such a link is not an old address.
+  if (path.charAt(0) === '/' || path.charAt(0) === '\\') {
+    location.replace('.');
+    return;
+  }
   var parts = path.split('/');
   var segment = parts[0];
   if (segment && siteRoutes.indexOf(segment) === -1 && !renamed[segment]) {

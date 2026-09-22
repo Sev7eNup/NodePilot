@@ -82,8 +82,9 @@ if ($PurgeData) {
     Invoke-UninstallStep 'Deleting early start-up logs' {
         $legacyLogDir = Join-Path $env:SystemRoot 'System32\logs'
         if (Test-Path -LiteralPath $legacyLogDir) {
+            # Only the files are ours. The directory is shared with anything else that runs with
+            # System32 as its working directory, so removing it would take another product's logs.
             Get-ChildItem -LiteralPath $legacyLogDir -Filter 'nodepilot-*.log' -File | Remove-Item -Force
-            if (@(Get-ChildItem -LiteralPath $legacyLogDir -Force).Count -eq 0) { Remove-Item -LiteralPath $legacyLogDir -Force }
         }
     }
     $provisionLog = Join-Path $env:TEMP 'nodepilot-provision.log'
