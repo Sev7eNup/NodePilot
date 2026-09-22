@@ -33,11 +33,18 @@ updates:
     # The floor is >0.55.0 rather than >=0.56.0 because Spectre.Console, .Json and .Testing
     # publish 0.55.1 and 0.55.2 while Spectre.Console.Cli and .Cli.Testing stop at 0.55.0;
     # a >=0.56.0 floor would still allow the same family split inside the patch range.
+    #
+    # WireMock.Net 2.16.0 pulls Microsoft.OpenApi 3.10.2 transitively (through
+    # WireMock.Net.OpenApiParser -> RamlToOpenApiConverter -> Microsoft.OpenApi.YamlReader),
+    # which collides with the 2.x floor above and fails restore with NU1605. Lift it together
+    # with the Microsoft.OpenApi entry, once Swashbuckle majors.
     ignore:
       - dependency-name: "Microsoft.OpenApi"
         versions: [">=3.0.0"]
       - dependency-name: "Spectre.Console*"
         versions: [">0.55.0"]
+      - dependency-name: "WireMock.Net"
+        versions: [">=2.16.0"]
     groups:
       nuget-minor-patch:
         patterns:
@@ -54,9 +61,15 @@ updates:
     open-pull-requests-limit: 1
     # TypeScript 7 is a verified-incompatible major: the typescript-eslint peer range caps at
     # the previous major, so npm ci fails with ERESOLVE. Same rule on all three npm roots.
+    #
+    # jsdom 30.1.0 breaks the four BackupPage tests that post a FormData body through msw:
+    # the request never resolves and each case times out. Reproduced locally against 30.1.0
+    # with everything else unchanged. Lift it when msw handles the new FormData behaviour.
     ignore:
       - dependency-name: "typescript"
         versions: [">=7.0.0"]
+      - dependency-name: "jsdom"
+        versions: [">=30.1.0"]
     groups:
       npm-minor-patch:
         patterns:

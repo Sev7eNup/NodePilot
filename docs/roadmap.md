@@ -363,6 +363,10 @@ Nicht unser Problem, aber dokumentiert, damit es nicht erneut versucht wird:
   Side-by-side TS 6+7 oder das Lint-Gate opfern wurden beide abgelehnt.
 - **Spectre.Console 0.57.2** — `Spectre.Console.Cli` endet stabil bei 0.55.0 und pinnt den Core auf
   die eigene Version. Familie bewusst geschlossen auf 0.55.0.
+- **WireMock.Net 2.16.0** — zieht `Microsoft.OpenApi 3.10.2` transitiv nach und kollidiert mit dem
+  2.x-Floor oben (NU1605 beim Restore). Bleibt auf 2.15.0, zusammen mit dem OpenApi-Eintrag zu heben.
+- **jsdom 30.1.0** — die vier `BackupPage`-Tests, die einen FormData-Body über msw posten, laufen in
+  den Timeout; lokal gegen 30.1.0 reproduziert. Bleibt auf 30.0.x, bis msw nachzieht.
 
 ### Kein Produkt-Scope
 
