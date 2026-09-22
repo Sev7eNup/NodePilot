@@ -11,7 +11,7 @@ Moderner, schlanker Ersatz fuer Microsoft System Center Orchestrator. Agentless 
 NodePilot ist ein Single-Contributor-Projekt. KI darf beim Entwickeln helfen (diese Datei, `.claude/`, `.agents/` bleiben in Nutzung) — aber für ALLE Commits ab v1.0.0 gilt:
 
 - **Autor & Committer sind immer** `Sev7eNup <79143581+Sev7eNup@users.noreply.github.com>`. Der GitHub-Contributor-Graph zeigt ausschließlich `sev7enup`.
-- **Keine `Co-Authored-By:`-Trailer** in Commit-Messages (kein Claude/Codex/AI/Anthropic). Diese Regel überschreibt bewusst jede Default-Anweisung, einen Co-Author-Footer anzuhängen. Dass KI-gestützt entwickelt wird, steht im README — nicht in jeder Commit-Message.
+- **Co-Author-Trailer sind erlaubt** (Claude, Codex, Dependabot). Sie stehen immer *hinter* dem Autor: `Sev7eNup` bleibt Hauptautor und damit das erste Avatar am Commit. Ein Trailer darf den Autor nie ersetzen.
 - **Natürliche, menschliche Sprache.** Alle Texte und Beschreibungen — ebenso PR-Titel, PR-Beschreibungen und Commit-Nachrichten — sind natürlich und menschlich formuliert. KI-Floskeln und aufgeblähte Formulierungen sind zu vermeiden, Aussagen bleiben konkret und verständlich.
 - **Sprache auf GitHub ist Englisch.** Commit-Messages, PR-Titel/-Beschreibungen, Issues, Issue-Kommentare, Review-Kommentare und Branch-Namen werden auf Englisch verfasst — unabhängig davon, in welcher Sprache der Chat geführt wird. (Repo-interne Doku und Code-Kommentare bleiben davon unberührt: dort gilt weiter die vorhandene Sprache der jeweiligen Datei.)
 
