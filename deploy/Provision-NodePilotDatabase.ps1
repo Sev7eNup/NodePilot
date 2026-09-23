@@ -67,7 +67,8 @@ if ($Database -notmatch '^[A-Za-z_][A-Za-z0-9_]{0,127}$') {
         "Database name '$Database' is not a plain identifier. The wizard will not build DDL from it; " +
         'create the database by hand.')
 }
-if ($Principal -notmatch '^[A-Za-z0-9._-]+\\[A-Za-z0-9._$-]+$') {
+# Letters in any script and a space in the domain part, for SYSTEM's localized authority name.
+if ($Principal -notmatch '^[\p{L}\p{N}._ -]+\\[\p{L}\p{N}._$-]+$') {
     return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
         "Principal '$Principal' is not a DOMAIN\\account name. Create the login by hand.")
 }

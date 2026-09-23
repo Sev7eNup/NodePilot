@@ -30,7 +30,7 @@ unsigned or tampered artifacts, so a code-signing certificate is part of the set
 
 - **Windows Server** (domain-joined recommended), elevated **Windows PowerShell 5.1** for
   both scripts.
-- **ASP.NET Core Runtime 10.0.11 or newer in the 10.x line (x64)** — the plain runtime, **not** the Hosting Bundle. The
+- **.NET Runtime and ASP.NET Core Runtime, 10.0.11 or newer in the 10.x line, both x64** — two downloads, and both are needed: the ASP.NET Core package carries only `Microsoft.AspNetCore.App` and no `dotnet.exe`, so on a machine without .NET it leaves a framework nothing can load. **Not** the Hosting Bundle. The
   bundle rewires IIS and restarts W3SVC, which you do not want on a shared host (e.g. an
   SCCM site server). The `x64` is a requirement, not a preference: NodePilot ships as
   `win-x64`, a 32-bit runtime cannot start the service, and the pre-flight rejects one by

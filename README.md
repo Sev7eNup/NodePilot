@@ -215,14 +215,14 @@ The production rollout consists of a signed artifact plus a PowerShell installer
 **Prerequisites** (all enforced by the installer's pre-flight, which fails with a named error):
 
 - **Windows Server 2022 or 2025**, domain-joined for the gMSA path, `-UseLocalSystem` works without a domain
-- **ASP.NET Core Runtime 10.0.11 or newer in the 10.x line (x64)**: the plain runtime, **not** the Hosting Bundle, which wires up IIS and restarts W3SVC. NodePilot ships as `win-x64`. A 32-bit runtime cannot host it, and the pre-flight reports this rather than passing the row
+- **.NET Runtime and ASP.NET Core Runtime, 10.0.11 or newer in the 10.x line, both x64** — two downloads, and both are needed: the ASP.NET Core package carries only `Microsoft.AspNetCore.App` and no `dotnet.exe`, so on a machine without .NET it leaves a framework nothing can load. **Not** the Hosting Bundle, which wires up IIS and restarts W3SVC. NodePilot ships as `win-x64`. A 32-bit runtime cannot host it, and the pre-flight reports this rather than passing the row
 - **PostgreSQL 16+** or **SQL Server 2022 CU1+** (build ≥ 16.0.4003.1, earlier builds cannot serve the `Encrypt=Strict` / TDS 8.0 connections NodePilot opens, and are rejected)
 - a **TLS certificate** in `Cert:\LocalMachine\My` with its private key
 - **antivirus exclusions** agreed with the security team. See [docs/av-exclusions.md](docs/av-exclusions.md)
 
 There are two ways to run it, and they install the same thing.
 
-**With the wizard.** `NodePilot-Server-Setup-<version>.exe` is downloaded from the [latest release](https://github.com/Sev7eNup/NodePilot/releases/latest) and run. It carries the signed artifact and the ASP.NET Core runtime, checks every prerequisite above *before* changing anything (showing each as green, amber or red with a copyable fix) and can install the runtime, create the SQL login and database, or issue a lab certificate. One file instead of five, and no manual thumbprint comparison. Unattended: `Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json`. Details, answer-file schema and switches are documented in [deploy/server/README.md](deploy/server/README.md).
+**With the wizard.** `NodePilot-Server-Setup-<version>.exe` is downloaded from the [latest release](https://github.com/Sev7eNup/NodePilot/releases/latest) and run. It carries the signed artifact and both .NET runtimes, checks every prerequisite above *before* changing anything (showing each as green, amber or red with a copyable fix) and can install the runtime, create the SQL login and database, or issue a lab certificate. One file instead of five, and no manual thumbprint comparison. Unattended: `Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json`. Details, answer-file schema and switches are documented in [deploy/server/README.md](deploy/server/README.md).
 
 **With the scripts**, which is what the wizard runs and what automation should use. The signed `NodePilot-<version>.zip` is downloaded together with its `.manifest.json` and `.manifest.json.p7s`, verified against `NodePilot-<version>.SHA256SUMS.txt`, and then installed:
 

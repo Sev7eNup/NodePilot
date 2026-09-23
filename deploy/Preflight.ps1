@@ -27,6 +27,12 @@ Set-StrictMode -Version 3.0
 #   Warn    - worth saying out loud, never aborts
 #   Skipped - not applicable to this configuration
 
+# One label for the bundled-runtime fix, because two checks offer it and a reader comparing two
+# rows should not have to work out whether they do the same thing. It names both packages: the
+# setup carries the .NET runtime as well, and saying only "ASP.NET Core" is the half-truth this
+# fix exists to correct.
+$NodePilotRuntimeFixLabel = 'Install the bundled .NET 10 and ASP.NET Core 10 runtimes now'
+
 function New-NodePilotPreflightResult {
     param(
         [Parameter(Mandatory)][string]$Id,
@@ -39,11 +45,13 @@ function New-NodePilotPreflightResult {
         [bool]$Required = $false,
         [bool]$CanAutoFix = $false,
         [string]$AutoFixLabel = '',
-        # Whether the wizard arrives with this fix already ticked. Reserved for work the operator
-        # has already asked for by reaching this page: the database named two pages earlier, and
-        # the service identity's access to it. A machine-wide statement such as trusting a
-        # publisher, or replacing a certificate, is never pre-ticked. The box stays visible and
-        # clearable either way.
+        # Whether the wizard arrives with this fix already ticked. Reserved for work that is a
+        # precondition of the installation the operator has already chosen, and that only adds
+        # what NodePilot itself needs: the database named two pages earlier, the service
+        # identity's access to it, and the .NET runtime without which the service cannot start.
+        # Never pre-ticked: anything that changes what the machine trusts or replaces something
+        # already there - the publisher certificate in LocalMachine\Root, or a TLS certificate.
+        # The box stays visible and clearable either way.
         [bool]$AutoFixDefault = $false
     )
     [pscustomobject]@{
@@ -265,11 +273,13 @@ function Test-NodePilotDotNetRuntime {
 
     $minimumRuntime = [version]'10.0.11'
     $title = 'ASP.NET Core 10.0.11+ runtime'
-    # Names the download exactly. "the plain runtime" read as "the .NET Runtime", which is a
-    # different package that carries no Microsoft.AspNetCore.App and leaves this row red.
-    $hint = 'Install the ASP.NET Core Runtime 10.0.11 or newer (x64, Hosting Bundle excluded - it also wires up IIS). Note that ".NET Runtime", ".NET SDK" and "ASP.NET Core Runtime" are three different downloads on that page, and only the last one carries Microsoft.AspNetCore.App.'
+    # Names both downloads. The ASP.NET Core Runtime alone carries only Microsoft.AspNetCore.App -
+    # no dotnet.exe - so on a machine without .NET it leaves this row red however cleanly it
+    # installs. "the plain runtime" used to stand here and read as ".NET Runtime", which is the
+    # other half of the same trap.
+    $hint = 'Install BOTH, x64, in this order: the .NET Runtime 10.0.11 or newer (it carries dotnet.exe and Microsoft.NETCore.App), then the ASP.NET Core Runtime of the same version (it carries Microsoft.AspNetCore.App). They are separate downloads on that page, as is the .NET SDK, and neither runtime alone is enough. Not the Hosting Bundle - it also wires up IIS.'
     $link = 'https://dotnet.microsoft.com/download/dotnet/10.0'
-    $fixLabel = 'Install the bundled ASP.NET Core 10 runtime now'
+    $fixLabel = $NodePilotRuntimeFixLabel
 
     if (-not $State.X64Path) {
         # Two different messages: "nothing found" sends the operator looking for an installer,
@@ -281,7 +291,7 @@ function Test-NodePilotDotNetRuntime {
                 default { $State.OtherArchitecture }
             }
             return New-NodePilotPreflightResult -Id 'dotnet' -Title $title -Status 'Fail' -Required $true `
-                -CanAutoFix $true -AutoFixLabel $fixLabel `
+                -CanAutoFix $true -AutoFixDefault $true -AutoFixLabel $fixLabel `
                 -Detail ("Only a $found .NET host was found ($($State.OtherPath)). " +
                          'NodePilot is a 64-bit application and needs the x64 runtime.') `
                 -RemediationHint $hint -Remediation $link `
@@ -289,7 +299,7 @@ function Test-NodePilotDotNetRuntime {
                                "Install the 64-bit ASP.NET Core 10 runtime from $link.")
         }
         return New-NodePilotPreflightResult -Id 'dotnet' -Title $title -Status 'Fail' -Required $true `
-            -CanAutoFix $true -AutoFixLabel $fixLabel `
+            -CanAutoFix $true -AutoFixDefault $true -AutoFixLabel $fixLabel `
             -Detail 'dotnet was not found on PATH or under Program Files.' `
             -RemediationHint $hint -Remediation $link `
             -AbortMessage ".NET Runtime not found on PATH. Install the ASP.NET Core 10 runtime from $link."
@@ -322,7 +332,7 @@ function Test-NodePilotDotNetRuntime {
             " Installed: $((($frameworks | ForEach-Object { "$($_.Name) $($_.Version)" }) | Sort-Object) -join ', ')."
         } else { ' It reported no shared frameworks at all.' }
         return New-NodePilotPreflightResult -Id 'dotnet' -Title $title -Status 'Fail' -Required $true `
-            -CanAutoFix $true -AutoFixLabel $fixLabel `
+            -CanAutoFix $true -AutoFixDefault $true -AutoFixLabel $fixLabel `
             -Detail ("No patched Microsoft.AspNetCore.App 10 runtime (minimum 10.0.11) was reported by " +
                      "'$($State.X64Path) --list-runtimes'.$foundDetail") `
             -RemediationHint $hint -Remediation $link `
@@ -432,7 +442,7 @@ function Test-NodePilotArtifactRuntime {
 
     $detail = "This build needs $($unmet -join '; '). All of them are x64."
     New-NodePilotPreflightResult -Id 'artifactRuntime' -Title $title -Status 'Fail' -Required $true `
-        -CanAutoFix $true -AutoFixLabel 'Install the bundled ASP.NET Core 10 runtime now' `
+        -CanAutoFix $true -AutoFixDefault $true -AutoFixLabel $NodePilotRuntimeFixLabel `
         -Detail $detail `
         -RemediationHint ('Install the matching ASP.NET Core runtime (x64) - it carries the base ' +
                           '.NET runtime of the same version - then re-run.') `
@@ -890,6 +900,105 @@ function New-NodePilotCertificateVerdict {
         -Detail "Cert found: $($Certificate.Subject)$expiryWarning"
 }
 
+function Get-NodePilotGmsaRetrievalState {
+    <#
+      May THIS host retrieve the gMSA's managed password? Answered over plain LDAP, so it works on
+      a server without RSAT - which is most of them.
+
+      The permission lives in the account's msDS-GroupMSAMembership, a binary security descriptor.
+      Whoever is allowed is named by SID, usually a group, so the comparison is against this
+      computer's own SID plus its transitive group SIDs from the constructed tokenGroups attribute.
+
+      Read-only, and never throws: an unreachable directory is "could not tell", not a failure.
+    #>
+    param([Parameter(Mandatory)][string]$Sam)
+
+    $unknown = { param([string]$Why) [pscustomobject]@{ Determined = $false; Allowed = $false; Detail = $Why } }
+    try {
+        $rootDse = New-Object System.DirectoryServices.DirectoryEntry('LDAP://RootDSE')
+        $namingContext = [string]$rootDse.Properties['defaultNamingContext'].Value
+        if ([string]::IsNullOrWhiteSpace($namingContext)) { return & $unknown 'no directory could be reached' }
+        $root = New-Object System.DirectoryServices.DirectoryEntry("LDAP://$namingContext")
+
+        $accountSearch = New-Object System.DirectoryServices.DirectorySearcher($root,
+            "(&(objectClass=msDS-GroupManagedServiceAccount)(sAMAccountName=$Sam`$))")
+        [void]$accountSearch.PropertiesToLoad.Add('msDS-GroupMSAMembership')
+        $account = $accountSearch.FindOne()
+        if (-not $account) { return & $unknown "no gMSA named '$Sam' was found in the directory" }
+        if (-not $account.Properties['msds-groupmsamembership'].Count) {
+            return [pscustomobject]@{ Determined = $true; Allowed = $false
+                                      Detail = 'the account names nobody who may retrieve its password' }
+        }
+
+        $descriptor = New-Object System.DirectoryServices.ActiveDirectorySecurity
+        $descriptor.SetSecurityDescriptorBinaryForm([byte[]]$account.Properties['msds-groupmsamembership'][0])
+        $allowed = @($descriptor.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]) |
+            Where-Object { $_.AccessControlType -eq 'Allow' } |
+            ForEach-Object { [string]$_.IdentityReference.Value })
+        if ($allowed.Count -eq 0) {
+            return [pscustomobject]@{ Determined = $true; Allowed = $false
+                                      Detail = 'the account names nobody who may retrieve its password' }
+        }
+
+        $computerSearch = New-Object System.DirectoryServices.DirectorySearcher($root,
+            "(&(objectClass=computer)(sAMAccountName=$env:COMPUTERNAME`$))")
+        $computer = $computerSearch.FindOne()
+        if (-not $computer) { return & $unknown "this computer account was not found in the directory" }
+        $mine = @([System.Security.Principal.SecurityIdentifier]::new(
+            [byte[]]$computer.Properties['objectsid'][0], 0).Value)
+        # tokenGroups is constructed: it has to be asked for on the object itself, and it resolves
+        # nested groups, which a memberOf read would not.
+        $entry = $computer.GetDirectoryEntry()
+        $entry.RefreshCache(@('tokenGroups'))
+        foreach ($sidBytes in $entry.Properties['tokenGroups']) {
+            $mine += (New-Object System.Security.Principal.SecurityIdentifier([byte[]]$sidBytes, 0)).Value
+        }
+
+        $match = @($mine | Where-Object { $allowed -contains $_ })
+        return [pscustomobject]@{ Determined = $true; Allowed = ($match.Count -gt 0); Detail = '' }
+    }
+    catch { return & $unknown $_.Exception.Message }
+}
+
+function New-NodePilotGmsaRetrievalResult {
+    <#
+      The verdict for the LDAP answer, separated from the directory call so every branch is
+      reachable from a test host with no domain.
+
+      "This host may not retrieve the password" is the one gMSA finding that is worth stopping for:
+      the SCM will refuse the logon, the service will not start, and the installation will roll
+      back. Everything else stays a warning, because not knowing is not evidence.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Sam,
+        [Parameter(Mandatory)]$State,
+        [Parameter(Mandatory)][string]$Title
+    )
+
+    $notBlocking = ' This does not block the installation.'
+    if (-not $State.Determined) {
+        $why = if ($State.Detail) { " ($($State.Detail))" } else { '' }
+        return New-NodePilotPreflightResult -Id 'gmsa' -Title $Title -Status 'Warn' `
+            -Detail ("Could not verify '$Sam'$why, so the account was not checked either way." +
+                     $notBlocking) `
+            -RemediationHint 'Install RSAT-AD-PowerShell to have the setup check the account, or verify it by hand.' `
+            -Remediation 'Install-WindowsFeature RSAT-AD-PowerShell'
+    }
+    if (-not $State.Allowed) {
+        return New-NodePilotPreflightResult -Id 'gmsa' -Title $Title -Status 'Fail' -Required $true `
+            -Detail ("$env:COMPUTERNAME is not allowed to retrieve the managed password of '$Sam'" +
+                     ($(if ($State.Detail) { " - $($State.Detail)" } else { '' })) +
+                     '. The service would be registered and then refuse to start with a logon failure.') `
+            -RemediationHint ('Allow this host to retrieve the password, then RESTART it - a computer ' +
+                              "account's group membership only reaches the machine through a new " +
+                              'Kerberos ticket. As Domain Admin:') `
+            -Remediation ("Set-ADServiceAccount -Identity $Sam -PrincipalsAllowedToRetrieveManagedPassword " +
+                          "(Get-ADComputer '$env:COMPUTERNAME')") `
+            -AbortMessage "$env:COMPUTERNAME may not retrieve the managed password of '$Sam'."
+    }
+    New-NodePilotPreflightResult -Id 'gmsa' -Title $Title -Status 'Pass' `
+        -Detail "$env:COMPUTERNAME may retrieve the managed password of '$Sam'."
+}
 function Test-NodePilotGmsa {
     <#
       Best-effort by design: the ActiveDirectory module may be absent (RSAT not installed) and
@@ -910,11 +1019,11 @@ function Test-NodePilotGmsa {
     $sam = $sam.TrimEnd('$')
 
     if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
-        return New-NodePilotPreflightResult -Id 'gmsa' -Title $title -Status 'Warn' `
-            -Detail ("Could not verify '$sam': the ActiveDirectory module is not present on this " +
-                     "host, so the account was not checked either way.$notBlocking") `
-            -RemediationHint 'Install RSAT-AD-PowerShell to have the setup check the account, or verify it by hand.' `
-            -Remediation 'Install-WindowsFeature RSAT-AD-PowerShell'
+        # RSAT is missing on most freshly built servers, and "could not check" let an install run
+        # all the way to a service that cannot log on and a rollback. The one question that decides
+        # that - may this host fetch the managed password - is answerable over plain LDAP.
+        $retrieval = Get-NodePilotGmsaRetrievalState -Sam $sam
+        return New-NodePilotGmsaRetrievalResult -Sam $sam -State $retrieval -Title $title
     }
 
     try {
@@ -1114,6 +1223,48 @@ function New-NodePilotSqlServiceLoginResult {
         -AutoFixLabel "Create that login and grant it db_owner on [$Database] now"
 }
 
+function Test-NodePilotSqlServerIsLocal {
+    <#
+      True when the SQL Server named in the connection runs on this machine. Compares the host part
+      against the local names and against every address of this machine's interfaces.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param([Parameter(Mandatory)][string]$SqlServer)
+
+    $hostPart = (($SqlServer.Trim() -replace '^(tcp|np|lpc):', '') -split '[\\,]')[0].Trim()
+    if ($hostPart -in @('.', '(local)', 'localhost', '127.0.0.1', '::1') -or $hostPart -ieq $env:COMPUTERNAME) {
+        return $true
+    }
+    try { $resolved = [System.Net.Dns]::GetHostAddresses($hostPart) } catch { return $false }
+    # Compared by bytes: a link-local address from DNS carries no scope id, the interface's does.
+    $local = @([System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() |
+        ForEach-Object { $_.GetIPProperties().UnicastAddresses } |
+        ForEach-Object { [BitConverter]::ToString($_.Address.GetAddressBytes()) })
+    foreach ($address in $resolved) {
+        if ([System.Net.IPAddress]::IsLoopback($address)) { return $true }
+        if ($local -contains [BitConverter]::ToString($address.GetAddressBytes())) { return $true }
+    }
+    return $false
+}
+
+function Get-NodePilotLocalSystemSqlPrincipal {
+    <#
+      The login a LocalSystem service presents to SQL Server. To another host it is the computer
+      account; to a SQL Server on this machine Windows authenticates it as SYSTEM itself.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([string]$SqlServer)
+
+    if ($SqlServer -and (Test-NodePilotSqlServerIsLocal -SqlServer $SqlServer)) {
+        # Translated from the SID: the account name is localized on non-English Windows.
+        return (New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-18').Translate(
+            [System.Security.Principal.NTAccount]).Value
+    }
+    return "$env:USERDOMAIN\$env:COMPUTERNAME`$"
+}
+
 function Test-NodePilotSqlServiceLogin {
     <#
       Whether the SERVICE identity can use the database - which is not what the reachability
@@ -1283,7 +1434,8 @@ function New-NodePilotPostgresResult {
         $PsqlOutcome = $null,
         $RoleExists = $null,
         $DatabaseExists = $null,
-        [bool]$CanProvision = $false
+        [bool]$CanProvision = $false,
+        [AllowEmptyString()][string]$RevocationProblem = ''
     )
 
     $title = 'PostgreSQL reachable'
@@ -1296,6 +1448,17 @@ function New-NodePilotPostgresResult {
             -RemediationHint "Cannot reach ${HostName}:${Port} from this host. Verify DNS, firewall, and that Postgres is listening on the external interface. Role setup on the DB server:" `
             -Remediation $remediation `
             -AbortMessage 'Aborted: Postgres pre-flight failed.'
+    }
+
+    # The service checks revocation and refuses the server whatever the login check says.
+    if ($RevocationProblem) {
+        return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
+            -Detail ("Postgres answered on ${HostName}:${Port}, but $RevocationProblem. The service " +
+                     'checks certificate revocation and would refuse this server at start.') `
+            -RemediationHint ("Publish the issuing CA's CRL where the certificate's CRL distribution point " +
+                              'points and make it reachable from this host, or import the CRL into the ' +
+                              'LocalMachine\CA store here (certutil -addstore CA <file>.crl).') `
+            -AbortMessage 'Aborted: Postgres pre-flight failed - certificate revocation could not be checked.'
     }
 
     # Without a bundled client, report only whether the database port responds.
@@ -1358,6 +1521,145 @@ function New-NodePilotPostgresResult {
         -AbortMessage 'Aborted: Postgres pre-flight failed - the login was refused.'
 }
 
+function Get-NodePilotCertificateRevocationProblem {
+    <#
+      Checks a server certificate's revocation status the way the service's Npgsql connection does
+      (Check Certificate Revocation=true, online). psql does not check revocation, so without this
+      a certificate whose CRL cannot be reached passes the login check and the service still
+      refuses the server. Returns '' when revocation is fine, otherwise the reason.
+    #>
+    param(
+        [Parameter(Mandatory)][System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate,
+        [Parameter(Mandatory)][string]$RootCertificatePath
+    )
+
+    # X509Chain on .NET Framework has no custom trust store, and CryptoAPI does not use a CRL whose
+    # chain ends in an untrusted root. A chain engine with the given root as its exclusive root
+    # trusts it for this one check, as Npgsql's custom trust store does, without touching a store.
+    if (-not ('NodePilotRevocationProbe' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class NodePilotRevocationProbe
+{
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ChainEngineConfig
+    {
+        public uint cbSize;
+        public IntPtr hRestrictedRoot, hRestrictedTrust, hRestrictedOther;
+        public uint cAdditionalStore;
+        public IntPtr rghAdditionalStore;
+        public uint dwFlags, dwUrlRetrievalTimeout, MaximumCachedCertificates, CycleDetectionModulus;
+        public IntPtr hExclusiveRoot, hExclusiveTrustedPeople;
+        public uint dwExclusiveFlags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ChainPara
+    {
+        public uint cbSize, dwType, cUsageIdentifier;
+        public IntPtr rgpszUsageIdentifier;
+    }
+
+    [DllImport("crypt32.dll", SetLastError = true)]
+    private static extern IntPtr CertOpenStore(IntPtr provider, uint encoding, IntPtr cryptProv, uint flags, IntPtr para);
+    [DllImport("crypt32.dll", SetLastError = true)]
+    private static extern bool CertAddEncodedCertificateToStore(IntPtr store, uint encoding, byte[] encoded, uint length, uint disposition, IntPtr context);
+    [DllImport("crypt32.dll", SetLastError = true)]
+    private static extern bool CertCreateCertificateChainEngine(ref ChainEngineConfig config, out IntPtr engine);
+    [DllImport("crypt32.dll", SetLastError = true)]
+    private static extern bool CertGetCertificateChain(IntPtr engine, IntPtr certificate, IntPtr time, IntPtr additionalStore, ref ChainPara para, uint flags, IntPtr reserved, out IntPtr chainContext);
+    [DllImport("crypt32.dll")] private static extern void CertFreeCertificateChain(IntPtr chainContext);
+    [DllImport("crypt32.dll")] private static extern void CertFreeCertificateChainEngine(IntPtr engine);
+    [DllImport("crypt32.dll")] private static extern bool CertCloseStore(IntPtr store, uint flags);
+
+    // Returns the chain's CERT_TRUST_STATUS.dwErrorStatus with the root trusted exclusively.
+    public static uint ErrorStatus(IntPtr certificate, byte[] root, uint timeoutMs)
+    {
+        IntPtr store = CertOpenStore(new IntPtr(2), 0, IntPtr.Zero, 0, IntPtr.Zero); // memory store
+        if (store == IntPtr.Zero) throw new System.ComponentModel.Win32Exception();
+        IntPtr engine = IntPtr.Zero, context = IntPtr.Zero;
+        try
+        {
+            if (!CertAddEncodedCertificateToStore(store, 0x10001, root, (uint)root.Length, 4, IntPtr.Zero))
+                throw new System.ComponentModel.Win32Exception();
+            var config = new ChainEngineConfig();
+            config.cbSize = (uint)Marshal.SizeOf(typeof(ChainEngineConfig));
+            config.dwUrlRetrievalTimeout = timeoutMs;
+            config.hExclusiveRoot = store;
+            if (!CertCreateCertificateChainEngine(ref config, out engine))
+                throw new System.ComponentModel.Win32Exception();
+            var para = new ChainPara();
+            para.cbSize = (uint)Marshal.SizeOf(typeof(ChainPara));
+            // CERT_CHAIN_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT
+            if (!CertGetCertificateChain(engine, certificate, IntPtr.Zero, IntPtr.Zero, ref para, 0x40000000, IntPtr.Zero, out context))
+                throw new System.ComponentModel.Win32Exception();
+            return (uint)Marshal.ReadInt32(context, 4); // CERT_CHAIN_CONTEXT.TrustStatus.dwErrorStatus
+        }
+        finally
+        {
+            if (context != IntPtr.Zero) CertFreeCertificateChain(context);
+            if (engine != IntPtr.Zero) CertFreeCertificateChainEngine(engine);
+            CertCloseStore(store, 0);
+        }
+    }
+}
+'@
+    }
+
+    $root = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 $RootCertificatePath
+    $status = [NodePilotRevocationProbe]::ErrorStatus($Certificate.Handle, $root.RawData, 15000)
+
+    if ($status -band 0x4) {   # CERT_TRUST_IS_REVOKED
+        return "the server certificate '$($Certificate.Subject)' is revoked"
+    }
+    # CERT_TRUST_REVOCATION_STATUS_UNKNOWN, CERT_TRUST_IS_OFFLINE_REVOCATION
+    if (($status -band 0x40) -or ($status -band 0x1000000)) {
+        return ("the revocation status of the server certificate '$($Certificate.Subject)' could not be " +
+                'checked. No CRL for it was reachable from this host')
+    }
+    return ''
+}
+
+function Get-NodePilotPostgresServerCertificate {
+    <#
+      The certificate a PostgreSQL server presents, or $null. PostgreSQL negotiates TLS inside its
+      own protocol: an 8-byte SSLRequest, a single 'S', then the handshake.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$HostName,
+        [Parameter(Mandatory)][int]$Port
+    )
+
+    $tcp = New-Object System.Net.Sockets.TcpClient
+    try {
+        $connect = $tcp.BeginConnect($HostName, $Port, $null, $null)
+        if (-not $connect.AsyncWaitHandle.WaitOne(5000)) { return $null }
+        $tcp.EndConnect($connect)
+        $stream = $tcp.GetStream()
+        $stream.ReadTimeout = 5000
+        $stream.WriteTimeout = 5000
+        [byte[]]$sslRequest = 0, 0, 0, 8, 4, 210, 22, 47   # length 8, code 80877103
+        $stream.Write($sslRequest, 0, $sslRequest.Length)
+        if ($stream.ReadByte() -ne [int][char]'S') { return $null }
+
+        $seen = @{}
+        $callback = [System.Net.Security.RemoteCertificateValidationCallback]{
+            param($source, $certificate, $chain, $policyErrors)
+            # The bytes, not the object: its handle dies with the SslStream.
+            $seen['raw'] = $certificate.GetRawCertData()
+            return $true
+        }
+        $ssl = New-Object System.Net.Security.SslStream($stream, $false, $callback)
+        try { $ssl.AuthenticateAsClient($HostName) } finally { $ssl.Dispose() }
+        if (-not $seen['raw']) { return $null }
+        return New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 (, [byte[]]$seen['raw'])
+    }
+    catch { return $null }
+    finally { $tcp.Close() }
+}
+
 function Test-NodePilotPostgresReachable {
     <#
       Two probes, the second only when a client is available.
@@ -1403,6 +1705,20 @@ function Test-NodePilotPostgresReachable {
         -not [string]::IsNullOrWhiteSpace($PsqlPath) -and (Test-Path -LiteralPath $PsqlPath -PathType Leaf) -and
         -not [string]::IsNullOrWhiteSpace($RootCertificate) -and (Test-Path -LiteralPath $RootCertificate -PathType Leaf)
 
+    $revocationProblem = ''
+    if ($reachable -and -not [string]::IsNullOrWhiteSpace($RootCertificate) -and
+        (Test-Path -LiteralPath $RootCertificate -PathType Leaf)) {
+        # A probe that cannot run says nothing; it must never abort the pre-flight.
+        try {
+            $serverCertificate = Get-NodePilotPostgresServerCertificate -HostName $HostName -Port $Port
+            if ($serverCertificate) {
+                $revocationProblem = Get-NodePilotCertificateRevocationProblem `
+                    -Certificate $serverCertificate -RootCertificatePath $RootCertificate
+            }
+        }
+        catch { $revocationProblem = '' }
+    }
+
     $outcome = $null
     if ($clientUsable -and $null -ne $Password -and $Password.Length -gt 0) {
         $outcome = Invoke-NodePilotPsqlLogin -PsqlPath $PsqlPath -HostName $HostName -Port $Port `
@@ -1427,7 +1743,8 @@ function Test-NodePilotPostgresReachable {
 
     New-NodePilotPostgresResult -HostName $HostName -Port $Port -User $User -Database $Database `
         -TcpReachable $reachable -TcpError $tcpError -PsqlOutcome $outcome `
-        -RoleExists $roleExists -DatabaseExists $databaseExists -CanProvision $CanProvision
+        -RoleExists $roleExists -DatabaseExists $databaseExists -CanProvision $CanProvision `
+        -RevocationProblem $revocationProblem
 }
 
 function Invoke-NodePilotPsqlCatalogue {

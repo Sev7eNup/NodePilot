@@ -1,5 +1,6 @@
 using System.Data.Common;
 using FluentAssertions;
+using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -15,6 +16,83 @@ namespace NodePilot.Data.Tests;
 
 public class ExecutionDispatchOutboxClaimerTests
 {
+    [Fact]
+    public void SqlServerClaim_SetsItsOwnIsolationLevel_BecauseThePoolLeaksTheLastOne()
+    {
+        // Guards the SQL Server statement in CI, where the provider integration test below is skipped.
+        var source = File.ReadAllText(Path.Combine(
+            FindRepoRoot(), "src", "NodePilot.Data", "ExecutionDispatchOutboxClaimer.cs"));
+
+        var sqlServerBranch = source.IndexOf("IsSqlServer()", StringComparison.Ordinal);
+        var isolation = source.IndexOf(
+            "SET TRANSACTION ISOLATION LEVEL READ COMMITTED;", sqlServerBranch, StringComparison.Ordinal);
+        // Match the hint itself; the comment above the statement also mentions READPAST.
+        var readPast = source.IndexOf("WITH (UPDLOCK, READPAST", sqlServerBranch, StringComparison.Ordinal);
+
+        sqlServerBranch.Should().BeGreaterThanOrEqualTo(0);
+        isolation.Should().BeGreaterThan(sqlServerBranch,
+            "the claim must not inherit whatever isolation level the pooled connection carries");
+        readPast.Should().BeGreaterThan(isolation,
+            "the isolation level has to be set before the statement that depends on it");
+        source.Should().Contain("READCOMMITTEDLOCK",
+            "RCSI still makes READ COMMITTED versioned, which READPAST cannot use");
+    }
+
+    private static string FindRepoRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "NodePilot.slnx")))
+        {
+            directory = directory.Parent;
+        }
+        if (directory is null) throw new InvalidOperationException("Could not locate the repository root.");
+        return directory.FullName;
+    }
+
+    [Theory]
+    [Trait("Category", "DatabaseIntegration")]
+    [InlineData("sqlserver", false)]
+    [InlineData("sqlserver", true)]
+    public async Task SqlServer_ClaimSurvivesAConnectionLeftAtSerializable(string provider, bool rcsi)
+    {
+        if (!ProviderTestDatabase.IsConfigured(provider)) Assert.Skip($"No isolated {provider} test server configured.");
+        await using var database = await ProviderTestDatabase.CreateAsync(provider, rcsi);
+        Guid[] ids;
+        await using (var seed = database.CreateContext()) ids = await SeedAsync(seed, DateTime.UtcNow, 1);
+
+        // Leave the only pooled connection at Serializable, as a committed Serializable transaction does.
+        var pooled = database.PooledConnectionString;
+        await using (var poisoner = new SqlConnection(pooled))
+        {
+            await poisoner.OpenAsync();
+            await using var tx = await poisoner.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+            await using var noop = poisoner.CreateCommand();
+            noop.Transaction = (SqlTransaction)tx;
+            noop.CommandText = "SELECT 1";
+            await noop.ExecuteScalarAsync();
+            await tx.CommitAsync();
+        }
+
+        await using var check = new SqlConnection(pooled);
+        await check.OpenAsync();
+        await using (var level = check.CreateCommand())
+        {
+            level.CommandText =
+                "SELECT transaction_isolation_level FROM sys.dm_exec_sessions WHERE session_id = @@SPID";
+            // 4 = Serializable. Otherwise the pool reset the level and this test proves nothing.
+            ((int)(short)(await level.ExecuteScalarAsync())!).Should().Be(4,
+                "the test needs a pooled connection left at Serializable");
+        }
+        await check.CloseAsync();
+
+        await using var db = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseSqlServer(pooled).Options);
+        var now = DateTime.UtcNow.AddMinutes(1);
+        var claimed = await ExecutionDispatchOutboxClaimer.TryClaimAsync(
+            db, now, now.AddMinutes(5), "test-owner", [], CancellationToken.None);
+        claimed.Should().Be(ids[0]);
+    }
+
     [Fact]
     public async Task Sqlite_ClaimsEligibleRowsInPriorityOrder_AndExpiresLeases()
     {

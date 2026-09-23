@@ -447,8 +447,8 @@ public class ExecutionDispatchWorkerTests
         var signal = new TokenRecordingDispatchSignal();
         var cluster = new Mock<IClusterStateProvider>();
         cluster.SetupGet(candidate => candidate.NodeId).Returns("test-node");
-        // IsLeader is the first statement inside the loop's try, so every back-off the worker
-        // performs comes from the last-resort catch.
+        // IsLeader is read on every poll once the database is servable, so every back-off the
+        // worker performs comes from the last-resort catch.
         cluster.SetupGet(candidate => candidate.IsLeader)
             .Throws(new InvalidOperationException("cluster read blew up"));
 
@@ -475,6 +475,47 @@ public class ExecutionDispatchWorkerTests
         await worker.StopAsync(CancellationToken.None);
         worker.ExecuteTask!.Status.Should().Be(TaskStatus.RanToCompletion,
             "the cancelled back-off must be absorbed by the host-shutdown catch, not fault the worker");
+    }
+
+    /// <summary>
+    /// The availability gate sits above the leader check, so a follower parks during an outage
+    /// instead of polling a database that cannot answer.
+    /// </summary>
+    [Fact]
+    public async Task DurableWorker_DatabaseUnavailable_ParksBeforeTheLeaderCheck()
+    {
+        var cluster = new Mock<IClusterStateProvider>();
+        cluster.SetupGet(candidate => candidate.NodeId).Returns("test-node");
+        cluster.SetupGet(candidate => candidate.IsLeader).Returns(false);
+        var parked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var availability = new Mock<IDatabaseAvailability>();
+        availability.Setup(a => a.WaitUntilServableAsync(It.IsAny<CancellationToken>()))
+            .Returns(async (CancellationToken token) =>
+            {
+                parked.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return true;
+            });
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        await using var provider = services.BuildServiceProvider();
+        var worker = new ExecutionDispatchWorker(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            new ExecutionDispatchSignal(),
+            Options.Create(new ExecutionDispatchOptions { WorkerCount = 1 }),
+            cluster.Object,
+            new NodePilot.Engine.Activities.InMemoryWorkflowConcurrencyGate(),
+            NullLogger<ExecutionDispatchWorker>.Instance,
+            availability.Object);
+        using var stopCts = new CancellationTokenSource();
+        await worker.StartAsync(stopCts.Token);
+
+        await parked.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        cluster.VerifyGet(candidate => candidate.IsLeader, Times.Never());
+
+        await stopCts.CancelAsync();
+        await worker.StopAsync(CancellationToken.None);
     }
 
     /// <summary>

@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging;
 using NodePilot.Data;
 using Npgsql;
 
@@ -44,11 +45,19 @@ public sealed class ProviderTestDatabase : IAsyncDisposable
 
     public string Provider { get; }
 
+    /// <summary>
+    /// The same database through a one-connection pool, so every open reuses the same physical
+    /// connection. For tests about state that survives the pool; everything else stays unpooled.
+    /// </summary>
+    public string PooledConnectionString => Provider == "postgres"
+        ? new NpgsqlConnectionStringBuilder(_connectionString) { Pooling = true, MaxPoolSize = 1 }.ConnectionString
+        : new SqlConnectionStringBuilder(_connectionString) { Pooling = true, MaxPoolSize = 1 }.ConnectionString;
+
     public static bool IsConfigured(string provider)
         => !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(EnvironmentKey(provider)));
 
     public static async Task<ProviderTestDatabase> CreateAsync(
-        string provider, bool readCommittedSnapshot = false, CancellationToken ct = default)
+        string provider, bool readCommittedSnapshot = false, CancellationToken ct = default, bool migrate = true)
     {
         var configured = Environment.GetEnvironmentVariable(EnvironmentKey(provider));
         if (string.IsNullOrWhiteSpace(configured))
@@ -62,8 +71,11 @@ public sealed class ProviderTestDatabase : IAsyncDisposable
             if (provider == "sqlserver")
                 await database.ExecuteAdminAsync(
                     $"ALTER DATABASE {database.QuotedName()} SET READ_COMMITTED_SNAPSHOT {(readCommittedSnapshot ? "ON" : "OFF")}", ct);
-            await using var context = database.CreateContext();
-            await context.Database.MigrateAsync(ct);
+            if (migrate)
+            {
+                await using var context = database.CreateContext();
+                await context.Database.MigrateAsync(ct);
+            }
             return database;
         }
         catch
@@ -73,9 +85,12 @@ public sealed class ProviderTestDatabase : IAsyncDisposable
         }
     }
 
-    public NodePilotDbContext CreateContext(params IInterceptor[] interceptors)
+    public NodePilotDbContext CreateContext(params IInterceptor[] interceptors) => CreateContext(null, interceptors);
+
+    public NodePilotDbContext CreateContext(ILoggerFactory? loggerFactory, params IInterceptor[] interceptors)
     {
         var options = new DbContextOptionsBuilder<NodePilotDbContext>();
+        if (loggerFactory is not null) options.UseLoggerFactory(loggerFactory);
         if (Provider == "postgres") options.UseNpgsql(_connectionString, o => o.CommandTimeout(30));
         else options.UseSqlServer(_connectionString, o => o.CommandTimeout(30));
         options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));

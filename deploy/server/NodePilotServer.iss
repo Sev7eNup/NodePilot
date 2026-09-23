@@ -28,6 +28,11 @@
 #ifndef RuntimeFileName
   #define RuntimeFileName "aspnetcore-runtime-win-x64.exe"
 #endif
+; The .NET host. aspnetcore-runtime-*.exe carries only Microsoft.AspNetCore.App - no dotnet.exe -
+; so on a machine without .NET it leaves a framework nothing can load. Installed first.
+#ifndef HostRuntimeFileName
+  #define HostRuntimeFileName "dotnet-runtime-win-x64.exe"
+#endif
 
 [Setup]
 AppId={{03EAD540-1472-4A1B-9F06-9CB3D358E202}
@@ -228,17 +233,21 @@ procedure EnsurePgClient();
 begin
   if PgClientExtracted then Exit;
   PgClientExtracted := True;
+  // The pattern is matched against the entry's full destination path, so a bare file name finds
+  // nothing; the leading wildcard is required.
   try
-    ExtractTemporaryFiles('psql.exe');
+    ExtractTemporaryFiles('*psql.exe');
     ExtractTemporaryFiles('*.dll');
   except
     // Built without the client. The Postgres row says so on its own.
+    Log('PostgreSQL client not extracted: ' + GetExceptionMessage());
   end;
 end;
 
 procedure EnsureRuntimePayload();
 begin
   if RuntimePayloadExtracted then Exit;
+  ExtractTemporaryFile('{#HostRuntimeFileName}');
   ExtractTemporaryFile('{#RuntimeFileName}');
   RuntimePayloadExtracted := True;
 end;

@@ -24,8 +24,9 @@
     Installer version. Derived from the artifact file name when omitted.
 .PARAMETER IsccPath
     Inno Setup compiler. Probed via Resolve-IsccPath.ps1 when omitted.
-.PARAMETER RuntimeInstallerPath
-    A pre-fetched ASP.NET Core runtime installer. Fetched and verified when omitted.
+.PARAMETER RuntimePayloadDirectory
+    A directory holding pre-fetched .NET runtime installers (the host and the ASP.NET Core
+    framework). Both are fetched and verified when omitted.
 .PARAMETER PgBinariesPath
     A PostgreSQL distribution ("pgsql" from the EDB zip), same input the desktop installer takes.
     Only the psql client is taken from it, so the wizard can create the role and database on a
@@ -44,7 +45,7 @@ param(
     [string]$SignerCertificatePath,
     [string]$Version,
     [string]$IsccPath,
-    [string]$RuntimeInstallerPath,
+    [string]$RuntimePayloadDirectory,
     [string]$PgBinariesPath,
     [string]$OutputRoot
 )
@@ -164,31 +165,43 @@ foreach ($script in $deployScripts) {
 Copy-Item -LiteralPath (Join-Path $deployRoot 'templates\appsettings.Production.json.template') `
     -Destination (Join-Path $stage 'deploy\templates') -Force
 
-Write-Step 'Staging the ASP.NET Core runtime installer'
-if ([string]::IsNullOrWhiteSpace($RuntimeInstallerPath)) {
-    $RuntimeInstallerPath = & (Join-Path $deployRoot 'Get-DotnetRuntimePayload.ps1') `
-        -OutputDirectory (Join-Path $stage 'payload')
+Write-Step 'Staging the .NET runtime installers'
+if ([string]::IsNullOrWhiteSpace($RuntimePayloadDirectory)) {
+    [void](& (Join-Path $deployRoot 'Get-DotnetRuntimePayload.ps1') `
+        -OutputDirectory (Join-Path $stage 'payload'))
 }
 else {
-    if (-not (Test-Path -LiteralPath $RuntimeInstallerPath -PathType Leaf)) {
-        throw "Runtime installer not found: $RuntimeInstallerPath"
+    if (-not (Test-Path -LiteralPath $RuntimePayloadDirectory -PathType Container)) {
+        throw "Runtime payload directory not found: $RuntimePayloadDirectory"
     }
-    Copy-Item -LiteralPath $RuntimeInstallerPath -Destination (Join-Path $stage 'payload') -Force
+    Copy-Item -LiteralPath (Join-Path $RuntimePayloadDirectory '*-runtime-*-win-x64.exe') `
+        -Destination (Join-Path $stage 'payload') -Force
 }
-$stagedRuntime = Get-ChildItem -LiteralPath (Join-Path $stage 'payload') -Filter 'aspnetcore-runtime-*.exe' |
-    Select-Object -First 1
-if (-not $stagedRuntime) { throw 'No ASP.NET Core runtime installer was staged.' }
-$runtimeNameMatch = [regex]::Match(
-    $stagedRuntime.Name,
-    '^aspnetcore-runtime-(?<version>\d+\.\d+\.\d+)-win-x64\.exe$')
-if (-not $runtimeNameMatch.Success) {
-    throw "Staged runtime installer has an unrecognised name: $($stagedRuntime.Name)"
+
+# Both packages, because aspnetcore-runtime-*.exe carries only Microsoft.AspNetCore.App: no
+# dotnet.exe and no Microsoft.NETCore.App. Staging it alone produced installers that reported a
+# successful runtime install and left a bare server without a host to load the framework.
+$runtimePackages = @(
+    @{ Label = '.NET runtime';        Pattern = 'dotnet-runtime-*.exe';     Prefix = 'dotnet-runtime' }
+    @{ Label = 'ASP.NET Core runtime'; Pattern = 'aspnetcore-runtime-*.exe'; Prefix = 'aspnetcore-runtime' }
+)
+$stagedRuntimeNames = @{}
+foreach ($package in $runtimePackages) {
+    $staged = @(Get-ChildItem -LiteralPath (Join-Path $stage 'payload') -Filter $package.Pattern)
+    if ($staged.Count -ne 1) {
+        throw "Expected exactly one $($package.Label) installer in the payload; found $($staged.Count)."
+    }
+    $nameMatch = [regex]::Match($staged[0].Name, "^$($package.Prefix)-(?<version>\d+\.\d+\.\d+)-win-x64\.exe$")
+    if (-not $nameMatch.Success) {
+        throw "Staged $($package.Label) installer has an unrecognised name: $($staged[0].Name)"
+    }
+    $stagedVersion = [version]$nameMatch.Groups['version'].Value
+    if ($stagedVersion -lt $MinimumRuntimeVersion) {
+        throw "Staged $($package.Label) $stagedVersion is below the security floor $MinimumRuntimeVersion."
+    }
+    $stagedRuntimeNames[$package.Prefix] = $staged[0].Name
+    Write-Info "  $($staged[0].Name)"
 }
-$stagedRuntimeVersion = [version]$runtimeNameMatch.Groups['version'].Value
-if ($stagedRuntimeVersion -lt $MinimumRuntimeVersion) {
-    throw "Staged ASP.NET Core runtime $stagedRuntimeVersion is below the security floor $MinimumRuntimeVersion."
-}
-Write-Info "  $($stagedRuntime.Name)"
 
 # The psql client only: the files it loads according to its import table, not the whole bin\
 # folder, most of which psql never touches. Staged flat into payload\ rather than into a
@@ -270,9 +283,10 @@ Invoke-Tool -FilePath $resolvedIscc -Arguments @(
     "/DOutputDir=$OutputRoot",
     "/DSignerThumbprint=$normalizedThumbprint",
     "/DArtifactFileName=$artifactName",
-    # Exact name rather than a wildcard: ExtractTemporaryFiles throws when a pattern matches
+    # Exact names rather than a wildcard: ExtractTemporaryFiles throws when a pattern matches
     # nothing, which is hard to diagnose on a target machine.
-    "/DRuntimeFileName=$($stagedRuntime.Name)",
+    "/DHostRuntimeFileName=$($stagedRuntimeNames['dotnet-runtime'])",
+    "/DRuntimeFileName=$($stagedRuntimeNames['aspnetcore-runtime'])",
     (Join-Path $scriptDirectory 'NodePilotServer.iss'))
 
 $installer = Join-Path $OutputRoot "NodePilot-Server-Setup-$Version.exe"

@@ -34,7 +34,7 @@ The service runs under one of:
 | [Provision-NodePilotDatabase.ps1](Provision-NodePilotDatabase.ps1) | Opt-in: create the SQL login + database. Permission gate **before** any mutation, otherwise DDL output only. SQL Server only |
 | [Provision-NodePilotPostgres.ps1](Provision-NodePilotPostgres.ps1) | The same for PostgreSQL: role + database through the bundled `psql`. Needs superuser credentials (Postgres has no `Trusted_Connection`). Does **not** reset the password of an existing role and does **not** change a database owner |
 | [New-NodePilotSelfSignedCertificate.ps1](New-NodePilotSelfSignedCertificate.ps1) | Opt-in: self-signed Kestrel certificate, two years, **no** automatic root import. Prints the SHA-256 pin the `np` CLI and the MCP server accept via `--tls-thumbprint` / `NODEPILOT_MCP_TLS_THUMBPRINT`, as the alternative to trusting it machine-wide |
-| [Get-DotnetRuntimePayload.ps1](Get-DotnetRuntimePayload.ps1) | Build time: fetch the ASP.NET Core runtime, verify against the published SHA512 + the checked-in pin + Authenticode |
+| [Get-DotnetRuntimePayload.ps1](Get-DotnetRuntimePayload.ps1) | Build time: fetch the .NET and ASP.NET Core runtimes, verify each against the published SHA512 + the checked-in pin + Authenticode |
 | [Test-SetupAdapter.ps1](Test-SetupAdapter.ps1) | Behavioural test of the answer-file contract (non-admin, offline, no database) |
 | [Publish-Site.ps1](Publish-Site.ps1) | Publishes the **public website** (project site + `/docs/` + `/demo/`) to a web host over SFTP or FTPS. Nothing to do with a NodePilot installation — the alternative to the GitHub Pages workflow when the site lives on your own hosting. Settings and credentials in `site-publish.local.json` (gitignored, shape in [site-publish.example.json](site-publish.example.json)); `-DryRun` lists without transferring |
 | [server/](server/README.md) | GUI installer for the server installation (Inno Setup 6) |
@@ -72,7 +72,7 @@ profile. The switch requires a restart. Formulas, limits and measurement evidenc
 
 - Windows Server 2022 or 2025, domain-joined
 - PowerShell ≥ 5.1 (Windows PowerShell) or 7+ (recommended)
-- **ASP.NET Core Runtime 10.0.11 or newer in the 10.x line (x64)** — download at <https://dotnet.microsoft.com/download>. The plain runtime is enough (Kestrel hosts itself); the **Hosting Bundle only if IIS is deliberately involved** — it wires up IIS and restarts W3SVC, which is undesirable on shared hosts (SCCM/WSUS). The `(x64)` is not a recommendation: NodePilot is published as `win-x64`, and a 32-bit or older vulnerable 10.x runtime is explicitly rejected by the pre-flight
+- **.NET Runtime and ASP.NET Core Runtime, 10.0.11 or newer in the 10.x line, both x64** — two downloads, and both are needed: the ASP.NET Core package carries only `Microsoft.AspNetCore.App` and no `dotnet.exe`, so on a machine without .NET it leaves a framework nothing can load. **Not** the Hosting Bundle — download both at <https://dotnet.microsoft.com/download>. The **Hosting Bundle only if IIS is deliberately involved** — it wires up IIS and restarts W3SVC, which is undesirable on shared hosts (SCCM/WSUS). The `(x64)` is not a recommendation: NodePilot is published as `win-x64`, and a 32-bit or older vulnerable 10.x runtime is explicitly rejected by the pre-flight
 - The target server can reach the SQL Server on port 1433
 - Antivirus exclusions have been agreed with the security team — the list is in [`docs/av-exclusions.md`](../docs/av-exclusions.md)
 
@@ -120,7 +120,7 @@ SELECT SERVERPROPERTY('ProductVersion') AS Version, SERVERPROPERTY('ProductUpdat
 On the SQL Server as `sysadmin`. The Windows login is the service's **network identity**:
 
 - **gMSA path** → the gMSA: `CONTOSO\svc-nodepilot$`
-- **LocalSystem path** → the **computer account** of the NodePilot server: `CONTOSO\NPSRV01$` (NetBIOS domain + host name + `$`). With several nodes, create each server individually.
+- **LocalSystem path** → the **computer account** of the NodePilot server: `CONTOSO\NPSRV01$` (NetBIOS domain + host name + `$`). With several nodes, create each server individually. **Exception:** if SQL Server runs on the NodePilot server itself, it sees the service as `NT AUTHORITY\SYSTEM`, not as the computer account — that login (it exists by default) needs the database user and `db_owner` instead. The installer picks the right one.
 
 ```sql
 USE master;
@@ -354,7 +354,7 @@ $releaseSigner = '0123456789ABCDEF0123456789ABCDEF01234567'
     -PublicHostname 'nodepilot.contoso.local'
 ```
 
-→ The service runs as `LocalSystem`; on the SQL Server the **computer account** `CONTOSO\<host>$` must exist as a `db_owner` login (see section 3).
+→ The service runs as `LocalSystem`; on the SQL Server the **computer account** `CONTOSO\<host>$` must exist as a `db_owner` login (see section 3) — or `NT AUTHORITY\SYSTEM` when SQL Server runs on the same host.
 
 **SQL Server + gMSA:**
 
@@ -626,7 +626,7 @@ overwritten. Settings are written last (a service restart may be needed for them
 
 ## What the installer does NOT do
 
-- It does not install the ASP.NET Core runtime — that must be present beforehand. **Exception:** the
+- It does not install the .NET runtimes — they must be present beforehand. **Exception:** the
   GUI setup (`server/`) ships the official Microsoft runtime installer and offers it on the readiness
   page; the ZIP route described here does not. Both install and update do *check* it: once the
   artifact is extracted, the frameworks its `runtimeconfig.json` names are matched against what the

@@ -163,9 +163,12 @@ public sealed class ExecutionDispatchWorker : BackgroundService
             {
                 try
                 {
+                    // Availability gate above the leader check: during an outage no node is a
+                    // leader worth asking, and a follower that skips the gate spins the poll
+                    // interval against a database that cannot answer.
+                    if (!await _availability.WaitUntilServableAsync(ct)) return null;
                     if (_cluster.IsLeader)
                     {
-                        if (!await _availability.WaitUntilServableAsync(ct)) return null;
                         var claimed = await TryClaimAsync(leaseOwner, ct);
                         if (claimed is not null) return claimed;
                     }

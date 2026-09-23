@@ -163,7 +163,7 @@ Uninstalling **never** touches the database; it touches the data directory only 
 | | |
 |---|---|
 | **Takes off your hands** | Downloading five release assets, comparing checksums, verifying the signer thumbprint out of band, typing nine parameters without a mistake, digging the Kestrel thumbprint out of the certificate MMC. One asset, one double-click. |
-| **Takes off your hands (opt-in)** | Installing the ASP.NET Core runtime, creating the SQL login and database, **creating the PostgreSQL role and database**, generating a self-signed Kestrel certificate, trusting the publisher certificate. |
+| **Takes off your hands (opt-in)** | Installing the .NET and ASP.NET Core runtimes, creating the SQL login and database, **creating the PostgreSQL role and database**, generating a self-signed Kestrel certificate, trusting the publisher certificate. |
 | **Does not** | Creating the gMSA (an AD task), TLS for the database, Kerberos delegation, antivirus exclusions. |
 
 The **readiness page** checks all of that *before* anything is changed — ten rows: .NET runtime,
@@ -714,7 +714,7 @@ Prerequisites: Inno Setup 6, a **signed** artifact (the setup verifies it at ins
 `-AllowUnsignedDevelopmentArtifact` build is skipped), and network access on the first run for the
 runtime download.
 
-The ASP.NET Core runtime is fetched at build time and verified three ways: against the **SHA512**
+Both runtime installers are fetched at build time and each is verified three ways: against the **SHA512**
 published in Microsoft's release metadata, against the checked-in pin in
 [`runtime-payload.lock.json`](runtime-payload.lock.json), and by Authenticode against "Microsoft
 Corporation". It is the **standalone runtime**, never the Hosting Bundle — that one wires up IIS and
@@ -776,8 +776,11 @@ checkable in the `.iss`, the adapter, the runtime fetch and the build — every 
   shipped cut off the first time.
 - **The GUI has never been clicked.** All lab runs were unattended. The interactive path — readiness
   indicators, auto-fix checkboxes, certificate selection — is untested.
-- **Only SQL Server + gMSA tested.** The PostgreSQL path and the LocalSystem path have never run in the
-  lab.
+- **Unattended only.** All four identity/database combinations (gMSA or LocalSystem, SQL Server or
+  PostgreSQL 16 with TLS) were installed fresh in the lab, and the SQL Server ones also as an update
+  from 1.4.0; see the addendum of 2026-09-23 below. The wizard pages for them were not clicked.
+- **SQL Server only on the NodePilot host itself.** A remote SQL Server with LocalSystem (the
+  computer-account path) did not run in this lab.
 - **Only Windows Server 2025.** Server 2022 (the `MinVersion`) is untested.
 
 ### Manual smoke matrix before each release
@@ -827,11 +830,14 @@ checkable in the `.iss`, the adapter, the runtime fetch and the build — every 
 | 41 | Host that does not know the publisher | Row "Artifact publisher" **amber**, "Next" stays available, installation completes **without** an import |
 | 42 | The same case, offer ticked | Tick + "Next" imports into `LocalMachine\Root`, re-check green, afterwards `Get-AuthenticodeSignature` on the setup `.exe` reports `Valid` |
 | 43 | Expired publisher certificate | Row **red**, "Next" disabled, **no** offer (an import does not repair it) |
-| 44 | Only the **32-bit** or an older runtime (< 10.0.11) installed | Row "ASP.NET Core 10.0.11+ runtime" **red**, naming the architecture or the version found together with its path, offer present |
+| 44 | Only the **32-bit** or an older runtime (< 10.0.11) installed | Row "ASP.NET Core 10.0.11+ runtime" **red and pre-ticked**, naming the architecture or the version found together with its path |
 | 45 | x64 runtime present, x86 first in `PATH` | Row **green**, naming the 64-bit host it queried |
 | 46 | SQL Server reachable, target database not created yet | Row red **and pre-ticked**, "Next" creates database + login + user + `db_owner`, re-check green |
 | 47 | The same, but the installing account is not `sysadmin` | Nothing changed, the message names the permission, the DDL stays on the page, tick cleared (no loop) |
 | 48 | SQL Server whose certificate this host does not trust | Row red, the remediation names TLS and reachability **before** the DDL, no claim that a login is missing |
+| 49 | **Bare machine, no .NET at all** | Runtime row red **and pre-ticked**; "Next" installs both bundled packages; afterwards `C:\Program Files\dotnet\dotnet.exe` exists and `--list-runtimes` reports `Microsoft.NETCore.App` **and** `Microsoft.AspNetCore.App`; re-check green. Two MsiInstaller 1033 events, not one |
+| 50 | Installer that exits 0 without installing anything | Row stays red **and** a dialog names it: the verdict comes from re-running the readiness check, never from the exit code |
+| 51 | Machine carrying a **newer** .NET runtime but no ASP.NET Core | The host package declines with 1638, the run continues to the second package, re-check green — a decline is not a reason to stop |
 
 Status: 1, 3, 5, 9, 10, 22, 23, 30, 37 and 38 have been run in the Hyper-V lab against real AD, a real
 gMSA and SQL Server 2022 CU. On **2026-08-06** the **logic** behind 39, 40, 41, 43 and 44 was added —
@@ -845,6 +851,28 @@ Open: 2, 4, 6, 7, 8, 11 to 21, 24 to 29, 31 to 36, 42 and 45. 42 would write mac
 `LocalMachine\Root`; 45 needs a host with **both** runtimes — demonstrated on the development machine
 (x86 first in `PATH`, row stays green and names the x64 host), and there is no 32-bit runtime in the
 lab. The **logic** behind 33 to 35 ran against a real PostgreSQL 16 with TLS (see below).
+
+Addendum 2026-09-23 (install matrix, 1.4.1): unattended on Windows Server 2025 with SQL Server 2022
+CU1 and PostgreSQL 16 (TLS, `verify-full`) on the same host, each run from a clean checkpoint. Pass
+means exit 0, `/healthz/ready` 200, a workflow executed to `Succeeded`, and no error entry in the
+service log for five minutes after start.
+
+| Run | Identity | Database | Path | Result |
+|---|---|---|---|---|
+| F1 | gMSA | SQL Server | fresh | Pass |
+| F2 | LocalSystem | SQL Server | fresh | Pass |
+| F3 | gMSA | PostgreSQL | fresh | Pass |
+| F4 | LocalSystem | PostgreSQL (port omitted) | fresh | Pass |
+| U1 | gMSA | SQL Server | 1.4.0 → 1.4.1 | Pass |
+| U2 | LocalSystem | SQL Server | 1.4.0 → 1.4.1 | Pass (1.4.0 needs a manual `NT AUTHORITY\SYSTEM` grant to install at all) |
+| U3/U4 | either | PostgreSQL | 1.4.0 → 1.4.1 | Not applicable: 1.4.0 cannot complete a PostgreSQL installation |
+
+Defects found and fixed on the way: LocalSystem against a local SQL Server was granted as the
+computer account although SQL Server sees `NT AUTHORITY\SYSTEM`; the provisioning allowlist rejected
+that name; the bundled `psql` was never extracted (`ExtractTemporaryFiles` needs a wildcard);
+every PostgreSQL installation failed rendering its connection string (a `PSObject` path); an omitted
+`postgresPort` reached provisioning as `0`; EF logged an error on the first migration of an empty
+PostgreSQL database; and the outbox claim inherited a pooled connection's Serializable isolation.
 
 Addendum 2026-08-06 (second finding): on a fresh host **all** rows were green and the installation then
 aborted with exit 4 and a rollback — `CheckSignature` failed on the chain of the self-signed publisher.

@@ -317,6 +317,12 @@ try {
         -Condition ($postgresSplat.Contains('ServiceAccount') -and -not $postgresSplat.Contains('UseLocalSystem'))
     Assert-True -Name 'a non-default Postgres port is carried through' `
         -Condition ([int]$postgresSplat['PostgresPort'] -eq 5433)
+    # Provisioning took [int]$null = 0 for an omitted port while the probe and install used 5432.
+    $portlessAnswers = [ordered]@{ 'database.provider' = 'postgres' }
+    Assert-True -Name 'an omitted Postgres port resolves to 5432, not 0' `
+        -Condition ((Get-NodePilotPostgresPort -Answers $portlessAnswers) -eq 5432)
+    Assert-True -Name 'a given Postgres port wins over the default' `
+        -Condition ((Get-NodePilotPostgresPort -Answers $answers) -eq 5433)
 
     $sqlAnswers = Read-NodePilotAnswerFile -Path (New-AnswerFile -Name 'sql.json' -Json (@{
         schemaVersion = 1; mode = 'install'; installPath = 'C:\np'; dataPath = 'C:\npdata'
@@ -703,7 +709,7 @@ try {
     Assert-True -Name 'a 64-bit host without the 10.x runtime is a required failure' `
         -Condition ($oldOnly.Status -eq 'Fail' -and $oldOnly.Required)
     Assert-True -Name 'a missing 10.x runtime is offered for installation' `
-        -Condition ($oldOnly.CanAutoFix -and $oldOnly.AutoFixLabel -match 'bundled ASP.NET Core 10 runtime')
+        -Condition ($oldOnly.CanAutoFix -and $oldOnly.AutoFixLabel -match 'bundled .*ASP\.NET Core 10 runtimes')
 
     # A 32-bit-only .NET installation: the runtime is present but cannot host the x64 apphost.
     $x86Only = [pscustomobject]@{
@@ -716,7 +722,7 @@ try {
     Assert-True -Name 'a 32-bit-only .NET installation is a required failure, not a pass' `
         -Condition ($wrongBitness.Status -eq 'Fail' -and $wrongBitness.Required)
     Assert-True -Name 'the bundled x64 runtime is offered as the fix for wrong bitness' `
-        -Condition ($wrongBitness.CanAutoFix -and $wrongBitness.AutoFixLabel -match 'bundled ASP.NET Core 10 runtime')
+        -Condition ($wrongBitness.CanAutoFix -and $wrongBitness.AutoFixLabel -match 'bundled .*ASP\.NET Core 10 runtimes')
     # The wording is part of the contract: saying "not found on PATH" to an operator who can see
     # dotnet on PATH points at the wrong problem.
     Assert-True -Name 'the wrong-bitness row says what was found and why it does not count' `
@@ -752,10 +758,102 @@ try {
     # "the plain runtime" is what sent them to the .NET Runtime in the first place.
     Assert-True -Name 'the remediation never calls it the plain runtime' `
         -Condition ($wrongPackage.RemediationHint -notmatch 'plain runtime' -and
-                    $wrongPackage.RemediationHint -match 'three different downloads')
+                    $wrongPackage.RemediationHint -match 'separate downloads')
 
     Assert-True -Name 'no .NET host at all is a required failure' `
         -Condition ($absent.Status -eq 'Fail' -and $absent.Required)
+
+    # The setup carries both runtimes, so a machine missing one has nothing to decide: the box
+    # arrives ticked and Next installs them. It was merely offered before, and an offer is a thing
+    # people miss on a page of ten rows.
+    foreach ($ticked in @($vulnerable, $oldOnly, $wrongBitness, $absent, $wrongPackage)) {
+        Assert-True -Name "a missing runtime arrives ticked ($($ticked.Detail.Substring(0, [Math]::Min(28, $ticked.Detail.Length))))" `
+            -Condition ($ticked.CanAutoFix -and $ticked.AutoFixDefault)
+    }
+    # And the row that needs nothing offers nothing - a pre-ticked green row would install a
+    # runtime over a working one.
+    Assert-True -Name 'a satisfied runtime row offers no fix and is not ticked' `
+        -Condition (-not $green.CanAutoFix -and -not $green.AutoFixDefault)
+    # Both packages named, because the label is what tells an operator what is about to happen.
+    Assert-True -Name 'the fix label names both runtimes it installs' `
+        -Condition ($absent.AutoFixLabel -match '\.NET 10 and ASP\.NET Core 10')
+    # The hint is what a bare-machine operator follows when they install by hand. Naming only
+    # ASP.NET Core sent them exactly where the bundled fix used to leave them.
+    Assert-True -Name 'the manual remediation names both downloads and their order' `
+        -Condition ($absent.RemediationHint -match 'BOTH' -and
+                    $absent.RemediationHint -match '\.NET Runtime' -and
+                    $absent.RemediationHint -match 'then the ASP\.NET Core Runtime')
+
+    # --- the bundled runtime payload and its verdict ------------------------------------------
+    # Zero-byte stand-ins: the plan must be decidable from the payload's shape alone, and nothing
+    # here may ever execute an installer.
+    $payloadDir = Join-Path $workingDirectory 'runtime-payload'
+    [void](New-Item -ItemType Directory -Path $payloadDir -Force)
+    function Set-FakePayload {
+        param([string[]]$Names)
+        Get-ChildItem -LiteralPath $payloadDir -File | Remove-Item -Force
+        foreach ($name in $Names) { [IO.File]::WriteAllBytes((Join-Path $payloadDir $name), @()) }
+    }
+
+    Set-FakePayload @('dotnet-runtime-10.0.12-win-x64.exe', 'aspnetcore-runtime-10.0.12-win-x64.exe')
+    $plan = Get-NodePilotRuntimeInstallerPlan -PayloadRoot $payloadDir
+    Assert-True -Name 'a complete payload plans both installers' `
+        -Condition (-not $plan.Error -and $plan.Steps.Count -eq 2)
+    # The host first: the ASP.NET Core package does not depend on it and will happily install a
+    # framework the machine cannot load, which is the state a bare server was left in.
+    Assert-True -Name 'the host runtime is installed before the framework' `
+        -Condition ($plan.Steps[0].Component -eq 'host' -and $plan.Steps[1].Component -eq 'aspnetcore')
+
+    # The shape every build before this fix produced. It must be named, not quietly repeated.
+    Set-FakePayload @('aspnetcore-runtime-10.0.12-win-x64.exe')
+    $frameworkOnly = Get-NodePilotRuntimeInstallerPlan -PayloadRoot $payloadDir
+    Assert-True -Name 'a payload without the .NET host is refused by name' `
+        -Condition ($frameworkOnly.Error -match '\.NET runtime' -and $frameworkOnly.Steps.Count -eq 0)
+
+    Set-FakePayload @('dotnet-runtime-10.0.12-win-x64.exe')
+    Assert-True -Name 'a payload without the framework is refused too' `
+        -Condition ((Get-NodePilotRuntimeInstallerPlan -PayloadRoot $payloadDir).Error -match 'ASP\.NET Core runtime')
+
+    Set-FakePayload @('dotnet-runtime-10.0.12-win-x64.exe',
+                      'aspnetcore-runtime-10.0.11-win-x64.exe', 'aspnetcore-runtime-10.0.12-win-x64.exe')
+    Assert-True -Name 'an ambiguous payload is refused rather than resolved arbitrarily' `
+        -Condition ((Get-NodePilotRuntimeInstallerPlan -PayloadRoot $payloadDir).Error -match 'found 2')
+
+    Assert-True -Name 'a missing payload directory reports rather than throws' `
+        -Condition ((Get-NodePilotRuntimeInstallerPlan -PayloadRoot (Join-Path $workingDirectory 'nope')).Error -match 'does not exist')
+
+    # The verdict. This is the fix: an exit code says the installer ran, never that the machine can
+    # host NodePilot afterwards.
+    $ranClean = @(
+        [pscustomobject]@{ Label = '.NET runtime'; ExitCode = 0 }
+        [pscustomobject]@{ Label = 'ASP.NET Core runtime'; ExitCode = 0 }
+    )
+    Assert-True -Name 'a clean install with a usable runtime afterwards passes' `
+        -Condition ((New-NodePilotRuntimeProvisionResult -Attempts $ranClean -Verification $green).Status -eq 'Pass')
+
+    # Exactly what happened on the bare server: both installers exited 0, and there was still no
+    # dotnet host. That used to be reported as success, which is why the row stayed red in silence.
+    $lied = New-NodePilotRuntimeProvisionResult -Attempts $ranClean -Verification $absent
+    Assert-True -Name 'installers that exit 0 without leaving a runtime behind do not pass' `
+        -Condition ($lied.Status -eq 'Fail')
+    Assert-True -Name 'the failure names both what the installers said and what the machine looks like' `
+        -Condition ($lied.Detail -match 'exit codes' -and $lied.Detail -match 'no usable \.NET host')
+
+    # A host bundle declines with 1638 when the machine already carries a newer .NET runtime. If
+    # the framework half then installs, the machine is fine and must not be refused over it.
+    $declined = @(
+        [pscustomobject]@{ Label = '.NET runtime'; ExitCode = 1638 }
+        [pscustomobject]@{ Label = 'ASP.NET Core runtime'; ExitCode = 0 }
+    )
+    Assert-True -Name 'a declined host bundle still passes when the machine ends up usable' `
+        -Condition ((New-NodePilotRuntimeProvisionResult -Attempts $declined -Verification $green).Status -eq 'Pass')
+    Assert-True -Name 'a genuinely failed installer is named by its exit code' `
+        -Condition ((New-NodePilotRuntimeProvisionResult -Attempts @(
+            [pscustomobject]@{ Label = '.NET runtime'; ExitCode = 1603 }) -Verification $absent).ExitCode -eq 1603)
+    Assert-True -Name 'a pending reboot is reported without withholding the pass' `
+        -Condition ((New-NodePilotRuntimeProvisionResult -Attempts @(
+            [pscustomobject]@{ Label = '.NET runtime'; ExitCode = 3010 }
+            [pscustomobject]@{ Label = 'ASP.NET Core runtime'; ExitCode = 0 }) -Verification $green).Detail -match 'reboot is pending')
     Assert-True -Name 'no .NET host at all still reads as nothing found' `
         -Condition ($absent.Detail -match 'not found' -and $absent.Detail -notmatch '32-bit')
 
@@ -827,6 +925,20 @@ try {
     Assert-Throws -Name 'asserting the same results does abort' -MessagePattern 'Aborted|not found|not present' -Action {
         Assert-NodePilotPreflight -Results $checks | Out-Null
     }
+
+    # --- the SQL login a LocalSystem service presents -------------------------------------------
+    # A SQL Server on this machine sees SYSTEM, not DOMAIN\HOST$. Granting the computer account
+    # there left the service without a database login, and it never finished starting.
+    $systemAccount = (New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-18').Translate(
+        [System.Security.Principal.NTAccount]).Value
+    foreach ($localServer in @('localhost', '.', '(local)\SQLEXPRESS', "tcp:$env:COMPUTERNAME,1433", '127.0.0.1')) {
+        Assert-True -Name "LocalSystem against a local SQL Server ('$localServer') uses SYSTEM" `
+            -Condition ((Get-NodePilotLocalSystemSqlPrincipal -SqlServer $localServer) -eq $systemAccount)
+    }
+    Assert-True -Name 'LocalSystem against a remote SQL Server uses the computer account' `
+        -Condition ((Get-NodePilotLocalSystemSqlPrincipal -SqlServer 'sql01.nodepilot.invalid') -eq "$env:USERDOMAIN\$env:COMPUTERNAME`$")
+    Assert-True -Name 'LocalSystem without a SQL Server keeps the computer account' `
+        -Condition ((Get-NodePilotLocalSystemSqlPrincipal -SqlServer '') -eq "$env:USERDOMAIN\$env:COMPUTERNAME`$")
 
     # --- certificate name matching ------------------------------------------------------------
     # The comparison is its own function because it needs no certificate store. Wildcards are the
@@ -1239,6 +1351,19 @@ try {
         -Condition (($freshLog -join "`n") -match 'CREATE DATABASE \[NodePilot\]' -and
                     ($freshLog -join "`n") -match 'ALTER ROLE db_owner ADD MEMBER')
 
+    # LocalSystem against a local SQL Server is granted as SYSTEM, whose authority name has a space
+    # (and is localized). The DOMAIN\account allowlist must accept it.
+    $systemLog = New-Object System.Collections.Generic.List[string]
+    $systemGrant = & $provisionDbScript -Server 'localhost' -Database 'NodePilot' `
+        -Principal 'NT AUTHORITY\SYSTEM' `
+        -ConnectionFactory { param($cs) New-FakeSqlConnection -Answers $mayCreate -Log $systemLog }
+    Assert-True -Name 'SYSTEM is accepted as the principal for a local SQL Server' `
+        -Condition ($systemGrant.Status -eq 'Pass' -and ($systemLog -join "`n") -match '\[NT AUTHORITY\\SYSTEM\]')
+    $quoteGrant = & $provisionDbScript -Server 'localhost' -Database 'NodePilot' `
+        -Principal "CONTOSO\x'; DROP LOGIN sa;--" `
+        -ConnectionFactory { param($cs) New-FakeSqlConnection -Answers $mayCreate -Log $systemLog }
+    Assert-True -Name 'a principal carrying SQL punctuation is still refused' -Condition ($quoteGrant.Status -eq 'Fail')
+
     # The regression the first users hit: a statement that raises used to terminate the script, so
     # the adapter returned no outcome at all and the wizard could only say "could not be applied".
     $ddlLog = New-Object System.Collections.Generic.List[string]
@@ -1385,6 +1510,34 @@ try {
     $pgOk = New-NodePilotPostgresResult @pgArgs -TcpReachable $true `
         -PsqlOutcome ([pscustomobject]@{ Succeeded = $true; Error = '' })
     Assert-True -Name 'a role that can log in passes' -Condition ($pgOk.Status -eq 'Pass')
+
+    # psql does not check revocation, the service does. A successful login must not hide a
+    # certificate whose CRL cannot be reached.
+    $pgRevocation = New-NodePilotPostgresResult @pgArgs -TcpReachable $true `
+        -PsqlOutcome ([pscustomobject]@{ Succeeded = $true; Error = '' }) `
+        -RevocationProblem "the revocation status of the server certificate 'CN=pg1' could not be checked"
+    Assert-True -Name 'an unverifiable revocation status fails the row even when the login works' `
+        -Condition ($pgRevocation.Status -eq 'Fail' -and $pgRevocation.Required -and $pgRevocation.Detail -match 'revocation')
+
+    # The chain evaluation itself, on in-memory certificates: a server certificate without a CRL
+    # distribution point cannot have its revocation checked.
+    $rsaRoot = [System.Security.Cryptography.RSA]::Create(2048)
+    $rootRequest = New-Object System.Security.Cryptography.X509Certificates.CertificateRequest(
+        'CN=NodePilot Test Root', $rsaRoot, [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+        [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    $rootRequest.CertificateExtensions.Add(
+        (New-Object System.Security.Cryptography.X509Certificates.X509BasicConstraintsExtension($true, $false, 0, $true)))
+    $testRoot = $rootRequest.CreateSelfSigned([DateTimeOffset]::UtcNow.AddDays(-1), [DateTimeOffset]::UtcNow.AddDays(30))
+    $rsaLeaf = [System.Security.Cryptography.RSA]::Create(2048)
+    $leafRequest = New-Object System.Security.Cryptography.X509Certificates.CertificateRequest(
+        'CN=pg1.corp.example', $rsaLeaf, [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+        [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    $testLeaf = $leafRequest.Create($testRoot, [DateTimeOffset]::UtcNow.AddHours(-1), [DateTimeOffset]::UtcNow.AddDays(10), [byte[]](1, 2, 3, 4))
+    $rootPem = Join-Path $workingDirectory 'test-root.cer'
+    [IO.File]::WriteAllBytes($rootPem, $testRoot.RawData)
+    $problem = Get-NodePilotCertificateRevocationProblem -Certificate $testLeaf -RootCertificatePath $rootPem
+    Assert-True -Name 'a certificate without a reachable CRL is reported' `
+        -Condition ($problem -match 'could not be checked')
     Assert-True -Name 'the passing row says the login was actually tried' `
         -Condition ($pgOk.Detail -match 'can log in')
 
@@ -1607,6 +1760,66 @@ try {
     # Nothing to match is not a failure: it would refuse every artifact whose config cannot be read.
     Assert-True -Name 'no stated requirement is skipped, not failed' `
         -Condition ((Test-NodePilotArtifactRuntime -State $hostState -Requirement @()).Status -eq 'Skipped')
+
+    # --- why a service would not start ---------------------------------------------------------
+    # The wizard shows one sentence, and that sentence used to end at a colon: event 7000 carries
+    # its preamble on the first line and the reason on the second, and only the first was read.
+    $event7000 = [pscustomobject]@{ Id = 7000; Message = @(
+        'The NodePilot Orchestrator service failed to start due to the following error:'
+        'The service did not start due to a logon failure.') -join "`r`n" }
+    $reason7000 = Resolve-NodePilotScmFailureReason -Events @($event7000)
+    Assert-True -Name 'the reason on the second line of an SCM event survives' `
+        -Condition ($reason7000 -match 'did not start due to a logon failure')
+    Assert-True -Name 'the flattened message stays on one line for the message box' `
+        -Condition ($reason7000 -notmatch "`r|`n")
+
+    # 7038 names the account and the underlying error, 7000 only says that a logon failed. When
+    # both are present the specific one wins.
+    $event7038 = [pscustomobject]@{ Id = 7038; Message =
+        'The NodePilot service was unable to log on as corp\q-sdvorch2$ with the currently ' +
+        'configured password due to the following error: Access is denied.' }
+    $bothEvents = Resolve-NodePilotScmFailureReason -Events @($event7000, $event7038)
+    Assert-True -Name 'the event naming the account is preferred over the generic one' `
+        -Condition ($bothEvents -match 'SCM event 7038' -and $bothEvents -match 'q-sdvorch2')
+    # The SCM cannot know why access was denied. For a gMSA it is nearly always the one thing.
+    Assert-True -Name 'a logon failure names the usual gMSA cause and the reboot it needs' `
+        -Condition ($bothEvents -match 'PrincipalsAllowedToRetrieveManagedPassword' -and
+                    $bothEvents -match 'restart')
+    Assert-True -Name 'no events at all yields no claim' `
+        -Condition ((Resolve-NodePilotScmFailureReason -Events @()) -eq '')
+    # An event that names the service beats a more specific id belonging to some other service.
+    $foreign = [pscustomobject]@{ Id = 7038; Message = 'The Spooler service was unable to log on as X.' }
+    $mine = [pscustomobject]@{ Id = 7000; Message = "The NodePilot Orchestrator service failed to start.`r`nReason here." }
+    Assert-True -Name 'an event about another service does not become our reason' `
+        -Condition ((Resolve-NodePilotScmFailureReason -Events @($foreign, $mine)) -match 'NodePilot')
+
+    # --- may this host use the gMSA at all -----------------------------------------------------
+    # Without RSAT the row used to say "could not check" and let the install run to a service that
+    # cannot log on and a rollback. The LDAP answer is decidable, so the verdict is too.
+    $gmsaTitle = 'Group managed service account'
+    $denied = New-NodePilotGmsaRetrievalResult -Sam 'q-sdvorch2' -Title $gmsaTitle `
+        -State ([pscustomobject]@{ Determined = $true; Allowed = $false; Detail = '' })
+    Assert-True -Name 'a host that may not fetch the password stops the install' `
+        -Condition ($denied.Status -eq 'Fail' -and $denied.Required)
+    Assert-True -Name 'the failure predicts the logon failure instead of describing a permission' `
+        -Condition ($denied.Detail -match 'refuse to start with a logon failure')
+    # The membership is carried in the computer's Kerberos ticket, so granting it is only half.
+    Assert-True -Name 'the remediation demands the restart that makes it take effect' `
+        -Condition ($denied.RemediationHint -match 'RESTART' -and
+                    $denied.Remediation -match 'PrincipalsAllowedToRetrieveManagedPassword')
+
+    $permitted = New-NodePilotGmsaRetrievalResult -Sam 'q-sdvorch2' -Title $gmsaTitle `
+        -State ([pscustomobject]@{ Determined = $true; Allowed = $true; Detail = '' })
+    Assert-True -Name 'a host that may fetch the password passes' -Condition ($permitted.Status -eq 'Pass')
+
+    # Not knowing is not evidence: an unreachable directory must not refuse an install.
+    $unknown = New-NodePilotGmsaRetrievalResult -Sam 'q-sdvorch2' -Title $gmsaTitle `
+        -State ([pscustomobject]@{ Determined = $false; Allowed = $false; Detail = 'no directory could be reached' })
+    Assert-True -Name 'an unanswerable question stays a warning' `
+        -Condition ($unknown.Status -eq 'Warn' -and -not $unknown.Required)
+    Assert-True -Name 'the warning says it did not check and does not blame the account' `
+        -Condition ($unknown.Detail -match 'not checked either way' -and
+                    $unknown.Detail -match 'does not block')
 
     # --- start diagnostics --------------------------------------------------------------------
     # It runs on a path that has already failed, so a throw here would replace the real failure

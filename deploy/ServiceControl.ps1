@@ -104,10 +104,16 @@ function Show-NodePilotServiceStartDiagnostics {
     Write-Host ""
     Write-Warn "  Service-Start-Diagnose:"
     Write-Host ""
+    # Filtered by the provider, not afterwards. -MaxEvents takes the newest N of the WHOLE log
+    # first, so on a busy server the events being looked for are out of the window before the
+    # Where-Object ever sees them. Level is the numeric field (1 Critical, 2 Error, 3 Warning):
+    # LevelDisplayName is localised, and comparing it against 'Error' matches nothing on a
+    # German or French Windows - the section then renders empty and looks like "no errors".
+    $since = (Get-Date).AddMinutes(-3)
     try {
-        $appEvents = Get-WinEvent -LogName Application -MaxEvents 25 -ErrorAction Stop |
-            Where-Object { $_.TimeCreated -gt (Get-Date).AddMinutes(-3) -and
-                           $_.LevelDisplayName -in @('Error','Critical') }
+        $appEvents = @(Get-WinEvent -FilterHashtable @{
+            LogName = 'Application'; StartTime = $since; Level = @(1, 2)
+        } -MaxEvents 25 -ErrorAction Stop)
         if ($appEvents) {
             Write-Host "  --- Application-Log (letzte 3 Min, Errors) ---" -ForegroundColor Yellow
             foreach ($e in $appEvents | Select-Object -First 6) {
@@ -121,19 +127,22 @@ function Show-NodePilotServiceStartDiagnostics {
     } catch { Write-Host "  (Application-Log nicht lesbar: $($_.Exception.Message))" }
 
     try {
-        $sysEvents = Get-WinEvent -LogName System -MaxEvents 15 -ErrorAction Stop |
-            Where-Object { $_.TimeCreated -gt (Get-Date).AddMinutes(-3) -and
-                           $_.ProviderName -eq 'Service Control Manager' -and
-                           $_.LevelDisplayName -in @('Error','Critical','Warning') }
+        $sysEvents = @(Get-WinEvent -FilterHashtable @{
+            LogName = 'System'; ProviderName = 'Service Control Manager'
+            StartTime = $since; Level = @(1, 2, 3)
+        } -MaxEvents 15 -ErrorAction Stop)
         if ($sysEvents) {
             Write-Host "  --- System-Log / SCM (letzte 3 Min) ---" -ForegroundColor Yellow
             foreach ($e in $sysEvents | Select-Object -First 4) {
-                Write-Host ("  [{0:HH:mm:ss}] SCM event {1}: {2}" -f $e.TimeCreated, $e.Id,
-                    ($e.Message -split "`n" | Select-Object -First 1)) -ForegroundColor Yellow
+                # The whole message, flattened: event 7000 carries its reason on the second line,
+                # and printing only the first one ends the sentence at a colon.
+                $text = ((@("$($e.Message)" -split "`r?`n") | ForEach-Object { $_.Trim() } |
+                    Where-Object { $_ }) -join ' ') -replace '\s+', ' '
+                Write-Host ("  [{0:HH:mm:ss}] SCM event {1}: {2}" -f $e.TimeCreated, $e.Id, $text) -ForegroundColor Yellow
             }
             Write-Host ""
         }
-    } catch { }
+    } catch { Write-Host "  (System-Log nicht lesbar: $($_.Exception.Message))" }
 
     $logDir = Join-Path $DataPath 'logs'
     if (Test-Path $logDir) {

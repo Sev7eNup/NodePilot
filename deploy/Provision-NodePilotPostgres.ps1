@@ -30,7 +30,7 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$PsqlPath,
+    [Parameter(Mandatory)][AllowEmptyString()][string]$PsqlPath,
     [Parameter(Mandatory)][string]$HostName,
     [Parameter(Mandatory)][int]$Port,
     [Parameter(Mandatory)][string]$Database,
@@ -54,7 +54,7 @@ function New-Outcome {
     [pscustomobject]@{ Status = $Status; Detail = $Detail; Remediation = $Remediation }
 }
 
-if (-not (Test-Path -LiteralPath $PsqlPath -PathType Leaf)) {
+if ([string]::IsNullOrWhiteSpace($PsqlPath) -or -not (Test-Path -LiteralPath $PsqlPath -PathType Leaf)) {
     return New-Outcome -Status 'Skipped' -Remediation $remediation -Detail (
         "No PostgreSQL client at '$PsqlPath'. This build of the setup cannot create the role and " +
         'database; run the statements below on the server instead.')

@@ -48,7 +48,7 @@ Es gibt zwei Wege zur selben Installation.
 
 ### GUI-Setup
 
-`NodePilot-Server-Setup-<version>.exe` liegt als Asset am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest). Es bringt das signierte Artefakt und die ASP.NET-Core-Runtime mit und prüft sämtliche Voraussetzungen, **bevor** es etwas verändert. Auf Wunsch legt es SQL-Login und Datenbank beziehungsweise PostgreSQL-Rolle und -Datenbank selbst an; das Kestrel-Zertifikat wird aus einer Liste der Zertifikate in `Cert:\LocalMachine\My` ausgewählt statt als Thumbprint eingetippt. Unbeaufsichtigt für SCCM oder GPO: `NodePilot-Server-Setup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json`.
+`NodePilot-Server-Setup-<version>.exe` liegt als Asset am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest). Es bringt das signierte Artefakt und beide .NET-Runtimes mit und prüft sämtliche Voraussetzungen, **bevor** es etwas verändert. Auf Wunsch legt es SQL-Login und Datenbank beziehungsweise PostgreSQL-Rolle und -Datenbank selbst an; das Kestrel-Zertifikat wird aus einer Liste der Zertifikate in `Cert:\LocalMachine\My` ausgewählt statt als Thumbprint eingetippt. Unbeaufsichtigt für SCCM oder GPO: `NodePilot-Server-Setup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json`.
 
 Das ist der kürzeste Weg: eine Datei statt fünf, und kein manueller Abgleich des Publisher-Thumbprints.
 
