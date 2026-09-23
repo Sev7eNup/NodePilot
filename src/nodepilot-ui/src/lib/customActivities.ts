@@ -68,6 +68,22 @@ export function getCustomActivityFacts(type: string): CustomActivityCatalogEntry
   return byType.get(type);
 }
 
+/**
+ * Starting config for a new activity node, used by every node-creation path. For a custom type
+ * it adds the definition reference the executor loads (`__customDefinitionId`), the key it
+ * cross-checks (`__customKey`) and the declared input defaults; values in `base` win over those
+ * defaults. Built-in and unknown types get `base` unchanged.
+ */
+export function newActivityConfig(type: string, base: Record<string, unknown> = {}): Record<string, unknown> {
+  const facts = byType.get(type);
+  if (!facts) return { ...base };
+  const config: Record<string, unknown> = {};
+  for (const inp of facts.inputs) {
+    if (inp.default != null) config[inp.name] = inp.default;
+  }
+  return { ...config, ...base, __customDefinitionId: facts.id, __customKey: facts.key };
+}
+
 /** Enabled custom entries for the palette (synchronous snapshot of the module cache). */
 export function getEnabledCustomActivities(): CustomActivityCatalogEntry[] {
   return moduleCatalog.filter((e) => e.isEnabled);
