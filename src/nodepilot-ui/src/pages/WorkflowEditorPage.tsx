@@ -41,6 +41,7 @@ import { lintWorkflow, type LintResult } from '../lib/workflowLint';
 import { getPrePublishLint } from '../lib/prePublishChecks';
 import { useSettledGraph } from '../hooks/useSettledGraph';
 import { getSmartDefaults } from '../lib/lastSimilarNode';
+import { newActivityConfig } from '../lib/customActivities';
 import { reparentDraggedNodes, findDropTargetGroupId } from '../lib/groupReparenting';
 import { useDesignStore, LAYOUT_MODES, MACHINE_COLORS } from '../stores/designStore';
 import { usePointerFlowPosition } from '../stores/pointerFlowPositionStore';
@@ -1499,7 +1500,7 @@ function WorkflowEditorInner() {
                       activityType: type,
                       targetMachineId: smart.targetMachineId ?? null,
                       credentialId: smart.credentialId ?? null,
-                      config: smart.config ?? {},
+                      config: newActivityConfig(type, smart.config),
                     },
                   };
               commitHistory('Add node');

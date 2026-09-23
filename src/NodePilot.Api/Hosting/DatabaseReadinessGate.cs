@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
 namespace NodePilot.Api.Hosting;
@@ -52,6 +53,22 @@ public static class DatabaseReadinessGate
     }
 
     /// <summary>
+    /// Opens and closes one connection. Unlike <c>CanConnectAsync</c>, which returns false and
+    /// discards the cause, a failure throws, so the wait loop can say why the database refused.
+    /// Uses the raw ADO.NET connection: EF would log every refused attempt as an error with a
+    /// stack trace, every poll interval, for as long as the database is down.
+    /// </summary>
+    public static async Task<bool> OpenAndCloseAsync(DbContext db, CancellationToken ct)
+    {
+        var connection = db.Database.GetDbConnection();
+        // A connection handed to the context already open (in-memory SQLite) is reachable by definition.
+        if (connection.State == System.Data.ConnectionState.Open) return true;
+        await connection.OpenAsync(ct).ConfigureAwait(false);
+        await connection.CloseAsync().ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>
     /// Repeatedly invokes <paramref name="canConnectAsync"/> until it returns true or
     /// <paramref name="timeout"/> elapses, sleeping <paramref name="pollInterval"/> between
     /// attempts. Probe exceptions are treated as "not ready yet" (the server socket may not be
@@ -70,6 +87,7 @@ public static class DatabaseReadinessGate
         delayAsync ??= Task.Delay;
         var stopwatch = Stopwatch.StartNew();
         var attempt = 0;
+        var reason = "the server did not accept the connection";
 
         while (true)
         {
@@ -91,6 +109,7 @@ public static class DatabaseReadinessGate
             }
             catch (Exception ex)
             {
+                reason = DescribeFailure(ex);
                 logger.LogDebug(ex,
                     "Database connectivity probe failed (attempt {Attempt}); will retry until timeout.",
                     attempt);
@@ -99,16 +118,28 @@ public static class DatabaseReadinessGate
             if (stopwatch.Elapsed >= timeout)
             {
                 logger.LogError(
-                    "Database not reachable after {TimeoutSeconds:n0}s ({Attempts} attempts). " +
+                    "Database not reachable after {TimeoutSeconds:n0}s ({Attempts} attempts): {Reason}. " +
                     "Proceeding to migration bootstrap, which will surface the underlying connection error.",
-                    timeout.TotalSeconds, attempt);
+                    timeout.TotalSeconds, attempt, reason);
                 return false;
             }
 
             logger.LogInformation(
-                "Waiting for the database to accept connections ({ElapsedSeconds:n0}/{TimeoutSeconds:n0}s)...",
-                stopwatch.Elapsed.TotalSeconds, timeout.TotalSeconds);
+                "Waiting for the database to accept connections ({ElapsedSeconds:n0}/{TimeoutSeconds:n0}s): {Reason}",
+                stopwatch.Elapsed.TotalSeconds, timeout.TotalSeconds, reason);
             await delayAsync(pollInterval, ct).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// The outer message plus the innermost one when they differ: a provider wraps a TLS or login
+    /// failure, and the inner message is the one that names the cause.
+    /// </summary>
+    internal static string DescribeFailure(Exception ex)
+    {
+        var inner = ex.GetBaseException();
+        return ReferenceEquals(inner, ex) || inner.Message == ex.Message
+            ? ex.Message
+            : $"{ex.Message} ({inner.Message})";
     }
 }

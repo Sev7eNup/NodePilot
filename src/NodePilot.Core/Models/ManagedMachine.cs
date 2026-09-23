@@ -6,8 +6,8 @@ public class ManagedMachine
     public string Name { get; set; } = string.Empty;
     public string Hostname { get; set; } = string.Empty;
     public int WinRmPort { get; set; } = 5985;
-    // Defaults to plain HTTP (port 5985) for LAN deployments without SSL on WinRM. HTTPS is
-    // opt-in per machine, or enforced globally with Remote:RequireWinRmSsl=true.
+    // Defaults to HTTP (port 5985) with Negotiate. HTTPS is opt-in per machine, or enforced for
+    // all machines with Remote:RequireWinRmSsl=true.
     public bool UseSsl { get; set; }
     public Guid? DefaultCredentialId { get; set; }
     public string? Tags { get; set; }

@@ -4,6 +4,7 @@ import {
   customActivityKeyOf,
   getCustomActivityFacts,
   getEnabledCustomActivities,
+  newActivityConfig,
   useCustomActivityCatalogStore,
   type CustomActivityCatalogEntry,
 } from '../../lib/customActivities';
@@ -31,6 +32,28 @@ describe('customActivities', () => {
     expect(getCustomActivityFacts('custom:disk_check')?.name).toBe('Disk Check');
     // getEnabledCustomActivities filters out the disabled draft.
     expect(getEnabledCustomActivities().map((c) => c.key)).toEqual(['disk_check']);
+  });
+
+  it('newActivityConfig_customType_addsDefinitionReferenceAndInputDefaults', () => {
+    useCustomActivityCatalogStore.getState().setCatalog([entry({
+      inputs: [
+        { name: 'drive', label: 'Drive', type: 'string', default: 'C' },
+        { name: 'threshold', label: 'Threshold', type: 'number', default: '90' },
+        { name: 'note', label: 'Note', type: 'string' },
+      ],
+    })]);
+    expect(newActivityConfig('custom:disk_check', { threshold: '75' })).toEqual({
+      drive: 'C',
+      threshold: '75',
+      __customDefinitionId: 'id-1',
+      __customKey: 'disk_check',
+    });
+  });
+
+  it('newActivityConfig_builtInOrUnknownType_returnsBaseUnchanged', () => {
+    useCustomActivityCatalogStore.getState().setCatalog([entry()]);
+    expect(newActivityConfig('runScript', { script: 'x' })).toEqual({ script: 'x' });
+    expect(newActivityConfig('custom:missing')).toEqual({});
   });
 
   it('describeNodeOutputs surfaces declared custom outputs plus exitCode', () => {

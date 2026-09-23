@@ -1,4 +1,8 @@
 {
+  "meta": {
+    "title": "NodePilot Docs",
+    "titleSuffix": " — NodePilot Docs"
+  },
   "ui": {
     "brandEdition": "Docs",
     "tagline": "Workflow Orchestration Platform",

@@ -28,6 +28,11 @@
 #ifndef RuntimeFileName
   #define RuntimeFileName "aspnetcore-runtime-win-x64.exe"
 #endif
+; The .NET host. aspnetcore-runtime-*.exe carries only Microsoft.AspNetCore.App - no dotnet.exe -
+; so on a machine without .NET it leaves a framework nothing can load. Installed first.
+#ifndef HostRuntimeFileName
+  #define HostRuntimeFileName "dotnet-runtime-win-x64.exe"
+#endif
 
 [Setup]
 AppId={{03EAD540-1472-4A1B-9F06-9CB3D358E202}
@@ -187,6 +192,9 @@ var
   UninstallHandoff: Boolean;
   ProbeRan: Boolean;
   ProbeBlocking: Boolean;
+  // The rows that actually hold "Next" back, collected while they are rendered. Without it the
+  // blocking dialog could only say that something was wrong, on a page that may show ten rows.
+  BlockingTitles: String;
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -225,17 +233,21 @@ procedure EnsurePgClient();
 begin
   if PgClientExtracted then Exit;
   PgClientExtracted := True;
+  // The pattern is matched against the entry's full destination path, so a bare file name finds
+  // nothing; the leading wildcard is required.
   try
-    ExtractTemporaryFiles('psql.exe');
+    ExtractTemporaryFiles('*psql.exe');
     ExtractTemporaryFiles('*.dll');
   except
     // Built without the client. The Postgres row says so on its own.
+    Log('PostgreSQL client not extracted: ' + GetExceptionMessage());
   end;
 end;
 
 procedure EnsureRuntimePayload();
 begin
   if RuntimePayloadExtracted then Exit;
+  ExtractTemporaryFile('{#HostRuntimeFileName}');
   ExtractTemporaryFile('{#RuntimeFileName}');
   RuntimePayloadExtracted := True;
 end;
@@ -302,6 +314,20 @@ function ExpandNewlines(const Value: String): String;
 begin
   Result := Value;
   StringChangeEx(Result, '\n', #13#10, True);
+end;
+
+// One provisioning section's verdict, as text for the operator, or '' when there is nothing to say.
+// An absent section means the fix was never ticked; only a section that ran and did not pass speaks.
+// Without this the runtime and signer verdicts were written by the adapter and read by nobody, so a
+// fix that failed looked exactly like a fix that worked: same red row, no message.
+function ProvisionSectionProblem(const Ini, Section, Caption: String): String;
+var
+  Status: String;
+begin
+  Result := '';
+  Status := GetIniString(Section, 'status', '', Ini);
+  if (Status = '') or (Status = 'Pass') then Exit;
+  Result := Caption + ': ' + ExpandNewlines(GetIniString(Section, 'detail', '', Ini)) + #13#10#13#10;
 end;
 
 function IsLocalSystemSelected(): Boolean;
@@ -683,6 +709,9 @@ begin
     Exit;
   end;
 
+  // Rebuilt on every probe, including the one after a fix attempt, or a row that has since gone
+  // green would still be named as the reason.
+  BlockingTitles := '';
   for I := 0 to CheckCount - 1 do
   begin
     Status := GetIniString('check.' + CheckIds[I], 'status', '', Ini);
@@ -702,6 +731,11 @@ begin
     CheckLabels[I].Visible := True;
     CheckLabels[I].Caption := Title + ': ' + Detail;
     CheckMarks[I].Visible := True;
+
+    // 'required' is published per check by the adapter and decides its exit code, so this is the
+    // same rule that sets ProbeBlocking rather than a second opinion about which rows are red.
+    if (Status = 'Fail') and (GetIniString('check.' + CheckIds[I], 'required', '0', Ini) = '1') then
+      BlockingTitles := BlockingTitles + '  - ' + Title + #13#10;
 
     // A glyph as well as a colour, so the status stays readable without colour vision and in a
     // greyscale screenshot.
@@ -1326,7 +1360,7 @@ var
   ResultCode: Integer;
   Thumbprint: String;
   UninstPath: String;
-  ProvisionIni, DbStatus: String;
+  ProvisionIni, DbStatus, Problems, SetupError: String;
   I: Integer;
   WantsFix: Boolean;
 begin
@@ -1481,25 +1515,37 @@ begin
       if not RunPowerShell('-Mode Provision -AnswerFile "' + AnswerFilePath() + '" -OutFile "' +
         ProvisionIni + '"', ResultCode) or (ResultCode <> 0) then
       begin
-        MsgBox('The requested changes could not be applied. See ' +
-               ExpandConstant('{%TEMP}') + '\nodepilot-server-setup.log.', mbCriticalError, MB_OK);
-        Result := False;
-        Exit;
-      end;
+        // The adapter writes summary/error before it exits, so the reason belongs here and not only
+        // in a log file nobody opens mid-wizard. No Exit: the ticks below are spent by the attempt
+        // either way, and leaving here kept a failing fix ticked so the next Next ran it again.
+        SetupError := ExpandNewlines(GetIniString('summary', 'error', '', ProvisionIni));
+        if SetupError <> '' then SetupError := SetupError + #13#10#13#10;
+        MsgBox('The requested changes could not be applied.' + #13#10#13#10 + SetupError +
+               'See ' + ExpandConstant('{%TEMP}') + '\nodepilot-server-setup.log.', mbCriticalError, MB_OK);
+      end
+      else
+      begin
+        // Read back, not assumed. The adapter reports every fix it ran, and a verdict nobody reads
+        // is a fix that silently did nothing.
+        Problems := ProvisionSectionProblem(ProvisionIni, 'provision.runtime', 'The ASP.NET Core runtime') +
+          ProvisionSectionProblem(ProvisionIni, 'provision.signer', 'The publisher certificate');
 
-      // A run that changes nothing exits 0 like any other, so without this the wizard would simply
-      // re-probe to the same red line and the operator would be left with "I ticked it, I pressed
-      // Next, nothing happened" - which is exactly how the index bug above stayed invisible.
-      DbStatus := GetIniString('provision.database', 'status', '', ProvisionIni);
-      if (DbStatus <> '') and (DbStatus <> 'Pass') then
-        // Kept on one continuation line: a line that STARTS with '#' is read by the preprocessor as
-        // a directive, so '#13#10' may never begin one.
-        MsgBox('The database could not be prepared:' + #13#10#13#10 +
-               ExpandNewlines(GetIniString('provision.database', 'detail', '', ProvisionIni)) + #13#10#13#10 +
-               'Select the database line below for the statements to hand to a DBA.', mbError, MB_OK)
-      else if StrToIntDef(GetIniString('summary', 'actionsPerformed', '0', ProvisionIni), 0) = 0 then
-        MsgBox('Nothing was changed - none of the ticked items produced an action.' + #13#10#13#10 +
-               'See ' + ExpandConstant('{%TEMP}') + '\nodepilot-server-setup.log.', mbError, MB_OK);
+        // A run that changes nothing exits 0 like any other, so without this the wizard would simply
+        // re-probe to the same red line and the operator would be left with "I ticked it, I pressed
+        // Next, nothing happened" - which is exactly how the index bug above stayed invisible.
+        DbStatus := GetIniString('provision.database', 'status', '', ProvisionIni);
+        if (DbStatus <> '') and (DbStatus <> 'Pass') then
+          // Kept on one continuation line: a line that STARTS with '#' is read by the preprocessor as
+          // a directive, so '#13#10' may never begin one.
+          MsgBox('The database could not be prepared:' + #13#10#13#10 +
+                 ExpandNewlines(GetIniString('provision.database', 'detail', '', ProvisionIni)) + #13#10#13#10 +
+                 'Select the database line below for the statements to hand to a DBA.', mbError, MB_OK)
+        else if Problems <> '' then
+          MsgBox('Not everything could be applied:' + #13#10#13#10 + Problems, mbError, MB_OK)
+        else if StrToIntDef(GetIniString('summary', 'actionsPerformed', '0', ProvisionIni), 0) = 0 then
+          MsgBox('Nothing was changed - none of the ticked items produced an action.' + #13#10#13#10 +
+                 'See ' + ExpandConstant('{%TEMP}') + '\nodepilot-server-setup.log.', mbError, MB_OK);
+      end;
 
       // A generated certificate produces a thumbprint the operator never typed.
       Thumbprint := GetIniString('provision.certificate', 'thumbprint', '', ProvisionIni);
@@ -1521,9 +1567,12 @@ begin
 
     if ProbeBlocking then
     begin
-      MsgBox('At least one requirement is not met. Fix the items shown in red and choose ' +
-             '"Check again".' + #13#10#13#10 + 'Continuing would fail during installation - ' +
-             'Install-NodePilot.ps1 enforces the same checks.', mbError, MB_OK);
+      // No line may START with '#13#10' - the preprocessor reads a leading '#' as a directive.
+      MsgBox('These requirements are not met:' + #13#10#13#10 + BlockingTitles + #13#10 +
+             'Select a line on the page to see what to do about it, then choose "Check again".' + #13#10#13#10 +
+             'Continuing would fail during installation - Install-NodePilot.ps1 enforces the same ' +
+             'checks. Full output: ' + ExpandConstant('{%TEMP}') + '\nodepilot-server-setup.log',
+             mbError, MB_OK);
       Result := False;
     end
     else if not ProbeRan then
@@ -1624,7 +1673,7 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
-  AnswerMode, Arguments, ResultIni, ProvisionIni, DbStatus, Extra: String;
+  AnswerMode, Arguments, ResultIni, ProvisionIni, DbStatus, Problems, Extra: String;
 begin
   Result := EnsureSession();
   if Result <> '' then Exit;
@@ -1680,6 +1729,17 @@ begin
     begin
       Result := 'The database could not be prepared: ' +
         ExpandNewlines(GetIniString('provision.database', 'detail', '', ProvisionIni));
+      Exit;
+    end;
+
+    // The same readback for the other two fixes. A fleet rollout whose runtime installation failed
+    // used to walk on to Apply and die in the pre-flight instead, naming a runtime the answer file
+    // had just asked the setup to install.
+    Problems := Trim(ProvisionSectionProblem(ProvisionIni, 'provision.runtime', 'The ASP.NET Core runtime') +
+      ProvisionSectionProblem(ProvisionIni, 'provision.signer', 'The publisher certificate'));
+    if Problems <> '' then
+    begin
+      Result := 'The provisioning requested by the answer file did not complete. ' + Problems;
       Exit;
     end;
   end;

@@ -94,7 +94,7 @@ test.describe('Fehlerbehandlung & Edge Cases (Teil 7)', () => {
     await expect(pill).toBeVisible({ timeout: 15_000 });
     await pill.click();
     // The lint message states that the workflow has no trigger and no entry point.
-    await expect(page.getByText(/keinen Trigger|Einstiegspunkt|no-trigger/i).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/keinen Trigger|Einstiegspunkt|no-trigger|has no trigger/i).first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('7.4 — isolated (orphan) nodes raise lint errors', async ({ page }) => {

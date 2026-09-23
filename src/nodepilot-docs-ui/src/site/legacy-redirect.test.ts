@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { allPages } from '../data/nav'
-import { LANGUAGES } from '../i18n/languages'
+import { DEFAULT_LANG, LANGUAGES } from '../i18n/languages'
 import redirectScript from './public/legacy-docs-redirect.js?raw'
 import { SITE_ROUTE_SEGMENTS } from './router'
 
@@ -19,12 +19,15 @@ function forwardTarget(hash: string): string | null {
 }
 
 describe('legacy docs redirect', () => {
-  it.each(['#/en/deployment/logs', '#/de', '#/de/getting-started/installation', '#/security/hardening'])(
-    'forwards the old docs link %s to docs/',
-    (hash) => {
-      expect(forwardTarget(hash)).toBe(`docs/${hash}`)
-    },
-  )
+  it.each([
+    ['#/en/deployment/logs', 'docs/en/deployment/logs/'],
+    ['#/de', 'docs/de/'],
+    ['#/de/getting-started/installation', 'docs/de/getting-started/installation/'],
+    // Without a language the browser used to pick one; the address has to name it now.
+    ['#/security/hardening', 'docs/en/security/hardening/'],
+  ])('forwards the old docs link %s to its address %j', (hash, target) => {
+    expect(forwardTarget(hash)).toBe(target)
+  })
 
   it.each([
     ['#/', '.'],
@@ -62,11 +65,19 @@ describe('legacy docs redirect', () => {
 
   it('forwards every docs page, with and without language', () => {
     for (const page of allPages) {
-      expect(forwardTarget(`#/${page.path}`), page.path).toBe(`docs/#/${page.path}`)
+      expect(forwardTarget(`#/${page.path}`), page.path).toBe(`docs/${DEFAULT_LANG}/${page.path}/`)
       for (const lang of LANGUAGES) {
-        expect(forwardTarget(`#/${lang}/${page.path}`)).toBe(`docs/#/${lang}/${page.path}`)
+        expect(forwardTarget(`#/${lang}/${page.path}`)).toBe(`docs/${lang}/${page.path}/`)
       }
     }
+  })
+
+  it('knows the same languages the documentation does', () => {
+    const literal = redirectScript.match(/var languages = \[([^\]]*)\]/)?.[1] ?? ''
+    const listed = [...literal.matchAll(/'([^']*)'/g)].map((match) => match[1])
+    expect(listed).toEqual([...LANGUAGES])
+    // The first one is what a language-less link falls back to.
+    expect(listed[0]).toBe(DEFAULT_LANG)
   })
 
   it('owns no segment that the docs use', () => {

@@ -34,7 +34,7 @@ The service runs under one of:
 | [Provision-NodePilotDatabase.ps1](Provision-NodePilotDatabase.ps1) | Opt-in: create the SQL login + database. Permission gate **before** any mutation, otherwise DDL output only. SQL Server only |
 | [Provision-NodePilotPostgres.ps1](Provision-NodePilotPostgres.ps1) | The same for PostgreSQL: role + database through the bundled `psql`. Needs superuser credentials (Postgres has no `Trusted_Connection`). Does **not** reset the password of an existing role and does **not** change a database owner |
 | [New-NodePilotSelfSignedCertificate.ps1](New-NodePilotSelfSignedCertificate.ps1) | Opt-in: self-signed Kestrel certificate, two years, **no** automatic root import. Prints the SHA-256 pin the `np` CLI and the MCP server accept via `--tls-thumbprint` / `NODEPILOT_MCP_TLS_THUMBPRINT`, as the alternative to trusting it machine-wide |
-| [Get-DotnetRuntimePayload.ps1](Get-DotnetRuntimePayload.ps1) | Build time: fetch the ASP.NET Core runtime, verify against the published SHA512 + the checked-in pin + Authenticode |
+| [Get-DotnetRuntimePayload.ps1](Get-DotnetRuntimePayload.ps1) | Build time: fetch the .NET and ASP.NET Core runtimes, verify each against the published SHA512 + the checked-in pin + Authenticode |
 | [Test-SetupAdapter.ps1](Test-SetupAdapter.ps1) | Behavioural test of the answer-file contract (non-admin, offline, no database) |
 | [Publish-Site.ps1](Publish-Site.ps1) | Publishes the **public website** (project site + `/docs/` + `/demo/`) to a web host over SFTP or FTPS. Nothing to do with a NodePilot installation — the alternative to the GitHub Pages workflow when the site lives on your own hosting. Settings and credentials in `site-publish.local.json` (gitignored, shape in [site-publish.example.json](site-publish.example.json)); `-DryRun` lists without transferring |
 | [server/](server/README.md) | GUI installer for the server installation (Inno Setup 6) |
@@ -72,7 +72,7 @@ profile. The switch requires a restart. Formulas, limits and measurement evidenc
 
 - Windows Server 2022 or 2025, domain-joined
 - PowerShell ≥ 5.1 (Windows PowerShell) or 7+ (recommended)
-- **ASP.NET Core Runtime 10.0.11 or newer in the 10.x line (x64)** — download at <https://dotnet.microsoft.com/download>. The plain runtime is enough (Kestrel hosts itself); the **Hosting Bundle only if IIS is deliberately involved** — it wires up IIS and restarts W3SVC, which is undesirable on shared hosts (SCCM/WSUS). The `(x64)` is not a recommendation: NodePilot is published as `win-x64`, and a 32-bit or older vulnerable 10.x runtime is explicitly rejected by the pre-flight
+- **.NET Runtime and ASP.NET Core Runtime, 10.0.11 or newer in the 10.x line, both x64** — two downloads, and both are needed: the ASP.NET Core package carries only `Microsoft.AspNetCore.App` and no `dotnet.exe`, so on a machine without .NET it leaves a framework nothing can load. **Not** the Hosting Bundle — download both at <https://dotnet.microsoft.com/download>. The **Hosting Bundle only if IIS is deliberately involved** — it wires up IIS and restarts W3SVC, which is undesirable on shared hosts (SCCM/WSUS). The `(x64)` is not a recommendation: NodePilot is published as `win-x64`, and a 32-bit or older vulnerable 10.x runtime is explicitly rejected by the pre-flight
 - The target server can reach the SQL Server on port 1433
 - Antivirus exclusions have been agreed with the security team — the list is in [`docs/av-exclusions.md`](../docs/av-exclusions.md)
 
@@ -120,7 +120,7 @@ SELECT SERVERPROPERTY('ProductVersion') AS Version, SERVERPROPERTY('ProductUpdat
 On the SQL Server as `sysadmin`. The Windows login is the service's **network identity**:
 
 - **gMSA path** → the gMSA: `CONTOSO\svc-nodepilot$`
-- **LocalSystem path** → the **computer account** of the NodePilot server: `CONTOSO\NPSRV01$` (NetBIOS domain + host name + `$`). With several nodes, create each server individually.
+- **LocalSystem path** → the **computer account** of the NodePilot server: `CONTOSO\NPSRV01$` (NetBIOS domain + host name + `$`). With several nodes, create each server individually. **Exception:** if SQL Server runs on the NodePilot server itself, it sees the service as `NT AUTHORITY\SYSTEM`, not as the computer account — that login (it exists by default) needs the database user and `db_owner` instead. The installer picks the right one.
 
 ```sql
 USE master;
@@ -278,8 +278,12 @@ WinRM endpoint on the targets (if not already active):
 
 ```powershell
 Enable-PSRemoting -Force
-winrm quickconfig -transport:https   # for Remote:RequireWinRmSsl=true
+winrm quickconfig -transport:https   # only for machines using HTTPS
 ```
+
+Machines connect over HTTP with Negotiate by default: Kerberos for domain targets entered by
+DNS name, NTLM for workgroup targets (list them in `TrustedHosts` on the NodePilot host).
+HTTPS is optional per machine and needs a certificate the NodePilot host trusts.
 
 ## Obtaining the artifact
 
@@ -350,7 +354,7 @@ $releaseSigner = '0123456789ABCDEF0123456789ABCDEF01234567'
     -PublicHostname 'nodepilot.contoso.local'
 ```
 
-→ The service runs as `LocalSystem`; on the SQL Server the **computer account** `CONTOSO\<host>$` must exist as a `db_owner` login (see section 3).
+→ The service runs as `LocalSystem`; on the SQL Server the **computer account** `CONTOSO\<host>$` must exist as a `db_owner` login (see section 3) — or `NT AUTHORITY\SYSTEM` when SQL Server runs on the same host.
 
 **SQL Server + gMSA:**
 
@@ -617,12 +621,12 @@ overwritten. Settings are written last (a service restart may be needed for them
 | DPAPI decrypt failed for credentials after a service-account change | The template sets `Credentials:DpapiScope=LocalMachine`. For existing `CurrentUser`-encrypted credentials: re-enter the credentials (there is no migration helper). |
 | After an update the service does not see the configuration | ACL on `appsettings.Production.json` — the update script re-applies Read for the current service account. After manual intervention: `icacls "<Install>\appsettings.Production.json" /grant "<gMSA$>:(R)"`. |
 | Port 443 already in use | `Get-NetTCPConnection -LocalPort 443` shows the PID. Often the IIS default site or the WinRM HTTPS listener. The installer binds through a Kestrel socket, not http.sys — but a conflict is still a conflict. |
-| A ticket was raised, where do I look? | The **support log** — two sub-sinks from the same filter: (1) the plain-text file `C:\ProgramData\NodePilot\logs\nodepilot-support-*.log` (90-day retention) for RDP/tail diagnosis, (2) the structured database table `SupportEvents` (90-day retention via `Retention:SupportEvents`) for the web viewer with filtering, cursor and export. In the browser: Admin settings → "Support log" tab → toggle "Table (DB) \| Plain text (file)". Full diagnostics remain alongside in `C:\ProgramData\NodePilot\logs\nodepilot-<date>.log`, which keeps only **7 files** (rolling daily and again at 100 MB) — secure it early. Inventory of every log file: [Logs & diagnostics](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/logs). |
-| Where is the manual on a machine with no internet? | The installation serves it at `https://<host>/docs` — the same docs as https://sev7enup.github.io/NodePilot/docs/, staged into `wwwroot\docs`, at the version actually installed. No login required, and it stays readable during a database outage. It is gone only if the service itself will not start. |
+| A ticket was raised, where do I look? | The **support log** — two sub-sinks from the same filter: (1) the plain-text file `C:\ProgramData\NodePilot\logs\nodepilot-support-*.log` (90-day retention) for RDP/tail diagnosis, (2) the structured database table `SupportEvents` (90-day retention via `Retention:SupportEvents`) for the web viewer with filtering, cursor and export. In the browser: Admin settings → "Support log" tab → toggle "Table (DB) \| Plain text (file)". Full diagnostics remain alongside in `C:\ProgramData\NodePilot\logs\nodepilot-<date>.log`, which keeps only **7 files** (rolling daily and again at 100 MB) — secure it early. Inventory of every log file: [Logs & diagnostics](https://www.nodepilot.run/docs/en/deployment/logs/). |
+| Where is the manual on a machine with no internet? | The installation serves it at `https://<host>/docs` — the same docs as https://www.nodepilot.run/docs/, staged into `wwwroot\docs`, at the version actually installed. No login required, and it stays readable during a database outage. It is gone only if the service itself will not start. |
 
 ## What the installer does NOT do
 
-- It does not install the ASP.NET Core runtime — that must be present beforehand. **Exception:** the
+- It does not install the .NET runtimes — they must be present beforehand. **Exception:** the
   GUI setup (`server/`) ships the official Microsoft runtime installer and offers it on the readiness
   page; the ZIP route described here does not. Both install and update do *check* it: once the
   artifact is extracted, the frameworks its `runtimeconfig.json` names are matched against what the

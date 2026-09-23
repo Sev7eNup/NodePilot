@@ -52,10 +52,13 @@ public static class ExecutionDispatchOutboxClaimer
                     WHERE blocked.[WorkflowId] = q.[WorkflowId])
                 """;
             if (blockedWorkflowIds.Count > 0) parameters.Add(JsonSerializer.Serialize(blockedWorkflowIds));
+            // SQL Server keeps a pooled connection's isolation level, so a Serializable transaction
+            // elsewhere would leave READPAST rejected here. Set READ COMMITTED explicitly.
             // READCOMMITTEDLOCK permits READPAST with RCSI. ROWLOCK cannot be combined with it.
             sql = $$"""
                 -- NodePilot:ExecutionDispatchClaim
-                ;WITH candidate AS (
+                SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+                WITH candidate AS (
                     SELECT TOP (1) q.[ExecutionId], q.[LeaseOwner], q.[LeaseExpiresAt], q.[AttemptCount]
                     FROM [ExecutionDispatchOutbox] AS q WITH (UPDLOCK, READPAST, READCOMMITTEDLOCK)
                     WHERE q.[AvailableAt] <= {0}

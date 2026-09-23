@@ -263,20 +263,16 @@ function Get-NodePilotServiceCrashReason {
         }
     } catch { }
 
-    # 3. Whatever the SCM itself recorded. Preferring an event that names NodePilot and otherwise
-    # taking the first start failure in the window: the window opens when Apply starts, so an
-    # unrelated service failing inside it is unlikely, and the event text names its own service.
+    # 3. Whatever the SCM itself recorded. The selection and the wording live in SetupContract.ps1
+    # so they can be tested without a service; here we only fetch. The window opens when Apply
+    # starts, so an unrelated service failing inside it is unlikely, and the event names its own.
     try {
         $scmEvents = @(Get-WinEvent -FilterHashtable @{
             LogName = 'System'; ProviderName = 'Service Control Manager'; StartTime = $Since
-            Id      = @(7000, 7009, 7023, 7024, 7031, 7034)
-        } -MaxEvents 10 -ErrorAction Stop)
-        $scm = @($scmEvents | Where-Object { $_.Message -like '*NodePilot*' }) | Select-Object -First 1
-        if (-not $scm) { $scm = $scmEvents | Select-Object -First 1 }
-        if ($scm) {
-            $line = @($scm.Message -split "`r?`n" | Where-Object { $_.Trim() }) | Select-Object -First 1
-            if ($line) { return "SCM event $($scm.Id): $($line.Trim())" }
-        }
+            Id      = $script:NodePilotScmFailureEventIds
+        } -MaxEvents 20 -ErrorAction Stop)
+        $reason = Resolve-NodePilotScmFailureReason -Events $scmEvents
+        if ($reason) { return $reason }
     } catch { }
 
     return ''
@@ -341,7 +337,7 @@ function ConvertTo-NodePilotPreflightParameters {
     }
     if ($splat['IsLocalSystem']) {
         $splat['ComputerAccount'] = "$env:USERDOMAIN\$env:COMPUTERNAME`$"
-        $splat['SqlPrincipal'] = $splat['ComputerAccount']
+        $splat['SqlPrincipal'] = Get-NodePilotLocalSystemSqlPrincipal -SqlServer ([string]$Answers['database.sqlServer'])
     }
     else {
         $splat['ServiceAccount'] = [string]$Answers['identity.account']
@@ -365,9 +361,7 @@ function ConvertTo-NodePilotPreflightParameters {
         $splat['PostgresHost'] = [string]$Answers['database.postgresHost']
         $splat['PostgresUser'] = [string]$Answers['database.postgresUser']
         $splat['PostgresDatabase'] = [string]$Answers['database.postgresDatabase']
-        if ($Answers.Contains('database.postgresPort') -and $Answers['database.postgresPort']) {
-            $splat['PostgresPort'] = [int]$Answers['database.postgresPort']
-        }
+        $splat['PostgresPort'] = Get-NodePilotPostgresPort -Answers $Answers
         # Lets the check test whether the service can log in rather than only whether the port
         # answers. Without the client it falls back to the TCP probe on its own.
         if ($Answers.Contains('database.postgresPassword')) {
@@ -401,34 +395,36 @@ function ConvertTo-NodePilotPreflightParameters {
 
 function Invoke-ProvisionRuntime {
     # NodePilotServer.iss extracts every dontcopy payload file flat into {tmp} and passes that
-    # directory as PayloadRoot, so the runtime installer sits directly in it. More than one match
-    # is refused rather than resolved arbitrarily, in case the payload is malformed or tampered
-    # with.
-    $installers = @(
-        Get-ChildItem -LiteralPath $PayloadRoot -Filter 'aspnetcore-runtime-*.exe' -File `
-            -ErrorAction SilentlyContinue
-    )
-    if ($installers.Count -ne 1) {
+    # directory as PayloadRoot, so both installers sit directly in it. The payload rules live in
+    # SetupContract.ps1 so the tests can exercise them without running an installer.
+    $plan = Get-NodePilotRuntimeInstallerPlan -PayloadRoot $PayloadRoot
+    if ($plan.Error) {
         Set-NodePilotResult -Buffer $result -Section 'provision.runtime' -Name 'status' -Value 'Fail'
-        Set-NodePilotResult -Buffer $result -Section 'provision.runtime' -Name 'detail' `
-            -Value "Expected exactly one bundled runtime installer in the payload; found $($installers.Count)."
+        Set-NodePilotResult -Buffer $result -Section 'provision.runtime' -Name 'detail' -Value $plan.Error
         return
     }
-    $installer = $installers[0]
-    $process = Start-Process -FilePath $installer.FullName `
-        -ArgumentList '/install', '/quiet', '/norestart' -Wait -PassThru
-    # 3010 = installed, reboot pending. 1638 = a newer version is already present.
-    $accepted = @(0, 3010, 1638)
-    Set-NodePilotResult -Buffer $result -Section 'provision.runtime' -Name 'exitCode' -Value $process.ExitCode
-    Set-NodePilotResult -Buffer $result -Section 'provision.runtime' -Name 'status' `
-        -Value $(if ($accepted -contains $process.ExitCode) { 'Pass' } else { 'Fail' })
-    Set-NodePilotResult -Buffer $result -Section 'provision.runtime' -Name 'detail' -Value $(
-        switch ($process.ExitCode) {
-            0 { 'Runtime installed.' }
-            3010 { 'Runtime installed; a reboot is pending.' }
-            1638 { 'A newer runtime is already installed.' }
-            default { "Runtime installer failed with exit code $($process.ExitCode). See %TEMP%\dd_*.log." }
-        })
+
+    # Every step runs, whatever the previous one returned. A host bundle declines with 1638 on a
+    # machine that already carries a newer .NET runtime, and stopping there would refuse the very
+    # machine that only ever needed the ASP.NET Core half.
+    $attempts = @()
+    foreach ($step in $plan.Steps) {
+        Write-NodePilotProgress -Step 'runtime' -Text "Installing the $($step.Label)"
+        $process = Start-Process -FilePath $step.Path `
+            -ArgumentList '/install', '/quiet', '/norestart' -Wait -PassThru
+        $attempts += [pscustomobject]@{ Label = $step.Label; ExitCode = $process.ExitCode }
+    }
+
+    # Ask the readiness check itself rather than trusting exit codes - it is the same function the
+    # wizard runs, so a Pass here and a green row there cannot disagree. Get-NodePilotDotNetHostState
+    # probes Program Files as well as PATH, which matters because this process kept the environment
+    # block it started with and cannot see the PATH the installer just wrote.
+    $verification = Test-NodePilotDotNetRuntime
+
+    $outcome = New-NodePilotRuntimeProvisionResult -Attempts $attempts -Verification $verification
+    Set-NodePilotResult -Buffer $result -Section 'provision.runtime' -Name 'exitCode' -Value $outcome.ExitCode
+    Set-NodePilotResult -Buffer $result -Section 'provision.runtime' -Name 'status' -Value $outcome.Status
+    Set-NodePilotResult -Buffer $result -Section 'provision.runtime' -Name 'detail' -Value $outcome.Detail
 }
 
 function Get-NodePilotSignerCertificatePath {
@@ -535,11 +531,14 @@ function Invoke-NodePilotSetupMode {
         }
 
         'Provision' {
+            # Needed for the runtime verification: Invoke-ProvisionRuntime re-runs the readiness
+            # check after installing rather than trusting the installer's exit code.
+            . (Join-Path $scriptDirectory 'Preflight.ps1')
             $answers = Read-NodePilotAnswerFile -Path $AnswerFile
             $performed = 0
 
             if ($answers.Contains('provisioning.installDotnetRuntime') -and [bool]$answers['provisioning.installDotnetRuntime']) {
-                Write-NodePilotProgress -Step 'runtime' -Text 'Installing the ASP.NET Core runtime'
+                Write-NodePilotProgress -Step 'runtime' -Text 'Installing the .NET runtimes'
                 Invoke-ProvisionRuntime
                 $performed++
             }
@@ -579,7 +578,7 @@ function Invoke-NodePilotSetupMode {
                         $outcome = & (Join-Path $scriptDirectory 'Provision-NodePilotPostgres.ps1') `
                             -PsqlPath $psql `
                             -HostName ([string]$answers['database.postgresHost']) `
-                            -Port ([int]$answers['database.postgresPort']) `
+                            -Port (Get-NodePilotPostgresPort -Answers $answers) `
                             -Database ([string]$answers['database.postgresDatabase']) `
                             -User ([string]$answers['database.postgresUser']) `
                             -Password (ConvertTo-NodePilotSecureString -PlainText ([string]$answers['database.postgresPassword'])) `
@@ -591,7 +590,7 @@ function Invoke-NodePilotSetupMode {
                 else {
                     Write-NodePilotProgress -Step 'database' -Text 'Creating the SQL login and database'
                     $principal = if ([string]$answers['identity.type'] -eq 'localSystem') {
-                        "$env:USERDOMAIN\$env:COMPUTERNAME`$"
+                        Get-NodePilotLocalSystemSqlPrincipal -SqlServer ([string]$answers['database.sqlServer'])
                     }
                     else { [string]$answers['identity.account'] }
                     # The certificate host name has to travel with the server name, or TLS

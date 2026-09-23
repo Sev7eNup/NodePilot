@@ -60,6 +60,46 @@ public class CustomActivityTypeAndValidationTests
         => CustomActivityType.IsValidCustomType(type).Should().Be(expected);
 
     [Fact]
+    public void RemapByKey_KnownKey_RewritesReferenceAndKeepsInputs()
+    {
+        var target = Guid.NewGuid();
+        var json = """{"nodes":[{"id":"a","type":"activity","data":{"activityType":"custom:disk_check","config":{"__customDefinitionId":"11111111-1111-1111-1111-111111111111","__customKey":"disk_check","drive":"C"}}},{"id":"b","type":"activity","data":{"activityType":"runScript","config":{"__customDefinitionId":"keep"}}}],"edges":[]}""";
+
+        var output = CustomActivityReferences.RemapByKey(json, new Dictionary<string, Guid> { ["disk_check"] = target }, out var missing);
+
+        missing.Should().BeEmpty();
+        using var doc = JsonDocument.Parse(output);
+        var nodes = doc.RootElement.GetProperty("nodes");
+        var custom = nodes[0].GetProperty("data").GetProperty("config");
+        custom.GetProperty("__customDefinitionId").GetString().Should().Be(target.ToString());
+        custom.GetProperty("__customKey").GetString().Should().Be("disk_check");
+        custom.GetProperty("drive").GetString().Should().Be("C");
+        nodes[1].GetProperty("data").GetProperty("config").GetProperty("__customDefinitionId").GetString().Should().Be("keep");
+    }
+
+    [Fact]
+    public void RemapByKey_MissingReference_IsAddedFromTheKey()
+    {
+        var target = Guid.NewGuid();
+        var json = """{"nodes":[{"id":"a","type":"activity","data":{"activityType":"custom:disk_check","config":{}}}],"edges":[]}""";
+
+        var output = CustomActivityReferences.RemapByKey(json, new Dictionary<string, Guid> { ["disk_check"] = target }, out _);
+
+        output.Should().Contain($"\"__customDefinitionId\":\"{target}\"");
+    }
+
+    [Fact]
+    public void RemapByKey_UnknownKey_LeavesDefinitionUnchangedAndReportsKeyOnce()
+    {
+        var json = """{"nodes":[{"id":"a","type":"activity","data":{"activityType":"custom:gone","config":{"__customDefinitionId":"11111111-1111-1111-1111-111111111111"}}},{"id":"b","type":"activity","data":{"activityType":"custom:gone","config":{}}}],"edges":[]}""";
+
+        var output = CustomActivityReferences.RemapByKey(json, new Dictionary<string, Guid>(), out var missing);
+
+        output.Should().Be(json);
+        missing.Should().Equal("gone");
+    }
+
+    [Fact]
     public void Validate_RejectsOutputNamedExitCode()
     {
         var error = CustomActivityValidation.Validate("k", "K", "extension", "auto",

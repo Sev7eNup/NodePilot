@@ -52,7 +52,7 @@ Deploy die vorige Fassung stillschweigend weiterveröffentlichen, ohne dass etwa
 | `media/` | `pages-media/` | https://sev7enup.github.io/NodePilot/media/nodepilot-product-tour.mp4 |
 | `og-image.png` | `public/og-image.png` | Vorschaubild der Website |
 
-Deep Links in die Doku haben die Form `https://sev7enup.github.io/NodePilot/docs/#/<sprache>/<seite>`.
+Deep Links in die Doku haben die Form `https://sev7enup.github.io/NodePilot/docs/<sprache>/<seite>/`.
 
 - **`NP_SITE_ORIGIN`:** Fast alles ist ortsunabhängig (`base: './'`, Hash-Routen). Nur wenige URLs
   können nicht relativ sein: `canonical`, `og:url` und `og:image` im Website-Head sowie der
@@ -98,23 +98,30 @@ Deep Links in die Doku haben die Form `https://sev7enup.github.io/NodePilot/docs
 - **Texte und Sprache:** Die Texte der Website, auch die Blogbeiträge, stehen in
   `src/site/i18n/de.ts` und `en.ts`. Website und Doku teilen sich die Sprachwahl über
   `LANG_STORAGE_KEY` aus `src/i18n/languages.ts`, weil beide auf derselben Origin liegen.
+- **Zwei Grafiken auf der Startseite**, beide als Inline-SVG ohne Bilddatei: das Workflow-Beispiel
+  im Hero (`src/site/graph.ts`) und das Architekturdiagramm darunter (`src/site/topology.ts`). Die
+  Geometrie steht in diesen beiden Dateien als reine Funktionen, `main.ts` schreibt die Koordinaten
+  ins Markup und wählt je nach Breite das weite oder das gestapelte Layout. Beide Animationen
+  laufen nur, solange die Grafik im Sichtfeld ist, und die globale
+  `prefers-reduced-motion`-Regel in `site.css` schaltet sie ab — die Grafiken müssen deshalb ohne
+  Bewegung vollständig lesbar bleiben.
 - **Keine Drittanfragen:** Schriften (`@fontsource/ibm-plex-sans`, `@fontsource/ibm-plex-mono`),
   App-Icon und Screenshots aus `docs/images/` werden mitgebaut, das Video liegt unter `media/`.
   Google Fonts und `raw.githubusercontent.com` sind tabu; die Datenschutzerklärung verlässt sich
   darauf.
-- **Rechtstexte:** Impressum (`#/impressum`) und Datenschutz (`#/datenschutz`) rendern
+- **Rechtstexte:** Impressum (`/impressum/`) und Datenschutz (`/datenschutz/`) rendern
   `src/site/legal/impressum.de.html` und `src/site/legal/datenschutz.de.html`. Die Texte liefert
   der Projektinhaber. Sie liegen nur auf Deutsch vor und erscheinen auch in der englischen Ansicht
   auf Deutsch. Fehlt eine Datei oder ist sie leer, schlägt der Test fehl.
-- **Eigene Domain (später):** Die Website ist domain-unabhängig gebaut (`base: './'`, relative
-  Links). Die Domain wird im Konto verifiziert und dann im Repository unter *Settings → Pages →
-  Custom domain* eingetragen; eine `CNAME`-Datei braucht es beim Deploy per Actions nicht. Danach
-  die absoluten `sev7enup.github.io/NodePilot`-Adressen in README und Doku sowie die OG- und
-  Canonical-Tags beider `index.html` nachziehen.
+- **Eigene Domain:** Die Seite läuft unter <https://www.nodepilot.run/>, ausgeliefert von
+  `deploy/Publish-Site.ps1` auf den eigenen Webspace; GitHub Pages bleibt als Spiegel bestehen.
+  Die wenigen absoluten Adressen (Canonical, OG, `hreflang`, der Demo-Link in der Doku) sind
+  gegen `PAGES_ORIGIN` geschrieben und werden beim Bauen über `NP_SITE_ORIGIN` auf das Ziel
+  umgeschrieben — deshalb steht in den Quellen weiterhin die Pages-Adresse.
 
 ## Geführter Produkteinstieg
 
-Die Website-Route `#/erleben` bietet zwei Aufgaben direkt in der Browserdemo an:
+Die Website-Route `/walkthrough/` bietet zwei Aufgaben direkt in der Browserdemo an:
 eine Konfigurationsdatei bereitstellen und einen fehlgeschlagenen Kopiervorgang untersuchen.
 Die Links `demo/?tour=file&lang=de` und `demo/?tour=diagnose&lang=de` öffnen die Führung;
 `lang=en` verwendet Englisch. Die Übersichtsgrafik bleibt auf der Startseite.
@@ -167,4 +174,16 @@ Die Seiten unter `content/` sind technische Dokumentation:
 
 ## Routing
 
-HashRouter (`#/getting-started/introduction`) — funktioniert ohne serverseitige Rewrites auf jedem Host (auch Subpfad, da `base: './'`). Vola `Ctrl/Cmd+K` öffnet die Suche.
+Echte Adressen (`/docs/de/getting-started/introduction/`). Jede Adresse ist eine eigene Datei, die
+`scripts/prerender-docs.mjs` nach dem Build schreibt — mit eigenem Titel, eigener Beschreibung,
+kanonischer Adresse und `hreflang`-Paar, dazu `dist/sitemap.xml`. Weil jede Adresse existiert,
+braucht kein Host eine Rewrite-Regel; im Produkt bedient `DocsSiteSetup.cs` sie als Endpunkte,
+weil dort der SPA-Auffangpfad jede endungslose Adresse abfangen würde.
+
+Denselben Bundle-Stand gibt es an zwei Präfixen (`/docs/` und `/NodePilot/docs/`), deshalb steht
+in jeder Datei ein `np-docs-base`-Meta mit ihrer Tiefe; `src/lib/docsBase.ts` löst es **einmal
+beim Laden** in den Basispfad des Routers auf. Später wäre falsch: der Router ändert die Adresse,
+ohne ein neues Dokument zu laden.
+
+Alte `#/…`-Adressen leitet `public/legacy-hash-redirect.js` weiter (erstes, klassisches Skript);
+ohne Sprachsegment auf die Standardsprache. `Ctrl/Cmd+K` öffnet die Suche.

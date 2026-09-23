@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { allPages, navTitleKey } from '../data/nav'
 import { contentByLang } from '../lib/content'
 import { DEFAULT_LANG, type Lang } from '../i18n/languages'
+import { docPath } from '../lib/docPath'
 import { ArrowRight, Close, Search } from '@carbon/icons-react'
 
 interface SearchModalProps {
@@ -82,7 +83,7 @@ export default function SearchModal({ lang, open, onClose }: SearchModalProps) {
   if (!open) return null
 
   const go = (path: string) => {
-    navigate(`/${lang}/${path}`)
+    navigate(docPath(lang, path))
     onClose()
   }
 

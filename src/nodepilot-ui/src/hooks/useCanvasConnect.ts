@@ -2,6 +2,7 @@ import { useCallback, useState, type RefObject } from 'react';
 import { addEdge, type Node, type Edge, type FinalConnectionState } from '@xyflow/react';
 import { DEFAULT_SOURCE_PORT, edgeSourcePort, edgeTargetPort, normalizePort, oppositePort } from '../lib/edgePorts';
 import { randomUuid } from '../lib/uuid';
+import { newActivityConfig } from '../lib/customActivities';
 
 type SelectedItem = { type: 'node' | 'edge'; id: string } | null;
 
@@ -83,7 +84,7 @@ export function useCanvasConnect({
       id: newNodeId,
       type: 'activity',
       position: quickConnect.flowPosition,
-      data: { label, activityType: type, targetMachineId: null, credentialId: null, config: {} },
+      data: { label, activityType: type, targetMachineId: null, credentialId: null, config: newActivityConfig(type) },
     };
     const newEdge: Edge = {
       id: `edge-${randomUuid()}`,
@@ -119,7 +120,7 @@ export function useCanvasConnect({
       id: newNodeId,
       type: 'activity',
       position: { x: insertAt.x - 100, y: insertAt.y - 40 },
-      data: { label, activityType: type, targetMachineId: null, credentialId: null, config: {} },
+      data: { label, activityType: type, targetMachineId: null, credentialId: null, config: newActivityConfig(type) },
     };
     // The first half is always unconditional, because the original condition belongs to what
     // runs after the new node. The second half inherits label and condition, so a path such as

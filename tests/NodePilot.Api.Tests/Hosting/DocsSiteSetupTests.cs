@@ -14,10 +14,12 @@ namespace NodePilot.Api.Tests.Hosting;
 /// <summary>
 /// Pins how the bundled documentation is served at /docs.
 ///
-/// The bundle is built with a relative Vite base, so its assets resolve against the document
-/// url: at /docs/ they become /docs/assets/..., at /docs they become /assets/... and hit the
-/// main SPA's bundle instead, leaving a blank page. The trailing-slash redirect is therefore
-/// behaviour under test, not an implementation detail.
+/// Every documentation address is its own prerendered index.html, so each page carries its own
+/// title and description. The bundle is built with a relative Vite base, so a page's assets
+/// resolve against the document url: at /docs/de/cli/ they become /docs/de/cli/../../assets/...,
+/// which is why each file states its own depth and why an address without a trailing slash
+/// redirects rather than being served. The redirect is behaviour under test, not an
+/// implementation detail.
 /// </summary>
 public sealed class DocsSiteSetupTests : IDisposable
 {
@@ -43,6 +45,10 @@ public sealed class DocsSiteSetupTests : IDisposable
             Directory.CreateDirectory(Path.Combine(docsRoot, "assets"));
             File.WriteAllText(Path.Combine(docsRoot, "index.html"), "<html>docs site</html>");
             File.WriteAllText(Path.Combine(docsRoot, "assets", "app.js"), "export default 1;");
+            // One prerendered page, the shape the docs build writes for every address.
+            var page = Path.Combine(docsRoot, "de", "cli");
+            Directory.CreateDirectory(page);
+            File.WriteAllText(Path.Combine(page, "index.html"), "<html>docs page cli</html>");
         }
 
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -110,11 +116,78 @@ public sealed class DocsSiteSetupTests : IDisposable
     [Fact]
     public async Task MissingDocsAsset_Is404_NotTheAppShell()
     {
-        // A catch-all over /docs would answer 200 text/html here, and a broken asset reference
-        // would reach a browser as a confusing MIME error instead of a plain 404.
+        // The catch-all over /docs carries the same `nonfile` constraint as the SPA fallback, so
+        // an asset request never selects it. Without that, a broken asset reference would reach
+        // a browser as a confusing MIME error instead of a plain 404.
         var response = await GetAsync("/docs/assets/missing.js");
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task DocsPage_ServesItsOwnFile_NotTheDocsRootAndNotTheAppShell()
+    {
+        // The root shell would look like a working page and render nothing: its assets are
+        // relative to the documentation root and would be looked for two directories too deep.
+        var response = await GetAsync("/docs/de/cli/");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("text/html");
+        (await response.Content.ReadAsStringAsync()).Should().Contain("docs page cli");
+    }
+
+    [Fact]
+    public async Task DocsPageWithoutTrailingSlash_RedirectsToTheDirectory()
+    {
+        var response = await GetAsync("/docs/de/cli");
+
+        response.StatusCode.Should().Be(HttpStatusCode.MovedPermanently);
+        response.Headers.Location!.ToString().Should().Be("/docs/de/cli/");
+        response.Headers.Location!.IsAbsoluteUri.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task UnknownDocsPage_Is404_AndNeitherShell()
+    {
+        var response = await GetAsync("/docs/de/nope/");
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().NotContain("docs site");
+        body.Should().NotContain("app spa");
+    }
+
+    [Theory]
+    [InlineData("../index.html")]
+    [InlineData("de/../../index.html")]
+    [InlineData("..")]
+    public void PageResolution_RefusesAnAddressThatLeavesTheDocumentationDirectory(string rest)
+    {
+        // Routing normalises a ".." away before the endpoint is even selected, so this is tested
+        // where it lives rather than over HTTP, where it can never be reached.
+        var docsRoot = Path.Combine(_contentRoot, "wwwroot", "docs");
+
+        DocsSiteSetup.TryResolveDocsPage(docsRoot, rest, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void PageResolution_AcceptsAPrerenderedPage()
+    {
+        var docsRoot = Path.Combine(_contentRoot, "wwwroot", "docs");
+        Directory.CreateDirectory(Path.Combine(docsRoot, "de", "cli"));
+        File.WriteAllText(Path.Combine(docsRoot, "de", "cli", "index.html"), "<html>docs page cli</html>");
+
+        DocsSiteSetup.TryResolveDocsPage(docsRoot, "de/cli", out var page).Should().BeTrue();
+        page.Should().Be(Path.Combine(docsRoot, "de", "cli", "index.html"));
+    }
+
+    [Fact]
+    public async Task WithoutADocsBundle_ADeepAddressStaysWithTheSpaFallback()
+    {
+        var response = await GetAsync("/docs/de/cli/", withDocsBundle: false);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("app spa");
     }
 
     [Fact]

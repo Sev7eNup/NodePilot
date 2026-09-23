@@ -9,6 +9,10 @@
     The permission gate runs before anything is mutated. Without sysadmin or CREATE ANY DATABASE
     the script changes nothing and returns the DDL for a DBA to run.
 
+    Every server call returns an outcome rather than throwing, so a failed statement is reported
+    with its own message instead of terminating the setup adapter. Same shape as
+    Provision-NodePilotPostgres.ps1.
+
     PostgreSQL is out of scope. The installer ships no Npgsql and psql.exe exists only in the
     desktop payload, so the wizard shows the CREATE ROLE snippet from
     Get-NodePilotPostgresRemediationScript instead of a button that cannot work.
@@ -20,6 +24,9 @@
     Windows principal to create the login for: the gMSA, or the computer account for LocalSystem.
 .PARAMETER CertificateHostName
     Name to validate the server certificate against. Derived from -Server when omitted.
+.PARAMETER ConnectionFactory
+    Opens a connection for a connection string. The tests replace it with a fake, which is the
+    only way to reach the branches below without a SQL Server.
 .OUTPUTS
     An object with Status ('Pass' | 'Skipped' | 'Fail'), Detail and Remediation.
 #>
@@ -29,7 +36,11 @@ param(
     [Parameter(Mandatory)][string]$Server,
     [Parameter(Mandatory)][string]$Database,
     [Parameter(Mandatory)][string]$Principal,
-    [string]$CertificateHostName
+    [string]$CertificateHostName,
+    [scriptblock]$ConnectionFactory = {
+        param($ConnectionString)
+        New-Object System.Data.SqlClient.SqlConnection $ConnectionString
+    }
 )
 
 $ErrorActionPreference = 'Stop'
@@ -56,27 +67,64 @@ if ($Database -notmatch '^[A-Za-z_][A-Za-z0-9_]{0,127}$') {
         "Database name '$Database' is not a plain identifier. The wizard will not build DDL from it; " +
         'create the database by hand.')
 }
-if ($Principal -notmatch '^[A-Za-z0-9._-]+\\[A-Za-z0-9._$-]+$') {
+# Letters in any script and a space in the domain part, for SYSTEM's localized authority name.
+if ($Principal -notmatch '^[\p{L}\p{N}._ -]+\\[\p{L}\p{N}._$-]+$') {
     return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
         "Principal '$Principal' is not a DOMAIN\\account name. Create the login by hand.")
 }
 $escapedDatabase = $Database.Replace(']', ']]')
 $escapedPrincipal = $Principal.Replace(']', ']]')
 
+# Errors are values here, not exceptions. A SqlException in the middle of the mutating block used
+# to terminate the script, which left the adapter with no outcome object to report.
+function Open-SqlConnection {
+    param([Parameter(Mandatory)][string]$ConnectionString)
+    $connection = $null
+    try {
+        $connection = & $ConnectionFactory $ConnectionString
+        $connection.Open()
+        return [pscustomobject]@{ Succeeded = $true; Connection = $connection; Error = '' }
+    }
+    catch {
+        if ($connection) { $connection.Dispose() }
+        return [pscustomobject]@{ Succeeded = $false; Connection = $null; Error = $_.Exception.Message }
+    }
+}
+
 function Invoke-Scalar {
     param([Parameter(Mandatory)]$Connection, [Parameter(Mandatory)][string]$Sql)
-    $command = $Connection.CreateCommand()
-    $command.CommandText = $Sql
-    $command.CommandTimeout = 60
-    return $command.ExecuteScalar()
+    try {
+        $command = $Connection.CreateCommand()
+        $command.CommandText = $Sql
+        $command.CommandTimeout = 60
+        return [pscustomobject]@{ Succeeded = $true; Value = $command.ExecuteScalar(); Error = '' }
+    }
+    catch {
+        return [pscustomobject]@{ Succeeded = $false; Value = $null; Error = $_.Exception.Message }
+    }
 }
 
 function Invoke-NonQuery {
     param([Parameter(Mandatory)]$Connection, [Parameter(Mandatory)][string]$Sql)
-    $command = $Connection.CreateCommand()
-    $command.CommandText = $Sql
-    $command.CommandTimeout = 60
-    [void]$command.ExecuteNonQuery()
+    try {
+        $command = $Connection.CreateCommand()
+        $command.CommandText = $Sql
+        $command.CommandTimeout = 60
+        [void]$command.ExecuteNonQuery()
+        return [pscustomobject]@{ Succeeded = $true; Error = '' }
+    }
+    catch {
+        return [pscustomobject]@{ Succeeded = $false; Error = $_.Exception.Message }
+    }
+}
+
+# SQL answers NULL for a login or role name it cannot resolve, and [bool][System.DBNull]::Value is
+# $true in PowerShell - which would read "no permission" as "may create databases" and open the
+# gate. NULL is not a yes.
+function Test-SqlTruth {
+    param($Value)
+    if ($null -eq $Value -or $Value -is [System.DBNull]) { return $false }
+    return [bool]$Value
 }
 
 # Uses the same connection shape as the runtime and the pre-flight, so success here cannot come
@@ -85,62 +133,107 @@ $masterConnectionString = Resolve-NodePilotSqlProbeConnectionString `
     -Server $Server -Database 'master' -CertificateHostName $CertificateHostName
 
 $created = New-Object System.Collections.Generic.List[string]
-$connection = New-Object System.Data.SqlClient.SqlConnection $masterConnectionString
-try {
-    try { $connection.Open() }
-    catch {
-        return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
-            "Cannot connect to $Server as the current admin: $($_.Exception.Message)")
-    }
 
+$master = Open-SqlConnection -ConnectionString $masterConnectionString
+if (-not $master.Succeeded) {
+    return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
+        "Cannot connect to $Server as the current admin: $($master.Error)")
+}
+
+try {
     # --- permission gate: everything below this point mutates ---
-    $isSysadmin = [bool](Invoke-Scalar -Connection $connection -Sql "SELECT IS_SRVROLEMEMBER('sysadmin')")
-    $mayCreateDatabase = [bool](Invoke-Scalar -Connection $connection `
-        -Sql "SELECT HAS_PERMS_BY_NAME(NULL, NULL, 'CREATE ANY DATABASE')")
-    if (-not $isSysadmin -and -not $mayCreateDatabase) {
+    $sysadmin = Invoke-Scalar -Connection $master.Connection -Sql "SELECT IS_SRVROLEMEMBER('sysadmin')"
+    if (-not $sysadmin.Succeeded) {
+        return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
+            "Could not read the server role membership on $Server`: $($sysadmin.Error)")
+    }
+    $createAny = Invoke-Scalar -Connection $master.Connection `
+        -Sql "SELECT HAS_PERMS_BY_NAME(NULL, NULL, 'CREATE ANY DATABASE')"
+    if (-not $createAny.Succeeded) {
+        return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
+            "Could not read the CREATE ANY DATABASE permission on $Server`: $($createAny.Error)")
+    }
+    if (-not (Test-SqlTruth $sysadmin.Value) -and -not (Test-SqlTruth $createAny.Value)) {
         return New-Outcome -Status 'Skipped' -Remediation $remediation -Detail (
             "The installing account has neither sysadmin nor CREATE ANY DATABASE on $Server. " +
             'Nothing was changed - hand the statements below to a DBA.')
     }
 
-    $loginExists = [bool](Invoke-Scalar -Connection $connection -Sql (
-        "SELECT COUNT(*) FROM sys.server_principals WHERE name = N'$($Principal.Replace("'", "''"))'"))
-    if (-not $loginExists) {
-        Invoke-NonQuery -Connection $connection -Sql "CREATE LOGIN [$escapedPrincipal] FROM WINDOWS"
+    $loginLookup = Invoke-Scalar -Connection $master.Connection -Sql (
+        "SELECT COUNT(*) FROM sys.server_principals WHERE name = N'$($Principal.Replace("'", "''"))'")
+    if (-not $loginLookup.Succeeded) {
+        return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
+            "Could not read sys.server_principals on $Server`: $($loginLookup.Error)")
+    }
+    if (-not (Test-SqlTruth $loginLookup.Value)) {
+        $createLogin = Invoke-NonQuery -Connection $master.Connection `
+            -Sql "CREATE LOGIN [$escapedPrincipal] FROM WINDOWS"
+        if (-not $createLogin.Succeeded) {
+            return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
+                "CREATE LOGIN $Principal failed: $($createLogin.Error)")
+        }
         $created.Add('login')
     }
 
-    $databaseExists = [bool](Invoke-Scalar -Connection $connection -Sql (
-        "SELECT CASE WHEN DB_ID(N'$($Database.Replace("'", "''"))') IS NULL THEN 0 ELSE 1 END"))
-    if (-not $databaseExists) {
-        Invoke-NonQuery -Connection $connection -Sql "CREATE DATABASE [$escapedDatabase]"
+    $databaseLookup = Invoke-Scalar -Connection $master.Connection -Sql (
+        "SELECT CASE WHEN DB_ID(N'$($Database.Replace("'", "''"))') IS NULL THEN 0 ELSE 1 END")
+    if (-not $databaseLookup.Succeeded) {
+        return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
+            "Could not check whether [$Database] exists on $Server`: $($databaseLookup.Error)")
+    }
+    if (-not (Test-SqlTruth $databaseLookup.Value)) {
+        $createDatabase = Invoke-NonQuery -Connection $master.Connection `
+            -Sql "CREATE DATABASE [$escapedDatabase]"
+        if (-not $createDatabase.Succeeded) {
+            return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
+                "CREATE DATABASE $Database failed: $($createDatabase.Error)")
+        }
         $created.Add('database')
     }
 }
-finally { $connection.Dispose() }
+finally { $master.Connection.Dispose() }
 
 # The user and role membership live in the application database, so a second connection is needed.
 $databaseConnectionString = Resolve-NodePilotSqlProbeConnectionString `
     -Server $Server -Database $Database -CertificateHostName $CertificateHostName
-$connection = New-Object System.Data.SqlClient.SqlConnection $databaseConnectionString
+
+$soFar = if ($created.Count -eq 0) { 'Login and database were already in place' }
+         else { "Created $($created -join ', ') on $Server" }
+
+# Opening [$Database] is its own step: folding it into the grant below reported a connection that
+# never came up as a failed db_owner grant.
+$application = Open-SqlConnection -ConnectionString $databaseConnectionString
+if (-not $application.Succeeded) {
+    return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
+        "$soFar, but [$Database] could not be opened as the current admin: $($application.Error)")
+}
+
 try {
-    $connection.Open()
-    $userExists = [bool](Invoke-Scalar -Connection $connection -Sql (
-        "SELECT COUNT(*) FROM sys.database_principals WHERE name = N'$($Principal.Replace("'", "''"))'"))
-    if (-not $userExists) {
-        Invoke-NonQuery -Connection $connection `
+    $userLookup = Invoke-Scalar -Connection $application.Connection -Sql (
+        "SELECT COUNT(*) FROM sys.database_principals WHERE name = N'$($Principal.Replace("'", "''"))'")
+    if (-not $userLookup.Succeeded) {
+        return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
+            "$soFar, but sys.database_principals in [$Database] could not be read: $($userLookup.Error)")
+    }
+    if (-not (Test-SqlTruth $userLookup.Value)) {
+        $createUser = Invoke-NonQuery -Connection $application.Connection `
             -Sql "CREATE USER [$escapedPrincipal] FOR LOGIN [$escapedPrincipal]"
+        if (-not $createUser.Succeeded) {
+            return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
+                "$soFar, but CREATE USER $Principal in [$Database] failed: $($createUser.Error)")
+        }
         $created.Add('user')
     }
+
     # ALTER ROLE is idempotent for an existing member, so it runs unconditionally.
-    Invoke-NonQuery -Connection $connection `
+    $grant = Invoke-NonQuery -Connection $application.Connection `
         -Sql "ALTER ROLE db_owner ADD MEMBER [$escapedPrincipal]"
+    if (-not $grant.Succeeded) {
+        return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
+            "$soFar, but granting db_owner on [$Database] failed: $($grant.Error)")
+    }
 }
-catch {
-    return New-Outcome -Status 'Fail' -Remediation $remediation -Detail (
-        "Login and database are in place, but granting db_owner failed: $($_.Exception.Message)")
-}
-finally { $connection.Dispose() }
+finally { $application.Connection.Dispose() }
 
 $detail = if ($created.Count -eq 0) {
     "Login and database already existed on $Server; db_owner reasserted for $Principal."

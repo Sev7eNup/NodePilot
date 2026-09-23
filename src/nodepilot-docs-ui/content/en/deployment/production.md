@@ -48,7 +48,7 @@ installer checks the patch level in the pre-flight; manually:
 - Windows Server 2022 or 2025
 - Domain membership
 - PowerShell 5.1 or PowerShell 7
-- ASP.NET Core Runtime 10.0.11 or newer in the 10.x line (x64) — the plain runtime is enough, Kestrel hosts itself; the Hosting Bundle only with deliberate IIS use (it reconfigures IIS and restarts W3SVC). The `(x64)` is binding: NodePilot ships as `win-x64`; the pre-flight rejects 32-bit and older vulnerable 10.x runtimes, naming the path and version
+- .NET Runtime and ASP.NET Core Runtime 10.0.11 or newer in the 10.x line, both x64 — two downloads, and both are needed: the ASP.NET Core package carries only Microsoft.AspNetCore.App and no dotnet.exe. The Hosting Bundle only with deliberate IIS use (it reconfigures IIS and restarts W3SVC). The `(x64)` is binding: NodePilot ships as `win-x64`; the pre-flight rejects 32-bit and older vulnerable 10.x runtimes, naming the path and version
 - Network access to the database
 - A TLS certificate with its private key in `LocalMachine\My`
 - Local administrator rights for the installation
@@ -93,6 +93,8 @@ USE NodePilot;
 CREATE USER [CONTOSO\NPSRV01$] FOR LOGIN [CONTOSO\NPSRV01$];
 ALTER ROLE db_owner ADD MEMBER [CONTOSO\NPSRV01$];
 ```
+
+If SQL Server runs on the NodePilot host itself, it sees the service as `NT AUTHORITY\SYSTEM` instead of the computer account. Grant that existing login the database user and `db_owner` in place of `CONTOSO\NPSRV01$`. The setup does this on its own.
 
 ### Variant B: gMSA
 
@@ -311,7 +313,7 @@ There are two routes to the same installation.
 ### Variant A: the GUI setup
 
 Download `NodePilot-Server-Setup-<version>.exe` from the release and run it. It brings the signed
-artifact and the ASP.NET Core runtime with it, checks every prerequisite from chapters 1 to 4
+artifact and both .NET runtimes with it, checks every prerequisite from chapters 1 to 4
 **before** it changes anything, and shows each as green, amber or red with copyable instructions. On
 request it installs the runtime, creates the SQL login and database, or generates a lab certificate.
 

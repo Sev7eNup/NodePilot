@@ -27,9 +27,9 @@ name: Website and docs
 #
 # configure-pages is deliberately not used. Its only other job is injecting a base path for a
 # known SSG, and it recognises nuxt, next, gatsby and sveltekit only, not Vite. Both apps build
-# location-independent: `base: './'` emits relative asset URLs and every route lives in the
-# fragment (HashRouter in the docs, hash routes on the website), so the server only serves
-# index.html files. No 404.html SPA fallback is needed either.
+# location-independent: `base: './'` emits relative asset URLs, and both apps write one file per
+# address, so the server only ever serves an index.html that is really there. No SPA fallback is
+# needed; the website's own 404.html covers an address that belongs to neither app.
 on:
   push:
     branches: [main]

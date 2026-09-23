@@ -50,8 +50,9 @@
     zip in .\out\. Needs Inno Setup 6 and a signed artifact; when either is missing the step is
     skipped with a warning and the server zip is still produced.
 .PARAMETER RuntimePayloadPath
-    A pre-fetched ASP.NET Core runtime installer for the server setup payload. Downloaded and
-    verified by deploy\Get-DotnetRuntimePayload.ps1 when omitted.
+    A directory holding pre-fetched .NET runtime installers for the server setup payload. Both the
+    host and the ASP.NET Core framework are downloaded and verified by
+    deploy\Get-DotnetRuntimePayload.ps1 when omitted.
 .PARAMETER InstallerSigningCertificateThumbprint
     Authenticode-sign every installer this run produces with this certificate, before the
     checksums are written. Signing afterwards by hand invalidates the SHA256SUMS entry for the
@@ -431,8 +432,8 @@ New-Item -ItemType Directory -Path $WwwRoot -Force | Out-Null
 Write-Host "[build] Copy SPA → wwwroot" -ForegroundColor Cyan
 Copy-Item (Join-Path $DistDir '*') $WwwRoot -Recurse -Force
 
-# The docs bundle is built with a relative Vite base and routes in the URL fragment, so it drops
-# into a subdirectory as-is. Install-NodePilot.ps1 verifies it arrived.
+# The docs bundle is built with a relative Vite base and one file per address, so it drops into a
+# subdirectory as-is. Install-NodePilot.ps1 verifies it arrived.
 $DocsDistDir = Join-Path $DocsUiDir 'dist'
 if (-not (Test-Path $DocsDistDir)) {
     throw "Docs site build output not found at $DocsDistDir. Run without -SkipFrontend or verify vite config."
@@ -551,7 +552,7 @@ if ($buildServerInstaller) {
         Version                 = $Version
     }
     if ($IsccPath) { $serverArgs['IsccPath'] = $IsccPath }
-    if ($RuntimePayloadPath) { $serverArgs['RuntimeInstallerPath'] = $RuntimePayloadPath }
+    if ($RuntimePayloadPath) { $serverArgs['RuntimePayloadDirectory'] = $RuntimePayloadPath }
     # The same input the desktop build takes, and optional here: the server setup only lifts the
     # psql CLIENT out of it so the wizard can create a PostgreSQL role and database the way it
     # already creates a SQL Server login. Without it the installer is built exactly as before and

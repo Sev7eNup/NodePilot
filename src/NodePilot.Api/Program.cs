@@ -445,6 +445,10 @@ builder.Services.AddCors(options =>
             .AllowCredentials());
 });
 
+// Waits for the database, migrates and runs the boot checks before Kestrel starts. A hosted
+// service rather than code before RunAsync, so the Windows service reports running first.
+builder.Services.AddHostedService<NodePilot.Api.Hosting.DatabaseBootService>();
+
 var app = builder.Build();
 
 // Clear the runtime-overrides "restart required" marker once the host is fully up. We
@@ -493,97 +497,6 @@ app.Lifetime.ApplicationStarted.Register(() =>
         // Best-effort — a failure to emit the support banner must not abort boot.
     }
 });
-
-// Database initialization — delegates to MigrationBootstrapper which calls
-// db.Database.Migrate() against the active provider (SQL Server or PostgreSQL).
-// Single provider-agnostic migration set; no legacy SchemaPatcher fallback.
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
-    var bootstrapDbLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-
-    // Wait for the database to accept connections before migrating. Both deployment modes race
-    // the same way at boot and neither service dependency closes it: Desktop against the bundled
-    // Postgres service (`depend=` narrows but doesn't close it, especially on first boot after
-    // initdb), Server against a remote SQL Server or PostgreSQL still recovering its databases.
-    // Only reachability is awaited — a schema/migration error is never retried and surfaces
-    // immediately from Bootstrap below.
-    await DatabaseReadinessGate.WaitForDatabaseAsync(
-        canConnectAsync: token => db.Database.CanConnectAsync(token),
-        timeout: DatabaseReadinessGate.ResolveStartupWait(builder.Configuration),
-        pollInterval: TimeSpan.FromSeconds(2),
-        logger: bootstrapDbLogger);
-
-    MigrationBootstrapper.Bootstrap(db, bootstrapDbLogger);
-
-    // Surface the active secret protector so operators see "DPAPI" vs "AES-GCM" in the
-    // boot log without grepping config. Single line, INFO level, only at startup.
-    scope.ServiceProvider.GetRequiredService<NodePilot.Data.Security.SecretProtectorRegistry.IStartupLogger>().Log();
-
-    // WorkflowVersions predate at-rest protection and may contain arbitrary scripts, HTTP bodies,
-    // or imported SCOrch payloads with inline credentials. Do not rewrite legacy rows during
-    // startup: the production updater's health-check rollback restores binaries, not database
-    // contents, and an upgraded HA passive node must remain data-compatible with the old active
-    // node. Once every node is upgraded, the explicit secrets re-encryption sweep performs the
-    // audited cutover. New snapshots are protected immediately by their write paths.
-    await scope.ServiceProvider
-        .GetRequiredService<NodePilot.Api.Services.WorkflowVersionDefinitionProtector>()
-        .WarnIfExplicitMigrationRequiredAsync(db, CancellationToken.None);
-
-    // Sweep orphaned Running executions left over from a previous process instance
-    // (crash / kill / upgrade). Without this the UI would show ghost "Running" rows
-    // forever because there is no in-memory CancellationTokenSource for them anymore.
-    //
-    // CLUSTER MODE: skipped here. A starting follower must NOT clobber the active leader's
-    // running rows. Recovery instead runs from ClusterLeaderService.OnLeadershipAcquired
-    // and predicates on OwnerNodeId != ourNodeId, see StartupRecovery overload.
-    var recoveryLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    if (!builder.Configuration.GetValue<bool>("Cluster:Enabled"))
-    {
-        await NodePilot.Engine.Execution.StartupRecovery.RecoverOrphanedExecutionsAsync(db, recoveryLogger);
-    }
-    else
-    {
-        recoveryLogger.LogInformation(
-            "Cluster:Enabled=true — skipping boot-time orphan recovery. Will run on first leadership acquisition.");
-    }
-
-    // Admin bootstrap: if there are no users yet, write a one-shot token file that the
-    // first login must present. Without this the first HTTP caller of /api/auth/login
-    // would auto-become Admin — trivial takeover on a freshly deployed instance.
-    var bootstrapLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-
-    // Before usersExist is read, and before the recovery invariant: a seeded backup brings its own
-    // users - including the break-glass Admin the invariant insists on - so both of the checks
-    // below have to see the instance as it is AFTER provisioning, not before.
-    await NodePilot.Api.Security.ProvisioningSeeder.SeedIfEmptyAsync(
-        db,
-        builder.Configuration,
-        scope.ServiceProvider.GetRequiredService<NodePilot.Api.Services.Backup.BackupRestoreService>(),
-        bootstrapLogger);
-
-    var usersExist = await db.Users.AnyAsync();
-    await NodePilot.Api.Security.EnterpriseRecoveryInvariant.EnsureAsync(
-        db, builder.Configuration);
-    NodePilot.Api.Security.AdminBootstrap.EnsureBootstrapTokenIfNeeded(
-        app.Environment, usersExist, bootstrapLogger, builder.Configuration);
-
-    // Boot succeeded: the schema is migrated, recovery has run and the admin invariant holds. Only
-    // now
-    // may the availability breaker start reacting to failures.
-    //
-    // Until this point the interceptors are inert on purpose. DatabaseReadinessGate exists
-    // precisely
-    // because the database is routinely late at boot, and if its failed connection probes opened
-    // the
-    // breaker, the migration that follows would run with retries disabled — turning a slow start
-    // into
-    // a failed one. Everything above this line is also the reason the boot block is NOT deferred on
-    // an
-    // outage: it carries StartupRecovery, the enterprise recovery invariant and the admin bootstrap
-    // token, and re-running or skipping any of them is worse than failing to start.
-    app.Services.GetRequiredService<NodePilot.Data.Availability.IDatabaseAvailability>().MarkBootComplete();
-}
 
 // L-17: must run before ANY middleware that reads the request scheme or the client IP.
 // UseHsts() short-circuits on !Request.IsHttps, so behind a TLS-terminating reverse proxy that

@@ -72,7 +72,7 @@ test.describe('UI/UX (Teil 10)', () => {
     // ---- Per-keystroke field: Output Variable. Open its popover input and type fast. ----
     // The pill shows the placeholder (step id) until a value is set; identify it by its
     // title (the unset-output tooltip mentions the step-id default) and click to edit.
-    await page.locator('button[title*="Step-ID"]').first().click();
+    await page.locator('button[title*="step ID" i]').first().click();
     // The popover input's label "Output Variable Name" is not htmlFor-linked, so scope to the
     // popover (anchored on that label) and pick its textbox; its placeholder is the step-id.
     const outPopover = page.getByText(/output variable name/i).locator('..');

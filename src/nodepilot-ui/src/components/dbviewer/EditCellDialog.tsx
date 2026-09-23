@@ -33,7 +33,7 @@ export function EditCellDialog({ tableName, column, currentValue, onSave, onClos
 
     if (isJson) {
       try { coerced = JSON.parse(value); }
-      catch { setError('Ungültiges JSON'); return; }
+      catch { setError(t('database:invalidJson')); return; }
     } else if (column.clrType.startsWith('boolean')) {
       coerced = value === 'true' ? true : value === 'false' ? false : null;
     } else if (column.clrType.startsWith('int') || column.clrType.startsWith('long') ||
@@ -43,10 +43,10 @@ export function EditCellDialog({ tableName, column, currentValue, onSave, onClos
       // a cleared nullable number cell would get saved as 0 instead of null.
       if (value === '') {
         if (column.isNullable) { coerced = null; }
-        else { setError('Wert darf nicht leer sein'); return; }
+        else { setError(t('database:valueRequired')); return; }
       } else {
         const n = Number(value);
-        if (isNaN(n)) { setError('Ungültige Zahl'); return; }
+        if (isNaN(n)) { setError(t('database:invalidNumber')); return; }
         coerced = n;
       }
     } else if (column.clrType.startsWith('datetime')) {
@@ -56,7 +56,7 @@ export function EditCellDialog({ tableName, column, currentValue, onSave, onClos
         // Convert datetime-local (local time) to a UTC ISO string.
         // Appending "Z" directly would misinterpret local time as UTC.
         const dt = new Date(value);
-        if (isNaN(dt.getTime())) { setError('Ungültiges Datum'); return; }
+        if (isNaN(dt.getTime())) { setError(t('database:invalidDate')); return; }
         coerced = dt.toISOString();
       }
     } else if (value === '' && column.isNullable) {

@@ -71,8 +71,8 @@ describe('WorkflowBrowser info card', () => {
     expect(within(card).getByText('Alpha')).toBeInTheDocument();
 
     // Then hover the currently open workflow's marker, a separate render branch with its own
-    // mouse handlers. Its title is a hardcoded string in the component.
-    const currentMarker = screen.getByTitle('Aktuell geöffneter Workflow');
+    // mouse handlers.
+    const currentMarker = screen.getByTitle('Currently open workflow');
     fireEvent.mouseEnter(currentMarker);
     expect(within(card).getByText('Beta')).toBeInTheDocument();
   });
@@ -92,6 +92,19 @@ describe('WorkflowBrowser info card', () => {
     const list = screen.getByTestId('workflow-list');
     expect(list.className).toContain('flex-1');
     expect(list.style.height).toBe('');
+  });
+
+  it('triggerView_noOtherWorkflows_rendersTranslatedEmptyState', async () => {
+    mockedGet.mockResolvedValue([]);
+    renderBrowser('wf-A');
+    expect(await screen.findByText('No other workflows available.')).toBeInTheDocument();
+  });
+
+  it('currentMarker_englishUi_rendersTranslatedBadge', async () => {
+    mockedGet.mockResolvedValue([wf('wf-A', 'Alpha')]);
+    renderBrowser('wf-A');
+    const marker = await screen.findByTitle('Currently open workflow');
+    expect(within(marker).getByText('current')).toBeInTheDocument();
   });
 
   it('triggerView_listStillFlexFills', () => {

@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging;
 using NodePilot.Core.Models;
 
@@ -15,6 +17,9 @@ public static class MigrationBootstrapper
     {
         try
         {
+            // Npgsql's Migrate reads the history table before creating it and logs the failed
+            // read as an error on every fresh database. Creating it first keeps that out of the log.
+            db.GetService<IHistoryRepository>().CreateIfNotExists();
             db.Database.Migrate();
         }
         catch (Exception ex) when (IsDatabaseUnreachable(db))

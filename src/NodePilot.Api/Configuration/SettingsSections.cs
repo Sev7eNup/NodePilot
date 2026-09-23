@@ -1321,7 +1321,7 @@ public static class SettingsSectionAdapters
 
     private static RemoteSettingsDto BuildRemoteDto(IConfigurationRoot configRoot) => new()
     {
-        RequireWinRmSsl = BoolDefaultTrue(configRoot["Remote:RequireWinRmSsl"]),
+        RequireWinRmSsl = BoolDefaultFalse(configRoot["Remote:RequireWinRmSsl"]),
         WinRm = new WinRmSubSettingsDto
         {
             OperationTimeoutSeconds = IntOr(configRoot["Remote:WinRm:OperationTimeoutSeconds"], 300),
@@ -1360,7 +1360,7 @@ public static class SettingsSectionAdapters
         var pool = section["Pool"] as JsonObject ?? new JsonObject();
         return new RemoteSettingsDto
         {
-            RequireWinRmSsl = section["RequireWinRmSsl"]?.GetValue<bool>() ?? true,
+            RequireWinRmSsl = section["RequireWinRmSsl"]?.GetValue<bool>() ?? false,
             WinRm = new WinRmSubSettingsDto
             {
                 OperationTimeoutSeconds = winrm["OperationTimeoutSeconds"]?.GetValue<int>() ?? 300,

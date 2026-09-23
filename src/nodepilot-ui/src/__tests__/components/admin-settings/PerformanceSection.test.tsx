@@ -57,7 +57,7 @@ const sizingValues = [
  */
 function renderAll(sizing: Partial<{
   manualTuning: boolean; desiredManualTuning: boolean; usableMemoryBytes: number | null;
-}> = {}) {
+}> = {}, remoteSection = remote) {
   const manualTuning = sizing.manualTuning ?? true;
   // The Performance section stores the desired mode — that is what the checkbox shows, and it is
   // `desiredManualTuning` in the sizing plan, not the mode the process booted in.
@@ -78,7 +78,7 @@ function renderAll(sizing: Partial<{
     http.get('/api/admin/settings/Engine', () => HttpResponse.json(engine)),
     http.get('/api/admin/settings/ExecutionDispatch', () => HttpResponse.json(dispatch)),
     http.get('/api/admin/settings/Threading', () => HttpResponse.json(threading)),
-    http.get('/api/admin/settings/Remote', () => HttpResponse.json(remote)),
+    http.get('/api/admin/settings/Remote', () => HttpResponse.json(remoteSection)),
   );
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={qc}><PerformanceSection /></QueryClientProvider>);
@@ -191,6 +191,15 @@ describe('PerformanceSection', () => {
     expect(screen.queryByText(/Changes apply immediately|sofort/i)).not.toBeInTheDocument();
   });
 
+  it('EngineCard_englishUi_rendersTranslatedFieldHints', async () => {
+    renderAll({ manualTuning: true });
+    await waitFor(() => expect(screen.getByDisplayValue('5000')).toBeInTheDocument());
+    expect(screen.getByText(/Keep this close to ExecutionDispatch\.WorkerCount/)).toBeInTheDocument();
+    expect(screen.getByText(/The pool grows on demand up to the maximum/)).toBeInTheDocument();
+    expect(screen.getByText(/validated for 500 parallel workflows/)).toBeInTheDocument();
+    expect(screen.queryByText(/Sweet-Spot|Sollte/)).not.toBeInTheDocument();
+  });
+
   it('reports unknown memory rather than implying a detected size', async () => {
     renderAll({ manualTuning: false, usableMemoryBytes: null });
     await waitFor(() => expect(screen.getByText(/unbekannt|unknown/)).toBeInTheDocument());
@@ -214,5 +223,21 @@ describe('PerformanceSection', () => {
       expect(body?.WinRm?.OperationTimeoutSeconds).toBe(300);
       expect(body?.Pool?.MaxConcurrentPerMachine).toBe(5);
     });
+  });
+
+  it('Remote_requireWinRmSslFalse_loadsUncheckedAndSavesFalse', async () => {
+    let putBody: unknown = null;
+    server.use(http.put('/api/admin/settings/Remote', async ({ request }) => {
+      putBody = await request.json();
+      return HttpResponse.json({ ...remote, etag: '"r-2"' });
+    }));
+    renderAll({}, { ...remote, payload: { ...remote.payload, requireWinRmSsl: false } });
+    await waitFor(() => expect(screen.getByDisplayValue('5000')).toBeInTheDocument());
+    await waitFor(() => expect(
+      screen.getByRole('checkbox', { name: /WinRM SSL/i }),
+    ).not.toBeChecked());
+    const saves = screen.getAllByRole('button', { name: /speichern|save/i });
+    fireEvent.click(saves[saves.length - 1]);
+    await waitFor(() => expect((putBody as { RequireWinRmSsl?: boolean })?.RequireWinRmSsl).toBe(false));
   });
 });

@@ -181,8 +181,7 @@ function EngineCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: Effe
         <NumberInput label={t('perf.maxConcurrentStepsGlobal')} value={form.maxConcurrentSteps} min={1} max={10000}
           onChange={(v) => set({ ...form, maxConcurrentSteps: v })}
           configKey="Engine:MaxConcurrentSteps" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
-          hint={effectiveHint(sizing, 'Engine:MaxConcurrentSteps', t,
-            'Sollte ≈ ExecutionDispatch.WorkerCount sein. Deutlich höhere Werte produzieren SignalR-Event-Drops im Live-Tab (siehe docs/performance-improvements.md).')} />
+          hint={effectiveHint(sizing, 'Engine:MaxConcurrentSteps', t, t('perf.maxConcurrentStepsHint'))} />
         <NumberInput label={t('perf.maxConcurrentExecutionsGlobal')} value={form.maxConcurrentExecutions.global} min={1} max={100000}
           onChange={(v) => set({ ...form, maxConcurrentExecutions: { ...form.maxConcurrentExecutions, global: v } })}
           configKey="Engine:MaxConcurrentExecutions:Global" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
@@ -194,13 +193,11 @@ function EngineCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: Effe
         <NumberInput label={t('perf.runspacesMin')} value={form.runspace.minRunspaces} min={1} max={10000}
           onChange={(v) => set({ ...form, runspace: { ...form.runspace, minRunspaces: v } })}
           configKey="Engine:Runspace:MinRunspaces" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
-          hint={effectiveHint(sizing, 'Engine:Runspace:MinRunspaces', t,
-            'Sweet-Spot für das 500-Workflow-Profil ist 256. Der Pool wächst on-demand bis MaxRunspaces; ein hoher Min-Wert bringt nichts (Eager-Pre-Warm mit 768 maß 28 % Regression).')} />
+          hint={effectiveHint(sizing, 'Engine:Runspace:MinRunspaces', t, t('perf.runspacesMinHint'))} />
         <NumberInput label={t('perf.runspacesMax')} value={form.runspace.maxRunspaces} min={1} max={10000}
           onChange={(v) => set({ ...form, runspace: { ...form.runspace, maxRunspaces: v } })}
           configKey="Engine:Runspace:MaxRunspaces" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
-          hint={effectiveHint(sizing, 'Engine:Runspace:MaxRunspaces', t,
-            'Sweet-Spot ist 768 (validiert für 500 parallele Workflows).')} />
+          hint={effectiveHint(sizing, 'Engine:Runspace:MaxRunspaces', t, t('perf.runspacesMaxHint'))} />
       </div>
       <ErrorsAndSave errors={errors} onSave={() => save({
         Debug: { MaxPauseMinutes: form.debug.maxPauseMinutes },
@@ -276,7 +273,7 @@ type RemoteDto = {
 function RemoteCard() {
   const { t } = useTranslation('adminSettings');
   const ui = useSectionForm<RemoteDto>('Remote', {
-    requireWinRmSsl: true,
+    requireWinRmSsl: false,
     winRm: { operationTimeoutSeconds: 300, openTimeoutSeconds: 30 },
     pool: { enabled: true, maxConcurrentPerMachine: 5, maxIdlePerKey: 5, idleTtlSeconds: 120 },
   });

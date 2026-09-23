@@ -180,13 +180,13 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
         className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-0.5"
       >
         {isLoading && (
-          <div className="text-[11px] font-label text-on-surface-variant px-2">Loading…</div>
+          <div className="text-[11px] font-label text-on-surface-variant px-2">{t('browser.loading')}</div>
         )}
 
         {/* Trigger view */}
         {viewMode === 'trigger' && grouped.length === 0 && !isLoading && (
           <div className="text-[11px] font-label text-on-surface-variant px-2 py-4 text-center">
-            {query ? 'Keine Treffer.' : 'Keine anderen Workflows vorhanden.'}
+            {query ? t('browser.noMatches') : t('browser.noOtherWorkflows')}
           </div>
         )}
         {viewMode === 'trigger' && grouped.map((g) => {
@@ -228,10 +228,10 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
         {viewMode === 'folder' && !isLoading && totalShown === 0 && (
           <div className="text-[11px] font-label text-on-surface-variant px-2 py-4 text-center">
             {query
-              ? 'Keine Treffer.'
+              ? t('browser.noMatches')
               : selectedFolderId
-              ? 'Keine Workflows in diesem Ordner.'
-              : 'Keine anderen Workflows vorhanden.'}
+              ? t('browser.noWorkflowsInFolder')
+              : t('browser.noOtherWorkflows')}
           </div>
         )}
         {viewMode === 'folder' && filteredByFolder.map((w) => (
@@ -274,6 +274,7 @@ function WorkflowBrowserItem({
   onHover?: (w: WorkflowListItem | null) => void;
   draggable?: boolean;
 }>) {
+  const { t } = useTranslation('designer');
   const [hover, setHover] = useState(false);
   const primaryAction = canEmbed && onEmbed ? onEmbed : onOpen;
 
@@ -285,7 +286,7 @@ function WorkflowBrowserItem({
         onMouseEnter={() => onHover?.(workflow)}
         onMouseLeave={() => onHover?.(null)}
         className="flex items-center gap-2 w-full px-3 h-5 rounded-md bg-primary-fixed/40 border border-primary/30 text-left select-none"
-        title="Aktuell geöffneter Workflow"
+        title={t('browser.currentWorkflow')}
       >
         <span
           className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
@@ -296,7 +297,7 @@ function WorkflowBrowserItem({
           {workflow.name}
         </span>
         <span className="text-[9px] font-label text-primary/70 uppercase tracking-wider font-semibold">
-          current
+          {t('browser.current')}
         </span>
       </div>
     );
@@ -322,7 +323,7 @@ function WorkflowBrowserItem({
           className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
             workflow.isEnabled ? 'bg-emerald-500' : 'bg-outline'
           }`}
-          aria-label={workflow.isEnabled ? 'Enabled' : 'Disabled'}
+          aria-label={workflow.isEnabled ? t('browser.enabled') : t('browser.disabled')}
         />
         <span className="font-label text-xs font-medium text-on-surface truncate flex-1">
           {workflow.name}
@@ -339,7 +340,7 @@ function WorkflowBrowserItem({
             <button
               onClick={(e) => { e.stopPropagation(); onEmbed(); }}
               className="p-1 text-primary hover:bg-primary-fixed rounded transition-colors"
-              title="In Start-Workflow-Step einsetzen"
+              title={t('browser.insertIntoStartStep')}
             >
               <Link size={12} />
             </button>
@@ -347,7 +348,7 @@ function WorkflowBrowserItem({
           <button
             onClick={(e) => { e.stopPropagation(); onOpen(); }}
             className="p-1 text-on-surface-variant hover:bg-surface-high rounded transition-colors"
-            title="Workflow öffnen"
+            title={t('browser.openWorkflow')}
           >
             <Launch size={12} />
           </button>

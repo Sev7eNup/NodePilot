@@ -43,6 +43,8 @@ beforeEach(() => {
   put('../nodepilot-ui/dist-demo/assets/demo.js', 'DEMO_SCRIPT')
   // Realistic enough to carry the Pages marker: the script stamps it into <head>.
   put('dist/index.html', DOCS_INDEX_HTML)
+  // Each documentation address is its own prerendered file; the marker belongs in all of them.
+  put('dist/en/cli/index.html', DOCS_INDEX_HTML)
   put('dist/assets/docs.js', 'DOCS_SCRIPT')
   put('dist-site/index.html', 'SITE_INDEX')
   put('dist-site/legacy-docs-redirect.js', 'SITE_REDIRECT')
@@ -74,13 +76,16 @@ describe('assembleSite', () => {
 
     // The published copy carries the marker, so the docs sidebar can offer the two neighbours.
     expect(read('_site/docs/index.html')).toContain(SITE_ROOT_META)
+    // Every page, not only the entry: a reader can land on any of them.
+    expect(read('_site/docs/en/cli/index.html')).toContain(SITE_ROOT_META)
     // The build itself must not: the same dist/ ships inside the product under wwwroot/docs,
     // where neither neighbour exists and both links would 404.
     expect(read('dist/index.html')).not.toContain(SITE_ROOT_META)
+    expect(read('dist/en/cli/index.html')).not.toContain(SITE_ROOT_META)
   })
 
-  it('fails when the docs build has no head to mark', () => {
-    put('dist/index.html', 'DOCS_INDEX')
+  it('fails when a docs page has no head to mark', () => {
+    put('dist/en/cli/index.html', 'DOCS_PAGE')
 
     expect(() => assembleSite(fixture, '_site')).toThrow(/no <\/head> to mark/)
   })

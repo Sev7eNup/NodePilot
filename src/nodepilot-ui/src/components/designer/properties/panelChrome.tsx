@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, Close, Maximize, View, ViewOff } from '@carbon/icons-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import CodeMirror from '@uiw/react-codemirror';
 import { StreamLanguage } from '@codemirror/language';
 import { powerShell } from '@codemirror/legacy-modes/mode/powershell';
@@ -107,6 +107,7 @@ export function InlineEditable({
   ariaLabel?: string;
   disabled?: boolean;
 }>) {
+  const { t } = useTranslation('properties');
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -146,7 +147,7 @@ export function InlineEditable({
       <span
         className={`${className ?? ''} block px-1 -mx-1`}
         aria-label={ariaLabel}
-        title="Workflow ist nicht in Bearbeitung"
+        title={t('panel.notCheckedOut')}
       >
         {value || <span className="text-on-surface-variant italic font-normal">{placeholder ?? '—'}</span>}
       </span>
@@ -158,7 +159,7 @@ export function InlineEditable({
       type="button"
       onClick={() => setEditing(true)}
       className={`${className ?? ''} text-left hover:bg-surface-high/60 rounded px-1 -mx-1 transition-colors cursor-text`}
-      title="Klicken zum Bearbeiten"
+      title={t('panel.clickToEdit')}
       aria-label={ariaLabel}
     >
       {value || <span className="text-on-surface-variant italic font-normal">{placeholder ?? '—'}</span>}
@@ -227,9 +228,7 @@ export function StatusPillRow({
         type="button"
         onClick={onToggleDisabled}
         className="inline-flex items-center gap-1.5 h-6 px-2 rounded-full text-[10px] font-label font-semibold bg-surface-high hover:bg-surface-highest text-on-surface-variant transition-colors cursor-pointer"
-        title={isDisabled
-          ? 'Step ist deaktiviert — wird übersprungen. Klick aktiviert ihn.'
-          : 'Step ist aktiv. Klick deaktiviert ihn (wird dann übersprungen).'}
+        title={isDisabled ? t('panel.stepDisabledTitle') : t('panel.stepActiveTitle')}
       >
         <span className={`inline-block w-2 h-2 rounded-full shadow-[0_0_6px] ${
           isDisabled ? 'bg-on-surface-variant/40 shadow-transparent' : 'bg-emerald-400 shadow-emerald-500/60'
@@ -244,9 +243,7 @@ export function StatusPillRow({
             type="button"
             onClick={onToggleBreakpoint}
             className="inline-flex items-center gap-1.5 pl-2 pr-1.5 hover:bg-surface-highest transition-colors"
-            title={hasBreakpoint
-              ? 'Breakpoint aktiv (nur bei Debug-Run wirksam). Klick entfernt ihn.'
-              : 'Klick setzt Breakpoint — pausiert nur bei Debug-Run vor diesem Step.'}
+            title={hasBreakpoint ? t('panel.breakpointActiveTitle') : t('panel.breakpointSetTitle')}
           >
             <span className={`inline-block w-2 h-2 rounded-full shadow-[0_0_6px] ${
               hasBreakpoint ? 'bg-error shadow-error/70' : 'bg-on-surface-variant/30 shadow-transparent'
@@ -258,7 +255,9 @@ export function StatusPillRow({
               type="button"
               onClick={() => setBpOpen((o) => !o)}
               className="px-1 hover:bg-surface-highest transition-colors border-l border-outline-variant/30"
-              title={breakpointCondition ? `Bedingung: ${breakpointCondition}` : 'Optional: Bedingung setzen'}
+              title={breakpointCondition
+                ? t('panel.breakpointConditionTitle', { condition: breakpointCondition })
+                : t('panel.breakpointConditionAdd')}
               aria-expanded={bpOpen}
             >
               <ChevronDown size={10} />
@@ -268,15 +267,14 @@ export function StatusPillRow({
         {bpOpen && hasBreakpoint && (
           <div className="absolute left-0 top-full mt-1 z-30 w-72 bg-surface-container border border-outline-variant/30 rounded-md shadow-xl p-3 space-y-2">
             <VariableInsertField
-              label="Breakpoint-Bedingung"
+              label={t('panel.breakpointConditionLabel')}
               value={breakpointCondition}
               onChange={onChangeBreakpointCondition}
               upstreamVars={upstreamVars}
-              placeholder="Leer = immer pausieren · z.B. {{result.output}}"
+              placeholder={t('panel.breakpointConditionPlaceholder', { example: '{{result.output}}' })}
             />
             <p className="text-[10px] font-label text-on-surface-variant leading-snug">
-              Wenn gesetzt, pausiert die Engine nur wenn der aufgelöste Wert <em>truthy</em> ist
-              (nicht leer, nicht <code>"false"</code>/<code>"0"</code>/<code>"no"</code>).
+              <Trans t={t} i18nKey="panel.breakpointConditionHelp" components={{ em: <em />, code: <code /> }} />
             </p>
           </div>
         )}
@@ -292,8 +290,8 @@ export function StatusPillRow({
               : 'bg-surface-high text-on-surface-variant hover:bg-surface-highest'
           }`}
           title={hasOutput
-            ? `Downstream-Steps referenzieren als {{${outputVariable}.output}}`
-            : `Default ist die Step-ID — Downstream referenziert als {{${outputVariablePlaceholder}.output}}. Klick zum Anpassen.`}
+            ? t('panel.outputVariableSetTitle', { expression: `{{${outputVariable}.output}}` })
+            : t('panel.outputVariableDefaultTitle', { expression: `{{${outputVariablePlaceholder}.output}}` })}
         >
           <span className={`inline-block w-2 h-2 rounded-full shadow-[0_0_6px] ${
             hasOutput ? 'bg-primary shadow-primary/60' : 'bg-on-surface-variant/30 shadow-transparent'
@@ -318,11 +316,12 @@ export function StatusPillRow({
               autoFocus
             />
             <p className="text-[10px] font-label text-on-surface-variant leading-snug">
-              Downstream-Steps referenzieren das als{' '}
-              <code className="font-mono text-primary">
-                {'{{' + (outputVariable || outputVariablePlaceholder) + '.output}}'}
-              </code>.
-              Leer lassen → Step-ID wird verwendet.
+              <Trans
+                t={t}
+                i18nKey="panel.outputVariableHelp"
+                values={{ expression: '{{' + (outputVariable || outputVariablePlaceholder) + '.output}}' }}
+                components={{ code: <code className="font-mono text-primary" /> }}
+              />
             </p>
           </div>
         )}

@@ -38,7 +38,17 @@
     <meta name="twitter:card" content="summary_large_image" />
 
     <link rel="canonical" href="https://sev7enup.github.io/NodePilot/docs/" />
+    <link rel="alternate" hreflang="en" href="https://sev7enup.github.io/NodePilot/docs/en/" />
+    <link rel="alternate" hreflang="de" href="https://sev7enup.github.io/NodePilot/docs/de/" />
+    <link rel="alternate" hreflang="x-default" href="https://sev7enup.github.io/NodePilot/docs/en/" />
     <meta name="robots" content="index, follow, max-image-preview:large" />
+    <!-- How far the documentation root is from this file. The prerenderer writes the right depth
+         into every page it emits; main.tsx resolves it once into the router's base path, so the
+         same bundle works at /docs/ and at /NodePilot/docs/. -->
+    <meta name="np-docs-base" content="./" />
+    <!-- Forwards the addresses this bundle used before it had real ones (#/de/cli). First script,
+         classic and non-deferred, so it replaces the address before anything renders. -->
+    <script src="/legacy-hash-redirect.js"></script>
     <!-- Resolve the theme before first paint, otherwise dark-mode users see a white flash.
          Must stay a classic, non-deferred script; a module (or defer/async) runs after parsing
          and the flash returns. It is a file rather than inline because the API serves this

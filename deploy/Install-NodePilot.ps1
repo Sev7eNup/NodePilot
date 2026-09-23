@@ -294,7 +294,8 @@ foreach ($proxyIp in $KnownProxyIps) {
 #   * gMSA         -ServiceAccount 'CONTOSO\svc-nodepilot$'  (AD-managed password)
 #   * LocalSystem  -UseLocalSystem  (or -ServiceAccount 'LocalSystem')
 # LocalSystem authenticates on the network as the computer account (DOMAIN\<host>$):
-#   - SQL Server Trusted_Connection logs in as DOMAIN\<host>$ (that login needs db_owner)
+#   - SQL Server Trusted_Connection logs in as DOMAIN\<host>$ (that login needs db_owner),
+#     except against a SQL Server on this machine, which sees NT AUTHORITY\SYSTEM
 #   - integrated WinRM presents the computer account to targets
 # It already holds FullControl on the machine plus SeServiceLogonRight, so the per-file ACL
 # grants, the managed-account flag, and the 'Log on as a service' grant the gMSA path needs
@@ -311,7 +312,7 @@ if ($isLocalSystem) {
     $AclIdentity     = 'NT AUTHORITY\SYSTEM'  # valid NTAccount string for ACL rules
     $AccountLabel    = 'LocalSystem (NT AUTHORITY\SYSTEM)'
     $ComputerAccount = "$env:USERDOMAIN\$env:COMPUTERNAME`$"
-    $SqlPrincipal    = $ComputerAccount
+    $SqlPrincipal    = Get-NodePilotLocalSystemSqlPrincipal -SqlServer $SqlServer
 } else {
     if ([string]::IsNullOrWhiteSpace($ServiceAccount)) {
         throw "Specify a service identity: either -UseLocalSystem (run as LocalSystem) or -ServiceAccount '<DOMAIN>\<gmsa>`$' (run as a gMSA)."
@@ -1045,6 +1046,7 @@ $preflightResults = Invoke-NodePilotPreflight `
     -PostgresPort $PostgresPort `
     -PostgresUser $PostgresUser `
     -PostgresDatabase $PostgresDatabase `
+    -PostgresRootCertificate $PostgresRootCertificate `
     -ServiceName $ServiceName `
     -SkipDatabaseCheck:$SkipSqlConnectivityCheck `
     -SkipGmsaCheck:$SkipGmsaCheck
@@ -1327,7 +1329,8 @@ if ($DbProvider -eq 'sqlserver') {
     $postgresBuilder['Username'] = $PostgresUser
     $postgresBuilder['Password'] = $pgPwPlain
     $postgresBuilder['SSL Mode'] = 'VerifyFull'
-    $postgresBuilder['Root Certificate'] = $installedPostgresRootCertificate
+    # [string]: the path comes from Join-Path, and the builder's indexer rejects a PSObject.
+    $postgresBuilder['Root Certificate'] = [string]$installedPostgresRootCertificate
     $postgresBuilder['Check Certificate Revocation'] = $true
     $postgresBuilder['Maximum Pool Size'] = 800
     $postgresBuilder['Minimum Pool Size'] = 40

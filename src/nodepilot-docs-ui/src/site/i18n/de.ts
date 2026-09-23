@@ -23,7 +23,7 @@ interface Article {
  */
 export const de = {
   experience: {
-    "nav": "Ausprobieren",
+    "nav": "Tour",
     "title": "NodePilot ausprobieren",
     "kicker": "SELBST AUSPROBIEREN · ETWA 2 MINUTEN",
     "headline": "Deine erste Aufgabe mit NodePilot.",
@@ -73,7 +73,7 @@ export const de = {
     close: 'Navigation schließen',
     discover: 'ENTDECKEN',
     home: 'Übersicht',
-    product: 'Das Produkt',
+    product: 'Funktionen',
     blog: 'Blog',
     resources: 'RESSOURCEN',
     docs: 'Dokumentation',
@@ -85,9 +85,9 @@ export const de = {
   },
   /** Breadcrumb in the header. */
   pages: {
-    experience: "Ausprobieren",
+    experience: "Tour",
     home: 'Übersicht',
-    product: 'Das Produkt',
+    product: 'Funktionen',
     blog: 'Blog',
     article: 'Blog / Beitrag',
     impressum: 'Impressum',
@@ -96,9 +96,9 @@ export const de = {
   } satisfies Record<SitePage, string>,
   /** Document titles; an article uses its own title. */
   titles: {
-    experience: "Ausprobieren",
+    experience: "Tour",
     home: 'Windows-Automatisierung, Schritt für Schritt.',
-    product: 'Das Produkt',
+    product: 'Funktionen',
     blog: 'Blog',
     impressum: 'Impressum',
     datenschutz: 'Datenschutz',
@@ -106,7 +106,7 @@ export const de = {
   } satisfies Record<Exclude<SitePage, 'article'>, string>,
   home: {
     eyebrow: 'WINDOWS WORKFLOW ORCHESTRATION',
-    title: 'Automatisierung,<br><span>die du sehen kannst.</span>',
+    title: 'Automatisierung,<br><span>die man sieht.</span>',
     lead: 'Deine Windows-Automatisierung verdient mehr als einen Ordner voller Skripte.',
     description:
       'Mit NodePilot baust du Workflows im Browser, führst sie über WinRM aus und siehst, was in jedem Schritt passiert. Ohne Agenten auf den Zielsystemen.',
@@ -121,7 +121,25 @@ export const de = {
     capabilityLive: 'Live-Ausführung & Logs',
     capabilityScorch: 'SCOrch-Import',
     capabilitySso: 'LDAP & SSO',
-    capabilityAi: 'Native AI Support',
+    capabilityAi: 'AI Support',
+    capabilityEnterprise: 'Enterprise ready',
+    archKicker: 'EIN DIENST, KEIN AGENT',
+    archTitle: 'Bei dir läuft ein Dienst. Auf den Zielsystemen nichts.',
+    archCanvasLabel:
+      'Architekturdiagramm: Trigger starten NodePilot, einen einzelnen Windows-Dienst aus API, Engine und Scheduler mit PostgreSQL oder SQL Server. Er führt über WinRM auf den Zielsystemen aus, die keinen Agenten benötigen, und meldet Live-Updates über SignalR an Browser oder Desktop-App.',
+    archClient: 'Browser oder Desktop-App',
+    archTriggers: 'Trigger',
+    archTriggerManual: 'Manuell',
+    archTriggerSchedule: 'Zeitplan',
+    archTriggerWebhook: 'Webhook',
+    archTriggerFile: 'Dateiüberwachung',
+    archTriggerDatabase: 'Datenbank',
+    archTriggerEventlog: 'Ereignisprotokoll',
+    archServiceNote: 'Ein Windows-Dienst',
+    archDatabase: 'PostgreSQL oder SQL Server',
+    archTargets: 'Zielsysteme',
+    archTargetsNote: 'Kein Agent installiert',
+    archCaption: 'Agentenlos über WinRM. Live-Updates über SignalR.',
     resourcesKicker: 'DIREKT INS PROJEKT',
     resourcesTitle: 'Alles, was du zum Loslegen brauchst.',
     sourceTitle: 'Ein Repository,<br>keine Beschränkungen',
@@ -136,9 +154,6 @@ export const de = {
     repoText: 'Quellcode, Issues und Contributions',
     installTitle: 'NodePilot installieren',
     installText: 'Desktop-App oder Windows Service',
-    blogKicker: 'AUS DER ENTWICKLUNG',
-    blogTitle: 'Hinter dem nächsten Workflow.',
-    blogLink: 'Zum Blog',
   },
   demo: {
     title: 'Service check',
@@ -207,7 +222,7 @@ export const de = {
     datenschutz: 'Datenschutz',
   },
   product: {
-    kicker: 'DAS PRODUKT',
+    kicker: 'FUNKTIONEN',
     title: 'Ein Ablauf.<br>Von der Idee bis zum Log.',
     intro: 'Designer, Debugger und Live Ops gehören in denselben Arbeitsbereich statt in drei verschiedene Werkzeuge.',
     designerTitle: 'Workflows entwerfen',

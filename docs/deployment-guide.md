@@ -5,7 +5,7 @@ artifact and verifying it against the release checksums and the publisher's code
 certificate; building the artifact from source; and a troubleshooting table for what
 actually goes wrong in production. The installation walkthrough — service identity, both
 database providers, certificates, first admin account — is on the
-[documentation site](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/production).
+[documentation site](https://www.nodepilot.run/docs/en/deployment/production/).
 
 Validated on a domain-joined Windows Server co-installed next to an SCCM site server, with
 SQL Server 2022, without an enterprise PKI (self-signed certificates throughout).
@@ -30,7 +30,7 @@ unsigned or tampered artifacts, so a code-signing certificate is part of the set
 
 - **Windows Server** (domain-joined recommended), elevated **Windows PowerShell 5.1** for
   both scripts.
-- **ASP.NET Core Runtime 10.0.11 or newer in the 10.x line (x64)** — the plain runtime, **not** the Hosting Bundle. The
+- **.NET Runtime and ASP.NET Core Runtime, 10.0.11 or newer in the 10.x line, both x64** — two downloads, and both are needed: the ASP.NET Core package carries only `Microsoft.AspNetCore.App` and no `dotnet.exe`, so on a machine without .NET it leaves a framework nothing can load. **Not** the Hosting Bundle. The
   bundle rewires IIS and restarts W3SVC, which you do not want on a shared host (e.g. an
   SCCM site server). The `x64` is a requirement, not a preference: NodePilot ships as
   `win-x64`, a 32-bit runtime cannot start the service, and the pre-flight rejects one by
@@ -289,14 +289,14 @@ exactly that set; copying the single `.ps1` on its own fails at the first dot-so
 Once the artifact is verified, the installation itself is documented on the documentation site
 rather than repeated here, so there is one walkthrough to keep correct instead of two:
 
-**[Windows Server deployment →](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/production)**
+**[Windows Server deployment →](https://www.nodepilot.run/docs/en/deployment/production/)**
 
 It covers what this guide deliberately no longer does: preparing the service identity
 (`LocalSystem` or gMSA), preparing the database (**both** SQL Server and PostgreSQL, including the
 SQL Server certificate trap where a CNG key stays invisible to the instance), importing the HTTPS
 certificate, running either the GUI setup or the scripts, creating the first admin account,
 verifying the result, and upgrading or uninstalling later. Signing in with Active Directory
-accounts is on the [AD SSO page](https://sev7enup.github.io/NodePilot/docs/#/en/enterprise/ldap-windows-sso).
+accounts is on the [AD SSO page](https://www.nodepilot.run/docs/en/enterprise/ldap-windows-sso/).
 
 The short version, for orientation while you read this page:
 
@@ -329,21 +329,21 @@ Three files carry the evidence, and the rows below refer to them by name:
 Two access notes: `C:\ProgramData\NodePilot` is readable by administrators only, so use an elevated
 shell; and `%TEMP%` belongs to the account that *elevated* the installer, which is not necessarily
 the one that started it. The full inventory — including what NodePilot deliberately does not log —
-is at [Logs & diagnostics](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/logs).
+is at [Logs & diagnostics](https://www.nodepilot.run/docs/en/deployment/logs/).
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | Build: `npm ci failed with exit code N` | real npm failure; commonly an `EPERM` file lock in `node_modules` | close the Vite dev server / editor / AV scan and retry, or `-SkipNpmCi` to reuse warm `node_modules` |
 | Install preflight: `No such host is known` | `-SqlServer` / `-PublicHostname` not resolvable | use full FQDNs and verify DNS |
 | Install or update aborts with `This build needs Microsoft.NETCore.App <x.y.z> or a higher <x>.x` | the artifact is framework-dependent and the host carries an older patch of a framework it names; roll-forward never goes backwards, so the apphost would refuse and the SCM would report only its generic *cannot be started* | nothing was changed — install the ASP.NET Core runtime of that version or newer (x64), which carries the matching base runtime, then re-run. A current `Microsoft.AspNetCore.App` alone is not enough; `Microsoft.NETCore.App` is checked separately. On builds before this check the symptom was a rolled-back install or update with no reason given, and Application log event *A .NET application failed … You must install or update .NET to run this application* naming the version |
-| SQL preflight: SSL handshake error / `The wait operation timed out` | no TLS certificate assigned to SQL Server, or the certificate's key is CNG instead of `KeySpec=KeyExchange`, or the cert isn't trusted on the NodePilot server | redo [preparing the database](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/production) |
+| SQL preflight: SSL handshake error / `The wait operation timed out` | no TLS certificate assigned to SQL Server, or the certificate's key is CNG instead of `KeySpec=KeyExchange`, or the cert isn't trusted on the NodePilot server | redo [preparing the database](https://www.nodepilot.run/docs/en/deployment/production/) |
 | Preflight: `SQL version pre-flight FAILED` — or, on older installer versions, the service boot-loops with TDS **error 8005** (`The parameter name is invalid`) | SQL Server 2022 RTM (or 2019 and older) cannot serve `Encrypt=Strict` | install the latest SQL Server 2022 CU (≥ 16.0.4003.1) |
-| Service starts, `/healthz/ready` stays 503, log shows `Login failed for user 'DOMAIN\...$'` | service identity has no SQL login / no DB user | grant it as in [preparing the database](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/production) |
+| Service starts, `/healthz/ready` stays 503, log shows `Login failed for user 'DOMAIN\...$'` | service identity has no SQL login / no DB user | grant it as in [preparing the database](https://www.nodepilot.run/docs/en/deployment/production/) |
 | Install waits out the full 180 s health probe and rolls back; Application log shows `SocketException (10013)` from `AnyIPListenOptions.BindAsync` | Kestrel cannot bind a configured port. **10013 is not "in use"** — Windows returns it for an HTTP.SYS reservation, and on any host running IIS (a ConfigMgr site server, for example) ports 80 and 443 are reserved with no listener to find | set `-HttpPort 0` to drop the redirect, or move the ports. `netsh interface ipv4 show excludedportrange protocol=tcp` lists every reservation. The GUI setup checks this on its Prerequisites page before installing |
 | After a reboot the service is still stopped, then comes up on its own | artifacts built before 2026-08-03 registered the service as *Automatic (Delayed Start)*, which idles ~120 s after boot before starting anything | expected on those builds — nothing is broken. Current builds start immediately and wait for the database instead; the boot log names what it is waiting for |
 | Boot log repeats `Waiting for the database to accept connections (n/120s)` | the database is not answering yet — a remote SQL Server still recovering, a DC not yet reachable for Kerberos, or a wrong host | let it finish; it proceeds either way and then reports the real connection error. Raise `Database:StartupWaitSeconds` (max 600) if the database routinely needs longer |
 | Event log 7000 *the service did not start due to a logon failure*, gMSA identity, only on boot | the service tried to log on before Netlogon could fetch the gMSA password from a DC | current builds set `depend= Netlogon` for gMSA services; on older ones `sc.exe config NodePilot depend= Netlogon` fixes it in place |
-| `admin-setup.token` → *Access to the path is denied* | intentional owner-only ACL for the service account | read via `robocopy /B` as shown in [creating the first admin account](https://sev7enup.github.io/NodePilot/docs/#/en/deployment/production) instead of editing the ACL |
+| `admin-setup.token` → *Access to the path is denied* | intentional owner-only ACL for the service account | read via `robocopy /B` as shown in [creating the first admin account](https://www.nodepilot.run/docs/en/deployment/production/) instead of editing the ACL |
 | Install fails with `JWT signing-key file security validation failed: parent directory 'C:\ProgramData\NodePilot' grants mutation rights to an untrusted principal`, then rolls back | an ACE on the data directory belongs to a principal the service does not trust — in practice the service account of an **earlier** installation, because an ACE is only trusted while the service actually runs as that account. Not a version problem; the check has existed since 1.0.0 | installers from 2026-08-12 on verify the directory with the service's own rule after applying the ACL, repair it, and only then start the service — so this no longer reaches the service. On older builds: `icacls C:\ProgramData\NodePilot` names the stranger, `icacls C:\ProgramData\NodePilot /remove:g "<account>"` removes it. **`Jwt:RotateInsecureKeyFile=true` does not help here** — it replaces the key file, and the directory is what was rejected |
 | Every `runScript` step fails with `The term 'Write-Output' is not recognized` | artifact built with a pre-2026-08 `Build-Artifact.ps1` that did not stage the PowerShell built-in modules — `$PSHOME\Modules` is missing in the install dir | rebuild with the current build script; or hot-fix in place: `Copy-Item 'C:\Program Files\NodePilot\runtimes\win\lib\net10.0\Modules' 'C:\Program Files\NodePilot\Modules' -Recurse` and restart the service |
 | Installer prints `FAILED: ... Restoring the previous installation` | any error after mutation began rolls back to the previous state | fix the reported cause and re-run; note the diagnostics tail the shared log file, so lines from the *previous* installation can appear — check timestamps |

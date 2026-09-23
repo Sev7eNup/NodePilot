@@ -18,6 +18,19 @@ import {
   type NodeKey,
 } from './graph'
 import {
+  BOX_KEYS,
+  LAYOUTS as TOPOLOGY_LAYOUTS,
+  LINKS,
+  LINK_KEYS,
+  SERVICE_PARTS,
+  TRIGGER_KEYS,
+  chipRect,
+  linkGeometry,
+  machineRect,
+  targetsNoteY,
+  triggerRowY,
+} from './topology'
+import {
   applyLanguage,
   currentLang,
   docsHref,
@@ -85,6 +98,7 @@ let demoRun: AbortController | null = null
 let demoPaused = reducedMotion.matches
 let demoOnScreen = false
 let graphLayout: GraphLayout = LAYOUTS.wide
+let archBreakpoint: 'wide' | 'compact' = 'wide'
 let toastTimer: number | undefined
 let currentFilter = 'all'
 const imageStates = new Map<HTMLElement, ImageState>()
@@ -491,8 +505,79 @@ function renderGraph(): void {
   }
 }
 
+/** Sizes the WinRM and SignalR pills to their text. Needs the fonts loaded. */
+function layoutArchLabels(): void {
+  for (const link of $$<SVGGElement>('.arch-link')) {
+    const text = link.querySelector<SVGTextElement>('.link-label text')
+    if (!text) continue
+    const width = text.getComputedTextLength()
+    if (!width) continue
+    const x = Number(text.getAttribute('x'))
+    const y = Number(text.getAttribute('y'))
+    setAttributes($('.link-label rect', link), { x: x - width / 2 - 6, y: y - 9, width: width + 12, height: 18 })
+  }
+}
+
+// Narrow canvases stack the architecture boxes instead of placing them side by side.
+function renderTopology(): void {
+  const canvas = $('#arch-canvas')
+  if (!canvas.clientWidth) return
+  archBreakpoint = canvas.clientWidth < 620 ? 'compact' : 'wide'
+  const layout = TOPOLOGY_LAYOUTS[archBreakpoint]
+  const { inset } = layout.metrics
+  canvas.classList.toggle('is-compact', archBreakpoint === 'compact')
+  $<SVGSVGElement>('#architecture-svg').setAttribute('viewBox', `0 0 ${layout.width} ${layout.height}`)
+
+  for (const key of BOX_KEYS) {
+    const group = $<SVGGElement>('#arch-' + key)
+    const box = layout.boxes[key]
+    setAttributes(group.querySelector('.box-frame'), box)
+    setAttributes(group.querySelector('.box-title'), { x: box.x + box.width / 2, y: box.y + box.height / 2 })
+    setAttributes(group.querySelector('.box-heading'), { x: box.x + inset + 2, y: box.y + 22 })
+  }
+
+  const triggers = $<SVGGElement>('#arch-triggers')
+  TRIGGER_KEYS.forEach((key, index) => {
+    const row = $<SVGGElement>(`[data-trigger="${key}"]`, triggers)
+    const y = triggerRowY(layout, index)
+    setAttributes(row.querySelector('circle'), { cx: layout.boxes.triggers.x + inset + 4, cy: y })
+    setAttributes(row.querySelector('text'), { x: layout.boxes.triggers.x + inset + 16, y })
+  })
+
+  const service = $<SVGGElement>('#arch-service')
+  setAttributes($('.box-note', service), { x: layout.boxes.service.x + inset + 2, y: layout.boxes.service.y + 44 })
+  SERVICE_PARTS.forEach((part, index) => {
+    const chip = $<SVGGElement>(`[data-part="${part}"]`, service)
+    const rect = chipRect(layout, index)
+    setAttributes(chip.querySelector('rect'), rect)
+    setAttributes(chip.querySelector('text'), { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 })
+  })
+
+  const targets = $<SVGGElement>('#arch-targets')
+  $$<SVGGElement>('.machine', targets).forEach((machine, index) => {
+    const rect = machineRect(layout, index)
+    setAttributes(machine.querySelector('rect'), rect)
+    setAttributes(machine.querySelector('text'), { x: rect.x + 12, y: rect.y + rect.height / 2 })
+  })
+  setAttributes($('.box-note', targets), { x: layout.boxes.targets.x + inset + 2, y: targetsNoteY(layout) })
+
+  for (const key of LINK_KEYS) {
+    const link = $<SVGGElement>('#arch-link-' + key)
+    const geometry = linkGeometry(layout, LINKS[key][archBreakpoint])
+    for (const path of $$<SVGPathElement>('path', link)) path.setAttribute('d', geometry.path)
+    $<SVGPolygonElement>('.link-arrow', link).setAttribute('points', geometry.arrow)
+    setAttributes(link.querySelector('.link-label text'), { x: geometry.labelX, y: geometry.labelY })
+  }
+  layoutArchLabels()
+}
+
 const graphObserver = new ResizeObserver(renderGraph)
 graphObserver.observe($('.flow-canvas'))
+new ResizeObserver(renderTopology).observe($('#arch-canvas'))
+// The pulse along the links only runs while the diagram is on screen.
+new IntersectionObserver((entries) => {
+  for (const entry of entries) entry.target.classList.toggle('is-visible', entry.isIntersecting)
+}, { threshold: 0.25 }).observe($('.architecture-section'))
 window.addEventListener('resize', () => {
   if (window.innerWidth > 760) setMenu(false)
   else sidebar.inert = !sidebar.classList.contains('is-open')
@@ -598,6 +683,7 @@ reducedMotion.addEventListener('change', () => {
   syncDemo()
 })
 void document.fonts.ready.then(layoutEdgeLabels)
+void document.fonts.ready.then(layoutArchLabels)
 
 function applyBlogFilter(announce = true): void {
   const lang = currentLang()

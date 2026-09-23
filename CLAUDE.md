@@ -23,27 +23,27 @@ NodePilot ist ein Single-Contributor-Projekt. KI darf beim Entwickeln helfen (di
 
 ## Doku-Landkarte
 
-- `docs/roadmap.md` — **führendes Dokument für „was wird gebaut".** Gesetzte Posten (R1), trigger-gated Posten (R2), offene Entscheidungen (E), Sperrvermerk-Anhang mit den verworfenen Ideen. Was dort nicht steht, ist kein Vorhaben.
-- `docs/claude-reference.md` — **Overflow-Referenz dieser Datei.** Activity-Config-Keys/Outputs, Trigger-Params, Edit-Lock-UX, Audit-Codes, Hot-Reload-Matrix, Backup-Details, Background-Services, Deployment, Coverage-Messung
+- `docs/roadmap.md` — **führendes Dokument für „was wird gebaut"** (R1 gesetzt, R2 trigger-gated, E offen, Sperrvermerk-Anhang). Was dort nicht steht, ist kein Vorhaben.
+- `docs/claude-reference.md` — **Overflow-Referenz dieser Datei**; die Sektionen hier zeigen auf ihre Tiefe dort
 - `docs/alerting.md` — Notification-Rules + System-Policies (ADR 0008), Dispatcher, Sinks, Ledger
 - `docs/custom-activities.md` — Custom Activities (Plugin-System)
 - `docs/mcp-server.md` — MCP-Server inkl. Tool-Katalog + `.mcp.json`-Beispiel
 - `docs/ai-features.md` — KI-Features: Config-Keys, Modell-Empfehlungen
-- `docs/deployment-guide.md` — (EN) **nicht** der Installationsweg, sondern was davor und danach kommt: Artefakt verifizieren, selbst bauen, Troubleshooting. Der Installationsweg steht **einmal**, auf der Doku-Website (`content/{de,en}/deployment/production.md`).
+- `docs/deployment-guide.md` — (EN) Artefakt verifizieren, selbst bauen, Troubleshooting — **nicht** der Installationsweg, der steht **einmal** auf der Doku-Website (`content/{de,en}/deployment/production.md`)
 - `docs/av-exclusions.md` — Antiviren-Ausschlüsse (Server + Desktop) als Übergabedokument für eine AV-Abteilung
 - `docs/workflow-styleguide.md` — Layout-Styleguide für Workflow-JSONs (**vor jedem Workflow-Gen lesen**)
 - `docs/workflow-tests.md` — Test-Suite unter `scripts/test-suite/`: 46 generierte Workflows gegen die laufende Engine, `suite-manifest.json` als Abdeckungsquelle, Guard-Test `TestSuiteCoverageTests`
 - `docs/enterprise-features.md` — HA, Secret-Provider, LDAP/SSO, SIEM, Folder-RBAC
 - `docs/ai-feature-ideas.md` — Beschreibungstiefe zu den KI-Ideen, **keine Spezifikation**. Priorisierung und Status stehen in `docs/roadmap.md`.
 - `src/nodepilot-ui/e2e/README.md` — E2E-Coverage-Map + Spec-Konventionen
-- `src/nodepilot-ui/demo/` — **Browser-Demo** der SPA für GitHub Pages (`/demo/`): dieselbe App gegen ein In-Memory-Backend. Eigener Entry, dritter Vite-Build (`vite.demo.config.ts` → `dist-demo/`). Abhängigkeitsrichtung ausschließlich `demo/` → `src/`; Hub, Doku-Link und Auth-Transport werden vom Demo-Entry **injiziert**. Details: `src/nodepilot-ui/CLAUDE.md`
-- `src/nodepilot-docs-ui/src/site/` — **Projekt-Website** (DE/EN, Vanilla-TS) an der Pages-Wurzel, Doku darunter unter `/docs/`. Eigener Vite-Build, **nie** Teil von `dist/` oder des Produkts. `src/nodepilot-docs-ui/scripts/assemble-site.mjs` baut `_site/`; **jede Eingabe ist Pflicht** — eine optionale ließe einen Deploy die alte Demo weiterveröffentlichen. `npm run preview:site` ist die einzige vollständige lokale Vorschau. Routen sind **echte Adressen** (`/product/`, englische Segmente, Rechtsseiten deutsch), die das Prerender-Plugin nach dem Build je Route als eigene Datei schreibt, samt `404.html`, `sitemap.xml` und `robots.txt`. Neue Route → `ROUTE_PATHS`, `routePages()` **und** `SITE_ROUTE_SEGMENTS`. Impressum/Datenschutz liefert der User. Details: `src/nodepilot-docs-ui/README.md`
+- `src/nodepilot-ui/demo/` — **Browser-Demo** der SPA für GitHub Pages (`/demo/`), dieselbe App gegen ein In-Memory-Backend; Regeln in `src/nodepilot-ui/CLAUDE.md`
+- `src/nodepilot-docs-ui/src/site/` — **Projekt-Website** (DE/EN) an der Pages-Wurzel, Doku darunter unter `/docs/`; **nie** Teil von `dist/`. Build, Routen, Vorschau: `src/nodepilot-docs-ui/README.md`. Impressum/Datenschutz liefert der User.
 
 ## Tech-Stack
 
 - **Backend:** ASP.NET Core Web API, .NET 10, Windows-only (`net10.0-windows`)
 - **Datenbank:** PostgreSQL (default) / SQL Server (`Database:Provider` = `postgres` | `sqlserver`). SQLite nur als Test-In-Memory-Backend.
-- **Remote Execution:** PowerShell SDK / WinRM, agentless. `Remote:Provider`: `winrm` (default) | `noop` (`noop` braucht `Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1`, sonst Boot-Abbruch). Engine-local (In-Proc-Pool): implizite WinPS-Kompatibilität **deaktiviert**, `Microsoft.PowerShell.Archive` gebündelt — Details `docs/claude-reference.md` + `docs/performance-improvements.md`
+- **Remote Execution:** PowerShell SDK / WinRM, agentless. `Remote:Provider`: `winrm` (default) | `noop` (`noop` braucht `Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1`, sonst Boot-Abbruch). Engine-local In-Proc-Pool (WinPS-Kompatibilität bewusst aus): `docs/performance-improvements.md`
 - **Real-time:** SignalR (`/hubs/execution`)
 - **Logging:** Serilog. Format via `Logging:Format`: `text`|`cmtrace`|`json`|`ecs-json` (ECS 1.x für SIEM, siehe `docs/siem-logging.md`). Support-Log: File + DB-Projektion
 - **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 102 Tools, HTTP-only gegen die REST-API
@@ -58,25 +58,15 @@ Projekt-Layout unter `src/` + `tests/` — nicht hier gespiegelt, direkt nachseh
 ## Projekt starten
 
 ```powershell
-# Postgres — Cluster DIESER Maschine. Nichts im Repo legt ihn an; die allgemeine
-# Einrichtung (CREATE ROLE/DATABASE, Connection-String per Env-Var) steht in CONTRIBUTING.md.
-& 'C:\NodePilot-Postgres\pgsql\bin\pg_ctl.exe' start -D 'C:\NodePilot-Postgres\data' -l 'C:\NodePilot-Postgres\data\postgres.log' -w
-
-# Backend (Port 5000) — schlägt fehl wenn Postgres nicht läuft
-cd src\NodePilot.Api; dotnet run
-
-# Frontend (Port 5173, Proxy auf Backend)
-cd src\nodepilot-ui; npm run dev
-
-# Doku-Website (Port 5174) — nur nötig, wenn /docs im Dev erreichbar sein soll
-cd src\nodepilot-docs-ui; npm run dev
+& 'C:\NodePilot-Postgres\pgsql\bin\pg_ctl.exe' start -D 'C:\NodePilot-Postgres\data' -l 'C:\NodePilot-Postgres\data\postgres.log' -w   # Postgres dieser Maschine — immer zuerst
+cd src\NodePilot.Api; dotnet run          # Backend, Port 5000 (launchSettings.json = Ziel des Vite-Proxys)
+cd src\nodepilot-ui; npm run dev          # Frontend, Port 5173
+cd src\nodepilot-docs-ui; npm run dev     # Doku-Website, Port 5174 — nur wenn /docs im Dev erreichbar sein soll
 ```
 
-Port 5000 kommt aus `launchSettings.json` und ist derselbe, auf den der Vite-Proxy zeigt. **Immer erst `pg_ctl start`, dann `dotnet run`.**
+**Erster Login braucht das Setup-Token** aus `src\NodePilot.Api\admin-setup.token` (die Login-Maske zeigt das Feld beim ersten Versuch). Rolle/DB anlegen, Connection-String: `CONTRIBUTING.md` § Local setup.
 
-**`/docs` im Dev:** In Produktion bedient die API die Doku aus `wwwroot/docs`; im Dev proxyt Vite `/docs` auf 5174. Läuft der Doku-Dev-Server nicht, führt der Doku-Button ins Leere — erwartet, kein Defekt. Der Doku-Dev-Server läuft selbst unter `/docs/` (`--base=/docs/` im dev-Skript, **weil Vite 8 das `base` aus der Config im Dev ignoriert**); ohne das landet man in der App statt in der Doku.
-
-**Erster Login braucht das Setup-Token**, nicht nur leere DB: die API schreibt es nach `src\NodePilot.Api\admin-setup.token` (ContentRoot). Die Login-Maske zeigt beim ersten Versuch ein **Setup-Token**-Feld; erst damit entsteht der Admin-Account.
+**`/docs` im Dev:** Vite proxyt `/docs` auf 5174; läuft der Doku-Dev-Server nicht, führt der Doku-Button ins Leere — erwartet, kein Defekt. Der Doku-Dev-Server läuft selbst unter `/docs/` (`--base=/docs/` im dev-Skript, **weil Vite 8 das `base` aus der Config im Dev ignoriert**); ohne das landet man in der App statt in der Doku.
 
 **Für Claude:** Dev-Mode verwenden. **API-Neustarts (stop+rebuild+start) sind jederzeit ohne Rückfrage erlaubt** — DLL-Locks sind normal. Vorab PID via `Get-NetTCPConnection -LocalPort 5000` finden, dann `Stop-Process` + Rebuild + Start. `npm run dev` kaputt → `npm install`. Deploy-Skripte unter `deploy/` laufen **nur auf ausdrückliche Aufforderung** — die Freigabe gilt jeweils nur für den einen Vorgang.
 
@@ -103,32 +93,21 @@ Port 5000 kommt aus `launchSettings.json` und ist derselbe, auf den der Vite-Pro
 | PostgreSQL (Default) | `"postgres"` | `ConnectionStrings:Postgres` |
 | SQL Server | `"sqlserver"` | `ConnectionStrings:DefaultConnection` |
 
-- **Ein gemeinsames Migration-Set**, provider-agnostisch (ohne `type:`-Strings). Bootstrap via `db.Database.Migrate()`.
-- **Aktuelle Baseline:** `20260915180058_InitialBaseline`. Datenbanken mit der alten Historie haben keinen Upgrade-Pfad dorthin; für diesen Stand eine neue Entwicklungsdatenbank verwenden. Bestehende Datenbanken niemals automatisch löschen oder deren Migration-History umschreiben.
+- **Ein gemeinsames Migration-Set**, provider-agnostisch (ohne `type:`-Strings). Bootstrap via `db.Database.Migrate()`. Bestehende Datenbanken niemals automatisch löschen oder deren Migration-History umschreiben (Baseline und Upgrade-Pfad: `CONTRIBUTING.md`).
 - **Neue Migration:** `dotnet ef migrations add <Name> --project src/NodePilot.Data --startup-project src/NodePilot.Api --context NodePilotDbContext`. **Pflicht-Postprocessing — zwei Schritte:**
   1. In der Migration (`<Name>.cs`): alle `type: "..."`-Annotations entfernen.
   2. In der Designer-Datei (`<Name>.Designer.cs`): `MigrationModelPortability.UseActiveProviderStoreTypes(modelBuilder);` als letzte Zeile vor `#pragma warning restore 612, 618` in `BuildTargetModel` ergänzen. Der `ModelSnapshot` bekommt den Aufruf bewusst **nicht** (Diff-Basis, kein Migration-Target-Model).
 
   Beide Schritte sind durch `MigrationDriftTests` abgesichert — laufen lassen statt sich erinnern.
 - Schema-Änderungen IMMER per EF-Migration. Kein DDL-Hotpatching.
-- Credentials mit DPAPI verschlüsselt (`Credentials:DpapiScope`).
-- **DB-TLS strikt (default):** `DatabaseTlsBootValidator` bricht den Boot ab, wenn die Connection den Server nicht verifiziert. Escape `Database:AllowInsecureTls=true` nur bei Loopback-Host **und** entweder Development-Env **oder** `Deployment:Mode=Desktop`.
-
-Retention-Services im Scheduler: Execution (30d), AuditLog (365d), WorkflowVersions (50/Workflow), SupportEvents (90d), Notifications (90d), TriggerReceipts (7d) — opt-out via `Retention:*:Enabled: false`. IdempotencyKeys (24h, fixe TTL) läuft immer. Inventar aller Background-Services: `docs/claude-reference.md`.
+- Credentials mit DPAPI verschlüsselt (`Credentials:DpapiScope`). DB-TLS ist strikt (`DatabaseTlsBootValidator`); Escape-Bedingungen, Retention-Dienste und alle Background-Services: `docs/claude-reference.md`.
 
 ### Datenbank-Verfügbarkeit (Laufzeit-Ausfall, ADR 0011)
 
-Prozessweiter In-Memory-Breaker (`NodePilot.Data.Availability`): fällt die DB zur Laufzeit aus, antwortet `/api` sofort `503 DATABASE_UNAVAILABLE` statt zu hängen. Invarianten:
+Prozessweiter In-Memory-Breaker (`NodePilot.Data.Availability`): fällt die DB zur Laufzeit aus, antwortet `/api` sofort `503 DATABASE_UNAVAILABLE` statt zu hängen. Invarianten und Health-Endpunkte: `docs/adr/0011-database-availability-breaker.md` + `docs/claude-reference.md`. Zwei Invarianten stehen hier, weil man sie mit nur dieser Datei sonst „repariert":
 
-- **Einzelschreiber-Regel: nur die Sonde publiziert `Available`**, EF-Interceptors degradieren nur.
-- Die Sonde nutzt `SELECT 1` auf eigener ungepoolter Verbindung — **nie `CanConnectAsync`**, ein hängender Server besteht das.
-- Ein Command-Timeout öffnet nie direkt, er *armt* nur die Sonde (`Armed`); eine langsame Abfrage bleibt `DATABASE_TIMEOUT`.
-- Hintergrunddienste parken via `WaitUntilServableAsync` (wirft nie; Gate **über** der Leader-Prüfung).
-- `/healthz/ready` = schneller 503 fürs LB, `/healthz/database` = **immer 200** mit Status fürs SPA.
-- Boot bleibt fail-closed (`Database:StartupWaitSeconds`); der Boot-Block wird bewusst **nicht** nachgeholt.
+- **Nur die Sonde publiziert `Available`** (`SELECT 1` auf eigener ungepoolter Verbindung, nie `CanConnectAsync`); EF-Interceptors degradieren nur, ein Command-Timeout armt nur die Sonde. Hintergrunddienste parken via `WaitUntilServableAsync`.
 - `Database:AuthReadTimeoutSeconds` und die übrigen Availability-Budgets sind restart-pflichtige Boot-Config und bewusst **kein** `SettingsSchema`-Eintrag — der Connection-String gehört auf keine HTTP-Fläche.
-
-Details: `docs/adr/0011-database-availability-breaker.md` + `docs/claude-reference.md`.
 
 **Bekannte Falle (bewusst so):** `HostOptions.BackgroundServiceExceptionBehavior` bleibt auf `StopHost`, und die sieben Retention-Dienste haben ihren breiten Catch eine Ebene *unter* der host-fatalen Grenze — Code, der in deren `RunIterationAsync` außerhalb des inneren `try` landet, kann den Host töten.
 
@@ -151,7 +130,7 @@ Routen + Rollen-Gating stehen an den Controllern in `src/NodePilot.Api/Controlle
 
 **Disable+cancel-all = Quarantäne.**
 
-**Per-Workflow-Parallelität (SCOrch „max running instances"):** `Workflow.MaxConcurrentExecutions` begrenzt gleichzeitige Läufe *eines* Workflows über **alle** Aufrufer hinweg. Am Limit wird **eingereiht statt abgelehnt**. Ein Zähler für beide Wege: `IWorkflowConcurrencyGate`. Der Dispatch-Claim überspringt Workflows am Limit, sonst verhungern andere hinter deren Rückstau. Nicht versioniert, nicht im Update/Publish-Body. Details: `docs/claude-reference.md`.
+**Per-Workflow-Parallelität:** `Workflow.MaxConcurrentExecutions` begrenzt gleichzeitige Läufe *eines* Workflows über **alle** Aufrufer hinweg; am Limit wird **eingereiht statt abgelehnt** (ein Zähler für beide Wege: `IWorkflowConcurrencyGate`), und der Dispatch-Claim überspringt Workflows am Limit. Nicht versioniert, nicht im Update/Publish-Body. Details: `docs/claude-reference.md` § Per-Workflow-Parallelität.
 
 ## Edit-Lifecycle (SCOrch-style Edit-Lock)
 
@@ -174,35 +153,24 @@ UX-Flow und Button-State-Matrix: `docs/claude-reference.md`. Kurz: `canWrite = r
 - **Engine-local:** `restApi`, `sql`, `emailNotification`, `delay`, `xmlQuery`, `jsonQuery`, `log`, `generateText`, `llmQuery` + controlFlow: `junction`, `forEach`, `decision`, `startWorkflow`, `returnData`
 - **Hybrid:** `runScript`, `waitForCondition`
 
-Config-Keys & Output-Semantik pro Activity: `docs/claude-reference.md`.
+Config-Keys & Output-Semantik pro Activity sowie Prozess-Isolation (`config.isolated: true`, nur lokal, No-Op auf dem WinRM-Pfad): `docs/claude-reference.md`.
 
-**Retry pro Step:** `config.retry` mit `maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayMs`. Nicht wiederholt werden dauerhafte Remote-Fehler (abgelehnter WinRM-Logon, per Policy geblockte HTTP-Session, nicht entschlüsselbares Credential) — sonst erzeugt ein Step mehrere Fehl-Logons und kann ein Konto sperren.
-
-**Execution-Timeout:** `timeoutSeconds` im Execute-Body + per-Step `config.timeoutSeconds`.
-
-**Prozess-Isolation (`runScript`, nur lokal):** `config.isolated: true` → eigener Prozess in einem Windows Job Object, opt-in Caps `memoryLimitMb`/`maxProcesses`; No-Op auf dem Remote/WinRM-Pfad. `ProcessSpawnCoordinator` serialisiert alle inheritable Spawns, dazu bounded stdout/stderr-Drain nach Prozess-Exit (`Engine:IsolatedDrainGraceSeconds`, default 5 s). Details: `docs/claude-reference.md`.
+- **Retry pro Step:** `config.retry` (`maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayMs`). Dauerhafte Remote-Fehler (abgelehnter WinRM-Logon, geblockte HTTP-Session, nicht entschlüsselbares Credential) werden **nicht** wiederholt — sonst sperrt ein Step ein Konto.
+- **Execution-Timeout:** `timeoutSeconds` im Execute-Body + per-Step `config.timeoutSeconds`.
 
 ## Custom Activities (Plugin-System)
 
-User-authored, PowerShell-backed Activities (UI: „Custom Nodes") — reine **runScript-Presets** (dieselbe Engine/Isolation/Marker-Capture/Redaction), keine zweite Script-Engine. Volle Doku: `docs/custom-activities.md`.
-
-- **Dispatch:** `activityType = custom:<key>` → ein einziger Sentinel-registrierter `CustomActivityExecutor`; `__customDefinitionId` authoritativ + `__customKey` als Drift-Guard. Der Wrapper captured NUR die deklarierten Outputs (+ `exitCode`).
-- **Governance:** Create/Edit/Delete = Admin+Operator **nur solange disabled**; Enable/Disable + Mutation enabled Defs = Admin-only. Latest-wins; jede Execution speichert `StepExecution.CustomActivity{Key,Version,Hash}`. Kein `secret`-Input-Typ — Secrets via `{{globals.X}}`/Credentials.
-- **Architektur:** Geteilte Facts-Schicht `NodePilot.Core.Activities.CustomActivityType`/`CustomActivityValidation`, Frontend-Spiegel `lib/customActivities.ts`. `activityCatalog.generated.ts` + Parity-Test bleiben **unberührt**.
+User-authored, PowerShell-backed Activities (UI „Custom Nodes") als reine **runScript-Presets** — dieselbe Engine, Isolation, Marker-Capture und Redaction, keine zweite Script-Engine. `activityType = custom:<key>` → ein Sentinel-registrierter `CustomActivityExecutor` (`__customDefinitionId` authoritativ, `__customKey` Drift-Guard); captured werden nur die deklarierten Outputs (+ `exitCode`). Governance: Mutation nur solange disabled (Admin+Operator), ab enabled Admin-only; kein `secret`-Input-Typ. Geteilte Facts-Schicht `NodePilot.Core.Activities.CustomActivityType`, Frontend-Spiegel `lib/customActivities.ts`; `activityCatalog.generated.ts` bleibt **unberührt**. Volle Doku: `docs/custom-activities.md`.
 
 ## Alerting (Notification-Rules)
 
-User-definierte Regeln, die bei passenden Ereignissen über SMTP / Generic-Webhook + HMAC benachrichtigen. Opt-in **per Daten** (idle bis eine Regel existiert). Volle Doku: `docs/alerting.md`.
-
-- **Zwei Arten:** Custom-Regeln (`Kind=Custom`, Execution-Events, Filter-AST = derselbe `ConditionEvaluator` wie Edge-Conditions) und System-Policies (`Kind=System`, ADR 0008 — 14 katalogisierte `ISystemAlertSource`s, ausgewertet vom `SystemAlertEvaluator`).
-- **Zustellung ist at-least-once.** `NotificationDispatcher` (leader-gated, ~30 s) persistiert einen Pending-Attempt VOR jedem I/O; der eindeutige Ledger-Key `(rule, route, occurrence)` verhindert doppelte Attempts, aber ein Crash nach Empfang und vor gespeichertem `Sent` kann erneut zustellen — **Webhook-Empfänger deduplizieren über `EventKey`**.
-- **Governance:** Read Admin/Op; alle Mutationen + Test-Fire Admin-only; neue Regeln entstehen disabled. Secrets in Responses redigiert. Frontend `/alerts`, `np alerting` + `np system-alert`, MCP-Tools für beides.
+Custom-Regeln (`Kind=Custom`, Execution-Events, Filter-AST = derselbe `ConditionEvaluator` wie Edge-Conditions) und System-Policies (`Kind=System`, ADR 0008, `ISystemAlertSource`-Katalog), zugestellt über SMTP / Webhook + HMAC; idle bis eine Regel existiert. **Zustellung ist at-least-once:** der `NotificationDispatcher` persistiert den Attempt vor jedem I/O, ein Crash danach kann erneut zustellen — **Webhook-Empfänger deduplizieren über `EventKey`.** Alle Mutationen + Test-Fire Admin-only, neue Regeln entstehen disabled. Volle Doku: `docs/alerting.md`.
 
 ## Architektur-Konventionen
 
-- **Neue Activity:** Klasse in `Engine/Activities/`, `IActivityExecutor` implementieren — Auto-Discovery via `AddNodePilotActivities()`, **keine** DI-Verdrahtung nötig. Pflichtteil derselben Änderung: die UI-Seite (Palette, `*Config`, handgepflegter Katalog-Spiegel — `src/nodepilot-ui/CLAUDE.md`) **und** ein Eintrag in `src/NodePilot.Core/Activities/Embedded/activity-config-reference.json`. Daraus werden AI-Prompt-Katalog *und* MCP-Config-Tools gespeist; `ActivityConfigReferenceTests` prüft, dass jeder dokumentierte Key vom Executor wirklich gelesen wird — ein erfundener Key erzeugt sonst Nodes, die korrekt aussehen und nichts tun.
-- **Neuer API Controller:** In `Api/Controllers/`, DTOs in `Api/Dtos/`. **Immer parallel** CLI-Command *und* MCP-Tool anlegen — Mechanik in `src/NodePilot.Cli/CLAUDE.md` bzw. `src/NodePilot.Mcp/CLAUDE.md`.
-- **Frontend:** Seiten/Nodes/i18n/State-Konventionen in `src/nodepilot-ui/CLAUDE.md`. **Farben immer über Design-Tokens/CSS-Variablen** — nie Tailwind-Farbliterale hardcoden (`text-gray-900`, `bg-white` brechen die Dark-Skins). Natives `<select>`: `option:hover` ist in Chromium nicht stylbar → Custom-Dropdown-Komponente verwenden.
+- **Neue Activity:** Klasse in `Engine/Activities/`, `IActivityExecutor` implementieren — Auto-Discovery via `AddNodePilotActivities()`, keine DI-Verdrahtung. Pflichtteil derselben Änderung: die UI-Seite (`src/nodepilot-ui/CLAUDE.md`) **und** ein Eintrag in `src/NodePilot.Core/Activities/Embedded/activity-config-reference.json`, aus dem AI-Prompt-Katalog und MCP-Config-Tools gespeist werden. Guard-Tests: Tabelle unter *Build & Test*.
+- **Neuer API Controller:** In `Api/Controllers/`, DTOs in `Api/Dtos/`; braucht CLI-Command **und** MCP-Tool (siehe *Clients*).
+- **Frontend:** Seiten, Nodes, i18n, State und Design-Tokens: `src/nodepilot-ui/CLAUDE.md`.
 - **Models/Interfaces:** Immer in `NodePilot.Core`
 - **Doc-Sync:** Feature-Änderungen halten alle Doku-Flächen synchron — README, `docs/*.md`, `docs/testing/E2ETests.md` + `e2e/README.md` und die Doku-Website `src/nodepilot-docs-ui/content/` (eigener kuratierter Korpus, kein Render von `docs/`). **Zweisprachig:** jede Seite braucht `content/de/…` **und** `content/en/…` plus Titel-Eintrag in `src/i18n/locales/{de,en}.json`; Querverweise **ohne** Sprach-Präfix. Der AI-Wissenskorpus zieht bewusst **nur** `content/en/`. Die Doku-`index.html` darf **kein Inline-`<script>`** enthalten (CSP `script-src 'self'`, Guard: `document-head.test.ts`).
 
@@ -245,7 +213,7 @@ Layout-Styleguide für Workflow-JSONs: **zuerst** `docs/workflow-styleguide.md` 
 - `{{manual.NAME}}` — Trigger-Input des Laufs (dieselben Keys liegen zusätzlich als `param.*` des Trigger-Nodes an). Deklarierte `manualTrigger`-Parameter werden beim Laufstart mit ihrem `default` geseedet, wenn der Aufrufer sie weglässt. Ein deklarierter Parameter **ohne** Default bleibt abwesend, und die Referenz scheitert.
 - Kein `outputVariable` → Step-ID wird verwendet: `{{step-123.output}}`
 
-**Ein veröffentlichter Wert hat genau einen Besitzer (SCOrch-Modell).** Die qualifizierte Form `{{aktivität.param.name}}` ist verbindlich und löst bei **jedem** Nachfahren auf. Den unqualifizierten Kurznamen (im `runScript` als `$name`) legt der Resolver nur an, wenn **genau eine** Aktivität auf dem Vorgängerpfad ihn veröffentlicht; bei zwei Publishern wird **nichts** gebunden statt einen Gewinner zu ziehen. Linter-Code `dup-published-param`; qualifiziert bleibt der Wert erreichbar. **Gemeldet wird nur, wenn mindestens ein Publisher den Namen selbst vergeben hat** — typ-abgeleitete Namen (`exitCode`, `registryOperation`-Outputs, `count`) kollidieren bauartbedingt und sind nicht umbenennbar. Herkunft: `WorkflowDataBusAnalyzer.AuthoredParameters` vs. `TypeDerivedParameters`.
+**Ein veröffentlichter Wert hat genau einen Besitzer (SCOrch-Modell).** `{{aktivität.param.name}}` ist verbindlich und löst bei **jedem** Nachfahren auf; den unqualifizierten Kurznamen (`$name` im `runScript`) bindet der Resolver nur bei **genau einem** Publisher auf dem Vorgängerpfad, bei zweien wird **nichts** gebunden. Linter-Code `dup-published-param`, gemeldet nur für selbst vergebene Namen (`WorkflowDataBusAnalyzer.AuthoredParameters` vs. `TypeDerivedParameters`). Details: `docs/workflow-designer-features.md`.
 
 **Contract-Garantie:** Drei Muster im `VariableResolver` — `GlobalsPattern`, `ManualPattern` und `StepPattern` mit genau vier Tails (`output`, `error`, `success`, `param.X`). Andere Tails bleiben Literal; unresolved → granulare Diagnostik je Namespace (StepRunner T-7.1). Das Globals-Muster gilt auch für `runScript`/Custom Activities, weil ein nicht existierendes Global nie legitimer Skripttext ist. Scheitert das **Laden** der Globals, endet ein Lauf, der Globals referenziert, vor dem ersten Step als `Failed`. **Ein neuer Namespace braucht ein eigenes Muster** — ein frei gewählter Tail kann von `StepPattern` prinzipiell nicht getroffen werden.
 
@@ -266,13 +234,11 @@ Layout-Styleguide für Workflow-JSONs: **zuerst** `docs/workflow-styleguide.md` 
 - `disabled: true` — übersprungen; Target-Node wird dadurch **nicht** zum Root, und sind alle eingehenden Kanten disabled → `Skipped`
 - `conditionExpression` — Typ `comparison` (==, !=, <, >, <=, >=, contains, startsWith, endsWith, matches, isEmpty, isNotEmpty, isTrue, isFalse), `group` (AND/OR), `not`. Operanden: `variable` oder `literal`.
 
-**Conditions sind fail-closed (ADR 0015).** Save/Publish/Import lehnen eine unbrauchbare Condition mit `400 invalid-edge-condition` ab (`EdgeConditionValidator` in Core). Zur Laufzeit wirft `ConditionEvaluator` eine `ConditionEvaluationException` und der Scheduler bricht den Lauf mit Kantenbezug ab — die Kante wird weder geöffnet noch still übersprungen. Ein Variablen-Operand **ohne Wert** macht seinen Vergleich **unentscheidbar**: das erfüllt die Condition nie, auch nicht durch `not`, und in einer Gruppe entscheidet nur ein echtes `true`/`false`. Alerting-Filter (`source: event`) sind ausgenommen — ein fehlendes Event-Feld liest als leer, weil der Feldkatalog deklariert ist.
+**Conditions sind fail-closed (ADR 0015):** Save/Publish/Import lehnen eine unbrauchbare Condition mit `400 invalid-edge-condition` ab (`EdgeConditionValidator` in Core); zur Laufzeit bricht der Scheduler den Lauf mit Kantenbezug ab, statt die Kante still zu überspringen. Ein Variablen-Operand **ohne Wert** ist unentscheidbar und erfüllt die Condition nie, auch nicht durch `not`. Alerting-Filter (`source: event`) lesen fehlende Felder als leer. Details: `docs/adr/0015-fail-closed-edge-conditions.md`.
 
 ## Sub-Workflows & Contract
 
-`startWorkflow` ruft jeden enabled Workflow auf (frischer DI-Scope), unabhängig vom Trigger-Typ; die übergebenen `parameters` landen als `manual.*` im Child-Run. `waitForCompletion: true` (default) → Parent blockiert, Child-`returnData` als `param.*` gespiegelt. **Max Call-Depth: 10** — gilt auch für `forEach`.
-
-Contract-Derivation: `GET /{id}/contract` liefert Inputs aus `manualTrigger.parameters` + Outputs aus `returnData.data`-Keys + System-Outputs (`__executionId`, `__status`, `__workflowId`, `__workflowName`). By-name-Lookup (API + Engine + Trigger/Webhook): exact-case gewinnt, sonst case-insensitive; mehrdeutige Namen → 409 bzw. Step-Fehler (`WorkflowNameResolver`). Details: `docs/claude-reference.md`.
+`startWorkflow` ruft jeden enabled Workflow auf (frischer DI-Scope), unabhängig vom Trigger-Typ; `parameters` landen als `manual.*` im Child-Run, bei `waitForCompletion: true` (default) blockiert der Parent und spiegelt das Child-`returnData` als `param.*`. **Max Call-Depth: 10** — gilt auch für `forEach`. `GET /{id}/contract` leitet Inputs/Outputs ab; By-name-Lookup (API, Engine, Trigger/Webhook): exact-case gewinnt, sonst case-insensitive, mehrdeutig → 409 bzw. Step-Fehler (`WorkflowNameResolver`). Details: `docs/claude-reference.md` § Contract-Derivation.
 
 ## Trigger
 
@@ -285,22 +251,19 @@ Contract-Derivation: `GET /{id}/contract` liefert Inputs aus `manualTrigger.para
 | `webhookTrigger` | HTTP `/api/webhooks/{name}/{path}` |
 | `manualTrigger` | UI / API |
 
-`TriggerOrchestrator` scannt alle 5 s. Trigger-Daten landen als `manual.*`-Variablen im Run + als `param.*` des Trigger-Nodes — **kein** `trigger.*`-Namespace. Key-Namen pro Trigger-Typ: `docs/claude-reference.md`.
+`TriggerOrchestrator` scannt alle 5 s. Trigger-Daten landen als `manual.*`-Variablen im Run + als `param.*` des Trigger-Nodes — **kein** `trigger.*`-Namespace. Key-Namen, Config-Vertrag, Liveness und Zustellung: `docs/claude-reference.md` §§ Trigger. Invarianten:
 
-**Config-Vertrag (eine Vokabel, zwei Laufzeiten):** Jeder Trigger-Node wird von zwei Pfaden gelesen — Node-Executor (`Engine/Triggers/`, Diagnose-Lauf) und Hintergrundquelle (`Scheduler/Sources/`, feuert real). Beide parsen über `Core/Triggers/`: Keys, Defaults, Validierung, Matching liegen dort **einmal**. Neuer Trigger-Key = Settings-Klasse + `activity-config-reference.json` + Designer-Feld; `TriggerContractParityTests` bricht sonst. `databaseTrigger` feuert bei **Sentinel-Änderung**, nicht pro Zeile. Details: `docs/claude-reference.md`.
-
-**Kein Nachholen nach Neustart oder Failover.** Der durable Cursor dient der Deduplizierung und Diagnose, nicht dem Backfill: beim Start spult jede Quelle ihn ohne zu feuern vor und meldet das übersprungene Fenster (`nodepilot.scheduler.triggers.fires_skipped`). Der **laufende** Betrieb ist unberührt. Preis: Signale aus einem Stillstandsfenster werden nicht verarbeitet.
-
-**Selbstheilung:** Jede `ITriggerSource` beantwortet `Health` — vertraglich ein **reiner In-Memory-Read**, weil ein blockierender Probe dort die Reconciliation aller Workflows lahmlegt. `unhealthy` → Quelle wird evictet und mit Exponential-Backoff (5 s→300 s) neu aufgebaut. Ein `FileSystemWatcher` lässt sich **nicht** in-place re-armen. Buffer-Overflow gilt bewusst **nicht** als Fault. Alertbar über `trigger-unhealthy`.
-
-**webhookTrigger-Hardening:** `signatureMode` = `header` (default, `X-Webhook-Secret`) oder `nodepilot-hmac-v2` (HMAC-SHA256 über Freshness-Metadaten + Methode + Pfad + Query + Raw-Body; CSPRNG-Secret ≥32 Bytes, clusterweiter Replay-Guard/5-min-Fenster). **Legacy `hmac` (Body-only) wird abgelehnt** → Adapter nötig. `fieldMappings` extrahiert Body-Felder per JSONPath als `manual.*`.
+- **Ein Trigger-Key lebt einmal in `Core/Triggers/`** und wird von Node-Executor (`Engine/Triggers/`) und Hintergrundquelle (`Scheduler/Sources/`) gelesen. Neuer Key = Settings-Klasse + `activity-config-reference.json` + Designer-Feld, sonst bricht `TriggerContractParityTests`. `databaseTrigger` feuert bei **Sentinel-Änderung**, nicht pro Zeile.
+- **Kein Nachholen nach Neustart oder Failover:** der durable Cursor dedupliziert, er backfillt nicht — Signale aus einem Stillstandsfenster werden verworfen (`nodepilot.scheduler.triggers.fires_skipped`).
+- `ITriggerSource.Health` ist ein **reiner In-Memory-Read**; `unhealthy` → Quelle wird evictet und mit Backoff neu aufgebaut, ein `FileSystemWatcher` lässt sich nicht in-place re-armen. Buffer-Overflow ist bewusst **kein** Fault.
+- **webhookTrigger:** `signatureMode` = `header` (default) oder `nodepilot-hmac-v2`; **Legacy `hmac` (Body-only) wird abgelehnt.** `fieldMappings` extrahiert Body-Felder per JSONPath als `manual.*`.
 
 ## WorkflowEngine — Execution-Modell
 
-- **Event-driven:** Queue + `inFlight`-Dict. Roots = **ausschließlich Trigger-Nodes**; ohne (aktiven) Trigger → 0 Roots → Execution `Failed`, ErrorMessage nennt den fehlenden Trigger. **Kein** `inDegree==0`-Fallback. Disabled Trigger nie Root. Orphan-/Nicht-Trigger-Activities ohne eingehende Edge laufen **nie** → `Skipped`. **Leerer** Workflow (0 Nodes) läuft mit 0 Steps durch (`Succeeded`). Node-Level `data.disabled: true` → `Skipped`, Downstream ohne andere Quellen auch. (ADR 0006)
-- **Expliziter Fan-in:** Nur eine `junction` darf mehrere eingehende Edges haben; jede andere Activity hat maximal eine. Designer und SCOrch-Import fügen bei Bedarf eine `waitAll`-Junction ein, die Strukturvalidierung schützt Save/Publish/API. Junction-Conditions werden über alle relevanten Eingänge ausgewertet, nicht über die zuletzt abgeschlossene Edge. (ADR 0013)
+- **Event-driven:** Queue + `inFlight`-Dict. Roots = **ausschließlich Trigger-Nodes** (ADR 0006): ohne aktiven Trigger 0 Roots → Execution `Failed`, **kein** `inDegree==0`-Fallback. Activities ohne eingehende Edge und Nodes mit `data.disabled: true` → `Skipped`, Downstream ohne andere Quellen auch. Leerer Workflow läuft mit 0 Steps durch (`Succeeded`).
+- **Expliziter Fan-in (ADR 0013):** Nur eine `junction` darf mehrere eingehende Edges haben; Designer und SCOrch-Import fügen bei Bedarf eine `waitAll`-Junction ein, die Strukturvalidierung schützt Save/Publish/API.
 - **Cancellation:** `_runningExecutions` Dict (Guid → CTS). **Per-Step-DI-Scope:** eigener Scope pro Step → scope-lokaler `DbContext`.
-- **Startup-Reconciler:** `Running`/`Paused` und inkonsistente `Pending` ohne Dispatch Intent → `Cancelled`; `Pending` mit durablem Outbox-Intent bleibt erhalten und wird neu geleast. (ADR 0014)
+- **Startup-Reconciler (ADR 0014):** `Running`/`Paused` und `Pending` ohne Dispatch Intent → `Cancelled`; `Pending` mit durablem Outbox-Intent wird neu geleast.
 - **Kein Step überlebt seine Execution:** Jede terminale Execution-Schreibung setzt anschließend alle noch `Running`/`Paused`-Steps auf `Cancelled` (`ExecutionStateLifecycle.CancelOrphanedStepsAsync`). Sonst bliebe ein Step für immer `Running` — sichtbar als endloser Spinner und als dauerhaft zu hohe „aktive Läufe"-Badge, weil beide nur `StepExecution.Status` lesen.
 - **Step-Debugger:** `POST /execute` mit `debug: true` → Breakpoints, SignalR `StepPaused`, Resume via `POST /executions/{id}/resume`.
 
@@ -308,16 +271,11 @@ Contract-Derivation: `GET /{id}/contract` liefert Inputs aus `manualTrigger.para
 
 Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.json`-Scripts). Backend nutzt Central Package Management (`Directory.Packages.props`).
 
-**Konventionen:**
-- **Tests sind Pflicht.** Jeder relevante Code-Change braucht passenden Test-Code in derselben Änderung.
-- Coverage-Gates: Backend Line >= 85 % / Branch >= 70 % — **erzwungen in `.github/workflows/ci.yml`, das ist die einzige autoritative Zahl** (Ratsche — nur anheben, nie senken). Frontend siehe `vitest.config.ts`. Messverfahren + Assembly-Filter: `docs/claude-reference.md`. Genuin untestbare Infrastruktur trägt `[ExcludeFromCodeCoverage]` **mit Begründungskommentar**; `coverage.runsettings` zieht das Attribut aus dem Nenner.
-- Naming: `MethodName_Scenario_ExpectedResult`
-- Remote-Layer (WinRM) IMMER gemockt.
-- DB-Tests: SQLite in-memory.
+**Konventionen:** Tests sind Pflicht — jeder relevante Code-Change bringt passenden Test-Code in derselben Änderung. Naming `MethodName_Scenario_ExpectedResult`; Remote-Layer (WinRM) IMMER gemockt; DB-Tests SQLite in-memory. Coverage-Gate Backend Line >= 85 % / Branch >= 70 %, **erzwungen in `.github/workflows/ci.yml`, das ist die einzige autoritative Zahl** (Ratsche — nur anheben, nie senken); Frontend siehe `vitest.config.ts`. Messverfahren, Assembly-Filter und die `[ExcludeFromCodeCoverage]`-Regel: `docs/claude-reference.md` § Coverage-Messung.
 
 ### Testumfang pro Änderung
 
-**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (6.597 Backend-Testfälle, 234 Vitest-Dateien, 77 E2E-Specs — die beiden Frontend-Zahlen hält `DocumentationCountsTests` an der Dateiliste fest, die Backend-Zahl bleibt ein Handmaß) und liefert lokal kein neues Signal: das Netz hängt an `ci.yml`, das auf **jedem PR und jedem Push auf main** läuft (Coverage-Gate + E2E eingeschlossen).
+**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (6.597 Backend-Testfälle, 235 Vitest-Dateien, 77 E2E-Specs — die beiden Frontend-Zahlen hält `DocumentationCountsTests` an der Dateiliste fest, die Backend-Zahl bleibt ein Handmaß) und liefert lokal kein neues Signal: das Netz hängt an `ci.yml`, das auf **jedem PR und jedem Push auf main** läuft (Coverage-Gate + E2E eingeschlossen).
 
 **Der Nightly ist kein verlässlicher zweiter Boden.** Er läuft als Windows-Task um 22:00 gegen den ausgecheckten Baum und wird verpasst, sobald die Maschine dann aus ist. Wer sich auf ihn beruft, prüft vorher `C:\temp\nodepilot-nightly\latest.md` auf sein Datum.
 
@@ -348,7 +306,7 @@ cd src\nodepilot-ui; npx playwright test e2e/operations.spec.ts --config=playwri
 
 ### Guard-Tests: auf Trigger, nicht auf Verdacht
 
-Scoped Testing übersieht genau eine Fehlerklasse — die Parity-/Drift-Tests, die Konsistenz zwischen weit auseinanderliegenden Dateien erzwingen. Sie liegen über sechs Testprojekte verteilt, sind also nicht „mal eben zusammen" ausführbar. Deshalb: **eine Auslöser-Fläche angefasst → genau diesen Test fahren**, statt sicherheitshalber alles.
+Parity-/Drift-Tests erzwingen Konsistenz zwischen weit auseinanderliegenden Dateien und liegen über sechs Testprojekte verteilt. Deshalb: **eine Auslöser-Fläche angefasst → genau diesen Test fahren**, statt sicherheitshalber alles.
 
 | Angefasst | Guard-Test | Projekt |
 |---|---|---|
@@ -374,17 +332,13 @@ Scoped Testing übersieht genau eine Fehlerklasse — die Parity-/Drift-Tests, d
 | `index.css` / `designer-atelier.css` designer-light tokens | `designerLightParity.test.ts` | nodepilot-ui |
 | Font-Tokens / Monaco-Stack | `fontTokens.test.ts` | nodepilot-ui |
 
-**E2E (Playwright):** hermetische Specs in `src/nodepilot-ui/e2e/`, alle APIs gemockt (kein Backend/Postgres nötig). Konventionen: `src/nodepilot-ui/CLAUDE.md` + `src/nodepilot-ui/e2e/README.md`.
-
-**Desktop-Shell:** `src/nodepilot-desktop` hat eine eigene vitest-Suite (node-Env) für die reine Logik — `config.ts`, `security.ts`, `skins.ts`. `npm run test:run`; eigener CI-Job `desktop`.
-
-**Nightly:** Windows-Task `NodePilot Nightly Tests` (täglich 22:00) fährt via `scripts/nightly-tests.ps1` alle vier Suiten (je 1× Retry), Report nach `C:\temp\nodepilot-nightly\`. Das Skript killt vorm Rebuild nur `testhost`-Prozesse **aus diesem Checkout**. Zeit ändern: `scripts/register-nightly-task.ps1 -Time HH:mm`.
+**E2E (Playwright):** hermetische Specs in `src/nodepilot-ui/e2e/`, alle APIs gemockt — Konventionen in `src/nodepilot-ui/CLAUDE.md` + `src/nodepilot-ui/e2e/README.md`. **Desktop-Shell:** eigene vitest-Suite und CI-Job `desktop`, siehe `src/nodepilot-desktop/README.md`. **Nightly:** `scripts/nightly-tests.ps1` (Windows-Task, 22:00, Report nach `C:\temp\nodepilot-nightly\`); Zeit ändern per `scripts/register-nightly-task.ps1 -Time HH:mm`.
 
 ## Clients (`np` CLI + `nodepilot-mcp`)
 
-Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad. Beide Installer liefern sie mit; `tools\np` landet idempotent in der Maschinen-`PATH`, der MCP-Server bewusst **nicht** (absoluter Pfad in `.mcp.json`). **Keine** `dotnet global tool`s — `PackAsTool` verträgt das geerbte `net10.0-windows`-TFM nicht (NETSDK1146, `docs/roadmap.md`-Sperrvermerk). Der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (102 Tools, 3 Resources, stdio) und reused die DPAPI-Session der CLI.
+Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad; der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (102 Tools, 3 Resources, stdio). Packaging, Anmeldewege, geteilte Client-Infrastruktur und Tool-Katalog: `src/NodePilot.Cli/CLAUDE.md`, `src/NodePilot.Mcp/CLAUDE.md`, `docs/mcp-server.md`.
 
-**Jeder neue API-Endpoint braucht beide Clients.** Mechanik, Befehlsbereiche und Tool-Katalog: `src/NodePilot.Cli/CLAUDE.md`, `src/NodePilot.Mcp/CLAUDE.md`, `docs/mcp-server.md`.
+**Jeder neue API-Endpoint braucht beide Clients** (Guard: `EndpointClientCoverageTests`).
 
 ## Autorisierung
 
@@ -404,63 +358,52 @@ Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pf
 
 **Ordner-Löschen hat zwei Sicherheitsgrenzen:** Ein leerer Ordner bleibt eine Folder-`Edit`-Mutation. `?recursive=true` entfernt auch Workflows und deren Execution-Historie und ist deshalb wie `DELETE /api/workflows/{id}` global Admin-only. Die Folder-Capabilities liefern dafür `canDelete` getrennt von `canEdit`; **die UI darf den rekursiven Delete nicht aus `canEdit` ableiten.**
 
-**Der Global-Variablen-Ordnerbaum kennt dieselbe Mechanik, bleibt aber Admin-only** — es gibt dort kein Per-Ordner-RBAC, an dem sich lockern ließe. Frontend-seitig teilen sich beide Bäume die Löschmechanik (`hooks/useFolderBulkDelete.ts`, `components/common/FolderBulkBar.tsx`, `lib/folderSelection.ts`); die Baum-Komponenten selbst sind weiterhin Klone.
-
-Initial-Admin: erster Login bei leerer DB (One-Shot-Token `admin-setup.token`).
+**Der Global-Variablen-Ordnerbaum kennt dieselbe Mechanik, bleibt aber Admin-only** — dort gibt es kein Per-Ordner-RBAC, an dem sich lockern ließe.
 
 ## Security
 
-- **Session:** absolute Lebensdauer **8h** (`Authentication:SessionAbsoluteLifetimeHours`; `AuthSessionIssuer`). Refresh verlängert die absolute Grenze **nicht**. `jti`-Revocation. Key aus `Jwt:Key` oder auto-generiertes `jwt-secret.key`.
-- **Auth-Pfade:** Local-BCrypt (`Authentication:LocalLoginMode`, Produktionsdefault **`BreakGlassOnly`**) + LDAP + Windows-Negotiate + OIDC (release-gated, + SCIM-Controller). Alle konvergieren auf JWT-Cookie + CSRF-Token. Siehe `docs/ldap-windows-sso.md`.
+- **Session:** JWT-Cookie + CSRF-Token, absolute Lebensdauer **8h** (`Authentication:SessionAbsoluteLifetimeHours`; Refresh verlängert sie **nicht**), `jti`-Revocation. Auth-Pfade (Local-BCrypt mit Produktionsdefault `LocalLoginMode=BreakGlassOnly`, LDAP, Windows-Negotiate, OIDC + SCIM): `docs/ldap-windows-sso.md`; Details `docs/claude-reference.md` § Security.
 - **External Trigger:** `X-Api-Key` gegen SHA-256-Hashes unter `ExternalTrigger:Keys:<id>`; jeder Eintrag hat eine GUID-only `AllowedWorkflowIds`-Liste. Die `Keys`-Map kommt **atomar** aus dem höchstprioren Provider (`Keys: {}` widerruft alle niedrigeren); Scope-Arrays ebenso (`[]` = deny-all). Der Workflow braucht zusätzlich einen aktiven `manualTrigger`. Legacy-`ApiKey` ist ohne eigene Liste inert.
-- **Idempotency:** `POST /api/trigger/{name}` akzeptiert `Idempotency-Key`; Replay gilt nur innerhalb desselben Key-Principals und Workflows, domain-separiert per Integration-ID + Key-Fingerprint (die DB speichert nur den Digest). `Pending` + Reservation + Dispatch Intent entstehen in **einer** Transaktion und werden nach Failover weiter dispatched. Für bereits gestartete Executions bleibt die Reservation bestehen.
+- **Idempotency:** `POST /api/trigger/{name}` akzeptiert `Idempotency-Key`, Replay nur innerhalb desselben Key-Principals und Workflows; `Pending` + Reservation + Dispatch Intent entstehen in **einer** Transaktion und überleben Failover.
 - **Rate-Limiting** (per-IP, Sliding-Window): login 50/Min, refresh 20/Min, webhook 60/Min, trigger 30/Min, ai-generate 20/Min, audit 60/Min, alerting-heavy 20/Min, backup 10/Min.
 - **Output-Redaction:** `OutputRedactor` maskiert Secrets. Immer aktiv. Custom-Patterns via `Logging:Redaction:Patterns`.
 - **Localhost-Bypass / Operator-Trust:** ohne Credentials läuft in-process unter der NodePilot-Service-Identität. `Operator` ist bewusst ein vertrauenswürdiger Automation-Author und darf solchen Workflow-Code publizieren/ausführen. Folder-RBAC ist keine Code-Sandbox. **Produkt-Feature, keinen Require-Target-Guard einziehen.**
-- **Security-Headers (Non-Dev):** HSTS, CSP, X-Frame-Options=DENY, nosniff, Referrer-Policy.
-- **SignalR-Auth:** httpOnly `np_auth`-Cookie wird beim WebSocket-Upgrade automatisch mitgeschickt (nur `/hubs/`); kein `?access_token=`-Querystring.
+- **Security-Headers (Non-Dev):** HSTS, CSP, X-Frame-Options=DENY, nosniff, Referrer-Policy. **SignalR-Auth** über das httpOnly `np_auth`-Cookie beim WebSocket-Upgrade (nur `/hubs/`); kein `?access_token=`-Querystring.
 - **REST-API-Proxy:** `RestApi:Proxy:Enabled` (default `false`). Per-Step-Override via `proxyMode`.
 
-**Hardening-Flags** — vollständige Tabelle mit Defaults und Wirkung: `docs/claude-reference.md`. Zwei Feinheiten: `Webhook:RequireSecret` ist **default `true`** (fehlender Key liest als `true`), und `WaitForCondition:AllowedHosts` ist eine **eigene** Liste für die Probes `portOpen`/`httpOk`, bewusst getrennt von `RestApi:AllowedHosts` und **alleinige** Autorität für beide Probe-Typen.
+**Hardening-Flags** — Tabelle mit Defaults und Wirkung: `docs/claude-reference.md`. Zwei Feinheiten: `Webhook:RequireSecret` ist **default `true`** (fehlender Key liest als `true`), und `WaitForCondition:AllowedHosts` ist eine **eigene** Liste für die Probes `portOpen`/`httpOk`, bewusst getrennt von `RestApi:AllowedHosts` und **alleinige** Autorität für beide Probe-Typen.
 
 ## Admin-Settings Hot-Reload
 
-Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (`reloadOnChange: true`). Pro Sektion trägt `SettingsSchema.cs` ein `IsHotReloadable`-Flag; nur `false`-Sektionen setzen den Restart-Marker (UI: emerald `HotReloadHint` vs. oranger `RestartBanner`). 13 Sektionen sind hot-reloadable, 9 restart-pflichtig; harter Kern (JWT, DB, Kestrel, Cluster/HA, `Remote:Provider`) bleibt boot-fixed.
+Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (`reloadOnChange: true`). Pro Sektion trägt `SettingsSchema.cs` ein `IsHotReloadable`-Flag; nur `false`-Sektionen setzen den Restart-Marker. 13 Sektionen sind hot-reloadable, 9 restart-pflichtig; harter Kern (JWT, DB, Kestrel, Cluster/HA, `Remote:Provider`) bleibt boot-fixed. Matrix: `docs/claude-reference.md` § Hot-Reload-Matrix.
 
 **Consumer-Regel:** hot-reloadable Werte via `IOptionsMonitor<T>.CurrentValue` bzw. rohes `IConfiguration` pro Use/Pass lesen — **nie** `IOptions<T>.Value`-Snapshot.
 
-**Dimensionierung:** `Performance:ManualTuning` (default **`false`**) entscheidet, ob `Engine:Runspace:*`, `Engine:MaxConcurrentSteps`, `Threading:*` und `ExecutionDispatch:WorkerCount` aus erkannter CPU+RAM abgeleitet oder verbatim aus der Config genommen werden. Aus = hardware-adaptiv, die konfigurierten Zahlen bleiben inertes Preset. Restart-pflichtig. **`Engine:MaxConcurrentExecutions:*` ist ausgenommen** (Sicherheits-Cap, nicht Tuning). Details: `docs/performance-improvements.md` + `docs/claude-reference.md`.
+**Dimensionierung:** `Performance:ManualTuning` (default **`false`**) entscheidet, ob Runspace-, Step-, Threading- und Dispatch-Worker-Zahlen aus erkannter CPU+RAM abgeleitet oder verbatim aus der Config genommen werden; restart-pflichtig. **`Engine:MaxConcurrentExecutions:*` ist ausgenommen** (Sicherheits-Cap, nicht Tuning). Details: `docs/performance-improvements.md`.
 
 ## AuditLog
 
-`IAuditWriter` injizieren, `await _audit.LogAsync(AuditActions.VerbNomen, "Resource", resourceId, detailsJson, ct)` **nach** `SaveChanges`. Schreibfehler darf normale Mutation nie abbrechen. Ausnahme: DB-Admin-Write-SQL läuft fail-closed — ohne vorab persistierten `DBADMIN_SQL_WRITE_ATTEMPTED`-Eintrag wird das SQL nicht ausgeführt. Passwörter/Secrets nie in Details.
-
-Audit-Codes folgen dem Muster `VERB_NOMEN` und sind **zentral** in `NodePilot.Core.Audit.AuditActions` registriert — nie ein rohes String-Literal am Call-Site (Guard: `AuditActionsCatalogTests`). Pipeline: `IAuditStager` (Core) + `IAuditWriter` (Api, wrappt Stager); Archive gzip + SHA-256-Sidecar. Code-Übersicht: `docs/claude-reference.md`.
+`IAuditWriter` injizieren, `await _audit.LogAsync(AuditActions.VerbNomen, "Resource", resourceId, detailsJson, ct)` **nach** `SaveChanges`. Schreibfehler darf normale Mutation nie abbrechen. Ausnahme: DB-Admin-Write-SQL läuft fail-closed — ohne vorab persistierten `DBADMIN_SQL_WRITE_ATTEMPTED`-Eintrag wird das SQL nicht ausgeführt. Passwörter/Secrets nie in Details. Codes folgen `VERB_NOMEN` und sind **zentral** in `NodePilot.Core.Audit.AuditActions` registriert — nie ein rohes String-Literal am Call-Site (Guard: `AuditActionsCatalogTests`). Code-Übersicht und Pipeline: `docs/claude-reference.md` § Audit-Codes.
 
 ## KI-Features
 
-Opt-in (`Llm:Enabled=false` default), OpenAI-kompatibler Endpunkt, Rate-Limit 20/min/IP. Volle Doku: `docs/ai-features.md` + `docs/claude-reference.md`.
+Opt-in (`Llm:Enabled=false` default), OpenAI-kompatibler Endpunkt, Rate-Limit 20/min/IP. Volle Doku: `docs/ai-features.md` + `docs/claude-reference.md` § KI-Features.
 
-- **`POST /api/ai/generate-script`** (Admin/Op, SSE-Streaming — tippt live in Monaco) + **`POST /api/ai/generate-workflow`** (Admin/Op, JSON).
-- **`POST /api/ai/chat`** (alle Rollen, SSE) — Workflow-Assistent. Proposals nur Admin/Op, Merge per Node-ID aufs unredigierte Original (Secrets/Layout erhalten). **Secrets werden vor jedem LLM-Call redigiert** (`WorkflowSecretRedactor`). Tool-Calling opt-in am aktiven Profil.
-- **Globaler AI-Chat / Wissens-Assistent** (`POST /api/ai/knowledge/ask`, SSE) — read-only Q&A in `/ai-chat`. Vier admin-toggelbare Quellen (Sektion `AiKnowledge`): **Docs**, **Operational** (RBAC-folder-gescoped), **Source-Code** (Admin/Op), **DB / text2sql** (**ausschließlich globaler Admin**, zentraler Executor-Guard über `ISqlKnowledgeReader`). **Folder-Grants erhöhen nie auf Raw-SQL.** Quellen sind nur sichtbar, wenn das aktive Profil `EnableToolCalling` gesetzt hat.
-- **`llmQuery`-Activity:** Engine-lokal, Prompt→Text; per-Node-Overrides `baseUrl`/`model`/`apiKey`/`maxTokens`/`temperature`/`timeoutSeconds`/`jsonMode`, **gated durch `Llm:Enabled`**. Einziger BaseUrl-Validierungspunkt ist `LlmEndpointGuard`.
-- **LLM-Profile:** `Llm:Profiles:<id>` ist ein **Objekt gekeyt nach unveränderlicher Id, kein Array** — nur so übersteht der Secret-Erhalt Rename/Reorder. `Llm:ActiveProfileId` wählt das eine aktive; **kein „nimm das erste"-Fallback** → 503 `LLM_NO_ACTIVE_PROFILE`. Ausgeliefert wird `"Profiles": {}` — ein Profil in der Basis-Config wäre über die UI nie löschbar. **Keine scoped `ILlmClient`-Registrierung**; Consumer nehmen `ILlmClientFactory`.
-- **Zwei Wire-Dialekte, kein Config-Key:** `LlmEndpointGuard.ResolveEndpoint` leitet aus dem `BaseUrl`-Pfad ab, wer antwortet (`…/responses` → Responses-API, sonst Chat-Completions); endet der Pfad schon auf `/chat/completions`, wird **nichts** mehr angehängt. Quirk-Fallbacks sind Chat-Completions-only — **Ausnahme `temperature`** (`LlmTemperatureQuirk`, beide Dialekte).
-- **Erreichbarkeit ≠ Antwortzeit:** `TimeoutSeconds` ist reines **Antwort**-Budget; der Verbindungsaufbau hat eigene Konstanten in `LlmConnectGuard`. **Die Ordnung `HandshakeTimeout` (30 s) > `ConnectPhaseTimeout` (15 s) ist tragend** (per Test gepinnt) — nur deshalb darf ein gefeuertes `ConnectTimeout` als TLS-Stufe gelesen werden.
-- **LLM-Proxy:** `Llm:Proxy:Mode` = `Off` (default) | `System` | `Custom`. Sitzt bewusst **nicht** im `SocketsHttpHandler`, sondern in `LlmConfiguredProxy : IWebProxy` — nur deshalb bleibt die Sektion hot-reloadable.
-- **Hardening:** SSRF-Block (Cloud-Metadata), Klartext-ApiKey-Warning, Prompt-Injection-Mitigation (Schema-only, User-reviewed Insert). Drift-Schutz: `PromptCatalogDriftTest.cs`. Audit: `AI_*`-Codes.
+- `POST /api/ai/generate-script` (Admin/Op, SSE-Streaming) + `POST /api/ai/generate-workflow` (Admin/Op, JSON).
+- `POST /api/ai/chat` (alle Rollen, SSE) — Workflow-Assistent; Proposals nur Admin/Op, Merge per Node-ID aufs unredigierte Original. **Secrets werden vor jedem LLM-Call redigiert** (`WorkflowSecretRedactor`).
+- `POST /api/ai/knowledge/ask` (SSE) — globaler Wissens-Assistent in `/ai-chat`, vier admin-toggelbare Quellen (Sektion `AiKnowledge`). **DB / text2sql ausschließlich globaler Admin** (zentraler Guard über `ISqlKnowledgeReader`); Folder-Grants erhöhen nie auf Raw-SQL.
+- `llmQuery`-Activity: Engine-lokal, per-Node-Overrides, gated durch `Llm:Enabled`; einziger BaseUrl-Validierungspunkt ist `LlmEndpointGuard`.
+
+**Profile:** `Llm:Profiles:<id>` ist ein Objekt gekeyt nach unveränderlicher Id, kein Array; `Llm:ActiveProfileId` wählt das aktive — **kein „nimm das erste"-Fallback** (503 `LLM_NO_ACTIVE_PROFILE`). Keine scoped `ILlmClient`-Registrierung; Consumer nehmen `ILlmClientFactory`. Wire-Dialekte, Timeouts, Proxy und Hardening: `docs/ai-features.md`.
 
 ## Workflow Import/Export
 
-`GET /{id}/export` / `GET /export` / `POST /import`. Envelope `nodepilot-workflow-export/v1`. Import erzeugt neue Einträge **immer disabled**; Aktivierung via `POST /{id}/enable`. Namenskollisionen → Suffix `" (Imported 2)"`. SCOrch-Import via `POST /import-scorch` übernimmt `<MaxParallelRequests>` originalgetreu als `MaxConcurrentExecutions`, inklusive `1`. Ziel-Folder via `?folderId=`; RBAC = Edit darauf. **Secrets werden hier redigiert** (`***`) — Teilen-Artefakt, kein DR.
+`GET /{id}/export` / `GET /export` / `POST /import`, Envelope `nodepilot-workflow-export/v1`. Import erzeugt neue Einträge **immer disabled**; Ziel-Folder via `?folderId=`, RBAC = Edit darauf. **Secrets werden redigiert** (`***`) — Teilen-Artefakt, kein DR. SCOrch-Import (`POST /import-scorch`): `docs/claude-reference.md` § SCOrch-Import.
 
 ## System-Configuration Backup (ADR 0001)
 
-Getrennt vom Workflow-Export: portables Konfigurations-Backup (Workflows+Folders, Machines, Credentials, Globals, Users, Custom Activities, Alerting, Settings — **keine** Execution-History/Audit/Stats). Admin-only, Envelope `nodepilot-system-backup/v4` (`.npbackup`), Payload passphrasenbasiert verschlüsselt; unvollständige Exporte und Restores brechen fail-closed ab. **Kein vollständiges DR** — native DB-, ProgramData- und Key-Sicherung plus Restore-Drill bleiben erforderlich. UI `/backup`, CLI `np backup`. Details: `docs/claude-reference.md`.
+Getrennt vom Workflow-Export: portables, passphrasenverschlüsseltes Konfigurations-Backup (`.npbackup`, Envelope `nodepilot-system-backup/v4`), Admin-only, fail-closed bei unvollständigem Export oder Restore; **keine** Execution-History und **kein vollständiges DR**. UI `/backup`, CLI `np backup`. Details: `docs/adr/0001-system-configuration-backup-restore.md` + `docs/claude-reference.md`.
 
 ## Production Deployment
 
-Produktiv-Rollout über `deploy/`-Skripte — Claude führt sie **nur auf ausdrückliche Aufforderung** aus (Release-Artefakte über `deploy/Build-Artifact.ps1` sind der übliche Anlass; ein Rollout auf eine laufende Instanz braucht dieselbe eigene Freigabe). Vollständige Doku: `deploy/README.md`; Architektur (gMSA, Kestrel-HTTPS, Install-Dir-Split, Config-Keys, Stolperfallen): `docs/claude-reference.md`.
-
-**Desktop-App (Electron, `deploy/desktop/`):** zweites Shipping-Ziel — offline Win-11-x64-Installer, alles als Boot-Start-Dienste. Posture `Deployment:Mode` (`Server`|`Desktop`, default `Server`): Desktop relaxiert **nur** loopback-DB-TLS + Kestrel-`ListenLocalhost`, der Rest bleibt Production-gehärtet. Volle Doku: `deploy/desktop/README.md`.
+Rollout über `deploy/`-Skripte (Freigabe-Regel unter *Projekt starten*). Doku: `deploy/README.md`; Architektur, Config-Keys und Stolperfallen: `docs/claude-reference.md` § Production Deployment. **Desktop-App** (Electron, `deploy/desktop/`, `Deployment:Mode=Desktop`): relaxiert **nur** loopback-DB-TLS + Kestrel-`ListenLocalhost`, der Rest bleibt Production-gehärtet — `deploy/desktop/README.md`.

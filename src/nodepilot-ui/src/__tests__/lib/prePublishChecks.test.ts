@@ -142,3 +142,13 @@ describe('getPrePublishLint', () => {
     for (const w of result.warnings) expect(w.severity).toBe('warning');
   });
 });
+
+describe('getPrePublishIssues — English UI', () => {
+  it('messages_areTranslated', () => {
+    const issues = getPrePublishIssues([activityNode('t', 'manualTrigger', { label: 'Start' })], [], { description: '' });
+    expect(issues.map((i) => i.message)).toEqual([
+      'Trigger "Start" has no outgoing connection: it fires, but nothing runs after it.',
+      'The workflow has no description. A short line helps colleagues see in the workflow list what it does.',
+    ]);
+  });
+});

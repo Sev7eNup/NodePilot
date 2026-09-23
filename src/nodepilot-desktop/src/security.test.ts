@@ -197,7 +197,7 @@ describe('hardenWindow — navigation containment', () => {
     expect(open(url).action).toBe('deny');
   });
 
-  it.each([`${ORIGIN}/docs/`, `${ORIGIN}/docs`, `${ORIGIN}/docs/#/en/cli`])(
+  it.each([`${ORIGIN}/docs/`, `${ORIGIN}/docs`, `${ORIGIN}/docs/en/cli/`])(
     'opens the bundled documentation in its own sandboxed window (%s)',
     (url) => {
       const { win, open } = fakeWindow();

@@ -191,6 +191,21 @@ function ConvertTo-NodePilotSecureString {
     return $secure
 }
 
+function Get-NodePilotPostgresPort {
+    <#
+      database.postgresPort is optional. Probe, provisioning and install all read it here, so an
+      omitted port means 5432 everywhere instead of [int]$null = 0 in one of them.
+    #>
+    [CmdletBinding()]
+    [OutputType([int])]
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Answers)
+
+    if ($Answers.Contains('database.postgresPort') -and $Answers['database.postgresPort']) {
+        return [int]$Answers['database.postgresPort']
+    }
+    return 5432
+}
+
 function ConvertTo-NodePilotInstallParameters {
     <#
       The single place that decides which parameters Install-NodePilot.ps1 receives. Provider-
@@ -244,8 +259,7 @@ function ConvertTo-NodePilotInstallParameters {
         $splat['PostgresUser'] = [string]$Answers['database.postgresUser']
         $splat['PostgresRootCertificate'] = [string]$Answers['database.postgresRootCertificate']
         $splat['PostgresPassword'] = ConvertTo-NodePilotSecureString -PlainText ([string]$Answers['database.postgresPassword'])
-        $port = & $optional 'database.postgresPort'
-        if ($port) { $splat['PostgresPort'] = [int]$port }
+        $splat['PostgresPort'] = Get-NodePilotPostgresPort -Answers $Answers
     }
 
     if ([bool](& $optional 'skips.databaseCheck' $false)) { $splat['SkipSqlConnectivityCheck'] = $true }
@@ -511,4 +525,156 @@ function Write-NodePilotResultFile {
         $lines.Add('')
     }
     [IO.File]::WriteAllLines($Path, $lines, [Text.UTF8Encoding]::new($false))
+}
+
+# ---------------------------------------------------------------------------
+# Bundled .NET runtime payload
+# ---------------------------------------------------------------------------
+
+# The two installers the server setup carries, in install order.
+#
+# Both are needed. aspnetcore-runtime-*.exe holds only the Microsoft.AspNetCore.App shared
+# framework - no dotnet.exe, no host, no Microsoft.NETCore.App - so on a machine without .NET it
+# leaves a framework nothing can load, while reporting a clean install. dotnet-runtime-*.exe
+# supplies the host and goes first, so a run that dies halfway still leaves a working dotnet.
+$script:NodePilotRuntimePackages = @(
+    [pscustomobject]@{ Component = 'host'; Label = '.NET runtime'; Pattern = 'dotnet-runtime-*.exe' }
+    [pscustomobject]@{ Component = 'aspnetcore'; Label = 'ASP.NET Core runtime'; Pattern = 'aspnetcore-runtime-*.exe' }
+)
+
+# 3010 means installed with a reboot pending. 1638 means a bundle declined because a newer one is
+# registered - it is not success, but it is not a reason to stop either: a host that declines
+# because the machine already has a newer one still leaves the ASP.NET Core half to install.
+$script:NodePilotRuntimeAcceptedExitCodes = @(0, 3010)
+
+function Get-NodePilotRuntimeInstallerPlan {
+    <#
+      Which installers to run, in order, for a given payload directory. Returns an object with
+      Steps (Component/Label/Path) and Error; Error is a string, never a throw, so the adapter can
+      report it as a provisioning verdict.
+
+      Exactly one match per package. A payload holding only the ASP.NET Core installer is what
+      builds before this fix produced, and it must be named rather than quietly doing the old,
+      broken thing.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$PayloadRoot)
+
+    $steps = @()
+    if ([string]::IsNullOrWhiteSpace($PayloadRoot) -or
+        -not (Test-Path -LiteralPath $PayloadRoot -PathType Container)) {
+        return [pscustomobject]@{ Steps = $steps; Error = "The payload directory '$PayloadRoot' does not exist." }
+    }
+    foreach ($package in $script:NodePilotRuntimePackages) {
+        $found = @(Get-ChildItem -LiteralPath $PayloadRoot -Filter $package.Pattern -File -ErrorAction SilentlyContinue)
+        if ($found.Count -ne 1) {
+            return [pscustomobject]@{
+                Steps = @()
+                Error = ("Expected exactly one bundled $($package.Label) installer in the payload; " +
+                         "found $($found.Count).")
+            }
+        }
+        $steps += [pscustomobject]@{
+            Component = $package.Component
+            Label     = $package.Label
+            Path      = $found[0].FullName
+        }
+    }
+    return [pscustomobject]@{ Steps = $steps; Error = '' }
+}
+
+function New-NodePilotRuntimeProvisionResult {
+    <#
+      The verdict for a runtime provisioning run, separated from the installers that produce it so
+      every branch is reachable from a test host that must not install a runtime.
+
+      The readiness check decides, not the exit codes. An installer that exits 0 has run; it has
+      not promised that the machine can host NodePilot. The ASP.NET Core package reports a clean
+      install while leaving a bare server with no dotnet host, and that combination is what
+      produced a green provisioning run, a red readiness row and no message at all.
+
+      -Verification is that check re-run afterwards, or $null when it was never reached.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Attempts,
+        [Parameter(Mandatory)][AllowNull()]$Verification
+    )
+
+    $codes = ($Attempts | ForEach-Object { "$($_.Label) $($_.ExitCode)" }) -join ', '
+    $worst = 0
+    foreach ($attempt in $Attempts) {
+        if ($script:NodePilotRuntimeAcceptedExitCodes -notcontains $attempt.ExitCode) {
+            $worst = $attempt.ExitCode
+            break
+        }
+    }
+
+    if ($Verification -and $Verification.Status -eq 'Pass') {
+        $detail = $Verification.Detail
+        if (($Attempts | Where-Object { $_.ExitCode -eq 3010 })) { $detail = "$detail A reboot is pending." }
+        return [pscustomobject]@{ Status = 'Pass'; Detail = $detail; ExitCode = $worst }
+    }
+
+    # Everything else is a failure, and the message has to carry both halves: what the installers
+    # said, and what the machine looks like afterwards.
+    $reason = if ($Verification) {
+        " The machine still has no usable .NET host: $($Verification.Detail)"
+    } else {
+        ' The run did not get far enough to check the result.'
+    }
+    $ran = if ($codes) { "Installer exit codes: $codes." } else { 'No installer ran.' }
+    return [pscustomobject]@{
+        Status   = 'Fail'
+        Detail   = ("The bundled runtime installation did not leave a usable runtime behind. " +
+                    "$ran$reason")
+        ExitCode = $worst
+    }
+}
+# ---------------------------------------------------------------------------
+# Why a service would not start
+# ---------------------------------------------------------------------------
+
+# SCM events a failed start leaves behind, most specific first. 7038 and 7041 name the account and
+# the underlying error; 7000 only says that a logon failed, and puts the reason on its SECOND line.
+$script:NodePilotScmFailureEventIds = @(7038, 7041, 7000, 7009, 7023, 7024, 7031, 7034)
+
+function Resolve-NodePilotScmFailureReason {
+    <#
+      One sentence for the wizard from the SCM events around a failed service start. Pure, so the
+      tests can drive it without a service and without an event log.
+
+      Reading only the first line of event 7000 handed the operator a sentence that ended in a
+      colon - the preamble - while the reason sat on the next line. The whole message is flattened
+      onto one line instead, because the caller shows it in a message box.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Events)
+
+    if ($Events.Count -eq 0) { return '' }
+
+    # An event naming the service beats a more specific id belonging to some other service.
+    $named = @($Events | Where-Object { "$($_.Message)" -like '*NodePilot*' })
+    $pool = if ($named.Count -gt 0) { $named } else { @($Events) }
+
+    $chosen = $null
+    foreach ($id in $script:NodePilotScmFailureEventIds) {
+        $chosen = @($pool | Where-Object { $_.Id -eq $id }) | Select-Object -First 1
+        if ($chosen) { break }
+    }
+    if (-not $chosen) { $chosen = $pool[0] }
+
+    $text = ((@("$($chosen.Message)" -split "`r?`n") | ForEach-Object { $_.Trim() } |
+        Where-Object { $_ }) -join ' ') -replace '\s+', ' '
+    $reason = "SCM event $($chosen.Id): $text"
+
+    # 7038 is "unable to log on as <account>", which is locale-independent as an id. Under a gMSA
+    # that is almost always the host not being allowed to fetch the managed password - something
+    # the SCM cannot know and therefore reports only as access denied.
+    $logonFailure = $chosen.Id -eq 7038 -or
+        ($chosen.Id -eq 7000 -and $text -match 'logon failure|Anmeldefehler')
+    if ($logonFailure) {
+        $reason += ' If the service runs as a gMSA, this is usually that the host may not retrieve' +
+                   " the managed password: add the computer to the account's" +
+                   ' PrincipalsAllowedToRetrieveManagedPassword and restart it, because a computer' +
+                   " account's group membership only takes effect after a reboot."
+    }
+    return $reason
 }

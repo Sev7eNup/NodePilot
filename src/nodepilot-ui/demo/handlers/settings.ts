@@ -81,7 +81,7 @@ const SECTIONS: Record<string, unknown> = {
   ExecutionDispatch: { workerCount: 600 },
   Threading: { minWorkerThreads: 768, minIoCompletionThreads: 768 },
   Remote: {
-    requireWinRmSsl: true,
+    requireWinRmSsl: false,
     winRm: { operationTimeoutSeconds: 300, openTimeoutSeconds: 30 },
     pool: { enabled: true, maxConcurrentPerMachine: 5, maxIdlePerKey: 5, idleTtlSeconds: 120 },
   },

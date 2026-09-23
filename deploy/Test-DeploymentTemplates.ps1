@@ -313,6 +313,14 @@ if ($renderedProxies.Count -ne 2 -or
 }
 
 $installer = Get-Content -LiteralPath $InstallerPath -Raw
+# DbConnectionStringBuilder's indexer rejects a PSObject, and cmdlet output (Join-Path) is one.
+# An uncast path failed every PostgreSQL installation while rendering appsettings.
+Assert-TextMatches -Name 'the Postgres root certificate path is cast before it enters the builder' `
+    -Text $installer -Pattern "\`$postgresBuilder\['Root Certificate'\]\s*=\s*\[string\]"
+# The installer's own pre-flight is the only one an unattended run gets. Without the root
+# certificate it cannot check the Postgres server certificate's revocation status.
+Assert-TextMatches -Name 'the installer pre-flight receives the Postgres root certificate' `
+    -Text $installer -Pattern "(?s)Invoke-NodePilotPreflight\s*``[\s\S]{0,900}-PostgresRootCertificate \`$PostgresRootCertificate"
 Assert-TextMatches -Name 'installer accepts trusted proxy IPs' `
     -Text $installer -Pattern '\[string\[\]\]\$KnownProxyIps\s*=\s*@\(\)'
 Assert-TextMatches -Name 'installer renders the trusted-proxy placeholder' `
@@ -1593,13 +1601,34 @@ Assert-TextMatches -Name 'the readiness page asks for the port check' `
     -Text $serverIss -Pattern "CheckIds\[\d\] := 'ports';"
 
 # --- certificate validity and naming -------------------------------------------------------------
-# Expired certificates are a required preflight failure.
-Assert-TextMatches -Name 'an expired certificate fails the pre-flight' `
+# A certificate outside its validity window is reported, not refused: Kestrel binds by thumbprint
+# and never reads NotAfter, so the service starts either way and the certificate can be swapped
+# afterwards with a store import and a restart.
+# Sliced to the TLS verdict, because the publisher certificate is checked for validity too and an
+# expired SIGNING certificate must keep aborting - the signature would be rejected and nothing would
+# install. A pattern matched against the whole file would relax that one by accident.
+$certVerdictStart = $preflightStripped.IndexOf('function New-NodePilotCertificateVerdict')
+$certVerdictEnd = if ($certVerdictStart -ge 0) {
+    $preflightStripped.IndexOf("`nfunction ", $certVerdictStart + 40)
+} else { -1 }
+if ($certVerdictStart -lt 0 -or $certVerdictEnd -le $certVerdictStart) {
+    throw 'Deployment template check failed: could not delimit New-NodePilotCertificateVerdict.'
+}
+$certVerdict = $preflightStripped.Substring($certVerdictStart, $certVerdictEnd - $certVerdictStart)
+# '$Now)' and not '$Now', so these do not also match the expiring-soon branch in the same function,
+# which compares against $Now.AddDays(30) and must keep passing.
+Assert-TextMatches -Name 'an expired certificate warns without blocking the install' `
+    -Text $certVerdict -Pattern "(?s)NotAfter -lt \`$Now\)[\s\S]{0,300}Status 'Warn'"
+Assert-TextMatches -Name 'a certificate that is not valid yet warns too' `
+    -Text $certVerdict -Pattern "(?s)NotBefore -gt \`$Now\)[\s\S]{0,300}Status 'Warn'"
+# Only Fail plus Required aborts, so what must not come back here is Fail. -Required stays on both,
+# as on every other branch of this check.
+Assert-TextDoesNotMatch -Name 'neither validity branch aborts the install any more' `
+    -Text $certVerdict -Pattern "(?s)Not(After -lt|Before -gt) \`$Now\)[\s\S]{0,300}Status 'Fail'"
+# The publisher certificate is the opposite case and must not drift with it.
+Assert-TextMatches -Name 'an out-of-date publisher certificate still aborts' `
     -Text $preflightStripped `
-    -Pattern "(?s)NotAfter -lt \`$Now[\s\S]{0,300}Status 'Fail' -Required \`$true"
-Assert-TextMatches -Name 'a certificate that is not valid yet fails too' `
-    -Text $preflightStripped `
-    -Pattern "(?s)NotBefore -gt \`$Now[\s\S]{0,300}Status 'Fail' -Required \`$true"
+    -Pattern "(?s)NotBefore -gt \`$now\b[\s\S]{0,400}Status 'Fail' -Required \`$true"
 # X509Extension.Format() renders "DNS Name=" in the machine's UI language. A parser built on it
 # works on an English host and silently finds nothing on a German one - which would report every
 # certificate as naming nothing. PowerShell's certificate provider hands over the decoded list.
@@ -1695,7 +1724,16 @@ $serverBuild = Remove-CommentLines -Text (Get-Content -LiteralPath $ServerBuildS
 Assert-TextMatches -Name 'server installer rejects a pre-fetched runtime below 10.0.11' `
     -Text $serverBuild -Pattern "MinimumRuntimeVersion\s*=\s*\[version\]'10\.0\.11'"
 Assert-TextMatches -Name 'server installer validates the staged runtime filename version' `
-    -Text $serverBuild -Pattern '\$stagedRuntimeVersion\s+-lt\s+\$MinimumRuntimeVersion'
+    -Text $serverBuild -Pattern '\$stagedVersion\s+-lt\s+\$MinimumRuntimeVersion'
+# Both packages are staged and both are checked. aspnetcore-runtime-*.exe carries only
+# Microsoft.AspNetCore.App; shipping it alone is what left a bare server with no dotnet host while
+# the provisioning run reported success.
+Assert-TextMatches -Name 'the server installer stages the .NET host as well' `
+    -Text $serverBuild -Pattern "Pattern = 'dotnet-runtime-\*\.exe'"
+Assert-TextMatches -Name 'the server installer stages the ASP.NET Core framework as well' `
+    -Text $serverBuild -Pattern "Pattern = 'aspnetcore-runtime-\*\.exe'"
+Assert-TextMatches -Name 'both staged runtime file names reach the compiler' `
+    -Text $serverBuild -Pattern '/DHostRuntimeFileName='
 # The client, not the distribution: a stock bin folder is 57 MB, of which 27 MB is ICU and 8 MB is
 # wxWidgets for pgAdmin, none of it reachable from psql. The seven files come off psql's own import
 # table.
@@ -1807,6 +1845,12 @@ Assert-TextMatches -Name 'the auto-fix run extracts it too' `
     -Text $serverIss -Pattern '(?s)if WantsFix then[\s\S]{0,200}EnsurePgClient\(\)'
 Assert-TextMatches -Name 'and so does the unattended path, which never sees a page' `
     -Text $serverIss -Pattern '(?s)WizardSilent\(\) and \(\(AnswerFileOverride[\s\S]{0,400}EnsurePgClient\(\)'
+# ExtractTemporaryFiles matches against the full destination path: a bare 'psql.exe' finds nothing,
+# and the surrounding try/except turned that into a setup that never had a client.
+Assert-TextMatches -Name 'the Postgres client is extracted with a leading wildcard' `
+    -Text $serverIss -Pattern "ExtractTemporaryFiles\('\*psql\.exe'\)"
+Assert-TextDoesNotMatch -Name 'no ExtractTemporaryFiles call uses a bare file name' `
+    -Text $serverIss -Pattern "ExtractTemporaryFiles\('[^*'][^']*'\)"
 
 # The runtime fix is offered on the readiness page, before PrepareToInstall has extracted the
 # dontcopy payload. Checking only that the runtime is extracted somewhere misses that ordering bug:
@@ -2117,6 +2161,29 @@ Assert-TextDoesNotMatch -Name 'the crash lookup cannot itself fail the run' `
     -Text $crashReason -Pattern 'throw\b'
 Assert-TextMatches -Name 'and ends on the empty answer when no source knows' `
     -Text $crashReason -Pattern "(?m)^\s*return ''\s*$"
+# 7038 is the event that names the account and the error behind a refused logon; 7000 only says a
+# logon failed, and it says it on its second line. Without 7038 the operator got the preamble.
+Assert-TextMatches -Name 'the SCM lookup asks for the event that names the account' `
+    -Text (Get-Content -LiteralPath $SetupContractPath -Raw) `
+    -Pattern '\$script:NodePilotScmFailureEventIds = @\(7038, 7041, 7000'
+# The interpretation is pure and lives beside the other contract helpers, or it could not be tested
+# at all: the adapter runs as a process with a mandatory -Mode.
+Assert-TextMatches -Name 'the SCM reason is decided where a test can reach it' `
+    -Text $setupAdapter -Pattern 'Resolve-NodePilotScmFailureReason -Events'
+
+# A diagnostic that swallows its own failure is a diagnostic nobody can trust. The SCM block used
+# to end on an empty catch, so a failure to read the log looked exactly like a quiet machine.
+$serviceControlCode = Remove-CommentLines -Text $serviceControlScript -CommentPrefix '#'
+Assert-TextDoesNotMatch -Name 'the start diagnostics never swallow a read failure' `
+    -Text $serviceControlCode -Pattern '\}\s*catch\s*\{\s*\}'
+# Filtered by the provider, not afterwards: -MaxEvents takes the newest N of the whole log first,
+# so on a busy server the events being looked for never reach the Where-Object.
+Assert-TextMatches -Name 'the start diagnostics filter in the query, not after it' `
+    -Text $serviceControlScript -Pattern "(?s)Get-WinEvent -FilterHashtable[\s\S]{0,200}ProviderName = 'Service Control Manager'"
+# LevelDisplayName is localised. Comparing it against 'Error' matches nothing on a German Windows,
+# and the section then renders empty and reads as "no errors".
+Assert-TextDoesNotMatch -Name 'the start diagnostics do not compare a localised level name' `
+    -Text $serviceControlCode -Pattern 'LevelDisplayName'
 
 # The finish page is the only place the bootstrap token is ever shown, and a plain read of it always
 # fails: the service writes the file with a single ACE for its own identity, and the installing
@@ -2171,10 +2238,58 @@ Assert-TextMatches -Name 'the publisher certificate path has one definition' `
     -Text $setupAdapter -Pattern "function Get-NodePilotSignerCertificatePath"
 Assert-TextDoesNotMatch -Name 'nothing looks for the certificate in a folder the build never makes' `
     -Text $setupAdapter -Pattern "signer\\nodepilot-release-signing\.cer"
-Assert-TextMatches -Name 'the bundled runtime is resolved from the flat temporary payload' `
-    -Text $setupAdapter -Pattern 'Get-ChildItem -LiteralPath \$PayloadRoot -Filter ''aspnetcore-runtime-\*\.exe'''
+Assert-TextMatches -Name 'the bundled runtimes are resolved from the flat temporary payload' `
+    -Text $contractScript -Pattern 'Get-ChildItem -LiteralPath \$PayloadRoot -Filter \$package\.Pattern'
 Assert-TextDoesNotMatch -Name 'nothing looks for the runtime in a folder the installer never extracts' `
     -Text $setupAdapter -Pattern 'Join-Path \$PayloadRoot ''runtime'''
+# 1638 means a bundle declined because a newer one is registered. It is not success - but it is not
+# a reason to stop either, or a machine that already carries a newer .NET runtime and needs only the
+# ASP.NET Core half would be refused. The readiness re-check decides; the exit code never does.
+Assert-TextMatches -Name 'only a real install counts as an installed runtime' `
+    -Text $contractScript -Pattern '\$script:NodePilotRuntimeAcceptedExitCodes = @\(0, 3010\)'
+Assert-TextDoesNotMatch -Name 'a bundle that refused to run is not a success' `
+    -Text $contractScript -Pattern 'NodePilotRuntimeAcceptedExitCodes = @\([^)]*1638'
+# The whole point of the fix: an exit code is not evidence. The adapter re-runs the readiness check
+# and that verdict, not the installer, decides what goes into provision.runtime.
+Assert-TextMatches -Name 'the provisioning run re-checks the machine instead of trusting exit codes' `
+    -Text $setupAdapter -Pattern '\$verification = Test-NodePilotDotNetRuntime'
+Assert-TextMatches -Name 'the provision mode can reach the readiness check' `
+    -Text $setupAdapter -Pattern "(?s)'Provision' \{[\s\S]{0,400}Preflight\.ps1"
+# Position, not proximity: a regex could be satisfied by the wrong occurrence.
+$provisionRuntimeStart = $setupAdapter.IndexOf('function Invoke-ProvisionRuntime')
+$provisionRuntimeEnd = $setupAdapter.IndexOf("`nfunction ", $provisionRuntimeStart + 40)
+if ($provisionRuntimeStart -lt 0 -or $provisionRuntimeEnd -le $provisionRuntimeStart) {
+    throw 'Deployment template check failed: could not delimit Invoke-ProvisionRuntime.'
+}
+$provisionRuntime = $setupAdapter.Substring($provisionRuntimeStart, $provisionRuntimeEnd - $provisionRuntimeStart)
+# LastIndexOf, because the payload-error branch writes a status of its own before any installer
+# runs; the verification only has to precede the verdict that closes the function.
+if ($provisionRuntime.IndexOf('Test-NodePilotDotNetRuntime') -gt $provisionRuntime.LastIndexOf('-Name ''status''')) {
+    throw 'Deployment template check failed: the runtime verification runs after the status is written.'
+}
+# Every step runs. Breaking out on a bad exit code would refuse the machine that only needed the
+# second package.
+Assert-TextDoesNotMatch -Name 'a declining installer does not skip the one after it' `
+    -Text $provisionRuntime -Pattern '(?m)^\s*break\s*$'
+# The verdict is only worth writing if somebody reads it. These two sections were written by the
+# adapter and read by nobody, so a fix that failed looked exactly like a fix that worked.
+Assert-TextMatches -Name 'the wizard reads back the runtime verdict it asked for' `
+    -Text $serverIssCode -Pattern "ProvisionSectionProblem\([^)]*'provision\.runtime'"
+Assert-TextMatches -Name 'the wizard reads back the publisher verdict it asked for' `
+    -Text $serverIssCode -Pattern "ProvisionSectionProblem\([^)]*'provision\.signer'"
+# Both paths, not just the interactive one: an unattended rollout whose runtime install failed used
+# to walk on to Apply and fail in the pre-flight instead.
+Assert-TextMatches -Name 'the silent path reads the other provisioning verdicts too' `
+    -Text $serverIssCode `
+    -Pattern "(?s)if WizardSilent\(\)[\s\S]{0,1600}ProvisionSectionProblem[\s\S]{0,400}Arguments := '-Mode Apply'"
+# A dialog is not a reason to leave the page with the tick still set: the attempt spends it, or the
+# next Next runs the same failing fix again.
+Assert-TextDoesNotMatch -Name 'a failed provisioning run does not skip the tick clearing' `
+    -Text (Remove-CommentLines -Text ($serverIss.Substring(
+        $serverIss.IndexOf('if WantsFix then'),
+        $serverIss.IndexOf('// Never assume a fix worked.', $serverIss.IndexOf('if WantsFix then')) -
+        $serverIss.IndexOf('if WantsFix then'))) -CommentPrefix '//') `
+    -Pattern 'mbCriticalError[\s\S]{0,200}Exit;'
 Assert-TextMatches -Name 'the exact bundled runtime is extracted into the temporary payload root' `
     -Text $serverIss -Pattern "ExtractTemporaryFile\('\{#RuntimeFileName\}'\)"
 Assert-TextMatches -Name 'runtime payload extraction is idempotent and only marked after success' `
@@ -2301,14 +2416,18 @@ Assert-TextMatches -Name 'explicit runtime versions below the floor are rejected
 
 $runtimeLock = Get-Content -LiteralPath (Join-Path $scriptDirectory 'server\runtime-payload.lock.json') -Raw |
     ConvertFrom-Json
+# Two packages, so two key shapes. dotnet-runtime-* is the host; without it the framework has
+# nothing to load it. 'dotnet-hosting-' is still excluded by the alternation.
 foreach ($property in $runtimeLock.PSObject.Properties) {
-    if ($property.Name -notmatch '^aspnetcore-runtime-(?<version>\d+\.\d+\.\d+)-win-x64\.exe$') {
+    if ($property.Name -notmatch '^(aspnetcore-runtime|dotnet-runtime)-(?<version>\d+\.\d+\.\d+)-win-x64\.exe$') {
         throw "Deployment template check failed: unrecognised runtime lock key '$($property.Name)'"
     }
     if ([version]$Matches.version -lt [version]'10.0.11') {
         throw "Deployment template check failed: runtime lock includes vulnerable payload $($Matches.version)"
     }
 }
+Assert-TextMatches -Name 'the payload fetches the .NET host as well as the framework' `
+    -Text $runtimeScript -Pattern "FileName = 'dotnet-runtime-win-x64\.exe'"
 
 # --- Operator clients are part of the shipped artifact ----------------------------------------
 # Until 1.2.7 the server ZIP held exactly one executable and both clients were something the

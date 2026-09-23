@@ -3,6 +3,7 @@ import { renderHook, act } from '@testing-library/react';
 import type { Node, Edge } from '@xyflow/react';
 import { useNodeOperations } from '../../hooks/useNodeOperations';
 import { WORKFLOW_SNIPPETS } from '../../lib/workflowSnippets';
+import { useCustomActivityCatalogStore } from '../../lib/customActivities';
 
 type SetState<T> = React.Dispatch<React.SetStateAction<T>>;
 
@@ -96,6 +97,21 @@ describe('useNodeOperations', () => {
     expect(next[0].type).toBe('activity');
     expect(next[0].data).toMatchObject({ label: 'My Step', activityType: 'runScript' });
     expect(harness.setSelected).toHaveBeenCalledWith({ type: 'node', id: next[0].id });
+  });
+
+  it('addNode_customType_writesDefinitionReference', () => {
+    useCustomActivityCatalogStore.getState().setCatalog([{
+      id: 'def-1', key: 'disk_check', type: 'custom:disk_check', name: 'Disk Check', icon: 'extension',
+      runsRemote: false, timeout: 'always', inputs: [], outputs: [], isEnabled: true, version: 1,
+    }]);
+    try {
+      const harness = setup();
+      act(() => { harness.result.current.addNode('custom:disk_check', 'Disk Check'); });
+      const next: Node[] = (harness.setNodes as any).mock.calls[0][0]([]);
+      expect(next[0].data.config).toEqual({ __customDefinitionId: 'def-1', __customKey: 'disk_check' });
+    } finally {
+      useCustomActivityCatalogStore.getState().setCatalog([]);
+    }
   });
 
   it('addNode with type "note" creates a stickyNote with disabled=true', () => {

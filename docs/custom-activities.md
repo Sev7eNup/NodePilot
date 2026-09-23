@@ -88,6 +88,13 @@ Audit codes: `CUSTOM_ACTIVITY_CREATED|UPDATED|DELETED|ENABLED|DISABLED|IMPORTED|
   Live/Draft badges.
 - **Import** uses a file picker (`.npca`/`.json` envelope, `nodepilot-customactivity-export/v1`);
   imported nodes land disabled for Admin review. Export downloads the full set as one envelope.
+- **Workflow import** (`POST /api/workflows/import`) remaps `config.__customDefinitionId` to the
+  destination definition with the same key (`CustomActivityReferences.RemapByKey`). Import the
+  `.npca` first; for a key that does not exist on the destination the import reports a message
+  and leaves the node unchanged.
+- Every designer path that creates a node (palette click, drag onto the canvas, quick-connect,
+  insert on an edge) writes `__customDefinitionId`, `__customKey` and the declared input defaults
+  through `newActivityConfig` (`lib/customActivities.ts`).
 - **Version history**: a per-row "Version history" action opens a dialog listing the stored
   snapshots (version, created at/by, change note) with a per-version **rollback** button
   (confirm + toast; hidden when the caller may not mutate — i.e. Operator on an enabled

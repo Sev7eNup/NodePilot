@@ -2,7 +2,7 @@ import { useCallback, type RefObject } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 import { WORKFLOW_SNIPPETS, insertSnippet } from '../lib/workflowSnippets';
 import { getSmartDefaults } from '../lib/lastSimilarNode';
-import { getCustomActivityFacts } from '../lib/customActivities';
+import { newActivityConfig } from '../lib/customActivities';
 import { randomUuid } from '../lib/uuid';
 
 type SelectedItem = { type: 'node' | 'edge'; id: string } | null;
@@ -65,18 +65,7 @@ export function useNodeOperations({
     // restApi, provider and connectionRef for sql, isHtml for emailNotification). Empty when no
     // sibling exists, so the first node of a type still gets full defaults.
     const smart = isNote ? {} : getSmartDefaults(type, nodes);
-    // Custom activities (custom:<key>) carry their definition reference in the node config:
-    // __customDefinitionId is the authoritative link the executor loads, __customKey is the drift
-    // cross-check. Declared input defaults are seeded so the node is runnable right away.
-    const customFacts = isNote ? undefined : getCustomActivityFacts(type);
-    const activityConfig: Record<string, unknown> = { ...(smart.config ?? {}) };
-    if (customFacts) {
-      activityConfig.__customDefinitionId = customFacts.id;
-      activityConfig.__customKey = customFacts.key;
-      for (const inp of customFacts.inputs) {
-        if (inp.default != null && activityConfig[inp.name] === undefined) activityConfig[inp.name] = inp.default;
-      }
-    }
+    const activityConfig = isNote ? {} : newActivityConfig(type, smart.config);
     const newNode: Node = isNote
       ? {
           id: `note-${randomUuid()}`,

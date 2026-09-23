@@ -319,6 +319,25 @@ describe('DbViewerPage', () => {
     });
   });
 
+  it('jsonEdit_invalidJson_showsTranslatedErrorAndDoesNotSave', async () => {
+    wrap(<DbViewerPage />);
+
+    await waitFor(() => screen.getByText('Workflows'));
+    await userEvent.click(screen.getByRole('button', { name: /Workflows/ }));
+    await waitFor(() => screen.getByText('My Workflow'));
+
+    const cells = document.querySelector('tbody tr')!.querySelectorAll('td');
+    await userEvent.click(cells[5]); // DefinitionJson at index 5
+
+    await waitFor(() => expect(screen.getByText('Edit cell')).toBeInTheDocument());
+    fireEvent.change(document.querySelector('textarea')!, { target: { value: '{not json' } });
+    const callsBefore = vi.mocked(dbAdminApi.patchRow).mock.calls.length;
+    await userEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+
+    expect(await screen.findByText('Invalid JSON')).toBeInTheDocument();
+    expect(vi.mocked(dbAdminApi.patchRow).mock.calls.length).toBe(callsBefore);
+  });
+
   it('numericEdit_validNumber_submitsNumber', async () => {
     wrap(<DbViewerPage />);
 

@@ -18,6 +18,9 @@ const WF_ID = 'd3d3d3d3-3333-3333-3333-333333333333';
 const NODE_A = 'step-aaaaaaaa';
 const NODE_B = 'step-bbbbbbbb';
 
+const CUSTOM_ID = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+const CUSTOM_KEY = 'disk_check';
+
 /** Two activity nodes and one edge between them, so delete and edge cleanup are observable. */
 function definition() {
   return JSON.stringify({
@@ -242,5 +245,69 @@ test.describe('Designer Node-Operationen (Teil 3)', () => {
     await expect(page.getByText(/2\s+activit(y|ies)/i).first()).toBeVisible();
     // Bulk actions are available (each field has its own Apply button).
     await expect(page.getByRole('button', { name: /apply|anwenden/i }).first()).toBeVisible();
+  });
+
+  // A custom node whose config reaches the server without __customDefinitionId fails at run time
+  // with "Custom activity node is missing its definition reference", and nothing before the run
+  // says so. The palette's click-to-add is the one creation path Playwright can drive: React Flow
+  // drag cannot be synthesized, which is why 3.3 and 3.5 skip their literal drags.
+  test('3.6 — a custom node added from the palette carries its definition reference into the PUT', async ({ page }) => {
+    let putBody: { definitionJson?: string } | null = null;
+    await page.route(`**/api/workflows/${WF_ID}`, (route) => {
+      if (route.request().method() === 'PUT') {
+        putBody = route.request().postDataJSON();
+        return route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson() });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson() });
+    });
+    await page.route(
+      (url) => url.pathname === '/api/custom-activities',
+      (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([
+            {
+              id: CUSTOM_ID,
+              key: CUSTOM_KEY,
+              type: `custom:${CUSTOM_KEY}`,
+              name: 'Disk Check',
+              description: null,
+              icon: 'HardDrive',
+              color: null,
+              runsRemote: false,
+              timeout: 'always',
+              // A declared default, so the same assertion also covers input seeding.
+              inputs: [{ name: 'drive', label: 'Drive', type: 'string', default: 'C' }],
+              outputs: [],
+              isEnabled: true,
+              version: 1,
+            },
+          ]),
+        }),
+    );
+
+    await page.goto(`/workflows/${WF_ID}`);
+    await waitForCanvas(page);
+
+    await page.getByRole('button', { name: /^(nodes|nodes?)$/i }).first().click();
+    await page.getByRole('button', { name: 'Disk Check' }).click();
+    // The new node is selected, so the PropertiesPanel naming it is the proof it was added.
+    // Counting .react-flow__node would not be: onlyRenderVisibleElements virtualizes a node
+    // placed outside the current viewport straight back out of the DOM.
+    await expect(page.getByRole('button', { name: 'Node name' })).toHaveText(/Disk Check/, { timeout: 10_000 });
+
+    await page.getByRole('button', { name: /save in place|zwischen.?speichern|speichern|^save/i }).first().click();
+    await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
+
+    const def = JSON.parse(putBody!.definitionJson as string) as {
+      nodes: { data: { activityType: string; config: Record<string, unknown> } }[];
+    };
+    const custom = def.nodes.find((n) => n.data.activityType === `custom:${CUSTOM_KEY}`);
+    expect(custom, 'the custom node reached the PUT body').toBeDefined();
+    // The reference the executor loads, the key it cross-checks, and the declared input default.
+    expect(custom!.data.config.__customDefinitionId).toBe(CUSTOM_ID);
+    expect(custom!.data.config.__customKey).toBe(CUSTOM_KEY);
+    expect(custom!.data.config.drive).toBe('C');
   });
 });

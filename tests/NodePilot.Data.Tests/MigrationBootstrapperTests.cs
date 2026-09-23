@@ -255,3 +255,34 @@ public sealed class MigrationBootstrapperTests : IDisposable
             "anything else means a stray migration was picked up from a sibling assembly");
     }
 }
+
+/// <summary>
+/// The first boot against an empty server database must not log errors: operators read an error
+/// on a fresh install as a failed install.
+/// </summary>
+public sealed class MigrationBootstrapperProviderTests
+{
+    [Theory]
+    [Trait("Category", "DatabaseIntegration")]
+    [InlineData("postgres")]
+    [InlineData("sqlserver")]
+    public async Task Bootstrap_OnEmptyDatabase_LogsNoErrors(string provider)
+    {
+        if (!ProviderTestDatabase.IsConfigured(provider)) Assert.Skip($"No isolated {provider} test server configured.");
+        await using var database = await ProviderTestDatabase.CreateAsync(provider, migrate: false);
+        var efLog = new CapturingLogger();
+        using var loggerFactory = LoggerFactory.Create(b => b.AddProvider(new SingleLoggerProvider(efLog)));
+        await using var db = database.CreateContext(loggerFactory);
+
+        MigrationBootstrapper.Bootstrap(db, NullLogger.Instance);
+
+        db.Database.GetAppliedMigrations().Should().NotBeEmpty();
+        efLog.Entries.Where(e => e.Level >= LogLevel.Error).Select(e => e.Message).Should().BeEmpty();
+    }
+
+    private sealed class SingleLoggerProvider(ILogger logger) : ILoggerProvider
+    {
+        public ILogger CreateLogger(string categoryName) => logger;
+        public void Dispose() { }
+    }
+}

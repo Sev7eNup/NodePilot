@@ -64,6 +64,8 @@ public sealed class ApiPipelineFactory : WebApplicationFactory<Program>
         {
             RemoveDbContextServices(services);
             services.RemoveAll<IHostedService>();
+            // The database boot (migration, admin bootstrap) is a hosted service too; keep it.
+            services.AddHostedService<NodePilot.Api.Hosting.DatabaseBootService>();
 
             _connection = new SqliteConnection("DataSource=:memory:");
             _connection.Open();

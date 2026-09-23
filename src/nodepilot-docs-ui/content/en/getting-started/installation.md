@@ -48,7 +48,7 @@ There are two routes to the same installation.
 
 ### GUI setup
 
-`NodePilot-Server-Setup-<version>.exe` is an asset on the [latest release](https://github.com/Sev7eNup/NodePilot/releases/latest). It brings the signed artifact and the ASP.NET Core runtime with it and checks every prerequisite **before** it changes anything. On request it creates the SQL login and database, or the PostgreSQL role and database, itself; the Kestrel certificate is picked from a list of the certificates in `Cert:\LocalMachine\My` instead of being typed in as a thumbprint. Unattended, for SCCM or GPO: `NodePilot-Server-Setup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json`.
+`NodePilot-Server-Setup-<version>.exe` is an asset on the [latest release](https://github.com/Sev7eNup/NodePilot/releases/latest). It brings the signed artifact and both .NET runtimes with it and checks every prerequisite **before** it changes anything. On request it creates the SQL login and database, or the PostgreSQL role and database, itself; the Kestrel certificate is picked from a list of the certificates in `Cert:\LocalMachine\My` instead of being typed in as a thumbprint. Unattended, for SCCM or GPO: `NodePilot-Server-Setup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json`.
 
 This is the shortest route: one file instead of five, and no manual comparison of the publisher thumbprint.
 

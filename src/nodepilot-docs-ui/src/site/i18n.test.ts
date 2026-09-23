@@ -132,7 +132,7 @@ describe('lookup and format', () => {
   })
 
   it('builds relative docs links', () => {
-    expect(docsHref('en')).toBe('docs/#/en/')
-    expect(docsHref('de', 'getting-started/installation')).toBe('docs/#/de/getting-started/installation')
+    expect(docsHref('en')).toBe('docs/en/')
+    expect(docsHref('de', 'getting-started/installation')).toBe('docs/de/getting-started/installation/')
   })
 })

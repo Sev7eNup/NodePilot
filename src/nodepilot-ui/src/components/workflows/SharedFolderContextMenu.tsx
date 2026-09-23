@@ -49,7 +49,7 @@ export function SharedFolderContextMenu({
       {onRename && (
         <ContextMenuItem
           icon={<Edit size={14} />}
-          label={t('workflows:folder.rename', { defaultValue: 'Umbenennen' })}
+          label={t('workflows:folder.rename')}
           onClick={action(onRename)}
           testId="shared-folder-menu-rename"
         />
@@ -58,7 +58,7 @@ export function SharedFolderContextMenu({
       {onDelete && (
         <ContextMenuItem
           icon={<TrashCan size={14} />}
-          label={t('workflows:folder.delete', { defaultValue: 'Löschen' })}
+          label={t('workflows:folder.delete')}
           onClick={action(onDelete)}
           danger
           testId="shared-folder-menu-delete"

@@ -127,7 +127,6 @@ public class SecurityHardeningWarningsTests
         var cfg = BuildConfig(new Dictionary<string, string?>
         {
             ["AllowedHosts"] = "nodepilot.example.com",
-            ["Remote:RequireWinRmSsl"] = "false",
             ["RestApi:BlockPrivateNetworks"] = "false",
             ["FileSystemOperation:RejectTraversal"] = "false",
             ["SqlActivity:RequireConnectionRef"] = "false",

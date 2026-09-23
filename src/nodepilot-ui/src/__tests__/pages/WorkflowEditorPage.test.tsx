@@ -98,6 +98,7 @@ vi.mock('../../stores/confirmStore', async (importOriginal) => {
 });
 import { confirmDialog } from '../../stores/confirmStore';
 import { useToastStore } from '../../stores/toastStore';
+import { getCustomActivityFacts } from '../../lib/customActivities';
 
 // Stable test user-id so the auth-store + workflow lock-owner match deterministically.
 const TEST_USER_ID = '11111111-1111-1111-1111-111111111111';
@@ -581,6 +582,42 @@ describe('WorkflowEditorPage — Mutations', () => {
     await waitFor(() => expect(putBody).not.toBeNull());
     const saved = JSON.parse(putBody!.definitionJson!) as { nodes: { data: { activityType: string } }[] };
     expect(saved.nodes.some((n) => n.data.activityType === 'delay')).toBe(true);
+  });
+
+  it('dropping a custom node from the palette saves its definition reference', async () => {
+    // The drop path builds the node itself; without the reference the engine fails the step
+    // with "missing its definition reference (__customDefinitionId)".
+    const disk = {
+      id: 'def-1', key: 'disk_check', type: 'custom:disk_check', name: 'Disk Check', icon: 'extension',
+      runsRemote: false, timeout: 'always', outputs: [], isEnabled: true, version: 1,
+      inputs: [{ name: 'drive', label: 'Drive', type: 'string', default: 'C' }],
+    };
+    let putBody: { definitionJson?: string } | null = null;
+    server.use(
+      http.get(/\/api\/custom-activities/, () => HttpResponse.json([disk])),
+      http.put(`${BASE}/api/workflows/wf-smoke-1`, async ({ request }) => {
+        putBody = await request.json() as { definitionJson?: string };
+        return HttpResponse.json(MOCK_WORKFLOW);
+      })
+    );
+    renderPage();
+    await waitForCanvasReady();
+    await waitFor(() => expect(getCustomActivityFacts('custom:disk_check')).toBeDefined());
+
+    fireEvent.drop(document.querySelector('.react-flow')!, {
+      clientX: 300, clientY: 300,
+      dataTransfer: {
+        getData: (mime: string) => mime === 'application/nodepilot-activity'
+          ? JSON.stringify({ type: 'custom:disk_check', label: 'Disk Check' })
+          : '',
+      },
+    });
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+
+    await waitFor(() => expect(putBody).not.toBeNull());
+    const saved = JSON.parse(putBody!.definitionJson!) as { nodes: { data: { activityType: string; config: Record<string, unknown> } }[] };
+    const custom = saved.nodes.find((n) => n.data.activityType === 'custom:disk_check');
+    expect(custom?.data.config).toEqual({ drive: 'C', __customDefinitionId: 'def-1', __customKey: 'disk_check' });
   });
 
   it('Ctrl+S on an unchanged workflow does not save', async () => {
