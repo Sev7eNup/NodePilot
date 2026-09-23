@@ -731,6 +731,29 @@ try {
 
     $nothing = [pscustomobject]@{ X64Path = $null; Runtimes = @(); OtherPath = $null; OtherArchitecture = '' }
     $absent = Test-NodePilotDotNetRuntime -State $nothing
+    # The shape of a host where the wrong one of the three downloads was taken: the .NET Runtime
+    # installs Microsoft.NETCore.App and no Microsoft.AspNetCore.App. It was missing from every
+    # fixture, and it is the case that made the first testers conclude an SDK was required.
+    $netCoreOnly = [pscustomobject]@{
+        X64Path           = 'C:\Program Files\dotnet\dotnet.exe'
+        Runtimes          = @('Microsoft.NETCore.App 10.0.12 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]')
+        OtherPath         = $null
+        OtherArchitecture = ''
+    }
+    $wrongPackage = Test-NodePilotDotNetRuntime -State $netCoreOnly
+    Assert-True -Name 'the .NET Runtime without ASP.NET Core is a required failure' `
+        -Condition ($wrongPackage.Status -eq 'Fail' -and $wrongPackage.Required)
+    Assert-True -Name 'the row names what was found instead of only what is missing' `
+        -Condition ($wrongPackage.Detail -match 'Microsoft\.NETCore\.App 10\.0\.12' -and
+                    $wrongPackage.Detail -match 'Microsoft\.AspNetCore\.App is not')
+    # The sentence that decides whether the operator downloads the right package next.
+    Assert-True -Name 'the row says which of the two runtimes is installed' `
+        -Condition ($wrongPackage.Detail -match 'rather than the ASP\.NET Core Runtime')
+    # "the plain runtime" is what sent them to the .NET Runtime in the first place.
+    Assert-True -Name 'the remediation never calls it the plain runtime' `
+        -Condition ($wrongPackage.RemediationHint -notmatch 'plain runtime' -and
+                    $wrongPackage.RemediationHint -match 'three different downloads')
+
     Assert-True -Name 'no .NET host at all is a required failure' `
         -Condition ($absent.Status -eq 'Fail' -and $absent.Required)
     Assert-True -Name 'no .NET host at all still reads as nothing found' `
@@ -868,21 +891,29 @@ try {
     $goodCert = & $verdict (New-FakeStoreCertificate)
     Assert-True -Name 'a valid, matching certificate passes' -Condition ($goodCert.Status -eq 'Pass')
 
-    # An expired certificate has to block the install; otherwise the first sign of trouble is a
-    # browser warning after the service is running.
+    # An expired certificate is reported loudly and does not block. Kestrel binds by thumbprint and
+    # never reads NotAfter, so the service starts regardless; replacing the certificate afterwards
+    # is a store import and a restart, and refusing to install would stop a host whose certificate
+    # is renewed the same afternoon.
     $expired = & $verdict (New-FakeStoreCertificate -ValidToDays -1)
-    Assert-True -Name 'an expired certificate stops the installation' `
-        -Condition ($expired.Status -eq 'Fail' -and $expired.Required)
+    # Only Fail plus Required aborts, so Warn is what decides this - Required stays set on every
+    # branch of the certificate check and says nothing on its own.
+    Assert-True -Name 'an expired certificate does not stop the installation' `
+        -Condition ($expired.Status -eq 'Warn')
     Assert-True -Name 'the expiry date is in the message, not just the fact' `
-        -Condition ($expired.Detail -match '2026-08-04' -and $expired.AbortMessage -match '2026-08-04')
-    # This failure carries no auto-fix even though the generator exists: replacing an expired PKI
-    # certificate with a self-signed one is worse than stopping.
+        -Condition ($expired.Detail -match '2026-08-04' -and $expired.Detail -match 'expired')
+    # Says what it will cost, or an amber line reads as cosmetic. Not only the browser: every client
+    # refuses it, which is how an install that "worked" ends in a support call about np.
+    Assert-True -Name 'the warning says the install continues and what breaks meanwhile' `
+        -Condition ($expired.RemediationHint -match 'not blocked' -and $expired.RemediationHint -match 'np')
+    # Still no auto-fix even though the generator exists: replacing a PKI certificate with a
+    # self-signed one behind a tick is a worse outcome than an amber row.
     Assert-True -Name 'an expired certificate is not silently replaced by a self-signed one' `
         -Condition (-not $expired.CanAutoFix)
 
     $notYet = & $verdict (New-FakeStoreCertificate -ValidFromDays 1 -ValidToDays 400)
-    Assert-True -Name 'a certificate that is not valid yet stops the installation too' `
-        -Condition ($notYet.Status -eq 'Fail' -and $notYet.Required)
+    Assert-True -Name 'a certificate that is not valid yet does not stop the installation either' `
+        -Condition ($notYet.Status -eq 'Warn')
 
     # Still valid but close to expiry: worth reporting, not worth stopping for.
     $soon = & $verdict (New-FakeStoreCertificate -ValidToDays 10)
@@ -900,9 +931,13 @@ try {
         -Condition ((& $verdict (New-FakeStoreCertificate -Name '*.corp.example')).Status -eq 'Pass')
     # Expiry is checked before the name, because expiry is the blocking finding and reporting the
     # name mismatch instead would hide it behind a warning.
+    # Both are amber now, so the order is the only thing that decides which one the operator reads.
+    # Expiry is the finding that has to be acted on; the name may well be deliberate behind a proxy.
     $expiredAndMismatched = & $verdict (New-FakeStoreCertificate -Name 'other.corp.example' -ValidToDays -1)
     Assert-True -Name 'an expired certificate reports expiry, not the name' `
-        -Condition ($expiredAndMismatched.Status -eq 'Fail' -and $expiredAndMismatched.Detail -match 'expired')
+        -Condition ($expiredAndMismatched.Status -eq 'Warn' -and
+                    $expiredAndMismatched.Detail -match 'expired' -and
+                    $expiredAndMismatched.Detail -notmatch 'issued for')
 
     # A fresh host has no thumbprint to give and the TLS page accepts an empty field for that case,
     # so this branch is what the operator sees next. It answers before the certificate store is
@@ -1147,6 +1182,145 @@ try {
         -Condition ($svcUnreachable.Status -eq 'Warn' -and -not $svcUnreachable.CanAutoFix)
     Assert-True -Name 'the unverifiable case still names the principal and the statements' `
         -Condition ($svcUnreachable.Detail -match 'CONTOSO\\HOST\$' -and $svcUnreachable.Remediation -match 'ALTER ROLE')
+
+    # --- creating the database, the login and the grant ---------------------------------------
+    # Provision-NodePilotDatabase.ps1 mutates a real SQL Server, so no test ever ran it and every
+    # failure path was unreachable. -ConnectionFactory is the seam: the fake below answers the
+    # lookups and can fail any single statement, which is what the readiness page's pre-ticked fix
+    # meets on a first install.
+    $provisionDbScript = Join-Path $scriptDirectory 'Provision-NodePilotDatabase.ps1'
+
+    function New-FakeSqlConnection {
+        param(
+            # @{ Pattern = '<regex>'; Value = <scalar> }, first match wins, default 0.
+            [object[]]$Answers = @(),
+            # Statement patterns that raise, standing in for a SqlException.
+            [string[]]$FailOn = @(),
+            [switch]$FailOpen,
+            [Parameter(Mandatory)]$Log
+        )
+        $state = [pscustomobject]@{
+            Answers = $Answers; FailOn = $FailOn; FailOpen = [bool]$FailOpen; Log = $Log
+        }
+        $connection = [pscustomobject]@{ State = $state }
+        $connection | Add-Member -MemberType ScriptMethod -Name Open -Value {
+            if ($this.State.FailOpen) { throw 'fake: the connection did not come up' }
+        }
+        $connection | Add-Member -MemberType ScriptMethod -Name Dispose -Value { }
+        $connection | Add-Member -MemberType ScriptMethod -Name CreateCommand -Value {
+            $command = [pscustomobject]@{ CommandText = ''; CommandTimeout = 0; State = $this.State }
+            $answer = {
+                $this.State.Log.Add($this.CommandText)
+                foreach ($pattern in $this.State.FailOn) {
+                    if ($this.CommandText -match $pattern) { throw "fake: [$pattern] failed" }
+                }
+                foreach ($candidate in $this.State.Answers) {
+                    if ($this.CommandText -match $candidate.Pattern) { return $candidate.Value }
+                }
+                return 0
+            }
+            $command | Add-Member -MemberType ScriptMethod -Name ExecuteScalar -Value $answer
+            $command | Add-Member -MemberType ScriptMethod -Name ExecuteNonQuery -Value $answer
+            return $command
+        }
+        return $connection
+    }
+
+    $mayCreate = @(@{ Pattern = 'IS_SRVROLEMEMBER'; Value = 1 })
+
+    # Nothing exists yet - the case a first install lands in.
+    $freshLog = New-Object System.Collections.Generic.List[string]
+    $fresh = & $provisionDbScript -Server 'tcp:db.contoso.local' -Database 'NodePilot' `
+        -Principal 'CONTOSO\HOST$' -CertificateHostName 'db.contoso.local' `
+        -ConnectionFactory { param($cs) New-FakeSqlConnection -Answers $mayCreate -Log $freshLog }
+    Assert-True -Name 'a first install creates the login, the database and the user' `
+        -Condition ($fresh.Status -eq 'Pass' -and $fresh.Detail -match 'login, database, user')
+    Assert-True -Name 'the created database gets the service principal as db_owner' `
+        -Condition (($freshLog -join "`n") -match 'CREATE DATABASE \[NodePilot\]' -and
+                    ($freshLog -join "`n") -match 'ALTER ROLE db_owner ADD MEMBER')
+
+    # The regression the first users hit: a statement that raises used to terminate the script, so
+    # the adapter returned no outcome at all and the wizard could only say "could not be applied".
+    $ddlLog = New-Object System.Collections.Generic.List[string]
+    $ddlFailed = & $provisionDbScript -Server 'tcp:db.contoso.local' -Database 'NodePilot' `
+        -Principal 'CONTOSO\HOST$' -CertificateHostName 'db.contoso.local' `
+        -ConnectionFactory {
+            param($cs) New-FakeSqlConnection -Answers $mayCreate -FailOn @('CREATE DATABASE') -Log $ddlLog
+        }
+    Assert-True -Name 'a failing CREATE DATABASE reports an outcome instead of terminating' `
+        -Condition ($ddlFailed.Status -eq 'Fail')
+    Assert-True -Name 'the failing statement is named, not just the fact' `
+        -Condition ($ddlFailed.Detail -match 'CREATE DATABASE NodePilot failed')
+    Assert-True -Name 'a failed provisioning still hands over the DDL for a DBA' `
+        -Condition ($ddlFailed.Remediation -match 'CREATE DATABASE')
+
+    # SQL answers NULL when it cannot resolve the login, and [bool][System.DBNull]::Value is $true
+    # in PowerShell - so the gate read "no permission" as "go ahead" and ran DDL it was not allowed
+    # to run.
+    $gateLog = New-Object System.Collections.Generic.List[string]
+    $gateNull = & $provisionDbScript -Server 'tcp:db.contoso.local' -Database 'NodePilot' `
+        -Principal 'CONTOSO\HOST$' -CertificateHostName 'db.contoso.local' `
+        -ConnectionFactory {
+            param($cs)
+            New-FakeSqlConnection -Log $gateLog -Answers @(
+                @{ Pattern = 'IS_SRVROLEMEMBER'; Value = [System.DBNull]::Value },
+                @{ Pattern = 'HAS_PERMS_BY_NAME'; Value = [System.DBNull]::Value })
+        }
+    Assert-True -Name 'a permission gate answering NULL declines instead of proceeding' `
+        -Condition ($gateNull.Status -eq 'Skipped')
+    # Matched narrowly: the gate's own probe asks for 'CREATE ANY DATABASE', so a bare 'CREATE'
+    # would find the permission check and never notice real DDL.
+    Assert-True -Name 'a declined permission gate mutates nothing at all' `
+        -Condition (($gateLog -join "`n") -notmatch 'CREATE (LOGIN|DATABASE \[|USER)')
+
+    # Opening the application database is its own step. Folded into the grant, as it used to be, a
+    # connection that never came up was reported as a failed db_owner grant.
+    $openLog = New-Object System.Collections.Generic.List[string]
+    $openFailed = & $provisionDbScript -Server 'tcp:db.contoso.local' -Database 'NodePilot' `
+        -Principal 'CONTOSO\HOST$' -CertificateHostName 'db.contoso.local' `
+        -ConnectionFactory {
+            param($cs)
+            New-FakeSqlConnection -Answers $mayCreate -Log $openLog `
+                -FailOpen:($cs -match 'Initial Catalog=NodePilot')
+        }
+    Assert-True -Name 'a database that cannot be opened is not reported as a failed grant' `
+        -Condition ($openFailed.Status -eq 'Fail' -and
+                    $openFailed.Detail -match 'could not be opened' -and
+                    $openFailed.Detail -notmatch 'granting db_owner')
+    Assert-True -Name 'the failure says what had already been created before it' `
+        -Condition ($openFailed.Detail -match 'Created login, database')
+
+    # Existence-guarded throughout, which is what both READMEs promise: a second run changes nothing
+    # except reasserting the membership, and ALTER ROLE is idempotent for an existing member.
+    $againLog = New-Object System.Collections.Generic.List[string]
+    $again = & $provisionDbScript -Server 'tcp:db.contoso.local' -Database 'NodePilot' `
+        -Principal 'CONTOSO\HOST$' -CertificateHostName 'db.contoso.local' `
+        -ConnectionFactory {
+            param($cs)
+            New-FakeSqlConnection -Log $againLog -Answers @(
+                @{ Pattern = 'IS_SRVROLEMEMBER'; Value = 1 },
+                @{ Pattern = 'sys\.server_principals'; Value = 1 },
+                @{ Pattern = 'DB_ID'; Value = 1 },
+                @{ Pattern = 'sys\.database_principals'; Value = 1 })
+        }
+    Assert-True -Name 'a second run reports that everything was already in place' `
+        -Condition ($again.Status -eq 'Pass' -and $again.Detail -match 'already existed')
+    Assert-True -Name 'a second run creates nothing and only reasserts db_owner' `
+        -Condition (($againLog -join "`n") -notmatch 'CREATE (LOGIN|DATABASE \[|USER)' -and
+                    ($againLog -join "`n") -match 'ALTER ROLE db_owner')
+
+    # The row the operator meets on a first install arrives ticked, so pressing Next creates the
+    # database instead of leaving a red line next to copyable T-SQL.
+    $missingDb = Test-NodePilotSqlReachable -Server 'nodepilot-unreachable.invalid' `
+        -Database 'NodePilot' -CertificateHostName 'nodepilot-unreachable.invalid' `
+        -Principal 'CONTOSO\HOST$'
+    Assert-True -Name 'an unreachable database offers its fix pre-ticked' `
+        -Condition ($missingDb.CanAutoFix -and $missingDb.AutoFixDefault)
+    # A connection that never came up is not a permission problem, and CREATE LOGIN as the only
+    # advice sent the first users looking for one they did not have.
+    Assert-True -Name 'a connection failure names TLS and reachability before the DDL' `
+        -Condition ($missingDb.RemediationHint -match 'certificate' -and
+                    $missingDb.RemediationHint -match 'reachable')
 
     # --- handing an identity-bound secret to a new service identity ---------------------------
     # RestrictedFileWriter creates jwt-secret.key owned by whoever the service was, protected,

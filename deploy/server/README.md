@@ -29,8 +29,8 @@ Import-PfxCertificate -FilePath cert.pfx -CertStoreLocation Cert:\LocalMachine\M
 
 `MachineKeySet|PersistKeySet` is the default for this call and is mandatory — without a persisted
 machine key, `Grant-CertPrivateKeyAccess` cannot find the key file later and the installation aborts.
-Valid, and issued for the public hostname: an expired certificate is a red blocking row, a mismatched
-name is only a warning.
+Valid, and issued for the public hostname: an expired certificate is an amber row that does not stop
+the installation, a mismatched name is a warning too.
 
 If you **do not have one yet**, leave the thumbprint field empty: the readiness page then reports
 "No certificate selected" and offers to create a self-signed one — for lab and pilot use, not for
@@ -216,14 +216,17 @@ CA machine-wide trusted would be worse than a refused installation.
 An empty thumbprint field is the route to exactly one of these fixes: the certificate row then
 reports "No certificate selected" instead of a thumbprint it could not find, and offers to generate a
 self-signed one — **not** pre-ticked, because a lab certificate is created on request, not by pressing
-"Next". For an **expired** certificate, generation is deliberately not offered (see below).
+"Next". For an **expired** certificate, generation is still not offered (see below).
 
-One row comes **pre-ticked**: the service identity's database access. The pre-flight tests
-reachability using the installing administrator's identity — but at runtime it is the *service* that
-signs in, under the computer account (LocalSystem) or the gMSA. This row asks exactly that (login
-present? user in the target database? `db_owner`?) and creates it if needed. That is part of
-installing, not an intervention in someone else's infrastructure — unlike `CREATE DATABASE`, which
-stays opt-in. The tick is visible and can be cleared regardless.
+Two rows come **pre-ticked**, both about the database. The first is the database itself: if it is not
+there, pressing "Next" creates it. The second is the service identity's access to it — the pre-flight
+tests reachability using the installing administrator's identity, but at runtime it is the *service*
+that signs in, under the computer account (LocalSystem) or the gMSA, and that row asks exactly that
+(login present? user in the target database? `db_owner`?).
+
+Both are pre-ticked because the operator already asked for them: the server and the database name
+were typed two pages earlier. A row that is merely offered is a row people miss, and a red line next
+to copyable T-SQL is answered by copying the T-SQL. Every tick stays visible and can be cleared.
 
 The fix runs through `Provision-NodePilotDatabase.ps1`: first a permission gate (`sysadmin` or
 `CREATE ANY DATABASE`), then existence-checked login → database → user → `db_owner`. Without the
@@ -466,11 +469,14 @@ alternative would have been a second page — five values that belong to one dec
 screens.
 
 **What the readiness page checks:** presence in the machine store, the private key, the **validity
-period** and a **name match**. An expired (or not-yet-valid) certificate is a red blocking row and
-stops the installation — previously the expiry was only a date in the green row, the installation ran
-through, and the first person to find out was a user with a browser warning. There is deliberately
-**no** auto-fix here: answering "your PKI certificate has expired" with "here, have a lab certificate"
-would be worse than stopping.
+period** and a **name match**. An expired (or not-yet-valid) certificate is an **amber** row: it names
+the date, says every client will refuse the connection until the certificate is replaced, and lets the
+installation continue. Validity is a property of the certificate, not of the installation — Kestrel
+binds by thumbprint and never reads `NotAfter`, so the service starts either way, and swapping the
+certificate afterwards is a store import plus a restart. Refusing to install would stop a host whose
+certificate is renewed the same afternoon. There is deliberately **no** auto-fix here either:
+answering "your PKI certificate has expired" with "here, have a lab certificate" would be worse than
+saying so plainly.
 
 The name match runs against the SAN list (wildcards cover exactly one label, RFC 6125; without a SAN
 the CN counts) and is **only a warning** — behind a reverse proxy or under an alias a different name
@@ -808,7 +814,7 @@ checkable in the `.iss`, the adapter, the runtime fetch and the build — every 
 | 28 | The same run with the login already present | Row green without a checkbox, nothing is changed |
 | 29 | Fix without `sysadmin` | Nothing changed, the message names the reason, tick cleared afterwards (no loop) |
 | 30 | Unattended with `provisioning.createDatabaseAndLogin` | Exit 0, database + login created, `/healthz/ready` 200 |
-| 31 | Expired certificate selected | Row red with the expiry date, "Next" disabled, no auto-fix offered |
+| 31 | Expired certificate selected | Row **amber** with the expiry date, "Next" stays available, no auto-fix offered |
 | 32 | Certificate with a foreign SAN | Row **amber**, names both names, "Next" stays available |
 | 33 | Postgres without role/database, superuser supplied | Row red with a checkbox, "Next" creates both, re-check green |
 | 34 | The same without superuser fields | Row red **without** a checkbox, server message verbatim, snippet visible |
@@ -823,6 +829,9 @@ checkable in the `.iss`, the adapter, the runtime fetch and the build — every 
 | 43 | Expired publisher certificate | Row **red**, "Next" disabled, **no** offer (an import does not repair it) |
 | 44 | Only the **32-bit** or an older runtime (< 10.0.11) installed | Row "ASP.NET Core 10.0.11+ runtime" **red**, naming the architecture or the version found together with its path, offer present |
 | 45 | x64 runtime present, x86 first in `PATH` | Row **green**, naming the 64-bit host it queried |
+| 46 | SQL Server reachable, target database not created yet | Row red **and pre-ticked**, "Next" creates database + login + user + `db_owner`, re-check green |
+| 47 | The same, but the installing account is not `sysadmin` | Nothing changed, the message names the permission, the DDL stays on the page, tick cleared (no loop) |
+| 48 | SQL Server whose certificate this host does not trust | Row red, the remediation names TLS and reachability **before** the DDL, no claim that a login is missing |
 
 Status: 1, 3, 5, 9, 10, 22, 23, 30, 37 and 38 have been run in the Hyper-V lab against real AD, a real
 gMSA and SQL Server 2022 CU. On **2026-08-06** the **logic** behind 39, 40, 41, 43 and 44 was added —

@@ -417,8 +417,11 @@ function Invoke-ProvisionRuntime {
     $installer = $installers[0]
     $process = Start-Process -FilePath $installer.FullName `
         -ArgumentList '/install', '/quiet', '/norestart' -Wait -PassThru
-    # 3010 = installed, reboot pending. 1638 = a newer version is already present.
-    $accepted = @(0, 3010, 1638)
+    # 3010 = installed, reboot pending. 1638 is NOT accepted: it means the bundle refused itself
+    # because another one registered a newer version, and that says nothing about whether
+    # Microsoft.AspNetCore.App is on the machine. Counting it as success left the readiness page
+    # re-probing to the same red row with no explanation.
+    $accepted = @(0, 3010)
     Set-NodePilotResult -Buffer $result -Section 'provision.runtime' -Name 'exitCode' -Value $process.ExitCode
     Set-NodePilotResult -Buffer $result -Section 'provision.runtime' -Name 'status' `
         -Value $(if ($accepted -contains $process.ExitCode) { 'Pass' } else { 'Fail' })
@@ -426,7 +429,12 @@ function Invoke-ProvisionRuntime {
         switch ($process.ExitCode) {
             0 { 'Runtime installed.' }
             3010 { 'Runtime installed; a reboot is pending.' }
-            1638 { 'A newer runtime is already installed.' }
+            1638 {
+                'The bundled setup refused to run because a newer bundle is registered, so nothing ' +
+                'was installed. Install the ASP.NET Core Runtime (x64) from ' +
+                'https://dotnet.microsoft.com/download/dotnet/10.0 by hand - note it is a different ' +
+                'download from the .NET Runtime.'
+            }
             default { "Runtime installer failed with exit code $($process.ExitCode). See %TEMP%\dd_*.log." }
         })
 }

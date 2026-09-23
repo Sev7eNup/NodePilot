@@ -39,10 +39,11 @@ function New-NodePilotPreflightResult {
         [bool]$Required = $false,
         [bool]$CanAutoFix = $false,
         [string]$AutoFixLabel = '',
-        # Whether the wizard arrives with this fix already ticked. Reserved for work that is part
-        # of installing rather than a decision about someone else's server: granting the service
-        # identity access to an existing database is the former, CREATE DATABASE on a production
-        # instance is the latter. The box stays visible either way.
+        # Whether the wizard arrives with this fix already ticked. Reserved for work the operator
+        # has already asked for by reaching this page: the database named two pages earlier, and
+        # the service identity's access to it. A machine-wide statement such as trusting a
+        # publisher, or replacing a certificate, is never pre-ticked. The box stays visible and
+        # clearable either way.
         [bool]$AutoFixDefault = $false
     )
     [pscustomobject]@{
@@ -234,6 +235,26 @@ function Get-NodePilotDotNetHostState {
     }
 }
 
+function Get-NodePilotInstalledFrameworks {
+    <#
+      Every shared framework 'dotnet --list-runtimes' reported, as Name/Version objects. Shared by
+      the runtime floor check and the artifact requirement check so the two cannot read the same
+      output differently.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Runtimes)
+
+    foreach ($runtime in @($Runtimes)) {
+        if ("$runtime" -match '^(?<Name>[\w\.]+) (?<Version>\d+\.\d+\.\d+)(?:\s|$)') {
+            $parsed = $null
+            # Indexed, not dotted: $Matches is a hashtable, and a capture named like one of its
+            # own members would resolve to the member instead of the capture.
+            if ([version]::TryParse($Matches['Version'], [ref]$parsed)) {
+                [pscustomobject]@{ Name = $Matches['Name']; Version = $parsed }
+            }
+        }
+    }
+}
+
 function Test-NodePilotDotNetRuntime {
     <#
       NodePilot publishes with --runtime win-x64 and installs the NodePilot.Api.exe apphost, which
@@ -244,7 +265,9 @@ function Test-NodePilotDotNetRuntime {
 
     $minimumRuntime = [version]'10.0.11'
     $title = 'ASP.NET Core 10.0.11+ runtime'
-    $hint = 'Install ASP.NET Core runtime 10.0.11 or newer in the .NET 10 line (x64) - the plain runtime, not the Hosting Bundle, which also wires up IIS.'
+    # Names the download exactly. "the plain runtime" read as "the .NET Runtime", which is a
+    # different package that carries no Microsoft.AspNetCore.App and leaves this row red.
+    $hint = 'Install the ASP.NET Core Runtime 10.0.11 or newer (x64, Hosting Bundle excluded - it also wires up IIS). Note that ".NET Runtime", ".NET SDK" and "ASP.NET Core Runtime" are three different downloads on that page, and only the last one carries Microsoft.AspNetCore.App.'
     $link = 'https://dotnet.microsoft.com/download/dotnet/10.0'
     $fixLabel = 'Install the bundled ASP.NET Core 10 runtime now'
 
@@ -281,9 +304,23 @@ function Test-NodePilotDotNetRuntime {
     )
     $patchedRuntime = @($aspNetTenVersions | Where-Object { $_ -ge $minimumRuntime } | Sort-Object -Descending | Select-Object -First 1)
     if ($patchedRuntime.Count -eq 0) {
+        # Always say what WAS found. An empty tail here left an operator with .NET 10 installed
+        # reading a version-shaped complaint and concluding the version was too old.
+        $frameworks = @(Get-NodePilotInstalledFrameworks -Runtimes $State.Runtimes)
+        $aspNetAny = @($frameworks | Where-Object { $_.Name -eq 'Microsoft.AspNetCore.App' })
+        $netCoreTen = @($frameworks | Where-Object {
+            $_.Name -eq 'Microsoft.NETCore.App' -and $_.Version.Major -eq 10
+        } | Sort-Object -Property Version -Descending)
         $foundDetail = if ($aspNetTenVersions.Count -gt 0) {
             " Found vulnerable/unsupported version(s): $($aspNetTenVersions -join ', ')."
-        } else { '' }
+        } elseif ($aspNetAny.Count -eq 0 -and $netCoreTen.Count -gt 0) {
+            # What a host looks like when the .NET Runtime was installed instead of the ASP.NET Core
+            # Runtime: it carries Microsoft.NETCore.App and nothing else.
+            " Microsoft.NETCore.App $($netCoreTen[0].Version) is installed but Microsoft.AspNetCore.App is not," +
+            ' so this is the .NET Runtime rather than the ASP.NET Core Runtime.'
+        } elseif ($frameworks.Count -gt 0) {
+            " Installed: $((($frameworks | ForEach-Object { "$($_.Name) $($_.Version)" }) | Sort-Object) -join ', ')."
+        } else { ' It reported no shared frameworks at all.' }
         return New-NodePilotPreflightResult -Id 'dotnet' -Title $title -Status 'Fail' -Required $true `
             -CanAutoFix $true -AutoFixLabel $fixLabel `
             -Detail ("No patched Microsoft.AspNetCore.App 10 runtime (minimum 10.0.11) was reported by " +
@@ -368,18 +405,7 @@ function Test-NodePilotArtifactRuntime {
             -Detail 'The artifact names no shared framework, so there is nothing to match.'
     }
 
-    $installed = @(
-        foreach ($runtime in @($State.Runtimes)) {
-            if ("$runtime" -match '^(?<Name>[\w\.]+) (?<Version>\d+\.\d+\.\d+)(?:\s|$)') {
-                $parsed = $null
-                # Indexed, not dotted: $Matches is a hashtable, and a capture named like one of its
-                # own members would resolve to the member instead of the capture.
-                if ([version]::TryParse($Matches['Version'], [ref]$parsed)) {
-                    [pscustomobject]@{ Name = $Matches['Name']; Version = $parsed }
-                }
-            }
-        }
-    )
+    $installed = @(Get-NodePilotInstalledFrameworks -Runtimes $State.Runtimes)
 
     $unmet = @()
     $served = @()
@@ -819,21 +845,25 @@ function New-NodePilotCertificateVerdict {
     $importHint = 'Import a current certificate into Cert:\LocalMachine\My (MachineKeySet|PersistKeySet), then re-check.'
     $importCommand = 'Import-PfxCertificate -FilePath <file>.pfx -CertStoreLocation Cert:\LocalMachine\My -Password (Read-Host -AsSecureString)'
 
-    # Certificate expiry is a required failure and cannot be replaced automatically with a
-    # self-signed certificate.
+    # Loud, but not a stop. Validity is a property of the certificate, not of the installation:
+    # Kestrel binds by thumbprint and never reads NotAfter, so the service starts either way, and
+    # swapping the certificate afterwards is a store import plus a restart. Refusing to install
+    # would block a host whose certificate is renewed the same afternoon.
+    $replaceHint = "$importHint The installation is not blocked - the service will start and serve it, " +
+                   'but every client, including np and the MCP server, will refuse the connection until it is replaced.'
+    # -Required stays, as on every other branch of this check: only Fail plus Required aborts, so on
+    # a Warn the flag says "this requirement is checked", not "this stops here".
     if ($Certificate.NotAfter -lt $Now) {
-        return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Fail' -Required $true `
+        return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Warn' -Required $true `
             -Detail ("Certificate $($Certificate.Subject) expired on $($Certificate.NotAfter.ToString('yyyy-MM-dd')). " +
                      'Kestrel will serve it and every client will refuse it.') `
-            -RemediationHint $importHint -Remediation $importCommand `
-            -AbortMessage "Cert $Thumbprint expired on $($Certificate.NotAfter.ToString('yyyy-MM-dd'))."
+            -RemediationHint $replaceHint -Remediation $importCommand
     }
     if ($Certificate.NotBefore -gt $Now) {
-        return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Fail' -Required $true `
+        return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Warn' -Required $true `
             -Detail ("Certificate $($Certificate.Subject) is not valid until $($Certificate.NotBefore.ToString('yyyy-MM-dd')). " +
                      'Clients will refuse it until then.') `
-            -RemediationHint $importHint -Remediation $importCommand `
-            -AbortMessage "Cert $Thumbprint is not valid until $($Certificate.NotBefore.ToString('yyyy-MM-dd'))."
+            -RemediationHint $replaceHint -Remediation $importCommand
     }
 
     $expiryWarning = ''
@@ -863,26 +893,51 @@ function New-NodePilotCertificateVerdict {
 function Test-NodePilotGmsa {
     <#
       Best-effort by design: the ActiveDirectory module may be absent (RSAT not installed) and
-      that must not stop an install. A failure here is a warning, never an abort - which is why
-      this check reports Warn rather than Fail.
+      that must not stop an install. Every outcome here is a warning, never an abort.
+
+      Three of them, because they call for three different answers. "RSAT is missing" and "the
+      cmdlet could not ask" are not evidence that the account is unusable, and recommending
+      Install-ADServiceAccount for either sends the operator to repair something that is not broken.
     #>
     param([Parameter(Mandatory)][string]$ServiceAccount)
 
     $title = 'Group managed service account'
+    # Said in every outcome. The row is amber and cannot hold "Next" back, but an operator reading
+    # "not installed" next to a red row assumes it is the red one.
+    $notBlocking = ' This does not block the installation.'
     $sam = $ServiceAccount
     if ($sam -like '*\*') { $sam = $sam.Split('\')[-1] }
     $sam = $sam.TrimEnd('$')
 
+    if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
+        return New-NodePilotPreflightResult -Id 'gmsa' -Title $title -Status 'Warn' `
+            -Detail ("Could not verify '$sam': the ActiveDirectory module is not present on this " +
+                     "host, so the account was not checked either way.$notBlocking") `
+            -RemediationHint 'Install RSAT-AD-PowerShell to have the setup check the account, or verify it by hand.' `
+            -Remediation 'Install-WindowsFeature RSAT-AD-PowerShell'
+    }
+
     try {
         Import-Module ActiveDirectory -ErrorAction Stop
         # Test-ADServiceAccount takes the short SAM name (without domain, without $).
-        if (-not (Test-ADServiceAccount -Identity $sam)) {
-            throw "Test-ADServiceAccount returned false for '$sam'. Run Install-ADServiceAccount -Identity $sam as Domain Admin."
-        }
+        $installed = Test-ADServiceAccount -Identity $sam -ErrorAction Stop
     } catch {
         return New-NodePilotPreflightResult -Id 'gmsa' -Title $title -Status 'Warn' `
-            -Detail "gMSA check skipped: $($_.Exception.Message)" `
-            -RemediationHint 'Install the RSAT-AD-PowerShell feature, or re-run with -SkipGmsaCheck once verified manually.' `
+            -Detail "Could not verify '$sam': $($_.Exception.Message)$notBlocking" `
+            -RemediationHint 'The account was not checked either way. Confirm it on this host before the service is started:' `
+            -Remediation "Test-ADServiceAccount -Identity $sam"
+    }
+
+    if (-not $installed) {
+        # The one outcome that is evidence, and so the only one allowed to recommend a fix for it.
+        # Test-ADServiceAccount asks whether THIS host can use the account now, which is not the
+        # same question the SCM answers when it starts a service, so a service already running
+        # under the account does not contradict a false here.
+        return New-NodePilotPreflightResult -Id 'gmsa' -Title $title -Status 'Warn' `
+            -Detail ("Test-ADServiceAccount reports that '$sam' is not installed on this host. If " +
+                     'services already run under it, check the account rather than assuming it is ' +
+                     "broken - the two do not ask the same question.$notBlocking") `
+            -RemediationHint 'If the account really was never installed here, as Domain Admin:' `
             -Remediation "Install-ADServiceAccount -Identity $sam"
     }
 
@@ -984,11 +1039,25 @@ function Test-NodePilotSqlReachable {
         $cmd.CommandText = 'SELECT 1'
         [void]$cmd.ExecuteScalar()
     } catch {
+        # 4060 is "cannot open database requested by the login": the instance answered and TLS held,
+        # so the statements below are the whole fix. Any other failure may be the connection itself -
+        # most often a server certificate this host cannot verify - and offering CREATE LOGIN for
+        # that sends the operator after a permission problem they do not have.
+        # Compared by type name rather than -is, so a host without the assembly loaded still reads.
+        $sqlNumber = if ($_.Exception.GetType().FullName -eq 'System.Data.SqlClient.SqlException') {
+            $_.Exception.Number
+        } else { 0 }
+        $hint = if ($sqlNumber -eq 4060) {
+            'The instance answered, but the database is not there for this login. Have the DBA run, on the SQL Server:'
+        } else {
+            'The connection itself did not come up. Check that this host can verify the SQL Server''s certificate - the service enforces the same TLS rule when it starts - and that the instance and port are reachable. If the database is merely missing, have the DBA run:'
+        }
         return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
             -Detail "SQL reachability FAILED: $($_.Exception.Message)" `
-            -RemediationHint 'The installer could not open a connection to the target DB using the current admin''s Windows identity. Have the DBA run, on the SQL Server:' `
+            -RemediationHint $hint `
             -Remediation (Get-NodePilotSqlRemediationScript -Principal $Principal -Database $Database) `
-            -CanAutoFix $true -AutoFixLabel 'Create the login and database now (needs sysadmin)' `
+            -CanAutoFix $true -AutoFixDefault $true `
+            -AutoFixLabel 'Create the login and database now (needs sysadmin)' `
             -AbortMessage 'Aborted: SQL pre-flight failed.'
     } finally {
         $conn.Dispose()

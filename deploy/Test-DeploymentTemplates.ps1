@@ -1593,13 +1593,34 @@ Assert-TextMatches -Name 'the readiness page asks for the port check' `
     -Text $serverIss -Pattern "CheckIds\[\d\] := 'ports';"
 
 # --- certificate validity and naming -------------------------------------------------------------
-# Expired certificates are a required preflight failure.
-Assert-TextMatches -Name 'an expired certificate fails the pre-flight' `
+# A certificate outside its validity window is reported, not refused: Kestrel binds by thumbprint
+# and never reads NotAfter, so the service starts either way and the certificate can be swapped
+# afterwards with a store import and a restart.
+# Sliced to the TLS verdict, because the publisher certificate is checked for validity too and an
+# expired SIGNING certificate must keep aborting - the signature would be rejected and nothing would
+# install. A pattern matched against the whole file would relax that one by accident.
+$certVerdictStart = $preflightStripped.IndexOf('function New-NodePilotCertificateVerdict')
+$certVerdictEnd = if ($certVerdictStart -ge 0) {
+    $preflightStripped.IndexOf("`nfunction ", $certVerdictStart + 40)
+} else { -1 }
+if ($certVerdictStart -lt 0 -or $certVerdictEnd -le $certVerdictStart) {
+    throw 'Deployment template check failed: could not delimit New-NodePilotCertificateVerdict.'
+}
+$certVerdict = $preflightStripped.Substring($certVerdictStart, $certVerdictEnd - $certVerdictStart)
+# '$Now)' and not '$Now', so these do not also match the expiring-soon branch in the same function,
+# which compares against $Now.AddDays(30) and must keep passing.
+Assert-TextMatches -Name 'an expired certificate warns without blocking the install' `
+    -Text $certVerdict -Pattern "(?s)NotAfter -lt \`$Now\)[\s\S]{0,300}Status 'Warn'"
+Assert-TextMatches -Name 'a certificate that is not valid yet warns too' `
+    -Text $certVerdict -Pattern "(?s)NotBefore -gt \`$Now\)[\s\S]{0,300}Status 'Warn'"
+# Only Fail plus Required aborts, so what must not come back here is Fail. -Required stays on both,
+# as on every other branch of this check.
+Assert-TextDoesNotMatch -Name 'neither validity branch aborts the install any more' `
+    -Text $certVerdict -Pattern "(?s)Not(After -lt|Before -gt) \`$Now\)[\s\S]{0,300}Status 'Fail'"
+# The publisher certificate is the opposite case and must not drift with it.
+Assert-TextMatches -Name 'an out-of-date publisher certificate still aborts' `
     -Text $preflightStripped `
-    -Pattern "(?s)NotAfter -lt \`$Now[\s\S]{0,300}Status 'Fail' -Required \`$true"
-Assert-TextMatches -Name 'a certificate that is not valid yet fails too' `
-    -Text $preflightStripped `
-    -Pattern "(?s)NotBefore -gt \`$Now[\s\S]{0,300}Status 'Fail' -Required \`$true"
+    -Pattern "(?s)NotBefore -gt \`$now\b[\s\S]{0,400}Status 'Fail' -Required \`$true"
 # X509Extension.Format() renders "DNS Name=" in the machine's UI language. A parser built on it
 # works on an English host and silently finds nothing on a German one - which would report every
 # certificate as naming nothing. PowerShell's certificate provider hands over the decoded list.
@@ -2175,6 +2196,32 @@ Assert-TextMatches -Name 'the bundled runtime is resolved from the flat temporar
     -Text $setupAdapter -Pattern 'Get-ChildItem -LiteralPath \$PayloadRoot -Filter ''aspnetcore-runtime-\*\.exe'''
 Assert-TextDoesNotMatch -Name 'nothing looks for the runtime in a folder the installer never extracts' `
     -Text $setupAdapter -Pattern 'Join-Path \$PayloadRoot ''runtime'''
+# 1638 means the bundle refused itself because a newer one is registered. It says nothing about
+# whether Microsoft.AspNetCore.App is on the machine, and counting it as success left the readiness
+# page re-probing to the same red row with nothing to read.
+Assert-TextMatches -Name 'only a real install counts as an installed runtime' `
+    -Text $setupAdapter -Pattern '\$accepted = @\(0, 3010\)'
+Assert-TextDoesNotMatch -Name 'a bundle that refused to run is not a success' `
+    -Text $setupAdapter -Pattern '\$accepted = @\([^)]*1638'
+# The verdict is only worth writing if somebody reads it. These two sections were written by the
+# adapter and read by nobody, so a fix that failed looked exactly like a fix that worked.
+Assert-TextMatches -Name 'the wizard reads back the runtime verdict it asked for' `
+    -Text $serverIssCode -Pattern "ProvisionSectionProblem\([^)]*'provision\.runtime'"
+Assert-TextMatches -Name 'the wizard reads back the publisher verdict it asked for' `
+    -Text $serverIssCode -Pattern "ProvisionSectionProblem\([^)]*'provision\.signer'"
+# Both paths, not just the interactive one: an unattended rollout whose runtime install failed used
+# to walk on to Apply and fail in the pre-flight instead.
+Assert-TextMatches -Name 'the silent path reads the other provisioning verdicts too' `
+    -Text $serverIssCode `
+    -Pattern "(?s)if WizardSilent\(\)[\s\S]{0,1600}ProvisionSectionProblem[\s\S]{0,400}Arguments := '-Mode Apply'"
+# A dialog is not a reason to leave the page with the tick still set: the attempt spends it, or the
+# next Next runs the same failing fix again.
+Assert-TextDoesNotMatch -Name 'a failed provisioning run does not skip the tick clearing' `
+    -Text (Remove-CommentLines -Text ($serverIss.Substring(
+        $serverIss.IndexOf('if WantsFix then'),
+        $serverIss.IndexOf('// Never assume a fix worked.', $serverIss.IndexOf('if WantsFix then')) -
+        $serverIss.IndexOf('if WantsFix then'))) -CommentPrefix '//') `
+    -Pattern 'mbCriticalError[\s\S]{0,200}Exit;'
 Assert-TextMatches -Name 'the exact bundled runtime is extracted into the temporary payload root' `
     -Text $serverIss -Pattern "ExtractTemporaryFile\('\{#RuntimeFileName\}'\)"
 Assert-TextMatches -Name 'runtime payload extraction is idempotent and only marked after success' `
