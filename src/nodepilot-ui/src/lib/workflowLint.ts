@@ -1,4 +1,5 @@
 import type { Node, Edge } from '@xyflow/react';
+import i18n from '../i18n';
 import { edgeSourcePort, edgeTargetPort, getPortPoint } from './edgePorts';
 import { REMOTE_ACTIVITY_TYPES, TRIGGER_ACTIVITY_TYPES } from './activityCatalog.generated';
 import { checkRequiredActivityConfig } from './activityConfigFacts';
@@ -16,7 +17,7 @@ const HYBRID_LOCAL_ACTIVITY_TYPES = new Set(['runScript', 'waitForCondition']);
 // operations on job objects from other sources.
 const STARTJOB_HOSTED_INCOMPATIBLE: Array<{ pattern: RegExp; cmdletName: string }> = [
   { pattern: /(^|[\s|;&])Start-Job\b/i, cmdletName: 'Start-Job' },
-  { pattern: /\bGet-WindowsUpdateLog\b/i, cmdletName: 'Get-WindowsUpdateLog (nutzt intern Start-Job)' },
+  { pattern: /\bGet-WindowsUpdateLog\b/i, cmdletName: 'Get-WindowsUpdateLog' },
   { pattern: /\bInvoke-Command\b[^\r\n]*-AsJob\b/i, cmdletName: 'Invoke-Command -AsJob' },
 ];
 
@@ -93,7 +94,7 @@ export function lintWorkflow(
         severity: 'error',
         edgeId: e.id,
         code: 'duplicate-edge',
-        message: `Verbindung ${e.source} -> ${e.target} existiert bereits (${firstEdgeId}). Bearbeite die bestehende Edge statt eine zweite anzulegen.`,
+        message: i18n.t('lint:issues.duplicateEdge', { source: e.source, target: e.target, edgeId: firstEdgeId }),
       });
     } else {
       seenEdgePairs.set(key, e.id);
@@ -128,7 +129,7 @@ export function lintWorkflow(
         severity: 'error',
         nodeId: n.id,
         code: 'fan-in-requires-junction',
-        message: `"${getLabel(n)}" hat mehrere eingehende Verbindungen. Füge davor eine Junction ein.`,
+        message: i18n.t('lint:issues.fanInRequiresJunction', { label: getLabel(n) }),
       });
     }
   }
@@ -157,7 +158,7 @@ export function lintWorkflow(
     errors.push({
       severity: 'error',
       code: 'no-trigger',
-      message: 'Workflow hat keinen Trigger. Ohne Trigger-Node (manuell, Zeitplan, Webhook, …) gibt es keinen Einstiegspunkt — die Engine führt nichts aus.',
+      message: i18n.t('lint:issues.noTrigger'),
     });
   }
 
@@ -184,7 +185,7 @@ export function lintWorkflow(
         severity: 'error',
         nodeId: n.id,
         code: 'isolated-node',
-        message: `"${getLabel(n)}" ist nicht mit dem Graph verbunden — weder eingehende noch ausgehende Kanten.`,
+        message: i18n.t('lint:issues.isolatedNode', { label: getLabel(n) }),
       });
     } else if (hasTriggerNode && !isTrigger && inCount === 0 && outCount > 0) {
       // Orphan root: not a trigger, no incoming edge, but has successors. Common after
@@ -194,7 +195,7 @@ export function lintWorkflow(
         severity: 'warning',
         nodeId: n.id,
         code: 'orphan-root',
-        message: `"${getLabel(n)}" hat keine eingehende Verbindung und ist kein Trigger — wird beim Ausführen übersprungen.`,
+        message: i18n.t('lint:issues.orphanRoot', { label: getLabel(n) }),
       });
     }
   }
@@ -219,7 +220,7 @@ export function lintWorkflow(
         severity: 'warning',
         nodeId: n.id,
         code: 'unreachable-node',
-        message: `"${getLabel(n)}" ist von keinem Trigger erreichbar — der Pfad dorthin läuft über deaktivierte Kanten oder einen Zyklus.`,
+        message: i18n.t('lint:issues.unreachableNode', { label: getLabel(n) }),
       });
     }
   }
@@ -236,7 +237,7 @@ export function lintWorkflow(
         severity: 'error',
         nodeId: n.id,
         code: 'dup-output-variable',
-        message: `outputVariable "${ov}" ist schon von einem anderen Step gesetzt — Downstream-Referenzen {{${ov}.output}} werden zufällig einen der beiden treffen.`,
+        message: i18n.t('lint:issues.dupOutputVariable', { name: ov, reference: `{{${ov}.output}}` }),
       });
     } else {
       seenOutputVar.set(ov, n.id);
@@ -310,7 +311,11 @@ export function lintWorkflow(
           severity: 'warning',
           nodeId: sorted[sorted.length - 1],
           code: 'dup-published-param',
-          message: `Zwei Aktivitäten veröffentlichen "${pName}" — die unqualifizierte Form $${pName} wird nicht gebunden, weil ein veröffentlichter Wert genau einen Besitzer hat. Referenziere ihn als {{${sorted[0]}.param.${pName}}}.`,
+          message: i18n.t('lint:issues.dupPublishedParam', {
+            name: pName,
+            shortForm: `$${pName}`,
+            qualified: `{{${sorted[0]}.param.${pName}}}`,
+          }),
         });
       }
     }
@@ -344,7 +349,7 @@ export function lintWorkflow(
         severity: 'warning',
         nodeId: n.id,
         code: 'unknown-template-ref',
-        message: `"${getLabel(n)}" referenziert {{${head}.…}} — dieser Step existiert nicht (oder heißt anders). Typo oder outputVariable umbenannt?`,
+        message: i18n.t('lint:issues.unknownTemplateRef', { label: getLabel(n), reference: `{{${head}.…}}` }),
       });
       // Report only the first bad reference per node, so one broken node cannot flood the list.
       break;
@@ -360,7 +365,7 @@ export function lintWorkflow(
 
     const msg = checkRequiredActivityConfig(at, cfg);
     if (msg) {
-      errors.push({ severity: 'error', nodeId: n.id, code: 'missing-required-config', message: `"${getLabel(n)}": ${msg}` });
+      errors.push({ severity: 'error', nodeId: n.id, code: 'missing-required-config', message: i18n.t('lint:issues.missingRequiredConfig', { label: getLabel(n), detail: msg }) });
     }
 
     // runScript and waitForCondition are hybrid: without a target machine they run locally in
@@ -368,7 +373,7 @@ export function lintWorkflow(
     if (REMOTE_ACTIVITY_TYPES.has(at) && !HYBRID_LOCAL_ACTIVITY_TYPES.has(at)) {
       const machine = (d.targetMachineId as string) || '';
       if (!machine) {
-        errors.push({ severity: 'error', nodeId: n.id, code: 'missing-target-machine', message: `"${getLabel(n)}": Ziel-Maschine (targetMachineId) ist für Remote-Activities erforderlich.` });
+        errors.push({ severity: 'error', nodeId: n.id, code: 'missing-target-machine', message: i18n.t('lint:issues.missingTargetMachine', { label: getLabel(n) }) });
       }
     }
   }
@@ -394,7 +399,7 @@ export function lintWorkflow(
       severity: 'warning',
       nodeId: n.id,
       code: 'startjob-in-runspace',
-      message: `"${getLabel(n)}": Script ruft ${hit.cmdletName} auf — das spawnt intern einen Background-Job (Start-Job), für den eine externe pwsh.exe nötig ist. Der in-process Runspace (engine: "${engine}") unterstützt das nicht. Setze engine: "pwsh" in der Activity-Config.`,
+      message: i18n.t('lint:issues.startJobInRunspace', { label: getLabel(n), cmdlet: hit.cmdletName, engine }),
     });
   }
 
@@ -414,7 +419,7 @@ export function lintWorkflow(
           severity: 'warning',
           nodeId: n.id,
           code: 'unknown-workflow-ref',
-          message: `"${getLabel(n)}": Workflow "${ref}" nicht gefunden — Typo oder wurde gelöscht?`,
+          message: i18n.t('lint:issues.unknownWorkflowRef', { label: getLabel(n), reference: ref }),
         });
       }
     }
@@ -437,7 +442,7 @@ export function lintWorkflow(
         severity: 'warning',
         edgeId: e.id,
         code: 'edge-to-disabled',
-        message: `Kante zielt auf einen deaktivierten Step — der wird nie ausgeführt.`,
+        message: i18n.t('lint:issues.edgeToDisabled'),
       });
     }
     if (disabledNodeIds.has(e.source) && !disabledWithDownstreamReported.has(e.source)) {
@@ -448,7 +453,7 @@ export function lintWorkflow(
         severity: 'warning',
         nodeId: e.source,
         code: 'disabled-with-downstream',
-        message: `"${label}" ist deaktiviert, hat aber noch ausgehende Verbindungen — die nachfolgenden Steps werden mit-skipped. Edges entfernen oder Step wieder aktivieren.`,
+        message: i18n.t('lint:issues.disabledWithDownstream', { label }),
       });
     }
   }
@@ -504,7 +509,7 @@ export function lintWorkflow(
         severity: 'warning',
         edgeId: e.id,
         code: 'edge-occluded',
-        message: `Kante läuft geometrisch durch ${describeNodes(occludedBy)} — optisch wirkt sie "unverbunden", Engine führt sie aber aus. Auto-Layout (Tidy) anwenden, um das Layout zu bereinigen.`,
+        message: i18n.t('lint:issues.edgeOccluded', { nodes: describeNodes(occludedBy) }),
       });
     } else if (crowdedBy.length >= 2) {
       // Passing close to a single node is normal. The rule fires only once two or more
@@ -513,7 +518,7 @@ export function lintWorkflow(
         severity: 'warning',
         edgeId: e.id,
         code: 'edge-crowded',
-        message: `Kante läuft dicht an ${describeNodes(crowdedBy)} vorbei — optisch schwer zuordenbar, obwohl die Verbindung existiert. Auto-Layout (Tidy) sorgt für klarere Abstände.`,
+        message: i18n.t('lint:issues.edgeCrowded', { nodes: describeNodes(crowdedBy) }),
       });
     }
   }
@@ -524,7 +529,7 @@ export function lintWorkflow(
 function describeNodes(labels: string[]): string {
   if (labels.length === 1) return `"${labels[0]}"`;
   const head = labels.slice(0, 2).map((l) => `"${l}"`).join(', ');
-  return `${labels.length} Nodes (${head}${labels.length > 2 ? ', …' : ''})`;
+  return i18n.t('lint:issues.nodeCount', { count: labels.length, names: `${head}${labels.length > 2 ? ', …' : ''}` });
 }
 
 /** Sampled points of a cubic Bezier curve, left to right (or top to bottom for vertical flow).

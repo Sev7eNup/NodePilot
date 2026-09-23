@@ -71,7 +71,7 @@ describe('lintWorkflow — edge-occluded', () => {
     const { warnings } = lintWorkflow(nodes, edges);
     const occluded = warnings.filter((w) => w.code === 'edge-occluded');
     expect(occluded).toHaveLength(1);
-    expect(occluded[0].message).toContain('2 Nodes');
+    expect(occluded[0].message).toContain('2 nodes');
     expect(occluded[0].message).toContain('First blocker');
   });
 
@@ -534,7 +534,7 @@ describe('lintWorkflow — fileOperation required-config', () => {
       const edges: Edge[] = [edge('e1', 'trig', 'op')];
       const { errors } = lintWorkflow(nodes, edges);
       const unknownErrs = errors.filter(
-        (e) => e.code === 'missing-required-config' && e.message.toLowerCase().includes('unbekannte'),
+        (e) => e.code === 'missing-required-config' && e.message.toLowerCase().includes('unknown operation'),
       );
       expect(unknownErrs, `op=${op} should not be flagged unknown`).toHaveLength(0);
     }
@@ -617,7 +617,7 @@ describe('lintWorkflow — folderOperation required-config', () => {
       const edges: Edge[] = [edge('e1', 'trig', 'op')];
       const { errors } = lintWorkflow(nodes, edges);
       const unknownErrs = errors.filter(
-        (e) => e.code === 'missing-required-config' && e.message.toLowerCase().includes('unbekannte'),
+        (e) => e.code === 'missing-required-config' && e.message.toLowerCase().includes('unknown operation'),
       );
       expect(unknownErrs, `op=${op} should not be flagged unknown`).toHaveLength(0);
     }
@@ -841,5 +841,36 @@ describe('lintWorkflow — dup-published-param', () => {
     ];
     const edges: Edge[] = [edge('e1', 'trig', 'left'), edge('e2', 'trig', 'right')];
     expect(codes(lintWorkflow(nodes, edges))).toHaveLength(0);
+  });
+});
+
+describe('lintWorkflow — localized messages', () => {
+  it('messages_followTheUiLanguage', async () => {
+    const nodes: Node[] = [node('lonely', 0, 0, { label: 'Lonely', activityType: 'log', config: { message: 'x' } })];
+
+    expect(lintWorkflow(nodes, []).errors.map((e) => e.message)).toContain(
+      'The workflow has no trigger. Without a trigger node (manual, schedule, webhook, …) there is no entry point, so the engine runs nothing.',
+    );
+
+    await i18n.changeLanguage('de');
+    try {
+      expect(lintWorkflow(nodes, []).errors.map((e) => e.message)).toContain(
+        '"Lonely" ist nicht mit dem Graph verbunden — weder eingehende noch ausgehende Kanten.',
+      );
+    } finally {
+      await i18n.changeLanguage('en');
+    }
+  });
+
+  it('dupOutputVariable_keepsTheTemplateReferenceLiteral', () => {
+    const nodes: Node[] = [
+      node('trig', 0, 0, { activityType: 'manualTrigger' }),
+      { ...node('a', 300, 0, { activityType: 'log', config: { message: 'x' } }), data: { label: 'A', activityType: 'log', outputVariable: 'disk', config: { message: 'x' } } },
+      { ...node('b', 600, 0, { activityType: 'log', config: { message: 'x' } }), data: { label: 'B', activityType: 'log', outputVariable: 'disk', config: { message: 'x' } } },
+    ];
+    const edges: Edge[] = [edge('e1', 'trig', 'a'), edge('e2', 'a', 'b')];
+    const dup = lintWorkflow(nodes, edges).errors.filter((e) => e.code === 'dup-output-variable');
+    expect(dup).toHaveLength(1);
+    expect(dup[0].message).toBe('outputVariable "disk" is already set by another step, so downstream references {{disk.output}} hit either of the two at random.');
   });
 });

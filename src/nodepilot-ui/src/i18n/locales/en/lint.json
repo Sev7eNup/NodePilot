@@ -14,5 +14,27 @@
     "invalidCron": "Invalid cron expression: {{expression}}",
     "missingCondition": "Decision branch without condition",
     "junctionWithoutSources": "Junction without enough incoming edges"
+  },
+  "issues": {
+    "duplicateEdge": "Connection {{source}} -> {{target}} already exists ({{edgeId}}). Edit the existing edge instead of adding a second one.",
+    "fanInRequiresJunction": "\"{{label}}\" has several incoming connections. Add a junction in front of it.",
+    "noTrigger": "The workflow has no trigger. Without a trigger node (manual, schedule, webhook, …) there is no entry point, so the engine runs nothing.",
+    "isolatedNode": "\"{{label}}\" is not connected to the graph: it has neither incoming nor outgoing edges.",
+    "orphanRoot": "\"{{label}}\" has no incoming connection and is not a trigger, so it is skipped when the workflow runs.",
+    "unreachableNode": "\"{{label}}\" cannot be reached from any trigger: the path to it runs through disabled edges or a cycle.",
+    "dupOutputVariable": "outputVariable \"{{name}}\" is already set by another step, so downstream references {{reference}} hit either of the two at random.",
+    "dupPublishedParam": "Two activities publish \"{{name}}\". The unqualified form {{shortForm}} is not bound, because a published value has exactly one owner. Reference it as {{qualified}}.",
+    "unknownTemplateRef": "\"{{label}}\" references {{reference}}, but that step does not exist (or has a different name). Typo, or was the outputVariable renamed?",
+    "missingRequiredConfig": "\"{{label}}\": {{detail}}",
+    "missingTargetMachine": "\"{{label}}\": remote activities need a target machine (targetMachineId).",
+    "startJobInRunspace": "\"{{label}}\": the script calls {{cmdlet}}, which starts a background job (Start-Job) internally and needs an external pwsh.exe. The in-process runspace (engine: \"{{engine}}\") does not support that. Set engine: \"pwsh\" in the activity config.",
+    "unknownWorkflowRef": "\"{{label}}\": workflow \"{{reference}}\" not found. Typo, or was it deleted?",
+    "edgeToDisabled": "This edge points at a disabled step, which never runs.",
+    "disabledWithDownstream": "\"{{label}}\" is disabled but still has outgoing connections, so the steps after it are skipped too. Remove the edges or enable the step again.",
+    "edgeOccluded": "The edge runs through {{nodes}}. It looks unconnected, but the engine still runs it. Use Auto-Layout (Tidy) to clean up the layout.",
+    "edgeCrowded": "The edge runs close past {{nodes}}, which makes it hard to follow even though the connection exists. Auto-Layout (Tidy) spaces the nodes more clearly.",
+    "nodeCount": "{{count}} nodes ({{names}})",
+    "triggerWithoutOutgoing": "Trigger \"{{label}}\" has no outgoing connection: it fires, but nothing runs after it.",
+    "noDescription": "The workflow has no description. A short line helps colleagues see in the workflow list what it does."
   }
 }

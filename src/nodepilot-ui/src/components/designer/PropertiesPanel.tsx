@@ -635,6 +635,7 @@ function ExpressionTester({
  * healthy host as unreachable).
  */
 function CredentialTestButton({ machineId, credentialId }: Readonly<{ machineId: string; credentialId: string }>) {
+  const { t } = useTranslation('properties');
   const [state, setState] = useState<'idle' | 'running' | 'ok' | 'fail'>('idle');
   const [message, setMessage] = useState('');
 
@@ -654,10 +655,10 @@ function CredentialTestButton({ machineId, credentialId }: Readonly<{ machineId:
         `/machines/${machineId}/test`, body);
       if (res.success) {
         setState('ok');
-        setMessage(`${res.credentialUsed ?? 'default'} → ${res.computerName?.trim() || 'reachable'}`);
+        setMessage(`${res.credentialUsed ?? t('panel.testDefaultCredential')} → ${res.computerName?.trim() || t('panel.testReachable')}`);
       } else {
         setState('fail');
-        setMessage(res.error || 'unknown failure');
+        setMessage(res.error || t('panel.testUnknownFailure'));
       }
     } catch (e) {
       setState('fail');
@@ -677,16 +678,16 @@ function CredentialTestButton({ machineId, credentialId }: Readonly<{ machineId:
           state === 'fail' ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100' :
           'bg-surface-high text-on-surface border-outline-variant/30 hover:bg-surface-highest'
         }`}
-        title="Probiert eine kurze Verbindung zur Machine — verifiziert dass Host erreichbar + Credential gültig ist."
+        title={t('panel.testConnectionTitle')}
       >
         {state === 'running' ? <CircleDash size={12} className="animate-spin" /> :
          state === 'ok' ? <CheckmarkFilled size={12} /> :
          state === 'fail' ? <ErrorFilled size={12} /> :
          <FlashFilled size={12} />}
-        {state === 'running' ? 'Testing…' :
-         state === 'ok' ? 'Reachable' :
-         state === 'fail' ? 'Failed' :
-         'Test connection'}
+        {state === 'running' ? t('panel.testRunning') :
+         state === 'ok' ? t('panel.testReachable') :
+         state === 'fail' ? t('panel.testFailed') :
+         t('panel.testConnection')}
       </button>
       {message && state !== 'running' && (
         <p className={`text-[10px] font-mono truncate ${state === 'ok' ? 'text-green-700' : 'text-error'}`} title={message}>
@@ -695,7 +696,7 @@ function CredentialTestButton({ machineId, credentialId }: Readonly<{ machineId:
       )}
       {credIsVariable && (
         <p className="text-[10px] text-outline italic">
-          (Credential ist eine Variable — Test verwendet den Machine-Default.)
+          {t('panel.testCredentialIsVariable')}
         </p>
       )}
     </div>

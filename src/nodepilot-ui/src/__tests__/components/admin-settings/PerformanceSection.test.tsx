@@ -191,6 +191,15 @@ describe('PerformanceSection', () => {
     expect(screen.queryByText(/Changes apply immediately|sofort/i)).not.toBeInTheDocument();
   });
 
+  it('EngineCard_englishUi_rendersTranslatedFieldHints', async () => {
+    renderAll({ manualTuning: true });
+    await waitFor(() => expect(screen.getByDisplayValue('5000')).toBeInTheDocument());
+    expect(screen.getByText(/Keep this close to ExecutionDispatch\.WorkerCount/)).toBeInTheDocument();
+    expect(screen.getByText(/The pool grows on demand up to the maximum/)).toBeInTheDocument();
+    expect(screen.getByText(/validated for 500 parallel workflows/)).toBeInTheDocument();
+    expect(screen.queryByText(/Sweet-Spot|Sollte/)).not.toBeInTheDocument();
+  });
+
   it('reports unknown memory rather than implying a detected size', async () => {
     renderAll({ manualTuning: false, usableMemoryBytes: null });
     await waitFor(() => expect(screen.getByText(/unbekannt|unknown/)).toBeInTheDocument());

@@ -171,6 +171,44 @@ describe('PropertiesPanel — status pills', () => {
   });
 });
 
+describe('PropertiesPanel — English UI has no hardcoded German', () => {
+  it('statusPills_englishUi_renderTranslatedTooltips', () => {
+    renderPanel();
+    expect(screen.getByRole('button', { name: /^Active$/ }))
+      .toHaveAttribute('title', 'Step is active. Click to disable it (it will then be skipped).');
+    expect(screen.getByRole('button', { name: /No break/i }))
+      .toHaveAttribute('title', 'Click to set a breakpoint. It pauses before this step in debug runs only.');
+    expect(screen.getByText('step-1').closest('button'))
+      .toHaveAttribute('title', 'Defaults to the step ID. Downstream steps reference it as {{step-1.output}}. Click to change.');
+    expect(screen.getByRole('button', { name: 'Node name' })).toHaveAttribute('title', 'Click to edit');
+  });
+
+  it('breakpointPopover_englishUi_rendersTranslatedHelp', () => {
+    renderPanel({ node: makeNode('runScript', { breakpoint: true }) });
+    fireEvent.click(screen.getByTitle('Optional: set a condition'));
+    expect(screen.getByText('Breakpoint condition')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Empty = always pause · e.g. {{result.output}}')).toBeInTheDocument();
+    expect(screen.getByText(/When set, the engine pauses only if the resolved value is/)).toBeInTheDocument();
+  });
+
+  it('outputVariablePopover_englishUi_rendersTranslatedHelpWithExpression', () => {
+    renderPanel({ node: makeNode('runScript', { outputVariable: 'disk' }) });
+    fireEvent.click(screen.getByText('disk').closest('button')!);
+    expect(screen.getByText('{{disk.output}}').tagName).toBe('CODE');
+    expect(screen.getByText(/Leave empty to use the step ID/)).toBeInTheDocument();
+  });
+
+  it('credentialTestButton_englishUi_rendersTranslatedLabelAndHint', () => {
+    renderPanel({ node: makeNode('runScript', {
+      targetMachineId: '11111111-2222-3333-4444-555555555555',
+      credentialId: '{{globals.cred}}',
+    }) });
+    expect(screen.getByRole('button', { name: /Test connection/ })).toHaveAttribute(
+      'title', 'Opens a short connection to the machine to check that the host is reachable and the credential is valid.');
+    expect(screen.getByText('(The credential is a variable, so the test uses the machine default.)')).toBeInTheDocument();
+  });
+});
+
 describe('PropertiesPanel — sections & gating', () => {
   it('renders the Test & Debug section + Run-test button only when a workflowId is provided and the node is not a trigger', () => {
     const { rerender } = renderPanel({ workflowId: 'wf-1' });
@@ -248,6 +286,7 @@ describe('PropertiesPanel — read-only mode (canWrite=false)', () => {
     // InlineEditable in disabled mode renders a span instead of a button.
     expect(screen.queryByRole('button', { name: 'Node name' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Node name')).toHaveTextContent('Read Me');
+    expect(screen.getByLabelText('Node name')).toHaveAttribute('title', 'Workflow is not checked out for editing');
   });
 
   it('disables every form input/select/button under the panel body via fieldset[disabled]', () => {

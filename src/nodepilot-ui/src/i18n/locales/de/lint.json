@@ -14,5 +14,27 @@
     "invalidCron": "Ungültiger Cron-Ausdruck: {{expression}}",
     "missingCondition": "Decision-Branch ohne Bedingung",
     "junctionWithoutSources": "Junction ohne ausreichend Eingangs-Edges"
+  },
+  "issues": {
+    "duplicateEdge": "Verbindung {{source}} -> {{target}} existiert bereits ({{edgeId}}). Bearbeite die bestehende Edge statt eine zweite anzulegen.",
+    "fanInRequiresJunction": "\"{{label}}\" hat mehrere eingehende Verbindungen. Füge davor eine Junction ein.",
+    "noTrigger": "Workflow hat keinen Trigger. Ohne Trigger-Node (manuell, Zeitplan, Webhook, …) gibt es keinen Einstiegspunkt — die Engine führt nichts aus.",
+    "isolatedNode": "\"{{label}}\" ist nicht mit dem Graph verbunden — weder eingehende noch ausgehende Kanten.",
+    "orphanRoot": "\"{{label}}\" hat keine eingehende Verbindung und ist kein Trigger — wird beim Ausführen übersprungen.",
+    "unreachableNode": "\"{{label}}\" ist von keinem Trigger erreichbar — der Pfad dorthin läuft über deaktivierte Kanten oder einen Zyklus.",
+    "dupOutputVariable": "outputVariable \"{{name}}\" ist schon von einem anderen Step gesetzt — Downstream-Referenzen {{reference}} werden zufällig einen der beiden treffen.",
+    "dupPublishedParam": "Zwei Aktivitäten veröffentlichen \"{{name}}\" — die unqualifizierte Form {{shortForm}} wird nicht gebunden, weil ein veröffentlichter Wert genau einen Besitzer hat. Referenziere ihn als {{qualified}}.",
+    "unknownTemplateRef": "\"{{label}}\" referenziert {{reference}} — dieser Step existiert nicht (oder heißt anders). Typo oder outputVariable umbenannt?",
+    "missingRequiredConfig": "\"{{label}}\": {{detail}}",
+    "missingTargetMachine": "\"{{label}}\": Ziel-Maschine (targetMachineId) ist für Remote-Activities erforderlich.",
+    "startJobInRunspace": "\"{{label}}\": Script ruft {{cmdlet}} auf — das spawnt intern einen Background-Job (Start-Job), für den eine externe pwsh.exe nötig ist. Der in-process Runspace (engine: \"{{engine}}\") unterstützt das nicht. Setze engine: \"pwsh\" in der Activity-Config.",
+    "unknownWorkflowRef": "\"{{label}}\": Workflow \"{{reference}}\" nicht gefunden — Typo oder wurde gelöscht?",
+    "edgeToDisabled": "Kante zielt auf einen deaktivierten Step — der wird nie ausgeführt.",
+    "disabledWithDownstream": "\"{{label}}\" ist deaktiviert, hat aber noch ausgehende Verbindungen — die nachfolgenden Steps werden mit-skipped. Edges entfernen oder Step wieder aktivieren.",
+    "edgeOccluded": "Kante läuft geometrisch durch {{nodes}} — optisch wirkt sie \"unverbunden\", Engine führt sie aber aus. Auto-Layout (Tidy) anwenden, um das Layout zu bereinigen.",
+    "edgeCrowded": "Kante läuft dicht an {{nodes}} vorbei — optisch schwer zuordenbar, obwohl die Verbindung existiert. Auto-Layout (Tidy) sorgt für klarere Abstände.",
+    "nodeCount": "{{count}} Nodes ({{names}})",
+    "triggerWithoutOutgoing": "Trigger \"{{label}}\" hat keine ausgehende Verbindung — er feuert, aber nichts läuft danach.",
+    "noDescription": "Workflow hat keine Beschreibung. Eine kurze Zeile erleichtert es Kollegen, in der Workflow-Liste zu erkennen, was hier läuft."
   }
 }
