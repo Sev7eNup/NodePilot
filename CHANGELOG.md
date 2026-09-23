@@ -12,15 +12,75 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-09-23
+
+A server-setup release. Every identity/database combination (gMSA or LocalSystem, SQL Server or
+PostgreSQL) now installs unattended on a clean Windows Server 2025 and runs without an error in its
+log; the SQL Server combinations also update cleanly from 1.4.0. **Earlier releases carry the
+setup defects listed below; 1.4.1 replaces them.** WinRM no longer requires HTTPS by default.
+
+### Fixed — server setup
+
+- **Workflow dispatch stalled after an install or a user change.** SQL Server keeps a pooled
+  connection's isolation level, so a Serializable transaction (bootstrap admin, user creation, LDAP
+  sync) left the next outbox claim at Serializable, where `READPAST` is rejected. The dispatch loop
+  logged "could not poll the outbox" once a second and dispatched nothing until the connection left
+  the pool. The claim now sets `READ COMMITTED` itself.
+- **LocalSystem with SQL Server on the same host could not install.** The setup granted the computer
+  account (`DOMAIN\HOST$`), but a local SQL Server sees a LocalSystem service as
+  `NT AUTHORITY\SYSTEM`. The service never got a login, missed the 30-second start window, and the
+  installation rolled back. The login is now chosen by where SQL Server runs; the provisioning also
+  accepts the (localised) SYSTEM name. A remote SQL Server was not affected.
+- **PostgreSQL installations always failed.** Rendering the connection string rejected the root
+  certificate path, so no PostgreSQL installation could complete, through the setup or the ZIP route.
+- **The bundled psql client was never extracted,** so the setup could not create the PostgreSQL role
+  and database it offered to create. An omitted `postgresPort` also reached provisioning as port 0.
+- **The service gave up when the database was late.** The database wait (up to
+  `Database:StartupWaitSeconds`, 120 s) ran before the Windows service reported "running", and the
+  service control manager stops waiting after 30 s. It now runs after the service has started and
+  before the web server does; a boot failure still stops the service.
+- **"Waiting for the database" now says why.** Each wait line names the last connection error, such
+  as a rejected TLS certificate, instead of only counting seconds, and a database that is down no
+  longer logs an error with a stack trace on every poll.
+- **The pre-flight now checks the PostgreSQL certificate's revocation status.** The service checks
+  revocation; the pre-flight's `psql` login did not, so a certificate whose CRL could not be reached
+  passed the setup and failed at service start. The row now fails up front and says why.
+- **No error on the first start against an empty PostgreSQL database.** EF read the migration
+  history table before creating it and logged that as an error on every fresh install.
+- **Unattended provisioning keys work.** `installDotnetRuntime` installs the .NET runtime as well as
+  ASP.NET Core and is judged by re-running the readiness check; the database is created again with
+  a per-statement outcome; an expired Kestrel certificate warns instead of blocking.
+
+### Changed
+
+- **WinRM no longer requires HTTPS by default.** `Remote:RequireWinRmSsl` now defaults to `false`.
+  WinRM over HTTP keeps using Negotiate — Kerberos in a domain, NTLM in a workgroup — so domain
+  setups keep mutual authentication and message encryption without certificates. HTTPS stays
+  available per machine, and setting the flag to `true` still forbids HTTP everywhere.
+- **Documentation under real addresses.** Every docs page has its own URL (`/docs/<lang>/<page>/`)
+  instead of a hash route, in the product and on the website; old `#/` links are redirected.
+
 ### Added
 
 - **Project website.** <https://www.nodepilot.run/> now shows a project website in
   English and German, and the documentation moves to <https://www.nodepilot.run/docs/>.
   Old documentation links are forwarded to their new address automatically; the product video link
   stays the same.
+- **ION dark skin** across the web UI and the workflow designer; the skin picker pairs each base
+  with its variants.
+- **Browser demo** of the web UI on the project website.
 
 ### Fixed
 
+- **Custom nodes survive an import.** Imported workflows relink custom nodes by their key; a key
+  without a definition on the target instance is reported instead of producing a node that fails
+  at run time.
+- **Failed actions are reported.** Mutations and downloads that the server refuses show the
+  server's reason instead of failing silently.
+- **Windows sign-in.** A handshake that SSPI rejects returns `401 WINDOWS_AUTHENTICATION_FAILED`
+  instead of a 500.
+- **English UI.** The remaining hard-coded German texts (performance settings, linter messages,
+  properties panel, workflow browser, pre-publish checks) are translated.
 - **Dashboard 1 h window.** The executions chart draws the same area chart as the other windows,
   from 30 two-minute buckets, instead of a single stacked bar. The 1 h figures (success rate, run
   status, retry share, failure causes) no longer include runs from up to an hour before the window.
@@ -1577,7 +1637,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.0...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.1...main
+[1.4.1]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.1
 [1.4.0]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.0
 [1.3.0]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.3.0
 [1.2.26]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.26
