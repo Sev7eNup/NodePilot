@@ -14,8 +14,8 @@ exhaustive.
 
 ### Added
 
-- **Project website.** <https://sev7enup.github.io/NodePilot/> now shows a project website in
-  English and German, and the documentation moves to <https://sev7enup.github.io/NodePilot/docs/>.
+- **Project website.** <https://www.nodepilot.run/> now shows a project website in
+  English and German, and the documentation moves to <https://www.nodepilot.run/docs/>.
   Old documentation links are forwarded to their new address automatically; the product video link
   stays the same.
 
@@ -1048,7 +1048,7 @@ first-run blockers, and the two release assets the deployment guide tells people
 
 ### Added
 
-- **The documentation website is published** at <https://sev7enup.github.io/NodePilot/> and is now
+- **The documentation website is published** at <https://www.nodepilot.run/> and is now
   **bilingual** — all 42 pages exist in English and German, with the language in the route
   (`#/en/…`, `#/de/…`), a language switcher, browser-language detection, and search over the active
   language. A parity test fails the build if a page or navigation title is added in only one

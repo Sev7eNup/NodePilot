@@ -37,11 +37,11 @@ describe('routePages', () => {
 })
 
 describe('rewriteRelativeUrls', () => {
-  const html = '<script src="./legacy.js"></script><a href="product">P</a><a href="docs/#/de/">D</a>'
+  const html = '<script src="./legacy.js"></script><a href="product">P</a><a href="docs/de/">D</a>'
 
   it('puts the site root in front of every relative URL', () => {
     expect(rewriteRelativeUrls(html, '/')).toBe(
-      '<script src="/legacy.js"></script><a href="/product">P</a><a href="/docs/#/de/">D</a>',
+      '<script src="/legacy.js"></script><a href="/product">P</a><a href="/docs/de/">D</a>',
     )
     expect(rewriteRelativeUrls(html, '/NodePilot/')).toContain('href="/NodePilot/product"')
     // The site root is written as `.` in the shell, which must not become `/.`.
@@ -112,8 +112,10 @@ describe('sitemap and robots', () => {
     expect(xml.match(/<loc>/g)).toHaveLength(pages.filter((page) => page.listed).length)
   })
 
-  it('points robots.txt at the sitemap of the same origin', () => {
+  it('points robots.txt at both sitemaps of the same origin', () => {
     expect(robots('https://x.test/')).toContain('Sitemap: https://x.test/sitemap.xml')
+    // The documentation keeps its own; a robots.txt below the root would never be read.
+    expect(robots('https://x.test/')).toContain('Sitemap: https://x.test/docs/sitemap.xml')
   })
 
   it('builds the address the server answers on', () => {

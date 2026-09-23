@@ -8,7 +8,7 @@
 //   public/og-image.png      -> _site/og-image.png  social preview image for the website
 //
 // The Pages workflow and `npm run preview:site` both run this script, so the layout exists once.
-import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -37,11 +37,29 @@ const RESERVED_NAMES = ['docs', 'demo', 'media', 'og-image.png']
  */
 const SITE_ROOT_META = '<meta name="np-site-root" content="../">'
 
-function markDocsAsPagesCopy(indexPath) {
-  const html = readFileSync(indexPath, 'utf8')
-  if (!html.includes('</head>'))
-    throw new Error('dist/index.html has no </head> to mark as the Pages copy.')
-  writeFileSync(indexPath, html.replace('</head>', `  ${SITE_ROOT_META}\n  </head>`))
+/**
+ * Every page of the docs, not only its entry: each address became its own file when the docs
+ * got real addresses, and a reader landing deep in the tree needs the same back-links.
+ */
+function markDocsAsPagesCopy(docsDir) {
+  let stamped = 0
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry)
+      if (statSync(full).isDirectory()) {
+        walk(full)
+        continue
+      }
+      if (!entry.endsWith('.html')) continue
+      const html = readFileSync(full, 'utf8')
+      if (!html.includes('</head>')) throw new Error(`${full} has no </head> to mark as the Pages copy.`)
+      writeFileSync(full, html.replace('</head>', `  ${SITE_ROOT_META}\n  </head>`))
+      stamped++
+    }
+  }
+  walk(docsDir)
+  if (stamped === 0) throw new Error(`No HTML file under ${docsDir} to mark as the Pages copy.`)
+  return stamped
 }
 
 /** True when `path` is `dir` or lies inside it. */
@@ -73,7 +91,7 @@ export function assembleSite(packageRoot, outDir = '_site') {
   rmSync(out, { recursive: true, force: true })
   cpSync(input('dist-site'), out, { recursive: true })
   cpSync(input('dist'), join(out, 'docs'), { recursive: true })
-  markDocsAsPagesCopy(join(out, 'docs', 'index.html'))
+  markDocsAsPagesCopy(join(out, 'docs'))
   cpSync(input(DEMO_DIR), join(out, 'demo'), { recursive: true })
   cpSync(input('pages-media'), join(out, 'media'), { recursive: true })
   cpSync(input('public/og-image.png'), join(out, 'og-image.png'))

@@ -23,6 +23,12 @@ describe('website head', () => {
     expect(first).not.toMatch(/type\s*=\s*["']module["']/i)
   })
 
+  it('links the documentation by address, not by fragment', () => {
+    // A fragment link would make the website hand the documentation a second redirect, and the
+    // address it lands on is the one a reader shares.
+    expect(markup).not.toContain('docs/#')
+  })
+
   it('has no inline script', () => {
     // An opening <script> tag without a src attribute.
     const inline = [...markup.matchAll(/<script(?![^>]*\bsrc=)[^>]*>/gi)].map((match) => match[0])

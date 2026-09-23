@@ -86,6 +86,23 @@ public sealed class ApiNotFoundFallbackTests
         response.Content.Headers.ContentType?.MediaType.Should().NotBe("application/problem+json");
     }
 
+    /// <summary>
+    /// A documentation page, now that every address is its own file, has to reach the reader on
+    /// the same terms as /docs itself.
+    /// </summary>
+    [Fact]
+    public async Task DocsPage_IsAnonymousAndNotClaimedByTheApiFallback()
+    {
+        using var factory = new ApiPipelineFactory();
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/docs/en/cli/");
+
+        response.StatusCode.Should().NotBe(HttpStatusCode.Unauthorized);
+        response.StatusCode.Should().NotBe(HttpStatusCode.Forbidden);
+        response.Content.Headers.ContentType?.MediaType.Should().NotBe("application/problem+json");
+    }
+
     /// <summary>A path that a real endpoint owns must not be shadowed by the fallback.</summary>
     [Fact]
     public async Task MatchedApiPath_IsUnaffected()

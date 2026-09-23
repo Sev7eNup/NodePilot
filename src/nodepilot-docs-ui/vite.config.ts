@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { prerenderDocs } from './scripts/prerender-docs.mjs'
 import { PAGES_ORIGIN, siteOrigin } from './scripts/site-origin.mjs'
 
 export default defineConfig({
@@ -12,6 +13,24 @@ export default defineConfig({
       // another host has to retarget them, or every docs page points a crawler at a foreign origin.
       name: 'np-docs-origin',
       transformIndexHtml: (html: string) => html.replaceAll(PAGES_ORIGIN, siteOrigin()),
+    },
+    {
+      // In dev the history fallback serves the root index.html at every depth, so the depth
+      // written into the file cannot be relative there. The configured base is the whole truth.
+      name: 'np-docs-base-dev',
+      apply: 'serve',
+      transformIndexHtml: (html: string) =>
+        html.replace(/(<meta name="np-docs-base" content=")[^"]*/, '$1/docs/'),
+    },
+    {
+      // One file per documentation address, so every page carries its own title, description
+      // and canonical URL instead of the shell's. Last in the list: it reads the built
+      // index.html, which the plugins above have already rewritten.
+      name: 'np-docs-prerender',
+      apply: 'build',
+      closeBundle() {
+        prerenderDocs(undefined, siteOrigin())
+      },
     },
   ],
   // The content carries one absolute link (the demo lives beside the docs, not under them).

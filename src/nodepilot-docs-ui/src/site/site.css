@@ -211,9 +211,57 @@ h1{font-size:clamp(38px,3.28vw,54px);line-height:1.13;letter-spacing:-1.7px;font
 .stage-caption{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;color:var(--outline);padding:6px 14px;border-top:1px solid var(--line);background:var(--surface-low)}
 .stage-caption .text-button{font-size:11px;gap:6px}
 .stage-caption .text-button .icon{width:11px;height:11px}
-.capability-line{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px 20px;padding:22px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);color:var(--muted);font-size:14px}
+.capability-line{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px 13px;padding:22px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);color:var(--muted);font-size:13px}
 .capability-line>span{display:flex;align-items:center;gap:9px;white-space:nowrap}
 .capability-line .icon{width:16px;height:16px;color:var(--outline)}
+/* Architecture diagram. Sizes inside the SVG are canvas units and scale with it; the compact
+   layout stacks the boxes, so it needs larger type to stay readable. */
+.architecture-section{padding-top:54px}
+.arch-canvas{border:1px solid var(--line);border-radius:8px;background:var(--surface-lowest);padding:18px;min-width:0;line-height:0}
+#architecture-svg{display:block;width:100%;height:auto}
+.box-frame{fill:var(--surface-low);stroke:var(--line);stroke-width:1}
+.is-service .box-frame{fill:var(--surface-container);stroke:var(--primary-container);stroke-width:1.5}
+.is-targets .box-frame{stroke-dasharray:5 4}
+.box-heading{fill:var(--text);font-family:var(--font-sans);font-size:15px;font-weight:600}
+.is-service .box-heading{fill:var(--primary)}
+.box-title{fill:var(--text);font-family:var(--font-sans);font-size:13.5px;font-weight:500}
+.box-note{fill:var(--outline);font-family:var(--font-mono);font-size:11px}
+.is-targets .box-note{fill:var(--success)}
+.trigger-row circle{fill:var(--primary)}
+.trigger-row text{fill:var(--muted);font-family:var(--font-sans);font-size:12.5px}
+.service-chip rect{fill:var(--primary-fixed);stroke:var(--primary-container);stroke-width:1}
+.service-chip text{fill:var(--primary);font-family:var(--font-mono);font-size:12px}
+.machine rect{fill:var(--surface-container);stroke:var(--line);stroke-width:1}
+.machine text{fill:var(--muted);font-family:var(--font-mono);font-size:12px}
+.link-line{fill:none;stroke:#525866;stroke-width:1.5}
+.link-arrow{fill:#525866}
+.is-remote .link-line{stroke:var(--primary);stroke-width:1.75}
+.is-remote .link-arrow{fill:var(--primary)}
+.is-return .link-line{stroke:#525866;stroke-dasharray:5 4}
+.link-label rect{fill:var(--surface-lowest);stroke:rgba(135,139,148,.3);stroke-width:1}
+.link-label text{fill:var(--muted);font-family:var(--font-sans);font-size:10px;font-weight:600}
+.is-remote .link-label rect{fill:var(--primary-fixed);stroke:rgba(109,168,255,.4)}
+.is-remote .link-label text{fill:#cfe0ff}
+/* One dash travelling from start to end. pathLength normalises every link to 100 units, so the
+   same keyframes fit links of different lengths. Faint, slow and mostly at rest: the diagram is a
+   still picture with a hint of direction, not a running animation. */
+.link-flow{fill:none;stroke:var(--primary);stroke-width:2;stroke-linecap:round;stroke-dasharray:22 100;stroke-dashoffset:22;opacity:0}
+.architecture-section.is-visible .link-flow{animation:arch-pulse 12s ease-in-out infinite}
+#arch-link-store .link-flow,#arch-link-winrm .link-flow{animation-delay:2s}
+#arch-link-live .link-flow{animation-delay:4s}
+@keyframes arch-pulse{0%{stroke-dashoffset:22;opacity:0}4%{opacity:.45}22%{stroke-dashoffset:-100;opacity:.45}26%{stroke-dashoffset:-100;opacity:0}100%{stroke-dashoffset:-100;opacity:0}}
+/* The WinRM link is itself drawn in --primary, so a primary pulse would vanish on it. It gets a
+   lighter stroke and a higher peak; same timing as the rest. */
+.is-remote .link-flow{stroke:#e6f0ff;stroke-width:2.75}
+.architecture-section.is-visible .is-remote .link-flow{animation-name:arch-pulse-remote}
+@keyframes arch-pulse-remote{0%{stroke-dashoffset:22;opacity:0}4%{opacity:.8}22%{stroke-dashoffset:-100;opacity:.8}26%{stroke-dashoffset:-100;opacity:0}100%{stroke-dashoffset:-100;opacity:0}}
+.arch-canvas.is-compact .box-heading{font-size:17px}
+.arch-canvas.is-compact .box-title{font-size:15px}
+.arch-canvas.is-compact .box-note{font-size:12.5px}
+.arch-canvas.is-compact .trigger-row text{font-size:14px}
+.arch-canvas.is-compact .service-chip text,.arch-canvas.is-compact .machine text{font-size:13px}
+.arch-canvas.is-compact .link-label text{font-size:11.5px}
+.arch-caption{margin-top:14px;color:var(--outline);font-size:13px}
 .resource-section{padding-top:54px}
 .section-heading{margin-bottom:24px}
 .section-kicker{color:var(--outline);font:11px/1.5 var(--font-mono);letter-spacing:1.1px;margin-bottom:12px}

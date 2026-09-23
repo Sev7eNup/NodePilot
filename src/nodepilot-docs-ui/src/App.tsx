@@ -6,7 +6,9 @@ import TopBar from './components/TopBar'
 import DocPage from './components/DocPage'
 import SearchModal from './components/SearchModal'
 import { availablePages } from './lib/content'
+import { navTitleKey, pageByPath } from './data/nav'
 import { detectLang, LANG_STORAGE_KEY, parseLocation } from './i18n/languages'
+import { docPath } from './lib/docPath'
 
 const FALLBACK_HOME = 'getting-started/introduction'
 
@@ -19,11 +21,12 @@ export default function App() {
 
   const home = availablePages[0]?.path ?? FALLBACK_HOME
   const { lang, current } = parseLocation(location.pathname)
+  const page = current || home
 
   // A URL without a language prefix redirects to the detected language, keeping the page.
   useEffect(() => {
     if (lang) return
-    navigate(`/${detectLang()}/${current || home}`, { replace: true })
+    navigate(docPath(detectLang(), current || home), { replace: true })
   }, [lang, current, home, navigate])
 
   // The URL is authoritative for the language: mirror it into i18next, remember the choice
@@ -38,6 +41,13 @@ export default function App() {
       // Private mode or disabled storage; the language stays in the URL.
     }
   }, [lang, i18n])
+
+  // Every address is its own prerendered file and carries its own title; navigating inside the
+  // page has to keep that true, or the tab and any bookmark keep the title of the page before.
+  useEffect(() => {
+    if (!lang) return
+    document.title = pageByPath(page) ? `${t(navTitleKey(page))}${t('meta.titleSuffix')}` : t('meta.title')
+  }, [lang, page, t])
 
   // Close mobile drawer on navigation.
   useEffect(() => setMenuOpen(false), [location.pathname])
@@ -57,8 +67,6 @@ export default function App() {
 
   // While redirecting, rendering the shell would flash the navigation in the wrong language.
   if (!lang) return null
-
-  const page = current || home
 
   return (
     <div className="np-shell flex min-h-screen text-on-surface">

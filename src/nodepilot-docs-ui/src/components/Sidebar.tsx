@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { NavLink } from 'react-router'
+import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { Asleep, ChevronRight, Close, Download, Home, Light, LogoGithub, PlayFilledAlt, Search } from '@carbon/icons-react'
 import { navGroups, navGroupKey, navTitleKey, type NavPage } from '../data/nav'
 import { useTheme } from '../lib/useTheme'
 import { siteRoot } from '../lib/siteContext'
+import { docPath } from '../lib/docPath'
 import LanguageSwitcher from './LanguageSwitcher'
 import type { Lang } from '../i18n/languages'
 import logoLight from '../assets/logo-light.png'
@@ -197,12 +198,20 @@ function SidebarGroup({
       {open && (
         <div className="grid gap-[3px]">
           {items.map(({ path, icon: Icon }) => (
-            <NavLink key={path} to={`/${lang}/${path}`} end onClick={onNavigate} className="np-nav">
+            // The active item is decided here rather than by route matching: the address
+            // carries a trailing slash that three different servers normalise their own way.
+            <Link
+              key={path}
+              to={docPath(lang, path)}
+              onClick={onNavigate}
+              className={path === current ? 'np-nav active' : 'np-nav'}
+              aria-current={path === current ? 'page' : undefined}
+            >
               <span className="np-nav-icon">
                 <Icon size={18} aria-hidden />
               </span>
               <span>{t(navTitleKey(path))}</span>
-            </NavLink>
+            </Link>
           ))}
         </div>
       )}

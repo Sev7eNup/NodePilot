@@ -26,6 +26,24 @@ describe('index.html script policy', () => {
     ).toEqual([])
   })
 
+  it('forwards the addresses from before the documentation had real ones', () => {
+    // First script and classic, so an old #/de/cli link is replaced before anything is painted.
+    const first = indexHtml.match(/<script\b[^>]*>/i)?.[0]
+    expect(first, 'the redirect must stay the first script').toMatch(/\bsrc=["']\/legacy-hash-redirect\.js["']/)
+    expect(first).not.toMatch(/\b(defer|async)\b/i)
+    expect(first).not.toMatch(/type\s*=\s*["']module["']/i)
+  })
+
+  it('states where the documentation root is, for the router and the redirect', () => {
+    // The prerenderer overwrites this per page; the value here is the root's own.
+    expect(indexHtml).toMatch(/<meta name="np-docs-base" content="\.\/"/)
+  })
+
+  it('names both languages, so a shared link reaches the right one', () => {
+    for (const code of ['en', 'de', 'x-default'])
+      expect(indexHtml).toContain(`<link rel="alternate" hreflang="${code}"`)
+  })
+
   it('loads the theme resolver as a classic, non-deferred script', () => {
     const tag = indexHtml.match(/<script[^>]*\btheme-init\.js[^>]*>/i)?.[0]
     expect(tag, 'the theme resolver must stay in index.html').toBeTruthy()

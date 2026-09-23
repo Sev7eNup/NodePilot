@@ -50,9 +50,9 @@ export function sitePath(path = ''): string {
   return `${basePrefix}${path}`
 }
 
-/** Relative link into the docs, which live next to the website under docs/. */
+/** Link into the docs, which live next to the website under docs/ and have real addresses. */
 export function docsHref(lang: Lang, page = ''): string {
-  return `${basePrefix}docs/#/${lang}/${page}`
+  return `${basePrefix}docs/${lang}/${page ? `${page}/` : ''}`
 }
 
 /** Registers a callback that re-renders texts set from script, such as the current route. */

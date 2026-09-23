@@ -14,15 +14,17 @@ public static class DocsSiteSetup
     public const string DocsRequestPath = "/" + DocsDirectoryName;
 
     /// <summary>
-    /// Maps the two entry points of the docs bundle. Everything else it needs — the hashed
-    /// assets and fonts — is already served by UseStaticFiles from the same web root.
+    /// Maps the documentation's addresses. Every page is its own prerendered index.html, so
+    /// each one carries its own title and description; everything else the bundle needs — the
+    /// hashed assets and fonts — is already served by UseStaticFiles from the same web root.
     ///
     /// These have to be endpoints rather than a UseDefaultFiles/UseStaticFiles pair: the SPA
     /// catch-all (MapFallbackToFile) matches any extension-less path, so routing selects an
-    /// endpoint for /docs and /docs/ long before those middlewares run, and both deliberately
+    /// endpoint for a docs address long before those middlewares run, and both deliberately
     /// step aside once an endpoint is present. Asset requests carry a file extension, fail the
     /// catch-all's `nonfile` constraint, and therefore still reach the static-file middleware —
-    /// which is why a missing asset stays a real 404 instead of returning the app shell.
+    /// which is why a missing asset stays a real 404 instead of returning the app shell. The
+    /// page endpoint below carries the same constraint for the same reason.
     ///
     /// Call after the routing/endpoint section is set up and before the SPA fallback.
     /// </summary>
@@ -55,6 +57,43 @@ public static class DocsSiteSetup
                     : Results.Redirect($"{DocsRequestPath}/", permanent: true))
             .AllowAnonymous();
 
+        // The pages below /docs/. A literal segment outranks a catch-all in route precedence,
+        // so the endpoint above still answers /docs and /docs/ itself.
+        //
+        // `nonfile` keeps this off anything with a file extension, exactly as on the SPA
+        // catch-all: an asset request must keep reaching the static-file middleware so a missing
+        // one stays a 404. An address with no page behind it answers 404 rather than falling
+        // back to the docs shell — that file's asset URLs are relative to the documentation
+        // root and would resolve into the wrong directory, leaving a blank page and no error.
+        var docsRoot = Path.GetDirectoryName(indexPath)!;
+        app.MapGet($"{DocsRequestPath}/{{**rest:nonfile}}", (string rest, HttpContext http) =>
+            {
+                if (!TryResolveDocsPage(docsRoot, rest, out var page)) return Results.NotFound();
+                return http.Request.Path.Value!.EndsWith('/')
+                    ? Results.File(page, "text/html")
+                    : Results.Redirect($"{DocsRequestPath}/{rest.TrimEnd('/')}/", permanent: true);
+            })
+            .AllowAnonymous();
+
         return app;
+    }
+
+    /// <summary>
+    /// Resolves a documentation address to its prerendered file, refusing anything that leaves
+    /// the documentation directory. Routing normalises a ".." away long before this runs, so the
+    /// check is a second line rather than the first — the web root is public either way, but a
+    /// path that escapes it is never a legitimate request and answering it would hide a defect.
+    /// </summary>
+    internal static bool TryResolveDocsPage(string docsRoot, string rest, out string page)
+    {
+        page = string.Empty;
+        if (rest.Contains("..", StringComparison.Ordinal)) return false;
+
+        var candidate = Path.GetFullPath(Path.Combine(docsRoot, rest.Replace('/', Path.DirectorySeparatorChar), "index.html"));
+        if (!candidate.StartsWith(docsRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) return false;
+        if (!File.Exists(candidate)) return false;
+
+        page = candidate;
+        return true;
     }
 }

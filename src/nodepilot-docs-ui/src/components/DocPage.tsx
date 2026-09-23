@@ -10,6 +10,7 @@ import type { Components } from 'react-markdown'
 import { getContent, hasTranslation } from '../lib/content'
 import { navTitleKey, neighbors } from '../data/nav'
 import { DEFAULT_LANG, type Lang } from '../i18n/languages'
+import { docPath } from '../lib/docPath'
 import Toc from './Toc'
 
 export default function DocPage({ lang, path }: { lang: Lang; path: string }) {
@@ -35,7 +36,7 @@ export default function DocPage({ lang, path }: { lang: Lang; path: string }) {
           />
         </p>
         <Link
-          to={`/${lang}`}
+          to={docPath(lang)}
           className="mt-6 inline-block font-medium text-[var(--np-accent-text)] hover:underline"
         >
           {t('ui.backHome')}
@@ -102,7 +103,7 @@ function FooterLink({
   const { t } = useTranslation()
   return (
     <Link
-      to={`/${lang}/${path}`}
+      to={docPath(lang, path)}
       className={`np-card np-doc-nav group flex flex-col gap-1 px-4 py-3 ${
         kind === 'next' ? 'sm:text-right' : ''
       }`}
@@ -129,13 +130,12 @@ function FooterLink({
   )
 }
 
-// Markdown component overrides. Headings keep the `id` from rehype-slug but render no hash
-// anchors: clicking `#id` would collide with the HashRouter route in location.hash and land
-// on a 404. Section navigation goes through the right-side <Toc/> via scrollIntoView.
+// Markdown component overrides. Headings keep the `id` from rehype-slug but render no visible
+// anchor; section navigation goes through the right-side <Toc/> via scrollIntoView.
 //
 // Internal cross-links (`./x`, `../group/page`, `/group/page`) become react-router `<Link>`s
-// so they navigate client-side. A plain `<a href="./installation">` resolves against the
-// document base URL before the `#` and produces a broken `/installation` path.
+// so they navigate client-side. A plain `<a href="./installation">` would resolve against the
+// document's own address, which is one directory per page, and land a level too deep.
 //
 // The markdown sources cross-link by content path only (`../enterprise/folder-rbac`), never
 // by language, so the active language is re-applied here to keep a reader in their language.
@@ -191,7 +191,7 @@ function InternalLink({
     return <a href={href}>{children}</a>
   }
   return (
-    <Link to={`/${lang}/${target}`}>
+    <Link to={docPath(lang, target)}>
       {children}
     </Link>
   )

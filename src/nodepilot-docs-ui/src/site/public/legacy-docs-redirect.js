@@ -6,6 +6,7 @@
 // The list repeats SITE_ROUTE_SEGMENTS from src/site/router.ts; legacy-redirect.test.ts keeps both equal.
 (function () {
   var siteRoutes = ['walkthrough', 'product', 'blog', 'impressum', 'datenschutz'];
+  var languages = ['en', 'de'];
   var renamed = { erleben: 'walkthrough', produkt: 'product', 'warum-nodepilot': 'why-nodepilot' };
   var hash = location.hash;
   if (hash.indexOf('#/') !== 0) return;
@@ -19,7 +20,12 @@
   var parts = path.split('/');
   var segment = parts[0];
   if (segment && siteRoutes.indexOf(segment) === -1 && !renamed[segment]) {
-    location.replace('docs/' + hash);
+    // The documentation has real addresses too, so this lands on the page itself rather than
+    // on another hash that the documentation would have to forward a second time. A link
+    // without a language segment used to be resolved in the browser; the default language is
+    // what those links came from.
+    var docsPath = languages.indexOf(segment) === -1 ? languages[0] + '/' + path : path;
+    location.replace('docs/' + docsPath + '/');
     return;
   }
   for (var i = 0; i < parts.length; i++) parts[i] = renamed[parts[i]] || parts[i];

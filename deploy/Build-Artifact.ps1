@@ -432,8 +432,8 @@ New-Item -ItemType Directory -Path $WwwRoot -Force | Out-Null
 Write-Host "[build] Copy SPA → wwwroot" -ForegroundColor Cyan
 Copy-Item (Join-Path $DistDir '*') $WwwRoot -Recurse -Force
 
-# The docs bundle is built with a relative Vite base and routes in the URL fragment, so it drops
-# into a subdirectory as-is. Install-NodePilot.ps1 verifies it arrived.
+# The docs bundle is built with a relative Vite base and one file per address, so it drops into a
+# subdirectory as-is. Install-NodePilot.ps1 verifies it arrived.
 $DocsDistDir = Join-Path $DocsUiDir 'dist'
 if (-not (Test-Path $DocsDistDir)) {
     throw "Docs site build output not found at $DocsDistDir. Run without -SkipFrontend or verify vite config."

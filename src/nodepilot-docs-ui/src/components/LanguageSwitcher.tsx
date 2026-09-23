@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { LANGUAGES, LANGUAGE_LABELS, type Lang } from '../i18n/languages'
+import { docPath } from '../lib/docPath'
 
 /**
  * Language control for the sidebar footer: a segmented `DE | EN`.
@@ -26,7 +27,7 @@ export default function LanguageSwitcher({ lang, current }: { lang: Lang; curren
             type="button"
             // The active segment stays an enabled button so the group keeps a predictable
             // tab order; pressing it does nothing.
-            onClick={() => !active && navigate(`/${code}/${current}`)}
+            onClick={() => !active && navigate(docPath(code, current))}
             className={active ? 'is-active' : undefined}
             aria-current={active ? 'true' : undefined}
             // The visible label is a two-letter code; screen readers get the full language name.
