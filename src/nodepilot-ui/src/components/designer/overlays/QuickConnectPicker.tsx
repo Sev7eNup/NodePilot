@@ -12,6 +12,15 @@ interface Props {
   onClose: () => void;
 }
 
+/** Keeps the picker inside the viewport. It opens at the drop point, but near the bottom or right
+ *  edge its tail (the custom nodes come last) would otherwise sit off-screen and out of reach. */
+function pickerPosition(x: number, y: number): { left: string; top: string } {
+  return {
+    left: `max(8px, min(${x}px, calc(100vw - 328px)))`,
+    top: `max(8px, min(${y}px, calc(40vh - 8px)))`,
+  };
+}
+
 export function QuickConnectPicker({ x, y, onPick, onClose }: Readonly<Props>) {
   const { t, i18n } = useTranslation(['editor', 'common']);
   const insertableCategories = useMemo(
@@ -33,7 +42,7 @@ export function QuickConnectPicker({ x, y, onPick, onClose }: Readonly<Props>) {
       />
       <div
         className="fixed z-50 w-[320px] max-h-[60vh] overflow-y-auto bg-surface-lowest rounded-lg shadow-2xl border border-outline-variant/30"
-        style={{ left: x, top: y }}
+        style={pickerPosition(x, y)}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
         role="presentation"

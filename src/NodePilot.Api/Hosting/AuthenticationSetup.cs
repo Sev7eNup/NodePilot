@@ -144,12 +144,28 @@ public static class AuthenticationSetup
         if (windowsAuthEnabled)
         {
             // Negotiate handler accepts both Kerberos and NTLM by default; the Microsoft
-            // implementation does NOT expose a "Kerberos-only" wire-level switch. Operators
-            // who don't want NTLM either disable it at the OS / domain policy level
-            // (recommended) or rely on the application-level check in
-            // AuthController.WindowsLogin which rejects Identity.AuthenticationType == "NTLM"
-            // when AllowNtlmFallback=false.
-            authBuilder.AddNegotiate(WindowsAuthSchemeName, _ => { });
+            // implementation does NOT expose a "Kerberos-only" wire-level switch. NodePilot
+            // requires OS/domain policy to block NTLM; WindowsLogin additionally rejects
+            // identities explicitly identified as NTLM. There is no supported NTLM fallback.
+            authBuilder.AddNegotiate(WindowsAuthSchemeName, options =>
+            {
+                options.Events.OnAuthenticationFailed = context =>
+                {
+                    // SSPI can reject a blocked authentication package before the controller
+                    // runs. Do not turn that rejection into a 500 or expose handshake details.
+                    context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                        .CreateLogger("NodePilot.WindowsAuthentication")
+                        .LogWarning("Windows authentication handshake rejected ({FailureType}).",
+                            context.Exception.GetType().Name);
+                    context.HandleResponse();
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    return context.Response.WriteAsJsonAsync(new
+                    {
+                        code = "WINDOWS_AUTHENTICATION_FAILED",
+                        message = "Windows authentication failed. Kerberos is required.",
+                    }, context.HttpContext.RequestAborted);
+                };
+            });
         }
 
         var oidcSection = configuration.GetSection(EnterpriseOidcOptions.SectionName);

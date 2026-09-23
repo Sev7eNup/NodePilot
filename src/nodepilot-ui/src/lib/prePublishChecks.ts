@@ -1,4 +1,5 @@
 import type { Node, Edge } from '@xyflow/react';
+import i18n from '../i18n';
 import type { LintIssue, LintResult } from './workflowLint';
 import { TRIGGER_ACTIVITY_TYPES } from './activityCatalog.generated';
 
@@ -56,7 +57,7 @@ export function getPrePublishIssues(
         severity: 'warning',
         nodeId: t.id,
         code: 'trigger-without-outgoing',
-        message: `Trigger "${label}" hat keine ausgehende Verbindung — er feuert, aber nichts läuft danach.`,
+        message: i18n.t('lint:issues.triggerWithoutOutgoing', { label }),
       });
     }
   }
@@ -67,8 +68,7 @@ export function getPrePublishIssues(
     issues.push({
       severity: 'warning',
       code: 'no-description',
-      message:
-        'Workflow hat keine Beschreibung. Eine kurze Zeile erleichtert es Kollegen, in der Workflow-Liste zu erkennen, was hier läuft.',
+      message: i18n.t('lint:issues.noDescription'),
     });
   }
 

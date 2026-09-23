@@ -1,6 +1,8 @@
 using FluentAssertions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Authentication.Negotiate;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +23,32 @@ namespace NodePilot.Api.Tests.Hosting;
 public sealed class AuthenticationSetupSchemeTests
 {
     private const string Authority = "https://idp.example.test/tenant";
+
+    [Fact]
+    public async Task WindowsHandshakeFailure_ReturnsUnauthorizedWithoutExceptionOrSession()
+    {
+        using var provider = Build(new() { ["Authentication:Windows:Enabled"] = "true" });
+        var options = provider.GetRequiredService<IOptionsMonitor<NegotiateOptions>>()
+            .Get(AuthenticationSetup.WindowsAuthSchemeName);
+        var http = new DefaultHttpContext { RequestServices = provider };
+        http.Response.Body = new MemoryStream();
+        var context = new Microsoft.AspNetCore.Authentication.Negotiate.AuthenticationFailedContext(
+            http, new AuthenticationScheme(AuthenticationSetup.WindowsAuthSchemeName, null, typeof(NegotiateHandler)), options)
+        {
+            Exception = new AuthenticationFailureException("Unsupported private-handshake-detail"),
+        };
+
+        await options.Events.AuthenticationFailed(context);
+
+        context.Result.Should().NotBeNull();
+        context.Result!.Handled.Should().BeTrue();
+        http.Response.StatusCode.Should().Be(401);
+        http.Response.Headers.Should().NotContainKey("Set-Cookie");
+        http.Response.Body.Position = 0;
+        var body = await new StreamReader(http.Response.Body).ReadToEndAsync();
+        body.Should().Contain("WINDOWS_AUTHENTICATION_FAILED");
+        body.Should().NotContain("private-handshake-detail").And.NotContain("Unsupported");
+    }
 
     [Fact]
     public void WithoutEnterpriseOptions_OnlyTheDefaultSchemesAreRegistered()
