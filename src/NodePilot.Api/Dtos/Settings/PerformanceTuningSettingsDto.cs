@@ -96,7 +96,7 @@ public sealed class ThreadingSettingsDto
 /// </summary>
 public sealed class RemoteSettingsDto : IValidatableObject
 {
-    public bool RequireWinRmSsl { get; set; } = true;
+    public bool RequireWinRmSsl { get; set; }
 
     [Required] public WinRmSubSettingsDto WinRm { get; set; } = new();
     [Required] public RemotePoolDto Pool { get; set; } = new();

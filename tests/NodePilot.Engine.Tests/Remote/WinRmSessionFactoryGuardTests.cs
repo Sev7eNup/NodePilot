@@ -18,17 +18,19 @@ namespace NodePilot.Engine.Tests.Remote;
 public sealed class WinRmSessionFactoryGuardTests
 {
     [Fact]
-    public async Task CreateSessionAsync_PlaintextWithDefaultConfiguration_IsRefused()
+    public async Task CreateSessionAsync_HttpWithDefaultConfiguration_PassesTheGuard()
     {
-        // Absent key reads as "required" — the hardened default.
+        // Absent key reads as "not required": HTTP with Negotiate is the default.
         var factory = new WinRmSessionFactory(new StubCredentialStore(), Config([]), null);
 
         var act = () => factory.CreateSessionAsync(
             Machine(useSsl: false), null, TestContext.Current.CancellationToken);
 
-        (await act.Should().ThrowAsync<NonRetryableRemoteException>())
-            .Which.Message.Should().Contain("blocked by configuration");
+        // It gets past the guard and fails later at the actual connect instead.
+        (await act.Should().ThrowAsync<Exception>())
+            .Which.Message.Should().NotContain("blocked by configuration");
     }
+
 
     [Fact]
     public async Task CreateSessionAsync_PlaintextWithRequireSslTrue_IsRefused()

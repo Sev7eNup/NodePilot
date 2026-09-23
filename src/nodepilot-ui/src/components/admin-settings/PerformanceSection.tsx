@@ -273,7 +273,7 @@ type RemoteDto = {
 function RemoteCard() {
   const { t } = useTranslation('adminSettings');
   const ui = useSectionForm<RemoteDto>('Remote', {
-    requireWinRmSsl: true,
+    requireWinRmSsl: false,
     winRm: { operationTimeoutSeconds: 300, openTimeoutSeconds: 30 },
     pool: { enabled: true, maxConcurrentPerMachine: 5, maxIdlePerKey: 5, idleTtlSeconds: 120 },
   });

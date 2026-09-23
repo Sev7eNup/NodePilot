@@ -15,10 +15,6 @@ public static class SecurityHardeningWarnings
     {
         if (environment.IsDevelopment()) return;
 
-        if (!configuration.GetValue<bool>("Remote:RequireWinRmSsl"))
-            Log.Warning("SECURITY: Remote:RequireWinRmSsl is false. WinRM without SSL lets an on-path attacker " +
-                        "capture Negotiate/NTLM credentials. Set Remote:RequireWinRmSsl=true and use UseSsl=true on each machine.");
-
         if (!configuration.GetValue<bool>("RestApi:BlockPrivateNetworks"))
             Log.Warning("SECURITY: RestApi:BlockPrivateNetworks is false. Workflow authors can hit internal services via restApi " +
                         "(10.x, 192.168.x, 127.x). Link-local/cloud-metadata is always blocked. Consider flipping and using RestApi:AllowedHosts for exceptions.");

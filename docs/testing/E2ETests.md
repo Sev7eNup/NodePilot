@@ -3193,6 +3193,16 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 - [ ] Step Failed mit klarer Error-Meldung.
 - [ ] Mit SSL-Transport (winrm-ssl): Erfolg.
 
+### Test 33.1b — WinRM über HTTP mit Negotiate (Default)
+
+**Setup:** `Remote:RequireWinRmSsl` nicht gesetzt, Maschinen ohne SSL.
+
+**Prüfpunkte:**
+- [ ] Domänen-Ziel per FQDN + gespeichertes Domänen-Credential: Erfolg (Kerberos).
+- [ ] Domänen-Ziel per FQDN ohne Credential unter der echten Dienstidentität: Erfolg.
+- [ ] Workgroup-Ziel (in `TrustedHosts`) + lokales Credential: Erfolg (NTLM).
+- [ ] Maschine mit HTTPS: Erfolg (Regression).
+
 ---
 
 ### Test 33.2 — `RestApi:BlockPrivateNetworks=true` blockt RFC1918

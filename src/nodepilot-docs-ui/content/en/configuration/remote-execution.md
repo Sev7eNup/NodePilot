@@ -31,7 +31,7 @@ On the target system the account in use — stored credential or service identit
 
 ```powershell
 Enable-PSRemoting -Force
-winrm quickconfig -transport:https   # for Remote:RequireWinRmSsl=true
+winrm quickconfig -transport:https   # only for machines using HTTPS
 ```
 
 By default only local administrators and members of `Remote Management Users` may use that endpoint. Without one of those memberships the step fails at the endpoint even though the sign-in itself succeeds.
@@ -40,9 +40,18 @@ The credential-less path additionally requires **resource-based constrained dele
 
 A machine's connection test (`POST /api/machines/{id}/test`) requires a credential and otherwise answers `400 MACHINE_CREDENTIAL_REQUIRED`. It therefore cannot exercise the credential-less path — workflow steps still run in that situation.
 
-## Hardening
+## Transport: HTTP or HTTPS
 
-`Remote:RequireWinRmSsl` (default `true`) — WinRM without SSL throws an exception. Relaxed to `false` in development through `appsettings.Development.json`. See [Hardening flags](../security/hardening).
+By default every machine connects over **HTTP (5985) with Negotiate**. Windows negotiates which protocol actually runs:
+
+- **Domain** (target entered by DNS name): Kerberos. Client and server authenticate each other, and the WinRM messages are encrypted.
+- **Workgroup, or a target entered by IP address:** NTLM. The messages are encrypted as well, but NTLM does not prove that the right server is on the other end. The target has to be listed in `TrustedHosts` on the NodePilot host.
+
+Whether NTLM is allowed at all is up to the operator in Windows (the target's WinRM authentication settings, NTLM policy via GPO), not NodePilot.
+
+**HTTPS (5986)** is switched on per machine (`UseSsl`) when the server identity should be secured without Kerberos too. The target then needs an HTTPS listener on the configured port and a certificate that the NodePilot host trusts and whose name matches the configured host name.
+
+`Remote:RequireWinRmSsl` (default `false`) forbids HTTP entirely, so every machine then needs HTTPS. See [Hardening flags](../security/hardening).
 
 ## REST API proxy (for the `restApi` activity)
 

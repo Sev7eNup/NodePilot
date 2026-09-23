@@ -278,8 +278,12 @@ WinRM endpoint on the targets (if not already active):
 
 ```powershell
 Enable-PSRemoting -Force
-winrm quickconfig -transport:https   # for Remote:RequireWinRmSsl=true
+winrm quickconfig -transport:https   # only for machines using HTTPS
 ```
+
+Machines connect over HTTP with Negotiate by default: Kerberos for domain targets entered by
+DNS name, NTLM for workgroup targets (list them in `TrustedHosts` on the NodePilot host).
+HTTPS is optional per machine and needs a certificate the NodePilot host trusts.
 
 ## Obtaining the artifact
 

@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
+using System.Management.Automation.Remoting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NodePilot.Core.Exceptions;
@@ -124,6 +125,30 @@ public class WinRmSessionFactoryTests
         await act.Should().ThrowAsync<NonRetryableRemoteException>(
             "a credential that cannot be decrypted will not decrypt on attempt two");
     }
+
+    [Fact]
+    public void ClassifyConnectFailure_NoAuthenticatingAuthorityOverHttp_StaysRetryable()
+    {
+        var ex = new PSRemotingTransportException("dc down") { ErrorCode = unchecked((int)0x80090311) };
+
+        WinRmSessionFactory.ClassifyConnectFailure(ex, Machine(ssl: false)).Should().BeNull(
+            "an unreachable DC is transient");
+    }
+
+    [Fact]
+    public void ClassifyConnectFailure_LogonDenied_IsNonRetryable()
+    {
+        var ex = new PSRemotingTransportException("denied") { ErrorCode = 1326 };
+
+        var result = WinRmSessionFactory.ClassifyConnectFailure(ex, Machine(ssl: false));
+
+        result!.Message.Should().Contain("logon denied");
+        result.InnerException.Should().BeSameAs(ex);
+    }
+
+    [Fact]
+    public void ClassifyConnectFailure_OtherException_StaysRetryable()
+        => WinRmSessionFactory.ClassifyConnectFailure(new TimeoutException(), Machine()).Should().BeNull();
 
     [Fact]
     public void Constructor_SingleArg_AcceptsCredentialStoreOnly()

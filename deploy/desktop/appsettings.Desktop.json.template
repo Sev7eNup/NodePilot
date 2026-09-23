@@ -53,7 +53,7 @@
   },
   "Remote": {
     "Provider": "winrm",
-    "RequireWinRmSsl": true,
+    "RequireWinRmSsl": false,
     "Pool": { "Enabled": true, "IdleTtlSeconds": 120 }
   },
   "Logging": {

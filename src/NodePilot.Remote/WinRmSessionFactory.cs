@@ -35,37 +35,25 @@ public class WinRmSessionFactory : IRemoteSessionFactory
     // anyone wanting to replace the WinRM path entirely registers NoOpSessionFactory instead.
     public virtual async Task<IRemoteSession> CreateSessionAsync(ManagedMachine machine, Credential? credential, CancellationToken ct)
     {
-        // WinRM-over-HTTP carries server-authenticity / NTLM-relay risk even though the body
-        // is encrypted by Negotiate/Kerberos. Default-on since Phase 3: a missing config key
-        // is treated as "require SSL" so a nakedly-deployed appsettings falls on the safe
-        // side. Dev/test deployments without certificates flip Remote:RequireWinRmSsl=false
-        // explicitly. Tests / load harness pass a null IConfiguration which keeps the
-        // historical permissive behavior.
-        if (!machine.UseSsl)
-        {
-            var raw = _configuration?["Remote:RequireWinRmSsl"];
-            var requireSsl = _configuration is not null
-                && (string.IsNullOrWhiteSpace(raw)
-                    || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase));
-            if (requireSsl)
-                throw new NonRetryableRemoteException(
-                    $"WinRM over HTTP is blocked by configuration for machine '{machine.Name}' ({machine.Hostname}). " +
-                    "Enable SSL on the target (winrm quickconfig -transport:https) and set machine.UseSsl=true, " +
-                    "or set Remote:RequireWinRmSsl=false (e.g. in appsettings.Development.json) to accept plaintext sessions.");
-            _logger?.LogWarning(
-                "WinRM session to {Machine} ({Host}) uses plaintext HTTP — server authenticity is unverified and NTLM-relay attacks are possible against an attacker-controlled rogue endpoint.",
-                machine.Name, machine.Hostname);
-        }
+        // HTTP uses Negotiate: Kerberos in a domain, NTLM in a workgroup. HTTPS is opt-in per
+        // machine; Remote:RequireWinRmSsl=true forbids HTTP for all machines.
+        if (!machine.UseSsl
+            && string.Equals(_configuration?["Remote:RequireWinRmSsl"], "true", StringComparison.OrdinalIgnoreCase))
+            throw new NonRetryableRemoteException(
+                $"WinRM over HTTP is blocked by configuration for machine '{machine.Name}' ({machine.Hostname}). " +
+                "Enable SSL on the target (winrm quickconfig -transport:https) and set machine.UseSsl=true, " +
+                "or set Remote:RequireWinRmSsl=false to allow WinRM over HTTP.");
 
+        var authLabel = credential is null ? "negotiate_implicit" : "negotiate_explicit";
         using var activity = RemoteSource.StartActivity("winrm.connect", ActivityKind.Client);
         activity?.SetTag("nodepilot.remote.target", machine.Hostname);
         activity?.SetTag("nodepilot.remote.port", machine.WinRmPort);
         activity?.SetTag("nodepilot.remote.transport", "winrm");
         activity?.SetTag("nodepilot.remote.use_ssl", machine.UseSsl);
-        activity?.SetTag("nodepilot.remote.auth", credential is null ? "negotiate_implicit" : "negotiate_explicit");
+        activity?.SetTag("nodepilot.remote.auth", authLabel);
 
         var connectStopwatch = System.Diagnostics.Stopwatch.StartNew();
-        var authTag = new KeyValuePair<string, object?>("auth", credential is null ? "negotiate_implicit" : "negotiate_explicit");
+        var authTag = new KeyValuePair<string, object?>("auth", authLabel);
 
         var scheme = machine.UseSsl ? "https" : "http";
         var uri = new Uri($"{scheme}://{machine.Hostname}:{machine.WinRmPort}/wsman");
@@ -185,13 +173,8 @@ public class WinRmSessionFactory : IRemoteSessionFactory
             RemoteMetrics.SessionOpenDuration.Record(connectStopwatch.Elapsed.TotalMilliseconds, failTag, authTag);
             RemoteMetrics.AuthFailures.Add(1, authTag, new KeyValuePair<string, object?>("reason", ex.GetType().Name));
             runspace.Dispose();
-            // A rejected credential does not become valid on the next attempt, and repeating it
-            // costs another bad logon against the domain — mark it so the step retry loop stops.
-            if (ex is System.Management.Automation.Remoting.PSRemotingTransportException transport
-                && WinRmErrorCodes.IsLogonDenied(transport.ErrorCode))
-                throw new NonRetryableRemoteException(
-                    $"WinRM logon denied for '{machine.Name}' ({machine.Hostname}); not retried to avoid locking the account.",
-                    ex);
+            var nonRetryable = ClassifyConnectFailure(ex, machine);
+            if (nonRetryable is not null) throw nonRetryable;
             throw;
         }
 
@@ -203,5 +186,22 @@ public class WinRmSessionFactory : IRemoteSessionFactory
         RemoteMetrics.SessionsActive.Add(1);
 
         return new WinRmSession(runspace, machine.Hostname);
+    }
+
+    /// <summary>
+    /// Returns a <see cref="NonRetryableRemoteException"/> for connect failures a retry cannot fix,
+    /// or null to rethrow the original exception.
+    /// </summary>
+    internal static NonRetryableRemoteException? ClassifyConnectFailure(Exception ex, ManagedMachine machine)
+    {
+        if (ex is not System.Management.Automation.Remoting.PSRemotingTransportException transport)
+            return null;
+        // A rejected credential does not become valid on the next attempt, and repeating it
+        // costs another bad logon against the domain.
+        if (WinRmErrorCodes.IsLogonDenied(transport.ErrorCode))
+            return new NonRetryableRemoteException(
+                $"WinRM logon denied for '{machine.Name}' ({machine.Hostname}); not retried to avoid locking the account.",
+                ex);
+        return null;
     }
 }

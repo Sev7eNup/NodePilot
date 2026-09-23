@@ -6,7 +6,7 @@ The exception: `PrometheusScrapeAllowAnonymous` is a relaxation and defaults to 
 
 | Key | Default | Effect |
 |---|---|---|
-| `Remote:RequireWinRmSsl` | `true` | WinRM without SSL → exception (development: `false`) |
+| `Remote:RequireWinRmSsl` | `false` | `true` forbids WinRM over HTTP, so every machine needs HTTPS. With `false`, HTTP uses Negotiate (Kerberos in a domain, NTLM in a workgroup) |
 | `RestApi:BlockPrivateNetworks` | `true` | Blocks RFC 1918/loopback in `restApi` (development: `false`) |
 | `RestApi:AllowedHosts` | `[]` | An exact host/IP list for `restApi` targets and redirects that actually go through a proxy — an exception to `BlockPrivateNetworks`; link-local/metadata addresses stay blocked always |
 | `WaitForCondition:AllowedHosts` | `["localhost"]` | A separate list for the PowerShell probes `portOpen`/`httpOk`; an empty list rejects every probe. Kept apart from `RestApi:AllowedHosts` so that a permitted probe does not also open `restApi` to loopback — and conversely it decides alone: `RestApi:*` is not consulted for probes |

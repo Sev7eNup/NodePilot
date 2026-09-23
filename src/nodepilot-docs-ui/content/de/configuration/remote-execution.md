@@ -31,7 +31,7 @@ Auf dem Zielsystem braucht das verwendete Konto — Credential wie Dienstidentit
 
 ```powershell
 Enable-PSRemoting -Force
-winrm quickconfig -transport:https   # für Remote:RequireWinRmSsl=true
+winrm quickconfig -transport:https   # nur für Maschinen mit HTTPS
 ```
 
 Zugriff auf den Endpunkt haben per Default nur lokale Administratoren und Mitglieder von `Remote Management Users`. Ohne eine dieser Mitgliedschaften scheitert der Schritt am Endpunkt, obwohl die Anmeldung selbst gelingt.
@@ -40,9 +40,18 @@ Der credential-lose Pfad braucht zusätzlich **resource-based constrained delega
 
 Der Verbindungstest einer Maschine (`POST /api/machines/{id}/test`) verlangt ein Credential und antwortet sonst `400 MACHINE_CREDENTIAL_REQUIRED`. Er kann den credential-losen Pfad also nicht prüfen — Workflow-Schritte laufen in dieser Lage trotzdem.
 
-## Hardening
+## Transport: HTTP oder HTTPS
 
-`Remote:RequireWinRmSsl` (default `true`) — WinRM ohne SSL wirft eine Exception. In Dev über `appsettings.Development.json` auf `false` relaxt. Siehe [Hardening-Flags](../security/hardening).
+Jede Maschine verbindet per Default über **HTTP (5985) mit Negotiate**. Welches Protokoll dabei tatsächlich läuft, handelt Windows aus:
+
+- **Domäne** (Ziel per DNS-Name eingetragen): Kerberos. Client und Server authentifizieren sich gegenseitig, die WinRM-Nachrichten sind verschlüsselt.
+- **Workgroup oder Ziel per IP:** NTLM. Die Nachrichten sind ebenfalls verschlüsselt, aber NTLM weist nicht nach, dass am anderen Ende der richtige Server sitzt. Das Ziel muss auf dem NodePilot-Host in `TrustedHosts` stehen.
+
+Ob NTLM überhaupt erlaubt ist, entscheidet der Betreiber in Windows (WinRM-Auth-Konfiguration des Ziels, NTLM-Richtlinie per GPO), nicht NodePilot.
+
+**HTTPS (5986)** schaltet man pro Maschine ein (`UseSsl`), wenn die Serveridentität auch ohne Kerberos gesichert sein soll. Dafür braucht das Ziel einen HTTPS-Listener auf dem eingetragenen Port und ein Zertifikat, dem der NodePilot-Host vertraut und dessen Name zum eingetragenen Hostnamen passt.
+
+`Remote:RequireWinRmSsl` (default `false`) verbietet HTTP komplett. Dann braucht jede Maschine HTTPS. Siehe [Hardening-Flags](../security/hardening).
 
 ## REST-API-Proxy (für `restApi`-Activity)
 
