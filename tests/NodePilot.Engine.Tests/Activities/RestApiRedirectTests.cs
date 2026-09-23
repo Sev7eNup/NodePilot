@@ -17,6 +17,25 @@ namespace NodePilot.Engine.Tests.Activities;
 /// </summary>
 public class RestApiRedirectTests
 {
+    [Fact]
+    public async Task AgentReadScopeDoesNotFollowRedirects()
+    {
+        var (activity, handler) = CreateActivity([Redirect("https://192.0.2.20/final"), Ok()]);
+        using var scope = NodePilot.Engine.Agents.AgentReadOnlyWorkflowScope.Enter();
+        await activity.ExecuteAsync(CreateContext(), ParseConfig("{\"url\":\"https://192.0.2.10/status\"}"), TestContext.Current.CancellationToken);
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task AgentReadScopeRejectsPostBeforeSending()
+    {
+        var (activity, handler) = CreateActivity([Ok()]);
+        using var scope = NodePilot.Engine.Agents.AgentReadOnlyWorkflowScope.Enter();
+        var result = await activity.ExecuteAsync(CreateContext(), ParseConfig("{\"url\":\"https://192.0.2.10/status\",\"method\":\"POST\"}"), TestContext.Current.CancellationToken);
+        Assert.False(result.Success);
+        Assert.Empty(handler.Requests);
+    }
+
     private static JsonElement ParseConfig(string json) =>
         JsonDocument.Parse(json).RootElement;
 

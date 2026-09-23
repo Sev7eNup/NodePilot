@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from 'react-router';
+import { AgentCanvasExecutionContext } from '../components/designer/agents/AgentRunPanel';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api, downloadFromApi } from '../api/client';
@@ -928,6 +929,8 @@ function WorkflowEditorInner() {
         if (configPatch) {
           const oldCfg = (oldData.config as Record<string, unknown>) ?? {};
           newData.config = { ...oldCfg, ...configPatch };
+          if (oldData.activityType === 'aiAgent' || oldData.activityType === 'aiAgentTeam')
+            delete (newData.config as Record<string, unknown>).retry;
         }
         return { ...n, data: newData };
       }));
@@ -1344,6 +1347,8 @@ function WorkflowEditorInner() {
   const contextMenuData = (contextMenuNode?.data ?? {}) as Record<string, unknown>;
 
   return (
+    <AgentCanvasExecutionContext.Provider value={{ executionId: effectiveCanvasExecution?.executionId ?? replayExecutionId,
+      active: effectiveCanvasExecution?.status === 'Running', scrubTimeMs }}>
     <SubWorkflowPreviewContext.Provider value={subWorkflowPreviewContextValue}>
     <div className="np-designer wd-atelier h-screen flex flex-col bg-surface overflow-hidden">
       {/* Header — bleibt im Fullscreen (F11) sichtbar; nur Sidebar / Properties / Bottom-Panel
@@ -2004,5 +2009,6 @@ function WorkflowEditorInner() {
       )}
     </div>
     </SubWorkflowPreviewContext.Provider>
+    </AgentCanvasExecutionContext.Provider>
   );
 }

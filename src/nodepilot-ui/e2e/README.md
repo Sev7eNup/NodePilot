@@ -78,6 +78,13 @@ alongside `dotnet test` and `npm run test:run`.
 
 ## Coverage map (E2ETests.md Teil → spec)
 
+`ai-agents.spec.ts` additionally covers visible team-member selection, separate tools,
+and save/reopen without creating extra workflow steps. Live channel delivery remains
+covered through journal/reconnect unit and API tests, since this harness mocks SignalR.
+`agent-run-trace.spec.ts` covers history drill-down, the large communication view,
+member snapshots, assignments/rationales, return questions, tool evidence, escaped
+untrusted content, REST pagination and full support export despite a member filter.
+
 Not in the map (no Teil): `_all-screens.spec.ts` — the screenshot-capture spec that renders
 every main screen into `__screens__/*.png`; it documents visuals, it asserts nothing.
 

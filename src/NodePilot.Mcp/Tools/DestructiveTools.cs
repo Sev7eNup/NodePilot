@@ -20,6 +20,22 @@ public sealed class DestructiveTools
 
     public DestructiveTools(NodePilotApiClient api) => _api = api;
 
+    [McpServerTool(Name = "delete_agent_mcp_server", Destructive = true)]
+    [Description("Delete an MCP server registration (Admin). Referencing agent workflows will fail until reconfigured.")]
+    public async Task<object> DeleteAgentMcpServer(string serverId, CancellationToken cancellationToken = default)
+    {
+        await ApiErrorMapper.Guard(() => _api.DeleteAgentMcpServerAsync(ExecutionTools.ParseGuid(serverId, "serverId"), cancellationToken));
+        return new { deleted = true };
+    }
+
+    [McpServerTool(Name = "delete_agent_skill", Destructive = true)]
+    [Description("Delete a skill package registration (Admin). Referencing agent workflows will fail until reconfigured.")]
+    public async Task<object> DeleteAgentSkill(string skillId, CancellationToken cancellationToken = default)
+    {
+        await ApiErrorMapper.Guard(() => _api.DeleteAgentSkillAsync(ExecutionTools.ParseGuid(skillId, "skillId"), cancellationToken));
+        return new { deleted = true };
+    }
+
     [McpServerTool(Name = "cancel_all_executions", Destructive = true)]
     [Description("DESTRUCTIVE incident kill-switch: cancel ALL running executions of a workflow at once (Admin/Operator). Returns how many were signalled. Only available when NODEPILOT_MCP_ALLOW_DESTRUCTIVE=true.")]
     public async Task<object> CancelAllExecutions(

@@ -21,8 +21,9 @@ import { SecuritySection } from '../components/admin-settings/SecuritySection';
 import { PerformanceSection } from '../components/admin-settings/PerformanceSection';
 import { DbAdminSection } from '../components/admin-settings/DbAdminSection';
 import { AiKnowledgeSection } from '../components/admin-settings/AiKnowledgeSection';
+import { AgentsSection } from '../components/admin-settings/AgentsSection';
 
-type SubTab = 'integrations' | 'ai-knowledge' | 'retention' | 'system-info'
+type SubTab = 'integrations' | 'ai-knowledge' | 'agents' | 'retention' | 'system-info'
   | 'authentication' | 'logging-telemetry' | 'security' | 'performance' | 'db-admin';
 
 // Tabs grouped by topic: integrations, security, operations, data. `integrations` comes first
@@ -34,6 +35,7 @@ const TABS: SubTab[] = [
   // External connections. AI knowledge sources build on the LLM profile configured alongside.
   'integrations',
   'ai-knowledge',
+  'agents',
   // Security: the access and hardening tabs stay adjacent.
   'authentication',
   'security',
@@ -50,6 +52,7 @@ const TABS: SubTab[] = [
 const ICONS: Record<SubTab, React.ComponentType<{ size?: number }>> = {
   'integrations': Plug,
   'ai-knowledge': Chat,
+  'agents': Chat,
   'retention': TrashCan,
   'system-info': Information,
   'authentication': Locked,
@@ -64,6 +67,7 @@ const ICONS: Record<SubTab, React.ComponentType<{ size?: number }>> = {
 const LABEL_KEYS: Record<SubTab, string> = {
   'integrations': 'subTabIntegrations',
   'ai-knowledge': 'subTabAiKnowledge',
+  'agents': 'subTabAgents',
   'retention': 'subTabRetention',
   'system-info': 'subTabSystemInfo',
   'authentication': 'subTabAuthentication',
@@ -119,6 +123,7 @@ export function SystemSettingsPage() {
       <div>
         {active === 'integrations' && <IntegrationsSection />}
         {active === 'ai-knowledge' && <AiKnowledgeSection />}
+        {active === 'agents' && <AgentsSection />}
         {active === 'retention' && <RetentionSection />}
         {active === 'system-info' && <SystemInfoSection />}
         {active === 'authentication' && <AuthenticationSection />}

@@ -1,4 +1,5 @@
 using NodePilot.Cli.Commands.Audit;
+using NodePilot.Cli.Commands.Agents;
 using NodePilot.Cli.Commands.Auth;
 using NodePilot.Cli.Commands.Backup;
 using NodePilot.Cli.Commands.Config;
@@ -30,6 +31,26 @@ public static class CommandRegistration
 {
     public static void Register(IConfigurator config)
     {
+        config.AddBranch("agent", agent =>
+        {
+            agent.SetDescription("Inspect agent runs and administer tools and skill packages.");
+            agent.AddCommand<AgentRunsCommand>("runs").WithDescription("List agent runs for an execution ID.");
+            agent.AddCommand<AgentEventsCommand>("events").WithDescription("Read journal events after a sequence number.");
+            agent.AddBranch("mcp", mcp =>
+            {
+                mcp.AddCommand<AgentMcpListCommand>("list");
+                mcp.AddCommand<AgentMcpToolsCommand>("tools");
+                mcp.AddCommand<AgentMcpSaveCommand>("save").WithDescription("Create/update a server ID from JSON; include updatedAt when editing.");
+                mcp.AddCommand<AgentMcpDeleteCommand>("delete");
+            });
+            agent.AddBranch("skill", skill =>
+            {
+                skill.AddCommand<AgentSkillListCommand>("list");
+                skill.AddCommand<AgentSkillImportCommand>("import");
+                skill.AddCommand<AgentSkillEnableCommand>("enabled");
+                skill.AddCommand<AgentSkillDeleteCommand>("delete");
+            });
+        });
         // -- auth ----------------------------------------------------------------
         config.AddBranch("auth", auth =>
         {

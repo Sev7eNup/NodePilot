@@ -24,6 +24,15 @@ _Avoid_: Frontend activity list, activity constants
 An Activity that executes work on a Managed Machine over WinRM. Its remote-ness is the `IsRemote` flag in the Activity Catalog.
 _Avoid_: Remote step
 
+**AI Agent Activity**:
+An Activity that owns an iterative model/tool session with host-enforced permissions and budgets. Its optional tools can use WinRM; the Activity itself is not a Remote Activity.
+
+**Agent Team**:
+One executable Activity containing exactly one supervisor and sequential specialists. Members are configuration and a canvas projection, never independent Workflow nodes.
+
+**Agent Run**:
+One bounded invocation of an AI Agent Activity, with a durable numbered event journal belonging to its Workflow Execution. See ADR 0016.
+
 **Managed Machine**:
 A registered WinRM target machine that a Remote Activity can address.
 _Avoid_: Host row, target record

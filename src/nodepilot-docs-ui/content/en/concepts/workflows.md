@@ -10,6 +10,28 @@ A workflow is a directed process. Nodes represent triggers and activities. Edges
 
 Conditions fail closed. A condition that cannot be evaluated — unknown type or operator, missing operand, a shortcut other than `<step>.success|failed`, a reference to a step that does not exist — is rejected when the workflow is saved or published, and a run that still meets one fails and names the edge. A comparison whose variable has no value in this run (a step without a result, a missing output parameter, a global or trigger input that does not exist) never holds, not even behind `not`.
 
+## Portable import and export
+
+Each exported workflow carries `sourceId` and `dependencies` describing static
+machine, credential, skill, MCP server and workflow references, including agent
+team members. Import assigns destination IDs: machines match by name and WinRM
+target, credentials by name and account, skills by name/version/SHA-256, MCP
+servers by name and transport, and workflows by unique name. Workflows imported
+together refer to the newly created copies.
+
+Missing or ambiguous dependencies are reported and replaced with non-executable
+ID placeholders. Publishing and enabling are blocked until these are corrected
+in the designer. Unresolved skills can be removed and selected again.
+Alternatively, set a dependency's `targetId` to an available destination ID before
+importing. Workflow access permissions still apply.
+
+Every imported workflow starts disabled. Passwords, MCP credentials, tool approvals
+and skill archive files are not transferred. Register servers and install skill
+packages on the destination first. Existing secret redaction, including instructions
+and scripts, remains in effect. Legacy exports without dependency metadata require
+manual reassignment of static IDs. Dynamic expressions, paths and workflow calls
+using names remain unchanged and must suit the destination environment.
+
 ## Activity scopes
 
 | Scope | Execution |
@@ -19,7 +41,7 @@ Conditions fail closed. A condition that cannot be evaluated — unknown type or
 | **Hybrid** | Both (`runScript`, `waitForCondition`) |
 | **ControlFlow** | Engine-local, category `ControlFlow` in the `ActivityCatalog` (a palette axis, independent of the scope) |
 
-The full list of all 27 activity types with their configuration keys and output semantics: [Activity reference](../activities-reference).
+The full list of all 29 activity types with their configuration keys and output semantics: [Activity reference](../activities-reference).
 
 ## Execution lifecycle
 

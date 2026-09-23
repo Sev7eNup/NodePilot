@@ -1,5 +1,25 @@
 # API endpoints
 
+## Agent activities
+
+| Method | Route | Access |
+|---|---|---|
+| GET | `/api/agents/runs?executionId=…` | Owning workflow read permission |
+| GET | `/api/agents/runs/{id}/events?after=0&pageSize=200` | Owning workflow read permission; max 500/page |
+| GET | `/api/agents/mcp-servers` | Admin/Operator; no secrets |
+| GET | `/api/agents/mcp-servers/{id}/tools` | Admin/Operator; starts a registered connection |
+| PUT, DELETE | `/api/agents/mcp-servers/{id}` | Admin |
+| GET | `/api/agents/skills` | Admin/Operator |
+| POST | `/api/agents/skills` | Admin; version and base64 ZIP, max 10 MB |
+| PUT | `/api/agents/skills/{id}/enabled` | Admin; `{ "enabled": true }` |
+| DELETE | `/api/agents/skills/{id}` | Admin |
+
+Events persist before live notification and contain a per-run sequence and optional
+member ID. Catch up with `after` after reconnect. MCP writes accept write-only `secrets`
+and require the current `updatedAt` when editing. Skill versions are immutable.
+
+## General
+
 The REST API manages workflows, executions, infrastructure and administration. In the local development environment it runs on port 5000. Live status is pushed over SignalR at `/hubs/execution`. Mutating workflow endpoints return `423 Locked` if the calling user does not hold the edit lock; `disable` is exempt from that.
 
 > **JSON format:** property names use `camelCase`. Enum values are serialized as the .NET name in PascalCase, for example `"role":"Admin"` and `"status":"Succeeded"`. Sign-in uses the httpOnly cookie `np_auth` by default. `curl` stores and sends it with `-c cookie.jar -b cookie.jar`. The examples use `$NP = "http://localhost:5000"`.

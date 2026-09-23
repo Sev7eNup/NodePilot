@@ -42,7 +42,8 @@ public class SecretsControllerTests
             .ReturnsAsync(globalsResult);
         return new SecretsController(
             credMock.Object, globalsMock.Object, db,
-            versionDefinitions ?? VersionDefinitions(), NoopAuditWriter.Instance);
+            versionDefinitions ?? VersionDefinitions(), NoopAuditWriter.Instance,
+            new AesGcmSecretProtector(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray()));
     }
 
     private static WorkflowVersionDefinitionProtector VersionDefinitions() =>

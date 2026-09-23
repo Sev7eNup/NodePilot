@@ -46,7 +46,7 @@ NodePilot ist ein Single-Contributor-Projekt. KI darf beim Entwickeln helfen (di
 - **Remote Execution:** PowerShell SDK / WinRM, agentless. `Remote:Provider`: `winrm` (default) | `noop` (`noop` braucht `Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1`, sonst Boot-Abbruch). Engine-local In-Proc-Pool (WinPS-Kompatibilität bewusst aus): `docs/performance-improvements.md`
 - **Real-time:** SignalR (`/hubs/execution`)
 - **Logging:** Serilog. Format via `Logging:Format`: `text`|`cmtrace`|`json`|`ecs-json` (ECS 1.x für SIEM, siehe `docs/siem-logging.md`). Support-Log: File + DB-Projektion
-- **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 102 Tools, HTTP-only gegen die REST-API
+- **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 112 Tools, HTTP-only gegen die REST-API
 - **Enterprise (opt-in):** Active/Passive HA (`Cluster:Enabled`), pluggable Secret-Provider (`Secrets:Provider` = `Dpapi`|`AesGcm`), LDAP/Windows-SSO, ECS-JSON-SIEM, Folder-RBAC
 
 ## Solution-Struktur
@@ -150,7 +150,7 @@ UX-Flow und Button-State-Matrix: `docs/claude-reference.md`. Kurz: `canWrite = r
 "Remote" = `targetMachineId`/WinRM. "Engine-local" = im API-Prozess. `(controlFlow)` = Kategorie `ControlFlow` im backend `ActivityCatalog` (Palette-Achse, unabhängig vom Scope).
 
 - **Remote:** `fileOperation`, `folderOperation`, `textFileEdit`, `serviceManagement`, `registryOperation`, `wmiQuery`, `startProgram`, `powerManagement`, `scheduledTask`, `fileHash`, `zipOperation`
-- **Engine-local:** `restApi`, `sql`, `emailNotification`, `delay`, `xmlQuery`, `jsonQuery`, `log`, `generateText`, `llmQuery` + controlFlow: `junction`, `forEach`, `decision`, `startWorkflow`, `returnData`
+- **Engine-local:** `restApi`, `sql`, `emailNotification`, `delay`, `xmlQuery`, `jsonQuery`, `log`, `generateText`, `llmQuery`, `aiAgent`, `aiAgentTeam` + controlFlow: `junction`, `forEach`, `decision`, `startWorkflow`, `returnData`
 - **Hybrid:** `runScript`, `waitForCondition`
 
 Config-Keys & Output-Semantik pro Activity sowie Prozess-Isolation (`config.isolated: true`, nur lokal, No-Op auf dem WinRM-Pfad): `docs/claude-reference.md`.
@@ -275,7 +275,7 @@ Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.js
 
 ### Testumfang pro Änderung
 
-**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (6.597 Backend-Testfälle, 235 Vitest-Dateien, 77 E2E-Specs — die beiden Frontend-Zahlen hält `DocumentationCountsTests` an der Dateiliste fest, die Backend-Zahl bleibt ein Handmaß) und liefert lokal kein neues Signal: das Netz hängt an `ci.yml`, das auf **jedem PR und jedem Push auf main** läuft (Coverage-Gate + E2E eingeschlossen).
+**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (6.597 Backend-Testfälle, 237 Vitest-Dateien, 79 E2E-Specs — die beiden Frontend-Zahlen hält `DocumentationCountsTests` an der Dateiliste fest, die Backend-Zahl bleibt ein Handmaß) und liefert lokal kein neues Signal: das Netz hängt an `ci.yml`, das auf **jedem PR und jedem Push auf main** läuft (Coverage-Gate + E2E eingeschlossen).
 
 **Der Nightly ist kein verlässlicher zweiter Boden.** Er läuft als Windows-Task um 22:00 gegen den ausgecheckten Baum und wird verpasst, sobald die Maschine dann aus ist. Wer sich auf ihn beruft, prüft vorher `C:\temp\nodepilot-nightly\latest.md` auf sein Datum.
 
@@ -336,7 +336,7 @@ Parity-/Drift-Tests erzwingen Konsistenz zwischen weit auseinanderliegenden Date
 
 ## Clients (`np` CLI + `nodepilot-mcp`)
 
-Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad; der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (102 Tools, 3 Resources, stdio). Packaging, Anmeldewege, geteilte Client-Infrastruktur und Tool-Katalog: `src/NodePilot.Cli/CLAUDE.md`, `src/NodePilot.Mcp/CLAUDE.md`, `docs/mcp-server.md`.
+Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad; der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (112 Tools, 3 Resources, stdio). Packaging, Anmeldewege, geteilte Client-Infrastruktur und Tool-Katalog: `src/NodePilot.Cli/CLAUDE.md`, `src/NodePilot.Mcp/CLAUDE.md`, `docs/mcp-server.md`.
 
 **Jeder neue API-Endpoint braucht beide Clients** (Guard: `EndpointClientCoverageTests`).
 
@@ -375,7 +375,7 @@ Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pf
 
 ## Admin-Settings Hot-Reload
 
-Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (`reloadOnChange: true`). Pro Sektion trägt `SettingsSchema.cs` ein `IsHotReloadable`-Flag; nur `false`-Sektionen setzen den Restart-Marker. 13 Sektionen sind hot-reloadable, 9 restart-pflichtig; harter Kern (JWT, DB, Kestrel, Cluster/HA, `Remote:Provider`) bleibt boot-fixed. Matrix: `docs/claude-reference.md` § Hot-Reload-Matrix.
+Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (`reloadOnChange: true`). Pro Sektion trägt `SettingsSchema.cs` ein `IsHotReloadable`-Flag; nur `false`-Sektionen setzen den Restart-Marker. 13 Sektionen sind hot-reloadable, 10 restart-pflichtig; harter Kern (JWT, DB, Kestrel, Cluster/HA, `Remote:Provider`) bleibt boot-fixed. Matrix: `docs/claude-reference.md` § Hot-Reload-Matrix.
 
 **Consumer-Regel:** hot-reloadable Werte via `IOptionsMonitor<T>.CurrentValue` bzw. rohes `IConfiguration` pro Use/Pass lesen — **nie** `IOptions<T>.Value`-Snapshot.
 

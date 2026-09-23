@@ -2,6 +2,64 @@
 
 Diese Referenz beschreibt Konfiguration und Ausgaben jedes Activity-Typs.
 
+## KI-Agent / KI-Agententeam
+
+`aiAgent` bearbeitet eine Aufgabe über mehrere Modell- und Werkzeugaufrufe.
+`aiAgentTeam` enthält einen Supervisor und sequenzielle Spezialisten mit eigenen Sitzungen.
+Nur das äußere Team ist ein Workflow-Step. Sichtbare Mitglieder lassen sich anklicken und
+mit eigenen Rollen, Anweisungen und Werkzeugen konfigurieren. `needs_input` geht an den
+Supervisor; während des Steps gibt es keine interaktive Benutzerunterhaltung.
+
+- **Config:** `task`, `agent` (Einzelagent) oder `members` (Team), `resultFormat` (`text`/`json`),
+  `resultSchema`, `maxModelCalls`, `maxToolCalls`, `maxDelegations`, `timeoutSeconds`.
+  Agent/Mitglied: stabile `id`, freie `role`, `instructions`, optionales `model`,
+  `tools`, `skillIds`, `useServiceIdentity`. Teammitglieder haben eigene `targetMachineId`
+  und `credentialId`; Einzelagenten verwenden die üblichen Zielfelder des Nodes.
+  Genau ein Mitglied hat `isSupervisor: true`.
+  Optional erhalten andere Mitglieder `isReviewer: true` (im Designer: „Funktion im Team“).
+  Diese Prüffunktion ist unabhängig vom frei benannten Rollenfeld. Alle ausgewählten
+  Reviewer müssen den aktuellen Arbeitsstand prüfen. Offene `needs_input`-/`failed`-
+  Antworten verhindern einen erfolgreichen Abschluss; nur dasselbe Mitglied kann sie
+  mit `completed` schließen. Neue Fachantworten oder Werkzeugaufrufe des Supervisors
+  machen frühere Reviews ungültig. Nach höchstens zwei zusätzlichen Nachfassrunden
+  innerhalb der bestehenden Budgets schlägt eine weiterhin unvollständige Prüfung fehl.
+- **Werkzeuge:** freigegebene Dateipfade, HTTP GET/HEAD mit optionaler Hostbeschränkung, veröffentlichte Workflows, PowerShell,
+  CMD, installiertes Git Bash und ausgewählte MCP-Tools. MCP unterstützt stdio und
+  Streamable HTTP. Einstellungen → KI-Agenten verwaltet Server, versionierte Skill-ZIPs
+  und Laufzeitobergrenzen. Skills enthalten `SKILL.md` mit YAML-Name/Beschreibung,
+  Ressourcen und optionalen Skripten. Skripte benötigen das passende freigegebene Shell-Tool.
+- **Leseprüfung:** Shells und Skill-Skripte erlauben einen geprüften Umfang an Lesebefehlen.
+  HTTP benötigt keine URL-Whitelist, verbietet Bodies/Weiterleitungen und behält den Netzwerkschutz.
+  MCP-Lesefreigaben sind administrativ an Server- und Werkzeugstände gebunden; externe Dienste
+  und Zugangsdaten müssen Lesezugriff durchsetzen. Kindworkflows und ihre aufgelösten Schritte
+  werden zur Laufzeit geprüft, einschließlich synchroner Folgeaufrufe. Unbekannte Aktionen scheitern.
+- **Identität:** Credential/Maschinenstandard auswählen oder Dienstidentität ausdrücklich
+  wählen und administrativ erlauben. Shell hat die Betriebssystemrechte dieses Kontos;
+  Werkzeuglisten und Arbeitsverzeichnisse bieten keine Shell-Isolation. Windows lokal/WinRM.
+- **Standardbudgets:** Einzelagent 20 Modellaufrufe / 40 Tools / 20 Minuten; Team 100 / 500 /
+  20 Delegationen / 30 Minuten, gemeinsam gezählt. Zwei aktive Läufe pro Serverprozess.
+  Timeout 0 verwendet den Standard. Warteschlange, Tools und untergeordnete Workflows zählen
+  zur Gesamtlaufzeit. Automatische Retries werden abgelehnt. Abbruch/Neustart macht bereits
+  ausgeführte Aktionen nicht rückgängig.
+- **Logs:** `files_search` filtert auf dem Ziel, `logs_collect` überträgt Blöcke in eine
+  temporäre gemeinsame Ablage, maximal 250 MB pro Lauf/Team. `logs_search` liefert begrenzte
+  Quellenausschnitte. Rohdateien werden entfernt; verwendete Belege bleiben im Journal.
+- **Kontext:** 250.000 maximale **Ausgabetokens** je Modellaufruf; niedrigere Profil- und
+  Modellgrenzen gelten weiter. Die separate Eingabegrenze wird in Zeichen konfiguriert.
+  Ab 75 % verdichtet der Host ältere vollständige Runden zu untrusted Arbeitsnotizen.
+  Originalauftrag und aktuelle Runden bleiben erhalten. Alle Mitglieder können gespeicherte
+  Belege über `evidence_list`/`evidence_read` erneut lesen, ohne Maschinenabfragen zu wiederholen.
+  `evidence_analyze` untersucht begrenzte überlappende Abschnitte und protokolliert deren Bereiche,
+  Befunde und offene Fragen. Zusammenfassungen zählen zum Modell-/Zeitbudget; sie ersetzen keine
+  Originalbelege und keine neue Beobachtung für eine Review-Freigabe. Verdichtungen erscheinen im Journal.
+- **Outputs:** `output`, `error`, `param.agentRunId`, `param.outcome`, `param.outcomeReason`, `param.modelCalls`, `param.toolCalls`,
+  `param.delegations`, `param.promptTokens`, `param.completionTokens`. JSON wird lokal geprüft,
+  mit höchstens einer werkzeuglosen Korrekturrunde innerhalb des Budgets. Externe Schema-
+  Referenzen sind gesperrt. Das Journal zeigt nummerierte Ereignisse und lädt bei Reconnect nach.
+
+Die Veröffentlichung autorisiert die konfigurierten autonomen Aktionen. Chat-Freigaben und
+`llmQuery` bleiben unverändert. Voraussetzung: aktivierte KI mit aktivem LLM-Profil.
+
 | Scope | Ausführungsort |
 |---|---|
 | **Remote** | Windows-Zielsystem über `targetMachineId` und WinRM |

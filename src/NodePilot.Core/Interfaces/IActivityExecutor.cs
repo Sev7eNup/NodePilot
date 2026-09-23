@@ -50,6 +50,8 @@ public class StepExecutionContext
     public string WorkflowName { get; set; } = string.Empty;
     public Guid? TargetMachineId { get; set; }
     public Guid? CredentialId { get; set; }
+    /// <summary>Agent tools tie synchronous children to the agent's remaining lifetime.</summary>
+    public bool PropagateChildCancellation { get; set; }
     public Dictionary<string, string> Variables { get; set; } = [];
     /// <summary>
     /// Pre-resolved target machine. May be a registered machine (from DB) or an

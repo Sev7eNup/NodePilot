@@ -23,6 +23,7 @@ import { TextFileEditConfig } from './activities/TextFileEditConfig';
 import { DelayConfig } from './activities/DelayConfig';
 import { GenerateTextConfig } from './activities/GenerateTextConfig';
 import { LlmQueryConfig } from './activities/LlmQueryConfig';
+import { AiAgentConfig, AiAgentTeamConfig } from './activities/AiAgentConfig';
 import { XmlQueryConfig } from './activities/XmlQueryConfig';
 import { JsonQueryConfig } from './activities/JsonQueryConfig';
 import { LogConfig } from './activities/LogConfig';
@@ -60,6 +61,8 @@ export const ACTIVITY_CONFIG_COMPONENTS: Record<string, ComponentType<ConfigProp
   [ACTIVITY_TYPES.DELAY]: DelayConfig,
   [ACTIVITY_TYPES.GENERATE_TEXT]: GenerateTextConfig,
   [ACTIVITY_TYPES.LLM_QUERY]: LlmQueryConfig,
+  [ACTIVITY_TYPES.AI_AGENT]: AiAgentConfig,
+  [ACTIVITY_TYPES.AI_AGENT_TEAM]: AiAgentTeamConfig,
   [ACTIVITY_TYPES.XML_QUERY]: XmlQueryConfig,
   [ACTIVITY_TYPES.JSON_QUERY]: JsonQueryConfig,
   [ACTIVITY_TYPES.LOG]: LogConfig,

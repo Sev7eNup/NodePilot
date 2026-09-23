@@ -41,6 +41,8 @@ export const ACTIVITY_ICON_COMPONENTS: Record<string, CarbonIconType> = {
   edit_note: Edit,
   casino: MagicWand,
   smart_toy: Bot,
+  psychology: Bot,
+  groups: Events,
   note_add: DocumentAdd,
   schedule: Time,
   merge: Merge,

@@ -535,6 +535,7 @@ internal sealed class StepRunner
         CancellationToken ct)
     {
         var retryPolicy = retryPolicies.TryGetValue(node.Id, out var p) ? p : RetryPolicy.Disabled;
+        if (NodePilot.Core.Agents.AgentConfiguration.IsAgent(node.Type) || Agents.AgentReadOnlyWorkflowScope.IsActive) retryPolicy = RetryPolicy.Disabled;
         int attemptsUsed = 0;
         ActivityResult result = null!;
 
@@ -567,6 +568,12 @@ internal sealed class StepRunner
             stepExecution.AttemptCount = attempt;
             try
             {
+                if (Agents.AgentReadOnlyWorkflowScope.IsActive)
+                {
+                    Agents.AgentReadOnlyWorkflowScope.ValidateStep(node.Type, configForExecution);
+                    if (executor.GetType().Assembly != typeof(StepRunner).Assembly)
+                        throw new UnauthorizedAccessException("Agent child workflows require built-in executors.");
+                }
                 result = await executor.ExecuteAsync(context, configForExecution, ct);
             }
             // Remote activities signal failure by throwing, not by returning Success=false, so the

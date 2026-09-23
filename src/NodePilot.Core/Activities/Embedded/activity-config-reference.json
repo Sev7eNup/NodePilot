@@ -2,6 +2,126 @@
   "_comment": "Curated per-activity reference: purpose, CONFIG keys and prompt notes. The backend ActivityCatalog carries only stable OUTPUT params, not CONFIG keys; this fills that gap. It is the single source for both the MCP tools/resources and the generated activity-catalog section of the AI prompts. `description` is the one-line purpose (MCP-facing); `promptNotes` carries the extra semantics the AI prompt needs. Keys are authoritative against src/NodePilot.Engine/Activities/*.cs and Triggers/*.cs — audit against the executors when an activity config changes.",
   "schemaVersion": 2,
   "activities": {
+    "aiAgent": {
+      "description": "General tool-using agent hosted by Microsoft Agent Framework.",
+      "promptNotes": [
+        "Publish authorizes autonomous selected tools. Do not configure retry. Existing llmQuery performs one query and remains unchanged.",
+        "Each agent definition has id, role, instructions, optional model override, tools[], skillIds[], useServiceIdentity, workingDirectory and bashPath. Instructions never grant tools.",
+        "Use existing node targetMachineId/credentialId. Without a target the server is localhost. A credential or explicit useServiceIdentity plus administrator opt-in is required for OS tools.",
+        "tools entries: {name,allowedPaths?,allowedHosts?,workflowIds?,mcpServerId?,mcpToolName?}. Native names: files_list, files_read, files_write, files_search, logs_collect, logs_search, http_request, workflow_run, powershell, cmd, bash. MCP selections use name:mcp and registered server ID plus exact tool name.",
+        "File tools and logs_collect require allowed absolute paths, HTTP permits GET/HEAD without bodies or redirects; host restrictions are optional, workflow_run requires published workflow IDs. Shell and skill scripts use checked read commands; MCP requires administrator-pinned read approval; child workflows are checked at runtime. Git Bash must already be installed; Windows local/WinRM only.",
+        "Selected versioned skill packages expose progressive load_skill/read_skill_resource tools. Script execution additionally requires the matching selected shell. Raw log collection is limited to 250 MB per run, shared by a team, then deleted.",
+        "Defaults: 20 model calls, 40 tools, 1200 seconds.",
+        "OutputParameters.agentRunId identifies durable run/events; counters are modelCalls, toolCalls, delegations, promptTokens, completionTokens. Never place full logs in step output."
+      ],
+      "configKeys": [
+        {
+          "key": "task",
+          "type": "string",
+          "required": true,
+          "description": "Task with workflow variable expressions."
+        },
+        {
+          "key": "resultFormat",
+          "type": "string",
+          "required": false,
+          "description": "text or json. Defaults to text."
+        },
+        {
+          "key": "resultSchema",
+          "type": "object",
+          "required": false,
+          "description": "Required for JSON output. Local JSON Schema references only. One repair model call, without tools, counts against the shared budget."
+        },
+        {
+          "key": "maxModelCalls",
+          "type": "number",
+          "required": false,
+          "description": "Optional lower model-call limit within administrator ceiling."
+        },
+        {
+          "key": "maxToolCalls",
+          "type": "number",
+          "required": false,
+          "description": "Optional lower tool-call limit within administrator ceiling."
+        },
+        {
+          "key": "timeoutSeconds",
+          "type": "number",
+          "required": false,
+          "description": "Total time including tools, queues and child workflows. Zero/omitted uses the administrator default."
+        },
+        {
+          "key": "agent",
+          "type": "object",
+          "required": true,
+          "description": "Agent definition (role, instructions, model, selected tools and skills)."
+        }
+      ]
+    },
+    "aiAgentTeam": {
+      "description": "Sequential supervisor team with persistent per-member sessions and shared limits.",
+      "promptNotes": [
+        "Publish authorizes autonomous selected tools. Do not configure retry. Existing llmQuery performs one query and remains unchanged.",
+        "Each agent definition has id, role, instructions, optional model override, tools[], skillIds[], useServiceIdentity, workingDirectory and bashPath. Instructions never grant tools.",
+        "Members must have stable unique IDs and exactly one isSupervisor:true. Optional isReviewer:true selects a non-supervisor reviewer independently of the free role label. Members return completed, needs_input or failed. Unresolved responses block final completion; configured reviewers must review the latest work. The host allows at most two corrective supervisor turns within shared budgets before failing incomplete review. Members have nested targetMachineId/credentialId; there are no member workflow edges.",
+        "tools entries: {name,allowedPaths?,allowedHosts?,workflowIds?,mcpServerId?,mcpToolName?}. Native names: files_list, files_read, files_write, files_search, logs_collect, logs_search, http_request, workflow_run, powershell, cmd, bash. MCP selections use name:mcp and registered server ID plus exact tool name.",
+        "File tools and logs_collect require allowed absolute paths, HTTP permits GET/HEAD without bodies or redirects; host restrictions are optional, workflow_run requires published workflow IDs. Shell and skill scripts use checked read commands; MCP requires administrator-pinned read approval; child workflows are checked at runtime. Git Bash must already be installed; Windows local/WinRM only.",
+        "Selected versioned skill packages expose progressive load_skill/read_skill_resource tools. Script execution additionally requires the matching selected shell. Raw log collection is limited to 250 MB per run, shared by a team, then deleted.",
+        "Defaults: 100 model calls, 500 tools, 20 delegations, 1800 seconds, shared across members.",
+        "OutputParameters.agentRunId identifies durable run/events; counters are modelCalls, toolCalls, delegations, promptTokens, completionTokens. Never place full logs in step output."
+      ],
+      "configKeys": [
+        {
+          "key": "task",
+          "type": "string",
+          "required": true,
+          "description": "Task with workflow variable expressions."
+        },
+        {
+          "key": "resultFormat",
+          "type": "string",
+          "required": false,
+          "description": "text or json. Defaults to text."
+        },
+        {
+          "key": "resultSchema",
+          "type": "object",
+          "required": false,
+          "description": "Required for JSON output. Local JSON Schema references only. One repair model call, without tools, counts against the shared budget."
+        },
+        {
+          "key": "maxModelCalls",
+          "type": "number",
+          "required": false,
+          "description": "Optional lower model-call limit within administrator ceiling."
+        },
+        {
+          "key": "maxToolCalls",
+          "type": "number",
+          "required": false,
+          "description": "Optional lower tool-call limit within administrator ceiling."
+        },
+        {
+          "key": "timeoutSeconds",
+          "type": "number",
+          "required": false,
+          "description": "Total time including tools, queues and child workflows. Zero/omitted uses the administrator default."
+        },
+        {
+          "key": "members",
+          "type": "array",
+          "required": true,
+          "description": "2–12 agent definitions with stable IDs; exactly one supervisor."
+        },
+        {
+          "key": "maxDelegations",
+          "type": "number",
+          "required": false,
+          "description": "Optional lower shared delegation limit."
+        }
+      ]
+    },
     "runScript": {
       "description": "Run a PowerShell script (hybrid: local engine, or remote via WinRM when targetMachineId is set).",
       "promptNotes": [

@@ -4,6 +4,7 @@ export type BreadcrumbItem = { labelKey: string; to?: string };
 
 const settingsSectionKeys: Record<string, string> = {
   integrations: 'adminSettings:subTabIntegrations',
+  agents: 'adminSettings:subTabAgents',
   retention: 'adminSettings:subTabRetention',
   'system-info': 'adminSettings:subTabSystemInfo',
   authentication: 'adminSettings:subTabAuthentication',

@@ -12,7 +12,7 @@ export const SHARED_NODE_CLONE_KEYS = ['targetMachineId', 'credentialId'] as con
  * such as copying the target machine from a runScript onto a serviceManagement step.
  */
 export function isRemoteActivityType(activityType: string): boolean {
-  return REMOTE_ACTIVITY_TYPES.has(activityType);
+  return activityType === 'aiAgent' || REMOTE_ACTIVITY_TYPES.has(activityType);
 }
 
 export type CloneScope = 'all' | 'remoteOnly';
@@ -57,7 +57,8 @@ export function buildClonedDataPatch(
   // Take the entire source config, including the action payload (script bodies, queries,
   // paths, URLs), because a clone is meant to be a full copy the user then edits.
   const sourceConfig = (source.config as Record<string, unknown> | undefined) ?? {};
-  const configPatch: Record<string, unknown> = { ...sourceConfig };
+  const configPatch: Record<string, unknown> = structuredClone(sourceConfig);
+  if (targetActivityType === 'aiAgent' || targetActivityType === 'aiAgentTeam') delete configPatch.retry;
   if (Object.keys(configPatch).length > 0) {
     patch.__configPatch = configPatch;
   }

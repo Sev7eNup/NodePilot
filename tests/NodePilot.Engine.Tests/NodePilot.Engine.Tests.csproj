@@ -34,6 +34,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\NodePilot.Engine\NodePilot.Engine.csproj" />
+    <ProjectReference Include="..\..\src\NodePilot.Mcp\NodePilot.Mcp.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\NodePilot.Core\NodePilot.Core.csproj" />
     <ProjectReference Include="..\..\src\NodePilot.Data\NodePilot.Data.csproj" />
     <ProjectReference Include="..\..\src\NodePilot.Remote\NodePilot.Remote.csproj" />

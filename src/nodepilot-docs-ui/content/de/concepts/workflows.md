@@ -10,6 +10,31 @@ Ein Workflow ist ein gerichteter Ablauf. Nodes stellen Trigger und Activities da
 
 Conditions sind fail-closed. Eine Condition, die sich nicht auswerten lässt — unbekannter Typ oder Operator, fehlender Operand, ein Kurzausdruck außer `<step>.success|failed`, ein Verweis auf einen Step, den es nicht gibt — wird beim Speichern und Veröffentlichen abgelehnt, und ein Lauf, der trotzdem auf eine trifft, scheitert und nennt die Kante. Ein Vergleich, dessen Variable in diesem Lauf keinen Wert hat (Step ohne Ergebnis, fehlender Output-Parameter, nicht vorhandenes Global oder Trigger-Input), trifft nie zu, auch nicht hinter `not`.
 
+## Portabler Import und Export
+
+Workflow-Exporte enthalten je Workflow `sourceId` und `dependencies` für statische
+Maschinen-, Credential-, Skill-, MCP-Server- und Workflow-Referenzen. Das gilt auch
+für die Mitglieder eines Agententeams. Beim Import werden neue IDs zugeordnet:
+Maschinen anhand von Name und WinRM-Ziel, Credentials anhand von Name und
+Kontobezeichnung, Skills anhand von Name, Version und SHA-256, MCP-Server anhand
+von Name und Transport und Workflows anhand des eindeutigen Namens. Gemeinsam
+importierte Workflows verweisen auf die neu angelegten Kopien.
+
+Fehlende oder mehrdeutige Abhängigkeiten erscheinen im Importbericht. Ihre IDs
+werden durch einen nicht ausführbaren Platzhalter ersetzt; Veröffentlichung und
+Aktivierung bleiben bis zur Korrektur gesperrt. Wähle die Ressourcen anschließend
+im Designer aus. Nicht zugeordnete Skills lassen sich entfernen und neu auswählen.
+Alternativ kann vor dem Import je Abhängigkeit `targetId` auf eine verfügbare ID
+der Zielinstanz gesetzt werden. Workflow-Berechtigungen werden dabei geprüft.
+
+Alle importierten Workflows bleiben zunächst deaktiviert. Es werden keine
+Kennwörter, MCP-Zugangsdaten, Werkzeugfreigaben oder Skillpaketdateien übertragen.
+Registriere benötigte Server und installiere Skillpakete auf der Zielinstanz.
+Bestehende Geheimnisredaktion gilt weiterhin, auch für Anweisungen und Skripte.
+Alte Exporte ohne Abhängigkeitsmetadaten benötigen eine manuelle Neuzuordnung
+statischer IDs. Dynamische Ausdrücke, Pfade und namensbasierte Workflowaufrufe
+bleiben unverändert und müssen zur Zielumgebung passen.
+
 ## Activity-Scopes
 
 | Scope | Ausführung |
@@ -19,7 +44,7 @@ Conditions sind fail-closed. Eine Condition, die sich nicht auswerten lässt —
 | **Hybrid** | Beides (`runScript`, `waitForCondition`) |
 | **ControlFlow** | Engine-local, Kategorie `ControlFlow` im `ActivityCatalog` (Palette-Achse, unabhängig vom Scope) |
 
-Die vollständige Liste aller 27 Activity-Typen mit Config-Keys und Output-Semantik: [Activity-Referenz](../activities-reference).
+Die vollständige Liste aller 29 Activity-Typen mit Config-Keys und Output-Semantik: [Activity-Referenz](../activities-reference).
 
 ## Execution-Lifecycle
 

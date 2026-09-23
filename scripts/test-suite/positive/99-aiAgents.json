@@ -1,0 +1,197 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] AI agents",
+      "description": "Opt-in live model and sequential delegation check. No host tools.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 7/30 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 7/30 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "v0",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Agent: structured answer",
+              "activityType": "aiAgent",
+              "config": {
+                "task": "Return exactly {\"answer\":\"OK\"}.",
+                "resultFormat": "json",
+                "resultSchema": {
+                  "type": "object",
+                  "properties": {
+                    "answer": {
+                      "const": "OK"
+                    }
+                  },
+                  "required": [
+                    "answer"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxModelCalls": 3,
+                "maxToolCalls": 1,
+                "timeoutSeconds": 90,
+                "agent": {
+                  "id": "agent",
+                  "role": "Responder",
+                  "tools": []
+                }
+              },
+              "outputVariable": "v0"
+            }
+          },
+          {
+            "id": "v1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Team: delegate and answer",
+              "activityType": "aiAgentTeam",
+              "config": {
+                "task": "First delegate to researcher to confirm the word OK. Then return {\"answer\":\"OK\"}.",
+                "resultFormat": "json",
+                "resultSchema": {
+                  "type": "object",
+                  "properties": {
+                    "answer": {
+                      "const": "OK"
+                    }
+                  },
+                  "required": [
+                    "answer"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxModelCalls": 6,
+                "maxToolCalls": 3,
+                "maxDelegations": 2,
+                "timeoutSeconds": 120,
+                "members": [
+                  {
+                    "id": "supervisor",
+                    "role": "Supervisor",
+                    "isSupervisor": true,
+                    "instructions": "Delegate once before returning the answer.",
+                    "tools": []
+                  },
+                  {
+                    "id": "researcher",
+                    "role": "Researcher",
+                    "instructions": "Confirm OK in your delegation response.",
+                    "tools": []
+                  }
+                ]
+              },
+              "outputVariable": "v1"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$single = {{v0.output}} | ConvertFrom-Json\n$team = {{v1.output}} | ConvertFrom-Json\n$run = {{v1.param.agentRunId}}\n$delegations = [int]{{v1.param.delegations}}\nif ($single.answer -ne 'OK' -or $team.answer -ne 'OK') { throw 'Unexpected agent result' }\nif ([string]::IsNullOrWhiteSpace($run)) { throw 'Agent run ID missing' }\nif ($delegations -lt 1) { throw 'The model did not delegate' }\n$assertOk = 'aiAgents'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "aiAgents",
+                  "asserted": "{{assert.success}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-v0",
+            "source": "trg",
+            "target": "v0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v0-v1",
+            "source": "v0",
+            "target": "v1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-v1-assert",
+            "source": "v1",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -51,6 +51,8 @@ public sealed class SecretsReencryptCommand : BaseCommand<SecretsReencryptSettin
             grid.AddRow("Global Secrets Skipped",
                 value.GlobalSecretsSkipped == 0 ? "0" : $"[yellow]{value.GlobalSecretsSkipped}[/]");
             grid.AddRow("Workflow Versions Rewritten", value.WorkflowVersionsRewritten.ToString());
+            grid.AddRow("Agent MCP Secrets Rewritten", value.AgentMcpSecretsRewritten.ToString());
+            grid.AddRow("Agent MCP Secrets Skipped", value.AgentMcpSecretsSkipped.ToString());
             grid.AddRow("Workflow Versions Skipped",
                 value.WorkflowVersionsSkipped == 0 ? "0" : $"[yellow]{value.WorkflowVersionsSkipped}[/]");
             grid.AddRow("Status", value.PartialSuccess
@@ -82,6 +84,15 @@ public sealed class SecretsReencryptCommand : BaseCommand<SecretsReencryptSettin
                 var t = new Table().Title("Workflow-version skips").Border(TableBorder.Rounded)
                     .AddColumn("Id").AddColumn("Name").AddColumn("Reason");
                 foreach (var s in value.WorkflowVersionSkipDetails)
+                    t.AddRow(s.Id.ToString()[..8], Markup.Escape(s.Name), Markup.Escape(s.Reason));
+                console.Write(t);
+            }
+            if (value.AgentMcpSecretSkipDetails.Count > 0)
+            {
+                console.WriteLine();
+                var t = new Table().Title("Agent MCP secret skips").Border(TableBorder.Rounded)
+                    .AddColumn("Id").AddColumn("Name").AddColumn("Reason");
+                foreach (var s in value.AgentMcpSecretSkipDetails)
                     t.AddRow(s.Id.ToString()[..8], Markup.Escape(s.Name), Markup.Escape(s.Reason));
                 console.Write(t);
             }

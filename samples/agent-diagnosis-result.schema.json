@@ -1,0 +1,36 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "scope": { "type": "string", "description": "The operation, target and observation period actually investigated." },
+    "finding": { "type": "string", "description": "The strongest supported finding, separate from unproven historical attribution." },
+    "causeStatus": { "type": "string", "enum": ["established", "hypothesis", "undetermined", "no_current_fault_demonstrated"] },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "evidenceId": { "type": "string", "description": "Exact original run evidence ID without appended prose." },
+          "observation": { "type": "string" },
+          "relevance": { "type": "string" }
+        },
+        "required": ["evidenceId", "observation", "relevance"]
+      }
+    },
+    "counterevidence": { "type": "array", "items": { "type": "string" } },
+    "uncertainties": { "type": "array", "items": { "type": "string" } },
+    "proposedRemedy": { "type": "string", "description": "Smallest supported corrective proposal and preconditions, or why no repair is justified. Never describe it as executed." },
+    "verification": { "type": "string", "description": "How an authorized later correction would be verified; do not require performing it during read-only diagnosis." },
+    "openChecks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": { "question": { "type": "string" }, "limitation": { "type": "string" } },
+        "required": ["question", "limitation"]
+      }
+    }
+  },
+  "required": ["scope", "finding", "causeStatus", "evidence", "counterevidence", "uncertainties", "proposedRemedy", "verification", "openChecks"]
+}

@@ -140,6 +140,12 @@ public static class WorkflowDefinitionStructuralValidator
 
         activityTypeByNodeId[id] = activityType;
 
+        if (NodePilot.Core.Agents.AgentConfiguration.IsAgent(activityType)
+            && data.TryGetProperty("config", out var agentConfig)
+            && agentConfig.ValueKind == JsonValueKind.Object
+            && agentConfig.TryGetProperty("retry", out var agentRetry) && agentRetry.ValueKind != JsonValueKind.Null)
+            return WorkflowDefinitionValidationResult.Invalid("Agent activities do not support automatic retry", "agent-retry-not-supported", id);
+
         if (!ValidateOptionalString(data, "label", $"{path}.data.label", allowNull: true, out var error)
             || !ValidateOptionalString(data, "outputVariable", $"{path}.data.outputVariable", allowNull: true, out error)
             || !ValidateOptionalString(data, "targetMachineId", $"{path}.data.targetMachineId", allowNull: true, out error)

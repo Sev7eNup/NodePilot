@@ -13,7 +13,7 @@ namespace NodePilot.Cli.Api;
 /// endpoint; non-2xx responses always become <see cref="ApiException"/> so commands
 /// branch on a single exception type.
 /// </summary>
-public sealed class NodePilotApiClient
+public sealed partial class NodePilotApiClient
 {
     public static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {

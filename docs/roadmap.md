@@ -25,6 +25,17 @@ Ein Posten wandert von R2 nach R1, wenn sein Trigger eintritt — nicht, weil er
 
 ## R1 — Gesetzt
 
+### Allgemeine KI-Agenten und Teams (beschlossen 2026-09-18)
+
+`aiAgent` und `aiAgentTeam`: allgemeine Agenten mit auswählbaren nativen Werkzeugen,
+PowerShell/CMD/Git Bash, MCP-Client, versionierten Skills, begrenzter Logsammlung und
+sichtbaren sequenziellen Teams. Die Schleife liegt innerhalb des Steps; die Workflow-
+Engine bleibt bestehen. Veröffentlichung autorisiert konfigurierte autonome Aktionen;
+Chat-Freigaben bleiben unverändert. [ADR 0016](adr/0016-general-ai-agent-activities.md)
+und [Betriebs-/Konfigurationsreferenz](ai-agents.md) sind verbindlich. Entwicklung in
+drei Abschnitten, eine vollständige Veröffentlichung; keine parallelen oder verschachtelten
+Teams und keine Wiederaufnahme nach Neustart. Umsetzung auf `feature/ai-agent-activities`.
+
 28 Posten in acht Wellen. Die Wellenreihenfolge ist bewusst: erst wird ehrlich, was gerade
 unehrlich ist, dann wird gebaut.
 
@@ -293,13 +304,12 @@ Per-Rule Dedup-Key-Templates sind bereits implementiert (`DedupKeyTemplate`, in 
 
 ## E — Offene Entscheidungen
 
-Diese fünf Punkte können nicht gebaut werden, solange die Entscheidung aussteht. Sie sind
+Diese vier Punkte können nicht gebaut werden, solange die Entscheidung aussteht. Sie sind
 bewusst keine R2-Posten: Es fehlt nicht der Auslöser, es fehlt der Beschluss.
 
 | Frage | Kontext |
 |---|---|
 | **SSH/Linux-Cross-Platform: neu aufsetzen oder streichen?** | Die frühere Implementierung ist **nicht mehr im Repo** — `RemoteProtocol` findet sich nirgends in `NodePilot.Core`, Branch und PR sind mit der Public-Repo-Migration verloren gegangen. Damals: ~11 000 Zeilen über 107 Dateien, Backend platform-aware (Bash-Adapter für runScript/File/Folder/Service/StartProgram), SSH.NET-Stack mit Host-Key-TOFU/Strict, gegen Debian-bookworm per Docker verifiziert. Die bekannte Lücke war ausschließlich UI-seitig: `RunScriptConfig.tsx` blieb PowerShell-zentriert. Als „pausiert" weiterzuführen ist die einzige Option, die eindeutig falsch ist. |
-| **`aiAgent`-Activity: bauen?** | Ein iterativer read-only Diagnose-Agent als *ein* Workflow-Step. Ein Agent-Loop im Graphen ist strukturell unmöglich — ein Agent ist `plan → act → observe → repeat` mit unbekannter Iterationszahl, die WorkflowEngine ist ein DAG-Scheduler, in dem jeder Node maximal einmal pro Lauf läuft. Der Plan kapselt die Schleife deshalb *innerhalb* eines Steps. Echte Produktentscheidung, nicht nebenbei. |
 | **Multi-DC: Quorum oder All-DC-Konsens?** | Heute strikter All-DC-Konsens, **kein** Failover: Ein DC down ⇒ externe Logins 503. Das ist per Unit-Test festgeschrieben und inzwischen ehrlich dokumentiert (früher stand fälschlich „Failover" da). Ob das so bleibt, ist ein Produktentscheid — kein Bug. |
 | **Downloads in der Desktop-App zulassen?** | `hardenSession` in `src/nodepilot-desktop/src/security.ts` verwirft jeden Download (`will-download` → `preventDefault`), die SPA bietet aber Download-basierte Exporte an (Workflow-Export, Custom Activities, Chat-Export) — in der Desktop-App bleiben diese Aktionen wirkungslos. Entweder Downloads gezielt mit Speichern-Dialog freigeben oder die Aktionen in der Shell ausblenden. Aus dem Audit 2026-09-05 (offene Frage des Prüfers). |
 | **Fremde MCP-Server im AI-Chat nutzbar machen?** | Admin konfiguriert externe MCP-Server, der Chat darf deren read-only Tools aufrufen. Das ist der eigentliche Nutzen eines MCP-**Clients** im Backend — fremde Tools anbinden. Die Gegenrichtung (den Chat über `nodepilot-mcp` auf die *eigenen* Tools fahren) ist geprüft und verworfen: `nodepilot-mcp` authentifiziert sich mit *einer* DPAPI-Session, der Chat läuft pro Request unter dem `ClaimsPrincipal` des Aufrufers (Folder-RBAC, SQL nur für globale Admins) — ein Umleiten würde alle Tool-Calls unter eine Dienst-Identität legen; dazu Loopback-HTTP je Call und ~90 Schreib-Tools, die der Chat bewusst nicht hat. Die geteilte Analyse-Logik liegt stattdessen in `NodePilot.Core` (`WorkflowAnalyzer`, `WorkflowDataBusAnalyzer`), von beiden Flächen konsumiert. Offen für den Client-Fall: Trust-Modell gegen Prompt-Injection aus fremden Tool-Ergebnissen, RBAC-Gate, Prozess-Lifecycle. |

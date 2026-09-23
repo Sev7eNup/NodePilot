@@ -9,6 +9,7 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Engine.Execution;
+using NodePilot.Engine.Agents;
 using NodePilot.Engine.PowerShell;
 
 namespace NodePilot.Engine.Activities;
@@ -133,6 +134,11 @@ public class StartWorkflowActivity : IActivityExecutor
             };
         }
         var childWorkflow = resolvedWorkflow!;
+        if (AgentReadOnlyWorkflowScope.IsActive)
+        {
+            if (!waitForCompletion) throw new UnauthorizedAccessException("Agent child workflows must remain synchronous.");
+            AgentReadOnlyWorkflowScope.ValidateWorkflow(childWorkflow);
+        }
         if (outcome == SubWorkflowInvocation.ChildOutcome.Disabled)
         {
             return new ActivityResult
@@ -291,12 +297,21 @@ public class StartWorkflowActivity : IActivityExecutor
             // step-level CTS, and that signal must not mark the child as Cancelled while the
             // parent execution continues.
             WorkflowEngine.TryGetExecutionCancellation(context.WorkflowExecutionId, out var execCancellation);
-            using var childExecCts = CancellationTokenSource.CreateLinkedTokenSource(execCancellation, timeoutCts.Token);
+            using var childExecCts = CancellationTokenSource.CreateLinkedTokenSource(execCancellation, timeoutCts.Token,
+                context.PropagateChildCancellation ? ct : CancellationToken.None);
 
             // Run the child in a fresh DI scope so it gets its own DbContext and cannot race
             // the parent's _db on EF Core.
             await using var scope = _scopeFactory.CreateAsyncScope();
             var engine = scope.ServiceProvider.GetRequiredService<IWorkflowEngine>();
+            if (AgentReadOnlyWorkflowScope.IsActive)
+            {
+                childWorkflow = await scope.ServiceProvider.GetRequiredService<NodePilotDbContext>().Workflows
+                    .AsNoTracking().SingleAsync(w => w.Id == childWorkflow.Id, childExecCts.Token);
+                AgentReadOnlyWorkflowScope.ValidateWorkflow(childWorkflow);
+                var currentBlock = await SubWorkflowInvocation.GetAuthorizationBlockAsync(_subWorkflowAuthz, parentExec, childWorkflow, childExecCts.Token);
+                if (currentBlock is not null) throw new UnauthorizedAccessException(currentBlock);
+            }
             var childExec = await engine.ExecuteAsync(
                 childWorkflow,
                 $"startWorkflow:{context.StepId}",

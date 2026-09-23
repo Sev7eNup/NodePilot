@@ -29,7 +29,7 @@ export const en = {
       'NodePilot connects PowerShell and Windows activities into visual workflows. Agentless, self-hosted, open source and free.',
     descriptions: {
       home: 'NodePilot connects PowerShell and Windows activities into visual workflows. Agentless, self-hosted, open source and free.',
-      product: 'Designer, step debugger, Live Ops, triggers, alerting and AI support in one tool. 27 activity types from PowerShell to SQL.',
+      product: 'Designer, step debugger, Live Ops, triggers, alerting and AI support in one tool. 29 activity types from PowerShell to SQL.',
       experience: 'Try NodePilot in the browser: start a workflow, check its result and find the cause of a failure. No sign-up, no installation.',
       blog: 'Why certain decisions were made, how things work and what helps when automating.',
       impressum: 'Provider details and contact for the NodePilot open-source project.',
@@ -204,7 +204,7 @@ export const en = {
     title: 'One workflow.<br>From idea to log.',
     intro: 'Designer, debugger and Live Ops belong in the same workspace instead of three separate tools.',
     designerTitle: 'Design workflows',
-    designerText: '27 activity types: PowerShell, files and folders, services, the registry, WMI, scheduled tasks, REST calls and SQL, wired up with conditions and parallel paths on one canvas.',
+    designerText: '29 activity types: PowerShell, files and folders, services, the registry, WMI, scheduled tasks, REST calls and SQL, wired up with conditions and parallel paths on one canvas.',
     logsTitle: 'Trace errors',
     logsText: 'Read output and structured support events right in the product.',
     aiTitle: 'No-code',

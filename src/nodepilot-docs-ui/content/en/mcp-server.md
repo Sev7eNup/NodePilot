@@ -3,8 +3,17 @@
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets an AI agent
 (Claude Desktop/Code or any MCP client) **control and edit NodePilot workflows** and **read data**.
 Like the `np` CLI it is a pure HTTP client against the existing REST API — **no new backend path**;
-every tool calls an existing endpoint or computes in-process against `NodePilot.Core`. 102 tools
-across 10 groups, plus 3 MCP resources.
+every tool calls an existing endpoint or computes in-process against `NodePilot.Core`. 112 tools
+across 11 groups, plus 3 MCP resources.
+
+## Agent tools
+
+The agent group exposes `list_agent_runs`, `get_agent_events`, `list_agent_mcp_servers`,
+`discover_agent_mcp_tools`, `save_agent_mcp_server`, `list_agent_skills`,
+`import_agent_skill`, `set_agent_skill_enabled`, `delete_agent_mcp_server` and
+`delete_agent_skill`. Run/events use workflow read permission. Registry reads require
+Admin/Operator, changes Admin, and deletes the destructive-tool gate. Discovery can start
+a registered stdio process. Agent-client transports are separate from this stdio server.
 
 ## Installation
 

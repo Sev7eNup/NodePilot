@@ -1205,4 +1205,36 @@ public class WorkflowImportExportControllerTests
         response.Errors.Should().ContainSingle(e => e.Contains("Concurrency limit"));
         (await db.Workflows.AsNoTracking().SingleAsync()).MaxConcurrentExecutions.Should().BeNull();
     }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Import_CustomNode_IsRelinkedByKeyToThisInstance(bool keyExists)
+    {
+        var db = CreateContext();
+        var local = new CustomActivityDefinition { Id = Guid.NewGuid(), Key = keyExists ? "disk-check" : "other", Name = "Disk Check" };
+        db.CustomActivityDefinitions.Add(local);
+        db.CustomActivityDefinitions.Add(new CustomActivityDefinition { Id = Guid.NewGuid(), Key = "disk-check", Name = "Deleted", IsDeleted = true });
+        await db.SaveChangesAsync();
+        var sourceId = Guid.NewGuid();
+        var definition = $$$$"""{"nodes":[{"id":"disk","type":"activity","data":{"activityType":"custom:disk-check","config":{"__customDefinitionId":"{{{{sourceId}}}}","__customKey":"disk-check"}}}],"edges":[]}""";
+
+        var result = await NewController(db).ImportExport.Import(EnvelopeWithSingle("Uses custom node", definition), null, CancellationToken.None);
+
+        var response = (ImportWorkflowsResponse)result.Result.Should().BeOfType<OkObjectResult>().Subject.Value!;
+        response.Created.Should().Be(1);
+        var saved = await db.Workflows.AsNoTracking().SingleAsync();
+        using var doc = JsonDocument.Parse(saved.DefinitionJson);
+        var id = doc.RootElement.GetProperty("nodes")[0].GetProperty("data").GetProperty("config").GetProperty("__customDefinitionId").GetString();
+        if (keyExists)
+        {
+            id.Should().Be(local.Id.ToString());
+            response.Errors.Should().BeEmpty();
+        }
+        else
+        {
+            id.Should().Be(sourceId.ToString());
+            response.Errors.Should().ContainSingle(e => e.Contains("custom node 'disk-check' does not exist on this instance"));
+        }
+    }
 }
