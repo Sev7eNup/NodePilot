@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import type { Node, Edge, FinalConnectionState } from '@xyflow/react';
 import { useCanvasConnect } from '../../hooks/useCanvasConnect';
+import { useCustomActivityCatalogStore } from '../../lib/customActivities';
 
 type SetState<T> = React.Dispatch<React.SetStateAction<T>>;
 
@@ -148,6 +149,38 @@ describe('useCanvasConnect', () => {
       expect(harness.commitHistory).not.toHaveBeenCalled();
       expect(harness.setNodes).not.toHaveBeenCalled();
       expect(harness.setEdges).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('custom activity nodes', () => {
+    const disk = {
+      id: 'def-1', key: 'disk_check', type: 'custom:disk_check', name: 'Disk Check', icon: 'extension',
+      runsRemote: false, timeout: 'always', inputs: [], outputs: [], isEnabled: true, version: 1,
+    };
+    beforeEach(() => useCustomActivityCatalogStore.getState().setCatalog([disk]));
+    afterEach(() => useCustomActivityCatalogStore.getState().setCatalog([]));
+
+    it('handleQuickConnectPick_customType_writesDefinitionReference', () => {
+      const harness = setup();
+      act(() => {
+        harness.result.current.handleConnectEnd(
+          { clientX: 200, clientY: 150 } as MouseEvent,
+          { toHandle: null, toNode: null, fromNode: { id: 'step-source' } as Node, fromHandle: null } as any
+        );
+      });
+      act(() => { harness.result.current.handleQuickConnectPick('custom:disk_check', 'Disk Check'); });
+
+      const nodes: Node[] = (harness.setNodes as any).mock.calls[0][0]([]);
+      expect(nodes[0].data.config).toEqual({ __customDefinitionId: 'def-1', __customKey: 'disk_check' });
+    });
+
+    it('insertOnEdge_customType_writesDefinitionReference', () => {
+      const harness = setup({ initialEdges: [makeEdge('e1', 'step-a', 'step-b')] });
+      act(() => { harness.result.current.requestInsert('e1', 400, 300); });
+      act(() => { harness.result.current.insertOnEdge('custom:disk_check', 'Disk Check'); });
+
+      const nodes: Node[] = (harness.setNodes as any).mock.calls[0][0]([]);
+      expect(nodes[0].data.config).toEqual({ __customDefinitionId: 'def-1', __customKey: 'disk_check' });
     });
   });
 
