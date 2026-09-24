@@ -1039,9 +1039,9 @@ Portables, verschlüsseltes Backup der **Konfiguration** — getrennt vom redigi
 - **Authentication-Pfade:** Local-BCrypt (Default `BreakGlassOnly`), LDAPS, Windows-Negotiate/Kerberos und OIDC Code + PKCE konvergieren auf dieselbe Session; SCIM 2.0 provisioniert Benutzer und Gruppen. Externe Identitäten werden kanonisch über `(Authority, Subject)` aufgelöst; LDAP und Windows verwenden dieselbe AD-`objectSid`. Setup + Troubleshooting in [docs/ldap-windows-sso.md](../docs/ldap-windows-sso.md). Status bis zum realen AD-Feldtest: **AD SSO Preview**.
 - **REST-API-Proxy:** `RestApi:Proxy:Enabled` (default `false`). Bei `true` sind `Address` (Pflicht), `BypassList`, `Username`/`Password` auswertbar. Per-Step-Override via Node-Config: `proxyMode` + `proxyAddress` + `noProxy`. Details in [RestApiHttpClientProvider.cs](../src/NodePilot.Engine/Security/RestApiHttpClientProvider.cs).
 
-### Hardening-Flags (Default-On, in Development relaxed)
+### Hardening-Flags (Default-On mit zwei Ausnahmen, in Development relaxed)
 
-Die Guard-Flags sind **hardened by default**: appsettings.json shippt sie als `true`, und ein **fehlender** Key liest ebenfalls als `true` (siehe `PathGuardTests`/`NetworkGuardTests`). `appsettings.Development.json` relaxt sie für lokale Iteration auf `false`. Ausnahme: `PrometheusScrapeAllowAnonymous` ist eine Relaxation und default `false`.
+Die Guard-Flags sind **hardened by default**: appsettings.json shippt sie als `true`, und ein **fehlender** Key liest ebenfalls als `true` (siehe `PathGuardTests`/`NetworkGuardTests`). `appsettings.Development.json` relaxt sie für lokale Iteration auf `false`. **Zwei Ausnahmen sind Relaxations mit Default `false`:** `PrometheusScrapeAllowAnonymous` und `Remote:RequireWinRmSsl`. Letzteres blockt HTTP nur, wenn der Wert wörtlich `"true"` ist (`WinRmSessionFactory.CreateSessionAsync`) — ein fehlender Key erlaubt also Plaintext-WinRM.
 
 | Key | Default | Wirkung |
 |---|---|---|
