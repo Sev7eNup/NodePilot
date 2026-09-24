@@ -1,0 +1,22 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-09-23T00:00:00Z",
+  "workflows": [
+    {
+      "name": "Install Smoke",
+      "description": "Manual trigger plus one log step. Proves the durable dispatch path after installation.",
+      "definition": {
+        "nodes": [
+          { "id": "trg", "type": "activity", "position": { "x": 0, "y": 0 },
+            "data": { "label": "Manual Trigger", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "log", "type": "activity", "position": { "x": 400, "y": 0 },
+            "data": { "label": "Log", "activityType": "log", "config": { "message": "install smoke ok", "level": "info" } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trg", "target": "log", "type": "labeled", "data": { "label": "", "condition": null, "disabled": false } }
+        ]
+      }
+    }
+  ]
+}

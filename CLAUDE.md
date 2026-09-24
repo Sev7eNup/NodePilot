@@ -407,3 +407,5 @@ Getrennt vom Workflow-Export: portables, passphrasenverschlüsseltes Konfigurati
 ## Production Deployment
 
 Rollout über `deploy/`-Skripte (Freigabe-Regel unter *Projekt starten*). Doku: `deploy/README.md`; Architektur, Config-Keys und Stolperfallen: `docs/claude-reference.md` § Production Deployment. **Desktop-App** (Electron, `deploy/desktop/`, `Deployment:Mode=Desktop`): relaxiert **nur** loopback-DB-TLS + Kestrel-`ListenLocalhost`, der Rest bleibt Production-gehärtet — `deploy/desktop/README.md`.
+
+**Vor jedem Release Pflicht:** die Lab-Matrix `scripts/release-lab/` gegen die signierten Artefakte aus `out\` — Server-Setup in allen Identitäts-/DB-Kombinationen frisch und als Update, jeweils mit Deinstallation, dazu das Desktop-Setup auf dem Lab-Client. Ohne grünen Lauf beider kein Tag (`RELEASING.md` Schritt 6).

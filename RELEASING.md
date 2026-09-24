@@ -92,7 +92,24 @@ $sig.SignerCertificate.Thumbprint   # must equal the shipped .cer's thumbprint
 
 `Status` is **`UnknownError`, and that is the pass condition**, not a failure. The release certificate is self-signed and its root is in nobody's trust store, so `Get-AuthenticodeSignature` cannot build a chain. Every published release reports the same, and one of them can be checked should this look wrong. What carries the meaning is the pair above, namely the signer's subject and a thumbprint equal to the certificate shipped alongside. Waiting for `Valid` means waiting for a public CA.
 
-## 6. Tag and publish
+## 6. Run the release lab
+
+The signed setups from `out\` are installed on the Hyper-V lab before anything is tagged: every
+identity/database combination of the server setup fresh and as an update from the previous release,
+each followed by an uninstall, plus the desktop setup's install, over-install, uninstall and
+reinstall paths. **No release is tagged without a green run of both.** What is checked, the lab
+prerequisites and the pass criteria are in [`scripts/release-lab/README.md`](scripts/release-lab/README.md).
+
+```powershell
+.\scripts\release-lab\server\Invoke-ServerMatrix.ps1  -ConfigPath <lab config> -ArtifactDir .\out -Version 1.2.11
+.\scripts\release-lab\desktop\Invoke-DesktopMatrix.ps1 -ConfigPath <lab config> -ArtifactDir .\out -Version 1.2.11
+```
+
+A fix found here means a new build and a new run, not a patched artifact: the setups are signed and
+listed in `SHA256SUMS.txt`, and the tag has to point at the commit they were built from. The
+`summary.md` of both runs belongs in the release notes' test section.
+
+## 7. Tag and publish
 
 ```powershell
 git tag -a v1.2.11 -m "NodePilot 1.2.11"
@@ -106,7 +123,7 @@ The release notes must contain three things.
 - The **certificate thumbprint** in full, in text. Until NodePilot is signed by a public CA, this is the only out-of-band anchor a downloader has. The checksum file proves the download is intact, the thumbprint proves who built it.
 - A note that Windows SmartScreen will warn on first run, as well as why, namely a self-signed publisher without reputation. The deployment guide covers this. The release notes should not let it be a surprise.
 
-## 7. After publishing
+## 8. After publishing
 
 - The artifacts are downloaded **from the release page** and the checks in step 5 are re-run against those copies. A file that was never uploaded, or was uploaded truncated, looks fine locally.
 - The project website and the docs site redeploy themselves on push to `main` (`.github/workflows/docs-pages.yml`) and need nothing here. The docs' **second** copy does ride along in the artifacts. After installing, `GET /docs` is checked to answer 301 to `/docs/`, and `/docs/` is checked to render the docs without signing in. A missing bundle fails the install, but a broken one does not.

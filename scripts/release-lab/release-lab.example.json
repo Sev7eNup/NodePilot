@@ -1,0 +1,41 @@
+{
+  "credentialPath": "C:\\lab-cred\\hyd.xml",
+  "server": {
+    "vm": "HYD-GW1",
+    "checkpoint": "CLEAN-gmsa-pg-ready-2026-09-23",
+    "fqdn": "GW1.corp.contoso.com",
+    "gmsaAccount": "corp\\q-sdvorch2$",
+    "computerAccount": "CORP\\GW1$",
+    "certificateThumbprint": "3A4F61CC84FB4CF2EBCFE99BB0DF7058852A90F1",
+    "httpsPort": 443,
+    "sqlDatabase": "NodePilot",
+    "postgres": {
+      "database": "nodepilot",
+      "role": "nodepilot",
+      "rolePassword": "<lab role password>",
+      "superUser": "postgres",
+      "superPassword": "<lab superuser password>",
+      "rootCertificate": "C:\\NP-PG\\root.crt",
+      "caName": "NodePilot Lab PG CA",
+      "psql": "C:\\PostgreSQL\\pgsql\\bin\\psql.exe",
+      "service": "postgresql-16"
+    }
+  },
+  "previousRelease": {
+    "serverSetup": "C:\\path\\to\\NodePilot-Server-Setup-<previous>.exe",
+    "preinstallRuntimes": true,
+    "preGrantSystemForLocalSql": true,
+    "canInstallPostgres": false,
+    "desktopSetup": "C:\\path\\to\\NodePilot-Desktop-Setup-<previous>.exe"
+  },
+  "remoteSql": {
+    "vm": "HYD-CM1",
+    "fqdn": "cm1.corp.contoso.com",
+    "database": "NodePilotReleaseLab",
+    "trustCertificate": "C:\\lab-cred\\cm1-sql.cer"
+  },
+  "desktop": {
+    "vm": "HYD-CLIENT1",
+    "checkpoint": "clean-before-desktop-uninstall-test"
+  }
+}
