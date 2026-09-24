@@ -41,7 +41,7 @@ public class StartProgramActivity : BaseRemoteActivity
     // Default kill timeout for wait mode, matching the documented catalog default.
     internal const int DefaultTimeoutSeconds = 300;
 
-    // Cap stdout/stderr at 1,048,576 characters each. Beyond this the buffers stop growing
+    // Cap stdout/stderr at 1,048,576 bytes each. Beyond this the buffers stop growing
     // but the pipes keep draining, so the producer doesn't block. Callers learn via
     // `OutputParameters["stdoutTruncated"|"stderrTruncated"]`.
     internal const int MaxOutputBytesPerStream = 1024 * 1024;
@@ -120,6 +120,12 @@ public class StartProgramActivity : BaseRemoteActivity
             _configuration,
             ("$__filePath", "filePath"),
             ("$__workingDir", "workingDirectory"));
+        // The program gets the machine's module path, not the one the in-process SDK rewrote for
+        // this host (see ChildProcessEnvironment). Left out with UseShellExecute: .NET rejects
+        // environment variables there.
+        var childModulePath = useShell
+            ? ""
+            : ChildProcessEnvironment.PowerShellFunction + "\n" + ChildProcessEnvironment.PowerShellApply("$psi");
 
         // Build a self-contained script that emits a JSON result block between markers.
         // Uses ProcessStartInfo directly for reliable stdout/stderr capture (Start-Process
@@ -145,15 +151,36 @@ public class StartProgramActivity : BaseRemoteActivity
                 $psi.RedirectStandardOutput = $true
                 $psi.RedirectStandardError = $true
             }
+            # Output is read as bytes and decoded at the end: valid UTF-8 as UTF-8, anything else
+            # in the OEM code page that console programs use by default.
+            $__oem = [Console]::OutputEncoding
+            try { $__oem = [System.Text.Encoding]::GetEncoding([System.Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage) } catch { }
+            function __npDecode([System.IO.MemoryStream]$buffer, [bool]$truncated) {
+                $bytes = $buffer.ToArray()
+                if ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
+                    return [System.Text.Encoding]::Unicode.GetString($bytes, 2, $bytes.Length - 2)
+                }
+                $start = if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { 3 } else { 0 }
+                $strict = New-Object System.Text.UTF8Encoding($false, $true)
+                # A cut at the cap can split the last UTF-8 character; retry without it.
+                $cuts = if ($truncated) { 0..3 } else { @(0) }
+                foreach ($cut in $cuts) {
+                    $length = $bytes.Length - $start - $cut
+                    if ($length -lt 0) { break }
+                    try { return $strict.GetString($bytes, $start, $length) } catch { }
+                }
+                return $__oem.GetString($bytes)
+            }
             if (-not $__useShell) {
                 $psi.CreateNoWindow = $true
             }
+            {{childModulePath}}
 
             $proc = New-Object System.Diagnostics.Process
             $proc.StartInfo = $psi
 
-            $stdoutBuf = New-Object System.Text.StringBuilder
-            $stderrBuf = New-Object System.Text.StringBuilder
+            $stdoutBuf = New-Object System.IO.MemoryStream
+            $stderrBuf = New-Object System.IO.MemoryStream
             $__npOutputCap = {{MaxOutputBytesPerStream}}
             $launchError = $null
             try {
@@ -170,8 +197,8 @@ public class StartProgramActivity : BaseRemoteActivity
                     if ($__capture) {
                         # Read both pipes concurrently, preserving order within each stream.
                         $streams = @(
-                            @{ Reader = $proc.StandardOutput; Buffer = [char[]]::new(4096); Output = $stdoutBuf; Pending = $null },
-                            @{ Reader = $proc.StandardError; Buffer = [char[]]::new(4096); Output = $stderrBuf; Pending = $null }
+                            @{ Reader = $proc.StandardOutput.BaseStream; Buffer = [byte[]]::new(4096); Output = $stdoutBuf; Pending = $null },
+                            @{ Reader = $proc.StandardError.BaseStream; Buffer = [byte[]]::new(4096); Output = $stderrBuf; Pending = $null }
                         )
                         foreach ($stream in $streams) {
                             $stream.Pending = $stream.Reader.ReadAsync($stream.Buffer, 0, $stream.Buffer.Length)
@@ -187,7 +214,7 @@ public class StartProgramActivity : BaseRemoteActivity
                                     } else {
                                         # Keep draining after the cap so the child cannot block on a full pipe.
                                         $take = [Math]::Min($count, $__npOutputCap - $stream.Output.Length)
-                                        if ($take -gt 0) { [void]$stream.Output.Append($stream.Buffer, 0, $take) }
+                                        if ($take -gt 0) { $stream.Output.Write($stream.Buffer, 0, $take) }
                                         $stream.Pending = $stream.Reader.ReadAsync($stream.Buffer, 0, $stream.Buffer.Length)
                                     }
                                 }
@@ -245,8 +272,8 @@ public class StartProgramActivity : BaseRemoteActivity
                     Launched = $true
                     ProcessId = $processId
                     ExitCode = $exitCode
-                    StdOut = $stdoutBuf.ToString()
-                    StdErr = $stderrBuf.ToString()
+                    StdOut = __npDecode $stdoutBuf ($stdoutBuf.Length -ge $__npOutputCap)
+                    StdErr = __npDecode $stderrBuf ($stderrBuf.Length -ge $__npOutputCap)
                     StdOutTruncated = ($stdoutBuf.Length -ge $__npOutputCap)
                     StdErrTruncated = ($stderrBuf.Length -ge $__npOutputCap)
                     Waited = $__wait
@@ -258,6 +285,35 @@ public class StartProgramActivity : BaseRemoteActivity
             {{ResultMarkers.RenderJsonEnvelope("$result", depth: 5)}}
             """;
     }
+
+    /// <summary>
+    /// A shell-executed program gets the launching process's environment, and .NET allows no
+    /// environment of its own with UseShellExecute. In the pool that environment carries the
+    /// module path the SDK rewrote, so this launch runs in a Windows PowerShell process, whose
+    /// environment has the machine's module path (see ChildProcessEnvironment). That is also the
+    /// PowerShell the script gets remotely. Everything else stays in the pool, where the script
+    /// sets the child's module path itself.
+    /// </summary>
+    /// <summary>
+    /// The script enforces the program timeout itself (kill, then the drain grace), so the run
+    /// gets that much more time. Otherwise the transport stops the script before it can report
+    /// the timeout with the program's partial output.
+    /// </summary>
+    protected override int? TransportTimeoutSeconds(JsonElement config)
+    {
+        var programTimeout = PowerShellOperation.TimeoutSecondsFromConfig(config) ?? DefaultTimeoutSeconds;
+        var configuredGrace = _configuration.GetValue<int?>("Engine:IsolatedDrainGraceSeconds");
+        var grace = configuredGrace > 0 ? configuredGrace.Value : DefaultDrainGraceSeconds;
+        return programTimeout + grace + TransportTimeoutMarginSeconds;
+    }
+
+    // Covers session setup, process start and the two-second wait after a kill.
+    internal const int TransportTimeoutMarginSeconds = 30;
+
+    protected override IPowerShellExecutionEngine SelectLocalEngine(JsonElement config)
+        => config.GetBool("useShellExecute", false)
+            ? _engineFactory.GetEngine("auto")
+            : base.SelectLocalEngine(config);
 
     protected override ActivityResult PostProcess(ActivityResult raw, JsonElement config)
     {

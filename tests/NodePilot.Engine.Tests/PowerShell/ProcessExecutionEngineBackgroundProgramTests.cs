@@ -51,6 +51,9 @@ public class ProcessExecutionEngineBackgroundProgramTests
             result.Success.Should().BeTrue(result.Error);
             result.TimedOut.Should().BeFalse();
             clean.Should().Contain("launched");
+            // The program writes into the same stream; the wrapper's values must survive that.
+            parameters.Should().ContainKey("programId");
+            parameters.Should().ContainKey("exitCode").WhoseValue.Should().Be("0");
             sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(20),
                 "the step ends with the script, not with the 60-second background program");
         }

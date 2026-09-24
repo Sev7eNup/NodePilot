@@ -84,10 +84,11 @@ public class WindowsPowerShellChildProcessTests
 
         var result = await _activity.ExecuteAsync(context, config, TestContext.Current.CancellationToken);
 
-        result.Success.Should().BeTrue(result.ErrorOutput);
+        // A non-terminating error fails the step, as over WinRM; the values are still published.
+        result.Success.Should().BeFalse();
         result.Output.Should().Contain(value);
         result.OutputParameters.Should().ContainKey("echo").WhoseValue.Should().Be(value);
         result.OutputParameters.Should().ContainKey("literal").WhoseValue.Should().Be("Größe");
-        result.ErrorOutput.Should().Contain(value);
+        result.ErrorOutput!.Trim().Should().Be(value);
     }
 }

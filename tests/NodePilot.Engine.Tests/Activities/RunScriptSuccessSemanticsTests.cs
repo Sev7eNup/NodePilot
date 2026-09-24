@@ -121,6 +121,52 @@ public class RunScriptSuccessSemanticsTests
     }
 
     [Fact]
+    public async Task ScriptLevelExit_Runspace_PublishesAssignedValuesAndExitCodeZero()
+    {
+        var result = await _activity.ExecuteAsync(Ctx(), Config("$x = 'a'; exit 5", "runspace"), CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        result.OutputParameters.Should().ContainKey("x").WhoseValue.Should().Be("a");
+        result.OutputParameters.Should().ContainKey("exitCode").WhoseValue.Should().Be("0");
+    }
+
+    [Fact]
+    public async Task ScriptLevelExit_Process_PublishesAssignedValuesAndRealExitCode()
+    {
+        var result = await _activity.ExecuteAsync(Ctx(), Config("$x = 'a'; exit 5", "powershell"), CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        result.OutputParameters.Should().ContainKey("x").WhoseValue.Should().Be("a");
+        result.OutputParameters.Should().ContainKey("exitCode").WhoseValue.Should().Be("5");
+
+        var gated = await _activity.ExecuteAsync(
+            Ctx(), Config("$x = 'a'; exit 5", "powershell", successExitCodes: "0"), CancellationToken.None);
+        gated.Success.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ScriptLevelExit_ScriptVariableNamedExitCode_DoesNotHideTheRealExitCode()
+    {
+        var result = await _activity.ExecuteAsync(
+            Ctx(), Config("$exitCode = 0; $x = 'a'; exit 5", "powershell", successExitCodes: "0"), CancellationToken.None);
+
+        result.Success.Should().BeFalse("the process exited with 5, whatever the script called $exitCode");
+        result.OutputParameters.Should().ContainKey("exitCode").WhoseValue.Should().Be("5");
+        result.OutputParameters.Should().ContainKey("x").WhoseValue.Should().Be("a");
+    }
+
+    [Fact]
+    public async Task Throw_Process_FailsButPublishesValuesAssignedBeforeIt()
+    {
+        var result = await _activity.ExecuteAsync(Ctx(), Config("$x = 'a'; throw 'boom'", "powershell"), CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.OutputParameters.Should().ContainKey("x").WhoseValue.Should().Be("a");
+        (result.ErrorOutput ?? "").Should().Contain("boom");
+        (result.Output ?? "").Should().NotContain("###NODEPILOT_");
+    }
+
+    [Fact]
     public async Task Throw_WithTranscript_FailsAndOutputHasNoMarkers()
     {
         var config = JsonDocument.Parse(

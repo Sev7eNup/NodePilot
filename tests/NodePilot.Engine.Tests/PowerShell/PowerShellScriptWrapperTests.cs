@@ -137,4 +137,31 @@ public class PowerShellScriptWrapperTests
         wrapped.Should().Contain("$__npOutAllow.Contains($_.Name)");
         wrapped.Should().NotContain("-not $__npReserved.Contains($_.Name)");
     }
+
+    [Fact]
+    public void Wrap_CapturesInAFinallySoAnEarlyExitStillPublishes()
+    {
+        var wrapped = Wrap("$x = 1");
+
+        var scriptIdx = wrapped.IndexOf("# === USER SCRIPT ===", StringComparison.Ordinal);
+        var finallyIdx = wrapped.IndexOf("finally {", StringComparison.Ordinal);
+        var captureIdx = wrapped.IndexOf("# === NODEPILOT OUTPUT CAPTURE ===", StringComparison.Ordinal);
+
+        var exitCodeIdx = wrapped.IndexOf($"Write-Output '{PowerShellScriptWrapper.ExitCodeMarker}'", StringComparison.Ordinal);
+
+        scriptIdx.Should().BeLessThan(finallyIdx);
+        finallyIdx.Should().BeLessThan(captureIdx);
+        captureIdx.Should().BeLessThan(exitCodeIdx,
+            "the exit-code marker follows the inner scope, so `exit N` skips it and `return` does not");
+    }
+
+    [Fact]
+    public void Wrap_NeverCapturesAScriptVariableNamedExitCode()
+    {
+        Wrap("$x = 1").Should().Contain("$_.Name -ne 'exitCode'");
+
+        PowerShellScriptWrapper.Wrap(
+                "$result = 1", new Dictionary<string, string>(), NullLogger.Instance, ["result"])
+            .Should().Contain("$__npOutAllow.Contains($_.Name) -and $_.Name -ne 'exitCode'");
+    }
 }

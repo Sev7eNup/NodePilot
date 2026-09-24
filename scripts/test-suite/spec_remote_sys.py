@@ -515,10 +515,11 @@ def wait_for_condition_workflow():
     steps = [
         janitor(), cid(), mkrun(),
         Step("disc", "Discover the API's own listening port", "runScript",
-             {"engine": "auto", "timeoutSeconds": 30,
+             {"engine": "runspace", "timeoutSeconds": 30,
               "script": """
-# waitForCondition probes must target something that is genuinely listening. The script
-# runs inside the API process, so the process itself is the only reliable fixture.
+# waitForCondition probes must target something that is genuinely listening. The in-process
+# engine runs the script inside the API process, so the process itself is the only reliable
+# fixture; the default engine would run it in a separate powershell.exe without a listener.
 $ownPid = [System.Diagnostics.Process]::GetCurrentProcess().Id
 $listener = Get-NetTCPConnection -State Listen -OwningProcess $ownPid -ErrorAction SilentlyContinue |
   Sort-Object LocalPort | Select-Object -First 1

@@ -20,6 +20,23 @@ public class StartProgramActivityTests
             : base(null!, null!, null!, null!, config ?? new ConfigurationBuilder().Build()) { }
         public string CallBuildScript(JsonElement config, StepExecutionContext ctx) => BuildScript(config, ctx);
         public ActivityResult CallPostProcess(ActivityResult raw, JsonElement config) => PostProcess(raw, config);
+        public int? CallTransportTimeout(JsonElement config) => TransportTimeoutSeconds(config);
+    }
+
+    [Theory]
+    [InlineData(3, null, 3 + 5 + StartProgramActivity.TransportTimeoutMarginSeconds)]
+    [InlineData(3, "10", 3 + 10 + StartProgramActivity.TransportTimeoutMarginSeconds)]
+    [InlineData(null, null, StartProgramActivity.DefaultTimeoutSeconds + 5 + StartProgramActivity.TransportTimeoutMarginSeconds)]
+    public void TransportTimeout_OutlastsTheScriptsOwnTimeoutAndDrain(int? timeoutSeconds, string? grace, int expected)
+    {
+        // The script kills the program and reports the timeout itself; the transport must not stop it first.
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Engine:IsolatedDrainGraceSeconds"] = grace })
+            .Build();
+
+        var step = timeoutSeconds is null ? Cfg(new { filePath = CmdPath }) : Cfg(new { filePath = CmdPath, timeoutSeconds });
+
+        new Accessor(config).CallTransportTimeout(step).Should().Be(expected);
     }
 
     private static IConfiguration DisallowShellExecuteConfig() =>
@@ -97,6 +114,28 @@ public class StartProgramActivityTests
         // (= 300_000 ms) instead of Process.WaitForExit's "wait forever" sentinel.
         // A stuck wait-mode process no longer pins the step indefinitely.
         script.Should().Contain($"$__timeoutMs = {StartProgramActivity.DefaultTimeoutSeconds * 1000}");
+    }
+
+    [Fact]
+    public void BuildScript_WithoutShellExecute_SetsTheChildModulePath()
+    {
+        var script = new Accessor().CallBuildScript(Cfg(new { filePath = CmdPath }), Ctx());
+
+        script.Should().Contain("function __npChildModulePath");
+        script.Should().Contain("$psi.EnvironmentVariables['PSModulePath'] = $__npModulePath");
+        script.IndexOf("$psi.EnvironmentVariables", StringComparison.Ordinal)
+            .Should().BeLessThan(script.IndexOf("$proc.StartInfo = $psi", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void BuildScript_WithShellExecute_LeavesTheEnvironmentAlone()
+    {
+        // .NET refuses environment variables together with UseShellExecute.
+        var script = new Accessor(AllowShellExecuteConfig()).CallBuildScript(
+            Cfg(new { filePath = CmdPath, useShellExecute = true }), Ctx());
+
+        script.Should().NotContain("__npChildModulePath");
+        script.Should().NotContain("EnvironmentVariables");
     }
 
     [Fact]

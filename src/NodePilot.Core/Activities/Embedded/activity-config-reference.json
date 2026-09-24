@@ -5,9 +5,9 @@
     "runScript": {
       "description": "Run a PowerShell script (hybrid: local engine, or remote via WinRM when targetMachineId is set).",
       "promptNotes": [
-        "Step success is ERROR-based: only a terminating PowerShell error (`throw`, or `Write-Error` under the wrapper's Stop preference) fails the step. An explicit `exit N` does NOT fail it — set `successExitCodes` to make a non-zero exit a failure. The exit code is always exposed as {{step.param.exitCode}} and refers to the last native command of THIS script.",
+        "Step success is ERROR-based, locally as remotely: any PowerShell error record fails the step, non-terminating ones included (`Write-Error`, a failed cmdlet). In Windows PowerShell 5.1, stderr from a native program is an error record and ends the script; merge it inside the call (`cmd /c \"tool.exe 2>&1\"`) when that is not wanted. Output is each pipeline object as text; Write-Host and warnings are not output. An explicit `exit N` does NOT fail it — set `successExitCodes` to make a non-zero exit a failure. The exit code is always exposed as {{step.param.exitCode}} and refers to the last native command of THIS script.",
         "Omit targetMachineId to run on the NodePilot host; set a non-local targetMachineId to run through the WinRM wrapper on that target. A local runScript may still use PowerShell remoting itself (Invoke-Command, New-PSSession).",
-        "Declare `$variableName = ...` at script scope to expose values downstream as {{thisStepId.param.variableName}}. Only variables this script assigns are published - an upstream parameter the script merely reads stays the output of the step that produced it, and PowerShell automatic/preference variables are never published.",
+        "Declare `$variableName = ...` at script scope to expose values downstream as {{thisStepId.param.variableName}}. Values assigned before an `exit` or `return` are still published. Only variables this script assigns are published - an upstream parameter the script merely reads stays the output of the step that produced it, and PowerShell automatic/preference variables are never published.",
         "Write real, working PowerShell — no placeholders or pseudo-code. PowerShell 5.1/7.x compatible, non-interactive (no Read-Host/Get-Credential), avoid Write-Host."
       ],
       "configKeys": [
@@ -154,6 +154,7 @@
         { "key": "timeoutSeconds", "type": "number", "required": false, "description": "Overall poll timeout." },
         { "key": "intervalSeconds", "type": "number", "required": false, "description": "Gap between two polls (default 5, minimum 1)." },
         { "key": "script", "type": "string", "required": false, "description": "PowerShell expression for conditionType=script. No {{...}} templates." },
+        { "key": "engine", "type": "string", "required": false, "description": "conditionType=script only, local runs only: auto (default, Windows PowerShell 5.1 like a remote step) | powershell | pwsh | runspace (in-process PS7 pool), as on runScript." },
         { "key": "path", "type": "string", "required": false, "description": "Path for conditionType=pathExists." },
         { "key": "serviceName", "type": "string", "required": false, "description": "Service for conditionType=serviceRunning." },
         { "key": "host", "type": "string", "required": false, "description": "Host for conditionType=portOpen." },

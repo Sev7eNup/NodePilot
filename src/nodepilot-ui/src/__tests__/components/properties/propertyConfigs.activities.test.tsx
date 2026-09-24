@@ -83,6 +83,21 @@ describe('WaitForConditionConfig', () => {
     expect(onUpdate).toHaveBeenCalledWith({ script: expect.stringContaining('Get-Service') });
   });
 
+  it('scriptMode_offersTheRunScriptEngines', () => {
+    const onUpdate = vi.fn();
+    wrap(<WaitForConditionConfig config={{}} onUpdate={onUpdate} upstreamVars={[]} />);
+
+    const engine = screen.getByDisplayValue('Default – Windows PowerShell 5.1 (same as remote)') as HTMLSelectElement;
+    expect(Array.from(engine.options).map((o) => o.value)).toEqual(['auto', 'pwsh', 'powershell', 'runspace']);
+    fireEvent.change(engine, { target: { value: 'runspace' } });
+    expect(onUpdate).toHaveBeenCalledWith({ engine: 'runspace' });
+  });
+
+  it('typedMode_hasNoEngineChoice', () => {
+    wrap(<WaitForConditionConfig config={{ conditionType: 'pathExists' }} onUpdate={vi.fn()} upstreamVars={[]} />);
+    expect(screen.queryByDisplayValue('Default – Windows PowerShell 5.1 (same as remote)')).toBeNull();
+  });
+
   it('intervalSeconds_negativeInput_clampedToOneMinimum', () => {
     // A negative value is raised to 1, so a typo cannot persist an interval below 1 and turn
     // the poll loop into a tight loop. A typed "0" takes a different path: the `|| 5` fallback

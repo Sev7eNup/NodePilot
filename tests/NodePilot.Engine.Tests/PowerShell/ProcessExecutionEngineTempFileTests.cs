@@ -47,7 +47,6 @@ public class ProcessExecutionEngineTempFileTests
     {
         if (!OperatingSystem.IsWindows()) return;
 
-        // Windows PowerShell reads a -File script without a BOM as ANSI.
         var path = Path.Combine(Path.GetTempPath(), $"nodepilot_bom_test_{Guid.NewGuid():N}.ps1");
         try
         {

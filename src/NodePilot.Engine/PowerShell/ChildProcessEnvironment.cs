@@ -16,13 +16,42 @@ internal static class ChildProcessEnvironment
 
     /// <summary>User and machine PSModulePath from the registry, or null when neither is set.</summary>
     internal static string? ModulePath()
+        => Combine(
+            Environment.GetEnvironmentVariable(ModulePathVariable, EnvironmentVariableTarget.User),
+            Environment.GetEnvironmentVariable(ModulePathVariable, EnvironmentVariableTarget.Machine));
+
+    /// <summary>
+    /// The module path rule: blank parts are dropped, the rest joined as <c>user;machine</c>, null
+    /// when nothing is left. <see cref="PowerShellFunction"/> implements the same rule in PowerShell.
+    /// </summary>
+    internal static string? Combine(string? user, string? machine)
     {
-        var parts = new[] { EnvironmentVariableTarget.User, EnvironmentVariableTarget.Machine }
-            .Select(target => Environment.GetEnvironmentVariable(ModulePathVariable, target))
-            .Where(value => !string.IsNullOrWhiteSpace(value));
+        var parts = new[] { user, machine }.Where(value => !string.IsNullOrWhiteSpace(value));
         var joined = string.Join(';', parts);
         return joined.Length == 0 ? null : joined;
     }
+
+    /// <summary>
+    /// <see cref="Combine"/> as a PowerShell function, for generated scripts that start a process
+    /// themselves. Runs on Windows PowerShell 5.1 too, because the same script also runs remotely,
+    /// where it reads the target machine's registry.
+    /// </summary>
+    internal const string PowerShellFunction = """
+        function __npChildModulePath([string]$user, [string]$machine) {
+            $parts = @($user, $machine) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            if ($parts) { $parts -join ';' } else { $null }
+        }
+        """;
+
+    /// <summary>
+    /// Script lines that set the module path on the ProcessStartInfo in <paramref name="psiVariable"/>
+    /// (e.g. <c>$psi</c>). Needs <see cref="PowerShellFunction"/> and UseShellExecute = false.
+    /// </summary>
+    internal static string PowerShellApply(string psiVariable) => $$"""
+        $__npModulePath = __npChildModulePath ([Environment]::GetEnvironmentVariable('{{ModulePathVariable}}', 'User')) ([Environment]::GetEnvironmentVariable('{{ModulePathVariable}}', 'Machine'))
+        if ($null -ne $__npModulePath) { {{psiVariable}}.EnvironmentVariables['{{ModulePathVariable}}'] = $__npModulePath }
+        else { {{psiVariable}}.EnvironmentVariables.Remove('{{ModulePathVariable}}') }
+        """;
 
     /// <summary>Replaces the module path in a <see cref="System.Diagnostics.ProcessStartInfo"/> environment.</summary>
     internal static void Apply(IDictionary<string, string?> environment)

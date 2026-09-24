@@ -45,6 +45,7 @@ public class PowerShellEngineFactory
 
         _pwsh = ProcessExecutionEngine.CreatePwsh(logger, isolatedDrainGrace);
         _windowsPowerShell = ProcessExecutionEngine.CreateWindowsPowerShell(logger, isolatedDrainGrace);
+        ProcessExecutionEngine.DeleteOrphanedTempScripts(logger);
 
         // Runspace pool sizing belongs to the process-wide PerformancePlan (hardware-derived,
         // or operator-set under manual tuning). The fallback here covers only hosts that build

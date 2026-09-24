@@ -271,6 +271,210 @@ public class StartProgramResourceCleanupTests
         }
     }
 
+    // --- Module path of the started program ------------------------------------------------
+
+    // The SDK's $PSHOME is where System.Management.Automation.dll was loaded from; opening the pool
+    // puts its Modules folder first in this process's PSModulePath.
+    private static readonly string SdkModulePath = Path.Combine(
+        Path.GetDirectoryName(typeof(System.Management.Automation.PowerShell).Assembly.Location)!, "Modules");
+
+    private static void AssertPoolPollutedTheHostModulePath() =>
+        Environment.GetEnvironmentVariable("PSModulePath").Should().ContainEquivalentOf(SdkModulePath,
+            "precondition: the open pool has put the SDK modules into the inherited module path");
+
+    // Loading a module makes a redirected powershell.exe write a progress record to stderr; that
+    // is not an error, so it is switched off to keep "stderr is empty" meaningful.
+    private static string GuidProbe(string tail = "") =>
+        "$ProgressPreference = 'SilentlyContinue'; (New-Guid).Guid" + tail;
+
+    [Fact]
+    public async Task LocalWindowsPowerShellChild_GetsItsOwnCoreModules()
+    {
+        using var engine = CreateEngine();
+        AssertPoolPollutedTheHostModulePath();
+
+        var result = await Execute(engine, new {
+            filePath = PowerShellPath,
+            arguments = EncodedCommand(GuidProbe("; $env:PSModulePath")),
+            timeoutSeconds = 30
+        }, timeoutSeconds: 40);
+
+        result.Success.Should().BeTrue(result.ErrorOutput);
+        result.OutputParameters["exitCode"].Should().Be("0");
+        result.OutputParameters["stderr"].Should().BeEmpty();
+        var lines = result.OutputParameters["stdout"].Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+        lines[0].Should().MatchRegex("^[0-9a-f-]{36}$");
+        lines[1].Should().NotContainEquivalentOf(SdkModulePath);
+    }
+
+    [Fact]
+    public async Task LocalWindowsPowerShellGrandchild_ThroughCmd_GetsItsOwnCoreModules()
+    {
+        // cmd inherits the corrected environment and passes it on.
+        using var engine = CreateEngine();
+        AssertPoolPollutedTheHostModulePath();
+
+        var result = await Execute(engine, new {
+            filePath = CmdPath,
+            arguments = $"/c {PowerShellPath} {EncodedCommand(GuidProbe())}",
+            timeoutSeconds = 30
+        }, timeoutSeconds: 40);
+
+        result.Success.Should().BeTrue(result.ErrorOutput);
+        result.OutputParameters["stderr"].Should().BeEmpty();
+        result.OutputParameters["stdout"].Trim().Should().MatchRegex("^[0-9a-f-]{36}$");
+    }
+
+    [Fact]
+    public async Task GeneratedScript_RunsUnderWindowsPowerShell51_AsOnTheWinRmPath()
+    {
+        // A remote step runs the same script in Windows PowerShell 5.1 on the target; the pool
+        // above only proves it under PowerShell 7.
+        var config = JsonSerializer.SerializeToElement(new {
+            filePath = PowerShellPath, arguments = EncodedCommand(GuidProbe()), timeoutSeconds = 30
+        });
+        var activity = new Accessor();
+        var engine = new PowerShellEngineFactory(NullLoggerFactory.Instance).GetEngine("powershell");
+
+        var raw = await engine.ExecuteAsync(new PowerShellExecutionRequest {
+            ScriptText = activity.Render(config), Engine = "powershell", Timeout = TimeSpan.FromSeconds(40)
+        }, TestContext.Current.CancellationToken);
+        raw.Output.Should().NotContain("###NODEPILOT_ERROR###", raw.Error);
+        var result = activity.Process(new ActivityResult {
+            Success = raw.Success, Output = raw.Output, ErrorOutput = raw.Error, Duration = raw.Duration
+        }, config);
+
+        result.Success.Should().BeTrue(result.ErrorOutput);
+        result.OutputParameters["stderr"].Should().BeEmpty();
+        result.OutputParameters["stdout"].Trim().Should().MatchRegex("^[0-9a-f-]{36}$");
+    }
+
+    public static TheoryData<bool, string> UmlautPrograms() => new()
+    {
+        { false, "cmd" }, { false, "powershell" }, { false, "powershell-utf8" },
+        { true, "cmd" }, { true, "powershell" }, { true, "powershell-utf8" },
+    };
+
+    [Theory]
+    [MemberData(nameof(UmlautPrograms))]
+    public async Task CapturedOutput_WithUmlauts_IsDecodedWhetherTheProgramWritesOemOrUtf8(bool inWindowsPowerShell, string program)
+    {
+        // inWindowsPowerShell: the host a remote step gets over WinRM; otherwise the local pool.
+        var config = JsonSerializer.SerializeToElement(program switch
+        {
+            "cmd" => new { filePath = CmdPath, arguments = "/c echo Größe", timeoutSeconds = 30 },
+            "powershell" => new { filePath = PowerShellPath, arguments = EncodedCommand("'Größe'"), timeoutSeconds = 30 },
+            _ => new { filePath = PowerShellPath, arguments = EncodedCommand("[Console]::OutputEncoding = [Text.Encoding]::UTF8; 'Größe'"), timeoutSeconds = 30 },
+        });
+        var activity = new Accessor();
+        using var pool = CreateEngine();
+        IPowerShellExecutionEngine engine = inWindowsPowerShell
+            ? ProcessExecutionEngine.CreateWindowsPowerShell(NullLogger.Instance)
+            : pool;
+
+        var raw = await engine.ExecuteAsync(new PowerShellExecutionRequest {
+            ScriptText = activity.Render(config), Timeout = TimeSpan.FromSeconds(40)
+        }, TestContext.Current.CancellationToken);
+        var result = activity.Process(new ActivityResult {
+            Success = raw.Success, Output = raw.Output, ErrorOutput = raw.Error, Duration = raw.Duration
+        }, config);
+
+        result.Success.Should().BeTrue(result.ErrorOutput);
+        result.OutputParameters["stdout"].Trim().Should().Be("Größe");
+    }
+
+    private static (StartProgramActivity Activity, StepExecutionContext Context) LocalhostStartProgram(
+        NodePilot.Data.NodePilotDbContext db, PowerShellEngineFactory factory)
+    {
+        var machine = new NodePilot.Core.Models.ManagedMachine
+        {
+            Id = Guid.NewGuid(), Name = "Local", Hostname = "localhost", WinRmPort = 5985, IsReachable = true,
+        };
+        db.ManagedMachines.Add(machine);
+        db.SaveChanges();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["StartProgram:DisallowShellExecute"] = "false" })
+            .Build();
+        return (new StartProgramActivity(null!, null!, db, factory, configuration),
+            new StepExecutionContext { WorkflowExecutionId = Guid.NewGuid(), StepId = "program", ResolvedMachine = machine });
+    }
+
+    [Theory]
+    [InlineData(false, "runspace")]
+    [InlineData(true, "powershell")]
+    public async Task Localhost_ShellExecuteRunsInAWindowsPowerShellProcess_OtherwiseInThePool(bool useShellExecute, string expected)
+    {
+        var used = new List<string>();
+        var factory = new PowerShellEngineFactory(
+            new RecordingEngine("pwsh", used), new RecordingEngine("powershell", used), new RecordingEngine("runspace", used));
+        using var db = NodePilot.Engine.Tests.Helpers.TestDbContext.Create();
+        var (activity, context) = LocalhostStartProgram(db, factory);
+
+        await activity.ExecuteAsync(context,
+            JsonSerializer.SerializeToElement(new { filePath = CmdPath, useShellExecute }),
+            TestContext.Current.CancellationToken);
+
+        used.Should().Equal(expected);
+    }
+
+    [Fact]
+    public async Task Localhost_ProgramTimeout_IsReportedByTheScriptWithPartialOutput()
+    {
+        using var db = NodePilot.Engine.Tests.Helpers.TestDbContext.Create();
+        var (activity, context) = LocalhostStartProgram(db, new PowerShellEngineFactory(NullLoggerFactory.Instance));
+
+        var result = await activity.ExecuteAsync(context,
+            JsonSerializer.SerializeToElement(new { filePath = Path.Join(Environment.SystemDirectory, "PING.EXE"), arguments = "-n 30 127.0.0.1", timeoutSeconds = 3 }),
+            TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeFalse();
+        result.ErrorOutput.Should().StartWith("Process or output capture timed out");
+        result.OutputParameters["processId"].Should().MatchRegex(@"^\d+$");
+        result.OutputParameters["stdout"].Should().Contain("127.0.0.1");
+    }
+
+    [Fact]
+    public async Task LocalShellExecute_ProgramGetsItsOwnCoreModules()
+    {
+        // ShellExecute cannot take an environment of its own; the launching Windows PowerShell
+        // process hands down the machine's module path instead of the pool's.
+        var factory = new PowerShellEngineFactory(NullLoggerFactory.Instance);
+        AssertPoolPollutedTheHostModulePath();
+        using var db = NodePilot.Engine.Tests.Helpers.TestDbContext.Create();
+        var (activity, context) = LocalhostStartProgram(db, factory);
+        var output = Path.Join(Path.GetTempPath(), $"np-shell-{Guid.NewGuid():N}.txt");
+        try
+        {
+            var result = await activity.ExecuteAsync(context, JsonSerializer.SerializeToElement(new {
+                filePath = PowerShellPath,
+                arguments = "-WindowStyle Hidden " + EncodedCommand(GuidProbe($" | Set-Content -LiteralPath '{output}'")),
+                useShellExecute = true,
+                timeoutSeconds = 30,
+            }), TestContext.Current.CancellationToken);
+
+            result.Success.Should().BeTrue(result.ErrorOutput);
+            result.OutputParameters["exitCode"].Should().Be("0");
+            (await File.ReadAllTextAsync(output, TestContext.Current.CancellationToken))
+                .Trim().Should().MatchRegex("^[0-9a-f-]{36}$");
+        }
+        finally
+        {
+            File.Delete(output);
+        }
+    }
+
+    private sealed class RecordingEngine(string engineType, List<string> used) : IPowerShellExecutionEngine
+    {
+        public string EngineType => engineType;
+        public bool IsAvailable => true;
+
+        public Task<PowerShellExecutionResult> ExecuteAsync(PowerShellExecutionRequest request, CancellationToken ct)
+        {
+            used.Add(engineType);
+            return Task.FromResult(new PowerShellExecutionResult { Success = true, Output = "" });
+        }
+    }
+
     private static RunspaceExecutionEngine CreateEngine() => new(NullLogger.Instance, 1, 1);
 
     private static string PsLiteral(string value) => value.Replace("'", "''");

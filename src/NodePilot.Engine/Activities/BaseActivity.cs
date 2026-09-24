@@ -57,7 +57,7 @@ public abstract class BaseRemoteActivity : IActivityExecutor
             credential = await _credentialStore.GetAsync(credentialId.Value, ct);
 
         var script = BuildScript(config, context);
-        var timeoutSeconds = PowerShellOperation.TimeoutSecondsFromConfig(config);
+        var timeoutSeconds = TransportTimeoutSeconds(config);
 
         // Localhost bypass: WinRM with implicit credentials fails on localhost (error 0x8009030e).
         // When targeting localhost without explicit credentials, run the script directly via the
@@ -91,7 +91,7 @@ public abstract class BaseRemoteActivity : IActivityExecutor
                     }));
             }
 
-            var localEngine = _engineFactory.GetBuiltInEngine();
+            var localEngine = SelectLocalEngine(config);
             var psRequest = new PowerShellExecutionRequest
             {
                 ScriptText = script,
@@ -130,6 +130,20 @@ public abstract class BaseRemoteActivity : IActivityExecutor
     }
 
     protected abstract string BuildScript(JsonElement config, StepExecutionContext context);
+
+    /// <summary>
+    /// Wall-clock budget for the whole script run, local or over WinRM. An activity whose script
+    /// enforces its own timeout overrides this so the script can report that timeout itself.
+    /// </summary>
+    protected virtual int? TransportTimeoutSeconds(JsonElement config)
+        => PowerShellOperation.TimeoutSecondsFromConfig(config);
+
+    /// <summary>
+    /// Engine for the localhost bypass: the in-process pool. An activity whose script needs a
+    /// process of its own overrides this.
+    /// </summary>
+    protected virtual IPowerShellExecutionEngine SelectLocalEngine(JsonElement config)
+        => _engineFactory.GetBuiltInEngine();
 
     /// <summary>
     /// Returns true when the given hostname points at the local machine. Covers IPv4/IPv6

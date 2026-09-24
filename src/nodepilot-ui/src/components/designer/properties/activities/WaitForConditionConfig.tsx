@@ -124,6 +124,19 @@ function ScriptModeFields({ config, onUpdate, upstreamVars = [] }: Readonly<Conf
 
   return (
     <>
+      {/* Same engines as runScript; only a local step uses it, a remote one runs in Windows PowerShell 5.1. */}
+      <Field label={t('config.runScript.engineLabel')}>
+        <select
+          value={(config.engine as string) || 'auto'}
+          onChange={(e) => onUpdate({ engine: e.target.value })}
+          className="input-field"
+        >
+          <option value="auto">{t('config.runScript.engineAuto')}</option>
+          <option value="pwsh">{t('config.runScript.enginePwsh')}</option>
+          <option value="powershell">{t('config.runScript.enginePowerShell')}</option>
+          <option value="runspace">{t('config.runScript.engineRunspace')}</option>
+        </select>
+      </Field>
       <VariableInsertField
         label={t('config.waitForCondition.conditionScriptLabel')}
         value={script}

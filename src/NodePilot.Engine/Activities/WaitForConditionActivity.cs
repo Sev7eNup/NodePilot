@@ -40,6 +40,8 @@ namespace NodePilot.Engine.Activities;
 /// Config:
 ///   conditionType     string, optional — see above (default "script")
 ///   script            string, required iff conditionType=script — PowerShell boolean expression
+///   engine            string, optional, conditionType=script only — auto (default) | powershell |
+///                     pwsh | runspace, as on runScript; ignored remotely
 ///   path              string, required iff conditionType=pathExists
 ///   serviceName       string, required iff conditionType=serviceRunning
 ///   host              string, required iff conditionType=portOpen
@@ -112,9 +114,11 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
         // are NodePilot's own expressions and stay in the in-process pool.
         var isUserScript = string.Equals(
             (config.GetStringOrNull("conditionType") ?? "script").Trim(), "script", StringComparison.OrdinalIgnoreCase);
+        var engineType = config.GetString("engine", "auto");
         var deadline = DateTime.UtcNow.AddSeconds(timeout);
         int attempts = 0;
         string? lastOutput = null;
+        string? lastError = null;
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         // A fresh session per poll instead of one held for the whole wait: WinRM servers cap
@@ -130,9 +134,18 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
             RemoteExecutionResult result;
             if (isLocalhost)
             {
-                var localEngine = isUserScript
-                    ? _engineFactory.GetEngine("auto")
-                    : _engineFactory.GetBuiltInEngine();
+                IPowerShellExecutionEngine localEngine;
+                try
+                {
+                    localEngine = isUserScript
+                        ? _engineFactory.GetEngine(engineType)
+                        : _engineFactory.GetBuiltInEngine();
+                }
+                catch (InvalidOperationException ex)
+                {
+                    // e.g. engine "pwsh" without PowerShell 7 installed.
+                    return new ActivityResult { Success = false, ErrorOutput = ex.Message };
+                }
                 var psRes = await localEngine.ExecuteAsync(new PowerShellExecutionRequest
                 {
                     ScriptText = wrapped,
@@ -153,6 +166,27 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
                 result = await session.ExecuteScriptAsync(wrapped, Math.Max(5, interval * 2), ct);
             }
             lastOutput = result.Output;
+            lastError = string.IsNullOrWhiteSpace(result.ErrorOutput) ? lastError : result.ErrorOutput;
+
+            // Locally, a missing marker with an error means the condition cannot run at all
+            // (parse error, missing engine), so waiting longer changes nothing. Remotely the same
+            // shape can be a passing connection problem, so the loop keeps polling.
+            if (isLocalhost && !HasConditionMarker(result.Output) && !string.IsNullOrWhiteSpace(result.ErrorOutput))
+            {
+                sw.Stop();
+                return new ActivityResult
+                {
+                    Success = false,
+                    ErrorOutput = $"The condition could not be evaluated: {Trim(result.ErrorOutput)}",
+                    Duration = sw.Elapsed,
+                    OutputParameters = new Dictionary<string, string>
+                    {
+                        ["attempts"] = attempts.ToString(),
+                        ["elapsedSeconds"] = sw.Elapsed.TotalSeconds.ToString("F1"),
+                        ["lastResult"] = "false",
+                    },
+                };
+            }
 
             if (ExtractBoolean(result.Output))
             {
@@ -180,11 +214,8 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
         }
 
         sw.Stop();
-        // Cap the tail of the last output to 2 KB so a chatty polling script does not
-        // pump hundreds of KB into ErrorOutput, the SignalR stream, and the support log.
-        var lastTrimmed = lastOutput?.Trim();
-        if (lastTrimmed is { Length: > MaxLastOutputChars })
-            lastTrimmed = lastTrimmed[..MaxLastOutputChars] + "…(truncated)";
+        var lastTrimmed = Trim(lastOutput);
+        var errorPart = lastError is null ? "" : $" Last error: {Trim(lastError)}";
         // Names the probe target and where it ran. Every failure mode of the typed sub-modes —
         // closed port, wrong host, a name that does not resolve — collapses into the same
         // opaque `###NODEPILOT_COND:False###`, and "localhost" means the remote machine's
@@ -196,7 +227,7 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
         return new ActivityResult
         {
             Success = false,
-            ErrorOutput = $"Timeout after {timeout}s ({attempts} attempts){probeContext}. Last script output: {lastTrimmed ?? "(none)"}",
+            ErrorOutput = $"Timeout after {timeout}s ({attempts} attempts){probeContext}. Last script output: {lastTrimmed ?? "(none)"}{errorPart}",
             Duration = sw.Elapsed,
             OutputParameters = new Dictionary<string, string>
             {
@@ -208,6 +239,14 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
     }
 
     private const int MaxLastOutputChars = 2 * 1024;
+
+    // Caps diagnostics at 2 KB so a chatty polling script does not pump hundreds of KB into
+    // ErrorOutput, the SignalR stream and the support log.
+    private static string? Trim(string? text)
+    {
+        var trimmed = text?.Trim();
+        return trimmed is { Length: > MaxLastOutputChars } ? trimmed[..MaxLastOutputChars] + "…(truncated)" : trimmed;
+    }
 
     /// <summary>
     /// Human-readable target of a typed sub-mode for the timeout message. Returns null for
@@ -253,6 +292,9 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
     // member still needs an implementation, but this code path should never be reached.
     protected override string BuildScript(JsonElement config, StepExecutionContext context)
         => throw new NotSupportedException("WaitForConditionActivity overrides ExecuteAsync and does not use BuildScript.");
+
+    private static bool HasConditionMarker(string? output)
+        => output?.Contains("###NODEPILOT_COND:", StringComparison.Ordinal) == true;
 
     private static bool ExtractBoolean(string? output)
     {

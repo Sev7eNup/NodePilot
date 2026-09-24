@@ -291,4 +291,29 @@ public class CustomActivityExecutorBranchTests
         result.OutputParameters.Should().NotContainKey("Status");
         result.OutputParameters.Should().NotContainKey("helper");
     }
+
+    [Fact]
+    public async Task EnabledDefinition_ScriptEndsWithExit_StillPublishesDeclaredOutputs()
+    {
+        await using var db = TestDbFactory.Create();
+        var store = new CustomActivityDefinitionStore(db);
+        var def = await store.CreateAsync(new CustomActivityDefinitionInput
+        {
+            Key = "early_exit",
+            Name = "Early Exit",
+            ScriptTemplate = "$Status = 'ok'; exit 0",
+            OutputParametersJson = CustomActivityParameters.Serialize([
+                new CustomActivityOutputParameter("status", "string")
+            ]),
+        }, "u", CancellationToken.None);
+        await store.SetEnabledAsync(def.Id, true, "admin", CancellationToken.None);
+
+        var result = await NewExecutor(db).ExecuteAsync(
+            Ctx(),
+            Config(new { __customDefinitionId = def.Id.ToString(), __customKey = "early_exit" }),
+            CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        result.OutputParameters.Should().ContainKey("status").WhoseValue.Should().Be("ok");
+    }
 }

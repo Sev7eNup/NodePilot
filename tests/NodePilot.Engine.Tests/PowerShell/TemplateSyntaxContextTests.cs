@@ -66,12 +66,73 @@ public class TemplateSyntaxContextTests
         Invoke(script).Should().Equal("ok");
     }
 
-    [Fact]
-    public void TemplateFollowedByAPathSuffix_IsAccepted()
-    {
-        var act = () => Resolve("Get-Item -Path {{t.output}}\\sub");
+    [Theory]
+    [InlineData("Write-Output {{t.param.n}}\\app.txt", "50\\app.txt")]
+    [InlineData("Write-Output {{t.output}}\\sub", "O'Brian\\sub")]
+    [InlineData("Write-Output {{t.param.x}}-{{t.param.y}}.log", "2-3.log")]
+    [InlineData("Write-Output {{t.param.x}}\\{{t.output}}\\x", "2\\O'Brian\\x")]
+    [InlineData("Write-Output -InputObject:{{t.param.n}}\\x", "50\\x")]
+    [InlineData("& { param($p) $p } -p {{t.param.n}}.txt", "50.txt")]
+    [InlineData("Write-Output {{t.output}}.log", "O'Brian.log")]
+    public void TemplateStartingAWord_KeepsTheWholeWordOneArgument(string template, string expected)
+        => Invoke(Resolve(template)).Should().Equal(expected);
 
-        act.Should().NotThrow();
+    [Fact]
+    public void TemplateStartingAWord_ValueWithCodeCharactersStaysText()
+    {
+        var variables = new Dictionary<string, string> { ["t.output"] = "a b; Write-Output injected $(1) \"q\" `n" };
+
+        var output = Invoke(PowerShellActivitySupport.ResolveScriptVariables("Write-Output {{t.output}}\\sub", variables));
+
+        output.Should().Equal("a b; Write-Output injected $(1) \"q\" `n\\sub");
+    }
+
+    [Theory]
+    [InlineData("$n = {{t.output}}.Length\n$n", "7")]
+    [InlineData("$u = {{t.output}}.ToUpper()\n$u", "O'BRIAN")]
+    [InlineData("Write-Output ({{t.output}} + '!')", "O'Brian!")]
+    [InlineData("Write-Output {{t.output}}.ToUpper()", "O'BRIAN")]
+    [InlineData("Write-Output {{t.output}} {{t.param.n}}", "O'Brian", "50")]
+    public void TemplateFollowedByAMemberAccessOrOperator_StaysAQuotedValue(string template, params string[] expected)
+        => Invoke(Resolve(template)).Should().Equal(expected);
+
+    [Fact]
+    public void TemplateStartingAWordWithQuotes_IsRejected()
+    {
+        var act = () => Resolve("Write-Output {{t.output}}\\'x'");
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*contains quotes*");
+    }
+
+    [Theory]
+    [InlineData("Write-Output C:\\t\\{{t.param.n}}.txt", "C:\\t\\50.txt")]
+    [InlineData("Write-Output C:\\t\\{{t.output}}.txt", "C:\\t\\O'Brian.txt")]
+    [InlineData("Write-Output https://host/api/{{t.param.x}}/{{t.param.y}}", "https://host/api/2/3")]
+    public void TemplateInsideABareword_BecomesAQuotedPartOfThatWord(string template, string expected)
+        => Invoke(Resolve(template)).Should().Equal(expected);
+
+    [Fact]
+    public void TemplateInsideABareword_ValueWithSpacesAndSeparatorsStaysOneArgument()
+    {
+        var variables = new Dictionary<string, string> { ["t.output"] = "a b; Write-Output injected" };
+
+        var output = Invoke(PowerShellActivitySupport.ResolveScriptVariables("Write-Output C:\\t\\{{t.output}}.txt", variables));
+
+        output.Should().Equal("C:\\t\\a b; Write-Output injected.txt");
+    }
+
+    [Theory]
+    [InlineData("Write-Output C:\\'a{{t.output}}b'")]
+    [InlineData("Write-Output C:\\\"a{{t.output}}b\"")]
+    [InlineData("Write-Output C:\\$env:TEMP\\{{t.output}}")]
+    [InlineData("Write-Output C:\\a`b{{t.output}}")]
+    public void TemplateInsideABarewordWithItsOwnQuotingOrVariables_IsRejected(string template)
+    {
+        // The template could sit inside a quoted or expandable part of the word, where a quoted
+        // value would close that part instead of opening its own.
+        var act = () => Resolve(template);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*unsafe or ambiguous syntax context*");
     }
 
     [Theory]

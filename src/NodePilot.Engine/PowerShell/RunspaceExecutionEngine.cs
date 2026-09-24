@@ -153,10 +153,12 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
 
         // BeginInvoke queues work without parking a ThreadPool worker. Stop can complete a
         // queued invocation without throwing, so both EndInvoke and the terminal state matter.
+        // Own output buffer: it keeps what the script wrote before a terminating error.
+        using var results = new PSDataCollection<PSObject>();
         IAsyncResult asyncResult;
         try
         {
-            asyncResult = ps.BeginInvoke();
+            asyncResult = ps.BeginInvoke<PSObject, PSObject>(null, results);
         }
         catch (Exception ex)
         {
@@ -177,7 +179,7 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
 
         try
         {
-            var results = await Task.Factory.FromAsync(asyncResult, ps.EndInvoke);
+            await Task.Factory.FromAsync(asyncResult, ps.EndInvoke);
             var invocationState = ps.InvocationStateInfo;
             if (invocationState.State == PSInvocationState.Stopped)
                 throw new PipelineStoppedException();
@@ -230,10 +232,14 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
         catch (Exception ex)
         {
             sw.Stop();
+            // A script that throws still published its output markers before the throw.
+            foreach (var r in results)
+                output.AppendLine(SafeToString(r));
             return new PowerShellExecutionResult
             {
                 Success = false,
                 ExitCode = -1,
+                Output = output.ToString().TrimEnd(),
                 Error = ex.Message,
                 Duration = sw.Elapsed,
             };

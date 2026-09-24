@@ -20,13 +20,31 @@ exhaustive.
   (Defender, WebAdministration, WindowsUpdate and others) and background jobs were unavailable.
   `auto` now starts a Windows PowerShell 5.1 process, the same PowerShell a remote step gets over
   WinRM. The in-process pool remains available as the new engine option `runspace`, which cannot
-  be combined with process isolation. Built-in activities keep using the pool.
+  be combined with process isolation. A `waitForCondition` script condition gets the same `engine`
+  setting. Built-in activities keep using the pool. **Check existing local scripts with engine
+  `auto`:** PowerShell 7 syntax (`? :`, `??`, `ForEach-Object -Parallel`,
+  `ConvertFrom-Json -AsHashtable`) and modules installed only for PowerShell 7 need engine `pwsh` or
+  `runspace` now. A script-level `exit N` is now visible as `param.exitCode` and in
+  `successExitCodes`, where the pool always reported 0.
+- **A local script step now succeeds and fails like the same script on a target machine.** Any
+  PowerShell error fails it, a non-terminating one (`Write-Error`, a failed cmdlet under
+  `Continue`) included, and stderr from a native program ends the script. `output` holds each
+  pipeline object as text; `Write-Host`, warnings and progress are no longer part of it. The
+  error text is the plain message. A relative path resolves against the NodePilot process's
+  directory, not the temp directory. A machine execution policy such as `AllSigned` no longer
+  blocks local steps, and the temporary script is deleted as soon as PowerShell has read it.
 
 ### Fixed
 
 - **`New-Guid`, `Get-FileHash` and similar commands were missing in local Windows PowerShell
-  steps.** Windows PowerShell processes inherited the module path of NodePilot's own PowerShell 7
-  and loaded its core modules. They now get the machine's module path.
+  steps**, and in a Windows PowerShell started locally by `startProgram` (directly, through
+  `cmd /c` or with `useShellExecute`). These processes inherited the module path of NodePilot's own
+  PowerShell 7 and loaded its core modules. They now get the machine's module path.
+- **A program a local script starts in the background no longer holds or corrupts the step.**
+  Started without a new window (`Start-Process -NoNewWindow`, `cmd /c start`), it shares the
+  script's output. The step now ends with the script (plus at most
+  `Engine:IsolatedDrainGraceSeconds`), and the program's lines no longer overwrite
+  `param.exitCode` or drop the other output parameters.
 - **Umlauts and other non-ASCII text were garbled in local Windows PowerShell steps**, both in the
   script and parameters and in the output. Scripts are now written with a BOM and the output is
   read as UTF-8.
@@ -34,6 +52,24 @@ exhaustive.
   "unsafe or ambiguous syntax context" although the substituted script is valid. Templates whose
   value would really change how the script parses, such as two templates written back to back, are
   still rejected.
+- **Script values survive `exit` and `return`.** A `runScript` step or custom node that ended with
+  `exit N` or a top-level `return` published none of the variables it had assigned, so a later
+  `{{step.param.x}}` failed. They are now published in every case, including after a `throw`, on
+  a target machine and with engine `runspace` too.
+  `param.exitCode` still reports the real exit code, and a script variable named `$exitCode` no
+  longer overrides it. After a top-level `return`, `param.exitCode` is the last native command's
+  code instead of 0, so `successExitCodes` applies.
+- **A template inside a word or path was rejected or split the word.** `C:\logs\{{step.param.name}}.txt`
+  failed with "unsafe or ambiguous syntax context", `{{step.param.dir}}\app.txt` passed two
+  arguments, and `{{step.param.name}}.txt` read a property `txt`. The value now becomes part of the
+  one word wherever the template stands; a method call such as `{{step.output}}.Trim()` is unchanged.
+- **A local `waitForCondition` script that cannot run fails at once** with its error instead of
+  polling until the timeout. A remote condition keeps polling and names the last error on timeout.
+- **`startProgram` garbled umlauts in captured output.** Output is now decoded as UTF-8 when the
+  program wrote UTF-8, and in the machine's OEM code page otherwise, locally and remotely.
+- **A remote `startProgram` timeout reported "The remote pipeline has been stopped."** The WinRM
+  call now outlasts the program timeout, so the step fails with "timed out" and the output
+  collected so far. A WinRM session stopped by a timeout is no longer reused.
 - **The first start after a restart failed with SQL Server on the same host.** Windows starts SQL
   Server delayed-automatic, about two minutes after boot, and NodePilot waited only 120 s for its
   database before giving up; the service's recovery action then started it a second time.

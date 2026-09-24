@@ -89,9 +89,9 @@
               "label": "Discover the API's own listening port",
               "activityType": "runScript",
               "config": {
-                "engine": "auto",
+                "engine": "runspace",
                 "timeoutSeconds": 30,
-                "script": "\n# waitForCondition probes must target something that is genuinely listening. The script\n# runs inside the API process, so the process itself is the only reliable fixture.\n$ownPid = [System.Diagnostics.Process]::GetCurrentProcess().Id\n$listener = Get-NetTCPConnection -State Listen -OwningProcess $ownPid -ErrorAction SilentlyContinue |\n  Sort-Object LocalPort | Select-Object -First 1\nif (-not $listener) { throw 'could not discover a listening port for the API process' }\n$selfPort = $listener.LocalPort.ToString()\n"
+                "script": "\n# waitForCondition probes must target something that is genuinely listening. The in-process\n# engine runs the script inside the API process, so the process itself is the only reliable\n# fixture; the default engine would run it in a separate powershell.exe without a listener.\n$ownPid = [System.Diagnostics.Process]::GetCurrentProcess().Id\n$listener = Get-NetTCPConnection -State Listen -OwningProcess $ownPid -ErrorAction SilentlyContinue |\n  Sort-Object LocalPort | Select-Object -First 1\nif (-not $listener) { throw 'could not discover a listening port for the API process' }\n$selfPort = $listener.LocalPort.ToString()\n"
               },
               "outputVariable": "disc",
               "targetMachineId": "localhost"
