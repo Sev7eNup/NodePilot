@@ -442,7 +442,7 @@ The installer performs the following steps:
 5. Render the production configuration.
 6. Set the file-system and certificate ACLs. The installation directory gets a protected ACL: SYSTEM and Administrators `FullControl`, the service account only `ReadAndExecute` — it executes the binaries, it never overwrites them. A different `-InstallPath` is checked beforehand (local, NTFS or ReFS, no junctions in the path) and re-verified after the copy; otherwise it would inherit the permissions of its parent directory, which on a dedicated volume can mean write access for all users.
 7. Create the HTTPS firewall rule.
-8. Register the Windows service with automatic start and recovery actions (with a gMSA, additionally dependent on Netlogon, so that the logon does not fail before contact with a DC). The service therefore starts without a fixed delay and instead waits for the database itself — with `Database:StartupWaitSeconds` as the upper bound, 120 seconds by default.
+8. Register the Windows service with automatic start and recovery actions (with a gMSA, additionally dependent on Netlogon, so that the logon does not fail before contact with a DC). The service therefore starts without a fixed delay and instead waits for the database itself — with `Database:StartupWaitSeconds` as the upper bound, 300 seconds by default.
 9. Start the service and check readiness.
 10. Print the admin setup token and the external-trigger API key.
 

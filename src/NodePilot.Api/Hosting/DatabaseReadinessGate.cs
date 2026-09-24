@@ -23,8 +23,11 @@ public static class DatabaseReadinessGate
     /// <summary>How long boot waits for the database to accept connections.</summary>
     public const string StartupWaitSecondsKey = "Database:StartupWaitSeconds";
 
-    /// <summary>Applies when the key is absent, empty or unparseable.</summary>
-    public static readonly TimeSpan DefaultStartupWait = TimeSpan.FromSeconds(120);
+    /// <summary>
+    /// Applies when the key is absent, empty or unparseable. Long enough for a SQL Server on the same
+    /// host, which Windows starts delayed-automatic about two minutes after boot.
+    /// </summary>
+    public static readonly TimeSpan DefaultStartupWait = TimeSpan.FromSeconds(300);
 
     /// <summary>
     /// Upper bound. Past this point an unreachable database is an operational problem, not a

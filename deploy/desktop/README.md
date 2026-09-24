@@ -40,7 +40,7 @@ Waiting for the database before the migration bootstrap used to be listed here a
 relaxation. It is not one any more: `DatabaseReadinessGate` runs in **both** deployment modes,
 because both race the same way at boot — Desktop against the bundled Postgres service, Server
 against a remote database still recovering. The bound is `Database:StartupWaitSeconds` (default
-120 s). Only reachability is retried; a migration/schema error surfaces immediately.
+300 s). Only reachability is retried; a migration/schema error surfaces immediately.
 
 > **Runtime outages:** If the bundled `NodePilotDb` service stops or hangs, the API stays up and
 > answers `503 DATABASE_UNAVAILABLE`; `/healthz/ready` returns 503 while `/healthz/database` reports

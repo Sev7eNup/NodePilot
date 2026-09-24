@@ -34,6 +34,11 @@ exhaustive.
   "unsafe or ambiguous syntax context" although the substituted script is valid. Templates whose
   value would really change how the script parses, such as two templates written back to back, are
   still rejected.
+- **The first start after a restart failed with SQL Server on the same host.** Windows starts SQL
+  Server delayed-automatic, about two minutes after boot, and NodePilot waited only 120 s for its
+  database before giving up; the service's recovery action then started it a second time.
+  `Database:StartupWaitSeconds` now defaults to 300 s. The wait runs after the service has reported
+  *Running*, so a longer bound no longer collides with the service control manager's start timeout.
 
 ## [1.4.1] - 2026-09-23
 
