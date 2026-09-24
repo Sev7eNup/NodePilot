@@ -2,7 +2,7 @@
 
 Hardening-Flags sind in `appsettings.json` standardmäßig `true`. Ein fehlender Schlüssel wird ebenfalls als `true` behandelt. `appsettings.Development.json` setzt ausgewählte Flags für lokale Entwicklung auf `false`.
 
-Ausnahme: `PrometheusScrapeAllowAnonymous` ist eine Relaxation und defaultet auf `false`.
+Zwei Ausnahmen sind Relaxations und defaulten auf `false`: `PrometheusScrapeAllowAnonymous` und `Remote:RequireWinRmSsl`. Letzteres blockt WinRM über HTTP nur, wenn der Wert wörtlich `true` ist — ein fehlender Key erlaubt es also.
 
 | Key | Default | Effect |
 |---|---|---|
