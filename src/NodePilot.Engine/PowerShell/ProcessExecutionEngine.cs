@@ -17,12 +17,11 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
     private readonly string _executable;
     private readonly ILogger _logger;
 
-    // Grace period for the isolated stdout/stderr drain AFTER the root process has exited and its
-    // job tree has been terminated. At that point no legitimate writer to the pipe remains, so an
-    // unbounded wait can only be blocked by a leaked inherited pipe handle in an unrelated process
-    // (see ProcessSpawnCoordinator). Bounding the drain converts that permanent hang into an
-    // at-most-grace wait, so the isolated step always returns. Configurable via
-    // Engine:IsolatedDrainGraceSeconds.
+    // Grace period for the stdout/stderr drain AFTER the script process has exited (isolated: and
+    // its job tree has been terminated). A read still open then is held by an inherited pipe
+    // handle: a background program the script started, or a leak in an unrelated process (see
+    // ProcessSpawnCoordinator). Bounding the drain turns that wait into an at-most-grace wait, so
+    // the step always returns. Configurable via Engine:IsolatedDrainGraceSeconds.
     private readonly TimeSpan _isolatedDrainGrace;
 
     public string EngineType { get; }
@@ -104,12 +103,19 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             };
             ChildProcessEnvironment.Apply(psi.Environment);
 
-            using var process = new Process { StartInfo = psi };
+            // Waits for the script process itself, not for pipe EOF like WaitForExitAsync does: a
+            // background program the script started without a new window (Start-Process
+            // -NoNewWindow, cmd /c start) inherits the pipes and would hold the step until it exits.
+            using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
             var stdout = new StringBuilder();
             var stderr = new StringBuilder();
+            var stdoutClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var stderrClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            process.OutputDataReceived += (_, e) => { if (e.Data is not null) stdout.AppendLine(e.Data); };
-            process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
+            process.OutputDataReceived += (_, e) => Collect(stdout, stdoutClosed, e.Data);
+            process.ErrorDataReceived += (_, e) => Collect(stderr, stderrClosed, e.Data);
+            process.Exited += (_, _) => exited.TrySetResult();
 
             _logger.LogDebug("Starting {Engine}: {File}", EngineType, tempScript);
             // Serialize with the isolated launcher's inheritable-handle window: this redirected
@@ -129,7 +135,7 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
 
             try
             {
-                await process.WaitForExitAsync(cts.Token);
+                await exited.Task.WaitAsync(cts.Token);
             }
             catch (OperationCanceledException)
             {
@@ -144,15 +150,30 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
                 {
                     Success = false,
                     ExitCode = -1,
-                    Output = stdout.ToString().TrimEnd(),
+                    Output = Snapshot(stdout).TrimEnd(),
                     Error = $"Script execution timed out after {request.Timeout!.Value.TotalSeconds:0}s",
                     TimedOut = true,
                     Duration = sw.Elapsed,
                 };
             }
 
+            // The script has exited, so everything it wrote is in the pipes. A read still open
+            // after the grace is held by a background program; keep what has been collected.
+            try
+            {
+                await Task.WhenAll(stdoutClosed.Task, stderrClosed.Task).WaitAsync(_isolatedDrainGrace, ct);
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogDebug(
+                    "{Engine} (pid {Pid}): output stayed open {Grace:0}s after the script exited; a background " +
+                    "program it started holds the pipe. Returned the collected output.",
+                    EngineType, process.Id, _isolatedDrainGrace.TotalSeconds);
+            }
+
             sw.Stop();
-            var stdoutText = stdout.ToString();
+            var stdoutText = Snapshot(stdout);
+            var stderrText = Snapshot(stderr).TrimEnd();
             return new PowerShellExecutionResult
             {
                 // Error-based success: the script "failed" only if it raised a terminating error
@@ -164,9 +185,7 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
                           && !stdoutText.Contains(PowerShellScriptWrapper.ErrorMarker, StringComparison.Ordinal),
                 ExitCode = process.ExitCode,
                 Output = stdoutText.TrimEnd(),
-                Error = DidExecute(stdoutText)
-                    ? stderr.ToString().TrimEnd()
-                    : DescribeMissingExecution(stderr.ToString().TrimEnd()),
+                Error = DidExecute(stdoutText) ? stderrText : DescribeMissingExecution(stderrText),
                 TimedOut = false,
                 Duration = sw.Elapsed,
             };
@@ -362,6 +381,19 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
         {
             return (ObserveAbandonedRead(stdoutTask), ObserveAbandonedRead(stderrTask), true);
         }
+    }
+
+    // Line callbacks of one stream arrive in order, but a snapshot may be taken while they still
+    // run, hence the lock. A null line is the stream's end.
+    private static void Collect(StringBuilder sink, TaskCompletionSource closed, string? line)
+    {
+        if (line is null) { closed.TrySetResult(); return; }
+        lock (sink) sink.AppendLine(line);
+    }
+
+    private static string Snapshot(StringBuilder sink)
+    {
+        lock (sink) return sink.ToString();
     }
 
     /// <summary>
