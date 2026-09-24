@@ -49,7 +49,7 @@ public class CustomActivityDefinition
     /// before entering the method body.</summary>
     public string ScriptTemplate { get; set; } = string.Empty;
 
-    /// <summary>auto, pwsh or powershell; forwarded to the execution engine.</summary>
+    /// <summary>auto, pwsh, powershell or runspace; forwarded to the execution engine.</summary>
     public string Engine { get; set; } = "auto";
 
     /// <summary>

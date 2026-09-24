@@ -349,16 +349,16 @@ describe('lintWorkflow - runScript execution target', () => {
 });
 
 describe('lintWorkflow — startjob-in-runspace', () => {
-  // For engine: "auto" or "runspace", the lint rule warns on scripts using
-  // Get-WindowsUpdateLog / Start-Job / Invoke-Command -AsJob, because the in-process runspace
-  // has no co-located pwsh.exe to spawn a child process from. External engines don't need this.
+  // For engine: "runspace", the lint rule warns on scripts using Get-WindowsUpdateLog /
+  // Start-Job / Invoke-Command -AsJob, because the in-process runspace has no co-located
+  // pwsh.exe to spawn a child process from. "auto" and the other engines run in a process.
 
-  it('warns when Get-WindowsUpdateLog runs in engine: auto', () => {
+  it('warns when Get-WindowsUpdateLog runs in engine: runspace', () => {
     const nodes: Node[] = [
       node('s', 0, 0, {
         activityType: 'runScript',
         label: 'Generate WindowsUpdate.log',
-        config: { engine: 'auto', script: 'Get-WindowsUpdateLog -LogPath $p -EA SilentlyContinue' },
+        config: { engine: 'runspace', script: 'Get-WindowsUpdateLog -LogPath $p -EA SilentlyContinue' },
       }),
     ];
     const { warnings } = lintWorkflow(nodes, []);
@@ -366,7 +366,18 @@ describe('lintWorkflow — startjob-in-runspace', () => {
     expect(hit).toHaveLength(1);
     expect(hit[0].nodeId).toBe('s');
     expect(hit[0].message).toContain('Get-WindowsUpdateLog');
-    expect(hit[0].message).toContain('engine: "pwsh"');
+    expect(hit[0].message).toContain('engine: "runspace"');
+  });
+
+  it('does not warn for engine: auto — it runs in a Windows PowerShell process', () => {
+    const nodes: Node[] = [
+      node('s', 0, 0, {
+        activityType: 'runScript',
+        config: { engine: 'auto', script: 'Get-WindowsUpdateLog -LogPath $p' },
+      }),
+    ];
+    const { warnings } = lintWorkflow(nodes, []);
+    expect(warnings.some((w) => w.code === 'startjob-in-runspace')).toBe(false);
   });
 
   it('warns on direct Start-Job in engine: runspace', () => {
@@ -380,11 +391,11 @@ describe('lintWorkflow — startjob-in-runspace', () => {
     expect(warnings.some((w) => w.code === 'startjob-in-runspace')).toBe(true);
   });
 
-  it('warns on Invoke-Command -AsJob in engine: auto', () => {
+  it('warns on Invoke-Command -AsJob in engine: runspace', () => {
     const nodes: Node[] = [
       node('s', 0, 0, {
         activityType: 'runScript',
-        config: { engine: 'auto', script: 'Invoke-Command -ComputerName HOST1 -ScriptBlock { Get-Date } -AsJob' },
+        config: { engine: 'runspace', script: 'Invoke-Command -ComputerName HOST1 -ScriptBlock { Get-Date } -AsJob' },
       }),
     ];
     const { warnings } = lintWorkflow(nodes, []);
@@ -402,7 +413,7 @@ describe('lintWorkflow — startjob-in-runspace', () => {
     expect(warnings.some((w) => w.code === 'startjob-in-runspace')).toBe(false);
   });
 
-  it('treats missing engine as "auto" (default)', () => {
+  it('treats missing engine as "auto" (default) and does not warn', () => {
     const nodes: Node[] = [
       node('s', 0, 0, {
         activityType: 'runScript',
@@ -410,14 +421,14 @@ describe('lintWorkflow — startjob-in-runspace', () => {
       }),
     ];
     const { warnings } = lintWorkflow(nodes, []);
-    expect(warnings.some((w) => w.code === 'startjob-in-runspace')).toBe(true);
+    expect(warnings.some((w) => w.code === 'startjob-in-runspace')).toBe(false);
   });
 
   it('does not false-positive on Stop-Job / Wait-Job standalone (operate on existing jobs, no spawn)', () => {
     const nodes: Node[] = [
       node('s', 0, 0, {
         activityType: 'runScript',
-        config: { engine: 'auto', script: 'Get-Job | Wait-Job; Get-Job | Stop-Job' },
+        config: { engine: 'runspace', script: 'Get-Job | Wait-Job; Get-Job | Stop-Job' },
       }),
     ];
     const { warnings } = lintWorkflow(nodes, []);
@@ -429,7 +440,7 @@ describe('lintWorkflow — startjob-in-runspace', () => {
     const nodes: Node[] = [
       node('s', 0, 0, {
         activityType: 'runScript',
-        config: { engine: 'auto', script: 'Write-Output "fake-Start-Job in string"' },
+        config: { engine: 'runspace', script: 'Write-Output "fake-Start-Job in string"' },
       }),
     ];
     const { warnings } = lintWorkflow(nodes, []);
@@ -447,7 +458,7 @@ describe('lintWorkflow — startjob-in-runspace', () => {
           activityType: 'runScript',
           label: 'disabled step',
           disabled: true,
-          config: { engine: 'auto', script: 'Get-WindowsUpdateLog' },
+          config: { engine: 'runspace', script: 'Get-WindowsUpdateLog' },
         },
       } as unknown as Node,
     ];

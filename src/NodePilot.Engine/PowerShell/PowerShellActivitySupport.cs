@@ -188,21 +188,21 @@ internal static class PowerShellActivitySupport
         return deduped;
     }
 
+    /// <summary>
+    /// Finds the parser context of every template in two passes over same-length surrogates, so
+    /// every source offset stays valid. Pass 1 fills each template with identifier characters,
+    /// which cannot open or close a string or comment, and classifies it. Pass 2 fills the code
+    /// templates with a quoted literal, which is what the real substitution inserts there, and
+    /// judges parse errors on that text: a bare word after a cast (<c>[int]xxxx</c>) is a parse
+    /// error, the substituted <c>[int]'50'</c> is not.
+    /// </summary>
     private static TemplateContext[] AnalyzeTemplateContexts(
         string script,
         IReadOnlyList<TemplateExpression> expressions,
         out Token[] coveringTokens,
         out bool[] nestedStrings)
     {
-        var surrogate = script.ToCharArray();
-        foreach (var expression in expressions)
-        {
-            // A run of identifier characters is lexically neutral in code and cannot close
-            // strings/comments. Keeping the exact length preserves every source offset.
-            Array.Fill(surrogate, 'x', expression.Index, expression.Length);
-        }
-
-        _ = Parser.ParseInput(new string(surrogate), out var tokens, out var parseErrors);
+        _ = Parser.ParseInput(BuildSurrogate(script, expressions, quoted: null), out var tokens, out _);
         var contexts = new TemplateContext[expressions.Count];
         coveringTokens = new Token[expressions.Count];
         nestedStrings = new bool[expressions.Count];
@@ -213,23 +213,10 @@ internal static class PowerShellActivitySupport
             var expression = expressions[i];
             var end = expression.Index + expression.Length;
 
-            var overlappingError = parseErrors.FirstOrDefault(error =>
-                error.Extent.StartOffset < end && error.Extent.EndOffset > expression.Index);
-            if (overlappingError is not null)
-            {
-                throw new InvalidOperationException(
-                    $"PowerShell template at offset {expression.Index} has an unsafe or ambiguous syntax context: " +
-                    overlappingError.Message);
-            }
-
             // Prefer the narrowest covering token. Expandable strings can contain nested
             // subexpression tokens; a template in `$()` is code, while a direct template in
             // the surrounding string is string content.
-            var token = flattenedTokens
-                .Where(candidate => candidate.Extent.StartOffset <= expression.Index
-                                    && candidate.Extent.EndOffset >= end)
-                .OrderBy(candidate => candidate.Extent.EndOffset - candidate.Extent.StartOffset)
-                .FirstOrDefault();
+            var token = NarrowestCoveringToken(flattenedTokens, expression.Index, end);
 
             if (token is null)
             {
@@ -266,8 +253,72 @@ internal static class PowerShellActivitySupport
             coveringTokens[i] = token;
         }
 
+        var quoted = contexts
+            .Select(context => context is TemplateContext.Code or TemplateContext.ExpandableStringSubexpression)
+            .ToArray();
+        _ = Parser.ParseInput(BuildSurrogate(script, expressions, quoted), out var substitutedTokens, out var parseErrors);
+        var flattenedSubstituted = FlattenTokens(substitutedTokens).ToArray();
+
+        for (var i = 0; i < expressions.Count; i++)
+        {
+            var expression = expressions[i];
+            var end = expression.Index + expression.Length;
+
+            var overlappingError = parseErrors.FirstOrDefault(error =>
+                error.Extent.StartOffset < end && error.Extent.EndOffset > expression.Index);
+            if (overlappingError is not null)
+            {
+                throw new InvalidOperationException(
+                    $"PowerShell template at offset {expression.Index} has an unsafe or ambiguous syntax context: " +
+                    overlappingError.Message);
+            }
+
+            // The substitution must not change how the script around the template parses: a
+            // quoted template stays exactly one string literal, any other keeps its pass-1 token.
+            var token = NarrowestCoveringToken(flattenedSubstituted, expression.Index, end);
+            var unchanged = quoted[i]
+                ? token is { Kind: TokenKind.StringLiteral }
+                  && token.Extent.StartOffset == expression.Index && token.Extent.EndOffset == end
+                : token is not null
+                  && token.Kind == coveringTokens[i].Kind
+                  && token.Extent.StartOffset == coveringTokens[i].Extent.StartOffset
+                  && token.Extent.EndOffset == coveringTokens[i].Extent.EndOffset;
+            if (!unchanged)
+            {
+                throw new InvalidOperationException(
+                    $"PowerShell template at offset {expression.Index} has an unsafe or ambiguous syntax context: " +
+                    "the substituted value would change how the surrounding script parses.");
+            }
+        }
+
         return contexts;
     }
+
+    /// <summary>
+    /// The script with every template replaced by a same-length run of <c>x</c>, or, where
+    /// <paramref name="quoted"/> is set, by a same-length single-quoted literal.
+    /// </summary>
+    private static string BuildSurrogate(string script, IReadOnlyList<TemplateExpression> expressions, bool[]? quoted)
+    {
+        var surrogate = script.ToCharArray();
+        for (var i = 0; i < expressions.Count; i++)
+        {
+            var expression = expressions[i];
+            Array.Fill(surrogate, 'x', expression.Index, expression.Length);
+            if (quoted?[i] == true)
+            {
+                surrogate[expression.Index] = '\'';
+                surrogate[expression.Index + expression.Length - 1] = '\'';
+            }
+        }
+        return new string(surrogate);
+    }
+
+    private static Token? NarrowestCoveringToken(Token[] tokens, int start, int end)
+        => tokens
+            .Where(candidate => candidate.Extent.StartOffset <= start && candidate.Extent.EndOffset >= end)
+            .OrderBy(candidate => candidate.Extent.EndOffset - candidate.Extent.StartOffset)
+            .FirstOrDefault();
 
     private static IEnumerable<Token> FlattenTokens(IEnumerable<Token> tokens)
     {

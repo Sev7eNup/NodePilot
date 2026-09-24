@@ -43,6 +43,7 @@ internal static partial class IsolatedProcessLauncher
 
     // --- creation flags ---
     private const uint CREATE_NO_WINDOW = 0x08000000;
+    private const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
     private const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
     private const uint STARTF_USESTDHANDLES = 0x00000100;
 
@@ -98,6 +99,7 @@ internal static partial class IsolatedProcessLauncher
         IntPtr pJob = IntPtr.Zero;
         IntPtr pHandles = IntPtr.Zero;
         IntPtr lpCommandLine = IntPtr.Zero;
+        IntPtr lpEnvironment = IntPtr.Zero;
         var attrInitialized = false;
 
         try
@@ -153,14 +155,17 @@ internal static partial class IsolatedProcessLauncher
             var commandLine = "\"" + executable + "\" " + arguments;
             lpCommandLine = Marshal.StringToHGlobalUni(commandLine);
 
+            // Own environment block instead of inheriting ours, see ChildProcessEnvironment.
+            lpEnvironment = Marshal.StringToHGlobalUni(ChildProcessEnvironment.BuildBlock());
+
             var created = CreateProcess(
                 lpApplicationName: null,
                 lpCommandLine: lpCommandLine,
                 lpProcessAttributes: IntPtr.Zero,
                 lpThreadAttributes: IntPtr.Zero,
                 bInheritHandles: true,
-                dwCreationFlags: EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW,
-                lpEnvironment: IntPtr.Zero,
+                dwCreationFlags: EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
+                lpEnvironment: lpEnvironment,
                 lpCurrentDirectory: workingDirectory,
                 lpStartupInfo: in startupInfo,
                 lpProcessInformation: out var pi);
@@ -192,6 +197,7 @@ internal static partial class IsolatedProcessLauncher
             if (pJob != IntPtr.Zero) Marshal.FreeHGlobal(pJob);
             if (pHandles != IntPtr.Zero) Marshal.FreeHGlobal(pHandles);
             if (lpCommandLine != IntPtr.Zero) Marshal.FreeHGlobal(lpCommandLine);
+            if (lpEnvironment != IntPtr.Zero) Marshal.FreeHGlobal(lpEnvironment);
             nulIn?.Dispose();
             errPipe?.Dispose();
             outPipe?.Dispose();

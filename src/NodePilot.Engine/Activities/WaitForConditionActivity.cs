@@ -108,6 +108,10 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
         }
         var isLocalhost = machine is null
             || (credential is null && IsLoopbackHostname(machine.Hostname));
+        // A "script" condition is user code and runs like a local runScript; the typed probes
+        // are NodePilot's own expressions and stay in the in-process pool.
+        var isUserScript = string.Equals(
+            (config.GetStringOrNull("conditionType") ?? "script").Trim(), "script", StringComparison.OrdinalIgnoreCase);
         var deadline = DateTime.UtcNow.AddSeconds(timeout);
         int attempts = 0;
         string? lastOutput = null;
@@ -126,7 +130,9 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
             RemoteExecutionResult result;
             if (isLocalhost)
             {
-                var localEngine = _engineFactory.GetEngine("auto");
+                var localEngine = isUserScript
+                    ? _engineFactory.GetEngine("auto")
+                    : _engineFactory.GetBuiltInEngine();
                 var psRes = await localEngine.ExecuteAsync(new PowerShellExecutionRequest
                 {
                     ScriptText = wrapped,

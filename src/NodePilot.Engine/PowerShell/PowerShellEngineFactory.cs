@@ -5,8 +5,9 @@ using NodePilot.Core.Configuration;
 namespace NodePilot.Engine.PowerShell;
 
 /// <summary>
-/// Factory that resolves the correct PowerShell execution engine based on the requested type.
-/// "auto" prefers pwsh.exe (PS7), falls back to powershell.exe (PS5.1).
+/// Resolves the PowerShell execution engine for a requested type. User scripts default ("auto")
+/// to a Windows PowerShell 5.1 process, the same PowerShell a remote step gets over WinRM.
+/// Scripts NodePilot generates itself use <see cref="GetBuiltInEngine"/>, the in-process pool.
 /// </summary>
 public class PowerShellEngineFactory
 {
@@ -67,25 +68,26 @@ public class PowerShellEngineFactory
             "pwsh" => _pwsh.IsAvailable ? _pwsh : throw new InvalidOperationException("pwsh.exe (PowerShell 7) is not installed"),
             "powershell" => _windowsPowerShell.IsAvailable ? _windowsPowerShell : throw new InvalidOperationException("powershell.exe is not available"),
             "runspace" => _runspace,
-            // "auto" prefers the in-process runspace pool over spawning pwsh.exe or
-            // powershell.exe. Runspace is PS5.1 (in-process SDK); workflows needing PS7-only
-            // features (Foreach-Object -Parallel, ternary, …) must opt in via engine: "pwsh".
-            "auto" => _runspace.IsAvailable ? _runspace
-                : (_pwsh.IsAvailable ? _pwsh : _windowsPowerShell),
-            _ => _runspace.IsAvailable ? _runspace
-                : (_pwsh.IsAvailable ? _pwsh : _windowsPowerShell),
+            // "auto" and unknown values: Windows PowerShell 5.1, so a local step sees the same
+            // modules as the same script run remotely.
+            _ => _windowsPowerShell.IsAvailable ? _windowsPowerShell
+                : (_pwsh.IsAvailable ? _pwsh : _runspace),
         };
     }
 
     /// <summary>
     /// Resolves an engine for an optionally process-isolated request. False
-    /// <paramref name="isolated"/> delegates to the legacy overload. True requires an
+    /// <paramref name="isolated"/> delegates to the plain overload. True requires an
     /// out-of-process host (the runspace pool cannot isolate a crash), so it throws instead of
-    /// silently degrading to the un-isolated pool when no pwsh/powershell host is available.
+    /// silently degrading to the un-isolated pool.
     /// </summary>
     public IPowerShellExecutionEngine GetEngine(string engineType, bool isolated)
     {
         if (!isolated) return GetEngine(engineType);
+
+        if (string.Equals(engineType, "runspace", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                "The in-process engine (runspace) cannot run isolated. Choose another engine or turn isolation off.");
 
         if (string.Equals(engineType, "powershell", StringComparison.OrdinalIgnoreCase))
             return _windowsPowerShell.IsAvailable
@@ -97,10 +99,19 @@ public class PowerShellEngineFactory
                 ? _pwsh
                 : throw new InvalidOperationException("pwsh.exe (PowerShell 7) is not available for isolated execution.");
 
-        // auto, runspace, and unknown all force a process engine, never the in-process pool.
-        if (_pwsh.IsAvailable) return _pwsh;
+        // auto and unknown: Windows PowerShell 5.1 first, as in the non-isolated case.
         if (_windowsPowerShell.IsAvailable) return _windowsPowerShell;
+        if (_pwsh.IsAvailable) return _pwsh;
         throw new InvalidOperationException(
             "Process-isolated execution requested but no PowerShell host (pwsh.exe / powershell.exe) is available.");
     }
+
+    /// <summary>
+    /// Engine for scripts NodePilot generates itself (the built-in activities' localhost path,
+    /// typed waitForCondition probes). They are written for the in-process pool, which avoids a
+    /// process spawn per call; a process engine takes over only if the pool failed to start.
+    /// </summary>
+    public IPowerShellExecutionEngine GetBuiltInEngine()
+        => _runspace.IsAvailable ? _runspace
+            : (_pwsh.IsAvailable ? _pwsh : _windowsPowerShell);
 }

@@ -12,6 +12,29 @@ exhaustive.
 
 ## [Unreleased]
 
+### Changed
+
+- **Local scripts run in Windows PowerShell 5.1, like remote ones.** A `runScript` step or custom
+  node without a target machine, and a `waitForCondition` script condition, used to run in the
+  in-process PowerShell 7 pool with engine `auto`. There, Windows modules without a Core flag
+  (Defender, WebAdministration, WindowsUpdate and others) and background jobs were unavailable.
+  `auto` now starts a Windows PowerShell 5.1 process, the same PowerShell a remote step gets over
+  WinRM. The in-process pool remains available as the new engine option `runspace`, which cannot
+  be combined with process isolation. Built-in activities keep using the pool.
+
+### Fixed
+
+- **`New-Guid`, `Get-FileHash` and similar commands were missing in local Windows PowerShell
+  steps.** Windows PowerShell processes inherited the module path of NodePilot's own PowerShell 7
+  and loaded its core modules. They now get the machine's module path.
+- **Umlauts and other non-ASCII text were garbled in local Windows PowerShell steps**, both in the
+  script and parameters and in the output. Scripts are now written with a BOM and the output is
+  read as UTF-8.
+- **A template after a type cast was rejected.** `$n = [int]{{step.param.count}}` failed with
+  "unsafe or ambiguous syntax context" although the substituted script is valid. Templates whose
+  value would really change how the script parses, such as two templates written back to back, are
+  still rejected.
+
 ## [1.4.1] - 2026-09-23
 
 A server-setup release. Every identity/database combination (gMSA or LocalSystem, SQL Server or

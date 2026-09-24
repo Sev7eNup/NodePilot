@@ -28,6 +28,14 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
     public string EngineType { get; }
     public bool IsAvailable { get; }
 
+    /// <summary>
+    /// First line of every temp script. Windows PowerShell writes redirected output in the OEM code
+    /// page, while this engine reads UTF-8. Not part of the shared wrapper: in the in-process pool it
+    /// would switch the console encoding of the API host.
+    /// </summary>
+    internal const string OutputEncodingPrelude =
+        "try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch { }\r\n";
+
     // internal (not private) so tests can construct an engine pointing at a deliberately invalid
     // executable to exercise the isolated native-failure catch path, and inject a tiny drain grace
     // to exercise the leaked-handle drain-timeout path fast. InternalsVisibleTo grants
@@ -77,7 +85,8 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
         try
         {
             tempScript = Path.Combine(Path.GetTempPath(), $"nodepilot_{Guid.NewGuid():N}.ps1");
-            var wrappedScript = PowerShellScriptWrapper.Wrap(request.ScriptText, request.Parameters, _logger, request.OutputCaptureAllowlist);
+            var wrappedScript = OutputEncodingPrelude
+                + PowerShellScriptWrapper.Wrap(request.ScriptText, request.Parameters, _logger, request.OutputCaptureAllowlist);
 
             await WritePrivateScriptAsync(tempScript, wrappedScript, ct);
 
@@ -93,6 +102,7 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8,
             };
+            ChildProcessEnvironment.Apply(psi.Environment);
 
             using var process = new Process { StartInfo = psi };
             var stdout = new StringBuilder();
@@ -192,7 +202,8 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
         try
         {
             tempScript = Path.Combine(Path.GetTempPath(), $"nodepilot_{Guid.NewGuid():N}.ps1");
-            var wrappedScript = PowerShellScriptWrapper.Wrap(request.ScriptText, request.Parameters, _logger, request.OutputCaptureAllowlist);
+            var wrappedScript = OutputEncodingPrelude
+                + PowerShellScriptWrapper.Wrap(request.ScriptText, request.Parameters, _logger, request.OutputCaptureAllowlist);
             await WritePrivateScriptAsync(tempScript, wrappedScript, ct);
 
             var args = $"-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{tempScript}\"";
@@ -460,6 +471,8 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             createdFile = true;
             ApplyRestrictiveAcl(path);
 
+            // With a BOM: Windows PowerShell reads a -File script without one as ANSI.
+            await stream.WriteAsync(Encoding.UTF8.GetPreamble(), ct);
             var bytes = Encoding.UTF8.GetBytes(content);
             await stream.WriteAsync(bytes, ct);
             await stream.FlushAsync(ct);

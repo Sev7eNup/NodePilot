@@ -11,7 +11,7 @@ import { authoredParamNames, typeDerivedParamNames } from './upstreamVariables';
 const HYBRID_LOCAL_ACTIVITY_TYPES = new Set(['runScript', 'waitForCondition']);
 
 // Cmdlets and patterns that internally spawn `Start-Job` or another background-job worker.
-// The in-process runspace (engine: "auto" / "runspace") has no co-located pwsh.exe, so
+// The in-process runspace (engine: "runspace") has no co-located pwsh.exe, so
 // Start-Job fails there. Lint warns the author instead of letting the step fail at runtime.
 // `Wait-Job` and `Receive-Job` are not listed: without a preceding Start-Job they are valid
 // operations on job objects from other sources.
@@ -379,18 +379,19 @@ export function lintWorkflow(
   }
 
   // ---- runScript: Start-Job / background jobs in the in-process engine -------
-  // The in-process runspace (engine: "auto" or "runspace") runs inside the API process and has
-  // no co-located pwsh.exe, so any cmdlet that internally calls `Start-Job` fails. This is by
+  // The in-process runspace (engine: "runspace") runs inside the API process and has no
+  // co-located pwsh.exe, so any cmdlet that internally calls `Start-Job` fails. This is by
   // design for hosted PowerShell. `-EA SilentlyContinue` hides the error only while transcript
   // wrapping is off, because Start-Transcript bypasses the error-stream interception. The
-  // author either sets engine: "pwsh" or uses a job-free alternative.
+  // author switches to a process engine ("auto" = Windows PowerShell 5.1, or "pwsh") or uses a
+  // job-free alternative. "auto" itself runs in a process and is not affected.
   for (const n of liveNodes) {
     const d = (n.data as Record<string, unknown>) ?? {};
     if ((d.disabled as boolean) === true) continue;
     if ((d.activityType as string) !== 'runScript') continue;
     const cfg = (d.config as Record<string, unknown>) ?? {};
     const engine = ((cfg.engine as string) || 'auto').toLowerCase();
-    if (engine !== 'auto' && engine !== 'runspace') continue;
+    if (engine !== 'runspace') continue;
     const script = (cfg.script as string) || '';
     if (!script) continue;
     const hit = STARTJOB_HOSTED_INCOMPATIBLE.find((p) => p.pattern.test(script));

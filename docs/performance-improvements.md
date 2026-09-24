@@ -1233,7 +1233,15 @@ Gegenprobe: Desktop-Install (eigene DB ohne Dauertests, Pool 8/64) nach 24 h fla
    `System.Management.Automation.dll` gelegt (Build- und Publish-Layout). Künftige Desktop-only-
    Cmdlets scheitern **laut** („…disabled in the settings file") statt still zu leaken;
    explizites `Import-Module -UseWindowsPowerShell` bleibt möglich. `powershell.exe`/`pwsh`-
-   Prozess-Engines haben eigenes `$PSHOME` und sind nicht betroffen.
+   Prozess-Engines haben eigenes `$PSHOME` und sehen die Datei nicht. Den prozessweiten
+   `PSModulePath`, den das SDK beim Öffnen des Pools umschreibt, bekommen sie trotzdem nicht:
+   `ChildProcessEnvironment` setzt ihn für jedes Kind auf den Registry-Wert.
+
+**Standard-Engine für Nutzerskripte:** `runScript`, Custom Activities und `waitForCondition`
+(`conditionType: script`) laufen bei `engine: auto` als Windows-PowerShell-5.1-Prozess — gleiche
+Module wie remote über WinRM. Das kostet einen Prozessstart pro Step. Der Pool bleibt Standard
+für die eingebauten Activities (`GetBuiltInEngine()`) und ist für Nutzerskripte über
+`engine: runspace` wählbar, wo ein Skript nur Core-Module braucht und die Latenz zählt.
 
 Wächter-Tests: `RunspaceEngineWinCompatTests` — (a) Archive-Roundtrip muss aus `PSModules\`
 kommen, (b) expliziter Import der Desktop-only-System32-Kopie muss mit der Settings-File-Meldung

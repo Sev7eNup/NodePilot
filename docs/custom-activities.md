@@ -11,8 +11,10 @@ script engine and no new backend execution path.
 ## Concepts
 
 - **Definition** (`CustomActivityDefinition`): the reusable template — name, immutable `Key`, icon,
-  optional accent colour, PowerShell `ScriptTemplate`, engine, remote/isolation flags, default
-  timeout, success exit codes, declared input/output parameters.
+  optional accent colour, PowerShell `ScriptTemplate`, engine (`auto`/`powershell` = Windows
+  PowerShell 5.1, `pwsh`, `runspace` = in-process pool, same meaning as on `runScript`;
+  `runspace` cannot be combined with isolation), remote/isolation flags, default timeout, success
+  exit codes, declared input/output parameters.
 - **Activity type**: a node referencing a definition carries `activityType = "custom:<Key>"`
   end-to-end. The definition is linked via `config.__customDefinitionId` (authoritative) plus
   `config.__customKey` (drift cross-check).

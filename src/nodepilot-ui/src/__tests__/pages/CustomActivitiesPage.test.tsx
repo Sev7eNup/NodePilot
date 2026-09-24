@@ -336,6 +336,26 @@ describe('CustomActivitiesPage', () => {
     expect(postedBody).toMatchObject({ key: 'my-node', name: 'My Node', scriptTemplate: 'Get-PSDrive C' });
   });
 
+  it('createDialog_inProcessEngine_turnsIsolationOffAndLocksIt', async () => {
+    seed([]);
+    renderPage('Admin');
+    await waitFor(() => expect(screen.getByRole('button', { name: /New Custom Node/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /New Custom Node/i }));
+
+    const dialog = screen.getByRole('heading', { name: /Create custom node/i }).parentElement as HTMLElement;
+    const engine = within(dialog).getByDisplayValue('Default – Windows PowerShell 5.1 (same as remote)') as HTMLSelectElement;
+    const isolated = within(dialog).getByRole('checkbox', { name: /Run isolated/i }) as HTMLInputElement;
+
+    fireEvent.click(isolated);
+    expect(isolated.checked).toBe(true);
+
+    fireEvent.change(engine, { target: { value: 'runspace' } });
+
+    expect(isolated.checked).toBe(false);
+    expect(isolated.disabled).toBe(true);
+    expect(within(dialog).getByText('In-process runs inside the NodePilot process itself and cannot be isolated.')).toBeInTheDocument();
+  });
+
   it('createDialog_fieldsUseThePageDialogOutlineStyle_notTheRecessedInputField', async () => {
     // `.input-field` is the recessed designer-panel style, which needs a raised surface to
     // sink into. ModalShell only provides that lift in the dark skins, so `light-grey`

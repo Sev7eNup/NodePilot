@@ -61,7 +61,7 @@ public abstract class BaseRemoteActivity : IActivityExecutor
 
         // Localhost bypass: WinRM with implicit credentials fails on localhost (error 0x8009030e).
         // When targeting localhost without explicit credentials, run the script directly via the
-        // local PowerShell engine — same path that RunScriptActivity uses for local scripts.
+        // built-in engine (in-process pool): these scripts are NodePilot's own, not user code.
         //
         // Localhost execution is intentional: NodePilot also acts as a self-service
         // orchestrator for the host it runs on, so localhost targets must always work, even
@@ -91,7 +91,7 @@ public abstract class BaseRemoteActivity : IActivityExecutor
                     }));
             }
 
-            var localEngine = _engineFactory.GetEngine("auto");
+            var localEngine = _engineFactory.GetBuiltInEngine();
             var psRequest = new PowerShellExecutionRequest
             {
                 ScriptText = script,

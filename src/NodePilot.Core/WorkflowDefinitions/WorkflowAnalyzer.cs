@@ -265,10 +265,9 @@ public static class WorkflowAnalyzer
             if (!string.Equals(node.Type, "runScript", StringComparison.Ordinal)) continue;
 
             var config = node.Data.Config;
-            var engine = TryGetString(config, "engine", out var rawEngine) && !string.IsNullOrWhiteSpace(rawEngine)
-                ? rawEngine!.ToLowerInvariant()
-                : "auto";
-            if (engine is not ("auto" or "runspace")) continue;
+            // Only the explicit in-process engine; "auto" runs in a Windows PowerShell process.
+            if (!TryGetString(config, "engine", out var engine)
+                || !string.Equals(engine, "runspace", StringComparison.OrdinalIgnoreCase)) continue;
             if (!TryGetString(config, "script", out var script) || string.IsNullOrWhiteSpace(script)) continue;
 
             var hit = StartJobHostedIncompatible.FirstOrDefault(p => p.Pattern.IsMatch(script!));
@@ -278,7 +277,7 @@ public static class WorkflowAnalyzer
                 "warning",
                 "startjob-in-runspace",
                 node.Id,
-                $"Script calls {hit.CmdletName}, which starts a background job. The hosted runspace engine ('{engine}') cannot run job-spawning cmdlets; set config.engine to 'pwsh' or remove the job-spawning command."));
+                $"Script calls {hit.CmdletName}, which starts a background job. The in-process engine ('runspace') cannot run job-spawning cmdlets; set config.engine to 'auto' (Windows PowerShell 5.1) or 'pwsh', or remove the job-spawning command."));
         }
     }
 

@@ -12,7 +12,7 @@
       ],
       "configKeys": [
         { "key": "script", "type": "string", "required": true, "description": "PowerShell script body. Reference upstream values as {{step.output}} — inserted already single-quoted, so do NOT wrap in quotes." },
-        { "key": "engine", "type": "string", "required": false, "description": "auto | runspace | pwsh | powershell. 'pwsh' spawns an external PS7 process (needed for Start-Job); 'powershell' spawns Windows PowerShell 5.1, which imported SCOrch scripts are written against." },
+        { "key": "engine", "type": "string", "required": false, "description": "auto | powershell | pwsh | runspace. 'auto' (default) and 'powershell' spawn Windows PowerShell 5.1, the same PowerShell a remote step gets over WinRM, with every module installed on the host. 'pwsh' spawns an external PS7 process. 'runspace' runs in the in-process PS7 pool: fastest, but only modules marked Core-compatible load, and it cannot be combined with isolated." },
         { "key": "timeoutSeconds", "type": "number", "required": false, "description": "Per-step timeout." },
         { "key": "isolated", "type": "boolean", "required": false, "description": "Local-only: run process-isolated in a Windows Job Object (crash/leak containment, no orphaned processes). No-op on the remote/WinRM path." },
         { "key": "successExitCodes", "type": "string", "required": false, "description": "Comma-separated exit codes treated as success (e.g. \"0\" or \"0,1\"). Makes any other non-zero exit a failure." },

@@ -67,7 +67,7 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
     {
         var (icon, engine, inputs, outputs) = NormalizePayload(request.Icon, request.Engine, request.Inputs, request.Outputs);
 
-        var error = CustomActivityValidation.Validate(request.Key, request.Name, icon, engine, inputs, outputs, requireKey: true);
+        var error = CustomActivityValidation.Validate(request.Key, request.Name, icon, engine, request.Isolated, inputs, outputs, requireKey: true);
         if (error is not null) return BadRequest(new { message = error });
         if (string.IsNullOrWhiteSpace(request.ScriptTemplate))
             return BadRequest(new { message = "ScriptTemplate is required." });
@@ -98,7 +98,7 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
 
         var (icon, engine, inputs, outputs) = NormalizePayload(request.Icon, request.Engine, request.Inputs, request.Outputs);
 
-        var error = CustomActivityValidation.Validate(null, request.Name, icon, engine, inputs, outputs, requireKey: false);
+        var error = CustomActivityValidation.Validate(null, request.Name, icon, engine, request.Isolated, inputs, outputs, requireKey: false);
         if (error is not null) return BadRequest(new { message = error });
         if (string.IsNullOrWhiteSpace(request.ScriptTemplate))
             return BadRequest(new { message = "ScriptTemplate is required." });
@@ -209,7 +209,7 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
         foreach (var item in envelope.Items)
         {
             var (icon, engine, inputs, outputs) = NormalizePayload(item.Icon, item.Engine, item.Inputs, item.Outputs);
-            if (CustomActivityValidation.Validate(item.Key, item.Name, icon, engine, inputs, outputs, requireKey: true) is not null)
+            if (CustomActivityValidation.Validate(item.Key, item.Name, icon, engine, item.Isolated, inputs, outputs, requireKey: true) is not null)
                 continue; // skip malformed entries
             if (await store.GetByKeyAsync(item.Key, ct) is not null)
                 continue; // skip key collisions

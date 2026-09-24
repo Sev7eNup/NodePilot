@@ -149,6 +149,29 @@ public class RunScriptSuccessSemanticsTests
         (result.ErrorOutput ?? "").Should().NotBeNullOrWhiteSpace("the step must say why it failed");
     }
 
+    [Fact]
+    public async Task NoEngineConfigured_RunsInWindowsPowerShellLikeARemoteStep()
+    {
+        var config = JsonDocument.Parse("{\"script\": \"$edition = [string]$PSVersionTable.PSEdition\"}").RootElement;
+
+        var result = await _activity.ExecuteAsync(Ctx(), config, CancellationToken.None);
+
+        result.Success.Should().BeTrue(result.ErrorOutput);
+        result.OutputParameters.Should().ContainKey("edition").WhoseValue.Should().Be("Desktop");
+    }
+
+    [Fact]
+    public async Task RunspaceEngineIsolated_FailsTheStepWithTheReason()
+    {
+        var config = JsonDocument.Parse(
+            "{\"script\": \"Write-Output 'never'\", \"engine\": \"runspace\", \"isolated\": true}").RootElement;
+
+        var result = await _activity.ExecuteAsync(Ctx(), config, CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.ErrorOutput.Should().Contain("cannot run isolated");
+    }
+
     [Theory]
     [InlineData("runspace")]
     [InlineData("powershell")]

@@ -27,7 +27,7 @@
     "unknownTemplateRef": "\"{{label}}\" references {{reference}}, but that step does not exist (or has a different name). Typo, or was the outputVariable renamed?",
     "missingRequiredConfig": "\"{{label}}\": {{detail}}",
     "missingTargetMachine": "\"{{label}}\": remote activities need a target machine (targetMachineId).",
-    "startJobInRunspace": "\"{{label}}\": the script calls {{cmdlet}}, which starts a background job (Start-Job) internally and needs an external pwsh.exe. The in-process runspace (engine: \"{{engine}}\") does not support that. Set engine: \"pwsh\" in the activity config.",
+    "startJobInRunspace": "\"{{label}}\": the script calls {{cmdlet}}, which starts a background job (Start-Job) internally. The in-process engine (engine: \"{{engine}}\") does not support that. Choose the default engine (Windows PowerShell 5.1) or PowerShell 7.",
     "unknownWorkflowRef": "\"{{label}}\": workflow \"{{reference}}\" not found. Typo, or was it deleted?",
     "edgeToDisabled": "This edge points at a disabled step, which never runs.",
     "disabledWithDownstream": "\"{{label}}\" is disabled but still has outgoing connections, so the steps after it are skipped too. Remove the edges or enable the step again.",

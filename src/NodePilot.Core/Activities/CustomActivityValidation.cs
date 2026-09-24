@@ -20,7 +20,7 @@ public static partial class CustomActivityValidation
     private static partial Regex IconRegex();
 
     private static readonly IReadOnlySet<string> AllowedEngines =
-        new HashSet<string>(StringComparer.Ordinal) { "auto", "pwsh", "powershell" };
+        new HashSet<string>(StringComparer.Ordinal) { "auto", "pwsh", "powershell", "runspace" };
 
     // Names that collide with wrapper-injected or reserved PowerShell variables, or with exitCode.
     private static readonly IReadOnlySet<string> ReservedParamNames =
@@ -35,6 +35,7 @@ public static partial class CustomActivityValidation
         string name,
         string icon,
         string engine,
+        bool isolated,
         IReadOnlyList<CustomActivityInputParameter> inputs,
         IReadOnlyList<CustomActivityOutputParameter> outputs,
         bool requireKey)
@@ -52,7 +53,11 @@ public static partial class CustomActivityValidation
             return "Icon must be a Material Symbol name ([a-z0-9_], max 60).";
 
         if (!AllowedEngines.Contains(engine))
-            return "Engine must be one of: auto, pwsh, powershell.";
+            return "Engine must be one of: auto, pwsh, powershell, runspace.";
+
+        // The in-process pool shares the API host and cannot contain a script.
+        if (isolated && engine == "runspace")
+            return "The in-process engine (runspace) cannot run isolated. Choose another engine or turn isolation off.";
 
         var inputNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var p in inputs)

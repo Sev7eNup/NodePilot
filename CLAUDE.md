@@ -43,7 +43,7 @@ NodePilot ist ein Single-Contributor-Projekt. KI darf beim Entwickeln helfen (di
 
 - **Backend:** ASP.NET Core Web API, .NET 10, Windows-only (`net10.0-windows`)
 - **Datenbank:** PostgreSQL (default) / SQL Server (`Database:Provider` = `postgres` | `sqlserver`). SQLite nur als Test-In-Memory-Backend.
-- **Remote Execution:** PowerShell SDK / WinRM, agentless. `Remote:Provider`: `winrm` (default) | `noop` (`noop` braucht `Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1`, sonst Boot-Abbruch). Engine-local In-Proc-Pool (WinPS-Kompatibilität bewusst aus): `docs/performance-improvements.md`
+- **Remote Execution:** PowerShell SDK / WinRM, agentless. `Remote:Provider`: `winrm` (default) | `noop` (`noop` braucht `Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1`, sonst Boot-Abbruch). Lokale Nutzerskripte (`engine: auto`) laufen als Windows-PowerShell-5.1-Prozess wie remote; der In-Proc-Pool (WinPS-Kompatibilität bewusst aus) bedient die eingebauten Activities und `engine: runspace`: `docs/claude-reference.md`
 - **Real-time:** SignalR (`/hubs/execution`)
 - **Logging:** Serilog. Format via `Logging:Format`: `text`|`cmtrace`|`json`|`ecs-json` (ECS 1.x für SIEM, siehe `docs/siem-logging.md`). Support-Log: File + DB-Projektion
 - **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 102 Tools, HTTP-only gegen die REST-API

@@ -102,7 +102,7 @@ public class CustomActivityTypeAndValidationTests
     [Fact]
     public void Validate_RejectsOutputNamedExitCode()
     {
-        var error = CustomActivityValidation.Validate("k", "K", "extension", "auto",
+        var error = CustomActivityValidation.Validate("k", "K", "extension", "auto", false,
             [], [new CustomActivityOutputParameter("exitCode", "number")], requireKey: true);
         error.Should().NotBeNull();
     }
@@ -110,7 +110,7 @@ public class CustomActivityTypeAndValidationTests
     [Fact]
     public void Validate_RejectsOverlappingInputOutputNames()
     {
-        var error = CustomActivityValidation.Validate("k", "K", "extension", "auto",
+        var error = CustomActivityValidation.Validate("k", "K", "extension", "auto", false,
             [new CustomActivityInputParameter("dup", "Dup", "string")],
             [new CustomActivityOutputParameter("dup", "string")], requireKey: true);
         error.Should().NotBeNull();
@@ -119,7 +119,7 @@ public class CustomActivityTypeAndValidationTests
     [Fact]
     public void Validate_RejectsBadParamName()
     {
-        var error = CustomActivityValidation.Validate("k", "K", "extension", "auto",
+        var error = CustomActivityValidation.Validate("k", "K", "extension", "auto", false,
             [new CustomActivityInputParameter("bad-name", "Bad", "string")], [], requireKey: true);
         error.Should().NotBeNull();
     }
@@ -127,7 +127,7 @@ public class CustomActivityTypeAndValidationTests
     [Fact]
     public void Validate_AcceptsValidDefinition()
     {
-        var error = CustomActivityValidation.Validate("disk_check", "Disk Check", "extension", "auto",
+        var error = CustomActivityValidation.Validate("disk_check", "Disk Check", "extension", "auto", false,
             [new CustomActivityInputParameter("path", "Path", "string", Required: true)],
             [new CustomActivityOutputParameter("status", "string")], requireKey: true);
         error.Should().BeNull();
@@ -243,6 +243,22 @@ public class CustomActivityExecutorBranchTests
 
         result.Success.Should().BeFalse();
         result.ErrorOutput.Should().Contain("requires a target machine");
+    }
+
+    [Fact]
+    public async Task RunspaceEngineIsolated_FailsCleanly()
+    {
+        await using var db = TestDbFactory.Create();
+        var store = new CustomActivityDefinitionStore(db);
+        var def = await store.CreateAsync(new CustomActivityDefinitionInput
+        { Key = "in_process", Name = "P", ScriptTemplate = "x", Engine = "runspace", Isolated = true }, "u", CancellationToken.None);
+        await store.SetEnabledAsync(def.Id, true, "admin", CancellationToken.None);
+
+        var result = await NewExecutor(db).ExecuteAsync(
+            Ctx(), Config(new { __customDefinitionId = def.Id.ToString(), __customKey = "in_process" }), CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.ErrorOutput.Should().Contain("cannot run isolated");
     }
 
     [Fact]

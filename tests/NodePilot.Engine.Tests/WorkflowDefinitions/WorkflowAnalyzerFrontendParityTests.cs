@@ -264,13 +264,30 @@ public sealed class WorkflowAnalyzerFrontendParityTests
         {"nodes":[
           {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"Start","config":{}}},
           {"id":"script","type":"activity","data":{"activityType":"runScript","label":"Script",
-            "config":{"engine":"auto","script":"Start-Job { Get-Process }"}}}],
+            "config":{"engine":"runspace","script":"Start-Job { Get-Process }"}}}],
          "edges":[{"id":"e1","source":"t","target":"script"}]}
         """));
 
         result.Ok.Should().BeTrue();
         result.Findings.Should().Contain(f =>
             f.Code == "startjob-in-runspace" && f.Severity == "warning" && f.NodeId == "script");
+    }
+
+    [Theory]
+    [InlineData("\"engine\":\"auto\",")]
+    [InlineData("")]
+    public void AnalyzeWorkflow_StartJobWithDefaultEngine_DoesNotWarn(string engine)
+    {
+        // "auto" runs in a Windows PowerShell process, which can start jobs.
+        var result = WorkflowAnalyzer.Analyze(E("""
+        {"nodes":[
+          {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"Start","config":{}}},
+          {"id":"script","type":"activity","data":{"activityType":"runScript","label":"Script",
+            "config":{ENGINE"script":"Start-Job { Get-Process }"}}}],
+         "edges":[{"id":"e1","source":"t","target":"script"}]}
+        """.Replace("ENGINE", engine)));
+
+        result.Findings.Should().NotContain(f => f.Code == "startjob-in-runspace");
     }
 
     [Fact]

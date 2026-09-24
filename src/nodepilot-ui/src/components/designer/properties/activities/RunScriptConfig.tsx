@@ -19,6 +19,9 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
   const script = (config.script as string) || '';
   const transcript = (config.transcript as boolean) === true;
   const isolated = (config.isolated as boolean) === true;
+  const engine = (config.engine as string) || 'auto';
+  // The in-process pool shares the NodePilot host and cannot be isolated; the backend rejects it.
+  const inProcess = engine === 'runspace';
 
   const psVars = upstreamVars
     .filter(v => v.expression.includes('.param.'))
@@ -47,13 +50,16 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
       <FieldGrid>
         <Field label={t('config.runScript.engineLabel')}>
           <select
-            value={(config.engine as string) || 'auto'}
-            onChange={(e) => onUpdate({ engine: e.target.value })}
+            value={engine}
+            onChange={(e) => onUpdate(e.target.value === 'runspace' && isolated
+              ? { engine: 'runspace', isolated: false }
+              : { engine: e.target.value })}
             className="input-field"
           >
             <option value="auto">{t('config.runScript.engineAuto')}</option>
             <option value="pwsh">{t('config.runScript.enginePwsh')}</option>
             <option value="powershell">{t('config.runScript.enginePowerShell')}</option>
+            <option value="runspace">{t('config.runScript.engineRunspace')}</option>
           </select>
         </Field>
         <SwitchField
@@ -128,7 +134,7 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
         label={t('config.runScript.isolated')}
         ariaLabel={t('config.runScript.isolated')}
         checked={isolated}
-        disabled={!isLocalTarget}
+        disabled={!isLocalTarget || inProcess}
         onChange={(checked) => onUpdate({ isolated: checked })}
         stateText={isolated ? t('config.runScript.isolatedOn') : t('config.runScript.isolatedOff')}
       />
@@ -136,6 +142,12 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
       {!isLocalTarget && (
         <p className="text-[10px] font-label text-on-surface-variant leading-snug">
           {t('config.runScript.remoteIsolatedHint')}
+        </p>
+      )}
+
+      {inProcess && isLocalTarget && (
+        <p className="text-[10px] font-label text-on-surface-variant leading-snug">
+          {t('config.runScript.runspaceIsolatedHint')}
         </p>
       )}
 
