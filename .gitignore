@@ -197,6 +197,13 @@ src/nodepilot-ui/coverage-sonar/
 # Codex CLI scratch artifacts
 .codex-artifacts/
 
+# Local blog article drafts and their images
+/docs/blogarticle/
+
+# Marketing film and training videos: sources and design notes stay local, the videos go to the website
+/scripts/marketing-film/
+/design/
+
 # Local investigation output (CM1 reviews, gcdumps, log pulls) - never part of the repo
 .artifacts/
 
