@@ -12,105 +12,69 @@ exhaustive.
 
 ## [Unreleased]
 
-## [1.4.2] - 2026-09-25
+## [1.4.2] - 2026-09-26
 
-A PowerShell release. Local script steps now run in Windows PowerShell 5.1 and end the way the
-same script ends on a target machine, `startProgram` handles umlauts and timeouts on every host,
-and a local SQL Server no longer fails the first start after a restart. **Read "Check before
-upgrading" if workflows run scripts without a target machine.**
+Scripts that run on the NodePilot server itself now behave exactly like scripts on a target
+machine. This release also fixes umlauts and timeouts in `startProgram` and closes a few gaps in the
+designer. **If your workflows run scripts without a target machine, read "Check before upgrading"
+first.**
 
 ### Check before upgrading
 
-Local script steps (`runScript`, custom nodes, `waitForCondition` scripts) now behave like the same
-script on a target machine. Remote steps are not affected. What an existing workflow may notice:
+Only script steps without a target machine are affected; remote steps behave as before.
 
-- **PowerShell 7 syntax or modules with engine `auto`** (`? :`, `??`, `${x}?.`,
-  `ForEach-Object -Parallel`, `ConvertFrom-Json -AsHashtable`) no longer run locally; set engine
-  `pwsh` or `runspace`. The designer now warns about these forms.
-- **Stricter failures.** stderr from a native program (`git`, `robocopy`) ends the script. With
-  engine `powershell`, `pwsh` or isolation, any non-terminating error now fails the step as well.
-  Merge the streams inside the call when stderr is expected: `cmd /c "tool.exe 2>&1"`.
-- **Output and working directory** with engine `powershell`, `pwsh` or isolation: `output` no
-  longer holds `Write-Host` lines, and relative paths resolve against the service's directory
-  instead of the temp directory.
-- **A template followed by a bare member name in a command argument** is now read as one word:
-  `Write-Output {{step.output}}.Length` writes `<value>.Length` instead of the length, the same
-  rule that makes `{{step.param.name}}.txt` a file name. A method call (`{{step.output}}.Trim()`)
-  and an expression (`$n = {{step.output}}.Length`) are unchanged.
-- **A word that starts with a template and adds its own quotes** is rejected instead of being
-  split into two arguments; assign the value to a variable first.
-- With `successExitCodes`, a top-level `return` after a failed native command now fails the step,
-  and a local `waitForCondition` script that cannot run fails at once instead of at the timeout.
+- **They now run in Windows PowerShell 5.1**, not PowerShell 7. A script that uses PowerShell 7
+  syntax (such as `? :` or `??`) or a module installed only for PowerShell 7 needs the engine set
+  to `pwsh` or `runspace`. The designer warns about such scripts.
+- **Errors count as on a target machine.** Every PowerShell error fails the step, and error output
+  from a program such as `git` or `robocopy` stops the script. If a program writes harmless text to
+  its error output, call it as `cmd /c "tool.exe 2>&1"`.
+- **`Write-Host` text is no longer part of the step output.**
+- **Relative paths** point to the NodePilot service folder instead of the temp folder.
+- **`Write-Output {{step.output}}.Length`** now writes the text followed by `.Length`, the way
+  `{{step.param.name}}.txt` becomes a file name. `{{step.output}}.Trim()` and
+  `$n = {{step.output}}.Length` work as before.
 
 ### Added
 
-- **The designer warns about PowerShell 7 syntax in a script that runs in Windows PowerShell**
-  (engine `auto` or `powershell`), both in the canvas lint and in the shared workflow analyzer used
-  by the MCP tools and the AI chat.
+- **Retry settings for a single step** in the properties panel.
+- **A warning in the designer** when a script uses PowerShell 7 syntax but runs in Windows
+  PowerShell.
+- **Engine option "In-process"** (`runspace`): the previous fast engine with PowerShell 7, for
+  scripts that need neither Windows-only modules nor background jobs.
 
-### Changed
+### Fixed — PowerShell and scripts
 
-- **Local scripts run in Windows PowerShell 5.1, like remote ones.** A `runScript` step or custom
-  node without a target machine, and a `waitForCondition` script condition, used to run in the
-  in-process PowerShell 7 pool with engine `auto`. There, Windows modules without a Core flag
-  (Defender, WebAdministration, WindowsUpdate and others) and background jobs were unavailable.
-  `auto` now starts a Windows PowerShell 5.1 process, the same PowerShell a remote step gets over
-  WinRM. The in-process pool remains available as the new engine option `runspace`, which cannot
-  be combined with process isolation. A `waitForCondition` script condition gets the same `engine`
-  setting. Built-in activities keep using the pool. **Check existing local scripts with engine
-  `auto`:** PowerShell 7 syntax (`? :`, `??`, `ForEach-Object -Parallel`,
-  `ConvertFrom-Json -AsHashtable`) and modules installed only for PowerShell 7 need engine `pwsh` or
-  `runspace` now. A script-level `exit N` is now visible as `param.exitCode` and in
-  `successExitCodes`, where the pool always reported 0.
-- **A local script step now succeeds and fails like the same script on a target machine.** Any
-  PowerShell error fails it, a non-terminating one (`Write-Error`, a failed cmdlet under
-  `Continue`) included, and stderr from a native program ends the script. `output` holds each
-  pipeline object as text; `Write-Host`, warnings and progress are no longer part of it. The
-  error text is the plain message. A relative path resolves against the NodePilot process's
-  directory, not the temp directory. A machine execution policy such as `AllSigned` no longer
-  blocks local steps, and the temporary script is deleted as soon as PowerShell has read it.
+- `New-Guid`, `Get-FileHash` and similar commands were missing in scripts on the NodePilot server,
+  also when `startProgram` started PowerShell there.
+- Windows modules such as Defender, WindowsUpdate or WebAdministration and background jobs
+  (`Start-Job`, `Get-WindowsUpdateLog`) did not work in scripts on the NodePilot server.
+- A machine policy that allows only signed scripts (`AllSigned`) blocked scripts on the NodePilot
+  server.
+- A program started by a script in the background kept the step running until the program ended.
+- Umlauts were garbled in scripts on the NodePilot server.
+- Values a script had set were lost when it ended with `exit`, `return` or an error.
+- The exit code was reported as 0 when a script ended with `return` after a failed program.
+- A template inside a path such as `C:\logs\{{step.param.name}}.txt` or `$dir\{{step.param.name}}.txt`,
+  or at the start of one such as `{{step.param.dir}}\app.txt`, was rejected or split into two
+  arguments.
+- A template after a type such as `[int]{{step.param.count}}` was rejected.
+- A `waitForCondition` script that cannot run waited until the timeout instead of failing at once.
+- `startProgram` showed umlauts in the program output as garbled characters.
+- A `startProgram` timeout on a target machine showed "The remote pipeline has been stopped."
+  instead of the timeout and the output so far.
 
-### Fixed
+### Fixed — designer
 
-- **`New-Guid`, `Get-FileHash` and similar commands were missing in local Windows PowerShell
-  steps**, and in a Windows PowerShell started locally by `startProgram` (directly, through
-  `cmd /c` or with `useShellExecute`). These processes inherited the module path of NodePilot's own
-  PowerShell 7 and loaded its core modules. They now get the machine's module path.
-- **A program a local script starts in the background no longer holds or corrupts the step.**
-  Started without a new window (`Start-Process -NoNewWindow`, `cmd /c start`), it shares the
-  script's output. The step now ends with the script (plus at most
-  `Engine:IsolatedDrainGraceSeconds`), and the program's lines no longer overwrite
-  `param.exitCode` or drop the other output parameters.
-- **Umlauts and other non-ASCII text were garbled in local Windows PowerShell steps**, both in the
-  script and parameters and in the output. Scripts are now written with a BOM and the output is
-  read as UTF-8.
-- **A template after a type cast was rejected.** `$n = [int]{{step.param.count}}` failed with
-  "unsafe or ambiguous syntax context" although the substituted script is valid. Templates whose
-  value would really change how the script parses, such as two templates written back to back, are
-  still rejected.
-- **Script values survive `exit` and `return`.** A `runScript` step or custom node that ended with
-  `exit N` or a top-level `return` published none of the variables it had assigned, so a later
-  `{{step.param.x}}` failed. They are now published in every case, including after a `throw`, on
-  a target machine and with engine `runspace` too.
-  `param.exitCode` still reports the real exit code, and a script variable named `$exitCode` no
-  longer overrides it. After a top-level `return`, `param.exitCode` is the last native command's
-  code instead of 0, so `successExitCodes` applies.
-- **A template inside a word or path was rejected or split the word.** `C:\logs\{{step.param.name}}.txt`
-  failed with "unsafe or ambiguous syntax context", `{{step.param.dir}}\app.txt` passed two
-  arguments, and `{{step.param.name}}.txt` read a property `txt`. The value now becomes part of the
-  one word wherever the template stands; a method call such as `{{step.output}}.Trim()` is unchanged.
-- **A local `waitForCondition` script that cannot run fails at once** with its error instead of
-  polling until the timeout. A remote condition keeps polling and names the last error on timeout.
-- **`startProgram` garbled umlauts in captured output.** Output is now decoded as UTF-8 when the
-  program wrote UTF-8, and in the machine's OEM code page otherwise, locally and remotely.
-- **A remote `startProgram` timeout reported "The remote pipeline has been stopped."** The WinRM
-  call now outlasts the program timeout, so the step fails with "timed out" and the output
-  collected so far. A WinRM session stopped by a timeout is no longer reused.
-- **The first start after a restart failed with SQL Server on the same host.** Windows starts SQL
-  Server delayed-automatic, about two minutes after boot, and NodePilot waited only 120 s for its
-  database before giving up; the service's recovery action then started it a second time.
-  `Database:StartupWaitSeconds` now defaults to 300 s. The wait runs after the service has reported
-  *Running*, so a longer bound no longer collides with the service control manager's start timeout.
+- The condition builder and the script editor were partly untranslated in German.
+- Test results and the connection panel were hard to read in the Minimal Dark skin.
+- Variable autocomplete left an extra `}}` behind.
+- Exporting a workflow did not work in the browser demo.
+
+### Fixed — server
+
+- With SQL Server on the same machine, NodePilot could fail to start after a restart, because SQL
+  Server starts a few minutes later. NodePilot now waits up to five minutes.
 
 ## [1.4.1] - 2026-09-23
 
