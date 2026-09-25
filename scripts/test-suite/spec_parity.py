@@ -61,6 +61,9 @@ $len = [string]({{seed.param.greeting}}.Length)
 New-Item -ItemType Directory -Force -Path {{seed.param.dir}} | Out-Null
 Set-Content -LiteralPath {{seed.param.dir}}\f-{{seed.param.n}}.txt -Value {{seed.param.greeting}} -Encoding UTF8
 $read = (Get-Content -LiteralPath {{seed.param.dir}}\f-{{seed.param.n}}.txt -Encoding UTF8 -Raw).Trim()
+$base = {{seed.param.dir}}
+Set-Content -LiteralPath $base\g-{{seed.param.n}}.txt -Value 'via-variable'
+$viaVar = (Get-Content -LiteralPath $base\g-{{seed.param.n}}.txt -Raw).Trim()
 $names = (Get-ChildItem -LiteralPath {{seed.param.dir}}).Name -join ','
 """
 
@@ -118,12 +121,13 @@ if ({p}.two -ne '50-report 1.log') {{ throw "two templates in a word: '$({p}.two
 if ({p}.upper -ne 'REPORT 1') {{ throw "method call on a template: '$({p}.upper)'" }}
 if ({p}.len -ne '{len}') {{ throw "member access in expression mode: '$({p}.len)'" }}
 if ({p}.read -ne $greeting) {{ throw "file written through word templates read back '$({p}.read)'" }}
-if ({p}.names -ne 'f-50.txt') {{ throw "file name from a word template: '$({p}.names)'" }}
+if ({p}.viaVar -ne 'via-variable') {{ throw "template after a variable in a word: '$({p}.viaVar)'" }}
+if ({p}.names -ne 'f-50.txt,g-50.txt') {{ throw "file names from word templates: '$({p}.names)'" }}
 """
 
 
 def words_params(step):
-    fields = ["mid", "start", "ext", "two", "upper", "len", "read", "names"]
+    fields = ["mid", "start", "ext", "two", "upper", "len", "read", "viaVar", "names"]
     return "$%s = @{ %s }" % (step, "; ".join(
         "%s = {{%s.param.%s}}" % (f, step, f) for f in fields))
 

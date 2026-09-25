@@ -443,19 +443,22 @@ internal static class PowerShellActivitySupport
         ['\'', '"', '‘', '’', '‚', '‛', '“', '”', '„'];
 
     /// <summary>
-    /// True when a template sits inside a bareword such as <c>C:\t\{{x}}.txt</c> and the quoted
-    /// value becomes one quoted part of that same word. The word must hold no quote, <c>$</c> or
-    /// backtick of its own, so the template cannot sit inside an existing quoted or expandable part.
+    /// True when a template sits inside a bareword such as <c>C:\t\{{x}}.txt</c> or
+    /// <c>$dir\f-{{x}}.txt</c> and the quoted value becomes one quoted part of that same word.
+    /// The word must hold no quote, backtick or <c>$(</c> of its own, so the template cannot sit
+    /// inside an existing quoted part or subexpression. A variable such as <c>$dir</c> is fine: a
+    /// template glued to it would make the variable token, not the word, the covering token.
     /// </summary>
     private static bool IsPlainBarewordPart(Token original, Token? substituted)
-        => original is { Kind: TokenKind.Generic } and not StringExpandableToken
+        => original is { Kind: TokenKind.Generic }
            && substituted is { Kind: TokenKind.Generic }
            && substituted.Extent.StartOffset == original.Extent.StartOffset
            && substituted.Extent.EndOffset == original.Extent.EndOffset
-           && original.Text.IndexOfAny(BarewordSpecialCharacters) < 0;
+           && original.Text.IndexOfAny(BarewordSpecialCharacters) < 0
+           && !original.Text.Contains("$(", StringComparison.Ordinal);
 
     private static readonly char[] BarewordSpecialCharacters =
-        ['\'', '"', '$', '`', '\u2018', '\u2019', '\u201a', '\u201b', '\u201c', '\u201d', '\u201e'];
+        ['\'', '"', '`', '\u2018', '\u2019', '\u201a', '\u201b', '\u201c', '\u201d', '\u201e'];
 
     /// <summary>
     /// The script with every template replaced by a same-length run of <c>x</c>, or, where

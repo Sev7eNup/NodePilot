@@ -122,13 +122,31 @@ public class TemplateSyntaxContextTests
     }
 
     [Theory]
+    [InlineData("$dir = 'C:\\d i r'\nWrite-Output $dir\\f-{{t.param.n}}.txt", "C:\\d i r\\f-50.txt")]
+    [InlineData("$dir = 'C:\\d'\nWrite-Output $dir\\{{t.output}}\\{{t.param.x}}.log", "C:\\d\\O'Brian\\2.log")]
+    [InlineData("$dir = 'C:\\d'\nWrite-Output ${dir}\\{{t.param.n}}", "C:\\d\\50")]
+    [InlineData("Write-Output C:\\$env:NP_NO_SUCH_VAR\\{{t.param.n}}", "C:\\\\50")]
+    public void TemplateInsideABarewordWithAVariable_BecomesAQuotedPartOfThatWord(string template, string expected)
+        => Invoke(Resolve(template)).Should().Equal(expected);
+
+    [Fact]
+    public void TemplateInsideABarewordWithAVariable_ValueWithCodeCharactersStaysText()
+    {
+        var variables = new Dictionary<string, string> { ["t.output"] = "a b; $(Write-Output injected) `n" };
+
+        var output = Invoke(PowerShellActivitySupport.ResolveScriptVariables("$d = 'C:'\nWrite-Output $d\\{{t.output}}.txt", variables));
+
+        output.Should().Equal("C:\\a b; $(Write-Output injected) `n.txt");
+    }
+
+    [Theory]
     [InlineData("Write-Output C:\\'a{{t.output}}b'")]
     [InlineData("Write-Output C:\\\"a{{t.output}}b\"")]
-    [InlineData("Write-Output C:\\$env:TEMP\\{{t.output}}")]
+    [InlineData("Write-Output C:\\$(Get-Date)\\{{t.output}}")]
     [InlineData("Write-Output C:\\a`b{{t.output}}")]
-    public void TemplateInsideABarewordWithItsOwnQuotingOrVariables_IsRejected(string template)
+    public void TemplateInsideABarewordWithItsOwnQuotingOrSubexpression_IsRejected(string template)
     {
-        // The template could sit inside a quoted or expandable part of the word, where a quoted
+        // The template could sit inside a quoted part or subexpression of the word, where a quoted
         // value would close that part instead of opening its own.
         var act = () => Resolve(template);
 
