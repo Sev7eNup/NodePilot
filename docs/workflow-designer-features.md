@@ -133,13 +133,14 @@ A complete inventory of every feature in the NodePilot workflow designer (React 
 
 ## 7. Properties panel
 
-- **Sections:** execution context, input variables, configuration, timeout, test & debug — collapsible with a variable counter.
+- **Sections:** execution context, input variables, configuration, timeout, retry policy, test & debug — collapsible with a variable counter.
 - **Header:** activity icon, inline edit for name and description, close.
 - **Common node fields:**
   - **Label** and **output variable** (falling back to the step ID; downstream `{{var.output}}`).
   - **Description** (lazy "+ add description").
   - **Target machine** and **credential** (for remote activities) as a `DynamicTargetField` — GUID, variable or literal, with a resolved label and a test-connection button.
   - **Timeout** (`config.timeoutSeconds`, only for types that support it).
+  - **Retry policy** (`config.retry`: max attempts 2–20 including the first, backoff fixed/linear/exponential, initial and max delay; not for triggers, junction, decision, return data). Switching it off removes the key.
   - **Disable toggle** and **breakpoint** (plus an optional breakpoint condition, Expert).
 - **Read-only mode:** without write permission the whole fieldset is disabled.
 - **Clone-config button (Expert):** copies configuration from a step of the same type — either completely or just machine plus credential (it never copies label, output or body).

@@ -11,6 +11,7 @@ After selecting a node, the panel shows the fields available for that activity t
 - **Description:** an optional explanation of the step
 - **Target machine and credentials:** the execution target for remote activities
 - **Timeout:** the maximum runtime of the step
+- **Retry policy:** repeats a failed step (attempts including the first, backoff, delay); permanent remote errors such as a rejected logon are not retried
 - **Disabled:** skips the step during execution
 - **Breakpoint:** pauses a debug run before this step; expert mode only
 

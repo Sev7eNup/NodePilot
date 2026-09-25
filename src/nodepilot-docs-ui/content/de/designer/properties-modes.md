@@ -11,6 +11,7 @@ Nach Auswahl eines Nodes zeigt das Panel die für diesen Activity-Typ verfügbar
 - **Beschreibung:** optionale Erläuterung zum Schritt
 - **Zielmaschine und Zugangsdaten:** Ausführungsziel für Remote-Activities
 - **Timeout:** maximale Laufzeit des Schritts
+- **Retry-Policy:** wiederholt einen fehlgeschlagenen Schritt (Versuche inklusive des ersten, Backoff, Verzögerung); dauerhafte Remote-Fehler wie ein abgelehnter Logon werden nicht wiederholt
 - **Deaktiviert:** überspringt den Schritt bei der Ausführung
 - **Breakpoint:** pausiert einen Debug-Lauf vor diesem Schritt; nur im Expertenmodus
 

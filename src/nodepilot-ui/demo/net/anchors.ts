@@ -64,6 +64,8 @@ export function installAnchorGuard(): void {
     if (anchor.target && anchor.target !== '_self') return;
 
     const resolved = new URL(anchor.href, document.baseURI);
+    // blob:/data: links are in-page downloads (workflow export); they never leave the demo.
+    if (resolved.protocol === 'blob:' || resolved.protocol === 'data:') return;
     if (resolved.origin !== globalThis.location.origin) return;
     if (resolved.pathname.startsWith(demoBasePath())) return;
 

@@ -23,7 +23,7 @@ import { setVariableDragData } from '../../lib/variableDragDrop';
 import { ACTIVITY_TYPES, EXTERNAL_TRIGGER_TYPES } from '../../lib/activityTypes';
 import {
   REMOTE_ACTIVITY_TYPES, TIMEOUT_ACTIVITY_TYPES,
-  TimeoutField, DynamicTargetField,
+  TimeoutField, RetryField, DynamicTargetField, type RetryConfig,
 } from './properties/shared';
 import { PanelHeader, StatusPillRow, Section, FieldGrid } from './properties/panelChrome';
 import { getActivityConfigComponent } from './properties/activityConfigMap';
@@ -39,6 +39,10 @@ import {
   assertAuthBoundaryGenerationCurrent,
   captureAuthBoundaryGeneration,
 } from '../../security/authBoundary';
+
+const NO_RETRY_TYPES: ReadonlySet<string> = new Set([
+  ACTIVITY_TYPES.JUNCTION, ACTIVITY_TYPES.DECISION, ACTIVITY_TYPES.RETURN_DATA,
+]);
 
 interface Props {
   node: Node;
@@ -137,6 +141,8 @@ function PropertiesPanelImpl({
     || isCustomActivityType(activityType) // custom activities always run a script
     || (activityType === ACTIVITY_TYPES.START_PROGRAM && config.waitForExit !== false)
     || (activityType === ACTIVITY_TYPES.START_WORKFLOW && config.waitForCompletion !== false);
+  // Retry wraps every executed step (StepRunner.RunWithRetryAsync); flow-control nodes do no work to repeat.
+  const showRetry = !isTrigger && !NO_RETRY_TYPES.has(activityType);
   // Stable module-level reference from ACTIVITY_CONFIG_COMPONENTS — rendered via createElement so
   // the
   // react-hooks/static-components rule doesn't misread the dynamic dispatch as a per-render
@@ -301,6 +307,19 @@ function PropertiesPanelImpl({
             <TimeoutField
               value={config.timeoutSeconds as number | undefined}
               onChange={(v) => updateConfig({ timeoutSeconds: v })}
+            />
+          </Section>
+        )}
+
+        {showRetry && (
+          <Section
+            title={t('properties:retry.title')}
+            collapsible
+            defaultOpen={false}
+          >
+            <RetryField
+              value={config.retry as Partial<RetryConfig> | undefined}
+              onChange={(v) => updateConfig({ retry: v })}
             />
           </Section>
         )}

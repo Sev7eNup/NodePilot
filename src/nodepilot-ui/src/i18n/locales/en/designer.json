@@ -325,7 +325,32 @@
     "globalsOption": "globals.{{name}}",
     "remove": "Remove",
     "addCondition": "Condition",
-    "addGroup": "Group"
+    "addGroup": "Group",
+    "introEvent": "Compare event fields with a fixed value or with each other. On both sides you can choose between <0>Field</0> and <1>Literal</1>.",
+    "noFilterSet": "No filter set — the rule applies to every matching event.",
+    "and": "AND",
+    "or": "OR",
+    "not": "NOT",
+    "opGroupCompare": "Compare",
+    "opGroupString": "String",
+    "opGroupUnary": "Unary",
+    "ops": {
+      "eq": "equals",
+      "ne": "not equals",
+      "lt": "less than",
+      "gt": "greater than",
+      "le": "≤",
+      "ge": "≥",
+      "contains": "contains",
+      "startsWith": "starts with",
+      "endsWith": "ends with",
+      "matches": "matches regex",
+      "isEmpty": "is empty",
+      "isNotEmpty": "is not empty",
+      "isTrue": "is true",
+      "isFalse": "is false"
+    },
+    "groupEvent": "Event"
   },
   "bulkEdit": {
     "title": "Bulk Edit",

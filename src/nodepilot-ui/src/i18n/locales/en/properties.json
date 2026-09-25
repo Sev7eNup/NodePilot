@@ -26,7 +26,8 @@
     "backoffLinear": "Linear",
     "backoffExponential": "Exponential",
     "initialDelay": "Initial delay (ms)",
-    "maxDelay": "Max delay (ms)"
+    "maxDelay": "Max delay (ms)",
+    "hint": "Includes the first attempt. Permanent remote errors (e.g. a rejected WinRM logon) are not retried."
   },
   "test": {
     "section": "Test & Debug",

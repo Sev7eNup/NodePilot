@@ -343,12 +343,12 @@ function TestResultBlock({ result }: Readonly<{ result: StepTestResult }>) {
   const hasParams = Object.keys(result.outputParameters).length > 0;
   return (
     <div className={`rounded-md border p-2.5 text-xs font-mono ${
-      result.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+      result.success ? 'bg-success-container/40 border-success/40' : 'bg-error-container/40 border-error/40'}`}>
       <div className="flex items-center gap-1.5 mb-1.5 font-sans font-semibold">
         {result.success
-          ? <CheckmarkFilled size={13} className="text-green-600" />
-          : <ErrorFilled size={13} className="text-red-600" />}
-        <span className={result.success ? 'text-green-700' : 'text-red-700'}>
+          ? <CheckmarkFilled size={13} className="text-success" />
+          : <ErrorFilled size={13} className="text-error" />}
+        <span className={result.success ? 'text-success' : 'text-error'}>
           {result.success ? t('test.succeeded') : t('test.failed')}
         </span>
         <span className="ml-auto font-normal text-on-surface-variant font-mono">
@@ -356,7 +356,7 @@ function TestResultBlock({ result }: Readonly<{ result: StepTestResult }>) {
         </span>
       </div>
       {result.errorMessage && !result.errorOutput && (
-        <div className="flex gap-1 text-red-700">
+        <div className="flex gap-1 text-error">
           <WarningAltFilled size={11} className="mt-0.5 flex-shrink-0" />
           <span>{result.errorMessage}</span>
         </div>
@@ -365,7 +365,7 @@ function TestResultBlock({ result }: Readonly<{ result: StepTestResult }>) {
         <pre className="whitespace-pre-wrap overflow-auto max-h-40 text-on-surface">{result.output}</pre>
       )}
       {result.errorOutput && (
-        <pre className="whitespace-pre-wrap overflow-auto max-h-32 text-red-700 mt-1">{result.errorOutput}</pre>
+        <pre className="whitespace-pre-wrap overflow-auto max-h-32 text-error mt-1">{result.errorOutput}</pre>
       )}
       {hasParams && (
         <div className="mt-1.5 font-sans space-y-0.5">

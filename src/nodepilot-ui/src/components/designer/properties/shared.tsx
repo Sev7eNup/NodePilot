@@ -110,6 +110,77 @@ export function TimeoutField({ value, onChange }: Readonly<{ value: number | und
   );
 }
 
+export type RetryBackoff = 'fixed' | 'linear' | 'exponential';
+export interface RetryConfig { maxAttempts: number; backoff: RetryBackoff; initialDelayMs: number; maxDelayMs: number }
+
+// Defaults and the 1..20 attempt clamp mirror NodePilot.Engine/Execution/RetryPolicy.cs.
+export const DEFAULT_RETRY: RetryConfig = { maxAttempts: 3, backoff: 'fixed', initialDelayMs: 1000, maxDelayMs: 30_000 };
+
+const nonNegative = (raw: string) => { const n = parseInt(raw, 10); return Number.isFinite(n) && n > 0 ? n : 0; };
+
+/** Per-step retry policy (`config.retry`). Switching it off removes the key, so the engine runs the step once. */
+export function RetryField({ value, onChange }: Readonly<{
+  value: Partial<RetryConfig> | undefined;
+  onChange: (v: RetryConfig | undefined) => void;
+}>) {
+  const { t } = useTranslation(['properties']);
+  const enabled = !!value && (value.maxAttempts ?? 1) > 1;
+  const current: RetryConfig = { ...DEFAULT_RETRY, ...value };
+  const set = (patch: Partial<RetryConfig>) => onChange({ ...current, ...patch });
+  return (
+    <div className="space-y-3">
+      <SwitchField
+        ariaLabel={t('properties:retry.enable')}
+        stateText={t('properties:retry.enable')}
+        checked={enabled}
+        onChange={(on) => {
+          if (!on) { onChange(undefined); return; }
+          onChange(current.maxAttempts > 1 ? current : DEFAULT_RETRY);
+        }}
+      />
+      {enabled && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={t('properties:retry.maxAttempts')}>
+              <input
+                type="number" min={2} max={20} className="input-field"
+                value={current.maxAttempts}
+                onChange={(e) => set({ maxAttempts: Math.min(20, Math.max(2, nonNegative(e.target.value) || 2)) })}
+              />
+            </Field>
+            <Field label={t('properties:retry.backoff')}>
+              <select
+                className="input-field"
+                value={current.backoff}
+                onChange={(e) => set({ backoff: e.target.value as RetryBackoff })}
+              >
+                <option value="fixed">{t('properties:retry.backoffFixed')}</option>
+                <option value="linear">{t('properties:retry.backoffLinear')}</option>
+                <option value="exponential">{t('properties:retry.backoffExponential')}</option>
+              </select>
+            </Field>
+            <Field label={t('properties:retry.initialDelay')}>
+              <input
+                type="number" min={0} className="input-field"
+                value={current.initialDelayMs}
+                onChange={(e) => set({ initialDelayMs: nonNegative(e.target.value) })}
+              />
+            </Field>
+            <Field label={t('properties:retry.maxDelay')}>
+              <input
+                type="number" min={0} className="input-field"
+                value={current.maxDelayMs}
+                onChange={(e) => set({ maxDelayMs: nonNegative(e.target.value) })}
+              />
+            </Field>
+          </div>
+          <p className="text-[10px] text-on-surface-variant">{t('properties:retry.hint')}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function Field({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) {
   return (
     <div className="space-y-1.5">

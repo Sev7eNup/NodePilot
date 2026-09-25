@@ -1,6 +1,6 @@
 import { Add, MisuseOutline, TrashCan } from '@carbon/icons-react';
 import { useQuery } from '@tanstack/react-query';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { api } from '../../api/client';
 import type { UpstreamVariable } from '../../lib/upstreamVariables';
 
@@ -112,12 +112,12 @@ function OperandPicker({
           disabled={!hasVariableSource}
           className={`px-2 py-1 rounded-md font-medium transition-colors ${isVariable ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-high'} disabled:opacity-50`}
           title={!hasVariableSource ? t('condition.noUpstreamSteps') : t('condition.referenceStep')}
-        >{eventFields ? t('condition.fieldMode', 'Field') : 'Variable'}</button>
+        >{eventFields ? t('condition.fieldMode') : t('condition.variable')}</button>
         <button
           onClick={() => toggleMode('literal')}
           className={`px-2 py-1 rounded-md font-medium transition-colors ${!isVariable ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant hover:bg-surface-high'}`}
           title={t('condition.useFixedValue')}
-        >Literal</button>
+        >{t('condition.literal')}</button>
       </div>
       {isVariable ? (
         <VariableOperandInput operand={operand} steps={steps} eventFields={eventFields} onChange={onChange} />
@@ -126,7 +126,7 @@ function OperandPicker({
           type="text"
           value={operand.kind === 'literal' ? operand.value : ''}
           onChange={(e) => onChange({ kind: 'literal', value: e.target.value })}
-          placeholder="fixed value or {{globals.X}}"
+          placeholder={t('condition.literalPlaceholder')}
           className="text-xs bg-surface-high border border-transparent focus:border-primary/40 rounded-md px-2 py-1.5 font-mono outline-none transition-colors"
         />
       )}
@@ -147,6 +147,7 @@ function VariableOperandInput({
   const eventMode = (eventFields?.length ?? 0) > 0;
   // Globals are fetched from the /global-variables API; staleTime is high because the
   // set rarely changes and the builder typically gets rendered many times per editor session.
+  const { t } = useTranslation('designer');
   // In alerting/event mode there are no step/global operands, so the query is disabled.
   const { data: globals = [] } = useQuery({
     queryKey: ['global-variables'],
@@ -198,7 +199,7 @@ function VariableOperandInput({
       className="text-xs bg-surface-high border border-transparent focus:border-primary/40 rounded-md px-2 py-1.5 truncate outline-none transition-colors"
     >
       {eventMode && (
-        <optgroup label="Event">
+        <optgroup label={t('condition.groupEvent')}>
           {eventFields!.map((f) => (
             <option key={f.name} value={`event|${f.name}`}>{f.label}</option>
           ))}
@@ -206,18 +207,18 @@ function VariableOperandInput({
       )}
       {steps.map((s) => (
         <optgroup key={s.stepId} label={s.label}>
-          <option value={`step|${s.stepId}|output`}>{s.label} → output (text)</option>
-          <option value={`step|${s.stepId}|error`}>{s.label} → error (text)</option>
-          <option value={`step|${s.stepId}|success`}>{s.label} → success (bool)</option>
+          <option value={`step|${s.stepId}|output`}>{t('condition.outputText', { label: s.label })}</option>
+          <option value={`step|${s.stepId}|error`}>{t('condition.errorText', { label: s.label })}</option>
+          <option value={`step|${s.stepId}|success`}>{t('condition.successBool', { label: s.label })}</option>
           {s.paramNames.map((p) => (
-            <option key={p} value={`step|${s.stepId}|param|${p}`}>{s.label} → {p} (param)</option>
+            <option key={p} value={`step|${s.stepId}|param|${p}`}>{t('condition.paramOption', { label: s.label, param: p })}</option>
           ))}
         </optgroup>
       ))}
       {globals.length > 0 && (
-        <optgroup label="Globals">
+        <optgroup label={t('condition.groupGlobals')}>
           {globals.map((g) => (
-            <option key={g.id} value={`global|${g.name}`}>globals.{g.name}</option>
+            <option key={g.id} value={`global|${g.name}`}>{t('condition.globalsOption', { name: g.name })}</option>
           ))}
         </optgroup>
       )}
@@ -225,10 +226,11 @@ function VariableOperandInput({
   );
 }
 
-const OP_LABELS: Record<ComparisonOp, string> = {
-  '==': 'equals', '!=': 'not equals', '<': 'less than', '>': 'greater than', '<=': '≤', '>=': '≥',
-  contains: 'contains', startsWith: 'starts with', endsWith: 'ends with', matches: 'matches regex',
-  isEmpty: 'is empty', isNotEmpty: 'is not empty', isTrue: 'is true', isFalse: 'is false',
+// i18n key suffix per operator (designer:condition.ops.*); symbols are not valid readable keys.
+const OP_KEYS: Record<ComparisonOp, string> = {
+  '==': 'eq', '!=': 'ne', '<': 'lt', '>': 'gt', '<=': 'le', '>=': 'ge',
+  contains: 'contains', startsWith: 'startsWith', endsWith: 'endsWith', matches: 'matches',
+  isEmpty: 'isEmpty', isNotEmpty: 'isNotEmpty', isTrue: 'isTrue', isFalse: 'isFalse',
 };
 
 /* ---------------------------- Main Component ------------------------------- */
@@ -263,15 +265,15 @@ export function ConditionBuilder({ value, upstreamVars, onChange, eventFields }:
   return (
     <div className="space-y-2">
       <p className="text-[11px] text-on-surface-variant leading-snug">
-        {eventFields ? (
-          <>Vergleiche Event-Felder mit einem festen Wert (oder untereinander). Auf beiden Seiten wählbar zwischen <span className="font-semibold text-primary">Field</span> und <span className="font-semibold text-primary">Literal</span>.</>
-        ) : (
-          <>Vergleiche Output-Werte vorheriger Steps miteinander oder mit einem festen Wert. Auf beiden Seiten kannst du zwischen <span className="font-semibold text-primary">Variable</span> und <span className="font-semibold text-primary">Literal</span> wählen.</>
-        )}
+        <Trans
+          t={t}
+          i18nKey={eventFields ? 'condition.introEvent' : 'condition.intro'}
+          components={[<span key="0" className="font-semibold text-primary" />, <span key="1" className="font-semibold text-primary" />]}
+        />
       </p>
       <GroupNode node={root} upstreamVars={upstreamVars} eventFields={eventFields} onChange={updateRoot} isRoot />
       {root.children.length === 0 && (
-        <p className="text-xs text-outline">{t('condition.noConditionSet')}</p>
+        <p className="text-xs text-outline">{t(eventFields ? 'condition.noFilterSet' : 'condition.noConditionSet')}</p>
       )}
     </div>
   );
@@ -320,11 +322,11 @@ function GroupNode({
           <button
             onClick={() => onChange({ ...node, op: 'AND' })}
             className={`px-2.5 py-1 text-xs rounded font-semibold transition-colors ${node.op === 'AND' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
-          >AND</button>
+          >{t('condition.and')}</button>
           <button
             onClick={() => onChange({ ...node, op: 'OR' })}
             className={`px-2.5 py-1 text-xs rounded font-semibold transition-colors ${node.op === 'OR' ? 'bg-primary text-on-primary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'}`}
-          >OR</button>
+          >{t('condition.or')}</button>
         </div>
       )}
       {node.children.map((child, idx) => (
@@ -338,7 +340,7 @@ function GroupNode({
             )}
             {child.type === 'not' && (
               <div className="pl-2 border-l-2 border-error/40">
-                <div className="text-[10px] font-semibold text-error mb-1">NOT</div>
+                <div className="text-[10px] font-semibold text-error mb-1">{t('condition.not')}</div>
                 {child.child.type === 'comparison' && (
                   <ComparisonRow
                     node={child.child}
@@ -361,17 +363,17 @@ function GroupNode({
         <button
           onClick={addComparison}
           className="flex items-center gap-1 px-2 py-1 text-xs bg-primary/10 text-primary border border-primary/30 rounded hover:bg-primary/20"
-        ><Add size={12} /> Condition</button>
+        ><Add size={12} /> {t('condition.addCondition')}</button>
         {isRoot && (
           <button
             onClick={addGroup}
             className="flex items-center gap-1 px-2 py-1 text-xs bg-surface-low text-on-surface border border-outline-variant/50 rounded hover:bg-surface-container"
-          ><Add size={12} /> Group</button>
+          ><Add size={12} /> {t('condition.addGroup')}</button>
         )}
         <button
           onClick={addNot}
           className="flex items-center gap-1 px-2 py-1 text-xs bg-surface-low text-on-surface border border-outline-variant/50 rounded hover:bg-surface-container"
-        ><MisuseOutline size={12} /> NOT</button>
+        ><MisuseOutline size={12} /> {t('condition.not')}</button>
       </div>
     </div>
   );
@@ -382,6 +384,7 @@ function GroupNode({
 function ComparisonRow({
   node, upstreamVars, eventFields, onChange,
 }: Readonly<{ node: ExprComparison; upstreamVars: UpstreamVariable[]; eventFields?: EventFieldOption[]; onChange: (n: ExprComparison) => void }>) {
+  const { t } = useTranslation('designer');
   const steps = collectSteps(upstreamVars);
 
   const setOp = (op: ComparisonOp) => {
@@ -406,19 +409,19 @@ function ComparisonRow({
         onChange={(e) => setOp(e.target.value as ComparisonOp)}
         className="text-xs bg-surface-high border border-transparent focus:border-primary/40 rounded-md px-2 py-1.5 self-center outline-none transition-colors"
       >
-        <optgroup label="Compare">
+        <optgroup label={t('condition.opGroupCompare')}>
           {(['==','!=','<','>','<=','>='] as ComparisonOp[]).map((o) => (
-            <option key={o} value={o}>{OP_LABELS[o]}</option>
+            <option key={o} value={o}>{t(`condition.ops.${OP_KEYS[o]}`)}</option>
           ))}
         </optgroup>
-        <optgroup label="String">
+        <optgroup label={t('condition.opGroupString')}>
           {(['contains','startsWith','endsWith','matches'] as ComparisonOp[]).map((o) => (
-            <option key={o} value={o}>{OP_LABELS[o]}</option>
+            <option key={o} value={o}>{t(`condition.ops.${OP_KEYS[o]}`)}</option>
           ))}
         </optgroup>
-        <optgroup label="Unary">
+        <optgroup label={t('condition.opGroupUnary')}>
           {(['isEmpty','isNotEmpty','isTrue','isFalse'] as ComparisonOp[]).map((o) => (
-            <option key={o} value={o}>{OP_LABELS[o]}</option>
+            <option key={o} value={o}>{t(`condition.ops.${OP_KEYS[o]}`)}</option>
           ))}
         </optgroup>
       </select>

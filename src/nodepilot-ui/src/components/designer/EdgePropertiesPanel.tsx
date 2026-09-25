@@ -185,11 +185,11 @@ export function EdgePropertiesPanel({ edge, allNodes, allEdges, onUpdate, onDele
             <div className="flex gap-1">
               <button
                 onClick={switchToSimple}
-                className={`px-2 py-0.5 text-[10px] rounded ${mode === 'simple' ? 'bg-inverse-surface text-white' : 'bg-surface-container text-on-surface-variant'}`}
+                className={`px-2 py-0.5 text-[10px] rounded ${mode === 'simple' ? 'bg-inverse-surface text-inverse-on-surface' : 'bg-surface-container text-on-surface-variant'}`}
               >{t('edgePanel.simple')}</button>
               <button
                 onClick={switchToExpression}
-                className={`px-2 py-0.5 text-[10px] rounded ${mode === 'expression' ? 'bg-inverse-surface text-white' : 'bg-surface-container text-on-surface-variant'}`}
+                className={`px-2 py-0.5 text-[10px] rounded ${mode === 'expression' ? 'bg-inverse-surface text-inverse-on-surface' : 'bg-surface-container text-on-surface-variant'}`}
               >{t('edgePanel.expression')}</button>
             </div>
           ) : undefined}
