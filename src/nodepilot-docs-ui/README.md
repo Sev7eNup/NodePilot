@@ -54,7 +54,7 @@ Deploy die vorige Fassung stillschweigend weiterveröffentlichen, ohne dass etwa
 
 Deep Links in die Doku haben die Form `https://sev7enup.github.io/NodePilot/docs/<sprache>/<seite>/`.
 
-- **`NP_SITE_ORIGIN`:** Fast alles ist ortsunabhängig (`base: './'`, Hash-Routen). Nur wenige URLs
+- **`NP_SITE_ORIGIN`:** Fast alles ist ortsunabhängig (`base: './'`, relative Links). Nur wenige URLs
   können nicht relativ sein: `canonical`, `og:url` und `og:image` im Website-Head sowie der
   Doku-Link auf die Demo. Die stehen im Quelltext auf der Pages-Adresse; ist beim Build
   `NP_SITE_ORIGIN` gesetzt, schreiben beide Vite-Configs sie auf diesen Ursprung um
