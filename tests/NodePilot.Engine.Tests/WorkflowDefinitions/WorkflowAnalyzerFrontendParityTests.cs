@@ -20,6 +20,7 @@ public sealed class WorkflowAnalyzerFrontendParityTests
         "dup-published-param",
         "unknown-template-ref",
         "startjob-in-runspace",
+        "ps7-syntax-in-windows-powershell",
     ];
 
     private static JsonElement E(string json) => JsonDocument.Parse(json).RootElement;
@@ -289,6 +290,43 @@ public sealed class WorkflowAnalyzerFrontendParityTests
 
         result.Findings.Should().NotContain(f => f.Code == "startjob-in-runspace");
     }
+
+    private static WorkflowAnalyzer.AnalysisResult AnalyzeScript(string type, string config) => WorkflowAnalyzer.Analyze(E("""
+        {"nodes":[
+          {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"Start","config":{}}},
+          {"id":"script","type":"activity","data":{"activityType":"TYPE","label":"Script","config":CONFIG}}],
+         "edges":[{"id":"e1","source":"t","target":"script"}]}
+        """.Replace("TYPE", type).Replace("CONFIG", config)));
+
+    [Theory]
+    [InlineData("""{"script":"$v = $true ? 'a' : 'b'"}""")]
+    [InlineData("""{"engine":"auto","script":"$v = $null ?? 'x'"}""")]
+    [InlineData("""{"engine":"powershell","script":"$n = ${item}?.Name"}""")]
+    [InlineData("""{"script":"1..3 | ForEach-Object -Parallel { $_ }"}""")]
+    [InlineData("""{"script":"$h = '{}' | ConvertFrom-Json -AsHashtable"}""")]
+    public void AnalyzeWorkflow_PowerShell7SyntaxInWindowsPowerShell_Warns(string config)
+    {
+        var result = AnalyzeScript("runScript", config);
+
+        result.Ok.Should().BeTrue();
+        result.Findings.Should().Contain(f =>
+            f.Code == "ps7-syntax-in-windows-powershell" && f.Severity == "warning" && f.NodeId == "script");
+    }
+
+    [Theory]
+    [InlineData("runScript", """{"engine":"pwsh","script":"$v = $true ? 'a' : 'b'"}""")]
+    [InlineData("runScript", """{"engine":"runspace","script":"$v = $null ?? 'x'"}""")]
+    [InlineData("runScript", """{"script":"Get-Service | ? { $_.Status -eq 'Running' } | ? Name -like 'W*'"}""")]
+    [InlineData("runScript", """{"script":"cmd /c \"echo a && echo b || echo c\""}""")]
+    [InlineData("runScript", """{"script":"$t = [math]::Round(1.5)\n$s = \"a:b\""}""")]
+    [InlineData("waitForCondition", """{"conditionType":"pathExists","path":"C:\\x ?? y"}""")]
+    public void AnalyzeWorkflow_WindowsPowerShellCompatibleOrOtherEngine_DoesNotWarn(string type, string config)
+        => AnalyzeScript(type, config).Findings.Should().NotContain(f => f.Code == "ps7-syntax-in-windows-powershell");
+
+    [Fact]
+    public void AnalyzeWorkflow_PowerShell7SyntaxInAWaitForConditionScript_Warns()
+        => AnalyzeScript("waitForCondition", """{"script":"$ok ? $true : $false","intervalSeconds":1}""")
+            .Findings.Should().Contain(f => f.Code == "ps7-syntax-in-windows-powershell");
 
     [Fact]
     public void FindUnresolvedReferences_FlagsUnknownTemplateRef_WithFrontendCode()

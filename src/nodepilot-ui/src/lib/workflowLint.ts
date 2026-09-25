@@ -21,6 +21,17 @@ const STARTJOB_HOSTED_INCOMPATIBLE: Array<{ pattern: RegExp; cmdletName: string 
   { pattern: /\bInvoke-Command\b[^\r\n]*-AsJob\b/i, cmdletName: 'Invoke-Command -AsJob' },
 ];
 
+// PowerShell 7 forms that do not parse in Windows PowerShell 5.1, where engine auto/powershell
+// runs a script locally and on a target machine. Mirrors WorkflowAnalyzer.PowerShell7OnlySyntax.
+// `&&` and `||` are left out: they are ordinary text inside `cmd /c "a && b"`.
+const POWERSHELL7_ONLY_SYNTAX: Array<{ pattern: RegExp; construct: string }> = [
+  { pattern: /\?\?/, construct: '??' },
+  { pattern: /(\$[\w:]+|\)|'|"|\d)\s+\?\s+[^\s{][^\r\n]*?\s:\s/, construct: '? :' },
+  { pattern: /\$\{[^}\r\n]+\}\?[.[]/, construct: '${x}?.' },
+  { pattern: /(^|[\s|;(])(ForEach-Object|%)\s[^\r\n|]*-Parallel\b/i, construct: 'ForEach-Object -Parallel' },
+  { pattern: /\bConvertFrom-Json\b[^\r\n|]*-AsHashtable\b/i, construct: 'ConvertFrom-Json -AsHashtable' },
+];
+
 export type LintSeverity = 'error' | 'warning';
 
 export interface LintIssue {
@@ -401,6 +412,30 @@ export function lintWorkflow(
       nodeId: n.id,
       code: 'startjob-in-runspace',
       message: i18n.t('lint:issues.startJobInRunspace', { label: getLabel(n), cmdlet: hit.cmdletName, engine }),
+    });
+  }
+
+  // ---- runScript / waitForCondition: PowerShell 7 syntax in Windows PowerShell -------
+  for (const n of liveNodes) {
+    const d = (n.data as Record<string, unknown>) ?? {};
+    if ((d.disabled as boolean) === true) continue;
+    const type = d.activityType as string;
+    const cfg = (d.config as Record<string, unknown>) ?? {};
+    if (type === 'waitForCondition') {
+      const conditionType = typeof cfg.conditionType === 'string' ? cfg.conditionType.trim().toLowerCase() : 'script';
+      if (conditionType !== 'script') continue;
+    } else if (type !== 'runScript') continue;
+    const engine = ((typeof cfg.engine === 'string' ? cfg.engine.trim() : '') || 'auto').toLowerCase();
+    if (engine !== 'auto' && engine !== 'powershell') continue;
+    const script = typeof cfg.script === 'string' ? cfg.script : '';
+    if (!script.trim()) continue;
+    const hit = POWERSHELL7_ONLY_SYNTAX.find((p) => p.pattern.test(script));
+    if (!hit) continue;
+    warnings.push({
+      severity: 'warning',
+      nodeId: n.id,
+      code: 'ps7-syntax-in-windows-powershell',
+      message: i18n.t('lint:issues.ps7SyntaxInWindowsPowerShell', { label: getLabel(n), construct: hit.construct, engine }),
     });
   }
 

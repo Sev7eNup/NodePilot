@@ -89,6 +89,7 @@ public static class WorkflowAnalyzer
         }
 
         AddStartJobRunspaceFindings(doc, findings);
+        AddPowerShell7SyntaxFindings(doc, findings);
 
         var ok = !findings.Any(f => f.Severity == "error");
         return new AnalysisResult(ok, doc.Nodes.Count, doc.Edges.Count, rootIds, findings);
@@ -281,6 +282,37 @@ public static class WorkflowAnalyzer
         }
     }
 
+    // A runScript or waitForCondition script with engine auto/powershell runs in Windows
+    // PowerShell 5.1, locally and on a target machine, where PowerShell 7 syntax does not parse.
+    private static void AddPowerShell7SyntaxFindings(WorkflowDefinitionDocument doc, List<Finding> findings)
+    {
+        foreach (var node in doc.Nodes)
+        {
+            if (doc.DisabledNodeIds.Contains(node.Id)) continue;
+            var config = node.Data.Config;
+            if (string.Equals(node.Type, "waitForCondition", StringComparison.Ordinal))
+            {
+                if (TryGetString(config, "conditionType", out var conditionType)
+                    && !string.Equals(conditionType?.Trim(), "script", StringComparison.OrdinalIgnoreCase)) continue;
+            }
+            else if (!string.Equals(node.Type, "runScript", StringComparison.Ordinal)) continue;
+
+            var engine = TryGetString(config, "engine", out var e) && !string.IsNullOrWhiteSpace(e) ? e!.Trim() : "auto";
+            if (!string.Equals(engine, "auto", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(engine, "powershell", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!TryGetString(config, "script", out var script) || string.IsNullOrWhiteSpace(script)) continue;
+
+            var hit = PowerShell7OnlySyntax.FirstOrDefault(p => p.Pattern.IsMatch(script!));
+            if (hit is null) continue;
+
+            findings.Add(new Finding(
+                "warning",
+                "ps7-syntax-in-windows-powershell",
+                node.Id,
+                $"Script uses {hit.CmdletName}, which only PowerShell 7 understands. Engine '{engine}' runs Windows PowerShell 5.1, locally and on a target machine; for a local step set config.engine to 'pwsh' or 'runspace', or rewrite it for Windows PowerShell."));
+        }
+    }
+
     private static HashSet<string> ReachableFrom(IEnumerable<string> roots, IReadOnlyDictionary<string, List<string>> adjacency)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -347,6 +379,17 @@ public static class WorkflowAnalyzer
         new(new Regex(@"(^|[\s|;&])Start-Job\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, TimeSpan.FromSeconds(1)), "Start-Job"),
         new(new Regex(@"\bGet-WindowsUpdateLog\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, TimeSpan.FromSeconds(1)), "Get-WindowsUpdateLog (uses Start-Job internally)"),
         new(new Regex(@"\bInvoke-Command\b[^\r\n]*-AsJob\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, TimeSpan.FromSeconds(1)), "Invoke-Command -AsJob"),
+    ];
+
+    // Only forms that cannot be anything else in Windows PowerShell. `&&` and `||` are left out:
+    // they are ordinary text inside `cmd /c "a && b"`.
+    private static readonly HostedIncompatiblePattern[] PowerShell7OnlySyntax =
+    [
+        new(new Regex(@"\?\?", RegexOptions.Compiled, TimeSpan.FromSeconds(1)), "the null-coalescing operator (??)"),
+        new(new Regex(@"(\$[\w:]+|\)|'|""|\d)\s+\?\s+[^\s{][^\r\n]*?\s:\s", RegexOptions.Compiled, TimeSpan.FromSeconds(1)), "the ternary operator (? :)"),
+        new(new Regex(@"\$\{[^}\r\n]+\}\?[.\[]", RegexOptions.Compiled, TimeSpan.FromSeconds(1)), "a null-conditional member access (${x}?.)"),
+        new(new Regex(@"(^|[\s|;(])(ForEach-Object|%)\s[^\r\n|]*-Parallel\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, TimeSpan.FromSeconds(1)), "ForEach-Object -Parallel"),
+        new(new Regex(@"\bConvertFrom-Json\b[^\r\n|]*-AsHashtable\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, TimeSpan.FromSeconds(1)), "ConvertFrom-Json -AsHashtable"),
     ];
 
     private static bool IsAnnotation(string type)

@@ -12,6 +12,35 @@ exhaustive.
 
 ## [Unreleased]
 
+### Check before upgrading
+
+Local script steps (`runScript`, custom nodes, `waitForCondition` scripts) now behave like the same
+script on a target machine. Remote steps are not affected. What an existing workflow may notice:
+
+- **PowerShell 7 syntax or modules with engine `auto`** (`? :`, `??`, `${x}?.`,
+  `ForEach-Object -Parallel`, `ConvertFrom-Json -AsHashtable`) no longer run locally; set engine
+  `pwsh` or `runspace`. The designer now warns about these forms.
+- **Stricter failures.** stderr from a native program (`git`, `robocopy`) ends the script. With
+  engine `powershell`, `pwsh` or isolation, any non-terminating error now fails the step as well.
+  Merge the streams inside the call when stderr is expected: `cmd /c "tool.exe 2>&1"`.
+- **Output and working directory** with engine `powershell`, `pwsh` or isolation: `output` no
+  longer holds `Write-Host` lines, and relative paths resolve against the service's directory
+  instead of the temp directory.
+- **A template followed by a bare member name in a command argument** is now read as one word:
+  `Write-Output {{step.output}}.Length` writes `<value>.Length` instead of the length, the same
+  rule that makes `{{step.param.name}}.txt` a file name. A method call (`{{step.output}}.Trim()`)
+  and an expression (`$n = {{step.output}}.Length`) are unchanged.
+- **A word that starts with a template and adds its own quotes** is rejected instead of being
+  split into two arguments; assign the value to a variable first.
+- With `successExitCodes`, a top-level `return` after a failed native command now fails the step,
+  and a local `waitForCondition` script that cannot run fails at once instead of at the timeout.
+
+### Added
+
+- **The designer warns about PowerShell 7 syntax in a script that runs in Windows PowerShell**
+  (engine `auto` or `powershell`), both in the canvas lint and in the shared workflow analyzer used
+  by the MCP tools and the AI chat.
+
 ### Changed
 
 - **Local scripts run in Windows PowerShell 5.1, like remote ones.** A `runScript` step or custom

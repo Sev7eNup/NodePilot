@@ -27,6 +27,7 @@
     "unknownTemplateRef": "\"{{label}}\" references {{reference}}, but that step does not exist (or has a different name). Typo, or was the outputVariable renamed?",
     "missingRequiredConfig": "\"{{label}}\": {{detail}}",
     "missingTargetMachine": "\"{{label}}\": remote activities need a target machine (targetMachineId).",
+    "ps7SyntaxInWindowsPowerShell": "\"{{label}}\": the script uses {{construct}}, which only PowerShell 7 understands. Engine \"{{engine}}\" runs Windows PowerShell 5.1, locally and on a target machine. For a local step choose PowerShell 7 or the in-process engine, or rewrite the line for Windows PowerShell.",
     "startJobInRunspace": "\"{{label}}\": the script calls {{cmdlet}}, which starts a background job (Start-Job) internally. The in-process engine (engine: \"{{engine}}\") does not support that. Choose the default engine (Windows PowerShell 5.1) or PowerShell 7.",
     "unknownWorkflowRef": "\"{{label}}\": workflow \"{{reference}}\" not found. Typo, or was it deleted?",
     "edgeToDisabled": "This edge points at a disabled step, which never runs.",

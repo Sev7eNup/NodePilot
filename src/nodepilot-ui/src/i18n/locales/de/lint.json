@@ -27,6 +27,7 @@
     "unknownTemplateRef": "\"{{label}}\" referenziert {{reference}} — dieser Step existiert nicht (oder heißt anders). Typo oder outputVariable umbenannt?",
     "missingRequiredConfig": "\"{{label}}\": {{detail}}",
     "missingTargetMachine": "\"{{label}}\": Ziel-Maschine (targetMachineId) ist für Remote-Activities erforderlich.",
+    "ps7SyntaxInWindowsPowerShell": "\"{{label}}\": Das Skript verwendet {{construct}}, das nur PowerShell 7 versteht. Engine \"{{engine}}\" führt Windows PowerShell 5.1 aus, lokal wie auf einer Zielmaschine. Für einen lokalen Step PowerShell 7 oder die In-Process-Engine wählen, oder die Zeile für Windows PowerShell umschreiben.",
     "startJobInRunspace": "\"{{label}}\": Script ruft {{cmdlet}} auf — das startet intern einen Background-Job (Start-Job). Die In-Process-Engine (engine: \"{{engine}}\") unterstützt das nicht. Wähle die Standard-Engine (Windows PowerShell 5.1) oder PowerShell 7.",
     "unknownWorkflowRef": "\"{{label}}\": Workflow \"{{reference}}\" nicht gefunden — Typo oder wurde gelöscht?",
     "edgeToDisabled": "Kante zielt auf einen deaktivierten Step — der wird nie ausgeführt.",

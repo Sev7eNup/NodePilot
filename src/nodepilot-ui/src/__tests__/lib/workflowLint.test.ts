@@ -467,6 +467,42 @@ describe('lintWorkflow — startjob-in-runspace', () => {
   });
 });
 
+describe('lintWorkflow — ps7-syntax-in-windows-powershell', () => {
+  // engine auto/powershell runs Windows PowerShell 5.1, locally and on a target machine.
+  // Mirrors WorkflowAnalyzerFrontendParityTests.
+  const lint = (activityType: string, config: Record<string, unknown>) =>
+    lintWorkflow([node('s', 0, 0, { activityType, label: 'Script', config })], []).warnings
+      .filter((w) => w.code === 'ps7-syntax-in-windows-powershell');
+
+  it.each([
+    [{ script: "$v = $true ? 'a' : 'b'" }, '? :'],
+    [{ engine: 'auto', script: "$v = $null ?? 'x'" }, '??'],
+    [{ engine: 'powershell', script: '$n = ${item}?.Name' }, '${x}?.'],
+    [{ script: '1..3 | ForEach-Object -Parallel { $_ }' }, 'ForEach-Object -Parallel'],
+    [{ script: "$h = '{}' | ConvertFrom-Json -AsHashtable" }, 'ConvertFrom-Json -AsHashtable'],
+  ])('warns for %o', (config, construct) => {
+    const hit = lint('runScript', config);
+    expect(hit).toHaveLength(1);
+    expect(hit[0].nodeId).toBe('s');
+    expect(hit[0].message).toContain(construct);
+  });
+
+  it.each([
+    ['runScript', { engine: 'pwsh', script: "$v = $true ? 'a' : 'b'" }],
+    ['runScript', { engine: 'runspace', script: "$v = $null ?? 'x'" }],
+    ['runScript', { script: "Get-Service | ? { $_.Status -eq 'Running' } | ? Name -like 'W*'" }],
+    ['runScript', { script: 'cmd /c "echo a && echo b || echo c"' }],
+    ['runScript', { script: '$t = [math]::Round(1.5)\n$s = "a:b"' }],
+    ['waitForCondition', { conditionType: 'pathExists', path: 'C:\\x ?? y' }],
+  ])('does not warn for %s %o', (activityType, config) => {
+    expect(lint(activityType, config)).toHaveLength(0);
+  });
+
+  it('warns for a waitForCondition script', () => {
+    expect(lint('waitForCondition', { script: '$ok ? $true : $false', intervalSeconds: 1 })).toHaveLength(1);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // File / Folder operation lint coverage
 // ---------------------------------------------------------------------------
