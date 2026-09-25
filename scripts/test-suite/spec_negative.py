@@ -147,8 +147,10 @@ def engine_local_negative():
         rest("n2", "rest: DELETE", "DELETE", "restApi.method.DELETE", "DELETE (non-2xx)"),
         rest("n3", "rest: POST unauthenticated", "POST", "restApi.method.POST",
              "POST (401 without a token)"),
+        # An unknown /api path: the API answers it with 404 on every host. Outside /api an
+        # installed instance serves the web app, which answers 200.
         _neg("n4", "rest: unknown path", "restApi",
-             {"url": "{{globals.NP_TESTSUITE_SELF_URL}}/no-such-segment",
+             {"url": API_URL + "/no/such/segment",
               "method": "GET", "timeoutSeconds": 10},
              "restApi.status.non-2xx", "restApi.url", "404 fails the step", ""),
         _neg("n5", "sql: template in the query", "sql",
@@ -176,7 +178,7 @@ def engine_local_negative():
         "The four write verbs (restApi fails on any non-2xx), an unknown path, the SQL "
         "template guard, a syntax error, a DTD and malformed JSON.",
         "negative", "continuous", "B", steps, max_runtime=90,
-        requires=["globals:NP_TESTSUITE_API_URL", "globals:NP_TESTSUITE_SELF_URL"])
+        requires=["globals:NP_TESTSUITE_API_URL"])
 
 
 CHILD = "[TestSuite] Child: Echo Item"

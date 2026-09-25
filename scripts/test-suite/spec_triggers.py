@@ -23,6 +23,9 @@ from spec_core import LOCAL, manual, assert_step, ok_return, ret
 WATCH_DIR = RUNTIME_ROOT + r"\watch"
 ACK_DIR = RUNTIME_ROOT + r"\acks"
 SENTINEL_DB = RUNTIME_ROOT + r"\db\sentinel.sqlite"
+# Named connection for the sentinel, under Trigger:Database:Connections. Production accepts only
+# a named connection; appsettings.Development.json carries it for a development host.
+SENTINEL_CONNECTION = "np-testsuite-sentinel"
 WEBHOOK_URL = "{{globals.NP_TESTSUITE_WEBHOOK_URL}}"
 WEBHOOK_SECRET = "__TESTSUITE_WEBHOOK_SECRET__"
 EVENT_SOURCE = "NodePilot-TestSuite"
@@ -226,7 +229,9 @@ def database_trigger_workflow():
                      "dimension": "databaseTrigger.pollingIntervalSeconds", "value": "10"},
                     {"id": "databaseTrigger.output.sentinel",
                      "dimension": "databaseTrigger.output",
-                     "value": "dbSentinel / dbPrevious"}]),
+                     "value": "dbSentinel / dbPrevious"},
+                    {"id": "databaseTrigger.connectionRef",
+                     "dimension": "databaseTrigger.connectionRef", "value": "named connection"}]),
         assert_step("""
 $msg   = {{read.param.message}}
 $now   = {{trg.param.dbSentinel}}
@@ -245,11 +250,11 @@ $assertOk = 'databaseTrigger'
         "Polls the long-lived sentinel database. The driver writes the correlation id "
         "into the sentinel itself, because that value is all the source forwards.",
         "positive", "continuous", None, steps, max_runtime=45, judge_by="cadence",
-        requires=["config:Trigger:Database:RequireConnectionRef=false, or a connectionRef "
-                  "pointing at runtime/db/sentinel.sqlite"],
+        requires=["config:Trigger:Database:Connections:" + SENTINEL_CONNECTION
+                  + " set to Data Source=" + SENTINEL_DB],
         trigger=Step("trg", "DB Poll", "databaseTrigger",
                      {"provider": "sqlite",
-                      "connectionString": "Data Source=" + SENTINEL_DB,
+                      "connectionRef": SENTINEL_CONNECTION,
                       "query": "SELECT sentinel FROM suite_sentinel WHERE id = 1",
                       "pollingIntervalSeconds": 10}),
         excluded=[
@@ -258,11 +263,10 @@ $assertOk = 'databaseTrigger'
              "reason": "The source supports only sqlserver and sqlite, and no SQL Server "
                        "instance is part of the development environment.",
              "coveredBy": "tests/NodePilot.Engine.Tests"},
-            {"id": "databaseTrigger.connectionRef",
-             "dimension": "databaseTrigger.connectionRef", "value": "named connection",
-             "reason": "Needs Trigger:Database:Connections:<name> in the host's "
-                       "configuration; the suite ships with the inline form that "
-                       "development permits.",
+            {"id": "databaseTrigger.connectionString",
+             "dimension": "databaseTrigger.connectionString", "value": "inline connection string",
+             "reason": "Production rejects it (Trigger:Database:RequireConnectionRef), so the "
+                       "suite polls through the named connection that every host accepts.",
              "coveredBy": "tests/NodePilot.Engine.Tests"},
         ])
 

@@ -141,6 +141,18 @@ python scripts/test-suite/build_suite.py
 np workflow run '[TestSuite] textFileEdit' --wait     # Exit 0 = alle Assertions gehalten
 ```
 
+**Auf einer installierten, produktionsgehärteten Instanz** (Release-Gate, `RELEASING.md` Schritt 6)
+läuft die Suite nur mit drei Vorbereitungen vollständig grün:
+
+| Braucht | Warum |
+|---|---|
+| `Trigger:Database:Connections:np-testsuite-sentinel` = `Data Source=C:\Temp\NP-TestSuite\runtime\db\sentinel.sqlite` in `appsettings.Production.json` | Produktion akzeptiert beim `databaseTrigger` nur benannte Verbindungen; Dev bringt den Schlüssel in `appsettings.Development.json` mit |
+| der eigene Hostname in `RestApi:AllowedHosts` und `WaitForCondition:AllowedHosts` | restApi- und Probe-Fälle rufen die Instanz selbst |
+| `-ProbeUrl` auf einen **anderen** Host (Global `NP_TESTSUITE_PROBE_URL`), dieser Host in `WaitForCondition:AllowedHosts` | Windows löst den eigenen Namen auch auf link-lokale Adressen auf, die der httpOk-Probe immer sperrt |
+
+Der Unbekannt-Pfad-Fall der Negativ-Suite nutzt einen `/api`-Pfad: außerhalb von `/api` liefert eine
+installierte Instanz die Web-App mit 200 aus.
+
 **Installer-Reihenfolge** (die drei Fallen, die alle Vorgänger getroffen haben):
 
 1. Ein per `POST /api/workflows` erzeugter Workflow ist **bereits vom Ersteller ausgecheckt** —

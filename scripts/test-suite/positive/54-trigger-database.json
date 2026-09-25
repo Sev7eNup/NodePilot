@@ -20,7 +20,7 @@
               "activityType": "databaseTrigger",
               "config": {
                 "provider": "sqlite",
-                "connectionString": "Data Source=C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite",
+                "connectionRef": "np-testsuite-sentinel",
                 "query": "SELECT sentinel FROM suite_sentinel WHERE id = 1",
                 "pollingIntervalSeconds": 10
               },

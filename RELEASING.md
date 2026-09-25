@@ -97,7 +97,7 @@ $sig.SignerCertificate.Thumbprint   # must equal the shipped .cer's thumbprint
 The signed setups from `out\` are installed on the Hyper-V lab before anything is tagged: every
 identity/database combination of the server setup fresh and as an update from the previous release,
 each followed by an uninstall, plus the desktop setup's install, over-install, uninstall and
-reinstall paths. **No release is tagged without a green run of both.** What is checked, the lab
+reinstall paths. **No release is tagged without a green run of both and of the test suite below.** What is checked, the lab
 prerequisites and the pass criteria are in [`scripts/release-lab/README.md`](scripts/release-lab/README.md).
 
 ```powershell
@@ -105,9 +105,32 @@ prerequisites and the pass criteria are in [`scripts/release-lab/README.md`](scr
 .\scripts\release-lab\desktop\Invoke-DesktopMatrix.ps1 -ConfigPath <lab config> -ArtifactDir .\out -Version 1.2.11
 ```
 
+The same signed server setup is then installed as an update on the lab's long-running instance, and
+the workflow test suite (`scripts/test-suite/`, see [`docs/workflow-tests.md`](docs/workflow-tests.md))
+runs against it. That instance runs with production hardening, so it needs, once:
+
+- `Trigger:Database:Connections:np-testsuite-sentinel` =
+  `Data Source=C:\Temp\NP-TestSuite\runtime\db\sentinel.sqlite` in `appsettings.Production.json`
+  (the file survives updates);
+- its own host name in `RestApi:AllowedHosts` and `WaitForCondition:AllowedHosts`, and the probe
+  host (below) in `WaitForCondition:AllowedHosts`;
+- a registered machine with a default credential for the remote workflows, named in the global
+  `NP_TESTSUITE_REMOTE_MACHINE`.
+
+```powershell
+.\scripts\test-suite\Install-TestSuite.ps1 -BaseUrl https://<lab instance>:8443 -Password <admin> `
+  -Profiles continuous, integration -ProbeUrl http://<another lab host>/
+.\scripts\test-suite\Verify-TestSuite.ps1 -BaseUrl https://<lab instance>:8443 -Password <admin> -Once
+```
+
+The probe URL points at another host because an instance cannot probe itself by its own name.
+**The suite has to finish with `fail=0`.** Right after the update the database trigger skips its
+first round by design; if the trigger driver fails on that alone, run the verifier once more.
+
 A fix found here means a new build and a new run, not a patched artifact: the setups are signed and
 listed in `SHA256SUMS.txt`, and the tag has to point at the commit they were built from. The
-`summary.md` of both runs belongs in the release notes' test section.
+`summary.md` of both lab runs and the suite verifier's result belong in the release notes' test
+section.
 
 ## 7. Tag and publish
 

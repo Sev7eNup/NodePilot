@@ -21,6 +21,11 @@
 
 .PARAMETER RemoveLegacy
   Deletes the superseded Test/Muster/Dauertest workflows. Never automatic.
+
+.PARAMETER ProbeUrl
+  Target of the waitForCondition httpOk probe (global NP_TESTSUITE_PROBE_URL). Defaults to the
+  instance's own /healthz/live, which works on a development host. An installed instance cannot
+  probe itself by its own name, so there it has to point at another host.
 #>
 [CmdletBinding()]
 param(
@@ -31,7 +36,8 @@ param(
   [ValidateSet('continuous', 'integration', 'invasive')]
   [string[]]$Profiles = @('continuous'),
   [switch]$ForceUnlock,
-  [switch]$RemoveLegacy
+  [switch]$RemoveLegacy,
+  [string]$ProbeUrl
 )
 
 Set-StrictMode -Version Latest
@@ -118,16 +124,16 @@ $globalsResponse = Invoke-NodePilotJson -Method GET -Path '/api/global-variables
 $globals = @($globalsResponse)
 function Test-GlobalPresent { param([string]$Name) return @($globals | Where-Object { $_.name -eq $Name }).Count -gt 0 }
 
-# The httpOk probe needs a URL the suite cannot derive on its own: an installed instance
-# listens on HTTPS on a port chosen at setup. Seed a sensible dev default and leave any
-# existing value alone. The invasive switches are deliberately NOT seeded - they are the
-# opt-in a host owner has to make explicitly.
+# The instance's own health URL, used by the restApi cases. An installed instance listens on
+# HTTPS on a port chosen at setup, so seed a sensible dev default and leave any existing value
+# alone. The invasive switches are deliberately NOT seeded - they are the opt-in a host owner
+# has to make explicitly.
 if (-not (Test-GlobalPresent -Name 'NP_TESTSUITE_SELF_URL')) {
   $created = Invoke-NodePilotJson -Method POST -Path '/api/global-variables' -Body @{
     name        = 'NP_TESTSUITE_SELF_URL'
     value       = "$BaseUrl/healthz/live"
     isSecret    = $false
-    description = 'TestSuite: URL the waitForCondition httpOk probe targets.'
+    description = 'TestSuite: the instance''s own health URL, used by the restApi cases.'
   }
   $globals += $created
   Write-Host "seeded global      : NP_TESTSUITE_SELF_URL = $BaseUrl/healthz/live"
@@ -171,6 +177,15 @@ function Set-Global {
     $existing.value = $Value
     Write-Host "updated global     : $Name"
   }
+}
+
+# The httpOk probe resolves its host and refuses link-local addresses, and Windows resolves a
+# machine's own name to those as well. An installed instance therefore probes another host.
+if ($ProbeUrl) {
+  Set-Global -Name 'NP_TESTSUITE_PROBE_URL' -Value $ProbeUrl -Description 'TestSuite: URL the waitForCondition httpOk probe targets.'
+}
+elseif (-not (Test-GlobalPresent -Name 'NP_TESTSUITE_PROBE_URL')) {
+  Set-Global -Name 'NP_TESTSUITE_PROBE_URL' -Value "$BaseUrl/healthz/live" -Description 'TestSuite: URL the waitForCondition httpOk probe targets.'
 }
 
 # The webhook trigger needs a shared secret, and a secret has no business sitting in a

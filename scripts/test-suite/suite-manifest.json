@@ -258,7 +258,7 @@
       "maxRuntimeSeconds": 120,
       "judgeBy": "run",
       "requires": [
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_PROBE_URL"
       ]
     },
     {
@@ -435,7 +435,7 @@
       "maxRuntimeSeconds": 45,
       "judgeBy": "cadence",
       "requires": [
-        "config:Trigger:Database:RequireConnectionRef=false, or a connectionRef pointing at runtime/db/sentinel.sqlite"
+        "config:Trigger:Database:Connections:np-testsuite-sentinel set to Data Source=C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite"
       ]
     },
     {
@@ -534,8 +534,7 @@
       "maxRuntimeSeconds": 90,
       "judgeBy": "run",
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ]
     },
     {
@@ -2664,7 +2663,7 @@
       "nodeId": "v0",
       "assertedBy": "assert",
       "requires": [
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_PROBE_URL"
       ],
       "maxRuntimeSeconds": 120
     },
@@ -2678,7 +2677,7 @@
       "nodeId": "v0",
       "assertedBy": "assert",
       "requires": [
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_PROBE_URL"
       ],
       "maxRuntimeSeconds": 120
     },
@@ -2692,7 +2691,7 @@
       "nodeId": "v1",
       "assertedBy": "assert",
       "requires": [
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_PROBE_URL"
       ],
       "maxRuntimeSeconds": 120
     },
@@ -2706,7 +2705,7 @@
       "nodeId": "v2",
       "assertedBy": "assert",
       "requires": [
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_PROBE_URL"
       ],
       "maxRuntimeSeconds": 120
     },
@@ -2720,7 +2719,7 @@
       "nodeId": "v3",
       "assertedBy": "assert",
       "requires": [
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_PROBE_URL"
       ],
       "maxRuntimeSeconds": 120
     },
@@ -2734,7 +2733,7 @@
       "nodeId": "v4",
       "assertedBy": "assert",
       "requires": [
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_PROBE_URL"
       ],
       "maxRuntimeSeconds": 120
     },
@@ -3816,7 +3815,7 @@
       "nodeId": "read",
       "assertedBy": "assert",
       "requires": [
-        "config:Trigger:Database:RequireConnectionRef=false, or a connectionRef pointing at runtime/db/sentinel.sqlite"
+        "config:Trigger:Database:Connections:np-testsuite-sentinel set to Data Source=C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite"
       ],
       "maxRuntimeSeconds": 45
     },
@@ -3830,7 +3829,7 @@
       "nodeId": "read",
       "assertedBy": "assert",
       "requires": [
-        "config:Trigger:Database:RequireConnectionRef=false, or a connectionRef pointing at runtime/db/sentinel.sqlite"
+        "config:Trigger:Database:Connections:np-testsuite-sentinel set to Data Source=C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite"
       ],
       "maxRuntimeSeconds": 45
     },
@@ -3844,7 +3843,21 @@
       "nodeId": "read",
       "assertedBy": "assert",
       "requires": [
-        "config:Trigger:Database:RequireConnectionRef=false, or a connectionRef pointing at runtime/db/sentinel.sqlite"
+        "config:Trigger:Database:Connections:np-testsuite-sentinel set to Data Source=C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite"
+      ],
+      "maxRuntimeSeconds": 45
+    },
+    {
+      "id": "databaseTrigger.connectionRef",
+      "dimension": "databaseTrigger.connectionRef",
+      "value": "named connection",
+      "profile": "continuous",
+      "expectedOutcome": "success",
+      "workflow": "[TestSuite] trigger: database",
+      "nodeId": "read",
+      "assertedBy": "assert",
+      "requires": [
+        "config:Trigger:Database:Connections:np-testsuite-sentinel set to Data Source=C:\\Temp\\NP-TestSuite\\runtime\\db\\sentinel.sqlite"
       ],
       "maxRuntimeSeconds": 45
     },
@@ -3859,10 +3872,10 @@
       "workflow": "[TestSuite] trigger: database"
     },
     {
-      "id": "databaseTrigger.connectionRef",
-      "dimension": "databaseTrigger.connectionRef",
-      "value": "named connection",
-      "reason": "Needs Trigger:Database:Connections:<name> in the host's configuration; the suite ships with the inline form that development permits.",
+      "id": "databaseTrigger.connectionString",
+      "dimension": "databaseTrigger.connectionString",
+      "value": "inline connection string",
+      "reason": "Production rejects it (Trigger:Database:RequireConnectionRef), so the suite polls through the named connection that every host accepts.",
       "coveredBy": "tests/NodePilot.Engine.Tests",
       "profile": "excluded",
       "expectedOutcome": "excluded",
@@ -4587,8 +4600,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4605,8 +4617,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4623,8 +4634,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4641,8 +4651,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4659,8 +4668,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4677,8 +4685,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4695,8 +4702,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4713,8 +4719,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },
@@ -4731,8 +4736,7 @@
         "errorContains": ""
       },
       "requires": [
-        "globals:NP_TESTSUITE_API_URL",
-        "globals:NP_TESTSUITE_SELF_URL"
+        "globals:NP_TESTSUITE_API_URL"
       ],
       "maxRuntimeSeconds": 90
     },

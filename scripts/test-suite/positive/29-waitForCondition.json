@@ -5,7 +5,7 @@
   "workflows": [
     {
       "name": "[TestSuite] waitForCondition",
-      "description": "All five condition types. The port and URL probes target the API's own listener, discovered at run time, so the workflow is not tied to one port.",
+      "description": "All five condition types. The port probe targets the API's own listener, discovered at run time; the URL probe targets NP_TESTSUITE_PROBE_URL, because an installed instance cannot probe itself by its own name.",
       "definition": {
         "nodes": [
           {
@@ -190,7 +190,7 @@
               "activityType": "waitForCondition",
               "config": {
                 "conditionType": "httpOk",
-                "url": "{{globals.NP_TESTSUITE_SELF_URL}}",
+                "url": "{{globals.NP_TESTSUITE_PROBE_URL}}",
                 "intervalSeconds": 1,
                 "timeoutSeconds": 15
               },
