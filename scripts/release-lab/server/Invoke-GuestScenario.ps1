@@ -153,13 +153,24 @@ $result.version = (Get-Item "$installDir\NodePilot.Api.exe" -ErrorAction Silentl
 if ($result.setupExit -ne 0) { $result.verdict = 'FAIL (setup exit)'; return [pscustomobject]$result }
 
 # --- health and one execution through the dispatch path ---------------------------------------
+$workflowFile = 'smoke-workflow.json'
+if ($scenario.check -eq 'allSigned') {
+    # A machine policy as a GPO sets it. Every local PowerShell path still has to run.
+    $policyKey = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\PowerShell'
+    New-Item -Path $policyKey -Force | Out-Null
+    Set-ItemProperty -Path $policyKey -Name EnableScripts -Value 1 -Type DWord
+    Set-ItemProperty -Path $policyKey -Name ExecutionPolicy -Value 'AllSigned' -Type String
+    # Read in a fresh process: this one cached the policy when it started.
+    $result.machinePolicy = "$(& "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command 'Get-ExecutionPolicy -Scope MachinePolicy')".Trim()
+    $workflowFile = 'allsigned-workflow.json'
+}
 $result.healthz = (Invoke-Http GET '/healthz/ready' $null).Status
 $credFile = "$dataDir\bootstrap-admin.json"
 $admin = $null
 if (Test-Path $credFile) {
     $admin = Get-Content $credFile -Raw | ConvertFrom-Json
     $result.login = (Invoke-Http POST '/api/auth/login' (@{ username = $admin.username; password = $admin.password } | ConvertTo-Json -Compress)).Status
-    $import = Invoke-Api POST '/api/workflows/import' (Get-Content (Join-Path $work 'smoke-workflow.json') -Raw)
+    $import = Invoke-Api POST '/api/workflows/import' (Get-Content (Join-Path $work $workflowFile) -Raw -Encoding UTF8)
     $wfId = @($import.workflows)[0].id
     $result.enable = (Invoke-Http POST "/api/workflows/$wfId/enable" $null).Status
     $exec = Invoke-Api POST "/api/workflows/$wfId/execute" '{"parameters":{}}'
@@ -171,6 +182,10 @@ if (Test-Path $credFile) {
         if ($status -in 'Succeeded', 'Failed', 'Cancelled') { break }
     }
     $result.execution = $status
+    if ($status -ne 'Succeeded') {
+        $result.failedSteps = @(@(Invoke-Api GET "/api/executions/$execId/steps" $null) | Where-Object { $_.status -ne 'Succeeded' } |
+            ForEach-Object { "$($_.stepId)=$($_.status): $("$($_.errorOutput)".Substring(0, [Math]::Min(300, "$($_.errorOutput)".Length)))" })
+    }
 }
 else { $result.login = 'no bootstrap-admin.json' }
 
@@ -193,6 +208,7 @@ $result.warnings = @($lines | Where-Object { $_ -match 'type="2"' }).Count
 $errors | Set-Content (Join-Path $work "$($scenario.id)-errors.log") -Encoding utf8
 
 $ok = $result.healthz -eq 200 -and $result.execution -eq 'Succeeded' -and $result.errors -eq 0
+if ($scenario.check -eq 'allSigned' -and $result.machinePolicy -ne 'AllSigned') { $ok = $false }
 
 # --- a second installation over the first one with another identity ---------------------------
 if ($scenario.secondIdentity) {

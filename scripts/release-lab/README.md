@@ -29,6 +29,7 @@ Each scenario starts from the clean checkpoint.
 | R1 | gMSA | SQL Server | fresh install | the VM restarts |
 | A | gMSA | SQL Server | fresh install | database stopped, service started, database back |
 | B | gMSA | PostgreSQL, CRL removed | fresh install | the pre-flight must refuse |
+| P1 | gMSA | SQL Server | fresh install | machine policy `AllSigned`, then every local PowerShell path runs |
 
 **Pass** for an install or update: setup exit 0, `/healthz/ready` 200, the bootstrap admin signs in,
 a workflow (manual trigger + log step) runs to *Succeeded*, and the service log has **no error
@@ -54,6 +55,12 @@ ready within five minutes, and logs no error entry.
 names the connection error, and the service becomes ready on its own once the database is back,
 without an error entry. **B** passes when the setup refuses before installing anything and says the
 certificate's revocation status could not be checked.
+
+**P1** sets the machine execution policy to `AllSigned` the way a GPO does, then runs
+`allsigned-workflow.json` instead of the smoke workflow: a script step in the default Windows
+PowerShell process, an isolated one, one in the in-process pool, a `waitForCondition` script, a
+`startProgram` that starts Windows PowerShell, and a built-in activity. It passes like an install:
+the run *Succeeded* and no error entry. A failed run lists its failed steps in `failedSteps`.
 
 ### Desktop setup (`desktop/Invoke-DesktopMatrix.ps1`, lab client VM)
 
@@ -85,7 +92,7 @@ Copy-Item scripts\release-lab\release-lab.example.json C:\lab-cred\release-lab.j
 ```
 
 Both need an elevated session on the Hyper-V host (checkpoint restore) and run independently, so
-they can run at the same time. The server matrix takes about 1.5 h (thirteen VM restores and
+they can run at the same time. The server matrix takes about 1.5 h (fourteen VM restores and
 installs, each with a two-minute observation window), the desktop run about an hour. Results, logs
 and a `summary.md` land in `%TEMP%\nodepilot-release-lab\<version>\`. Either script exits 1 if
 anything failed.

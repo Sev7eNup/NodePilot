@@ -46,7 +46,8 @@ $scenarios = @(
     @{ id = 'S1'; identity = 'localSystem'; database = 'sqlserver'; upgrade = $false; remoteSql = $true; uninstall = 'purge' },
     @{ id = 'R1'; identity = 'gmsa';        database = 'sqlserver'; upgrade = $false; check = 'reboot' },
     @{ id = 'A';  identity = 'gmsa';        database = 'sqlserver'; upgrade = $false; check = 'dbOutage' },
-    @{ id = 'B';  identity = 'gmsa';        database = 'postgres';  upgrade = $false; check = 'crlMissing' }
+    @{ id = 'B';  identity = 'gmsa';        database = 'postgres';  upgrade = $false; check = 'crlMissing' },
+    @{ id = 'P1'; identity = 'gmsa';        database = 'sqlserver'; upgrade = $false; check = 'allSigned' }
 )
 # -Only arrives as one comma-separated string when the script is started with -File.
 $Only = @($Only | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
@@ -149,13 +150,15 @@ foreach ($s in $scenarios) {
         $soak = if ($s.check) { 0 } else { $SoakSeconds }
         Write-Json (Join-Path $stage 'scenario.json') ([ordered]@{ id = $s.id; identity = $s.identity; database = $s.database; upgrade = $s.upgrade
             uninstall = if ($s.uninstall) { $s.uninstall } else { '' }; reinstallAfter = [bool]$s.reinstallAfter; soakSeconds = $soak
+            check = if ($s.check) { $s.check } else { '' }
             secondIdentity = if ($s.secondIdentity) { $srv.gmsaAccount } else { '' }
             sqlServer = if ($s.remoteSql) { $config.remoteSql.fqdn } else { '' }
             sqlDatabase = if ($s.remoteSql) { $config.remoteSql.database } else { '' } })
         Write-Json (Join-Path $stage 'answers.json') (New-Answers $s $false)
         if ($s.secondIdentity) { Write-Json (Join-Path $stage 'answers-second.json') (New-Answers $s $false $s.secondIdentity) }
         $files = @((Join-Path $here 'Invoke-GuestScenario.ps1'), (Join-Path $here 'Invoke-GuestDbOutageCheck.ps1'),
-                   (Join-Path $here 'Invoke-GuestRebootCheck.ps1'), (Join-Path (Split-Path $here) 'smoke-workflow.json')) +
+                   (Join-Path $here 'Invoke-GuestRebootCheck.ps1'), (Join-Path (Split-Path $here) 'smoke-workflow.json'),
+                   (Join-Path (Split-Path $here) 'allsigned-workflow.json')) +
                  @(Get-ChildItem $stage -File | ForEach-Object FullName)
         $copies = @{ $setup = 'server-setup.exe' }
         if ($s.upgrade) {
@@ -248,7 +251,7 @@ Restore-VMCheckpoint -VMSnapshot (Get-VMCheckpoint -VMName $vm -Name $srv.checkp
 
 $summary = @("# Server setup $Version - release lab", '', '| Scenario | Verdict | Details |', '|---|---|---|')
 foreach ($r in $results) {
-    $detail = @($r.PSObject.Properties | Where-Object { $_.Name -in 'setupExit', 'healthz', 'execution', 'errors', 'uninstallFailed', 'reinstallLogin', 'note', 'error' -and "$($_.Value)" -ne '' } |
+    $detail = @($r.PSObject.Properties | Where-Object { $_.Name -in 'setupExit', 'healthz', 'execution', 'failedSteps', 'errors', 'uninstallFailed', 'reinstallLogin', 'note', 'error' -and "$($_.Value)" -ne '' } |
         ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ', '
     $summary += "| $($r.id) | $($r.verdict) | $detail |"
 }

@@ -1,6 +1,6 @@
 # NodePilot Test-Suite
 
-46 generierte Workflows unter [`scripts/test-suite/`](../scripts/test-suite/), die jede
+50 generierte Workflows unter [`scripts/test-suite/`](../scripts/test-suite/), die jede
 Activity-Variante, jeden Trigger, jeden Edge-Operator und jedes Retry-Backoff **im Takt gegen
 die laufende Engine** ausführen und ihr Ergebnis prüfen. Live-Installation im Ordner
 `/Test_Workflows`.
@@ -55,7 +55,7 @@ deterministisch), `runScript engine=pwsh` (PowerShell 7 ist nicht garantiert),
 | **Generiert** | Quelle sind die `spec_*.py`-Module; die JSONs sind Artefakte. Eine Handänderung wird beim nächsten `build_suite.py` überschrieben. |
 | **Naming** | `[TestSuite] <typ>` / `[TestSuite-Neg] <bereich>` / `[TestSuite-Inv] <typ>` — Sortier-Anker und Filter-Hook. |
 | **Folder** | `/Test_Workflows`. |
-| **Target Machine** | `targetMachineId: "localhost"` — In-Proc-Bypass, keine Credentials, kein WinRM. |
+| **Target Machine** | `targetMachineId: "localhost"` — In-Proc-Bypass, keine Credentials, kein WinRM. Ausnahme: die beiden `script parity remote`-Workflows zielen auf `{{globals.NP_TESTSUITE_REMOTE_MACHINE}}`. |
 | **Assertion** | `Varianten → cleanup → assert(runScript) → returnData`. Der `assert`-Knoten ist Graph-Nachfahre aller Varianten und liest deren Ergebnisse direkt; `runScript`-Erfolg ist fehlerbasiert, ein `throw` macht den Lauf rot. |
 | **Cleanup vor Assertion** | damit eine rote Assertion keine Reste hinterlässt. Unbedenklich, weil die Assertion den Databus liest, nicht die Platte. |
 | **Eigenes `outputVariable`** | pro Variantenknoten; sonst kollidieren gleichnamige Params im Junction-Merge. |
@@ -175,6 +175,22 @@ die alte Suite zerfallen:
 Fälle, die ausdrücklich `Skipped` erwarten (deaktivierte Kante, deaktivierter Knoten, nicht
 erfüllte `.failed`-Bedingung), sind von Punkt 2 ausgenommen — dort ist die Unerreichbarkeit
 genau das Prüfziel.
+
+## PowerShell-Parität: lokal wie remote
+
+`spec_parity.py` hält fest, dass ein lokaler Skript-Step so endet wie dasselbe Skript über WinRM.
+
+| Workflow | Profil | Prüft |
+|---|---|---|
+| `[TestSuite] script parity` | continuous | Vorlagen an jeder Stelle eines Worts, Umlaute über den Datenbus, Windows-Module im 5.1-Prozess, Ausgabe als Objekttext ohne Host-/Warnzeilen, Exit-Code nach `exit` und `return`, Arbeitsverzeichnis wie im Pool, Temp-Skript schon während des Laufs weg, Hintergrundprogramm hält den Step nicht, `startProgram` in OEM und UTF-8, `waitForCondition`-Skript in 5.1 |
+| `[TestSuite-Neg] script parity` | continuous | jeder Fehlereintrag, natives stderr, `throw` mit erhaltenen Werten, Parse-Fehler, Exit-Code nach `return`, Wort mit eigenen Anführungszeichen, nicht ausführbare Bedingung, Programm-Timeout mit Teilausgabe |
+| `[TestSuite] script parity remote` | integration | dieselben Prüfungen über WinRM als Referenzseite, dazu Datenbus lokal → remote → lokal |
+| `[TestSuite-Neg] script parity remote` | integration | die Referenz-Fehlschläge über WinRM |
+
+Die Remote-Workflows brauchen das Global `NP_TESTSUITE_REMOTE_MACHINE`: Name oder Hostname einer
+registrierten Maschine mit Default-Credential. Ohne es werden sie installiert, aber nicht aktiviert.
+Die Maschinen-Policy `AllSigned` prüft das Release-Lab-Szenario **P1** (`scripts/release-lab/`),
+weil sie den Host verändert.
 
 ## Beim Bauen der Suite gefunden und behoben
 

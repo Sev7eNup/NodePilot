@@ -27,10 +27,11 @@ import spec_invasive  # noqa: E402
 import spec_crosscut  # noqa: E402
 import spec_triggers  # noqa: E402
 import spec_custom  # noqa: E402
+import spec_parity  # noqa: E402
 
 SPEC_MODULES = [spec_engine, spec_controlflow, spec_remote_fs, spec_remote_sys,
                 spec_netlocal, spec_crosscut, spec_triggers, spec_custom,
-                spec_negative, spec_invasive]
+                spec_parity, spec_negative, spec_invasive]
 
 CONTRACT_DIR = {"positive": "positive", "negative": "negative", "invasive": "invasive"}
 

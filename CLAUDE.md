@@ -32,7 +32,7 @@ NodePilot ist ein Single-Contributor-Projekt. KI darf beim Entwickeln helfen (di
 - `docs/deployment-guide.md` — (EN) Artefakt verifizieren, selbst bauen, Troubleshooting — **nicht** der Installationsweg, der steht **einmal** auf der Doku-Website (`content/{de,en}/deployment/production.md`)
 - `docs/av-exclusions.md` — Antiviren-Ausschlüsse (Server + Desktop) als Übergabedokument für eine AV-Abteilung
 - `docs/workflow-styleguide.md` — Layout-Styleguide für Workflow-JSONs (**vor jedem Workflow-Gen lesen**)
-- `docs/workflow-tests.md` — Test-Suite unter `scripts/test-suite/`: 46 generierte Workflows gegen die laufende Engine, `suite-manifest.json` als Abdeckungsquelle, Guard-Test `TestSuiteCoverageTests`
+- `docs/workflow-tests.md` — Test-Suite unter `scripts/test-suite/`: 50 generierte Workflows gegen die laufende Engine, `suite-manifest.json` als Abdeckungsquelle, Guard-Test `TestSuiteCoverageTests`
 - `docs/enterprise-features.md` — HA, Secret-Provider, LDAP/SSO, SIEM, Folder-RBAC
 - `docs/ai-feature-ideas.md` — Beschreibungstiefe zu den KI-Ideen, **keine Spezifikation**. Priorisierung und Status stehen in `docs/roadmap.md`.
 - `src/nodepilot-ui/e2e/README.md` — E2E-Coverage-Map + Spec-Konventionen

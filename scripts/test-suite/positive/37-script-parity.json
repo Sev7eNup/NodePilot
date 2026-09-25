@@ -1,0 +1,735 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] script parity",
+      "description": "A local script step ends like the same script on a target machine: templates in words, umlauts, Windows modules, output format, exit codes, working directory, the temp script, background programs, startProgram encodings and waitForCondition.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 1/5 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 1/5 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "janitor",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Janitor: stale run residue",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$root = 'C:\\Temp\\NP-TestSuite'\nforeach ($d in @('runs', 'runtime\\watch', 'runtime\\db', 'runtime\\acks')) {\n  New-Item -ItemType Directory -Path (Join-Path $root $d) -Force | Out-Null\n}\n$cutoff = (Get-Date).AddHours(-1)\nGet-ChildItem -LiteralPath (Join-Path $root 'runs') -Directory -ErrorAction SilentlyContinue |\n  Where-Object { $_.LastWriteTime -lt $cutoff } |\n  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue\n$janitorSweep = 'ok'\n"
+              },
+              "outputVariable": "janitor",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "cid",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Correlation id",
+              "activityType": "generateText",
+              "config": {
+                "mode": "guid"
+              },
+              "outputVariable": "cid"
+            }
+          },
+          {
+            "id": "mkrun",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "Sandbox: create run dir",
+              "activityType": "folderOperation",
+              "config": {
+                "operation": "create",
+                "path": "C:\\Temp\\NP-TestSuite\\runs\\{{cid.param.text}}"
+              },
+              "outputVariable": "mkrun",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "seed",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "Seed: values for the data bus",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$dir = Join-Path (Join-Path 'C:\\Temp\\NP-TestSuite\\runs' {{cid.param.text}}) 'words'\n$n = '50'\n$name = 'report 1'\n$greeting = 'Grüße ✓ C:\\Täst'\n$hostName = $env:COMPUTERNAME\n"
+              },
+              "outputVariable": "seed",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "p0",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "runScript: templates in words",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$mid = Write-Output C:\\t\\{{seed.param.n}}.txt\n$start = Write-Output {{seed.param.n}}\\app.txt\n$ext = Write-Output {{seed.param.name}}.log\n$two = Write-Output {{seed.param.n}}-{{seed.param.name}}.log\n$upper = Write-Output {{seed.param.name}}.ToUpper()\n$len = [string]({{seed.param.greeting}}.Length)\nNew-Item -ItemType Directory -Force -Path {{seed.param.dir}} | Out-Null\nSet-Content -LiteralPath {{seed.param.dir}}\\f-{{seed.param.n}}.txt -Value {{seed.param.greeting}} -Encoding UTF8\n$read = (Get-Content -LiteralPath {{seed.param.dir}}\\f-{{seed.param.n}}.txt -Encoding UTF8 -Raw).Trim()\n$names = (Get-ChildItem -LiteralPath {{seed.param.dir}}).Name -join ','\n"
+              },
+              "outputVariable": "p0",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "p1",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "runScript: umlauts and Windows modules",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "\n$echo = {{seed.param.greeting}}\n$aliasEcho = $greeting\n$fromHost = {{seed.param.hostName}}\n$ranOn = $env:COMPUTERNAME\n$literal = 'Größe'\n$edition = [string]$PSVersionTable.PSEdition\n$guid = (New-Guid).Guid\n$hash = (Get-FileHash -InputStream ([IO.MemoryStream]::new())).Hash\nWrite-Output ($echo + '|' + $literal)\n$job = [string](Start-Job { 40 + 2 } | Wait-Job | Receive-Job)\n"
+              },
+              "outputVariable": "p1",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "p2",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "runScript: output is object text",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "[pscustomobject]@{ a = 1 }\nWrite-Host 'host-line'\nWrite-Warning 'warn-line'\nWrite-Information 'info-line'\n'plain'\n42\n"
+              },
+              "outputVariable": "p2",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "p3",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 500
+            },
+            "data": {
+              "label": "runScript: return after exit 3",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$x = 'a'\ncmd /c exit 3\nreturn\n$y = 'b'\n"
+              },
+              "outputVariable": "p3",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "p4",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "runScript: exit 5",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$x = 'a'\nexit 5\n"
+              },
+              "outputVariable": "p4",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "p5",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 500
+            },
+            "data": {
+              "label": "runScript: isolated exit 6",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "isolated": true,
+                "script": "$x = 'a'\nexit 6\n"
+              },
+              "outputVariable": "p5",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "p6",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 500
+            },
+            "data": {
+              "label": "runScript: working directory (auto)",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$cwd = (Get-Location).Path\n"
+              },
+              "outputVariable": "p6",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "p7",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 500
+            },
+            "data": {
+              "label": "runScript: working directory (runspace)",
+              "activityType": "runScript",
+              "config": {
+                "engine": "runspace",
+                "timeoutSeconds": 30,
+                "script": "$cwd = (Get-Location).Path\n"
+              },
+              "outputVariable": "p7",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "p8",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 500
+            },
+            "data": {
+              "label": "runScript: temp script gone while running",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$cidText = {{cid.param.text}}\n$left = [string]@(Get-ChildItem ([IO.Path]::GetTempPath()) -Filter 'nodepilot_*.ps1' |\n  Where-Object { (Get-Content -LiteralPath $_.FullName -Raw -ErrorAction SilentlyContinue) -like ('*' + $cidText + '*') }).Count\n"
+              },
+              "outputVariable": "p8",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "p9",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 500
+            },
+            "data": {
+              "label": "runScript: start a background program",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$p = Start-Process -FilePath 'C:\\Windows\\System32\\PING.EXE' -ArgumentList '-n 30 127.0.0.1' -NoNewWindow -PassThru\n$programId = [string]$p.Id\n"
+              },
+              "outputVariable": "p9",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "p10",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 500
+            },
+            "data": {
+              "label": "runScript: program still running, stop it",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$programId = {{p9.param.programId}}\n$stillRunning = [string][bool](Get-Process -Id $programId -ErrorAction SilentlyContinue)\nStop-Process -Id $programId -ErrorAction SilentlyContinue\n"
+              },
+              "outputVariable": "p10",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "p11",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 740
+            },
+            "data": {
+              "label": "runScript: stderr merged inside the call",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$o = cmd /c \"dir C:\\nope-np-parity 2>&1\"\n$after = 'y'\n"
+              },
+              "outputVariable": "p11",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "p12",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 740
+            },
+            "data": {
+              "label": "runScript: progress turned back on",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$ProgressPreference = 'Continue'\nWrite-Progress -Activity 'p' -Status 's'\n$done = 'y'\n"
+              },
+              "outputVariable": "p12",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "sc",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 740
+            },
+            "data": {
+              "label": "startProgram: cmd writes OEM",
+              "activityType": "startProgram",
+              "config": {
+                "filePath": "C:\\Windows\\System32\\cmd.exe",
+                "arguments": "/c echo Größe",
+                "timeoutSeconds": 60
+              },
+              "outputVariable": "sc",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "sp",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 740
+            },
+            "data": {
+              "label": "startProgram: powershell writes OEM",
+              "activityType": "startProgram",
+              "config": {
+                "filePath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+                "arguments": "-NoProfile -NonInteractive -EncodedCommand JwBHAHIA9gDfAGUAJwA=",
+                "timeoutSeconds": 60
+              },
+              "outputVariable": "sp",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "su",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 740
+            },
+            "data": {
+              "label": "startProgram: program writes UTF-8",
+              "activityType": "startProgram",
+              "config": {
+                "filePath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+                "arguments": "-NoProfile -NonInteractive -EncodedCommand WwBDAG8AbgBzAG8AbABlAF0AOgA6AE8AdQB0AHAAdQB0AEUAbgBjAG8AZABpAG4AZwAgAD0AIABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAA7ACAAJwBHAHIA9gDfAGUAJwA=",
+                "timeoutSeconds": 60
+              },
+              "outputVariable": "su",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "w0",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 740
+            },
+            "data": {
+              "label": "waitForCondition: script in Windows PowerShell",
+              "activityType": "waitForCondition",
+              "config": {
+                "conditionType": "script",
+                "intervalSeconds": 1,
+                "timeoutSeconds": 20,
+                "script": "$PSVersionTable.PSEdition -eq 'Desktop' -and [bool](Get-Command New-Guid)"
+              },
+              "outputVariable": "w0",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "cleanup",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 740
+            },
+            "data": {
+              "label": "Cleanup: run sandbox",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "\n$cid = {{cid.param.text}}\n$dir = Join-Path 'C:\\Temp\\NP-TestSuite\\runs' $cid\nRemove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue\n\n$cleanupDone = 'ok'\n"
+              },
+              "outputVariable": "cleanup",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 740
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$greeting = 'Grüße ✓ C:\\Täst'\n$p0 = @{ mid = {{p0.param.mid}}; start = {{p0.param.start}}; ext = {{p0.param.ext}}; two = {{p0.param.two}}; upper = {{p0.param.upper}}; len = {{p0.param.len}}; read = {{p0.param.read}}; names = {{p0.param.names}} }\n\nif ($p0.mid -ne 'C:\\t\\50.txt') { throw \"template in a word: '$($p0.mid)'\" }\nif ($p0.start -ne '50\\app.txt') { throw \"template at a word start: '$($p0.start)'\" }\nif ($p0.ext -ne 'report 1.log') { throw \"template before .ext: '$($p0.ext)'\" }\nif ($p0.two -ne '50-report 1.log') { throw \"two templates in a word: '$($p0.two)'\" }\nif ($p0.upper -ne 'REPORT 1') { throw \"method call on a template: '$($p0.upper)'\" }\nif ($p0.len -ne '15') { throw \"member access in expression mode: '$($p0.len)'\" }\nif ($p0.read -ne $greeting) { throw \"file written through word templates read back '$($p0.read)'\" }\nif ($p0.names -ne 'f-50.txt') { throw \"file name from a word template: '$($p0.names)'\" }\n\n$echo = {{p1.param.echo}}\nif ($echo -ne $greeting -or {{p1.param.aliasEcho}} -ne $greeting) { throw \"upstream umlauts: '$echo'\" }\nif ({{p1.param.literal}} -ne 'Größe') { throw \"script literal: '{{p1.param.literal}}'\" }\nif ({{p1.param.edition}} -ne 'Desktop') { throw \"local default engine is not Windows PowerShell\" }\nif ({{p1.param.guid}} -notmatch '^[0-9a-f-]{36}$') { throw \"New-Guid missing in the local 5.1 process\" }\nif ({{p1.param.job}} -ne '42') { throw \"Start-Job in the local 5.1 process: '{{p1.param.job}}'\" }\n$lines = @(({{p2.output}}) -split \"`r?`n\" | ForEach-Object { $_.Trim() } | Where-Object { $_ })\nif (($lines -join '|') -ne '@{a=1}|plain|42') { throw \"output format: '$($lines -join '|')'\" }\nif ({{p3.param.exitCode}} -ne '3' -or {{p3.param.x}} -ne 'a') { throw \"return after exit 3: exitCode '{{p3.param.exitCode}}'\" }\nif ({{p4.param.exitCode}} -ne '5' -or {{p4.param.x}} -ne 'a') { throw \"exit 5: '{{p4.param.exitCode}}'\" }\nif ({{p5.param.exitCode}} -ne '6' -or {{p5.param.x}} -ne 'a') { throw \"isolated exit 6: '{{p5.param.exitCode}}'\" }\nif ({{p6.param.cwd}} -ne {{p7.param.cwd}}) { throw \"working directory: auto '{{p6.param.cwd}}' vs runspace '{{p7.param.cwd}}'\" }\nif ({{p8.param.left}} -ne '0') { throw \"the temp script still exists while the script runs\" }\nif ({{p10.param.stillRunning}} -ne 'True') { throw \"the step waited for the background program\" }\nif ({{p11.param.after}} -ne 'y' -or {{p11.param.exitCode}} -ne '1') { throw \"merged stderr: after '{{p11.param.after}}' exit '{{p11.param.exitCode}}'\" }\nif ({{p12.error}} -match 'CLIXML|<Objs') { throw \"progress leaked into the error text\" }\n\nforeach ($pair in @(@('sc', {{sc.param.stdout}}), @('sp', {{sp.param.stdout}}), @('su', {{su.param.stdout}}))) {\n  if ($pair[1].Trim() -ne 'Größe') { throw \"startProgram $($pair[0]): expected 'Größe', got '$($pair[1])'\" }\n}\nif ({{w0.param.lastResult}} -ne 'true') { throw 'waitForCondition script' }\n$assertOk = 'script parity'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 980
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "script parity",
+                  "asserted": "{{assert.success}}",
+                  "cid": "{{cid.param.text}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-janitor",
+            "source": "trg",
+            "target": "janitor",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-janitor-cid",
+            "source": "janitor",
+            "target": "cid",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cid-mkrun",
+            "source": "cid",
+            "target": "mkrun",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-mkrun-seed",
+            "source": "mkrun",
+            "target": "seed",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-seed-p0",
+            "source": "seed",
+            "target": "p0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-p0-p1",
+            "source": "p0",
+            "target": "p1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-p1-p2",
+            "source": "p1",
+            "target": "p2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-p2-p3",
+            "source": "p2",
+            "target": "p3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-p3-p4",
+            "source": "p3",
+            "target": "p4",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-p4-p5",
+            "source": "p4",
+            "target": "p5",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-p5-p6",
+            "source": "p5",
+            "target": "p6",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-p6-p7",
+            "source": "p6",
+            "target": "p7",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-p7-p8",
+            "source": "p7",
+            "target": "p8",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-p8-p9",
+            "source": "p8",
+            "target": "p9",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-p9-p10",
+            "source": "p9",
+            "target": "p10",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-p10-p11",
+            "source": "p10",
+            "target": "p11",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-p11-p12",
+            "source": "p11",
+            "target": "p12",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-p12-sc",
+            "source": "p12",
+            "target": "sc",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-sc-sp",
+            "source": "sc",
+            "target": "sp",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-sp-su",
+            "source": "sp",
+            "target": "su",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-su-w0",
+            "source": "su",
+            "target": "w0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-w0-cleanup",
+            "source": "w0",
+            "target": "cleanup",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cleanup-assert",
+            "source": "cleanup",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-09-25T00:00:00Z",
+  "workflows": [
+    {
+      "name": "Install Smoke: AllSigned policy",
+      "description": "Every local PowerShell path under a machine AllSigned policy: the default Windows PowerShell process, an isolated process, the in-process pool, a waitForCondition script, startProgram and a built-in activity.",
+      "definition": {
+        "nodes": [
+          { "id": "trg", "type": "activity", "position": { "x": 0, "y": 0 },
+            "data": { "label": "Manual Trigger", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "auto", "type": "activity", "position": { "x": 380, "y": 0 },
+            "data": { "label": "runScript: default engine", "activityType": "runScript",
+                      "config": { "timeoutSeconds": 120, "script": "$edition = [string]$PSVersionTable.PSEdition\nif ($edition -ne 'Desktop') { throw \"expected Windows PowerShell, got '$edition'\" }\n$guid = (New-Guid).Guid\n" } } },
+          { "id": "isolated", "type": "activity", "position": { "x": 700, "y": 0 },
+            "data": { "label": "runScript: isolated", "activityType": "runScript",
+                      "config": { "timeoutSeconds": 120, "isolated": true, "script": "$guid = (New-Guid).Guid\n$echo = {{auto.param.guid}}\n" } } },
+          { "id": "pool", "type": "activity", "position": { "x": 1020, "y": 0 },
+            "data": { "label": "runScript: runspace", "activityType": "runScript",
+                      "config": { "timeoutSeconds": 60, "engine": "runspace", "script": "$echo = {{isolated.param.guid}}\n" } } },
+          { "id": "wait", "type": "activity", "position": { "x": 1340, "y": 0 },
+            "data": { "label": "waitForCondition: script", "activityType": "waitForCondition",
+                      "config": { "conditionType": "script", "script": "[bool](Get-Command New-Guid)", "intervalSeconds": 1, "timeoutSeconds": 60 } } },
+          { "id": "program", "type": "activity", "position": { "x": 1660, "y": 0 },
+            "data": { "label": "startProgram: Windows PowerShell", "activityType": "startProgram", "targetMachineId": "localhost",
+                      "config": { "filePath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "timeoutSeconds": 120,
+                                  "arguments": "-NoProfile -NonInteractive -EncodedCommand JABQAHIAbwBnAHIAZQBzAHMAUAByAGUAZgBlAHIAZQBuAGMAZQAgAD0AIAAnAFMAaQBsAGUAbgB0AGwAeQBDAG8AbgB0AGkAbgB1AGUAJwA7ACAAKABOAGUAdwAtAEcAdQBpAGQAKQAuAEcAdQBpAGQA" } } },
+          { "id": "builtin", "type": "activity", "position": { "x": 1980, "y": 0 },
+            "data": { "label": "fileHash: built-in activity", "activityType": "fileHash", "targetMachineId": "localhost",
+                      "config": { "path": "C:\\Windows\\System32\\cmd.exe", "algorithm": "SHA256" } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trg", "target": "auto", "type": "labeled", "data": { "label": "", "condition": null, "disabled": false } },
+          { "id": "e2", "source": "auto", "target": "isolated", "type": "labeled", "data": { "label": "", "condition": null, "disabled": false } },
+          { "id": "e3", "source": "isolated", "target": "pool", "type": "labeled", "data": { "label": "", "condition": null, "disabled": false } },
+          { "id": "e4", "source": "pool", "target": "wait", "type": "labeled", "data": { "label": "", "condition": null, "disabled": false } },
+          { "id": "e5", "source": "wait", "target": "program", "type": "labeled", "data": { "label": "", "condition": null, "disabled": false } },
+          { "id": "e6", "source": "program", "target": "builtin", "type": "labeled", "data": { "label": "", "condition": null, "disabled": false } }
+        ]
+      }
+    }
+  ]
+}

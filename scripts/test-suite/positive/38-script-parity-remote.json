@@ -1,0 +1,412 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-08-30T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] script parity remote",
+      "description": "The reference side of the parity checks: the same scripts over WinRM on the machine named in NP_TESTSUITE_REMOTE_MACHINE, plus startProgram encodings on the target and its output read back locally.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: 0 22/30 * * * ? *",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 22/30 * * * ? *",
+                "description": "TestSuite cadence"
+              },
+              "outputVariable": "trg"
+            }
+          },
+          {
+            "id": "cid",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "Correlation id",
+              "activityType": "generateText",
+              "config": {
+                "mode": "guid"
+              },
+              "outputVariable": "cid"
+            }
+          },
+          {
+            "id": "seed",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "Seed: values for the data bus",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$dir = 'C:\\Windows\\Temp\\np-parity-' + {{cid.param.text}}\n$n = '50'\n$name = 'report 1'\n$greeting = 'Grüße ✓ C:\\Täst'\n$hostName = $env:COMPUTERNAME\n"
+              },
+              "outputVariable": "seed",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "r0",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 260
+            },
+            "data": {
+              "label": "remote runScript: templates in words",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 120,
+                "script": "\n$mid = Write-Output C:\\t\\{{seed.param.n}}.txt\n$start = Write-Output {{seed.param.n}}\\app.txt\n$ext = Write-Output {{seed.param.name}}.log\n$two = Write-Output {{seed.param.n}}-{{seed.param.name}}.log\n$upper = Write-Output {{seed.param.name}}.ToUpper()\n$len = [string]({{seed.param.greeting}}.Length)\nNew-Item -ItemType Directory -Force -Path {{seed.param.dir}} | Out-Null\nSet-Content -LiteralPath {{seed.param.dir}}\\f-{{seed.param.n}}.txt -Value {{seed.param.greeting}} -Encoding UTF8\n$read = (Get-Content -LiteralPath {{seed.param.dir}}\\f-{{seed.param.n}}.txt -Encoding UTF8 -Raw).Trim()\n$names = (Get-ChildItem -LiteralPath {{seed.param.dir}}).Name -join ','\nRemove-Item -LiteralPath {{seed.param.dir}} -Recurse -Force\n"
+              },
+              "outputVariable": "r0",
+              "targetMachineId": "{{globals.NP_TESTSUITE_REMOTE_MACHINE}}"
+            }
+          },
+          {
+            "id": "r1",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 260
+            },
+            "data": {
+              "label": "remote runScript: umlauts and modules",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 120,
+                "script": "\n$echo = {{seed.param.greeting}}\n$aliasEcho = $greeting\n$fromHost = {{seed.param.hostName}}\n$ranOn = $env:COMPUTERNAME\n$literal = 'Größe'\n$edition = [string]$PSVersionTable.PSEdition\n$guid = (New-Guid).Guid\n$hash = (Get-FileHash -InputStream ([IO.MemoryStream]::new())).Hash\nWrite-Output ($echo + '|' + $literal)\n"
+              },
+              "outputVariable": "r1",
+              "targetMachineId": "{{globals.NP_TESTSUITE_REMOTE_MACHINE}}"
+            }
+          },
+          {
+            "id": "r2",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 260
+            },
+            "data": {
+              "label": "remote runScript: output is object text",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 120,
+                "script": "[pscustomobject]@{ a = 1 }\nWrite-Host 'host-line'\nWrite-Warning 'warn-line'\nWrite-Information 'info-line'\n'plain'\n42\n"
+              },
+              "outputVariable": "r2",
+              "targetMachineId": "{{globals.NP_TESTSUITE_REMOTE_MACHINE}}"
+            }
+          },
+          {
+            "id": "r3",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 260
+            },
+            "data": {
+              "label": "remote runScript: return after exit 3",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 120,
+                "script": "$x = 'a'\ncmd /c exit 3\nreturn\n$y = 'b'\n"
+              },
+              "outputVariable": "r3",
+              "targetMachineId": "{{globals.NP_TESTSUITE_REMOTE_MACHINE}}"
+            }
+          },
+          {
+            "id": "tc",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 260
+            },
+            "data": {
+              "label": "startProgram: cmd writes OEM",
+              "activityType": "startProgram",
+              "config": {
+                "filePath": "C:\\Windows\\System32\\cmd.exe",
+                "arguments": "/c echo Größe",
+                "timeoutSeconds": 60
+              },
+              "outputVariable": "tc",
+              "targetMachineId": "{{globals.NP_TESTSUITE_REMOTE_MACHINE}}"
+            }
+          },
+          {
+            "id": "tp",
+            "type": "activity",
+            "position": {
+              "x": 2300,
+              "y": 500
+            },
+            "data": {
+              "label": "startProgram: powershell writes OEM",
+              "activityType": "startProgram",
+              "config": {
+                "filePath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+                "arguments": "-NoProfile -NonInteractive -EncodedCommand JwBHAHIA9gDfAGUAJwA=",
+                "timeoutSeconds": 60
+              },
+              "outputVariable": "tp",
+              "targetMachineId": "{{globals.NP_TESTSUITE_REMOTE_MACHINE}}"
+            }
+          },
+          {
+            "id": "tu",
+            "type": "activity",
+            "position": {
+              "x": 1980,
+              "y": 500
+            },
+            "data": {
+              "label": "startProgram: program writes UTF-8",
+              "activityType": "startProgram",
+              "config": {
+                "filePath": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+                "arguments": "-NoProfile -NonInteractive -EncodedCommand WwBDAG8AbgBzAG8AbABlAF0AOgA6AE8AdQB0AHAAdQB0AEUAbgBjAG8AZABpAG4AZwAgAD0AIABbAFQAZQB4AHQALgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAVQBUAEYAOAA7ACAAJwBHAHIA9gDfAGUAJwA=",
+                "timeoutSeconds": 60
+              },
+              "outputVariable": "tu",
+              "targetMachineId": "{{globals.NP_TESTSUITE_REMOTE_MACHINE}}"
+            }
+          },
+          {
+            "id": "l0",
+            "type": "activity",
+            "position": {
+              "x": 1660,
+              "y": 500
+            },
+            "data": {
+              "label": "local runScript: remote program output",
+              "activityType": "runScript",
+              "config": {
+                "engine": "runspace",
+                "timeoutSeconds": 30,
+                "script": "$typed = {{tc.param.stdout}}\n"
+              },
+              "outputVariable": "l0",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "w0",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 500
+            },
+            "data": {
+              "label": "remote waitForCondition: script",
+              "activityType": "waitForCondition",
+              "config": {
+                "conditionType": "script",
+                "intervalSeconds": 2,
+                "timeoutSeconds": 60,
+                "script": "$PSVersionTable.PSEdition -eq 'Desktop' -and [bool](Get-Command New-Guid)"
+              },
+              "outputVariable": "w0",
+              "targetMachineId": "{{globals.NP_TESTSUITE_REMOTE_MACHINE}}"
+            }
+          },
+          {
+            "id": "assert",
+            "type": "activity",
+            "position": {
+              "x": 1020,
+              "y": 500
+            },
+            "data": {
+              "label": "Assert: all variants",
+              "activityType": "runScript",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$greeting = 'Grüße ✓ C:\\Täst'\n$r0 = @{ mid = {{r0.param.mid}}; start = {{r0.param.start}}; ext = {{r0.param.ext}}; two = {{r0.param.two}}; upper = {{r0.param.upper}}; len = {{r0.param.len}}; read = {{r0.param.read}}; names = {{r0.param.names}} }\n\nif ($r0.mid -ne 'C:\\t\\50.txt') { throw \"template in a word: '$($r0.mid)'\" }\nif ($r0.start -ne '50\\app.txt') { throw \"template at a word start: '$($r0.start)'\" }\nif ($r0.ext -ne 'report 1.log') { throw \"template before .ext: '$($r0.ext)'\" }\nif ($r0.two -ne '50-report 1.log') { throw \"two templates in a word: '$($r0.two)'\" }\nif ($r0.upper -ne 'REPORT 1') { throw \"method call on a template: '$($r0.upper)'\" }\nif ($r0.len -ne '15') { throw \"member access in expression mode: '$($r0.len)'\" }\nif ($r0.read -ne $greeting) { throw \"file written through word templates read back '$($r0.read)'\" }\nif ($r0.names -ne 'f-50.txt') { throw \"file name from a word template: '$($r0.names)'\" }\n\nif ({{r1.param.fromHost}} -ne {{seed.param.hostName}}) { throw \"local value on the target: '{{r1.param.fromHost}}'\" }\nif ({{r1.param.ranOn}} -eq {{seed.param.hostName}}) { throw 'the remote steps ran on the NodePilot host itself' }\nif ({{r1.param.echo}} -ne $greeting -or {{r1.param.aliasEcho}} -ne $greeting) { throw \"remote umlauts: '{{r1.param.echo}}'\" }\nif ({{r1.param.literal}} -ne 'Größe') { throw \"remote script literal: '{{r1.param.literal}}'\" }\nif ({{r1.param.guid}} -notmatch '^[0-9a-f-]{36}$') { throw 'New-Guid missing on the target' }\n$lines = @(({{r2.output}}) -split \"`r?`n\" | ForEach-Object { $_.Trim() } | Where-Object { $_ })\nif (($lines -join '|') -ne '@{a=1}|plain|42') { throw \"remote output format: '$($lines -join '|')'\" }\nif ({{r3.param.exitCode}} -ne '3' -or {{r3.param.x}} -ne 'a') { throw \"remote return after exit 3: '{{r3.param.exitCode}}'\" }\nif (({{l0.param.typed}}).Trim() -ne 'Größe') { throw \"remote program output in the local pool: '{{l0.param.typed}}'\" }\n\nforeach ($pair in @(@('tc', {{tc.param.stdout}}), @('tp', {{tp.param.stdout}}), @('tu', {{tu.param.stdout}}))) {\n  if ($pair[1].Trim() -ne 'Größe') { throw \"startProgram $($pair[0]): expected 'Größe', got '$($pair[1])'\" }\n}\nif ({{w0.param.lastResult}} -ne 'true') { throw 'remote waitForCondition script' }\n$assertOk = 'script parity remote'\n"
+              },
+              "outputVariable": "assert",
+              "targetMachineId": "localhost"
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 500
+            },
+            "data": {
+              "label": "Return",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "activity": "script parity remote",
+                  "asserted": "{{assert.success}}",
+                  "cid": "{{cid.param.text}}"
+                }
+              },
+              "outputVariable": "ret"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e-trg-cid",
+            "source": "trg",
+            "target": "cid",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-cid-seed",
+            "source": "cid",
+            "target": "seed",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-seed-r0",
+            "source": "seed",
+            "target": "r0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-r0-r1",
+            "source": "r0",
+            "target": "r1",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-r1-r2",
+            "source": "r1",
+            "target": "r2",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-r2-r3",
+            "source": "r2",
+            "target": "r3",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-r3-tc",
+            "source": "r3",
+            "target": "tc",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-tc-tp",
+            "source": "tc",
+            "target": "tp",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            },
+            "sourceHandle": "bottom",
+            "targetHandle": "top"
+          },
+          {
+            "id": "e-tp-tu",
+            "source": "tp",
+            "target": "tu",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-tu-l0",
+            "source": "tu",
+            "target": "l0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-l0-w0",
+            "source": "l0",
+            "target": "w0",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-w0-assert",
+            "source": "w0",
+            "target": "assert",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          },
+          {
+            "id": "e-assert-ret",
+            "source": "assert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always",
+              "condition": ""
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

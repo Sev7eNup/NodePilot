@@ -16,10 +16,10 @@
               "y": 260
             },
             "data": {
-              "label": "Schedule: 0 22/30 * * * ? *",
+              "label": "Schedule: 0 7/30 * * * ? *",
               "activityType": "scheduleTrigger",
               "config": {
-                "cronExpression": "0 22/30 * * * ? *",
+                "cronExpression": "0 7/30 * * * ? *",
                 "description": "TestSuite cadence"
               },
               "outputVariable": "trg"
