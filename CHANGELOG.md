@@ -12,6 +12,13 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-09-25
+
+A PowerShell release. Local script steps now run in Windows PowerShell 5.1 and end the way the
+same script ends on a target machine, `startProgram` handles umlauts and timeouts on every host,
+and a local SQL Server no longer fails the first start after a restart. **Read "Check before
+upgrading" if workflows run scripts without a target machine.**
+
 ### Check before upgrading
 
 Local script steps (`runScript`, custom nodes, `waitForCondition` scripts) now behave like the same
@@ -1730,7 +1737,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.1...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.2...main
+[1.4.2]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.2
 [1.4.1]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.1
 [1.4.0]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.0
 [1.3.0]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.3.0
