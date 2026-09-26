@@ -116,7 +116,9 @@ public sealed class StartupRecoveryProviderTests
         renewDb.Database.SetCommandTimeout(30);
         var recovery = StartupRecovery.RecoverOrphanedExecutionsAsync(
             db, NullLogger.Instance, ourNodeId: "new", leaseEpoch: 7,
-            clusterBatchTimeout: TimeSpan.FromMilliseconds(750));
+            // Allow cold provider/EF setup to reach the deliberate stall on shared CI runners.
+            // The batch must still cancel and release its lock before the 30-second renewal timeout.
+            clusterBatchTimeout: TimeSpan.FromSeconds(5));
         await stall.Entered.Task.WaitAsync(TimeSpan.FromSeconds(15));
         var renew = renewDb.ClusterLeaders.Where(l => l.Resource == "primary" && l.OwnerNodeId == "new")
             .ExecuteUpdateAsync(s => s.SetProperty(l => l.ExpiresAt, DateTime.UtcNow.AddMinutes(5)));
