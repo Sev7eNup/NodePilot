@@ -117,7 +117,7 @@ describe('assembleSite', () => {
     (path) => {
       put(join('dist-site', path), 'SITE_COPY')
 
-      expect(() => assembleSite(fixture, '_site')).toThrow(/collides with the Pages layout/)
+      expect(() => assembleSite(fixture, '_site')).toThrow(/collides with the public site layout/)
     },
   )
 

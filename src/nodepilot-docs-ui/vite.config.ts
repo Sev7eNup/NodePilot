@@ -2,17 +2,17 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { prerenderDocs } from './scripts/prerender-docs.mjs'
-import { PAGES_ORIGIN, siteOrigin } from './scripts/site-origin.mjs'
+import { SOURCE_ORIGIN, siteOrigin } from './scripts/site-origin.mjs'
 
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
     {
-      // The head's canonical and Open Graph URLs are absolute and written for Pages. A build for
+      // The head's canonical and Open Graph URLs are absolute and name the public domain. A build for
       // another host has to retarget them, or every docs page points a crawler at a foreign origin.
       name: 'np-docs-origin',
-      transformIndexHtml: (html: string) => html.replaceAll(PAGES_ORIGIN, siteOrigin()),
+      transformIndexHtml: (html: string) => html.replaceAll(SOURCE_ORIGIN, siteOrigin()),
     },
     {
       // In dev the history fallback serves the root index.html at every depth, so the depth
@@ -36,7 +36,7 @@ export default defineConfig({
   // The content carries one absolute link (the demo lives beside the docs, not under them).
   // `lib/content.ts` rewrites it when the build targets another host.
   define: {
-    __NP_PAGES_ORIGIN__: JSON.stringify(PAGES_ORIGIN),
+    __NP_SOURCE_ORIGIN__: JSON.stringify(SOURCE_ORIGIN),
     __NP_SITE_ORIGIN__: JSON.stringify(siteOrigin()),
   },
   // Relative, because the docs build is served under /docs both on the GitHub Pages site

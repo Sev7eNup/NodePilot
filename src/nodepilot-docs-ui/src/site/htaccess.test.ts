@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { SOURCE_CANONICAL_HOST, rewriteHtaccessHost } from '../../scripts/htaccess.mjs'
 import htaccess from './public/.htaccess?raw'
-import { PAGES_ORIGIN } from '../../scripts/site-origin.mjs'
+const PAGES_ORIGIN = 'https://sev7enup.github.io/NodePilot'
 
 describe('htaccess canonical host', () => {
   it('names this project host in the committed file, so it works unbuilt', () => {

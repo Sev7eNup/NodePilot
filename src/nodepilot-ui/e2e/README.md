@@ -14,13 +14,12 @@ npx playwright test <spec> --config=playwright.dev.config.ts
 ```
 
 **The browser demo has its own suite**, in `e2e-demo/` rather than here: it needs a different
-artifact (`dist-demo`) and a different server, and it is served from a sub-path on purpose —
-`base: './'` leaves URLs inside JavaScript strings alone, so a root-absolute literal passes at
-the origin root and breaks on the published site. It also does not mock anything: the demo ships
-its own in-memory backend, so the specs drive the real thing.
+artifact (`dist-demo`) and a server that mirrors the Apache page fallback under `/demo/`.
+Direct entries and reloads exercise routing and asset URLs. The suite does not mock APIs:
+the demo ships its own in-memory backend, so the specs drive the real thing.
 
 ```bash
-npm run test:e2e:demo     # builds dist-demo, serves it under /NodePilot/demo/ on :4180
+npm run test:e2e:demo     # builds dist-demo, serves it under /demo/ on :4180
 ```
 
 The nightly Task Scheduler job (`scripts/nightly-tests.ps1`) runs `npm run test:e2e`

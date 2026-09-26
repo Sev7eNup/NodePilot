@@ -1,21 +1,23 @@
 import { defineConfig } from 'vite'
 import { prerenderSite } from './scripts/prerender-plugin.mjs'
 import { writeSiteHtaccess } from './scripts/htaccess.mjs'
-import { PAGES_ORIGIN, siteOrigin } from './scripts/site-origin.mjs'
+import { SOURCE_ORIGIN, siteOrigin } from './scripts/site-origin.mjs'
+import { demoPreviewFallback } from './scripts/demo-preview-plugin.mjs'
 
 // Project website (src/site). It builds separately from the docs SPA because dist/ is copied
 // as-is into the product's wwwroot/docs, so the website gets its own root, public dir and
-// output folder. scripts/assemble-site.mjs combines both outputs for GitHub Pages.
+// output folder. scripts/assemble-site.mjs combines both outputs for the webspace.
 //
 // Vite resolves `root` against the working directory (npm runs scripts from this package) and
 // every other relative path below against `root`.
 export default defineConfig({
   plugins: [
+    demoPreviewFallback(),
     {
       // canonical, og:url and og:image have to be absolute, so they name an origin the source
       // cannot leave relative. Rewriting them here keeps index.html valid on its own.
       name: 'np-site-origin',
-      transformIndexHtml: (html: string) => html.replaceAll(PAGES_ORIGIN, siteOrigin()),
+      transformIndexHtml: (html: string) => html.replaceAll(SOURCE_ORIGIN, siteOrigin()),
     },
     {
       // One file per route, so every address carries its own title, description and canonical

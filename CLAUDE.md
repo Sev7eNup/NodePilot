@@ -36,8 +36,8 @@ NodePilot ist ein Single-Contributor-Projekt. KI darf beim Entwickeln helfen (di
 - `docs/enterprise-features.md` — HA, Secret-Provider, LDAP/SSO, SIEM, Folder-RBAC
 - `docs/ai-feature-ideas.md` — Beschreibungstiefe zu den KI-Ideen, **keine Spezifikation**. Priorisierung und Status stehen in `docs/roadmap.md`.
 - `src/nodepilot-ui/e2e/README.md` — E2E-Coverage-Map + Spec-Konventionen
-- `src/nodepilot-ui/demo/` — **Browser-Demo** der SPA für GitHub Pages (`/demo/`), dieselbe App gegen ein In-Memory-Backend; Regeln in `src/nodepilot-ui/CLAUDE.md`
-- `src/nodepilot-docs-ui/src/site/` — **Projekt-Website** (DE/EN) an der Pages-Wurzel, Doku darunter unter `/docs/`; **nie** Teil von `dist/`. Build, Routen, Vorschau: `src/nodepilot-docs-ui/README.md`. Impressum/Datenschutz liefert der User.
+- `src/nodepilot-ui/demo/` — **Browser-Demo** der SPA auf www.nodepilot.run (`/demo/`), dieselbe App gegen ein In-Memory-Backend; Regeln in `src/nodepilot-ui/CLAUDE.md`
+- `src/nodepilot-docs-ui/src/site/` — **Projekt-Website** (DE/EN) an der Website-Wurzel, Doku darunter unter `/docs/`; **nie** Teil von `dist/`. Build, Routen, Vorschau: `src/nodepilot-docs-ui/README.md`. Impressum/Datenschutz liefert der User.
 
 ## Tech-Stack
 
@@ -275,7 +275,7 @@ Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.js
 
 ### Testumfang pro Änderung
 
-**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (6.597 Backend-Testfälle, 239 Vitest-Dateien, 77 E2E-Specs — die beiden Frontend-Zahlen hält `DocumentationCountsTests` an der Dateiliste fest, die Backend-Zahl bleibt ein Handmaß) und liefert lokal kein neues Signal: das Netz hängt an `ci.yml`, das auf **jedem PR und jedem Push auf main** läuft (Coverage-Gate + E2E eingeschlossen).
+**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (6.597 Backend-Testfälle, 240 Vitest-Dateien, 77 E2E-Specs — die beiden Frontend-Zahlen hält `DocumentationCountsTests` an der Dateiliste fest, die Backend-Zahl bleibt ein Handmaß) und liefert lokal kein neues Signal: das Netz hängt an `ci.yml`, das auf **jedem PR und jedem Push auf main** läuft (Coverage-Gate + E2E eingeschlossen).
 
 **Der Nightly ist kein verlässlicher zweiter Boden.** Er läuft als Windows-Task um 22:00 gegen den ausgecheckten Baum und wird verpasst, sobald die Maschine dann aus ist. Wer sich auf ihn beruft, prüft vorher `C:\temp\nodepilot-nightly\latest.md` auf sein Datum.
 

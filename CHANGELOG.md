@@ -12,6 +12,12 @@ exhaustive.
 
 ## [Unreleased]
 
+### Changed
+
+- The browser demo uses ordinary paths such as `/demo/workflows`; old hash links still work.
+- GitHub Pages forwards old website, documentation and demo links to their matching pages on
+  `www.nodepilot.run`. Public links, canonical URLs and sitemaps use this single origin.
+
 ## [1.4.2] - 2026-09-26
 
 Scripts that run on the NodePilot server itself now behave exactly like scripts on a target

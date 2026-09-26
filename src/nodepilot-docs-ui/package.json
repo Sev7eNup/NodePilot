@@ -1,6 +1,6 @@
 {
   "name": "nodepilot-docs-ui",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "NodePilot documentation website — React SPA.",
   "type": "module",
   "private": true,
@@ -14,6 +14,7 @@
     "dev:site": "vite --config vite.site.config.ts",
     "build:site": "vite build --config vite.site.config.ts",
     "assemble:site": "node scripts/assemble-site.mjs",
+    "build:pages-redirects": "node scripts/build-pages-redirects.mjs",
     "preview:site": "npm run build && npm run build:site && npm run build:demo && npm run assemble:site && vite preview --config vite.site.config.ts --outDir ../../_site",
     "lint": "eslint .",
     "lint:ci": "eslint . --max-warnings 0",

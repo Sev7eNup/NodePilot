@@ -3,7 +3,7 @@
     Builds the public site and uploads it to a web host over SFTP or FTPS.
 
 .DESCRIPTION
-    Assembles the same _site/ tree the GitHub Pages workflow publishes -- project website at the
+    Assembles the full _site/ tree for the webspace -- project website at the
     root, documentation under /docs/, browser demo under /demo/, media under /media/ -- and
     uploads it to the configured host.
 
@@ -11,7 +11,7 @@
     handed to curl through an environment variable, so it appears neither in the command line
     (which any local user can read) nor on disk.
 
-    The site itself is built location-independent: relative asset URLs, hash routes. Only a few
+    The demo uses path routing under /demo/ with the bundled Apache fallback. A few
     absolute URLs need the target origin -- the canonical and Open Graph tags and the docs' link
     to the demo -- and those are rewritten at build time from the config's "origin".
 

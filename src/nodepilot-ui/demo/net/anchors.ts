@@ -13,11 +13,6 @@
 
 let detach: (() => void) | null = null;
 
-/** Directory the demo is served from, e.g. "/NodePilot/demo/". */
-function demoBasePath(): string {
-  return new URL('./', document.baseURI).pathname;
-}
-
 function isPlainLeftClick(event: MouseEvent): boolean {
   return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
 }
@@ -67,7 +62,7 @@ export function installAnchorGuard(): void {
     // blob:/data: links are in-page downloads (workflow export); they never leave the demo.
     if (resolved.protocol === 'blob:' || resolved.protocol === 'data:') return;
     if (resolved.origin !== globalThis.location.origin) return;
-    if (resolved.pathname.startsWith(demoBasePath())) return;
+    if (resolved.pathname === '/demo' || resolved.pathname.startsWith('/demo/')) return;
 
     void handleEscapingClick(event, resolved.toString());
   };

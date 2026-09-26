@@ -25,6 +25,12 @@ afterEach(() => {
 });
 
 describe('demo anchor guard', () => {
+  it('allows sibling app routes when opened on a workflow detail URL', () => {
+    history.replaceState(null, '', '/demo/workflows/abc');
+    installAnchorGuard();
+    expect(clickAnchor('/demo/executions').defaultPrevented).toBe(false);
+    history.replaceState(null, '', '/');
+  });
   it('anchorGuard_BlobDownload_IsNotIntercepted', () => {
     installAnchorGuard();
     const fetchSpy = vi.spyOn(globalThis, 'fetch');

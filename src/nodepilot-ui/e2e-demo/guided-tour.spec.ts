@@ -37,7 +37,7 @@ test('opens the diagnosis directly in English, survives navigation and resets on
   await page.goto('./?tour=diagnose&lang=en');
   await expect(page.locator('.np-tour')).toContainText('Find the cause');
   await expect(page.locator('#root')).toContainText('Access denied');
-  await page.evaluate(() => { location.hash = '#/'; });
+  await page.getByRole('link', { name: 'Workspace', exact: true }).click();
   await page.locator('[data-tour-action="resume"]').click();
   await expect(page.locator('#root')).toContainText('Access denied');
   await page.locator('[data-tour-action="permission"]').click();

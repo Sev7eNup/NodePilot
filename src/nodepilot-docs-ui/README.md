@@ -40,27 +40,24 @@ npm run preview:site   # build + build:site + build:demo + assemble:site, danach
 
 `preview:site` ist die einzige vollständige lokale Vorschau: `docs/`, `demo/` und `media/` gibt es
 nur im zusammengesetzten `_site/`. Jede dieser Eingaben ist Pflicht — eine optionale ließe einen
-Deploy die vorige Fassung stillschweigend weiterveröffentlichen, ohne dass etwas rot wird. Genau dieses Verzeichnis veröffentlicht
-`.github/workflows/docs-pages.yml` auf GitHub Pages; der Workflow ruft dafür dasselbe Skript
-`scripts/assemble-site.mjs` auf.
+Deploy die vorige Fassung stillschweigend weiterveröffentlichen, ohne dass etwas rot wird. Dieses Verzeichnis veröffentlicht `deploy/Publish-Site.ps1` auf dem Webspace.
+GitHub Pages erhält ausschließlich `_pages-redirects/` aus `npm run build:pages-redirects`.
+Der Pages-Workflow baut weder Website noch Demo und benötigt deren Assets nicht.
 
 | In `_site/` | Quelle | Adresse |
 |---|---|---|
-| Wurzel | `dist-site/` | https://sev7enup.github.io/NodePilot/ |
-| `docs/` | `dist/` | https://sev7enup.github.io/NodePilot/docs/ |
-| `demo/` | `../nodepilot-ui/dist-demo/` | https://sev7enup.github.io/NodePilot/demo/ |
-| `media/` | `pages-media/` | https://sev7enup.github.io/NodePilot/media/nodepilot-product-tour.mp4 |
+| Wurzel | `dist-site/` | https://www.nodepilot.run/ |
+| `docs/` | `dist/` | https://www.nodepilot.run/docs/ |
+| `demo/` | `../nodepilot-ui/dist-demo/` | https://www.nodepilot.run/demo/ |
+| `media/` | `pages-media/` | https://www.nodepilot.run/media/nodepilot-product-tour.mp4 |
 | `og-image.png` | `public/og-image.png` | Vorschaubild der Website |
 
-Deep Links in die Doku haben die Form `https://sev7enup.github.io/NodePilot/docs/<sprache>/<seite>/`.
+Deep Links in die Doku haben die Form `https://www.nodepilot.run/docs/<sprache>/<seite>/`.
 
-- **`NP_SITE_ORIGIN`:** Fast alles ist ortsunabhängig (`base: './'`, Hash-Routen). Nur wenige URLs
-  können nicht relativ sein: `canonical`, `og:url` und `og:image` im Website-Head sowie der
-  Doku-Link auf die Demo. Die stehen im Quelltext auf der Pages-Adresse; ist beim Build
-  `NP_SITE_ORIGIN` gesetzt, schreiben beide Vite-Configs sie auf diesen Ursprung um
-  (`scripts/site-origin.mjs`, dieselbe Konstante für Website-Head und `lib/content.ts`). Ohne die
-  Variable ist die Umschreibung ein No-op. `deploy/Publish-Site.ps1` setzt sie aus seiner
-  Konfiguration, wenn die Seite auf eigenem Webspace statt auf Pages liegt.
+- **`NP_SITE_ORIGIN`:** Standard ist `https://www.nodepilot.run`; Canonical, Open Graph,
+  `hreflang`, Sitemaps und der Demo-Link nutzen diesen Ursprung. Die Variable überschreibt
+  ihn für lokale Vorschauen oder andere Webspace-Ziele. `deploy/Publish-Site.ps1` setzt sie
+  aus seiner Konfiguration. Die Demo verwendet feste Pfade unter `/demo/`.
 - **`np-site-root`:** Beim Kopieren nach `_site/docs/` stempelt `assemble-site.mjs` ein
   `<meta name="np-site-root" content="../">` in die `index.html` — und schlägt fehl, wenn der
   `</head>`-Anker fehlt. Dasselbe `dist/` wird nämlich ein zweites Mal ausgeliefert, als
@@ -77,7 +74,7 @@ Deep Links in die Doku haben die Form `https://sev7enup.github.io/NodePilot/docs
   eigenen Titel, eigene Beschreibung und eigene `canonical`-URL — vorher lieferte jede Adresse
   dieselbe Hülle, ein Crawler sah also eine einzige Seite.
 
-  Weil die Website auch in einem Unterverzeichnis liegen kann (GitHub Pages), ist in der Quelle
+  Weil die Website auch in einem Unterverzeichnis liegen kann, ist in der Quelle
   jede interne URL relativ zur Wurzel geschrieben. Der Prerender hebt sie je Tiefe an und setzt
   `<meta name="np-site-base">` auf denselben Präfix; `main.ts` liest das Meta, um aus der Adresse
   eine Route zu machen, und `setBasePrefix()` gibt es an die Doku-Links weiter. **Wer eine neue
@@ -114,10 +111,16 @@ Deep Links in die Doku haben die Form `https://sev7enup.github.io/NodePilot/docs
   der Projektinhaber. Sie liegen nur auf Deutsch vor und erscheinen auch in der englischen Ansicht
   auf Deutsch. Fehlt eine Datei oder ist sie leer, schlägt der Test fehl.
 - **Eigene Domain:** Die Seite läuft unter <https://www.nodepilot.run/>, ausgeliefert von
-  `deploy/Publish-Site.ps1` auf den eigenen Webspace; GitHub Pages bleibt als Spiegel bestehen.
-  Die wenigen absoluten Adressen (Canonical, OG, `hreflang`, der Demo-Link in der Doku) sind
-  gegen `PAGES_ORIGIN` geschrieben und werden beim Bauen über `NP_SITE_ORIGIN` auf das Ziel
-  umgeschrieben — deshalb steht in den Quellen weiterhin die Pages-Adresse.
+  `deploy/Publish-Site.ps1` auf den eigenen Webspace. GitHub Pages leitet alte Links auf die
+  entsprechende Adresse dort weiter, einschließlich historischer Hash-Links und Doku-Deep-Links.
+  Bekannte Pfade erhalten HTML-Seiten mit Canonical, JavaScript-Weiterleitung und Meta-Refresh
+  ohne JavaScript; `404.html` übernimmt übrige Pfade. Es handelt sich um Browser-Weiterleitungen,
+  nicht um HTTP-301. Ziel-Origin ist fest `https://www.nodepilot.run`; Query und Anker bleiben erhalten.
+- **Demo:** Browser-Routing unter `/demo/`, Apache-Fallback nur für Seitenpfade; fehlende Assets
+  bleiben 404. Alte `#/…`-Links werden vor App-Start umgeschrieben. Die Demo bleibt `noindex`.
+- **Umstellung veröffentlichen:** Erst den vollständigen Webspace-Build hochladen und Demo-Deep-Links
+  samt Reload prüfen, danach den Pages-Workflow mit dem Weiterleitungsartefakt veröffentlichen.
+  GitHub-Pages-Einstellung und DNS bleiben unverändert.
 
 ## Geführter Produkteinstieg
 

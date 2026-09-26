@@ -54,12 +54,12 @@ export function mountDemoBanner(onReset: () => void, onTour?: () => void): () =>
   const actions = document.createElement('span');
   actions.className = 'np-demo-bar__actions';
 
-  // Back to the project website, which sits one level above the demo on GitHub Pages.
+  // The website stays at the origin root, including when the demo is on a deep link.
   // `target` is deliberately not `_self`: the anchor guard in net/anchors.ts routes every
   // same-origin link that would leave the demo through the patched fetch instead.
   const home = document.createElement('a');
   home.className = 'np-demo-bar__button np-demo-bar__button--quiet np-demo-bar__home';
-  home.href = '../';
+  home.href = '/';
   home.target = '_blank';
   home.rel = 'noopener noreferrer';
   home.textContent = strings.website;

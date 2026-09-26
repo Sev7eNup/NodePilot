@@ -9,15 +9,18 @@ import { assembleSite } from '../../scripts/assemble-site.mjs'
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url))
 const repoRoot = resolve(packageRoot, '../..')
 
-describe('Pages-only media packaging', () => {
-  it('keeps the tour available to Pages outside the installer public directory', () => {
+describe('public website media packaging', () => {
+  it('keeps the tour on the webspace and publishes only redirects to Pages', () => {
     for (const name of ['nodepilot-product-tour.mp4', 'product-tour-poster.png']) {
       expect(existsSync(join(packageRoot, 'pages-media', name))).toBe(true)
       expect(existsSync(join(packageRoot, 'public/media', name))).toBe(false)
     }
     const workflow = readFileSync(join(repoRoot, '.github/workflows/docs-pages.yml'), 'utf8')
-    expect(workflow).toContain('npm run assemble:site')
-    expect(workflow).toContain('path: src/nodepilot-docs-ui/_site')
+    expect(workflow).toContain('npm run build:pages-redirects')
+    expect(workflow).toContain('path: src/nodepilot-docs-ui/_pages-redirects')
+    expect(workflow).not.toContain('npm run assemble:site')
+    const publisher = readFileSync(join(repoRoot, 'deploy/Publish-Site.ps1'), 'utf8')
+    expect(publisher).toContain('assemble:site')
     const { scripts } = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'))
     expect(scripts['assemble:site']).toBe('node scripts/assemble-site.mjs')
   })

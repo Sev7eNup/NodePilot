@@ -12,44 +12,44 @@ import { expect, test, type ConsoleMessage, type Page, type Request } from '@pla
  */
 
 const ROUTES = [
-  '#/',
-  '#/workflows',
-  '#/executions',
-  '#/operations',
-  '#/machines',
-  '#/global-variables',
-  '#/custom-activities',
-  '#/maintenance-windows',
-  '#/alerts',
-  '#/alerts?tab=system',
-  '#/ai-chat',
-  '#/support-log',
-  '#/database',
-  '#/backup',
+  '/',
+  '/workflows',
+  '/executions',
+  '/operations',
+  '/machines',
+  '/global-variables',
+  '/custom-activities',
+  '/maintenance-windows',
+  '/alerts',
+  '/alerts?tab=system',
+  '/ai-chat',
+  '/support-log',
+  '/database',
+  '/backup',
   // All ten sections, not just the first: each one loads its own endpoints, and a route walk
   // only ever catches what a page requests on load.
-  '#/metrics/mission-control',
-  '#/metrics/workflows',
-  '#/metrics/activities',
-  '#/metrics/winrm',
-  '#/metrics/triggers',
-  '#/metrics/api',
-  '#/metrics/runtime',
-  '#/metrics/security',
-  '#/metrics/ai',
-  '#/metrics/database',
-  '#/users',
-  '#/audit',
-  '#/settings',
-  '#/settings?tab=system&section=integrations',
-  '#/settings?tab=system&section=ai-knowledge',
-  '#/settings?tab=system&section=authentication',
-  '#/settings?tab=system&section=security',
-  '#/settings?tab=system&section=logging',
-  '#/settings?tab=system&section=performance',
-  '#/settings?tab=system&section=database',
-  '#/settings?tab=system&section=retention',
-  '#/settings?tab=system&section=system-info',
+  '/metrics/mission-control',
+  '/metrics/workflows',
+  '/metrics/activities',
+  '/metrics/winrm',
+  '/metrics/triggers',
+  '/metrics/api',
+  '/metrics/runtime',
+  '/metrics/security',
+  '/metrics/ai',
+  '/metrics/database',
+  '/users',
+  '/audit',
+  '/settings',
+  '/settings?tab=system&section=integrations',
+  '/settings?tab=system&section=ai-knowledge',
+  '/settings?tab=system&section=authentication',
+  '/settings?tab=system&section=security',
+  '/settings?tab=system&section=logging',
+  '/settings?tab=system&section=performance',
+  '/settings?tab=system&section=database',
+  '/settings?tab=system&section=retention',
+  '/settings?tab=system&section=system-info',
 ];
 
 interface Watcher {
@@ -86,13 +86,13 @@ function watch(page: Page): Watcher {
  */
 async function escapingAnchors(page: Page): Promise<string[]> {
   return page.evaluate(() => {
-    const base = new URL('./', document.baseURI).pathname;
+    const base = '/demo/';
     return Array.from(document.querySelectorAll('a[href]'))
       .filter((a) => {
         const anchor = a as HTMLAnchorElement;
         if (anchor.target && anchor.target !== '_self') return false;
         const url = new URL(anchor.href, document.baseURI);
-        return url.origin === window.location.origin && !url.pathname.startsWith(base);
+        return url.origin === window.location.origin && url.pathname !== '/demo' && !url.pathname.startsWith(base);
       })
       .map((a) => (a as HTMLAnchorElement).getAttribute('href') ?? '(no href)');
   });
@@ -181,9 +181,9 @@ test.describe('published browser demo', () => {
     expect(broken, `broken images: ${broken.join(', ')}`).toEqual([]);
     expect(await page.locator('img').count()).toBeGreaterThan(0);
 
-    // The documentation sits beside the demo on Pages, not above it.
+    // Documentation links stay rooted at the website even on a nested demo page.
     const docsHref = await page.locator('a[href*="docs"]').first().getAttribute('href');
-    expect(docsHref).toBe('../docs/');
+    expect(docsHref).toBe('/docs/');
 
     expect(seen.errors, seen.errors.join('\n')).toEqual([]);
   });
@@ -232,11 +232,9 @@ test.describe('published browser demo', () => {
     const crashed: string[] = [];
     const brokenAssets: string[] = [];
     const escaping: string[] = [];
-    for (const [index, route] of ROUTES.entries()) {
-      // A distinct query per route forces a real document load. Changing only the fragment
-      // is a same-document navigation, so React may not have mounted the new route before
-      // the check runs — and the walk would report a crashed page as clean.
-      await page.goto(`./?route=${index}${route}`);
+    for (const route of ROUTES) {
+      // Each path is a direct entry, exercising the history fallback and asset base.
+      await page.goto(`.${route}`);
       await settle(page);
       // An error boundary is why a crash can be invisible here: React hands the error to
       // the boundary instead of the window, so `pageerror` never fires and a route that
@@ -271,10 +269,10 @@ test.describe('published browser demo', () => {
    * design (both are opt-in by data in the product), so there is nothing to edit there.
    */
   const EDITABLE_ROUTES = [
-    '#/machines',
-    '#/global-variables',
-    '#/custom-activities',
-    '#/users',
+    '/machines',
+    '/global-variables',
+    '/custom-activities',
+    '/users',
   ];
 
   test('opens the row editor on every page that has one', async ({ page }) => {
@@ -282,8 +280,8 @@ test.describe('published browser demo', () => {
     const crashed: string[] = [];
     const missing: string[] = [];
 
-    for (const [index, route] of EDITABLE_ROUTES.entries()) {
-      await page.goto(`./?editor=${index}${route}`);
+    for (const route of EDITABLE_ROUTES) {
+      await page.goto(`.${route}`);
       await settle(page);
 
       const opened = await page.evaluate(() => {
@@ -316,8 +314,8 @@ test.describe('published browser demo', () => {
    * These go through the real form, so the body shape is the one the product sends.
    */
   const SAVE_ROUTES = [
-    { route: '#/machines', field: 'name' },
-    { route: '#/global-variables', field: 'name' },
+    { route: '/machines', field: 'name' },
+    { route: '/global-variables', field: 'name' },
   ];
 
   test('saves an edited row on every page whose editor can be reached', async ({ page }) => {
@@ -326,7 +324,7 @@ test.describe('published browser demo', () => {
 
     for (const [index, { route, field }] of SAVE_ROUTES.entries()) {
       const edited = `Edited ${index}`;
-      await page.goto(`./?save=${index}${route}`);
+      await page.goto(`.${route}`);
       await settle(page);
 
       await page.evaluate(() => {
@@ -378,7 +376,7 @@ test.describe('published browser demo', () => {
    */
   test('handles the write paths no page-load or save can reach', async ({ page }) => {
     const seen = watch(page);
-    await page.goto('./#/global-variables');
+    await page.goto('./global-variables');
     await settle(page);
 
     const result = await page.evaluate(async () => {
@@ -445,7 +443,7 @@ test.describe('published browser demo', () => {
 
   test('keeps the audit export inside the demo', async ({ page }) => {
     const seen = watch(page);
-    await page.goto('./#/audit');
+    await page.goto('./audit');
     await settle(page);
 
     // A plain `<a href="/api/...">` never reaches the fetch patch — it is a document
@@ -483,7 +481,7 @@ test.describe('published browser demo', () => {
   test('keeps every request on its own origin and never negotiates SignalR', async ({ page }) => {
     const seen = watch(page);
     await page.goto('./');
-    await page.goto('./#/workflows');
+    await page.goto('./workflows');
     await settle(page);
     // Give the health poll and the hub retry loop a chance to fire.
     await page.waitForTimeout(3_000);
@@ -498,7 +496,7 @@ test.describe('published browser demo', () => {
     const seen = watch(page);
     // The System tab, not the page default: the crash was behind it, which is why a route
     // walk that only opened /settings reported everything as fine.
-    await page.goto('./#/settings?tab=system&section=integrations');
+    await page.goto('./settings?tab=system&section=integrations');
     await settle(page);
 
     // The cards replace their fallback with the server payload and index into
@@ -512,7 +510,7 @@ test.describe('published browser demo', () => {
 
   test('shows existing runs on the Live-Ops timeline', async ({ page }) => {
     const seen = watch(page);
-    await page.goto('./#/operations');
+    await page.goto('./operations');
     await settle(page);
 
     // Every identifier in the snapshot has to be keyed the way OperationsGraph declares it;
@@ -538,11 +536,11 @@ test.describe('published browser demo', () => {
 
   test('runs the full lifecycle: edit, publish, run', async ({ page }) => {
     const seen = watch(page);
-    await page.goto('./#/workflows');
+    await page.goto('./workflows');
 
     const workflows = await api<{ id: string; name: string; version: number }[]>(page, '/api/workflows');
     const target = workflows[0];
-    await page.goto(`./#/workflows/${target.id}`);
+    await page.goto(`./workflows/${target.id}`);
     await expect(page.getByRole('button', { name: /^(Edit|Bearbeiten)$/ })).toBeVisible();
 
     // Locking disables the workflow, atomically, exactly as the product does.
@@ -597,7 +595,7 @@ test.describe('published browser demo', () => {
   });
 
   test('restores the sample data on reload', async ({ page }) => {
-    await page.goto('./#/workflows');
+    await page.goto('./workflows');
     const before = await api<{ id: string; version: number }[]>(page, '/api/workflows');
 
     await page.evaluate(async (id) => {
@@ -616,7 +614,7 @@ test.describe('published browser demo', () => {
 
   test('keeps two tabs of the same browser apart', async ({ context }) => {
     const tabA = await context.newPage();
-    await tabA.goto('./#/workflows');
+    await tabA.goto('./workflows');
     const seenA = watch(tabA);
 
     const target = (await api<{ id: string; version: number }[]>(tabA, '/api/workflows'))[0];
@@ -629,7 +627,7 @@ test.describe('published browser demo', () => {
     // guard every other tab answers it by clearing its caches and remounting, which discards
     // unsaved editor state.
     const tabB = await context.newPage();
-    await tabB.goto('./#/workflows');
+    await tabB.goto('./workflows');
     await tabB.reload();
     await tabB.waitForLoadState('networkidle');
 

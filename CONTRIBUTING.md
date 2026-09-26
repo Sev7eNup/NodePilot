@@ -84,9 +84,9 @@ It compares the historical SELECT/compare-and-set claim loop with atomic claims 
 
 ### Documentation website
 
-`src/nodepilot-docs-ui` is a standalone Vite SPA. `.github/workflows/docs-pages.yml` publishes it to GitHub Pages at [sev7enup.github.io/NodePilot/docs](https://sev7enup.github.io/NodePilot/docs/) on every push to `main` that touches the package. `npm run dev` serves it locally on port 5174, under `/docs/`.
+`src/nodepilot-docs-ui` is a standalone Vite SPA. `deploy/Publish-Site.ps1` publishes it to [www.nodepilot.run/docs](https://www.nodepilot.run/docs/). GitHub Pages publishes only redirects for old links through `.github/workflows/docs-pages.yml`. `npm run dev` serves it locally on port 5174, under `/docs/`.
 
-The same package holds the **project website** in `src/site/`: plain TypeScript without React or Tailwind, in English and German, built by its own Vite config (`vite.site.config.ts`) into `dist-site/`. The same workflow publishes it at the root of the Pages site, [sev7enup.github.io/NodePilot](https://sev7enup.github.io/NodePilot/), and also runs when the screenshots in `docs/images/` change, because the website bundles some of them.
+The same package holds the **project website** in `src/site/`: plain TypeScript without React or Tailwind, in English and German, built by its own Vite config (`vite.site.config.ts`) into `dist-site/`. The webspace publisher assembles it at [www.nodepilot.run](https://www.nodepilot.run/) with the docs, demo and media. `npm run build:pages-redirects` builds the separate Pages redirect artifact; deploy the webspace before switching Pages to redirects.
 
 - `npm run dev:site` serves the website alone on port 5175, enough for work on the website itself.
 - `npm run build:site` builds it into `dist-site/`.

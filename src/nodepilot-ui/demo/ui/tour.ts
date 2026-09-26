@@ -3,6 +3,7 @@ import { getWorld, subscribeWorld } from '../state/world';
 import { demoLanguage } from './strings';
 import './tour.css';
 import { MOBILE_BREAKPOINT } from '../../src/hooks/useMediaQuery';
+import type { createBrowserRouter } from 'react-router';
 
 type Stage = 'start' | 'running' | 'success' | 'result' | 'case' | 'diagnose' | 'done' | 'failed';
 const COPY = {
@@ -46,7 +47,7 @@ const COPY = {
   },
 };
 
-export function mountTour(): { start(mode?: 'file' | 'diagnose'): void; dispose(): void } {
+export function mountTour(router: ReturnType<typeof createBrowserRouter>): { start(mode?: 'file' | 'diagnose'): void; dispose(): void } {
   const panel = document.createElement('aside');
   panel.className = 'np-tour'; panel.hidden = true;
   panel.setAttribute('aria-label', COPY[demoLanguage()].title);
@@ -55,12 +56,24 @@ export function mountTour(): { start(mode?: 'file' | 'diagnose'): void; dispose(
   let baseline = new Set<string>();
   let executionId: string | null = null;
   let feedback = false;
-  const workflowRoute = `#/workflows/${FILE_WORKFLOW_ID}`;
+  let activeMode: 'file' | 'diagnose' = 'file';
+  const requestedLanguage = new URLSearchParams(location.search).get('lang');
+  const workflowRoute = `/workflows/${FILE_WORKFLOW_ID}`;
   const mobile = window.matchMedia(MOBILE_BREAKPOINT);
-  const startRoute = () => mobile.matches ? '#/workflows' : workflowRoute;
+  const startRoute = () => mobile.matches ? '/workflows' : workflowRoute;
   const failure = () => getWorld().executions.find(run => run.workflowId === FILE_WORKFLOW_ID && run.status === 'Failed' && baseline.has(run.id));
-  const navigate = (hash: string) => { location.hash = hash; };
-  const resultRoute = (id: string) => `#/executions?id=${encodeURIComponent(id)}`;
+  const navigate = (path: string, replace = false) => {
+    const target = new URL(path, location.origin);
+    const current = new URLSearchParams(router.state.location.search);
+    for (const key of ['lang', 'tour']) {
+      const value = current.get(key);
+      if (value && !target.searchParams.has(key)) target.searchParams.set(key, value);
+    }
+    if (active) target.searchParams.set('tour', activeMode);
+    if (requestedLanguage && !target.searchParams.has('lang')) target.searchParams.set('lang', requestedLanguage);
+    void router.navigate(target.pathname + target.search, { replace });
+  };
+  const resultRoute = (id: string) => `/executions?id=${encodeURIComponent(id)}`;
   const text = <K extends keyof HTMLElementTagNameMap>(tag: K, value: string) => {
     const element = document.createElement(tag); element.textContent = value; return element;
   };
@@ -73,7 +86,8 @@ export function mountTour(): { start(mode?: 'file' | 'diagnose'): void; dispose(
     active = false; panel.hidden = true; document.body.classList.remove('np-tour-open');
     document.body.classList.remove('np-tour-execution');
     panel.remove();
-    const url = new URL(location.href); url.searchParams.delete('tour'); history.replaceState(null, '', url);
+    const url = new URL(location.href); url.searchParams.delete('tour');
+    void router.navigate(url.pathname.slice('/demo'.length) + url.search, { replace: true });
   }
   function showFailure() {
     const run = failure();
@@ -82,7 +96,7 @@ export function mountTour(): { start(mode?: 'file' | 'diagnose'): void; dispose(
   }
   function render() {
     if (!active) return;
-    document.body.classList.toggle('np-tour-execution', location.hash.startsWith('#/executions'));
+    document.body.classList.toggle('np-tour-execution', router.state.location.pathname === '/demo/executions');
     const copy = COPY[demoLanguage()];
     const focusedAction = panel.contains(document.activeElement) ? (document.activeElement as HTMLElement)?.dataset.tourAction : undefined;
     panel.replaceChildren(); panel.dataset.stage = stage;
@@ -111,7 +125,9 @@ export function mountTour(): { start(mode?: 'file' | 'diagnose'): void; dispose(
       // The tour covers the demo banner, so its own way back to the project website belongs
       // here — a visitor who came straight into the tour has none otherwise.
       const home = text('a', copy.website);
-      home.href = '../';
+      home.href = '/';
+      home.target = '_blank';
+      home.rel = 'noopener noreferrer';
       home.dataset.tourAction = 'website';
       home.className = 'np-tour-quiet';
       panel.append(
@@ -123,15 +139,18 @@ export function mountTour(): { start(mode?: 'file' | 'diagnose'): void; dispose(
     } else if (stage === 'start' || stage === 'failed') panel.append(button(copy.openWorkflow, 'workflow', () => { stage = 'start'; navigate(startRoute()); render(); }, true));
     const expected = stage === 'diagnose' || stage === 'done' ? failure()?.id : executionId;
     const route = ['result', 'diagnose', 'done'].includes(stage) && expected ? resultRoute(expected) : stage === 'start' ? startRoute() : workflowRoute;
-    if (location.hash !== route && !['success', 'failed'].includes(stage)) panel.append(button(copy.resume, 'resume', () => navigate(route), true));
+    const expectedUrl = new URL(`/demo${route}`, location.origin);
+    const currentUrl = new URL(location.href);
+    const atTask = currentUrl.pathname === expectedUrl.pathname && currentUrl.searchParams.get('id') === expectedUrl.searchParams.get('id');
+    if (!atTask && !['success', 'failed'].includes(stage)) panel.append(button(copy.resume, 'resume', () => navigate(route), true));
     const notice = text('small', copy.notice); notice.className = 'np-tour-notice'; panel.append(notice);
     if (focusedAction) panel.querySelector<HTMLElement>(`[data-tour-action="${focusedAction}"]`)?.focus({ preventScroll: true });
   }
   function start(mode: 'file' | 'diagnose' = 'file') {
+    activeMode = mode;
     baseline = new Set(getWorld().executions.map(run => run.id)); executionId = null; feedback = false;
     active = true; panel.hidden = false; document.body.classList.add('np-tour-open');
     document.body.insertBefore(panel, document.getElementById('root'));
-    const url = new URL(location.href); url.searchParams.set('tour', mode); history.replaceState(null, '', url);
     stage = mode === 'diagnose' ? 'diagnose' : 'start';
     if (mode === 'diagnose') showFailure(); else { navigate(startRoute()); render(); }
   }
@@ -146,8 +165,8 @@ export function mountTour(): { start(mode?: 'file' | 'diagnose'): void; dispose(
   });
   const resize = new ResizeObserver(() => document.body.style.setProperty('--np-tour-height', `${panel.getBoundingClientRect().height}px`));
   resize.observe(panel);
-  window.addEventListener('hashchange', render);
+  const unsubscribeRouter = router.subscribe(render);
   const requested = new URLSearchParams(location.search).get('tour');
   if (requested === 'file' || requested === 'diagnose') start(requested);
-  return { start, dispose() { end(); unsubscribe(); resize.disconnect(); window.removeEventListener('hashchange', render); panel.remove(); } };
+  return { start, dispose() { unsubscribeRouter(); end(); unsubscribe(); resize.disconnect(); panel.remove(); } };
 }

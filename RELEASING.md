@@ -149,5 +149,5 @@ The release notes must contain three things.
 ## 8. After publishing
 
 - The artifacts are downloaded **from the release page** and the checks in step 5 are re-run against those copies. A file that was never uploaded, or was uploaded truncated, looks fine locally.
-- The project website and the docs site redeploy themselves on push to `main` (`.github/workflows/docs-pages.yml`) and need nothing here. The docs' **second** copy does ride along in the artifacts. After installing, `GET /docs` is checked to answer 301 to `/docs/`, and `/docs/` is checked to render the docs without signing in. A missing bundle fails the install, but a broken one does not.
+- Publish the project website, documentation and demo to the webspace with `deploy/Publish-Site.ps1`. The Pages workflow publishes only redirects to `www.nodepilot.run`; on the initial switch, verify the webspace before merging the redirect workflow to `main`. The docs' **second** copy rides along in the artifacts. After installing, `GET /docs` is checked to answer 301 to `/docs/`, and `/docs/` is checked to render the docs without signing in. A missing bundle fails the install, but a broken one does not.
 - `Directory.Build.props` and the three `package.json` files are bumped to the next patch version, so that `main` is never sitting on a version that is already published.
