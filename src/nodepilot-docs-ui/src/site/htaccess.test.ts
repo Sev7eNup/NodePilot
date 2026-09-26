@@ -4,6 +4,9 @@ import htaccess from './public/.htaccess?raw'
 const PAGES_ORIGIN = 'https://sev7enup.github.io/NodePilot'
 
 describe('htaccess canonical host', () => {
+  it('lets shared hosts remap the root-absolute demo shell on the next rewrite pass', () => {
+    expect(htaccess).toContain('RewriteRule ^demo/(?!assets(?:/|$))[^.]*$ /demo/index.html [L]')
+  })
   it('names this project host in the committed file, so it works unbuilt', () => {
     expect(htaccess).toContain(SOURCE_CANONICAL_HOST)
   })

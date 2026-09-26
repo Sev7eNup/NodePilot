@@ -54,10 +54,11 @@ RewriteRule ^(.*)$ https://www.nodepilot.run/$1 [R=301,L]
 # --- Not found ---------------------------------------------------------------
 ErrorDocument 404 /404.html
 
-# Demo history routes use one shell. Missing assets must remain real 404 responses.
+# Keep the host's internal URL mapping active when serving the root-absolute shell.
+# Missing assets must remain real 404 responses.
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^demo/(?!assets(?:/|$))[^.]*$ demo/index.html [END]
+RewriteRule ^demo/(?!assets(?:/|$))[^.]*$ /demo/index.html [L]
 
 # --- Former addresses --------------------------------------------------------
 # The routes were German for a few hours before the addresses became English.
