@@ -73,6 +73,8 @@ function $$<T extends Element = HTMLElement>(selector: string, root: ParentNode 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
 const downloadDialog = $<HTMLDialogElement>('#download-dialog')
 const galleryDialog = $<HTMLDialogElement>('#gallery-dialog')
+const videoDialog = $<HTMLDialogElement>('#video-dialog')
+const videoPlayer = $<HTMLVideoElement>('#video-player')
 const sidebar = $('#sidebar')
 const menuButton = $<HTMLButtonElement>('#menu-button')
 const backdrop = $<HTMLButtonElement>('#nav-backdrop')
@@ -235,6 +237,37 @@ for (const dialog of $$<HTMLDialogElement>('.modal')) {
   })
 }
 
+let videoOpener: HTMLElement | null = null
+
+/** Plays a training video from its gallery card in the large dialog. */
+function openVideo(card: HTMLAnchorElement): void {
+  videoOpener = card
+  $('#video-dialog-episode').textContent = card.querySelector('.video-episode')?.textContent ?? ''
+  $('#video-dialog-name').textContent = card.querySelector('.video-title')?.textContent ?? ''
+  const youtube = $<HTMLAnchorElement>('#video-youtube-link')
+  youtube.hidden = !card.dataset.youtube
+  youtube.href = card.dataset.youtube ?? ''
+  $<HTMLAnchorElement>('#video-error-link').href = card.href
+  $('#video-error').hidden = true
+  videoPlayer.poster = card.querySelector('img')?.src ?? ''
+  videoPlayer.src = card.href
+  showDialog(videoDialog)
+  // Blocked autoplay leaves the player paused with its controls; a failed load reports through 'error'.
+  videoPlayer.play().catch(() => undefined)
+}
+
+videoPlayer.addEventListener('error', () => {
+  if (videoPlayer.getAttribute('src')) $('#video-error').hidden = false
+})
+// Stops the download too, not only the sound, and hands focus back to the card.
+videoDialog.addEventListener('close', () => {
+  videoPlayer.pause()
+  videoPlayer.removeAttribute('src')
+  videoPlayer.load()
+  videoOpener?.focus({ preventScroll: true })
+  videoOpener = null
+})
+
 function renderImageFallback(holder: HTMLElement): void {
   const state = imageStates.get(holder)
   if (!state) return
@@ -343,6 +376,13 @@ document.addEventListener('click', (event) => {
   if (productTab) {
     const key = productTab.dataset.productTab
     if (isScreenKey(key)) setProductTab(key)
+    return
+  }
+  const videoCard = target.closest<HTMLAnchorElement>('a.video-card')
+  if (videoCard) {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
+    openVideo(videoCard)
     return
   }
   const language = target.closest<HTMLAnchorElement>('a[data-lang]')

@@ -1,7 +1,8 @@
 import { ARTICLE_SLUGS } from '../src/site/router'
 import { expect, test } from '@playwright/test'
+import { fileURLToPath } from 'node:url'
 
-const siteRoutes = ['', 'product/', 'walkthrough/', 'blog/', ...ARTICLE_SLUGS.map(slug => `blog/${slug}/`), 'powershell-automation/', 'scorch-alternative/', 'self-hosted-automation/']
+const siteRoutes = ['', 'product/', 'walkthrough/', 'tutorials/', 'blog/', ...ARTICLE_SLUGS.map(slug => `blog/${slug}/`), 'powershell-automation/', 'scorch-alternative/', 'self-hosted-automation/']
 
 test.describe('static SEO content', () => {
   test.use({ javaScriptEnabled: false })
@@ -24,6 +25,11 @@ test.describe('static SEO content', () => {
         if (route.startsWith('blog/') && route !== 'blog/') {
           await expect(page.locator('#article-body')).toBeVisible()
           expect((await page.locator('#article-body').innerText()).length).toBeGreaterThan(800)
+        }
+        if (route === 'tutorials/') {
+          // Without script a card is a plain link to the file of this language.
+          await expect(page.locator('a.video-card')).toHaveCount(25)
+          await expect(page.locator('a.video-card').first()).toHaveAttribute('href', new RegExp(`^/media/training/00-intro-${language}\\.[0-9a-f]{10}\\.mp4$`))
         }
       }
       await page.goto(`/${language === 'en' ? 'en/' : ''}blog/first-workflow/`)
@@ -112,4 +118,39 @@ test('mobile product screenshot selects a small responsive image and switches ta
   await page.locator('[data-product-tab="logs"]').click()
   await expect(image).toHaveAttribute('data-media', 'logs')
   await expect(image).toHaveAttribute('srcset', /logs-480\.webp/)
+})
+
+test.describe('training videos', () => {
+  const sample = fileURLToPath(new URL('./fixtures/training-sample.webm', import.meta.url))
+
+  test('a card plays its video large in the dialog, and closing stops it and returns focus', async ({ page }) => {
+    // WebM stands in for the MP4s: the bundled Chromium plays no H.264.
+    await page.route('**/media/training/*.mp4', route => route.fulfill({ path: sample, contentType: 'video/webm' }))
+    await page.goto('/en/tutorials/')
+    const card = page.locator('a.video-card').nth(4)
+    await card.click()
+    const dialog = page.locator('#video-dialog')
+    await expect(dialog).toBeVisible()
+    await expect(page.locator('#video-dialog-name')).toHaveText(await card.locator('.video-title').innerText())
+    expect((await dialog.boundingBox())!.width).toBeGreaterThan(1000)
+    const video = page.locator('#video-player')
+    await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(1)
+    await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeGreaterThan(0.2)
+    await expect(page.locator('#video-youtube-link')).toBeHidden()
+
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+    // The close event is dispatched after the dialog hides.
+    await expect.poll(() => video.evaluate((element: HTMLVideoElement) => [element.paused, element.getAttribute('src')])).toEqual([true, null])
+    await expect(card).toBeFocused()
+  })
+
+  test('a video that does not load offers the file instead', async ({ page }) => {
+    await page.route('**/media/training/*.mp4', route => route.fulfill({ status: 404, body: '' }))
+    await page.goto('/tutorials/')
+    const card = page.locator('a.video-card').first()
+    await card.click()
+    await expect(page.locator('#video-error')).toBeVisible()
+    await expect(page.locator('#video-error-link')).toHaveAttribute('href', new RegExp(`${await card.getAttribute('href')}$`))
+  })
 })

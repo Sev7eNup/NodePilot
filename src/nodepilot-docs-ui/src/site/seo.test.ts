@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { keepPage, routePages } from './prerender'
 import { localizedPath, resolveRoute, routeLanguage } from './router'
 import { renderSiteContent, renderSiteHead } from './seo'
+import { videoEpisodes } from './videos'
 
 const origin = 'https://example.test/preview'
 
@@ -86,5 +87,50 @@ describe('website SEO contract', () => {
     renderSiteHead(document, { page: 'notfound' }, 'de', origin)
     expect(document.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex, follow')
     expect(document.querySelectorAll('link[rel="canonical"], link[hreflang], [data-site-schema]')).toHaveLength(0)
+  })
+})
+
+describe('training video gallery', () => {
+  const render = (lang: 'de' | 'en', base: string) => {
+    const { document } = parseHTML(shell)
+    keepPage(document, { page: 'videos' })
+    renderSiteContent(document, { page: 'videos' }, lang, base)
+    return document
+  }
+
+  it('renders one card per episode with media URLs from the site root, in both languages and under a subpath', () => {
+    for (const lang of ['de', 'en'] as const) {
+      for (const base of ['/', '/NodePilot/']) {
+        const cards = [...render(lang, base).querySelectorAll('#video-grid a.video-card')]
+        expect(cards).toHaveLength(videoEpisodes.length)
+        for (const [i, card] of cards.entries()) {
+          const text = videoEpisodes[i].text[lang]
+          expect(card.getAttribute('href')).toBe(`${base}${text.video}`)
+          expect(card.getAttribute('href')).toMatch(new RegExp(`^${base}media/training/[a-z0-9-]+-${lang}\\.[0-9a-f]{10}\\.mp4$`))
+          expect(card.querySelector('img')!.getAttribute('src')).toBe(`${base}${text.poster}`)
+          expect(card.querySelector('.video-title')!.textContent).toBe(text.title)
+        }
+      }
+    }
+  })
+
+  it('labels episode and duration and links YouTube only where the catalog has a URL', () => {
+    const episode = videoEpisodes[4]
+    const document = render('en', '/')
+    const card = document.querySelector(`a.video-card[data-video="${episode.slug}"]`)!
+    expect(card.querySelector('.video-episode')!.textContent).toBe('Episode 04')
+    expect(card.querySelector('.video-duration')!.textContent).toMatch(/^\d:\d\d$/)
+    expect(card.getAttribute('aria-label')).toBe(`Play video: ${episode.text.en.title}`)
+    expect(card.hasAttribute('data-youtube')).toBe(Boolean(episode.text.en.youtube))
+
+    const text = episode.text.en
+    const saved = text.youtube
+    try {
+      text.youtube = 'https://youtu.be/abc123'
+      expect(render('en', '/').querySelector(`a.video-card[data-video="${episode.slug}"]`)!.getAttribute('data-youtube')).toBe('https://youtu.be/abc123')
+    } finally {
+      if (saved) text.youtube = saved
+      else delete text.youtube
+    }
   })
 })

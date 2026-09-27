@@ -8,6 +8,7 @@ import { articleBody } from '../../scripts/blog-content.mjs'
 import { articles } from './blog.ts'
 import { routePages } from './prerender.ts'
 import { allPages } from '../data/nav.ts'
+import { videoEpisodes } from './videos.ts'
 
 describe('article publication and preview boundary', () => {
   for (const preview of [false, true]) {
@@ -87,6 +88,29 @@ describe('article publication and preview boundary', () => {
     for (const lang of ['de', 'en']) {
       expect(articleBody('first-workflow', lang)).toContain('Greeting Probe')
       expect(articleBody('scorch-migration', lang)).toMatch(/konstruiert|fictional/i)
+    }
+  })
+})
+
+describe('training video catalog', () => {
+  it('lists every episode once, in order, with both language versions complete', () => {
+    expect(videoEpisodes.map(episode => episode.number)).toEqual([...Array(25).keys()])
+    expect(new Set(videoEpisodes.map(episode => episode.slug)).size).toBe(videoEpisodes.length)
+    for (const episode of videoEpisodes) {
+      expect(episode.slug).toMatch(new RegExp(`^${String(episode.number).padStart(2, '0')}-[a-z0-9-]+$`))
+      expect(episode.publishedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      for (const lang of ['de', 'en']) {
+        const text = episode.text[lang]
+        const where = `${episode.slug} ${lang}`
+        expect(text.title.trim(), where).not.toBe('')
+        expect(text.duration, where).toBeGreaterThan(0)
+        expect(text.bytes, where).toBeGreaterThan(0)
+        // The hash in the name gives a re-rendered video a new URL, past caches and the deploy's presence check.
+        expect(text.video, where).toMatch(new RegExp(`^media/training/${episode.slug}-${lang}\\.[0-9a-f]{10}\\.mp4$`))
+        expect(text.poster, where).toMatch(new RegExp(`^training/${episode.slug}-${lang}\\.[0-9a-f]{10}\\.webp$`))
+        expect(existsSync(new URL(`./public/${text.poster}`, import.meta.url)), where).toBe(true)
+        if (text.youtube !== undefined) expect(text.youtube, where).toMatch(/^https:\/\/(?:www\.youtube\.com\/watch\?v=|youtu\.be\/)[\w-]+$/)
+      }
     }
   })
 })
