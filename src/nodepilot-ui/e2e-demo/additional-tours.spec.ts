@@ -94,6 +94,9 @@ test('build connects, publishes and runs the prepared workflow', async ({ page }
   const checklist = page.getByRole('dialog');
   if (await checklist.isVisible()) await checklist.getByRole('button', { name: 'Publish', exact: true }).click();
   await expect(page.locator('.np-tour')).toHaveAttribute('data-stage', 'run');
+  // The demo world notifies the tour before the publish response/refetch reaches React.
+  // Wait for the designer to acknowledge publication before clicking Run.
+  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
   await runFromEditor(page);
   await expect(page.locator('.np-tour')).toHaveAttribute('data-stage', 'done', { timeout: 20000 });
 });
