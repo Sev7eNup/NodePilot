@@ -1205,4 +1205,84 @@ public class WorkflowImportExportControllerTests
         response.Errors.Should().ContainSingle(e => e.Contains("Concurrency limit"));
         (await db.Workflows.AsNoTracking().SingleAsync()).MaxConcurrentExecutions.Should().BeNull();
     }
+
+    // -------------------------------------------------- custom-node relink by key
+
+    private static readonly Guid SourceDefinitionId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+
+    private static string CustomNodeDefinition(string key) => $$$$"""
+        {"nodes":[{"id":"step-1","type":"activity","data":{"label":"Check","activityType":"custom:{{{{key}}}}",
+          "config":{"drive":"C","__customDefinitionId":"{{{{SourceDefinitionId}}}}","__customKey":"{{{{key}}}}"}}}],
+         "edges":[]}
+        """;
+
+    private static JsonElement CustomConfigOf(Workflow workflow) =>
+        JsonDocument.Parse(workflow.DefinitionJson).RootElement
+            .GetProperty("nodes")[0].GetProperty("data").GetProperty("config").Clone();
+
+    [Fact]
+    public async Task Import_KnownCustomNodeKey_RewritesReferenceToLocalDefinition()
+    {
+        var db = CreateContext();
+        var local = new CustomActivityDefinition { Id = Guid.NewGuid(), Key = "disk_check", Name = "Disk Check" };
+        db.CustomActivityDefinitions.Add(local);
+        await db.SaveChangesAsync();
+
+        var result = await NewController(db).ImportExport.Import(
+            EnvelopeWithSingle("Uses-Custom", CustomNodeDefinition("disk_check")),
+            null, CancellationToken.None);
+
+        var response = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ImportWorkflowsResponse>().Subject;
+        response.Created.Should().Be(1);
+        response.Errors.Should().BeEmpty();
+        var config = CustomConfigOf(await db.Workflows.AsNoTracking().SingleAsync());
+        config.GetProperty("__customDefinitionId").GetString().Should().Be(local.Id.ToString());
+        config.GetProperty("__customKey").GetString().Should().Be("disk_check");
+        config.GetProperty("drive").GetString().Should().Be("C");
+    }
+
+    [Fact]
+    public async Task Import_MissingCustomNodeKey_CreatesDisabledWorkflowAndSaysSo()
+    {
+        var db = CreateContext();
+
+        var result = await NewController(db).ImportExport.Import(
+            EnvelopeWithSingle("Uses-Missing", CustomNodeDefinition("not_here"), enabled: true),
+            null, CancellationToken.None);
+
+        var response = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ImportWorkflowsResponse>().Subject;
+        response.Created.Should().Be(1);
+        response.Errors.Should().ContainSingle().Which.Should()
+            .Contain("imported as DISABLED")
+            .And.Contain("'not_here'")
+            .And.Contain("replace the step in the designer")
+            .And.NotContain("Import it under Custom Nodes first");
+        var saved = await db.Workflows.AsNoTracking().SingleAsync();
+        saved.IsEnabled.Should().BeFalse();
+        CustomConfigOf(saved).GetProperty("__customDefinitionId").GetString()
+            .Should().Be(SourceDefinitionId.ToString(), "an unknown key keeps the source reference");
+    }
+
+    [Fact]
+    public async Task Import_TwoLiveDefinitionsShareAKey_LinksTheOldest()
+    {
+        var db = CreateContext();
+        var oldest = new CustomActivityDefinition
+        {
+            Id = Guid.NewGuid(), Key = "dup", Name = "Old", CreatedAt = DateTime.UtcNow.AddDays(-1),
+        };
+        var newer = new CustomActivityDefinition { Id = Guid.NewGuid(), Key = "dup", Name = "New" };
+        db.CustomActivityDefinitions.AddRange(newer, oldest);
+        await db.SaveChangesAsync();
+
+        var result = await NewController(db).ImportExport.Import(
+            EnvelopeWithSingle("Dup-Key", CustomNodeDefinition("dup")),
+            null, CancellationToken.None);
+
+        result.Result.Should().BeOfType<OkObjectResult>();
+        CustomConfigOf(await db.Workflows.AsNoTracking().SingleAsync())
+            .GetProperty("__customDefinitionId").GetString().Should().Be(oldest.Id.ToString());
+    }
 }
