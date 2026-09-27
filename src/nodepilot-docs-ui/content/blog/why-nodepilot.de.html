@@ -1,0 +1,13 @@
+<p>Ein Skript prüft Dienste, ein anderes kopiert Dateien. Ein drittes fragt eine Datenbank ab. Jedes für sich funktioniert. Sobald diese Aufgaben aber voneinander abhängen, reicht es nicht mehr, nur zu wissen, wo die Dateien liegen.</p>
+<p>Welcher Schritt ist gelaufen? Welche Ausgabe hat er geliefert? Warum ist der nächste Schritt nicht gestartet? Und was muss angepasst werden, ohne dabei den restlichen Ablauf zu verändern?</p>
+<h2>Die Arbeit zwischen den Skripten</h2>
+<p>Genau hier setzt NodePilot an. PowerShell bleibt das Werkzeug für die eigentliche Systemarbeit. Der Workflow beschreibt, wie die einzelnen Schritte zusammenhängen: mit Bedingungen, Fehlerpfaden und parallelen Zweigen.</p>
+<p>Funktionierende Skripte bleiben, wie sie sind. Sie werden lediglich in einen Ablauf eingebettet, der sich gestalten, ausführen und anschließend nachvollziehen lässt.</p>
+<h2>Ein Arbeitsbereich statt einzelner Ansichten</h2>
+<p>NodePilot verbindet den visuellen Designer mit Ausführungshistorie, Debugging und Live Ops. Die Zielsysteme werden über WinRM angesprochen; dort wird kein zusätzlicher NodePilot-Agent benötigt. Die Anwendung selbst läuft in der eigenen Umgebung.</p>
+<p>Auch vorhandene Automatisierung soll nicht verloren gehen. Deshalb gehört der Import von SCOrch-Runbooks zum Projekt. Ein Import ersetzt keine Prüfung, nimmt aber die vorhandene Struktur als Ausgangspunkt – statt mit einem leeren Canvas zu beginnen.</p>
+<h2>Offen, einschließlich der Grenzen</h2>
+<p>NodePilot ist unter Apache 2.0 veröffentlicht. Der Quellcode lässt sich ansehen, selbst betreiben und verändern. Es gibt keine Aufteilung in eine freie Oberfläche und kostenpflichtig gesperrte Produktfunktionen.</p>
+<p>Das ist trotzdem kein Ersatz für einen Supportvertrag. Bei einem Open-Source-Projekt gehören eine sorgfältige Evaluation, Tests mit den eigenen Workflows und ein Blick in die Dokumentation dazu.</p>
+<div class="article-note">Dieser Beitrag beschreibt die Motivation und den Ansatz des Projekts, keine Betriebsgarantie.</div>
+<p class="article-source">Technische Grundlage: <a href="https://github.com/Sev7eNup/NodePilot#why-nodepilot" target="_blank" rel="noopener noreferrer">NodePilot README</a>. Die <a data-docs-path="" target="_blank" rel="noopener noreferrer">Dokumentation</a> beschreibt Einrichtung und Betrieb.</p>

@@ -78,6 +78,15 @@ describe('prerenderDocs', () => {
     expect(read('de/cli/index.html')).toContain('<title>CLI (np) — NodePilot Dokumentation</title>')
   })
 
+  it('ships the actual chapter with heading anchors and links before JavaScript runs', () => {
+    const page = read('de/getting-started/quickstart/index.html')
+    expect(page).toContain('<h1 id="schnelleinstieg">Schnelleinstieg</h1>')
+    expect(page).toContain('hostInfo')
+    expect(page).toContain('href="../../../de/getting-started/installation/"')
+    expect(page).toContain('"@type":"TechArticle"')
+    expect(page).not.toContain('<div id="root"></div>')
+  })
+
   it('points each page at itself and at its translation', () => {
     const page = read('de/getting-started/quickstart/index.html')
     expect(page).toContain('<link rel="canonical" href="https://x.test/docs/de/getting-started/quickstart/"')

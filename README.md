@@ -2,7 +2,7 @@
 
 # NodePilot
 
-**Agentless Windows workflow orchestration, a modern, open replacement for Microsoft System Center Orchestrator.**
+**Open-source Windows and PowerShell workflow automation. Self-hosted, agentless execution over WinRM, with an import path for System Center Orchestrator runbooks.**
 
 Multi-step automation is designed, scheduled, debugged and observed in the browser. PowerShell, file, registry and service operations, REST calls, SQL and further activities are executed across a Windows estate over WinRM, without agents on the targets.
 

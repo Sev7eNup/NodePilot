@@ -7,8 +7,8 @@
    matching. */
 @custom-variant dark (html.dark &);
 
-@import '@fontsource-variable/geist';
-@import '@fontsource-variable/jetbrains-mono';
+@font-face{font-family:'Geist Variable';font-style:normal;font-display:swap;font-weight:100 900;src:url('@fontsource-variable/geist/files/geist-latin-wght-normal.woff2') format('woff2')}
+@font-face{font-family:'JetBrains Mono Variable';font-style:normal;font-display:swap;font-weight:100 800;src:url('@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2') format('woff2')}
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Design tokens, ported from the NodePilot app UI (`src/nodepilot-ui/src/index.css`).

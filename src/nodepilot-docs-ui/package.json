@@ -1,7 +1,7 @@
 {
   "name": "nodepilot-docs-ui",
   "version": "1.4.3",
-  "description": "NodePilot documentation website — React SPA.",
+  "description": "NodePilot documentation website - React SPA.",
   "type": "module",
   "private": true,
   "engines": {
@@ -21,7 +21,9 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:site:e2e": "playwright test --config playwright.site.config.ts",
-    "build:demo": "npm --prefix ../nodepilot-ui run build:demo"
+    "build:demo": "npm --prefix ../nodepilot-ui run build:demo",
+    "images:site": "node scripts/site-images.mjs",
+    "prebuild:site": "npm run images:site"
   },
   "dependencies": {
     "@carbon/icons-react": "^11.88.0",
@@ -50,6 +52,8 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^17.12.0",
+    "linkedom": "^0.18.13",
+    "sharp": "^0.35.4",
     "tailwindcss": "^4.2.2",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.70.0",

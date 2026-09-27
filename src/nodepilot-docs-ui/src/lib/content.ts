@@ -3,7 +3,8 @@ import { DEFAULT_LANG, isLang, type Lang } from '../i18n/languages'
 
 // Eager-import every Markdown file under content/ as a raw string.
 // Vite resolves this at build time into a map keyed like "de/getting-started/introduction".
-const modules = import.meta.glob('../../content/**/*.md', {
+// Blog sources are rendered by the website build and must never enter the docs/installer bundle.
+const modules = import.meta.glob(['../../content/de/**/*.md', '../../content/en/**/*.md'], {
   query: '?raw',
   import: 'default',
   eager: true,
