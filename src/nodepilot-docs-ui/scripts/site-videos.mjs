@@ -21,9 +21,10 @@ const EPISODES = `${SOURCE_ROOT}scripts/marketing-film/training/episodes/`
 const CAPTURES = `${SOURCE_ROOT}scripts/marketing-film/training/captures/`
 const RENDERS = `${SOURCE_ROOT}out/nodepilot-training/`
 
-// The app screen each poster shows and the part of it that fills the 16:9 card, as fractions of
-// the capture: [left, top, width]. The height follows from the aspect ratio. A whole window at card
-// size is too small to read, so each poster zooms in on what the episode is about.
+// The episodes on the website; a rendered episode without an entry here is not published. Each
+// entry names the app screen its poster shows and the part that fills the 16:9 card, as fractions
+// of the capture: [left, top, width], the height following from the aspect ratio. A whole window
+// at card size is too small to read, so each poster zooms in on what the episode is about.
 const POSTER_CAPTURES = {
   '00-intro': ['designer', 0.14, 0.15, 0.6], '01-dashboard': ['dash', 0.18, 0.33, 0.62],
   '02-first-workflow': ['connected', 0.38, 0.15, 0.6], '03-edit-publish': ['diff', 0.15, 0.08, 0.7],
@@ -99,10 +100,15 @@ function removeStale(dir, stem, ext, keep) {
 export async function buildSiteVideos() {
   mkdirSync(MEDIA, { recursive: true })
   mkdirSync(POSTERS, { recursive: true })
-  const previous = existsSync(CATALOG) ? JSON.parse(readFileSync(CATALOG, 'utf8')) : { episodes: [] }
+  let previous = { episodes: [] }
+  try {
+    previous = JSON.parse(readFileSync(CATALOG, 'utf8'))
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
   const today = new Date().toISOString().slice(0, 10)
   const episodes = []
-  for (const name of readdirSync(EPISODES).filter((file) => /^\d\d-[a-z0-9-]+\.js$/.test(file)).sort()) {
+  for (const name of Object.keys(POSTER_CAPTURES).map((slug) => `${slug}.js`)) {
     const { number, slug, title } = parseEpisode(readFileSync(`${EPISODES}${name}`, 'utf8'))
     const known = previous.episodes.find((episode) => episode.slug === slug)
     const text = {}
@@ -110,7 +116,8 @@ export async function buildSiteVideos() {
       const stem = `${slug}-${lang}`
       const source = `${RENDERS}${stem}.mp4`
       if (!existsSync(source)) throw new Error(`Missing render ${source}.`)
-      const video = `${stem}.${hash(readFileSync(source))}.mp4`
+      const data = readFileSync(source)
+      const video = `${stem}.${hash(data)}.mp4`
       if (!existsSync(`${MEDIA}${video}`)) copyFileSync(source, `${MEDIA}${video}`)
       removeStale(MEDIA, stem, 'mp4', video)
 
@@ -131,7 +138,7 @@ export async function buildSiteVideos() {
         title: title[lang],
         video: `media/training/${video}`,
         poster: `training/${poster}`,
-        bytes: statSync(source).size,
+        bytes: data.length,
         duration: mp4Duration(source),
         ...(youtube ? { youtube } : {}),
       }
