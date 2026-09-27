@@ -4,6 +4,12 @@
 .experience-intro h1{font-size:clamp(32px,4vw,56px);line-height:1.12;letter-spacing:-.045em;margin:14px 0 20px}
 .experience-intro p{color:var(--muted);font-size:17px;line-height:1.8;max-width:750px}
 .experience-missions{display:grid;grid-template-columns:1.1fr 1fr;gap:24px}
+.experience-more{margin:56px 0 20px}.experience-more h2{font-size:30px;letter-spacing:-.03em;margin:0 0 8px}.experience-more p{color:var(--muted);font-size:14px;line-height:1.7;margin:0}
+.experience-missions--more{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.experience-mission--compact{padding:26px}.experience-mission--compact:first-child{background:var(--surface-lowest);border-color:var(--line)}
+.experience-mission--compact h3{font-size:24px;letter-spacing:-.025em;line-height:1.25;margin:16px 0 9px;position:relative}
+.experience-mission--compact ol{margin:18px 0 22px;line-height:1.9}.experience-mission--compact .section-kicker{text-transform:uppercase}
+.experience-mission--compact .experience-mission-number{font-size:56px;right:18px;top:15px}
 .experience-mission{position:relative;display:flex;flex-direction:column;align-items:flex-start;min-width:0;border:1px solid var(--line);border-radius:10px;padding:34px;background:var(--surface-lowest);overflow:hidden}
 .experience-mission:first-child{background:radial-gradient(ellipse at 100% 0,#18325280,transparent 70%),var(--surface-lowest);border-color:#345578}
 .experience-mission-number{font:72px/1 var(--font-mono);color:#6da8ff18;position:absolute;right:24px;top:22px;pointer-events:none}

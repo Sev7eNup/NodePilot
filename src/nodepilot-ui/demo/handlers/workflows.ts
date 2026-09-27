@@ -15,12 +15,13 @@ import type {
 } from '../../src/types/api';
 import { route, type RequestContext, type Route } from '../net/router';
 import { badRequest, conflict, download, json, noContent, notFound, notInDemo } from '../net/respond';
-import { definitionOf, findWorkflow, getWorld, type GraphNode } from '../state/world';
+import { definitionOf, findWorkflow, getWorld, notifyWorld, type GraphNode } from '../state/world';
 import { runtimeId } from '../state/ids';
 import { DEMO_USER } from '../seed/entities';
 import { buildStepStats } from '../seed/dashboard';
 import { cancelRun, startRun } from '../run/player';
 import { FILE_WORKFLOW_ID, fileInputError } from '../run/fileScenario';
+import { MISSION_WORKFLOW_IDS } from '../seed/missionFixtures';
 
 interface SaveBody {
   name?: string;
@@ -237,6 +238,7 @@ export const workflowRoutes: Route[] = [
       const changed = typeof body?.definitionJson === 'string' && body.definitionJson !== workflow.definitionJson;
       applySave(workflow, body);
       if (changed) snapshotVersion(workflow, 'Saved from the designer');
+      notifyWorld();
       return json(workflow);
     })),
 
@@ -293,6 +295,7 @@ export const workflowRoutes: Route[] = [
       workflow.checkedOutByUserId = null;
       workflow.checkedOutByUserName = null;
       workflow.checkedOutAt = null;
+      notifyWorld();
       return json(workflow);
     })),
 
@@ -312,6 +315,7 @@ export const workflowRoutes: Route[] = [
       workflow.checkedOutByUserId = null;
       workflow.checkedOutByUserName = null;
       workflow.checkedOutAt = null;
+      notifyWorld();
       return json(workflow);
     })),
 
@@ -340,6 +344,12 @@ export const workflowRoutes: Route[] = [
     if (ctx.params.id === FILE_WORKFLOW_ID) {
       const error = fileInputError(parameters);
       if (error) return badRequest('INVALID_PARAMETERS', error);
+    }
+    if (ctx.params.id === MISSION_WORKFLOW_IDS.decision && (!Number.isFinite(Number(parameters.freeSpaceGb ?? '8')) || Number(parameters.freeSpaceGb ?? '8') < 0)) {
+      return badRequest('INVALID_PARAMETERS', 'freeSpaceGb must be a non-negative number.');
+    }
+    if (ctx.params.id === MISSION_WORKFLOW_IDS.service && !['stopped', 'running'].includes((parameters.serviceState ?? 'Stopped').toLowerCase())) {
+      return badRequest('INVALID_PARAMETERS', 'serviceState must be Stopped or Running.');
     }
     return withWorkflow(ctx, (workflow) => {
       if (!workflow.isEnabled) {

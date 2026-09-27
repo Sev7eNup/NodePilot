@@ -12,7 +12,7 @@ import { ROOT_FOLDER_ID as GLOBALS_ROOT_FOLDER_ID, type GlobalFolder } from '../
 import type { UserRow } from '../../src/types/api';
 import { route, type Route } from '../net/router';
 import { conflict, json, noContent, notFound, notInDemo } from '../net/respond';
-import { getWorld, type DemoGlobalVariable, type DemoMaintenanceWindow } from '../state/world';
+import { getWorld, notifyWorld, type DemoGlobalVariable, type DemoMaintenanceWindow } from '../state/world';
 import { runtimeId } from '../state/ids';
 import { DEMO_USER } from '../seed/entities';
 
@@ -523,6 +523,7 @@ export const catalogRoutes: Route[] = [
       updatedAt: new Date().toISOString(),
       updatedBy: DEMO_USER.username,
     });
+    notifyWorld();
     return json(window);
   }),
 

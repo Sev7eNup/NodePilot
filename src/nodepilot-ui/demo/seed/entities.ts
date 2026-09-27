@@ -261,7 +261,7 @@ export function buildMaintenanceWindows(now: number): DemoMaintenanceWindow[] {
       ...base,
       id: demoId('maintenance-window:patch-night'),
       name: 'Patch night',
-      description: 'No scheduled runs while the monthly patch ring is applied.',
+      description: 'No scheduled runs during the weekly patch window.',
       isEnabled: true,
       mode: 'Blackout',
       scopeKind: 'Folders',

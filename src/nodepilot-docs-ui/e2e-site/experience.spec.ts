@@ -1,20 +1,26 @@
 import { expect, test } from '@playwright/test'
 
-test('offers both guided tasks with the current language and no second workflow renderer', async ({ page }) => {
+test('offers ten guided tasks with the current language and no second workflow renderer', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   await page.goto('/walkthrough/')
   await expect(page.locator('[data-tour="file"]')).toHaveAttribute('href', '/demo/?tour=file&lang=de')
   await expect(page.locator('[data-tour="diagnose"]')).toHaveAttribute('href', '/demo/?tour=diagnose&lang=de')
+  for (const id of ['build', 'decision', 'parallel', 'service', 'live', 'versions', 'machine', 'maintenance']) {
+    await expect(page.locator(`[data-tour="${id}"]`)).toHaveAttribute('href', `/demo/?tour=${id}&lang=de`)
+  }
   await expect(page.locator('#experience-root canvas')).toHaveCount(0)
   await page.locator('.header-lang [data-lang="en"]').click()
   await expect(page.locator('[data-tour="file"]')).toHaveText('Start guided walkthrough')
   await expect(page.locator('[data-tour="file"]')).toHaveAttribute('href', '/demo/?tour=file&lang=en')
   await expect(page.locator('[data-tour="diagnose"]')).toHaveAttribute('href', '/demo/?tour=diagnose&lang=en')
+  for (const id of ['build', 'decision', 'parallel', 'service', 'live', 'versions', 'machine', 'maintenance']) {
+    await expect(page.locator(`[data-tour="${id}"]`)).toHaveAttribute('href', `/demo/?tour=${id}&lang=en`)
+  }
   await page.locator('[data-nav="home"]').click()
   await expect(page.locator('#experience-root')).toHaveCount(0)
   await page.locator('[data-nav="experience"]').click()
-  await expect(page.locator('.experience-mission')).toHaveCount(2)
+  await expect(page.locator('.experience-mission')).toHaveCount(10)
   expect(errors).toEqual([])
 })
 
@@ -23,6 +29,7 @@ for (const width of [390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 })
     await page.goto('/walkthrough/')
     await expect(page.locator('[data-tour="file"]')).toBeVisible()
+    await expect(page.locator('[data-tour="maintenance"]')).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     await page.screenshot({ path: test.info().outputPath(`entry-${width}.png`), fullPage: true })
   })
