@@ -58,7 +58,7 @@ public sealed class GlobalsCreateCommand : BaseCommand<GlobalsCreateSettings>
     {
         if (string.IsNullOrWhiteSpace(settings.Name))
         {
-            writer.Error("--name ist Pflicht.");
+            writer.Error("--name is required.");
             return ExitCodes.Error;
         }
 
@@ -67,14 +67,14 @@ public sealed class GlobalsCreateCommand : BaseCommand<GlobalsCreateSettings>
             value = (await Console.In.ReadToEndAsync(ct)).TrimEnd('\r', '\n');
         if (value is null)
         {
-            writer.Error("Wert fehlt — entweder --value oder --value-stdin.");
+            writer.Error("Value missing. Pass --value or --value-stdin.");
             return ExitCodes.Error;
         }
 
         var api = ClientFactory.Create(session);
         var folderId = await FolderResolver.ResolveAsync(api, settings.Folder, ct);
         var v = await api.CreateGlobalVariableAsync(new CreateGlobalVariableRequest(settings.Name, value, settings.Secret, settings.Description, folderId), ct);
-        writer.Success($"Global angelegt: [bold]{Markup.Escape(v.Name)}[/] ({(v.IsSecret ? "[yellow]secret[/]" : "plain")}).");
+        writer.Success($"Global created: [bold]{Markup.Escape(v.Name)}[/] ({(v.IsSecret ? "[yellow]secret[/]" : "plain")}).");
         return ExitCodes.Success;
     }
 }
@@ -105,7 +105,7 @@ public sealed class GlobalsUpdateCommand : BaseCommand<GlobalsUpdateSettings>
         var current = (await api.ListGlobalVariablesAsync(ct)).FirstOrDefault(v => v.Id == settings.Id);
         if (current is null)
         {
-            writer.Error($"Global Variable {settings.Id} nicht gefunden.");
+            writer.Error($"Global variable {settings.Id} not found.");
             return ExitCodes.Error;
         }
 
@@ -125,7 +125,7 @@ public sealed class GlobalsUpdateCommand : BaseCommand<GlobalsUpdateSettings>
             settings.Description ?? current.Description,
             folderId);
         await api.UpdateGlobalVariableAsync(settings.Id, req, ct);
-        writer.Success($"Global [bold]{Markup.Escape(req.Name)}[/] aktualisiert.");
+        writer.Success($"Global [bold]{Markup.Escape(req.Name)}[/] updated.");
         return ExitCodes.Success;
     }
 }
@@ -138,12 +138,12 @@ public sealed class GlobalsDeleteCommand : BaseCommand<GlobalsUpdateSettings>
     {
         if (!Console.IsInputRedirected)
         {
-            var ok = await AnsiConsole.ConfirmAsync($"Global Variable [red]{settings.Id}[/] wirklich löschen?", defaultValue: false);
-            if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
+            var ok = await AnsiConsole.ConfirmAsync($"Delete global variable [red]{settings.Id}[/]?", defaultValue: false);
+            if (!ok) { writer.Info("Aborted."); return ExitCodes.Success; }
         }
         var api = ClientFactory.Create(session);
         await api.DeleteGlobalVariableAsync(settings.Id, ct);
-        writer.Success("Global Variable gelöscht.");
+        writer.Success("Global variable deleted.");
         return ExitCodes.Success;
     }
 }
@@ -171,7 +171,7 @@ public sealed class GlobalsExportCommand : BaseCommand<GlobalsExportSettings>
         if (!string.IsNullOrWhiteSpace(settings.File))
         {
             await File.WriteAllTextAsync(settings.File, json, ct);
-            writer.Success($"Geschrieben: {settings.File} ({exportable.Count} Globals).");
+            writer.Success($"Written: {settings.File} ({exportable.Count} globals).");
         }
         else
         {
@@ -211,14 +211,14 @@ public sealed class GlobalsImportCommand : BaseCommand<GlobalsImportSettings>
             json = await File.ReadAllTextAsync(settings.File, ct);
         else
         {
-            writer.Error($"Datei nicht gefunden: {settings.File}");
+            writer.Error($"File not found: {settings.File}");
             return ExitCodes.Error;
         }
 
         List<ImportableGlobalVariable>? entries;
         try { entries = JsonSerializer.Deserialize<List<ImportableGlobalVariable>>(json, NodePilotApiClient.JsonOptions); }
-        catch (JsonException ex) { writer.Error($"JSON-Fehler: {ex.Message}"); return ExitCodes.Error; }
-        if (entries is null || entries.Count == 0) { writer.Info("Keine Einträge."); return ExitCodes.Success; }
+        catch (JsonException ex) { writer.Error($"Invalid JSON: {ex.Message}"); return ExitCodes.Error; }
+        if (entries is null || entries.Count == 0) { writer.Info("No entries."); return ExitCodes.Success; }
 
         var api = ClientFactory.Create(session);
         var existing = settings.DryRun

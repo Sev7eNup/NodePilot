@@ -168,7 +168,7 @@ export function WorkflowGenerationDialog({ onCreate, onClose }: Readonly<Props>)
             <>
               <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
                 <label className="block">
-                  <span className="text-[10px] font-label font-bold text-on-surface-variant uppercase tracking-widest">Name</span>
+                  <span className="text-[10px] font-label font-bold text-on-surface-variant uppercase tracking-widest">{t('ai:workflowDialog.fieldName')}</span>
                   <input
                     type="text"
                     value={editedName}
@@ -203,7 +203,7 @@ export function WorkflowGenerationDialog({ onCreate, onClose }: Readonly<Props>)
 
               {activityHistogram.length > 0 && (
                 <div>
-                  <span className="text-[10px] font-label font-bold text-on-surface-variant uppercase tracking-widest">Activities</span>
+                  <span className="text-[10px] font-label font-bold text-on-surface-variant uppercase tracking-widest">{t('ai:workflowDialog.fieldActivities')}</span>
                   <div className="mt-1 flex flex-wrap gap-1.5">
                     {activityHistogram.map(({ type, count }) => (
                       <span key={type} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-surface-container text-on-surface tabular-nums">

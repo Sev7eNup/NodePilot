@@ -36,7 +36,10 @@ export function LintPanel({ result, nodes, edges, onJump, onJumpEdge, onClose }:
           <WarningAltFilled size={14} className={result.errors.length > 0 ? 'text-error' : 'text-amber-700'} />
           <h3 className="font-headline text-sm font-bold text-on-surface">{t('lintPanel.title')}</h3>
           <span className="font-label text-[10px] font-semibold text-on-surface-variant tabular-nums">
-            {t('lintPanel.counts', { errors: result.errors.length, warnings: result.warnings.length })}
+            {t('lintPanel.counts', {
+              errors: t('lintErrors', { count: result.errors.length }),
+              warnings: t('lintWarnings', { count: result.warnings.length }),
+            })}
           </span>
         </div>
         <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface" aria-label={t('lintPanel.close')}>

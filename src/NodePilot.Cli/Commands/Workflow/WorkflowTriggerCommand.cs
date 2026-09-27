@@ -72,14 +72,14 @@ public sealed class WorkflowTriggerCommand : AsyncCommand<WorkflowTriggerSetting
         var session = _sessions.Resolve(settings);
         if (!session.HasServer)
         {
-            writer.Error("Kein Server konfiguriert. `np config set server <URL>` oder --server angeben.");
+            writer.Error("No server configured. Run `np config set server <URL>` or pass --server.");
             return ExitCodes.Error;
         }
 
         var apiKey = ResolveApiKey(settings);
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            writer.Error("Kein API-Key übergeben. --api-key, --api-key-stdin oder NODEPILOT_TRIGGER_API_KEY env setzen.");
+            writer.Error("No API key given. Pass --api-key or --api-key-stdin, or set the NODEPILOT_TRIGGER_API_KEY environment variable.");
             return ExitCodes.Error;
         }
 
@@ -88,7 +88,7 @@ public sealed class WorkflowTriggerCommand : AsyncCommand<WorkflowTriggerSetting
         // firing rather than after, so a script never sees exit 0 for a run it cannot observe.
         if (settings.Wait && !session.HasSession)
         {
-            writer.Error("--wait braucht eine gültige JWT-Session (`np auth login`) für das Polling. Trigger wurde NICHT gefeuert.");
+            writer.Error("--wait needs a valid JWT session (`np auth login`) for polling. The trigger was NOT fired.");
             return ExitCodes.AuthRequired;
         }
 
@@ -112,7 +112,7 @@ public sealed class WorkflowTriggerCommand : AsyncCommand<WorkflowTriggerSetting
             if (replayed)
                 writer.Info($"[grey]Idempotent-Replayed[/]: returning original execution [bold]{execution.Id}[/].");
             else
-                writer.Info($"Execution gestartet: [bold]{execution.Id}[/]");
+                writer.Info($"Execution started: [bold]{execution.Id}[/]");
 
             if (!settings.Wait)
             {
@@ -127,17 +127,17 @@ public sealed class WorkflowTriggerCommand : AsyncCommand<WorkflowTriggerSetting
         }
         catch (ApiException ex) when (ex.IsUnauthorized)
         {
-            writer.Error("Trigger abgelehnt: ungültiger oder fehlender X-Api-Key.");
+            writer.Error("Trigger rejected: invalid or missing X-Api-Key.");
             return ExitCodes.AuthRequired;
         }
         catch (ApiException ex) when (ex.StatusCode == global::System.Net.HttpStatusCode.NotFound)
         {
-            writer.Error($"Workflow '{settings.NameOrId}' nicht gefunden oder disabled.");
+            writer.Error($"Workflow '{settings.NameOrId}' not found or disabled.");
             return ExitCodes.Error;
         }
         catch (ApiException ex)
         {
-            writer.Error($"API-Fehler: {ex.Message}");
+            writer.Error($"API error: {ex.Message}");
             return ExitCodes.Error;
         }
         catch (HttpRequestException ex)

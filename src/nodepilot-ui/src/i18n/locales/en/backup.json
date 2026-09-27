@@ -11,9 +11,11 @@
     "users": "Users",
     "credentials": "Credentials",
     "machines": "Machines",
+    "globalVariableFolders": "Global variable folders",
     "globalVariables": "Global variables",
     "customActivities": "Custom Nodes",
     "workflows": "Workflows",
+    "alerting": "Alerting rules & system policies",
     "settings": "Settings",
     "folderGrants": "Folder permissions"
   },

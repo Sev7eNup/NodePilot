@@ -66,3 +66,49 @@ describe('activity validation translations', () => {
     }
   });
 });
+
+// Whole-locale checks: both languages carry the same keys, and German text uses real umlauts.
+const localeFiles = import.meta.glob<Record<string, unknown>>('../../i18n/locales/*/*.json', { eager: true, import: 'default' });
+
+function flatKeys(obj: Record<string, unknown>, prefix = ''): string[] {
+  return Object.entries(obj).flatMap(([k, v]) => {
+    const path = prefix ? `${prefix}.${k}` : k;
+    return v && typeof v === 'object' ? flatKeys(v as Record<string, unknown>, path) : [path];
+  });
+}
+
+function flatValues(obj: Record<string, unknown>): string[] {
+  return Object.values(obj).flatMap((v) =>
+    v && typeof v === 'object' ? flatValues(v as Record<string, unknown>) : [String(v)]);
+}
+
+function namespace(lang: string, ns: string): Record<string, unknown> {
+  const file = localeFiles[`../../i18n/locales/${lang}/${ns}.json`];
+  expect(file, `${lang}/${ns}.json`).toBeDefined();
+  return file;
+}
+
+describe('locale files', () => {
+  const namespaces = Object.keys(localeFiles)
+    .filter((path) => path.includes('/en/'))
+    .map((path) => path.split('/').pop()!.replace('.json', ''));
+
+  it.each(namespaces)('de and en share the same keys in %s', (ns) => {
+    expect(flatKeys(namespace('de', ns)).sort()).toEqual(flatKeys(namespace('en', ns)).sort());
+  });
+
+  it('German alerting texts use umlauts, not ASCII transliterations', () => {
+    const words = flatValues(namespace('de', 'alerts')).join(' ').toLowerCase().split(/[^a-zäöüß]+/);
+    for (const word of ['ueber', 'kanaele', 'ausfuehrung', 'hinzufuegen', 'laeuft', 'loeschen', 'schluessel', 'unterdruecken', 'ausgeloest', 'verfuegbar', 'pruefe']) {
+      expect(words.some((w) => w.startsWith(word)), word).toBe(false);
+    }
+  });
+
+  it('backup labels cover every section the manifest returns', () => {
+    const sections = ['folders', 'users', 'credentials', 'machines', 'globalVariableFolders', 'globalVariables', 'customActivities', 'workflows', 'alerting', 'settings'];
+    for (const lang of ['de', 'en']) {
+      const labels = namespace(lang, 'backup').sections as Record<string, string>;
+      for (const section of sections) expect(labels[section], `${lang}: ${section}`).toBeTruthy();
+    }
+  });
+});

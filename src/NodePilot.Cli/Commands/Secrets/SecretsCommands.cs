@@ -32,10 +32,10 @@ public sealed class SecretsReencryptCommand : BaseCommand<SecretsReencryptSettin
         if (!settings.Yes && !Console.IsInputRedirected)
         {
             var ok = await AnsiConsole.ConfirmAsync(
-                "Re-encrypt sweep über alle Credentials, Global-Secrets + Workflow-History ausführen?\n  " +
-                "[grey](Empfohlen nur direkt nach AES-GCM-Key-Rotation oder Provider-Migration.)[/]",
+                "Re-encrypt all credentials, secret globals and workflow history?\n  " +
+                "[grey](Only recommended right after an AES-GCM key rotation or a provider migration.)[/]",
                 defaultValue: false);
-            if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
+            if (!ok) { writer.Info("Aborted."); return ExitCodes.Success; }
         }
 
         var api = ClientFactory.Create(session);

@@ -177,7 +177,7 @@ public class CommandIntegrationSystemAlertTests
         using var h = new CommandTestHarness();
         var result = h.Run("system-alert", "create", "--file", Path.Combine(h.ConfigDir, "does-not-exist.json"));
         result.ExitCode.Should().Be(ExitCodes.Error);
-        result.StdErr.Should().Contain("nicht gefunden");
+        result.StdErr.Should().Contain("not found");
         h.Server.LogEntries.Should().NotContain(e =>
             e.RequestMessage!.AbsolutePath == "/api/alerting/system/policies" && e.RequestMessage!.Method == "POST");
     }

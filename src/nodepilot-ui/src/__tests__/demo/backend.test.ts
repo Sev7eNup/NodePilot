@@ -12,6 +12,7 @@ import { getAllPages, getPage } from '../../api/paging';
 import { ROOT_FOLDER_ID, sharedFoldersApi } from '../../api/sharedFolders';
 import { ROOT_FOLDER_ID as GLOBALS_ROOT_FOLDER_ID, globalFoldersApi } from '../../api/globalFolders';
 import { cancelAllForWorkflow } from '../../api/operations';
+import { resolveWorkflowRef } from '../../lib/resolveWorkflowRef';
 import type { OperationsGraph, WorkflowCoverageResponse } from '../../types/api';
 import { alertingApi } from '../../api/alerting';
 import { systemAlertingApi } from '../../api/systemAlerting';
@@ -301,6 +302,65 @@ describe('contracts read through the real clients', () => {
     }
   });
 
+  it('flags hot-reloadable sections exactly as SettingsSchema.cs does', async () => {
+    // IsHotReloadable per section in src/NodePilot.Api/Configuration/SettingsSchema.cs.
+    const hot = new Set([
+      'Smtp', 'Llm', 'AiKnowledge', 'Retention', 'Stats', 'DbAdmin', 'FileSystemOperation',
+      'WaitForCondition', 'SqlActivity', 'StartProgram', 'Webhook', 'ExternalTrigger', 'Threading',
+    ]);
+    for (const section of demoSettingsSections) {
+      const response = await adminSettings.getSection<Record<string, unknown>>(section);
+      expect(response.isHotReloadable, section).toBe(hot.has(section));
+    }
+  });
+
+  it('serves the shipped authentication defaults, inside the product ranges', async () => {
+    const response = await adminSettings.getSection<{
+      ldap: { bindTimeoutSeconds: number; directorySyncIntervalMinutes: number; directorySyncMaxConcurrency: number };
+      oidc: { displayName: string };
+    }>('Authentication');
+    // Defaults from AuthenticationSettingsDto.
+    expect(response.payload.ldap.bindTimeoutSeconds).toBe(5);
+    expect(response.payload.ldap.directorySyncIntervalMinutes).toBe(5);
+    expect(response.payload.ldap.directorySyncMaxConcurrency).toBe(16);
+    expect(response.payload.oidc.displayName).toBe('Single Sign-On');
+  });
+
+  it('resolves a workflow by name the way WorkflowNameResolver does', async () => {
+    const workflow = getWorld().workflows[0];
+    expect(await resolveWorkflowRef(workflow.name)).toMatchObject({ id: workflow.id });
+    expect(await resolveWorkflowRef(workflow.name.toUpperCase())).toMatchObject({ id: workflow.id });
+    expect(await resolveWorkflowRef('no such workflow')).toBeNull();
+
+    // Two case variants and a third spelling: exact case wins, the third is ambiguous.
+    const lower = { ...workflow, id: 'c0ffee00-0000-4000-8000-000000000001', name: workflow.name.toLowerCase() };
+    getWorld().workflows.push(lower);
+    expect(await resolveWorkflowRef(workflow.name)).toMatchObject({ id: workflow.id });
+    expect(await resolveWorkflowRef(lower.name)).toMatchObject({ id: lower.id });
+    const ambiguous = await fetch(`/api/workflows/by-name/${encodeURIComponent(workflow.name.toUpperCase())}`);
+    expect(ambiguous.status).toBe(409);
+    expect((await ambiguous.json()).message).toContain('disambiguate with the GUID');
+  });
+
+  it('answers a custom-activity save with the definition and its warnings', async () => {
+    const created = await api.post<{ definition: { id: string; key: string }; warnings: unknown[] }>(
+      '/custom-activities', { key: 'demo-save-shape', name: 'Save shape', scriptTemplate: 'Write-Output 1' });
+    expect(created.definition.key).toBe('demo-save-shape');
+    expect(created.warnings).toEqual([]);
+
+    const updated = await api.put<{ definition: { id: string; name: string }; warnings: unknown[] }>(
+      `/custom-activities/${created.definition.id}`, { name: 'Renamed' });
+    expect(updated.definition.name).toBe('Renamed');
+    expect(updated.warnings).toEqual([]);
+  });
+
+  it('keys directory users to the canonical Active Directory authority', async () => {
+    const users = await api.get<{ provider?: string | null; authority?: string | null }[]>('/users');
+    const directory = users.filter((u) => u.provider === 'Ldap');
+    expect(directory.length).toBeGreaterThan(0);
+    for (const user of directory) expect(user.authority).toBe('urn:nodepilot:identity:active-directory');
+  });
+
   it('keys the designer annotation overlays by step id', async () => {
     const workflow = getWorld().workflows[0];
     const parsed = JSON.parse(workflow.definitionJson) as { nodes: { id: string }[] };
@@ -535,6 +595,35 @@ describe('contracts read through the real clients', () => {
     expect(tail.lines.length).toBeGreaterThan(0);
   });
 
+  it('writes the support-log tail in SupportLogFormatter layout, oldest first', async () => {
+    const tail = await api.get<{ file: string; lines: string[] }>('/diagnostics/support-log?lines=1000');
+
+    expect(tail.file).toMatch(/^nodepilot-support-\d{8}\.log$/);
+    const layout = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \[(INFO|WARN|ERR |FATL|DBUG|TRCE)\] \S/;
+    const stamps = tail.lines.map((line) => {
+      const match = layout.exec(line);
+      expect(match, line).not.toBeNull();
+      return match![1];
+    });
+    // The file is append-only, so its tail reads oldest to newest.
+    expect([...stamps].sort()).toEqual(stamps);
+    // The viewer's WARN+ filter keys on these tokens; failures are Warnings in the engine.
+    expect(tail.lines.some((l) => /\[WARN\] STEP_FAILED /.test(l))).toBe(true);
+    expect(tail.lines.some((l) => /\[WARN\] EXECUTION_FAILED /.test(l))).toBe(true);
+
+    const short = await api.get<{ lines: string[] }>('/diagnostics/support-log?lines=3');
+    expect(short.lines).toEqual(tail.lines.slice(-3));
+  });
+
+  it('logs failures at the levels the engine uses', async () => {
+    const page = await api.get<{ items: { eventType: string; level: number }[] }>(
+      '/diagnostics/support-events?take=500');
+    const levelOf = (type: string) => new Set(page.items.filter((r) => r.eventType === type).map((r) => r.level));
+    expect([...levelOf('STEP_FAILED')]).toEqual([3]);
+    expect([...levelOf('EXECUTION_FAILED')]).toEqual([3]);
+    expect([...levelOf('EXECUTION_SUCCEEDED')]).toEqual([2]);
+  });
+
   it('filters support events by type, the way the table does', async () => {
     const filtered = await api.get<{ items: { eventType: string }[] }>(
       '/diagnostics/support-events?eventType=EXECUTION_FAILED&take=500');
@@ -673,11 +762,41 @@ describe('audit log', () => {
     expect(first.items).toHaveLength(5);
     expect(first.nextCursor).not.toBeNull();
 
+    // afterTs/afterId are the names AuditLogPage sends and AuditController binds.
     const second = await api.get<{ items: { id: string }[] }>(
-      `/audit?take=5&cursorTimestamp=${encodeURIComponent(first.nextCursor!.timestamp)}&cursorId=${first.nextCursor!.id}`,
+      `/audit?take=5&afterTs=${encodeURIComponent(first.nextCursor!.timestamp)}&afterId=${first.nextCursor!.id}`,
     );
     // The cursor has to advance, or "load more" loops on the same page forever.
-    expect(second.items[0].id).not.toBe(first.items[0].id);
+    const firstIds = new Set(first.items.map((e) => e.id));
+    expect(second.items.length).toBeGreaterThan(0);
+    for (const entry of second.items) expect(firstIds.has(entry.id)).toBe(false);
+  });
+
+  it('walks every entry exactly once by following nextCursor', async () => {
+    type Page = { items: { id: string }[]; nextCursor: { id: string; timestamp: string } | null };
+    const seen: string[] = [];
+    let page = await api.get<Page>('/audit?take=7');
+    seen.push(...page.items.map((e) => e.id));
+    while (page.nextCursor) {
+      page = await api.get<Page>(
+        `/audit?take=7&afterTs=${encodeURIComponent(page.nextCursor.timestamp)}&afterId=${page.nextCursor.id}`);
+      seen.push(...page.items.map((e) => e.id));
+    }
+    expect(seen).toHaveLength(demoAuditEntryCount());
+    expect(new Set(seen).size).toBe(seen.length);
+  });
+
+  it('matches filters exactly, as the server does, not by substring', async () => {
+    const partial = await api.get<{ items: unknown[] }>('/audit?take=500&action=WORKFLOW');
+    expect(partial.items).toHaveLength(0);
+    const wrongCase = await api.get<{ items: unknown[] }>('/audit?take=500&action=workflow_published');
+    expect(wrongCase.items).toHaveLength(0);
+
+    const workflow = getWorld().workflows[0];
+    const byResource = await api.get<{ items: { resourceId: string }[] }>(
+      `/audit?take=500&resourceId=${workflow.id.toUpperCase()}`);
+    expect(byResource.items.length).toBeGreaterThan(0);
+    for (const entry of byResource.items) expect(entry.resourceId).toBe(workflow.id);
   });
 
   it('derives its entries from the world instead of stating them', async () => {

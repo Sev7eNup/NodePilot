@@ -91,6 +91,14 @@ function find(id: string): DemoCustomActivityDefinition | undefined {
   return getWorld().customActivities.find((c) => c.id === id);
 }
 
+/**
+ * CustomActivitySaveResponse, as Create/Update answer. The demo has no script linter, so the
+ * warning list stays empty.
+ */
+function saveResponse(definition: DemoCustomActivityDefinition) {
+  return { definition: fullDefinitionOf(definition), warnings: [] as { rule: string; message: string }[] };
+}
+
 export const customActivityRoutes: Route[] = [
   // Registered before `/custom-activities/:id` so the literal paths win.
   route('GET', '/custom-activities/export', () =>
@@ -148,7 +156,7 @@ export const customActivityRoutes: Route[] = [
       updatedBy: DEMO_USER.username,
     };
     getWorld().customActivities.push(definition);
-    return json(fullDefinitionOf(definition), 201);
+    return json(saveResponse(definition), 201);
   }),
 
   // The edit dialog loads this and copies every field into its form.
@@ -161,7 +169,7 @@ export const customActivityRoutes: Route[] = [
     const definition = find(ctx.params.id);
     if (!definition) return notFound('Custom activity');
     applySave(definition, await ctx.body<SaveBody>());
-    return json(fullDefinitionOf(definition));
+    return json(saveResponse(definition));
   }),
 
   route('DELETE', '/custom-activities/:id', (ctx) => {

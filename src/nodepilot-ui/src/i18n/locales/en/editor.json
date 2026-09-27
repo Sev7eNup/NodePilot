@@ -71,7 +71,11 @@
   "cancelButton": "Cancel",
   "testRun": "Test run",
   "debugRun": "Debug run — pauses at breakpoints",
-  "lintTooltip": "{{errors}} errors, {{warnings}} warnings",
+  "lintTooltip": "{{errors}}, {{warnings}}",
+  "lintErrors_one": "{{count}} error",
+  "lintErrors_other": "{{count}} errors",
+  "lintWarnings_one": "{{count}} warning",
+  "lintWarnings_other": "{{count}} warnings",
   "machineColoringOn": "Machine coloring on — click to disable",
   "machineColoringOff": "Color nodes by target machine",
   "failureHeatmapOn": "Failure heatmap on — click to disable",
@@ -121,13 +125,13 @@
     "forceUnlockConfirm": "Force-unlock: break lock from {{user}}? Recorded in the audit log under your name.",
     "lockedByMeTitle": "You are editing",
     "lockedByMeDetail": "Save creates a draft, Publish goes live, End editing stays offline.",
-    "productiveTitle": "Workflow is running productive",
+    "productiveTitle": "Workflow is live",
     "productiveDetail": "Click <strong>Edit</strong> to stop triggers and acquire the lock.",
     "disabledTitle": "Workflow is disabled",
     "disabledDetail": "<strong>Edit</strong> to make changes, or <strong>Publish</strong> directly to go live again."
   },
   "viewerBanner": "You have the Viewer role and cannot edit this workflow.",
-  "productiveBanner": "This workflow is running productive. Click \"Edit\" to make changes.",
+  "productiveBanner": "This workflow is live. Click \"Edit\" to make changes.",
   "lockedByOtherBanner": "Workflow is checked out by {{user}} since {{time}}.",
   "lockedByMeBanner": "You are editing this workflow.",
   "unsavedChanges": "You have unsaved changes.",
@@ -152,7 +156,7 @@
   },
   "lintPanel": {
     "title": "Workflow validation",
-    "counts": "{{errors}} errors · {{warnings}} warnings",
+    "counts": "{{errors}} · {{warnings}}",
     "close": "Close"
   },
   "prePublish": {
@@ -182,6 +186,9 @@
     "swap": "Swap source ↔ target",
     "addControlPoints": "Reshape",
     "detachTarget": "Detach target"
+  },
+  "connection": {
+    "duplicate": "This connection already exists. Edit the existing edge or change its condition."
   },
   "edgeDetach": {
     "hint": "\"{{edge}}\" is following the cursor — click the target node. Esc cancels.",

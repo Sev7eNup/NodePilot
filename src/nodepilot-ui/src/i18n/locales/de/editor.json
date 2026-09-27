@@ -71,7 +71,11 @@
   "cancelButton": "Abbrechen",
   "testRun": "Test-Run",
   "debugRun": "Debug-Run — pausiert an Breakpoints",
-  "lintTooltip": "{{errors}} Fehler, {{warnings}} Warnungen",
+  "lintTooltip": "{{errors}}, {{warnings}}",
+  "lintErrors_one": "{{count}} Fehler",
+  "lintErrors_other": "{{count}} Fehler",
+  "lintWarnings_one": "{{count}} Warnung",
+  "lintWarnings_other": "{{count}} Warnungen",
   "machineColoringOn": "Machine-Coloring an — Klick zum Deaktivieren",
   "machineColoringOff": "Nodes nach Ziel-Maschine einfärben",
   "failureHeatmapOn": "Failure-Heatmap an — Klick zum Deaktivieren",
@@ -152,7 +156,7 @@
   },
   "lintPanel": {
     "title": "Workflow-Validierung",
-    "counts": "{{errors}} Fehler · {{warnings}} Warnungen",
+    "counts": "{{errors}} · {{warnings}}",
     "close": "Schließen"
   },
   "prePublish": {
@@ -182,6 +186,9 @@
     "swap": "Quelle ↔ Ziel tauschen",
     "addControlPoints": "Form anpassen",
     "detachTarget": "Ziel lösen"
+  },
+  "connection": {
+    "duplicate": "Diese Verbindung existiert bereits. Bearbeite die bestehende Edge oder passe deren Bedingung an."
   },
   "edgeDetach": {
     "hint": "„{{edge}}\" hängt am Cursor — klicke den Ziel-Node an. Esc bricht ab.",

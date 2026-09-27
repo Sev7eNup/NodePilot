@@ -340,6 +340,7 @@ export function WorkflowsPage() {
     onSuccess: (results, { authBoundaryGeneration }) => {
       if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      queryClient.invalidateQueries({ queryKey: ['shared-folders'] });
 
       const lines: string[] = [];
       const okResults = results.filter((r): r is Extract<PerFileResult, { kind: 'ok' }> => r.kind === 'ok');
@@ -418,6 +419,7 @@ export function WorkflowsPage() {
     onSuccess: (resp, { file, authBoundaryGeneration }) => {
       if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      queryClient.invalidateQueries({ queryKey: ['shared-folders'] });
       setScorchResult({ resp, filename: file.name });
     },
     onError: (err: Error, { authBoundaryGeneration }) => {

@@ -1089,10 +1089,10 @@ Die Hosted-Services werden gebündelt in [BackgroundServicesSetup.cs](../src/Nod
 | `TriggerOrchestrator` + Quartz | Trigger-Scan (5 s) + Quartz-Cron für `scheduleTrigger` | leader-only (im Cluster) |
 | `ExecutionDispatchWorker` | Geleaster Dispatch persistierter `Pending`-Executions aus der DB-Outbox | leader-only (im Cluster) |
 | `MaintenanceWindowSnapshotService` | Hält den Maintenance-Window-Snapshot pro Knoten aktuell | always-on (nicht leader-gated) |
-| `ExecutionRetentionService` | Trimmt `WorkflowExecutions` (30 d) | opt-in `Retention:Executions:Enabled` |
-| `AuditLogRetentionService` | Trimmt `AuditLogs` (365 d) + gzip/SHA-256-Archiv | opt-in `Retention:AuditLog:Enabled` |
-| `WorkflowVersionsRetentionService` | Hält je Workflow die letzten N Versionen (50) | opt-in `Retention:WorkflowVersions:Enabled` |
-| `SupportEventRetentionService` | Trimmt `SupportEvents` (90 d) | opt-in `Retention:SupportEvents:Enabled`, leader-only |
+| `ExecutionRetentionService` | Trimmt `WorkflowExecutions` (30 d) | default an, abschaltbar per `Retention:Executions:Enabled` |
+| `AuditLogRetentionService` | Trimmt `AuditLogs` (365 d) + gzip/SHA-256-Archiv | default an, abschaltbar per `Retention:AuditLog:Enabled` |
+| `WorkflowVersionsRetentionService` | Hält je Workflow die letzten N Versionen (50) | default an, abschaltbar per `Retention:WorkflowVersions:Enabled` |
+| `SupportEventRetentionService` | Trimmt `SupportEvents` (90 d) | default an, abschaltbar per `Retention:SupportEvents:Enabled`, leader-only |
 | `TriggerReceiptRetentionService` | Trimmt `TriggerDeliveryReceipts` (7 d) | opt-out `Retention:TriggerReceipts:Enabled`, leader-only |
 | `NotificationDispatcher` | Alerting: matcht Execution- + Signal-Events gegen Regeln, sendet via Sinks (~30 s) | opt-in by data, leader-only |
 | `NotificationRetentionService` | Trimmt den Delivery-Ledger + stale Suppression-States (90 d) | opt-out `Retention:Notifications:Enabled`, leader-only |

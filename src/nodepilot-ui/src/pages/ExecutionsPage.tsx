@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { buildTraceUrl, useObservabilityConfig } from '../api/observability';
 import { formatDate, formatDuration, formatRelative } from '../lib/format';
 import { parseOutputParametersJson } from '../lib/outputParameters';
+import { rawStatusLabelKey } from '../lib/statusTokens';
 import { useRole } from '../lib/rbac';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { toast } from '../stores/toastStore';
@@ -803,6 +804,11 @@ function ExecutionDetail({ execution, steps, traceUrl, traceBackendName }: Reado
     Cancelled: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
     Skipped: 'bg-surface-container text-on-surface-variant',
   };
+  // Same labels as the row badge; unknown statuses show the raw value.
+  const stepStatusLabel = (status: string) => {
+    const key = rawStatusLabelKey(status);
+    return key ? t(`executions:status.${key}`) : status;
+  };
 
   return (
     <div className="border-t border-outline-variant/15 bg-surface-low/30 px-4 pb-4">
@@ -854,7 +860,7 @@ function ExecutionDetail({ execution, steps, traceUrl, traceBackendName }: Reado
                   <td className="py-2 text-on-surface-variant align-top">{step.stepType}</td>
                   <td className="py-2 align-top">
                     <span className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-semibold ${statusColors[step.status] ?? 'bg-surface-high text-on-surface-variant'}`}>
-                      {step.status}
+                      {stepStatusLabel(step.status)}
                     </span>
                   </td>
                   <td className="py-2 text-xs max-w-md space-y-1.5 align-top">

@@ -475,7 +475,7 @@ np config set server https://nodepilot.contoso.local
 ```
 
 Append `:<HttpsPort>` when the installation does not use 443. Pointing it at `https://localhost`
-fails with *Der Hostname steht nicht in den Zertifikatsnamen*, because that name is not on the
+fails with *The hostname is not among the certificate names*, because that name is not on the
 certificate.
 
 If one of the checks fails, the cause is in the application log under `C:\ProgramData\NodePilot\logs\nodepilot-<date>.log`. Which file helps with which failure mode — including the setup transcript under `%TEMP%` that an aborted installation leaves behind — is covered under [Logs & diagnostics](logs).

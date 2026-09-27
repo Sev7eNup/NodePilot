@@ -29,15 +29,15 @@ export function WmiQueryConfig({ config, onUpdate, upstreamVars = [] }: Readonly
 
   return (
     <>
-      <Field label="Modus">
+      <Field label={t('config.wmiQuery.mode')}>
         <select
           value={mode}
           onChange={(e) => onUpdate({ mode: e.target.value as WmiMode })}
           className="input-field"
         >
-          <option value="query">Klassen-Abfrage (Get-CimInstance)</option>
-          <option value="wql">WQL-Abfrage (SELECT … FROM …)</option>
-          <option value="invokeMethod">Methode aufrufen (Invoke-CimMethod)</option>
+          <option value="query">{t('config.wmiQuery.optionQuery')}</option>
+          <option value="wql">{t('config.wmiQuery.optionWql')}</option>
+          <option value="invokeMethod">{t('config.wmiQuery.optionInvokeMethod')}</option>
         </select>
       </Field>
 
@@ -52,7 +52,7 @@ export function WmiQueryConfig({ config, onUpdate, upstreamVars = [] }: Readonly
           />
         )}
         <VariableInsertField
-          label="Namespace"
+          label={t('config.wmiQuery.namespace')}
           value={(config.namespace as string) || 'root\\cimv2'}
           onChange={(v) => onUpdate({ namespace: v })}
           upstreamVars={upstreamVars}
@@ -61,7 +61,7 @@ export function WmiQueryConfig({ config, onUpdate, upstreamVars = [] }: Readonly
 
       {mode === 'query' && (
         <VariableInsertField
-          label="Filter (optional, WHERE-Klausel)"
+          label={t('config.wmiQuery.filterLabel')}
           value={(config.filter as string) || ''}
           onChange={(v) => onUpdate({ filter: v })}
           upstreamVars={upstreamVars}
@@ -71,7 +71,7 @@ export function WmiQueryConfig({ config, onUpdate, upstreamVars = [] }: Readonly
 
       {mode === 'wql' && (
         <VariableInsertField
-          label="WQL-Query"
+          label={t('config.wmiQuery.wqlQuery')}
           value={(config.query as string) || ''}
           onChange={(v) => onUpdate({ query: v })}
           upstreamVars={upstreamVars}
@@ -83,7 +83,7 @@ export function WmiQueryConfig({ config, onUpdate, upstreamVars = [] }: Readonly
       )}
 
       {(mode === 'query' || mode === 'wql') && (
-        <Field label="captureProperties (optional, kommagetrennt)">
+        <Field label={t('config.wmiQuery.captureProperties')}>
           <input
             type="text"
             value={capturePropertiesRaw}
@@ -105,7 +105,7 @@ export function WmiQueryConfig({ config, onUpdate, upstreamVars = [] }: Readonly
             placeholder="Caption, BuildNumber, SMBIOSBIOSVersion"
           />
           {captureError ? (
-            <p className="text-[11px] font-label text-red-600 dark:text-red-400 mt-1">{captureError}</p>
+            <p className="text-[11px] font-label text-error mt-1">{captureError}</p>
           ) : (
             <p className="text-[11px] font-label text-on-surface-variant mt-1">
               <Trans
@@ -123,7 +123,7 @@ export function WmiQueryConfig({ config, onUpdate, upstreamVars = [] }: Readonly
         <>
           <FieldGrid>
             <VariableInsertField
-              label="Methode"
+              label={t('config.wmiQuery.methodName')}
               value={(config.methodName as string) || ''}
               onChange={(v) => onUpdate({ methodName: v })}
               upstreamVars={upstreamVars}
@@ -137,7 +137,7 @@ export function WmiQueryConfig({ config, onUpdate, upstreamVars = [] }: Readonly
               placeholder="Name='notepad.exe'"
             />
           </FieldGrid>
-          <Field label="Argumente (JSON-Objekt, optional)">
+          <Field label={t('config.wmiQuery.argumentsLabel')}>
             <textarea
               value={argumentsRaw}
               onChange={(e) => {
@@ -153,7 +153,7 @@ export function WmiQueryConfig({ config, onUpdate, upstreamVars = [] }: Readonly
               placeholder={'{ "CommandLine": "notepad.exe", "ShowWindow": true }'}
             />
             {argumentsError ? (
-              <p className="text-[11px] font-label text-red-600 dark:text-red-400 mt-1">{argumentsError}</p>
+              <p className="text-[11px] font-label text-error mt-1">{argumentsError}</p>
             ) : (
               <p className="text-[11px] font-label text-on-surface-variant mt-1">
                 {t('config.wmiQuery.argumentsHint')}

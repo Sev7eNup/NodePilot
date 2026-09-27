@@ -81,7 +81,7 @@ public class CommandIntegrationMaintenanceTests
 
         var result = h.Run("maintenance", "get", Guid.NewGuid().ToString());
         result.ExitCode.Should().Be(ExitCodes.Error);
-        result.StdErr.Should().Contain("nicht gefunden");
+        result.StdErr.Should().Contain("not found");
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public class CommandIntegrationMaintenanceTests
         var result = h.Run("maintenance", "create", "--name", "Bad", "--days", "Mon", "--start", "99:99");
 
         result.ExitCode.Should().Be(ExitCodes.Error);
-        result.StdErr.Should().Contain("Ungültige Zeit");
+        result.StdErr.Should().Contain("Invalid time");
         h.Server.LogEntries.Should().NotContain(e =>
             e.RequestMessage!.AbsolutePath == "/api/maintenance-windows"
             && e.RequestMessage!.Method == "POST");
@@ -207,7 +207,7 @@ public class CommandIntegrationMaintenanceTests
         var result = h.Run("maintenance", "update", Guid.NewGuid().ToString(), "--name", "Renamed");
 
         result.ExitCode.Should().Be(ExitCodes.Error);
-        result.StdErr.Should().Contain("nicht gefunden");
+        result.StdErr.Should().Contain("not found");
     }
 
     [Fact]

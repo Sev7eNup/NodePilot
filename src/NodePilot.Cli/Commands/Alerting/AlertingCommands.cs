@@ -53,7 +53,7 @@ public sealed class AlertingGetCommand : BaseCommand<AlertingIdSettings>
     {
         var api = ClientFactory.Create(session);
         var r = (await api.ListAlertingRulesAsync(ct)).FirstOrDefault(x => x.Id == settings.Id);
-        if (r is null) { writer.Error($"Alerting rule {settings.Id} nicht gefunden."); return ExitCodes.Error; }
+        if (r is null) { writer.Error($"Alerting rule {settings.Id} not found."); return ExitCodes.Error; }
         writer.WriteData(new[] { r }, (console, list) => Renderers.AlertingRules(console, list));
         return ExitCodes.Success;
     }
@@ -115,11 +115,11 @@ public sealed class AlertingCreateCommand : BaseCommand<AlertingWriteSettings>
     public AlertingCreateCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
     protected override async Task<int> RunAsync(CommandContext _, AlertingWriteSettings s, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(s.Name)) { writer.Error("--name ist Pflicht."); return ExitCodes.Error; }
-        if (string.IsNullOrWhiteSpace(s.EventTypes)) { writer.Error("--event-types ist Pflicht."); return ExitCodes.Error; }
+        if (string.IsNullOrWhiteSpace(s.Name)) { writer.Error("--name is required."); return ExitCodes.Error; }
+        if (string.IsNullOrWhiteSpace(s.EventTypes)) { writer.Error("--event-types is required."); return ExitCodes.Error; }
 
         var routes = AlertingCommandHelpers.BuildRoutes(s.Emails, s.Webhooks);
-        if (routes.Count == 0) { writer.Error("Mindestens ein --email oder --webhook ist Pflicht."); return ExitCodes.Error; }
+        if (routes.Count == 0) { writer.Error("At least one --email or --webhook is required."); return ExitCodes.Error; }
 
         var scope = s.Scope ?? "Global";
         var req = new SaveNotificationRuleRequest(
@@ -130,7 +130,7 @@ public sealed class AlertingCreateCommand : BaseCommand<AlertingWriteSettings>
 
         var api = ClientFactory.Create(session);
         var created = await api.CreateAlertingRuleAsync(req, ct);
-        writer.Success($"Alerting rule angelegt: [bold]{Markup.Escape(created.Name)}[/].");
+        writer.Success($"Alerting rule created: [bold]{Markup.Escape(created.Name)}[/].");
         return ExitCodes.Success;
     }
 }
@@ -143,7 +143,7 @@ public sealed class AlertingUpdateCommand : BaseCommand<AlertingUpdateSettings>
     {
         var api = ClientFactory.Create(session);
         var current = (await api.ListAlertingRulesAsync(ct)).FirstOrDefault(x => x.Id == s.Id);
-        if (current is null) { writer.Error($"Alerting rule {s.Id} nicht gefunden."); return ExitCodes.Error; }
+        if (current is null) { writer.Error($"Alerting rule {s.Id} not found."); return ExitCodes.Error; }
 
         var scope = s.Scope ?? current.ScopeKind;
         var isEnabled = s.Enabled ? true : (s.Disabled ? false : current.IsEnabled);
@@ -167,7 +167,7 @@ public sealed class AlertingUpdateCommand : BaseCommand<AlertingUpdateSettings>
             routes, targets, s.DedupKeyTemplate ?? current.DedupKeyTemplate);
 
         await api.UpdateAlertingRuleAsync(s.Id, req, ct);
-        writer.Success($"Alerting rule [bold]{Markup.Escape(req.Name)}[/] aktualisiert.");
+        writer.Success($"Alerting rule [bold]{Markup.Escape(req.Name)}[/] updated.");
         return ExitCodes.Success;
     }
 }
@@ -186,12 +186,12 @@ public sealed class AlertingDeleteCommand : BaseCommand<AlertingIdSettings>
     {
         if (!Console.IsInputRedirected)
         {
-            var ok = await AnsiConsole.ConfirmAsync($"Alerting rule [red]{settings.Id}[/] wirklich löschen?", defaultValue: false);
-            if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
+            var ok = await AnsiConsole.ConfirmAsync($"Delete alerting rule [red]{settings.Id}[/]?", defaultValue: false);
+            if (!ok) { writer.Info("Aborted."); return ExitCodes.Success; }
         }
         var api = ClientFactory.Create(session);
         await api.DeleteAlertingRuleAsync(settings.Id, ct);
-        writer.Success("Alerting rule gelöscht.");
+        writer.Success("Alerting rule deleted.");
         return ExitCodes.Success;
     }
 }

@@ -1,6 +1,6 @@
 import { useCallback, type RefObject } from 'react';
 import type { Node, Edge } from '@xyflow/react';
-import { WORKFLOW_SNIPPETS, insertSnippet } from '../lib/workflowSnippets';
+import { getWorkflowSnippets, insertSnippet } from '../lib/workflowSnippets';
 import { getSmartDefaults } from '../lib/lastSimilarNode';
 import { newActivityConfig } from '../lib/customActivities';
 import { randomUuid } from '../lib/uuid';
@@ -97,7 +97,8 @@ export function useNodeOperations({
   /** Origin is the viewport center minus half a snippet width, so the pattern is not glued to
    *  the top-left. New nodes land selected so the group can be dragged straight away. */
   const addSnippet = useCallback((snippetId: string) => {
-    const snippet = WORKFLOW_SNIPPETS.find((s) => s.id === snippetId);
+    // Built per insert so node labels follow the current language.
+    const snippet = getWorkflowSnippets().find((s) => s.id === snippetId);
     if (!snippet) return;
     let origin = { x: 100, y: 100 };
     const rect = canvasRef.current?.getBoundingClientRect();

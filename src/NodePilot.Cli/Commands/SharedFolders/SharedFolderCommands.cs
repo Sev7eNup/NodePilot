@@ -57,10 +57,10 @@ public sealed class SharedFolderCreateCommand : BaseCommand<SharedFolderCreateSe
     public SharedFolderCreateCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
     protected override async Task<int> RunAsync(CommandContext _, SharedFolderCreateSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(settings.Name)) { writer.Error("--name ist Pflicht."); return ExitCodes.Error; }
+        if (string.IsNullOrWhiteSpace(settings.Name)) { writer.Error("--name is required."); return ExitCodes.Error; }
         var api = ClientFactory.Create(session);
         var f = await api.CreateSharedFolderAsync(new CreateSharedFolderRequest(settings.Parent, settings.Name), ct);
-        writer.Success($"Shared folder angelegt: [bold]{Markup.Escape(f.Path)}[/] ({f.Id}).");
+        writer.Success($"Shared folder created: [bold]{Markup.Escape(f.Path)}[/] ({f.Id}).");
         return ExitCodes.Success;
     }
 }
@@ -79,10 +79,10 @@ public sealed class SharedFolderRenameCommand : BaseCommand<SharedFolderRenameSe
     public SharedFolderRenameCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
     protected override async Task<int> RunAsync(CommandContext _, SharedFolderRenameSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(settings.Name)) { writer.Error("--name ist Pflicht."); return ExitCodes.Error; }
+        if (string.IsNullOrWhiteSpace(settings.Name)) { writer.Error("--name is required."); return ExitCodes.Error; }
         var api = ClientFactory.Create(session);
         await api.RenameSharedFolderAsync(settings.Id, new UpdateSharedFolderRequest(settings.Name), ct);
-        writer.Success("Folder umbenannt.");
+        writer.Success("Folder renamed.");
         return ExitCodes.Success;
     }
 }
@@ -102,11 +102,11 @@ public sealed class SharedFolderMoveCommand : BaseCommand<SharedFolderMoveSettin
     public SharedFolderMoveCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
     protected override async Task<int> RunAsync(CommandContext _, SharedFolderMoveSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        if (!settings.ToRoot && settings.Parent is null) { writer.Error("Entweder --parent <GUID> oder --to-root angeben."); return ExitCodes.Error; }
+        if (!settings.ToRoot && settings.Parent is null) { writer.Error("Pass either --parent <GUID> or --to-root."); return ExitCodes.Error; }
         var api = ClientFactory.Create(session);
         var req = new MoveSharedFolderRequest(settings.ToRoot ? null : settings.Parent);
         await api.MoveSharedFolderAsync(settings.Id, req, ct);
-        writer.Success("Folder verschoben.");
+        writer.Success("Folder moved.");
         return ExitCodes.Success;
     }
 }
@@ -125,11 +125,11 @@ public sealed class SharedFolderDeleteSettings : GlobalSettings
     [CommandArgument(0, "<FOLDER-ID>")] public Guid Id { get; set; }
 
     [CommandOption("--recursive")]
-    [Description("Löscht den Folder samt Unterordnern und den darin liegenden Workflows.")]
+    [Description("Delete the folder together with its subfolders and the workflows in them.")]
     public bool Recursive { get; set; }
 
     [CommandOption("--yes")]
-    [Description("Bestätigt ein --recursive-Löschen ohne Rückfrage (für nicht-interaktive Läufe erforderlich).")]
+    [Description("Confirm a --recursive delete without prompting (required for non-interactive runs).")]
     public bool Yes { get; set; }
 }
 
@@ -143,29 +143,29 @@ public sealed class SharedFolderDeleteCommand : BaseCommand<SharedFolderDeleteSe
         // folders server-side, so it cannot destroy anything unattended without a flag.
         if (settings.Recursive && !settings.Yes && Console.IsInputRedirected)
         {
-            writer.Error("Rekursives Löschen ist destruktiv — in nicht-interaktiven Läufen mit --yes bestätigen.");
+            writer.Error("A recursive delete is destructive. Confirm with --yes in non-interactive runs.");
             return ExitCodes.Error;
         }
 
         if (!settings.Yes && !Console.IsInputRedirected)
         {
             var prompt = settings.Recursive
-                ? $"Shared folder [red]{settings.Id}[/] samt Unterordnern UND enthaltenen Workflows löschen? (unwiderruflich, inklusive Ausführungshistorie)"
-                : $"Shared folder [red]{settings.Id}[/] wirklich löschen? (muss leer sein — keine Workflows, keine Sub-Folders)";
+                ? $"Delete shared folder [red]{settings.Id}[/] with its subfolders AND the workflows in them? (cannot be undone, includes execution history)"
+                : $"Delete shared folder [red]{settings.Id}[/]? (it must be empty: no workflows, no subfolders)";
             var ok = await AnsiConsole.ConfirmAsync(prompt, defaultValue: false);
-            if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
+            if (!ok) { writer.Info("Aborted."); return ExitCodes.Success; }
         }
 
         var api = ClientFactory.Create(session);
         if (settings.Recursive)
         {
             var result = await api.DeleteSharedFolderRecursiveAsync(settings.Id, ct);
-            writer.Success($"{result.DeletedFolders} Folder und {result.DeletedWorkflows} Workflows gelöscht.");
+            writer.Success($"Deleted {result.DeletedFolders} folder(s) and {result.DeletedWorkflows} workflow(s).");
             return ExitCodes.Success;
         }
 
         await api.DeleteSharedFolderAsync(settings.Id, ct);
-        writer.Success("Folder gelöscht.");
+        writer.Success("Folder deleted.");
         return ExitCodes.Success;
     }
 }
@@ -227,9 +227,9 @@ public sealed class SharedFolderGrantCommand : BaseCommand<SharedFolderGrantSett
     public SharedFolderGrantCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
     protected override async Task<int> RunAsync(CommandContext _, SharedFolderGrantSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(settings.PrincipalType)) { writer.Error("--principal-type ist Pflicht (User | Group)."); return ExitCodes.Error; }
-        if (string.IsNullOrWhiteSpace(settings.PrincipalKey)) { writer.Error("--principal-key ist Pflicht."); return ExitCodes.Error; }
-        if (string.IsNullOrWhiteSpace(settings.Role)) { writer.Error("--role ist Pflicht (FolderViewer | FolderOperator | FolderEditor | FolderAdmin)."); return ExitCodes.Error; }
+        if (string.IsNullOrWhiteSpace(settings.PrincipalType)) { writer.Error("--principal-type is required (User | Group)."); return ExitCodes.Error; }
+        if (string.IsNullOrWhiteSpace(settings.PrincipalKey)) { writer.Error("--principal-key is required."); return ExitCodes.Error; }
+        if (string.IsNullOrWhiteSpace(settings.Role)) { writer.Error("--role is required (FolderViewer | FolderOperator | FolderEditor | FolderAdmin)."); return ExitCodes.Error; }
 
         var api = ClientFactory.Create(session);
         var req = new GrantSharedFolderPermissionRequest(
@@ -238,7 +238,7 @@ public sealed class SharedFolderGrantCommand : BaseCommand<SharedFolderGrantSett
             PrincipalAuthority = settings.PrincipalAuthority,
         };
         var perm = await api.GrantSharedFolderPermissionAsync(settings.FolderId, req, ct);
-        writer.Success($"Permission gesetzt: [bold]{Markup.Escape(perm.Role)}[/] für {Markup.Escape(perm.PrincipalKey)} (Id {perm.Id}).");
+        writer.Success($"Permission granted: [bold]{Markup.Escape(perm.Role)}[/] for {Markup.Escape(perm.PrincipalKey)} (Id {perm.Id}).");
         return ExitCodes.Success;
     }
 }
@@ -259,7 +259,7 @@ public sealed class SharedFolderRevokeCommand : BaseCommand<SharedFolderRevokeSe
     {
         var api = ClientFactory.Create(session);
         await api.RevokeSharedFolderPermissionAsync(settings.FolderId, settings.PermissionId, ct);
-        writer.Success("Permission widerrufen.");
+        writer.Success("Permission revoked.");
         return ExitCodes.Success;
     }
 }
@@ -280,11 +280,11 @@ public sealed class WorkflowMoveFolderCommand : BaseCommand<WorkflowMoveFolderSe
     public WorkflowMoveFolderCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
     protected override async Task<int> RunAsync(CommandContext _, WorkflowMoveFolderSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        if (settings.TargetFolder is null) { writer.Error("--target-folder <GUID> ist Pflicht."); return ExitCodes.Error; }
+        if (settings.TargetFolder is null) { writer.Error("--target-folder <GUID> is required."); return ExitCodes.Error; }
         var api = ClientFactory.Create(session);
         var w = await NodePilot.Cli.Commands.WorkflowResolver.ResolveAsync(api, settings.IdOrName, ct);
         await api.MoveWorkflowToFolderAsync(w.Id, new MoveWorkflowToFolderRequest(settings.TargetFolder.Value), ct);
-        writer.Success($"Workflow [bold]{Markup.Escape(w.Name)}[/] verschoben.");
+        writer.Success($"Workflow [bold]{Markup.Escape(w.Name)}[/] moved.");
         return ExitCodes.Success;
     }
 }

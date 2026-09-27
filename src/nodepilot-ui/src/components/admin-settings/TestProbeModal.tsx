@@ -74,13 +74,13 @@ export function TestProbeModal({ title, open, onClose, runProbe, children }: Rea
         </button>
 
         {result && (
-          <div className={`rounded-md p-3 border ${result.ok ? 'bg-green-50 border-green-200 text-green-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
+          <div className={`rounded-md p-3 border ${result.ok ? 'bg-success-container border-success/30 text-on-success-container' : 'bg-error-container border-error/30 text-on-error-container'}`}>
             <div className="flex items-center gap-2 font-semibold">
               {result.ok ? <Checkmark size={16} /> : <Close size={16} />}
               {result.ok ? t('adminSettings:testProbeSuccess') : t('adminSettings:testProbeFailure')}
             </div>
             <p className="text-sm mt-1 whitespace-pre-wrap break-words">{result.message}</p>
-            <p className="text-xs mt-2 text-on-surface-variant">
+            <p className="text-xs mt-2 opacity-80">
               {t('adminSettings:testProbeDurationLabel')}: {t('adminSettings:testProbeMs', { ms: Math.round(result.durationMs) })}
               {result.errorKind && ` • ${t('adminSettings:testProbeErrorKind')}: ${result.errorKind}`}
             </p>
@@ -88,7 +88,7 @@ export function TestProbeModal({ title, open, onClose, runProbe, children }: Rea
         )}
 
         {error && (
-          <div className="rounded-md p-3 border bg-red-50 border-red-200 text-red-900">
+          <div className="rounded-md p-3 border bg-error-container border-error/30 text-on-error-container">
             <p className="font-semibold text-sm">{t('adminSettings:errorTitle')}</p>
             <p className="text-sm mt-0.5 whitespace-pre-wrap break-words">{error}</p>
           </div>

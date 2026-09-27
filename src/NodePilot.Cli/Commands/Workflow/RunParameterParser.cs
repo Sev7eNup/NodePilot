@@ -18,7 +18,7 @@ public static class RunParameterParser
                 throw new ArgumentException("Empty --params value.");
             var idx = raw.IndexOf('=');
             if (idx <= 0)
-                throw new ArgumentException($"--params Werte müssen 'key=value' sein, war: '{raw}'");
+                throw new ArgumentException($"--params values must be 'key=value', got: '{raw}'");
             var key = raw[..idx];
             var value = raw[(idx + 1)..]; // intentionally keeps any '=' that appear later
             dict[key] = value;

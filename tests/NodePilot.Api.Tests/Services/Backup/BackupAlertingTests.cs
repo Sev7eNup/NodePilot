@@ -153,6 +153,34 @@ public sealed class BackupAlertingTests : IDisposable
         restored.Routes.Should().ContainSingle().Which.Target.Should().Be("ops@x");
     }
 
+    [Fact]
+    public async Task Preview_AlertingSection_CountsNewRulesAndNameConflicts()
+    {
+        byte[] bytes;
+        await using (var src = TestDbFactory.Create())
+        {
+            src.NotificationRules.Add(new NotificationRule { Id = Guid.NewGuid(), Name = "prod-failures", EventTypes = "ExecutionFailed", Kind = NotificationRuleKind.Custom });
+            src.NotificationRules.Add(new NotificationRule { Id = Guid.NewGuid(), Name = "backlog-critical", EventTypes = "SystemAlert", Kind = NotificationRuleKind.System, SystemSourceId = "backlog" });
+            src.NotificationRules.Add(new NotificationRule { Id = Guid.NewGuid(), Name = "nightly-summary", EventTypes = "ExecutionSucceeded", Kind = NotificationRuleKind.Custom });
+            await src.SaveChangesAsync();
+            bytes = await ExportAsync(src, [BackupSections.Alerting]);
+        }
+
+        await using var dst = TestDbFactory.Create();
+        // A same-named system policy conflicts with the backup's rule, as it does on restore.
+        dst.NotificationRules.Add(new NotificationRule { Id = Guid.NewGuid(), Name = "prod-failures", EventTypes = "SystemAlert", Kind = NotificationRuleKind.System, SystemSourceId = "other" });
+        dst.NotificationRules.Add(new NotificationRule { Id = Guid.NewGuid(), Name = "Nightly-Summary", EventTypes = "ExecutionSucceeded", Kind = NotificationRuleKind.Custom });
+        await dst.SaveChangesAsync();
+
+        var preview = await Restore(dst).PreviewAsync(bytes, Passphrase, CancellationToken.None);
+        var section = preview.Sections.Single(s => s.Section == BackupSections.Alerting);
+        (section.InBackup, section.New, section.Conflicts).Should().Be((3, 2, 1));
+
+        var result = await Restore(dst).RestoreAsync(bytes, Passphrase, AllSkip(), RestoreActor, CancellationToken.None);
+        var restored = result.Sections.Single(r => r.Section == BackupSections.Alerting);
+        (restored.Created, restored.Skipped).Should().Be((section.New, section.Conflicts));
+    }
+
     public void Dispose()
     {
         foreach (var f in _tempFiles) { try { File.Delete(f); } catch { /* best effort */ } }

@@ -96,7 +96,7 @@ export function useFolderBulkDelete<T extends FolderLike>(
         t(`${ns}:folder.bulk.impactRow`, { path: pathOf(f), count: countOf(f) })),
       // Only worth a sentence when something beyond the listed folders is affected.
       ...(impact.items > 0 || extraFolders > 0
-        ? { confirmLabel: t(`${ns}:folder.bulk.deleteConfirmButton`, { items: impact.items }) }
+        ? { confirmLabel: t(`${ns}:folder.bulk.deleteConfirmButton`, { count: impact.items }) }
         : {}),
       danger: true,
     });

@@ -45,22 +45,22 @@ public abstract class BaseCommand<TSettings> : AsyncCommand<TSettings>
         }
         catch (ApiException ex) when (ex.IsUnauthorized)
         {
-            writer.Error("Session abgelaufen. Bitte `np auth login` erneut ausführen.");
+            writer.Error("Session expired. Run `np auth login` again.");
             return ExitCodes.AuthRequired;
         }
         catch (ApiException ex) when (ex.IsForbidden)
         {
-            writer.Error($"Zugriff verweigert: {ex.Detail ?? ex.Title ?? "die aktuelle Rolle erlaubt diese Aktion nicht."}");
+            writer.Error($"Access denied: {ex.Detail ?? ex.Title ?? "your role does not allow this action."}");
             return ExitCodes.PermissionDenied;
         }
         catch (ApiException ex) when (ex.IsLocked)
         {
-            writer.Error($"Workflow ist gelockt ({ex.Detail ?? "von einem anderen User ausgecheckt"}). Nutze `np workflow lock` (oder `force-unlock` als Admin).");
+            writer.Error($"Workflow is locked ({ex.Detail ?? "checked out by another user"}). Use `np workflow lock` (or `force-unlock` as Admin).");
             return ExitCodes.Error;
         }
         catch (ApiException ex)
         {
-            writer.Error($"API-Fehler: {ex.Message}");
+            writer.Error($"API error: {ex.Message}");
             return ExitCodes.Error;
         }
         catch (HttpRequestException ex)

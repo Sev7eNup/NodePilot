@@ -33,7 +33,7 @@ public sealed class ObservabilityQueryCommand : BaseCommand<ObservabilityQuerySe
     public ObservabilityQueryCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
     protected override async Task<int> RunAsync(CommandContext _, ObservabilityQuerySettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(settings.Query)) { writer.Error("--query <PROMQL> ist Pflicht."); return ExitCodes.Error; }
+        if (string.IsNullOrWhiteSpace(settings.Query)) { writer.Error("--query <PROMQL> is required."); return ExitCodes.Error; }
         var api = ClientFactory.Create(session);
         using var doc = await api.ObservabilityQueryAsync(settings.Query, settings.Time, ct);
         RenderPromResult(writer, doc);
@@ -118,9 +118,9 @@ public sealed class ObservabilityQueryRangeCommand : BaseCommand<ObservabilityQu
     public ObservabilityQueryRangeCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
     protected override async Task<int> RunAsync(CommandContext _, ObservabilityQueryRangeSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(settings.Query)) { writer.Error("--query <PROMQL> ist Pflicht."); return ExitCodes.Error; }
-        if (settings.Start <= 0 || settings.End <= 0) { writer.Error("--start und --end (Unix-Sekunden) sind Pflicht."); return ExitCodes.Error; }
-        if (string.IsNullOrWhiteSpace(settings.Step)) { writer.Error("--step ist Pflicht (z.B. `15s`)."); return ExitCodes.Error; }
+        if (string.IsNullOrWhiteSpace(settings.Query)) { writer.Error("--query <PROMQL> is required."); return ExitCodes.Error; }
+        if (settings.Start <= 0 || settings.End <= 0) { writer.Error("--start and --end (Unix seconds) are required."); return ExitCodes.Error; }
+        if (string.IsNullOrWhiteSpace(settings.Step)) { writer.Error("--step is required (for example `15s`)."); return ExitCodes.Error; }
         var api = ClientFactory.Create(session);
         using var doc = await api.ObservabilityQueryRangeAsync(settings.Query, settings.Start, settings.End, settings.Step, ct);
         ObservabilityQueryCommand.RenderPromResult(writer, doc);

@@ -179,7 +179,7 @@ function PlainTextTailView() {
               .catch((err: Error) => toast.error(err.message));
           }}
           className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-600 text-white hover:bg-blue-700 rounded">
-          <Download size={12} /> Download
+          <Download size={12} /> {t('supportLog:download')}
         </button>
       </div>
     </div>

@@ -43,6 +43,7 @@ public class CommandIntegrationResourcesTests
 
         var result = h.Run("workflow", "force-unlock", id.ToString());
         result.ExitCode.Should().Be(ExitCodes.PermissionDenied);
+        result.StdErr.Should().Contain("Access denied:");
     }
 
     [Fact]

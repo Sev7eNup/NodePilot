@@ -96,7 +96,7 @@ public sealed class ExecRetryCommand : BaseCommand<ExecIdSettings>
     {
         var api = ClientFactory.Create(session);
         var retry = await api.RetryExecutionAsync(settings.Id, ct);
-        writer.Success($"Re-Run gestartet: {retry.Id}");
+        writer.Success($"Re-run started: {retry.Id}");
         writer.WriteData(retry, (console, value) => Renderers.ExecutionDetail(console, value));
         return ExitCodes.Success;
     }
@@ -125,7 +125,7 @@ public sealed class ExecResumeCommand : BaseCommand<ExecResumeSettings>
     {
         if (string.IsNullOrWhiteSpace(settings.Step))
         {
-            writer.Error("--step <STEP-ID> ist Pflicht (Engine kennt mehrere Pausen pro Lauf).");
+            writer.Error("--step <STEP-ID> is required (a run can be paused at several steps).");
             return ExitCodes.Error;
         }
 
@@ -138,7 +138,7 @@ public sealed class ExecResumeCommand : BaseCommand<ExecResumeSettings>
                 var idx = raw.IndexOf('=');
                 if (idx <= 0)
                 {
-                    writer.Error($"Ungültiger Override '{raw}' — erwartet KEY=VALUE.");
+                    writer.Error($"Invalid override '{raw}'. Expected KEY=VALUE.");
                     return ExitCodes.Error;
                 }
                 overrides[raw[..idx]] = raw[(idx + 1)..];

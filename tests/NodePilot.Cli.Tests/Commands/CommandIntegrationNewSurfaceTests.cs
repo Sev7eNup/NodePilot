@@ -34,6 +34,37 @@ public class CommandIntegrationNewSurfaceTests
         result.Output.Should().Contain("\"local\":true").And.Contain("/api/auth/windows");
     }
 
+    [Fact]
+    public void AuthMethods_InsecureTls_WarnsThatTheConnectionIsNotAuthenticated()
+    {
+        using var h = new CommandTestHarness(authenticated: false);
+        h.Server.Given(Request.Create().WithPath("/api/auth/methods").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                local = true, ldap = false, windows = false, windowsEndpoint = (string?)null,
+            }));
+
+        var result = h.Run("auth", "methods", "--insecure-tls");
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        result.StdErr.Should().Contain("TLS verification is off (--insecure-tls).");
+    }
+
+    [Fact]
+    public void WorkflowList_ExpiredSession_AsksForANewLogin()
+    {
+        using var h = new CommandTestHarness();
+        h.Server.Given(Request.Create().WithPath("/api/workflows").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(401));
+        h.Server.Given(Request.Create().WithPath("/api/auth/refresh").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(401));
+
+        var result = h.Run("workflow", "list");
+
+        result.ExitCode.Should().Be(ExitCodes.AuthRequired);
+        result.StdErr.Should().Contain("Session expired. Run `np auth login` again.");
+    }
+
     // ---- workflow trigger ---------------------------------------------------
 
     [Fact]
@@ -45,7 +76,8 @@ public class CommandIntegrationNewSurfaceTests
         // checks that /api/trigger was never hit.
         var result = h.Run("workflow", "trigger", "Deploy");
         result.ExitCode.Should().Be(ExitCodes.Error);
-        result.StdErr.Should().Contain("API-Key");
+        result.StdErr.Should().Contain("No API key given");
+        result.StdErr.Should().NotContain("Execution started");
         h.Server.LogEntries.Should().NotContain(e =>
             e.RequestMessage!.AbsolutePath.StartsWith("/api/trigger/"));
     }
@@ -468,7 +500,7 @@ public class CommandIntegrationNewSurfaceTests
         using var h = new CommandTestHarness();
         var result = h.Run("db", "query");
         result.ExitCode.Should().Be(ExitCodes.Error);
-        result.StdErr.Should().Contain("Pflicht");
+        result.StdErr.Should().Contain("is required");
     }
 
     [Fact]

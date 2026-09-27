@@ -23,7 +23,7 @@ public sealed class HealthCommand : BaseCommand<GlobalSettings>
             var session = Sessions.Resolve(settings);
             if (!session.HasServer)
             {
-                writer.Error("Kein Server konfiguriert.");
+                writer.Error("No server configured.");
                 return ExitCodes.Error;
             }
             var api = ClientFactory.Create(session, requireAuth: false);

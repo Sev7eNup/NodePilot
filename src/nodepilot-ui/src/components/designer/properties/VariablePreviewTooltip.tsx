@@ -90,7 +90,7 @@ export function VariablePreviewTooltip({
           className="absolute z-40 right-full top-0 mr-2 w-[260px] rounded-md bg-on-surface text-surface-lowest shadow-lg pointer-events-none border border-outline-variant/30 px-2 py-1.5 text-[11px] italic opacity-90"
           role="tooltip"
         >
-          Kein Wert vom letzten Lauf — Workflow noch nicht ausgeführt oder Step lief nicht.
+          {t('preview.noValue')}
         </div>
       )}
     </div>

@@ -43,6 +43,7 @@ public class CommandIntegrationTests
 
         var result = h.Run("auth", "login", "--username", "admin", "--password", "pw12345678");
         result.ExitCode.Should().Be(ExitCodes.Success);
+        result.StdErr.Should().Contain("Logged in as admin (Admin)");
         h.Tokens.Load("default")!.Token.Should().Be("fresh");
         h.Tokens.Load("default")!.ExpiresAt.Should().BeAfter(DateTimeOffset.UtcNow.AddHours(7));
     }
@@ -136,6 +137,7 @@ public class CommandIntegrationTests
 
         var result = h.Run("auth", "login", "--username", "admin", "--password", "wrong");
         result.ExitCode.Should().Be(ExitCodes.AuthRequired);
+        result.StdErr.Should().Contain("Login failed: invalid credentials.");
     }
 
     [Fact]
@@ -147,6 +149,7 @@ public class CommandIntegrationTests
 
         var result = h.Run("auth", "logout");
         result.ExitCode.Should().Be(ExitCodes.Success);
+        result.StdErr.Should().Contain("Logged out (profile 'default').");
         h.Tokens.Load("default").Should().BeNull();
     }
 
@@ -172,6 +175,7 @@ public class CommandIntegrationTests
         var result = h.Run("auth", "login", "--windows");
 
         result.ExitCode.Should().Be(ExitCodes.Success);
+        result.StdErr.Should().Contain(@"Logged in with Windows sign-in as LAB\switcher (Operator)");
         var stored = h.Tokens.Load("default")!;
         stored.Token.Should().Be(token);
         stored.Username.Should().Be("LAB\\switcher");
@@ -196,6 +200,7 @@ public class CommandIntegrationTests
         var result = h.Run("auth", "login", "--windows");
 
         result.ExitCode.Should().Be(ExitCodes.AuthRequired);
+        result.StdErr.Should().Contain("Windows sign-in is not available");
         h.Tokens.Load("default").Should().BeNull();
         h.Server.LogEntries.Should().NotContain(
             entry => entry.RequestMessage.Path.Contains("/api/auth/windows"),
@@ -265,6 +270,7 @@ public class CommandIntegrationTests
         // delete the local session so the user isn't stuck with a bad token.
         var result = h.Run("auth", "logout");
         result.ExitCode.Should().Be(ExitCodes.Success);
+        result.StdErr.Should().Contain("Logged out (profile 'default').");
         h.Tokens.Load("default").Should().BeNull();
     }
 
@@ -364,6 +370,7 @@ public class CommandIntegrationTests
 
         var result = h.Run("workflow", "lock", id.ToString());
         result.ExitCode.Should().Be(ExitCodes.Error);
+        result.StdErr.Should().Contain("Workflow is locked (checked out by alice)");
     }
 
     [Fact]
@@ -547,6 +554,7 @@ public class CommandIntegrationTests
 
         var result = h.Run("workflow", "run", id.ToString(), "--params", "env=stg");
         result.ExitCode.Should().Be(ExitCodes.Success);
+        result.StdErr.Should().Contain($"Execution started: {execId}");
     }
 
     [Fact]
@@ -574,6 +582,7 @@ public class CommandIntegrationTests
 
         var result = h.Run("workflow", "export", id.ToString(), "--out", outPath);
         result.ExitCode.Should().Be(ExitCodes.Success);
+        result.StdErr.Should().Contain("Written:");
         File.Exists(outPath).Should().BeTrue();
     }
 
@@ -594,6 +603,7 @@ public class CommandIntegrationTests
         using var h = new CommandTestHarness();
         var result = h.Run("workflow", "export");
         result.ExitCode.Should().Be(ExitCodes.Error);
+        result.StdErr.Should().Contain("Pass either ID-OR-NAME or --all.");
     }
 
     [Fact]

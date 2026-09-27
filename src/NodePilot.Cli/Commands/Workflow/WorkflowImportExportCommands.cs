@@ -42,7 +42,7 @@ public sealed class WorkflowExportCommand : BaseCommand<WorkflowExportSettings>
         {
             if (string.IsNullOrWhiteSpace(settings.IdOrName))
             {
-                writer.Error("Entweder ID-OR-NAME angeben oder --all setzen.");
+                writer.Error("Pass either ID-OR-NAME or --all.");
                 return ExitCodes.Error;
             }
             var w = await WorkflowResolver.ResolveAsync(api, settings.IdOrName, ct);
@@ -53,7 +53,7 @@ public sealed class WorkflowExportCommand : BaseCommand<WorkflowExportSettings>
         if (!string.IsNullOrWhiteSpace(settings.Out))
         {
             await File.WriteAllTextAsync(settings.Out, json, ct);
-            writer.Success($"Geschrieben: {settings.Out}");
+            writer.Success($"Written: {settings.Out}");
         }
         else
         {
@@ -87,12 +87,12 @@ public sealed class WorkflowImportCommand : BaseCommand<WorkflowImportSettings>
             json = await File.ReadAllTextAsync(settings.File, ct);
         else
         {
-            writer.Error($"Datei nicht gefunden: {settings.File}");
+            writer.Error($"File not found: {settings.File}");
             return ExitCodes.Error;
         }
 
         var envelope = JsonSerializer.Deserialize<WorkflowExportEnvelope>(json, NodePilotApiClient.JsonOptions);
-        if (envelope is null) { writer.Error("Envelope konnte nicht geparst werden."); return ExitCodes.Error; }
+        if (envelope is null) { writer.Error("Could not parse the envelope."); return ExitCodes.Error; }
 
         var api = ClientFactory.Create(session);
         var result = await api.ImportAsync(envelope, settings.TargetFolder, ct);
@@ -132,13 +132,13 @@ public sealed class WorkflowImportScorchCommand : BaseCommand<WorkflowImportSett
             xml = await File.ReadAllBytesAsync(settings.File, ct);
         else
         {
-            writer.Error($"Datei nicht gefunden: {settings.File}");
+            writer.Error($"File not found: {settings.File}");
             return ExitCodes.Error;
         }
 
         var api = ClientFactory.Create(session);
         var result = await api.ImportScorchAsync(xml, settings.TargetFolder, ct);
-        writer.Success($"SCOrch import: {result.Created} Workflows, {result.Variables.Count(v => v.CreatedNow)} neue Variablen.");
+        writer.Success($"SCOrch import: {result.Created} workflow(s), {result.Variables.Count(v => v.CreatedNow)} new variable(s).");
         writer.WriteData(result, (console, value) =>
         {
             var table = new Table().Border(TableBorder.Rounded)

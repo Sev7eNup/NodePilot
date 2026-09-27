@@ -70,7 +70,7 @@ public sealed class SystemAlertEnableCommand : BaseCommand<SystemAlertIdSettings
     {
         var api = ClientFactory.Create(session);
         await api.EnableSystemAlertPolicyAsync(settings.Id, ct);
-        writer.Success("System-alert policy aktiviert.");
+        writer.Success("System-alert policy enabled.");
         return ExitCodes.Success;
     }
 }
@@ -83,7 +83,7 @@ public sealed class SystemAlertDisableCommand : BaseCommand<SystemAlertIdSetting
     {
         var api = ClientFactory.Create(session);
         await api.DisableSystemAlertPolicyAsync(settings.Id, ct);
-        writer.Success("System-alert policy deaktiviert.");
+        writer.Success("System-alert policy disabled.");
         return ExitCodes.Success;
     }
 }
@@ -96,12 +96,12 @@ public sealed class SystemAlertDeleteCommand : BaseCommand<SystemAlertIdSettings
     {
         if (!Console.IsInputRedirected)
         {
-            var ok = await AnsiConsole.ConfirmAsync($"System-alert policy [red]{settings.Id}[/] wirklich löschen?", defaultValue: false);
-            if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
+            var ok = await AnsiConsole.ConfirmAsync($"Delete system-alert policy [red]{settings.Id}[/]?", defaultValue: false);
+            if (!ok) { writer.Info("Aborted."); return ExitCodes.Success; }
         }
         var api = ClientFactory.Create(session);
         await api.DeleteSystemAlertPolicyAsync(settings.Id, ct);
-        writer.Success("System-alert policy gelöscht.");
+        writer.Success("System-alert policy deleted.");
         return ExitCodes.Success;
     }
 }
@@ -148,7 +148,7 @@ public sealed class SystemAlertCreateCommand : BaseCommand<SystemAlertCreateSett
 
         var api = ClientFactory.Create(session);
         var created = await api.CreateSystemAlertPolicyAsync(req, ct);
-        writer.Success($"System-alert policy angelegt: [bold]{Markup.Escape(created.Name)}[/].");
+        writer.Success($"System-alert policy created: [bold]{Markup.Escape(created.Name)}[/].");
         return ExitCodes.Success;
     }
 }
@@ -170,7 +170,7 @@ public sealed class SystemAlertUpdateCommand : BaseCommand<SystemAlertUpdateSett
 
         var api = ClientFactory.Create(session);
         await api.UpdateSystemAlertPolicyAsync(settings.Id, req, ct);
-        writer.Success($"System-alert policy [bold]{Markup.Escape(req.Name)}[/] aktualisiert.");
+        writer.Success($"System-alert policy [bold]{Markup.Escape(req.Name)}[/] updated.");
         return ExitCodes.Success;
     }
 }
@@ -182,18 +182,18 @@ internal static class SystemAlertCommandHelpers
     public static async Task<(SaveSystemAlertPolicyRequest? Req, string? Error)> ReadRequestAsync(string file, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(file) || !File.Exists(file))
-            return (null, $"Datei nicht gefunden: {file}");
+            return (null, $"File not found: {file}");
 
         var json = await File.ReadAllTextAsync(file, ct);
         try
         {
             var req = JsonSerializer.Deserialize<SaveSystemAlertPolicyRequest>(json, NodePilotApiClient.JsonOptions);
-            if (req is null) return (null, "Datei enthält kein gültiges SaveSystemAlertPolicyRequest-JSON.");
+            if (req is null) return (null, "The file does not contain a valid SaveSystemAlertPolicyRequest JSON.");
             return (req, null);
         }
         catch (JsonException ex)
         {
-            return (null, $"Datei ist kein gültiges JSON: {ex.Message}");
+            return (null, $"The file is not valid JSON: {ex.Message}");
         }
     }
 }
