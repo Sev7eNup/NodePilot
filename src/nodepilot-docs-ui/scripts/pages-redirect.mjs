@@ -8,7 +8,7 @@ export function pagesRedirectTarget(href) {
   let hash = source.hash
   const query = new URLSearchParams(source.search)
   const renamed = { produkt: 'product', erleben: 'walkthrough', 'warum-nodepilot': 'why-nodepilot' }
-  const siteRoutes = ['product', 'walkthrough', 'blog', 'impressum', 'datenschutz', 'powershell-automation', 'scorch-alternative', 'self-hosted-automation']
+  const siteRoutes = ['product', 'walkthrough', 'tutorials', 'blog', 'impressum', 'datenschutz', 'powershell-automation', 'scorch-alternative', 'self-hosted-automation']
   const languages = ['en', 'de']
 
   if (hash.startsWith('#/')) {

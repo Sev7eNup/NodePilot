@@ -23,6 +23,7 @@
     "test:site:e2e": "playwright test --config playwright.site.config.ts",
     "build:demo": "npm --prefix ../nodepilot-ui run build:demo",
     "images:site": "node scripts/site-images.mjs",
+    "site:videos": "node scripts/site-videos.mjs",
     "prebuild:site": "npm run images:site"
   },
   "dependencies": {

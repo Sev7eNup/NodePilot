@@ -10,6 +10,8 @@ describe('resolveRoute', () => {
   it('maps every page route', () => {
     expect(resolveRoute('walkthrough')).toEqual({ page: 'experience' })
     expect(resolveRoute('product')).toEqual({ page: 'product' })
+    expect(resolveRoute('tutorials')).toEqual({ page: 'videos' })
+    expect(resolveRoute('/en/tutorials/')).toEqual({ page: 'videos' })
     expect(resolveRoute('blog')).toEqual({ page: 'blog' })
     expect(resolveRoute('impressum')).toEqual({ page: 'impressum' })
     expect(resolveRoute('datenschutz')).toEqual({ page: 'datenschutz' })

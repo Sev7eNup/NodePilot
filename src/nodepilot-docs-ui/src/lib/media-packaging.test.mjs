@@ -21,8 +21,13 @@ describe('public website media packaging', () => {
     expect(workflow).not.toContain('npm run assemble:site')
     const publisher = readFileSync(join(repoRoot, 'deploy/Publish-Site.ps1'), 'utf8')
     expect(publisher).toContain('assemble:site')
+    // Training videos go up first and stop the deploy on failure, before any page links to them.
+    expect(publisher).toContain(String.raw`src\site\videos.json`)
+    expect(publisher.indexOf("throw 'Training video upload failed")).toBeGreaterThan(-1)
+    expect(publisher.indexOf("throw 'Training video upload failed")).toBeLessThan(publisher.indexOf('foreach ($item in $relative)'))
     const { scripts } = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'))
     expect(scripts['assemble:site']).toBe('node scripts/assemble-site.mjs')
+    expect(scripts['site:videos']).toBe('node scripts/site-videos.mjs')
   })
 
   it('publishes pages-media under media/, where the tour URL points', () => {
@@ -38,6 +43,7 @@ describe('public website media packaging', () => {
         'dist-site/index.html': 'SITE',
         '../nodepilot-ui/dist-demo/index.html': 'DEMO',
         'pages-media/nodepilot-product-tour.mp4': 'TOUR_VIDEO_SENTINEL',
+        'pages-media/training/00-intro-de.0123456789.mp4': 'TRAINING_VIDEO_SENTINEL',
         'public/og-image.png': 'OG',
       }
       for (const [path, content] of Object.entries(files)) {
@@ -49,6 +55,7 @@ describe('public website media packaging', () => {
 
       expect(readFileSync(join(fixture, '_site/media/nodepilot-product-tour.mp4'), 'utf8'))
         .toBe('TOUR_VIDEO_SENTINEL')
+      expect(readFileSync(join(fixture, '_site/media/training/00-intro-de.0123456789.mp4'), 'utf8')).toBe('TRAINING_VIDEO_SENTINEL')
       expect(readFileSync(join(fixture, '_site/demo/index.html'), 'utf8')).toBe('DEMO')
     } finally {
       rmSync(workspace, { recursive: true, force: true })

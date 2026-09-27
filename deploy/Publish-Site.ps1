@@ -23,7 +23,8 @@
     Upload the existing _site/ without rebuilding it.
 
 .PARAMETER DryRun
-    Build and list what would be uploaded, but transfer nothing.
+    Build, check which training videos the server already holds, and list what would be
+    uploaded, but transfer nothing.
 
 .EXAMPLE
     powershell -File deploy\Publish-Site.ps1 -DryRun
@@ -131,21 +132,25 @@ $remoteRoot = (Setting 'remotePath').TrimEnd('/')
 $port = if (Setting 'port') { ":$(Setting 'port')" } else { '' }
 $baseUrl = "${protocol}://$(Setting 'host')$port$remoteRoot"
 
+# Training videos are published in their own step, before everything else: see below.
+$videoPrefix = 'media/training/'
+$catalog = Get-Content -LiteralPath (Join-Path $sitePackage 'src\site\videos.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$videos = @(foreach ($episode in $catalog.episodes) {
+    foreach ($lang in 'de', 'en') {
+        [pscustomobject]@{ Path = $episode.text.$lang.video; Bytes = [long]$episode.text.$lang.bytes }
+    }
+})
+
 # Relative POSIX paths: the remote side is not Windows.
 #
 # HTML goes last. Asset file names carry a content hash, so a changed stylesheet is a new file:
 # uploading the HTML first points the live site at an asset that is not there yet, and every
 # visitor during the transfer gets the page without its styles.
 $relative = @($files | ForEach-Object { $_.FullName.Substring($siteDir.Length).TrimStart('\').Replace('\', '/') } |
+    Where-Object { -not $_.StartsWith($videoPrefix) } |
     Sort-Object { if ($_ -match '\.html?$') { 1 } else { 0 } }, { $_ })
 
-Write-Host "$($files.Count) file(s) -> $baseUrl/"
-
-if ($DryRun) {
-    $relative | Sort-Object | ForEach-Object { Write-Host "  would upload $_" }
-    Write-Host 'Dry run: nothing was transferred.'
-    return
-}
+Write-Host "$($relative.Count) file(s) and $($videos.Count) training video(s) -> $baseUrl/"
 
 # --- upload ----------------------------------------------------------------
 
@@ -158,13 +163,45 @@ try {
     if ($protocol -eq 'sftp') { $common += @('--hostpubsha256', $fingerprint) }
     if ($keyFile) { $common += @('--key', $keyFile) }
 
+    function Send-File([string] $item) {
+        $local = Join-Path $siteDir ($item.Replace('/', '\'))
+        # Not $args: that is an automatic variable. curl's stderr is left alone -- redirecting a
+        # native command's stderr in PowerShell 5.1 wraps each line in an ErrorRecord and flips $?.
+        $curlArgs = $common + @('--fail', '--upload-file', $local, "$baseUrl/$item")
+        if ($protocol -eq 'ftps') { $curlArgs += @('--ssl-reqd', '--ftp-create-dirs') }
+
+        # Each file is its own SSH session, and a handshake occasionally fails on a busy host.
+        # Two extra attempts turn that from a failed deploy into a pause.
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            & $curl @curlArgs | Out-Null
+            if ($LASTEXITCODE -eq 0) { return $true }
+            if ($attempt -lt 3) { Start-Sleep -Seconds ($attempt * 2) }
+        }
+        return $false
+    }
+
+    # Name -> size of the files in the remote video folder, or $null when it cannot be listed.
+    # SFTP and FTP both list in `ls -l` form: the size is the fifth field, the name the last.
+    function Get-RemoteVideoSizes {
+        $curlArgs = $common + @("$baseUrl/$videoPrefix")
+        if ($protocol -eq 'ftps') { $curlArgs += '--ssl-reqd' }
+        $lines = & $curl @curlArgs
+        if ($LASTEXITCODE -ne 0) { return $null }
+        $sizes = @{}
+        foreach ($line in $lines) {
+            $fields = -split $line
+            if ($fields.Count -ge 9 -and $fields[0] -notlike 'd*') { $sizes[$fields[-1]] = [long]$fields[4] }
+        }
+        return $sizes
+    }
+
     # SFTP will not create missing directories on upload, so they are made first, shortest path
     # first. The '*' prefix is what makes a failing command non-fatal -- '-' means something else
     # entirely (run it after the transfer), and with it one "directory exists" aborts the whole
     # command list, leaving every deeper directory uncreated.
-    if ($protocol -eq 'sftp') {
+    if ($protocol -eq 'sftp' -and -not $DryRun) {
         $prefixes = [System.Collections.Generic.HashSet[string]]::new()
-        foreach ($item in $relative) {
+        foreach ($item in @($relative) + @($videos.Path)) {
             $dir = (Split-Path $item -Parent)
             if (-not $dir) { continue }
             $parts = $dir.Replace('\', '/').Split('/')
@@ -178,31 +215,62 @@ try {
         if ($quote.Count -gt 0) { & $curl @common @quote "$baseUrl/" -o NUL }
     }
 
+    # Videos first, and only those the server lacks: they are large, and their names carry a
+    # content hash, so a file of the catalog's size under that name is the right one. A video
+    # that does not reach the server stops the deploy before any page linking to it goes live.
+    $remoteSizes = Get-RemoteVideoSizes
+    if ($null -eq $remoteSizes) {
+        if (-not $DryRun) { throw "Could not list $baseUrl/$videoPrefix." }
+        Write-Host "  $videoPrefix cannot be listed; treating every video as missing on the server."
+        $remoteSizes = @{}
+    }
+    $pending = @()
+    $unavailable = @()
+    foreach ($video in $videos) {
+        $local = Join-Path $siteDir ($video.Path.Replace('/', '\'))
+        if ($remoteSizes[$video.Path.Substring($videoPrefix.Length)] -eq $video.Bytes) {
+            if ($DryRun) { Write-Host "  on server     $($video.Path)" }
+        } elseif ((Test-Path -LiteralPath $local) -and (Get-Item -LiteralPath $local).Length -eq $video.Bytes) {
+            $pending += $video
+            if ($DryRun) { Write-Host "  would upload  $($video.Path)" }
+        } else {
+            $unavailable += $video.Path
+            Write-Host "  missing       $($video.Path)" -ForegroundColor Red
+        }
+    }
+    if ($unavailable.Count -gt 0) {
+        throw "$($unavailable.Count) training video(s) are neither on the server nor in $siteDir. Run 'npm run site:videos' and rebuild."
+    }
+
+    if ($DryRun) {
+        $relative | Sort-Object | ForEach-Object { Write-Host "  would upload $_" }
+        Write-Host 'Dry run: nothing was transferred.'
+        return
+    }
+
+    $failedVideos = @($pending | Where-Object { -not (Send-File $_.Path) } | ForEach-Object { $_.Path })
+    if ($pending.Count -gt 0) {
+        $remoteSizes = Get-RemoteVideoSizes
+        if ($null -eq $remoteSizes) { throw "Could not list $baseUrl/$videoPrefix to verify the uploaded videos." }
+        $failedVideos += @($pending | Where-Object { $remoteSizes[$_.Path.Substring($videoPrefix.Length)] -ne $_.Bytes } | ForEach-Object { $_.Path })
+    }
+    if ($failedVideos.Count -gt 0) {
+        $failedVideos | Select-Object -Unique | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+        throw 'Training video upload failed; nothing else was published.'
+    }
+    Write-Host "Training videos: $($pending.Count) uploaded, $($videos.Count - $pending.Count) already on the server."
+
     $uploaded = 0
     $failed = @()
     foreach ($item in $relative) {
-        $local = Join-Path $siteDir ($item.Replace('/', '\'))
-        # Not $args: that is an automatic variable. curl's stderr is left alone -- redirecting a
-        # native command's stderr in PowerShell 5.1 wraps each line in an ErrorRecord and flips $?.
-        $curlArgs = $common + @('--fail', '--upload-file', $local, "$baseUrl/$item")
-        if ($protocol -eq 'ftps') { $curlArgs += @('--ssl-reqd', '--ftp-create-dirs') }
-
-        # Each file is its own SSH session, and a handshake occasionally fails on a busy host.
-        # Two extra attempts turn that from a failed deploy into a pause.
-        for ($attempt = 1; $attempt -le 3; $attempt++) {
-            & $curl @curlArgs
-            if ($LASTEXITCODE -eq 0) { break }
-            if ($attempt -lt 3) { Start-Sleep -Seconds ($attempt * 2) }
-        }
-        if ($LASTEXITCODE -ne 0) { $failed += $item } else { $uploaded++ }
-
-        if (($uploaded + $failed.Count) % 25 -eq 0) { Write-Host "  $($uploaded + $failed.Count)/$($files.Count)" }
+        if (Send-File $item) { $uploaded++ } else { $failed += $item }
+        if (($uploaded + $failed.Count) % 25 -eq 0) { Write-Host "  $($uploaded + $failed.Count)/$($relative.Count)" }
     }
 } finally {
     Remove-Item -Path "Env:\$credentialVariable" -ErrorAction SilentlyContinue
 }
 
-Write-Host "Uploaded $uploaded of $($files.Count) file(s)."
+Write-Host "Uploaded $uploaded of $($relative.Count) file(s)."
 
 if ($failed.Count -gt 0) {
     Write-Host "$($failed.Count) file(s) failed:" -ForegroundColor Red

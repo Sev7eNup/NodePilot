@@ -1,9 +1,10 @@
 import { configureImage, type ImageKey } from './media'
 import { articleBySlug, blogAuthor, isBlogPreview, visibleArticles } from './blog'
 import type { Lang } from '../i18n/languages'
-import { messages, lookup } from './i18n'
+import { format, messages, lookup } from './i18n'
 import { localizedPath, resolveRoute, SOLUTION_SLUGS, type SiteRoute } from './router'
 import { solutions } from './solutions'
+import { formatDuration, videoEpisodes } from './videos'
 
 export function siteHref(base: string, route: SiteRoute, lang: Lang): string {
   const path = localizedPath(route, lang)
@@ -132,6 +133,26 @@ export function renderSiteContent(doc: Document, route: SiteRoute, lang: Lang, b
       row.querySelector('p')!.textContent = text.teaser
       row.querySelector('.read-more')!.textContent = copy.blog.readMore
       index.appendChild(row)
+    }
+  }
+  const videoGrid = doc.getElementById('video-grid')
+  if (videoGrid) {
+    // Absolute from the site root: a relative media/ would resolve below /en/tutorials/.
+    videoGrid.replaceChildren()
+    for (const episode of videoEpisodes) {
+      const text = episode.text[lang]
+      const item = doc.createElement('li')
+      item.innerHTML = '<a class="video-card"><span class="video-thumb"><img alt="" width="640" height="360" loading="lazy" decoding="async"><span class="video-play" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg></span><span class="video-duration"></span></span><span class="video-episode"></span><h2 class="video-title"></h2></a>'
+      const card = item.querySelector('a')!
+      card.setAttribute('href', `${base}${text.video}`)
+      card.setAttribute('data-video', episode.slug)
+      card.setAttribute('aria-label', format(copy.videos.play, { title: text.title }))
+      if (text.youtube) card.setAttribute('data-youtube', text.youtube)
+      item.querySelector('img')!.setAttribute('src', `${base}${text.poster}`)
+      item.querySelector('.video-duration')!.textContent = formatDuration(text.duration)
+      item.querySelector('.video-episode')!.textContent = format(copy.videos.episode, { number: String(episode.number).padStart(2, '0') })
+      item.querySelector('.video-title')!.textContent = text.title
+      videoGrid.appendChild(item)
     }
   }
   for (const count of doc.querySelectorAll('.nav-count, .filter-count')) count.textContent = String(available.length).padStart(2, '0')

@@ -29,6 +29,7 @@ export function routePages(preview = false): RoutePage[] {
     { page: 'home' },
     { page: 'product' },
     { page: 'experience' },
+    { page: 'videos' },
     { page: 'blog' },
     ...visibleArticles(preview).map(({ slug }) => ({ page: 'article', slug }) as SiteRoute),
     ...SOLUTION_SLUGS.map((slug) => ({ page: 'solution', slug }) as SiteRoute),

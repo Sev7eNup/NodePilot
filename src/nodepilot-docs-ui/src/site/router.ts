@@ -15,7 +15,7 @@ import { articles } from './blog.ts'
  * German pages retain their established addresses. English adds an en/ prefix. The legal
  * pages exist only in German and keep a single address.
  */
-export const SITE_ROUTE_SEGMENTS = ['walkthrough', 'product', 'blog', 'impressum', 'datenschutz', 'powershell-automation', 'scorch-alternative', 'self-hosted-automation'] as const
+export const SITE_ROUTE_SEGMENTS = ['walkthrough', 'product', 'tutorials', 'blog', 'impressum', 'datenschutz', 'powershell-automation', 'scorch-alternative', 'self-hosted-automation'] as const
 
 export const ARTICLE_SLUGS = articles.map(article => article.slug)
 export const SOLUTION_SLUGS = ['powershell-automation', 'scorch-alternative', 'self-hosted-automation'] as const
@@ -23,7 +23,7 @@ export type SolutionSlug = (typeof SOLUTION_SLUGS)[number]
 
 export type ArticleSlug = (typeof ARTICLE_SLUGS)[number]
 
-export type SitePage = 'experience' | 'home' | 'product' | 'blog' | 'article' | 'solution' | 'impressum' | 'datenschutz' | 'notfound'
+export type SitePage = 'experience' | 'home' | 'product' | 'videos' | 'blog' | 'article' | 'solution' | 'impressum' | 'datenschutz' | 'notfound'
 
 export type SiteRoute =
   | { page: 'article'; slug: ArticleSlug }
@@ -35,6 +35,7 @@ export const ROUTE_PATHS = {
   home: '',
   experience: 'walkthrough',
   product: 'product',
+  videos: 'tutorials',
   blog: 'blog',
   impressum: 'impressum',
   datenschutz: 'datenschutz',

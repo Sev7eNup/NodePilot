@@ -52,6 +52,19 @@ Der Pages-Workflow baut weder Website noch Demo und benötigt deren Assets nicht
 | `media/` | `pages-media/` | https://www.nodepilot.run/media/nodepilot-product-tour.mp4 |
 | `og-image.png` | `public/og-image.png` | Vorschaubild der Website |
 
+**Schulungsvideos** (`/tutorials/`, „NodePilot in 2 Minuten"): `npm run site:videos` liest die
+gerenderten Folgen aus `out/nodepilot-training/` und erledigt drei Dinge:
+
+- Es kopiert die MP4s nach `pages-media/training/`. Der Ordner ist gitignored.
+- Es erzeugt die Poster unter `src/site/public/training/`.
+- Es schreibt `src/site/videos.json`.
+
+Die Dateinamen tragen einen Content-Hash. So bekommt ein neu gerendertes Video eine neue Adresse.
+`publishedAt` und `youtube` pflegt man in `videos.json` von Hand; ein neuer Lauf übernimmt diese
+Werte. `deploy/Publish-Site.ps1` lädt nur Videos hoch, die auf dem Server noch fehlen. Das
+geschieht vor allen anderen Dateien. Fehlt danach eines, bricht der Deploy ab, bevor eine Seite
+darauf verweist.
+
 Deep Links in die Doku haben die Form `https://www.nodepilot.run/docs/<sprache>/<seite>/`.
 
 - **`NP_SITE_ORIGIN`:** Standard ist `https://www.nodepilot.run`; Canonical, Open Graph,
