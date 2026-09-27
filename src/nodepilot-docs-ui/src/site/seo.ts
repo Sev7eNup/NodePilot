@@ -139,10 +139,11 @@ export function renderSiteContent(doc: Document, route: SiteRoute, lang: Lang, b
     const key = ({ 'designer-beispiel.png': 'first-workflow-designer', 'ausfuehrung-beispiel.png': 'first-workflow-run', 'designer-dark.png': 'designer', 'ai-dark.png': 'ai' } as Record<string, ImageKey>)[name ?? '']
     if (key) configureImage(image, key, base)
   }
-  for (const image of doc.querySelectorAll('[data-site-image]')) image.setAttribute('src', `${base}${image.getAttribute('data-site-image')}`)
+  const encodePath = (path: string) => path.split('/').map(segment => encodeURIComponent(segment)).join('/')
+  for (const image of doc.querySelectorAll('[data-site-image]')) image.setAttribute('src', `${base}${encodePath(image.getAttribute('data-site-image') ?? '')}`)
   for (const link of doc.querySelectorAll('[data-docs-path]')) {
     const path = link.getAttribute('data-docs-path') || 'getting-started/introduction'
-    link.setAttribute('href', `${base}docs/${lang}/${path}/`)
+    link.setAttribute('href', `${base}docs/${lang}/${encodePath(path)}/`)
   }
   for (const link of doc.querySelectorAll('a')) {
     if (link.hasAttribute('data-lang') || link.hasAttribute('data-docs-path')) continue

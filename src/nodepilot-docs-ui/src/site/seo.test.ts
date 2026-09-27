@@ -9,6 +9,18 @@ import { renderSiteContent, renderSiteHead } from './seo'
 const origin = 'https://example.test/preview'
 
 describe('website SEO contract', () => {
+  it('encodes DOM-provided path segments without changing directory separators', () => {
+    const { document } = parseHTML(shell)
+    const image = document.createElement('img')
+    image.setAttribute('data-site-image', 'blog-images/a b<test>.png')
+    const link = document.createElement('a')
+    link.setAttribute('data-docs-path', 'guide/a?b#c')
+    document.body.append(image, link)
+    renderSiteContent(document, { page: 'home' }, 'de', '/preview/')
+    expect(image.getAttribute('src')).toBe('/preview/blog-images/a%20b%3Ctest%3E.png')
+    expect(link.getAttribute('href')).toBe('/preview/docs/de/guide/a%3Fb%23c/')
+  })
+
   it('preserves German URLs and explicitly distinguishes English, including articles', () => {
     for (const page of routePages().filter(page => page.listed)) {
       expect(resolveRoute(page.path)).toEqual(page.route)
