@@ -200,6 +200,8 @@ CREATE DATABASE nodepilot OWNER nodepilot;
 
 Der PostgreSQL-Server muss ein Zertifikat präsentieren, dessen Hostname und Vertrauenskette geprüft werden können. Die Root-CA wird dem Installer als PEM-Datei übergeben.
 
+Der Dienst prüft zusätzlich online, ob das Zertifikat gesperrt ist. Der Pre-Flight des Installers prüft dasselbe und bricht mit `Aborted: Postgres pre-flight failed - certificate revocation could not be checked.` ab, wenn das Zertifikat gesperrt ist oder keine CRL erreichbar ist. `psql` prüft die Sperrung nicht, eine erfolgreiche Anmeldung mit `psql` sagt hier also nichts aus. Abhilfe: den im Zertifikat eingetragenen CRL-Verteilungspunkt vom NodePilot-Server aus erreichbar machen oder die CRL dort in den Speicher `LocalMachine\CA` importieren (`certutil -addstore CA <datei>.crl`).
+
 ## 3. HTTPS-Zertifikat importieren
 
 ```powershell

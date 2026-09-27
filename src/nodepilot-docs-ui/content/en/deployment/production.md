@@ -197,6 +197,8 @@ CREATE DATABASE nodepilot OWNER nodepilot;
 
 The PostgreSQL server has to present a certificate whose host name and trust chain can be verified. The root CA is passed to the installer as a PEM file.
 
+The service also checks the certificate's revocation status online. The installer's pre-flight does the same and aborts with `Aborted: Postgres pre-flight failed - certificate revocation could not be checked.` when the certificate is revoked or no CRL is reachable. `psql` does not check revocation, so a successful `psql` login proves nothing here. Fix: make the CRL distribution point named in the certificate reachable from the NodePilot server, or import the CRL into the `LocalMachine\CA` store there (`certutil -addstore CA <file>.crl`).
+
 ## 3. Import the HTTPS certificate
 
 ```powershell
