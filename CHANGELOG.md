@@ -10,13 +10,33 @@ not a reprint.
 Entries were reconstructed from the published release notes, so they are condensed rather than
 exhaustive.
 
-## [Unreleased]
+## [1.4.3] - Unreleased
 
 ### Changed
 
+- **The `np` command line speaks English throughout.** Messages such as "Logged in as …",
+  "Execution started" or network errors used to be German while the help text was English.
+- The English interface says "Workflow is live" instead of "Workflow is running productive".
 - The browser demo uses ordinary paths such as `/demo/workflows`; old hash links still work.
 - GitHub Pages forwards old website, documentation and demo links to their matching pages on
   `www.nodepilot.run`. Public links, canonical URLs and sitemaps use this single origin.
+
+### Fixed
+
+- The restore preview of a configuration backup always showed 0 for alert rules. It now counts new
+  rules and name conflicts the same way the restore does.
+- The folder counts on the Workflows page stayed outdated after an import.
+- Parts of the English interface showed German text, for example the settings of "Start Workflow",
+  the folder tree, several activity fields and the log details. Snippets placed in the designer now
+  use the interface language too.
+- German texts on the Alerting page were written without umlauts ("Ausfuehrung").
+- Counts read "1 errors" or "1 Workflows"; singular and plural are now correct.
+- The expanded step list of an execution showed the raw status ("Succeeded") in the German
+  interface.
+- The backup page showed raw keys instead of names for the Alerting and global-variable folder
+  sections.
+- In dark skins the connection test result, the sub-workflow input table and its warnings were hard
+  to read.
 
 ## [1.4.2] - 2026-09-26
 
@@ -1707,7 +1727,7 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.2...main
+[1.4.3]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.2...main
 [1.4.2]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.2
 [1.4.1]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.1
 [1.4.0]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.0
