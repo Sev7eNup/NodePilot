@@ -34,7 +34,7 @@ const SECTION_END = /^(#|>|\||:::)/
 
 /** A lead-in ending in a colon, or a very short opening, says too little on its own. */
 function needsMore(text: string): boolean {
-  return text.endsWith(':') || text.length < 90
+  return text.endsWith(':') || text.length < 120
 }
 
 export function summarize(markdown: string, max = 155): string {

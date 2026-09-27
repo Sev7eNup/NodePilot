@@ -1,6 +1,6 @@
 # Datenbus & Variablen
 
-Activities können Ergebnisse für nachfolgende Activities bereitstellen. Ein Zugriff erfolgt mit `{{…}}`.
+Activities können Ergebnisse für nachfolgende Activities bereitstellen. Ein Zugriff erfolgt mit `{{…}}`: auf Ausgabe, Fehler, Erfolg und benannte Werte eines Schritts sowie auf globale Variablen und Trigger-Eingaben.
 
 ## Verfügbare Werte
 

@@ -84,7 +84,7 @@ export const en = {
     notfound: 'Page not found',
   },
   titles: {
-    experience: "Walkthrough",
+    experience: 'Try NodePilot in your browser: guided walkthrough',
     home: 'PowerShell and Windows automation',
     product: 'Visual workflow designer for Windows and PowerShell',
     videos: 'Tutorials: workflow automation in short videos',

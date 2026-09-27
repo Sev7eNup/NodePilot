@@ -74,9 +74,16 @@ describe('prerenderDocs', () => {
 
   it('gives every page its own title and description', () => {
     const cli = read('en/cli/index.html')
-    expect(cli).toContain('<title>CLI (np) — NodePilot Docs</title>')
+    expect(cli).toContain('<title>CLI (np) — NodePilot Documentation</title>')
     expect(cli).not.toContain('content="shell"')
     expect(read('de/cli/index.html')).toContain('<title>CLI (np) — NodePilot Dokumentation</title>')
+    // Even the shortest navigation title names the product in full, so no title reads as a stub.
+    for (const lang of LANGUAGES) {
+      for (const page of allPages) {
+        const title = read(`${lang}/${page.path}/index.html`).match(/<title>([^<]*)<\/title>/)[1]
+        expect(title.length, `${lang}/${page.path}`).toBeGreaterThanOrEqual(30)
+      }
+    }
   })
 
   it('ships the actual chapter with heading anchors and links before JavaScript runs', () => {

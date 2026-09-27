@@ -1,6 +1,6 @@
 # Data bus & variables
 
-Activities can make results available to subsequent activities. They are accessed with `{{…}}`.
+Activities can make results available to subsequent activities. They are accessed with `{{…}}`: the output, error, success and named values of a step, as well as global variables and trigger inputs.
 
 ## Available values
 

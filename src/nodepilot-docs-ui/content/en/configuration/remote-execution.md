@@ -1,6 +1,6 @@
 # Remote execution
 
-Remote activities are executed over WinRM without an additional agent. `Remote:Provider` selects the provider.
+Remote activities are executed over WinRM without an additional agent; nothing is installed on the target machines. `Remote:Provider` selects the provider.
 
 ## Providers
 
