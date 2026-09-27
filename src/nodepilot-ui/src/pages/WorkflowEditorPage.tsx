@@ -462,7 +462,7 @@ function WorkflowEditorInner() {
   const onConnect = useCallback(
     (params: Connection) => {
       if (hasDuplicateConnection(params.source, params.target)) {
-        showConnectionNotice('Diese Verbindung existiert bereits. Bearbeite die bestehende Edge oder passe deren Bedingung an.');
+        showConnectionNotice(t('editor:connection.duplicate'));
         return;
       }
       if (requiresJunctionForConnection(params.target, nodes, edges)) {
@@ -479,7 +479,7 @@ function WorkflowEditorInner() {
         data: { label: '', condition: '', disabled: false },
       }, eds));
     },
-    [nodes, edges, setEdges, commitHistory, hasDuplicateConnection, showConnectionNotice, markDirty, offerRequiredJunction],
+    [nodes, edges, setEdges, commitHistory, hasDuplicateConnection, showConnectionNotice, markDirty, offerRequiredJunction, t],
   );
 
   // Drags the endpoint of an existing edge onto a different source or target (detach and
@@ -867,11 +867,11 @@ function WorkflowEditorInner() {
 
   const onConnectEnd = useCallback((event: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
     if (connectionState.toNode && hasDuplicateConnection(connectionState.fromNode?.id, connectionState.toNode.id)) {
-      showConnectionNotice('Diese Verbindung existiert bereits. Bearbeite die bestehende Edge oder passe deren Bedingung an.');
+      showConnectionNotice(t('editor:connection.duplicate'));
       return;
     }
     handleConnectEnd(event, connectionState);
-  }, [handleConnectEnd, hasDuplicateConnection, showConnectionNotice]);
+  }, [handleConnectEnd, hasDuplicateConnection, showConnectionNotice, t]);
 
   // ---- Workflow-Diff ------------------------------------------------------
   const [diffOpen, setDiffOpen] = useState(false);

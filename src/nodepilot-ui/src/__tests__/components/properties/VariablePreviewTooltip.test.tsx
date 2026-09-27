@@ -72,7 +72,7 @@ describe('VariablePreviewTooltip', () => {
     fireEvent.mouseEnter(screen.getByTestId('row').parentElement!);
     act(() => { vi.advanceTimersByTime(250); });
     const tip = screen.getByRole('tooltip');
-    expect(tip.textContent).toContain('Kein Wert vom letzten Lauf');
+    expect(tip.textContent).toContain('No value from the last run');
   });
 
   it('emptyOutput_showsNoValueMessage', () => {
@@ -83,7 +83,7 @@ describe('VariablePreviewTooltip', () => {
     );
     fireEvent.mouseEnter(screen.getByTestId('row').parentElement!);
     act(() => { vi.advanceTimersByTime(250); });
-    expect(screen.getByRole('tooltip').textContent).toContain('Kein Wert');
+    expect(screen.getByRole('tooltip').textContent).toContain('No value');
   });
 
   it('forwardsMouseEnterAndLeaveHandlers', () => {

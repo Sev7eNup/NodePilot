@@ -172,12 +172,16 @@
       "jsonPickerHint": "Picking a path sets Source to Inline Content, Content to the selected upstream output, and JSONPath to the chosen path."
     },
     "fileHash": {
+      "expectedPlaceholder": "Hex value — the step fails on a mismatch",
+      "outputHint": "Output: <code>{{hash}}</code>, <code>{{match}}</code> (<code>true</code>/<code>false</code>, empty when no expected hash is set).",
       "path": "Path",
       "algorithm": "Algorithm",
       "expectedHash": "Expected Hash (optional)",
       "expectedHashHint": "If set, step fails on mismatch."
     },
     "zipOperation": {
+      "sourceCompress": "Source (file, folder or glob)",
+      "sourceExtract": "Source (ZIP archive)",
       "operation": "Operation",
       "operationZip": "Zip",
       "operationUnzip": "Unzip",
@@ -193,6 +197,7 @@
       "compressNote": "Note: <code>Compress-Archive</code> is limited to roughly 4 GB in total. Use an external tool for larger data. A source containing a literal <code>[</code> or <code>]</code> is read as a glob — avoid such paths."
     },
     "serviceManagement": {
+      "displayNamePlaceholder": "My Service",
       "serviceName": "Service name",
       "action": "Action",
       "actionStatus": "Get Status",
@@ -262,6 +267,8 @@
       ]
     },
     "registry": {
+      "binaryPlaceholder": "DEADBEEF (hex, optional 0x prefix or separators , ; : -)",
+      "multiStringPlaceholder": "Entry1\\nEntry2\\nEntry3 (one line per entry)",
       "operation": "Operation",
       "operationRead": "Read",
       "operationWrite": "Set Value (Create/Update)",
@@ -286,6 +293,13 @@
       "hintListValues": "Lists all values with name, type and value as an array."
     },
     "wmiQuery": {
+      "optionQuery": "Class query (Get-CimInstance)",
+      "optionWql": "WQL query (SELECT … FROM …)",
+      "optionInvokeMethod": "Invoke method (Invoke-CimMethod)",
+      "filterLabel": "Filter (optional, WHERE clause)",
+      "wqlQuery": "WQL query",
+      "captureProperties": "captureProperties (optional, comma-separated)",
+      "argumentsLabel": "Arguments (JSON object, optional)",
       "mode": "Mode",
       "modeQuery": "Query",
       "modeWql": "WQL",
@@ -337,6 +351,9 @@
       "forceCloseHint": "Close open applications without asking (<code>/f</code>)"
     },
     "waitForCondition": {
+      "pathPlaceholder": "C:\\path\\to\\flag.txt — or {{example}}",
+      "hostPlaceholder": "db.internal — or {{example}}",
+      "noTemplatesHint": "Templates such as <code>{{example}}</code> are <strong>not</strong> allowed here — use the typed modes above or build the value in an upstream <em>runScript</em> step.",
       "scriptLabel": "Condition script (PowerShell)",
       "scriptHint": "Script is run repeatedly until it returns $true.",
       "intervalSeconds": "Interval (seconds)",
@@ -548,7 +565,8 @@
       "skippedWarning": "Remaining (non-started) nodes in sibling branches will be marked as <1>Skipped</1>. Running tasks finish in the background but their results are discarded."
     },
     "startWorkflow": {
-      "workflowNameOrId": "Workflow",
+      "workflowNameOrId": "Workflow (name or GUID)",
+      "workflowNameOrIdPlaceholder": "e.g. Rollback runbook",
       "workflowPicker": "Pick workflow…",
       "parameters": "Parameters",
       "waitForCompletion": "Wait for completion",
@@ -576,6 +594,7 @@
       },
       "pickFromLibraryTitle": "Pick a workflow from the library",
       "pickFromLibrary": "Pick from library",
+      "preview": "Preview",
       "previewAvailable": "Show the sub-workflow as a read-only preview",
       "previewIsVariable": "No preview — the reference is a variable and only resolves at runtime",
       "previewNeedsTarget": "Set a workflow name or GUID first",
@@ -816,8 +835,15 @@
     "help": "↑↓ navigate · Enter/Tab insert · Esc close"
   },
   "preview": {
+    "noValue": "No value from the last run — the workflow has not run yet or the step did not run.",
     "truncated": "(truncated)",
     "empty": "(empty)"
+  },
+  "expressionTester": {
+    "templatePlaceholder": "Enter template, e.g. Server: {{example}}",
+    "testValuePlaceholder": "test value…",
+    "availableVariables": "Available variables: {{list}}",
+    "moreVariables": " +{{count}} more"
   },
   "template": {
     "closingWithoutOpening": "Closing braces without matching opening braces.",

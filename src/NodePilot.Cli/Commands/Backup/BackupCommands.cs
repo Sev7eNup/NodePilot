@@ -113,9 +113,9 @@ public sealed class BackupExportCommand : BaseCommand<BackupExportSettings>
         var (content, warnings) = await api.ExportBackupAsync(sections, passphrase, ct);
         await File.WriteAllBytesAsync(settings.Out, content, ct);
 
-        writer.Success($"Backup geschrieben: {settings.Out} ({content.Length:N0} bytes, sections: {string.Join(", ", sections)})");
+        writer.Success($"Backup written: {settings.Out} ({content.Length:N0} bytes, sections: {string.Join(", ", sections)})");
         if (warnings > 0)
-            writer.Warning($"{warnings} Warnung(en) beim Export — siehe Server-Log (z. B. nicht entschlüsselbare Secrets auf diesem Host).");
+            writer.Warning($"{warnings} warning(s) during export. See the server log (for example, secrets this host cannot decrypt).");
         return ExitCodes.Success;
     }
 }
@@ -142,7 +142,7 @@ public sealed class BackupPreviewCommand : BaseCommand<BackupPreviewSettings>
 
     protected override async Task<int> RunAsync(CommandContext _, BackupPreviewSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        if (!File.Exists(settings.File)) { writer.Error($"Datei nicht gefunden: {settings.File}"); return ExitCodes.Error; }
+        if (!File.Exists(settings.File)) { writer.Error($"File not found: {settings.File}"); return ExitCodes.Error; }
 
         var (passphrase, err) = PassphraseResolver.Resolve(
             settings.PassphraseEnv, settings.PassphraseFile, "Backup passphrase");
@@ -192,7 +192,7 @@ public sealed class BackupRestoreCommand : BaseCommand<BackupRestoreSettings>
 
     protected override async Task<int> RunAsync(CommandContext _, BackupRestoreSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        if (!File.Exists(settings.File)) { writer.Error($"Datei nicht gefunden: {settings.File}"); return ExitCodes.Error; }
+        if (!File.Exists(settings.File)) { writer.Error($"File not found: {settings.File}"); return ExitCodes.Error; }
 
         var (passphrase, err) = PassphraseResolver.Resolve(settings.PassphraseEnv, settings.PassphraseFile, "Backup passphrase");
         if (passphrase is null) { writer.Error(err!); return ExitCodes.Error; }
@@ -201,10 +201,10 @@ public sealed class BackupRestoreCommand : BaseCommand<BackupRestoreSettings>
         {
             if (Console.IsInputRedirected)
             {
-                writer.Error("Restore ist destruktiv — in nicht-interaktiven Läufen mit --yes bestätigen.");
+                writer.Error("Restore is destructive. Confirm with --yes in non-interactive runs.");
                 return ExitCodes.Error;
             }
-            if (!await AnsiConsole.ConfirmAsync("Restore überschreibt/erzeugt System-Konfiguration. Fortfahren?", defaultValue: false))
+            if (!await AnsiConsole.ConfirmAsync("Restore overwrites or creates system configuration. Continue?", defaultValue: false))
                 return ExitCodes.Success;
         }
 
@@ -219,7 +219,7 @@ public sealed class BackupRestoreCommand : BaseCommand<BackupRestoreSettings>
         if (result.Settings is not null)
             writer.Info($"Settings: {(result.Settings.Applied ? "[green]applied[/]" : "[yellow]not applied[/]")} — {Markup.Escape(result.Settings.Message ?? "")}");
         foreach (var w in result.Warnings) writer.Warning($"  ! {w}");
-        writer.Success("Restore abgeschlossen.");
+        writer.Success("Restore complete.");
         return ExitCodes.Success;
     }
 }

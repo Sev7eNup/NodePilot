@@ -412,6 +412,7 @@ export function SupportEventsTable() {
 }
 
 function EventDetail({ event }: Readonly<{ event: SupportEventResponse }>) {
+  const { t } = useTranslation('supportLog');
   let props: Record<string, unknown> | null = null;
   if (event.propertiesJson) {
     try { props = JSON.parse(event.propertiesJson) as Record<string, unknown>; }
@@ -419,7 +420,7 @@ function EventDetail({ event }: Readonly<{ event: SupportEventResponse }>) {
   }
   return (
     <div className="border-l-2 border-blue-500 border-b border-outline-variant bg-surface-low px-4 py-3 text-xs space-y-2">
-      <div><span className="font-semibold text-on-surface">Message:</span> <span className="break-all text-on-surface">{event.message}</span></div>
+      <div><span className="font-semibold text-on-surface">{t('detailMessage')}</span> <span className="break-all text-on-surface">{event.message}</span></div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-1 text-on-surface-variant">
         {event.workflowId && <div><span>WorkflowId:</span> <code className="text-on-surface bg-surface px-1 rounded">{event.workflowId}</code></div>}
         {event.executionId && <div><span>ExecutionId:</span> <code className="text-on-surface bg-surface px-1 rounded">{event.executionId}</code></div>}
@@ -430,13 +431,13 @@ function EventDetail({ event }: Readonly<{ event: SupportEventResponse }>) {
       </div>
       {props && (
         <div>
-          <div className="text-on-surface-variant mb-1">Properties:</div>
+          <div className="text-on-surface-variant mb-1">{t('detailProperties')}</div>
           <pre className="bg-surface border border-outline-variant text-on-surface p-2 rounded font-mono text-[11px] overflow-auto max-h-48">{JSON.stringify(props, null, 2)}</pre>
         </div>
       )}
       {!props && event.propertiesJson && (
         <div>
-          <div className="text-on-surface-variant mb-1">Properties (raw):</div>
+          <div className="text-on-surface-variant mb-1">{t('detailPropertiesRaw')}</div>
           <pre className="bg-surface border border-outline-variant text-on-surface p-2 rounded font-mono text-[11px] overflow-auto max-h-48">{event.propertiesJson}</pre>
         </div>
       )}

@@ -19,13 +19,13 @@ const SECTIONS: Record<string, unknown> = {
   Authentication: {
     ldap: {
       enabled: false, server: null, endpoints: [], port: 636, useSsl: true, baseDn: null,
-      upnSuffix: null, bindTimeoutSeconds: 10, serviceBindDn: null, servicePassword: null,
-      allowedGroupSids: [], directorySyncIntervalMinutes: 60, directorySyncMaxConcurrency: 4,
+      upnSuffix: null, bindTimeoutSeconds: 5, serviceBindDn: null, servicePassword: null,
+      allowedGroupSids: [], directorySyncIntervalMinutes: 5, directorySyncMaxConcurrency: 16,
       globalRoleMappings: [], jitUserDefaultRootRole: null,
     },
     windows: { enabled: false, allowNtlmFallback: false, ntlmDisabledByPolicy: false },
     oidc: {
-      enabled: false, authority: null, clientId: null, clientSecret: null, displayName: 'SSO',
+      enabled: false, authority: null, clientId: null, clientSecret: null, displayName: 'Single Sign-On',
       nameClaimType: 'preferred_username', groupsClaimType: 'groups', scopes: ['openid', 'profile', 'email'],
       allowedGroupIds: [], globalRoleMappings: [],
     },
@@ -99,11 +99,15 @@ const SECTIONS: Record<string, unknown> = {
   Security: { strictAllowedHosts: false, allowedHosts: '*' },
 };
 
-/** Sections the product reloads without a restart; the rest show the restart hint. */
+/** Sections with `IsHotReloadable: true` in SettingsSchema.cs; the rest show the restart hint. */
 const HOT_RELOADABLE = new Set([
-  'Smtp', 'Llm', 'Retention', 'AiKnowledge', 'DbAdmin', 'Logging', 'Stats', 'RestApi',
-  'WaitForCondition', 'FileSystemOperation', 'SqlActivity', 'StartProgram', 'Webhook',
+  'Smtp', 'Llm', 'AiKnowledge', 'Retention', 'Stats', 'DbAdmin',
+  'FileSystemOperation', 'WaitForCondition', 'SqlActivity', 'StartProgram', 'Webhook',
+  'ExternalTrigger', 'Threading',
 ]);
+
+/** Hot-reloadable section names, for tests. */
+export const demoHotReloadableSections = [...HOT_RELOADABLE];
 
 export const settingsRoutes: Route[] = [
   route('GET', '/admin/settings/status', () =>

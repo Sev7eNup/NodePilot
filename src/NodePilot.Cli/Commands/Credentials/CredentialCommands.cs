@@ -82,7 +82,7 @@ public sealed class CredentialCreateCommand : BaseCommand<CredentialCreateSettin
     {
         if (string.IsNullOrWhiteSpace(settings.Name) || string.IsNullOrWhiteSpace(settings.Username))
         {
-            writer.Error("--name und --username sind Pflicht.");
+            writer.Error("--name and --username are required.");
             return ExitCodes.Error;
         }
 
@@ -91,13 +91,13 @@ public sealed class CredentialCreateCommand : BaseCommand<CredentialCreateSettin
             pw = (await Console.In.ReadToEndAsync(ct)).TrimEnd('\r', '\n');
         if (string.IsNullOrEmpty(pw))
         {
-            writer.Error("Passwort fehlt — entweder --password oder --password-stdin.");
+            writer.Error("Password missing. Pass --password or --password-stdin.");
             return ExitCodes.Error;
         }
 
         var api = ClientFactory.Create(session);
         var created = await api.CreateCredentialAsync(new CreateCredentialRequest(settings.Name, settings.Username, pw, settings.Domain, CredentialExpiry.AsUtc(settings.Expires)), ct);
-        writer.Success($"Credential angelegt: [bold]{Markup.Escape(created.Name)}[/] ({created.Id}).");
+        writer.Success($"Credential created: [bold]{Markup.Escape(created.Name)}[/] ({created.Id}).");
         return ExitCodes.Success;
     }
 }
@@ -127,7 +127,7 @@ public sealed class CredentialUpdateCommand : BaseCommand<CredentialUpdateSettin
         {
             // Silently letting one win would discard the other flag's intent — templated
             // automation that appends both conditionally must fail loudly instead.
-            writer.Error("--expires und --no-expires schließen sich aus.");
+            writer.Error("--expires and --no-expires cannot be combined.");
             return ExitCodes.Error;
         }
 
@@ -148,7 +148,7 @@ public sealed class CredentialUpdateCommand : BaseCommand<CredentialUpdateSettin
             settings.Domain ?? current.Domain,
             expires);
         await api.UpdateCredentialAsync(settings.Id, req, ct);
-        writer.Success($"Credential [bold]{Markup.Escape(req.Name)}[/] aktualisiert" + (string.IsNullOrEmpty(pw) ? " (Passwort unverändert)." : " (Passwort rotiert)."));
+        writer.Success($"Credential [bold]{Markup.Escape(req.Name)}[/] updated" + (string.IsNullOrEmpty(pw) ? " (password unchanged)." : " (password rotated)."));
         return ExitCodes.Success;
     }
 }
@@ -163,11 +163,11 @@ public sealed class CredentialDeleteCommand : BaseCommand<CredentialIdSettings>
         var c = await api.GetCredentialAsync(settings.Id, ct);
         if (!Console.IsInputRedirected)
         {
-            var ok = await AnsiConsole.ConfirmAsync($"Credential [red]{Markup.Escape(c.Name)}[/] ({Markup.Escape(c.Username)}) wirklich löschen?", defaultValue: false);
-            if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
+            var ok = await AnsiConsole.ConfirmAsync($"Delete credential [red]{Markup.Escape(c.Name)}[/] ({Markup.Escape(c.Username)})?", defaultValue: false);
+            if (!ok) { writer.Info("Aborted."); return ExitCodes.Success; }
         }
         await api.DeleteCredentialAsync(settings.Id, ct);
-        writer.Success("Credential gelöscht.");
+        writer.Success("Credential deleted.");
         return ExitCodes.Success;
     }
 }

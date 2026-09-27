@@ -93,6 +93,12 @@ public sealed class BackupRestoreService(
                 var structure = (reader.Sections[key] as JsonObject)?["structure"] as JsonArray ?? [];
                 return DiffByName(key, structure, "path", paths);
             }
+            case BackupSections.Alerting:
+            {
+                // Restore matches rules by name across both kinds (custom and system).
+                var names = await db.NotificationRules.Select(r => r.Name).ToListAsync(ct);
+                return DiffByName(key, Items(reader, key), "name", names);
+            }
             case BackupSections.Settings:
             {
                 var obj = (reader.Sections[key] as JsonObject)?["runtimeJson"] as JsonObject;
@@ -100,7 +106,7 @@ public sealed class BackupRestoreService(
                 return new BackupPreviewSection(key, count, count, 0);
             }
             default:
-                return new BackupPreviewSection(key, 0, 0, 0);
+                throw new InvalidOperationException($"No restore preview for backup section '{key}'.");
         }
     }
 

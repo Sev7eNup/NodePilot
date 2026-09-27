@@ -49,7 +49,7 @@ public sealed class WorkflowStepTestCommand : BaseCommand<WorkflowStepTestSettin
             foreach (var entry in settings.Mock)
             {
                 var eq = entry.IndexOf('=');
-                if (eq <= 0) { writer.Error($"--mock muss Form `key=value` haben (war: '{entry}')."); return ExitCodes.Error; }
+                if (eq <= 0) { writer.Error($"--mock must have the form `key=value` (got: '{entry}')."); return ExitCodes.Error; }
                 mock[entry[..eq]] = entry[(eq + 1)..];
             }
         }
@@ -66,7 +66,7 @@ public sealed class WorkflowStepTestCommand : BaseCommand<WorkflowStepTestSettin
                 configOverride = doc.RootElement.Clone();
             }
             catch (IOException ex) { writer.Error($"--config-file: {ex.Message}"); return ExitCodes.Error; }
-            catch (JsonException ex) { writer.Error($"--config-file ist kein gültiges JSON: {ex.Message}"); return ExitCodes.Error; }
+            catch (JsonException ex) { writer.Error($"--config-file is not valid JSON: {ex.Message}"); return ExitCodes.Error; }
         }
 
         var req = new StepTestRequest(mock, configOverride);

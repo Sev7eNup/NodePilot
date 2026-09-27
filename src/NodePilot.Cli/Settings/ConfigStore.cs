@@ -71,12 +71,12 @@ public sealed class ConfigStore : ClientConfigStore
         if (!cfg.Profiles.TryGetValue(profile, out var entry) || string.IsNullOrWhiteSpace(entry.TlsThumbprint))
             return new ResolvedTlsPin(null, null);
 
-        var pin = TlsPinInput.Require(entry.TlsThumbprint, $"Der TLS-Pin in {ConfigPath}");
+        var pin = TlsPinInput.Require(entry.TlsThumbprint, $"The TLS pin in {ConfigPath}");
         if (!ClientSessionSecurity.HasSameServerOrigin(entry.Server, server))
         {
             return new ResolvedTlsPin(
                 null,
-                $"Profil-Pin gilt für {entry.Server} und wurde für {server} ignoriert.");
+                $"Ignored the profile pin: it belongs to {entry.Server}, not {server}.");
         }
 
         return new ResolvedTlsPin(pin, null);

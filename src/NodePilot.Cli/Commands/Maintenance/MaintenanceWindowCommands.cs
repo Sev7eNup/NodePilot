@@ -37,7 +37,7 @@ public sealed class MaintenanceGetCommand : BaseCommand<MaintenanceIdSettings>
     {
         var api = ClientFactory.Create(session);
         var w = (await api.ListMaintenanceWindowsAsync(ct)).FirstOrDefault(x => x.Id == settings.Id);
-        if (w is null) { writer.Error($"Maintenance window {settings.Id} nicht gefunden."); return ExitCodes.Error; }
+        if (w is null) { writer.Error($"Maintenance window {settings.Id} not found."); return ExitCodes.Error; }
         writer.WriteData(new[] { w }, (console, list) => Renderers.MaintenanceWindows(console, list));
         return ExitCodes.Success;
     }
@@ -112,7 +112,7 @@ public sealed class MaintenanceCreateCommand : BaseCommand<MaintenanceWriteSetti
     public MaintenanceCreateCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
     protected override async Task<int> RunAsync(CommandContext _, MaintenanceWriteSettings s, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(s.Name)) { writer.Error("--name ist Pflicht."); return ExitCodes.Error; }
+        if (string.IsNullOrWhiteSpace(s.Name)) { writer.Error("--name is required."); return ExitCodes.Error; }
 
         var scope = s.Scope ?? "Global";
         var recurrence = s.Recurrence ?? "Weekly";
@@ -129,7 +129,7 @@ public sealed class MaintenanceCreateCommand : BaseCommand<MaintenanceWriteSetti
 
         var api = ClientFactory.Create(session);
         var created = await api.CreateMaintenanceWindowAsync(req, ct);
-        writer.Success($"Maintenance window angelegt: [bold]{Markup.Escape(created.Name)}[/] ({created.Mode}/{created.ScopeKind}).");
+        writer.Success($"Maintenance window created: [bold]{Markup.Escape(created.Name)}[/] ({created.Mode}/{created.ScopeKind}).");
         return ExitCodes.Success;
     }
 }
@@ -142,7 +142,7 @@ public sealed class MaintenanceUpdateCommand : BaseCommand<MaintenanceUpdateSett
     {
         var api = ClientFactory.Create(session);
         var current = (await api.ListMaintenanceWindowsAsync(ct)).FirstOrDefault(x => x.Id == s.Id);
-        if (current is null) { writer.Error($"Maintenance window {s.Id} nicht gefunden."); return ExitCodes.Error; }
+        if (current is null) { writer.Error($"Maintenance window {s.Id} not found."); return ExitCodes.Error; }
 
         var scope = s.Scope ?? current.ScopeKind;
         var recurrence = s.Recurrence ?? current.Recurrence;
@@ -175,7 +175,7 @@ public sealed class MaintenanceUpdateCommand : BaseCommand<MaintenanceUpdateSett
             targets);
 
         await api.UpdateMaintenanceWindowAsync(s.Id, req, ct);
-        writer.Success($"Maintenance window [bold]{Markup.Escape(req.Name)}[/] aktualisiert.");
+        writer.Success($"Maintenance window [bold]{Markup.Escape(req.Name)}[/] updated.");
         return ExitCodes.Success;
     }
 }
@@ -194,12 +194,12 @@ public sealed class MaintenanceDeleteCommand : BaseCommand<MaintenanceIdSettings
     {
         if (!Console.IsInputRedirected)
         {
-            var ok = await AnsiConsole.ConfirmAsync($"Maintenance window [red]{settings.Id}[/] wirklich löschen?", defaultValue: false);
-            if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
+            var ok = await AnsiConsole.ConfirmAsync($"Delete maintenance window [red]{settings.Id}[/]?", defaultValue: false);
+            if (!ok) { writer.Info("Aborted."); return ExitCodes.Success; }
         }
         var api = ClientFactory.Create(session);
         await api.DeleteMaintenanceWindowAsync(settings.Id, ct);
-        writer.Success("Maintenance window gelöscht.");
+        writer.Success("Maintenance window deleted.");
         return ExitCodes.Success;
     }
 }
@@ -238,7 +238,7 @@ internal static class MaintenanceCommandHelpers
             minuteOfDay = h * 60 + m;
             return true;
         }
-        error = $"Ungültige Zeit '{hhmm}' — erwartet HH:MM.";
+        error = $"Invalid time '{hhmm}'. Expected HH:MM.";
         return false;
     }
 

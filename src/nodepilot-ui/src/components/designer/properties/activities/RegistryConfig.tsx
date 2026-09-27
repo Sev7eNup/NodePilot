@@ -89,8 +89,8 @@ export function RegistryConfig({ config, onUpdate, upstreamVars = [] }: Readonly
             upstreamVars={upstreamVars}
             placeholder={
               valueType === 'DWord' || valueType === 'QWord' ? '42' :
-              valueType === 'Binary' ? 'DEADBEEF (Hex, optional 0x-Prefix oder Trenner , ; : -)' :
-              valueType === 'MultiString' ? 'Eintrag1\\nEintrag2\\nEintrag3 (eine Zeile pro Eintrag)' :
+              valueType === 'Binary' ? t('config.registry.binaryPlaceholder') :
+              valueType === 'MultiString' ? t('config.registry.multiStringPlaceholder') :
               ''
             }
           />

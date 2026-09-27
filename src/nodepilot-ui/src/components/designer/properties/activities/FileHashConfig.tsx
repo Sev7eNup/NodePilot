@@ -1,4 +1,4 @@
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { Field, VariableInsertField, type ConfigProps } from '../shared';
 
 const ALGORITHMS = ['SHA256', 'SHA1', 'MD5', 'SHA384', 'SHA512'] as const;
@@ -32,13 +32,16 @@ export function FileHashConfig({ config, onUpdate, upstreamVars = [] }: Readonly
         value={(config.expected as string) || ''}
         onChange={(v) => onUpdate({ expected: v })}
         upstreamVars={upstreamVars}
-        placeholder="Hex-Wert — bei Mismatch failed der Step"
+        placeholder={t('config.fileHash.expectedPlaceholder')}
         mono
       />
       <div className="text-[11px] text-on-surface-variant leading-snug">
-        Output: <code className="bg-surface-high px-1 rounded">{`{{step.param.hash}}`}</code>,
-        {' '}<code className="bg-surface-high px-1 rounded">{`{{step.param.match}}`}</code>
-        {' '}(<code className="bg-surface-high px-1 rounded">true</code>/<code className="bg-surface-high px-1 rounded">false</code>/leer wenn ohne Erwartung).
+        <Trans
+          t={t}
+          i18nKey="config.fileHash.outputHint"
+          values={{ hash: '{{step.param.hash}}', match: '{{step.param.match}}' }}
+          components={{ code: <code className="bg-surface-high px-1 rounded" /> }}
+        />
       </div>
     </>
   );

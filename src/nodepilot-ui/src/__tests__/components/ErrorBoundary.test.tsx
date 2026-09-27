@@ -34,7 +34,7 @@ describe('ErrorBoundary', () => {
       </ErrorBoundary>,
     );
     expect(screen.getByRole('alert')).toBeInTheDocument();
-    expect(screen.getByText('Unerwarteter Fehler')).toBeInTheDocument();
+    expect(screen.getByText('Unexpected error')).toBeInTheDocument();
     expect(screen.getByText('kaboom default')).toBeInTheDocument();
   });
 
@@ -46,7 +46,7 @@ describe('ErrorBoundary', () => {
     );
     expect(screen.getByText('Custom: kaboom custom')).toBeInTheDocument();
     // The default fallback must not render when a custom fallback is provided.
-    expect(screen.queryByText('Unerwarteter Fehler')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unexpected error')).not.toBeInTheDocument();
   });
 
   it('reset callback recovers when the underlying tree no longer throws', () => {

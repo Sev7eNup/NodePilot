@@ -1147,10 +1147,10 @@ describe('WorkflowEditorPage — Lock-State Banners', () => {
     await waitFor(() => expect(screen.getByText(/You are editing/i)).toBeInTheDocument());
   });
 
-  it('Unlocked + productive workflow shows yellow "running productive" banner', async () => {
+  it('Unlocked + productive workflow shows yellow "is live" banner', async () => {
     server.use(http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(MOCK_PRODUCTIVE)));
     renderPage('Admin');
-    await waitFor(() => expect(screen.getByText(/running productive/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/workflow is live/i)).toBeInTheDocument());
   });
 
   it('Unlocked + disabled workflow shows yellow "Workflow is disabled" banner', async () => {

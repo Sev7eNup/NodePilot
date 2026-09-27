@@ -86,7 +86,10 @@ export function RunControls({ variant, roleCanWrite, liveExecution, handleRunCli
               ? 'bg-error-container text-on-error-container hover:brightness-110'
               : 'bg-warning-container text-on-warning-container hover:brightness-110'
           }`}
-          title={t('lintTooltip', { errors: lintResult.errors.length, warnings: lintResult.warnings.length })}
+          title={t('lintTooltip', {
+            errors: t('lintErrors', { count: lintResult.errors.length }),
+            warnings: t('lintWarnings', { count: lintResult.warnings.length }),
+          })}
         >
           <WarningAltFilled size={15} />
           {lintCount}

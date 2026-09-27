@@ -15,16 +15,16 @@ public static class TlsNotices
         if (tls.SkipVerification)
         {
             writer.Warning(
-                "TLS-Prüfung deaktiviert (--insecure-tls) — die Verbindung ist nicht authentifiziert.");
+                "TLS verification is off (--insecure-tls). The connection is not authenticated.");
         }
     }
 
     public static void WriteAfter(OutputWriter writer, PresentedCertificateInfo? observation)
     {
         if (observation is not { AcceptedDespiteNameMismatch: true }) return;
-        var names = observation.DnsNames.Count == 0 ? "keine" : string.Join(", ", observation.DnsNames);
+        var names = observation.DnsNames.Count == 0 ? "none" : string.Join(", ", observation.DnsNames);
         writer.Warning(Markup.Escape(
-            $"Pin akzeptiert — die Zertifikatsnamen passen nicht zum Host '{observation.RequestHost}' "
-            + $"(DNS: {names}). Nur für Lab/Pilot."));
+            $"Pin accepted, but the certificate names do not match the host '{observation.RequestHost}' "
+            + $"(DNS: {names}). Use this for lab or pilot setups only."));
     }
 }

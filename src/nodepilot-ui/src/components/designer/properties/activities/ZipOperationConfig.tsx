@@ -31,7 +31,7 @@ export function ZipOperationConfig({ config, onUpdate, upstreamVars = [] }: Read
       </Field>
 
       <VariableInsertField
-        label={operation === 'compress' ? 'Source (Datei, Verzeichnis oder Glob)' : 'Source (ZIP-Archiv)'}
+        label={operation === 'compress' ? t('config.zipOperation.sourceCompress') : t('config.zipOperation.sourceExtract')}
         value={(config.source as string) || ''}
         onChange={(v) => onUpdate({ source: v })}
         upstreamVars={upstreamVars}

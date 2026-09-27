@@ -465,19 +465,41 @@
   "snippets": {
     "foreach": {
       "name": "ForEach over a list",
-      "description": "RunScript produces a comma-separated list (e.g. hostnames from a DB query) — a ForEach-child workflow runs against each item."
+      "description": "RunScript produces a comma-separated list (e.g. hostnames from a DB query) — a ForEach-child workflow runs against each item.",
+      "nodes": {
+        "produce": "Produce list",
+        "forEach": "For each item",
+        "done": "All items done"
+      }
     },
     "httpRetry": {
       "name": "HTTP call with retry + fallback",
-      "description": "REST API call with 3 retries built-in via the retry-policy — on total failure falls through to a log step that records the error."
+      "description": "REST API call with 3 retries built-in via the retry-policy — on total failure falls through to a log step that records the error.",
+      "nodes": {
+        "http": "HTTP call",
+        "alertOps": "Alert ops",
+        "processResponse": "Process response"
+      }
     },
     "parallelFanout": {
       "name": "Parallel fan-out + join",
-      "description": "Three parallel branches that all wait at a Junction before continuing — good starting point for „do three things at once, then summarize\"."
+      "description": "Three parallel branches that all wait at a Junction before continuing — good starting point for „do three things at once, then summarize\".",
+      "nodes": {
+        "start": "Fan-out start",
+        "branch": "Branch {{name}}",
+        "join": "Wait for all",
+        "after": "After join"
+      }
     },
     "tryCatch": {
       "name": "Try-Catch around script",
-      "description": "RunScript with explicit failure branch — the script runs, and on failure a log step captures the error before the flow continues."
+      "description": "RunScript with explicit failure branch — the script runs, and on failure a log step captures the error before the flow continues.",
+      "nodes": {
+        "try": "Try script",
+        "catch": "On failure — log",
+        "merge": "Merge paths",
+        "continue": "Continue"
+      }
     }
   },
   "toolbar": {

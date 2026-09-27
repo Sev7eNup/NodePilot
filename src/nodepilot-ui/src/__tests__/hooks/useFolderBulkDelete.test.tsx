@@ -13,7 +13,7 @@ vi.mock('../../stores/confirmStore', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../../stores/confirmStore')>();
   return { ...mod, confirmDialog: vi.fn().mockResolvedValue(true) };
 });
-import { confirmDialog } from '../../stores/confirmStore';
+import { confirmDialog, type ConfirmRequest } from '../../stores/confirmStore';
 import { useToastStore } from '../../stores/toastStore';
 
 interface TestFolder {
@@ -78,6 +78,28 @@ describe('useFolderBulkDelete', () => {
     expect(deleteRecursive).toHaveBeenCalledTimes(1);
     expect(deleteRecursive.mock.calls[0][0].id).toBe('a');
     expect(confirmDialog).toHaveBeenCalledTimes(1);
+  });
+
+  it('pluralizes the impact row and confirm button by count', async () => {
+    const deleteRecursive = vi.fn().mockResolvedValue({ deletedFolders: 1, deletedItems: 1 });
+    const { hook } = setup({ deleteRecursive });
+
+    await act(async () => { await hook.result.current.deleteMany([byId('b')]); });
+
+    const opts = vi.mocked(confirmDialog).mock.calls[0][0] as ConfirmRequest;
+    expect(opts.details).toEqual(['/b — 1 workflow']);
+    expect(opts.confirmLabel).toBe('Delete (1 workflow)');
+  });
+
+  it('uses the plural form for several workflows', async () => {
+    const deleteRecursive = vi.fn().mockResolvedValue({ deletedFolders: 2, deletedItems: 5 });
+    const { hook } = setup({ deleteRecursive });
+
+    await act(async () => { await hook.result.current.deleteMany([byId('a')]); });
+
+    const opts = vi.mocked(confirmDialog).mock.calls[0][0] as ConfirmRequest;
+    expect(opts.details).toEqual(['/a — 2 workflows']);
+    expect(opts.confirmLabel).toBe('Delete (5 workflows)');
   });
 
   it('a declined confirmation deletes nothing', async () => {

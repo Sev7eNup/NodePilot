@@ -111,7 +111,7 @@ describe('WorkflowsPage — basics', () => {
   it('shows loading state initially', () => {
     server.use(http.get(`${BASE}/api/workflows`, () => new Promise(() => {})));
     renderPage();
-    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/loading/i).length).toBeGreaterThan(0);
   });
 
   it('renders workflow names', async () => {
@@ -375,6 +375,32 @@ describe('WorkflowsPage — import result toast', () => {
 
     await waitFor(() => expect(received).not.toBeNull());
     expect(Array.from(received!)).toEqual(Array.from(utf16));
+  });
+
+  it('refreshes the folder tree after a JSON import', async () => {
+    seedImportResponse({ created: 1, workflows: [], errors: [] });
+    const { container, queryClient } = renderPage('Admin');
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    await importFile(container);
+
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['shared-folders'] }));
+  });
+
+  it('refreshes the folder tree after a SCOrch import', async () => {
+    server.use(
+      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.post(`${BASE}/api/workflows/import-scorch`, () =>
+        HttpResponse.json({ created: 1, workflows: [], variables: [], warnings: [], errors: [] })),
+    );
+    const { container, queryClient } = renderPage('Admin');
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
+    const input = container.querySelector(
+      'input[accept=".ois_export,.ore,application/xml,text/xml,.xml"]',
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['<x />'], 'a.ois_export', { type: 'application/xml' })] } });
+
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['shared-folders'] }));
   });
 });
 

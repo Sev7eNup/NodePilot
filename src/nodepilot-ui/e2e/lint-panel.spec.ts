@@ -69,7 +69,7 @@ test.describe('Lint Panel (Teil 70)', () => {
     await openEditor(page, true);
 
     // The lint pill carries title "{errors} errors, {warnings} warnings".
-    const pill = page.getByTitle(/\d+ errors,\s*\d+ warnings/i);
+    const pill = page.getByTitle(/\d+ errors?,\s*\d+ warnings?/i);
     await expect(pill).toBeVisible({ timeout: 10_000 });
 
     await pill.click();
@@ -94,7 +94,7 @@ test.describe('Lint Panel (Teil 70)', () => {
     const consoleErrors: string[] = [];
     page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
 
-    await page.getByTitle(/\d+ errors,\s*\d+ warnings/i).click();
+    await page.getByTitle(/\d+ errors?,\s*\d+ warnings?/i).click();
     const issueRow = page.getByRole('button').filter({ hasText: /Lonely Step|nicht mit dem Graph|not connected/i }).first();
     await expect(issueRow).toBeVisible({ timeout: 10_000 });
     await issueRow.click();
@@ -107,7 +107,7 @@ test.describe('Lint Panel (Teil 70)', () => {
     await openEditor(page, false);
 
     // EditorHeader omits the pill button entirely when lintCount is zero.
-    await expect(page.getByTitle(/\d+ errors,\s*\d+ warnings/i)).toHaveCount(0);
+    await expect(page.getByTitle(/\d+ errors?,\s*\d+ warnings?/i)).toHaveCount(0);
     // Without the pill there is no way to open the panel.
     await expect(page.getByRole('heading', { name: /workflow validation|workflow-validierung/i })).toHaveCount(0);
   });

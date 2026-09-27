@@ -68,7 +68,7 @@ public sealed class DbQueryCommand : BaseCommand<DbQuerySettings>
         var sql = ResolveSql(settings);
         if (string.IsNullOrWhiteSpace(sql))
         {
-            writer.Error("--sql <SQL> oder --file <PATH> ist Pflicht.");
+            writer.Error("--sql <SQL> or --file <PATH> is required.");
             return ExitCodes.Error;
         }
 

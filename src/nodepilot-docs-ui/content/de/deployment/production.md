@@ -475,7 +475,7 @@ np config set server https://nodepilot.contoso.local
 ```
 
 Bei einer Installation abseits von 443 kommt `:<HttpsPort>` dahinter. Auf `https://localhost` zu
-zeigen scheitert mit „Der Hostname steht nicht in den Zertifikatsnamen", weil dieser Name nicht im
+zeigen scheitert mit „The hostname is not among the certificate names", weil dieser Name nicht im
 Zertifikat steht.
 
 Schlägt eine der Prüfungen fehl, steht die Ursache im Anwendungslog unter `C:\ProgramData\NodePilot\logs\nodepilot-<Datum>.log`. Welche Datei bei welchem Störungsbild weiterhilft — inklusive des Setup-Transkripts unter `%TEMP%`, das ein Abbruch der Installation hinterlässt —, steht unter [Logs & Diagnose](logs).

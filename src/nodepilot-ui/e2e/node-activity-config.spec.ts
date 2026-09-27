@@ -376,7 +376,7 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     await openAndSelect(page, /start workflow|sub.?workflow/i);
 
     // Distinctive surfaces: the workflow reference field and the wait-for-completion checkbox.
-    const refInput = page.getByPlaceholder(/Rollback-Runbook/i);
+    const refInput = page.getByPlaceholder(/Rollback.Runbook/i);
     await expect(refInput).toBeVisible();
     await expect(refInput).toHaveValue('Child_WF');
     await expect(page.getByText(/auf abschluss warten|wait for completion/i)).toBeVisible();

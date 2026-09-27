@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import i18n from '../i18n';
 
 type FallbackRenderer = (error: Error, reset: () => void) => ReactNode;
 
@@ -45,9 +46,9 @@ export class ErrorBoundary extends Component<Props, State> {
         className="min-h-screen flex items-center justify-center bg-surface p-6"
       >
         <div className="max-w-lg w-full rounded-lg border border-error/30 bg-surface-container p-6 shadow-sm">
-          <h1 className="text-xl font-semibold text-error mb-2">Unerwarteter Fehler</h1>
+          <h1 className="text-xl font-semibold text-error mb-2">{i18n.t('common:errorBoundary.title')}</h1>
           <p className="text-sm text-on-surface-variant mb-4">
-            Die Oberfläche konnte nicht gerendert werden. Der Fehler wurde in der Browser-Konsole protokolliert.
+            {i18n.t('common:errorBoundary.message')}
           </p>
           <pre className="text-xs bg-surface-container-high text-on-surface p-3 rounded overflow-auto max-h-48 mb-4">
             {this.state.error.message}
@@ -58,14 +59,14 @@ export class ErrorBoundary extends Component<Props, State> {
               onClick={this.handleReset}
               className="px-3 py-1.5 text-sm rounded bg-primary text-on-primary hover:opacity-90"
             >
-              Erneut versuchen
+              {i18n.t('common:retry')}
             </button>
             <button
               type="button"
               onClick={this.handleReload}
               className="px-3 py-1.5 text-sm rounded border border-outline text-on-surface hover:bg-surface-container-high"
             >
-              Seite neu laden
+              {i18n.t('common:errorBoundary.reloadPage')}
             </button>
           </div>
         </div>

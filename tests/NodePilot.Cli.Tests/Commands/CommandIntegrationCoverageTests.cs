@@ -263,8 +263,30 @@ public class CommandIntegrationCoverageTests
             var result = h.Run("backup", "export", "--out", outFile,
                 "--sections", "workflows,credentials", "--passphrase-file", pwFile);
             result.ExitCode.Should().Be(ExitCodes.Success);
+            result.StdErr.Should().Contain("Backup written:");
             File.Exists(outFile).Should().BeTrue();
             File.ReadAllBytes(outFile).Should().Equal(bytes);
+        }
+        finally { Del(pwFile); Del(outFile); }
+    }
+
+    [Fact]
+    public void BackupExport_ServerReportsWarnings_PrintsWarningCount()
+    {
+        using var h = new CommandTestHarness();
+        h.Server.Given(Request.Create().WithPath("/api/backup/export").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithHeader("X-Backup-Warnings", "2")
+                .WithBody(new byte[] { 1, 2, 3 }));
+
+        var pwFile = WriteTemp("hunter2");
+        var outFile = Path.Combine(Path.GetTempPath(), "np-bk-" + Guid.NewGuid().ToString("N") + ".npbackup");
+        try
+        {
+            var result = h.Run("backup", "export", "--out", outFile,
+                "--sections", "workflows", "--passphrase-file", pwFile);
+            result.ExitCode.Should().Be(ExitCodes.Success);
+            result.StdErr.Should().Contain("2 warning(s) during export. See the server log");
         }
         finally { Del(pwFile); Del(outFile); }
     }
@@ -275,7 +297,7 @@ public class CommandIntegrationCoverageTests
         using var h = new CommandTestHarness();
         var result = h.Run("backup", "preview", Path.Combine(Path.GetTempPath(), "does-not-exist.npbackup"));
         result.ExitCode.Should().Be(ExitCodes.Error);
-        result.StdErr.Should().Contain("nicht gefunden");
+        result.StdErr.Should().Contain("not found");
     }
 
     [Fact]
@@ -308,7 +330,7 @@ public class CommandIntegrationCoverageTests
         using var h = new CommandTestHarness();
         var result = h.Run("backup", "restore", Path.Combine(Path.GetTempPath(), "nope.npbackup"), "--yes");
         result.ExitCode.Should().Be(ExitCodes.Error);
-        result.StdErr.Should().Contain("nicht gefunden");
+        result.StdErr.Should().Contain("not found");
     }
 
     [Fact]

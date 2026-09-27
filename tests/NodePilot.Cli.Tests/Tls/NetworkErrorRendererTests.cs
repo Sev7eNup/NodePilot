@@ -37,7 +37,7 @@ public sealed class NetworkErrorRendererTests
 
         var text = NetworkErrorRenderer.Render(failure, "https://np.lab.local:8443");
 
-        text.Should().Contain("nicht vertrauenswürdig");
+        text.Should().Contain("does not trust the server certificate");
         text.Should().Contain("UntrustedRoot");
         text.Should().Contain("CN=np.lab.local");
         text.Should().Contain("np.lab.local, localhost");
@@ -59,7 +59,7 @@ public sealed class NetworkErrorRendererTests
 
         var text = NetworkErrorRenderer.Render(failure, "https://np.lab.local:8443");
 
-        text.Should().Contain("Pin passt nicht");
+        text.Should().Contain("pin does not match");
         text.Should().NotContain("--insecure-tls");
         text.Should().NotContain("np auth login --tls-thumbprint");
     }
@@ -86,7 +86,7 @@ public sealed class NetworkErrorRendererTests
 
         var text = NetworkErrorRenderer.Render(failure, "https://np.lab.local:8443");
 
-        text.Should().Contain("Protokoll oder Cipher");
+        text.Should().Contain("protocol or cipher");
         text.Should().NotContain("SHA-256");
     }
 
@@ -97,9 +97,9 @@ public sealed class NetworkErrorRendererTests
 
         var text = NetworkErrorRenderer.Render(failure, "https://np.lab.local:8443");
 
-        text.Should().Contain("Verbindung zu https://np.lab.local:8443 fehlgeschlagen");
+        text.Should().Contain("Connection to https://np.lab.local:8443 failed");
         text.Should().Contain("No such host is known.");
-        text.Should().NotContain("Abhilfe");
+        text.Should().NotContain("Fix:");
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public sealed class NetworkErrorRendererTests
         var text = NetworkErrorRenderer.Render(failure, "https://localhost:8443");
 
         text.Should().NotContain("np config set server");
-        text.Should().Contain("keinen verwendbaren Hostnamen");
+        text.Should().Contain("names no usable hostname");
     }
 
     [Fact]
@@ -199,9 +199,9 @@ public sealed class NetworkErrorRendererTests
 
         var text = NetworkErrorRenderer.Render(failure, "https://localhost:8443");
 
-        text.Should().Contain("nicht vertrauenswürdig");
+        text.Should().Contain("does not trust the server certificate");
         text.Should().Contain("UntrustedRoot");
-        text.Should().Contain("Zertifikatsnamen");
+        text.Should().Contain("not among the certificate names");
         text.Should().Contain("np config set server https://np.lab.local:8443");
         text.Should().Contain(@"Cert:\LocalMachine\Root");
     }
@@ -218,7 +218,7 @@ public sealed class NetworkErrorRendererTests
 
         var text = NetworkErrorRenderer.Render(failure, "https://np.lab.local:8443");
 
-        text.Should().Contain("erneuern");
+        text.Should().Contain("Renew the certificate");
         text.Should().NotContain(@"Cert:\LocalMachine\Root");
     }
 

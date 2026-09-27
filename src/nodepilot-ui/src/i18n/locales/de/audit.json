@@ -1,6 +1,6 @@
 {
   "title": "Audit-Log",
-  "subtitle": "(Admin-only, read-only, compliance-grade)",
+  "subtitle": "(nur für Admins, schreibgeschützt, revisionssicher)",
   "fields": {
     "action": "Aktion",
     "resourceType": "Ressourcen-Typ",
