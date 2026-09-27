@@ -36,6 +36,8 @@ npm run build:site     # Website-Build nach dist-site/
 npm run build:demo     # Browser-Demo im Nachbarpaket bauen (src/nodepilot-ui -> dist-demo/)
 npm run assemble:site  # _site/ aus dist-site/, dist/, dist-demo/ und pages-media/ zusammensetzen (Builds vorher)
 npm run preview:site   # build + build:site + build:demo + assemble:site, danach _site/ auf http://localhost:5175
+npm run build:pages-redirects  # Weiterleitungsseiten für GitHub Pages nach _pages-redirects/
+npm run test:site:e2e  # Playwright-Suite e2e-site/ gegen frisch gebaute Website und Doku
 ```
 
 `preview:site` ist die einzige vollständige lokale Vorschau: `docs/`, `demo/` und `media/` gibt es
@@ -146,6 +148,21 @@ Deep Links in die Doku haben die Form `https://www.nodepilot.run/docs/<sprache>/
 - **Umstellung veröffentlichen:** Erst den vollständigen Webspace-Build hochladen und Demo-Deep-Links
   samt Reload prüfen, danach den Pages-Workflow mit dem Weiterleitungsartefakt veröffentlichen.
   GitHub-Pages-Einstellung und DNS bleiben unverändert.
+
+## E2E-Tests der Website
+
+`e2e-site/` prüft Website und Doku im Browser, jeweils gegen einen frischen Build. Aufruf
+`npm run test:site:e2e`, Config `playwright.site.config.ts`. Sie baut Weiterleitungen, Website und
+Doku und serviert Website (Port 5176) und Doku (Port 5187) getrennt per `vite preview`.
+
+- `docs-routing.spec.ts`: Doku-Deep-Links als eigene Seiten mit erreichbaren Assets, eigene
+  Beschreibung und Übersetzung je Seite, Adresse und Titel beim Navigieren, alte Hash-Adressen.
+- `experience.spec.ts`: geführter Einstieg mit beiden Aufgaben in der aktuellen Sprache und bei
+  schmalen Breiten, Links bleiben nach Seitenwechseln korrekt.
+- `pages-redirects.spec.ts`: alte GitHub-Pages-Links landen auf der passenden kanonischen Adresse,
+  Doku-Seiten auch ohne JavaScript per Meta-Refresh.
+- `seo.spec.ts`: statischer Seiteninhalt, Canonical und Sprachverweise ohne JavaScript,
+  Artikel-Navigation, responsive Bilder und die Schulungsvideo-Dialoge.
 
 ## Geführter Produkteinstieg
 

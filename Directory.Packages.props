@@ -97,7 +97,9 @@
   </ItemGroup>
 
   <!--
-    OpenTelemetry — the whole stack tracks one release, currently 1.18.0. The earlier jump to
+    OpenTelemetry — the whole stack tracks one release, currently 1.19. Core packages and the
+    contrib instrumentation packages ship patch versions independently, so the release is the
+    major.minor pair. OpenTelemetryVersionParityTests enforces this. The earlier jump to
     1.15.3 was security-motivated (GHSA-8785-wc3w-h8q6 / GHSA-g94r-2vxg-569j on Api,
     GHSA-mr8r-92fq-pj8p on OtlpExporter, plus a newer System.Security.Cryptography.Xml that
     cleared GHSA-37gx-xxp4-5rgx / GHSA-w3x6-4m5h-cxqf); 1.17.0 keeps all of those closed and
@@ -111,7 +113,8 @@
 
     Dependabot's minor/patch group moves only the stable packages. Move the three prereleases
     with them: the Prometheus exporter binds to internals of its own core release and fails every
-    scrape against another one (OpenTelemetryExtensionsTests.PrometheusScrape_* catches it).
+    scrape against another one, so its version must match OpenTelemetry exactly (up to the
+    prerelease suffix).
   -->
   <ItemGroup>
     <PackageVersion Include="OpenTelemetry" Version="1.19.1" />
@@ -120,9 +123,9 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.19.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.19.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.19.0" />
-    <PackageVersion Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.18.0-beta.1" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Process" Version="1.18.0-rc.1" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.18.0-beta.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.19.1-beta.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Process" Version="1.19.0-rc.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.19.1-beta.1" />
   </ItemGroup>
 
   <!-- OpenAPI / API tooling -->
