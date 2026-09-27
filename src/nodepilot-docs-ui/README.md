@@ -148,8 +148,9 @@ Deep Links in die Doku haben die Form `https://www.nodepilot.run/docs/<sprache>/
 ## Geführter Produkteinstieg
 
 Die Website-Route `/walkthrough/` bietet zehn Aufgaben direkt in der Browserdemo an:
-die beiden bisherigen Einstiege sowie Workflow-Bau, Entscheidung, parallele Arbeit,
-Dienst-Recovery, Live Ops, Versionsvergleich, Maschinenprüfung und Wartungsfenster.
+Workflow-Bau, Fehleranalyse und Dateibereitstellung stehen am Anfang. Danach folgen
+Entscheidung, parallele Arbeit, Dienst-Recovery, Live Ops, Versionsvergleich,
+Maschinenprüfung und Wartungsfenster.
 Jede Karte öffnet `demo/?tour=<id>&lang=de` oder `lang=en`. Die Übersichtsgrafik bleibt
 auf der Startseite.
 
