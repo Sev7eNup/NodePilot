@@ -18,7 +18,7 @@ Zwei Ausnahmen sind Relaxations und defaulten auf `false`: `PrometheusScrapeAllo
 | `Webhook:RequireSecret` | `true` | `webhookTrigger` erzwingt ein konfiguriertes Secret — verifiziert je nach `signatureMode` als `X-Webhook-Secret`-Header oder HMAC-Signatur (Dev: `false`) |
 | `OpenTelemetry:Exporters:PrometheusScrapeAllowAnonymous` | `false` | `/metrics` anonym erreichbar |
 
-> **Missing key = hardened.** Ein fehlender Hardening-Key liest als `true` (bzw. bei `PrometheusScrapeAllowAnonymous` als `false`). In Produktion also lieber explizit setzen, um kein Missverständnis zu riskieren.
+> **Missing key = hardened.** Ein fehlender Hardening-Key liest als `true`. Ausnahme sind die beiden Lockerungen `PrometheusScrapeAllowAnonymous` und `Remote:RequireWinRmSsl`: dort liest ein fehlender Key als `false`. In Produktion also lieber explizit setzen, um kein Missverständnis zu riskieren.
 
 ## DbAdmin Query Console
 

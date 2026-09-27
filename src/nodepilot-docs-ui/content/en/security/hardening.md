@@ -18,7 +18,7 @@ Two exceptions are relaxations and default to `false`: `PrometheusScrapeAllowAno
 | `Webhook:RequireSecret` | `true` | `webhookTrigger` requires a configured secret — verified as an `X-Webhook-Secret` header or an HMAC signature depending on `signatureMode` (development: `false`) |
 | `OpenTelemetry:Exporters:PrometheusScrapeAllowAnonymous` | `false` | Makes `/metrics` reachable anonymously |
 
-> **Missing key = hardened.** A missing hardening key reads as `true` (or, for `PrometheusScrapeAllowAnonymous`, as `false`). In production it is better to set them explicitly, to avoid any misunderstanding.
+> **Missing key = hardened.** A missing hardening key reads as `true`. The two relaxations `PrometheusScrapeAllowAnonymous` and `Remote:RequireWinRmSsl` are the exceptions: a missing key reads as `false`. In production it is better to set them explicitly, to avoid any misunderstanding.
 
 ## The database-admin query console
 
