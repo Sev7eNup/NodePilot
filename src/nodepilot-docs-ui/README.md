@@ -52,7 +52,9 @@ Der Pages-Workflow baut weder Website noch Demo und benötigt deren Assets nicht
 | `media/` | `pages-media/` | https://www.nodepilot.run/media/nodepilot-product-tour.mp4 |
 | `og-image.png` | `public/og-image.png` | Vorschaubild der Website |
 
-**Schulungsvideos** (`/tutorials/`, „NodePilot in 2 Minuten"): `npm run site:videos` liest die
+**Media-Bereich** (`/tutorials/`, „NodePilot in 2 Minuten"): Die Adresse bleibt für
+bestehende Such- und Direktlinks erhalten; `/media/` liefert die Videodateien.
+`npm run site:videos` liest die
 gerenderten Folgen aus `out/nodepilot-training/` und erledigt drei Dinge:
 
 - Es kopiert die MP4s nach `pages-media/training/`. Der Ordner ist gitignored.

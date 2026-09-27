@@ -6,6 +6,26 @@ const siteRoutes = ['', 'product/', 'walkthrough/', 'tutorials/', 'blog/', ...AR
 
 test.describe('static SEO content', () => {
   test.use({ javaScriptEnabled: false })
+  test('home title and Media page are crawlable in both languages', async ({ page, request, baseURL }) => {
+    for (const language of ['de', 'en'] as const) {
+      const prefix = language === 'en' ? '/en' : ''
+      await page.goto(`${prefix}/`)
+      await expect(page).toHaveTitle(/^NodePilot – .*Windows.*PowerShell/)
+      await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', await page.title())
+
+      await page.goto(`${prefix}/tutorials/`)
+      await expect(page.locator('[data-nav="videos"]')).toHaveText('Media')
+      await expect(page.locator('#videos-page h1')).toContainText('Media')
+      await expect(page).toHaveTitle(/^Media: .*?(?:Videos|videos)/)
+      await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `${baseURL}${prefix}/tutorials/`)
+      await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', /(?:Video-Tutorials|video tutorials)/)
+      await page.setViewportSize({ width: 390, height: 844 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    }
+    const sitemap = await (await request.get('/sitemap.xml')).text()
+    expect(sitemap).toContain(`<loc>${baseURL}/tutorials/</loc>`)
+    expect(sitemap).toContain(`<loc>${baseURL}/en/tutorials/</loc>`)
+  })
   for (const language of ['de', 'en']) {
     test(`${language}: every page contains its content, self canonical and reciprocal languages without JS`, async ({ page, request, baseURL }) => {
       for (const route of siteRoutes) {
