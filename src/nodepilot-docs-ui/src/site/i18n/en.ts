@@ -351,7 +351,7 @@ export const en = {
   },
   blog: {
     kicker: 'NODEPILOT / BLOG',
-    title: 'Notes from<br>development.',
+    title: 'Notes from development.',
     intro: 'Why certain decisions were made, how things work and what helps when automating.',
     filterLabel: 'Filter posts by category',
     filterAll: 'All posts',

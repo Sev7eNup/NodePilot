@@ -310,6 +310,7 @@ h2{font-size:25px;line-height:1.28;letter-spacing:-.55px}
 /* Product pages retain the same native panels and table hierarchy. */
 .page-intro{padding-top:62px;padding-bottom:43px}
 .page-intro h1{margin-bottom:24px;max-width:800px}
+.videos-page>.page-intro h1,.blog-page>.page-intro h1{max-width:none}
 .page-intro>.section-kicker{margin-bottom:24px}
 .page-intro>p{max-width:575px;font-size:18px;line-height:1.8;color:var(--muted)}
 /* The feature list is the point of this page, so its intro stays compact. */
