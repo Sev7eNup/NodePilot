@@ -16,7 +16,7 @@ import sharp from 'sharp'
 
 const LANGS = ['de', 'en']
 const at = (path) => fileURLToPath(new URL(path, import.meta.url))
-const SOURCE_ROOT = process.env.NP_TRAINING_ROOT ? `${process.env.NP_TRAINING_ROOT.replace(/[\/]+$/, '')}/` : at('../../../')
+const SOURCE_ROOT = process.env.NP_TRAINING_ROOT ? `${process.env.NP_TRAINING_ROOT.replace(/[\\/]+$/, '')}/` : at('../../../')
 const EPISODES = `${SOURCE_ROOT}scripts/marketing-film/training/episodes/`
 const CAPTURES = `${SOURCE_ROOT}scripts/marketing-film/training/captures/`
 const RENDERS = `${SOURCE_ROOT}out/nodepilot-training/`
