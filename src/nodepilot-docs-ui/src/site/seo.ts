@@ -22,7 +22,7 @@ export function siteMeta(route: SiteRoute, lang: Lang) {
     const solution = solutions[lang][route.slug]
     return { title: `${solution.title} | NodePilot`, description: solution.summary }
   }
-  return { title: `${copy.titles[route.page]} | NodePilot`, description: copy.meta.descriptions[route.page] }
+  return { title: route.page === 'home' ? `NodePilot – ${copy.titles.home}` : `${copy.titles[route.page]} | NodePilot`, description: copy.meta.descriptions[route.page] }
 }
 
 /** Same content and links during the build and in the browser. No crawler-only copy. */

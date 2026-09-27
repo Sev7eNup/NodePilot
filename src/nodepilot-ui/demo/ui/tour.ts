@@ -4,6 +4,8 @@ import { demoLanguage } from './strings';
 import './tour.css';
 import { MOBILE_BREAKPOINT } from '../../src/hooks/useMediaQuery';
 import type { createBrowserRouter } from 'react-router';
+import { mountAdditionalTours, isNewMissionId } from './additionalTours';
+import type { NewMissionId } from '../seed/missionFixtures';
 
 type Stage = 'start' | 'running' | 'success' | 'result' | 'case' | 'diagnose' | 'done' | 'failed';
 const COPY = {
@@ -47,7 +49,8 @@ const COPY = {
   },
 };
 
-export function mountTour(router: ReturnType<typeof createBrowserRouter>): { start(mode?: 'file' | 'diagnose'): void; dispose(): void } {
+export function mountTour(router: ReturnType<typeof createBrowserRouter>): { start(mode?: 'file' | 'diagnose' | NewMissionId): void; dispose(): void } {
+  const additional = mountAdditionalTours(router);
   const panel = document.createElement('aside');
   panel.className = 'np-tour'; panel.hidden = true;
   panel.setAttribute('aria-label', COPY[demoLanguage()].title);
@@ -168,5 +171,5 @@ export function mountTour(router: ReturnType<typeof createBrowserRouter>): { sta
   const unsubscribeRouter = router.subscribe(render);
   const requested = new URLSearchParams(location.search).get('tour');
   if (requested === 'file' || requested === 'diagnose') start(requested);
-  return { start, dispose() { unsubscribeRouter(); end(); unsubscribe(); resize.disconnect(); panel.remove(); } };
+  return { start(mode = 'file') { if (isNewMissionId(mode)) additional.start(mode); else start(mode); }, dispose() { unsubscribeRouter(); end(); unsubscribe(); resize.disconnect(); panel.remove(); additional.dispose(); } };
 }

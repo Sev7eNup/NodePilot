@@ -54,7 +54,9 @@ Der Pages-Workflow baut weder Website noch Demo und benötigt deren Assets nicht
 | `media/` | `pages-media/` | https://www.nodepilot.run/media/nodepilot-product-tour.mp4 |
 | `og-image.png` | `public/og-image.png` | Vorschaubild der Website |
 
-**Schulungsvideos** (`/tutorials/`, „NodePilot in 2 Minuten"): `npm run site:videos` liest die
+**Media-Bereich** (`/tutorials/`, „NodePilot in 2 Minuten"): Die Adresse bleibt für
+bestehende Such- und Direktlinks erhalten; `/media/` liefert die Videodateien.
+`npm run site:videos` liest die
 gerenderten Folgen aus `out/nodepilot-training/` und erledigt drei Dinge:
 
 - Es kopiert die MP4s nach `pages-media/training/`. Der Ordner ist gitignored.
@@ -164,15 +166,18 @@ Doku und serviert Website (Port 5176) und Doku (Port 5187) getrennt per `vite pr
 
 ## Geführter Produkteinstieg
 
-Die Website-Route `/walkthrough/` bietet zwei Aufgaben direkt in der Browserdemo an:
-eine Konfigurationsdatei bereitstellen und einen fehlgeschlagenen Kopiervorgang untersuchen.
-Die Links `demo/?tour=file&lang=de` und `demo/?tour=diagnose&lang=de` öffnen die Führung;
-`lang=en` verwendet Englisch. Die Übersichtsgrafik bleibt auf der Startseite.
+Die Website-Route `/walkthrough/` bietet zehn Aufgaben direkt in der Browserdemo an:
+Workflow-Bau, Fehleranalyse und Dateibereitstellung stehen am Anfang. Danach folgen
+Entscheidung, parallele Arbeit, Dienst-Recovery, Live Ops, Versionsvergleich,
+Maschinenprüfung und Wartungsfenster.
+Jede Karte öffnet `demo/?tour=<id>&lang=de` oder `lang=en`. Die Übersichtsgrafik bleibt
+auf der Startseite.
 
 Die Führung in `../nodepilot-ui/demo/ui/tour.ts` begleitet den echten Startdialog und die
-Ausführungshistorie. Der Beispiel-Workflow kommt aus `scripts/example-guided-file-workflow.json`;
-Registry, Dienst und Dateisystem sind simuliert. Eingaben werden im Lauf gespeichert und bestimmen
-die erzeugten Inhalte und Ausgaben. `Protected` simuliert fehlende Schreibrechte beim Kopieren.
+Ausführungshistorie. Die acht weiteren Aufgaben liegen in `../nodepilot-ui/demo/ui/additionalTours.ts`.
+Alle Änderungen und Ausführungen bleiben im Browser-Tab; ein Reload stellt die Seed-Daten wieder her.
+Der Datei-Workflow kommt aus `scripts/example-guided-file-workflow.json`; Registry, Dienst und
+Dateisystem sind simuliert. `Protected` simuliert fehlende Schreibrechte beim Kopieren.
 
 `npm run test:site:e2e` prüft Einstieg, Sprachwechsel und drei Bildschirmgrößen.
 Die eigentliche Führung wird mit `npm --prefix ../nodepilot-ui run test:e2e:demo` geprüft.
