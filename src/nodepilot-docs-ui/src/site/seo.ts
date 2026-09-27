@@ -13,8 +13,9 @@ export function siteHref(base: string, route: SiteRoute, lang: Lang): string {
 export function siteMeta(route: SiteRoute, lang: Lang) {
   const copy = messages[lang]
   if (route.page === 'article') {
+    // The search title carries the words people search for; the page keeps its editorial h1.
     const article = copy.articles[route.slug]
-    return { title: `${article.title} | NodePilot Blog`, description: article.summary }
+    return { title: `${article.seoTitle} | NodePilot Blog`, description: article.summary }
   }
   if (route.page === 'solution') {
     const solution = solutions[lang][route.slug]
@@ -23,7 +24,7 @@ export function siteMeta(route: SiteRoute, lang: Lang) {
   return { title: `${copy.titles[route.page]} | NodePilot`, description: copy.meta.descriptions[route.page] }
 }
 
-/** Same content and links during the build and client-side navigation. No crawler-only copy. */
+/** Same content and links during the build and in the browser. No crawler-only copy. */
 export function renderSiteContent(doc: Document, route: SiteRoute, lang: Lang, base: string, articleBody?: string): void {
   const copy = messages[lang]
   const available = visibleArticles(isBlogPreview(doc))
@@ -45,8 +46,9 @@ export function renderSiteContent(doc: Document, route: SiteRoute, lang: Lang, b
   fill('header-current', copy.pages[route.page])
   const productImage = doc.getElementById('product-image')
   if (productImage && !productImage.hasAttribute('data-request')) productImage.setAttribute('alt', copy.screens.designer.alt)
+  const navKey = route.page === 'article' ? 'blog' : route.page === 'solution' ? `solution:${route.slug}` : route.page
   for (const link of doc.querySelectorAll('[data-nav]')) {
-    const active = link.getAttribute('data-nav') === (route.page === 'article' ? 'blog' : route.page)
+    const active = link.getAttribute('data-nav') === navKey
     link.classList.toggle('is-active', active)
     if (active) link.setAttribute('aria-current', 'page')
     else link.removeAttribute('aria-current')
@@ -201,15 +203,21 @@ export function renderSiteHead(doc: Document, route: SiteRoute, lang: Lang, orig
   ensure('meta[property="og:url"]', 'meta', { property: 'og:url', content: url })
   if (route.page !== 'impressum' && route.page !== 'datenschutz') {
     for (const language of ['de', 'en', 'x-default'] as const) {
-      ensure(`link[hreflang="${language}"]`, 'link', { rel: 'alternate', hreflang: language, href: absolute(route, language === 'en' ? 'en' : 'de') })
+      // x-default is English, as in the docs: visitors in any other language read English more often than German.
+      ensure(`link[hreflang="${language}"]`, 'link', { rel: 'alternate', hreflang: language, href: absolute(route, language === 'de' ? 'de' : 'en') })
     }
   }
   const entry = route.page === 'article' ? articleBySlug[route.slug] : undefined
   if (entry?.status === 'draft') ensure('meta[name="robots"]', 'meta', { name: 'robots', content: 'noindex, follow' })
   const home = absolute({ page: 'home' })
-  const graph: Record<string, unknown>[] = [{ '@type': 'WebSite', '@id': `${origin}/#website`, url: `${origin}/`, name: 'NodePilot', inLanguage: ['de', 'en'] }]
-  graph.push({ '@type': route.page === 'article' ? 'BlogPosting' : 'WebPage', '@id': `${url}#page`, url, headline: meta.title.replace(/ \| NodePilot(?: Blog)?$/, ''), description: meta.description, inLanguage: lang, isPartOf: { '@id': `${origin}/#website` }, ...(route.page === 'article' ? { author: blogAuthor, ...(entry?.publishedAt ? { datePublished: entry.publishedAt } : {}), ...(entry?.modifiedAt ? { dateModified: entry.modifiedAt } : {}), mainEntityOfPage: url, image: new URL(`${base}og-image.png`, origin).href } : {}) })
-  if (route.page === 'home') graph.push({ '@type': 'SoftwareApplication', name: 'NodePilot', url, applicationCategory: 'DeveloperApplication', operatingSystem: 'Windows', license: 'https://www.apache.org/licenses/LICENSE-2.0', downloadUrl: 'https://github.com/Sev7eNup/NodePilot/releases', sameAs: 'https://github.com/Sev7eNup/NodePilot', offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' } })
+  // The project as publisher, with its logo, so search engines can tell it from other products of the same name.
+  const organization = { '@id': `${origin}/#organization` }
+  const graph: Record<string, unknown>[] = [
+    { '@type': 'Organization', ...organization, name: 'NodePilot', url: `${origin}/`, logo: new URL(`${base}logo.png`, origin).href, sameAs: [blogAuthor.url] },
+    { '@type': 'WebSite', '@id': `${origin}/#website`, url: `${origin}/`, name: 'NodePilot', inLanguage: ['de', 'en'], publisher: organization },
+  ]
+  graph.push({ '@type': route.page === 'article' ? 'BlogPosting' : 'WebPage', '@id': `${url}#page`, url, headline: meta.title.replace(/ \| NodePilot(?: Blog)?$/, ''), description: meta.description, inLanguage: lang, isPartOf: { '@id': `${origin}/#website` }, ...(route.page === 'article' ? { author: { ...blogAuthor, ...organization }, publisher: organization, ...(entry?.publishedAt ? { datePublished: entry.publishedAt } : {}), ...(entry?.modifiedAt ? { dateModified: entry.modifiedAt } : {}), mainEntityOfPage: url, image: new URL(`${base}og-image.png`, origin).href } : {}) })
+  if (route.page === 'home') graph.push({ '@type': 'SoftwareApplication', name: 'NodePilot', url, applicationCategory: 'DeveloperApplication', operatingSystem: 'Windows', license: 'https://www.apache.org/licenses/LICENSE-2.0', downloadUrl: 'https://github.com/Sev7eNup/NodePilot/releases', sameAs: 'https://github.com/Sev7eNup/NodePilot', publisher: organization, offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' } })
   if (route.page !== 'home') {
     const crumbs = [{ name: 'NodePilot', item: home }]
     if (route.page === 'article') crumbs.push({ name: 'Blog', item: absolute({ page: 'blog' }) })

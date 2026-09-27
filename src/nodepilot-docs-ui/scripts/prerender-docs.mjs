@@ -123,7 +123,7 @@ export function prerenderDocs(outDir, origin) {
       const schema = JSON.stringify({ '@context': 'https://schema.org', '@type': 'TechArticle', headline: navTitle, description: summarize(markdown), inLanguage: page.lang, url, mainEntityOfPage: url }).replace(/</g, '\\u003c')
       html = html.replace('</head>', `<script type="application/ld+json" data-docs-schema>${schema}</script></head>`)
     } else {
-      html = html.replace('</head>', '<meta name="robots" content="noindex, follow"></head>')
+      html = setMeta(html, 'robots', 'noindex, follow')
       html = html.replace('<div id="root"></div>', `<div id="root"><a href="${prefix}${page.lang}/getting-started/introduction/">NodePilot ${page.lang === 'de' ? 'Dokumentation' : 'Documentation'}</a></div>`)
     }
 
@@ -136,14 +136,14 @@ export function prerenderDocs(outDir, origin) {
     join(root, 'sitemap.xml'),
     sitemapXml(
       origin,
-      pages.filter((page) => page.listed).map((page) => address(page.lang, page.path)),
+      pages.filter((page) => page.listed).map((page) => ({ path: address(page.lang, page.path) })),
     ),
   )
   // The documentation entry is a language chooser without JavaScript, and the app redirects
   // it when enhanced. Do not offer it as a duplicate of the introduction chapter.
   let entry = applyMeta(shell, { title: 'NodePilot Documentation', description: 'NodePilot documentation in English and German.', url: '' })
   entry = setAlternates(entry, {})
-  entry = entry.replace('</head>', '<meta name="robots" content="noindex, follow"></head>')
+  entry = setMeta(entry, 'robots', 'noindex, follow')
   entry = entry.replace('<div id="root"></div>', '<div id="root"><main><h1>NodePilot Documentation</h1><a href="en/getting-started/introduction/" lang="en">English</a> · <a href="de/getting-started/introduction/" lang="de">Deutsch</a></main></div>')
   writeFileSync(join(root, 'index.html'), entry)
   return pages.length

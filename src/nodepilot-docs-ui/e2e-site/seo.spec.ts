@@ -12,8 +12,10 @@ test.describe('static SEO content', () => {
         const response = await page.goto(path)
         expect(response?.status(), path).toBe(200)
         await expect(page.locator('html')).toHaveAttribute('lang', language)
-        await expect(page.locator('h1:visible')).toHaveCount(1)
-        await expect(page.locator('h1:visible')).not.toBeEmpty()
+        // Not just one visible h1: the file carries no other page's section at all.
+        await expect(page.locator('h1')).toHaveCount(1)
+        await expect(page.locator('h1')).not.toBeEmpty()
+        await expect(page.locator('main > .page[id]')).toHaveCount(1)
         await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `${baseURL}${path}`)
         await expect(page.locator('link[hreflang="en"]')).toHaveAttribute('href', `${baseURL}/en/${route}`)
         await expect(page.locator('link[hreflang="de"]')).toHaveAttribute('href', `${baseURL}/${route}`)
@@ -64,7 +66,7 @@ test('language URLs, navigation metadata, history and article links stay consist
   await page.goForward()
   await expect(page.locator('#solution-page')).toBeVisible()
   await page.locator('[data-nav="blog"]').click()
-  await expect(page.locator('.blog-index-row:visible')).toHaveCount(15)
+  await expect(page.locator('.blog-index-row:visible')).toHaveCount(16)
   await page.locator('#blog-search').fill('first workflow')
   await expect(page.locator('.blog-index-row:visible')).toHaveCount(1)
   expect(errors).toEqual([])
@@ -100,7 +102,7 @@ test('article navigation loads only the selected body and keeps body text out of
   expect(docsBundle).not.toContain('Das folgende Migrationsbeispiel ist konstruiert.')
 })
 
-test('mobile product screenshot selects a small responsive image and preserves tab selection', async ({ page }) => {
+test('mobile product screenshot selects a small responsive image and switches tabs', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 })
   await page.goto('/product/')
   const image = page.locator('#product-image')
@@ -108,9 +110,6 @@ test('mobile product screenshot selects a small responsive image and preserves t
   await expect(image).toHaveAttribute('srcset', /480w, .*960w/)
   await expect.poll(() => image.evaluate(img => (img as HTMLImageElement).currentSrc)).toMatch(/designer-480\.webp$/)
   await page.locator('[data-product-tab="logs"]').click()
-  await expect(image).toHaveAttribute('data-media', 'logs')
-  await page.setViewportSize({ width: 1440, height: 1000 })
-  await page.locator('.header-lang [data-lang="en"]').click()
   await expect(image).toHaveAttribute('data-media', 'logs')
   await expect(image).toHaveAttribute('srcset', /logs-480\.webp/)
 })

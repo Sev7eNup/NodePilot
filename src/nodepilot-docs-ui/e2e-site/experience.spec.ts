@@ -12,7 +12,7 @@ test('offers both guided tasks with the current language and no second workflow 
   await expect(page.locator('[data-tour="file"]')).toHaveAttribute('href', '/demo/?tour=file&lang=en')
   await expect(page.locator('[data-tour="diagnose"]')).toHaveAttribute('href', '/demo/?tour=diagnose&lang=en')
   await page.locator('[data-nav="home"]').click()
-  await expect(page.locator('#experience-root')).toBeEmpty()
+  await expect(page.locator('#experience-root')).toHaveCount(0)
   await page.locator('[data-nav="experience"]').click()
   await expect(page.locator('.experience-mission')).toHaveCount(2)
   expect(errors).toEqual([])
@@ -28,10 +28,9 @@ for (const width of [390, 768, 1440]) {
   })
 }
 
-// A relative link resolves against the address, and History API navigation changes it. Reached
-// from the home page, `href="product/"` would point at /walkthrough/product/ from there on, and
-// every further click would stack another segment onto a page that never changes.
-test('keeps every link pointing at the same place after navigating in the page', async ({ page }) => {
+// A relative link resolves against the address, so every page writes its links against the site
+// root. Otherwise a click from /walkthrough/ would stack another segment onto the path.
+test('keeps every link pointing at the same place after navigating between pages', async ({ page }) => {
   await page.goto('/')
   await page.locator('[data-nav="experience"]').click()
   await expect(page).toHaveURL('/walkthrough/')

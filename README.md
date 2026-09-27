@@ -15,7 +15,7 @@ Multi-step automation is designed, scheduled, debugged and observed in the brows
 [![Latest release](https://img.shields.io/github/v/release/Sev7eNup/NodePilot?logo=github&label=release)](https://github.com/Sev7eNup/NodePilot/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-**[🌐 Website](https://www.nodepilot.run/)** · **[▶️ Live demo](https://www.nodepilot.run/demo/)** · **[📚 Documentation](https://www.nodepilot.run/docs/)** · **[⬇️ Download](https://github.com/Sev7eNup/NodePilot/releases/latest)** · **[🚀 Install](https://www.nodepilot.run/docs/en/getting-started/installation/)**
+**[🌐 Website](https://www.nodepilot.run/en/)** · **[▶️ Live demo](https://www.nodepilot.run/demo/)** · **[📚 Documentation](https://www.nodepilot.run/docs/)** · **[⬇️ Download](https://github.com/Sev7eNup/NodePilot/releases/latest)** · **[🚀 Install](https://www.nodepilot.run/docs/en/getting-started/installation/)**
 
 </div>
 
@@ -86,7 +86,7 @@ The video shows SCOrch import, the Workflow Designer, execution history, Live Op
 
 ## Why NodePilot
 
-NodePilot is a **drop-in modern alternative** for organizations that remain on legacy SCOrch. The agentless model and the target audience are the same (sysadmins automating Windows estates) but the product is built on a current stack with a user experience that does not resemble a 2010 MMC snap-in.
+NodePilot is a **modern alternative** for organizations that remain on legacy SCOrch. The agentless model and the target audience are the same (sysadmins automating Windows estates) but the product is built on a current stack with a user experience that does not resemble a 2010 MMC snap-in.
 
 **Highlights**
 
@@ -111,7 +111,7 @@ NodePilot is a **drop-in modern alternative** for organizations that remain on l
 
 ## Coming from System Center Orchestrator
 
-SCOrch is not going anywhere. [System Center 2025 Orchestrator](https://learn.microsoft.com/en-us/lifecycle/products/system-center-2025-orchestrator) shipped in November 2024 with mainstream support to January 2030 and extended support to January 2035. An existing installation is therefore not on a deadline, and this section is not a migration pitch.
+SCOrch is not going anywhere. [System Center 2025 Orchestrator](https://learn.microsoft.com/en-us/lifecycle/products/system-center-2025-orchestrator) shipped in November 2024 with mainstream support to January 2030 and extended support to January 2035. An existing installation is therefore not on a deadline, and this section is not a migration pitch. The exception is System Center 2016 Orchestrator, whose extended support ends on January 11, 2027. Support dates and the options side by side, including Azure Automation and SMA, are on the [SCOrch alternative page](https://www.nodepilot.run/en/scorch-alternative/).
 
 What has not moved is authoring. The web console added in 2022 runs and monitors runbooks. It cannot build them. Writing one still requires the desktop Runbook Designer on a machine with the client installed, and once it is written there is no version history, no diff between two states and no rollback. NodePilot is built for that gap: the same agentless model, the same job, the same people, with the editor, the debugger and the version history in a browser.
 

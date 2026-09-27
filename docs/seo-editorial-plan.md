@@ -1,8 +1,10 @@
 # Artikelplan für die lokale SEO-Vorschau
 
-Alle 15 vorhandenen Beiträge sind zweisprachig eingebunden. **Erster Workflow** ist als dritter Artikel für den 27.09.2026 freigegeben. Die übrigen zwölf Beiträge bleiben Entwürfe und erscheinen nur in der lokalen Vorschau. Für weitere Veröffentlichungen ist zunächst ein Artikel pro Woche vorgesehen, jeweils auf Deutsch und Englisch.
+Alle 16 vorhandenen Beiträge sind zweisprachig eingebunden. **Erster Workflow** ist als dritter Artikel für den 27.09.2026 freigegeben. Die übrigen dreizehn Beiträge bleiben Entwürfe und erscheinen nur in der lokalen Vorschau. Für weitere Veröffentlichungen ist zunächst ein Artikel pro Woche vorgesehen, jeweils auf Deutsch und Englisch.
 
 Die Suchfragen beschreiben die Absicht der Artikel. Sie sind keine nach Suchvolumen validierte Keyword-Auswahl. Nach Veröffentlichung in Search Console nach Sprache, Artikel und Einstiegsseite auswerten.
+
+Jeder Artikel hat im Katalog zusätzlich einen Such-Titel (`seoTitle`, höchstens 60 Zeichen, Suchbegriff vorn) für `<title>` und Schema sowie eine Meta-Beschreibung (`summary`, 120–160 Zeichen). Die sichtbare H1 bleibt der redaktionelle `title`. Längen und Eindeutigkeit prüft `src/site/blog-build.test.mjs`.
 
 | Beitrag / Pfad | Hauptfrage (DE / EN) | Zielgruppe | Einstiegsseite | Doku-Kapitel | Stand |
 | --- | --- | --- | --- | --- | --- |
@@ -21,6 +23,7 @@ Die Suchfragen beschreiben die Absicht der Artikel. Sie sind keine nach Suchvolu
 | [WinRM verstehen: Was eine erfolgreiche Verbindung tatsächlich belegt](http://127.0.0.1:5190/blog/winrm/) | Was belegt ein erfolgreicher WinRM-Verbindungstest tatsächlich? / What does a successful WinRM connection test actually prove? | Windows-Administratoren und Betreiber | `self-hosted-automation` | `configuration/remote-execution` | Lokale Vorschau |
 | [Einen bestehenden WinRM-Zugang um HTTPS erweitern](http://127.0.0.1:5190/blog/winrm-https/) | Wie erweitere ich einen bestehenden WinRM-Zugang um HTTPS? / How do I add HTTPS to an existing WinRM connection? | Windows-Administratoren und Betreiber | `self-hosted-automation` | `security/hardening` | Lokale Vorschau |
 | [Automatisierung im Windows-Betrieb: Welche Arbeit den Aufwand lohnt](http://127.0.0.1:5190/blog/windows-automation/) | Welche Windows-Aufgaben rechtfertigen den Aufwand der Automatisierung? / Which Windows tasks justify the cost of automation? | Windows-/PowerShell-Admins | `powershell-automation` | `concepts/workflows` | Lokale Vorschau |
+| [System Center 2016 Orchestrator: Das Supportende am 11. Januar 2027 planen](http://127.0.0.1:5190/blog/orchestrator-2016-end-of-support/) | Was bedeutet das Supportende von SCOrch 2016 und welche Wege gibt es? / What does the end of support for SCOrch 2016 mean, and which paths exist? | SCOrch-Anwender | `scorch-alternative` | `import-export` | Lokale Vorschau; Termin: spätestens Mitte November 2026 |
 
 ## Freigabe und Daten
 
@@ -34,8 +37,11 @@ Die Suchfragen beschreiben die Absicht der Artikel. Sie sind keine nach Suchvolu
 
 ## Sinnvolle nächste Reihenfolge
 
+Reihenfolge nach Suchnachfrage: zuerst Themen, nach denen Admins aktiv suchen, dann die Betriebsartikel.
+
 1. Erster Workflow ist für den 27.09.2026 freigegeben; weitere Artikel zunächst wöchentlich veröffentlichen.
-2. Erfolg prüfen und PowerShell 5.1/7 als Vertiefung für Admins.
-3. Den Migrationsfall passend zum vorhandenen SCOrch-Importartikel.
-4. WinRM, HTTPS und gMSA als zusammenhängende Betriebsgrundlagen.
-5. Weitere Betriebsartikel nach tatsächlichen Suchanfragen und Rückmeldungen priorisieren. Es gibt keinen künstlich vorgegebenen SEO-Veröffentlichungsrhythmus.
+2. SCOrch-Migration, passend zum vorhandenen SCOrch-Importartikel.
+3. PowerShell 5.1 und 7 (häufige Suchanfrage „PowerShell 5.1 vs 7").
+4. WinRM über HTTPS, danach gMSA und WinRM-Grundlagen als zusammenhängende Betriebsgrundlagen.
+5. Supportende SCOrch 2016 spätestens Mitte November 2026, damit der Artikel vor dem Stichtag 11.01.2027 indexiert ist.
+6. Erfolg prüfen und die übrigen Betriebsartikel nach tatsächlichen Suchanfragen und Rückmeldungen aus der Search Console priorisieren. Es gibt keinen künstlich vorgegebenen SEO-Veröffentlichungsrhythmus.

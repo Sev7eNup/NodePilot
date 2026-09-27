@@ -1,10 +1,11 @@
-import { visibleArticles } from './blog'
+import { articleBySlug, visibleArticles } from './blog'
+import { parseHTML } from 'linkedom'
 import { describe, expect, it } from 'vitest'
 import {
   applyMeta,
+  keepPage,
   originPrefix,
   pageUrl,
-  revealPage,
   rewriteRelativeUrls,
   robots,
   routePages,
@@ -83,24 +84,23 @@ describe('applyMeta', () => {
   })
 })
 
-describe('revealPage', () => {
+describe('keepPage', () => {
   const shell =
-    '<div id="home-page" class="page">home</div><div id="product-page" class="page" hidden>p</div>' +
-    '<article id="article-page" class="page article-page" hidden>a</article>'
+    '<main><div id="home-page" class="page">home</div><div id="product-page" class="page" hidden>p</div>' +
+    '<article id="article-page" class="page article-page" hidden>a</article><div class="page"><footer>f</footer></div></main>'
+  const sections = (route: Parameters<typeof keepPage>[1]) => {
+    const { document } = parseHTML(shell)
+    keepPage(document, route)
+    return document.querySelector('main')!.innerHTML
+  }
 
-  it('leaves the home page as the visible one', () => {
-    expect(revealPage(shell, { page: 'home' })).toBe(shell)
-  })
-
-  it('shows the route and hides the home page', () => {
-    const html = revealPage(shell, { page: 'product' })
-    expect(html).toContain('<div id="home-page" class="page" hidden>')
-    expect(html).toContain('<div id="product-page" class="page">')
+  it('keeps only the route, visible, and drops every other page', () => {
+    expect(sections({ page: 'product' })).toBe('<div id="product-page" class="page">p</div><div class="page"><footer>f</footer></div>')
   })
 
   it('finds a section whatever element carries it', () => {
-    const html = revealPage(shell, { page: 'article', slug: 'scorch-import' })
-    expect(html).toContain('<article id="article-page" class="page article-page">')
+    expect(sections({ page: 'article', slug: 'scorch-import' })).toContain('<article id="article-page" class="page article-page">a</article>')
+    expect(sections({ page: 'article', slug: 'scorch-import' })).not.toContain('home')
   })
 })
 
@@ -111,6 +111,13 @@ describe('sitemap and robots', () => {
     expect(xml).toContain('<loc>https://x.test/blog/scorch-import/</loc>')
     expect(xml).not.toContain('404')
     expect(xml.match(/<loc>/g)).toHaveLength(pages.filter((page) => page.listed).length)
+  })
+
+  it('dates articles by their real change and leaves other pages undated', () => {
+    const xml = sitemap('https://x.test', pages)
+    const article = articleBySlug['scorch-import']
+    expect(xml).toContain(`<loc>https://x.test/blog/scorch-import/</loc><lastmod>${article.modifiedAt ?? article.publishedAt}</lastmod>`)
+    expect(xml).toContain('<loc>https://x.test/product/</loc></url>')
   })
 
   it('points robots.txt at both sitemaps of the same origin', () => {

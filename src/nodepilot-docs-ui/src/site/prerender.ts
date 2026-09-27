@@ -1,11 +1,10 @@
 /**
  * Turns the single built shell into one file per website route. The string work itself lives in
  * ../lib/prerender-html.ts, which the documentation's prerenderer shares; what stays here is the
- * website's own vocabulary: its routes, its hidden page sections, its robots.txt.
+ * website's own vocabulary: its routes, its page sections, its robots.txt.
  *
- * Why at all: with client-side routing every address served the same HTML, so a crawler saw one
- * page with one title for the whole site. Each route now has its own file, its own title,
- * description and canonical URL, and its own entry in the sitemap.
+ * Each route gets its own file with only its own page section, title, description, canonical URL
+ * and sitemap entry, so a crawler sees one topic per address.
  */
 import { articleBySlug, visibleArticles } from './blog'
 import { pageUrl, setMeta, sitemapXml } from '../lib/prerender-html'
@@ -59,10 +58,7 @@ export function routePages(preview = false): RoutePage[] {
  * Path of the published origin: '/' on its own domain, '/NodePilot/' on GitHub Pages.
  *
  * Every page's URLs are written against it rather than against the file's own place in the
- * tree. A relative URL resolves against the *address*, not the file, and the address changes
- * under History API navigation: reached from the home page, `href="product/"` in that document
- * would resolve to /walkthrough/product/. The not-found page has the same problem for another
- * reason, being handed out for any address at any depth.
+ * tree, because the not-found page is handed out for any address at any depth.
  */
 export function originPrefix(origin: string): string {
   return `${new URL(origin).pathname.replace(/\/+$/, '')}/`
@@ -76,19 +72,25 @@ export function setBaseMeta(html: string, prefix: string): string {
   return setMeta(html, 'np-site-base', prefix || './')
 }
 
-/** Shows the route's own section, so the file carries its content without running any script. */
-export function revealPage(html: string, route: SiteRoute): string {
-  if (route.page === 'home') return html
-  const id = route.page === 'article' ? 'article-page' : `${route.page}-page`
-  return html
-    .replace(/(<[a-z]+ id="home-page"[^>]*)>/, '$1 hidden>')
-    .replace(new RegExp('(<[a-z]+ id="' + id + '"[^>]*?)\\s+hidden'), '$1')
+/**
+ * Keeps the route's own page section, visible, and removes every other one, so a file carries
+ * only its own topic. `[id]` spares the footer wrapper, which is a `.page` too.
+ */
+export function keepPage(doc: Document, route: SiteRoute): void {
+  for (const section of doc.querySelectorAll('main > .page[id]')) {
+    if (section.id === `${route.page}-page`) section.removeAttribute('hidden')
+    else section.remove()
+  }
 }
 
+/** Articles carry their real publication or update date; other pages get none rather than a guessed one. */
 export function sitemap(origin: string, pages: RoutePage[]): string {
   return sitemapXml(
     origin,
-    pages.filter((page) => page.listed).map((page) => page.path),
+    pages.filter((page) => page.listed).map((page) => {
+      const entry = page.route.page === 'article' ? articleBySlug[page.route.slug] : undefined
+      return { path: page.path, lastmod: entry?.modifiedAt ?? entry?.publishedAt ?? undefined }
+    }),
   )
 }
 

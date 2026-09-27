@@ -15,11 +15,9 @@
       content="NodePilot documentation: agentless workflow orchestration for Windows over WinRM — an open, modern replacement for Microsoft System Center Orchestrator."
     />
 
-    <!-- One generic link-preview card for the whole site: routes live in the URL fragment
-         (#/en/cli), which never reaches the server, so every page returns this same HTML and
-         crawlers cannot see per-page tags. For the same reason there is no hreflang pair and
-         no sitemap. og:url and canonical carry no fragment. og:image must be an absolute
-         https URL; a relative one yields no card image on most platforms. -->
+    <!-- Defaults for the shell. scripts/prerender-docs.mjs rewrites title, description,
+         canonical, hreflang and robots per page. og:image must be an absolute https URL;
+         a relative one yields no card image on most platforms. -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="NodePilot Docs" />
     <meta property="og:title" content="NodePilot Documentation" />
