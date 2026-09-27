@@ -2,7 +2,7 @@ import { articleBody } from '../../scripts/blog-content.mjs'
 import shell from './index.html?raw'
 import { parseHTML } from 'linkedom'
 import { describe, expect, it } from 'vitest'
-import { routePages, revealPage } from './prerender'
+import { keepPage, routePages } from './prerender'
 import { localizedPath, resolveRoute, routeLanguage } from './router'
 import { renderSiteContent, renderSiteHead } from './seo'
 
@@ -32,7 +32,8 @@ describe('website SEO contract', () => {
   it('renders real article/solution bodies, valid schemas and localized links under a subpath', () => {
     const titles = new Set<string>()
     for (const page of routePages().filter(page => page.listed)) {
-      const { document } = parseHTML(revealPage(shell, page.route))
+      const { document } = parseHTML(shell)
+      keepPage(document, page.route)
       renderSiteContent(document, page.route, page.lang, '/preview/', page.route.page === 'article' ? articleBody(page.route.slug, page.lang) : undefined)
       renderSiteHead(document, page.route, page.lang, origin)
       const expected = `${origin}/${page.path}${page.path ? '/' : ''}`
@@ -55,6 +56,24 @@ describe('website SEO contract', () => {
       if (['impressum', 'datenschutz'].includes(page.route.page)) expect(document.querySelectorAll('link[hreflang]')).toHaveLength(0)
       else expect(document.querySelectorAll('link[hreflang]')).toHaveLength(3)
     }
+  })
+
+  it('sends visitors of other languages to English and names the project as publisher', () => {
+    const { document } = parseHTML(shell)
+    renderSiteHead(document, { page: 'solution', slug: 'scorch-alternative' }, 'de', origin)
+    expect(document.querySelector('link[hreflang="x-default"]')?.getAttribute('href')).toBe(`${origin}/en/scorch-alternative/`)
+    const graph = JSON.parse(document.querySelector('[data-site-schema]')!.textContent!)['@graph']
+    const organization = graph.find((item: Record<string, string>) => item['@type'] === 'Organization')
+    expect(organization.logo).toBe(`${origin}/logo.png`)
+    expect(graph.find((item: Record<string, string>) => item['@type'] === 'WebSite').publisher['@id']).toBe(organization['@id'])
+  })
+
+  it('marks exactly the open use case in the navigation', () => {
+    const { document } = parseHTML(shell)
+    renderSiteContent(document, { page: 'solution', slug: 'scorch-alternative' }, 'en', '/')
+    const active = [...document.querySelectorAll('[data-nav][aria-current="page"]')]
+    expect(active.map(link => link.getAttribute('data-nav'))).toEqual(['solution:scorch-alternative'])
+    expect(active[0].getAttribute('href')).toBe('/en/scorch-alternative/')
   })
 
   it('updates all head data after navigation and gives unknown URLs no canonical', () => {

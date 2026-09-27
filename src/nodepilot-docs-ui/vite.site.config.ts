@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite'
-import { prerenderSite } from './scripts/prerender-plugin.mjs'
+import { prerenderSite, siteDevRoutes } from './scripts/prerender-plugin.mjs'
 import { writeSiteHtaccess } from './scripts/htaccess.mjs'
 import { SOURCE_ORIGIN, siteOrigin } from './scripts/site-origin.mjs'
 import { demoPreviewFallback } from './scripts/demo-preview-plugin.mjs'
@@ -13,6 +13,7 @@ import { demoPreviewFallback } from './scripts/demo-preview-plugin.mjs'
 export default defineConfig({
   plugins: [
     demoPreviewFallback(),
+    siteDevRoutes(),
     {
       // canonical, og:url and og:image have to be absolute, so they name an origin the source
       // cannot leave relative. Rewriting them here keeps index.html valid on its own.

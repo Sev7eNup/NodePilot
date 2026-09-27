@@ -2,7 +2,7 @@ import { configureImage, imageAttributes } from './media'
 import { articleBySlug, isBlogPreview } from './blog'
 /* NodePilot project website. No backend, analytics or real workflow execution: every
    interaction stays in the page, apart from the links a visitor opens. */
-import { mountExperience, type ExperienceController } from './experience/controller'
+import { mountExperience } from './experience/controller'
 import appIconUrl from './images/logo-dark.webp'
 import { isLang } from '../i18n/languages'
 import {
@@ -33,16 +33,14 @@ import {
   applyLanguage,
   currentLang,
   format,
-  onLanguageChange,
   persistLang,
   setBasePrefix,
   t,
 } from './i18n'
-import { resolveRoute, routeLanguage, type SitePage, type SiteRoute } from './router'
-import { renderSiteContent, renderSiteHead, siteHref } from './seo'
+import { resolveRoute, routeLanguage } from './router'
+import { renderSiteContent, renderSiteHead } from './seo'
 
 const REPO = 'https://github.com/Sev7eNup/NodePilot'
-const PAGES: readonly SitePage[] = ['experience', 'home', 'product', 'blog', 'article', 'solution', 'impressum', 'datenschutz', 'notfound']
 const SCREENSHOTS = {
   designer: { file: 'designer-dark.png' },
   logs: { file: 'log-dark.png' },
@@ -79,15 +77,14 @@ const sidebar = $('#sidebar')
 const menuButton = $<HTMLButtonElement>('#menu-button')
 const backdrop = $<HTMLButtonElement>('#nav-backdrop')
 const main = $('#main-content')
-const playButton = $<HTMLButtonElement>('#play-example')
 const toast = $('#toast')
 const screenreaderStatus = $('#screenreader-status')
-const blogSearch = $<HTMLInputElement>('#blog-search')
-const productImage = $<HTMLImageElement>('#product-image')
 const galleryImage = $<HTMLImageElement>('#gallery-image')
+// Each page file carries only its own section, so these exist on one page each.
+const playButton = document.querySelector<HTMLButtonElement>('#play-example')
+const blogSearch = document.querySelector<HTMLInputElement>('#blog-search')
+const productImage = document.querySelector<HTMLImageElement>('#product-image')
 
-let experience: ExperienceController | undefined
-let currentRoute: SiteRoute | null = null
 let selectedNode: NodeKey = 'check'
 let currentProductTab: ScreenKey = 'designer'
 let currentGalleryTab: ScreenKey = 'designer'
@@ -168,7 +165,7 @@ document.addEventListener('keydown', (event) => {
   }
 })
 
-// Moves focus to the content without changing the hash, which holds the route.
+// Moves focus to the content without changing the hash.
 $('.skip-link').addEventListener('click', (event) => {
   event.preventDefault()
   main.focus()
@@ -299,6 +296,7 @@ function setGallery(key: ScreenKey): void {
 }
 
 function setProductTab(key: ScreenKey): void {
+  if (!productImage) return
   currentProductTab = key
   for (const button of $$('[data-product-tab]')) {
     const active = button.dataset.productTab === key
@@ -308,17 +306,6 @@ function setProductTab(key: ScreenKey): void {
   $('#product-screenshot-title').textContent = t().screens[key].title
   $<HTMLAnchorElement>('#product-image-link').href = sourceUrl(key)
   loadOriginalImage(productImage, $('#product-image-holder'), key)
-}
-
-function renderScreenshotTexts(): void {
-  const screens = t().screens
-  $('#product-screenshot-title').textContent = screens[currentProductTab].title
-  for (const image of [productImage, galleryImage]) {
-    const request = image.dataset.request
-    if (isScreenKey(request)) image.alt = screens[request].alt
-  }
-  renderGalleryCaption()
-  for (const holder of imageStates.keys()) renderImageFallback(holder)
 }
 
 document.addEventListener('click', (event) => {
@@ -358,22 +345,24 @@ document.addEventListener('click', (event) => {
     if (isScreenKey(key)) setProductTab(key)
     return
   }
-  const language = target.closest<HTMLElement>('[data-lang]')
+  const language = target.closest<HTMLAnchorElement>('a[data-lang]')
   if (language) {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
     event.preventDefault()
-    setLanguage(language.dataset.lang)
+    setLanguage(language)
     return
   }
   const node = target.closest<SVGGElement>('[data-node]')
   if (node) selectNode(node.dataset.node)
 })
 // The screenshot itself opens the gallery too; the button stays for keyboard users.
-for (const opener of [$('#product-enlarge'), $('#product-image')]) {
-  opener.addEventListener('click', () => {
-    setGallery(currentProductTab)
-    showDialog(galleryDialog)
-  })
+if (productImage) {
+  for (const opener of [$('#product-enlarge'), productImage]) {
+    opener.addEventListener('click', () => {
+      setGallery(currentProductTab)
+      showDialog(galleryDialog)
+    })
+  }
 }
 
 function renderInspector(): void {
@@ -573,19 +562,13 @@ function renderTopology(): void {
   layoutArchLabels()
 }
 
-const graphObserver = new ResizeObserver(renderGraph)
-graphObserver.observe($('.flow-canvas'))
-new ResizeObserver(renderTopology).observe($('#arch-canvas'))
-// The pulse along the links only runs while the diagram is on screen.
-new IntersectionObserver((entries) => {
-  for (const entry of entries) entry.target.classList.toggle('is-visible', entry.isIntersecting)
-}, { threshold: 0.25 }).observe($('.architecture-section'))
 window.addEventListener('resize', () => {
   if (window.innerWidth > 760) setMenu(false)
   else sidebar.inert = !sidebar.classList.contains('is-open')
 })
 
 function renderDemo(): void {
+  if (!playButton) return
   const demo = t().demo
   $('span', playButton).textContent = demoPaused ? demo.resume : demo.pause
   playButton.setAttribute('aria-label', demoPaused ? demo.resumeLabel : demo.pauseLabel)
@@ -598,10 +581,9 @@ function resetDemoClasses(): void {
   for (const edge of $$<SVGGElement>('.edge')) edge.classList.remove('is-running', 'is-done', 'is-skipped')
 }
 
-/** Starts or stops the loop to match pause state, visibility and the current page. */
+/** Starts or stops the loop to match pause state and visibility. */
 function syncDemo(): void {
-  const shouldRun =
-    !demoPaused && demoOnScreen && document.visibilityState === 'visible' && currentRoute?.page === 'home'
+  const shouldRun = !demoPaused && demoOnScreen && document.visibilityState === 'visible'
   if (shouldRun && !demoRun) void runDemoLoop()
   if (!shouldRun && demoRun) {
     demoRun.abort()
@@ -671,23 +653,32 @@ async function runDemoLoop(): Promise<void> {
   }
 }
 
-playButton.addEventListener('click', () => {
-  demoPaused = !demoPaused
-  syncDemo()
-})
-new IntersectionObserver((entries) => {
-  demoOnScreen = entries.some((entry) => entry.isIntersecting)
-  syncDemo()
-}, { threshold: 0.2 }).observe($('#workflow-stage'))
-document.addEventListener('visibilitychange', syncDemo)
-reducedMotion.addEventListener('change', () => {
-  if (reducedMotion.matches) demoPaused = true
-  syncDemo()
-})
-void document.fonts.ready.then(layoutEdgeLabels)
-void document.fonts.ready.then(layoutArchLabels)
+if (playButton) {
+  new ResizeObserver(renderGraph).observe($('.flow-canvas'))
+  new ResizeObserver(renderTopology).observe($('#arch-canvas'))
+  // The pulse along the links only runs while the diagram is on screen.
+  new IntersectionObserver((entries) => {
+    for (const entry of entries) entry.target.classList.toggle('is-visible', entry.isIntersecting)
+  }, { threshold: 0.25 }).observe($('.architecture-section'))
+  playButton.addEventListener('click', () => {
+    demoPaused = !demoPaused
+    syncDemo()
+  })
+  new IntersectionObserver((entries) => {
+    demoOnScreen = entries.some((entry) => entry.isIntersecting)
+    syncDemo()
+  }, { threshold: 0.2 }).observe($('#workflow-stage'))
+  document.addEventListener('visibilitychange', syncDemo)
+  reducedMotion.addEventListener('change', () => {
+    if (reducedMotion.matches) demoPaused = true
+    syncDemo()
+  })
+  void document.fonts.ready.then(layoutEdgeLabels)
+  void document.fonts.ready.then(layoutArchLabels)
+}
 
 function applyBlogFilter(announce = true): void {
+  if (!blogSearch) return
   const lang = currentLang()
   const term = blogSearch.value.trim().toLocaleLowerCase(lang)
   let count = 0
@@ -713,57 +704,15 @@ function setFilter(filter: string): void {
   applyBlogFilter()
 }
 
-for (const button of $$('[data-filter]')) {
-  button.addEventListener('click', () => setFilter(button.dataset.filter ?? 'all'))
-}
-blogSearch.addEventListener('input', () => applyBlogFilter())
-$('#reset-search').addEventListener('click', () => {
-  blogSearch.value = ''
-  setFilter('all')
-  blogSearch.focus()
-})
-
-/** Texts that depend on the route and the language. */
-function renderRouteTexts(route: SiteRoute): void {
-  renderSiteContent(document, route, currentLang(), basePath)
-  renderSiteHead(document, route, currentLang(), siteOrigin)
-  applyBlogFilter(false)
-}
-
-/** Replays the ten-second invitation on the live-demo link whenever the home page is
-    shown again; an animation only starts once per element on its own. */
-function restartDemoInvite(): void {
-  const link = $('.hero-demo-link')
-  link.classList.remove('is-inviting')
-  void link.offsetWidth
-  link.classList.add('is-inviting')
-}
-
-function showRoute(next: SiteRoute, initial: boolean): void {
-  const previous = currentRoute?.page
-  for (const page of PAGES) $('#' + page + '-page').hidden = page !== next.page
-  for (const link of $$('[data-nav]')) {
-    const active = link.dataset.nav === (next.page === 'article' ? 'blog' : next.page)
-    link.classList.toggle('is-active', active)
-    if (active) link.setAttribute('aria-current', 'page')
-    else link.removeAttribute('aria-current')
+if (blogSearch) {
+  for (const button of $$('[data-filter]')) {
+    button.addEventListener('click', () => setFilter(button.dataset.filter ?? 'all'))
   }
-  if (next.page !== 'experience') { experience?.dispose(); experience = undefined }
-  else if (!experience) experience = mountExperience($('#experience-root'))
-  currentRoute = next
-  syncDemo()
-  renderRouteTexts(next)
-  if (next.page === 'product' && previous !== 'product') setProductTab(currentProductTab)
-  if (next.page === 'home' && previous !== 'home') restartDemoInvite()
-  setMenu(false)
-  if (!initial) {
-    window.scrollTo({ top: 0, behavior: 'instant' })
-    const focusTarget = next.page === 'article' ? $('#article-title') : main
-    focusTarget.focus({ preventScroll: true })
-  }
-  requestAnimationFrame(renderGraph)
-  if (location.hash) requestAnimationFrame(() => {
-    try { document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView() } catch { /* Malformed bookmark fragment. */ }
+  blogSearch.addEventListener('input', () => applyBlogFilter())
+  $('#reset-search').addEventListener('click', () => {
+    blogSearch.value = ''
+    setFilter('all')
+    blogSearch.focus()
   })
 }
 
@@ -781,79 +730,31 @@ function currentPath(): string {
   return path.startsWith(basePath) ? path.slice(basePath.length) : path.replace(/^\/+/, '')
 }
 
-function route(initial = false): void {
-  const lang = routeLanguage(currentPath())
-  if (currentLang() !== lang) applyLanguage(lang)
-  let next = resolveRoute(currentPath())
-  if (next.page === 'article' && !isBlogPreview(document) && articleBySlug[next.slug].status !== 'published') next = { page: 'notfound' }
-  showRoute(next, initial)
-}
-
-/** Follows an internal link without reloading, and keeps the address bar honest. */
-function navigate(href: string): void {
-  history.pushState(null, '', href)
-  route()
-}
-
-function setLanguage(value: string | undefined): void {
+/** Opens this page in the chosen language, keeping query and fragment, and remembers the choice. */
+function setLanguage(link: HTMLAnchorElement): void {
+  const value = link.dataset.lang
   if (!isLang(value) || value === currentLang()) return
   persistLang(value)
-  const target = siteHref(basePath, currentRoute ?? { page: 'home' }, value)
-  if (currentRoute?.page === 'article') location.assign(`${target}${location.search}${location.hash}`)
-  else navigate(`${target}${location.search}${location.hash}`)
+  location.assign(`${link.href}${location.search}${location.hash}`)
 }
 
-function renderLanguageState(): void {
-  const lang = currentLang()
-  for (const button of $$('[data-lang]')) button.setAttribute('aria-pressed', String(button.dataset.lang === lang))
-  for (const note of $$('.legal-language-note')) note.hidden = lang === 'de'
-}
-
-onLanguageChange(() => {
-  experience?.updateLanguage()
-  renderLanguageState()
-  labelNavItems()
-  renderMenuLabel()
-  renderInspector()
-  renderDemo()
-  layoutEdgeLabels()
-  renderScreenshotTexts()
-  applyBlogFilter(false)
-  if (currentRoute) renderRouteTexts(currentRoute)
-})
-
-window.addEventListener('popstate', () => route())
-// Internal links stay in the page. Anything that leaves the site -- the docs, the demo, GitHub,
-// a download, a new tab or a modified click -- is left to the browser.
-document.addEventListener('click', (event) => {
-  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-  if (!(event.target instanceof Element)) return
-  const link = event.target.closest('a')
-  if (!link || link.target || link.hasAttribute('download') || !link.href) return
-
-  const url = new URL(link.href)
-  if (url.origin !== location.origin || url.hash || !url.pathname.startsWith(basePath)) return
-  const next = resolveRoute(url.pathname.slice(basePath.length))
-  if (next.page === 'notfound' || next.page === 'article' || currentRoute?.page === 'article') return
-
-  event.preventDefault()
-  if (url.pathname === location.pathname) {
-    window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'instant' : 'smooth' })
-    return
-  }
-  navigate(link.href)
-})
-window.addEventListener('pageshow', () => {
-  if (currentRoute?.page === 'experience' && !experience) experience = mountExperience($('#experience-root'))
-})
 window.addEventListener('pagehide', () => {
-  experience?.dispose()
-  experience = undefined
   demoRun?.abort()
   window.clearTimeout(toastTimer)
 })
 
 setBasePrefix(basePrefix)
 applyLanguage(routeLanguage(currentPath()))
-route(true)
-selectNode(selectedNode)
+let route = resolveRoute(currentPath())
+if (route.page === 'article' && !isBlogPreview(document) && articleBySlug[route.slug].status !== 'published') route = { page: 'notfound' }
+// An address without a file of its own is answered with the 404 page, which carries only that section.
+if (!document.getElementById(`${route.page}-page`)) route = { page: 'notfound' }
+renderSiteContent(document, route, currentLang(), basePath)
+renderSiteHead(document, route, currentLang(), siteOrigin)
+labelNavItems()
+setMenu(false)
+setProductTab(currentProductTab)
+applyBlogFilter(false)
+const experienceRoot = document.querySelector<HTMLElement>('#experience-root')
+if (experienceRoot) mountExperience(experienceRoot)
+if (playButton) selectNode(selectedNode)

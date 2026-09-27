@@ -83,9 +83,18 @@ export function applyMeta(html: string, meta: PageMeta): string {
     .replace(attribute('meta', 'property', 'og:url', 'content'), `$1${url}$2`)
 }
 
+export interface SitemapEntry {
+  /** Address relative to the site root. */
+  path: string
+  /** Date of the last real content change (YYYY-MM-DD). Left out when unknown. */
+  lastmod?: string
+}
+
 /** Sitemap over addresses relative to the site root, each written as a directory. */
-export function sitemapXml(origin: string, paths: readonly string[]): string {
-  const urls = paths.map((path) => `  <url><loc>${escapeText(pageUrl(origin, path, true))}</loc></url>`).join('\n')
+export function sitemapXml(origin: string, entries: readonly SitemapEntry[]): string {
+  const urls = entries
+    .map(({ path, lastmod }) => `  <url><loc>${escapeText(pageUrl(origin, path, true))}</loc>${lastmod ? `<lastmod>${escapeText(lastmod)}</lastmod>` : ''}</url>`)
+    .join('\n')
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`
 }
 

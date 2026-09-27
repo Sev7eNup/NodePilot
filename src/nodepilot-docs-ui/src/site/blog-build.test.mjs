@@ -6,6 +6,7 @@ import { parseHTML } from 'linkedom'
 import { prerenderSite } from '../../scripts/prerender-plugin.mjs'
 import { articleBody } from '../../scripts/blog-content.mjs'
 import { articles } from './blog.ts'
+import { routePages } from './prerender.ts'
 import { allPages } from '../data/nav.ts'
 
 describe('article publication and preview boundary', () => {
@@ -17,7 +18,7 @@ describe('article publication and preview boundary', () => {
         prerenderSite(root, 'https://example.test/subpath', preview)
         const sitemap = readFileSync(join(root, 'sitemap.xml'), 'utf8')
         const index = parseHTML(readFileSync(join(root, 'blog/index.html'), 'utf8')).document
-        expect(index.querySelectorAll('.blog-index-row').length).toBe(preview ? 15 : 3)
+        expect(index.querySelectorAll('.blog-index-row').length).toBe(preview ? 16 : 3)
         expect(index.querySelectorAll('.blog-index-row[data-category="hintergrund"]').length).toBe(preview ? 3 : 1)
         for (const article of articles) {
           expect(allPages.some(page => page.path === article.docs), article.docs).toBe(true)
@@ -55,9 +56,32 @@ describe('article publication and preview boundary', () => {
             }
           }
         }
+        // Each file carries its own page only: one topic and one h1 per address, and the German
+        // legal texts nowhere but on their own pages.
+        for (const page of routePages(preview)) {
+          const doc = parseHTML(readFileSync(join(root, page.file), 'utf8')).document
+          const sections = [...doc.querySelectorAll('main > .page[id]')]
+          expect(sections.map(section => section.id), page.file).toEqual([`${page.route.page}-page`])
+          expect(sections[0].hasAttribute('hidden'), page.file).toBe(false)
+          expect(doc.querySelectorAll('h1').length, page.file).toBe(1)
+          expect(doc.querySelectorAll('[data-legal]').length, page.file).toBe(['impressum', 'datenschutz'].includes(page.route.page) ? 1 : 0)
+        }
       } finally { rmSync(root, { recursive: true, force: true }) }
     })
   }
+
+  it('gives every article a distinct search title and a description that fits a result snippet', () => {
+    for (const lang of ['de', 'en']) {
+      const titles = articles.map(article => article.text[lang].seoTitle)
+      expect(new Set(titles).size).toBe(articles.length)
+      for (const article of articles) {
+        const { seoTitle, summary } = article.text[lang]
+        expect(seoTitle.length, `${article.slug} ${lang}`).toBeLessThanOrEqual(60)
+        expect(summary.length, `${article.slug} ${lang}`).toBeGreaterThanOrEqual(120)
+        expect(summary.length, `${article.slug} ${lang}`).toBeLessThanOrEqual(160)
+      }
+    }
+  })
 
   it('preserves the tutorial and fictional migration disclosures in both languages', () => {
     for (const lang of ['de', 'en']) {

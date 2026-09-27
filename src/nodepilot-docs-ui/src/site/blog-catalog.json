@@ -20,7 +20,8 @@
     "text": {
       "de": {
         "title": "Warum NodePilot: von PowerShell-Skripten zu Windows-Workflows",
-        "summary": "Von PowerShell-Skripten und SCOrch zum eigenen Werkzeug.",
+        "seoTitle": "Warum NodePilot: PowerShell-Skripte als Workflows",
+        "summary": "Warum aus PowerShell-Skripten Workflows werden: Reihenfolge, Ergebnisse und Fehler an einem Ort. Motivation und Grenzen des Open-Source-Projekts NodePilot.",
         "lead": "PowerShell erledigt die Arbeit. Verloren geht der Überblick über das, was zwischen den Skripten passiert.",
         "category": "HINTERGRUND",
         "indexTitle": "Warum NodePilot: von PowerShell-Skripten zu Windows-Workflows",
@@ -28,7 +29,8 @@
       },
       "en": {
         "title": "Why NodePilot: from PowerShell scripts to Windows workflows",
-        "summary": "From PowerShell scripts and SCOrch to a tool of its own.",
+        "seoTitle": "Why NodePilot: turning PowerShell scripts into workflows",
+        "summary": "Why PowerShell scripts become workflows: see order, results and failures in one place. The motivation and the limits of the open-source project NodePilot.",
         "lead": "PowerShell does the work. What gets lost is the overview of what happens between the scripts.",
         "category": "BACKGROUND",
         "indexTitle": "Why NodePilot: from PowerShell scripts to Windows workflows",
@@ -61,7 +63,8 @@
     "text": {
       "de": {
         "title": "SCOrch-Runbooks importieren und das Ergebnis prüfen",
-        "summary": "Was beim Import aus System Center Orchestrator wichtig ist.",
+        "seoTitle": "SCOrch-Runbooks importieren: .ois_export in NodePilot",
+        "summary": "System-Center-Orchestrator-Runbooks als .ois_export importieren: was der Import übernimmt, was der Bericht zeigt und was vor der Aktivierung zu prüfen ist.",
         "lead": "Bei der Übernahme eines Runbooks kommt es auch auf die Verbindungen und Daten an, die das Zusammenspiel seiner Aktivitäten bestimmen.",
         "category": "PRAXIS",
         "indexTitle": "SCOrch-Runbooks importieren und das Ergebnis prüfen",
@@ -69,7 +72,8 @@
       },
       "en": {
         "title": "Importing SCOrch runbooks and reviewing the result",
-        "summary": "What matters when importing from System Center Orchestrator.",
+        "seoTitle": "Import SCOrch runbooks: .ois_export into NodePilot",
+        "summary": "Import System Center Orchestrator runbooks from .ois_export: what the import carries over, what the import report shows and what to check before enabling.",
         "lead": "Existing automation is more than a row of boxes. An import also has to carry over the links and the data between them.",
         "category": "PRACTICE",
         "indexTitle": "Importing SCOrch runbooks and reviewing the result",
@@ -102,7 +106,8 @@
     "text": {
       "de": {
         "title": "Einen ersten Workflow mit NodePilot erstellen",
-        "summary": "Wie führe ich meinen ersten PowerShell-Workflow aus und prüfe sein Ergebnis?",
+        "seoTitle": "Ersten PowerShell-Workflow erstellen: Schritt für Schritt",
+        "summary": "Einen ersten PowerShell-Workflow in NodePilot anlegen, starten und sein Ergebnis prüfen: Trigger, Run-Script-Schritt und Ausgabevariable in vier Schritten.",
         "lead": "Wie führe ich meinen ersten PowerShell-Workflow aus und prüfe sein Ergebnis?",
         "category": "PRAXIS",
         "indexTitle": "Einen ersten Workflow mit NodePilot erstellen",
@@ -110,7 +115,8 @@
       },
       "en": {
         "title": "Creating a first workflow with NodePilot",
-        "summary": "How do I run and verify my first PowerShell workflow?",
+        "seoTitle": "Create your first PowerShell workflow, step by step",
+        "summary": "Create, run and verify a first PowerShell workflow in NodePilot: a manual trigger, a Run Script step and an output variable, explained in four steps.",
         "lead": "How do I run and verify my first PowerShell workflow?",
         "category": "PRACTICE",
         "indexTitle": "Creating a first workflow with NodePilot",
@@ -143,7 +149,8 @@
     "text": {
       "de": {
         "title": "Ein grüner Status ist noch kein erfolgreicher Auftrag",
-        "summary": "Welche Nachweise zeigen, dass ein Auftrag fachlich erfolgreich war?",
+        "seoTitle": "Exit-Code 0 ist kein Erfolg: Automatisierung prüfen",
+        "summary": "Exit-Code 0 oder 3010 sagt wenig über den Auftrag: wie du nachweist, dass eine Installation oder Änderung fachlich erfolgreich war.",
         "lead": "Welche Nachweise zeigen, dass ein Auftrag fachlich erfolgreich war?",
         "category": "PRAXIS",
         "indexTitle": "Ein grüner Status ist noch kein erfolgreicher Auftrag",
@@ -151,7 +158,8 @@
       },
       "en": {
         "title": "A green status does not prove the job is done",
-        "summary": "What evidence proves that an automation task achieved its outcome?",
+        "seoTitle": "Exit code 0 is not success: verifying automation results",
+        "summary": "Exit code 0 or 3010 says little about the job: how to prove that an installation or change actually achieved its outcome instead of trusting a green status.",
         "lead": "What evidence proves that an automation task achieved its outcome?",
         "category": "PRACTICE",
         "indexTitle": "A green status does not prove the job is done",
@@ -184,7 +192,8 @@
     "text": {
       "de": {
         "title": "Was von einem SCOrch-Runbook beim Umzug erhalten bleiben muss",
-        "summary": "Wie bleiben Datenübergaben und Fehlerpfade bei einer Migration erhalten?",
+        "seoTitle": "SCOrch-Migration: Published Data und Fehlerpfade erhalten",
+        "summary": "Bei einer SCOrch-Migration zählt mehr als das Diagramm: wie Published Data, Linkbedingungen und Fehlerpfade erhalten bleiben und wie Testfälle den Umzug prüfen.",
         "lead": "Wie bleiben Datenübergaben und Fehlerpfade bei einer Migration erhalten?",
         "category": "PRAXIS",
         "indexTitle": "Was von einem SCOrch-Runbook beim Umzug erhalten bleiben muss",
@@ -192,7 +201,8 @@
       },
       "en": {
         "title": "What a SCOrch runbook must retain when it moves",
-        "summary": "How do data contracts and failure paths survive a migration?",
+        "seoTitle": "SCOrch migration: keep Published Data and failure paths",
+        "summary": "A SCOrch migration is more than the diagram: how to preserve Published Data, link conditions and failure paths, and how to verify the move with test cases.",
         "lead": "How do data contracts and failure paths survive a migration?",
         "category": "PRACTICE",
         "indexTitle": "What a SCOrch runbook must retain when it moves",
@@ -225,7 +235,8 @@
     "text": {
       "de": {
         "title": "gMSA: Dienstkonten ohne manuell verteilte Kennwörter",
-        "summary": "Wie prüfe ich gMSA-Dienstkonten und ihre tatsächlichen Zugriffsrechte?",
+        "seoTitle": "gMSA einrichten und Dienstkonto-Rechte prüfen",
+        "summary": "Gruppenverwaltete Dienstkonten (gMSA) einrichten: Voraussetzungen prüfen, Kennwortabruf und Zugriffsrechte trennen, die Umstellung im Dienst abnehmen.",
         "lead": "Wie prüfe ich gMSA-Dienstkonten und ihre tatsächlichen Zugriffsrechte?",
         "category": "PRAXIS",
         "indexTitle": "gMSA: Dienstkonten ohne manuell verteilte Kennwörter",
@@ -233,7 +244,8 @@
       },
       "en": {
         "title": "gMSA: service accounts without manually distributed passwords",
-        "summary": "How do I verify gMSA service accounts and their actual permissions?",
+        "seoTitle": "Set up a gMSA and verify service account permissions",
+        "summary": "Set up group managed service accounts (gMSA): check prerequisites, keep password retrieval and access rights apart, and verify the switch in the service.",
         "lead": "How do I verify gMSA service accounts and their actual permissions?",
         "category": "PRACTICE",
         "indexTitle": "gMSA: service accounts without manually distributed passwords",
@@ -266,7 +278,8 @@
     "text": {
       "de": {
         "title": "PowerShell 5.1 und 7: Die Laufzeit gehört zum Auftrag",
-        "summary": "Was muss ich beim Wechsel zwischen PowerShell 5.1 und 7 testen?",
+        "seoTitle": "PowerShell 5.1 vs. 7: Unterschiede vor dem Wechsel testen",
+        "summary": "PowerShell 5.1 oder 7? Welche Unterschiede ein Wechsel bringt, warum Module im Kompatibilitätsmodus anders arbeiten und was du vorher testen solltest.",
         "lead": "Was muss ich beim Wechsel zwischen PowerShell 5.1 und 7 testen?",
         "category": "PRAXIS",
         "indexTitle": "PowerShell 5.1 und 7: Die Laufzeit gehört zum Auftrag",
@@ -274,7 +287,8 @@
       },
       "en": {
         "title": "PowerShell 5.1 and 7: the runtime is part of the job",
-        "summary": "What should I test when switching between PowerShell 5.1 and 7?",
+        "seoTitle": "PowerShell 5.1 vs 7: test the differences before switching",
+        "summary": "PowerShell 5.1 or 7? Which differences a switch brings, why modules behave differently in compatibility mode and what to test before you move your scripts.",
         "lead": "What should I test when switching between PowerShell 5.1 and 7?",
         "category": "PRACTICE",
         "indexTitle": "PowerShell 5.1 and 7: the runtime is part of the job",
@@ -307,7 +321,8 @@
     "text": {
       "de": {
         "title": "Ein Wartungsfenster ist eine Betriebsvereinbarung",
-        "summary": "Welche Starts sperrt ein Wartungsfenster und was passiert mit laufender Arbeit?",
+        "seoTitle": "Wartungsfenster für Automatisierung richtig festlegen",
+        "summary": "Wartungsfenster in der Automatisierung: welche Starts gesperrt werden, was mit laufenden Aufträgen passiert und was die Vereinbarung dazu enthalten sollte.",
         "lead": "Welche Starts sperrt ein Wartungsfenster und was passiert mit laufender Arbeit?",
         "category": "PRAXIS",
         "indexTitle": "Ein Wartungsfenster ist eine Betriebsvereinbarung",
@@ -315,7 +330,8 @@
       },
       "en": {
         "title": "A maintenance window is an operating agreement",
-        "summary": "Which starts does a maintenance window block and what happens to running work?",
+        "seoTitle": "Maintenance windows for automation: what to agree on",
+        "summary": "Maintenance windows in automation: which starts are blocked, what happens to running jobs and what a documented agreement between teams should contain.",
         "lead": "Which starts does a maintenance window block and what happens to running work?",
         "category": "PRACTICE",
         "indexTitle": "A maintenance window is an operating agreement",
@@ -348,7 +364,8 @@
     "text": {
       "de": {
         "title": "Ein fehlgeschlagener Lauf, vollständig rekonstruiert",
-        "summary": "Wie rekonstruiere ich einen fehlgeschlagenen Lauf bis zur Ursache?",
+        "seoTitle": "Fehlgeschlagenen Workflow-Lauf analysieren: Ursache finden",
+        "summary": "Einen fehlgeschlagenen Workflow-Lauf Schritt für Schritt rekonstruieren: vom Protokoll über den Gegenversuch zur belegten Ursache und besseren Fehlerbehandlung.",
         "lead": "Wie rekonstruiere ich einen fehlgeschlagenen Lauf bis zur Ursache?",
         "category": "PRAXIS",
         "indexTitle": "Ein fehlgeschlagener Lauf, vollständig rekonstruiert",
@@ -356,7 +373,8 @@
       },
       "en": {
         "title": "Reconstructing a failed run from start to cause",
-        "summary": "How do I reconstruct a failed execution from start to cause?",
+        "seoTitle": "Analyze a failed workflow run and find the root cause",
+        "summary": "Reconstruct a failed workflow run step by step: from logs and a counter-test to a proven root cause, and what the finding changes about error handling.",
         "lead": "How do I reconstruct a failed execution from start to cause?",
         "category": "PRACTICE",
         "indexTitle": "Reconstructing a failed run from start to cause",
@@ -389,7 +407,8 @@
     "text": {
       "de": {
         "title": "Automatisierung braucht einen Ausschalter",
-        "summary": "Welche Wirkung haben Abbruch, Startsperre und das Stoppen entfernter Arbeit?",
+        "seoTitle": "Automatisierung stoppen: Abbruch, Startsperre, Kill-Switch",
+        "summary": "Was Abbruch, Startsperre und das Stoppen entfernter Arbeit wirklich bewirken: warum ein Installer nach dem Abbruch weiterläuft und was ein Ausschalter zusagt.",
         "lead": "Welche Wirkung haben Abbruch, Startsperre und das Stoppen entfernter Arbeit?",
         "category": "PRAXIS",
         "indexTitle": "Automatisierung braucht einen Ausschalter",
@@ -397,7 +416,8 @@
       },
       "en": {
         "title": "Automation needs a way to stop",
-        "summary": "What do cancellation, start blocking and stopping remote work actually do?",
+        "seoTitle": "Stopping automation: cancel, start block and kill switch",
+        "summary": "What cancellation, start blocking and stopping remote work actually do: why an installer can keep running after a cancel and what a kill switch really promises.",
         "lead": "What do cancellation, start blocking and stopping remote work actually do?",
         "category": "PRACTICE",
         "indexTitle": "Automation needs a way to stop",
@@ -430,7 +450,8 @@
     "text": {
       "de": {
         "title": "Welche Aufgaben bewusst manuell bleiben dürfen",
-        "summary": "Welche Arbeit sollte bewusst manuell bleiben?",
+        "seoTitle": "Was nicht automatisiert werden sollte: manuelle Aufgaben",
+        "summary": "Nicht jede Aufgabe lohnt die Automatisierung: wie Häufigkeit, Pflegeaufwand und Fehlerfolgen zusammenspielen und wann eine Arbeitsanweisung besser ist.",
         "lead": "Welche Arbeit sollte bewusst manuell bleiben?",
         "category": "HINTERGRUND",
         "indexTitle": "Welche Aufgaben bewusst manuell bleiben dürfen",
@@ -438,7 +459,8 @@
       },
       "en": {
         "title": "Which tasks can deliberately remain manual",
-        "summary": "Which tasks should deliberately remain manual?",
+        "seoTitle": "What not to automate: tasks that should stay manual",
+        "summary": "Not every task is worth automating: how frequency, maintenance effort and the impact of errors interact, and when a good runbook document is the better choice.",
         "lead": "Which tasks should deliberately remain manual?",
         "category": "BACKGROUND",
         "indexTitle": "Which tasks can deliberately remain manual",
@@ -471,7 +493,8 @@
     "text": {
       "de": {
         "title": "KI in NodePilot: vom ersten Skript bis zur Fehleranalyse",
-        "summary": "Wie hilft KI beim Entwerfen und Prüfen von Skripten und Workflows?",
+        "seoTitle": "KI für PowerShell-Skripte und Workflow-Fehleranalyse",
+        "summary": "Wie KI in NodePilot PowerShell-Skripte schreibt, Workflows erklärt und Fehler analysiert: mit lokalem oder eigenem Modell und freigegebenen Datenquellen.",
         "lead": "Wie hilft KI beim Entwerfen und Prüfen von Skripten und Workflows?",
         "category": "PRAXIS",
         "indexTitle": "KI in NodePilot: vom ersten Skript bis zur Fehleranalyse",
@@ -479,7 +502,8 @@
       },
       "en": {
         "title": "AI in NodePilot: from the first script to failure analysis",
-        "summary": "How can AI help create and review scripts and workflows?",
+        "seoTitle": "AI for PowerShell scripts and workflow failure analysis",
+        "summary": "How AI in NodePilot writes PowerShell scripts, explains workflows and analyzes failures, using a local or your own model and data sources you approve.",
         "lead": "How can AI help create and review scripts and workflows?",
         "category": "PRACTICE",
         "indexTitle": "AI in NodePilot: from the first script to failure analysis",
@@ -512,7 +536,8 @@
     "text": {
       "de": {
         "title": "WinRM verstehen: Was eine erfolgreiche Verbindung tatsächlich belegt",
-        "summary": "Was belegt ein erfolgreicher WinRM-Verbindungstest tatsächlich?",
+        "seoTitle": "WinRM-Verbindung testen: was Test-WSMan wirklich prüft",
+        "summary": "Test-WSMan antwortet, aber Remoting scheitert? Was ein WinRM-Verbindungstest belegt: Listener, Verschlüsselung, Kerberos, SPN, Rechte, JEA und Double Hop.",
         "lead": "Was belegt ein erfolgreicher WinRM-Verbindungstest tatsächlich?",
         "category": "PRAXIS",
         "indexTitle": "WinRM verstehen: Was eine erfolgreiche Verbindung tatsächlich belegt",
@@ -520,7 +545,8 @@
       },
       "en": {
         "title": "Understanding WinRM: what a successful connection actually proves",
-        "summary": "What does a successful WinRM connection test actually prove?",
+        "seoTitle": "Testing WinRM: what Test-WSMan actually proves",
+        "summary": "Test-WSMan answers but remoting fails? What a WinRM connection test proves: listeners, encryption, Kerberos and SPNs, permissions, JEA and the double hop.",
         "lead": "What does a successful WinRM connection test actually prove?",
         "category": "PRACTICE",
         "indexTitle": "Understanding WinRM: what a successful connection actually proves",
@@ -553,7 +579,8 @@
     "text": {
       "de": {
         "title": "Einen bestehenden WinRM-Zugang um HTTPS erweitern",
-        "summary": "Wie erweitere ich einen bestehenden WinRM-Zugang um HTTPS?",
+        "seoTitle": "WinRM über HTTPS einrichten: Zertifikat und Listener",
+        "summary": "WinRM über HTTPS einrichten: passendes Zertifikat wählen, HTTPS-Listener anlegen, Port 5986 begrenzen und die Verbindung unter echten Bedingungen prüfen.",
         "lead": "Wie erweitere ich einen bestehenden WinRM-Zugang um HTTPS?",
         "category": "PRAXIS",
         "indexTitle": "Einen bestehenden WinRM-Zugang um HTTPS erweitern",
@@ -561,7 +588,8 @@
       },
       "en": {
         "title": "Adding HTTPS to an existing WinRM connection",
-        "summary": "How do I add HTTPS to an existing WinRM connection?",
+        "seoTitle": "Configure WinRM over HTTPS: certificate and listener",
+        "summary": "Configure WinRM over HTTPS: choose the right certificate, create the HTTPS listener, restrict port 5986 and test the connection under real conditions.",
         "lead": "How do I add HTTPS to an existing WinRM connection?",
         "category": "PRACTICE",
         "indexTitle": "Adding HTTPS to an existing WinRM connection",
@@ -594,7 +622,8 @@
     "text": {
       "de": {
         "title": "Automatisierung im Windows-Betrieb: Welche Arbeit den Aufwand lohnt",
-        "summary": "Welche Windows-Aufgaben rechtfertigen den Aufwand der Automatisierung?",
+        "seoTitle": "Windows-Automatisierung: welche Aufgaben sich lohnen",
+        "summary": "Welche Aufgaben im Windows-Betrieb sich zu automatisieren lohnen: Zielzustand, wiederholbare Läufe, das richtige Betriebskonto und eine saubere Übergabe.",
         "lead": "Welche Windows-Aufgaben rechtfertigen den Aufwand der Automatisierung?",
         "category": "HINTERGRUND",
         "indexTitle": "Automatisierung im Windows-Betrieb: Welche Arbeit den Aufwand lohnt",
@@ -602,7 +631,8 @@
       },
       "en": {
         "title": "Automation in Windows operations: which work justifies the effort",
-        "summary": "Which Windows tasks justify the cost of automation?",
+        "seoTitle": "Windows automation: which tasks are worth automating",
+        "summary": "Which Windows operations tasks are worth automating: desired state, repeatable runs, the right service account and a clean handover to operations.",
         "lead": "Which Windows tasks justify the cost of automation?",
         "category": "BACKGROUND",
         "indexTitle": "Automation in Windows operations: which work justifies the effort",
@@ -612,6 +642,49 @@
     "docsTitle": {
       "de": "Workflows & Activities",
       "en": "Workflows & activities"
+    }
+  },
+  {
+    "slug": "orchestrator-2016-end-of-support",
+    "status": "draft",
+    "next": false,
+    "source": "orchestrator-2016-end-of-support",
+    "solution": "scorch-alternative",
+    "docs": "import-export",
+    "audience": "SCOrch-Anwender",
+    "question": {
+      "de": "Was bedeutet das Supportende von SCOrch 2016 und welche Wege gibt es?",
+      "en": "What does the end of support for SCOrch 2016 mean, and which paths exist?"
+    },
+    "related": [
+      "scorch-import",
+      "scorch-migration"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "System Center 2016 Orchestrator: Das Supportende am 11. Januar 2027 planen",
+        "seoTitle": "SCOrch 2016 Supportende 2027: Optionen und Migration",
+        "summary": "System Center 2016 Orchestrator verliert am 11. Januar 2027 den Support. Wer betroffen ist, welche Wege es gibt und wie die Migration in fünf Schritten gelingt.",
+        "lead": "Was bedeutet das Supportende von SCOrch 2016 und welche Wege gibt es?",
+        "category": "PRAXIS",
+        "indexTitle": "System Center 2016 Orchestrator: Das Supportende am 11. Januar 2027 planen",
+        "teaser": "Was bedeutet das Supportende von SCOrch 2016 und welche Wege gibt es?"
+      },
+      "en": {
+        "title": "System Center 2016 Orchestrator: planning for the end of support on January 11, 2027",
+        "seoTitle": "SCOrch 2016 end of support 2027: options and migration",
+        "summary": "System Center 2016 Orchestrator loses support on January 11, 2027. Who is affected, which paths exist and how to migrate your runbooks in five steps.",
+        "lead": "What does the end of support for SCOrch 2016 mean, and which paths exist?",
+        "category": "PRACTICE",
+        "indexTitle": "System Center 2016 Orchestrator: planning for the end of support on January 11, 2027",
+        "teaser": "What does the end of support for SCOrch 2016 mean, and which paths exist?"
+      }
+    },
+    "docsTitle": {
+      "de": "Import / Export & Backup",
+      "en": "Import / export & backup"
     }
   }
 ]

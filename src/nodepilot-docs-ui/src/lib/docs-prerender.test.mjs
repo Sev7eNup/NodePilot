@@ -30,6 +30,7 @@ const SHELL = [
   '    <link rel="alternate" hreflang="en" href="https://x.test/docs/en/" />',
   '    <link rel="alternate" hreflang="de" href="https://x.test/docs/de/" />',
   '    <link rel="alternate" hreflang="x-default" href="https://x.test/docs/en/" />',
+  '    <meta name="robots" content="index, follow, max-image-preview:large" />',
   '    <meta name="np-docs-base" content="./" />',
   '    <script src="./legacy-hash-redirect.js"></script>',
   '    <script type="module" src="./assets/index.js"></script>',
@@ -110,9 +111,15 @@ describe('prerenderDocs', () => {
   })
 
   it('leaves the entry pages out of the index, because they only forward', () => {
-    const entry = read('en/index.html')
-    expect(entry).not.toContain('rel="canonical"')
-    expect(entry).not.toContain('og:url')
+    for (const file of ['en/index.html', 'index.html']) {
+      const entry = read(file)
+      expect(entry).not.toContain('rel="canonical"')
+      expect(entry).not.toContain('og:url')
+      // One robots tag: the shell's own is replaced, not contradicted by a second one.
+      expect(entry.match(/name="robots"/g)).toHaveLength(1)
+      expect(entry).toContain('content="noindex, follow"')
+    }
+    expect(read('en/cli/index.html')).toContain('content="index, follow, max-image-preview:large"')
   })
 
   it('lists every page of every language in the sitemap, and nothing else', () => {

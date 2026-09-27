@@ -71,8 +71,10 @@ Deep Links in die Doku haben die Form `https://www.nodepilot.run/docs/<sprache>/
   Vite-Build schreibt das Plugin `np-site-prerender` (`vite.site.config.ts`) aus der einen
   gebauten Hülle je Route eine eigene Datei, dazu `404.html`, `sitemap.xml` und `robots.txt`.
   Die Regeln dafür stehen als reine Funktionen in `src/site/prerender.ts`. Jede Datei bekommt
-  eigenen Titel, eigene Beschreibung und eigene `canonical`-URL — vorher lieferte jede Adresse
-  dieselbe Hülle, ein Crawler sah also eine einzige Seite.
+  eigenen Titel, eigene Beschreibung und eigene `canonical`-URL und enthält nur ihren eigenen
+  Seitenabschnitt (`keepPage`); Seiten- und Sprachwechsel sind normale Seitenaufrufe.
+  `npm run dev:site` liefert jede Routenadresse mit derselben Hülle, zugeschnitten auf die Route
+  (Plugin `siteDevRoutes`); Artikeltexte gibt es nur im Build.
 
   Weil die Website auch in einem Unterverzeichnis liegen kann, ist in der Quelle
   jede interne URL relativ zur Wurzel geschrieben. Der Prerender hebt sie je Tiefe an und setzt
