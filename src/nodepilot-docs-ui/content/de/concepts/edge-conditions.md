@@ -1,6 +1,6 @@
 # Edge-Bedingungen
 
-Eine Edge verbindet zwei Nodes. Eine Bedingung legt fest, wann der Ziel-Node ausgeführt wird.
+Eine Edge verbindet zwei Nodes. Eine Bedingung legt fest, wann der Ziel-Node ausgeführt wird: bei Erfolg, bei Fehlschlag, immer oder nach einem Vergleich von Werten.
 
 ## Bedingung festlegen
 

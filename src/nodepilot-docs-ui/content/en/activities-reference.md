@@ -1,6 +1,6 @@
 # Activity reference
 
-This reference describes the configuration and outputs of every activity type.
+This reference describes the configuration and outputs of every activity type, from PowerShell scripts, services and files to REST, SQL and flow control.
 
 | Scope | Execution location |
 |---|---|

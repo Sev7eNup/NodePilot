@@ -1,6 +1,6 @@
 # Activity-Referenz
 
-Diese Referenz beschreibt Konfiguration und Ausgaben jedes Activity-Typs.
+Diese Referenz beschreibt Konfiguration und Ausgaben jedes Activity-Typs, von PowerShell-Skripten über Dienste und Dateien bis zu REST, SQL und Ablaufsteuerung.
 
 | Scope | Ausführungsort |
 |---|---|

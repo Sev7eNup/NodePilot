@@ -90,7 +90,7 @@ export const de = {
   } satisfies Record<SitePage, string>,
   /** Document titles; an article uses its own title. */
   titles: {
-    experience: "Tour",
+    experience: 'NodePilot im Browser ausprobieren: geführte Tour',
     home: 'PowerShell- und Windows-Automatisierung',
     product: 'Visueller Workflow-Designer für Windows und PowerShell',
     videos: 'Tutorials: Workflow-Automatisierung in Videos',
