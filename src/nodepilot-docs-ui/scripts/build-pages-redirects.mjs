@@ -1,7 +1,7 @@
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { ARTICLE_SLUGS, ROUTE_PATHS } from '../src/site/router.ts'
+import { ARTICLE_SLUGS, ROUTE_PATHS, SOLUTION_SLUGS } from '../src/site/router.ts'
 import { pagesRedirectTarget } from './pages-redirect.mjs'
 
 const PACKAGE_ROOT = fileURLToPath(new URL('..', import.meta.url))
@@ -12,8 +12,13 @@ export function buildPagesRedirects(packageRoot = PACKAGE_ROOT) {
   const out = join(root, '_pages-redirects')
   rmSync(out, { recursive: true, force: true })
   mkdirSync(out, { recursive: true })
-  const paths = new Set(['', 'demo', 'docs', 'produkt', 'erleben', 'blog/warum-nodepilot', ...Object.values(ROUTE_PATHS)])
+  const paths = new Set(['', 'demo', 'docs', 'produkt', 'erleben', 'blog/warum-nodepilot', ...Object.values(ROUTE_PATHS), ...SOLUTION_SLUGS])
   for (const slug of ARTICLE_SLUGS) paths.add(`blog/${slug}`)
+  for (const path of [...paths]) {
+    if (path === '' || [...Object.values(ROUTE_PATHS), ...SOLUTION_SLUGS].includes(path) || path.startsWith('blog/')) {
+      if (!['impressum', 'datenschutz'].includes(path)) paths.add(`en${path ? '/' + path : ''}`)
+    }
+  }
   for (const language of ['en', 'de']) {
     paths.add(`docs/${language}`)
     const corpus = join(root, 'content', language)

@@ -92,9 +92,17 @@ Deep Links in die Doku haben die Form `https://www.nodepilot.run/docs/<sprache>/
   `SITE_ROUTE_SEGMENTS` aus `src/site/router.ts` (`walkthrough`, `product`, `blog`, `impressum`,
   `datenschutz`); dieselbe Liste steht wörtlich im Redirect-Script. Eine neue Route gehört in
   beide Listen und darf mit keinem Doku-Pfad und keiner Sprache kollidieren.
-- **Texte und Sprache:** Die Texte der Website, auch die Blogbeiträge, stehen in
-  `src/site/i18n/de.ts` und `en.ts`. Website und Doku teilen sich die Sprachwahl über
-  `LANG_STORAGE_KEY` aus `src/i18n/languages.ts`, weil beide auf derselben Origin liegen.
+- **Texte und Sprache:** Website-Texte stehen in `src/site/i18n/de.ts` und `en.ts`.
+  Blogtexte liegen separat in `content/blog/`; `src/site/blog-catalog.json` enthält Metadaten,
+  Verlinkung und Veröffentlichungsstand. Sie werden als vollständiges HTML ausgeliefert und
+  gehören nicht ins gemeinsame JavaScript. Deutsche URLs bleiben bestehen, englische Fassungen
+  liegen unter `/en/`, jeweils mit eigenem Canonical und gegenseitigem `hreflang`.
+  Die URL bestimmt die Sprache. `LANG_STORAGE_KEY` bewahrt die Auswahl für weitere Einstiege.
+  `NP_BLOG_PREVIEW=1` bindet Entwürfe nur zur lokalen Prüfung ein (`noindex`, ohne Sitemap-Eintrag).
+  Vor der Veröffentlichung die Variable entfernen oder auf `0` setzen. Für freigegebene Artikel
+  `status: published` und das tatsächliche `publishedAt` setzen; `modifiedAt` nur bei einer
+  wirklichen Aktualisierung. `npm run images:site` erzeugt responsive WebP-Varianten automatisch
+  vor dem Website-Build. Einzelheiten: [SEO-Umsetzung](../../docs/seo-local-review.md).
 - **Zwei Grafiken auf der Startseite**, beide als Inline-SVG ohne Bilddatei: das Workflow-Beispiel
   im Hero (`src/site/graph.ts`) und das Architekturdiagramm darunter (`src/site/topology.ts`). Die
   Geometrie steht in diesen beiden Dateien als reine Funktionen, `main.ts` schreibt die Koordinaten
@@ -148,7 +156,7 @@ stabil. `.gitattributes` schließt `pages-media/` per `export-ignore` aus dem `g
 für `knowledge/source` aus.
 
 - `src/data/nav.ts` — Seitenbaum, Gruppierung, Sidebar-Icon je Seite, Prev/Next-Logik, `groupOf()` für den Breadcrumb. Das `icon`-Feld ist **required**: `tsc -b` schlägt fehl, sobald eine neue Seite ohne Icon eingetragen wird.
-- `src/lib/content.ts` — lädt via `import.meta.glob` alle `content/**/*.md` als Raw-Strings
+- `src/lib/content.ts` — lädt nur `content/de/**/*.md` und `content/en/**/*.md` als Raw-Strings; Blogquellen bleiben außerhalb des Doku-/Installer-Bundles
 - `src/lib/useTheme.ts` — Light/Dark-Toggle (LocalStorage). Die Erstauflösung passiert in der externen Datei `public/theme-init.js`, die `index.html` als klassisches Script ohne `defer`/`async` **vor** dem ersten Paint lädt (kein Theme-Flash, kompatibel mit `script-src 'self'`); der Hook seedet aus der gesetzten `html.dark`-Klasse.
 - `src/components/` — `TopBar`, `Sidebar`, `DocPage`, `Toc`, `SearchModal`
 - `src/index.css` — Tailwind + Design-Tokens (Material-3-Tonal-Palette / Azur) + portierte `.np-sidebar`-, `.np-nav`- und `.np-card`-Blöcke + `.np-prose`

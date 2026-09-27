@@ -1,10 +1,10 @@
-@import '@fontsource/ibm-plex-sans/400.css';
-@import '@fontsource/ibm-plex-sans/500.css';
-@import '@fontsource/ibm-plex-sans/600.css';
-@import '@fontsource/ibm-plex-sans/700.css';
-@import '@fontsource/ibm-plex-mono/400.css';
-@import '@fontsource/ibm-plex-mono/500.css';
-@import '@fontsource/ibm-plex-mono/600.css';
+@import '@fontsource/ibm-plex-sans/latin-400.css';
+@import '@fontsource/ibm-plex-sans/latin-500.css';
+@import '@fontsource/ibm-plex-sans/latin-600.css';
+@import '@fontsource/ibm-plex-sans/latin-700.css';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-500.css';
+@import '@fontsource/ibm-plex-mono/latin-600.css';
 /* NodePilot project website. It uses the product's visual vocabulary, not a separate brand theme:
    tokens from src/nodepilot-ui/src/index.css (np-shell), node shapes from preview/PreviewDesigner.tsx. */
 :root{
@@ -458,3 +458,13 @@ h2{font-size:25px;line-height:1.28;letter-spacing:-.55px}
 @media(max-width:350px){.page{padding-inline:15px}.header-actions{padding-right:10px;gap:7px}.brand{font-size:20px;padding-left:13px}.hero h1{font-size:34px}.hero-actions>.button-primary{width:100%;font-size:15px}.hero-footnote{margin-top:14px}.stage-caption{flex-direction:column;align-items:flex-start;gap:0}.inspector-bottom{flex-direction:column;align-items:flex-start}#inspector-code{max-width:100%;width:100%}.capability-line{font-size:11px}.heading-with-link{align-items:flex-start;flex-direction:column;gap:13px}.heading-with-link h2{max-width:none}.article-row{grid-template-columns:minmax(0,1fr) 13px;gap:7px}.page-intro h1{font-size:32px}.filter-group{gap:16px}.gallery-tabs{gap:15px}.gallery-tab{font-size:11.5px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important}}
 @media print{.site-header,.sidebar,.nav-backdrop,.hero-actions,.hero-links,.workflow-stage,.product-bottom-actions,.modal,.toast,.article-back,.article-end,.blog-controls{display:none!important}.main{margin:0;padding:0}.page{padding:20px;color:#111}.article-body,.article-header>p,.page-intro>p{color:#333}body{background:#fff}.article-header h1,h1,h2,h3{color:#111}.article-body a{color:#222;text-decoration:underline}.article-meta{color:#333}.article-body code,.article-body pre{background:#eee;color:#111}.article-note{color:#111;background:#eee}}
+
+/* Article screenshots preserve their aspect ratio on narrow screens. */
+.article-body img{display:block;max-width:100%;height:auto;border-radius:6px}
+.topic-links{padding-bottom:32px}
+.lang-option{text-decoration:none}
+
+.site-breadcrumbs{padding:24px 32px 0;color:var(--muted);font-size:13px;line-height:1.8;overflow-wrap:anywhere}.site-breadcrumbs a{color:inherit;text-underline-offset:3px}
+@media(max-width:767px){.site-breadcrumbs{padding-inline:24px}}
+
+.article-body figure{margin:28px 0}.article-body figcaption{font-size:13px;color:var(--muted);line-height:1.6;margin-top:10px}.article-body table{display:block;max-width:100%;overflow-x:auto;border-collapse:collapse}.article-body th,.article-body td{padding:10px;border:1px solid var(--line);min-width:140px;text-align:left}.article-meta{flex-wrap:wrap;line-height:1.7}

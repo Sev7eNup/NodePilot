@@ -1,11 +1,10 @@
+import { configureImage, imageAttributes } from './media'
+import { articleBySlug, isBlogPreview } from './blog'
 /* NodePilot project website. No backend, analytics or real workflow execution: every
    interaction stays in the page, apart from the links a visitor opens. */
 import { mountExperience, type ExperienceController } from './experience/controller'
-import designerDark from '../../../../docs/images/designer-dark.png'
-import logDark from '../../../../docs/images/log-dark.png'
-import aiDark from '../../../../docs/images/ai-dark.png'
-import appIconUrl from '../assets/logo-dark.png'
-import { detectLang, isLang } from '../i18n/languages'
+import appIconUrl from './images/logo-dark.webp'
+import { isLang } from '../i18n/languages'
 import {
   EDGES,
   ICON_OFFSET,
@@ -33,21 +32,21 @@ import {
 import {
   applyLanguage,
   currentLang,
-  docsHref,
   format,
   onLanguageChange,
   persistLang,
   setBasePrefix,
   t,
 } from './i18n'
-import { resolveRoute, type SitePage, type SiteRoute } from './router'
+import { resolveRoute, routeLanguage, type SitePage, type SiteRoute } from './router'
+import { renderSiteContent, renderSiteHead, siteHref } from './seo'
 
 const REPO = 'https://github.com/Sev7eNup/NodePilot'
-const PAGES: readonly SitePage[] = ['experience', 'home', 'product', 'blog', 'article', 'impressum', 'datenschutz', 'notfound']
+const PAGES: readonly SitePage[] = ['experience', 'home', 'product', 'blog', 'article', 'solution', 'impressum', 'datenschutz', 'notfound']
 const SCREENSHOTS = {
-  designer: { file: 'designer-dark.png', src: designerDark },
-  logs: { file: 'log-dark.png', src: logDark },
-  ai: { file: 'ai-dark.png', src: aiDark },
+  designer: { file: 'designer-dark.png' },
+  logs: { file: 'log-dark.png' },
+  ai: { file: 'ai-dark.png' },
 }
 // German-only legal texts, supplied as files. A missing file leaves its page without text.
 const LEGAL_TEXTS = import.meta.glob<string>('./legal/*.de.html', { query: '?raw', import: 'default', eager: true })
@@ -271,7 +270,8 @@ function loadOriginalImage(image: HTMLImageElement, holder: HTMLElement, key: Sc
     imageStates.set(holder, 'error')
     renderImageFallback(holder)
   }
-  image.src = SCREENSHOTS[key].src
+  configureImage(image, key, basePath)
+  image.loading = 'eager'
 }
 
 function sourceUrl(key: ScreenKey): string {
@@ -294,7 +294,7 @@ function setGallery(key: ScreenKey): void {
   $<HTMLAnchorElement>('#gallery-fallback-link').href = sourceUrl(key)
   // The bundled file, not GitHub: opening it shows the screenshot at its full 2544px, where the
   // UI text in it stays readable.
-  $<HTMLAnchorElement>('#gallery-full-size-link').href = SCREENSHOTS[key].src
+  $<HTMLAnchorElement>('#gallery-full-size-link').href = imageAttributes(key, basePath, true).src
   loadOriginalImage(galleryImage, $('#gallery-image-holder'), key)
 }
 
@@ -360,6 +360,8 @@ document.addEventListener('click', (event) => {
   }
   const language = target.closest<HTMLElement>('[data-lang]')
   if (language) {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
     setLanguage(language.dataset.lang)
     return
   }
@@ -723,28 +725,9 @@ $('#reset-search').addEventListener('click', () => {
 
 /** Texts that depend on the route and the language. */
 function renderRouteTexts(route: SiteRoute): void {
-  const messages = t()
-  $('#header-current').textContent = messages.pages[route.page]
-  // The prerendered file carries this route's description; applyLanguage would put the site-wide
-  // one back, so it is set again here for whatever a crawler reads after the script has run.
-  const description =
-    route.page === 'article' ? messages.articles[route.slug].summary : messages.meta.descriptions[route.page]
-  document.querySelector('meta[name="description"]')?.setAttribute('content', description)
-  if (route.page === 'article') {
-    const article = messages.articles[route.slug]
-    $('#article-category').textContent = article.category
-    $('#article-title').textContent = article.title
-    $('#article-lead').textContent = article.lead
-    // Only author-written article HTML from the dictionaries is inserted here.
-    const body = $('#article-body')
-    body.innerHTML = article.body
-    // The dictionary HTML is written for the site root; an article sits two levels below it.
-    for (const link of body.querySelectorAll('[data-docs-path]'))
-      link.setAttribute('href', docsHref(currentLang(), link.getAttribute('data-docs-path') ?? ''))
-    document.title = `${article.title} — NodePilot Blog`
-  } else {
-    document.title = `${messages.titles[route.page]} — NodePilot`
-  }
+  renderSiteContent(document, route, currentLang(), basePath)
+  renderSiteHead(document, route, currentLang(), siteOrigin)
+  applyBlogFilter(false)
 }
 
 /** Replays the ten-second invitation on the live-demo link whenever the home page is
@@ -779,6 +762,9 @@ function showRoute(next: SiteRoute, initial: boolean): void {
     focusTarget.focus({ preventScroll: true })
   }
   requestAnimationFrame(renderGraph)
+  if (location.hash) requestAnimationFrame(() => {
+    try { document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView() } catch { /* Malformed bookmark fragment. */ }
+  })
 }
 
 /**
@@ -787,6 +773,7 @@ function showRoute(next: SiteRoute, initial: boolean): void {
  */
 const basePrefix = $<HTMLMetaElement>('meta[name="np-site-base"]').content || './'
 const basePath = new URL(basePrefix, location.href).pathname
+const siteOrigin = document.querySelector<HTMLMetaElement>('meta[name="np-site-origin"]')?.content || location.origin
 
 /** The current address as a path relative to the site root. */
 function currentPath(): string {
@@ -795,7 +782,11 @@ function currentPath(): string {
 }
 
 function route(initial = false): void {
-  showRoute(resolveRoute(currentPath()), initial)
+  const lang = routeLanguage(currentPath())
+  if (currentLang() !== lang) applyLanguage(lang)
+  let next = resolveRoute(currentPath())
+  if (next.page === 'article' && !isBlogPreview(document) && articleBySlug[next.slug].status !== 'published') next = { page: 'notfound' }
+  showRoute(next, initial)
 }
 
 /** Follows an internal link without reloading, and keeps the address bar honest. */
@@ -807,7 +798,9 @@ function navigate(href: string): void {
 function setLanguage(value: string | undefined): void {
   if (!isLang(value) || value === currentLang()) return
   persistLang(value)
-  applyLanguage(value)
+  const target = siteHref(basePath, currentRoute ?? { page: 'home' }, value)
+  if (currentRoute?.page === 'article') location.assign(`${target}${location.search}${location.hash}`)
+  else navigate(`${target}${location.search}${location.hash}`)
 }
 
 function renderLanguageState(): void {
@@ -841,7 +834,7 @@ document.addEventListener('click', (event) => {
   const url = new URL(link.href)
   if (url.origin !== location.origin || url.hash || !url.pathname.startsWith(basePath)) return
   const next = resolveRoute(url.pathname.slice(basePath.length))
-  if (next.page === 'notfound') return
+  if (next.page === 'notfound' || next.page === 'article' || currentRoute?.page === 'article') return
 
   event.preventDefault()
   if (url.pathname === location.pathname) {
@@ -861,6 +854,6 @@ window.addEventListener('pagehide', () => {
 })
 
 setBasePrefix(basePrefix)
-applyLanguage(detectLang())
+applyLanguage(routeLanguage(currentPath()))
 route(true)
 selectNode(selectedNode)

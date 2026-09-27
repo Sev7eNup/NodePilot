@@ -32,14 +32,17 @@ RewriteRule ^(.*)$ https://www.nodepilot.run/$1 [R=301,L]
 
 # --- Compression -------------------------------------------------------------
 <IfModule mod_deflate.c>
-  AddOutputFilterByType DEFLATE text/html text/css text/plain text/xml application/javascript application/json image/svg+xml
+  AddOutputFilterByType DEFLATE text/html text/css text/plain text/xml application/xml text/javascript application/javascript application/json image/svg+xml
 </IfModule>
 
 # --- Caching -----------------------------------------------------------------
 <IfModule mod_headers.c>
   # Asset names carry a content hash, so a changed file is a new name.
-  <FilesMatch "\.(js|css|woff2?)$">
+  <FilesMatch "-[A-Za-z0-9_-]{8,}\.(js|css|woff2?)$">
     Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  <FilesMatch "^(legacy-docs-redirect|legacy-hash-redirect)\.js$">
+    Header set Cache-Control "public, max-age=0, must-revalidate"
   </FilesMatch>
   # Images and the video are not all content-hashed, so they expire rather than stick for a year.
   <FilesMatch "\.(png|jpe?g|svg|webp|mp4|ico)$">

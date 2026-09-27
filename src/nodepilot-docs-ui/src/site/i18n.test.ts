@@ -46,13 +46,8 @@ describe('website dictionaries', () => {
     }
   })
 
-  it('link article bodies to the docs in their own language', () => {
-    for (const lang of LANGUAGES) {
-      for (const slug of ARTICLE_SLUGS) {
-        const linked = [...messages[lang].articles[slug].body.matchAll(/href="docs\/#\/([^/"]*)/g)].map((m) => m[1])
-        for (const linkLang of linked) expect(linkLang, `${lang}: ${slug}`).toBe(lang)
-      }
-    }
+  it('keeps article bodies out of the client dictionaries', () => {
+    for (const lang of LANGUAGES) for (const slug of ARTICLE_SLUGS) expect(messages[lang].articles[slug]).not.toHaveProperty('body')
   })
 
   it('keep the placeholders the script fills', () => {

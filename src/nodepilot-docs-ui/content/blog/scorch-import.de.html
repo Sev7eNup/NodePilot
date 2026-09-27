@@ -1,0 +1,13 @@
+<p>In einem gewachsenen SCOrch-Runbook steckt viel Arbeit. Neben der Reihenfolge der Aktivitäten und der Fehlerbehandlung legen Bedingungen fest, welchen Pfad eine Ausführung nimmt. Hinzu kommen die Daten, die von einer Aktivität an die nächste weitergereicht werden. Diese Zusammenhänge sollten bei einer Migration nicht von Hand rekonstruiert werden müssen.</p>
+<h2>Mit dem vorhandenen Export starten</h2>
+<p>Ausgangspunkt ist der vorhandene SCOrch-Export, den NodePilot im Format <code>.ois_export</code> einliest. Der Import lässt sich über die Oberfläche oder die CLI starten:</p>
+<pre><code>np workflow import-scorch --file .\runbooks.ois_export</code></pre>
+<p>NodePilot übersetzt unterstützte Aktivitäten in passende Aktivitäten des eigenen Workflow-Modells. Dabei berücksichtigt der Import auch Verbindungen und Bedingungen sowie globale Variablen und Published-Data-Verweise, über die nachfolgende Schritte auf Daten zugreifen. Auch die Ordnerstruktur lässt sich übernehmen.</p>
+<h2>Ein Importbericht ist Teil des Ergebnisses</h2>
+<p>Nicht jede Aktivität und jede Eigenschaft ist verlustfrei übertragbar. An die Stelle einer nicht unterstützten Aktivität tritt deshalb ein deaktivierter Platzhalter, zu dem der Importbericht die relevanten Informationen aufführt.</p>
+<p>Besondere Aufmerksamkeit verdienen Zielsystemangaben, die unvollständig geblieben sind, sowie Datenreferenzen, die sich nicht übersetzen ließen. Auch Zeitpläne können nur näherungsweise übertragen worden sein. Nach dem Import muss geprüft werden, ob der übernommene Workflow weiterhin wie vorgesehen arbeitet.</p>
+<h2 id="prüfen-testen-bewusst-aktivieren">Vor der Aktivierung prüfen</h2>
+<p>Importierte Workflows bleiben zunächst deaktiviert. Der Import rekonstruiert keine Zugangsdaten aus den verschlüsselten SCOrch-Daten. Vor der Aktivierung sollten deshalb die Hinweise, die der Bericht aufführt, ebenso kontrolliert werden wie Zielsysteme, Berechtigungen und Fehlerpfade.</p>
+<p>Anschließend folgt ein Test in einer geeigneten Testumgebung. Der Workflow wird erst ausdrücklich aktiviert, wenn sein Verhalten den eigenen Anforderungen entspricht.</p>
+<div class="article-note">Die Entscheidungen zur Migration bleiben bei den Verantwortlichen. Als Grundlage liefert der Import das tatsächliche Runbook und einen nachvollziehbaren Bericht.</div>
+<p class="article-source">Grundlage und aktuelle Details: <a href="https://github.com/Sev7eNup/NodePilot#coming-from-system-center-orchestrator" target="_blank" rel="noopener noreferrer">SCOrch-Import im NodePilot README</a>.</p>

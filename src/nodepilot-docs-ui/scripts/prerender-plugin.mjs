@@ -1,65 +1,45 @@
-// Writes one file per website route after the Vite build: its own title, description and
-// canonical URL, plus 404.html, sitemap.xml and robots.txt.
-//
-// Lives here and not in vite.site.config.ts because that file is type-checked as part of
-// tsconfig.node.json, which knows neither Node's built-ins nor the sources under src/. Vite
-// bundles the config with esbuild, so the TypeScript imports below resolve at build time.
+import { articleBody } from './blog-content.mjs'
+import { articles } from '../src/site/blog.ts'
+// Build and client navigation share the same content, links and metadata renderer.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { de } from '../src/site/i18n/de.ts'
-import {
-  applyMeta,
-  metaKey,
-  originPrefix,
-  pageUrl,
-  revealPage,
-  rewriteRelativeUrls,
-  robots,
-  routePages,
-  setBaseMeta,
-  sitemap,
-} from '../src/site/prerender.ts'
+import { parseHTML } from 'linkedom'
+import { originPrefix, revealPage, rewriteRelativeUrls, robots, routePages, setBaseMeta, sitemap } from '../src/site/prerender.ts'
+import { renderSiteContent, renderSiteHead } from '../src/site/seo.ts'
+import { experienceMarkup } from '../src/site/experience/markup.ts'
 
-/** German title and description of a route, from the same dictionary the page renders from. */
-function textsFor(route) {
-  const key = metaKey(route)
-  if (key.startsWith('article.')) {
-    const article = de.articles[key.slice('article.'.length)]
-    return { title: `${article.title} — NodePilot Blog`, description: article.summary }
+export function prerenderSite(outDir, origin, preview = process.env.NP_BLOG_PREVIEW === '1') {
+  for (const article of articles) {
+    if (!['draft', 'published'].includes(article.status)) throw new Error(`Invalid publication state: ${article.slug}`)
+    for (const key of ['publishedAt', 'modifiedAt']) {
+      const date = article[key]
+      if (date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || new Date(date).toISOString().slice(0, 10) !== date)) throw new Error(`Invalid ${key}: ${article.slug}`)
+    }
+    if (article.status === 'published' && !article.publishedAt) throw new Error(`Published article needs its actual publication date: ${article.slug}`)
+    if (article.status === 'draft' && article.publishedAt) throw new Error(`Draft cannot have a publication date: ${article.slug}`)
+    if (article.modifiedAt && (!article.publishedAt || article.modifiedAt < article.publishedAt)) throw new Error(`Invalid modification date: ${article.slug}`)
   }
-  const title = de.titles[key]
-  return {
-    title: key === 'home' ? `NodePilot — ${title}` : `${title} — NodePilot`,
-    description: de.meta.descriptions[key],
-  }
-}
-
-export function prerenderSite(outDir, origin) {
   const root = outDir ?? resolve(fileURLToPath(new URL('..', import.meta.url)), 'dist-site')
   const shell = readFileSync(join(root, 'index.html'), 'utf8')
-  const pages = routePages()
-
+  const pages = routePages(preview)
+  const prefix = originPrefix(origin)
   for (const page of pages) {
-    const { title, description } = textsFor(page.route)
-    // Root-absolute, so a link keeps pointing at the same place after the address has changed
-    // under History API navigation.
-    const prefix = originPrefix(origin)
-    const html = setBaseMeta(
-      rewriteRelativeUrls(
-        applyMeta(revealPage(shell, page.route), {
-          title,
-          description,
-          // The not-found page gets no address of its own.
-          url: page.listed ? pageUrl(origin, page.path, true) : '',
-        }),
-        prefix,
-      ),
-      prefix,
-    )
+    const { document } = parseHTML(setBaseMeta(rewriteRelativeUrls(revealPage(shell, page.route), prefix), prefix))
+    document.querySelector('meta[name="np-site-origin"]').setAttribute('content', origin)
+    for (const element of document.querySelectorAll('[data-legal]')) {
+      element.innerHTML = readFileSync(new URL(`../src/site/legal/${element.getAttribute('data-legal')}.de.html`, import.meta.url), 'utf8')
+    }
+    document.getElementById('experience-root').innerHTML = experienceMarkup(page.lang, prefix)
+    const previewMeta = document.createElement('meta')
+    previewMeta.setAttribute('name', 'np-blog-preview')
+    previewMeta.setAttribute('content', preview ? '1' : '0')
+    document.head.appendChild(previewMeta)
+    renderSiteContent(document, page.route, page.lang, prefix, page.route.page === 'article' ? articleBody(page.route.slug, page.lang) : undefined)
+    renderSiteHead(document, page.route, page.lang, origin)
     const target = join(root, page.file)
     mkdirSync(dirname(target), { recursive: true })
-    writeFileSync(target, html)
+    writeFileSync(target, document.toString())
   }
   writeFileSync(join(root, 'sitemap.xml'), sitemap(origin, pages))
   writeFileSync(join(root, 'robots.txt'), robots(origin))

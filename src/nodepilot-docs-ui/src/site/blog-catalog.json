@@ -1,0 +1,617 @@
+[
+  {
+    "slug": "why-nodepilot",
+    "status": "published",
+    "next": false,
+    "source": "why-nodepilot",
+    "solution": "powershell-automation",
+    "docs": "getting-started/introduction",
+    "audience": "Windows-/PowerShell-Admins",
+    "question": {
+      "de": "Warum braucht eine Skriptsammlung einen Workflow-Orchestrator?",
+      "en": "Why does a script collection need workflow orchestration?"
+    },
+    "related": [
+      "first-workflow",
+      "scorch-import"
+    ],
+    "publishedAt": "2026-09-20",
+    "modifiedAt": "2026-09-27",
+    "text": {
+      "de": {
+        "title": "Warum NodePilot: von PowerShell-Skripten zu Windows-Workflows",
+        "summary": "Von PowerShell-Skripten und SCOrch zum eigenen Werkzeug.",
+        "lead": "PowerShell erledigt die Arbeit. Verloren geht der Überblick über das, was zwischen den Skripten passiert.",
+        "category": "HINTERGRUND",
+        "indexTitle": "Warum NodePilot: von PowerShell-Skripten zu Windows-Workflows",
+        "teaser": "Von PowerShell-Skripten und SCOrch zum eigenen Werkzeug."
+      },
+      "en": {
+        "title": "Why NodePilot: from PowerShell scripts to Windows workflows",
+        "summary": "From PowerShell scripts and SCOrch to a tool of its own.",
+        "lead": "PowerShell does the work. What gets lost is the overview of what happens between the scripts.",
+        "category": "BACKGROUND",
+        "indexTitle": "Why NodePilot: from PowerShell scripts to Windows workflows",
+        "teaser": "From PowerShell scripts and SCOrch to a tool of its own."
+      }
+    },
+    "docsTitle": {
+      "de": "Einführung",
+      "en": "Introduction"
+    }
+  },
+  {
+    "slug": "scorch-import",
+    "status": "published",
+    "next": false,
+    "source": "scorch-import",
+    "solution": "scorch-alternative",
+    "docs": "import-export",
+    "audience": "SCOrch-Anwender",
+    "question": {
+      "de": "Was übernimmt der SCOrch-Import und was muss ich nacharbeiten?",
+      "en": "What does the SCOrch import preserve and what needs review?"
+    },
+    "related": [
+      "scorch-migration",
+      "first-workflow"
+    ],
+    "publishedAt": "2026-09-20",
+    "modifiedAt": "2026-09-27",
+    "text": {
+      "de": {
+        "title": "SCOrch-Runbooks importieren und das Ergebnis prüfen",
+        "summary": "Was beim Import aus System Center Orchestrator wichtig ist.",
+        "lead": "Bei der Übernahme eines Runbooks kommt es auch auf die Verbindungen und Daten an, die das Zusammenspiel seiner Aktivitäten bestimmen.",
+        "category": "PRAXIS",
+        "indexTitle": "SCOrch-Runbooks importieren und das Ergebnis prüfen",
+        "teaser": "Was beim Import aus System Center Orchestrator wichtig ist."
+      },
+      "en": {
+        "title": "Importing SCOrch runbooks and reviewing the result",
+        "summary": "What matters when importing from System Center Orchestrator.",
+        "lead": "Existing automation is more than a row of boxes. An import also has to carry over the links and the data between them.",
+        "category": "PRACTICE",
+        "indexTitle": "Importing SCOrch runbooks and reviewing the result",
+        "teaser": "What matters when importing from System Center Orchestrator."
+      }
+    },
+    "docsTitle": {
+      "de": "Import / Export & Backup",
+      "en": "Import / export & backup"
+    }
+  },
+  {
+    "slug": "first-workflow",
+    "status": "published",
+    "next": true,
+    "source": "erster-workflow",
+    "solution": "powershell-automation",
+    "docs": "getting-started/quickstart",
+    "audience": "Windows-/PowerShell-Admins",
+    "question": {
+      "de": "Wie führe ich meinen ersten PowerShell-Workflow aus und prüfe sein Ergebnis?",
+      "en": "How do I run and verify my first PowerShell workflow?"
+    },
+    "related": [
+      "verify-results",
+      "powershell-51-and-7"
+    ],
+    "publishedAt": "2026-09-27",
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "Einen ersten Workflow mit NodePilot erstellen",
+        "summary": "Wie führe ich meinen ersten PowerShell-Workflow aus und prüfe sein Ergebnis?",
+        "lead": "Wie führe ich meinen ersten PowerShell-Workflow aus und prüfe sein Ergebnis?",
+        "category": "PRAXIS",
+        "indexTitle": "Einen ersten Workflow mit NodePilot erstellen",
+        "teaser": "Wie führe ich meinen ersten PowerShell-Workflow aus und prüfe sein Ergebnis?"
+      },
+      "en": {
+        "title": "Creating a first workflow with NodePilot",
+        "summary": "How do I run and verify my first PowerShell workflow?",
+        "lead": "How do I run and verify my first PowerShell workflow?",
+        "category": "PRACTICE",
+        "indexTitle": "Creating a first workflow with NodePilot",
+        "teaser": "How do I run and verify my first PowerShell workflow?"
+      }
+    },
+    "docsTitle": {
+      "de": "Schnelleinstieg",
+      "en": "Quick start"
+    }
+  },
+  {
+    "slug": "verify-results",
+    "status": "draft",
+    "next": false,
+    "source": "erfolg-pruefen",
+    "solution": "powershell-automation",
+    "docs": "observability",
+    "audience": "Windows-/PowerShell-Admins",
+    "question": {
+      "de": "Welche Nachweise zeigen, dass ein Auftrag fachlich erfolgreich war?",
+      "en": "What evidence proves that an automation task achieved its outcome?"
+    },
+    "related": [
+      "first-workflow",
+      "failure-analysis"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "Ein grüner Status ist noch kein erfolgreicher Auftrag",
+        "summary": "Welche Nachweise zeigen, dass ein Auftrag fachlich erfolgreich war?",
+        "lead": "Welche Nachweise zeigen, dass ein Auftrag fachlich erfolgreich war?",
+        "category": "PRAXIS",
+        "indexTitle": "Ein grüner Status ist noch kein erfolgreicher Auftrag",
+        "teaser": "Welche Nachweise zeigen, dass ein Auftrag fachlich erfolgreich war?"
+      },
+      "en": {
+        "title": "A green status does not prove the job is done",
+        "summary": "What evidence proves that an automation task achieved its outcome?",
+        "lead": "What evidence proves that an automation task achieved its outcome?",
+        "category": "PRACTICE",
+        "indexTitle": "A green status does not prove the job is done",
+        "teaser": "What evidence proves that an automation task achieved its outcome?"
+      }
+    },
+    "docsTitle": {
+      "de": "Observability",
+      "en": "Observability"
+    }
+  },
+  {
+    "slug": "scorch-migration",
+    "status": "draft",
+    "next": false,
+    "source": "scorch-migration-fallbeispiel",
+    "solution": "scorch-alternative",
+    "docs": "import-export",
+    "audience": "SCOrch-Anwender",
+    "question": {
+      "de": "Wie bleiben Datenübergaben und Fehlerpfade bei einer Migration erhalten?",
+      "en": "How do data contracts and failure paths survive a migration?"
+    },
+    "related": [
+      "scorch-import",
+      "verify-results"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "Was von einem SCOrch-Runbook beim Umzug erhalten bleiben muss",
+        "summary": "Wie bleiben Datenübergaben und Fehlerpfade bei einer Migration erhalten?",
+        "lead": "Wie bleiben Datenübergaben und Fehlerpfade bei einer Migration erhalten?",
+        "category": "PRAXIS",
+        "indexTitle": "Was von einem SCOrch-Runbook beim Umzug erhalten bleiben muss",
+        "teaser": "Wie bleiben Datenübergaben und Fehlerpfade bei einer Migration erhalten?"
+      },
+      "en": {
+        "title": "What a SCOrch runbook must retain when it moves",
+        "summary": "How do data contracts and failure paths survive a migration?",
+        "lead": "How do data contracts and failure paths survive a migration?",
+        "category": "PRACTICE",
+        "indexTitle": "What a SCOrch runbook must retain when it moves",
+        "teaser": "How do data contracts and failure paths survive a migration?"
+      }
+    },
+    "docsTitle": {
+      "de": "Import / Export & Backup",
+      "en": "Import / export & backup"
+    }
+  },
+  {
+    "slug": "gmsa-service-accounts",
+    "status": "draft",
+    "next": false,
+    "source": "gmsa-dienstkonten",
+    "solution": "self-hosted-automation",
+    "docs": "configuration/remote-execution",
+    "audience": "Windows-Administratoren und Betreiber",
+    "question": {
+      "de": "Wie prüfe ich gMSA-Dienstkonten und ihre tatsächlichen Zugriffsrechte?",
+      "en": "How do I verify gMSA service accounts and their actual permissions?"
+    },
+    "related": [
+      "winrm",
+      "winrm-https"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "gMSA: Dienstkonten ohne manuell verteilte Kennwörter",
+        "summary": "Wie prüfe ich gMSA-Dienstkonten und ihre tatsächlichen Zugriffsrechte?",
+        "lead": "Wie prüfe ich gMSA-Dienstkonten und ihre tatsächlichen Zugriffsrechte?",
+        "category": "PRAXIS",
+        "indexTitle": "gMSA: Dienstkonten ohne manuell verteilte Kennwörter",
+        "teaser": "Wie prüfe ich gMSA-Dienstkonten und ihre tatsächlichen Zugriffsrechte?"
+      },
+      "en": {
+        "title": "gMSA: service accounts without manually distributed passwords",
+        "summary": "How do I verify gMSA service accounts and their actual permissions?",
+        "lead": "How do I verify gMSA service accounts and their actual permissions?",
+        "category": "PRACTICE",
+        "indexTitle": "gMSA: service accounts without manually distributed passwords",
+        "teaser": "How do I verify gMSA service accounts and their actual permissions?"
+      }
+    },
+    "docsTitle": {
+      "de": "Remote-Execution",
+      "en": "Remote execution"
+    }
+  },
+  {
+    "slug": "powershell-51-and-7",
+    "status": "draft",
+    "next": false,
+    "source": "powershell-51-und-7",
+    "solution": "powershell-automation",
+    "docs": "activities-reference",
+    "audience": "Windows-/PowerShell-Admins",
+    "question": {
+      "de": "Was muss ich beim Wechsel zwischen PowerShell 5.1 und 7 testen?",
+      "en": "What should I test when switching between PowerShell 5.1 and 7?"
+    },
+    "related": [
+      "first-workflow",
+      "verify-results"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "PowerShell 5.1 und 7: Die Laufzeit gehört zum Auftrag",
+        "summary": "Was muss ich beim Wechsel zwischen PowerShell 5.1 und 7 testen?",
+        "lead": "Was muss ich beim Wechsel zwischen PowerShell 5.1 und 7 testen?",
+        "category": "PRAXIS",
+        "indexTitle": "PowerShell 5.1 und 7: Die Laufzeit gehört zum Auftrag",
+        "teaser": "Was muss ich beim Wechsel zwischen PowerShell 5.1 und 7 testen?"
+      },
+      "en": {
+        "title": "PowerShell 5.1 and 7: the runtime is part of the job",
+        "summary": "What should I test when switching between PowerShell 5.1 and 7?",
+        "lead": "What should I test when switching between PowerShell 5.1 and 7?",
+        "category": "PRACTICE",
+        "indexTitle": "PowerShell 5.1 and 7: the runtime is part of the job",
+        "teaser": "What should I test when switching between PowerShell 5.1 and 7?"
+      }
+    },
+    "docsTitle": {
+      "de": "Activity-Referenz",
+      "en": "Activity reference"
+    }
+  },
+  {
+    "slug": "maintenance-windows",
+    "status": "draft",
+    "next": false,
+    "source": "wartungsfenster",
+    "solution": "self-hosted-automation",
+    "docs": "triggers",
+    "audience": "Betreiber und Administratoren",
+    "question": {
+      "de": "Welche Starts sperrt ein Wartungsfenster und was passiert mit laufender Arbeit?",
+      "en": "Which starts does a maintenance window block and what happens to running work?"
+    },
+    "related": [
+      "stopping-automation",
+      "verify-results"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "Ein Wartungsfenster ist eine Betriebsvereinbarung",
+        "summary": "Welche Starts sperrt ein Wartungsfenster und was passiert mit laufender Arbeit?",
+        "lead": "Welche Starts sperrt ein Wartungsfenster und was passiert mit laufender Arbeit?",
+        "category": "PRAXIS",
+        "indexTitle": "Ein Wartungsfenster ist eine Betriebsvereinbarung",
+        "teaser": "Welche Starts sperrt ein Wartungsfenster und was passiert mit laufender Arbeit?"
+      },
+      "en": {
+        "title": "A maintenance window is an operating agreement",
+        "summary": "Which starts does a maintenance window block and what happens to running work?",
+        "lead": "Which starts does a maintenance window block and what happens to running work?",
+        "category": "PRACTICE",
+        "indexTitle": "A maintenance window is an operating agreement",
+        "teaser": "Which starts does a maintenance window block and what happens to running work?"
+      }
+    },
+    "docsTitle": {
+      "de": "Trigger",
+      "en": "Triggers"
+    }
+  },
+  {
+    "slug": "failure-analysis",
+    "status": "draft",
+    "next": false,
+    "source": "fehlerrekonstruktion",
+    "solution": "powershell-automation",
+    "docs": "deployment/logs",
+    "audience": "Windows-/PowerShell-Admins",
+    "question": {
+      "de": "Wie rekonstruiere ich einen fehlgeschlagenen Lauf bis zur Ursache?",
+      "en": "How do I reconstruct a failed execution from start to cause?"
+    },
+    "related": [
+      "verify-results",
+      "ai-workflows"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "Ein fehlgeschlagener Lauf, vollständig rekonstruiert",
+        "summary": "Wie rekonstruiere ich einen fehlgeschlagenen Lauf bis zur Ursache?",
+        "lead": "Wie rekonstruiere ich einen fehlgeschlagenen Lauf bis zur Ursache?",
+        "category": "PRAXIS",
+        "indexTitle": "Ein fehlgeschlagener Lauf, vollständig rekonstruiert",
+        "teaser": "Wie rekonstruiere ich einen fehlgeschlagenen Lauf bis zur Ursache?"
+      },
+      "en": {
+        "title": "Reconstructing a failed run from start to cause",
+        "summary": "How do I reconstruct a failed execution from start to cause?",
+        "lead": "How do I reconstruct a failed execution from start to cause?",
+        "category": "PRACTICE",
+        "indexTitle": "Reconstructing a failed run from start to cause",
+        "teaser": "How do I reconstruct a failed execution from start to cause?"
+      }
+    },
+    "docsTitle": {
+      "de": "Logs & Diagnose",
+      "en": "Logs & diagnostics"
+    }
+  },
+  {
+    "slug": "stopping-automation",
+    "status": "draft",
+    "next": false,
+    "source": "automation-ausschalter",
+    "solution": "self-hosted-automation",
+    "docs": "api/workflow-control",
+    "audience": "Betreiber und Administratoren",
+    "question": {
+      "de": "Welche Wirkung haben Abbruch, Startsperre und das Stoppen entfernter Arbeit?",
+      "en": "What do cancellation, start blocking and stopping remote work actually do?"
+    },
+    "related": [
+      "maintenance-windows",
+      "failure-analysis"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "Automatisierung braucht einen Ausschalter",
+        "summary": "Welche Wirkung haben Abbruch, Startsperre und das Stoppen entfernter Arbeit?",
+        "lead": "Welche Wirkung haben Abbruch, Startsperre und das Stoppen entfernter Arbeit?",
+        "category": "PRAXIS",
+        "indexTitle": "Automatisierung braucht einen Ausschalter",
+        "teaser": "Welche Wirkung haben Abbruch, Startsperre und das Stoppen entfernter Arbeit?"
+      },
+      "en": {
+        "title": "Automation needs a way to stop",
+        "summary": "What do cancellation, start blocking and stopping remote work actually do?",
+        "lead": "What do cancellation, start blocking and stopping remote work actually do?",
+        "category": "PRACTICE",
+        "indexTitle": "Automation needs a way to stop",
+        "teaser": "What do cancellation, start blocking and stopping remote work actually do?"
+      }
+    },
+    "docsTitle": {
+      "de": "Workflow-Kontrollfluss & Edit-Lifecycle",
+      "en": "Workflow control flow & edit lifecycle"
+    }
+  },
+  {
+    "slug": "when-to-stay-manual",
+    "status": "draft",
+    "next": false,
+    "source": "bewusst-manuell",
+    "solution": "self-hosted-automation",
+    "docs": "concepts/workflows",
+    "audience": "Verantwortliche für Automatisierung",
+    "question": {
+      "de": "Welche Arbeit sollte bewusst manuell bleiben?",
+      "en": "Which tasks should deliberately remain manual?"
+    },
+    "related": [
+      "windows-automation",
+      "verify-results"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "Welche Aufgaben bewusst manuell bleiben dürfen",
+        "summary": "Welche Arbeit sollte bewusst manuell bleiben?",
+        "lead": "Welche Arbeit sollte bewusst manuell bleiben?",
+        "category": "HINTERGRUND",
+        "indexTitle": "Welche Aufgaben bewusst manuell bleiben dürfen",
+        "teaser": "Welche Arbeit sollte bewusst manuell bleiben?"
+      },
+      "en": {
+        "title": "Which tasks can deliberately remain manual",
+        "summary": "Which tasks should deliberately remain manual?",
+        "lead": "Which tasks should deliberately remain manual?",
+        "category": "BACKGROUND",
+        "indexTitle": "Which tasks can deliberately remain manual",
+        "teaser": "Which tasks should deliberately remain manual?"
+      }
+    },
+    "docsTitle": {
+      "de": "Workflows & Activities",
+      "en": "Workflows & activities"
+    }
+  },
+  {
+    "slug": "ai-workflows",
+    "status": "draft",
+    "next": false,
+    "source": "ki-nodepilot",
+    "solution": "powershell-automation",
+    "docs": "ai-features",
+    "audience": "Windows-/PowerShell-Admins",
+    "question": {
+      "de": "Wie hilft KI beim Entwerfen und Prüfen von Skripten und Workflows?",
+      "en": "How can AI help create and review scripts and workflows?"
+    },
+    "related": [
+      "first-workflow",
+      "failure-analysis"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "KI in NodePilot: vom ersten Skript bis zur Fehleranalyse",
+        "summary": "Wie hilft KI beim Entwerfen und Prüfen von Skripten und Workflows?",
+        "lead": "Wie hilft KI beim Entwerfen und Prüfen von Skripten und Workflows?",
+        "category": "PRAXIS",
+        "indexTitle": "KI in NodePilot: vom ersten Skript bis zur Fehleranalyse",
+        "teaser": "Wie hilft KI beim Entwerfen und Prüfen von Skripten und Workflows?"
+      },
+      "en": {
+        "title": "AI in NodePilot: from the first script to failure analysis",
+        "summary": "How can AI help create and review scripts and workflows?",
+        "lead": "How can AI help create and review scripts and workflows?",
+        "category": "PRACTICE",
+        "indexTitle": "AI in NodePilot: from the first script to failure analysis",
+        "teaser": "How can AI help create and review scripts and workflows?"
+      }
+    },
+    "docsTitle": {
+      "de": "AI-Features",
+      "en": "AI features"
+    }
+  },
+  {
+    "slug": "winrm",
+    "status": "draft",
+    "next": false,
+    "source": "winrm-enterprise",
+    "solution": "self-hosted-automation",
+    "docs": "configuration/remote-execution",
+    "audience": "Windows-Administratoren und Betreiber",
+    "question": {
+      "de": "Was belegt ein erfolgreicher WinRM-Verbindungstest tatsächlich?",
+      "en": "What does a successful WinRM connection test actually prove?"
+    },
+    "related": [
+      "winrm-https",
+      "gmsa-service-accounts"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "WinRM verstehen: Was eine erfolgreiche Verbindung tatsächlich belegt",
+        "summary": "Was belegt ein erfolgreicher WinRM-Verbindungstest tatsächlich?",
+        "lead": "Was belegt ein erfolgreicher WinRM-Verbindungstest tatsächlich?",
+        "category": "PRAXIS",
+        "indexTitle": "WinRM verstehen: Was eine erfolgreiche Verbindung tatsächlich belegt",
+        "teaser": "Was belegt ein erfolgreicher WinRM-Verbindungstest tatsächlich?"
+      },
+      "en": {
+        "title": "Understanding WinRM: what a successful connection actually proves",
+        "summary": "What does a successful WinRM connection test actually prove?",
+        "lead": "What does a successful WinRM connection test actually prove?",
+        "category": "PRACTICE",
+        "indexTitle": "Understanding WinRM: what a successful connection actually proves",
+        "teaser": "What does a successful WinRM connection test actually prove?"
+      }
+    },
+    "docsTitle": {
+      "de": "Remote-Execution",
+      "en": "Remote execution"
+    }
+  },
+  {
+    "slug": "winrm-https",
+    "status": "draft",
+    "next": false,
+    "source": "winrm-https",
+    "solution": "self-hosted-automation",
+    "docs": "security/hardening",
+    "audience": "Windows-Administratoren und Betreiber",
+    "question": {
+      "de": "Wie erweitere ich einen bestehenden WinRM-Zugang um HTTPS?",
+      "en": "How do I add HTTPS to an existing WinRM connection?"
+    },
+    "related": [
+      "winrm",
+      "gmsa-service-accounts"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "Einen bestehenden WinRM-Zugang um HTTPS erweitern",
+        "summary": "Wie erweitere ich einen bestehenden WinRM-Zugang um HTTPS?",
+        "lead": "Wie erweitere ich einen bestehenden WinRM-Zugang um HTTPS?",
+        "category": "PRAXIS",
+        "indexTitle": "Einen bestehenden WinRM-Zugang um HTTPS erweitern",
+        "teaser": "Wie erweitere ich einen bestehenden WinRM-Zugang um HTTPS?"
+      },
+      "en": {
+        "title": "Adding HTTPS to an existing WinRM connection",
+        "summary": "How do I add HTTPS to an existing WinRM connection?",
+        "lead": "How do I add HTTPS to an existing WinRM connection?",
+        "category": "PRACTICE",
+        "indexTitle": "Adding HTTPS to an existing WinRM connection",
+        "teaser": "How do I add HTTPS to an existing WinRM connection?"
+      }
+    },
+    "docsTitle": {
+      "de": "Hardening-Flags",
+      "en": "Hardening flags"
+    }
+  },
+  {
+    "slug": "windows-automation",
+    "status": "draft",
+    "next": false,
+    "source": "automation-windows-enterprise",
+    "solution": "powershell-automation",
+    "docs": "concepts/workflows",
+    "audience": "Windows-/PowerShell-Admins",
+    "question": {
+      "de": "Welche Windows-Aufgaben rechtfertigen den Aufwand der Automatisierung?",
+      "en": "Which Windows tasks justify the cost of automation?"
+    },
+    "related": [
+      "when-to-stay-manual",
+      "first-workflow"
+    ],
+    "publishedAt": null,
+    "modifiedAt": null,
+    "text": {
+      "de": {
+        "title": "Automatisierung im Windows-Betrieb: Welche Arbeit den Aufwand lohnt",
+        "summary": "Welche Windows-Aufgaben rechtfertigen den Aufwand der Automatisierung?",
+        "lead": "Welche Windows-Aufgaben rechtfertigen den Aufwand der Automatisierung?",
+        "category": "HINTERGRUND",
+        "indexTitle": "Automatisierung im Windows-Betrieb: Welche Arbeit den Aufwand lohnt",
+        "teaser": "Welche Windows-Aufgaben rechtfertigen den Aufwand der Automatisierung?"
+      },
+      "en": {
+        "title": "Automation in Windows operations: which work justifies the effort",
+        "summary": "Which Windows tasks justify the cost of automation?",
+        "lead": "Which Windows tasks justify the cost of automation?",
+        "category": "BACKGROUND",
+        "indexTitle": "Automation in Windows operations: which work justifies the effort",
+        "teaser": "Which Windows tasks justify the cost of automation?"
+      }
+    },
+    "docsTitle": {
+      "de": "Workflows & Activities",
+      "en": "Workflows & activities"
+    }
+  }
+]

@@ -7,8 +7,9 @@
  * page with one title for the whole site. Each route now has its own file, its own title,
  * description and canonical URL, and its own entry in the sitemap.
  */
+import { articleBySlug, visibleArticles } from './blog'
 import { pageUrl, setMeta, sitemapXml } from '../lib/prerender-html'
-import { ARTICLE_SLUGS, routePath, type SiteRoute } from './router'
+import { SOLUTION_SLUGS, localizedPath, type SiteRoute } from './router'
 
 export { applyMeta, pageUrl, rewriteRelativeUrls } from '../lib/prerender-html'
 export type { PageMeta } from '../lib/prerender-html'
@@ -16,6 +17,7 @@ export type { PageMeta } from '../lib/prerender-html'
 export interface RoutePage {
   /** Path relative to the site root, without a leading slash. '' is the home page. */
   path: string
+  lang: 'de' | 'en'
   /** File inside the build output. */
   file: string
   route: SiteRoute
@@ -23,28 +25,33 @@ export interface RoutePage {
   listed: boolean
 }
 
-export function routePages(): RoutePage[] {
+export function routePages(preview = false): RoutePage[] {
   const pages: SiteRoute[] = [
     { page: 'home' },
     { page: 'product' },
     { page: 'experience' },
     { page: 'blog' },
-    ...ARTICLE_SLUGS.map((slug) => ({ page: 'article', slug }) as SiteRoute),
+    ...visibleArticles(preview).map(({ slug }) => ({ page: 'article', slug }) as SiteRoute),
+    ...SOLUTION_SLUGS.map((slug) => ({ page: 'solution', slug }) as SiteRoute),
     { page: 'impressum' },
     { page: 'datenschutz' },
     { page: 'notfound' },
   ]
-  return pages.map((route) => {
-    const path = routePath(route)
-    const notFound = route.page === 'notfound'
-    return {
-      path,
-      // A 404 has to be one file at the root: that is what Apache's ErrorDocument and
-      // GitHub Pages both serve for an unknown address.
-      file: notFound ? '404.html' : path === '' ? 'index.html' : `${path}/index.html`,
-      route,
-      listed: !notFound,
-    }
+  return pages.flatMap((route) => {
+    const languages: Array<'de' | 'en'> = ['impressum', 'datenschutz', 'notfound'].includes(route.page) ? ['de'] : ['de', 'en']
+    return languages.map((lang) => {
+      const path = localizedPath(route, lang)
+      const notFound = route.page === 'notfound'
+      return {
+        path,
+        lang,
+        // A 404 has to be one file at the root: that is what Apache's ErrorDocument and
+        // GitHub Pages both serve for an unknown address.
+        file: notFound ? '404.html' : path === '' ? 'index.html' : `${path}/index.html`,
+        route,
+        listed: !notFound && (route.page !== 'article' || articleBySlug[route.slug].status === 'published'),
+      }
+    })
   })
 }
 

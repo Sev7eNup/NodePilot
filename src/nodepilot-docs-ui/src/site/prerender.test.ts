@@ -1,3 +1,4 @@
+import { visibleArticles } from './blog'
 import { describe, expect, it } from 'vitest'
 import {
   applyMeta,
@@ -10,7 +11,7 @@ import {
   setBaseMeta,
   sitemap,
 } from './prerender'
-import { ARTICLE_SLUGS, resolveRoute } from './router'
+import { resolveRoute } from './router'
 
 const pages = routePages()
 
@@ -23,9 +24,9 @@ describe('routePages', () => {
     expect(files['404']).toBe('404.html')
   })
 
-  it('covers every article and leaves only the not-found page out of the sitemap', () => {
+  it('covers published articles and leaves drafts and the not-found page out of the sitemap', () => {
     const listed = pages.filter((page) => page.listed).map((page) => page.path)
-    for (const slug of ARTICLE_SLUGS) expect(listed).toContain(`blog/${slug}`)
+    for (const { slug } of visibleArticles()) expect(listed).toContain(`blog/${slug}`)
     expect(listed).not.toContain('404')
   })
 
