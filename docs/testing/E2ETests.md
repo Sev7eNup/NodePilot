@@ -5056,18 +5056,21 @@ Automatisiert: `e2e/script-editor.spec.ts`.
 
 ## Teil 85: Browser-Demo gegen das veröffentlichte Bundle
 
-**Automatisiert** in `src/nodepilot-ui/e2e-demo/demo-smoke.spec.ts`, eigene Config
-(`playwright.demo.config.ts`), Aufruf `npm run test:e2e:demo`.
+**Automatisiert** in `src/nodepilot-ui/e2e-demo/demo-smoke.spec.ts` und
+`src/nodepilot-ui/e2e-demo/routing.spec.ts`, eigene Config (`playwright.demo.config.ts`),
+Aufruf `npm run test:e2e:demo`.
 
 Die Demo ist dieselbe SPA gegen ein In-Memory-Backend, veröffentlicht unter `/demo/`. Der Test
-fährt gegen das **gebaute** `dist-demo` und serviert es unter einem **Unterpfad** — an der Wurzel
-fielen genau die Basis-Pfad-Fehler nicht auf, weil `base: './'` URLs in JavaScript-Strings nicht
-umschreibt.
+fährt gegen das **gebaute** `dist-demo` und serviert es unter `/demo/` mit demselben
+Seiten-Fallback wie Apache: Seitenpfade liefern die Demo-Startdatei, fehlende Assets bleiben 404.
+Die Assets sind root-absolut (`base: '/demo/'`), damit ein Deep-Link sie unabhängig von der
+aktuellen Route auflöst; ein Asset-Miss, der die HTML-Hülle bekäme, würde eine falsche
+Asset-Basis verdecken.
 
 Geprüft wird:
 
-1. **Start unter Unterpfad** — Dashboard rendert, Marken-Logo lädt (root-absolute Icon-Pfade),
-   Doku-Link zeigt auf `../docs/` statt `/docs/`.
+1. **Start unter `/demo/`** — Dashboard rendert, jedes Bild lädt (root-absolute Marken-Pfade),
+   Doku-Link zeigt auf `/docs/`, also auf die Website neben der Demo.
 2. **Jede erreichbare Route** — null Konsolenfehler, null `[demo] unhandled`-Zeilen **und keine
    gerenderte Error-Boundary**. Die dritte Zusicherung ist nachgerüstet: React reicht einen
    Render-Fehler an die Boundary statt ans Fenster, `pageerror` feuert nicht, und der Durchlauf
@@ -5084,6 +5087,16 @@ Geprüft wird:
 7. **Reload stellt die Seed-Welt wieder her.**
 8. **Zwei Tabs desselben Browsers stören sich nicht** — Tab B öffnen und neu laden darf Tab A weder
    Caches leeren noch remounten lassen.
+9. **Saubere Pfade statt Hash-Routen** (`routing.spec.ts`) — ein Workflow-Detail wie
+   `/demo/workflows/<id>` lässt sich direkt aufrufen und neu laden, die Adresse behält keinen
+   Hash, die Demo bleibt `noindex`.
+10. **Alte Hash-Links werden umgeschrieben** — `/demo/?lang=de&id=old#/executions?id=new` landet auf
+    `/demo/executions?lang=de&id=new`; Sprache und Query der Hash-Route gewinnen, und der Reload
+    bleibt dort.
+11. **Browser-Historie statt Neuaufbau** — Klick auf eine Geschwister-Route sowie `goBack`/`goForward`
+    behalten dieselbe In-Memory-Welt.
+12. **Seiten-Fallback trennt Seiten von Assets** — ein unbekannter Seitenpfad antwortet 200 `text/html`,
+    ein fehlendes Asset 404.
 
 ---
 
@@ -5107,6 +5120,6 @@ Geprüft wird:
 
 ---
 
-**Letzte Aktualisierung:** 2026-07-09 — Teile 77–78 erweitert (KI-Workflow-Assistent Threads/Persistenz/Export/Aktivität/Tool-Calling, Alerting Delivery-Ledger/Gauge-Scope-Gate/cancelledBy) und trigger-only/runScript-Isolation-Szenarien nachgezogen.
+**Letzte Aktualisierung:** 2026-09-27 — Teil 85 auf die Demo unter sauberen Pfaden nachgezogen (Seiten-Fallback, root-absolute Assets, Hash-Link-Umschreibung, `routing.spec.ts`).
 **Autor:** sev7enup
 **Projekt:** NodePilot E2E Test Suite
