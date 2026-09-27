@@ -5023,34 +5023,28 @@ Prüfpunkte je Provider/Fall:
 [ ] Teil 81: Custom Activities (81.1 — 81.9)
 [ ] Teil 82: Datenbank-Ausfall zur Laufzeit (82.1 — 82.4)
 [ ] Teil 83: Live-Ops Mission Control (83.1 — 83.15)
-[ ] Teil 84: Skript-Editor gegen das minifizierte Bundle (84.1 — 84.2)
 ```
 
 ---
 
 ## Teil 84: Skript-Editor gegen das minifizierte Bundle
 
-> Der Prod-Build minifiziert das CSS mit Lightning CSS, und der kürzt Farben **innerhalb** von
-> Custom-Properties (`#ffffff` wird zu `#fff`). Monaco akzeptiert für Token-Farben nur sechs oder
-> acht Hex-Ziffern und wirft sonst — der Wurf riss über die Error-Boundary die ganze
-> Designer-Seite mit. Der Dev-Server minifiziert nicht, deshalb ist das **nur** in dieser
-> Konstellation reproduzierbar: `playwright.config.ts` baut das echte Bundle und serviert es.
-> Auslösender Skin ist `dark-bank`, dessen `--color-on-surface` reines Weiß ist.
+**Automatisiert** in `src/nodepilot-ui/e2e/script-editor.spec.ts`, Aufruf `npm run test:e2e`.
 
-### Test 84.1 — Editor öffnet unter `dark-bank`
-1. Workflow mit einem `runScript`-Node öffnen, Skin auf `dark-bank` stellen.
-2. Node anwählen, im Properties-Panel „Open Editor" klicken.
-- [ ] Der Dialog erscheint und Monaco rendert (`.monaco-editor` sichtbar).
-- [ ] Keine Fehlerseite „Editor konnte nicht geladen werden".
-- [ ] Keine unbehandelte Exception (`pageerror`).
-- [ ] Keine Konsolen-Warnung „skin colors rejected by Monaco" — die bedeutet, dass das Netz
-      gegriffen hat und der Editor in Monacos Standardfarben statt im Skin läuft.
+`playwright.config.ts` baut das echte Bundle und serviert es. Nur dort kürzt Lightning CSS
+Farben innerhalb von Custom-Properties (`#ffffff` wird zu `#fff`), und Monaco lehnt solche
+Token-Farben ab. Der Dev-Server minifiziert nicht und kann das nicht reproduzieren.
 
-### Test 84.2 — Gegenprobe unter `dark`
-1. Dasselbe unter dem Standard-Dark-Skin, dessen Tokens nicht verkürzbar sind.
-- [ ] Gleiches Ergebnis; der Unterschied liegt allein am Token-Wert, nicht am Editor.
+Geprüft wird:
 
-Automatisiert: `e2e/script-editor.spec.ts`.
+1. **Editor öffnet unter fünf Skins** (`dark-bank`, `dark`, `light-minimal`, `dark-minimal`,
+   `dark-ion`) ohne unbehandelte Exception und ohne Konsolen-Warnung „skin colors rejected by
+   Monaco".
+2. **Palette folgt dem Skin-Wechsel** — ein offener Monaco-Editor unter `light` bzw. `dark`
+   übernimmt beim Wechsel auf die Minimal-Variante deren Kommentarfarbe und Editorfläche und
+   kehrt beim Zurückwechseln zur Ausgangspalette zurück.
+3. **Monaco und CodeMirror überstehen Dark ⇄ ION ⇄ Minimal** — beide Editoren bleiben montiert,
+   behalten ihren Inhalt und zeigen jeweils die Code-Palette des aktiven Skins.
 
 ---
 

@@ -329,7 +329,7 @@ Parity-/Drift-Tests erzwingen Konsistenz zwischen weit auseinanderliegenden Date
 | `vite.config.ts`-Proxy / Dev-Ports | `AppSettingsHygieneTests` | Api.Tests |
 | OpenTelemetry-Block in `Directory.Packages.props` | `OpenTelemetryVersionParityTests` | Api.Tests |
 | Neues Testprojekt in `NodePilot.slnx` / `coverage.runsettings` | `TestRunSettingsTests` | Api.Tests |
-| Browser-Demo (`demo/`), Hub-/Doku-/Auth-Naht, root-absolute URL-Literale in `src/` | `src/__tests__/demo/*` + `e2e-demo/demo-smoke.spec.ts` | nodepilot-ui |
+| Browser-Demo (`demo/`), Hub-/Doku-/Auth-Naht, root-absolute URL-Literale in `src/` | `src/__tests__/demo/*` + `e2e-demo/{demo-smoke,routing}.spec.ts` | nodepilot-ui |
 | `index.css` / `designer-atelier.css` designer-light tokens | `designerLightParity.test.ts` | nodepilot-ui |
 | Font-Tokens / Monaco-Stack | `fontTokens.test.ts` | nodepilot-ui |
 

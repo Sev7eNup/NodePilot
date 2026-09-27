@@ -254,6 +254,14 @@ stayed **green** for a missing role, a missing database or a wrong password — 
 NodePilot role, in the same TLS shape as the runtime (`sslmode=verify-full` against the supplied root
 certificate).
 
+**Certificate revocation is checked separately.** `psql` does not check revocation, but the service
+does (online, `Check Certificate Revocation=true`) and refuses a server whose certificate is revoked
+or whose CRL it cannot reach. The row therefore fetches the server certificate and checks it the same
+way. If that fails, the installation aborts with *"Aborted: Postgres pre-flight failed - certificate
+revocation could not be checked."* The fix is to make the CRL distribution point in the certificate
+reachable from the NodePilot server, or to import the CRL into its `LocalMachine\CA` store
+(`certutil -addstore CA <file>.crl`).
+
 **What is missing is looked up in the catalog, not read out of the error message.** psql messages are
 localized — a German server answers "Rolle »nodepilot« existiert nicht" — so a matcher written
 against English classifies correctly on one host and marks everything as "rejected" on the next. On a
