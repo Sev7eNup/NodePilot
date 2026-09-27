@@ -136,6 +136,6 @@ test.describe('Variable Autocomplete & Preview Tooltip (Teil 58)', () => {
     await row.hover();
     const tooltip = page.locator('[role="tooltip"]');
     await expect(tooltip).toBeVisible({ timeout: 5_000 });
-    await expect(tooltip).toContainText(/letzten lauf|noch nicht ausgeführt|kein wert/i);
+    await expect(tooltip).toContainText(/no value from the last run/i);
   });
 });
