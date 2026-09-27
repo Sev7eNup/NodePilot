@@ -6,6 +6,7 @@ import { de } from './i18n/de'
 import { en } from './i18n/en'
 import siteHtml from './index.html?raw'
 import { ARTICLE_SLUGS } from './router'
+import { solutions } from './solutions'
 
 function leaves(node: unknown, prefix = ''): Array<[string, unknown]> {
   if (node === null || typeof node !== 'object') return [[prefix, node]]
@@ -60,6 +61,12 @@ describe('website dictionaries', () => {
   it('carry no draft or prototype wording', () => {
     const texts = [markup, ...leaves(de).map(([, value]) => String(value)), ...leaves(en).map(([, value]) => String(value))]
     for (const text of texts) expect(text).not.toMatch(/entwurf|entwürfe|prototyp|draft/i)
+  })
+
+  it('address German readers neutrally, without du or dein', () => {
+    const informal = /\b(du|dich|dir|dein|deine|deinen|deinem|deiner|deines|euch|euer|eure|euren)\b/i
+    const texts = [markup, ...leaves(de).map(([, value]) => String(value)), ...Object.values(solutions.de).flatMap((s) => [s.title, s.summary, s.body])]
+    for (const text of texts) expect(text.replace(/<[^>]+>/g, ' ')).not.toMatch(informal)
   })
 })
 

@@ -105,6 +105,8 @@ code,pre,.mono{font-family:var(--font-mono)}
 .eyebrow .icon{color:var(--primary);width:15px;height:15px}
 h1{font-size:clamp(38px,3.28vw,54px);line-height:1.13;letter-spacing:-1.7px;font-weight:500}
 .hero h1{margin-bottom:25px;text-wrap:balance}
+/* The English tagline is a few characters longer; slightly smaller keeps "run." on its line. */
+@media(min-width:761px){html[lang="en"] .hero h1{font-size:clamp(30px,3.1vw,51px)}}
 .hero h1>span{color:var(--muted)}
 .hero-lead{font-size:19px;line-height:1.7;max-width:390px;margin-bottom:12px;color:var(--text)}
 .hero-description{font-size:16px;line-height:1.85;color:var(--muted);max-width:405px}
@@ -310,6 +312,12 @@ h2{font-size:25px;line-height:1.28;letter-spacing:-.55px}
 .page-intro h1{margin-bottom:24px;max-width:800px}
 .page-intro>.section-kicker{margin-bottom:24px}
 .page-intro>p{max-width:575px;font-size:18px;line-height:1.8;color:var(--muted)}
+/* The feature list is the point of this page, so its intro stays compact. */
+.product-page>.page-intro{padding-top:28px;padding-bottom:28px}
+.product-page>.page-intro>.section-kicker{margin-bottom:14px}
+.product-page>.page-intro h1{margin-bottom:14px}
+.product-page>.page-intro>p{max-width:none;font-size:17px;line-height:1.6}
+@media(min-width:1100px){.product-page>.page-intro h1{max-width:none}.product-page>.page-intro h1 br{display:none}}
 .page-intro>.button{margin-top:28px}
 .product-layout{display:grid;grid-template-columns:280px minmax(0,1fr);gap:32px;align-items:start}
 .product-topic{display:flex;gap:14px;padding:18px 14px;width:100%;text-align:left;min-width:0;background:transparent;border:1px solid transparent;border-radius:6px;position:relative}
@@ -462,6 +470,16 @@ h2{font-size:25px;line-height:1.28;letter-spacing:-.55px}
 /* Article screenshots preserve their aspect ratio on narrow screens. */
 .article-body img{display:block;max-width:100%;height:auto;border-radius:6px}
 .topic-links{padding-bottom:32px}
+/* "Related" and "use case" link lists at the end of a page: a quiet footer, not more body text. */
+[data-related-articles],[data-topic-links]{margin-top:36px;padding-top:20px;border-top:1px solid var(--line);font-size:15px;line-height:1.6}
+[data-related-articles]+[data-topic-links]{margin-top:0;border-top:0}
+[data-related-articles] h2,[data-topic-links] h2{margin:0 0 10px;color:var(--outline);font:11px/1.5 var(--font-mono);letter-spacing:1.1px;text-transform:uppercase}
+[data-related-articles] ul,[data-topic-links] ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+[data-related-articles] a,[data-topic-links] a{text-decoration:none}
+[data-related-articles] a:hover,[data-topic-links] a:hover{text-decoration:underline}
+#solution-body>p:last-child{font-size:15px;line-height:1.7}
+#solution-body>p:last-child a{text-decoration:none}
+#solution-body>p:last-child a:hover{text-decoration:underline}
 .lang-option{text-decoration:none}
 
 .site-breadcrumbs{padding:24px 32px 0;color:var(--muted);font-size:13px;line-height:1.8;overflow-wrap:anywhere}.site-breadcrumbs a{color:inherit;text-underline-offset:3px}

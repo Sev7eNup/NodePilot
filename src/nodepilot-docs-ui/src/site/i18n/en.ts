@@ -209,7 +209,7 @@ export const en = {
   },
   product: {
     kicker: 'FEATURES',
-    title: 'One workflow.<br>From idea to log.',
+    title: 'One workflow. <br>From idea to log.',
     intro: 'Designer, debugger and Live Ops belong in the same workspace instead of three separate tools.',
     designerTitle: 'Design workflows',
     designerText: '27 activity types: PowerShell, files and folders, services, the registry, WMI, scheduled tasks, REST calls and SQL, wired up with conditions and parallel paths on one canvas.',
@@ -227,7 +227,8 @@ export const en = {
       'NodePilot runs PowerShell and Windows activities agentless over WinRM. REST calls, SQL queries and mails run inside the engine itself. In between, conditions decide, branches run in parallel, failed steps repeat and every step hands its result to the next one. A run starts on a schedule, a file, an event-log entry, a database change or a webhook; afterwards the log shows step by step what happened. Existing SCOrch runbooks can be imported as <code>.ois_export</code> files. Review the import log and the configuration before you enable a workflow.',
     readMore: 'Read more in the documentation',
     codeExample: 'Example',
-    codeComment: '# Reuse existing logic',
+    codeComment: '# Assigned variables become the step\'s outputs',
+    codeNext: '# The next edge checks {{diskCheck.param.critical}}',
     features: {
       kicker: 'WHAT IT DOES',
       title: 'What NodePilot can do',

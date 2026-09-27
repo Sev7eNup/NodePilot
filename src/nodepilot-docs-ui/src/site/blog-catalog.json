@@ -150,7 +150,7 @@
       "de": {
         "title": "Ein grüner Status ist noch kein erfolgreicher Auftrag",
         "seoTitle": "Exit-Code 0 ist kein Erfolg: Automatisierung prüfen",
-        "summary": "Exit-Code 0 oder 3010 sagt wenig über den Auftrag: wie du nachweist, dass eine Installation oder Änderung fachlich erfolgreich war.",
+        "summary": "Exit-Code 0 oder 3010 sagt wenig über den Auftrag: wie sich nachweisen lässt, dass eine Installation oder Änderung wirklich gelungen ist.",
         "lead": "Welche Nachweise zeigen, dass ein Auftrag fachlich erfolgreich war?",
         "category": "PRAXIS",
         "indexTitle": "Ein grüner Status ist noch kein erfolgreicher Auftrag",
@@ -279,7 +279,7 @@
       "de": {
         "title": "PowerShell 5.1 und 7: Die Laufzeit gehört zum Auftrag",
         "seoTitle": "PowerShell 5.1 vs. 7: Unterschiede vor dem Wechsel testen",
-        "summary": "PowerShell 5.1 oder 7? Welche Unterschiede ein Wechsel bringt, warum Module im Kompatibilitätsmodus anders arbeiten und was du vorher testen solltest.",
+        "summary": "PowerShell 5.1 oder 7? Welche Unterschiede ein Wechsel bringt, warum Module im Kompatibilitätsmodus anders arbeiten und was vorher zu testen ist.",
         "lead": "Was muss ich beim Wechsel zwischen PowerShell 5.1 und 7 testen?",
         "category": "PRAXIS",
         "indexTitle": "PowerShell 5.1 und 7: Die Laufzeit gehört zum Auftrag",

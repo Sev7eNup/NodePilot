@@ -105,7 +105,7 @@ export function renderSiteContent(doc: Document, route: SiteRoute, lang: Lang, b
   breadcrumb.append(` / ${siteMeta(route, lang).title.replace(/ \| NodePilot(?: Blog)?$/, '')}`)
   // Contextual links are part of the visible page, rather than an SEO-only hidden list.
   for (const holder of doc.querySelectorAll('[data-topic-links]')) {
-    holder.innerHTML = `<h2>${lang === 'de' ? 'Automatisierung in deiner Umgebung' : 'Automation in your environment'}</h2><ul>` +
+    holder.innerHTML = `<h2>${lang === 'de' ? 'Automatisierung in der eigenen Umgebung' : 'Automation in your environment'}</h2><ul>` +
       SOLUTION_SLUGS.map(slug => `<li><a data-site-path="${slug}">${solutions[lang][slug].title}</a></li>`).join('') + '</ul>'
   }
   for (const holder of doc.querySelectorAll('[data-related-articles]')) {
