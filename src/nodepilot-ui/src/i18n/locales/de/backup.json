@@ -27,7 +27,7 @@
     "passphraseHint": "Mindestens 12 Zeichen. Ohne diese Passphrase ist das Backup unwiederbringlich — sicher aufbewahren.",
     "create": "Backup herunterladen",
     "creating": "Erstelle Backup …",
-    "success": "Backup wurde heruntergeladen.",
+    "success": "Backup-Download gestartet.",
     "mismatch": "Die Passphrasen stimmen nicht überein.",
     "tooShort": "Passphrase muss mindestens 12 Zeichen lang sein.",
     "noSections": "Mindestens einen Bereich auswählen.",

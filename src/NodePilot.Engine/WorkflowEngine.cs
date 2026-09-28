@@ -228,9 +228,9 @@ public class WorkflowEngine : IWorkflowEngine
 
     /// <summary>
     /// Resolves global variables for a single run. Optimised for the common case where the
-    /// workflow definition references no global at all — a cheap substring scan skips the DB hit
-    /// + decryption entirely. The scan covers both reference spellings, the
-    /// <c>{{globals.…}}</c> template and the structured condition operand. Returns both the
+    /// workflow definition references neither globals nor custom activities — a cheap substring
+    /// scan skips the DB hit + decryption entirely. The scan covers custom activity types and
+    /// both reference spellings, templates and structured condition operands. Returns both the
     /// resolved dict and the
     /// set of variables that exist in the DB but couldn't be decrypted; the caller decides
     /// whether to fail loudly when the workflow actually references one of the broken ones.
@@ -246,15 +246,12 @@ public class WorkflowEngine : IWorkflowEngine
         var empty = new NodePilot.Core.Interfaces.GlobalVariableResolutionResult(
             new Dictionary<string, string>(0), new HashSet<string>(StringComparer.Ordinal));
 
-        // Two spellings reference a global and both must arm the load. The template form
-        // {{globals.X}} appears verbatim in the definition, but the condition/decision builder
-        // writes a structured operand instead —
-        // {"kind":"variable","source":"global","name":"ENV"} — which carries no template text.
-        // Gating on the template alone left the run with an empty dict, so the structured operand
-        // resolved to "" and its comparison was false on arrival, while the same reference typed
-        // as a literal worked. A false positive here only costs one skipped optimisation.
+        // Custom templates and input defaults live outside the workflow definition and can
+        // reference globals. Load the run's snapshot for custom nodes as well as both inline
+        // reference spellings (template and structured operand).
         if (!definitionJson.Contains("{{globals.", StringComparison.Ordinal)
-            && !definitionJson.Contains("\"global\"", StringComparison.Ordinal))
+            && !definitionJson.Contains("\"global\"", StringComparison.Ordinal)
+            && !definitionJson.Contains("\"custom:", StringComparison.Ordinal))
             return (empty, null);
 
         try
@@ -528,7 +525,7 @@ public class WorkflowEngine : IWorkflowEngine
         // values flow into every step's Variables dict as `globals.NAME`; OutputRedactor
         // still masks them before Output/ErrorOutput leaves the activity. See
         // ResolveGlobalVariablesAsync for the optimisation that skips the DB + DPAPI work
-        // when the workflow definition contains no `{{globals.` reference.
+        // when the workflow contains neither global references nor custom activities.
         var (globalsResult, globalsLoadError) = await ResolveGlobalVariablesAsync(workflow.DefinitionJson, execution.Id, ct);
 
         if (await FailIfUnresolvableGlobalsAsync(run, globalsResult.Unresolvable, globalsLoadError))

@@ -332,7 +332,7 @@ function createTray(): void {
       { label: 'Open NodePilot', click: () => openAppWindow() },
       { label: 'Restart backend', click: () => restartBackend() },
       { type: 'separator' },
-      { label: 'Quit Electron', click: () => { quitting = true; app.quit(); } },
+      { label: 'Quit NodePilot', click: () => { quitting = true; app.quit(); } },
     ]));
     tray.on('click', () => openAppWindow());
   } catch {

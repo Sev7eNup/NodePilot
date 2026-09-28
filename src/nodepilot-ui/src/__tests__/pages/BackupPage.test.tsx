@@ -22,6 +22,8 @@ const server = setupServer(
       sections: [
         { section: 'workflows', count: 3 },
         { section: 'credentials', count: 2 },
+        { section: 'globalVariableFolders', count: 1 },
+        { section: 'alerting', count: 0 },
       ],
     })
   )
@@ -60,6 +62,8 @@ describe('BackupPage', () => {
     renderPage();
     expect(await screen.findByText('Workflows')).toBeInTheDocument();
     expect(screen.getByText('Credentials')).toBeInTheDocument();
+    expect(screen.getByText('Global variable folders')).toBeInTheDocument();
+    expect(screen.getByText('Alerting rules & system policies')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
   });
 
