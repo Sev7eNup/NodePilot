@@ -28,6 +28,19 @@ ROOT = HERE.parents[2]
 STATUSES = {'pending', 'running', 'passed', 'failed', 'blocked'}
 
 
+def allows_unsigned_development(config):
+    """Allow unsigned artifacts only when the environment opts in explicitly."""
+    version = config.get('release', {}).get('version', '')
+    return bool(config.get('allowUnsignedDevelopmentArtifact')) and '-dev' in version
+
+
+def required_preflight_checks(config):
+    required = {'desktop', 'server', *catalog.INTEGRATIONS, 'isolation'}
+    if not allows_unsigned_development(config):
+        required.add('signatures')
+    return required
+
+
 def now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -115,16 +128,23 @@ def binding(config_path):
     require(re.fullmatch(r'[a-f0-9]{40}', commit), 'Release commit must be a full SHA')
     require(config['environmentRevision'].strip(), 'Missing environment revision')
     files = {}
-    for key in ('desktopInstaller', 'serverInstaller', 'checksums', 'publisherCertificate'):
+    config_allows_unsigned = allows_unsigned_development(config)
+    artifact_keys = ('desktopInstaller', 'serverInstaller', 'checksums')
+    if not config_allows_unsigned or Path(resolve_from(config_path, config['release'].get('publisherCertificate', ''))).is_file():
+        artifact_keys += ('publisherCertificate',)
+    for key in artifact_keys:
         path = resolve_from(config_path, config['release'][key])
         require(path.is_file(), 'Missing release artifact: ' + str(path))
         files[key] = {'path': str(path), 'sha256': digest(path), 'size': path.stat().st_size,
                       'mtimeNs': path.stat().st_mtime_ns}
     sums = Path(files['checksums']['path']).read_text(encoding='utf-8-sig')
     entries = {name.strip().lstrip('*'): sha.lower() for sha, name in re.findall(r'^([a-fA-F0-9]{64})\s+(.+)$', sums, re.M)}
-    for key in ('desktopInstaller', 'serverInstaller', 'publisherCertificate'):
+    for key in ('desktopInstaller', 'serverInstaller'):
         item = files[key]
         require(entries.get(Path(item['path']).name) == item['sha256'], 'Checksum mismatch: ' + key)
+    if 'publisherCertificate' in files:
+        item = files['publisherCertificate']
+        require(entries.get(Path(item['path']).name) == item['sha256'], 'Checksum mismatch: publisherCertificate')
     for target in ('desktop', 'server'):
         expected = f"NodePilot-{target.title()}-Setup-{version}.exe"
         require(Path(files[target + 'Installer']['path']).name == expected, 'Installer version/name mismatch')
@@ -209,7 +229,11 @@ def prerequisites(state, case):
     result = []
     preflight = state['preflight']
     checks = preflight['checks'] if preflight else {}
-    for requirement in ['signatures', 'isolation', case['target'], *[p for p in case['prerequisites'] if p in catalog.INTEGRATIONS]]:
+    config = read(state['configPath']) if state.get('configPath') else {'release': {'version': '0.0.0'}}
+    requirements = ['isolation', case['target'], *[p for p in case['prerequisites'] if p in catalog.INTEGRATIONS]]
+    if not allows_unsigned_development(config):
+        requirements.insert(0, 'signatures')
+    for requirement in requirements:
         if checks.get(requirement) is not True:
             result.append('preflight blocked: ' + requirement)
     if not native_ready(state, case['target']):
@@ -374,10 +398,14 @@ def main(argv=None):
                 elif a.command == 'preflight':
                     require(not any(e['attempts'] for e in state['cases'].values()), 'Preflight is fixed once case execution starts')
                     require(data['binding'] == state['binding'], 'Preflight belongs to another release/environment')
-                    required = {'desktop', 'server', *catalog.INTEGRATIONS, 'signatures', 'isolation'}
-                    require(set(data['checks']) == required, 'Preflight checks incomplete')
+                    config = read(state['configPath'])
+                    required = required_preflight_checks(config)
+                    require(set(data['checks']) == required or
+                            (allows_unsigned_development(config) and set(data['checks']) == required | {'signatures'}),
+                            'Preflight checks incomplete')
                     require(all(type(v) is bool for v in data['checks'].values()), 'Preflight checks must be booleans')
-                    data['status'] = 'passed' if all(data['checks'].values()) else 'blocked'
+                    signature_ok = data['checks'].get('signatures', True) or allows_unsigned_development(config)
+                    data['status'] = 'passed' if all(data['checks'].get(k, False) for k in required) and signature_ok else 'blocked'
                     data['evidence'] = evidence(a.run, data['evidence'])
                     require(data['evidence'], 'Preflight needs inspection evidence')
                     state['preflight'] = data

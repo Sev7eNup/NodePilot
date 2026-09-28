@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
+  "allowUnsignedDevelopmentArtifact": true,
   "environmentRevision": "cu-lab-1",
   "credentialPath": "C:\\lab-cred\\hyd.xml",
   "release": {

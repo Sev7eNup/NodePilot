@@ -45,6 +45,13 @@ class GateTests(unittest.TestCase):
         self.assertTrue(any('preflight blocked' in reason for reason in reasons))
         self.assertTrue(any('native session not attested' in reason for reason in reasons))
 
+    def test_unsigned_dev_policy_skips_signature_requirement(self):
+        config = {'release': {'version': '1.4.3-dev1'}, 'allowUnsignedDevelopmentArtifact': True}
+        self.assertTrue(gate.allows_unsigned_development(config))
+        self.assertNotIn('signatures', gate.required_preflight_checks(config))
+        self.assertFalse(gate.allows_unsigned_development({'release': {'version': '1.4.3'}}))
+        self.assertIn('signatures', gate.required_preflight_checks({'release': {'version': '1.4.3'}}))
+
     def test_interrupted_session_blocks_running_cases(self):
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp)

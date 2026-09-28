@@ -9,8 +9,11 @@ corroborate an observation, but they cannot mark a UI case passed.
 ## Prepare and run
 
 Copy `environment.example.json` outside the repository and fill in the full release commit,
-signed installer paths, checksum file, disposable checkpoints, protected credential paths and
-fixture probes. The installer files must be the exact artifacts being released. Review
+installer paths, checksum file, disposable checkpoints, protected credential paths and fixture
+probes. Development builds may set `allowUnsignedDevelopmentArtifact: true`; this is accepted
+only for versions containing `-dev` and does not waive artifact checksums, environment isolation
+or any UI case. Production configurations must leave it false and provide the publisher
+certificate. The installer files must be the exact artifacts under test. Review
 `coverage-review.json` whenever visible sources change; `catalog.py` fails closed on drift.
 
 After the existing server and desktop install matrices finish from clean checkpoints, initialize a

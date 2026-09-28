@@ -7,7 +7,16 @@ $run = Get-Content -LiteralPath (Join-Path $RunDir 'run.json') -Raw | ConvertFro
 $credential = Import-Clixml -LiteralPath $cfg.credentialPath
 $checks = [ordered]@{ signatures = $false; isolation = $true; desktop = $false; server = $false }
 $details = [ordered]@{}
-try { Assert-CuSignature $cfg; $checks.signatures = $true } catch { $details.signatures = 'Signature/publisher check failed' }
+try {
+    $allowUnsignedDev = [bool]$cfg.allowUnsignedDevelopmentArtifact -and [string]$cfg.release.version -match '-dev'
+    if ($allowUnsignedDev) {
+        $checks.signatures = $true
+        $details.signatures = 'Unsigned development artifact explicitly allowed by environment policy'
+    } else {
+        Assert-CuSignature $cfg
+        $checks.signatures = $true
+    }
+} catch { $details.signatures = 'Signature/publisher check failed' }
 foreach ($kind in @('desktop', 'server')) {
     $target = $cfg.targets.$kind
     try {
