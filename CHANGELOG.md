@@ -23,6 +23,14 @@ exhaustive.
 
 ### Fixed
 
+- Workflow exports and configuration backup downloads were blocked in the desktop app. They now
+  open the native Save As dialog.
+- The backup page now confirms that the download has started instead of claiming the file was
+  saved before the download finishes.
+- Custom Nodes left global-variable references unresolved when they appeared only in the script
+  template or an input's default value. These references now resolve on both desktop and server;
+  missing or undecryptable values fail the step before the script runs.
+- The desktop tray menu now says "Quit NodePilot" instead of "Quit Electron".
 - The restore preview of a configuration backup always showed 0 for alert rules. It now counts new
   rules and name conflicts the same way the restore does.
 - The folder counts on the Workflows page stayed outdated after an import.
