@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using NodePilot.Core.Activities;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
+using NodePilot.Engine.Execution;
 using NodePilot.Engine.PowerShell;
 
 namespace NodePilot.Engine.Activities;
@@ -87,10 +88,14 @@ public sealed class CustomActivityExecutor : IActivityExecutor
                     return Fail($"Required input '{p.Name}' of custom activity '{def.Name}' is not set.");
                 continue;
             }
+            if (FindUnavailableGlobals(raw, context.Variables) is { } inputError)
+                return Fail(inputError);
             variables[p.Name] = PowerShellActivitySupport.ResolveTemplateRaw(raw, context.Variables);
         }
 
         // 5. Resolve {{globals.X}} / upstream refs the author embedded in the template itself.
+        if (FindUnavailableGlobals(def.ScriptTemplate, context.Variables) is { } templateError)
+            return Fail(templateError);
         var script = PowerShellActivitySupport.ResolveScriptVariables(def.ScriptTemplate, variables);
 
         // 6. Build options. Allow-list = declared output names; exitCode is emitted separately
@@ -208,6 +213,18 @@ public sealed class CustomActivityExecutor : IActivityExecutor
             canonical["exitCode"] = exitCode;
 
         return canonical;
+    }
+
+    private static string? FindUnavailableGlobals(string template, IReadOnlyDictionary<string, string> variables)
+    {
+        var missing = VariableResolver.GlobalsPattern.Matches(template)
+            .Select(match => match.Groups[1].Value)
+            .Where(name => !variables.ContainsKey($"globals.{name}"))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        return missing.Length == 0 ? null
+            : "Custom activity references unavailable global variable(s): " + string.Join(", ", missing)
+                + ". Check that they exist and their values can be decrypted on this host.";
     }
 
     private static ActivityResult Fail(string message) => new() { Success = false, ErrorOutput = message };

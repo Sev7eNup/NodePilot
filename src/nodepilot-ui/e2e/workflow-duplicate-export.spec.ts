@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
+import { readFileSync } from 'node:fs';
 
 /**
  * E2ETests.md part 50: workflow duplicate, by-name lookup, and bulk export.
@@ -100,6 +101,8 @@ test.describe('Workflow Duplicate, By-Name & Bulk-Export (Teil 50)', () => {
     const download = await downloadPromise;
     expect(exportHit).toBe(true);
     expect(download.suggestedFilename()).toBe('nodepilot-workflows.json');
+    expect(await download.failure()).toBeNull();
+    expect(readFileSync((await download.path())!, 'utf8')).toBe(EXPORT_ENVELOPE);
   });
 
   test('50.5b — per-row "Export as JSON" GETs /api/workflows/{id}/export', async ({ page }) => {
@@ -123,6 +126,8 @@ test.describe('Workflow Duplicate, By-Name & Bulk-Export (Teil 50)', () => {
     const download = await downloadPromise;
     expect(perWorkflowExportHit).toBe(true);
     expect(download.suggestedFilename()).toBe('E2E_Basic_Test.workflow.json');
+    expect(await download.failure()).toBeNull();
+    expect(readFileSync((await download.path())!, 'utf8')).toBe(EXPORT_ENVELOPE);
   });
 
   // ---------- 50.6 — Bulk-Export permissions (UI surface) ----------

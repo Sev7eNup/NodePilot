@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
+import { readFileSync } from 'node:fs';
 
 /**
  * System configuration backup and restore (ADR 0001) on the /backup admin page (BackupPage).
@@ -99,13 +100,18 @@ test.describe('Backup & Restore (/backup)', () => {
     const pw = page.locator('input[type="password"]');
     await pw.nth(0).fill('correct-horse-battery');
     await pw.nth(1).fill('correct-horse-battery');
+    const downloadPromise = page.waitForEvent('download');
     await page.getByRole('button', { name: /download backup|backup erstellen|herunterladen/i }).click();
+
+    const download = await downloadPromise;
+    expect(await download.failure()).toBeNull();
+    expect(readFileSync((await download.path())!, 'utf8')).toBe('sealed-backup-bytes');
 
     await expect.poll(() => exportBody, { timeout: 10_000 }).not.toBeNull();
     expect(exportBody!.sections).toEqual(expect.arrayContaining(['workflows', 'machines']));
     expect(exportBody!.passphrase).toBe('correct-horse-battery');
     // Success confirmation after the download fires.
-    await expect(page.getByText(/backup downloaded|backup heruntergeladen/i)).toBeVisible();
+    await expect(page.getByText(/backup download started|backup-download gestartet/i)).toBeVisible();
   });
 
   // ---------- Restore tab ----------
