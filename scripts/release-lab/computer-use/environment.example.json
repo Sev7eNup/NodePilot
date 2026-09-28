@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "environmentRevision": "cu-lab-1",
+  "credentialPath": "C:\\lab-cred\\hyd.xml",
+  "release": {
+    "version": "1.4.3",
+    "commit": "REPLACE_WITH_FULL_RELEASE_COMMIT_SHA",
+    "desktopInstaller": "E:\\NodePilot\\out\\NodePilot-Desktop-Setup-1.4.3.exe",
+    "serverInstaller": "E:\\NodePilot\\out\\NodePilot-Server-Setup-1.4.3.exe",
+    "checksums": "E:\\NodePilot\\out\\NodePilot-1.4.3.SHA256SUMS.txt",
+    "publisherCertificate": "E:\\NodePilot\\out\\nodepilot-release-signing.cer"
+  },
+  "targets": {
+    "desktop": {
+      "vm": "HYD-CLIENT1", "checkpoint": "REPLACE_WITH_DISPOSABLE_CLEAN_CHECKPOINT",
+      "disposable": true, "origin": "https://localhost:47000", "browser": "Electron",
+      "adminCredentialPath": "C:\\lab-cred\\cu-desktop-admin.xml",
+      "baselineId": "cu-desktop-1"
+    },
+    "server": {
+      "vm": "HYD-GW1", "checkpoint": "REPLACE_WITH_DISPOSABLE_CLEAN_CHECKPOINT",
+      "disposable": true, "origin": "https://gw1.corp.contoso.com", "browser": "Edge",
+      "adminCredentialPath": "C:\\lab-cred\\cu-server-admin.xml",
+      "answersPath": "C:\\lab-cred\\cu-server-answers.json",
+      "baselineId": "cu-server-1"
+    }
+  },
+  "fixtures": {
+    "prepareScript": "C:\\lab-cred\\Prepare-ComputerUseFixtures.ps1",
+    "cleanupScript": "C:\\lab-cred\\Remove-ComputerUseFixtures.ps1"
+  },
+  "integrations": {
+    "winrm": { "kind": "winrm", "host": "cu-target.corp.contoso.com", "credentialPath": "C:\\lab-cred\\cu-remote.xml" },
+    "sql": { "kind": "sql", "connectionStringPath": "C:\\lab-cred\\cu-sql-connection.txt" },
+    "smtp": { "kind": "smtp", "host": "cu-fixtures.corp.contoso.com", "port": 2525 },
+    "http": { "kind": "http", "url": "https://cu-fixtures.corp.contoso.com/health" },
+    "proxy": { "kind": "proxy", "url": "https://cu-fixtures.corp.contoso.com/health", "proxy": "http://cu-fixtures.corp.contoso.com:3128" },
+    "llm": { "kind": "llm", "url": "http://cu-fixtures.corp.contoso.com:11434/v1", "model": "REPLACE_WITH_INSTALLED_LAB_MODEL", "credentialPath": "C:\\lab-cred\\cu-llm.xml" },
+    "ldap": { "kind": "ldap", "host": "dc1.corp.contoso.com", "credentialPath": "C:\\lab-cred\\cu-directory.xml" },
+    "windows-sso": { "kind": "script", "probeScript": "C:\\lab-cred\\Test-ComputerUseKerberos.ps1" },
+    "oidc": { "kind": "oidc", "url": "https://cu-idp.corp.contoso.com/.well-known/openid-configuration" },
+    "scim": { "kind": "scim", "url": "https://gw1.corp.contoso.com/scim/v2/ServiceProviderConfig", "credentialPath": "C:\\lab-cred\\cu-scim.xml" },
+    "eventlog": { "kind": "script", "probeScript": "C:\\lab-cred\\Test-ComputerUseEventSource.ps1" }
+  }
+}
