@@ -96,7 +96,7 @@ jobs:
   backend:
     name: Backend build + tests
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -185,13 +185,16 @@ jobs:
         run: dotnet tool restore
 
       - name: Test with coverage
+        timeout-minutes: 10
         # --settings applies coverage.runsettings, which excludes EF migrations and
         # [ExcludeFromCodeCoverage]-attributed code from the denominator. It is the same filter
         # the documented local measurement uses, so both report the same number.
         # The trx logger gets no LogFileName on purpose: a fixed name makes every test project
         # write the same file into the shared results directory, leaving only the last one in
         # the uploaded artifact. VSTest's default name is per-run unique and keeps all of them.
-        run: dotnet test --configuration Release --no-build --settings coverage.runsettings --logger trx --collect:"XPlat Code Coverage" --results-directory TestResults
+        # MSBuild limits parallel projects; runsettings only limits containers within each one.
+        # Stop a stuck test host and retain its test sequence and a small diagnostic dump.
+        run: dotnet test --configuration Release --no-build -maxcpucount:2 --settings coverage.runsettings --logger trx --collect:"XPlat Code Coverage" --blame-hang-timeout 2m --blame-hang-dump-type mini --results-directory TestResults
 
       - name: Generate coverage report
         if: always()
@@ -237,7 +240,10 @@ jobs:
           # Not '**/*.trx': on Windows that glob walks every bin/ and obj/ tree in the repo and
           # picks up stale files from earlier local runs. The test step writes only into
           # TestResults/ via --results-directory.
-          path: TestResults/**/*.trx
+          path: |
+            TestResults/**/*.trx
+            TestResults/**/*Sequence.xml
+            TestResults/**/*.dmp
 
       - name: Upload coverage report
         if: always()

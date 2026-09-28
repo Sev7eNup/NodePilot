@@ -34,7 +34,6 @@ public class ProcessExecutionEngineBackgroundProgramTests
     [MemberData(nameof(Launches))]
     public async Task BackgroundProgramHoldingThePipes_DoesNotHoldTheStep(string launch)
     {
-        var sw = Stopwatch.StartNew();
         var result = await WindowsPowerShell().ExecuteAsync(
             new PowerShellExecutionRequest
             {
@@ -43,7 +42,6 @@ public class ProcessExecutionEngineBackgroundProgramTests
                 Timeout = TimeSpan.FromSeconds(50),
             },
             TestContext.Current.CancellationToken);
-        sw.Stop();
 
         var (clean, _, parameters) = PowerShellActivitySupport.ExtractMarkers(result.Output, "step-1", NullLogger.Instance);
         try
@@ -54,8 +52,9 @@ public class ProcessExecutionEngineBackgroundProgramTests
             // The program writes into the same stream; the wrapper's values must survive that.
             parameters.Should().ContainKey("programId");
             parameters.Should().ContainKey("exitCode").WhoseValue.Should().Be("0");
-            sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(20),
-                "the step ends with the script, not with the 60-second background program");
+            using var program = Process.GetProcessById(int.Parse(parameters["programId"]));
+            program.HasExited.Should().BeFalse(
+                "the step must finish while the background program still holds its output pipes");
         }
         finally
         {

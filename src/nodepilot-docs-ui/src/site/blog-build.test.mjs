@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { afterAll, beforeAll, describe, it, expect } from 'vitest'
 import { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -12,11 +12,20 @@ import { videoEpisodes } from './videos.ts'
 
 describe('article publication and preview boundary', () => {
   for (const preview of [false, true]) {
-    it(`${preview ? 'preview' : 'production'} emits complete articles and respects publication state`, () => {
-      const root = mkdtempSync(join(tmpdir(), 'nodepilot-blog-'))
-      try {
+    describe(preview ? 'preview build' : 'production build', () => {
+      let root
+      beforeAll(() => {
+        root = mkdtempSync(join(tmpdir(), 'nodepilot-blog-'))
         writeFileSync(join(root, 'index.html'), readFileSync(new URL('./index.html', import.meta.url)))
+        // This fixture renders the whole bilingual site, not a single unit of work.
         prerenderSite(root, 'https://example.test/subpath', preview)
+      }, 30_000)
+
+      afterAll(() => {
+        if (root) rmSync(root, { recursive: true, force: true })
+      })
+
+      it('emits complete articles and respects publication state', () => {
         const sitemap = readFileSync(join(root, 'sitemap.xml'), 'utf8')
         const index = parseHTML(readFileSync(join(root, 'blog/index.html'), 'utf8')).document
         expect(index.querySelectorAll('.blog-index-row').length).toBe(preview ? 16 : 3)
@@ -57,6 +66,9 @@ describe('article publication and preview boundary', () => {
             }
           }
         }
+      })
+
+      it('keeps each route limited to its own page and legal content', () => {
         // Each file carries its own page only: one topic and one h1 per address, and the German
         // legal texts nowhere but on their own pages.
         for (const page of routePages(preview)) {
@@ -67,7 +79,7 @@ describe('article publication and preview boundary', () => {
           expect(doc.querySelectorAll('h1').length, page.file).toBe(1)
           expect(doc.querySelectorAll('[data-legal]').length, page.file).toBe(['impressum', 'datenschutz'].includes(page.route.page) ? 1 : 0)
         }
-      } finally { rmSync(root, { recursive: true, force: true }) }
+      })
     })
   }
 

@@ -29,6 +29,13 @@ public sealed class TestRunSettingsTests
 
         settings.Root!.Element("RunConfiguration")!.Element("MaxCpuCount")!.Value.Should().Be("2");
         settings.Root.Element("xUnit")!.Element("maxParallelThreads")!.Value.Should().Be("2");
+
+        var command = File.ReadLines(Path.Combine(FindRepoRoot(), ".github", "workflows", "ci.yml"))
+            .Single(line => line.Contains("run: dotnet test --configuration Release", StringComparison.Ordinal));
+        command.Should().Contain("-maxcpucount:2",
+            "runsettings does not cap the separate MSBuild projects started by a solution test run");
+        command.Should().Contain("--blame-hang-timeout 2m",
+            "a hung test must produce diagnostics instead of occupying the runner until the job timeout");
     }
 
     [Fact]

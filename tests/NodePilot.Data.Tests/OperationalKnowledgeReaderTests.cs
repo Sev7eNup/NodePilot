@@ -123,6 +123,7 @@ public class OperationalKnowledgeReaderTests
         SeedScheduled(db, "Every2Min", FolderA, "0 0/2 * * * ?");
         await db.SaveChangesAsync();
 
+        var requestedAt = DateTime.UtcNow;
         var result = await NewReader(db).ListScheduledFiresAsync(AccessibleFolderSet.Unrestricted, null, 3, 25, CancellationToken.None);
 
         var forecast = result.Should().ContainSingle().Subject;
@@ -132,7 +133,8 @@ public class OperationalKnowledgeReaderTests
         forecast.NextFiresUtc.Should().BeInAscendingOrder();
         // "0 0/2 ..." fires on even minutes, so consecutive fires are 2 minutes apart.
         (forecast.NextFiresUtc[1] - forecast.NextFiresUtc[0]).Should().Be(TimeSpan.FromMinutes(2));
-        forecast.NextFiresUtc[0].Should().BeAfter(DateTime.UtcNow.AddSeconds(-1));
+        forecast.NextFiresUtc[0].Should().BeAfter(requestedAt,
+            "the forecast is relative to the request, even if assertions run after the next cron boundary");
     }
 
     [Fact]
