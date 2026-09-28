@@ -192,8 +192,9 @@ jobs:
         # The trx logger gets no LogFileName on purpose: a fixed name makes every test project
         # write the same file into the shared results directory, leaving only the last one in
         # the uploaded artifact. VSTest's default name is per-run unique and keeps all of them.
+        # MSBuild limits parallel projects; runsettings only limits containers within each one.
         # Stop a stuck test host and retain its test sequence and a small diagnostic dump.
-        run: dotnet test --configuration Release --no-build --settings coverage.runsettings --logger trx --collect:"XPlat Code Coverage" --blame-hang-timeout 2m --blame-hang-dump-type mini --results-directory TestResults
+        run: dotnet test --configuration Release --no-build -maxcpucount:2 --settings coverage.runsettings --logger trx --collect:"XPlat Code Coverage" --blame-hang-timeout 2m --blame-hang-dump-type mini --results-directory TestResults
 
       - name: Generate coverage report
         if: always()
