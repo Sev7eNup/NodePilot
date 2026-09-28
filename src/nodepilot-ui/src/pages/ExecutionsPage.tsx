@@ -66,8 +66,8 @@ export function ExecutionsPage() {
   const isMobile = useIsMobile();
   const [searchParams] = useSearchParams();
   // Dashboard's "Recent runs" navigates here with `?id=<execId>` so the matching row
-  // expands and scrolls into view. Initial render reads the param once; manual toggling
-  // afterwards still works because expandedId is plain state.
+  // expands and scrolls into view. Follow a changed deep link while keeping manual
+  // expansion and filtering independent between navigations.
   const [expandedId, setExpandedId] = useState<string | null>(() => searchParams.get('id'));
   const initialIdRef = useRef<string | null>(searchParams.get('id'));
 
@@ -84,6 +84,17 @@ export function ExecutionsPage() {
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState<ColKey>('started');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const requestedExecutionId = searchParams.get('id');
+  useEffect(() => {
+    if (!requestedExecutionId) return;
+    initialIdRef.current = requestedExecutionId;
+    setExpandedId(requestedExecutionId);
+    setSearch(requestedExecutionId);
+    setDebouncedSearch(requestedExecutionId);
+    setStatusFilter('all');
+    setWorkflowFilter('all');
+    setPage(1);
+  }, [requestedExecutionId]);
 
   useEffect(() => {
     const timer = globalThis.setTimeout(() => {
@@ -850,7 +861,7 @@ function ExecutionDetail({ execution, steps, traceUrl, traceBackendName }: Reado
               const hasOutput = Boolean(step.errorOutput || step.output || step.traceOutput || outputParametersJsonText);
 
               return (
-                <tr key={step.id} className="border-t border-outline/40">
+                <tr key={step.id} data-step-id={step.stepId} className="border-t border-outline/40">
                   <td className="py-2 align-top">
                     <span className="font-mono text-xs text-on-surface">{step.stepId}</span>
                     {step.stepName && step.stepName !== step.stepId && (

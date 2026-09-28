@@ -25,6 +25,13 @@ afterEach(() => {
 });
 
 describe('demo anchor guard', () => {
+  it.each(['/walkthrough/', '/en/walkthrough/'])('allows returning to the task overview at %s', (href) => {
+    installAnchorGuard();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 404 }));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(clickAnchor(href).defaultPrevented).toBe(false);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
   it('allows sibling app routes when opened on a workflow detail URL', () => {
     history.replaceState(null, '', '/demo/workflows/abc');
     installAnchorGuard();

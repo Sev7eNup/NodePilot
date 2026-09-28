@@ -11,34 +11,36 @@ export function isNewMissionId(value: string | null): value is NewMissionId {
   return IDS.some(id => id === value);
 }
 
+import { appendTourCompletion, appendEditorHint } from './tourNavigation';
+
 type Stage = 'work' | 'publish' | 'run' | 'running' | 'answer' | 'retry' | 'done' | 'reset';
-type MissionCopy = { title: string; work: string; publish?: string; run?: string; running?: string; answer?: string; retry?: string; done: string };
+type MissionCopy = { title: string; work: string; publish?: string; run?: string; running?: string; inspect?: string; answer?: string; retry?: string; done: string };
 const COPY: Record<'de' | 'en', Record<NewMissionId, MissionCopy>> = {
   de: {
-    build: { title: 'Bauen eines Workflows', work: 'Verbinde im Designer Manual Trigger → PowerShell → Return Data und speichere den Entwurf. Die drei Activities sind bereits konfiguriert.', publish: 'Beide Verbindungen sind gespeichert. Veröffentliche den Workflow über die obere Werkzeugleiste.', run: 'Starte den veröffentlichten Workflow über Test-Run.', running: 'Verfolge deinen Lauf. Der Abschluss wird anhand der Ausführung geprüft.', done: 'Dein eigener Workflow ist verbunden, veröffentlicht und erfolgreich gelaufen.' },
-    decision: { title: 'Verfolge den Weg', work: 'Starte diesen Workflow mit freeSpaceGb = 8. Verfolge danach nur den kritischen Pfad.', running: 'Die Entscheidung wird ausgeführt. Öffne danach das Ergebnis und prüfe den kritischen Zweig.', retry: 'Starte erneut mit freeSpaceGb = 8 und prüfe die ausgeführten Activities.', done: 'Bei 8 GB lief nur der kritische Pfad mit Ordneranalyse und Warnmail.' },
-    parallel: { title: 'Parallele Arbeit beobachten', work: 'Starte die Bereinigung mit den vorgeschlagenen Werten. Prüfsumme und Löschen starten nach der Archivierung gemeinsam.', running: 'Beobachte beide Zweige. Die Zusammenführung wartet auf beide Ergebnisse.', retry: 'Dieser Lauf zeigt nicht beide abgeschlossenen Zweige. Starte ihn erneut.', done: 'Prüfsumme und Bereinigung liefen überlappend. Erst danach folgten waitAll und Abschlussmail.' },
-    service: { title: 'Einen Dienst wiederherstellen', work: 'Starte den Workflow mit serviceState = Stopped. Verfolge Start, Wartezeit und erneute Statusprüfung.', running: 'Der Dienst wird simuliert gestartet und danach erneut gelesen.', retry: 'Starte erneut mit serviceState = Stopped.', done: 'Der gestoppte Dienst wurde gestartet, erneut geprüft und als wiederhergestellt gemeldet.' },
-    live: { title: 'Greife live in einen Lauf ein', work: 'Starte den Live Ops Check. Der lange Prüfschritt gibt dir Zeit für den Abbruch.', running: 'Wechsle in der Navigation zu Live Ops, öffne den laufenden Live Ops Check und klicke dort auf Abbrechen.', retry: 'Der Lauf endete ohne Abbruch. Starte ihn erneut und brich ihn in Live Ops ab.', done: 'Du hast eine laufende Ausführung über Live Ops abgebrochen.' },
-    versions: { title: 'Zwei Workflow Versionen vergleichen', work: 'Öffne im Designer den Versionsvergleich und wähle die ältere Version. Vergleiche sie mit dem aktuellen Workflow.', answer: 'Welche Activity fehlt in der älteren Version?', done: 'Die ältere Version enthält noch keine Return Data Activity.' },
-    machine: { title: 'Prüfung einer Zielmaschine', work: 'Suche in der Maschinenliste nach LAB01. Lies Erreichbarkeit und Anzahl verwendender Workflows.', answer: 'Was zeigen die Daten für LAB01?', done: 'LAB01 ist nicht erreichbar. Da kein Workflow sie verwendet, ist aktuell keiner direkt betroffen.' },
-    maintenance: { title: 'Plane ein Wartungsfenster', work: 'Bearbeite Patch night: Samstag von 23:00 bis 02:00 Uhr, weiterhin als Blackout für den Ordner Operations. Speichere die Änderung.', done: 'Patch night ist für Samstag 23:00–02:00 Uhr und den Ordner Operations gespeichert.' },
+    build: { title: 'Einen Workflow bauen', work: 'Die drei Schritte (Activities) sind vorkonfiguriert. Die roten Fehlerzahlen zeigen anfangs die noch fehlenden Verbindungen. Sie verschwinden nach dem Verbinden und Speichern. Bewege den Mauszeiger an den rechten Rand von „Manual Trigger“. Ziehe vom Anschluss zum linken Rand von „PowerShell“. Verbinde genauso PowerShell mit Return Data. Klicke oben auf das Diskettensymbol „Zwischen-Speichern“.', publish: 'Beide Verbindungen sind gespeichert. Klicke oben auf das Raketensymbol „Veröffentlichen“. Damit wird der Workflow für Ausführungen freigegeben.', run: 'Klicke oben auf das Play-Symbol „Ausführen“, um deinen Workflow zu starten.', running: 'Die Markierung zeigt, welcher Schritt gerade läuft. Danach kannst du das Ergebnis in Ruhe öffnen.', retry: 'Dieser Lauf war nicht erfolgreich. Öffne seine Ausführung, prüfe die Fehlermeldung und starte nach der Korrektur erneut über „Ausführen“.', done: 'Dein Workflow ist erfolgreich gelaufen. Klicke auf „Ausführung öffnen“ und suche bei „Return Data: greeting“ nach message. Dort sollte „Hello from NodePilot“ stehen.' },
+    decision: { title: 'Einen Entscheidungspfad verfolgen', work: 'Klicke oben auf das Play-Symbol „Ausführen“. Trage im Dialog bei freeSpaceGb den Wert 8 ein und klicke auf „Ausführen“. Das simuliert 8 GB freien Speicher: unter 10 GB soll der kritische Zweig laufen.', running: 'Verfolge „Decision: severity“ und den Zweig „critical (<10 GB)“. Die anderen Zweige sollen nicht laufen. Das Ergebnis bleibt danach in der Ausführung sichtbar.', retry: 'Klicke erneut auf „Ausführen“ und starte mit freeSpaceGb = 8. Ein anderer Wert nimmt einen anderen Zweig.', done: 'Bei 8 GB lief der kritische Zweig mit Ordneranalyse und Warnmail. Öffne die Ausführung: Bei „Decision: severity“ steht branch = critical, bei „Return“ stehen freeSpaceGb = 8 und severity = critical.' },
+    parallel: { title: 'Parallele Arbeit beobachten', work: 'Klicke oben auf „Ausführen“ und im Dialog auf „Ausführen“. Lass path und olderThanDays unverändert. Nach dem Archivieren starten Prüfsumme und Bereinigung gleichzeitig. Alle Dateiaktionen sind simuliert.', running: 'Beobachte die beiden Zweige nach „zipOperation“. „Junction: waitAll“ ist die Zusammenführung: Sie wartet, bis beide Zweige fertig sind, bevor die Abschlussmail folgt.', retry: 'Der Lauf wurde nicht vollständig abgeschlossen. Starte ihn über „Ausführen“ erneut mit den vorgeschlagenen Werten.', done: 'Beide Zweige liefen überlappend. Klicke hier auf „Gantt-Zeitleiste öffnen“. Du kannst die Ergebnisse dort ohne Zeitdruck vergleichen. Die Balken für checksum und remove überlappen; Junction und Email beginnen danach.' },
+    service: { title: 'Einen Dienst wiederherstellen', work: 'Klicke oben auf „Ausführen“. Lass serviceState auf Stopped und bestätige mit „Ausführen“. Das simuliert einen gestoppten Druckwarteschlangendienst (Spooler). Der Workflow soll ihn starten und den Status erneut prüfen.', running: 'Verfolge „start spooler“, die Wartezeit „Delay“ und „verify spooler state“. Erst die erneute Prüfung bestätigt, ob der Dienst läuft.', retry: 'Klicke erneut auf „Ausführen“ und starte mit serviceState = Stopped. Bei Running ist keine Wiederherstellung nötig.', done: 'Der Dienst wurde gestartet und erneut geprüft. Öffne die Ausführung: „verify spooler state“ meldet Running. Erst danach folgt „Email: spooler recovered“. Eine erfolgreiche Startanforderung allein wäre noch keine Bestätigung.' },
+    live: { title: 'Einen laufenden Workflow abbrechen', work: 'Klicke oben auf das Play-Symbol „Ausführen“. Der simulierte Prüfschritt bleibt für diese Übung aktiv, bis du ihn abbrichst. Du hast Zeit, die nächste Anweisung zu lesen.', running: 'Dein Lauf wartet im Prüfschritt. Klicke hier auf „Live Ops“, um ihn in der Zeitleiste zu finden.', inspect: 'Klicke in der Zeitleiste auf den laufenden Balken von „Live Ops Check“ – nicht auf die ID neben dem Namen. Klicke in den geöffneten Ausführungsdetails auf „Abbrechen“.', retry: 'Starte den Workflow erneut über „Ausführen“ und brich ihn in den Ausführungsdetails von Live Ops ab.', done: 'Der Status lautet „Abgebrochen“. Öffne die Ausführung: Der Prüfschritt wurde gestoppt, Return Data wurde nicht mehr ausgeführt. Der Workflow selbst bleibt aktiviert; nur dieser Lauf wurde beendet.' },
+    versions: { title: 'Zwei Workflow-Versionen vergleichen', work: 'Klicke oben auf „…“ (Weitere Designer-Aktionen) und dann auf „Diff gegen vorherige Version“. Wähle links „Version 7“. „Hinzugefügt“ zeigt, was der aktuelle Workflow gegenüber dieser älteren Version enthält.', answer: 'Sieh im Vergleich unter „Nodes hinzugefügt“ nach. Welche Activity fehlt in Version 7? Du kannst die Antwort hier neben dem geöffneten Vergleich auswählen.', done: 'In Version 7 fehlt „Return Data: result“. Der Vergleich zählt zwei Ergänzungen: den Schritt und seine Verbindung von Log. Du hast nur verglichen; keine Version wurde wiederhergestellt.' },
+    machine: { title: 'Eine Zielmaschine prüfen', work: 'Gib LAB01 in das Suchfeld direkt über der Maschinenliste ein. Lies die Spalten „Status“ und „Workflows“. 0 bei Workflows bedeutet: kein Workflow verwendet diese Maschine.', answer: 'Welche Aussage passt zur angezeigten Zeile von LAB01? „Unbekannt“ ist keine Bestätigung eines Ausfalls.', done: 'LAB01 hat den Status „Unbekannt“, und kein Workflow verwendet sie. Daraus lässt sich kein aktueller Ausfall ableiten. Im echten Betrieb würdest du mit „Verbindung testen“ die Erreichbarkeit prüfen.' },
+    maintenance: { title: 'Ein Wartungsfenster planen', work: 'Klicke in der Zeile „Patch night“ auf das Stiftsymbol „Bearbeiten“. Ändere die Startzeit von 22:00 auf 23:00. Lass Samstag, Endzeit 02:00, Blackout und den Ordner /Operations ausgewählt. Speichere mit „Aktualisieren“.', done: 'Prüfe die Zeile „Patch night“: Samstag 23:00 bis Sonntag 02:00, Blackout für /Operations inklusive Unterordner. In dieser Zeit werden neue Starts gesperrt. Bereits laufende Ausführungen werden nicht abgebrochen.' },
   },
   en: {
-    build: { title: 'Build a workflow', work: 'In the designer, connect Manual Trigger → PowerShell → Return Data and save the draft. The three activities are configured for you.', publish: 'Both connections are saved. Publish the workflow from the toolbar.', run: 'Run the published workflow with Test Run.', running: 'Follow your execution. Completion is checked against its result.', done: 'You connected, published and successfully ran your own workflow.' },
-    decision: { title: 'Follow a decision', work: 'Run this workflow with freeSpaceGb = 8. Follow the critical path.', running: 'The decision is running. Open the result and inspect the critical branch.', retry: 'Run again with freeSpaceGb = 8 and inspect the activities.', done: 'At 8 GB, only the critical path ran, including folder analysis and the alert email.' },
-    parallel: { title: 'Watch parallel work', work: 'Start cleanup with the suggested values. Checksum and removal begin together after archiving.', running: 'Watch both branches. The junction waits for both results.', retry: 'This run did not show both completed branches. Start it again.', done: 'Checksum and removal overlapped. The waitAll junction and summary email came afterwards.' },
-    service: { title: 'Recover a service', work: 'Run with serviceState = Stopped. Follow the start, delay and second status check.', running: 'The service starts in the simulation and is then checked again.', retry: 'Run again with serviceState = Stopped.', done: 'The stopped service was started, checked again and reported as recovered.' },
-    live: { title: 'Control a live run', work: 'Start Live Ops Check. Its long check gives you time to cancel.', running: 'Use the navigation to open Live Ops. Select the running Live Ops Check and click Cancel there.', retry: 'The run finished without cancellation. Start it again and cancel in Live Ops.', done: 'You cancelled a running execution in Live Ops.' },
-    versions: { title: 'Compare two versions', work: 'Open version comparison in the designer and select the older version. Compare it with the current workflow.', answer: 'Which activity is missing from the older version?', done: 'The older version does not yet contain Return Data.' },
-    machine: { title: 'Inspect a target machine', work: 'Search the machine list for LAB01. Read its reachability and workflow count.', answer: 'What do the LAB01 details show?', done: 'LAB01 is unreachable. No workflow currently uses it.' },
-    maintenance: { title: 'Plan a maintenance window', work: 'Edit Patch night: Saturday 23:00–02:00, still a Blackout for the Operations folder. Save the change.', done: 'Patch night now covers Saturday 23:00–02:00 and the Operations folder.' },
+    build: { title: 'Build a workflow', work: 'The three steps (activities) are configured for you. Hover over the right edge of Manual Trigger. Drag its connector to the left edge of PowerShell. Connect PowerShell to Return Data the same way. Click the disk icon “Save in place” in the toolbar.', publish: 'Both connections are saved. Click the rocket icon “Publish” in the toolbar to enable the workflow for execution.', run: 'Click the play icon “Run” in the toolbar to start your workflow.', running: 'The highlight shows which step is running. You can open the result afterwards at your own pace.', retry: 'This execution did not succeed. Open it, inspect the error, then correct the workflow and start another Run.', done: 'Your workflow succeeded. Click “Open execution” and find message under “Return Data: greeting”. It should say “Hello from NodePilot”.' },
+    decision: { title: 'Follow a decision', work: 'Click the play icon “Run” in the toolbar. Enter 8 for freeSpaceGb in the dialog and click “Run”. This simulates 8 GB free: below 10 GB, the critical branch should run.', running: 'Follow “Decision: severity” and the “critical (<10 GB)” branch. The other branches should not run. You can inspect the execution afterwards.', retry: 'Click “Run” again and enter freeSpaceGb = 8. Other values take different branches.', done: 'At 8 GB, the critical branch ran with folder analysis and an alert email. Open the execution: “Decision: severity” reports branch = critical; “Return” reports freeSpaceGb = 8 and severity = critical.' },
+    parallel: { title: 'Watch parallel work', work: 'Click “Run”, then “Run” in the dialog. Leave path and olderThanDays unchanged. After archiving, checksum and cleanup start together. All file actions are simulated.', running: 'Watch the two branches after zipOperation. “Junction: waitAll” joins them: it waits for both to finish before the summary email can run.', retry: 'This execution did not finish both branches. Start another run with the suggested values using the play button.', done: 'Both branches overlapped. Click “Open Gantt timeline” here to compare the results at your own pace. The checksum and remove bars overlap; Junction and Email follow them.' },
+    service: { title: 'Recover a service', work: 'Click “Run”. Leave serviceState at Stopped and click “Run”. This simulates a stopped Print Spooler service. The workflow should start it and check its status again.', running: 'Follow “start spooler”, the Delay and “verify spooler state”. The second check confirms whether the service is running.', retry: 'Click “Run” again with serviceState = Stopped. Running does not need recovery.', done: 'The service was started and checked again. Open the execution: “verify spooler state” reports Running, followed by “Email: spooler recovered”. A successful start request alone would not confirm recovery.' },
+    live: { title: 'Control a live run', work: 'Click the play icon “Run”. For this exercise, the simulated check stays active until you cancel it. Take your time reading the next instruction.', running: 'Your execution is waiting in the check step. Click “Live Ops” here to find it in the timeline.', inspect: 'In the timeline, click the running bar for “Live Ops Check”, not the ID beside its name. Click “Cancel” in the execution details that open.', retry: 'Start another run with the play button and cancel it from the execution details in Live Ops.', done: 'The status is “Cancelled”. Open the execution: the check was stopped and Return Data did not run. The workflow remains enabled; only this execution was cancelled.' },
+    versions: { title: 'Compare two versions', work: 'Click “…” (More designer actions), then “Diff against a previous version”. Select “Version 7” on the left. “Added” shows what the current workflow contains compared with that older version.', answer: 'Look under “Nodes added” in the comparison. Which activity is missing from version 7? Select your answer here beside the open comparison.', done: 'Version 7 is missing “Return Data: result”. The diff counts two additions: the activity and its edge from Log. You compared versions without restoring either one.' },
+    machine: { title: 'Inspect a target machine', work: 'Enter LAB01 in the search field directly above the machine list. Read “Status” and “Workflows”. 0 under Workflows means no workflow uses this machine.', answer: 'Which statement matches the LAB01 row? “Unknown” does not confirm an outage.', done: 'LAB01 has status “Unknown” and no workflow uses it. This does not establish a current outage. In a real environment, use “Test connection” to check reachability.' },
+    maintenance: { title: 'Plan a maintenance window', work: 'Click the pencil icon “Edit” in the Patch night row. Change the start time from 22:00 to 23:00. Keep Saturday, end time 02:00, Blackout and /Operations selected. Save with “Update”.', done: 'Check the Patch night row: Saturday 23:00 to Sunday 02:00, Blackout for /Operations including subfolders. New starts are blocked during this window; executions already running are not cancelled.' },
   },
 };
 
 const UI = {
-  de: { badge: 'GEFÜHRTE AUFGABE', close: 'Führung beenden', resume: 'Zur Aufgabe zurück', result: 'Ausführung öffnen', explore: 'Demo frei erkunden', website: 'Zur NodePilot-Website', reset: 'Demo zurücksetzen', resetText: 'Die Beispieldaten wurden in diesem Tab verändert. Setze die Demo zurück, um diese Aufgabe mit ihrem Ausgangszustand zu starten.', wrong: 'Sieh dir die Angaben in der Produktoberfläche noch einmal an.', notice: 'Simulierte Daten · Änderungen gelten nur in diesem Tab', answers: { versions: [['return', 'Return Data'], ['script', 'PowerShell'], ['copy', 'File Copy']], machine: [['none', 'Nicht erreichbar · 0 Workflows'], ['used', 'Nicht erreichbar · mehrere Workflows'], ['online', 'Erreichbar · 0 Workflows']] } },
-  en: { badge: 'GUIDED TASK', close: 'End walkthrough', resume: 'Return to the task', result: 'Open execution', explore: 'Explore the demo', website: 'Back to NodePilot', reset: 'Reset demo', resetText: 'The example data has changed in this tab. Reset the demo to start this task from its original state.', wrong: 'Check the details in the product interface again.', notice: 'Simulated data · changes stay in this tab', answers: { versions: [['return', 'Return Data'], ['script', 'PowerShell'], ['copy', 'File Copy']], machine: [['none', 'Unreachable · 0 workflows'], ['used', 'Unreachable · several workflows'], ['online', 'Reachable · 0 workflows']] } },
+  de: { badge: 'GEFÜHRTE AUFGABE', close: 'Führung beenden', resume: 'Zur Aufgabe zurück', result: 'Ausführung öffnen', explore: 'Demo frei erkunden', website: 'Zur NodePilot-Website', overview: 'Alle zehn Aufgaben', reset: 'Demo zurücksetzen', resetText: 'Die Beispieldaten wurden in diesem Tab verändert. Setze die Demo zurück, um diese Aufgabe mit ihrem Ausgangszustand zu starten.', wrong: 'Prüfe die bezeichnete Zeile noch einmal: Entscheidend sind der angezeigte Status bzw. die hinzugefügte Activity.', notice: 'Simulierte Daten · Änderungen gelten nur in diesem Tab', answers: { versions: [['return', 'Return Data'], ['script', 'PowerShell'], ['copy', 'File Copy']], machine: [['none', 'Unbekannt · 0 Workflows'], ['used', 'Nicht erreichbar · mehrere Workflows'], ['online', 'Erreichbar · 0 Workflows']] } },
+  en: { badge: 'GUIDED TASK', close: 'End walkthrough', resume: 'Return to the task', result: 'Open execution', explore: 'Explore the demo', website: 'Back to NodePilot', overview: 'All ten tasks', reset: 'Reset demo', resetText: 'The example data has changed in this tab. Reset the demo to start this task from its original state.', wrong: 'Check the indicated row again: look at the displayed status or the added activity.', notice: 'Simulated data · changes stay in this tab', answers: { versions: [['return', 'Return Data'], ['script', 'PowerShell'], ['copy', 'File Copy']], machine: [['none', 'Unknown · 0 workflows'], ['used', 'Unreachable · several workflows'], ['online', 'Reachable · 0 workflows']] } },
 } as const;
 
 function taskRoute(mode: NewMissionId): string {
@@ -100,6 +102,7 @@ export function mountAdditionalTours(router: ReturnType<typeof createBrowserRout
   let seenMachine = false;
   let wrong = false;
   let initialWindowTime = '';
+  let renderedState = '';
   const requestedLanguage = new URLSearchParams(location.search).get('lang');
 
   function navigate(path: string): void {
@@ -141,7 +144,7 @@ export function mountAdditionalTours(router: ReturnType<typeof createBrowserRout
     if (mode === 'maintenance') {
       const patch = world.maintenanceWindows.find(window => window.id === demoId('maintenance-window:patch-night'));
       const operations = demoId('folder:operations');
-      if (patch && initialWindowTime !== '1380:120' && patch.weeklyStartMinuteOfDay === 1380 && patch.weeklyEndMinuteOfDay === 120 && patch.weeklyDaysMask === 64 && patch.mode === 'Blackout' && patch.scopeKind === 'Folders' && patch.targets.some(target => target.targetKind === 'Folder' && target.targetId === operations)) stage = 'done';
+      if (patch?.isEnabled && initialWindowTime !== '1380:120' && patch.weeklyStartMinuteOfDay === 1380 && patch.weeklyEndMinuteOfDay === 120 && patch.weeklyDaysMask === 64 && patch.mode === 'Blackout' && patch.scopeKind === 'Folders' && patch.targets.length === 1 && patch.targets.some(target => target.targetKind === 'Folder' && target.targetId === operations)) stage = 'done';
     } else if (mode === 'versions') {
       if (seenVersion) stage = 'answer';
     } else if (mode === 'machine') {
@@ -169,6 +172,11 @@ export function mountAdditionalTours(router: ReturnType<typeof createBrowserRout
     const lang = demoLanguage();
     const copy = COPY[lang][mode];
     const ui = UI[lang];
+    // World and interface observers also fire for unrelated updates. Keep buttons mounted
+    // until their content changes so a pointer or keyboard action can finish reliably.
+    const state = JSON.stringify([mode, stage, lang, wrong, router.state.location.pathname, router.state.location.search, findTaskRun(mode, baseline)?.id]);
+    if (state === renderedState) return;
+    renderedState = state;
     const focused = panel.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.tourAction : undefined;
     panel.replaceChildren();
     panel.dataset.stage = stage;
@@ -178,11 +186,14 @@ export function mountAdditionalTours(router: ReturnType<typeof createBrowserRout
     header.className = 'np-tour-header';
     header.append(text('span', ui.badge), button('×', 'close', end, true));
     header.querySelector('button')?.setAttribute('aria-label', ui.close);
-    const step = stage === 'done' ? 3 : ['answer', 'publish', 'running'].includes(stage) ? 2 : stage === 'run' ? 3 : 1;
-    const progress = text('small', `${IDS.indexOf(mode) + 3} / 10 · ${lang === 'de' ? 'Schritt' : 'Step'} ${step} / 3`);
+    const total = mode === 'build' ? 4 : mode === 'maintenance' ? 2 : 3;
+    const step = stage === 'done' ? total : mode === 'build' && ['run', 'running', 'retry'].includes(stage) ? 3 : ['answer', 'publish', 'running'].includes(stage) ? 2 : 1;
+    const task = mode === 'build' ? 1 : IDS.indexOf(mode) + 3;
+    const progress = text('small', `${lang === 'de' ? 'Aufgabe' : 'Task'} ${task} / 10 · ${lang === 'de' ? 'Schritt' : 'Step'} ${step} / ${total}`);
     progress.className = 'np-tour-progress';
     panel.append(header, progress, text('h2', copy.title));
-    panel.append(text('p', stage === 'reset' ? ui.resetText : copy[stage] ?? copy.work));
+    const instruction = stage === 'reset' ? ui.resetText : mode === 'live' && stage === 'running' && router.state.location.pathname.endsWith('/operations') ? copy.inspect : copy[stage];
+    panel.append(text('p', instruction ?? copy.work));
     const target = mode === 'live' && stage === 'running' ? '/operations' : taskRoute(mode);
     if (stage === 'answer' && (mode === 'versions' || mode === 'machine')) {
       for (const [id, label] of ui.answers[mode]) panel.append(button(label, id, () => {
@@ -193,16 +204,23 @@ export function mountAdditionalTours(router: ReturnType<typeof createBrowserRout
       if (wrong) { const feedback = text('p', ui.wrong); feedback.setAttribute('role', 'status'); panel.append(feedback); }
     }
     if (stage === 'done') {
+      appendTourCompletion(panel, mode);
       const run = findTaskRun(mode, baseline);
+      if (mode === 'parallel' && run) panel.append(button(lang === 'de' ? 'Gantt-Zeitleiste öffnen' : 'Open Gantt timeline', 'gantt', () => navigate(`${taskRoute(mode)}?historyExecution=${encodeURIComponent(run.id)}&historyView=gantt`)));
       if (run) panel.append(button(ui.result, 'result', () => navigate(`/executions?id=${encodeURIComponent(run.id)}`), true));
       panel.append(button(ui.explore, 'explore', end));
       const home = text('a', ui.website);
       home.href = '/'; home.target = '_blank'; home.rel = 'noopener noreferrer'; home.className = 'np-tour-quiet';
       panel.append(home);
+      const overview = text('a', ui.overview);
+      overview.href = lang === 'de' ? '/walkthrough/' : '/en/walkthrough/';
+      overview.className = 'np-tour-quiet';
+      panel.append(overview);
     } else if (stage === 'reset') panel.append(button(ui.reset, 'reset', () => location.reload()));
     else if (mode === 'live' && stage === 'running' && !router.state.location.pathname.endsWith('/operations')) panel.append(button('Live Ops', 'open-ops', () => navigate('/operations')));
     else if (!router.state.location.pathname.endsWith(target)) panel.append(button(ui.resume, 'resume', () => navigate(target), true));
     const notice = text('small', ui.notice);
+    if (stage === 'work' && mode in MISSION_WORKFLOW_IDS) appendEditorHint(panel);
     notice.className = 'np-tour-notice';
     panel.append(notice);
     if (focused) panel.querySelector<HTMLElement>(`[data-tour-action="${focused}"]`)?.focus({ preventScroll: true });
@@ -221,13 +239,14 @@ export function mountAdditionalTours(router: ReturnType<typeof createBrowserRout
 
   function start(nextMode: NewMissionId): void {
     mode = nextMode;
+    renderedState = '';
     active = true;
     stage = 'work'; wrong = false; seenVersion = false; seenMachine = false;
     const world = getWorld();
     baseline = new Set(world.executions.map(run => run.id));
     const patch = world.maintenanceWindows.find(window => window.id === demoId('maintenance-window:patch-night'));
     initialWindowTime = `${patch?.weeklyStartMinuteOfDay}:${patch?.weeklyEndMinuteOfDay}`;
-    if (mode in MISSION_WORKFLOW_IDS && !ensureMissionWorkflow(mode as keyof typeof MISSION_WORKFLOW_IDS)) stage = 'reset';
+    if (mode in MISSION_WORKFLOW_IDS && !ensureMissionWorkflow(mode as keyof typeof MISSION_WORKFLOW_IDS, demoLanguage())) stage = 'reset';
     if (mode in MISSION_WORKFLOW_IDS && stage !== 'reset') {
       const workflow = world.workflows.find(entry => entry.id === MISSION_WORKFLOW_IDS[mode as keyof typeof MISSION_WORKFLOW_IDS]);
       const definition = workflow && definitionOf(workflow);
@@ -254,6 +273,8 @@ export function mountAdditionalTours(router: ReturnType<typeof createBrowserRout
   }
 
   const unsubscribe = subscribeWorld(update);
+  const resize = new ResizeObserver(() => document.body.style.setProperty('--np-tour-height', `${panel.getBoundingClientRect().height}px`));
+  resize.observe(panel);
   const unsubscribeRouter = router.subscribe(() => { render(); observeInterface(); });
   const observer = new MutationObserver(observeInterface);
   const root = document.getElementById('root');
@@ -261,5 +282,5 @@ export function mountAdditionalTours(router: ReturnType<typeof createBrowserRout
   document.addEventListener('input', observeInterface);
   const requested = new URLSearchParams(location.search).get('tour');
   if (isNewMissionId(requested)) start(requested);
-  return { start, dispose() { unsubscribe(); unsubscribeRouter(); observer.disconnect(); document.removeEventListener('input', observeInterface); if (active) end(); panel.remove(); } };
+  return { start, dispose() { unsubscribe(); unsubscribeRouter(); observer.disconnect(); resize.disconnect(); document.removeEventListener('input', observeInterface); if (active) end(); panel.remove(); } };
 }

@@ -15,7 +15,12 @@
 body.np-tour-open #root{width:calc(100% - 320px)}
 body.np-tour-open #root .h-screen{height:calc(100dvh - 42px)}
 body.np-tour-open .np-designer .wd-dock,body.np-tour-open .np-designer .react-flow__minimap{display:none}
-body.np-tour-open .np-execution-panel[style]{height:190px!important}
+body.np-tour-open [data-maintenance-active="false"]{display:none}
+body.np-tour-open .np-execution-panel[style]:has([data-testid="gantt-chart"]){min-height:clamp(260px,45dvh,520px)}
+body.np-tour-open:has(.np-tour[data-tour="build"][data-stage="work"]) .react-flow__handle{opacity:1!important;box-shadow:0 0 0 3px var(--color-primary,#6da8ff)}
+body:has(.np-tour[data-tour="service"]) .react-flow__node:is([data-id="start"],[data-id="settle"],[data-id="verify"]),
+body:has(.np-tour[data-tour="decision"]) .react-flow__node[data-id="dec"]{outline:2px solid var(--color-primary,#6da8ff);outline-offset:6px;border-radius:8px}
+body:has(.np-tour[data-tour="diagnose"]) tr:is([data-step-id="powershell"],[data-step-id="fileCopy"])>td:first-child{box-shadow:inset 3px 0 var(--color-primary,#6da8ff);padding-left:12px}
 /* Keep the native execution details readable beside the walkthrough. */
 body.np-tour-execution .np-sidebar:not(.fixed){display:none}
 body.np-tour-execution [role="table"]{min-width:0!important}

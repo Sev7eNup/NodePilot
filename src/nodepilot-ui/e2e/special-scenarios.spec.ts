@@ -71,7 +71,7 @@ test.describe('Spezielle Szenarien (Teil 9)', () => {
 
     await seedExpertMode(page);
     await page.goto(`/workflows/${WF_ID}`);
-    await page.getByRole('button', { name: /test run/i }).click();
+    await page.getByRole('button', { name: /^run$/i }).click();
 
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible({ timeout: 15_000 });
@@ -110,7 +110,7 @@ test.describe('Spezielle Szenarien (Teil 9)', () => {
     await expect(page.locator('.react-flow__node', { hasText: 'Hourly Schedule' })).toBeVisible();
 
     // The manualTrigger declares no parameters, so Test runs directly without a dialog.
-    await page.getByRole('button', { name: /test run/i }).click();
+    await page.getByRole('button', { name: /^run$/i }).click();
     await expect.poll(() => sink.body, { timeout: 10_000 }).not.toBeNull();
     expect(sink.body).toMatchObject({ debug: false });
   });

@@ -13,7 +13,7 @@ import {
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import type { Node } from '@xyflow/react';
 import { api } from '../../api/client';
 import { getPage } from '../../api/paging';
@@ -89,11 +89,21 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
   const [historyScope, setHistoryScope] = useState<'current' | 'all'>('current');
   const [historyPage, setHistoryPage] = useState(1);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const historyExecution = searchParams.get('historyExecution');
+  const historyView = searchParams.get('historyView') === 'gantt' ? 'gantt' : 'list';
 
   useEffect(() => {
     setHistoryPage(1);
     setExpandedHistoryId(null);
   }, [workflowId, historyScope]);
+
+  useEffect(() => {
+    if (!historyExecution) return;
+    setIsCollapsed(false);
+    setActiveTab('history');
+    setExpandedHistoryId(historyExecution);
+  }, [historyExecution, workflowId, historyScope]);
 
   useEffect(() => {
     if (expertMode) return;
@@ -284,6 +294,7 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
             scope={historyScope}
             workflowNames={workflowNames}
             expandedId={expandedHistoryId}
+            initialView={historyView}
             onToggle={(id) => setExpandedHistoryId(expandedHistoryId === id ? null : id)}
             onReplay={onReplay}
             activeReplayId={activeReplayId}

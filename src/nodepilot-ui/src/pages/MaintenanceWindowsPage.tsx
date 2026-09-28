@@ -8,7 +8,7 @@ import {
   Search,
   TrashCan,
 } from '@carbon/icons-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api/client';
@@ -76,7 +76,6 @@ type FormState = {
   workflowIds: string[];
 };
 
-const DAY_KEYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function browserTz(): string {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; }
@@ -111,14 +110,9 @@ const isoToLocalInput = (iso: string | null): string => {
 const localInputToIso = (local: string): string | null =>
   local ? new Date(local).toISOString() : null;
 
-const daysFromMask = (mask: number, dayLabels: string[]): string => {
-  const parts: string[] = [];
-  for (let i = 0; i < 7; i++) if ((mask & (1 << i)) !== 0) parts.push(dayLabels[i]);
-  return parts.length ? parts.join(', ') : '-';
-};
-
 export function MaintenanceWindowsPage() {
-  const { t } = useTranslation(['maintenance', 'common']);
+  const { t, i18n } = useTranslation(['maintenance', 'common']);
+  const dayLabels = useMemo(() => Array.from({ length: 7 }, (_, day) => new Intl.DateTimeFormat(i18n.language, { weekday: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(2024, 0, 7 + day)))), [i18n.language]);
   const queryClient = useQueryClient();
   const { canAdmin } = useRole();
   const isMobile = useIsMobile();
@@ -201,15 +195,19 @@ export function MaintenanceWindowsPage() {
     setShowDialog(true);
   };
 
-  const describeWhen = (w: MaintenanceWindow): string => {
+  const describeWhen = useCallback((w: MaintenanceWindow): string => {
     if (w.recurrence === 'OneTime')
       return `${w.oneTimeStartUtc ? formatDate(w.oneTimeStartUtc) : '?'} → ${w.oneTimeEndUtc ? formatDate(w.oneTimeEndUtc) : '?'}`;
-    if (w.recurrence === 'Weekly')
-      return `${daysFromMask(w.weeklyDaysMask, DAY_KEYS)} ${minuteToHhmm(w.weeklyStartMinuteOfDay)}–${minuteToHhmm(w.weeklyEndMinuteOfDay)} (${w.timeZoneId})`;
+    if (w.recurrence === 'Weekly') {
+      const overnight = w.weeklyStartMinuteOfDay != null && w.weeklyEndMinuteOfDay != null && w.weeklyEndMinuteOfDay <= w.weeklyStartMinuteOfDay;
+      const ranges = dayLabels.flatMap((day, index) => (w.weeklyDaysMask & (1 << index)) !== 0
+        ? [`${day} ${minuteToHhmm(w.weeklyStartMinuteOfDay)} – ${overnight ? `${dayLabels[(index + 1) % 7]} ` : ''}${minuteToHhmm(w.weeklyEndMinuteOfDay)}`] : []);
+      return `${ranges.join(', ') || '-'} (${w.timeZoneId})`;
+    }
     if (w.recurrence === 'Cron')
       return `cron: ${w.cronExpression ?? '?'} (${w.durationMinutes ?? '?'} min, ${w.timeZoneId})`;
     return w.recurrence;
-  };
+  }, [dayLabels]);
 
   // Click-header-to-sort (same inline pattern as UsersPage/MachinesPage/GlobalVariablesPage).
   type SortKey = 'name' | 'enabled' | 'mode' | 'scope' | 'when' | 'targets';
@@ -244,7 +242,7 @@ export function MaintenanceWindowsPage() {
       }
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [windows, search, sortBy, sortDir]);
+  }, [windows, search, sortBy, sortDir, describeWhen]);
 
   // Resolve target ids to readable names for the list. A reference to a deleted folder or
   // workflow falls back to a placeholder instead of showing a raw guid.
@@ -539,7 +537,7 @@ export function MaintenanceWindowsPage() {
                   <div>
                     <label className="block text-xs font-medium text-on-surface-variant mb-1">{t('maintenance:fields.days')}</label>
                     <div className="flex flex-wrap gap-1">
-                      {DAY_KEYS.map((d, i) => (
+                      {dayLabels.map((d, i) => (
                         <button
                           key={d}
                           type="button"

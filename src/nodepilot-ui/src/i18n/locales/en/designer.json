@@ -34,7 +34,7 @@
     },
     "live": {
       "noActiveExecution": "No active execution",
-      "clickTestToRun": "Click \"Test\" to run the workflow",
+      "clickTestToRun": "Click \"Run\" to run the workflow",
       "paused": "Paused"
     },
     "inspector": {

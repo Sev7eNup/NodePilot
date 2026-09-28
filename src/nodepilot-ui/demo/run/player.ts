@@ -172,7 +172,8 @@ export function startRun(workflowId: string, triggeredBy = 'manual', parameters:
     if (run.cancelled) return;
     const node: GraphNode | undefined = nodeById.get(id);
     const activityType = node?.data?.activityType;
-    const outcome = node && missionOutcome(workflowId, node, inputs)
+    const guidedOutcome = node && missionOutcome(workflowId, node, inputs);
+    const outcome = guidedOutcome
       || workflowId === FILE_WORKFLOW_ID && node && fileOutcome(node, inputs, bus)
       || outcomeFor(activityType);
     const error = 'error' in outcome ? outcome.error as string | undefined : undefined;
@@ -208,7 +209,9 @@ export function startRun(workflowId: string, triggeredBy = 'manual', parameters:
       },
     });
 
-    const duration = workflowId === MISSION_WORKFLOW_IDS.live && id === 'wait' ? 20_000 : pacedDuration(outcome.durationMs);
+    // The cancellation exercise waits for the learner, not a countdown.
+    if (workflowId === MISSION_WORKFLOW_IDS.live && id === 'wait' && activityType === 'waitForCondition') return;
+    const duration = guidedOutcome ? Math.max(1000, guidedOutcome.durationMs) : pacedDuration(outcome.durationMs);
     schedule(() => {
       if (!error && node) publishFileOutcome(bus, node, outcome);
       completeStep(row, outcome.output, outcome.outputParameters, error, onComplete);

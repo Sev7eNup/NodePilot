@@ -120,7 +120,7 @@ test.describe('Workflow-Ausführung & Debugging (Teil 6)', () => {
 
     await page.goto(`/workflows/${WF_ID}`);
 
-    const testBtn = page.getByRole('button', { name: /test run/i });
+    const testBtn = page.getByRole('button', { name: /^run$/i });
     await expect(testBtn).toBeVisible({ timeout: 15_000 });
     await testBtn.click();
 
@@ -137,7 +137,7 @@ test.describe('Workflow-Ausführung & Debugging (Teil 6)', () => {
 
     await page.goto(`/workflows/${WF_ID}`);
 
-    await page.getByRole('button', { name: /test run/i }).click();
+    await page.getByRole('button', { name: /^run$/i }).click();
 
     // RunWorkflowDialog (role="dialog") shows a field per declared parameter, prefilled with
     // defaults.
@@ -165,7 +165,7 @@ test.describe('Workflow-Ausführung & Debugging (Teil 6)', () => {
     await mockExecute(page, sink);
 
     await page.goto(`/workflows/${WF_ID}`);
-    await page.getByRole('button', { name: /test run/i }).click();
+    await page.getByRole('button', { name: /^run$/i }).click();
 
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible({ timeout: 10_000 });

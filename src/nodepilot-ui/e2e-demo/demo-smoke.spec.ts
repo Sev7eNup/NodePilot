@@ -556,7 +556,7 @@ test.describe('published browser demo', () => {
     // Asserted on the effect rather than the toast: a toast auto-dismisses and would make
     // this race, while 'no run was started' is exactly the guarantee that matters.
     const runsBefore = await api<{ total: number }>(page, `/api/executions?workflowId=${target.id}`);
-    await page.getByRole('button', { name: /^(Test run|Test-Run)$/ }).click();
+    await page.getByRole('button', { name: /^(Run|Ausführen)$/ }).click();
     await page.waitForTimeout(1_000);
     const runsWhileDisabled = await api<{ total: number }>(page, `/api/executions?workflowId=${target.id}`);
     expect(runsWhileDisabled.total).toBe(runsBefore.total);
@@ -575,7 +575,7 @@ test.describe('published browser demo', () => {
       .catch(() => { /* already gone */ });
 
     const beforeRun = await api<{ total: number }>(page, `/api/executions?workflowId=${target.id}`);
-    await page.getByRole('button', { name: /^(Test run|Test-Run)$/ }).click();
+    await page.getByRole('button', { name: /^(Run|Ausführen)$/ }).click();
 
     // Assert the click started something before waiting on the outcome: a run that never
     // starts and a run that never finishes would otherwise fail identically.

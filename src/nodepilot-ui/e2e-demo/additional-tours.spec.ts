@@ -14,7 +14,7 @@ for (const id of IDS) {
 
 async function runFromEditor(page: import('@playwright/test').Page, placeholder?: string, value?: string) {
   if (placeholder) await expect(page.locator('.react-flow__node').filter({ hasText: 'Manual Trigger' }).first()).toBeVisible();
-  await page.getByRole('button', { name: 'Test run' }).click();
+  await page.getByRole('button', { name: 'Run' }).click();
   const dialog = page.getByRole('dialog');
   if (placeholder && value) await dialog.getByPlaceholder(placeholder, { exact: true }).fill(value);
   if (await dialog.isVisible()) await dialog.getByRole('button', { name: 'Run', exact: true }).click();
@@ -32,6 +32,12 @@ test('parallel branches both finish before waitAll', async ({ page }) => {
   await page.goto('./?tour=parallel&lang=en');
   await runFromEditor(page);
   await expect(page.locator('.np-tour')).toHaveAttribute('data-stage', 'done', { timeout: 20000 });
+  await page.locator('[data-tour-action="gantt"]').click();
+  await expect(page.locator('.np-execution-panel')).toContainText('checksum');
+  await expect(page.locator('.np-execution-panel')).toContainText('remove');
+  await expect(page.getByTestId('gantt-chart')).toBeVisible();
+  expect((await page.locator('.np-execution-panel').boundingBox())!.height).toBeGreaterThan(300);
+  await expect(page.locator('[data-tour-action="next-task"]')).toHaveAttribute('href', /tour=service/);
 });
 
 test('service is started and verified before recovery mail', async ({ page }) => {
@@ -66,6 +72,8 @@ test('machine search and status answer complete the task', async ({ page }) => {
   await page.goto('./?tour=machine&lang=en');
   await page.locator('#root input[type="text"]').first().fill('LAB01');
   await expect(page.locator('.np-tour')).toHaveAttribute('data-stage', 'answer');
+  await expect(page.locator('#root')).toContainText('Unknown');
+  await expect(page.locator('[data-tour-action="none"]')).toHaveText('Unknown · 0 workflows');
   await page.locator('[data-tour-action="used"]').click();
   await expect(page.locator('.np-tour [role="status"]')).toBeVisible();
   await page.locator('[data-tour-action="none"]').click();
@@ -94,11 +102,14 @@ test('build connects, publishes and runs the prepared workflow', async ({ page }
   const checklist = page.getByRole('dialog');
   if (await checklist.isVisible()) await checklist.getByRole('button', { name: 'Publish', exact: true }).click();
   await expect(page.locator('.np-tour')).toHaveAttribute('data-stage', 'run');
+  await expect(page.locator('.np-tour-progress')).toContainText('Step 3 / 4');
   // The demo world notifies the tour before the publish response/refetch reaches React.
   // Wait for the designer to acknowledge publication before clicking Run.
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
   await runFromEditor(page);
+  await expect(page.locator('.np-tour-progress')).toContainText('Step 3 / 4');
   await expect(page.locator('.np-tour')).toHaveAttribute('data-stage', 'done', { timeout: 20000 });
+  await expect(page.locator('.np-tour-progress')).toContainText('Task 1 / 10');
 });
 
 test('a task survives client navigation and starts fresh after reload', async ({ page }) => {
