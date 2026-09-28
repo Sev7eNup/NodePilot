@@ -107,9 +107,8 @@ public class StartProgramActivity : BaseRemoteActivity
         // Process.WaitForExit(int) accepts -1 (Timeout.Infinite) as "wait indefinitely",
         // so a missing user-timeout maps cleanly to that without a separate code path.
         var timeoutMs = PowerShellOperation.ToWaitForExitMilliseconds(timeoutSeconds);
-        // Once the process has exited, an unfinished pipe read means a grandchild inherited the
-        // write handle (`cmd /c start …`), so it will never reach EOF. Bound that stretch by the
-        // same short grace the isolated runScript path uses instead of the full step timeout.
+        // After exit, allow buffered output to drain while bounding idle pipes inherited by
+        // grandchildren. Captured bytes renew the grace; the overall timeout remains bounded.
         // 0 or negative falls back to the default: no bound would restore the hang, and a zero
         // grace would cut output short on every call.
         var configuredGrace = _configuration.GetValue<int?>("Engine:IsolatedDrainGraceSeconds");
@@ -206,6 +205,7 @@ public class StartProgramActivity : BaseRemoteActivity
                         $drainClock = [System.Diagnostics.Stopwatch]::StartNew()
                         $exitObservedMs = $null
                         while ($true) {
+                            $capturedBytes = $false
                             foreach ($stream in $streams) {
                                 if ($null -ne $stream.Pending -and $stream.Pending.IsCompleted) {
                                     $count = $stream.Pending.GetAwaiter().GetResult()
@@ -214,7 +214,10 @@ public class StartProgramActivity : BaseRemoteActivity
                                     } else {
                                         # Keep draining after the cap so the child cannot block on a full pipe.
                                         $take = [Math]::Min($count, $__npOutputCap - $stream.Output.Length)
-                                        if ($take -gt 0) { $stream.Output.Write($stream.Buffer, 0, $take) }
+                                        if ($take -gt 0) {
+                                            $stream.Output.Write($stream.Buffer, 0, $take)
+                                            $capturedBytes = $true
+                                        }
                                         $stream.Pending = $stream.Reader.ReadAsync($stream.Buffer, 0, $stream.Buffer.Length)
                                     }
                                 }
@@ -222,11 +225,13 @@ public class StartProgramActivity : BaseRemoteActivity
                             $pending = @($streams | Where-Object { $null -ne $_.Pending } | ForEach-Object { $_.Pending })
                             if ($proc.HasExited -and $pending.Count -eq 0) { break }
                             if ($proc.HasExited) {
-                                # The program is done; only a leaked write handle keeps the pipe
-                                # open. Give up after the drain grace and keep what was buffered
-                                # instead of failing a successful run on the step timeout.
-                                if ($null -eq $exitObservedMs) { $exitObservedMs = $drainClock.ElapsedMilliseconds }
-                                if (($drainClock.ElapsedMilliseconds - $exitObservedMs) -ge $__drainGraceMs) {
+                                # A slow reader can still be consuming buffered data after exit.
+                                # Only captured bytes renew the idle grace; discarded output cannot.
+                                if ($null -eq $exitObservedMs -or $capturedBytes) {
+                                    $exitObservedMs = $drainClock.ElapsedMilliseconds
+                                }
+                                if (($drainClock.ElapsedMilliseconds - $exitObservedMs) -ge $__drainGraceMs -or
+                                    $drainClock.ElapsedMilliseconds -ge ($__timeoutMs + $__drainGraceMs)) {
                                     $drainIncomplete = $true
                                     break
                                 }
@@ -359,10 +364,9 @@ public class StartProgramActivity : BaseRemoteActivity
         var metaLine = parsed.Waited == true
             ? $"[startProgram] PID={pid} ExitCode={exit} Duration={durMs}ms"
             : $"[startProgram] PID={pid} (fire-and-forget, not waited) Duration={durMs}ms";
-        // The program finished but a surviving child still holds the output pipe, so the capture
-        // stopped at the drain grace. Say so — the buffered output may be short.
+        // Report bounded capture separately from the program's exit status.
         if (parsed.DrainIncomplete == true)
-            metaLine += " (output capture incomplete: a surviving child process holds the output pipe)";
+            metaLine += " (output capture incomplete: the output pipe did not finish draining)";
 
         var display = string.IsNullOrWhiteSpace(stdOut)
             ? metaLine

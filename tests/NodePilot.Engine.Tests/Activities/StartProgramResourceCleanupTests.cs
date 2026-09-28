@@ -85,6 +85,47 @@ public class StartProgramResourceCleanupTests
         await AssertResources(engine);
     }
 
+    [Theory]
+    [InlineData(60, true)]
+    [InlineData(1, false)]
+    public async Task SlowReader_AfterProcessExit_DrainsBufferedOutputWithinTheTotalBudget(int timeoutSeconds, bool complete)
+    {
+        using var engine = CreateEngine();
+        var settings = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
+            ["Engine:IsolatedDrainGraceSeconds"] = "1",
+        }).Build();
+        var activity = new Accessor(settings);
+        var config = JsonSerializer.SerializeToElement(new {
+            filePath = CmdPath,
+            arguments = "/d /c \"(for /l %i in (1,1,128) do @echo out-%i) & (for /l %i in (1,1,128) do @echo err-%i 1>&2)\"",
+            timeoutSeconds,
+        });
+        // Delay the consumer, not the child, so the pipe still contains data after the grace.
+        var script = activity.Render(config)
+            .Replace("[byte[]]::new(4096)", "[byte[]]::new(32)", StringComparison.Ordinal)
+            .Replace("while ($true) {", "while ($true) { [System.Threading.Thread]::Sleep(100)", StringComparison.Ordinal);
+        var execution = await Run(engine, script, CaptureBudgetSeconds);
+        var result = activity.Process(new ActivityResult {
+            Success = execution.Success, Output = execution.Output, ErrorOutput = execution.Error,
+        }, config);
+
+        result.Success.Should().BeTrue(result.ErrorOutput);
+        if (complete)
+        {
+            result.Output.Should().NotContain("output capture incomplete");
+            foreach (var (key, prefix) in new[] { ("stdout", "out"), ("stderr", "err") })
+                result.OutputParameters[key].Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(line => line.Trim()).Should().Equal(Enumerable.Range(1, 128).Select(i => $"{prefix}-{i}"));
+        }
+        else
+        {
+            result.Output.Should().Contain("output capture incomplete");
+            result.OutputParameters["stdout"].Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Length.Should().BeLessThan(128, "continuous progress must not remove the total drain bound");
+        }
+        await AssertResources(engine);
+    }
+
     [Fact]
     public async Task OutputBeyondCap_DrainsBothPipesAndReportsTruncation()
     {
@@ -543,7 +584,8 @@ public class StartProgramResourceCleanupTests
         result.Output.Should().Contain($"resources jobs={expectedJobs}; subscribers={expectedSubscribers}; events=0");
     }
 
-    private sealed class Accessor() : StartProgramActivity(null!, null!, null!, null!, new ConfigurationBuilder().Build())
+    private sealed class Accessor(IConfiguration? settings = null)
+        : StartProgramActivity(null!, null!, null!, null!, settings ?? new ConfigurationBuilder().Build())
     {
         public string Render(JsonElement config) => BuildScript(config,
             new StepExecutionContext { WorkflowExecutionId = Guid.NewGuid(), StepId = "program" });
