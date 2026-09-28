@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "uiSourceHash": "3650dd52590e848bf4eb21d5be00f1cab4c070ac83ca1ad40a0e9ace65744f8e",
+  "reviewNote": "Initial catalog maps all current routes, 33 Activity types, 22 system settings sections and 11 appearance options. Journey checkpoints cover workflow lifecycle, designer controls, roles, operations, backup and native shell. Per-route DE/EN cases require an explicit dialog inventory in their observations. Sources: App.tsx, ActivityCatalog.cs, SettingsSchema.cs, themeStore.ts, docs/testing/E2ETests.md and the current page/component sources. This is a coverage baseline, not evidence that the UI cases passed."
+}

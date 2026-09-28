@@ -127,6 +127,24 @@ The probe URL points at another host because an instance cannot probe itself by 
 **The suite has to finish with `fail=0`.** Right after the update the database trigger skips its
 first round by design; if the trigger driver fails on that alone, run the verifier once more.
 
+The final release gate is the Computer-Use acceptance run. It operates the installed desktop
+release on the disposable client and the installed server release in Edge as a human would. The
+catalog covers every current route, Activity type, settings section, theme, role boundary, backup
+path and native shell action. A pilot filter may be used to validate the session first, but it can
+never satisfy the gate. The full run must finish with `verify` exit 0; every case needs an attested
+Computer-Use session, screenshots and explicit checkpoint observations on both configured targets.
+
+```powershell
+python scripts\release-lab\computer-use\gate.py catalog
+python scripts\release-lab\computer-use\gate.py init --config C:\lab-cred\nodepilot-computer-use-<version>.json --run $env:TEMP\nodepilot-release-lab\<version>\computer-use
+.\scripts\release-lab\computer-use\Inspect-Lab.ps1 -ConfigPath C:\lab-cred\nodepilot-computer-use-<version>.json -RunDir $env:TEMP\nodepilot-release-lab\<version>\computer-use
+python scripts\release-lab\computer-use\gate.py verify --run $env:TEMP\nodepilot-release-lab\<version>\computer-use
+```
+
+The Computer-Use run is deliberately separate from the installer matrix: the matrix proves
+provisioning, updates and uninstall; this gate proves the installed product through visible UI
+interaction. Its `summary.md`, screenshots and fixture cleanup receipt are release evidence.
+
 A fix found here means a new build and a new run, not a patched artifact: the setups are signed and
 listed in `SHA256SUMS.txt`, and the tag has to point at the commit they were built from. The
 `summary.md` of both lab runs and the suite verifier's result belong in the release notes' test
