@@ -9,6 +9,7 @@
  * `/api/audit/export?format=…`), but this guards the class rather than that one page: any
  * same-origin link that would leave the demo's own directory is routed through the demo
  * instead, and a response that carries `Content-Disposition` is saved as a real download.
+ * The website's task overview is an intentional exit and remains normal navigation.
  */
 
 let detach: (() => void) | null = null;
@@ -63,6 +64,7 @@ export function installAnchorGuard(): void {
     if (resolved.protocol === 'blob:' || resolved.protocol === 'data:') return;
     if (resolved.origin !== globalThis.location.origin) return;
     if (resolved.pathname === '/demo' || resolved.pathname.startsWith('/demo/')) return;
+    if (resolved.pathname === '/walkthrough/' || resolved.pathname === '/en/walkthrough/') return;
 
     void handleEscapingClick(event, resolved.toString());
   };

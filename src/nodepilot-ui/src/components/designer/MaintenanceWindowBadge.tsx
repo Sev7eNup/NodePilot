@@ -24,7 +24,7 @@ export function MaintenanceWindowBadge({ workflowId }: Readonly<{ workflowId: st
   const activeCount = data.filter((w) => w.activeNow).length;
 
   return (
-    <div className="wd-strip flex items-center gap-2 px-4 py-1.5 bg-warning-container/60 border-b border-warning/30 text-xs text-on-warning-container">
+    <div data-maintenance-active={activeCount > 0} className="wd-strip flex items-center gap-2 px-4 py-1.5 bg-warning-container/60 border-b border-warning/30 text-xs text-on-warning-container">
       <CalendarSettings size={13} className="shrink-0" />
       <span className="font-medium">{t('maintenance:affectedBy', { count: data.length })}</span>
       <span className="flex flex-wrap gap-1">

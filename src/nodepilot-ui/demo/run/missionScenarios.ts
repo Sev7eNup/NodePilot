@@ -78,7 +78,7 @@ export function missionOutcome(workflowId: string, node: GraphNode, inputs: Reco
   }
   if (workflowId === MISSION_WORKFLOW_IDS.live) {
     if (id === 'trigger') return result('Started manually.');
-    if (id === 'wait') return result('Long-running check completed.', {}, 80_000);
+    if (id === 'wait') return result('This simulated check waits for cancellation.');
     if (id === 'result') return result('{"status":"complete"}', { status: 'complete' });
   }
   return null;

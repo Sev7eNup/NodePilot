@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { configureWorld, getWorld, resetWorld } from '../../../demo/state/world';
+import { configureWorld, getWorld, notifyWorld, resetWorld } from '../../../demo/state/world';
 import { buildWorld } from '../../../demo/seed/build';
 import { ensureMissionWorkflow } from '../../../demo/seed/missionFixtures';
 import { cancelRun, startRun, stopAllRuns } from '../../../demo/run/player';
+import { createMemoryRouter } from 'react-router';
+import { mountAdditionalTours } from '../../../demo/ui/additionalTours';
 
 const NOW = Date.parse('2026-09-18T12:00:00Z');
 
@@ -52,11 +54,44 @@ describe('guided demo executions', () => {
   it('cancels a running live check without completing later activities', async () => {
     const workflow = ensureMissionWorkflow('live')!;
     const run = startRun(workflow.id)!;
-    await vi.advanceTimersByTimeAsync(1200);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(run.status).toBe('Running');
     expect(getWorld().steps.get(run.id)?.find(step => step.stepId === 'wait')?.status).toBe('Running');
     expect(cancelRun(run.id)).toBe(true);
     await vi.runAllTimersAsync();
     expect(run.status).toBe('Cancelled');
     expect(getWorld().steps.get(run.id)?.map(step => step.stepId)).toEqual(['trigger', 'wait']);
+  });
+
+  it('keeps the Live Ops button mounted during unrelated world updates', async () => {
+    document.body.innerHTML = '<div id="root"></div>';
+    const router = createMemoryRouter([{ path: '*', element: null }]);
+    const tour = mountAdditionalTours(router);
+    try {
+      tour.start('live');
+      const workflow = ensureMissionWorkflow('live')!;
+      startRun(workflow.id);
+      await vi.advanceTimersByTimeAsync(2000);
+      const button = document.querySelector('[data-tour-action="open-ops"]') as HTMLButtonElement;
+      expect(button).not.toBeNull();
+      button.focus();
+      notifyWorld();
+      notifyWorld();
+      expect(document.querySelector('[data-tour-action="open-ops"]')).toBe(button);
+      expect(document.activeElement).toBe(button);
+      button.click();
+      expect(router.state.location.pathname).toBe('/operations');
+    } finally {
+      tour.dispose();
+      router.dispose();
+      document.body.innerHTML = '';
+    }
+  });
+
+  it('localizes guided notes without claiming the manual service task is scheduled', () => {
+    const workflow = ensureMissionWorkflow('service', 'de')!;
+    const notes = JSON.parse(workflow.definitionJson).nodes.filter((node: { type: string }) => node.type === 'stickyNote');
+    expect(notes.map((node: { data: { text: string } }) => node.data.text).join('\n')).toContain('Diese Übung hat keinen Zeitplan');
+    expect(workflow.definitionJson).not.toContain('every 15 minutes');
   });
 });

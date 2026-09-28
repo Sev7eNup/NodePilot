@@ -88,6 +88,7 @@ export function useWorkflowExecution({
   // breakpoints. Memoized so the keyboard handlers that close over `run` keep a stable
   // reference instead of re-creating every render or capturing stale props.
   const run = useCallback(async (debug = false) => {
+    if (!workflow) return;
     const authBoundaryGeneration = captureAuthBoundaryGeneration();
     if (workflow && !workflow.isEnabled) {
       toast.info(t('editor:workflowDisabledRunHint'));
@@ -107,7 +108,9 @@ export function useWorkflowExecution({
     }
 
     // Route to the parameter dialog when the workflow has a manual trigger with parameters.
-    const triggerConfig = extractManualTriggerConfig(JSON.stringify({ nodes, edges }));
+    // A published run executes the saved definition. The canvas can still be hydrating
+    // when the toolbar is first clicked; an empty canvas must not bypass its parameters.
+    const triggerConfig = extractManualTriggerConfig(canWrite ? JSON.stringify({ nodes, edges }) : workflow.definitionJson);
     if (triggerConfig && triggerConfig.parameters.length > 0) {
       if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
       setShowRunDialog(true);

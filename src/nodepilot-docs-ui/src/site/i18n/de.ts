@@ -15,7 +15,7 @@ export const de = {
     "intro": "Zehn kurze Aufgaben führen direkt durch die Produktoberfläche: vom ersten Lauf über Entscheidungen und Live Ops bis zur Wartungsplanung.",
     "moreAction": "Aufgabe starten",
     "firstKicker": "KONFIGURATIONSDATEI BEREITSTELLEN",
-    "firstTitle": "Auftrag durch Datei.",
+    "firstTitle": "Eine Konfigurationsdatei bereitstellen.",
     "firstText": "Ein Konfigurationswert wird geändert. PowerShell erzeugt die Datei, File Copy bringt sie ins Ziel und Return Data zeigt das Ergebnis.",
     "firstStep": "Einen Wert im Startdialog ändern",
     "secondStep": "Den Workflow starten und verfolgen",

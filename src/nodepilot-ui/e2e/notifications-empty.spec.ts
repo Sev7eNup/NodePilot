@@ -87,7 +87,7 @@ test.describe('Error-Notifications & Empty States (Teil 56)', () => {
 
     await page.goto(`/workflows/${WF_ID}`);
 
-    const testBtn = page.getByRole('button', { name: /test run/i });
+    const testBtn = page.getByRole('button', { name: /^run$/i });
     await expect(testBtn).toBeVisible({ timeout: 15_000 });
     await testBtn.click();
 
