@@ -6,14 +6,14 @@ Moderner, schlanker Ersatz fuer Microsoft System Center Orchestrator. Agentless 
 
 **Pflege:** Ein Feature-PR fügt hier höchstens eine Zeile hinzu. Wer einen Absatz schreiben will, schreibt ihn in `docs/claude-reference.md` und verlinkt ihn von hier. Keine Fehler-Rückblenden („vorher war es so…"), keine Messwerte als Beleg — dieselbe Regel wie für Code-Kommentare. Steht eine Erklärung schon in `docs/`, steht hier nur der Zeiger. Umfang ist per `DocumentationCountsTests` gedeckelt.
 
-## Contributor- & Attribution-Policy
+## Commits & Sprache
 
-NodePilot ist ein Single-Contributor-Projekt. KI darf beim Entwickeln helfen (diese Datei, `.claude/`, `.agents/` bleiben in Nutzung) — aber für ALLE Commits ab v1.0.0 gilt:
+KI-Werkzeuge helfen bei der Entwicklung mit (diese Datei, `.claude/`, `.agents/`). Für Commits gilt:
 
-- **Autor & Committer sind immer** `Sev7eNup <79143581+Sev7eNup@users.noreply.github.com>`. Der GitHub-Contributor-Graph zeigt ausschließlich `sev7enup`.
-- **Co-Author-Trailer sind erlaubt** (Claude, Codex, Dependabot). Sie stehen immer *hinter* dem Autor: `Sev7eNup` bleibt Hauptautor und damit das erste Avatar am Commit. Ein Trailer darf den Autor nie ersetzen.
-- **Natürliche, menschliche Sprache.** Alle Texte und Beschreibungen — ebenso PR-Titel, PR-Beschreibungen und Commit-Nachrichten — sind natürlich und menschlich formuliert. KI-Floskeln und aufgeblähte Formulierungen sind zu vermeiden, Aussagen bleiben konkret und verständlich.
-- **Sprache auf GitHub ist Englisch.** Commit-Messages, PR-Titel/-Beschreibungen, Issues, Issue-Kommentare, Review-Kommentare und Branch-Namen werden auf Englisch verfasst — unabhängig davon, in welcher Sprache der Chat geführt wird. (Repo-interne Doku und Code-Kommentare bleiben davon unberührt: dort gilt weiter die vorhandene Sprache der jeweiligen Datei.)
+- **Autor und Committer ist** `Sev7eNup <79143581+Sev7eNup@users.noreply.github.com>` — die lokale Git-Identität wird nicht überschrieben (kein `--author`, kein `-c user.*`).
+- **Co-Author-Trailer** (Claude, Codex, Dependabot) sind willkommen und stehen am Ende der Nachricht.
+- **Schreibstil:** Commit-Nachrichten, PR-Titel und -Beschreibungen klingen wie von einem Menschen geschrieben — konkret, knapp, ohne Floskeln.
+- **Sprache auf GitHub ist Englisch** (Commits, PRs, Issues, Kommentare, Branch-Namen). Repo-Doku und Code-Kommentare behalten die Sprache der jeweiligen Datei.
 
 ## Agent skills
 
