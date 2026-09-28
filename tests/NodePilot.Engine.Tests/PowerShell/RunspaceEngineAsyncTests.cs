@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Engine.PowerShell;
@@ -25,29 +24,35 @@ public class RunspaceEngineAsyncTests
 
         using var cts = new CancellationTokenSource();
 
-        var sw = Stopwatch.StartNew();
+        var releaseName = $"NodePilot-test-{Guid.NewGuid():N}";
+        using var release = new EventWaitHandle(false, EventResetMode.ManualReset, releaseName);
+        using var started = new EventWaitHandle(false, EventResetMode.ManualReset, releaseName + "-started");
         var task = engine.ExecuteAsync(
             new PowerShellExecutionRequest
             {
-                ScriptText = "Start-Sleep -Seconds 30",
+                ScriptText = $$"""
+                    $started = [System.Threading.EventWaitHandle]::OpenExisting('{{releaseName}}-started')
+                    try { [void]$started.Set() } finally { $started.Dispose() }
+                    {{WaitForRelease(releaseName)}}
+                    """,
                 Timeout = TimeSpan.FromMinutes(5),
             },
             cts.Token);
 
-        // Give the pipeline a moment to actually start executing on the runspace.
-        await Task.Delay(150);
-        cts.Cancel();
-
-        var thrown = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
-        sw.Stop();
+        OperationCanceledException thrown;
+        try
+        {
+            (await Task.Run(() => started.WaitOne(TimeSpan.FromSeconds(30)),
+                TestContext.Current.CancellationToken)).Should().BeTrue("the script must be running before cancellation");
+            cts.Cancel();
+            thrown = await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
+        }
+        finally { release.Set(); }
 
         thrown.CancellationToken.Should().Be(cts.Token,
             "StepRunner tells a junction stand-down from a whole-execution cancel by the token");
         thrown.Message.Should().Be(IPowerShellExecutionEngine.CancelledMessage);
-        // A 30-second sleep cancelled at 150ms must return well under the original sleep.
-        // 5 seconds is a generous bound that won't flake under CI load but still proves the
-        // pipeline was actively stopped (not waited out).
-        sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5));
     }
 
     [Theory]
@@ -88,28 +93,39 @@ public class RunspaceEngineAsyncTests
     }
 
     [Fact]
-    public async Task Execute_TimeoutShorterThanSleep_TimesOutCloseToTimeout()
+    public async Task Execute_Timeout_StopsScriptBeforeItIsReleased()
     {
         using var engine = new RunspaceExecutionEngine(
             NullLogger<RunspaceExecutionEngine>.Instance,
             minRunspaces: 1,
             maxRunspaces: 4);
 
-        var sw = Stopwatch.StartNew();
-        var result = await engine.ExecuteAsync(
-            new PowerShellExecutionRequest
-            {
-                ScriptText = "Start-Sleep -Seconds 30",
-                Timeout = TimeSpan.FromMilliseconds(300),
-            },
-            CancellationToken.None);
-        sw.Stop();
+        var releaseName = $"NodePilot-test-{Guid.NewGuid():N}";
+        using var release = new EventWaitHandle(false, EventResetMode.ManualReset, releaseName);
+        try
+        {
+            var result = await engine.ExecuteAsync(
+                new PowerShellExecutionRequest
+                {
+                    ScriptText = WaitForRelease(releaseName),
+                    Timeout = TimeSpan.FromMilliseconds(300),
+                },
+                TestContext.Current.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
-        result.TimedOut.Should().BeTrue();
-        result.Success.Should().BeFalse();
-        sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5),
-            "the pipeline must be stopped, not waited out for the full 30s sleep");
+            result.TimedOut.Should().BeTrue();
+            result.Success.Should().BeFalse();
+        }
+        finally { release.Set(); }
     }
+
+    // The script cannot finish naturally until cleanup releases it. The wait limit above
+    // only guards a hung test; it does not measure runner speed or module startup.
+    private static string WaitForRelease(string name) => $$"""
+        $release = [System.Threading.EventWaitHandle]::OpenExisting('{{name}}')
+        try { while (-not $release.WaitOne(50)) { } }
+        finally { $release.Dispose() }
+        """;
 
     [Fact]
     public async Task Execute_50ConcurrentCalls_AllCompleteWithCorrectOutput()
