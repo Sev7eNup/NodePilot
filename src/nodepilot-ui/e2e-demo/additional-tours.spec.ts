@@ -30,7 +30,10 @@ test('decision executes only the critical branch at 8 GB', async ({ page }) => {
 
 test('parallel branches both finish before waitAll', async ({ page }) => {
   await page.goto('./?tour=parallel&lang=en');
-  await runFromEditor(page);
+  await page.getByRole('button', { name: 'Run' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.locator('.np-tour')).toHaveAttribute('data-stage', 'done', { timeout: 20000 });
   await page.locator('[data-tour-action="gantt"]').click();
   await expect(page.locator('.np-execution-panel')).toContainText('checksum');
