@@ -122,7 +122,7 @@ export function useWorkflowBulkActions(
       danger: true,
     });
     if (!ok) return;
-    await run(items, (w) => api.delete(`/workflows/${w.id}`), 'workflows:bulk.deleted');
+    await run(items, (w) => api.delete(`/workflows/${w.id}`), 'workflows:bulk.deleted', true);
   }, [run, t]);
 
   const moveWorkflows = useCallback(async (items: WorkflowListItem[], targetFolderId: string) => {

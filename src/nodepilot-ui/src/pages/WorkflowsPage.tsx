@@ -193,6 +193,7 @@ export function WorkflowsPage() {
       }),
     onSuccess: (workflow) => {
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      queryClient.invalidateQueries({ queryKey: ['shared-folders'] });
       setShowCreate(false);
       setNewName('');
       navigate(`/workflows/${workflow.id}`);
@@ -207,6 +208,7 @@ export function WorkflowsPage() {
       api.post<Workflow>('/workflows', { ...req, folderId: selectedFolderId ?? undefined }),
     onSuccess: (workflow) => {
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      queryClient.invalidateQueries({ queryKey: ['shared-folders'] });
       setShowAiGenerate(false);
       navigate(`/workflows/${workflow.id}`);
     },
@@ -217,13 +219,19 @@ export function WorkflowsPage() {
   // without this the toggle just refuses to move.
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/workflows/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workflows'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      queryClient.invalidateQueries({ queryKey: ['shared-folders'] });
+    },
     onError: (err: Error) => toast.error(t('common:deleteFailed', { message: err.message })),
   });
 
   const duplicateMutation = useMutation({
     mutationFn: (id: string) => api.post<Workflow>(`/workflows/${id}/duplicate`, {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workflows'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      queryClient.invalidateQueries({ queryKey: ['shared-folders'] });
+    },
     onError: (err: Error) => toast.error(t('common:createFailed', { message: err.message })),
   });
 

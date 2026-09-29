@@ -35,6 +35,8 @@ exhaustive.
 - The restore preview of a configuration backup always showed 0 for alert rules. It now counts new
   rules and name conflicts the same way the restore does.
 - The folder counts on the Workflows page stayed outdated after an import.
+- Folder counts also stayed outdated after creating, duplicating or deleting workflows, including bulk deletion.
+- The German login showed the browser's English required-field tooltip; required fields now use the selected interface language.
 - Parts of the English interface showed German text, for example the settings of "Start Workflow",
   the folder tree, several activity fields and the log details. Snippets placed in the designer now
   use the interface language too.

@@ -305,6 +305,7 @@ function WorkflowEditorInner() {
       }),
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      queryClient.invalidateQueries({ queryKey: ['shared-folders'] });
       setNewWorkflowOpen(false);
       setNewWorkflowName('');
       navigate(`/workflows/${created.id}`);
