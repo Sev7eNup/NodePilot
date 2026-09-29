@@ -43,7 +43,7 @@ if ($Phase -eq 'second') {
     Check 'T1b ready after the restart' (Wait-Ready 300)
     Assert-Installed 'T1b'
     Check 'T1b administrator signs in after the restart' ((Invoke-Login 'npadmin' 'FirstPassw0rd!') -eq '200')
-    Check-NoNewErrors 'T1b' $bootMark
+    Check-NoNewErrorsSinceBoot 'T1b' $bootMark
 }
 
 if ($Phase -eq 'first') {

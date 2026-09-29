@@ -55,8 +55,9 @@ foreach ($kind in @('desktop', 'server')) {
             }
         }
         $expectedHash = $run.binding.artifacts."$($kind)Installer".sha256
+        $expectedProductVersion = if ($allowUnsignedDev) { ($cfg.release.version -split '-')[0] } else { $cfg.release.version }
         $checks[$kind] = $result.ready -and $result.service -eq 'Running' -and
-            ($result.version -split '\+')[0] -eq $cfg.release.version -and $result.installerSha256 -eq $expectedHash
+            ($result.version -split '\+')[0] -eq $expectedProductVersion -and $result.installerSha256 -eq $expectedHash
         if (-not $result.receiptMatches) { $checks.isolation = $false }
         $details[$kind] = $result
     } catch { $checks[$kind] = $false; $checks.isolation = $false; $details[$kind] = 'Guest identity/readiness inspection failed' }

@@ -148,6 +148,30 @@ function Check-NoNewErrors([string] $label, [hashtable] $mark) {
     Check "$label no error entries in the service log" ($errors.Count -eq 0) "count=$($errors.Count) $first"
 }
 
+# T1b's mark is taken before reboot. A database connection closed while Windows shuts down is
+# not a start-up error; compare CMTrace timestamps with the actual guest boot time instead.
+function Get-CmTraceUtc([string] $line) {
+    $match = [regex]::Match($line, '<time="(?<time>\d{2}:\d{2}:\d{2}\.\d+)(?<offset>[+-]\d+)" date="(?<date>\d{2}-\d{2}-\d{4})"')
+    if (-not $match.Success) { return $null }
+    try {
+        $local = [datetime]::ParseExact(
+            "$($match.Groups['date'].Value) $($match.Groups['time'].Value)",
+            'MM-dd-yyyy HH:mm:ss.fff', [Globalization.CultureInfo]::InvariantCulture)
+        $offset = [TimeSpan]::FromMinutes([int]$match.Groups['offset'].Value)
+        return ([DateTimeOffset]::new($local, $offset)).UtcDateTime
+    } catch { return $null }
+}
+
+function Check-NoNewErrorsSinceBoot([string] $label, [hashtable] $mark) {
+    $bootUtc = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime()
+    $errors = @(Get-NewErrorLines $mark | Where-Object {
+        $loggedAt = Get-CmTraceUtc $_
+        -not $loggedAt -or $loggedAt -ge $bootUtc
+    })
+    $first = if ($errors.Count) { ($errors[0] -replace '\]LOG\]!>.*', '' -replace '^<!\[LOG\[', '').Substring(0, [Math]::Min(300, ($errors[0] -replace '\]LOG\]!>.*', '' -replace '^<!\[LOG\[', '').Length)) } else { '' }
+    Check "$label no error entries in the service log after boot" ($errors.Count -eq 0) "count=$($errors.Count) $first"
+}
+
 # Signs in, imports the smoke workflow, enables and runs it; returns the final status.
 function Invoke-SmokeWorkflow([string] $user, [string] $password) {
     $origin = Get-Origin
