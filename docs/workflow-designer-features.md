@@ -211,7 +211,7 @@ Each activity type has its own config component (`properties/activities/`, regis
 
 ## 11. Running from the designer
 
-- **Test run** (`Ctrl+Enter`): starts immediately, or opens the parameter dialog for a `manualTrigger` that declares parameters (prefilled with the values last used).
+- **Run** (`Ctrl+Enter`): starts immediately, or opens the parameter dialog for a `manualTrigger` that declares parameters (prefilled with the values last used).
 - **Debug run** (Expert, `Ctrl+Shift+Enter`): runs with `debug: true` → breakpoints are active.
 - **Auto-save before a run:** unsaved changes are saved first when you have write permission.
 - **Cancel run** (`Ctrl+Shift+X`): aborts the running execution.
@@ -408,7 +408,7 @@ Every display setting lives in the **`designStore`** (Zustand plus persist, key 
 | `Ctrl+Z` / `Ctrl+Y` / `Ctrl+Shift+Z` | Undo / redo |
 | `Ctrl+A` | Select all |
 | `Ctrl+E` / `Ctrl+U` | Lock / unlock |
-| `Ctrl+Enter` / `Ctrl+Shift+Enter` | Test run / debug run |
+| `Ctrl+Enter` / `Ctrl+Shift+Enter` | Run / debug run |
 | `Delete` / `Backspace` | Delete |
 
 ### Expert mode (in addition)
