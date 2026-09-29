@@ -25,6 +25,7 @@ exhaustive.
 
 - Workflow exports and configuration backup downloads were blocked in the desktop app. They now
   open the native Save As dialog.
+- PNG exports from the workflow designer now use the same desktop-compatible download path.
 - The backup page now confirms that the download has started instead of claiming the file was
   saved before the download finishes.
 - Custom Nodes left global-variable references unresolved when they appeared only in the script

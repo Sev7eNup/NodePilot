@@ -10,7 +10,7 @@ const signalRMock = vi.hoisted(() => ({
   handlers: {} as Record<string, ((payload: unknown) => void)[]>,
   connection: null as { stop: ReturnType<typeof vi.fn>; invoke: ReturnType<typeof vi.fn> } | null,
 }));
-const toPngMock = vi.hoisted(() => vi.fn(() => Promise.resolve('data:image/png;base64,')));
+const toBlobMock = vi.hoisted(() => vi.fn(() => Promise.resolve(new Blob(['png'], { type: 'image/png' }))));
 const autoLayoutElkMock = vi.hoisted(() => vi.fn());
 
 // Mock SignalR before the page imports it - the editor opens a hub connection on mount
@@ -41,7 +41,7 @@ vi.mock('@microsoft/signalr', () => {
 // `html-to-image` (used by the PNG-export button) tries to read CSS that jsdom doesn't
 // provide. The button is never clicked during smoke tests, but the static import must
 // not blow up at module-load time.
-vi.mock('html-to-image', () => ({ toPng: toPngMock }));
+vi.mock('html-to-image', () => ({ toBlob: toBlobMock }));
 
 // Real lint, wrapped so tests can count how often the editor runs it. It walks every edge
 // against every node, so it must not run per frame of a drag.
@@ -182,7 +182,7 @@ beforeEach(() => {
   signalRMock.connection = null;
   useDesignStore.setState({ designerMode: 'expert' });
   useToastStore.setState({ toasts: [] });
-  toPngMock.mockReset().mockResolvedValue('data:image/png;base64,');
+  toBlobMock.mockReset().mockResolvedValue(new Blob(['png'], { type: 'image/png' }));
   autoLayoutElkMock.mockReset();
 });
 
@@ -453,19 +453,39 @@ describe('WorkflowEditorPage — Workflow data variations', () => {
   });
 
   it('does not download a PNG rendered for the previous authentication context', async () => {
-    let finishRender!: (dataUrl: string) => void;
-    toPngMock.mockReturnValue(new Promise<string>((resolve) => { finishRender = resolve; }));
+    let finishRender!: (blob: Blob) => void;
+    toBlobMock.mockReturnValue(new Promise<Blob>((resolve) => { finishRender = resolve; }));
     const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     renderPage();
     await waitForCanvasReady();
     await openToolsMenu();
 
     fireEvent.click(screen.getByTitle('Export as PNG'));
-    await waitFor(() => expect(toPngMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(toBlobMock).toHaveBeenCalledTimes(1));
     clearLocalAuthBoundary();
-    await act(async () => { finishRender('data:image/png;base64,user-a'); });
+    await act(async () => { finishRender(new Blob(['user-a'], { type: 'image/png' })); });
 
     expect(anchorClick).not.toHaveBeenCalled();
+  });
+
+  it('downloads PNG through a blob URL accepted by the desktop shell', async () => {
+    const blob = new Blob(['png'], { type: 'image/png' });
+    toBlobMock.mockResolvedValue(blob);
+    const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:https://localhost:47000/test');
+    const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      expect(this.href).toBe('blob:https://localhost:47000/test');
+      expect(this.download).toBe('Smoke Workflow.png');
+    });
+    renderPage();
+    await waitForCanvasReady();
+    await openToolsMenu();
+
+    fireEvent.click(screen.getByTitle('Export as PNG'));
+
+    await waitFor(() => expect(anchorClick).toHaveBeenCalledTimes(1));
+    expect(createUrl).toHaveBeenCalledWith(blob);
+    expect(revokeUrl).toHaveBeenCalledWith('blob:https://localhost:47000/test');
   });
 });
 

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { api, downloadFromApi } from '../api/client';
 import type { Workflow, MachineOption, Credential } from '../types/api';
 import { Add, Chemistry, CircleDash, Close, Minimize } from '@carbon/icons-react';
-import { toPng } from 'html-to-image';
+import { toBlob } from 'html-to-image';
 import { autoLayout, autoLayoutTB, autoLayoutCompact, autoLayoutELK } from '../lib/autoLayout';
 import { randomUuid } from '../lib/uuid';
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
@@ -773,7 +773,7 @@ function WorkflowEditorInner() {
       ? getComputedStyle(canvasRef.current).backgroundColor
       : '#ffffff';
     try {
-      const dataUrl = await toPng(flow, {
+      const blob = await toBlob(flow, {
         backgroundColor: surfaceBg,
         pixelRatio: Math.max(globalThis.devicePixelRatio || 1, 2),
         cacheBust: true,
@@ -788,10 +788,15 @@ function WorkflowEditorInner() {
         },
       });
       assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = dataUrl;
+      a.href = url;
       a.download = `${name || 'workflow'}.png`;
+      document.body.appendChild(a);
       a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
     } catch { /* ignore render errors */ }
   }, [name]);
 
