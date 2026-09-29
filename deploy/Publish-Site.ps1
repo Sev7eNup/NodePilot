@@ -114,8 +114,17 @@ if ($SkipBuild) {
         Push-Location $sitePackage
         foreach ($script in 'build', 'build:site', 'build:demo', 'assemble:site') {
             Write-Host "  npm run $script"
-            & npm.cmd run $script
-            if ($LASTEXITCODE -ne 0) { throw "npm run $script failed with exit code $LASTEXITCODE." }
+            # Windows PowerShell 5.1 turns native stderr into error records. Vite writes
+            # non-fatal build warnings there, so judge npm by its exit code instead.
+            $previousErrorAction = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                & npm.cmd run $script 2>&1 | ForEach-Object { Write-Host $_ }
+                $npmExitCode = $LASTEXITCODE
+            } finally {
+                $ErrorActionPreference = $previousErrorAction
+            }
+            if ($npmExitCode -ne 0) { throw "npm run $script failed with exit code $npmExitCode." }
         }
     } finally {
         Pop-Location
