@@ -10,7 +10,7 @@ not a reprint.
 Entries were reconstructed from the published release notes, so they are condensed rather than
 exhaustive.
 
-## [1.4.3] - 2026-09-29
+## [1.4.3] - 2026-09-30
 
 ### Changed
 
@@ -23,6 +23,7 @@ exhaustive.
 
 ### Fixed
 
+- Updated Electron and locked npm dependencies to patched versions after the release security audit.
 - Workflow exports and configuration backup downloads were blocked in the desktop app. They now
   open the native Save As dialog.
 - PNG exports from the workflow designer now use the same desktop-compatible download path.
