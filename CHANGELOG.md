@@ -10,7 +10,7 @@ not a reprint.
 Entries were reconstructed from the published release notes, so they are condensed rather than
 exhaustive.
 
-## [1.4.3] - Unreleased
+## [1.4.3] - 2026-09-29
 
 ### Changed
 
