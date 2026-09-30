@@ -24,6 +24,8 @@ exhaustive.
 ### Fixed
 
 - Updated Electron and locked npm dependencies to patched versions after the release security audit.
+- Server upgrades now read UTF-8 configuration files with a byte-order mark correctly and wait for
+  service processes to release DLLs before a rollback.
 - Workflow exports and configuration backup downloads were blocked in the desktop app. They now
   open the native Save As dialog.
 - PNG exports from the workflow designer now use the same desktop-compatible download path.

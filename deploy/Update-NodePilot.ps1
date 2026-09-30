@@ -225,7 +225,10 @@ try {
     # -HttpsPort still wins.
     if (-not $PSBoundParameters.ContainsKey('HttpsPort')) {
         try {
-            $installedSettings = [Text.Encoding]::UTF8.GetString($settingsBytes) | ConvertFrom-Json
+            # UTF-8 configuration written by Windows PowerShell 5.1 commonly has a BOM. The
+            # byte decoder preserves it, while ConvertFrom-Json rejects it as an invalid token.
+            $installedSettings = [Text.Encoding]::UTF8.GetString($settingsBytes).TrimStart([char]0xFEFF) |
+                ConvertFrom-Json
             $httpsSection = $null
             if ($installedSettings.PSObject.Properties.Name -contains 'Kestrel') {
                 $kestrelSection = $installedSettings.Kestrel
@@ -475,6 +478,14 @@ try {
             if ($installTouched) {
                 Write-Host "[update] Rolling back from $backupDir" -ForegroundColor Yellow
                 Stop-ServiceAndVerify -Name $ServiceName
+                # The SCM can report Stopped before the process releases mapped DLLs. Treat the
+                # rollback wipe like the forward update, or an access-denied error leaves a
+                # half-restored installation behind.
+                $rollbackLockers = @(Wait-NodePilotProcessesUnderPath -Path $InstallPath -TimeoutSeconds 30 -Force)
+                if ($rollbackLockers.Count -gt 0) {
+                    $names = ($rollbackLockers | ForEach-Object { "$($_.ProcessName) (PID $($_.Id))" }) -join ', '
+                    throw "Processes still hold files under ${InstallPath} during rollback: $names"
+                }
                 if (Test-Path -LiteralPath $InstallPath) {
                     Get-ChildItem -LiteralPath $InstallPath -Force |
                         Remove-Item -Recurse -Force -ErrorAction Stop
