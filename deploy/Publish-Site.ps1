@@ -182,8 +182,17 @@ try {
         # Each file is its own SSH session, and a handshake occasionally fails on a busy host.
         # Two extra attempts turn that from a failed deploy into a pause.
         for ($attempt = 1; $attempt -le 3; $attempt++) {
-            & $curl @curlArgs | Out-Null
-            if ($LASTEXITCODE -eq 0) { return $true }
+            # PowerShell 5.1 promotes native stderr to an ErrorRecord. Keep the curl
+            # exit code authoritative so a failed handshake reaches this retry loop.
+            $previousErrorAction = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                & $curl @curlArgs 2>&1 | ForEach-Object { Write-Host $_ }
+                $curlExitCode = $LASTEXITCODE
+            } finally {
+                $ErrorActionPreference = $previousErrorAction
+            }
+            if ($curlExitCode -eq 0) { return $true }
             if ($attempt -lt 3) { Start-Sleep -Seconds ($attempt * 2) }
         }
         return $false
@@ -194,8 +203,21 @@ try {
     function Get-RemoteVideoSizes {
         $curlArgs = $common + @("$baseUrl/$videoPrefix")
         if ($protocol -eq 'ftps') { $curlArgs += '--ssl-reqd' }
-        $lines = & $curl @curlArgs
-        if ($LASTEXITCODE -ne 0) { return $null }
+        $lines = @()
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            $previousErrorAction = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $lines = @(& $curl @curlArgs 2>&1)
+                $curlExitCode = $LASTEXITCODE
+            } finally {
+                $ErrorActionPreference = $previousErrorAction
+            }
+            if ($curlExitCode -eq 0) { break }
+            $lines | ForEach-Object { Write-Host $_ }
+            if ($attempt -lt 3) { Start-Sleep -Seconds ($attempt * 2) }
+        }
+        if ($curlExitCode -ne 0) { return $null }
         $sizes = @{}
         foreach ($line in $lines) {
             $fields = -split $line
@@ -221,7 +243,21 @@ try {
             $quote += '-Q'
             $quote += "*mkdir $remoteRoot/$prefix"
         }
-        if ($quote.Count -gt 0) { & $curl @common @quote "$baseUrl/" -o NUL }
+        if ($quote.Count -gt 0) {
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+                $previousErrorAction = $ErrorActionPreference
+                try {
+                    $ErrorActionPreference = 'Continue'
+                    & $curl @common @quote "$baseUrl/" -o NUL 2>&1 | ForEach-Object { Write-Host $_ }
+                    $curlExitCode = $LASTEXITCODE
+                } finally {
+                    $ErrorActionPreference = $previousErrorAction
+                }
+                if ($curlExitCode -eq 0) { break }
+                if ($attempt -lt 3) { Start-Sleep -Seconds ($attempt * 2) }
+            }
+            if ($curlExitCode -ne 0) { throw "Could not prepare $baseUrl/ after three attempts." }
+        }
     }
 
     # Videos first, and only those the server lacks: they are large, and their names carry a
