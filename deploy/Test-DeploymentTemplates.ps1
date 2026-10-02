@@ -1306,6 +1306,12 @@ Assert-TextMatches -Name 'the remediation area cannot be typed into' `
     -Text $readinessPageCode -Pattern 'RemediationBox\.ReadOnly := True'
 Assert-TextMatches -Name 'the remediation area can reach text taller than itself' `
     -Text $readinessPageCode -Pattern 'RemediationBox\.ScrollBars := ssVertical'
+# The page does not scroll: when the rows do not fit, passing/warning rows are cut to one line and
+# the full text moves into the instructions box instead of rows vanishing behind it.
+Assert-TextMatches -Name 'rows are shortened when they do not fit the page' `
+    -Text $serverIss -Pattern '(?s)procedure ApplyRowDensity.*?CheckLabels\[I\]\.WordWrap := False'
+Assert-TextMatches -Name 'a shortened row shows its full text when selected' `
+    -Text $serverIss -Pattern '(?s)if CheckCompact\[Index\] then\s+RemediationText := CheckLabels\[Index\]\.Caption'
 
 # --- certificate picker ---------------------------------------------------------------------------
 # The thumbprint of a certificate already installed on the machine is otherwise only reachable
