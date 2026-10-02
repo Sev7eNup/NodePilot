@@ -86,27 +86,26 @@ The video shows SCOrch import, the Workflow Designer, execution history, Live Op
 
 ## Why NodePilot
 
-NodePilot is a **modern alternative** for organizations that remain on legacy SCOrch. The agentless model and the target audience are the same (sysadmins automating Windows estates) but the product is built on a current stack with a user experience that does not resemble a 2010 MMC snap-in.
+NodePilot is a **modern alternative** for organizations that remain on legacy SCOrch. The agentless model and the audience (sysadmins automating Windows estates) stay the same, while the product runs on a current stack with a browser UI.
 
 **Highlights**
 
-- **SCOrch runbooks import directly**: native `.ois_export` XML, with activities, links, conditions, global variables as well as Published Data references translated into NodePilot's data bus. [How it works](#coming-from-system-center-orchestrator).
-- **Visual designer**: a drag-and-drop canvas with 27 activity types, 6 triggers, typed nodes, a visual condition builder and a seven-cluster toolbar that places every editing affordance one click away.
-- **True parallel engine**: an event-driven scheduling loop with real fan-out / fan-in, three junction modes (`waitAll` / `waitAny` / `waitNofM`), per-step DI scope and skip propagation.
-- **Step debugger**: breakpoints, conditional breakpoints, step-over, a **live variable inspector** with **runtime overrides**, and **time-scrubbing replay** in the Gantt timeline.
-- **Real-time UI**: SignalR streams step status, output and variables to every connected client while the workflow runs.
-- **Agentless remote execution**: WinRM and the PowerShell SDK. Localhost runs in-process without WinRM.
-- **AI-assisted authoring**: PowerShell scripts and entire workflows are generated from natural language. Generation works against OpenAI **or local Ollama / LM Studio / vLLM** for zero-egress setups.
-- **Global AI chat**: a read-only assistant available from the bottom-right chat button and from its own page (`/ai-chat`), sharing conversations, drafts and ongoing answers across navigation. Answers use admin-switchable knowledge sources: documentation, operational data scoped by folder permissions, source code, and read-only SQL against the database. Every source is opt-in. The chat never executes or publishes anything.
-- **Operations CLI (`np`)**: a full-featured command-line client covering login, run, watch, audit, lock/publish as well as import/export, published as a self-contained folder for `PATH`.
-- **Drivable by AI agents**: an opt-in MCP server (`nodepilot-mcp`) exposes NodePilot to Claude Code, Claude Desktop and any other MCP client — 102 tools over 10 groups, HTTP-only against the same REST API, with destructive operations gated.
-- **Batteries-included observability**: an opt-in OpenTelemetry and Prometheus exporter, plus a hardened, loopback-bound **Grafana stack with 10 pre-provisioned dashboards** (Mission Control, Workflows, Activities, WinRM, Triggers, API, Runtime, Security, AI, Database). Startup requires a unique `NODEPILOT_GRAFANA_ADMIN_PASSWORD`. Compose fails closed while the password is missing, rather than coming up on a default credential.
-- **SCOrch-style edit lock**: an atomic per-user check-out and publish flow, `423 Locked` enforced by every mutating endpoint, force-unlock for admins with audit trail.
-- **Workflow versioning**: every edit is snapshotted, rollback takes one click, and any two versions can be compared visually.
-- **JWT and RBAC**: Admin / Operator / Viewer roles, BCrypt passwords, account lockout, DPAPI-encrypted credentials, output redaction, SSRF guards, per-IP rate limits, and an `audit-event` alert source that pages on failed logins, lockouts, break-glass sign-ins and privilege changes without a SIEM.
-- **AD SSO Preview (opt-in)**: hardened LDAP/Kerberos, OIDC and SCIM, server-side sessions as well as directory-backed RBAC complement Active/Passive **HA**, secret providers and **ECS-JSON SIEM** logging. Production status remains Preview until the real AD/Kerberos/LDAPS field gate passes. See [docs/enterprise-features.md](docs/enterprise-features.md).
-- **Production-grade deployment**: a turnkey PowerShell installer for a Windows Service under a **gMSA**, direct Kestrel HTTPS, install/data-dir split, and in-place upgrades with auto-rollback.
-
+- **SCOrch import**: existing `.ois_export` runbooks become NodePilot workflows. [How it works](#coming-from-system-center-orchestrator).
+- **Visual designer**: drag-and-drop canvas with 27 activity types, 6 triggers and a visual condition builder.
+- **Parallel engine**: branches really run in parallel and meet again at a junction.
+- **Step debugger**: breakpoints, step-over, variable inspection and overrides at runtime, replay in the timeline.
+- **Live UI**: step status and output appear in real time while a workflow runs.
+- **Agentless remote execution**: WinRM and PowerShell, nothing is installed on target machines.
+- **AI-assisted authoring**: scripts and workflows are generated from natural language, also with local models.
+- **AI chat**: a read-only assistant that answers from documentation, operational data and, if enabled, the database.
+- **CLI (`np`)**: every operation from the command line, for scripts and pipelines.
+- **MCP server for AI agents**: `nodepilot-mcp` lets Claude Code and other MCP clients drive NodePilot — 102 tools over 10 groups, destructive operations gated.
+- **Observability**: OpenTelemetry, Prometheus and a Grafana stack with 10 dashboards. Startup requires a unique `NODEPILOT_GRAFANA_ADMIN_PASSWORD`. Compose fails closed while the password is missing.
+- **Edit lock**: a workflow is checked out by one user at a time and published atomically, as in SCOrch.
+- **Versioning**: every edit is saved as a version, which can be compared and rolled back.
+- **Security**: Admin, Operator and Viewer roles, encrypted credentials, secret redaction in output and an audit trail.
+- **Enterprise (preview)**: AD SSO via LDAP/Kerberos, OIDC and SCIM, Active/Passive HA and SIEM logging. See [docs/enterprise-features.md](docs/enterprise-features.md).
+- **Deployment**: installer for a Windows service under a gMSA, in-place upgrades with automatic rollback.
 ---
 
 ## Coming from System Center Orchestrator
@@ -205,7 +204,7 @@ The production rollout consists of a signed artifact plus a PowerShell installer
 **Prerequisites** (all enforced by the installer's pre-flight, which fails with a named error):
 
 - **Windows Server 2022 or 2025**, domain-joined for the gMSA path, `-UseLocalSystem` works without a domain
-- **.NET Runtime and ASP.NET Core Runtime, 10.0.11 or newer in the 10.x line, both x64** — two downloads, and both are needed: the ASP.NET Core package carries only `Microsoft.AspNetCore.App` and no `dotnet.exe`, so on a machine without .NET it leaves a framework nothing can load. **Not** the Hosting Bundle, which wires up IIS and restarts W3SVC. NodePilot ships as `win-x64`. A 32-bit runtime cannot host it, and the pre-flight reports this rather than passing the row
+- **.NET Runtime and ASP.NET Core Runtime 10.0.11+, both x64**. The wizard carries both and installs them if missing. The script path needs both installed beforehand, the standalone runtimes and not the Hosting Bundle
 - **PostgreSQL 16+** or **SQL Server 2022 CU1+** (build ≥ 16.0.4003.1, earlier builds cannot serve the `Encrypt=Strict` / TDS 8.0 connections NodePilot opens, and are rejected)
 - a **TLS certificate** in `Cert:\LocalMachine\My` with its private key
 - **antivirus exclusions** agreed with the security team. See [docs/av-exclusions.md](docs/av-exclusions.md)

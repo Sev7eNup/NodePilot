@@ -48,7 +48,7 @@ abbrechen lässt — behoben ab CU1. Der Installer prüft den Patchstand im Pref
 - Windows Server 2022 oder 2025
 - Domain-Mitgliedschaft
 - PowerShell 5.1 oder PowerShell 7
-- .NET Runtime und ASP.NET Core Runtime 10.0.11 oder neuer in der 10.x-Linie, beide x64 — zwei Downloads, und beide werden gebraucht: das ASP.NET-Core-Paket enthält nur Microsoft.AspNetCore.App und keine dotnet.exe. Das Hosting Bundle nur bei bewusstem IIS-Einsatz (es konfiguriert IIS um und startet W3SVC neu). Das `(x64)` ist verbindlich: NodePilot wird als `win-x64` ausgeliefert; der Preflight weist 32-Bit- und ältere verwundbare 10.x-Runtimes mit Pfad und Version zurück
+- .NET Runtime und ASP.NET Core Runtime 10.0.11 oder neuer, beide x64. Der Setup-Assistent bringt beide mit und installiert sie bei Bedarf. Für die Installation per Skript müssen beide vorab installiert sein, und zwar die eigenständigen Runtimes, nicht das Hosting Bundle
 - Netzwerkzugriff zur Datenbank
 - TLS-Zertifikat mit privatem Schlüssel in `LocalMachine\My`
 - Lokale Administratorrechte für die Installation

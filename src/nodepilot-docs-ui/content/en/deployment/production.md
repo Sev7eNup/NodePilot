@@ -48,7 +48,7 @@ installer checks the patch level in the pre-flight; manually:
 - Windows Server 2022 or 2025
 - Domain membership
 - PowerShell 5.1 or PowerShell 7
-- .NET Runtime and ASP.NET Core Runtime 10.0.11 or newer in the 10.x line, both x64 — two downloads, and both are needed: the ASP.NET Core package carries only Microsoft.AspNetCore.App and no dotnet.exe. The Hosting Bundle only with deliberate IIS use (it reconfigures IIS and restarts W3SVC). The `(x64)` is binding: NodePilot ships as `win-x64`; the pre-flight rejects 32-bit and older vulnerable 10.x runtimes, naming the path and version
+- .NET Runtime and ASP.NET Core Runtime 10.0.11 or newer, both x64. The setup wizard carries both and installs them if missing. The script path needs both installed beforehand, the standalone runtimes and not the Hosting Bundle
 - Network access to the database
 - A TLS certificate with its private key in `LocalMachine\My`
 - Local administrator rights for the installation
