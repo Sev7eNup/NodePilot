@@ -63,7 +63,7 @@ WizardStyle=modern
 ; WizardResizable stays off: the controls on the network and prerequisites pages are positioned
 ; once at wizard construction and carry no anchors, so a resized window would leave them behind.
 ; A fixed larger start size is safe because every control that must grow is sized from SurfaceWidth.
-WizardSizePercent=125,145
+WizardSizePercent=125,150
 SetupIconFile={#StageDir}\setup-icon.ico
 ; NodePilot logo on the wizard: the left banner of the welcome/finished pages and the small
 ; image in every inner page header. One file per scaling step, Inno picks by display DPI.
@@ -149,6 +149,10 @@ var
   CheckLabels: array[0..CheckCount - 1] of TNewStaticText;
   CheckMarks: array[0..CheckCount - 1] of TNewStaticText;
   CheckFixes: array[0..CheckCount - 1] of TNewCheckBox;
+  CheckStatus: array[0..CheckCount - 1] of String;
+  // Rows cut to one line to make room; their full text is shown when the row is selected.
+  CheckCompact: array[0..CheckCount - 1] of Boolean;
+  RowsShortened: Boolean;
   // Whether a pre-ticked fix has already had its default applied. Applied once per run: a probe
   // runs again after every fix attempt, and re-applying the default would re-tick a box the
   // operator has just cleared.
@@ -578,6 +582,9 @@ begin
     RemediationText := 'Nothing to do for this item.'
   else
     RemediationText := ExpandNewlines(Hint) + #13#10#13#10 + ExpandNewlines(Remediation);
+  // A shortened row cannot show its detail, so the full line leads the text.
+  if CheckCompact[Index] then
+    RemediationText := CheckLabels[Index].Caption + #13#10#13#10 + RemediationText;
   RemediationBox.Text := RemediationText;
 end;
 
@@ -592,13 +599,61 @@ begin
       UpdateRemediation(I);
 end;
 
+// Level 0 wraps every row. Level 1 cuts passing rows to one line, level 2 also warning and skipped
+// ones. Failing rows always keep their full text.
+procedure ApplyRowDensity(Level: Integer);
+var
+  I: Integer;
+begin
+  for I := 0 to CheckCount - 1 do
+  begin
+    CheckCompact[I] := CheckLabels[I].Visible and
+      (((Level >= 1) and (CheckStatus[I] = 'Pass')) or ((Level >= 2) and (CheckStatus[I] <> 'Fail')));
+    if CheckCompact[I] then
+    begin
+      CheckLabels[I].AutoSize := False;
+      CheckLabels[I].WordWrap := False;
+      CheckLabels[I].Height := ScaleY(15);
+    end
+    else
+    begin
+      CheckLabels[I].WordWrap := True;
+      CheckLabels[I].AutoSize := True;
+    end;
+  end;
+end;
+
+function RowsHeight(): Integer;
+var
+  I: Integer;
+begin
+  Result := 0;
+  for I := 0 to CheckCount - 1 do
+    if CheckLabels[I].Visible then
+    begin
+      Result := Result + CheckLabels[I].Height + ScaleY(3);
+      if CheckFixes[I].Visible then Result := Result + ScaleY(19);
+    end;
+end;
+
 // Rows are placed here rather than at construction time so that hidden auto-fix checkboxes claim
 // no vertical space and the remediation area keeps room.
 procedure LayoutReadiness();
 var
-  I, Y, ButtonTop, FixTop, FixFloor, FixCount, Available: Integer;
+  I, Y, ButtonTop, FixTop, FixFloor, FixCount, Available, Level: Integer;
 begin
   ButtonTop := ReadinessPage.SurfaceHeight - ScaleY(24);
+
+  // The page does not scroll, so rows that do not fit would sit behind the instructions box.
+  // Rows are shortened step by step until the box keeps about four lines.
+  Level := 0;
+  ApplyRowDensity(Level);
+  while (Level < 2) and (RowsHeight() + ScaleY(8) + ScaleY(60) > ButtonTop - ScaleY(6)) do
+  begin
+    Level := Level + 1;
+    ApplyRowDensity(Level);
+  end;
+  RowsShortened := Level > 0;
 
   // Counted before anything is placed, because the clamp below is about the last fix box: with N
   // of them the first may sit no lower than N*19 px above the buttons, so the last one still
@@ -719,6 +774,7 @@ begin
     Detail := GetIniString('check.' + CheckIds[I], 'detail', '', Ini);
     AutoFixLabel := GetIniString('check.' + CheckIds[I], 'autoFixLabel', '', Ini);
 
+    CheckStatus[I] := Status;
     if Status = '' then
     begin
       CheckLabels[I].Caption := '';
@@ -788,10 +844,12 @@ begin
 
   ProbeRan := True;
   ProbeBlocking := ResultCode = ExitProbeFailed;
-  RemediationText := 'Select a line above to see what to do about it.';
-  RemediationBox.Text := RemediationText;
   // Last, because it measures the wrapped heights the captions above just produced.
   LayoutReadiness();
+  RemediationText := 'Select a line above to see what to do about it.';
+  if RowsShortened then
+    RemediationText := RemediationText + ' Shortened lines show in full when selected.';
+  RemediationBox.Text := RemediationText;
 end;
 
 procedure RecheckClick(Sender: TObject);

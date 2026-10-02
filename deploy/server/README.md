@@ -893,7 +893,9 @@ answer file. Both fixed — and on the first run with the new row the layout cav
 the tenth row was five lines tall, which pushed its own checkbox behind the buttons. A fix you can see,
 have explained to you, and cannot tick. Two corrections: the message is shortened to two lines (the
 operating system's chain reasoning now lives in the scrollable instructions field), and `LayoutReadiness`
-counts the visible fix boxes up front and guarantees each one a clickable strip above the buttons. Rows
+counts the visible fix boxes up front and guarantees each one a clickable strip above the buttons. When the
+rows still do not leave the instructions box about four lines, passing rows (then warning and skipped rows)
+are cut to one line and show their full text in that box when selected; failing rows are never cut. Rows
 41/42 below cover the case and have **not** been clicked yet.
 
 Follow-up on the consequence: the row has since lost its blocking effect again — not because it was
