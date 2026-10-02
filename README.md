@@ -111,49 +111,39 @@ NodePilot is a **modern alternative** for organizations that remain on legacy SC
 
 ## Coming from System Center Orchestrator
 
-SCOrch is not going anywhere. [System Center 2025 Orchestrator](https://learn.microsoft.com/en-us/lifecycle/products/system-center-2025-orchestrator) shipped in November 2024 with mainstream support to January 2030 and extended support to January 2035. An existing installation is therefore not on a deadline, and this section is not a migration pitch. The exception is System Center 2016 Orchestrator, whose extended support ends on January 11, 2027. Support dates and the options side by side, including Azure Automation and SMA, are on the [SCOrch alternative page](https://www.nodepilot.run/en/scorch-alternative/).
+SCOrch is not going anywhere. [System Center 2025 Orchestrator](https://learn.microsoft.com/en-us/lifecycle/products/system-center-2025-orchestrator) is supported until 2035, so an existing installation is not on a deadline. The exception is System Center 2016 Orchestrator, whose extended support ends on January 11, 2027. The options side by side are on the [SCOrch alternative page](https://www.nodepilot.run/en/scorch-alternative/).
 
-What has not moved is authoring. The web console added in 2022 runs and monitors runbooks. It cannot build them. Writing one still requires the desktop Runbook Designer on a machine with the client installed, and once it is written there is no version history, no diff between two states and no rollback. NodePilot is built for that gap: the same agentless model, the same job, the same people, with the editor, the debugger and the version history in a browser.
+What has not moved is authoring. Runbooks are still built in the desktop Runbook Designer, without version history, diff or rollback. NodePilot keeps the agentless model and moves the editor, the debugger and the version history into the browser.
 
-**Existing runbooks come across.** NodePilot reads SCOrch's native `.ois_export` XML directly (exports from 2012, 2016 and 2019 all parse) and turns runbooks into workflows:
+**Existing runbooks come across.** NodePilot reads SCOrch's `.ois_export` XML (2012, 2016 and 2019) and turns runbooks into workflows:
 
-- **Activities are mapped, not dropped.** Roughly forty SCOrch type names translate directly: scripts and programs, the file, folder, archive and text-file activities, *Query XML*, *Query Database*, *Query WMI*, *Invoke Web Services*, *Send Email*, *Start/Stop Service*, *Restart System*, *Generate Random Text*, the *Monitor* activities that have a NodePilot trigger, as well as the Runbook Control set (*Initialize Data*, *Return Data*, *Junction*, and *Invoke Runbook*, which SCOrch writes as `Trigger Policy`) including the arguments passed to a child runbook.
-- **Published Data becomes the data bus.** SCOrch's `` \`d.T.~Vb/{GUID}\`d.T.~Vb/ `` references are rewritten into NodePilot's `{{globals.Name}}` and `{{step.param.field}}` syntax, resolving through a readable name derived from each activity rather than a bare GUID. Where the two products name the same value differently the field is translated as well. Should SCOrch have published something for which NodePilot has no equivalent, the reference is reported instead of quietly pointing at the nearest-looking name. This is usually the part that makes a migration expensive.
-- **Branches keep branching.** *Compare Values* becomes a `decision`, and the links that read its result are re-pointed at it. A comparison whose outcome nothing could read would leave every branch behind it dead.
-- **Links, conditions and global variables come across**, including on-success and on-failure links, the `TRIGGERS` filter logic, and whether a link matched *all* or *any* of its filters.
-- **Every runbook is runnable on arrival.** NodePilot starts a workflow from a trigger node, and a SCOrch runbook invoked by another needs no trigger of its own. One is therefore added and wired to the entry activities.
-- **Nothing disappears silently.** An activity the importer cannot map becomes a *disabled* placeholder carrying the original type name and its full property list. A mapping that cannot fill a required setting degrades to one as well, rather than leaving a node that looks configured and does nothing. The import report names every lossy translation: a reference to a field the NodePilot activity does not publish, a reference across parallel branches (SCOrch's data bus is run-scoped, NodePilot's is ancestor-scoped), a remote step with no target machine, a dropped run-as account, an approximated schedule, and any link that ended up unconditional.
-- **The folder tree comes across.** A SCOrch export carries the structure its console showed, for runbooks and for global variables, and the import rebuilds both below the chosen destination, reusing folders that are already there. Re-filing a few hundred workflows by hand is work a migration should not create.
-- **The canvas resembles the original runbook.** SCOrch positions activities as small icons on a tight grid. NodePilot draws cards several times that size, so the coordinates cannot be copied as they are. The graph is scaled uniformly instead, a similarity transform, so every distance keeps its ratio and the arrangement is the one its author drew, only larger. Links are then made to read as curves rather than the angular loop the designer draws for an edge running backwards: a pair stacked in one column docks top-to-bottom without either node moving, and anything else is nudged apart horizontally. Rows are never touched. Should the arrangement not be reproducible (activities sharing a position, or spaced too tightly for any usable canvas) the import reports this and falls back to a left-to-right layout.
-
-Import runs from the UI, from `POST /api/workflows/import-scorch`, or from the CLI:
+- around forty activity types are mapped, including the Runbook Control set
+- Published Data references are rewritten to NodePilot's `{{...}}` syntax
+- links, conditions, global variables and the folder tree are preserved, as well as the canvas layout
+- unmappable activities become disabled placeholders, and the import report lists every lossy translation
 
 ```powershell
 np workflow import-scorch --file .\runbooks.ois_export
 ```
 
-The result is to be treated as a reviewed draft, not as a finished migration. Imported workflows arrive disabled, credentials are never reconstructed because SCOrch encrypts them, and anything the report flags needs a decision. After review, a workflow is activated explicitly through `POST /api/workflows/{id}/enable` or `np workflow enable <id>`. Both import APIs return the created ids, and the CLI exposes the same report as machine-readable stdout with `-o json`. The point is that a migration starts from actual runbooks instead of a blank canvas.
+Import also runs from the UI and from `POST /api/workflows/import-scorch`. The result is a draft to be reviewed: imported workflows arrive disabled, and credentials are not reconstructed because SCOrch encrypts them. Details are in the [import documentation](https://www.nodepilot.run/docs/en/import-export/).
 
 ### How the two compare
 
 | | System Center Orchestrator | NodePilot |
 |---|---|---|
-| **Support lifecycle** | System Center 2025: mainstream to 2030, extended to 2035 | rolling releases, no end-of-life date, and no vendor behind it either |
-| **Agents on targets** | none (agentless) | none (agentless), same WinRM model |
-| **Authoring** | desktop Runbook Designer only, the 2022 web console runs and monitors, but cannot build a runbook | browser, live canvas, real-time step status over SignalR |
-| **Debugging** | Runbook Tester in the designer, breakpoints, step, published data per activity | the same in the real engine, plus conditional breakpoints, runtime variable overrides and time-scrubbing replay |
-| **Parallelism** | parallel branches, junction waits for all or for any | event-driven fan-out/fan-in, three junction modes (`waitAll` / `waitAny` / `waitNofM`) |
-| **Authoring assistance** | none | optional AI generation of scripts and whole workflows from natural language (local models supported) |
-| **Automation API** | JSON web API since 2022, starts and monitors jobs | full REST API covering every operation, an `np` CLI, and an MCP server for AI agents |
-| **Check-out / publish** | per-user check-out | the same model, kept deliberately, atomic lock/publish, `423 Locked` on every mutating endpoint, admin force-unlock with audit |
-| **Versioning** | none built in | every edit snapshotted, visual diff, one-click rollback |
-| **Observability** | job history in the database, shown in the console, no metrics or tracing | opt-in OpenTelemetry + Prometheus, 10 pre-provisioned Grafana dashboards |
-| **Platform** | Windows Server | Windows Server *or* a single desktop machine (offline installer) |
+| **Support lifecycle** | mainstream to 2030, extended to 2035 | rolling releases, no vendor behind it |
+| **Agents on targets** | none | none, same WinRM model |
+| **Authoring** | desktop Runbook Designer | browser, live canvas |
+| **Debugging** | Runbook Tester | breakpoints in the real engine, variable overrides, replay |
+| **Versioning** | none | snapshots, diff, rollback |
+| **Automation API** | web API for jobs | full REST API, `np` CLI, MCP server |
+| **Observability** | job history | OpenTelemetry, Prometheus, Grafana dashboards |
 | **Database** | SQL Server | PostgreSQL or SQL Server |
-| **Licence** | commercial, per-managed-host | Apache-2.0, no per-host cost |
-| **Support** | vendor | community, this is a single-maintainer open-source project |
+| **Licence** | commercial, per managed host | Apache-2.0 |
+| **Support** | vendor | community, single maintainer |
 
-The last row is the honest one. NodePilot provides the source, not a support contract, and is to be judged on that basis.
+NodePilot provides the source and no support contract, and it is to be judged on that basis.
 
 ---
 
