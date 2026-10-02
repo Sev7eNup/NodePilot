@@ -86,7 +86,7 @@ The video shows SCOrch import, the Workflow Designer, execution history, Live Op
 
 ## Why NodePilot
 
-NodePilot is a **modern alternative** for organizations that remain on legacy SCOrch. The agentless model and the audience (sysadmins automating Windows estates) stay the same, while the product runs on a current stack with a browser UI.
+NodePilot is agentless workflow orchestration for Windows, built in the browser and running PowerShell on remote machines over WinRM. It is meant for sysadmins automating Windows estates, for organizations looking for a **modern alternative to SCOrch**, as well as for private users who rely heavily on PowerShell.
 
 **Highlights**
 
@@ -102,7 +102,7 @@ NodePilot is a **modern alternative** for organizations that remain on legacy SC
 - **AI chat**: a read-only assistant that answers from documentation, operational data and, if enabled, the database.
 - **CLI (`np`)**: every operation from the command line, for scripts and pipelines.
 - **MCP server for AI agents**: `nodepilot-mcp` lets Claude Code and other MCP clients drive NodePilot — 102 tools over 10 groups, destructive operations gated.
-- **Observability**: OpenTelemetry, Prometheus and a Grafana stack with 10 dashboards. Startup requires a unique `NODEPILOT_GRAFANA_ADMIN_PASSWORD`. Compose fails closed while the password is missing.
+- **Observability**: OpenTelemetry, Prometheus and a Grafana stack with 10 dashboards.
 - **Edit lock**: a workflow is checked out by one user at a time and published atomically, as in SCOrch.
 - **Versioning**: every edit is saved as a version, which can be compared and rolled back.
 - **Backup and export**: an encrypted backup of the whole configuration, plus workflow export and import for sharing.
@@ -291,6 +291,8 @@ docker compose up -d
 # Grafana    -> http://localhost:3000   (user "admin", the password you just set)
 # Prometheus -> http://localhost:9090
 ```
+
+Startup requires a unique `NODEPILOT_GRAFANA_ADMIN_PASSWORD`. Compose fails closed while the password is missing.
 
 The Prometheus exporter is then enabled on the API. All three variables are required. The third is what lets Prometheus scrape `/metrics` without credentials:
 
