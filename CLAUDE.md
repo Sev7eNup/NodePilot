@@ -6,15 +6,6 @@ Moderner, schlanker Ersatz fuer Microsoft System Center Orchestrator. Agentless 
 
 **Pflege:** Ein Feature-PR fügt hier höchstens eine Zeile hinzu. Wer einen Absatz schreiben will, schreibt ihn in `docs/claude-reference.md` und verlinkt ihn von hier. Keine Fehler-Rückblenden („vorher war es so…"), keine Messwerte als Beleg — dieselbe Regel wie für Code-Kommentare. Steht eine Erklärung schon in `docs/`, steht hier nur der Zeiger. Umfang ist per `DocumentationCountsTests` gedeckelt.
 
-## Commits & Sprache
-
-KI-Werkzeuge helfen bei der Entwicklung mit (diese Datei, `.claude/`, `.agents/`). Für Commits gilt:
-
-- **Autor und Committer ist** `Sev7eNup <79143581+Sev7eNup@users.noreply.github.com>` — die lokale Git-Identität wird nicht überschrieben (kein `--author`, kein `-c user.*`).
-- **Co-Author-Trailer** (Claude, Codex, Dependabot) sind willkommen und stehen am Ende der Nachricht.
-- **Schreibstil:** Commit-Nachrichten, PR-Titel und -Beschreibungen klingen wie von einem Menschen geschrieben — konkret, knapp, ohne Floskeln.
-- **Sprache auf GitHub ist Englisch** (Commits, PRs, Issues, Kommentare, Branch-Namen). Repo-Doku und Code-Kommentare behalten die Sprache der jeweiligen Datei.
-
 ## Agent skills
 
 - **Issue tracker:** GitHub Issues für `Sev7eNup/NodePilot`, siehe `docs/agents/issue-tracker.md`
