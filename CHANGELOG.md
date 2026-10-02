@@ -10,6 +10,14 @@ not a reprint.
 Entries were reconstructed from the published release notes, so they are condensed rather than
 exhaustive.
 
+## [1.4.4] - Unreleased
+
+### Fixed
+
+- The prerequisites page of the server setup no longer hides rows behind the instructions box when
+  many checks fail or warn. If space runs short, passing, warning and skipped rows are shortened to
+  one line and show their full text when selected; failing rows are always shown in full.
+
 ## [1.4.3] - 2026-09-30
 
 ### Changed
@@ -1741,7 +1749,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[1.4.3]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.2...main
+[1.4.4]: https://github.com/Sev7eNup/NodePilot/compare/v1.4.3...main
+[1.4.3]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.3
 [1.4.2]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.2
 [1.4.1]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.1
 [1.4.0]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.4.0
