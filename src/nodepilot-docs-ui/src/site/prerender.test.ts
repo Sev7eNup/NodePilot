@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyMeta,
   keepPage,
+  llmsTxt,
   originPrefix,
   pageUrl,
   rewriteRelativeUrls,
@@ -124,6 +125,14 @@ describe('sitemap and robots', () => {
     expect(robots('https://x.test/')).toContain('Sitemap: https://x.test/sitemap.xml')
     // The documentation keeps its own; a robots.txt below the root would never be read.
     expect(robots('https://x.test/')).toContain('Sitemap: https://x.test/docs/sitemap.xml')
+  })
+
+  it('writes an English llms.txt with absolute links to the site and the documentation', () => {
+    const text = llmsTxt('https://x.test', pages)
+    expect(text.startsWith('# NodePilot\n')).toBe(true)
+    expect(text).toContain('- [product](https://x.test/en/product)')
+    expect(text).toContain('(https://x.test/docs/en/getting-started/introduction/)')
+    expect(text).not.toContain('/datenschutz')
   })
 
   it('builds the address the server answers on', () => {

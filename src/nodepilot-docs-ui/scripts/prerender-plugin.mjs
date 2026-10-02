@@ -5,7 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseHTML } from 'linkedom'
-import { keepPage, originPrefix, rewriteRelativeUrls, robots, routePages, setBaseMeta, sitemap } from '../src/site/prerender.ts'
+import { keepPage, llmsTxt, originPrefix, rewriteRelativeUrls, robots, routePages, setBaseMeta, sitemap } from '../src/site/prerender.ts'
 import { renderSiteContent, renderSiteHead } from '../src/site/seo.ts'
 import { resolveRoute } from '../src/site/router.ts'
 import { experienceMarkup } from '../src/site/experience/markup.ts'
@@ -46,6 +46,7 @@ export function prerenderSite(outDir, origin, preview = process.env.NP_BLOG_PREV
   }
   writeFileSync(join(root, 'sitemap.xml'), sitemap(origin, pages))
   writeFileSync(join(root, 'robots.txt'), robots(origin))
+  writeFileSync(join(root, 'llms.txt'), llmsTxt(origin, pages))
   return pages.length
 }
 
