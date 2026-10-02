@@ -80,10 +80,10 @@ the run *Succeeded* and no error entry. A failed run lists its failed steps in `
 Interactive pages (uninstall question, leftover-data page, the wizard itself) are not reachable over
 PowerShell Direct and are not covered.
 
-### Computer-Use UI acceptance (`computer-use/`)
+### Computer-Use UI acceptance (`computer-use/`, experimental)
 
-After both setup matrices and the workflow suite pass, the installed release is tested as a human
-would use it. The disposable desktop target is driven through the Electron shell with mouse,
+This run is experimental and not a release gate. After both setup matrices and the workflow suite
+pass, it tests the installed release as a human would use it. The disposable desktop target is driven through the Electron shell with mouse,
 keyboard, screenshots and native dialogs; the disposable server target is driven in Edge. The
 server target is normally `HYD-GW1`; `HYD-CM1` is used only when configured as the disposable server
 and otherwise remains an external SQL/integration fixture.
@@ -91,8 +91,7 @@ and otherwise remains an external SQL/integration fixture.
 The catalog and gate live in `computer-use/README.md`, `catalog.py` and `gate.py`. It includes all
 current routes, 33 Activity types, 22 settings sections, 11 themes, both locales, role boundaries,
 backup/restore, integrations, tray actions and resilience cases. The complete catalog currently
-contains 164 human-operated cases. `--pilot` selects a small diagnostic subset only; it never
-changes the full release gate. Every passed case requires a native Computer-Use session receipt,
+contains 164 human-operated cases. `--pilot` selects a small diagnostic subset only. Every passed case requires a native Computer-Use session receipt,
 screenshots, explicit checkpoint assertions, timing counters and cleanup evidence. Missing
 integrations, an interrupted session, an incomplete catalog or changed release bytes blocks the run.
 
