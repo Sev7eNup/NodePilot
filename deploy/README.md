@@ -197,7 +197,9 @@ Windows identity *is* the authorization, whereas PostgreSQL has nothing comparab
 > `Encrypt=Strict;TrustServerCertificate=False` (the installer sets `-SqlCertificateHostName` if
 > needed), Postgres to `SSL Mode=VerifyFull` against the root CA (PEM) supplied via
 > `-PostgresRootCertificate`. The database server therefore has to present a server certificate issued
-> by that CA for the connect host name. `Database:AllowInsecureTls=true` is a pure development
+> by that CA for the connect host name. Creating both certificates without an internal CA:
+> [Database certificates](../src/nodepilot-docs-ui/content/en/deployment/database-tls.md).
+> `Database:AllowInsecureTls=true` is a pure development
 > loopback escape and is prohibited in production.
 
 ### 4. TLS certificate

@@ -85,6 +85,9 @@ skip the `Root` imports.
 | **Artifact signing** (code signing) | build host | nowhere — the installer pins the thumbprint. Importing the public `.cer` into `LocalMachine\Root` is optional | code-signing EKU, a KeyUsage that permits signing, currently valid |
 | **Kestrel HTTPS** | NodePilot server | `LocalMachine\My` + (self-signed) `LocalMachine\Root` there and on browser clients | CN/SAN = public hostname |
 | **SQL Server TLS** | SQL server | `LocalMachine\My` on the SQL server + (self-signed) `LocalMachine\Root` on the NodePilot server | RSA with `KeySpec=KeyExchange`, CN/SAN = SQL host FQDN |
+| **PostgreSQL TLS** (alternative to SQL Server) | any host with OpenSSL | `server.crt`/`server.key` in the PostgreSQL data directory; root CA (PEM) passed to the installer, its CRL in `LocalMachine\CA` on the NodePilot server | SAN = PostgreSQL host FQDN, a current CRL |
+
+Step-by-step for both database certificates: [Database certificates](https://www.nodepilot.run/docs/en/deployment/database-tls/).
 
 > **Shortcut: the GUI setup.** `NodePilot-Server-Setup-<version>.exe` performs exactly the
 > installation described below, driven by a wizard. It bundles the signed artifact and the ASP.NET
