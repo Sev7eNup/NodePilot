@@ -86,7 +86,7 @@ Deep Links in die Doku haben die Form `https://www.nodepilot.run/docs/<sprache>/
   Segmente sind englisch, weil eine Adresse beide Sprachfassungen bedient; `impressum` und
   `datenschutz` bleiben deutsch, weil es diese Seiten nur auf Deutsch gibt. Nach dem
   Vite-Build schreibt das Plugin `np-site-prerender` (`vite.site.config.ts`) aus der einen
-  gebauten Hülle je Route eine eigene Datei, dazu `404.html`, `sitemap.xml` und `robots.txt`.
+  gebauten Hülle je Route eine eigene Datei, dazu `404.html`, `sitemap.xml`, `robots.txt` und `llms.txt`.
   Die Regeln dafür stehen als reine Funktionen in `src/site/prerender.ts`. Jede Datei bekommt
   eigenen Titel, eigene Beschreibung und eigene `canonical`-URL und enthält nur ihren eigenen
   Seitenabschnitt (`keepPage`); Seiten- und Sprachwechsel sind normale Seitenaufrufe.

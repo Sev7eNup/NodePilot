@@ -104,6 +104,20 @@ export function robots(origin: string, sitemaps: readonly string[] = ['sitemap.x
   return `User-agent: *\nAllow: /\n\n${lines}\n`
 }
 
+/** llms.txt: a short English index of the site and the documentation for AI assistants. */
+export function llmsTxt(origin: string, pages: RoutePage[]): string {
+  const links = pages
+    .filter((page) => page.listed && page.lang === 'en')
+    .map((page) => `- [${page.route.page === 'home' ? 'Home' : page.path.replace(/^en\//, '')}](${pageUrl(origin, page.path)})`)
+    .join('\n')
+  const docs = `- [Documentation](${pageUrl(origin, 'docs/en/getting-started/introduction/')})\n- [Documentation sitemap](${pageUrl(origin, 'docs/sitemap.xml')})`
+  return (
+    '# NodePilot\n\n' +
+    '> Self-hosted, agentless visual workflow automation for Windows and PowerShell, open source and free of charge.\n\n' +
+    `## Site\n\n${links}\n\n## Documentation\n\n${docs}\n`
+  )
+}
+
 /** The page keys the dictionaries carry a title and description for. */
 export function metaKey(route: SiteRoute): string {
   return route.page === 'article' ? `article.${route.slug}` : route.page
