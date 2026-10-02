@@ -145,30 +145,8 @@ Users`) — Details unter [Remote-Execution](../configuration/remote-execution).
 
 ### SQL Server
 
-**Das TLS-Zertifikat.** SQL Server bietet ausschließlich Zertifikate an, die RSA mit
-`KeySpec=KeyExchange` sind. Der CNG-Standardschlüssel von `New-SelfSignedCertificate` ist für ihn
-unsichtbar — die beiden Provider-Angaben unten sind deshalb tragend und keine Zierde:
-
-```powershell
-New-SelfSignedCertificate -DnsName 'sql1.corp.example.com' `
-    -CertStoreLocation Cert:\LocalMachine\My `
-    -KeySpec KeyExchange `
-    -Provider 'Microsoft RSA SChannel Cryptographic Provider' `
-    -KeyLength 2048 -NotAfter (Get-Date).AddYears(5)
-```
-
-1. Dem SQL-Dienstkonto (standardmäßig `NT Service\MSSQLSERVER`) Leserecht auf den privaten
-   Schlüssel geben: `certlm.msc` → Eigene Zertifikate → Zertifikat → *Alle Aufgaben → Private
-   Schlüssel verwalten*.
-2. Im SQL Server Configuration Manager zuweisen: *Protokolle für MSSQLSERVER* → Reiter
-   *Zertifikat*. **Force Encryption bleibt auf No.** NodePilot verschlüsselt seine Verbindung
-   ohnehin selbst, und eine instanzweite Erzwingung bricht jeden anderen Client einer gemeinsam
-   genutzten Instanz, der dem Zertifikat nicht vertraut — etwa entfernte ConfigMgr-Standortsysteme.
-3. SQL-Server-Dienst neu starten und die ERRORLOG-Zeile bestätigen:
-   `The certificate ... was successfully loaded for encryption`.
-4. Bei selbstsignierten Zertifikaten zusätzlich den öffentlichen Teil **auf dem NodePilot-Server**
-   nach `LocalMachine\Root` importieren — die Laufzeit prüft die Kette
-   (`TrustServerCertificate=False`).
+**Das TLS-Zertifikat.** SQL Server braucht ein Zertifikat auf seinen FQDN, dem der
+NodePilot-Server vertraut. Erstellen, zuweisen und vertrauen: [Datenbank-Zertifikate](./database-tls#sql-server).
 
 **Datenbank und Login** für die Dienst-Identität, ausgeführt als `sysadmin`. Bei `LocalSystem`
 statt der gMSA das Computerkonto einsetzen (`CORP\APPHOST$`):
@@ -198,7 +176,7 @@ CREATE ROLE nodepilot WITH LOGIN PASSWORD '<strong-secret>';
 CREATE DATABASE nodepilot OWNER nodepilot;
 ```
 
-Der PostgreSQL-Server muss ein Zertifikat präsentieren, dessen Hostname und Vertrauenskette geprüft werden können. Die Root-CA wird dem Installer als PEM-Datei übergeben.
+Der PostgreSQL-Server muss ein Zertifikat präsentieren, dessen Hostname und Vertrauenskette geprüft werden können. Die Root-CA wird dem Installer als PEM-Datei übergeben. Ohne interne CA: [Datenbank-Zertifikate](./database-tls#postgresql).
 
 Der Dienst prüft zusätzlich online, ob das Zertifikat gesperrt ist. Der Pre-Flight des Installers prüft dasselbe und bricht mit `Aborted: Postgres pre-flight failed - certificate revocation could not be checked.` ab, wenn das Zertifikat gesperrt ist oder keine CRL erreichbar ist. `psql` prüft die Sperrung nicht, eine erfolgreiche Anmeldung mit `psql` sagt hier also nichts aus. Abhilfe: den im Zertifikat eingetragenen CRL-Verteilungspunkt vom NodePilot-Server aus erreichbar machen oder die CRL dort in den Speicher `LocalMachine\CA` importieren (`certutil -addstore CA <datei>.crl`).
 

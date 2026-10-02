@@ -144,28 +144,8 @@ machine's WinRM endpoint (local administrator or `Remote Management Users`) — 
 
 ### SQL Server
 
-**The TLS certificate.** SQL Server only offers certificates that are RSA with
-`KeySpec=KeyExchange`. The default CNG key of `New-SelfSignedCertificate` is invisible to it, so
-the two provider flags below are load-bearing rather than decoration:
-
-```powershell
-New-SelfSignedCertificate -DnsName 'sql1.corp.example.com' `
-    -CertStoreLocation Cert:\LocalMachine\My `
-    -KeySpec KeyExchange `
-    -Provider 'Microsoft RSA SChannel Cryptographic Provider' `
-    -KeyLength 2048 -NotAfter (Get-Date).AddYears(5)
-```
-
-1. Give the SQL service account (`NT Service\MSSQLSERVER` by default) read access to the private
-   key: `certlm.msc` → Personal → the certificate → *All Tasks → Manage Private Keys*.
-2. Assign it in SQL Server Configuration Manager → *Protocols for MSSQLSERVER* → *Certificate*.
-   Leave **Force Encryption = No.** NodePilot encrypts its own connection regardless, and forcing
-   it instance-wide breaks every other client of a shared instance that does not trust the
-   certificate — remote ConfigMgr site systems, for example.
-3. Restart the SQL Server service and confirm the ERRORLOG line
-   `The certificate ... was successfully loaded for encryption`.
-4. Self-signed certificates additionally need their public part imported into `LocalMachine\Root`
-   **on the NodePilot server** — the runtime verifies the chain (`TrustServerCertificate=False`).
+**The TLS certificate.** SQL Server needs a certificate for its FQDN that the NodePilot server
+trusts. Creating, assigning and trusting it: [Database certificates](./database-tls#sql-server).
 
 **Database and login** for the service identity, run as `sysadmin`. With `LocalSystem`, substitute
 the computer account (`CORP\APPHOST$`) for the gMSA:
@@ -195,7 +175,7 @@ CREATE ROLE nodepilot WITH LOGIN PASSWORD '<strong-secret>';
 CREATE DATABASE nodepilot OWNER nodepilot;
 ```
 
-The PostgreSQL server has to present a certificate whose host name and trust chain can be verified. The root CA is passed to the installer as a PEM file.
+The PostgreSQL server has to present a certificate whose host name and trust chain can be verified. The root CA is passed to the installer as a PEM file. Without an internal CA: [Database certificates](./database-tls#postgresql).
 
 The service also checks the certificate's revocation status online. The installer's pre-flight does the same and aborts with `Aborted: Postgres pre-flight failed - certificate revocation could not be checked.` when the certificate is revoked or no CRL is reachable. `psql` does not check revocation, so a successful `psql` login proves nothing here. Fix: make the CRL distribution point named in the certificate reachable from the NodePilot server, or import the CRL into the `LocalMachine\CA` store there (`certutil -addstore CA <file>.crl`).
 
