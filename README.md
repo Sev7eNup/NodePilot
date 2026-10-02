@@ -75,7 +75,7 @@ The video shows SCOrch import, the Workflow Designer, execution history, Live Op
 - [Product tour](#product-tour)
 - [Why NodePilot](#why-nodepilot)
 - [Coming from System Center Orchestrator](#coming-from-system-center-orchestrator)
-- [Install, pick one of three paths](#install--pick-one-of-three-paths)
+- [Install, pick one of three paths](#install-pick-one-of-three-paths)
 - [Documentation](#documentation)
 - [Project Structure](#project-structure)
 - [Testing](#testing)
@@ -154,50 +154,40 @@ NodePilot provides the source and no support contract, and it is to be judged on
 
 ## Install, pick one of three paths
 
-NodePilot runs in exactly three supported shapes. Pick the row that describes you. Each one is a complete route to a working login, and nothing below mixes them.
+NodePilot runs in three supported shapes. Each one leads to a working login on its own.
 
 | | **1 · Desktop app** | **2 · Windows service** | **3 · From source** |
 |---|---|---|---|
 | **For** | one person, one machine | a team, a real server | contributors, evaluation |
 | **You need** | Windows 11 x64, local admin | Windows Server 2022/2025, a TLS certificate, a prepared database | .NET 10 SDK, Node, a local PostgreSQL |
-| **You get** | installer `.exe`: bundles a local PostgreSQL and the .NET runtime, installs both as services, opens a native window | setup `.exe` (or the signed `.zip` + PowerShell installer), Windows service under a gMSA, Kestrel HTTPS | `dotnet run` + Vite dev server on your own machine |
+| **You get** | installer `.exe` with bundled PostgreSQL and .NET runtime, opens a native window | setup `.exe` (or the signed `.zip` + PowerShell installer), Windows service under a gMSA, Kestrel HTTPS | `dotnet run` + Vite dev server on your own machine |
 | **Database** | bundled, loopback-only | you provide it | you provide it |
 | **Offline** | yes, fully | yes | no (package restore) |
-| **Guide** | [below](#path-1--desktop-app) · [details](deploy/desktop/README.md) | [below](#path-2--windows-service) · [step-by-step](https://www.nodepilot.run/docs/en/deployment/production/) | [below](#path-3--from-source) |
+| **Guide** | [below](#path-1-desktop-app) · [details](deploy/desktop/README.md) | [below](#path-2-windows-service) · [step-by-step](https://www.nodepilot.run/docs/en/deployment/production/) | [below](#path-3-from-source) |
 
-> NodePilot is **Windows-only by design**, the engine drives PowerShell remoting over WinRM and protects credentials with DPAPI. There is no Linux, container or Kubernetes target.
+> NodePilot is **Windows-only by design**, because the engine drives PowerShell remoting over WinRM and protects credentials with DPAPI.
 
-Every path ends the same way: the **first login creates the Admin account**, and it requires a one-time setup token. Where you find that token differs per path and is called out below.
+On every path the **first login creates the Admin account** with a one-time setup token. Where the token comes from is noted per path.
 
 ---
 
 ### Path 1: Desktop app
 
-A **local desktop application** for Windows 11 x64: one `.exe` that bundles the app, a self-contained .NET 10 runtime as well as a **local PostgreSQL** server, installs everything as background Windows services, and opens a native **Electron** window on top. It is fully **offline**, with no runtime prerequisites and no external database.
+A local application for Windows 11 x64. One `.exe` bundles the app, the .NET 10 runtime and a **local PostgreSQL**, installs them as background services and opens a native window. It works fully **offline**.
 
-`NodePilot-Desktop-Setup-<version>.exe` is downloaded from the [latest release](https://github.com/Sev7eNup/NodePilot/releases/latest) and run. The installer requires local admin: it provisions the database cluster, a loopback certificate and both services, then launches the shell and hands the first-run setup token straight to the login screen. No file has to be located manually. Should provisioning fail, the installer reports this and names its log, rather than finishing green with an app that will not start. When something does go wrong, [docs/desktop-troubleshooting.md](docs/desktop-troubleshooting.md) covers the log locations, first-run recovery and a complete removal. The full inventory of every log file (server and desktop, with paths, retention and which one to read when) is at [Logs & diagnostics](https://www.nodepilot.run/docs/en/deployment/logs/).
-
-The backend runs as an always-on service. This means that scheduled and webhook triggers keep firing while the window is closed. It uses the `Deployment:Mode=Desktop` posture: `Production`-hardened, but with a loopback-only Kestrel and a 127.0.0.1 Postgres. The Electron shell is a thin, hardened viewer that pins the loopback certificate by SHA-256 and trusts no system root CA.
+`NodePilot-Desktop-Setup-<version>.exe` is downloaded from the [latest release](https://github.com/Sev7eNup/NodePilot/releases/latest) and run with local admin rights. The installer hands the setup token straight to the login screen. Since the backend runs as a service, scheduled and webhook triggers keep firing while the window is closed. Help with problems is in [docs/desktop-troubleshooting.md](docs/desktop-troubleshooting.md), and all log files are listed under [Logs & diagnostics](https://www.nodepilot.run/docs/en/deployment/logs/).
 
 <details>
 <summary>Building the installer yourself</summary>
 
-The build requires **.NET 10 SDK**, **Node**, **[Inno Setup 6](https://jrsoftware.org/isdl.php)** (`ISCC.exe`) as well as a **PostgreSQL 16 binaries folder**, the `pgsql` directory from the [EDB zip distribution](https://www.enterprisedb.com/download-postgresql-binaries). Should either of the last two be missing, the build fails fast. Expect 10–15 minutes.
+The build requires the **.NET 10 SDK**, **Node**, **[Inno Setup 6](https://jrsoftware.org/isdl.php)** and the `pgsql` folder of the [PostgreSQL 16 binaries](https://www.enterprisedb.com/download-postgresql-binaries).
 
 ```powershell
 deploy\desktop\Build-DesktopInstaller.ps1 -PgBinariesPath 'C:\Packages\pgsql' -Version 1.2.0
 # -> deploy\desktop\out\NodePilot-Desktop-Setup-1.2.0.exe
 ```
 
-`Build-DesktopInstaller.ps1` never signs, it has no signing parameter at all. A signed installer is produced through the release build instead:
-
-```powershell
-deploy\Build-Artifact.ps1 -SigningCertificateThumbprint <artifact-signer> `
-    -IncludeDesktopInstaller -PgBinariesPath 'C:\Packages\pgsql' `
-    -InstallerSigningCertificateThumbprint <authenticode-signer>
-```
-
-Signing belongs in the build rather than afterwards, because signing rewrites the `.exe` and would invalidate its entry in `NodePilot-<version>.SHA256SUMS.txt`. Signing does not silence SmartScreen. A downloaded installer warns on first launch either way, since the publisher certificate is self-signed and carries no reputation (see [deployment-guide.md](docs/deployment-guide.md#first-run-the-smartscreen-prompt)). Internals, service identities and the first-run handoff are documented in [`deploy/desktop/README.md`](deploy/desktop/README.md).
+This script does not sign. A signed installer comes from the release build (`deploy\Build-Artifact.ps1 -IncludeDesktopInstaller`), see [`deploy/desktop/README.md`](deploy/desktop/README.md).
 
 </details>
 
@@ -205,21 +195,19 @@ Signing belongs in the build rather than afterwards, because signing rewrites th
 
 ### Path 2: Windows service
 
-The production rollout consists of a signed artifact plus a PowerShell installer that registers NodePilot as a Windows service under a **gMSA**, terminates HTTPS in Kestrel directly, and splits install and data directories so that in-place upgrades can roll back.
+NodePilot runs as a Windows service under a **gMSA**, with HTTPS directly in Kestrel and in-place upgrades that can roll back.
 
-**Prerequisites** (all enforced by the installer's pre-flight, which fails with a named error):
+**Prerequisites**, all checked by the installer's pre-flight:
 
-- **Windows Server 2022 or 2025**, domain-joined for the gMSA path, `-UseLocalSystem` works without a domain
+- **Windows Server 2022 or 2025**, domain-joined for the gMSA path (`-UseLocalSystem` works without a domain)
 - **.NET Runtime and ASP.NET Core Runtime 10.0.11+, both x64**. The wizard carries both and installs them if missing. The script path needs both installed beforehand, the standalone runtimes and not the Hosting Bundle
-- **PostgreSQL 16+** or **SQL Server 2022 CU1+** (build ≥ 16.0.4003.1, earlier builds cannot serve the `Encrypt=Strict` / TDS 8.0 connections NodePilot opens, and are rejected)
+- **PostgreSQL 16+** or **SQL Server 2022 CU1+** (build ≥ 16.0.4003.1, required for `Encrypt=Strict` / TDS 8.0)
 - a **TLS certificate** in `Cert:\LocalMachine\My` with its private key
-- **antivirus exclusions** agreed with the security team. See [docs/av-exclusions.md](docs/av-exclusions.md)
+- **antivirus exclusions**, see [docs/av-exclusions.md](docs/av-exclusions.md)
 
-There are two ways to run it, and they install the same thing.
+**With the wizard.** `NodePilot-Server-Setup-<version>.exe` from the [latest release](https://github.com/Sev7eNup/NodePilot/releases/latest) checks every prerequisite before changing anything and can install the runtimes, create the database or issue a lab certificate. It also runs unattended: `Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json`. Details are in [deploy/server/README.md](deploy/server/README.md).
 
-**With the wizard.** `NodePilot-Server-Setup-<version>.exe` is downloaded from the [latest release](https://github.com/Sev7eNup/NodePilot/releases/latest) and run. It carries the signed artifact and both .NET runtimes, checks every prerequisite above *before* changing anything (showing each as green, amber or red with a copyable fix) and can install the runtime, create the SQL login and database, or issue a lab certificate. One file instead of five, and no manual thumbprint comparison. Unattended: `Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json`. Details, answer-file schema and switches are documented in [deploy/server/README.md](deploy/server/README.md).
-
-**With the scripts**, which is what the wizard runs and what automation should use. The signed `NodePilot-<version>.zip` is downloaded together with its `.manifest.json` and `.manifest.json.p7s`, verified against `NodePilot-<version>.SHA256SUMS.txt`, and then installed:
+**With the scripts**, which the wizard uses as well. The signed `NodePilot-<version>.zip` is downloaded with its manifest files, verified against `NodePilot-<version>.SHA256SUMS.txt` and installed:
 
 ```powershell
 .\deploy\Install-NodePilot.ps1 `
@@ -230,9 +218,9 @@ There are two ways to run it, and they install the same thing.
     -PublicHostname 'nodepilot.corp.example.com'
 ```
 
-The installer **refuses unsigned or tampered artifacts**. `-TrustedArtifactSignerThumbprint` is mandatory, and the signature, the signer's identity, its code-signing eligibility as well as its validity are all verified, not just the hash. It does **not** require the publisher to be trusted on the target machine: pinning the thumbprint is the trust decision, so there is nothing to import before installing. If you build the artifact yourself you also sign it yourself, `docs/deployment-guide.md` walks through creating the self-signed code-signing certificate.
+The installer **refuses unsigned or tampered artifacts**. The pinned thumbprint is the trust decision, so no certificate has to be imported beforehand.
 
-**Full walkthrough** covering service identity, database, certificates and first login: [Windows Server deployment](https://www.nodepilot.run/docs/en/deployment/production/). **Verifying what you downloaded, and building it yourself**, plus a troubleshooting table for what actually goes wrong: [docs/deployment-guide.md](docs/deployment-guide.md). **Operator reference**, every parameter, update and uninstall: [deploy/README.md](deploy/README.md).
+Further reading: the [Windows Server deployment](https://www.nodepilot.run/docs/en/deployment/production/) walkthrough, verification and troubleshooting in [docs/deployment-guide.md](docs/deployment-guide.md), and every parameter in [deploy/README.md](deploy/README.md).
 
 ---
 
@@ -242,14 +230,12 @@ For contributors and for evaluation on a workstation.
 
 **Prerequisites**
 
-- **Windows 10 / 11**, or a Windows Server. This path is not picky and only requires Windows
-- **.NET 10 SDK**: [download](https://dotnet.microsoft.com/download). The exact band is pinned in [`global.json`](global.json)
-- **Node.js**: the minimum is declared in each `package.json` `engines` field (react-router 8 sets it), `npm` warns below it
-- **PostgreSQL 16+**: or SQL Server 2022 CU1+ with `Database:Provider: sqlserver`
+- **Windows 10 / 11** or Windows Server
+- **.NET 10 SDK** ([download](https://dotnet.microsoft.com/download)), band pinned in [`global.json`](global.json)
+- **Node.js**, at least the version in each `package.json` `engines` field
+- **PostgreSQL 16+**, or SQL Server 2022 CU1+ with `Database:Provider: sqlserver`
 
 **1. Create the database**
-
-Neither shipped connection string carries a password, so this step is not optional.
 
 ```powershell
 winget install PostgreSQL.PostgreSQL
@@ -260,7 +246,7 @@ $psql = "C:\Program Files\PostgreSQL\16\bin\psql.exe"
 
 **2. Start the backend (port 5000)**
 
-The password is passed through the environment rather than into a tracked file, so that it never becomes a commit:
+The password is passed through the environment, so that it never lands in a tracked file:
 
 ```powershell
 $env:ConnectionStrings__Postgres = "Host=127.0.0.1;Port=5432;Database=nodepilot;Username=nodepilot;Password=ChangeMe!;SSL Mode=Disable"
@@ -268,9 +254,7 @@ cd src\NodePilot.Api
 dotnet run
 ```
 
-PostgreSQL is started **before** the API. Without a reachable database the process exits during the migration bootstrap and reports which server and database it could not reach.
-
-On first start NodePilot writes a one-time setup token to `admin-setup.token` **next to the project**, `src\NodePilot.Api\admin-setup.token`, in the content root rather than the directory the process was started from. Sign-in uses the intended admin username and password. The login screen reveals a **Setup token** field on the first attempt, and pasting the token creates the Admin account.
+On first start the setup token is written to `src\NodePilot.Api\admin-setup.token`. The login screen asks for it on the first attempt and then creates the Admin account.
 
 **3. Start the frontend (port 5173)**
 
@@ -280,21 +264,19 @@ npm install
 npm run dev
 ```
 
-<http://localhost:5173> serves the app, the Vite dev server proxies `/api`, `/healthz` and `/hubs` to port 5000.
+<http://localhost:5173> serves the app and proxies `/api`, `/healthz` and `/hubs` to port 5000.
 
 **4. (optional) Bring up Grafana**
 
 ```powershell
 cd grafana
-Copy-Item .env.example .env     # then set NODEPILOT_GRAFANA_ADMIN_PASSWORD - compose refuses to start without it
+Copy-Item .env.example .env     # then set NODEPILOT_GRAFANA_ADMIN_PASSWORD
 docker compose up -d
 # Grafana    -> http://localhost:3000   (user "admin", the password you just set)
 # Prometheus -> http://localhost:9090
 ```
 
-Startup requires a unique `NODEPILOT_GRAFANA_ADMIN_PASSWORD`. Compose fails closed while the password is missing.
-
-The Prometheus exporter is then enabled on the API. All three variables are required. The third is what lets Prometheus scrape `/metrics` without credentials:
+Startup requires a unique `NODEPILOT_GRAFANA_ADMIN_PASSWORD`. Compose fails closed while the password is missing. On the API side, these three variables enable the Prometheus endpoint:
 
 ```powershell
 $env:OpenTelemetry__Enabled = "true"
@@ -302,21 +284,13 @@ $env:OpenTelemetry__Exporters__PrometheusScrape = "true"
 $env:OpenTelemetry__Exporters__PrometheusScrapeAllowAnonymous = "true"
 ```
 
-See [grafana/README.md](grafana/README.md) for the full walk-through.
-
-The same walkthrough, with more detail per step, lives on the documentation site, in [English](https://www.nodepilot.run/docs/en/getting-started/installation/) and [German](https://www.nodepilot.run/docs/de/getting-started/installation/).
+More in [grafana/README.md](grafana/README.md) and in the installation guide on the documentation site, in [English](https://www.nodepilot.run/docs/en/getting-started/installation/) and [German](https://www.nodepilot.run/docs/de/getting-started/installation/).
 
 ---
 
 ### Example workflow
 
-Want to see the designer without building anything? The bundled showcase is a nightly fleet health-check that fans out three parallel probes, gathers them at a junction, and routes a decision to an alert or an all-green log:
-
-```
-scripts/readme-showcase-workflow.json
-```
-
-Import runs via the **Workflows** page → *Import*, or through `POST /api/workflows/import`. It exercises every shape that occurs in production: schedule trigger, `runScript`, `log`, `junction` (waitAll), `decision`, `emailNotification`, `returnData`, as well as three phase sticky-notes, laid out to fill the canvas width and run top-to-bottom.
+`scripts/readme-showcase-workflow.json` is a nightly health check that runs three probes in parallel, gathers them at a junction and then either sends an alert or logs that all is well. It is imported on the **Workflows** page via *Import* or through `POST /api/workflows/import`.
 
 ---
 
