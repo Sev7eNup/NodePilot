@@ -207,6 +207,8 @@ Inhalte in Markdown, gegliedert nach `getting-started/`, `concepts/`, `designer/
 
 Inhaltliche Quelle: `CLAUDE.md` + `docs/` im Repo-Root.
 
+**Auslieferung im Produkt:** `deploy/Build-Artifact.ps1` und `deploy/desktop/Build-DesktopInstaller.ps1` bauen die Doku mit und legen sie nach `wwwroot/docs`; die API liefert sie unter `/docs` aus, damit eine Installation ohne Internet die Runbooks hat. Deshalb bleibt die Vite-`base` relativ. `-SkipFrontend` überspringt beide npm-Builds, `-SkipNpmCi` gilt für beide.
+
 ## Schreibstil der Inhalte
 
 Die Seiten unter `content/` sind technische Dokumentation:
