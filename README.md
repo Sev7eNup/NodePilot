@@ -90,12 +90,14 @@ NodePilot is a **modern alternative** for organizations that remain on legacy SC
 
 **Highlights**
 
-- **SCOrch import**: existing `.ois_export` runbooks become NodePilot workflows. [How it works](#coming-from-system-center-orchestrator).
 - **Visual designer**: drag-and-drop canvas with 27 activity types, 6 triggers and a visual condition builder.
+- **Custom Activities**: your own PowerShell-based activities, reusable from the palette like the built-in ones.
+- **Sub-workflows**: a workflow calls another with parameters and gets its return values back.
 - **Parallel engine**: branches really run in parallel and meet again at a junction.
 - **Step debugger**: breakpoints, step-over, variable inspection and overrides at runtime, replay in the timeline.
 - **Live UI**: step status and output appear in real time while a workflow runs.
 - **Agentless remote execution**: WinRM and PowerShell, nothing is installed on target machines.
+- **Alerting**: notification rules for run events and system conditions, delivered by email or signed webhook.
 - **AI-assisted authoring**: scripts and workflows are generated from natural language, also with local models.
 - **AI chat**: a read-only assistant that answers from documentation, operational data and, if enabled, the database.
 - **CLI (`np`)**: every operation from the command line, for scripts and pipelines.
@@ -103,9 +105,13 @@ NodePilot is a **modern alternative** for organizations that remain on legacy SC
 - **Observability**: OpenTelemetry, Prometheus and a Grafana stack with 10 dashboards. Startup requires a unique `NODEPILOT_GRAFANA_ADMIN_PASSWORD`. Compose fails closed while the password is missing.
 - **Edit lock**: a workflow is checked out by one user at a time and published atomically, as in SCOrch.
 - **Versioning**: every edit is saved as a version, which can be compared and rolled back.
+- **Backup and export**: an encrypted backup of the whole configuration, plus workflow export and import for sharing.
+- **SCOrch import**: existing `.ois_export` runbooks become NodePilot workflows. [How it works](#coming-from-system-center-orchestrator).
 - **Security**: Admin, Operator and Viewer roles, encrypted credentials, secret redaction in output and an audit trail.
+- **Folder permissions**: access to workflows can be granted per folder, on top of the global roles.
 - **Enterprise (preview)**: AD SSO via LDAP/Kerberos, OIDC and SCIM, Active/Passive HA and SIEM logging. See [docs/enterprise-features.md](docs/enterprise-features.md).
 - **Deployment**: installer for a Windows service under a gMSA, in-place upgrades with automatic rollback.
+- **Desktop app**: a single installer for one Windows 11 machine, offline and with its own database.
 ---
 
 ## Coming from System Center Orchestrator

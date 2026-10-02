@@ -1,97 +1,97 @@
 # NodePilot Enterprise Features
 
-NodePilot bündelt HA, Secret-Provider, SIEM, Folder-RBAC und Enterprise-Authentifizierung.
-Die externen Authentifizierungs- und Provisioning-Pfade sind opt-in. Der SSO-Status bleibt
-bis zum bestandenen realen AD-/Kerberos-/LDAPS-Feldtest ausdrücklich **AD SSO Preview**.
+NodePilot bundles HA, secret providers, SIEM, folder RBAC and enterprise authentication.
+The external authentication and provisioning paths are opt-in. The SSO status explicitly stays
+**AD SSO Preview** until a real AD/Kerberos/LDAPS field test has passed.
 
-| Feature | Status | Default | Config-Switch |
+| Feature | Status | Default | Config switch |
 |---|---|---|---|
-| HA Active/Passive | implementiert + Field-Test | Single-Node (off) | `Cluster:Enabled=true` |
-| Vault / Secret-Provider | implementiert + Field-Test | DPAPI | `Secrets:Provider=aesgcm` |
-| SIEM-Logging (ECS-JSON) | implementiert | text | `Logging:Format=ecs-json` |
-| RBAC Stufe A (Shared Folders) | implementiert | aktiv (alle bestehenden User auf Root) | — |
-| AD SSO | **Preview**, realer Feldtest offen | off | `Authentication:Ldap:Enabled` / `Authentication:Windows:Enabled` |
-| OIDC + SCIM 2.0 | implementiert, separates Release-Gate | off | `Authentication:Oidc:Enabled` / `Authentication:Scim:Enabled` |
+| HA Active/Passive | implemented + field test | Single-node (off) | `Cluster:Enabled=true` |
+| Vault / Secret provider | implemented + field test | DPAPI | `Secrets:Provider=aesgcm` |
+| SIEM logging (ECS-JSON) | implemented | text | `Logging:Format=ecs-json` |
+| RBAC stage A (Shared Folders) | implemented | active (all existing users on Root) | — |
+| AD SSO | **Preview**, real field test pending | off | `Authentication:Ldap:Enabled` / `Authentication:Windows:Enabled` |
+| OIDC + SCIM 2.0 | implemented, separate release gate | off | `Authentication:Oidc:Enabled` / `Authentication:Scim:Enabled` |
 
-Die Infrastruktur-Features bleiben unabhängig aktivierbar. Alle Login-Pfade konvergieren
-jedoch bewusst auf dasselbe Identitäts-, Session-, Membership- und Offboarding-Modell.
+The infrastructure features can still be enabled independently. All login paths, however,
+deliberately converge on the same identity, session, membership and offboarding model.
 
 ---
 
 ## 1. High Availability (Active/Passive)
 
-### Was es kann
+### What it does
 
-- Zwei (oder mehr) NodePilot-Instanzen teilen sich **eine** Datenbank. Genau eine ist zu
-  jedem Zeitpunkt **Leader** und akzeptiert mutierende API-Calls + führt Workflows aus;
-  alle anderen sind **Follower** und antworten auf mutierende Endpoints mit `503` +
+- Two (or more) NodePilot instances share **one** database. At any point in time exactly one
+  is the **leader**, accepts mutating API calls and runs workflows.
+  All others are **followers** and answer mutating endpoints with `503` +
   `Retry-After: 30`.
-- **RTO 40–60 Sekunden** bei einem Crash: die Lease des toten Leaders läuft nach maximal
-  30 s (TTL) ab, der Standby acquired (Renew-Loop alle 10 s) und der LB merkt es beim
-  nächsten 5-s-Probe (≈ TTL + Renew + Probe). Bei einem **geplanten** Stop gibt der Leader
-  seine Lease beim Shutdown aktiv frei (`ClusterLeaderService.StopAsync`), sodass der
-  Standby auf dem nächsten 10-s-Tick übernimmt → ~10 s.
-- **Fencing**: ein Leader, der sich selbst step-down erkennt (Renew lieferte 0 Rows),
-  cancelt sofort alle lokal laufenden Workflow-Executions, damit der neue Leader die
-  orphan rows ohne Write-Race adoptieren kann.
-- **Recovery-Sweep**: der neue Leader markiert fremde `Running`-/`Paused`-Ausführungen
-  und verwaiste `Pending`-Ausführungen ohne Dispatch-Outbox-Eintrag als `Cancelled`.
-  Dauerhafte `Pending`-Aufträge übernimmt er und gibt ihre Dispatch-Leases frei.
-- **LeaseEpoch** als monotonisches Fencing-Token in jedem Acquire — landet im Audit, sodass
-  Post-Mortems erkennen können „dies war Leader-Inkarnation 7, danach 8".
-- **Terminal-Write-Fence**: Engine-Abschlüsse schreiben per Compare-and-Set nur aus
-  `Running`/`Paused`; im HA-Modus prüft dasselbe DB-Update Owner, Epoch und Lease-Ablauf.
-  Ein alter Leader kann dadurch ein SSO-Offboarding-`Cancelled` nicht überschreiben.
+- **RTO 40–60 seconds** after a crash: the dead leader's lease expires after at most
+  30 s (TTL), the standby acquires it (renew loop every 10 s) and the LB notices on its
+  next 5 s probe (≈ TTL + renew + probe). On a **planned** stop the leader actively releases
+  its lease during shutdown (`ClusterLeaderService.StopAsync`), so the
+  standby takes over on the next 10 s tick → ~10 s.
+- **Fencing**: a leader that detects its own step-down (renew returned 0 rows)
+  immediately cancels all locally running workflow executions, so the new leader can
+  adopt the orphan rows without a write race.
+- **Recovery sweep**: the new leader marks foreign `Running`/`Paused` executions
+  and orphaned `Pending` executions without a dispatch outbox entry as `Cancelled`.
+  It takes over durable `Pending` jobs and releases their dispatch leases.
+- **LeaseEpoch** as a monotonic fencing token in every acquire. It ends up in the audit, so
+  post-mortems can tell "this was leader incarnation 7, then 8".
+- **Terminal write fence**: engine completions write via compare-and-set only from
+  `Running`/`Paused`. In HA mode the same DB update checks owner, epoch and lease expiry.
+  An old leader therefore cannot overwrite an SSO offboarding `Cancelled`.
 
-### Wie es umgesetzt ist
+### How it is implemented
 
-- **`ClusterLeaderService`** (`src/NodePilot.Scheduler/Cluster/`) ist gleichzeitig
-  `BackgroundService` (treibt den Renew-Loop) und `IClusterStateProvider` (alle anderen
-  Komponenten lesen darüber „bin ich Leader?").
-- Lease-Acquire/Renew als atomares `UPDATE ... WHERE OwnerNodeId = me AND ExpiresAt > now`
-  — zwei Nodes können nicht gleichzeitig glauben, sie wären Leader.
-- **DB-Clock statt App-Clock**: vor jeder Lease-Operation liest der Service `SYSUTCDATETIME()`
-  (SQL Server) bzw. `(now() AT TIME ZONE 'UTC')` (Postgres), damit zwei Nodes mit
-  abweichenden Wall-Clocks nicht in einen Split-Brain laufen.
-- **`LeaderRequiredMiddleware`** (`src/NodePilot.Api/Security/`) blockt jeden mutierenden
-  Pfad auf einem Follower mit 503. Erlaubt: `/healthz/*`, `/openapi/*`, read-only Endpoints.
-  Defense-in-Depth — der Loadbalancer sollte Follower eh nicht ansprechen.
-  **Endpoint-Metadata schlägt Pfad-Heuristik:** die Middleware prüft zuerst auf ein
-  `[LeaderOnly]` (`Security/LeaderOnlyAttribute.cs`) am Endpoint und erst danach die
-  Methode/Pfad-Regeln. Nötig für jeden Endpoint, dessen HTTP-Verb harmlos aussieht, der
-  aber tatsächlich Zustand ändert — ein `GET`-Webhook-Ingress ist genau dieser Fall
-  (`WebhooksController` trägt das Attribut). Neue semantisch mutierende GETs bekommen es.
-- **`ClusterFailoverRecoveryHost`** subscribed im **Constructor** (nicht in `StartAsync`,
-  damit das erste Acquire-Event nicht in eine leere Handler-Liste feuert) auf
-  `OnLeadershipAcquired` und ruft `StartupRecovery.RecoverOrphanedExecutionsAsync`.
-- **`ClusterFencingHost`** subscribed auf `OnLeadershipLost` und triggert
-  `WorkflowEngine.CancelAllLocalAsync()` — eine **statische** Methode, weil
-  `_runningExecutions` process-static ist; der Singleton-Host braucht keine scoped Engine.
-- **`ClusterLeader`-Tabelle** mit Single-Row-Sentinel `Resource='primary'`. Seed im
-  `MigrationBootstrapper` (Runtime, nach `Migrate()` — `SeedClusterLeaderRow`, **nicht** als
-  Migration-`HasData`); Boot-Race zweier Nodes auf den Insert wird mit `try/catch DbUpdateException`
-  + Re-Query abgefangen — nach dem Catch wird geprüft, ob die Row jetzt existiert. Wenn ja
-  = benigner Race (still loggen), wenn nein = echter DB-/Permission-/Schemafehler (rethrow,
-  Boot fail loudly). Verhindert dass Permission-Errors als „Race" verschluckt werden.
+- **`ClusterLeaderService`** (`src/NodePilot.Scheduler/Cluster/`) is both a
+  `BackgroundService` (drives the renew loop) and an `IClusterStateProvider` (all other
+  components use it to read "am I leader?").
+- Lease acquire/renew as an atomic `UPDATE ... WHERE OwnerNodeId = me AND ExpiresAt > now`,
+  so two nodes cannot both believe they are leader at the same time.
+- **DB clock instead of app clock**: before every lease operation the service reads `SYSUTCDATETIME()`
+  (SQL Server) or `(now() AT TIME ZONE 'UTC')` (Postgres), so that two nodes with
+  diverging wall clocks do not run into a split brain.
+- **`LeaderRequiredMiddleware`** (`src/NodePilot.Api/Security/`) blocks every mutating
+  path on a follower with 503. Allowed: `/healthz/*`, `/openapi/*`, read-only endpoints.
+  Defense in depth: the load balancer should not route to followers anyway.
+  **Endpoint metadata beats the path heuristic:** the middleware first checks for a
+  `[LeaderOnly]` (`Security/LeaderOnlyAttribute.cs`) on the endpoint and only then the
+  method/path rules. This is needed for every endpoint whose HTTP verb looks harmless but
+  which actually changes state. A `GET` webhook ingress is exactly this case
+  (`WebhooksController` carries the attribute). New semantically mutating GETs get it too.
+- **`ClusterFailoverRecoveryHost`** subscribes to `OnLeadershipAcquired` in the **constructor**
+  (not in `StartAsync`, so the first acquire event does not fire into an empty handler list)
+  and calls `StartupRecovery.RecoverOrphanedExecutionsAsync`.
+- **`ClusterFencingHost`** subscribes to `OnLeadershipLost` and triggers
+  `WorkflowEngine.CancelAllLocalAsync()`. This is a **static** method because
+  `_runningExecutions` is process-static. The singleton host does not need a scoped engine.
+- **`ClusterLeader` table** with the single-row sentinel `Resource='primary'`. Seeded in
+  `MigrationBootstrapper` (runtime, after `Migrate()`: `SeedClusterLeaderRow`, **not** as a
+  migration `HasData`). A boot race of two nodes on the insert is caught with `try/catch DbUpdateException`
+  + re-query. After the catch it checks whether the row now exists. If yes,
+  it is a benign race (log quietly). If no, it is a real DB/permission/schema error (rethrow,
+  boot fails loudly). This prevents permission errors from being swallowed as a "race".
 
-### Konfiguration
+### Configuration
 
 ```jsonc
 {
   "Cluster": {
-    "Enabled": false,                  // true = Cluster-Modus
+    "Enabled": false,                  // true = cluster mode
     "NodeId": null,                    // Default: Environment.MachineName
-    "LeaseTtlSeconds": 30,             // Lease läuft nach n s ohne Renew ab
-    "LeaseRenewSeconds": 10,           // Leader renewed alle n s
-    "LeaseDbTimeoutSeconds": 3         // SqlCommand.CommandTimeout für Renew
+    "LeaseTtlSeconds": 30,             // Lease expires after n s without renew
+    "LeaseRenewSeconds": 10,           // Leader renews every n s
+    "LeaseDbTimeoutSeconds": 3         // SqlCommand.CommandTimeout for renew
   }
 }
 ```
 
-**Sizing-Daumenregel:** RTO ≈ TTL + Renew-Interval + Recovery-Sweep-Dauer.
-TTL=30s + Renew=10s + Sweep=~5s → ~45s Worst Case.
+**Sizing rule of thumb:** RTO ≈ TTL + renew interval + recovery sweep duration.
+TTL=30s + Renew=10s + Sweep=~5s → ~45s worst case.
 
-### Wichtige Dateien
+### Key files
 
 - [src/NodePilot.Scheduler/Cluster/ClusterLeaderService.cs](../src/NodePilot.Scheduler/Cluster/ClusterLeaderService.cs)
 - [src/NodePilot.Engine/Cluster/SingleNodeClusterStateProvider.cs](../src/NodePilot.Engine/Cluster/SingleNodeClusterStateProvider.cs)
@@ -102,129 +102,129 @@ TTL=30s + Renew=10s + Sweep=~5s → ~45s Worst Case.
 - [src/NodePilot.Api/Security/LeaderOnlyAttribute.cs](../src/NodePilot.Api/Security/LeaderOnlyAttribute.cs)
 - [src/NodePilot.Engine/Execution/StartupRecovery.cs](../src/NodePilot.Engine/Execution/StartupRecovery.cs)
 
-### Bewusst nicht in Scope
+### Deliberately out of scope
 
-- **Active/Active** — alle Mutations laufen über den Leader. Active/Active braucht
-  Konflikt-Resolution auf jedem mutierenden Endpoint (Workflow-Lock, Execution-Recovery,
-  Audit-Sequenz) und ist eine eigene Engineering-Etage.
-- **Multi-Region** — die Lease arbeitet gegen genau eine DB. Cross-Region setzt
-  Geo-Replication + Konfliktdetektion voraus.
+- **Active/Active**: all mutations go through the leader. Active/Active needs
+  conflict resolution on every mutating endpoint (workflow lock, execution recovery,
+  audit sequence) and is a separate engineering tier.
+- **Multi-region**: the lease works against exactly one DB. Cross-region requires
+  geo-replication + conflict detection.
 
-### Field-Test
+### Field test
 
 ```powershell
-# 1. Postgres laufen lassen
+# 1. Start Postgres
 & 'C:\NodePilot-Postgres\pgsql\bin\pg_ctl.exe' start -D 'C:\NodePilot-Postgres\data' -w
 
-# 2. Zwei Instanzen mit Cluster:Enabled=true starten (verschiedene Ports)
+# 2. Start two instances with Cluster:Enabled=true (different ports)
 $env:Cluster__Enabled='true'; $env:Cluster__NodeId='node-a'
 dotnet run --project src/NodePilot.Api --urls http://localhost:5000
 
-# In zweitem Terminal
+# In a second terminal
 $env:Cluster__Enabled='true'; $env:Cluster__NodeId='node-b'
 dotnet run --project src/NodePilot.Api --urls http://localhost:5001
 
-# 3. Leader feststellen: GET /healthz/leader → 200 für Leader, 503 für Follower
+# 3. Find the leader: GET /healthz/leader → 200 for the leader, 503 for followers
 curl http://localhost:5000/healthz/leader
 curl http://localhost:5001/healthz/leader
 
-# 4. Leader killen, Stoppuhr starten, bis curl gegen :5001 wieder 200 liefert
+# 4. Kill the leader, start a stopwatch, wait until curl against :5001 returns 200 again
 ```
 
-Erwartung: 40–60 s bis `/healthz/leader` auf node-b grün wird. Audit-Log zeigt
-`LeaseEpoch` monoton steigend (1 → 2).
+Expected: 40–60 s until `/healthz/leader` turns green on node-b. The audit log shows
+`LeaseEpoch` increasing monotonically (1 → 2).
 
 ---
 
 ## 2. Vault / Pluggable Secret Provider
 
-### Was es kann
+### What it does
 
-- Verschlüsselt **Credentials**, **Global Variables** und vollständige historische
-  **Workflow-Version-Definitionen** at rest. Bisher hart an Windows
-  DPAPI gekoppelt; das Feature führt eine Provider-Abstraktion ein und liefert eine
-  zweite Implementierung gegen AES-GCM mit Key aus Env-Variable.
-- **Provider-Migration** über einen `MigratingSecretProtector`-Wrapper: für die Dauer
-  der Rotation läuft ein zweiter (Legacy-)Provider parallel. Reads probieren Active
-  zuerst, fallen auf Legacy zurück; Writes nutzen immer Active. Ein admin-getriggerter
-  Bulk-Sweep (`POST /api/secrets/reencrypt`) zieht Credentials, Secret-Globals und
-  Workflow-History durch Decrypt→Encrypt und
-  beendet das Migration-Fenster. Skipped Rows (z.B. korrupte Ciphertexte) werden im
-  Response namentlich gelistet; HTTP `207 Multi-Status` signalisiert „nicht alles
-  migriert", `200 OK` nur bei sauberem Cutover.
-- **HA-Guardrail**: `Cluster:Enabled=true` + `Secrets:Provider=Dpapi` (oder Default-leer)
-  schmiert beim Boot ab — DPAPI ist machine-bound, der Standby könnte nie dechiffrieren
-  was der Leader schreibt. Hart-Fail statt silent-broken-Cluster.
-- **Provider-Typo Hard-Fail**: unbekannte `Secrets:Provider`-Werte (z.B. `AesGCMm`) werden
-  am Boot verworfen, kein silent-Fallback auf DPAPI mehr.
-- **Fail-Loud Globals**: wenn ein Workflow `{{globals.STRIPE_KEY}}` referenziert und
-  STRIPE_KEY zwar in der DB existiert aber nicht entschlüsselt werden kann (Scope-
-  Mismatch, Key-Rotation ohne Sweep), failt der Workflow **vor dem ersten Step** mit
-  klarer Fehlermeldung — kein silent-Substitute des Literals in HTTP-Header.
-- **Audit der Crypto-Operationen** über Metrics: `nodepilot_credential_crypto_calls{operation,result}`
-  unterscheidet `encrypt`/`decrypt` × `success`/`failure`. `nodepilot_credential_crypto_legacy_reads`
-  zählt Decrypts die vom Legacy-Provider (Migrations-Window) bedient wurden — wenn der
-  Counter auf null ist. Das Legacy-Config darf trotzdem erst nach einem sauberen Sweep mit
-  `workflowVersionsSkipped=0` entfernt werden.
+- Encrypts **credentials**, **global variables** and complete historical
+  **workflow version definitions** at rest. Previously hard-wired to Windows
+  DPAPI. The feature introduces a provider abstraction and ships a
+  second implementation based on AES-GCM with the key from an environment variable.
+- **Provider migration** via a `MigratingSecretProtector` wrapper: for the duration
+  of the rotation a second (legacy) provider runs in parallel. Reads try active
+  first and fall back to legacy. Writes always use active. An admin-triggered
+  bulk sweep (`POST /api/secrets/reencrypt`) runs credentials, secret globals and
+  workflow history through decrypt→encrypt and
+  ends the migration window. Skipped rows (e.g. corrupt ciphertexts) are listed by name
+  in the response. HTTP `207 Multi-Status` signals "not everything
+  migrated", `200 OK` only on a clean cutover.
+- **HA guardrail**: `Cluster:Enabled=true` + `Secrets:Provider=Dpapi` (or empty default)
+  crashes at boot. DPAPI is machine-bound, so the standby could never decrypt
+  what the leader writes. Hard fail instead of a silently broken cluster.
+- **Provider typo hard fail**: unknown `Secrets:Provider` values (e.g. `AesGCMm`) are
+  rejected at boot. There is no silent fallback to DPAPI anymore.
+- **Fail-loud globals**: if a workflow references `{{globals.STRIPE_KEY}}` and
+  STRIPE_KEY exists in the DB but cannot be decrypted (scope
+  mismatch, key rotation without sweep), the workflow fails **before the first step** with
+  a clear error message. The literal is not silently substituted into an HTTP header.
+- **Audit of crypto operations** via metrics: `nodepilot_credential_crypto_calls{operation,result}`
+  distinguishes `encrypt`/`decrypt` × `success`/`failure`. `nodepilot_credential_crypto_legacy_reads`
+  counts decrypts served by the legacy provider during the migration window. Even when the
+  counter is at zero, the legacy config may only be removed after a clean sweep with
+  `workflowVersionsSkipped=0`.
 
-### Wie es umgesetzt ist
+### How it is implemented
 
-- **`ISecretProtector`** (`src/NodePilot.Core/Interfaces/`) — minimale Schnittstelle
-  `Protect(byte[]) → byte[]`, `Unprotect(byte[]) → byte[]`, `Name`. Stateless, threadsafe.
-- **`DpapiSecretProtector`** — Default. Liest `Credentials:DpapiScope` (`CurrentUser` |
-  `LocalMachine`); `LocalMachine` ist Production-Empfehlung weil Service-Account-Wechsel
-  überlebt werden.
-- **`AesGcmSecretProtector`** — 32-Byte-Key wird Base64-codiert aus dem Config-Key
-  `Secrets:MasterKey` gelesen (typischerweise via Env-Var `Secrets__MasterKey`, nicht im
-  `appsettings.json`). 96-Bit-Random-Nonce pro Verschlüsselung, 128-Bit-Tag
-  für Integrität — Format-Header markiert `nodepilot-aesgcm-v1` damit künftige
-  Algorithmus-Wechsel ohne DB-Sweep gehen.
-- **`SecretProtectorRegistry`** wählt beim Boot anhand `Secrets:Provider`:
-  - Ohne `Secrets:LegacyProvider` → genau eine Implementierung wird als `ISecretProtector`
-    in DI hinterlegt.
-  - Mit `Secrets:LegacyProvider` → die aktive wird in `MigratingSecretProtector` gewickelt,
-    der Reads zuerst über Active, dann über Legacy versucht. Writes immer über Active.
-  - DPAPI-Scope-Werte werden über `DpapiScopeResolver.Parse` hart validiert — sowohl für
-    `Credentials:DpapiScope` als auch `Secrets:LegacyDpapiScope`. Tippfehler wie
-    `Local_Machine` schmieren ab statt still auf `CurrentUser` zu fallen.
-- **`MigratingSecretProtector`** ist ein dünner Decorator. Bei Decrypt-Failure unter der
-  aktiven Implementierung greift die Legacy-Implementierung; bleibt das Plaintext leer,
-  wird ein kombinierter `CryptographicException`-Diagnostic geworfen, der beide Versuche
-  benennt.
-- **`POST /api/secrets/reencrypt`** (Admin-only) liest jede Credential, jede Secret-
-  Global-Variable und jede verschlüsselte `WorkflowVersion.DefinitionJson`, dechiffriert über
-  den (ggf. wrappenden) Protector, re-enkryptiert unter dem Active-Provider und schreibt
-  zurück. Alle drei Bereiche liefern eigene Rewritten-/Skipped-Zähler und
-  `(id, name, reason)`-Details. `LegacyProvider` bleibt gesetzt, solange insbesondere ein
-  History-Skip offen ist.
-- **DI-Disambiguierung über `[ActivatorUtilitiesConstructor]`**: `CredentialStore` und
-  `GlobalVariableStore` haben mehrere Konstruktoren (Legacy + neuer Single-Arg-Pfad mit
-  Protector). Microsoft.Extensions.DependencyInjection würde sonst mit
-  `AmbiguousMatchException` werfen. Mit dem Attribut wird der „richtige" Konstruktor
-  explizit markiert.
+- **`ISecretProtector`** (`src/NodePilot.Core/Interfaces/`): minimal interface
+  `Protect(byte[]) → byte[]`, `Unprotect(byte[]) → byte[]`, `Name`. Stateless, thread-safe.
+- **`DpapiSecretProtector`**: the default. Reads `Credentials:DpapiScope` (`CurrentUser` |
+  `LocalMachine`). `LocalMachine` is the production recommendation because it survives
+  a change of service account.
+- **`AesGcmSecretProtector`**: the 32-byte key is read Base64-encoded from the config key
+  `Secrets:MasterKey` (typically via the env var `Secrets__MasterKey`, not in
+  `appsettings.json`). 96-bit random nonce per encryption, 128-bit tag
+  for integrity. A format header marks `nodepilot-aesgcm-v1` so that future
+  algorithm changes work without a DB sweep.
+- **`SecretProtectorRegistry`** chooses at boot based on `Secrets:Provider`:
+  - Without `Secrets:LegacyProvider` → exactly one implementation is registered in DI as
+    `ISecretProtector`.
+  - With `Secrets:LegacyProvider` → the active one is wrapped in `MigratingSecretProtector`,
+    which tries reads first via active, then via legacy. Writes always go via active.
+  - DPAPI scope values are strictly validated via `DpapiScopeResolver.Parse`, both for
+    `Credentials:DpapiScope` and for `Secrets:LegacyDpapiScope`. Typos such as
+    `Local_Machine` crash instead of silently falling back to `CurrentUser`.
+- **`MigratingSecretProtector`** is a thin decorator. On a decrypt failure under the
+  active implementation the legacy implementation takes over. If the plaintext stays empty,
+  a combined `CryptographicException` diagnostic is thrown that names both
+  attempts.
+- **`POST /api/secrets/reencrypt`** (admin-only) reads every credential, every secret
+  global variable and every encrypted `WorkflowVersion.DefinitionJson`, decrypts it via
+  the (possibly wrapping) protector, re-encrypts it under the active provider and writes it
+  back. All three areas return their own rewritten/skipped counters and
+  `(id, name, reason)` details. `LegacyProvider` stays set as long as, in particular, a
+  history skip is outstanding.
+- **DI disambiguation via `[ActivatorUtilitiesConstructor]`**: `CredentialStore` and
+  `GlobalVariableStore` have several constructors (legacy + new single-arg path with
+  protector). Microsoft.Extensions.DependencyInjection would otherwise throw
+  `AmbiguousMatchException`. The attribute explicitly marks the "right"
+  constructor.
 
-### Konfiguration
+### Configuration
 
 ```jsonc
 {
   "Credentials": {
-    "DpapiScope": "LocalMachine"            // CurrentUser | LocalMachine (DPAPI-Pfad)
+    "DpapiScope": "LocalMachine"            // CurrentUser | LocalMachine (DPAPI path)
   },
   "Secrets": {
     "Provider": "Dpapi",                    // "Dpapi" (default) | "AesGcm"
-    "MasterKey": null,                      // base64-encodierte 32 Bytes — Pflicht für AesGcm
+    "MasterKey": null,                      // base64-encoded 32 bytes, required for AesGcm
 
-    // Optional, nur während einer Provider-Rotation gesetzt: der alte Provider wird
-    // als Read-Fallback gewickelt, damit der Bulk-Re-Encrypt-Sweep alte Rows lesen kann.
-    "LegacyProvider": null,                 // "Dpapi" | "AesGcm" (oder leer)
-    "LegacyDpapiScope": null,               // CurrentUser | LocalMachine (für Legacy=Dpapi)
-    "LegacyMasterKey": null                 // base64 — für Legacy=AesGcm (Master-Key-Rotation)
+    // Optional, only set during a provider rotation: the old provider is
+    // wrapped as a read fallback so the bulk re-encrypt sweep can read old rows.
+    "LegacyProvider": null,                 // "Dpapi" | "AesGcm" (or empty)
+    "LegacyDpapiScope": null,               // CurrentUser | LocalMachine (for Legacy=Dpapi)
+    "LegacyMasterKey": null                 // base64, for Legacy=AesGcm (master key rotation)
   }
 }
 ```
 
 ```powershell
-# Key generieren (32 Bytes random, Base64-codiert)
+# Generate a key (32 random bytes, Base64-encoded)
 $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 $keyBytes = New-Object byte[] 32
 try {
@@ -236,20 +236,20 @@ try {
 }
 ```
 
-Den Key-Wert dann ablegen wo immer der Service-Account ihn ausgehändigt bekommt — z.B.
-Windows-Service `RegistryKey` `HKLM\SYSTEM\CurrentControlSet\Services\NodePilot\Environment`
-mit MULTI_SZ-Wert `Secrets__MasterKey=<base64>` (mappt auf den Config-Key
-`Secrets:MasterKey`). **Nie ins Repo committen**, nie ins
-Logfile loggen — `SecretProtectorRegistry` startet mit einer Hardening-Warning wenn der
-Key im Klartext im `appsettings.json` steht.
+Then store the key value wherever the service account gets it handed over, e.g. the
+Windows service `RegistryKey` `HKLM\SYSTEM\CurrentControlSet\Services\NodePilot\Environment`
+with the MULTI_SZ value `Secrets__MasterKey=<base64>` (maps to the config key
+`Secrets:MasterKey`). **Never commit it to the repo**, never write it to the
+log file. `SecretProtectorRegistry` starts with a hardening warning if the
+key is in plain text in `appsettings.json`.
 
-### API-Surface
+### API surface
 
-| Endpoint | Auth | Zweck |
+| Endpoint | Auth | Purpose |
 |---|---|---|
-| `POST /api/secrets/reencrypt` | Admin | Bulk-Sweep aller Credentials, Secret-Globals und Workflow-Version-Definitionen unter dem aktiven Provider. Liefert `200 OK` (clean) oder `207 Multi-Status` (separate Skip-Details je Bereich) zurück. |
+| `POST /api/secrets/reencrypt` | Admin | Bulk sweep of all credentials, secret globals and workflow version definitions under the active provider. Returns `200 OK` (clean) or `207 Multi-Status` (separate skip details per area). |
 
-### Wichtige Dateien
+### Key files
 
 - [src/NodePilot.Core/Interfaces/ISecretProtector.cs](../src/NodePilot.Core/Interfaces/ISecretProtector.cs)
 - [src/NodePilot.Data/Security/DpapiSecretProtector.cs](../src/NodePilot.Data/Security/DpapiSecretProtector.cs)
@@ -260,188 +260,188 @@ Key im Klartext im `appsettings.json` steht.
 - [src/NodePilot.Data/CredentialStore.cs](../src/NodePilot.Data/CredentialStore.cs) (`ReencryptAllCredentialsAsync`)
 - [src/NodePilot.Data/GlobalVariableStore.cs](../src/NodePilot.Data/GlobalVariableStore.cs) (`ReencryptAllSecretsAsync`)
 - [src/NodePilot.Api/Services/WorkflowVersionDefinitionProtector.cs](../src/NodePilot.Api/Services/WorkflowVersionDefinitionProtector.cs) (`ReencryptAllAsync`)
-- [docs/secrets-providers.md](secrets-providers.md) — Operator-Doku mit Migrations-Runbook
+- [docs/secrets-providers.md](secrets-providers.md): operator documentation with the migration runbook
 
-### Bewusst nicht in Scope
+### Deliberately out of scope
 
-- **HashiCorp Vault Transit / Azure Key Vault / KMIP** — V2. Heute liegt der AES-Key auf
-  der Maschine (Env-Var/RegistryKey); ein echter Vault-Roundtrip pro `Unprotect` wäre
-  teuer und führt eine zweite Verfügbarkeitsabhängigkeit ein. Die `ISecretProtector`-
-  Schnittstelle ist so entworfen, dass eine Network-Backed-Implementierung in einer Klasse
-  + DI-Zeile nachgereicht werden kann.
-- **HSM-Backed Keys** — der AES-Provider arbeitet mit Software-Bytes. PKCS#11- oder
-  Windows-CNG-backed-Keys sind V2.
-- **Per-Row Key-ID / Multi-Key-Decrypt** — der 1-Byte-Version-Header im AES-GCM-Envelope
-  ist der Hook dafür; aktuell wird nur `0x01` akzeptiert. Bis dahin geht Key-Rotation über
-  den `LegacyMasterKey`-Migrations-Pfad.
-- **Automatischer Background-Sweep** — der Re-Encrypt-Sweep ist explizit admin-getriggert,
-  damit der Audit-Trail klar zeigt wann jemand rotiert hat.
+- **HashiCorp Vault Transit / Azure Key Vault / KMIP**: V2. Today the AES key lives on
+  the machine (env var/RegistryKey). A real vault round trip per `Unprotect` would be
+  expensive and introduce a second availability dependency. The `ISecretProtector`
+  interface is designed so that a network-backed implementation can be added later as one class
+  + one DI line.
+- **HSM-backed keys**: the AES provider works with software bytes. PKCS#11 or
+  Windows CNG-backed keys are V2.
+- **Per-row key ID / multi-key decrypt**: the 1-byte version header in the AES-GCM envelope
+  is the hook for this. Currently only `0x01` is accepted. Until then, key rotation goes through
+  the `LegacyMasterKey` migration path.
+- **Automatic background sweep**: the re-encrypt sweep is explicitly admin-triggered,
+  so the audit trail clearly shows when someone rotated.
 
-### Field-Test
+### Field test
 
 ```powershell
-# 1. Mit DPAPI booten, Credential anlegen
+# 1. Boot with DPAPI, create a credential
 dotnet run --project src/NodePilot.Api --urls http://localhost:5000
-# Über UI eine Credential "test-cred" mit Passwort "secret123" erstellen.
+# Create a credential "test-cred" with password "secret123" in the UI.
 
-# 2. Stoppen, Provider-Rotation konfigurieren — AesGcm aktiv, Dpapi als Legacy-Fallback.
+# 2. Stop, configure provider rotation: AesGcm active, Dpapi as legacy fallback.
 $env:Secrets__Provider='AesGcm'
 $env:Secrets__MasterKey='<base64-32-bytes>'
 $env:Secrets__LegacyProvider='Dpapi'
 $env:Secrets__LegacyDpapiScope='LocalMachine'
 
-# 3. Booten — Boot-Log zeigt:
+# 3. Boot. The boot log shows:
 #    "[Secrets] Migrating secret protector enabled: active=AesGcm, legacy=Dpapi.
 #     Run POST /api/secrets/reencrypt then remove Secrets:LegacyProvider once the
 #     legacy_reads counter is zero."
 
-# 4. Bulk-Re-Encrypt triggern.
+# 4. Trigger the bulk re-encrypt.
 $body = @{username='admin'; password='admin123'} | ConvertTo-Json
 $login = Invoke-RestMethod -Uri http://localhost:5000/api/auth/login -Method POST -Body $body -ContentType 'application/json'
 $headers = @{ Authorization = "Bearer $($login.token)" }
 Invoke-RestMethod -Uri http://localhost:5000/api/secrets/reencrypt -Method POST -Headers $headers
-#  → Legacy-Config nur bei 200 OK + partialSuccess:false + workflowVersionsSkipped:0 entfernen
+#  → Remove the legacy config only on 200 OK + partialSuccess:false + workflowVersionsSkipped:0
 
-# 5. Erst nach sauberem Credential-/Global-/History-Sweep stoppen, Legacy-Config entfernen
-#    und neu booten — Provider ist jetzt rein AES-GCM.
+# 5. Only after a clean credential/global/history sweep: stop, remove the legacy config
+#    and boot again. The provider is now pure AES-GCM.
 Remove-Item Env:Secrets__LegacyProvider, Env:Secrets__LegacyDpapiScope
 ```
 
-Verifikation: `SELECT EncryptedPassword FROM Credentials WHERE Name='test-cred'` zeigt
-nach dem Sweep einen Wert, der mit dem AES-GCM-Header (`0x01`) beginnt — DPAPI-Werte
-starten anders.
+Verification: after the sweep, `SELECT EncryptedPassword FROM Credentials WHERE Name='test-cred'` shows
+a value that starts with the AES-GCM header (`0x01`). DPAPI values
+start differently.
 
 ---
 
-## 3. SIEM-Logging (ECS-JSON)
+## 3. SIEM Logging (ECS-JSON)
 
-### Was es kann
+### What it does
 
-- Schreibt jeden Application-Log-Event als **eine Zeile JSON** im Elastic Common Schema 1.x
-  in das Rolling-Logfile. Filebeat/Vector/Fluentd liest das ohne Parser-Konfiguration und
-  liefert Elastic / Splunk HEC / Microsoft Sentinel / Datadog identisch.
-- **Audit-Events mit voller ECS-Feld-Abdeckung**: jeder erfolgreiche
-  `IAuditWriter.LogAsync`-Call emittiert eine Serilog-INFO-Zeile mit den strukturierten
-  Properties `event.action`, `event.category` (gemappt aus dem Action-Verb: Login/
-  Credential/Permission → `iam`, Execution → `process`, Rest → `configuration`),
+- Writes every application log event as **one line of JSON** in Elastic Common Schema 1.x
+  to the rolling log file. Filebeat/Vector/Fluentd read it without parser configuration and
+  deliver it identically to Elastic / Splunk HEC / Microsoft Sentinel / Datadog.
+- **Audit events with full ECS field coverage**: every successful
+  `IAuditWriter.LogAsync` call emits a Serilog INFO line with the structured
+  properties `event.action`, `event.category` (mapped from the action verb: Login/
+  Credential/Permission → `iam`, Execution → `process`, rest → `configuration`),
   `event.kind=event`, `event.outcome=success`, `event.dataset=nodepilot.audit`, `event.id`
-  (AuditLog-Row-ID) und `event.original` (redaktierte Details-JSON), plus `user.id` /
-  `user.name` / `source.ip`. Out-of-the-box Sigma-/Sentinel-/Elastic-Detection-Rules
-  matchen damit ohne Custom-Mapping.
-- **ECS-Root-Felder** in zwei Kategorien werden an die JSON-Wurzel gehoben:
-  - **Host/Service-Identity**: `service.*`, `host.*`, `deployment.*`, `agent.*`, `cloud.*`,
+  (AuditLog row ID) and `event.original` (redacted details JSON), plus `user.id` /
+  `user.name` / `source.ip`. Out-of-the-box Sigma/Sentinel/Elastic detection rules
+  therefore match without custom mapping.
+- **ECS root fields** in two categories are lifted to the JSON root:
+  - **Host/service identity**: `service.*`, `host.*`, `deployment.*`, `agent.*`, `cloud.*`,
     `container.*`.
-  - **Per-Event-Felder**: `event.*`, `user.*`, `source.*`, `trace.*`, `span.*`, `error.*`,
+  - **Per-event fields**: `event.*`, `user.*`, `source.*`, `trace.*`, `span.*`, `error.*`,
     `client.*`, `network.*`, `url.*`, `http.*`.
-- **Domain-Properties** (Workflow-/Execution-/Step-IDs etc.) ohne ECS-Prefix landen unter
-  `nodepilot.*` mit `snake_case`-Naming.
-- **Duplicate-Key-Dedup**: wenn zwei Source-Property-Namen auf denselben Snake-Case-
-  Target normalisieren (`WorkflowId` und `workflow_id` beide → `workflow_id`), gewinnt
-  der zuletzt geschriebene. Pinning verhindert dass strikte Ingest-Pipelines
-  (Filebeat-strict, Splunk-HEC-validating) auf Duplikate werfen.
+- **Domain properties** (workflow/execution/step IDs etc.) without an ECS prefix end up under
+  `nodepilot.*` with `snake_case` naming.
+- **Duplicate key dedup**: if two source property names normalize to the same snake_case
+  target (`WorkflowId` and `workflow_id` both → `workflow_id`), the last one
+  written wins. Pinning this prevents strict ingest pipelines
+  (Filebeat strict, Splunk HEC validating) from failing on duplicates.
 
-### Wie es umgesetzt ist
+### How it is implemented
 
-- **`EcsJsonFormatter`** (`src/NodePilot.Api/Logging/`) implementiert
-  `Serilog.Formatting.ITextFormatter`. Ein `Utf8JsonWriter`-Pass pro Event:
-  - Reserved Felder hart geschrieben: `@timestamp`, `log.level`, `message`, `ecs.version`.
-  - `Exception` → strukturiertes `error: { type, message, stack_trace }`-Objekt.
-  - Properties werden gebucketed: ECS-Prefix-Match → JSON-Root-Subobjekt, sonst →
-    `nodepilot.*`. Innerhalb jedes Buckets dedupliziert `DedupByNormalizedName` per
-    last-wins, damit Duplicate-Key-Inputs keine Doppel-Schreibungen produzieren.
-  - PascalCase → snake_case-Konversion bei der Property-Namen-Übersetzung.
-- **`LoggingSetup`** im `Program.cs` liest `Logging:Format` und schaltet zwischen
-  `text` (Default), `cmtrace`, `json` (CLEF), `ecs-json`.
-- **`AuditWriter.LogAsync`** wickelt den SIEM-Forward in `BeginScope` und emittiert **nach**
-  dem `SaveChanges` genau eine `LogInformation`-Zeile pro Audit-Row. Das Scope-Dictionary
-  trägt die ECS-Namen (`event.action`, `event.category`, `event.kind`, `event.outcome`,
+- **`EcsJsonFormatter`** (`src/NodePilot.Api/Logging/`) implements
+  `Serilog.Formatting.ITextFormatter`. One `Utf8JsonWriter` pass per event:
+  - Reserved fields written explicitly: `@timestamp`, `log.level`, `message`, `ecs.version`.
+  - `Exception` → structured `error: { type, message, stack_trace }` object.
+  - Properties are bucketed: ECS prefix match → JSON root sub-object, otherwise →
+    `nodepilot.*`. Within each bucket `DedupByNormalizedName` deduplicates with
+    last-wins, so duplicate key inputs do not produce double writes.
+  - PascalCase → snake_case conversion when translating property names.
+- **`LoggingSetup`** in `Program.cs` reads `Logging:Format` and switches between
+  `text` (default), `cmtrace`, `json` (CLEF), `ecs-json`.
+- **`AuditWriter.LogAsync`** wraps the SIEM forward in `BeginScope` and, **after**
+  `SaveChanges`, emits exactly one `LogInformation` line per audit row. The scope dictionary
+  carries the ECS names (`event.action`, `event.category`, `event.kind`, `event.outcome`,
   `event.dataset`, `event.id`, `event.original`, `user.id`, `user.name`, `source.ip`) plus
-  die Support-Log-Felder (`support.event_type`, `support.message`, `SupportLog`).
-  - **Support-Log-Spiegel** greift bei einer Action auf der Allowlist (Auth, User-Mgmt,
-    Publish, Trigger, Secrets) **oder** bei jedem `outcome == "failure"` — Brute-Force,
-    fehlgeschlagene Entschlüsselungen und `_FAILED`/`_SUPPRESSED`/`_REJECTED`-Actions landen
-    damit automatisch im Support-Log, ohne dass die Allowlist sie einzeln kennen muss.
-  - Ein Fehler im Audit-Write bricht die auslösende Mutation **nie** ab; einziges
-    operatives Signal ist die `AuditWrites`-Metrik mit `result=failure`.
+  the support log fields (`support.event_type`, `support.message`, `SupportLog`).
+  - **Support log mirror** applies to an action on the allowlist (auth, user management,
+    publish, trigger, secrets) **or** to any `outcome == "failure"`. Brute force,
+    failed decryptions and `_FAILED`/`_SUPPRESSED`/`_REJECTED` actions therefore end up
+    in the support log automatically, without the allowlist having to know each of them.
+  - An error in the audit write **never** aborts the triggering mutation. The only
+    operational signal is the `AuditWrites` metric with `result=failure`.
 
-Config-Keys, Feld-Referenz und die Forwarder-Rezepte stehen in
+Config keys, field reference and the forwarder recipes are in
 [docs/siem-logging.md](siem-logging.md).
 
-## 4. Folder-RBAC (Shared Folders)
+## 4. Folder RBAC (Shared Folders)
 
-### Was es kann
+### What it does
 
-Folder-RBAC begrenzt den Zugriff auf Workflows über den Shared Folder, in dem sie liegen.
-Die Ordner bilden einen Baum (Default-Maximaltiefe 5); Grants gehen an Benutzer oder an
-Verzeichnisgruppen. Die vier Folder-Rollen bauen aufeinander auf:
+Folder RBAC limits access to workflows through the shared folder they live in.
+The folders form a tree (default maximum depth 5). Grants go to users or to
+directory groups. The four folder roles build on each other:
 
 ```text
 FolderViewer < FolderOperator < FolderEditor < FolderAdmin
 ```
 
-- **Vererbung nach unten:** `FolderEditor` auf `/Finance` gilt für `/Finance/Reports` und
-  tiefer, ohne weiteren Grant.
-- **Highest-Role-Wins:** ein Grant auf einem Unterordner **override** nicht nach unten —
-  Editor auf `/Finance` + Viewer auf `/Finance/Reports` ergibt Editor auf beiden.
-- **Globaler Admin bypassed alles**; globale Operator/Viewer werden durch ihre `UserRole`
-  **gecappt** — ein globaler Viewer mit FolderAdmin bekommt trotzdem kein Run/Edit/Admin.
-- **Existence Hiding:** nicht lesbare Workflows liefern `404` statt `403`, damit ihre bloße
-  Existenz nicht offengelegt wird.
-- **Capabilities pro Row** (`canRead`, `canRun`, `canEdit`, `canAdmin`) in List- und
-  Detail-Responses — die UI zeigt nur Buttons, die der Aufrufer auch nutzen darf.
-- **Sub-Workflow-Authorization zur Laufzeit:** startet Workflow A den Workflow B, prüft die
-  Engine die Read-Permission des effektiven Principals auf B's Folder.
-- **SignalR-Group-Routing:** Execution-Events landen nur in den Hub-Groups von Usern, die
-  den Workflow lesen dürfen.
-- **Authority-scoped Gruppen:** `PrincipalType=Group` speichert `PrincipalAuthority` plus
-  `PrincipalKey`. AD nutzt die kanonische AD-Authority und eine Windows-SID, OIDC/SCIM den
-  exakten HTTPS-Issuer und die opake Gruppen-ID. Ausgewertet wird ausschließlich gegen
-  serverseitige Membership-Snapshots, nie gegen JWT-Claims.
+- **Inheritance downwards:** `FolderEditor` on `/Finance` applies to `/Finance/Reports` and
+  deeper, without another grant.
+- **Highest role wins:** a grant on a subfolder does **not override** downwards.
+  Editor on `/Finance` + Viewer on `/Finance/Reports` results in Editor on both.
+- **Global Admin bypasses everything**. Global Operator/Viewer are **capped** by their `UserRole`:
+  a global Viewer with FolderAdmin still gets no Run/Edit/Admin.
+- **Existence hiding:** unreadable workflows return `404` instead of `403`, so their mere
+  existence is not disclosed.
+- **Capabilities per row** (`canRead`, `canRun`, `canEdit`, `canAdmin`) in list and
+  detail responses. The UI only shows buttons the caller is allowed to use.
+- **Sub-workflow authorization at runtime:** if workflow A starts workflow B, the
+  engine checks the effective principal's read permission on B's folder.
+- **SignalR group routing:** execution events only reach the hub groups of users who
+  are allowed to read the workflow.
+- **Authority-scoped groups:** `PrincipalType=Group` stores `PrincipalAuthority` plus
+  `PrincipalKey`. AD uses the canonical AD authority and a Windows SID, OIDC/SCIM use the
+  exact HTTPS issuer and the opaque group ID. Evaluation is done exclusively against
+  server-side membership snapshots, never against JWT claims.
 
-Grants vergibt ein FolderAdmin in der UI auf der Seite **Workflows** — Rechtsklick auf den
-Ordner im Baum → **Berechtigungen…** (funktioniert auch auf Root `\`), oder Ordner
-auswählen und den Button **Berechtigungen…** am Fuß der Ordner-Karte nutzen.
+A FolderAdmin assigns grants in the UI on the **Workflows** page: right-click the
+folder in the tree → **Permissions…** (also works on Root `\`), or select the folder
+and use the **Permissions…** button at the bottom of the folder card.
 
-### Wie es umgesetzt ist
+### How it is implemented
 
-- **`ResourceAuthorizationService`** (`src/NodePilot.Api/Security/`) ist der einzige
-  Resolver für „darf dieser Principal diese Operation auf diesem Folder": er löst die
-  Ordner-Ahnenkette auf, sammelt User- und Gruppen-Grants und reduziert sie auf die
-  effektive Folder-Rolle.
-  - Per-Request-Cache mit `(userId, folderId)` als Key — Service ist scoped, lebt nur
-    für den Request, kein Cache-Invalidation-Problem zwischen Usern.
-  - **Cache-Invalidate** nach jedem Folder/Permission-Mutation, damit eine Capability-
-    Computation in derselben Response die gerade applied changes reflektiert.
-  - **Globaler Role-Cap** in `CanAccessWorkflowAsync`/`CanAccessFolderAsync` UND
-    `GetWorkflowCapabilitiesAsync` — UI und API agreen auf das gleiche Ergebnis.
-- **`WorkflowsControllerBase.RequireWorkflowAccessAsync`** ist der zentrale Helper für
-  jeden Workflow-Endpoint: erst Read prüfen (404 bei Fail = existence hide), dann die
-  konkrete Operation (403 bei Fail = sichtbar aber nicht erlaubt).
-- **`SharedWorkflowFoldersController` + `SharedFolderPermissionsController`** liefern die
-  CRUD-Surface: Create/Rename/Move/Delete von Foldern, Grant/Update/Revoke von
-  Permissions. Beide gated durch `_authz.CanAccessFolderAsync(... ResourceOp.Admin)`.
-- **Root-Sentinel:** `20260915180058_InitialBaseline` legt den Root-Ordner einmalig
-  auf einer frischen Datenbank an. Die alte Entwicklungshistorie samt User-Backfills
-  wurde vor dem ersten produktiven Einsatz konsolidiert. Beim erneuten Start werden
-  keine entzogenen Berechtigungen wiederhergestellt.
-- **`UsersController.Create`** legt für neue Operator/Viewer beim Anlegen eine Default-
-  Permission auf Root mit.
+- **`ResourceAuthorizationService`** (`src/NodePilot.Api/Security/`) is the only
+  resolver for "may this principal perform this operation on this folder": it resolves the
+  folder ancestor chain, collects user and group grants and reduces them to the
+  effective folder role.
+  - Per-request cache keyed by `(userId, folderId)`. The service is scoped and lives only
+    for the request, so there is no cache invalidation problem between users.
+  - **Cache invalidate** after every folder/permission mutation, so that a capability
+    computation in the same response reflects the changes just applied.
+  - **Global role cap** in `CanAccessWorkflowAsync`/`CanAccessFolderAsync` AND
+    `GetWorkflowCapabilitiesAsync`, so UI and API agree on the same result.
+- **`WorkflowsControllerBase.RequireWorkflowAccessAsync`** is the central helper for
+  every workflow endpoint: first check read (404 on fail = existence hide), then the
+  concrete operation (403 on fail = visible but not allowed).
+- **`SharedWorkflowFoldersController` + `SharedFolderPermissionsController`** provide the
+  CRUD surface: create/rename/move/delete of folders, grant/update/revoke of
+  permissions. Both are gated by `_authz.CanAccessFolderAsync(... ResourceOp.Admin)`.
+- **Root sentinel:** `20260915180058_InitialBaseline` creates the root folder once
+  on a fresh database. The old development history including user backfills
+  was consolidated before the first production use. A restart does
+  not restore revoked permissions.
+- **`UsersController.Create`** creates a default permission on Root for new
+  Operator/Viewer users when they are created.
 
-### Default-Mapping beim Anlegen eines Users
+### Default mapping when creating a user
 
-| Globale UserRole | Folder-Permission auf Root |
+| Global UserRole | Folder permission on Root |
 |---|---|
-| Admin | keine (globaler Bypass) |
+| Admin | none (global bypass) |
 | Operator | FolderEditor |
 | Viewer | FolderViewer |
 
-### Konfiguration
+### Configuration
 
-Keine — RBAC ist immer aktiv. Neue Operator/Viewer erhalten die genannten
-Standardberechtigungen auf Root und dessen Unterordner.
-Folder + Grants ändert ein globaler Admin via UI oder direkt am API.
+None. RBAC is always active. New Operator/Viewer users receive the default
+permissions listed above on Root and its subfolders.
+A global Admin changes folders + grants via the UI or directly through the API.
 
-### Wichtige Dateien
+### Key files
 
 - [src/NodePilot.Core/Models/SharedWorkflowFolder.cs](../src/NodePilot.Core/Models/SharedWorkflowFolder.cs)
 - [src/NodePilot.Core/Models/SharedFolderPermission.cs](../src/NodePilot.Core/Models/SharedFolderPermission.cs)
@@ -450,120 +450,120 @@ Folder + Grants ändert ein globaler Admin via UI oder direkt am API.
 - [src/NodePilot.Api/Controllers/SharedWorkflowFoldersController.cs](../src/NodePilot.Api/Controllers/SharedWorkflowFoldersController.cs)
 - [src/NodePilot.Api/Controllers/SharedFolderPermissionsController.cs](../src/NodePilot.Api/Controllers/SharedFolderPermissionsController.cs)
 - [src/NodePilot.Api/Controllers/WorkflowsControllerBase.cs](../src/NodePilot.Api/Controllers/WorkflowsControllerBase.cs)
-- [InitialBaseline](../src/NodePilot.Data/Migrations/20260915180058_InitialBaseline.cs) — aktuelles Folder-Schema und Root-Sentinel-Seed (`HasData`)
+- [InitialBaseline](../src/NodePilot.Data/Migrations/20260915180058_InitialBaseline.cs): current folder schema and root sentinel seed (`HasData`)
 - Frontend: [src/nodepilot-ui/src/components/workflows/SharedFolderTree.tsx](../src/nodepilot-ui/src/components/workflows/SharedFolderTree.tsx),
   [SharedFolderPermissionsModal.tsx](../src/nodepilot-ui/src/components/workflows/SharedFolderPermissionsModal.tsx),
   [pages/WorkflowsPage.tsx](../src/nodepilot-ui/src/pages/WorkflowsPage.tsx)
 
-### API-Surface (RBAC-spezifisch)
+### API surface (RBAC-specific)
 
-| Endpoint | Auth | Zweck |
+| Endpoint | Auth | Purpose |
 |---|---|---|
-| `GET /api/shared-workflow-folders` | Authenticated | Folder-Tree (gefiltert auf lesbare Folder + Capabilities pro Row) |
-| `POST /api/shared-workflow-folders` | FolderEditor auf Parent | Neuer Sub-Folder |
+| `GET /api/shared-workflow-folders` | Authenticated | Folder tree (filtered to readable folders + capabilities per row) |
+| `POST /api/shared-workflow-folders` | FolderEditor on parent | New subfolder |
 | `PUT /api/shared-workflow-folders/{id}` | FolderEditor | Rename |
-| `POST /api/shared-workflow-folders/{id}/move` | FolderEditor auf Source + Target | Move |
-| `DELETE /api/shared-workflow-folders/{id}` | FolderEditor (nur leere Folder) | Delete |
-| `DELETE /api/shared-workflow-folders/{id}?recursive=true` | Admin (global) | Delete **samt Inhalt** — Unterordner und darin liegende Workflows. 423, wenn im Subtree ein Workflow von jemand anderem ausgecheckt ist |
-| `POST /api/workflows/{id}/move-folder` | FolderEditor auf Source + Target | Workflow umsortieren |
-| `GET /api/shared-workflow-folders/{id}/permissions` | FolderAdmin | Grants listen |
-| `POST /api/shared-workflow-folders/{id}/permissions` | FolderAdmin | Grant vergeben |
-| `PUT /api/shared-workflow-folders/{id}/permissions/{permId}` | FolderAdmin | Grant ändern |
-| `DELETE /api/shared-workflow-folders/{id}/permissions/{permId}` | FolderAdmin | Grant entziehen |
+| `POST /api/shared-workflow-folders/{id}/move` | FolderEditor on source + target | Move |
+| `DELETE /api/shared-workflow-folders/{id}` | FolderEditor (empty folders only) | Delete |
+| `DELETE /api/shared-workflow-folders/{id}?recursive=true` | Admin (global) | Delete **including content**: subfolders and the workflows in them. 423 if a workflow in the subtree is checked out by someone else |
+| `POST /api/workflows/{id}/move-folder` | FolderEditor on source + target | Move a workflow to another folder |
+| `GET /api/shared-workflow-folders/{id}/permissions` | FolderAdmin | List grants |
+| `POST /api/shared-workflow-folders/{id}/permissions` | FolderAdmin | Assign a grant |
+| `PUT /api/shared-workflow-folders/{id}/permissions/{permId}` | FolderAdmin | Change a grant |
+| `DELETE /api/shared-workflow-folders/{id}/permissions/{permId}` | FolderAdmin | Revoke a grant |
 
-`POST /api/workflows` akzeptiert `FolderId` (optional, Default Root); Server prüft Edit
-auf den Zielordner und lehnt sonst mit 403 ab.
+`POST /api/workflows` accepts `FolderId` (optional, default Root). The server checks Edit
+on the target folder and otherwise rejects with 403.
 
-### Bewusst nicht in Scope (V1)
+### Deliberately out of scope (V1)
 
-- **Role-Principals** — `PrincipalType=Role` bleibt im Enum reserviert und wird von der
-  Grant-API abgelehnt. `User` und `Group` sind verfügbar; Gruppen tragen zusätzlich die
-  `PrincipalAuthority` (AD-Authority + SID bzw. OIDC/SCIM-Issuer + Gruppen-ID).
-- **Per-Workflow-Permissions** — V1 vergibt nur auf Folder-Ebene. Wer einen Workflow
-  isoliert schützen will, legt einen Sub-Folder an. Eine separate Workflow-ACL würde die
-  Resolution-Komplexität verdoppeln.
-- **Permission-Templates** — kein „Operator-Template auf 200 Folder kopieren". UI macht
-  Bulk-Grants per User.
-- **Audit-Filter pro Folder** — `GET /api/audit` ist heute Admin-only und liefert global.
-  Per-Folder-Audit-Sicht ist V2 (würde RBAC durch den Audit-Layer brauchen).
+- **Role principals**: `PrincipalType=Role` stays reserved in the enum and is rejected by the
+  grant API. `User` and `Group` are available. Groups additionally carry the
+  `PrincipalAuthority` (AD authority + SID or OIDC/SCIM issuer + group ID).
+- **Per-workflow permissions**: V1 grants only at folder level. Anyone who wants to protect a
+  single workflow in isolation creates a subfolder. A separate workflow ACL would double the
+  resolution complexity.
+- **Permission templates**: no "copy an Operator template to 200 folders". The UI does
+  bulk grants per user.
+- **Audit filter per folder**: `GET /api/audit` is admin-only today and returns global data.
+  A per-folder audit view is V2 (it would need RBAC through the audit layer).
 
-### Field-Test
+### Field test
 
 ```powershell
-# 1. Neu booten — Migration applied automatisch
+# 1. Boot again. The migration is applied automatically
 dotnet run --project src/NodePilot.Api
 
-# 2. Als Admin einloggen, neuen Folder + zweiten User anlegen
-#    Login: POST /api/auth/login mit admin/admin123
+# 2. Log in as admin, create a new folder + a second user
+#    Login: POST /api/auth/login with admin/admin123
 #    Folder: POST /api/shared-workflow-folders {"parentFolderId":null,"name":"Finance"}
 #    User:   POST /api/users {"username":"alice","password":"...","role":"Operator"}
 
-# 3. Alice grants auf /Finance: POST /api/shared-workflow-folders/<finance-id>/permissions
+# 3. Grant Alice access to /Finance: POST /api/shared-workflow-folders/<finance-id>/permissions
 #    Body: {"principalType":"User","principalId":"<alice-uuid>","role":"FolderEditor"}
 
-# 4. Als Alice einloggen — sieht Workflows in Root NICHT (nur FolderEditor auf /Finance),
-#    sieht /Finance + /Finance/Reports + alle dortigen Workflows.
-#    Run/Edit nur in /Finance-Subtree erlaubt; Root-Workflow → 404.
+# 4. Log in as Alice. She does NOT see workflows in Root (only FolderEditor on /Finance),
+#    she sees /Finance + /Finance/Reports + all workflows there.
+#    Run/Edit only allowed in the /Finance subtree. Root workflow → 404.
 ```
 
 ---
 
-## 5. Enterprise-Identität und SSO
+## 5. Enterprise Identity and SSO
 
 ### Status: AD SSO Preview
 
-Die Enterprise-SSO-Pfade sind implementiert und automatisiert getestet. „Enterprise-ready“
-darf für diesen Teil erst nach einem realen Feldtest verwendet werden, der LDAPS und Kerberos
-durch den produktionsgleichen HAProxy-Pfad sowie die Ablehnung von NTLM nachweist.
+The enterprise SSO paths are implemented and covered by automated tests. "Enterprise-ready"
+may only be used for this part after a real field test that proves LDAPS and Kerberos
+through the production-equivalent HAProxy path as well as the rejection of NTLM.
 
-| Pfad | Mechanismus | Default |
+| Path | Mechanism | Default |
 |---|---|---:|
-| Local | BCrypt, Modi `Disabled | BreakGlassOnly | Enabled` | `BreakGlassOnly` |
-| LDAP | AD Simple Bind ausschließlich über LDAPS | aus |
-| Windows | Negotiate/Kerberos, NTLM fail-closed | aus |
-| OIDC | Authorization Code + PKCE | aus |
-| SCIM | SCIM 2.0 Users/Groups + Discovery | aus |
+| Local | BCrypt, modes `Disabled | BreakGlassOnly | Enabled` | `BreakGlassOnly` |
+| LDAP | AD simple bind exclusively over LDAPS | off |
+| Windows | Negotiate/Kerberos, NTLM fail-closed | off |
+| OIDC | Authorization Code + PKCE | off |
+| SCIM | SCIM 2.0 Users/Groups + Discovery | off |
 
-### Tragende Invarianten
+### Core invariants
 
-- Externe Benutzer werden über `ExternalIdentity(Authority, Subject)` identifiziert.
-  Mutable Usernames oder Display Names sind keine Linking-Keys.
-- LDAP und Windows verwenden denselben kanonischen AD-`objectSid` unter
-  `urn:nodepilot:identity:active-directory`. Beide Protokolle landen dadurch auf
-  derselben NodePilot-User-Row.
-- Bestehende Benutzer werden nie automatisch zusammengeführt. Username-Kollisionen und
-  mehrdeutige Legacy-Mappings werden kontrolliert abgelehnt und auditiert.
-- `AuthSession` ist serverseitig widerrufbar. Refresh rotiert den aktuellen JTI atomar;
-  ein gestohlenes Token kann nicht parallel zwei gültige Nachfolger erzeugen.
-- JWTs enthalten keine Directory-Gruppen. `DirectoryMembership(UserId, Authority, GroupKey)`
-  speichert authority-scoped, serverseitige Membership-Snapshots.
-- AD-Sync läuft alle ein bis fünf Minuten. Externe Autorisierung darf nie älter als
-  `MaxAuthorizationStalenessMinutes` sein; der konfigurierte Maximalwert ist 15 Minuten.
-- Tombstone, Deaktivierung oder Gruppenentzug widerruft Sessions und stoppt auch Schedules,
-  Webhooks, External Triggers sowie Pending/Running/Paused Executions spätestens innerhalb
-  dieses Fensters.
-- Folder-Grants für AD-Gruppen verwenden kanonische SIDs. OIDC-/SCIM-Gruppen leben im
-  jeweiligen Issuer-Namespace und können AD-Grants nicht durch Namenskollision treffen.
-- Folder-Grants speichern `PrincipalAuthority` und `PrincipalKey` gemeinsam. Die Admin-UI
-  verlangt für OIDC/SCIM-Gruppen den exakten HTTPS-Issuer; ein fehlender Authority-Wert ist
-  nur als Legacy-Kurzform für die kanonische AD-Authority zulässig.
-- SignalR und Worker-Dispatch prüfen denselben Account-, Session- und Freshness-Zustand
-  wie normale HTTP-Requests.
+- External users are identified via `ExternalIdentity(Authority, Subject)`.
+  Mutable usernames or display names are not linking keys.
+- LDAP and Windows use the same canonical AD `objectSid` under
+  `urn:nodepilot:identity:active-directory`. Both protocols therefore end up on
+  the same NodePilot user row.
+- Existing users are never merged automatically. Username collisions and
+  ambiguous legacy mappings are rejected in a controlled way and audited.
+- `AuthSession` can be revoked server-side. Refresh rotates the current JTI atomically,
+  so a stolen token cannot produce two valid successors in parallel.
+- JWTs contain no directory groups. `DirectoryMembership(UserId, Authority, GroupKey)`
+  stores authority-scoped, server-side membership snapshots.
+- AD sync runs every one to five minutes. External authorization must never be older than
+  `MaxAuthorizationStalenessMinutes`. The maximum configurable value is 15 minutes.
+- Tombstone, deactivation or group removal revokes sessions and also stops schedules,
+  webhooks, external triggers and Pending/Running/Paused executions within
+  this window at the latest.
+- Folder grants for AD groups use canonical SIDs. OIDC/SCIM groups live in
+  the respective issuer namespace and cannot hit AD grants through a name collision.
+- Folder grants store `PrincipalAuthority` and `PrincipalKey` together. The admin UI
+  requires the exact HTTPS issuer for OIDC/SCIM groups. A missing authority value is
+  only allowed as a legacy short form for the canonical AD authority.
+- SignalR and worker dispatch check the same account, session and freshness state
+  as normal HTTP requests.
 
-### AD-Sicherheitsdefaults
+### AD security defaults
 
-Eine aktivierte AD-Konfiguration verlangt:
+An enabled AD configuration requires:
 
-- LDAPS mit vollständiger Zertifikatsprüfung — das DC-Zertifikat muss gegen den
-  Windows-Zertifikatsspeicher des API-Hosts validieren, einen In-App-Bypass gibt es nicht;
-  LDAP-Referrals werden nie verfolgt;
-- mindestens einen konfigurierten DC, bei HA besser mehrere `Endpoints`;
-- `BaseDn`, für LDAP-Login zusätzlich `UpnSuffix`;
-- Service-Bind-DN und Passwort für Sync/Deprovisioning;
-- mindestens eine `AllowedGroupSids`-SID;
-- `DirectorySyncIntervalMinutes` zwischen 1 und 5;
-- für Windows SSO `AllowNtlmFallback=false` und
-  `NtlmDisabledByPolicy=true` nach tatsächlich ausgerollter Host-/Domain-Policy.
+- LDAPS with full certificate validation. The DC certificate must validate against the
+  Windows certificate store of the API host. There is no in-app bypass.
+  LDAP referrals are never followed;
+- at least one configured DC, for HA preferably several `Endpoints`;
+- `BaseDn`, and for LDAP login also `UpnSuffix`;
+- service bind DN and password for sync/deprovisioning;
+- at least one `AllowedGroupSids` SID;
+- `DirectorySyncIntervalMinutes` between 1 and 5;
+- for Windows SSO `AllowNtlmFallback=false` and
+  `NtlmDisabledByPolicy=true` once the host/domain policy has actually been rolled out.
 
 ```jsonc
 {
@@ -592,99 +592,99 @@ Eine aktivierte AD-Konfiguration verlangt:
 }
 ```
 
-Das ausgelieferte Template lässt die Provider deaktiviert. Bei Aktivierung muss
-`NtlmDisabledByPolicy` erst nach verifizierter Policy auf `true` gesetzt werden.
-Authentication-Schemes werden beim Prozessstart registriert; Änderungen erfordern einen
-Service-Neustart.
+The shipped template leaves the providers disabled. When enabling them,
+`NtlmDisabledByPolicy` may only be set to `true` after the policy has been verified.
+Authentication schemes are registered at process start. Changes require a
+service restart.
 
 ### HAProxy/Kerberos
 
-Negotiate ist connection-scoped. Das ausgelieferte
-[HAProxy-Template](../deploy/templates/haproxy.cfg.template) erzwingt daher:
+Negotiate is connection-scoped. The shipped
+[HAProxy template](../deploy/templates/haproxy.cfg.template) therefore enforces:
 
-- persistente HTTP/1.1-Frontend- und Backend-Verbindungen;
-- `http-reuse never`, damit keine authentifizierte Backend-Verbindung zwischen Clients
-  wiederverwendet wird;
-- Source-Affinity und Active/Passive-Healthchecks;
-- Backend-TLS mit `verify required`, CA, SNI und Hostname-Prüfung;
-- Entfernen und vertrauenswürdiges Neuerzeugen von Forwarded Headers.
+- persistent HTTP/1.1 frontend and backend connections;
+- `http-reuse never`, so that no authenticated backend connection is reused
+  between clients;
+- source affinity and active/passive health checks;
+- backend TLS with `verify required`, CA, SNI and hostname validation;
+- removal and trusted regeneration of forwarded headers.
 
-Nur die Transport-IP des Proxys gehört in `ForwardedHeaders:KnownProxies`. SPN,
-Browser-Intranet-Policy und NTLM-Block-Policy bleiben explizite Deployment-Aufgaben —
-konkrete Anleitung inklusive GPO-Pfaden und Skript-Vorlage in
-[`docs/ldap-windows-sso.md`](ldap-windows-sso.md). Zwei Fallstricke daraus: ein HTTP-SPN
-auf dem **Computerkonto** deckt einen unter gMSA laufenden Dienst nicht ab, und ohne
-Browser-Allowlist fragt jeder Client nach Zugangsdaten, statt still per Ticket anzumelden.
+Only the proxy's transport IP belongs in `ForwardedHeaders:KnownProxies`. SPN,
+browser intranet policy and NTLM block policy remain explicit deployment tasks.
+Concrete instructions including GPO paths and a script template are in
+[`docs/ldap-windows-sso.md`](ldap-windows-sso.md). Two pitfalls from there: an HTTP SPN
+on the **computer account** does not cover a service running under a gMSA, and without a
+browser allowlist every client prompts for credentials instead of signing in silently via ticket.
 
-### LDAP-Directory-Konsens und Offboarding
+### LDAP directory consensus and offboarding
 
-> **Kein Login-Failover:** Der Password-Bind versucht die Endpoints der Reihe nach, aber der
-> autoritative Lookup danach verlangt **All-DC-Konsens** — ein einziger nicht erreichbarer DC
-> lässt den externen Login fail-closed (503) scheitern, statt auf einen überlebenden DC
-> auszuweichen. Nur gemeinsam erreichbare DCs konfigurieren (ein Always-On-DC ist die
-> einfachste korrekte Topologie).
+> **No login failover:** the password bind tries the endpoints in order, but the
+> authoritative lookup afterwards requires **all-DC consensus**. A single unreachable DC
+> makes the external login fail closed (503) instead of falling back to a surviving DC.
+> Only configure DCs that are reachable together (one always-on DC is the
+> simplest correct topology).
 
-Der Directory-Lookup befragt alle konfigurierten DCs. „User nicht gefunden“ wird nur
-akzeptiert, wenn jeder konfigurierte DC dies bestätigt. Gefundene Snapshots gelten nur
-dann als frisch, wenn alle DCs erreichbar sind und bei Aktivitätsstatus sowie Gruppen
-übereinstimmen. Ein Mix aus Found/Not-Found, Enabled/Disabled, abweichende Gruppen oder
-ein nicht erreichbarer DC werden als uneindeutiger Sync-Fehler behandelt und aktualisieren
-`LastDirectorySyncAt` nicht. Nach Ablauf des letzten gültigen Snapshots bleibt die
-Autorisierung damit fail-closed.
+The directory lookup queries all configured DCs. "User not found" is only
+accepted if every configured DC confirms it. Found snapshots only count
+as fresh if all DCs are reachable and agree on activity status and groups.
+A mix of found/not found, enabled/disabled, diverging groups or
+an unreachable DC is treated as an ambiguous sync error and does not update
+`LastDirectorySyncAt`. After the last valid snapshot expires,
+authorization therefore stays fail-closed.
 
-Ein kompletter Pass, in dem alle bekannten AD-Identitäten fehlen, wird als falsche `BaseDn`
-oder unzureichende Search-Berechtigung verworfen und erzeugt keine Massen-Tombstones. Der
-Directory-Healthcheck prüft alle DCs und meldet einen nicht erreichbaren DC als
-`Degraded` — das ist reine Health-Anzeige; externe Logins sind bereits bei einem einzigen
-nicht erreichbaren DC fail-closed (siehe Konsens-Hinweis oben). Sobald ein externer Provider aktiv ist, verweigert eine bestehende Datenbank
-ohne aktiven lokalen Break-Glass-Admin den Start.
+A complete pass in which all known AD identities are missing is discarded as a wrong `BaseDn`
+or insufficient search permission and does not create mass tombstones. The
+directory health check checks all DCs and reports an unreachable DC as
+`Degraded`. This is only a health indicator. External logins already fail closed with a single
+unreachable DC (see the consensus note above). As soon as an external provider is active, an existing database
+without an active local break-glass admin refuses to start.
 
-Automatisierte Ausführungen tragen den effektiven Principal aus `Workflow.PublishedByUserId` —
-den Publisher, oder bei einem nie publizierten Workflow den Benutzer, der ihn scharfgeschaltet
-hat (`/enable` füllt die Spalte nur, wenn sie leer ist, und überschreibt einen bestehenden
-Publisher nie). Vor Worker-Start werden Aktivität, Tombstone, externe Freshness und aktuelle
-Folder-Run-Berechtigung erneut geprüft. Ein Sync mit Autorisierungsverlust widerruft Sessions
-und beendet betroffene Ausführungen.
-
----
-
-## 6. OIDC und SCIM
-
-OIDC validiert Authorization Code, PKCE, State, Nonce, Issuer, Audience und Signatur. Das
-temporäre externe Ticket liegt Data-Protection-geschützt serverseitig in
-`OidcLoginTickets`; der Browser erhält nur einen opaken Handle. Damit bleibt der
-Session-Cookie auch bei 500 IdP-Gruppen unter dem Browser-/Proxy-Limit.
-
-OIDC-Issuer, Subject und Gruppen-IDs werden als opake, case-sensitive Werte behandelt.
-Surrounding Whitespace wird abgelehnt. Fehlen Gruppenclaims, ist ein Fallback nur bei einem
-expliziten Group-Overage-Signal und einem höchstens 15 Minuten alten, issuer-passenden
-SCIM/Membership-Snapshot erlaubt. Ein SCIM-User-Update frischt Gruppenautorität nicht auf.
-
-SCIM 2.0 bietet ServiceProviderConfig-, ResourceTypes- und Schemas-Discovery sowie
-Users/Groups unter `/api/scim/v2`. Mutationen sind
-serialisierbar transaktional, schützen den letzten aktiven Admin, auditieren Änderungen und
-widerrufen betroffene Sessions und Executions. SCIM-Bearer-Tokens müssen 32–4096 Zeichen
-lang sein. Für eine überlappende Rotation kann der alte Token vorübergehend als
-`Scim:PreviousBearerToken` weiter akzeptiert und anschließend explizit gelöscht werden.
-Für gemeinsame Identitäten muss `Scim:Authority` exakt dem OIDC-Issuer
-entsprechen.
-
-OIDC und SCIM haben ein separates Enterprise-Release-Gate. Vor Freigabe müssen der konkrete
-IdP, Group-Overage, Gruppenentzug, Deprovisioning und Full-Reprovision nach Restore getestet
-werden. **SAML bleibt außerhalb des Zielbilds.**
+Automated executions carry the effective principal from `Workflow.PublishedByUserId`:
+the publisher, or for a workflow that was never published, the user who enabled it
+(`/enable` only fills the column when it is empty and never overwrites an existing
+publisher). Before the worker starts, activity, tombstone, external freshness and current
+folder run permission are checked again. A sync with loss of authorization revokes sessions
+and ends affected executions.
 
 ---
 
-## Roll-out und Abnahme
+## 6. OIDC and SCIM
 
-1. Sicheren lokalen Break-Glass-Admin markieren und Recovery-Prozess testen.
-2. LDAPS-Trust, beide DCs, Service-Bind und Gruppen-Allowlist konfigurieren; Verbindungstest
-   ausführen und Service neu starten.
-3. Directory-Sync und Entzug innerhalb von 15 Minuten nachweisen.
-4. HTTP-SPN, Browser-Policy, HAProxy-Härtung und NTLM-Block-Policy ausrollen.
-5. LDAP und Windows mit derselben realen Person testen und gleiche NodePilot-User-ID prüfen.
-6. OIDC/SCIM je IdP separat aktivieren und Provisioning-/Overage-Matrix testen.
-7. Erst nach bestandenem realem AD-/Kerberos-/LDAPS-/NTLM-Feldtest den Preview-Status ändern.
+OIDC validates authorization code, PKCE, state, nonce, issuer, audience and signature. The
+temporary external ticket is stored server-side, protected by Data Protection, in
+`OidcLoginTickets`. The browser only receives an opaque handle. This keeps the
+session cookie below the browser/proxy limit even with 500 IdP groups.
 
-Die vollständige Operator-Anleitung und Testmatrix stehen in
+OIDC issuer, subject and group IDs are treated as opaque, case-sensitive values.
+Surrounding whitespace is rejected. If group claims are missing, a fallback is only allowed with an
+explicit group overage signal and an issuer-matching SCIM/membership snapshot that is at most
+15 minutes old. A SCIM user update does not refresh group authority.
+
+SCIM 2.0 provides ServiceProviderConfig, ResourceTypes and Schemas discovery as well as
+Users/Groups under `/api/scim/v2`. Mutations are
+serializable transactions, protect the last active admin, audit changes and
+revoke affected sessions and executions. SCIM bearer tokens must be 32–4096 characters
+long. For an overlapping rotation the old token can temporarily still be accepted as
+`Scim:PreviousBearerToken` and then explicitly deleted.
+For shared identities `Scim:Authority` must exactly match the OIDC
+issuer.
+
+OIDC and SCIM have a separate enterprise release gate. Before release, the concrete
+IdP, group overage, group removal, deprovisioning and full reprovision after restore must be
+tested. **SAML stays outside the target scope.**
+
+---
+
+## Rollout and acceptance
+
+1. Mark a secure local break-glass admin and test the recovery process.
+2. Configure LDAPS trust, both DCs, service bind and group allowlist. Run the connection test
+   and restart the service.
+3. Prove directory sync and revocation within 15 minutes.
+4. Roll out HTTP SPN, browser policy, HAProxy hardening and NTLM block policy.
+5. Test LDAP and Windows with the same real person and check that the NodePilot user ID is the same.
+6. Enable OIDC/SCIM separately per IdP and test the provisioning/overage matrix.
+7. Only change the preview status after a passed real AD/Kerberos/LDAPS/NTLM field test.
+
+The complete operator guide and test matrix are in
 [ldap-windows-sso.md](ldap-windows-sso.md).
