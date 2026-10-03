@@ -97,8 +97,10 @@ The script starts disposable PostgreSQL 16 and SQL Server 2022 containers, runs 
 
 1. Branch off `main` and never commit directly to `main`.
 2. Keep commits focused and describe the *why* in the message.
-3. Open a PR using the template. CI must be green.
-4. Architectural decisions of lasting consequence get an ADR under `docs/adr/`. When one is warranted and the template are described in [`docs/adr/README.md`](docs/adr/README.md).
+3. Everything on GitHub is written in English: commit messages, branch names, PRs, issues and comments. Repository documentation and code comments keep the language of the file they are in.
+4. Write commit messages and PR descriptions plainly, the way a person would. `Co-Authored-By` trailers for tools that helped are welcome; they go at the end of the message and never replace the author.
+5. Open a PR using the template. CI must be green.
+6. Architectural decisions of lasting consequence get an ADR under `docs/adr/`. When one is warranted and the template are described in [`docs/adr/README.md`](docs/adr/README.md).
 
 ## Where to look
 

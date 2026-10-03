@@ -600,7 +600,7 @@ begin
 end;
 
 // Level 0 wraps every row. Level 1 cuts passing rows to one line, level 2 also warning and skipped
-// ones. Failing rows always keep their full text.
+// ones, level 3 failing ones too. A cut row leads the instructions box with its full text.
 procedure ApplyRowDensity(Level: Integer);
 var
   I: Integer;
@@ -608,7 +608,8 @@ begin
   for I := 0 to CheckCount - 1 do
   begin
     CheckCompact[I] := CheckLabels[I].Visible and
-      (((Level >= 1) and (CheckStatus[I] = 'Pass')) or ((Level >= 2) and (CheckStatus[I] <> 'Fail')));
+      (((Level >= 1) and (CheckStatus[I] = 'Pass')) or ((Level >= 2) and (CheckStatus[I] <> 'Fail'))
+       or (Level >= 3));
     if CheckCompact[I] then
     begin
       CheckLabels[I].AutoSize := False;
@@ -644,11 +645,11 @@ var
 begin
   ButtonTop := ReadinessPage.SurfaceHeight - ScaleY(24);
 
-  // The page does not scroll, so rows that do not fit would sit behind the instructions box.
-  // Rows are shortened step by step until the box keeps about four lines.
+  // The page does not scroll, so rows that do not fit would run off the page. Rows are shortened
+  // step by step until the box keeps about four lines; failing rows only as the last step.
   Level := 0;
   ApplyRowDensity(Level);
-  while (Level < 2) and (RowsHeight() + ScaleY(8) + ScaleY(60) > ButtonTop - ScaleY(6)) do
+  while (Level < 3) and (RowsHeight() + ScaleY(8) + ScaleY(60) > ButtonTop - ScaleY(6)) do
   begin
     Level := Level + 1;
     ApplyRowDensity(Level);

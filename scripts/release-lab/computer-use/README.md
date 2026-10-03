@@ -14,7 +14,10 @@ probes. Development builds may set `allowUnsignedDevelopmentArtifact: true`; thi
 only for versions containing `-dev` and does not waive artifact checksums, environment isolation
 or any UI case. Production configurations must leave it false and provide the publisher
 certificate. The installer files must be the exact artifacts under test. Review
-`coverage-review.json` whenever visible sources change; `catalog.py` fails closed on drift.
+`coverage-review.json` whenever shipped UI sources change (test files are not hashed);
+`gate.py catalog` fails closed on drift. No CI job runs the gate or `test_gate.py`, because this
+run is experimental: a stale `uiSourceHash` between runs is expected and is reviewed and refreshed
+while preparing the next run.
 
 After the existing server and desktop install matrices finish from clean checkpoints, initialize a
 run and inspect both targets. The server target is the configured `HYD-GW1` instance by default;

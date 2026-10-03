@@ -7,7 +7,7 @@
     Stages four payloads and compiles them with Inno Setup:
       app\     : self-contained .NET 10 API publish (win-x64) + the built SPA under wwwroot,
                  including the documentation site under wwwroot\docs (served at /docs)
-      desktop\ : the packaged Electron 43.7.6 shell (Chromium + Node, shipped in full)
+      desktop\ : the packaged Electron shell, version pinned in src\nodepilot-desktop\package.json
       pgsql\   : the bundled PostgreSQL binaries (from -PgBinariesPath)
       deploy\  : the provisioning / update / uninstall scripts + the appsettings template
 
