@@ -187,7 +187,12 @@ Catastrophic-backtracking on a custom user pattern shouldn't nuke the entire out
 Timeout returns the original string and emits a warning + metric so ops can spot the
 broken pattern before secrets leak repeatedly.
 
-- [OutputRedactor.cs:124](../src/NodePilot.Engine/Security/OutputRedactor.cs#L124) — `RegexMatchTimeoutException` catch
+Only operator patterns (`Logging:Redaction:Patterns`) carry that timeout. The built-in passes
+run without one: a wall-clock timeout also fired on a starved thread, and a timed-out pass
+dropped the redactions it had already made, so a busy host or a run of unclosed PEM markers let
+secrets through. The built-in regexes are linear; the two PEM shapes are paired by hand.
+
+- [OutputRedactor.cs](../src/NodePilot.Engine/Security/OutputRedactor.cs) — `ApplyPattern` (timeout catch), `RedactPemBlocks`
 
 ### M-5 — Widened Secret Pattern Coverage
 Default redactor patterns now cover commas/semicolons inside values, double- and
