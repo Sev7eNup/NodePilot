@@ -70,7 +70,7 @@ Triggers are also configured through the properties panel.
 Several levels are available for checking a workflow:
 
 - **Step test:** runs only the selected step with test data.
-- **Test run:** runs the workflow as a test. Parameters of a manual trigger are requested before the start.
+- **Run:** runs the workflow as a test. Parameters of a manual trigger are requested before the start.
 - **Debug run:** runs the workflow with breakpoints; expert mode only.
 - **Simulation:** shows the possible flow without executing activities; expert mode only.
 - **Lint:** shows missing mandatory values, unreachable nodes and other problems.
@@ -121,7 +121,7 @@ The workflow can be exported as JSON. A PNG file captures the current canvas vie
 | `Ctrl+Shift+S` | Publish, enable or disable |
 | `Ctrl+E` | Request the edit lock |
 | `Ctrl+U` | Release the edit lock |
-| `Ctrl+Enter` | Start a test run |
+| `Ctrl+Enter` | Start a run |
 | `Ctrl+Shift+X` | Cancel the running execution |
 | `Ctrl+Z` | Undo a change |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Redo a change |

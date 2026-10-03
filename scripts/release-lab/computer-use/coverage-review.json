@@ -1,5 +1,5 @@
 {
   "schemaVersion": 1,
-  "uiSourceHash": "a563809828bf072afa901f2c53934109b8008fb0232cf315b90dcfc1ebd65f71",
+  "uiSourceHash": "b8c01d03ad1e7884eea52fc1390cf232d77abf30b1f93812b3d679fdb785a792",
   "reviewNote": "Catalog maps all current routes, 33 Activity types, 22 system settings sections and 11 appearance options. Journey checkpoints cover workflow lifecycle, designer controls, roles, operations, backup and native shell. Reviewed workflow editor PNG export (WF-03 native Save As and saved image), localized login validation (AUTH-01 in DE and EN), and immediate folder count refresh after workflow mutations (WF-01 before and after reload). Per-route DE/EN cases require an explicit dialog inventory in their observations. Sources: App.tsx, ActivityCatalog.cs, SettingsSchema.cs, themeStore.ts, docs/testing/E2ETests.md and the current page/component sources. This records coverage, not a passed UI result."
 }

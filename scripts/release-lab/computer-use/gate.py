@@ -74,7 +74,8 @@ def inventory(root=ROOT):
     def text(relative):
         return (root / relative).read_text(encoding='utf-8-sig')
     ui = root / 'src/nodepilot-ui/src'
-    files = sorted([*ui.rglob('*.tsx'), ui / 'stores/themeStore.ts'])
+    files = sorted([*(p for p in ui.rglob('*.tsx') if '__tests__' not in p.parts and not p.name.endswith('.test.tsx')),
+        ui / 'stores/themeStore.ts'])
     return {
         'routes': sorted(set(re.findall(r"path: '([^']+)'", text('src/nodepilot-ui/src/App.tsx')))),
         'activities': sorted(re.findall(r'^\s*(?:Action|Logic|ControlFlow|Trigger)\("([^"]+)"',

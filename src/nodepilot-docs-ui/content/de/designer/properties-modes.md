@@ -70,7 +70,7 @@ Auch Trigger werden über das Eigenschaften-Panel eingerichtet.
 Für die Prüfung eines Workflows stehen mehrere Ebenen zur Verfügung:
 
 - **Step Test:** führt nur den ausgewählten Schritt mit Testdaten aus.
-- **Test Run:** führt den Workflow als Test aus. Parameter eines manuellen Triggers werden vor dem Start abgefragt.
+- **Ausführen:** führt den Workflow als Test aus. Parameter eines manuellen Triggers werden vor dem Start abgefragt.
 - **Debug Run:** führt den Workflow mit Breakpoints aus; nur im Expertenmodus.
 - **Simulation:** zeigt den möglichen Ablauf, ohne Activities auszuführen; nur im Expertenmodus.
 - **Lint:** zeigt fehlende Pflichtangaben, nicht erreichbare Nodes und weitere Probleme.
