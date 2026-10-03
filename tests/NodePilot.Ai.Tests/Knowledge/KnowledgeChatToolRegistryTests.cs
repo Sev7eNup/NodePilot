@@ -279,7 +279,7 @@ public class KnowledgeChatToolRegistryTests
         var reg = Registry(out _, out _, out _);
         var op = new FakeOperationalKnowledgeReader();
         op.ScheduledFires.Add(new ScheduledFireForecast(
-            Guid.NewGuid(), "Nightly Backup", "0 0 2 * * ?", "at 02:00",
+            Guid.NewGuid(), "Nightly Backup", "0 0 2 * * ?",
             new[] { new DateTime(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc) }));
 
         var r = await reg.ExecuteAsync("get_next_scheduled_fires", """{"idOrName":"Nightly Backup","count":3}""", Ctx(opReader: op), CancellationToken.None);

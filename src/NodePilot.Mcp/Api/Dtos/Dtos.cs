@@ -145,7 +145,7 @@ public sealed record CancelAllResponse(int Total, int Signalled);
 public sealed record ResumeExecutionRequest(string StepId, string Mode, Dictionary<string, string>? Overrides = null);
 
 // ---- Scheduler ----
-public sealed record NextFiresResponse(List<DateTime> Fires, string Summary);
+public sealed record NextFiresResponse(List<DateTime> Fires);
 
 // ---- Step test ----
 // ConfigOverride is executable unsaved editor state; the API requires Edit + the caller's lock.

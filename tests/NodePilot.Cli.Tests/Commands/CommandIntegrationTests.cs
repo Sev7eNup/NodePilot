@@ -832,11 +832,11 @@ public class CommandIntegrationTests
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
             {
                 fires = new[] { DateTime.UtcNow },
-                summary = "every hour",
             }));
 
-        var result = h.Run("cron", "next", "0 0 * * * ?", "--count", "1");
+        var result = h.Run("cron", "next", "0 0 * * * ?", "--count", "1", "-o", "table");
         result.ExitCode.Should().Be(ExitCodes.Success);
+        result.Output.Should().Contain("0 0 * * * ?", "the expression heads the list of fire times");
     }
 
     [Fact]

@@ -30,7 +30,7 @@ public sealed class CronNextCommand : BaseCommand<CronNextSettings>
         var result = await api.CronNextFiresAsync(settings.Cron, settings.Count, ct);
         writer.WriteData(result, (console, v) =>
         {
-            console.MarkupLine($"[bold]{Markup.Escape(v.Summary)}[/]");
+            console.MarkupLine($"[bold]{Markup.Escape(settings.Cron)}[/]");
             foreach (var f in v.Fires)
                 console.MarkupLine($"  {f.ToLocalTime():u}");
         });

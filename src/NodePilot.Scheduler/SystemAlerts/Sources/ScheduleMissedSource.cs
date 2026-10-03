@@ -58,7 +58,7 @@ public sealed class ScheduleMissedSource : ISystemAlertSource
                 var cronRaw = ScheduledWorkflowSignalHelpers.CronExpression(trigger);
                 if (cronRaw is null) continue;
                 CronExpression cron;
-                try { cron = new CronExpression(cronRaw) { TimeZone = TimeZoneInfo.Local }; }
+                try { cron = new CronExpression(cronRaw, TimeZoneInfo.Local); }
                 catch (FormatException) { continue; }
 
                 var expected = PreviousFireBefore(cron, now - lookback, now);

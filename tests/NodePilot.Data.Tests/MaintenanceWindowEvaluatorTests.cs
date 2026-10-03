@@ -438,6 +438,58 @@ public class MaintenanceWindowEvaluatorTests
             .Should().BeFalse("03:30 UTC is 04:30 Berlin local — outside");
     }
 
+    [Fact]
+    public async Task CronBlackout_FireInSpringForwardGap_OpensAtTheEndOfTheGap()
+    {
+        await using var db = TestDbFactory.Create();
+        // 2026-03-29 Berlin skips 02:00-03:00 local, so 02:30 does not exist that night.
+        // The fire moves to 03:00 CEST (01:00 UTC) and the window keeps its 60 minutes.
+        db.MaintenanceWindows.Add(Cron("GapCron", MaintenanceMode.Blackout, "0 30 2 * * ?", 60,
+            tz: "W. Europe Standard Time"));
+        await db.SaveChangesAsync();
+        var ev = await BuildAsync(db);
+
+        var opened = ev.Evaluate(Guid.NewGuid(), Guid.NewGuid(), new DateTime(2026, 3, 29, 1, 15, 0, DateTimeKind.Utc));
+        opened.Blocked.Should().BeTrue("03:15 CEST is inside the window that opened at the end of the gap");
+        opened.ActiveUntilUtc.Should().Be(new DateTime(2026, 3, 29, 2, 0, 0, DateTimeKind.Utc));
+        ev.Evaluate(Guid.NewGuid(), Guid.NewGuid(), new DateTime(2026, 3, 29, 2, 0, 0, DateTimeKind.Utc)).Blocked
+            .Should().BeFalse("the window closes 60 minutes after 03:00 CEST");
+    }
+
+    [Fact]
+    public async Task CronBlackout_FallBackNight_SubHourlyFiresCoverTheRepeatedHour()
+    {
+        await using var db = TestDbFactory.Create();
+        // 2026-10-25 Berlin repeats 02:00-03:00 local (00:00-01:00 UTC as CEST, 01:00-02:00 UTC
+        // as CET). A quarter-hourly window must also open during the second pass.
+        db.MaintenanceWindows.Add(Cron("QuarterCron", MaintenanceMode.Blackout, "0 0/15 * * * ?", 10,
+            tz: "W. Europe Standard Time"));
+        await db.SaveChangesAsync();
+        var ev = await BuildAsync(db);
+
+        ev.Evaluate(Guid.NewGuid(), Guid.NewGuid(), new DateTime(2026, 10, 25, 0, 5, 0, DateTimeKind.Utc)).Blocked
+            .Should().BeTrue("02:05 CEST, first pass");
+        ev.Evaluate(Guid.NewGuid(), Guid.NewGuid(), new DateTime(2026, 10, 25, 1, 5, 0, DateTimeKind.Utc)).Blocked
+            .Should().BeTrue("02:05 CET, second pass of the repeated hour");
+    }
+
+    // Quartz 3 and 4 agree here: asked from inside the repeated hour, a daily expression yields
+    // the repeated 02:30 as a fire, so the window opens a second time that night.
+    [Fact]
+    public async Task CronBlackout_FallBackNight_DailyWindowOpensInBothPasses()
+    {
+        await using var db = TestDbFactory.Create();
+        db.MaintenanceWindows.Add(Cron("DailyCron", MaintenanceMode.Blackout, "0 30 2 * * ?", 20,
+            tz: "W. Europe Standard Time"));
+        await db.SaveChangesAsync();
+        var ev = await BuildAsync(db);
+
+        ev.Evaluate(Guid.NewGuid(), Guid.NewGuid(), new DateTime(2026, 10, 25, 0, 40, 0, DateTimeKind.Utc)).Blocked
+            .Should().BeTrue("02:40 CEST follows the first 02:30");
+        ev.Evaluate(Guid.NewGuid(), Guid.NewGuid(), new DateTime(2026, 10, 25, 1, 40, 0, DateTimeKind.Utc)).Blocked
+            .Should().BeTrue("02:40 CET follows the repeated 02:30");
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData(0)]
