@@ -57,7 +57,6 @@ public class TriggersControllerTests
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
         var resp = ok.Value.Should().BeOfType<NextFiresResponse>().Subject;
         resp.Fires.Should().HaveCount(5);
-        resp.Summary.Should().NotBeNullOrEmpty();
     }
 
     [Fact]

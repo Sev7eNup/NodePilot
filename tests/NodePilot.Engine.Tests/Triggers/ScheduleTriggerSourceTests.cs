@@ -171,7 +171,6 @@ public class ScheduleTriggerSourceTests
         var scheduler = new Mock<IScheduler>();
         var factory = new Mock<ISchedulerFactory>();
         factory.Setup(f => f.GetScheduler(It.IsAny<CancellationToken>())).ReturnsAsync(scheduler.Object);
-        factory.Setup(f => f.GetScheduler(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(scheduler.Object);
 
         var cap1 = ConfigWith(("Trigger:Schedule:MaxActiveJobs", "1"));
         var first = new ScheduleTriggerSource(

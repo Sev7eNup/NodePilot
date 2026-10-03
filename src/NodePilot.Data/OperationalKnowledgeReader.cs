@@ -74,7 +74,7 @@ public sealed class OperationalKnowledgeReader(NodePilotDbContext db, IAuditDeta
                 if (string.IsNullOrWhiteSpace(cron)) continue;
 
                 CronExpression parsed;
-                try { parsed = new CronExpression(cron) { TimeZone = TimeZoneInfo.Local }; }
+                try { parsed = new CronExpression(cron, TimeZoneInfo.Local); }
                 catch (FormatException) { continue; }
 
                 var fires = new List<DateTime>(perWorkflow);
@@ -87,7 +87,7 @@ public sealed class OperationalKnowledgeReader(NodePilotDbContext db, IAuditDeta
                 }
                 if (fires.Count == 0) continue;
 
-                forecasts.Add(new ScheduledFireForecast(w.Id, w.Name, cron, SafeSummary(parsed), fires));
+                forecasts.Add(new ScheduledFireForecast(w.Id, w.Name, cron, fires));
                 if (forecasts.Count >= maxWorkflows) break;
             }
         }
@@ -96,12 +96,6 @@ public sealed class OperationalKnowledgeReader(NodePilotDbContext db, IAuditDeta
     }
 
     // ---- helpers -------------------------------------------------------------------------------
-
-    private static string? SafeSummary(CronExpression cron)
-    {
-        try { return cron.GetExpressionSummary()?.Trim(); }
-        catch (Exception) { return null; }
-    }
 
     private static bool IsNoAccess(AccessibleFolderSet a) => !a.IsUnrestricted && a.FolderIds.Count == 0;
 

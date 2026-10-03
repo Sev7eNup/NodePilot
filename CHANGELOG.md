@@ -18,6 +18,17 @@ exhaustive.
   many checks fail or warn. If space runs short, passing, warning and skipped rows are shortened to
   one line and show their full text when selected; failing rows are always shown in full.
 
+### Changed
+
+- **Quartz 4.** Schedule triggers and cron maintenance windows run on Quartz 4.2. Two daylight saving
+  cases behave differently: a time that does not exist when clocks spring forward now fires at the
+  end of the gap (03:00 instead of 03:30 for a 02:30 schedule), and schedules that repeat every hour
+  or more often keep firing through the repeated hour when clocks fall back instead of skipping it.
+- Cron expressions with both day fields set to `*` (such as `0 0 2 * * *`) are now accepted. A
+  step width of 0 (`0/0`) and years after 2199 are rejected when a workflow is published.
+- `GET /api/triggers/schedule/next-fires`, `np cron next` and the MCP tool `validate_cron` no longer
+  return a `summary`. Quartz 4 dropped it; the next fire times are unchanged.
+
 ## [1.4.3] - 2026-09-30
 
 ### Changed

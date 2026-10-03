@@ -65,9 +65,8 @@ public class ScheduleTriggerSource : ITriggerSource
         // Validate cron syntax + minimum interval BEFORE touching the scheduler so a rogue
         // workflow can't partially-register a job and then throw.
         CronExpression parsed;
-        try { parsed = new CronExpression(cron); }
+        try { parsed = new CronExpression(cron, TimeZoneInfo.Local); }
         catch (FormatException ex) { throw new InvalidOperationException($"ScheduleTrigger: invalid cron '{cron}': {ex.Message}"); }
-        parsed.TimeZone = TimeZoneInfo.Local;
 
         var minIntervalSeconds = _config.GetValue<int?>("Trigger:Schedule:MinIntervalSeconds") ?? 60;
         if (minIntervalSeconds > 1)
@@ -141,10 +140,10 @@ public class ScheduleTriggerSource : ITriggerSource
             .WithIdentity(_triggerKey)
             .WithCronSchedule(cron, x => x
                 .InTimeZone(TimeZoneInfo.Local)
-                .WithMisfireHandlingInstructionDoNothing())
+                .WithMisfireInstruction(CronTriggerMisfireInstruction.DoNothing))
             .Build();
 
-        await scheduler.ScheduleJob(job, trigger, ct);
+        await scheduler.ScheduleJob(job, trigger, cancellationToken: ct);
         _logger.LogInformation("ScheduleTrigger: scheduled {Job} with cron '{Cron}'", _jobKey, cron);
     }
 
@@ -274,7 +273,7 @@ public class ScheduleJob : IJob
     public static void Register(string key, Func<Dictionary<string, string>, Task> callback) => _callbacks[key] = callback;
     public static bool Unregister(string key) => _callbacks.TryRemove(key, out _);
 
-    public async Task Execute(IJobExecutionContext context)
+    public async ValueTask Execute(IJobExecutionContext context, CancellationToken cancellationToken)
     {
         var key = context.JobDetail.JobDataMap.GetString("callbackKey");
         if (key is null || !_callbacks.TryGetValue(key, out var cb)) return;

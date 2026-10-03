@@ -100,7 +100,7 @@ public sealed class DiscoveryTools
     {
         var clamped = Math.Clamp(count, 1, 20);
         var res = await ApiErrorMapper.Guard(() => _api.CronNextFiresAsync(cron, clamped, cancellationToken));
-        return new { valid = true, summary = res.Summary, nextFires = res.Fires };
+        return new { valid = true, nextFires = res.Fires };
     }
 
     // The destructive tools that ACTUALLY exist today and are gated out by default. Keep this

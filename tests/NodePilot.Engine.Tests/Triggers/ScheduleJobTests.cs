@@ -31,7 +31,7 @@ public class ScheduleJobTests
             var next = new DateTime(2026, 5, 9, 12, 5, 0, DateTimeKind.Utc);
             var ctx = BuildContext(key, fireTime, next);
 
-            await new ScheduleJob().Execute(ctx);
+            await new ScheduleJob().Execute(ctx, CancellationToken.None);
 
             captured.Should().NotBeNull();
             captured!.Should().ContainKey("firedAt");
@@ -52,7 +52,7 @@ public class ScheduleJobTests
         // fire one last time depending on timing, and the job must no-op rather than throw.
         var ctx = BuildContext("not-registered", DateTime.UtcNow, DateTime.UtcNow.AddMinutes(5));
 
-        var act = () => new ScheduleJob().Execute(ctx);
+        var act = async () => await new ScheduleJob().Execute(ctx, CancellationToken.None);
 
         await act.Should().NotThrowAsync();
     }
@@ -72,7 +72,7 @@ public class ScheduleJobTests
         {
             var ctx = BuildContext(key, DateTime.UtcNow, nextFire: null);
 
-            await new ScheduleJob().Execute(ctx);
+            await new ScheduleJob().Execute(ctx, CancellationToken.None);
 
             captured.Should().NotBeNull();
             captured!["nextFireAt"].Should().Be("");

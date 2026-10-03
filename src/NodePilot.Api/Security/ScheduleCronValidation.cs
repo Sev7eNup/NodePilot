@@ -7,13 +7,10 @@ namespace NodePilot.Api.Security;
 /// <summary>
 /// Publish/import validation for scheduleTrigger cron expressions.
 ///
-/// <para>Three surfaces answered "is this cron usable?" and only the one the author never sees —
-/// the scheduler source — used Quartz. The node executor accepted any non-blank string and the
-/// designer preview parses Unix cron, which accepts expressions Quartz rejects (Quartz requires
-/// exactly one of day-of-month / day-of-week to be "?"). The result was green everywhere, a
-/// registration exception in the orchestrator's silent backoff, and a workflow that displayed
-/// itself as active and never fired. This closes that gap with the same parser the scheduler
-/// uses, at the point where the definition is stored.</para>
+/// <para>Uses the same Quartz parser as the scheduler source, at the point where the definition is
+/// stored. The designer preview parses Unix cron, so without this an expression Quartz rejects
+/// would look valid, fail registration in the orchestrator's silent backoff, and leave a workflow
+/// that shows itself as active and never fires.</para>
 /// </summary>
 internal static class ScheduleCronValidation
 {
@@ -41,10 +38,10 @@ internal static class ScheduleCronValidation
             var cron = cronElement.GetString();
             if (string.IsNullOrWhiteSpace(cron)) continue;
 
-            if (!CronExpression.IsValidExpression(cron))
+            if (!CronExpression.TryParse(cron, out _))
             {
                 return $"scheduleTrigger '{trigger.Id}' has a cron expression Quartz cannot parse: '{cron}'. "
-                    + "Quartz uses 6 or 7 fields and requires exactly one of day-of-month / day-of-week to be '?' "
+                    + "Quartz uses 6 or 7 fields, starting with seconds "
                     + "(for example '0 0 2 * * ?' for daily at 02:00).";
             }
         }

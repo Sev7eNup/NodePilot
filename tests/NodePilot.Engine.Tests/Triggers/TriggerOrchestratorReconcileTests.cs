@@ -45,15 +45,13 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
         _connection.Open();
 
         _scheduler = new Mock<IScheduler>();
-        _scheduler.Setup(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()))
+        _scheduler.Setup(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<ScheduleJobOptions>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(DateTimeOffset.UtcNow);
         _scheduler.Setup(s => s.DeleteJob(It.IsAny<JobKey>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
         _schedulerFactory = new Mock<ISchedulerFactory>();
         _schedulerFactory.Setup(f => f.GetScheduler(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(_scheduler.Object);
-        _schedulerFactory.Setup(f => f.GetScheduler(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(_scheduler.Object);
 
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -161,7 +159,7 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
 
         await _orchestrator.SyncAsync(CancellationToken.None);
 
-        _scheduler.Verify(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()),
+        _scheduler.Verify(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<ScheduleJobOptions>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -181,7 +179,7 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
 
         await _orchestrator.SyncAsync(CancellationToken.None);
 
-        _scheduler.Verify(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()),
+        _scheduler.Verify(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<ScheduleJobOptions>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -192,7 +190,7 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
 
         await _orchestrator.SyncAsync(CancellationToken.None);
 
-        _scheduler.Verify(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()),
+        _scheduler.Verify(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<ScheduleJobOptions>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -204,7 +202,7 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
         await _orchestrator.SyncAsync(CancellationToken.None);
         await _orchestrator.SyncAsync(CancellationToken.None);
 
-        _scheduler.Verify(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()),
+        _scheduler.Verify(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<ScheduleJobOptions>(), It.IsAny<CancellationToken>()),
             Times.Once);
         _scheduler.Verify(s => s.DeleteJob(It.IsAny<JobKey>(), It.IsAny<CancellationToken>()),
             Times.Never);
@@ -252,7 +250,7 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
 
         _scheduler.Verify(s => s.DeleteJob(It.IsAny<JobKey>(), It.IsAny<CancellationToken>()),
             Times.AtLeastOnce);
-        _scheduler.Verify(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()),
+        _scheduler.Verify(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<ScheduleJobOptions>(), It.IsAny<CancellationToken>()),
             Times.Exactly(2));
     }
 

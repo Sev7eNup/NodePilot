@@ -210,7 +210,7 @@ public class MaintenanceWindowsController : ControllerBase
         {
             if (string.IsNullOrWhiteSpace(cron))
                 return Fail("Cron windows require a cronExpression", out error);
-            if (!Quartz.CronExpression.IsValidExpression(cron.Trim()))
+            if (!Quartz.CronExpression.TryParse(cron.Trim(), out _))
                 return Fail($"Invalid Quartz cron expression '{cron.Trim()}'", out error);
             if (durationMinutes is null or <= 0)
                 return Fail("Cron windows require durationMinutes greater than 0", out error);

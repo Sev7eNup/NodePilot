@@ -5,12 +5,9 @@ using Xunit;
 namespace NodePilot.Api.Tests.Security;
 
 /// <summary>
-/// Quartz-accurate cron validation at publish/enable. Three surfaces answered "is this cron
-/// usable?" and only the scheduler source — which the author never sees — used Quartz. The node
-/// executor accepted any non-blank string and the designer preview parses Unix cron, so the
-/// natural 6-field expression "0 0 2 * * *" was green everywhere, failed registration inside the
-/// orchestrator's silent backoff, and left a workflow that displayed itself as active and never
-/// fired.
+/// Publish/enable validation must agree with the Quartz parser the scheduler uses: an expression
+/// the designer's Unix-cron preview accepts but Quartz rejects would otherwise look valid and
+/// never fire.
 /// </summary>
 public class ScheduleCronValidationTests
 {
@@ -24,14 +21,16 @@ public class ScheduleCronValidationTests
     [InlineData("0 */5 * * * ?")]
     [InlineData("0 0 2 ? * MON-FRI")]
     [InlineData("0 0 2 * * ? *")]
+    // Quartz 4 accepts both day fields as '*', which Quartz 3 rejected.
+    [InlineData("0 0 2 * * *")]
     public void ValidateDefinition_QuartzAcceptableExpression_IsAccepted(string cron)
         => ScheduleCronValidation.ValidateDefinition(Definition(cron)).Should().BeNull();
 
     [Theory]
-    // Both day-of-month and day-of-week specified — Quartz requires exactly one to be "?".
-    [InlineData("0 0 2 * * *")]
     // Unix 5-field form.
     [InlineData("0 2 * * *")]
+    // Zero step width: accepted by Quartz 3, rejected by Quartz 4.
+    [InlineData("0 0/0 * * * ?")]
     [InlineData("not a cron")]
     public void ValidateDefinition_ExpressionQuartzRejects_IsReported(string cron)
     {
