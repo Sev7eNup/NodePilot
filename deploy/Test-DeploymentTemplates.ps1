@@ -1312,6 +1312,11 @@ Assert-TextMatches -Name 'rows are shortened when they do not fit the page' `
     -Text $serverIss -Pattern '(?s)procedure ApplyRowDensity.*?CheckLabels\[I\]\.WordWrap := False'
 Assert-TextMatches -Name 'a shortened row shows its full text when selected' `
     -Text $serverIss -Pattern '(?s)if CheckCompact\[Index\] then\s+RemediationText := CheckLabels\[Index\]\.Caption'
+# With many failing rows, cutting the other rows is not enough; failing rows are cut last.
+Assert-TextMatches -Name 'failing rows are shortened as the last step' `
+    -Text $serverIss -Pattern '(?s)procedure ApplyRowDensity.*?or \(Level >= 3\)'
+Assert-TextMatches -Name 'the layout reaches the failing-row step' `
+    -Text $serverIss -Pattern 'while \(Level < 3\) and'
 
 # --- certificate picker ---------------------------------------------------------------------------
 # The thumbprint of a certificate already installed on the machine is otherwise only reachable

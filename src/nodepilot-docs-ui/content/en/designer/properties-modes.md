@@ -77,7 +77,7 @@ Several levels are available for checking a workflow:
 
 Errors from the lint check prevent publishing. Warnings have to be acknowledged before publishing.
 
-Unsaved changes are saved before a run or a debug run. A running execution can be cancelled.
+With the edit lock held, unsaved changes are saved before a run or a debug run. Without the lock, a run executes the saved version, and its parameters are the ones requested. A running execution can be cancelled.
 
 ## Monitoring a run
 

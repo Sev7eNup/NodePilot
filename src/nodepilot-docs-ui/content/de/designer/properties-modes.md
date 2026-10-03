@@ -77,7 +77,7 @@ Für die Prüfung eines Workflows stehen mehrere Ebenen zur Verfügung:
 
 Fehler aus der Lint-Prüfung verhindern die Veröffentlichung. Warnungen müssen vor der Veröffentlichung bestätigt werden.
 
-Ungespeicherte Änderungen werden vor einer Ausführung oder einem Debug-Lauf gespeichert. Eine laufende Ausführung kann abgebrochen werden.
+Mit gehaltener Bearbeitungssperre werden ungespeicherte Änderungen vor einer Ausführung oder einem Debug-Lauf gespeichert. Ohne Sperre läuft die gespeicherte Fassung, und abgefragt werden deren Parameter. Eine laufende Ausführung kann abgebrochen werden.
 
 ## Lauf überwachen
 

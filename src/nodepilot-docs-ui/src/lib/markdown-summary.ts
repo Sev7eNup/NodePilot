@@ -1,8 +1,8 @@
 /**
  * First prose paragraph of a documentation page, used as its meta description.
  *
- * The pages carry no hand-written descriptions, and 88 of them would go stale the moment the
- * text below them changed. The opening paragraph is what the page is about by construction.
+ * The pages carry no hand-written descriptions, because each one would go stale the moment the
+ * text below it changed. The opening paragraph is what the page is about by construction.
  */
 
 const FENCE = /^(```|~~~)/

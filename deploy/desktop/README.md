@@ -295,7 +295,8 @@ Honest inventory so nobody assumes more coverage than exists:
   `npm run test:run` in `src/nodepilot-desktop` (vitest, node environment) covers `config.ts`
   (desktop.json handoff validation — origin, fingerprint, serviceName injection barrier),
   `security.ts` (certificate-pin match/mismatch/parse-failure, non-loopback rejection, permission
-  and download blocking, navigation containment), `skins.ts` (favicon → skin-icon resolution,
+  blocking, the download gate — same-origin allowed, foreign origins and unregistered windows
+  blocked — and navigation containment), `skins.ts` (favicon → skin-icon resolution,
   including the path-charset guard on the renderer-supplied id) and `setupFlow.ts` (setup page vs.
   app window, handling of a rejected setup token). What still needs a real Electron
   process — the setup-token IPC guard, the elevated `restartBackend` path, window lifecycle, and
