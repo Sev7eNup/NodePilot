@@ -86,8 +86,9 @@ service-environment value.
   trust store is modified, so an ordinary browser visiting the URL *may warn* — that is expected;
   Electron is the supported entry point.
 - **Electron hardening:** the SPA window has `contextIsolation`, `sandbox`, `webSecurity` on,
-  `nodeIntegration` off, and **no preload / no IPC**. Navigation off-origin, popups, downloads, and
-  permission requests are all blocked.
+  `nodeIntegration` off, and **no preload / no IPC**. Navigation off-origin, popups, and permission
+  requests are all blocked. Downloads are allowed only when the whole URL chain stays on the app's
+  own origin, and Electron's native Save As dialog picks the destination — no renderer-supplied path.
 - **First-run token never reaches the renderer.** See below.
 - **Minimal ACLs** on ProgramData, the service registry key, the cert key, `pgdata`, `secrets\`,
   `backups\`, and the per-user handoff file.
@@ -282,7 +283,7 @@ The `spa` component syncs two bundles, and the order matters: the SPA mirror run
 exclusion every sync would silently remove the documentation, and `/docs` would 404 long after the
 cause. `DocsSiteDeploymentTests` guards it.
 
-Quit the installed shell first (tray → *Quit Electron*) before `npm start`: both resolve to the same
+Quit the installed shell first (tray → *Quit NodePilot*) before `npm start`: both resolve to the same
 `productName`, so the single-instance lock makes the second one focus the first and exit. Shell
 changes reach the *installed* app only through a new installer — `app.asar` is not patchable.
 
