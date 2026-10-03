@@ -214,6 +214,7 @@ Each activity type has its own config component (`properties/activities/`, regis
 - **Run** (`Ctrl+Enter`): starts immediately, or opens the parameter dialog for a `manualTrigger` that declares parameters (prefilled with the values last used).
 - **Debug run** (Expert, `Ctrl+Shift+Enter`): runs with `debug: true` → breakpoints are active.
 - **Auto-save before a run:** unsaved changes are saved first when you have write permission.
+- **Without the edit lock** a run executes the saved definition, so the parameter dialog asks for the parameters of the saved `manualTrigger`, not for the canvas you are looking at.
 - **Cancel run** (`Ctrl+Shift+X`): aborts the running execution.
 - **Canvas pinning:** a started execution is pinned → nodes and paths colour live; a snapshot keeps it after the 30 s SignalR TTL.
 

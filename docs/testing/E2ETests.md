@@ -5094,6 +5094,43 @@ Geprüft wird:
 
 ---
 
+## Teil 86: Geführte Aufgaben der Browser-Demo
+
+**Automatisiert** in `src/nodepilot-ui/e2e-demo/guided-tour.spec.ts` (Aufgaben `file` und `diagnose`)
+und `src/nodepilot-ui/e2e-demo/additional-tours.spec.ts` (die acht weiteren), gleiche Config und
+gleicher Aufruf wie Teil 85.
+
+Die Demo bietet zehn geführte Aufgaben, gestartet über `?tour=<id>`. Jede Aufgabe wird über die
+echte Oberfläche erledigt; das Panel `.np-tour` meldet seinen Fortschritt in `data-stage`, und die
+Tests prüfen diese Stufen statt Texte.
+
+Geprüft wird:
+
+1. **Direkter Einstieg** — jede der acht neuen Aufgaben öffnet per Link in Deutsch und Englisch,
+   ohne in den Reset-Zustand zu fallen. Die Aufgabenübersicht ist aus beiden Panels erreichbar.
+2. **Datei-Aufgabe (`file`)** — Ausführen über den echten Parameter-Dialog bis `success`, das
+   Ergebnis zeigt den geschriebenen Konfigurationswert; die anschließende Analyse findet den
+   fehlgeschlagenen Kopierschritt (`Access denied`). Danach ist der Tour-Parameter aus der Adresse
+   entfernt, ohne Konsolenfehler.
+3. **Diagnose (`diagnose`)** — öffnet direkt auf Englisch, übersteht Navigation und startet nach
+   einem Reload neu.
+4. **Entscheidung (`decision`)** — bei 8 GB läuft nur der kritische Zweig.
+5. **Parallel (`parallel`)** — beide Zweige enden vor dem `waitAll`, das Gantt-Diagramm zeigt sie.
+6. **Dienst (`service`)** — der Dienst wird gestartet und geprüft, bevor die Wiederherstellungs-Mail
+   rausgeht.
+7. **Live (`live`)** — ein laufender Lauf wird aus Live-Ops abgebrochen.
+8. **Versionen (`versions`)** — die Antwort zählt erst, wenn die ältere Version im Vergleich gewählt ist.
+9. **Maschine (`machine`)** und **Wartung (`maintenance`)** — Suche und Statusantwort bzw. das
+   Bearbeiten des Wartungsfensters schließen die Aufgabe ab.
+10. **Aufbauen (`build`)** — Kanten ziehen, speichern, veröffentlichen und ausführen; der
+    Fortschritt springt erst nach dem Lauf auf die nächste Aufgabe.
+11. **Navigation und Reload** — eine Aufgabe übersteht Navigation im Client (mit Fortsetzen-Knopf)
+    und beginnt nach einem Reload von vorn.
+12. **Breiten** — das Panel passt bei 390, 768 und 1440 px ohne horizontales Scrollen; auf dem
+    Telefon bietet die Datei-Aufgabe den nativen Ausführen-Dialog.
+
+---
+
 ## Bekannte Limitation & Gotchas
 
 - **WinRM-Tests:** Remote-Activities erfordern echte Machines oder Mock-Setup. In Test-Environment: `Remote:Provider: noop` verwenden.
@@ -5114,6 +5151,6 @@ Geprüft wird:
 
 ---
 
-**Letzte Aktualisierung:** 2026-09-27 — Teil 85 auf die Demo unter sauberen Pfaden nachgezogen (Seiten-Fallback, root-absolute Assets, Hash-Link-Umschreibung, `routing.spec.ts`).
+**Letzte Aktualisierung:** 2026-10-03 — Teil 86 für die zehn geführten Aufgaben der Browser-Demo ergänzt.
 **Autor:** sev7enup
 **Projekt:** NodePilot E2E Test Suite

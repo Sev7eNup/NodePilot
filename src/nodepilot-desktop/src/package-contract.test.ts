@@ -7,6 +7,7 @@ import { assertElectronRuntimeVersion } from '../scripts/assert-electron-runtime
 
 interface PackageManifest {
   devDependencies: Record<string, string>;
+  '//types-node': string[];
 }
 
 interface PackageLock {
@@ -29,6 +30,14 @@ describe('desktop runtime dependency contract', () => {
     expect(manifest.devDependencies.electron).toBe('43.7.6');
     expect(lock.packages[''].devDependencies?.electron).toBe('43.7.6');
     expect(lock.packages['node_modules/electron'].version).toBe('43.7.6');
+  });
+
+  // The embedded Node major changes with Electron majors. Naming the pinned version in the note
+  // makes a bump fail here until someone has checked the Node release behind the new one.
+  it('names the pinned Electron in the embedded-Node note', () => {
+    const manifest = readJson<PackageManifest>('../package.json');
+
+    expect(manifest['//types-node'].join(' ')).toContain(`Electron ${manifest.devDependencies.electron} bundles Node`);
   });
 
   it('uses Electron vendor extraction without the vulnerable extract-zip package', () => {

@@ -12,11 +12,16 @@ exhaustive.
 
 ## [1.4.4] - Unreleased
 
+### Added
+
+- The website publishes an `llms.txt` at its root: a short English index of the site and the
+  documentation for AI assistants.
+
 ### Fixed
 
 - The prerequisites page of the server setup no longer hides rows behind the instructions box when
-  many checks fail or warn. If space runs short, passing, warning and skipped rows are shortened to
-  one line and show their full text when selected; failing rows are always shown in full.
+  many checks fail or warn. If space runs short, rows are shortened to one line and show their full
+  text when selected: passing rows first, then warning and skipped ones, failing rows only last.
 
 ## [1.4.3] - 2026-09-30
 

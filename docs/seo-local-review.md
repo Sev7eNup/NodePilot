@@ -1,5 +1,7 @@
 # Lokale SEO-Umsetzung
 
+> **Protokoll, Stand 27.09.2026.** Die Zahlen unten wurden an diesem Build gemessen und werden nicht nachgeführt. Aktuelle Seitenzahlen stehen im `README.md`.
+
 Branch: `fix/seo-local`, basierend auf veröffentlichtem `origin/main` (`3ba63cb`).
 Worktree: `E:/NodePilot-seo`. Am 27.09.2026 wurden Veröffentlichung und PR beauftragt. Der ursprüngliche Arbeitsordner und seine vorhandenen Änderungen bleiben unberührt. Kein neues Produktrelease.
 
