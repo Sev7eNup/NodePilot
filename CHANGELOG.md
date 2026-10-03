@@ -27,6 +27,7 @@ exhaustive.
   step width of 0 (`0/0`) and years after 2199 are rejected when a workflow is published.
 - `GET /api/triggers/schedule/next-fires`, `np cron next` and the MCP tool `validate_cron` no longer
   return a `summary`. Quartz 4 dropped it; the next fire times are unchanged.
+- The desktop app runs on Electron 44.4.5 (Chromium 152, Node 24).
 
 ### Fixed
 
