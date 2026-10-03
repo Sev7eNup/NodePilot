@@ -213,4 +213,32 @@ public class OutputRedactorTests
     {
         OutputRedactor.Placeholder.Should().Be("***");
     }
+
+    // A pass that timed out was skipped as a whole, dropping the redactions it had already
+    // made: unclosed BEGIN markers after a real key made the private-key pattern quadratic.
+    [Fact]
+    public void Redact_PrivateKeyFollowedByManyUnclosedMarkers_RedactsTheKey()
+    {
+        var output = new System.Text.StringBuilder(
+            "-----BEGIN RSA PRIVATE KEY-----\nMIIEsecretKEYbody\n-----END RSA PRIVATE KEY-----\n");
+        for (var i = 0; i < 20_000; i++) output.Append("-----BEGIN RSA PRIVATE KEY-----\n");
+
+        var result = Default().Redact(output.ToString());
+
+        result.Should().NotContain("MIIEsecretKEYbody");
+        result.Should().StartWith("-----BEGIN RSA PRIVATE KEY-----***-----END RSA PRIVATE KEY-----");
+    }
+
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(40_000, true)]
+    [InlineData(40_001, false)]
+    public void Redact_AnyPemBlock_BodyIsRedactedUpTo40000Chars(int bodyLength, bool redacted)
+    {
+        var input = "-----BEGIN CERTIFICATE-----" + new string('Q', bodyLength) + "-----END CERTIFICATE-----";
+
+        var result = Default().Redact(input);
+
+        result.Should().Be(redacted ? "-----BEGIN CERTIFICATE-----***-----END CERTIFICATE-----" : input);
+    }
 }
