@@ -17,12 +17,6 @@ exhaustive.
 - The website publishes an `llms.txt` at its root: a short English index of the site and the
   documentation for AI assistants.
 
-### Fixed
-
-- The prerequisites page of the server setup no longer hides rows behind the instructions box when
-  many checks fail or warn. If space runs short, rows are shortened to one line and show their full
-  text when selected: passing rows first, then warning and skipped ones, failing rows only last.
-
 ### Changed
 
 - **Quartz 4.** Schedule triggers and cron maintenance windows run on Quartz 4.2. Two daylight saving
@@ -33,6 +27,12 @@ exhaustive.
   step width of 0 (`0/0`) and years after 2199 are rejected when a workflow is published.
 - `GET /api/triggers/schedule/next-fires`, `np cron next` and the MCP tool `validate_cron` no longer
   return a `summary`. Quartz 4 dropped it; the next fire times are unchanged.
+
+### Fixed
+
+- The prerequisites page of the server setup no longer hides rows behind the instructions box when
+  many checks fail or warn. If space runs short, rows are shortened to one line and show their full
+  text when selected: passing rows first, then warning and skipped ones, failing rows only last.
 
 ## [1.4.3] - 2026-09-30
 
