@@ -70,7 +70,8 @@ Fenster- und Infobereichssymbol übernehmen die Farbe des in der Oberfläche gew
 - Electron prüft den SHA-256-Fingerprint des Zertifikats.
 - Das Zertifikat wird nicht als globale Root-CA installiert.
 - Electron verwendet `contextIsolation`, `sandbox` und `webSecurity`.
-- Node-Integration, Preload-Bridge, externe Navigation, Pop-ups, Downloads und Berechtigungsanfragen sind deaktiviert.
+- Node-Integration, Preload-Bridge, externe Navigation, Pop-ups und Berechtigungsanfragen sind deaktiviert.
+- Downloads sind nur von der eigenen Herkunft der Anwendung zugelassen; das Ziel wählt der native Speichern-unter-Dialog.
 
 Ein normaler Browser kann für die lokale URL eine Zertifikatswarnung anzeigen. Der unterstützte Zugriff erfolgt über die Electron-Shell.
 

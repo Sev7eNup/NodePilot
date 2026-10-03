@@ -70,14 +70,14 @@ Auch Trigger werden über das Eigenschaften-Panel eingerichtet.
 Für die Prüfung eines Workflows stehen mehrere Ebenen zur Verfügung:
 
 - **Step Test:** führt nur den ausgewählten Schritt mit Testdaten aus.
-- **Ausführen:** führt den Workflow als Test aus. Parameter eines manuellen Triggers werden vor dem Start abgefragt.
+- **Ausführen:** führt den Workflow aus. Parameter eines manuellen Triggers werden vor dem Start abgefragt.
 - **Debug Run:** führt den Workflow mit Breakpoints aus; nur im Expertenmodus.
 - **Simulation:** zeigt den möglichen Ablauf, ohne Activities auszuführen; nur im Expertenmodus.
 - **Lint:** zeigt fehlende Pflichtangaben, nicht erreichbare Nodes und weitere Probleme.
 
 Fehler aus der Lint-Prüfung verhindern die Veröffentlichung. Warnungen müssen vor der Veröffentlichung bestätigt werden.
 
-Ungespeicherte Änderungen werden vor einem Test- oder Debug-Lauf gespeichert. Ein laufender Test kann abgebrochen werden.
+Ungespeicherte Änderungen werden vor einer Ausführung oder einem Debug-Lauf gespeichert. Eine laufende Ausführung kann abgebrochen werden.
 
 ## Lauf überwachen
 
@@ -121,7 +121,7 @@ Der Workflow kann als JSON exportiert werden. Eine PNG-Datei bildet die aktuelle
 | `Ctrl+Shift+S` | veröffentlichen, aktivieren oder deaktivieren |
 | `Ctrl+E` | Bearbeitungs-Lock anfordern |
 | `Ctrl+U` | Bearbeitungs-Lock freigeben |
-| `Ctrl+Enter` | Testlauf starten |
+| `Ctrl+Enter` | Ausführung starten |
 | `Ctrl+Shift+X` | laufende Ausführung abbrechen |
 | `Ctrl+Z` | Änderung rückgängig machen |
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Änderung wiederholen |
