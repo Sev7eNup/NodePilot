@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -25,7 +26,11 @@ public sealed class OutputRedactor : IAuditDetailsRedactor
 {
     public const string Placeholder = "***";
 
+    // For operator patterns and the name splitter only. A redaction pass that times out is
+    // skipped, and a wall-clock timeout also fires on a thread that merely got no CPU, so the
+    // built-in passes are linear by construction and run without one.
     private static readonly TimeSpan RegexTimeout = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan NoTimeout = Regex.InfiniteMatchTimeout;
     private static readonly RegexOptions RxOpts = RegexOptions.Compiled | RegexOptions.IgnoreCase;
 
     private static readonly Regex SensitiveNameWordBoundary = new(
@@ -53,44 +58,60 @@ public sealed class OutputRedactor : IAuditDetailsRedactor
         "webhook", "hmac", "jwt", "secret",
     };
 
-    // Prefix captured in group 1, value in group 2. The whole match is replaced by "$1***".
-    private static readonly Regex[] DefaultPatterns =
+    // "(BEGIN)[\s\S]{MinBody,MaxBody}?(END)" without the regex: retried from every BEGIN marker,
+    // the lazy body is quadratic under backtracking. Same matches, linear time.
+    private sealed record PemBlocks(Regex Begin, Regex End, int MinBody, int MaxBody);
+
+    // PEM-formatted private keys — blank the body between markers.
+    private static readonly PemBlocks PrivateKeyPem = new(
+        new(@"-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED |)PRIVATE KEY-----", RxOpts, NoTimeout),
+        new(@"-----END (?:RSA |EC |DSA |OPENSSH |ENCRYPTED |)PRIVATE KEY-----", RxOpts, NoTimeout),
+        MinBody: 0, MaxBody: int.MaxValue);
+
+    // Any PEM block (certificate, public key, ...) — not just private key.
+    private static readonly PemBlocks AnyPem = new(
+        new(@"-----BEGIN [A-Z ]+-----", RxOpts, NoTimeout),
+        new(@"-----END [A-Z ]+-----", RxOpts, NoTimeout),
+        MinBody: 1, MaxBody: 40_000);
+
+    // Applied in order; each pass sees the output of the one before. A Regex keeps its group 1
+    // prefix and replaces the rest with "***". None of these patterns nests quantifiers.
+    private static readonly object[] DefaultPasses =
     {
         // key=value and key: value shapes — covers env-var dumps, config dumps, JSON output.
         // M-5: widened value class — commas are legal inside secret strings (e.g. base64 pad
         // regions, concatenated tokens), so only whitespace / semicolons / quotes terminate.
-        new(@"((?:api[_-]?key|password|passwd|pwd|secret|token|bearer|access[_-]?key|client[_-]?secret|private[_-]?key|auth(?:orization)?|session[_-]?key|refresh[_-]?token|thumbprint|fingerprint)\s*[=:]\s*)([^\s;""']+)", RxOpts, RegexTimeout),
+        new Regex(@"((?:api[_-]?key|password|passwd|pwd|secret|token|bearer|access[_-]?key|client[_-]?secret|private[_-]?key|auth(?:orization)?|session[_-]?key|refresh[_-]?token|thumbprint|fingerprint)\s*[=:]\s*)([^\s;""']+)", RxOpts, NoTimeout),
         // Match double-quoted values separately because the bareword pattern excludes quotes.
-        new(@"((?:api[_-]?key|password|passwd|pwd|secret|token|bearer|access[_-]?key|client[_-]?secret|private[_-]?key|auth(?:orization)?|session[_-]?key|refresh[_-]?token|thumbprint|fingerprint)\s*[=:]\s*"")([^""]*)", RxOpts, RegexTimeout),
+        new Regex(@"((?:api[_-]?key|password|passwd|pwd|secret|token|bearer|access[_-]?key|client[_-]?secret|private[_-]?key|auth(?:orization)?|session[_-]?key|refresh[_-]?token|thumbprint|fingerprint)\s*[=:]\s*"")([^""]*)", RxOpts, NoTimeout),
         // Single-quoted value shape: `password = 'abc 123'` — PowerShell output form.
-        new(@"((?:api[_-]?key|password|passwd|pwd|secret|token|bearer|access[_-]?key|client[_-]?secret|private[_-]?key|auth(?:orization)?|session[_-]?key|refresh[_-]?token|thumbprint|fingerprint)\s*[=:]\s*')([^']*)", RxOpts, RegexTimeout),
+        new Regex(@"((?:api[_-]?key|password|passwd|pwd|secret|token|bearer|access[_-]?key|client[_-]?secret|private[_-]?key|auth(?:orization)?|session[_-]?key|refresh[_-]?token|thumbprint|fingerprint)\s*[=:]\s*')([^']*)", RxOpts, NoTimeout),
         // JSON string form: "password": "xxx"
-        new(@"(""(?:api[_-]?key|password|passwd|pwd|secret|token|bearer|access[_-]?key|client[_-]?secret|private[_-]?key|authorization|session[_-]?key|refresh[_-]?token|thumbprint|fingerprint)""\s*:\s*"")([^""]*)", RxOpts, RegexTimeout),
+        new Regex(@"(""(?:api[_-]?key|password|passwd|pwd|secret|token|bearer|access[_-]?key|client[_-]?secret|private[_-]?key|authorization|session[_-]?key|refresh[_-]?token|thumbprint|fingerprint)""\s*:\s*"")([^""]*)", RxOpts, NoTimeout),
         // Connection string segments
-        new(@"(Password\s*=\s*)([^;]+)", RxOpts, RegexTimeout),
-        new(@"(Pwd\s*=\s*)([^;]+)", RxOpts, RegexTimeout),
-        new(@"(User\s*(?:Id|ID)\s*=\s*)([^;]+)", RxOpts, RegexTimeout),
+        new Regex(@"(Password\s*=\s*)([^;]+)", RxOpts, NoTimeout),
+        new Regex(@"(Pwd\s*=\s*)([^;]+)", RxOpts, NoTimeout),
+        new Regex(@"(User\s*(?:Id|ID)\s*=\s*)([^;]+)", RxOpts, NoTimeout),
         // HTTP header lines: "Authorization: Bearer xxx", "X-Api-Key: xxx"
-        new(@"((?:Authorization|Proxy-Authorization|X-Api-Key|X-Auth-Token|X-Webhook-Secret|Cookie|Set-Cookie)\s*:\s*)([^\r\n]+)", RxOpts, RegexTimeout),
-        // PEM-formatted keys (private key, certificate) — blank the body between markers
-        new(@"(-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED |)PRIVATE KEY-----)[\s\S]*?(-----END (?:RSA |EC |DSA |OPENSSH |ENCRYPTED |)PRIVATE KEY-----)", RxOpts, RegexTimeout),
+        new Regex(@"((?:Authorization|Proxy-Authorization|X-Api-Key|X-Auth-Token|X-Webhook-Secret|Cookie|Set-Cookie)\s*:\s*)([^\r\n]+)", RxOpts, NoTimeout),
+        PrivateKeyPem,
         // AWS access key IDs and GitHub tokens (shape-based — catches accidental Write-Host)
-        new(@"\b(AKIA|ASIA)[A-Z0-9]{16}\b", RegexOptions.Compiled, RegexTimeout),
-        new(@"\b(gh[pousr]_[A-Za-z0-9]{20,})\b", RegexOptions.Compiled, RegexTimeout),
+        new Regex(@"\b(AKIA|ASIA)[A-Z0-9]{16}\b", RegexOptions.Compiled, NoTimeout),
+        new Regex(@"\b(gh[pousr]_[A-Za-z0-9]{20,})\b", RegexOptions.Compiled, NoTimeout),
         // M-5 widen the catch-all set:
         // JWT shape: 3 dot-separated base64url segments (at least 10 chars each).
-        new(@"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}", RegexOptions.Compiled, RegexTimeout),
+        new Regex(@"eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}", RegexOptions.Compiled, NoTimeout),
         // Stripe live/test keys
-        new(@"sk_(live|test)_[A-Za-z0-9]{16,}", RegexOptions.Compiled, RegexTimeout),
+        new Regex(@"sk_(live|test)_[A-Za-z0-9]{16,}", RegexOptions.Compiled, NoTimeout),
         // Slack tokens (bot, user, access, refresh, etc.)
-        new(@"xox[baprs]-[A-Za-z0-9-]{10,}", RegexOptions.Compiled, RegexTimeout),
+        new Regex(@"xox[baprs]-[A-Za-z0-9-]{10,}", RegexOptions.Compiled, NoTimeout),
         // GitLab personal access tokens
-        new(@"glpat-[A-Za-z0-9_\-]{20,}", RegexOptions.Compiled, RegexTimeout),
-        // Any PEM block (certificate, public key, ...) — not just private key.
-        new(@"(-----BEGIN [A-Z ]+-----)[\s\S]{1,40000}?(-----END [A-Z ]+-----)", RxOpts, RegexTimeout),
+        new Regex(@"glpat-[A-Za-z0-9_\-]{20,}", RegexOptions.Compiled, NoTimeout),
+        AnyPem,
     };
 
-    private readonly Regex[] _patterns;
+    private readonly object[] _passes;
+    private readonly bool _hasCustomPatterns;
     private readonly bool _enabled;
     private readonly ILogger<OutputRedactor>? _logger;
 
@@ -111,9 +132,10 @@ public sealed class OutputRedactor : IAuditDetailsRedactor
             .Cast<string>()
             .Select(p => { try { return new Regex(p, RxOpts, RegexTimeout); } catch { return null!; } })
             .Where(r => r is not null)
-            .ToArray();
+            .ToArray() ?? [];
 
-        _patterns = DefaultPatterns.Concat(custom ?? Array.Empty<Regex>()).ToArray();
+        _hasCustomPatterns = custom.Length > 0;
+        _passes = [.. DefaultPasses, .. custom];
     }
 
     /// <summary>
@@ -125,43 +147,77 @@ public sealed class OutputRedactor : IAuditDetailsRedactor
         if (!_enabled || string.IsNullOrEmpty(input)) return input;
         // Fast-path: a script's stdout/stderr almost never contains a secret. Probe for the
         // hand-full of marker substrings and PEM/token shapes that any of our patterns can
-        // possibly match — if none are present, skip 16 compiled regex passes entirely.
+        // possibly match — if none are present, skip every pass entirely.
         // This is the hot-path on every step's output; the workflow engine pipes every byte
         // of script output through here, and 99 %+ of typical lines have nothing to redact.
         if (!HasRedactionTrigger(input)) return input;
         var s = input;
-        foreach (var rx in _patterns)
+        foreach (var pass in _passes)
+            s = pass is PemBlocks pem ? RedactPemBlocks(s, pem) : ApplyPattern((Regex)pass, s);
+        return s;
+    }
+
+    private string ApplyPattern(Regex rx, string s)
+    {
+        try
         {
-            try
+            return rx.Replace(s, m =>
             {
-                s = rx.Replace(s, m =>
-                {
-                    // Track every match so a sudden uptick is visible in dashboards. The pattern
-                    // index keeps the metric cardinality bounded (one tag value per regex).
-                    NodePilot.Engine.EngineMetrics.RedactionHits.Add(1,
-                        new KeyValuePair<string, object?>("pattern_kind", PatternKind(m)));
-                    // PEM-style pattern captures both start and end markers — keep them,
-                    // blank the body in between.
-                    if (m.Groups.Count > 2 && m.Groups[1].Success && m.Groups[2].Success
-                        && m.Groups[1].Value.StartsWith("-----BEGIN", StringComparison.OrdinalIgnoreCase))
-                        return m.Groups[1].Value + Placeholder + m.Groups[2].Value;
-                    if (m.Groups.Count > 1 && m.Groups[1].Success)
-                        return m.Groups[1].Value + Placeholder;
-                    return Placeholder;
-                });
+                // Track every match so a sudden uptick is visible in dashboards. The pattern
+                // index keeps the metric cardinality bounded (one tag value per regex).
+                NodePilot.Engine.EngineMetrics.RedactionHits.Add(1,
+                    new KeyValuePair<string, object?>("pattern_kind", PatternKind(m)));
+                // An operator's PEM-style pattern captures both markers — keep them, blank the
+                // body in between.
+                if (m.Groups.Count > 2 && m.Groups[1].Success && m.Groups[2].Success
+                    && m.Groups[1].Value.StartsWith("-----BEGIN", StringComparison.OrdinalIgnoreCase))
+                    return m.Groups[1].Value + Placeholder + m.Groups[2].Value;
+                if (m.Groups.Count > 1 && m.Groups[1].Success)
+                    return m.Groups[1].Value + Placeholder;
+                return Placeholder;
+            });
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            // Only operator patterns carry a timeout. M-4: fail-open rather than fail-closed.
+            // Nuking the entire string on a single regex timeout destroys huge amounts of
+            // legitimate output to defend against a leak the other patterns likely caught.
+            _logger?.LogWarning(
+                "OutputRedactor: regex timeout on pattern {Pattern} (input length {Length} chars); preserving input.",
+                rx.ToString(), s.Length);
+            return s;
+        }
+    }
+
+    // Each BEGIN pairs with the first END that leaves a body within bounds; otherwise the next
+    // BEGIN is tried. END candidates only move forward, so one search can serve many BEGINs.
+    private static string RedactPemBlocks(string s, PemBlocks pem)
+    {
+        StringBuilder? sb = null;
+        var copied = 0;
+        Match? end = null;
+        var begin = pem.Begin.Match(s);
+        while (begin.Success)
+        {
+            var bodyStart = begin.Index + begin.Length;
+            var from = bodyStart + pem.MinBody;
+            if (end is null || (end.Success && end.Index < from))
+                end = from <= s.Length ? pem.End.Match(s, from) : Match.Empty;
+            if (end.Success && end.Index - bodyStart <= pem.MaxBody)
+            {
+                NodePilot.Engine.EngineMetrics.RedactionHits.Add(1,
+                    new KeyValuePair<string, object?>("pattern_kind", "pem"));
+                sb ??= new StringBuilder(s.Length);
+                sb.Append(s, copied, begin.Index - copied).Append(begin.Value).Append(Placeholder).Append(end.Value);
+                copied = end.Index + end.Length;
+                begin = pem.Begin.Match(s, copied);
             }
-            catch (RegexMatchTimeoutException)
+            else
             {
-                // M-4: fail-open rather than fail-closed. Nuking the entire string on a single
-                // regex timeout destroys huge amounts of legitimate output (often many MBs of
-                // script stdout) to defend against a speculative leak that the other patterns
-                // likely already caught. We log a warning so ops can tune the offending pattern.
-                _logger?.LogWarning(
-                    "OutputRedactor: regex timeout on pattern {Pattern} (input length {Length} chars); preserving input.",
-                    rx.ToString(), s.Length);
+                begin = pem.Begin.Match(s, begin.Index + 1);
             }
         }
-        return s;
+        return sb is null ? s : sb.Append(s, copied, s.Length - copied).ToString();
     }
 
     /// <summary>
@@ -283,7 +339,7 @@ public sealed class OutputRedactor : IAuditDetailsRedactor
     // (we don't know what they trigger on).
     private static readonly string[] DefaultTriggerKeywords =
     {
-        // Pattern keys in DefaultPatterns — match the full identifier set across all the
+        // Pattern keys in DefaultPasses — match the full identifier set across all the
         // key=value / JSON / header patterns. Case-insensitive, so check both lower- and
         // mixed-case forms. Includes the AKIA/ASIA/eyJ/sk_/xox/glpat/gh_ shape prefixes
         // and the "-----BEGIN" PEM marker.
@@ -304,7 +360,7 @@ public sealed class OutputRedactor : IAuditDetailsRedactor
     private bool HasRedactionTrigger(string input)
     {
         // Custom patterns may match anything — can't safely fast-path past them.
-        if (_patterns.Length > DefaultPatterns.Length) return true;
+        if (_hasCustomPatterns) return true;
         foreach (var keyword in DefaultTriggerKeywords)
         {
             if (input.Contains(keyword, StringComparison.OrdinalIgnoreCase))

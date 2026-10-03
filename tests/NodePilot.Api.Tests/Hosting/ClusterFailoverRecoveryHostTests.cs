@@ -13,6 +13,7 @@ using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Data.Availability;
+using NodePilot.Engine.Execution;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Hosting;
@@ -40,14 +41,14 @@ public sealed class ClusterFailoverRecoveryHostTests
         await seed.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         var contexts = new List<ObservedContext>();
-        var stall = new StallSave();
+        var timedOut = new TimedOutSave();
         var committed = new CommittedBatch();
         var registrations = new ServiceCollection();
         registrations.AddScoped<NodePilotDbContext>(_ =>
         {
             if (contexts.Count > 0) contexts[^1].Disposed.Should().BeTrue();
             var options = new DbContextOptionsBuilder<NodePilotDbContext>().UseSqlite(connection);
-            if (contexts.Count == 0) options.AddInterceptors(stall);
+            if (contexts.Count == 0) options.AddInterceptors(timedOut);
             else options.AddInterceptors(committed);
             var context = new ObservedContext(options.Options);
             contexts.Add(context);
@@ -57,18 +58,22 @@ public sealed class ClusterFailoverRecoveryHostTests
         var availability = new Mock<IDatabaseAvailability>();
         availability.Setup(a => a.WaitUntilServableAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var cluster = new ClusterState();
+        // The retry runs under the default batch budget; a shorter one also bounds the retry and
+        // fails on a loaded runner.
+        var logger = new NodePilot.TestCommons.CapturingLogger<ClusterFailoverRecoveryHost>();
         using var host = new ClusterFailoverRecoveryHost(services.GetRequiredService<IServiceScopeFactory>(),
-            cluster, NullLogger<ClusterFailoverRecoveryHost>.Instance, availability.Object,
-            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-                { ["Cluster:LeaseDbTimeoutSeconds"] = "1" }).Build());
+            cluster, logger, availability.Object, new ConfigurationBuilder().Build());
         try
         {
             cluster.Acquire(7);
-            await committed.Completed.Task.WaitAsync(TimeSpan.FromSeconds(15));
+            await committed.Completed.Task.WaitAsync(TimeSpan.FromSeconds(30));
         }
         finally { await host.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)); }
 
         contexts.Should().HaveCount(2);
+        logger.Entries.Should().ContainSingle(e => e.Exception is ClusterRecoveryDeferredException,
+            "the first attempt must take the deferral path, not the generic failure retry");
+        logger.Entries.Should().NotContain(e => e.Level == Microsoft.Extensions.Logging.LogLevel.Error);
         (await seed.WorkflowExecutions.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken)).Status
             .Should().Be(ExecutionStatus.Cancelled);
         (await seed.AuditLog.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
@@ -206,14 +211,13 @@ public sealed class ClusterFailoverRecoveryHostTests
         }
     }
 
-    private sealed class StallSave : SaveChangesInterceptor
+    // A command timeout defers the batch exactly like an expired budget; the budget path itself
+    // is covered by StartupRecoveryBatchTests.
+    private sealed class TimedOutSave : SaveChangesInterceptor
     {
-        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
             DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
-        {
-            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-            return result;
-        }
+            => throw new TimeoutException("Simulated command timeout.");
     }
 
     private sealed class CommittedBatch : DbTransactionInterceptor
