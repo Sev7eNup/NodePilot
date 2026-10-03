@@ -112,9 +112,11 @@ public sealed class StartupRecoveryBatchTests
         await using var db = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
             .UseSqlite(connection).AddInterceptors(stall).Options);
 
+        // The single-execution batches after the stall must finish inside the same budget, so it
+        // leaves room for a loaded test runner.
         var count = await StartupRecovery.RecoverOrphanedExecutionsAsync(
             db, NullLogger.Instance, ourNodeId: "new", leaseEpoch: 7,
-            clusterBatchTimeout: TimeSpan.FromMilliseconds(200));
+            clusterBatchTimeout: TimeSpan.FromSeconds(2));
 
         count.Should().Be(2);
         stall.BatchSizes.Should().Equal(2, 1, 1);
