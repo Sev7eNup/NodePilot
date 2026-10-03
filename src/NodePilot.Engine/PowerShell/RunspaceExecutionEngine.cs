@@ -132,6 +132,12 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
     internal static bool IsModuleLoadRace(string? error) =>
         error is not null && error.Contains("Collection was modified", StringComparison.OrdinalIgnoreCase);
 
+    // Known PowerShell SDK gap: Stop() on a RunspacePool-backed BeginInvoke can occasionally
+    // never signal completion (e.g. PowerShell/PowerShell#17250). Past this grace period after
+    // Stop() was requested, ExecuteOnceAsync gives up waiting rather than hang the caller
+    // forever; the wedged runspace is abandoned (lost from the pool until the process restarts).
+    private static readonly TimeSpan StopGracePeriod = TimeSpan.FromSeconds(20);
+
     private async Task<PowerShellExecutionResult> ExecuteOnceAsync(PowerShellExecutionRequest request, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
@@ -140,7 +146,7 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
         var warnings = new StringBuilder();
         var verbose = new StringBuilder();
 
-        using var ps = System.Management.Automation.PowerShell.Create();
+        var ps = System.Management.Automation.PowerShell.Create();
         ps.RunspacePool = _pool;
         ps.AddScript(PowerShellScriptWrapper.Wrap(request.ScriptText, request.Parameters, _logger, request.OutputCaptureAllowlist));
 
@@ -149,7 +155,10 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
             cts.CancelAfter(configuredTimeout);
 
         if (ct.IsCancellationRequested)
+        {
+            ps.Dispose();
             throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
+        }
 
         // BeginInvoke queues work without parking a ThreadPool worker. Stop can complete a
         // queued invocation without throwing, so both EndInvoke and the terminal state matter.
@@ -163,6 +172,7 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
         catch (Exception ex)
         {
             sw.Stop();
+            ps.Dispose();
             return new PowerShellExecutionResult
             {
                 Success = false,
@@ -177,9 +187,25 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
             try { ps.Stop(); } catch { /* best-effort: pipeline may already be torn down */ }
         });
 
+        var invokeTask = Task.Factory.FromAsync(asyncResult, ps.EndInvoke);
+        var abandonTask = AbandonAfterGraceAsync(cts.Token);
         try
         {
-            await Task.Factory.FromAsync(asyncResult, ps.EndInvoke);
+            if (await Task.WhenAny(invokeTask, abandonTask) != invokeTask)
+            {
+                // The pipeline never honored Stop() within the grace period. ps.Dispose() can
+                // itself block on the same stuck pipeline, so it is deliberately never called
+                // here: the runspace is abandoned rather than risk hanging this caller too.
+                _logger.LogError(
+                    "PowerShell pipeline ignored cancellation for over {GracePeriod}; abandoning " +
+                    "it instead of hanging the caller. The runspace pool permanently loses one " +
+                    "slot (of {MaxRunspaces}) until the process restarts.",
+                    StopGracePeriod, _maxRunspaces);
+                sw.Stop();
+                throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
+            }
+
+            await invokeTask;
             var invocationState = ps.InvocationStateInfo;
             if (invocationState.State == PSInvocationState.Stopped)
                 throw new PipelineStoppedException();
@@ -200,6 +226,7 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
             if (!success && errors.Length == 0)
                 errors.Append(invocationState.Reason?.Message
                     ?? $"Script execution ended in state '{invocationState.State}'.");
+            ps.Dispose();
             return new PowerShellExecutionResult
             {
                 Success = success,
@@ -214,6 +241,7 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
         catch (PipelineStoppedException)
         {
             sw.Stop();
+            ps.Dispose();
             // Caller cancellation reaches StepRunner as Cancelled; an internal timeout is Failed.
             if (ct.IsCancellationRequested)
                 throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
@@ -229,9 +257,14 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
                 Duration = sw.Elapsed,
             };
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             sw.Stop();
+            ps.Dispose();
             // A script that throws still published its output markers before the throw.
             foreach (var r in results)
                 output.AppendLine(SafeToString(r));
@@ -244,6 +277,15 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
                 Duration = sw.Elapsed,
             };
         }
+    }
+
+    /// <summary>Completes <see cref="StopGracePeriod"/> after cancellation fires; never completes otherwise.</summary>
+    private static async Task AbandonAfterGraceAsync(CancellationToken token)
+    {
+        var cancelled = new TaskCompletionSource();
+        using (token.Register(() => cancelled.TrySetResult()))
+            await cancelled.Task;
+        await Task.Delay(StopGracePeriod);
     }
 
     public void Dispose()
