@@ -10,10 +10,11 @@ not a reprint.
 Entries were reconstructed from the published release notes, so they are condensed rather than
 exhaustive.
 
-## [1.4.4] - Unreleased
+## [1.4.4] - 2026-10-03
 
 ### Added
 
+- A documentation page on creating the TLS certificates for PostgreSQL and SQL Server.
 - The website publishes an `llms.txt` at its root: a short English index of the site and the
   documentation for AI assistants.
 
@@ -34,6 +35,13 @@ exhaustive.
 - The prerequisites page of the server setup no longer hides rows behind the instructions box when
   many checks fail or warn. If space runs short, rows are shortened to one line and show their full
   text when selected: passing rows first, then warning and skipped ones, failing rows only last.
+- **Output redaction could let secrets through.** A redaction pass that ran into its time limit was
+  skipped as a whole, so a heavily loaded host, or output with many unclosed PEM markers after a
+  private key, could pass a secret on unmasked. The built-in patterns now always run to completion.
+  Patterns you add under `Logging:Redaction:Patterns` keep their time limit and still fail open.
+- A step in the in-process PowerShell engine that ignores cancellation no longer holds the run
+  forever. After 60 seconds the step is reported as cancelled, or as timed out when its own limit
+  was reached; the statement it was running may keep going in the background, and the log says so.
 
 ## [1.4.3] - 2026-09-30
 
