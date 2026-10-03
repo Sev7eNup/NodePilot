@@ -126,3 +126,7 @@ Server, keine DB — der Zustand lebt pro Tab und ein Reload stellt den Seed wie
   simulierten Ausgaben aus den Startparametern ab. `Protected` scheitert bei File Copy,
   nachfolgende Steps laufen nicht. Retry behält die ursprünglichen Eingaben.
   Die geführten Szenarien sind in `e2e-demo/guided-tour.spec.ts` abgesichert.
+  Acht weitere Aufgaben (`?tour=build|decision|parallel|service|live|versions|machine|maintenance`)
+  liegen in `demo/ui/additionalTours.ts`, ihre Seed-Daten in `demo/seed/missionFixtures.ts` und die
+  Laufsimulation in `demo/run/missionScenarios.ts`; abgesichert in `e2e-demo/additional-tours.spec.ts`.
+  Die Website-Route `/walkthrough/` verlinkt alle zehn Aufgaben.
