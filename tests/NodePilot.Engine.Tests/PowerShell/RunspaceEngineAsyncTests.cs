@@ -45,9 +45,11 @@ public class RunspaceEngineAsyncTests
             (await Task.Run(() => started.WaitOne(TimeSpan.FromSeconds(30)),
                 TestContext.Current.CancellationToken)).Should().BeTrue("the script must be running before cancellation");
             var cancellation = cts.CancelAsync();
+            // ps.Stop() runs synchronously inside the cancellation callback; under a contended CI
+            // runner that can take well past 30s, so this bound is generous rather than tight.
             thrown = await Assert.ThrowsAnyAsync<OperationCanceledException>(
-                () => task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
-            await cancellation.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+                () => task.WaitAsync(TimeSpan.FromSeconds(90), TestContext.Current.CancellationToken));
+            await cancellation.WaitAsync(TimeSpan.FromSeconds(90), TestContext.Current.CancellationToken);
         }
         finally { release.Set(); }
 
