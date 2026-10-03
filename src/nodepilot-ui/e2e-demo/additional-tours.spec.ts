@@ -12,7 +12,13 @@ for (const id of IDS) {
   });
 }
 
+// The designer ignores a Run click until the workflow has loaded, and the name field fills from it.
+async function waitForLoadedWorkflow(page: import('@playwright/test').Page) {
+  await expect(page.getByRole('textbox', { name: /Workflow name/ })).not.toHaveValue('');
+}
+
 async function runFromEditor(page: import('@playwright/test').Page, placeholder?: string, value?: string) {
+  await waitForLoadedWorkflow(page);
   if (placeholder) await expect(page.locator('.react-flow__node').filter({ hasText: 'Manual Trigger' }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Run' }).click();
   const dialog = page.getByRole('dialog');
@@ -30,6 +36,7 @@ test('decision executes only the critical branch at 8 GB', async ({ page }) => {
 
 test('parallel branches both finish before waitAll', async ({ page }) => {
   await page.goto('./?tour=parallel&lang=en');
+  await waitForLoadedWorkflow(page);
   await page.getByRole('button', { name: 'Run' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
