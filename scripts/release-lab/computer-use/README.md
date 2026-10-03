@@ -1,10 +1,10 @@
 # Computer-Use release acceptance
 
-This is the human-facing UI gate for a built release. It operates the installed desktop shell on
-the disposable desktop VM and the installed server through a real Edge session. Computer Use is
-required for every UI assertion: screenshots, visible controls, mouse, keyboard, native file
-pickers, tray menus and observable results. API, PowerShell and fixture scripts may prepare data or
-corroborate an observation, but they cannot mark a UI case passed.
+This is an experimental human-facing UI run for a built release, not a release gate. It operates the
+installed desktop shell on the disposable desktop VM and the installed server through a real Edge
+session. Computer Use is required for every UI assertion: screenshots, visible controls, mouse,
+keyboard, native file pickers, tray menus and observable results. API, PowerShell and fixture
+scripts may prepare data or corroborate an observation, but they cannot mark a UI case passed.
 
 ## Prepare and run
 
