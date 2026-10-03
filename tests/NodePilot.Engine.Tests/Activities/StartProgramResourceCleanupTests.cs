@@ -85,14 +85,18 @@ public class StartProgramResourceCleanupTests
         await AssertResources(engine);
     }
 
+    // The completing case uses the default idle grace: with 1 s, a single stalled read on a
+    // loaded runner ends the drain early. The bounded case needs a short grace to reach the
+    // total limit.
     [Theory]
-    [InlineData(60, true)]
-    [InlineData(1, false)]
-    public async Task SlowReader_AfterProcessExit_DrainsBufferedOutputWithinTheTotalBudget(int timeoutSeconds, bool complete)
+    [InlineData(60, StartProgramActivity.DefaultDrainGraceSeconds, true)]
+    [InlineData(1, 1, false)]
+    public async Task SlowReader_AfterProcessExit_DrainsBufferedOutputWithinTheTotalBudget(
+        int timeoutSeconds, int drainGraceSeconds, bool complete)
     {
         using var engine = CreateEngine();
         var settings = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
-            ["Engine:IsolatedDrainGraceSeconds"] = "1",
+            ["Engine:IsolatedDrainGraceSeconds"] = drainGraceSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture),
         }).Build();
         var activity = new Accessor(settings);
         var config = JsonSerializer.SerializeToElement(new {
