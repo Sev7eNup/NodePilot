@@ -182,9 +182,13 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
             };
         }
 
+        // Fire-and-forget: a CancellationTokenSource runs every callback registered on the same
+        // token sequentially, on whichever thread calls Cancel(). A blocking ps.Stop() here would
+        // therefore also block AbandonAfterGraceAsync's own registration below from ever firing,
+        // defeating the grace period entirely — ps.Stop() must run off this thread.
         using var ctRegistration = cts.Token.Register(() =>
         {
-            try { ps.Stop(); } catch { /* best-effort: pipeline may already be torn down */ }
+            Task.Run(() => { try { ps.Stop(); } catch { /* best-effort: pipeline may already be torn down */ } });
         });
 
         var invokeTask = Task.Factory.FromAsync(asyncResult, ps.EndInvoke);
