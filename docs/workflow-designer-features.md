@@ -277,7 +277,7 @@ Seven clusters with a proximity-driven colour glow (purely cosmetic, prefers-red
 2. **Layout** (with write permission): tidy (Expert shows the algorithm), restore original layout (Expert).
 3. **Inspect:** search, find & replace (Expert), zoom to selection (Expert), diff (Expert), simulation (Expert), shortcuts (Expert), hidden-types pill.
 4. **View** (Expert): the **"appearance" settings dialog** (settings icon, `role="dialog"`) — it gathers every canvas display option (node style, icon view, ports/auto-hide, edge animation/routing/width, node and label size, premium canvas, snap grid) as labelled card rows with a switch, segmented control or stepper; plus the activity type filter.
-5. **Run:** test run, debug run (Expert), cancel, lint pill, and the **"view" popover** (Expert, an eye icon with an active counter): it gathers the overlay switches — machine colouring, failure heatmap, data flow, coverage, critical path — as switch rows.
+5. **Run:** run, debug run (Expert), cancel, lint pill, and the **"view" popover** (Expert, an eye icon with an active counter): it gathers the overlay switches — machine colouring, failure heatmap, data flow, coverage, critical path — as switch rows.
 6. **Lifecycle** (with role write permission): edit-lock toggle, save (with a dirty dot), publish/disable/enable.
 7. **Export** (Expert): JSON, PNG. In standard mode these live in the more menu.
 

@@ -130,7 +130,7 @@ describe('sitemap and robots', () => {
   it('writes an English llms.txt with absolute links to the site and the documentation', () => {
     const text = llmsTxt('https://x.test', pages)
     expect(text.startsWith('# NodePilot\n')).toBe(true)
-    expect(text).toContain('- [product](https://x.test/en/product)')
+    expect(text).toContain('- [product](https://x.test/en/product/)')
     expect(text).toContain('(https://x.test/docs/en/getting-started/introduction/)')
     expect(text).not.toContain('/datenschutz')
   })

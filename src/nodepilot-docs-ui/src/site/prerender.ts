@@ -108,7 +108,7 @@ export function robots(origin: string, sitemaps: readonly string[] = ['sitemap.x
 export function llmsTxt(origin: string, pages: RoutePage[]): string {
   const links = pages
     .filter((page) => page.listed && page.lang === 'en')
-    .map((page) => `- [${page.route.page === 'home' ? 'Home' : page.path.replace(/^en\//, '')}](${pageUrl(origin, page.path)})`)
+    .map((page) => `- [${page.route.page === 'home' ? 'Home' : page.path.replace(/^en\//, '')}](${pageUrl(origin, page.path, true)})`)
     .join('\n')
   const docs = `- [Documentation](${pageUrl(origin, 'docs/en/getting-started/introduction/')})\n- [Documentation sitemap](${pageUrl(origin, 'docs/sitemap.xml')})`
   return (
