@@ -219,6 +219,13 @@ try {
     Set-RestrictedSettingsAcl -Path $settingsPath -ServiceAccount $svcAccount
     $settingsBytes = [IO.File]::ReadAllBytes($settingsPath)
 
+    # The service refuses to read its JWT key when the data directory grants write access to a
+    # principal it does not trust. Same check and repair as the installer, before anything changes.
+    if (Test-Path -LiteralPath $DataPath -PathType Container) {
+        Assert-ServiceDirectoryAclUsable -Path $DataPath -ServiceAccount $svcAccount `
+            -SkipServiceRule:($svcAccount -eq 'NT AUTHORITY\SYSTEM') -Label "The data directory '$DataPath'"
+    }
+
     # Health-probe port: the installed configuration is authoritative. Probing the 443 parameter
     # default against an installation that listens elsewhere (any host where IIS owns 443, such
     # as SCCM or WSUS) fails the post-restart probe and rolls back a healthy upgrade. An explicit
