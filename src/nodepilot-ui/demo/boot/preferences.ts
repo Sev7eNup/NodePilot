@@ -25,23 +25,9 @@ function seed(key: string, value: string): void {
   }
 }
 
-/**
- * The same rule the project website and the documentation follow: the first supported browser
- * language wins, otherwise English. Only the primary subtag counts, so `de-AT` resolves to `de`.
- *
- * Seeded rather than left to the product's own detector, because that one falls back to German —
- * a visitor whose browser asks for neither language would meet a German demo beside an English
- * website.
- */
-function preferredLanguage(): string {
-  for (const candidate of globalThis.navigator?.languages ?? []) {
-    const primary = candidate.split('-')[0]?.toLowerCase();
-    if (primary === 'de' || primary === 'en') return primary;
-  }
-  return 'en';
-}
-
-seed(LANGUAGE_KEY, preferredLanguage());
+// The demo always starts in English, regardless of the browser language. Seeded rather than left
+// to the product's own detector, which would pick the browser language and fall back to German.
+seed(LANGUAGE_KEY, 'en');
 const requestedLanguage = new URLSearchParams(globalThis.location?.search ?? '').get('lang');
 if (requestedLanguage === 'de' || requestedLanguage === 'en') {
   try { globalThis.localStorage?.setItem(LANGUAGE_KEY, requestedLanguage); } catch { /* storage is optional */ }

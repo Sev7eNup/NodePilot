@@ -222,3 +222,6 @@ presentations/*
 
 # Web host credentials for deploy/Publish-Site.ps1 - see site-publish.example.json
 deploy/site-publish.local.json
+
+# Personal notes (not part of the repo)
+ideenAusFeedback.txt
