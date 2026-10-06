@@ -646,7 +646,7 @@
   },
   {
     "slug": "orchestrator-2016-end-of-support",
-    "status": "draft",
+    "status": "published",
     "next": false,
     "source": "orchestrator-2016-end-of-support",
     "solution": "scorch-alternative",
@@ -660,7 +660,7 @@
       "scorch-import",
       "scorch-migration"
     ],
-    "publishedAt": null,
+    "publishedAt": "2026-10-07",
     "modifiedAt": null,
     "text": {
       "de": {
